@@ -1,6 +1,6 @@
-import { Box, Flex, FormControl, FormLabel, Grid, GridItem, HStack, Input, Select, Stack, Text, VStack, Checkbox, Alert, AlertIcon, Divider, useDisclosure } from '@chakra-ui/react'
+import { Box, Flex, FormControl, FormLabel, Grid, GridItem, HStack, Icon, Input, Select, Stack, Text, VStack, Checkbox, Alert, AlertIcon, Divider, useDisclosure } from '@chakra-ui/react'
 import React, { useState, useEffect, useRef } from 'react'
-import { HiChevronDown, HiChevronUp, HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
+import { HiChevronDown, HiChevronUp, HiQuestionMarkCircle, HiRefresh, HiCheckCircle, HiDatabase, HiArrowCircleRight, HiShieldExclamation, HiTrash, HiLockClosed } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 import RMButton from '../../components/RMButton'
 import RMSwitch from '../../components/RMSwitch'
@@ -1201,14 +1201,15 @@ function ResticRepositorySettings({
                     <Text className={styles.subsectionTitle}>Repository initialization</Text>
                   </Box>
                   <Box className={styles.repositoryActionsBox}>
-                    <Stack spacing={2}>
+                    <Stack spacing={3}>
                       <Text className={styles.helperText}>
-                        Initialize the effective S3 repository shown in <strong>Repository target</strong> above.
+                        Verify or initialize the effective repository shown in <strong>Repository target</strong> above. Use <em>Migrate/copy</em> to move snapshots to a new destination.
                       </Text>
-                      <HStack spacing={2}>
+                      <HStack spacing={2} flexWrap='wrap'>
                         <RMButton
                           size='sm'
                           colorScheme='green'
+                          leftIcon={<HiCheckCircle />}
                           onClick={handleCheckRepo}
                           isLoading={isCheckLoading}
                           isDisabled={user?.grants['cluster-settings'] === false}
@@ -1218,6 +1219,7 @@ function ResticRepositorySettings({
                         <RMButton
                           size='sm'
                           colorScheme='blue'
+                          leftIcon={<HiDatabase />}
                           onClick={handleResticInit}
                           isDisabled={user?.grants['cluster-settings'] === false}
                         >
@@ -1226,6 +1228,7 @@ function ResticRepositorySettings({
                         <RMButton
                           size='sm'
                           colorScheme='orange'
+                          leftIcon={<HiArrowCircleRight />}
                           onClick={onOpenCopyModal}
                           isDisabled={user?.grants['cluster-process'] === false}
                         >
@@ -1340,26 +1343,43 @@ function ResticRepositorySettings({
                     </GridItem>
                   </Grid>
 
-                  <Divider />
-
-                  <HStack spacing={2} justify='flex-start' flexWrap='wrap'>
-                    <RMButton
-                      size='sm'
-                      colorScheme='red'
-                      onClick={handleOpenWipeModal}
-                      isDisabled={user?.grants['db-backup'] === false}
-                      title='Wipe repository — deletes all repository contents and leaves it uninitialized'
-                    >
-                      Wipe repository
-                    </RMButton>
-                  </HStack>
-
-                  {wipeResult && (
-                    <Alert status={wipeResult.status === 'ok' ? 'warning' : 'error'} size='sm' borderRadius='md'>
-                      <AlertIcon />
-                      <Text fontSize='sm'>{wipeResult.message}</Text>
-                    </Alert>
-                  )}
+                  <Box
+                    borderWidth='1px'
+                    borderColor='red.300'
+                    borderRadius='md'
+                    bg='red.50'
+                    p={3}
+                    _dark={{ bg: 'red.900', borderColor: 'red.600' }}
+                  >
+                    <Stack spacing={2}>
+                      <HStack spacing={2}>
+                        <Icon as={HiShieldExclamation} color='red.500' boxSize={4} />
+                        <Text fontSize='xs' fontWeight='700' textTransform='uppercase' letterSpacing='wide' color='red.600' _dark={{ color: 'red.300' }}>
+                          Danger zone
+                        </Text>
+                      </HStack>
+                      <Text fontSize='sm' color='gray.700' _dark={{ color: 'gray.200' }}>
+                        Permanently deletes all repository contents and leaves it uninitialized. This cannot be undone.
+                      </Text>
+                      <Box>
+                        <RMButton
+                          size='sm'
+                          colorScheme='red'
+                          leftIcon={<HiTrash />}
+                          onClick={handleOpenWipeModal}
+                          isDisabled={user?.grants['db-backup'] === false}
+                        >
+                          Wipe repository
+                        </RMButton>
+                      </Box>
+                      {wipeResult && (
+                        <Alert status={wipeResult.status === 'ok' ? 'warning' : 'error'} size='sm' borderRadius='md'>
+                          <AlertIcon />
+                          <Text fontSize='sm'>{wipeResult.message}</Text>
+                        </Alert>
+                      )}
+                    </Stack>
+                  </Box>
                 </Stack>
               )}
             </Stack>
@@ -1784,42 +1804,40 @@ function ResticRepositorySettings({
         confirmButtonProps={{ isLoading: wipeSubmitting, isDisabled: isWipeSubmitBlocked, colorScheme: 'red' }}
         body={
           <VStack align='start' spacing={3}>
-            <Alert status='error' size='sm' borderRadius='md'>
-              <AlertIcon />
+            <Alert status='error' size='sm' borderRadius='md' variant='left-accent'>
+              <AlertIcon as={HiShieldExclamation} />
               <Text fontSize='sm'>
-                <strong>Destructive operation.</strong> This permanently deletes all repository contents.
-                The repository will be left empty and uninitialized. This cannot be undone.
+                <strong>Destructive — cannot be undone.</strong> All repository contents will be permanently deleted.
+                The repository will be left empty and uninitialized.
               </Text>
             </Alert>
 
-            <Box w='full'>
-              <Text fontSize='sm' fontWeight='semibold' mb={1}>
-                Backend: {
-                  wipeServerBackend === 'restic-aws' ? 'S3 / Object storage'
-                  : wipeServerBackend === 'restic-sftp' ? 'SFTP remote'
-                  : wipeServerBackend === 'restic-local' ? 'Local filesystem'
-                  : isAws ? 'S3 / Object storage' : isSftp ? 'SFTP remote' : 'Local filesystem'
-                }
-              </Text>
-              <Text fontSize='sm' mb={1}>Server-computed target:</Text>
-              {wipeTargetLoading ? (
-                <Text fontSize='sm' color='gray.500' fontFamily='monospace' p={2}>Loading…</Text>
-              ) : (
-                <Text
-                  fontSize='sm'
-                  fontFamily='monospace'
-                  bg='gray.100'
-                  p={2}
-                  borderRadius='md'
-                  wordBreak='break-all'
-                  w='full'
-                >
-                  {wipeDisplayTarget || '(not configured)'}
-                </Text>
-              )}
+            <Box w='full' borderWidth='1px' borderColor='gray.200' borderRadius='md' overflow='hidden' _dark={{ borderColor: 'gray.600' }}>
+              <Box px={3} py={1} bg='gray.100' borderBottomWidth='1px' borderColor='gray.200' _dark={{ bg: 'gray.700', borderColor: 'gray.600' }}>
+                <HStack spacing={2} justify='space-between'>
+                  <Text fontSize='xs' fontWeight='600' textTransform='uppercase' letterSpacing='wide' color='gray.500'>
+                    Target
+                  </Text>
+                  <Text fontSize='xs' color='gray.500'>
+                    {
+                      wipeServerBackend === 'restic-aws' ? 'S3 / Object storage'
+                      : wipeServerBackend === 'restic-sftp' ? 'SFTP remote'
+                      : wipeServerBackend === 'restic-local' ? 'Local filesystem'
+                      : isAws ? 'S3 / Object storage' : isSftp ? 'SFTP remote' : 'Local filesystem'
+                    }
+                  </Text>
+                </HStack>
+              </Box>
+              <Box px={3} py={2}>
+                {wipeTargetLoading ? (
+                  <Text fontSize='sm' color='gray.400' fontFamily='monospace'>Loading…</Text>
+                ) : (
+                  <Text fontSize='sm' fontFamily='monospace' wordBreak='break-all' color={wipeDisplayTarget ? 'inherit' : 'gray.400'}>
+                    {wipeDisplayTarget || '(not configured)'}
+                  </Text>
+                )}
+              </Box>
             </Box>
-
-            <Divider />
 
             {wipeCanWipe === false && wipeServerMessage && (
               <Alert status='warning' size='sm' borderRadius='md'>
@@ -1829,11 +1847,11 @@ function ResticRepositorySettings({
             )}
 
             {(wipeServerBackend === 'restic-sftp' || (!wipeServerBackend && isSftp)) && (
-              <Alert status='warning' size='sm' borderRadius='md'>
+              <Alert status='info' size='sm' borderRadius='md'>
                 <AlertIcon />
                 <Text fontSize='sm'>
                   SFTP wipe runs over SSH. The process must have key-based SSH access to the remote host.
-                  The remote repository root directory will be preserved; all contents inside it will be deleted.
+                  The remote repository root directory will be preserved; only its contents will be deleted.
                 </Text>
               </Alert>
             )}
@@ -1856,10 +1874,15 @@ function ResticRepositorySettings({
               </Checkbox>
             )}
 
+            <Divider />
+
             <Box w='full'>
-              <Text fontSize='sm' mb={1}>
-                Type the target path above to confirm:
-              </Text>
+              <HStack spacing={1} mb={1}>
+                <Icon as={HiLockClosed} color='gray.500' boxSize={3} />
+                <Text fontSize='sm' fontWeight='medium'>
+                  Type the target path to confirm:
+                </Text>
+              </HStack>
               <Input
                 size='sm'
                 value={wipeTypedConfirm}
@@ -1868,9 +1891,16 @@ function ResticRepositorySettings({
                 fontFamily='monospace'
                 isDisabled={wipeTargetLoading || wipeCanonicalTarget === null || wipeCanWipe === false}
                 borderColor={wipeTypedConfirm && !isWipeTypedMatch ? 'red.400' : undefined}
+                _focus={{ borderColor: wipeTypedConfirm && !isWipeTypedMatch ? 'red.400' : 'blue.400', boxShadow: 'none' }}
               />
               {wipeTypedConfirm && !isWipeTypedMatch && (
-                <Text fontSize='xs' color='red.500' mt={1}>Does not match the server-computed target path.</Text>
+                <Text fontSize='xs' color='red.500' mt={1}>Does not match the server-computed target.</Text>
+              )}
+              {wipeTypedConfirm && isWipeTypedMatch && (
+                <HStack spacing={1} mt={1}>
+                  <Icon as={HiCheckCircle} color='green.500' boxSize={3} />
+                  <Text fontSize='xs' color='green.600'>Target confirmed.</Text>
+                </HStack>
               )}
             </Box>
 

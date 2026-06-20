@@ -15,7 +15,7 @@ p,
 label,
 span:not([data-status='success']):not([data-status='info']):not([data-status='error']):not([class*='tagpill']):not(
     [class*='alertCount']
-  ):not([class*='-radio__control']):not([class*='-checkbox__control']),
+  ):not([class*='-radio__control']):not([class*='-checkbox__control']):not([class*='chakra-button__icon']),
 input,
 th,
 td,
