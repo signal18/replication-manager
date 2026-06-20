@@ -4018,10 +4018,16 @@ func (repo *ResticManager) ComputeWipePreview() WipePreviewResult {
 
 	repo.Mutex.Lock()
 	mountPath := repo.mountPath
-	isQueueNotEmpty := len(repo.TaskQueue) > 0
 	isImmediatePurgePending := repo.NeedPurgeNow
+	hasNonFetchQueued := false
+	for _, t := range repo.TaskQueue {
+		if t != nil && t.Type != FetchTask {
+			hasNonFetchQueued = true
+			break
+		}
+	}
 	repo.currentTaskMutex.Lock()
-	isTaskRunning := repo.currentTask != nil && repo.currentTask.Status == "running"
+	isNonFetchRunning := repo.currentTask != nil && repo.currentTask.Status == "running" && repo.currentTask.TaskType != FetchTask
 	repo.currentTaskMutex.Unlock()
 	repo.Mutex.Unlock()
 
@@ -4036,7 +4042,7 @@ func (repo *ResticManager) ComputeWipePreview() WipePreviewResult {
 	isS3EmptyPrefix := repo.AwsBucket != "" && repo.AwsPrefix == ""
 
 	result := WipePreviewResult{
-		RepoPath: canonicalTarget,
+		RepoPath:        canonicalTarget,
 		Backend:         backend,
 		IsS3EmptyPrefix: isS3EmptyPrefix,
 		CanWipe:         true,
@@ -4053,12 +4059,12 @@ func (repo *ResticManager) ComputeWipePreview() WipePreviewResult {
 		result.Message = fmt.Sprintf("Cannot wipe: repository is currently mounted at %s.", mountPath)
 		return result
 	}
-	if isTaskRunning {
+	if isNonFetchRunning {
 		result.CanWipe = false
 		result.Message = "Cannot wipe: a restic task is currently running."
 		return result
 	}
-	if isQueueNotEmpty {
+	if hasNonFetchQueued {
 		result.CanWipe = false
 		result.Message = "Cannot wipe: the restic task queue is not empty."
 		return result
@@ -4103,8 +4109,12 @@ func (repo *ResticManager) ComputeWipePreview() WipePreviewResult {
 // WipeRepoWithOptions destroys the contents of the configured repository, leaving it empty
 // and uninitialized. It does not run restic init afterward.
 //
+// Task policy:
+//   - Queued FetchTasks are discarded; other queued tasks block the wipe.
+//   - A running FetchTask is waited on for up to 30s; any other running task blocks the wipe.
+//   - New tasks cannot be enqueued once wipeActive is set (appendTask/prependTask check the flag).
+//
 // Safety guardrails:
-//   - Fails if a mount, running task, or queued task is active.
 //   - Requires Confirm=true and TypedTargetConfirm matching the server-computed canonical path.
 //   - For S3 with empty prefix, AllowEmptyPrefix must be true.
 //
@@ -4114,22 +4124,75 @@ func (repo *ResticManager) WipeRepoWithOptions(opt ResticWipeOption) error {
 	repo.destructiveMu.Lock()
 	defer repo.destructiveMu.Unlock()
 
-	// Under the main mutex: run preflight and pause the worker atomically.
-	// currentTask is checked here too (under both locks) so that the check is
-	// atomic with task dequeue, which now also happens under repo.Mutex.
+	// Validate request fields before touching scheduler state: a bad request
+	// must not have any side effects on the task queue.
+	canonicalTarget := repo.GetRepoPath()
+	if canonicalTarget == "" {
+		return fmt.Errorf("cannot wipe: restic repository path is not configured")
+	}
+	if !opt.Confirm {
+		return fmt.Errorf("wipe requires explicit confirmation: set confirm=true")
+	}
+	if strings.TrimSpace(opt.TypedTargetConfirm) != canonicalTarget {
+		return fmt.Errorf("typed confirmation does not match the canonical repository target (expected %q)", canonicalTarget)
+	}
+
+	// Under the main mutex: run preflight, drop queued fetch tasks, and pause the
+	// worker atomically. FetchTasks are handled specially: queued ones are discarded
+	// immediately; a running FetchTask is waited on (up to 30s) after the mutex is
+	// released. All other running or queued tasks block the wipe.
 	repo.Mutex.Lock()
 	isMountActive := repo.mountPath != ""
-	isQueueNotEmpty := len(repo.TaskQueue) > 0
 	isImmediatePurgePending := repo.NeedPurgeNow
+
+	// Classify the running task (if any) while holding both mutexes so the check
+	// is atomic with task dequeue.
 	repo.currentTaskMutex.Lock()
-	isTaskRunning := repo.currentTask != nil && repo.currentTask.Status == "running"
+	isFetchRunning := repo.currentTask != nil && repo.currentTask.Status == "running" && repo.currentTask.TaskType == FetchTask
+	isNonFetchRunning := repo.currentTask != nil && repo.currentTask.Status == "running" && repo.currentTask.TaskType != FetchTask
 	repo.currentTaskMutex.Unlock()
+
+	// Scan the queue to detect non-fetch tasks (decision only; no removal yet).
+	hasNonFetchQueued := false
+	for _, t := range repo.TaskQueue {
+		if t != nil && t.Type != FetchTask {
+			hasNonFetchQueued = true
+			break
+		}
+	}
+
 	priorPaused := repo.isPaused
-	if !isMountActive && !isQueueNotEmpty && !isImmediatePurgePending && !isTaskRunning {
+	canProceed := !isMountActive && !isImmediatePurgePending && !isNonFetchRunning && !hasNonFetchQueued
+	// droppedFetches is only populated when removal actually happens, so the
+	// close/log loop below is correctly conditional on the wipe proceeding.
+	var droppedFetches []*ResticTask
+	if canProceed {
+		// Remove all queued FetchTasks before pausing so the worker cannot dequeue
+		// them after isPaused is cleared on wipe completion.
+		remaining := make([]*ResticTask, 0, len(repo.TaskQueue))
+		for _, t := range repo.TaskQueue {
+			if t != nil && t.Type == FetchTask {
+				droppedFetches = append(droppedFetches, t)
+			} else {
+				remaining = append(remaining, t)
+			}
+		}
+		repo.TaskQueue = remaining
+		// Pause the worker to prevent it from dequeuing tasks. wipeActive is set
+		// later, after any running fetch has finished, so tasks enqueued during
+		// the fetch-wait window are not silently dropped if the wipe ultimately fails.
 		repo.isPaused = true
-		repo.wipeActive = true
 	}
 	repo.Mutex.Unlock()
+
+	// Close channels only for tasks that were actually removed from the queue.
+	for _, t := range droppedFetches {
+		repo.Printf(logrus.WarnLevel, "Fetch task %d dropped: a repository wipe is in progress", t.ID)
+		if t.resultCh != nil {
+			t.resultCh <- ResticResult{TaskID: t.ID, TaskType: t.Type, Error: fmt.Errorf("task dropped: a repository wipe is in progress")}
+			close(t.resultCh)
+		}
+	}
 
 	// Restore paused flag and wipeActive on any exit path.
 	defer func() {
@@ -4145,27 +4208,88 @@ func (repo *ResticManager) WipeRepoWithOptions(opt ResticWipeOption) error {
 	if isMountActive {
 		return fmt.Errorf("cannot wipe: repository is currently mounted at %s", repo.mountPath)
 	}
-	if isQueueNotEmpty {
-		return fmt.Errorf("cannot wipe: the restic task queue is not empty")
-	}
 	if isImmediatePurgePending {
 		return fmt.Errorf("cannot wipe: an immediate purge is pending")
 	}
-	if isTaskRunning {
+	if hasNonFetchQueued {
+		return fmt.Errorf("cannot wipe: the restic task queue contains non-fetch tasks")
+	}
+	if isNonFetchRunning {
 		return fmt.Errorf("cannot wipe: a restic task is currently running")
 	}
 
-	// Canonical target is the runtime RESTIC_REPOSITORY value from the manager env.
-	canonicalTarget := repo.GetRepoPath()
-	if canonicalTarget == "" {
-		return fmt.Errorf("cannot wipe: restic repository path is not configured")
+	// A fetch task is running: wait up to 30s for it to finish.
+	// wipeActive is not yet set, so tasks submitted during the wait are enqueued
+	// normally and will execute after the wipe (or immediately if the wipe fails).
+	if isFetchRunning {
+		const fetchWaitTimeout = 30 * time.Second
+		deadline := time.Now().Add(fetchWaitTimeout)
+		for time.Now().Before(deadline) {
+			repo.currentTaskMutex.Lock()
+			done := repo.currentTask == nil || repo.currentTask.Status != "running"
+			repo.currentTaskMutex.Unlock()
+			if done {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		repo.currentTaskMutex.Lock()
+		stillRunning := repo.currentTask != nil && repo.currentTask.Status == "running"
+		repo.currentTaskMutex.Unlock()
+		if stillRunning {
+			return fmt.Errorf("cannot wipe: running fetch task did not complete within 30s")
+		}
 	}
 
-	if !opt.Confirm {
-		return fmt.Errorf("wipe requires explicit confirmation: set confirm=true")
+	// Fetch has finished (or was not running). Re-check under the mutex before
+	// committing: a non-fetch task, immediate purge, or a new running task may
+	// have arrived during the fetch-wait window (wipeActive was not set, so
+	// appendTask / prependTask accepted new work).
+	repo.Mutex.Lock()
+	postWaitNonFetchQueued := false
+	for _, t := range repo.TaskQueue {
+		if t != nil && t.Type != FetchTask {
+			postWaitNonFetchQueued = true
+			break
+		}
 	}
-	if strings.TrimSpace(opt.TypedTargetConfirm) != canonicalTarget {
-		return fmt.Errorf("typed confirmation does not match the canonical repository target (expected %q)", canonicalTarget)
+	postWaitPurgePending := repo.NeedPurgeNow
+	repo.currentTaskMutex.Lock()
+	postWaitNonFetchRunning := repo.currentTask != nil && repo.currentTask.Status == "running" && repo.currentTask.TaskType != FetchTask
+	repo.currentTaskMutex.Unlock()
+	// postWaitDroppedFetches is only populated when removal actually happens.
+	var postWaitDroppedFetches []*ResticTask
+	if !postWaitNonFetchQueued && !postWaitPurgePending && !postWaitNonFetchRunning {
+		remaining := make([]*ResticTask, 0, len(repo.TaskQueue))
+		for _, t := range repo.TaskQueue {
+			if t != nil && t.Type == FetchTask {
+				postWaitDroppedFetches = append(postWaitDroppedFetches, t)
+			} else {
+				remaining = append(remaining, t)
+			}
+		}
+		repo.TaskQueue = remaining
+		repo.wipeActive = true
+	}
+	repo.Mutex.Unlock()
+
+	// Close channels only for tasks that were actually removed from the queue.
+	for _, t := range postWaitDroppedFetches {
+		repo.Printf(logrus.WarnLevel, "Fetch task %d dropped: a repository wipe is in progress", t.ID)
+		if t.resultCh != nil {
+			t.resultCh <- ResticResult{TaskID: t.ID, TaskType: t.Type, Error: fmt.Errorf("task dropped: a repository wipe is in progress")}
+			close(t.resultCh)
+		}
+	}
+
+	if postWaitNonFetchQueued {
+		return fmt.Errorf("cannot wipe: a non-fetch task was queued during the fetch-wait window")
+	}
+	if postWaitPurgePending {
+		return fmt.Errorf("cannot wipe: an immediate purge became pending during the fetch-wait window")
+	}
+	if postWaitNonFetchRunning {
+		return fmt.Errorf("cannot wipe: a non-fetch task started running during the fetch-wait window")
 	}
 
 	repo.Printf(logrus.WarnLevel, "Wiping repository: %s", canonicalTarget)
