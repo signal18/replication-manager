@@ -4,12 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/sirupsen/logrus"
@@ -18,6 +20,18 @@ import (
 // copySftpRepoRegex matches the restic sftp backend syntax: sftp:[user@]host:/path
 // Mirrors cluster.resticSftpRepoRegex — keep both in sync if the pattern changes.
 var copySftpRepoRegex = regexp.MustCompile(`^sftp:[^:@\s]+(@[^:@\s]+)?:.+$`)
+
+// copyProgressLineRegex matches restic copy text-mode progress lines, e.g.:
+// "[0:00] 100.00%  2 / 2 packs copied"
+var copyProgressLineRegex = regexp.MustCompile(`\[[\d:]+\]\s+([\d.]+)%\s+(\d+)\s*/\s*(\d+)\s+packs`)
+
+// copySnapshotSavedRegex matches "snapshot X saved, copied from source snapshot Y"
+var copySnapshotSavedRegex = regexp.MustCompile(`(?i)snapshot\s+\S+\s+saved`)
+
+// copySnapshotSkippedRegex matches restic's skip-snapshot lines.
+// Restic emits "skipping source snapshot X, was already copied to snapshot Y"
+// so the pattern must cover both "skipping snapshot" and "skipping source snapshot".
+var copySnapshotSkippedRegex = regexp.MustCompile(`(?i)skipping(?:\s+source)?\s+snapshot`)
 
 // ResticCopySourceAWSOption holds S3 credentials for the copy source repository.
 type ResticCopySourceAWSOption struct {
@@ -324,6 +338,137 @@ func (repo *ResticManager) runCommandWithExtraEnv(ctx context.Context, args []st
 	return nil, stderrBuf.Bytes(), nil
 }
 
+// buildSourcePrimaryEnv constructs an env overlay that sets RESTIC_REPOSITORY and
+// RESTIC_PASSWORD to the source repository values so that regular restic commands
+// (e.g. "snapshots") target the source repo directly.
+// This is distinct from buildCopySourceEnvOverlay which sets RESTIC_FROM_* variables
+// used by "restic copy" and "restic init --from-repo".
+func buildSourcePrimaryEnv(src ResticCopySourceOption, srcRepo string) ([]string, error) {
+	if src.Password == "" {
+		return nil, fmt.Errorf("source password is required")
+	}
+	env := []string{
+		"RESTIC_REPOSITORY=" + srcRepo,
+		"RESTIC_PASSWORD=" + src.Password,
+	}
+	if hint := strings.TrimSpace(src.KeyHint); hint != "" {
+		env = append(env, "RESTIC_KEY_HINT="+hint)
+	}
+	if src.Mode == config.ConstBackupArchiveModeResticAws && src.AWS != nil {
+		if src.AWS.AccessKeyID != "" {
+			env = append(env, "AWS_ACCESS_KEY_ID="+src.AWS.AccessKeyID)
+		}
+		if src.AWS.AccessSecret != "" {
+			env = append(env, "AWS_SECRET_ACCESS_KEY="+src.AWS.AccessSecret)
+		}
+		if src.AWS.Region != "" {
+			env = append(env, "AWS_DEFAULT_REGION="+src.AWS.Region)
+		}
+	}
+	return env, nil
+}
+
+// countSourceSnapshots returns the number of snapshots that will be processed
+// by a copy operation, without running restic copy itself.
+//   - For explicit snapshot IDs: returns len(snapshotIDs) immediately.
+//   - For filter-based selection: runs restic snapshots on the source repo and counts matches.
+//     Returns 0 without error when the count cannot be determined (so copy still proceeds).
+func (repo *ResticManager) countSourceSnapshots(ctx context.Context, opt ResticCopyOption, srcRepo string) int {
+	snapshotIDs := trimResticValues(opt.SnapshotIDs)
+	if len(snapshotIDs) > 0 {
+		return len(snapshotIDs)
+	}
+
+	// Build env that targets the source repo directly (RESTIC_REPOSITORY/RESTIC_PASSWORD).
+	srcPrimaryEnv, err := buildSourcePrimaryEnv(opt.Source, srcRepo)
+	if err != nil {
+		return 0
+	}
+
+	args := []string{"snapshots", "--json"}
+	args = appendResticArgs(args, "--host", opt.Host)
+	args = appendResticArgs(args, "--path", opt.Path)
+	args = appendResticArgs(args, "--tag", opt.Tag)
+
+	stdout, _, err := repo.runCommandWithExtraEnv(ctx, args, srcPrimaryEnv, logrus.DebugLevel, true)
+	if err != nil || len(stdout) == 0 {
+		return 0
+	}
+
+	var snapshots []struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(stdout, &snapshots); err != nil {
+		return 0
+	}
+	return len(snapshots)
+}
+
+// runCopyWithProgress runs "restic copy" with the given args and env, streaming
+// stdout line-by-line through UpdateCurrentTaskCopyLine so the current task
+// state reflects real-time copy progress.
+func (repo *ResticManager) runCopyWithProgress(ctx context.Context, args []string, extraEnv []string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, repo.BinaryPath, args...)
+	cmd.Env = mergeEnvByKey(repo.getEnvCopy(), extraEnv)
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	repo.Printf(logrus.InfoLevel, "Starting command: %s %v", repo.BinaryPath, redactArgs(args))
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("error starting command: %w", err)
+	}
+
+	var stderrBuf bytes.Buffer
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		scanner := bufio.NewScanner(stdoutPipe)
+		for scanner.Scan() {
+			line := scanner.Text()
+			repo.Print(logrus.DebugLevel, "[OUT] "+line)
+			repo.UpdateCurrentTaskCopyLine(line)
+		}
+		if err := scanner.Err(); err != nil {
+			repo.Printf(logrus.ErrorLevel, "[OUT] Error reading copy output: %v", err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			line := scanner.Text()
+			repo.Print(logrus.DebugLevel, "[ERR] "+line)
+			stderrBuf.WriteString(line + "\n")
+		}
+		if err := scanner.Err(); err != nil {
+			repo.Printf(logrus.ErrorLevel, "[ERR] Error reading copy stderr: %v", err)
+		}
+	}()
+
+	wg.Wait()
+
+	if err := cmd.Wait(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return stderrBuf.Bytes(), fmt.Errorf("command timeout: %w", ctx.Err())
+		}
+		return stderrBuf.Bytes(), fmt.Errorf("command execution failed: %w", err)
+	}
+
+	repo.Printf(logrus.InfoLevel, "Command completed successfully: %s %v", repo.BinaryPath, redactArgs(args))
+	return stderrBuf.Bytes(), nil
+}
+
 // CopyRepoWithOptions copies snapshots from a source repository into the destination
 // repository configured on this ResticManager. All guardrails are enforced here:
 //   - G1: S3→S3 with mismatched credentials is rejected before execution.
@@ -349,6 +494,8 @@ func (repo *ResticManager) CopyRepoWithOptions(opt ResticCopyOption) error {
 
 	// Classify destination state before any init attempt (G4).
 	if opt.InitDestination {
+		repo.UpdateCurrentTaskPhase("init_destination")
+
 		result := repo.ValidateRepoConfigManual()
 		switch result.Status {
 		case ManualCheckStatusOK:
@@ -386,7 +533,10 @@ func (repo *ResticManager) CopyRepoWithOptions(opt ResticCopyOption) error {
 	}
 
 	// Build copy command arguments.
-	args := []string{"copy"}
+	// --verbose ensures restic prints "skipping snapshot" lines for already-copied
+	// snapshots; without it those lines are suppressed and completed_snapshots
+	// would never advance for them on reruns.
+	args := []string{"copy", "--verbose"}
 	snapshotIDs := trimResticValues(opt.SnapshotIDs)
 	if len(snapshotIDs) > 0 {
 		// Explicit snapshot IDs take precedence; host/path/tag filters are ignored.
@@ -403,11 +553,25 @@ func (repo *ResticManager) CopyRepoWithOptions(opt ResticCopyOption) error {
 		return fmt.Errorf("failed to build source env: %w", err)
 	}
 
+	// Pre-flight: count source snapshots so the UI can show X/Y progress.
+	preflightCtx, preflightCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer preflightCancel()
+	total := repo.countSourceSnapshots(preflightCtx, opt, srcRepo)
+	if total > 0 {
+		repo.currentTaskMutex.Lock()
+		if repo.currentTask != nil {
+			repo.currentTask.TotalSnapshots = total
+		}
+		repo.currentTaskMutex.Unlock()
+	}
+
+	repo.UpdateCurrentTaskPhase("copy")
+
 	timeout := repo.GetOperationTimeout()
 	copyCtx, copyCancel := context.WithTimeout(context.Background(), timeout)
 	defer copyCancel()
 
-	_, stderr, err := repo.runCommandWithExtraEnv(copyCtx, args, srcEnv, logrus.InfoLevel, false)
+	stderr, err := repo.runCopyWithProgress(copyCtx, args, srcEnv)
 	if err != nil {
 		if copyCtx.Err() == context.DeadlineExceeded {
 			return fmt.Errorf("restic copy timeout after %v", timeout)

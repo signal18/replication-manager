@@ -357,6 +357,12 @@ type ResticTaskState struct {
 	TotalBytesProcessed int64   `json:"total_bytes_processed,omitempty"`
 	TotalDuration       float64 `json:"total_duration,omitempty"`
 	SnapshotID          string  `json:"snapshot_id,omitempty"`
+
+	Phase              string `json:"phase,omitempty"`               // init_destination or copy
+	CompletedSnapshots int    `json:"completed_snapshots,omitempty"` // snapshots completed during copy
+	TotalSnapshots     int    `json:"total_snapshots,omitempty"`     // total snapshots to copy
+	PacksDone          int    `json:"packs_done,omitempty"`          // packs copied (copy task only)
+	TotalPacks         int    `json:"total_packs,omitempty"`         // total packs to copy (copy task only)
 }
 
 const resticTaskStateTTL = 60 * time.Second
@@ -4587,6 +4593,50 @@ func (repo *ResticManager) SetCurrentTaskRunning(task *ResticTask) {
 	repo.currentTaskMutex.Lock()
 	repo.currentTask = state
 	repo.currentTaskMutex.Unlock()
+}
+
+// UpdateCurrentTaskPhase sets the phase on the current task (e.g., "init_destination", "copy").
+// No-op when no task is running.
+func (repo *ResticManager) UpdateCurrentTaskPhase(phase string) {
+	repo.currentTaskMutex.Lock()
+	defer repo.currentTaskMutex.Unlock()
+	if repo.currentTask == nil {
+		return
+	}
+	now := time.Now().UTC()
+	repo.currentTask.Phase = phase
+	repo.currentTask.LastUpdate = &now
+}
+
+// UpdateCurrentTaskCopyLine parses a single line of restic copy output and updates
+// the current task state. It handles:
+//   - progress lines: "[0:00] 100.00%  2 / 2 packs copied"
+//   - snapshot saved lines: "snapshot X saved, copied from source snapshot Y"
+//   - snapshot skipped lines: "skipping snapshot X"
+func (repo *ResticManager) UpdateCurrentTaskCopyLine(line string) {
+	repo.currentTaskMutex.Lock()
+	defer repo.currentTaskMutex.Unlock()
+	if repo.currentTask == nil {
+		return
+	}
+	now := time.Now().UTC()
+	if m := copyProgressLineRegex.FindStringSubmatch(line); m != nil {
+		if pct, err := strconv.ParseFloat(m[1], 64); err == nil {
+			repo.currentTask.PercentDone = pct / 100.0
+		}
+		if done, err := strconv.Atoi(m[2]); err == nil {
+			repo.currentTask.PacksDone = done
+		}
+		if total, err := strconv.Atoi(m[3]); err == nil {
+			repo.currentTask.TotalPacks = total
+		}
+		repo.currentTask.LastUpdate = &now
+		return
+	}
+	if copySnapshotSavedRegex.MatchString(line) || copySnapshotSkippedRegex.MatchString(line) {
+		repo.currentTask.CompletedSnapshots++
+		repo.currentTask.LastUpdate = &now
+	}
 }
 
 func (repo *ResticManager) UpdateCurrentTaskFromJSON(line []byte) {
