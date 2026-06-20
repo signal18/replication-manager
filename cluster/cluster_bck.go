@@ -1002,6 +1002,30 @@ func (cluster *Cluster) ResticInitRepoWithOptions(options backupmgr.ResticInitOp
 	return err
 }
 
+// ResticWipeRepoWithOptions destroys the contents of the cluster's configured restic repository.
+// The repository is left empty and uninitialized; no automatic re-initialization is performed.
+func (cluster *Cluster) ResticWipeRepoWithOptions(opt backupmgr.ResticWipeOption) error {
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("restic backup is not enabled")
+	}
+	if cluster.ResticManager == nil {
+		return fmt.Errorf("restic manager is not initialized")
+	}
+	return cluster.ResticManager.WipeRepoWithOptions(opt)
+}
+
+// ResticWipePreview runs the non-destructive wipe preflight and returns a preview
+// describing the effective target and whether the current state permits a wipe.
+func (cluster *Cluster) ResticWipePreview() backupmgr.WipePreviewResult {
+	if cluster.ResticManager == nil {
+		return backupmgr.WipePreviewResult{
+			CanWipe: false,
+			Message: "restic manager is not initialized",
+		}
+	}
+	return cluster.ResticManager.ComputeWipePreview()
+}
+
 func (cluster *Cluster) AddPurgeTask(snapshotID string) error {
 	return cluster.ResticPurgeSnapshotWithOptions(snapshotID, true, false)
 }
@@ -1162,11 +1186,14 @@ func (cluster *Cluster) ResticFetchRepo() {
 	}
 }
 
-// ResticCheckConfigManual performs a read-only manual validation of the current restic
-// repository configuration. When cluster.ResticManager is nil it is created via
-// ensureResticManagerBase (no mount recovery, no unlock/fetch tasks, no auto-init).
-// Queues a fetch only when validation succeeds.
-func (cluster *Cluster) ResticCheckConfigManual() backupmgr.ManualCheckResult {
+// ResticCheckConfigManual performs a manual validation of the current restic repository
+// configuration. When cluster.ResticManager is nil it is created via ensureResticManagerBase
+// (no mount recovery, no unlock/fetch tasks, no auto-init).
+// When skipFetch is false and validation succeeds, a fetch task is queued.
+// The returned ManualCheckResult includes additive wipe-preview fields (Backend,
+// IsS3EmptyPrefix, CanWipe, WipeMessage) so the UI can render the wipe confirmation
+// modal from a single call to this endpoint.
+func (cluster *Cluster) ResticCheckConfigManual(skipFetch bool) backupmgr.ManualCheckResult {
 	if !cluster.Conf.BackupRestic {
 		return backupmgr.ManualCheckResult{
 			Status:  backupmgr.ManualCheckStatusError,
@@ -1184,7 +1211,19 @@ func (cluster *Cluster) ResticCheckConfigManual() backupmgr.ManualCheckResult {
 
 	result := cluster.ResticManager.ValidateRepoConfigManual()
 
-	if result.Status == backupmgr.ManualCheckStatusOK {
+	// Compute wipe preview BEFORE queuing a fetch: ComputeWipePreview rejects
+	// non-empty task queues, so computing it after ResticFetchRepo would make
+	// can_wipe=false on a healthy idle repo — a self-blocking race.
+	preview := cluster.ResticManager.ComputeWipePreview()
+	result.Backend = preview.Backend
+	result.IsS3EmptyPrefix = preview.IsS3EmptyPrefix
+	result.CanWipe = preview.CanWipe
+	result.WipeMessage = preview.Message
+	if result.RepoPath == "" {
+		result.RepoPath = preview.RepoPath
+	}
+
+	if result.Status == backupmgr.ManualCheckStatusOK && !skipFetch {
 		cluster.ResticFetchRepo()
 		result.FetchQueued = true
 		result.Message = "Repository configuration verified. Snapshot refresh queued."

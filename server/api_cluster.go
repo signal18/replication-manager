@@ -251,6 +251,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticCopy)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/restic/wipe", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticWipeRepo)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/certificates", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCertificates)),
@@ -8567,6 +8572,76 @@ func (repman *ReplicationManager) handlerMuxResticCopy(w http.ResponseWriter, r 
 	})
 }
 
+// handlerMuxResticWipeRepo executes a destructive wipe of the restic repository for a cluster.
+// This endpoint is execute-only: confirm=false (or omitted) returns HTTP 400. Use
+// POST /restic/check-config for the non-destructive preview that returns repo_path, backend,
+// is_s3_empty_prefix, can_wipe, and wipe_message.
+//
+// The handler enforces GrantDBBackup directly so that a generic /restic grant alone
+// cannot authorize this destructive operation — URL-based ACL fallback is intentionally bypassed.
+// @Summary Wipe Restic Repository
+// @Description Execute-only destructive repository wipe. Requires confirm=true and typed_target_confirm matching the server-computed repo_path. Use POST /restic/check-config to obtain the preview/target before calling this endpoint.
+// @Tags ClusterRestic
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body backupmgr.ResticWipeOption true "Wipe payload (confirm=true, typed_target_confirm, allow_empty_prefix)"
+// @Success 200 {object} map[string]string "Repository wiped successfully"
+// @Failure 400 {object} map[string]string "Invalid payload, missing confirmation, or guardrail rejection"
+// @Failure 403 {string} string "No valid ACL or insufficient grant (db-backup required)"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/restic/wipe [post]
+func (repman *ReplicationManager) handlerMuxResticWipeRepo(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
+		// Enforce GrantDBBackup explicitly: URL-based ACL matching falls back to the
+		// generic /restic rule (GrantClusterProcess) via hierarchical pattern matching,
+		// which would allow users without backup permissions to wipe the repository.
+		username := repman.GetUserFromRequest(r)
+		if u, ok := mycluster.APIUsers[username]; !ok || !u.Grants[config.GrantDBBackup] {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+
+		var opt backupmgr.ResticWipeOption
+		if err := json.NewDecoder(r.Body).Decode(&opt); err != nil && err != io.EOF {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body: " + err.Error()})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if !opt.Confirm {
+			// Execute-only: reject preview mode. Use POST /restic/check-config instead.
+			repoPath := ""
+			if mycluster.ResticManager != nil {
+				repoPath = mycluster.ResticManager.GetRepoPath()
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"message":   "This endpoint is execute-only (confirm=true required). Use POST /restic/check-config for a non-destructive preview.",
+				"repo_path": repoPath,
+			})
+			return
+		}
+
+		// Execute mode: validate confirmation and wipe.
+		if err := mycluster.ResticWipeRepoWithOptions(opt); err != nil {
+			preview := mycluster.ResticWipePreview()
+			preview.CanWipe = false
+			preview.Message = err.Error()
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(preview)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Repository wiped successfully."})
+	})
+}
+
 // handlerMuxResticCheckConfig handles the HTTP request to manually validate the restic
 // repository configuration for a given cluster.
 // @Summary Check Restic Repository Config
@@ -8581,7 +8656,8 @@ func (repman *ReplicationManager) handlerMuxResticCopy(w http.ResponseWriter, r 
 // @Router /api/clusters/{clusterName}/restic/check-config [post]
 func (repman *ReplicationManager) handlerMuxResticCheckConfig(w http.ResponseWriter, r *http.Request) {
 	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
-		result := mycluster.ResticCheckConfigManual()
+		skipFetch := r.URL.Query().Get("skip_fetch") == "true"
+		result := mycluster.ResticCheckConfigManual(skipFetch)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(result)

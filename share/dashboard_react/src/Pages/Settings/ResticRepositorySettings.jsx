@@ -8,7 +8,7 @@ import TextForm from '../../components/TextForm'
 import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
-import { resticInitRepo, resticCheckConfig, resticCopyRepo, getResticCurrentTask } from '../../redux/clusterSlice'
+import { resticInitRepo, resticCheckConfig, resticCopyRepo, resticWipeRepo, getResticCurrentTask } from '../../redux/clusterSlice'
 import styles from './styles.module.scss'
 import tableStyles from '../../components/TableType2/styles.module.scss'
 
@@ -523,6 +523,83 @@ function ResticRepositorySettings({
         setCopyError(error?.errorMessage || error?.message || 'Copy request failed.')
         setCopySubmitting(false)
       }
+    }
+  }
+
+  // Wipe modal state
+  const { isOpen: isWipeModalOpen, onOpen: onOpenWipeModal, onClose: onCloseWipeModal } = useDisclosure()
+  const [wipeTypedConfirm, setWipeTypedConfirm] = useState('')
+  const [wipeAllowEmptyPrefix, setWipeAllowEmptyPrefix] = useState(false)
+  const [wipeSubmitting, setWipeSubmitting] = useState(false)
+  const [wipeTargetLoading, setWipeTargetLoading] = useState(false)
+  const [wipeError, setWipeError] = useState(null)
+  const [wipeResult, setWipeResult] = useState(null)
+  // Server-fetched preview fields; null means not yet loaded
+  const [wipeCanonicalTarget, setWipeCanonicalTarget] = useState(null)
+  const [wipeServerEmptyPrefix, setWipeServerEmptyPrefix] = useState(false)
+  const [wipeCanWipe, setWipeCanWipe] = useState(null)
+  const [wipeServerMessage, setWipeServerMessage] = useState(null)
+  const [wipeServerBackend, setWipeServerBackend] = useState(null)
+
+  const wipeDisplayTarget = wipeCanonicalTarget ?? ''
+  const isWipeTypedMatch = wipeTypedConfirm.trim() === wipeDisplayTarget && wipeDisplayTarget !== ''
+  const isWipeEmptyPrefixRisk = wipeServerEmptyPrefix
+  const isWipeSubmitBlocked = wipeTargetLoading || wipeCanonicalTarget === null || !isWipeTypedMatch || (isWipeEmptyPrefixRisk && !wipeAllowEmptyPrefix) || wipeSubmitting || wipeCanWipe === false
+
+  const handleOpenWipeModal = async () => {
+    setWipeTypedConfirm('')
+    setWipeAllowEmptyPrefix(false)
+    setWipeError(null)
+    setWipeResult(null)
+    setWipeCanonicalTarget(null)
+    setWipeServerEmptyPrefix(false)
+    setWipeCanWipe(null)
+    setWipeServerMessage(null)
+    setWipeServerBackend(null)
+    onOpenWipeModal()
+    setWipeTargetLoading(true)
+    try {
+      const result = await dispatch(resticCheckConfig({ clusterName, skipFetch: true })).unwrap()
+      setWipeCanonicalTarget(result?.data?.repo_path ?? '')
+      setWipeServerEmptyPrefix(Boolean(result?.data?.is_s3_empty_prefix))
+      setWipeCanWipe(result?.data?.can_wipe !== false)
+      setWipeServerMessage(result?.data?.wipe_message ?? null)
+      setWipeServerBackend(result?.data?.backend ?? null)
+    } catch (error) {
+      setWipeError('Failed to fetch wipe target from server: ' + (error?.errorMessage || error?.message || String(error)))
+      setWipeCanonicalTarget('')
+      setWipeCanWipe(false)
+    } finally {
+      setWipeTargetLoading(false)
+    }
+  }
+
+  const handleCloseWipeModal = () => {
+    setWipeTypedConfirm('')
+    setWipeAllowEmptyPrefix(false)
+    setWipeError(null)
+    setWipeCanonicalTarget(null)
+    setWipeCanWipe(null)
+    setWipeServerMessage(null)
+    setWipeServerBackend(null)
+    onCloseWipeModal()
+  }
+
+  const handleWipeSubmit = async () => {
+    setWipeSubmitting(true)
+    setWipeError(null)
+    try {
+      await dispatch(resticWipeRepo(clusterName, {
+        confirm: true,
+        typed_target_confirm: wipeTypedConfirm.trim(),
+        allow_empty_prefix: wipeAllowEmptyPrefix
+      }))
+      handleCloseWipeModal()
+      setWipeResult({ status: 'ok', message: 'Repository wiped. It must be re-initialized before use.' })
+    } catch (error) {
+      setWipeError(error?.errorMessage || error?.message || 'Wipe request failed.')
+    } finally {
+      setWipeSubmitting(false)
     }
   }
 
@@ -1262,6 +1339,27 @@ function ResticRepositorySettings({
                       />
                     </GridItem>
                   </Grid>
+
+                  <Divider />
+
+                  <HStack spacing={2} justify='flex-start' flexWrap='wrap'>
+                    <RMButton
+                      size='sm'
+                      colorScheme='red'
+                      onClick={handleOpenWipeModal}
+                      isDisabled={user?.grants['db-backup'] === false}
+                      title='Wipe repository — deletes all repository contents and leaves it uninitialized'
+                    >
+                      Wipe repository
+                    </RMButton>
+                  </HStack>
+
+                  {wipeResult && (
+                    <Alert status={wipeResult.status === 'ok' ? 'warning' : 'error'} size='sm' borderRadius='md'>
+                      <AlertIcon />
+                      <Text fontSize='sm'>{wipeResult.message}</Text>
+                    </Alert>
+                  )}
                 </Stack>
               )}
             </Stack>
@@ -1671,6 +1769,115 @@ function ResticRepositorySettings({
               <Alert status='error' size='sm' borderRadius='md'>
                 <AlertIcon />
                 <Text fontSize='sm'>{copyError}</Text>
+              </Alert>
+            )}
+          </VStack>
+        }
+      />
+
+      <ConfirmModal
+        isOpen={isWipeModalOpen}
+        closeModal={handleCloseWipeModal}
+        title="Wipe Restic Repository"
+        onConfirmClick={handleWipeSubmit}
+        confirmButtonText="Wipe repository"
+        confirmButtonProps={{ isLoading: wipeSubmitting, isDisabled: isWipeSubmitBlocked, colorScheme: 'red' }}
+        body={
+          <VStack align='start' spacing={3}>
+            <Alert status='error' size='sm' borderRadius='md'>
+              <AlertIcon />
+              <Text fontSize='sm'>
+                <strong>Destructive operation.</strong> This permanently deletes all repository contents.
+                The repository will be left empty and uninitialized. This cannot be undone.
+              </Text>
+            </Alert>
+
+            <Box w='full'>
+              <Text fontSize='sm' fontWeight='semibold' mb={1}>
+                Backend: {
+                  wipeServerBackend === 'restic-aws' ? 'S3 / Object storage'
+                  : wipeServerBackend === 'restic-sftp' ? 'SFTP remote'
+                  : wipeServerBackend === 'restic-local' ? 'Local filesystem'
+                  : isAws ? 'S3 / Object storage' : isSftp ? 'SFTP remote' : 'Local filesystem'
+                }
+              </Text>
+              <Text fontSize='sm' mb={1}>Server-computed target:</Text>
+              {wipeTargetLoading ? (
+                <Text fontSize='sm' color='gray.500' fontFamily='monospace' p={2}>Loading…</Text>
+              ) : (
+                <Text
+                  fontSize='sm'
+                  fontFamily='monospace'
+                  bg='gray.100'
+                  p={2}
+                  borderRadius='md'
+                  wordBreak='break-all'
+                  w='full'
+                >
+                  {wipeDisplayTarget || '(not configured)'}
+                </Text>
+              )}
+            </Box>
+
+            <Divider />
+
+            {wipeCanWipe === false && wipeServerMessage && (
+              <Alert status='warning' size='sm' borderRadius='md'>
+                <AlertIcon />
+                <Text fontSize='sm'>{wipeServerMessage}</Text>
+              </Alert>
+            )}
+
+            {(wipeServerBackend === 'restic-sftp' || (!wipeServerBackend && isSftp)) && (
+              <Alert status='warning' size='sm' borderRadius='md'>
+                <AlertIcon />
+                <Text fontSize='sm'>
+                  SFTP wipe runs over SSH. The process must have key-based SSH access to the remote host.
+                  The remote repository root directory will be preserved; all contents inside it will be deleted.
+                </Text>
+              </Alert>
+            )}
+
+            {isWipeEmptyPrefixRisk && (
+              <Alert status='error' size='sm' borderRadius='md'>
+                <AlertIcon />
+                <Text fontSize='sm'>
+                  <strong>Empty S3 prefix detected.</strong> Wiping will affect the entire bucket, not just a repository prefix.
+                </Text>
+              </Alert>
+            )}
+
+            {isWipeEmptyPrefixRisk && (
+              <Checkbox
+                isChecked={wipeAllowEmptyPrefix}
+                onChange={(e) => setWipeAllowEmptyPrefix(e.target.checked)}
+              >
+                <Text fontSize='sm'>I understand this will wipe the entire bucket.</Text>
+              </Checkbox>
+            )}
+
+            <Box w='full'>
+              <Text fontSize='sm' mb={1}>
+                Type the target path above to confirm:
+              </Text>
+              <Input
+                size='sm'
+                value={wipeTypedConfirm}
+                onChange={(e) => setWipeTypedConfirm(e.target.value)}
+                placeholder={wipeDisplayTarget || 'repository path'}
+                fontFamily='monospace'
+                isDisabled={wipeTargetLoading || wipeCanonicalTarget === null || wipeCanWipe === false}
+                borderColor={wipeTypedConfirm && !isWipeTypedMatch ? 'red.400' : undefined}
+              />
+              {wipeTypedConfirm && !isWipeTypedMatch && (
+                <Text fontSize='xs' color='red.500' mt={1}>Does not match the server-computed target path.</Text>
+              )}
+            </Box>
+
+            {wipeError && (
+              <Alert status='error' size='sm' borderRadius='md'>
+                <AlertIcon />
+                <Text fontSize='sm'>{wipeError}</Text>
               </Alert>
             )}
           </VStack>

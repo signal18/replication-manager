@@ -123,6 +123,27 @@ type ResticInitOption struct {
 	FromRepo          string `json:"from_repo,omitempty"`
 }
 
+// ResticWipeOption holds the parameters for a destructive wipe operation.
+// The caller must set Confirm=true and TypedTargetConfirm to the server-computed
+// canonical repository target exactly. For S3 repositories with an empty prefix,
+// AllowEmptyPrefix must also be set to true.
+type ResticWipeOption struct {
+	Confirm            bool   `json:"confirm"`
+	TypedTargetConfirm string `json:"typed_target_confirm"`
+	AllowEmptyPrefix   bool   `json:"allow_empty_prefix,omitempty"`
+}
+
+// WipePreviewResult is returned by ComputeWipePreview. The wipe preview is surfaced to
+// clients via POST /restic/check-config (which embeds these fields into ManualCheckResult).
+// The /restic/wipe endpoint is execute-only and does not return preview data.
+type WipePreviewResult struct {
+	RepoPath        string `json:"repo_path"`
+	Backend         string `json:"backend"`
+	IsS3EmptyPrefix bool   `json:"is_s3_empty_prefix"`
+	CanWipe         bool   `json:"can_wipe"`
+	Message         string `json:"message"`
+}
+
 // ResticFetchOption holds the configuration for fetch
 type ResticFetchOption struct {
 	SkipStats bool `json:"skip_stats,omitempty"`
@@ -398,6 +419,7 @@ type ResticManager struct {
 	PurgeNowOption       ResticPurgeOption
 	isPaused             bool
 	isPausedByDisk       bool
+	wipeActive           bool // set while a destructive wipe is in progress; blocks appendTask/prependTask
 	HasLocks             bool
 	taskID               int
 	CurrentID            int
@@ -436,6 +458,9 @@ type ResticManager struct {
 	// When set, checkS3RepoFiles calls it instead of creating a real S3 client.
 	// It receives bucket, configKey, dataPrefix and returns existence + error for each.
 	s3existenceProber func(bucket, configKey, dataPrefix string) (configExists bool, configErr error, dataExists bool, dataErr error)
+	// destructiveMu serializes destructive operations (wipe) so that preflight checks
+	// and deletion cannot race with each other.
+	destructiveMu sync.Mutex
 }
 
 // NewResticRepo initializes the repository manager
@@ -986,16 +1011,19 @@ func (repo *ResticManager) worker() {
 			continue
 		}
 
-		// Get the task from TaskQueue
+		// Get the task from TaskQueue and mark it running before releasing the
+		// mutex so that WipeRepoWithOptions cannot observe an empty queue while
+		// a task has already been dequeued but not yet started.
 		task := repo.TaskQueue[0]
 		repo.TaskQueue = repo.TaskQueue[1:]
+		if task != nil {
+			repo.SetCurrentTaskRunning(task)
+		}
 		repo.Mutex.Unlock()
 
 		if task == nil {
 			continue
 		}
-
-		repo.SetCurrentTaskRunning(task)
 
 		// Process the task
 		loglevel := logrus.InfoLevel
@@ -1120,6 +1148,14 @@ func (repo *ResticManager) appendTask(task *ResticTask) {
 	repo.Mutex.Lock()
 	defer repo.Mutex.Unlock()
 
+	if repo.wipeActive {
+		repo.Printf(logrus.WarnLevel, "Task %s dropped: a wipe is in progress", GetTaskName(task.Type))
+		if task.resultCh != nil {
+			task.resultCh <- ResticResult{TaskID: task.ID, TaskType: task.Type, Error: fmt.Errorf("task dropped: a repository wipe is in progress")}
+			close(task.resultCh)
+		}
+		return
+	}
 	repo.TaskQueue = append(repo.TaskQueue, task)
 
 	// Log the addition of the tasks with ID
@@ -1139,6 +1175,14 @@ func (repo *ResticManager) prependTask(task *ResticTask) {
 	repo.Mutex.Lock()
 	defer repo.Mutex.Unlock()
 
+	if repo.wipeActive {
+		repo.Printf(logrus.WarnLevel, "Task %s dropped: a wipe is in progress", GetTaskName(task.Type))
+		if task.resultCh != nil {
+			task.resultCh <- ResticResult{TaskID: task.ID, TaskType: task.Type, Error: fmt.Errorf("task dropped: a repository wipe is in progress")}
+			close(task.resultCh)
+		}
+		return
+	}
 	repo.TaskQueue = append([]*ResticTask{task}, repo.TaskQueue...)
 
 	if task.ID != 0 {
@@ -1158,6 +1202,10 @@ func (repo *ResticManager) AddFetchTask() {
 func (repo *ResticManager) AddPurgeTask(opt ResticPurgeOption, immediate bool) error {
 	if immediate {
 		repo.Mutex.Lock()
+		if repo.wipeActive {
+			repo.Mutex.Unlock()
+			return fmt.Errorf("cannot schedule immediate purge: a repository wipe is in progress")
+		}
 		if repo.NeedPurgeNow {
 			repo.Mutex.Unlock()
 			return errors.New("a purge-now task is already scheduled")
@@ -3395,12 +3443,19 @@ const (
 )
 
 // ManualCheckResult holds the outcome of a manual repository configuration check.
+// The wipe preview fields (Backend, IsS3EmptyPrefix, CanWipe, WipeMessage) are additive
+// and backward-compatible; existing consumers that only read status/message/can_init are unaffected.
 type ManualCheckResult struct {
 	Status      ManualCheckStatus `json:"status"`
 	Message     string            `json:"message"`
 	CanInit     bool              `json:"can_init"`
 	FetchQueued bool              `json:"fetch_queued"`
 	RepoPath    string            `json:"repo_path,omitempty"`
+	// Wipe preview fields populated by ResticCheckConfigManual
+	Backend         string `json:"backend,omitempty"`
+	IsS3EmptyPrefix bool   `json:"is_s3_empty_prefix,omitempty"`
+	CanWipe         bool   `json:"can_wipe"`
+	WipeMessage     string `json:"wipe_message,omitempty"`
 }
 
 // isResticInitRequiredError returns true when restic stderr indicates the repository
@@ -3802,6 +3857,335 @@ func (repo *ResticManager) RunCommandWithContext(ctx context.Context, args []str
 	}
 
 	return nil, stderrBuf.Bytes(), nil
+}
+
+// sftpWipeTarget holds the parsed components of an sftp:[user@]host:/absolute/path URI.
+type sftpWipeTarget struct {
+	UserHost string
+	Path     string
+}
+
+// parseSftpWipeTarget parses an SFTP repository URI for use in wipe operations.
+// Only absolute remote paths are accepted; relative paths are rejected.
+func parseSftpWipeTarget(repoPath string) (sftpWipeTarget, error) {
+	if !strings.HasPrefix(repoPath, "sftp:") {
+		return sftpWipeTarget{}, fmt.Errorf("not an SFTP repository path: %s", repoPath)
+	}
+	rest := strings.TrimPrefix(repoPath, "sftp:")
+	colonIdx := strings.Index(rest, ":")
+	if colonIdx < 0 {
+		return sftpWipeTarget{}, fmt.Errorf("malformed SFTP repository path (missing host:path separator): %s", repoPath)
+	}
+	userHost := rest[:colonIdx]
+	remotePath := rest[colonIdx+1:]
+	if userHost == "" {
+		return sftpWipeTarget{}, fmt.Errorf("malformed SFTP repository path (empty host): %s", repoPath)
+	}
+	switch remotePath {
+	case "", "/", ".", "..":
+		return sftpWipeTarget{}, fmt.Errorf("unsafe SFTP remote path for wipe: %q", remotePath)
+	}
+	if !strings.HasPrefix(remotePath, "/") {
+		return sftpWipeTarget{}, fmt.Errorf("wipe requires an absolute SFTP remote path (got %q); relative paths are not supported", remotePath)
+	}
+	return sftpWipeTarget{UserHost: userHost, Path: remotePath}, nil
+}
+
+// shellescape returns s enclosed in single quotes, safe as a POSIX shell argument.
+func shellescape(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// wipeLocalRepo removes all contents of repoPath while preserving the root directory.
+// Symlinks inside the root are removed as entries and are not followed.
+func (repo *ResticManager) wipeLocalRepo(repoPath string) error {
+	repoPath = strings.TrimSpace(repoPath)
+	if repoPath == "" {
+		return fmt.Errorf("local repository path is empty")
+	}
+	if !filepath.IsAbs(repoPath) {
+		return fmt.Errorf("local repository path must be absolute: %q", repoPath)
+	}
+	if repoPath == "/" {
+		return fmt.Errorf("refusing to wipe root filesystem path")
+	}
+	info, statErr := os.Lstat(repoPath)
+	if os.IsNotExist(statErr) {
+		repo.Printf(logrus.InfoLevel, "Local repository does not exist at %s; treating as already wiped", repoPath)
+		return nil
+	}
+	if statErr != nil {
+		return fmt.Errorf("failed to stat repository path %s: %w", repoPath, statErr)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to wipe: repository root %q is a symbolic link", repoPath)
+	}
+	entries, err := os.ReadDir(repoPath)
+	if err != nil {
+		return fmt.Errorf("failed to read repository directory %s: %w", repoPath, err)
+	}
+	for _, entry := range entries {
+		entryPath := filepath.Join(repoPath, entry.Name())
+		if err := os.RemoveAll(entryPath); err != nil {
+			return fmt.Errorf("failed to remove %s: %w", entry.Name(), err)
+		}
+	}
+	repo.Printf(logrus.InfoLevel, "Local repository wiped: %s", repoPath)
+	return nil
+}
+
+// wipeS3Repo deletes all objects under the configured S3 prefix.
+func (repo *ResticManager) wipeS3Repo(opt ResticWipeOption) error {
+	repopath := repo.GetRepoPath()
+	bucket, prefix, endpoint, err := repo.resolveS3RepoSpec(repopath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve S3 repository spec: %w", err)
+	}
+	if prefix == "" && !opt.AllowEmptyPrefix {
+		return fmt.Errorf("refusing to wipe S3 repository with empty prefix (entire bucket scope): set allow_empty_prefix=true to proceed")
+	}
+	client, clientErr := s3helper.NewClient(repo.AwsAccessKeyID, repo.AwsSecretAccessKey, "", repo.AwsRegion, endpoint)
+	if clientErr != nil {
+		return fmt.Errorf("failed to create S3 client: %w", clientErr)
+	}
+	deleteOptions := s3helper.DeletePrefixOptions{RequireNonEmptyPrefix: !opt.AllowEmptyPrefix}
+	if delErr := s3helper.DeletePrefixWithOptions(client, bucket, prefix, deleteOptions); delErr != nil {
+		return fmt.Errorf("failed to wipe S3 repository: %w", delErr)
+	}
+	repo.Printf(logrus.InfoLevel, "S3 repository wiped: bucket=%s prefix=%q", bucket, prefix)
+	return nil
+}
+
+// wipeSftpRepo connects via SSH and removes repository contents while preserving the root directory.
+func (repo *ResticManager) wipeSftpRepo(repoPath string) error {
+	target, err := parseSftpWipeTarget(repoPath)
+	if err != nil {
+		return err
+	}
+	quotedPath := shellescape(target.Path)
+	// If the remote directory does not exist, treat as already wiped (exit 0).
+	// Otherwise delete all contents while preserving the root directory.
+	remoteCmd := fmt.Sprintf("[ ! -d %s ] || find %s -mindepth 1 -delete", quotedPath, quotedPath)
+	timeout := repo.OperationTimeout
+	if timeout <= 0 {
+		timeout = 2 * time.Hour
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ssh", "-o", "BatchMode=yes", target.UserHost, remoteCmd)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if runErr := cmd.Run(); runErr != nil {
+		stderrStr := strings.TrimSpace(stderr.String())
+		if stderrStr != "" {
+			return fmt.Errorf("SFTP wipe failed for %s:%s: %s", target.UserHost, target.Path, stderrStr)
+		}
+		return fmt.Errorf("SFTP wipe failed for %s:%s: %w", target.UserHost, target.Path, runErr)
+	}
+	repo.Printf(logrus.InfoLevel, "SFTP repository wiped: %s:%s", target.UserHost, target.Path)
+	return nil
+}
+
+// resetAfterWipe clears cached snapshot/stats/state so the repository appears uninitialized.
+func (repo *ResticManager) resetAfterWipe() {
+	repo.Mutex.Lock()
+	repo.Backups = make([]BackupSnapshot, 0)
+	repo.BackupMap = make(map[string]*BackupSnapshot)
+	repo.BackupStat = BackupStat{}
+	repo.Mutex.Unlock()
+
+	repo.errorMutex.Lock()
+	repo.lastInitError = nil
+	repo.initErrorCount = 0
+	repo.initBackoffUntil = time.Time{}
+	delete(repo.TaskErrors, InitTask)
+	delete(repo.TaskErrors, FetchTask)
+	// Keep bootInitDone=true so the next passive fetch does not trigger auto-init.
+	// Explicit manual InitRepo is required before the repository is usable again.
+	repo.bootInitDone = true
+	repo.errorMutex.Unlock()
+
+	repo.setRepoState(ManualCheckStatusInitRequired)
+	repo.CanInitRepo = true
+}
+
+// ComputeWipePreview runs the non-destructive wipe preflight under the destructive-
+// operation lock and returns a WipePreviewResult describing the effective target and
+// whether the current manager state permits a wipe. It never mutates the repository.
+func (repo *ResticManager) ComputeWipePreview() WipePreviewResult {
+	repo.destructiveMu.Lock()
+	defer repo.destructiveMu.Unlock()
+
+	repo.Mutex.Lock()
+	mountPath := repo.mountPath
+	isQueueNotEmpty := len(repo.TaskQueue) > 0
+	isImmediatePurgePending := repo.NeedPurgeNow
+	repo.currentTaskMutex.Lock()
+	isTaskRunning := repo.currentTask != nil && repo.currentTask.Status == "running"
+	repo.currentTaskMutex.Unlock()
+	repo.Mutex.Unlock()
+
+	canonicalTarget := repo.GetRepoPath()
+
+	backend := "restic-local"
+	if config.IsS3ResticRepository(canonicalTarget) || repo.AwsBucket != "" {
+		backend = "restic-aws"
+	} else if config.IsSftpResticRepository(canonicalTarget) {
+		backend = "restic-sftp"
+	}
+	isS3EmptyPrefix := repo.AwsBucket != "" && repo.AwsPrefix == ""
+
+	result := WipePreviewResult{
+		RepoPath: canonicalTarget,
+		Backend:         backend,
+		IsS3EmptyPrefix: isS3EmptyPrefix,
+		CanWipe:         true,
+		Message:         "Repository can be wiped. Type the target above to confirm.",
+	}
+
+	if canonicalTarget == "" {
+		result.CanWipe = false
+		result.Message = "Cannot wipe: restic repository path is not configured."
+		return result
+	}
+	if mountPath != "" {
+		result.CanWipe = false
+		result.Message = fmt.Sprintf("Cannot wipe: repository is currently mounted at %s.", mountPath)
+		return result
+	}
+	if isTaskRunning {
+		result.CanWipe = false
+		result.Message = "Cannot wipe: a restic task is currently running."
+		return result
+	}
+	if isQueueNotEmpty {
+		result.CanWipe = false
+		result.Message = "Cannot wipe: the restic task queue is not empty."
+		return result
+	}
+	if isImmediatePurgePending {
+		result.CanWipe = false
+		result.Message = "Cannot wipe: an immediate purge is pending."
+		return result
+	}
+
+	// Non-destructive backend-specific validation: run the same path checks that
+	// WipeRepoWithOptions enforces so can_wipe accurately predicts whether the
+	// operation would succeed (avoids "modal says OK, submit fails" user experience).
+	switch backend {
+	case "restic-sftp":
+		if _, err := parseSftpWipeTarget(canonicalTarget); err != nil {
+			result.CanWipe = false
+			result.Message = fmt.Sprintf("Cannot wipe: %v", err)
+			return result
+		}
+	case "restic-local":
+		if !filepath.IsAbs(canonicalTarget) {
+			result.CanWipe = false
+			result.Message = fmt.Sprintf("Cannot wipe: local repository path must be absolute: %q", canonicalTarget)
+			return result
+		}
+		if canonicalTarget == "/" {
+			result.CanWipe = false
+			result.Message = "Cannot wipe: refusing to wipe root filesystem path."
+			return result
+		}
+		if info, statErr := os.Lstat(canonicalTarget); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
+			result.CanWipe = false
+			result.Message = fmt.Sprintf("Cannot wipe: repository root %q is a symbolic link.", canonicalTarget)
+			return result
+		}
+	}
+
+	return result
+}
+
+// WipeRepoWithOptions destroys the contents of the configured repository, leaving it empty
+// and uninitialized. It does not run restic init afterward.
+//
+// Safety guardrails:
+//   - Fails if a mount, running task, or queued task is active.
+//   - Requires Confirm=true and TypedTargetConfirm matching the server-computed canonical path.
+//   - For S3 with empty prefix, AllowEmptyPrefix must be true.
+//
+// The worker goroutine is paused for the duration of the wipe to prevent races.
+func (repo *ResticManager) WipeRepoWithOptions(opt ResticWipeOption) error {
+	// Only one destructive operation at a time.
+	repo.destructiveMu.Lock()
+	defer repo.destructiveMu.Unlock()
+
+	// Under the main mutex: run preflight and pause the worker atomically.
+	// currentTask is checked here too (under both locks) so that the check is
+	// atomic with task dequeue, which now also happens under repo.Mutex.
+	repo.Mutex.Lock()
+	isMountActive := repo.mountPath != ""
+	isQueueNotEmpty := len(repo.TaskQueue) > 0
+	isImmediatePurgePending := repo.NeedPurgeNow
+	repo.currentTaskMutex.Lock()
+	isTaskRunning := repo.currentTask != nil && repo.currentTask.Status == "running"
+	repo.currentTaskMutex.Unlock()
+	priorPaused := repo.isPaused
+	if !isMountActive && !isQueueNotEmpty && !isImmediatePurgePending && !isTaskRunning {
+		repo.isPaused = true
+		repo.wipeActive = true
+	}
+	repo.Mutex.Unlock()
+
+	// Restore paused flag and wipeActive on any exit path.
+	defer func() {
+		repo.Mutex.Lock()
+		repo.isPaused = priorPaused
+		repo.wipeActive = false
+		if !priorPaused {
+			repo.cond.Broadcast()
+		}
+		repo.Mutex.Unlock()
+	}()
+
+	if isMountActive {
+		return fmt.Errorf("cannot wipe: repository is currently mounted at %s", repo.mountPath)
+	}
+	if isQueueNotEmpty {
+		return fmt.Errorf("cannot wipe: the restic task queue is not empty")
+	}
+	if isImmediatePurgePending {
+		return fmt.Errorf("cannot wipe: an immediate purge is pending")
+	}
+	if isTaskRunning {
+		return fmt.Errorf("cannot wipe: a restic task is currently running")
+	}
+
+	// Canonical target is the runtime RESTIC_REPOSITORY value from the manager env.
+	canonicalTarget := repo.GetRepoPath()
+	if canonicalTarget == "" {
+		return fmt.Errorf("cannot wipe: restic repository path is not configured")
+	}
+
+	if !opt.Confirm {
+		return fmt.Errorf("wipe requires explicit confirmation: set confirm=true")
+	}
+	if strings.TrimSpace(opt.TypedTargetConfirm) != canonicalTarget {
+		return fmt.Errorf("typed confirmation does not match the canonical repository target (expected %q)", canonicalTarget)
+	}
+
+	repo.Printf(logrus.WarnLevel, "Wiping repository: %s", canonicalTarget)
+
+	var err error
+	if config.IsS3ResticRepository(canonicalTarget) || repo.AwsBucket != "" {
+		err = repo.wipeS3Repo(opt)
+	} else if config.IsSftpResticRepository(canonicalTarget) {
+		err = repo.wipeSftpRepo(canonicalTarget)
+	} else {
+		err = repo.wipeLocalRepo(canonicalTarget)
+	}
+	if err != nil {
+		repo.Printf(logrus.ErrorLevel, "Repository wipe failed: %v", err)
+		return err
+	}
+
+	repo.Printf(logrus.InfoLevel, "Repository wipe complete: %s", canonicalTarget)
+	repo.resetAfterWipe()
+	return nil
 }
 
 // InitRepo initializes the repository with backward-compatible signature

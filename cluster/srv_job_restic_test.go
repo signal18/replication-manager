@@ -287,7 +287,7 @@ func TestResticCheckConfigManualNoSideEffects(t *testing.T) {
 		t.Fatal("precondition: ResticManager should be nil before the call")
 	}
 
-	result := cl.ResticCheckConfigManual()
+	result := cl.ResticCheckConfigManual(false)
 
 	if result.Status != backupmgr.ManualCheckStatusInitRequired {
 		t.Fatalf("expected initialization_required, got %s: %s", result.Status, result.Message)
@@ -364,7 +364,7 @@ func TestResticCheckConfigManualSuppressesFetch(t *testing.T) {
 	}
 
 	// Manual check classifies the fresh repo and sets repoState = initialization_required.
-	result := cl.ResticCheckConfigManual()
+	result := cl.ResticCheckConfigManual(false)
 	if result.Status != backupmgr.ManualCheckStatusInitRequired {
 		t.Fatalf("precondition: expected initialization_required, got %s", result.Status)
 	}
@@ -420,7 +420,7 @@ func TestReloadResticEnvClearsRepoState(t *testing.T) {
 	}
 
 	// Step 1: manual check classifies the fresh repo as initialization_required.
-	result := cl.ResticCheckConfigManual()
+	result := cl.ResticCheckConfigManual(false)
 	if result.Status != backupmgr.ManualCheckStatusInitRequired {
 		t.Fatalf("precondition: expected initialization_required, got %s", result.Status)
 	}
