@@ -587,8 +587,9 @@ func (repo *ResticManager) CopyRepoWithOptions(opt ResticCopyOption) error {
 }
 
 // AddCopyTask enqueues a copy task with the given options.
-func (repo *ResticManager) AddCopyTask(opt ResticCopyOption) {
-	repo.appendTask(&ResticTask{
+// Returns an error if a wipe is active; the check and enqueue are atomic.
+func (repo *ResticManager) AddCopyTask(opt ResticCopyOption) error {
+	return repo.appendTaskChecked(&ResticTask{
 		ID:      repo.GenerateTaskID(),
 		Type:    CopyTask,
 		CopyOpt: &opt,

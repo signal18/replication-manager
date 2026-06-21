@@ -600,48 +600,45 @@ func (cluster *Cluster) ResticGetEnv() []string {
 // When clearBackoff is true, the init error backoff counter is also reset
 // (used when credentials/config may have changed). When false (manual check path),
 // the backoff state is preserved to avoid resetting throttling unintentionally.
-func (cluster *Cluster) reloadResticEnvCore(clearBackoff bool) {
+func (cluster *Cluster) reloadResticEnvCore(clearBackoff bool) error {
 	if cluster.ResticManager == nil {
-		return
+		return nil
+	}
+	var s3Res *resticS3Resolution
+	if cluster.Conf.BackupResticAws {
+		res, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+		if err != nil {
+			return err // invalid S3 config — leave manager entirely unchanged
+		}
+		s3Res = &res
 	}
 	cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
-	bucket := ""
-	prefix := ""
-	endpoint := ""
-	accessKeyID := ""
-	accessSecret := ""
-	region := ""
-	if cluster.Conf.BackupResticAws {
-		if res, err := resolveResticS3(cluster.Conf, cluster.Name, cluster); err == nil {
-			bucket = res.Bucket
-			prefix = res.Prefix
-			endpoint = res.Endpoint
-			accessKeyID = res.AccessKeyID
-			accessSecret = res.AccessSecret
-			region = res.Region
-		}
+	if s3Res != nil {
+		cluster.ResticManager.SetAwsConfig(
+			s3Res.AccessKeyID,
+			s3Res.AccessSecret,
+			s3Res.Region,
+			s3Res.Endpoint,
+			s3Res.Bucket,
+			s3Res.Prefix,
+		)
+	} else {
+		cluster.ResticManager.SetAwsConfig("", "", "", "", "", "")
 	}
-	cluster.ResticManager.SetAwsConfig(
-		accessKeyID,
-		accessSecret,
-		region,
-		endpoint,
-		bucket,
-		prefix,
-	)
 	if clearBackoff {
 		cluster.ResticManager.ClearInitErrorBackoffManual()
 	}
 	cluster.ResticManager.ClearRepoState()
 	cluster.ResticManager.AutoInit = cluster.Conf.BackupResticAutoInit
+	return nil
 }
 
-func (cluster *Cluster) ReloadResticEnv() {
+func (cluster *Cluster) ReloadResticEnv() error {
 	// Invalidate the boot-probe S3 mode cache so that any config change applied
 	// through the API is not silently overridden by a stale startup probe result.
 	// The startup path calls reloadResticEnvCore directly and is unaffected.
 	cluster.resolvedS3Mode = ""
-	cluster.reloadResticEnvCore(true)
+	return cluster.reloadResticEnvCore(true)
 }
 
 func (cluster *Cluster) CheckResticInstallation() {
@@ -815,7 +812,9 @@ func (cluster *Cluster) ResticCopyRepoWithOptions(opt backupmgr.ResticCopyOption
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
 		"Queuing restic repository copy from source mode %q", opt.Source.Mode)
-	cluster.ResticManager.AddCopyTask(opt)
+	if err := cluster.ResticManager.AddCopyTask(opt); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -832,7 +831,7 @@ func (cluster *Cluster) CheckResticConfigBackup() {
 // ensureResticManagerBase creates a fresh ResticManager, applies configuration, assigns it
 // to cluster.ResticManager, and calls ReloadResticEnv. It has no startup side effects
 // (no mount recovery, no unlock/fetch queuing, no auto-init).
-func (cluster *Cluster) ensureResticManagerBase() {
+func (cluster *Cluster) ensureResticManagerBase() error {
 	resticManager := backupmgr.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.MessageChan, config.ConstLogModRestic)
 	if err := cluster.Conf.ValidateResticPermissions(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Invalid restic permission config: %s", err)
@@ -845,7 +844,7 @@ func (cluster *Cluster) ensureResticManagerBase() {
 	resticManager.MountRecoveryEnabled = cluster.Conf.BackupResticMountRecoveryEnabled
 	resticManager.AutoDetectAndDisableMount()
 	cluster.ResticManager = resticManager
-	cluster.ReloadResticEnv()
+	return cluster.ReloadResticEnv()
 }
 
 // resolveResticS3AutoProbe probes new and legacy S3 candidates in order and
@@ -898,7 +897,9 @@ func (cluster *Cluster) StartResticManager() error {
 		return nil
 	}
 
-	cluster.ensureResticManagerBase()
+	if err := cluster.ensureResticManagerBase(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Restic env reload failed at startup: %s", err)
+	}
 	if cluster.ResticManager.RecoverMountStateOnStartup() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Recovered restic mount state on startup")
 	}
@@ -913,7 +914,10 @@ func (cluster *Cluster) StartResticManager() error {
 		} else {
 			cluster.resolvedS3Mode = res.Mode
 			// Reload env so the manager immediately uses the probe-winning config.
-			cluster.reloadResticEnvCore(true)
+			if err := cluster.reloadResticEnvCore(true); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+					"Restic env reload failed after S3 auto-probe: %s", err)
+			}
 		}
 	}
 
@@ -1202,11 +1206,21 @@ func (cluster *Cluster) ResticCheckConfigManual(skipFetch bool) backupmgr.Manual
 	}
 
 	if cluster.ResticManager == nil {
-		cluster.ensureResticManagerBase()
+		if err := cluster.ensureResticManagerBase(); err != nil {
+			return backupmgr.ManualCheckResult{
+				Status:  backupmgr.ManualCheckStatusError,
+				Message: fmt.Sprintf("invalid restic configuration: %s", err),
+			}
+		}
 	} else {
 		// Refresh env config without clearing backoff: manual check is read-only
 		// and should not inadvertently reset init throttling state.
-		cluster.reloadResticEnvCore(false)
+		if err := cluster.reloadResticEnvCore(false); err != nil {
+			return backupmgr.ManualCheckResult{
+				Status:  backupmgr.ManualCheckStatusError,
+				Message: fmt.Sprintf("invalid restic configuration: %s", err),
+			}
+		}
 	}
 
 	result := cluster.ResticManager.ValidateRepoConfigManual()
@@ -2188,7 +2202,9 @@ func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Changing restic password for cluster %s", cluster.Name)
 
-	cluster.ReloadResticEnv()
+	if err := cluster.ReloadResticEnv(); err != nil {
+		return fmt.Errorf("invalid restic configuration: %w", err)
+	}
 
 	keylist, err := cluster.ResticManager.GetRepoKeyList()
 	if err != nil {
@@ -2253,7 +2269,9 @@ func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "New restic password saved in configuration successfully. Removing old key from repository using new password.")
 
 	// Reload env with new password
-	cluster.ReloadResticEnv()
+	if err := cluster.ReloadResticEnv(); err != nil {
+		return fmt.Errorf("invalid restic configuration after password change: %w", err)
+	}
 
 	// Remove old key using new password
 	err = cluster.ResticManager.RemoveRepoKey(oldkeyid)

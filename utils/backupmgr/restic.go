@@ -1167,6 +1167,26 @@ func (repo *ResticManager) appendTask(task *ResticTask) {
 	repo.cond.Signal()
 }
 
+// appendTaskChecked enqueues task under the same lock as the wipeActive check,
+// making the check-and-enqueue atomic. Returns an error if wipeActive is set.
+func (repo *ResticManager) appendTaskChecked(task *ResticTask) error {
+	if task == nil {
+		return nil
+	}
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	if repo.wipeActive {
+		repo.Printf(logrus.WarnLevel, "Task %s dropped: a wipe is in progress", GetTaskName(task.Type))
+		return fmt.Errorf("task dropped: a repository wipe is in progress")
+	}
+	repo.TaskQueue = append(repo.TaskQueue, task)
+	if task.ID != 0 {
+		repo.Printf(logrus.InfoLevel, "Added %s task to the queue, ID: %d", GetTaskName(task.Type), task.ID)
+	}
+	repo.cond.Signal()
+	return nil
+}
+
 func (repo *ResticManager) prependTask(task *ResticTask) {
 	if task == nil {
 		return
@@ -3236,7 +3256,7 @@ func (repo *ResticManager) checkS3RepoFilesWithPolicy(bucket, prefix, endpoint s
 
 	// Config exists
 	repo.CanInitRepo = true
-	delete(repo.TaskErrors, InitTask)
+	repo.FetchAndClearError(InitTask)
 	repo.clearInitErrorBackoff()
 	repo.setRepoState(ManualCheckStatusOK)
 
@@ -3426,7 +3446,7 @@ func (repo *ResticManager) checkRepoFilesWithPolicy(policy initPolicy) error {
 	}
 
 	repo.CanInitRepo = true
-	delete(repo.TaskErrors, InitTask)
+	repo.FetchAndClearError(InitTask)
 	repo.clearInitErrorBackoff()
 	repo.setRepoState(ManualCheckStatusOK)
 
@@ -4402,7 +4422,7 @@ func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 	}
 
 	// Only add fetch task on successful initialization
-	delete(repo.TaskErrors, InitTask)
+	repo.FetchAndClearError(InitTask)
 	repo.AddFetchTask()
 	repo.clearInitErrorBackoff()
 

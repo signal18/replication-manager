@@ -3907,17 +3907,23 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			}
 		}
 		mycluster.Conf.BackupResticLocalRepository = repoPath
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-repository":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
 			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupResticRepository = string(val)
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-aws-access-key-id":
 		mycluster.Conf.BackupResticAwsAccessKeyId = value
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-aws-access-secret":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
@@ -3928,39 +3934,53 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		new_secret.Value = mycluster.Conf.BackupResticAwsAccessSecret
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret")
 		mycluster.Conf.Secrets["backup-restic-aws-access-secret"] = new_secret
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-aws-region":
 		mycluster.Conf.BackupResticAwsRegion = value
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-aws-endpoint":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
 			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupResticAwsEndpoint = string(val)
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-aws-bucket":
 		mycluster.Conf.BackupResticAwsBucket = value
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-aws-prefix":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
 			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupResticAwsPrefix = string(val)
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-s3-mode":
 		if err := mycluster.Conf.ValidateResticS3Mode(value); err != nil {
 			return fmt.Errorf("invalid backup-restic-s3-mode: %w", err)
 		}
 		mycluster.Conf.BackupResticS3Mode = value
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-additional-env":
 		if err := cluster.ValidateResticAdditionalEnvOverrides(value); err != nil {
 			return fmt.Errorf("invalid backup-restic-additional-env: %w", err)
 		}
 		mycluster.Conf.BackupResticAdditionalEnv = value
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-password":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
@@ -8531,7 +8551,10 @@ func (repman *ReplicationManager) handlerMuxResticInitRepo(w http.ResponseWriter
 
 		if effectivePrefix, ok := mycluster.ResticS3EffectivePrefixForInit(); ok {
 			mycluster.Conf.BackupResticAwsPrefix = effectivePrefix
-			mycluster.ReloadResticEnv()
+			if err := mycluster.ReloadResticEnv(); err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+					"Restic env reload failed after init prefix update: %s", err)
+			}
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 		}
 

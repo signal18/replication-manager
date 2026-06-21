@@ -174,8 +174,7 @@ func (cluster *Cluster) SetBackupArchiveMode(mode string) error {
 		// list and stats until the next fetch against the new repository.
 		cluster.ResticManager.ClearSnapshotList()
 	}
-	cluster.ReloadResticEnv()
-	return nil
+	return cluster.ReloadResticEnv()
 }
 
 func (cluster *Cluster) SwitchBackupBinlogs() {
