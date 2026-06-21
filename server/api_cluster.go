@@ -246,6 +246,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticRestoreConfig)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/restic/copy", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticCopy)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/restic/wipe", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticWipeRepo)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/certificates", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCertificates)),
@@ -3897,16 +3907,23 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			}
 		}
 		mycluster.Conf.BackupResticLocalRepository = repoPath
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-repository":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
 			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupResticRepository = string(val)
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-aws-access-key-id":
 		mycluster.Conf.BackupResticAwsAccessKeyId = value
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-aws-access-secret":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
@@ -3917,32 +3934,53 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		new_secret.Value = mycluster.Conf.BackupResticAwsAccessSecret
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret")
 		mycluster.Conf.Secrets["backup-restic-aws-access-secret"] = new_secret
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-aws-region":
 		mycluster.Conf.BackupResticAwsRegion = value
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-aws-endpoint":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
 			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupResticAwsEndpoint = string(val)
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-aws-bucket":
 		mycluster.Conf.BackupResticAwsBucket = value
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-aws-prefix":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
 			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupResticAwsPrefix = string(val)
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
+	case "backup-restic-s3-mode":
+		if err := mycluster.Conf.ValidateResticS3Mode(value); err != nil {
+			return fmt.Errorf("invalid backup-restic-s3-mode: %w", err)
+		}
+		mycluster.Conf.BackupResticS3Mode = value
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-additional-env":
 		if err := cluster.ValidateResticAdditionalEnvOverrides(value); err != nil {
 			return fmt.Errorf("invalid backup-restic-additional-env: %w", err)
 		}
 		mycluster.Conf.BackupResticAdditionalEnv = value
-		mycluster.ReloadResticEnv()
+		if err := mycluster.ReloadResticEnv(); err != nil {
+			return err
+		}
 	case "backup-restic-password":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
@@ -8513,12 +8551,117 @@ func (repman *ReplicationManager) handlerMuxResticInitRepo(w http.ResponseWriter
 
 		if effectivePrefix, ok := mycluster.ResticS3EffectivePrefixForInit(); ok {
 			mycluster.Conf.BackupResticAwsPrefix = effectivePrefix
-			mycluster.ReloadResticEnv()
+			if err := mycluster.ReloadResticEnv(); err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+					"Restic env reload failed after init prefix update: %s", err)
+			}
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 		}
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Restic repository initialized"))
+	})
+}
+
+// handlerMuxResticCopy handles the HTTP request to queue a repository copy task.
+// @Summary Copy Restic Repository
+// @Description Copies snapshots from a source repository into the cluster's configured Restic repository.
+// @Tags ClusterRestic
+// @Accept json
+// @Produce plain
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body backupmgr.ResticCopyOption true "Copy options"
+// @Success 200 {string} string "Restic repository copy queued"
+// @Failure 400 {string} string "Invalid payload or guardrail rejection"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/restic/copy [post]
+func (repman *ReplicationManager) handlerMuxResticCopy(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
+		var opt backupmgr.ResticCopyOption
+		if err := json.NewDecoder(r.Body).Decode(&opt); err != nil && err != io.EOF {
+			http.Error(w, "Error decoding request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if err := mycluster.ResticCopyRepoWithOptions(opt); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Restic repository copy queued"))
+	})
+}
+
+// handlerMuxResticWipeRepo executes a destructive wipe of the restic repository for a cluster.
+// This endpoint is execute-only: confirm=false (or omitted) returns HTTP 400. Use
+// POST /restic/check-config for the non-destructive preview that returns repo_path, backend,
+// is_s3_empty_prefix, can_wipe, and wipe_message.
+//
+// The handler enforces GrantDBBackup directly so that a generic /restic grant alone
+// cannot authorize this destructive operation — URL-based ACL fallback is intentionally bypassed.
+// @Summary Wipe Restic Repository
+// @Description Execute-only destructive repository wipe. Requires confirm=true and typed_target_confirm matching the server-computed repo_path. Use POST /restic/check-config to obtain the preview/target before calling this endpoint.
+// @Tags ClusterRestic
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body backupmgr.ResticWipeOption true "Wipe payload (confirm=true, typed_target_confirm, allow_empty_prefix)"
+// @Success 200 {object} map[string]string "Repository wiped successfully"
+// @Failure 400 {object} map[string]string "Invalid payload, missing confirmation, or guardrail rejection"
+// @Failure 403 {string} string "No valid ACL or insufficient grant (db-backup required)"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/restic/wipe [post]
+func (repman *ReplicationManager) handlerMuxResticWipeRepo(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
+		// Enforce GrantDBBackup explicitly: URL-based ACL matching falls back to the
+		// generic /restic rule (GrantClusterProcess) via hierarchical pattern matching,
+		// which would allow users without backup permissions to wipe the repository.
+		username := repman.GetUserFromRequest(r)
+		if u, ok := mycluster.APIUsers[username]; !ok || !u.Grants[config.GrantDBBackup] {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+
+		var opt backupmgr.ResticWipeOption
+		if err := json.NewDecoder(r.Body).Decode(&opt); err != nil && err != io.EOF {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body: " + err.Error()})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if !opt.Confirm {
+			// Execute-only: reject preview mode. Use POST /restic/check-config instead.
+			repoPath := ""
+			if mycluster.ResticManager != nil {
+				repoPath = mycluster.ResticManager.GetRepoPath()
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"message":   "This endpoint is execute-only (confirm=true required). Use POST /restic/check-config for a non-destructive preview.",
+				"repo_path": repoPath,
+			})
+			return
+		}
+
+		// Execute mode: validate confirmation and wipe.
+		if err := mycluster.ResticWipeRepoWithOptions(opt); err != nil {
+			preview := mycluster.ResticWipePreview()
+			preview.CanWipe = false
+			preview.Message = err.Error()
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(preview)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Repository wiped successfully."})
 	})
 }
 
@@ -8536,7 +8679,8 @@ func (repman *ReplicationManager) handlerMuxResticInitRepo(w http.ResponseWriter
 // @Router /api/clusters/{clusterName}/restic/check-config [post]
 func (repman *ReplicationManager) handlerMuxResticCheckConfig(w http.ResponseWriter, r *http.Request) {
 	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
-		result := mycluster.ResticCheckConfigManual()
+		skipFetch := r.URL.Query().Get("skip_fetch") == "true"
+		result := mycluster.ResticCheckConfigManual(skipFetch)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(result)

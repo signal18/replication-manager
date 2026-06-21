@@ -907,6 +907,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.BackupResticReseedTimeout, "backup-restic-reseed-timeout", 3600, "Timeout in seconds for restic reseed operations")
 	flags.BoolVar(&conf.BackupResticAllowUnsafeMount, "backup-restic-allow-unsafe-mount", false, "Allow using a restic mount created by another process (unsafe)")
 	flags.BoolVar(&conf.BackupResticAutoInit, "backup-restic-auto-init", false, "Automatically initialize fresh local and S3 restic repositories on first use. Does not apply to SFTP repositories.")
+	flags.StringVar(&conf.BackupResticS3Mode, "backup-restic-s3-mode", "auto", "Restic S3 source-of-truth selector: auto (prefer new fields, fall back to legacy URL), new (use bucket/prefix/endpoint fields only), legacy (use backup-restic-repository URL only)")
 	flags.BoolVar(&conf.BackupStreaming, "backup-streaming", false, "Backup streaming to cloud ")
 	flags.BoolVar(&conf.BackupStreamingDebug, "backup-streaming-debug", false, "Debug mode for streaming to cloud ")
 	flags.StringVar(&conf.BackupStreamingAwsAccessKeyId, "backup-streaming-aws-access-key-id", "admin", "Backup AWS key id")

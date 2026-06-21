@@ -46,6 +46,65 @@ func ValidateResticSftpRepository(repoPath string) error {
 	return nil
 }
 
+// parseLegacyS3ResticRepo decomposes a legacy restic S3 repository URL of the form
+//
+//	s3:[scheme://host/]bucket[/prefix...]
+//
+// into its endpoint, bucket, and raw prefix components. The scheme (http/https) is
+// preserved in the returned endpoint. A bare hostname (containing a dot or colon) is
+// also returned as the endpoint. bucket-only and bucket/prefix forms produce an empty
+// endpoint. The returned prefix is the raw stored value without any cluster suffix;
+// callers that need append-cluster behaviour must pass it through buildResticS3RepoSpec.
+func parseLegacyS3ResticRepo(rawURL string) (endpoint, bucket, prefix string, err error) {
+	if !config.IsS3ResticRepository(rawURL) {
+		return "", "", "", fmt.Errorf("not an S3 repository URL: %q", rawURL)
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(rawURL, "s3:"))
+	if rest == "" {
+		return "", "", "", fmt.Errorf("S3 repository URL is empty after s3: prefix")
+	}
+
+	// Explicit scheme (https:// or http://).
+	if strings.HasPrefix(rest, "https://") || strings.HasPrefix(rest, "http://") {
+		schemeSep := strings.Index(rest, "://")
+		afterScheme := rest[schemeSep+3:] // "host/bucket[/prefix]"
+		slashIdx := strings.Index(afterScheme, "/")
+		if slashIdx < 0 {
+			return "", "", "", fmt.Errorf("S3 repository URL %q has a scheme and host but no bucket", rawURL)
+		}
+		endpoint = rest[:schemeSep+3+slashIdx] // "scheme://host"
+		rest = afterScheme[slashIdx+1:]         // "bucket[/prefix]"
+	} else {
+		// No scheme: first path segment is either a bare hostname (contains "." or ":")
+		// or the bucket name. This mirrors how restic itself distinguishes the two forms:
+		// "s3:s3.amazonaws.com/bucket" vs "s3:bucket/prefix".
+		slashIdx := strings.Index(rest, "/")
+		if slashIdx >= 0 {
+			first := rest[:slashIdx]
+			if strings.ContainsAny(first, ".:") {
+				endpoint = first
+				rest = rest[slashIdx+1:] // "bucket[/prefix]"
+			}
+			// else: no separating character → rest stays "bucket[/prefix]"
+		}
+		// no slash → rest is just "bucket"
+	}
+
+	// rest is now "bucket[/prefix...]"
+	slashIdx := strings.Index(rest, "/")
+	if slashIdx < 0 {
+		bucket = rest
+	} else {
+		bucket = rest[:slashIdx]
+		prefix = rest[slashIdx+1:]
+	}
+	bucket = strings.TrimSpace(bucket)
+	if bucket == "" {
+		return "", "", "", fmt.Errorf("could not extract bucket from S3 repository URL %q", rawURL)
+	}
+	return endpoint, bucket, prefix, nil
+}
+
 func buildResticS3RepoSpec(endpoint, bucket, prefix, clusterName string, appendCluster bool) (string, string) {
 	bucket = strings.TrimSpace(bucket)
 	prefix = strings.Trim(prefix, "/")
@@ -69,6 +128,98 @@ func buildResticS3RepoSpec(endpoint, bucket, prefix, clusterName string, appendC
 	}
 
 	return repoPath, prefix
+}
+
+// resticS3Resolution is the output of resolveResticS3: the concrete S3
+// configuration that will be used for a given selector mode.
+type resticS3Resolution struct {
+	Mode         string // ConstResticS3ModeNew or ConstResticS3ModeLegacy (never "auto")
+	RepoPath     string // effective s3:... repository path
+	Endpoint     string
+	Bucket       string
+	Prefix       string // effective prefix after append-cluster logic
+	AccessKeyID  string
+	AccessSecret string
+	Region       string
+}
+
+// resolveResticS3 applies the backup-restic-s3-mode selector and returns a
+// fully-resolved S3 configuration.  auto is promoted to new or legacy based on
+// which fields are actually populated.  The returned Mode is always new or
+// legacy (never auto).
+//
+// The cluster parameter may be nil; when non-nil it is only used for the
+// resolveResticRepoPolicy call (append-cluster logging).
+func resolveResticS3(conf *config.Config, clusterName string, cluster *Cluster) (resticS3Resolution, error) {
+	_, appendCluster := resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+
+	mode := conf.BackupResticS3Mode
+	if mode == "" {
+		mode = config.ConstResticS3ModeAuto
+	}
+
+	if mode == config.ConstResticS3ModeAuto {
+		// If a probe-resolved mode was determined at startup, use it directly
+		// instead of falling back to presence-based heuristics.
+		if cluster != nil && cluster.resolvedS3Mode != "" {
+			mode = cluster.resolvedS3Mode
+		} else if strings.TrimSpace(conf.BackupResticAwsBucket) != "" {
+			mode = config.ConstResticS3ModeNew
+		} else if config.IsS3ResticRepository(strings.TrimSpace(conf.BackupResticRepository)) {
+			mode = config.ConstResticS3ModeLegacy
+		} else {
+			return resticS3Resolution{}, fmt.Errorf(
+				"S3 configuration error: neither backup-restic-aws-bucket nor a valid backup-restic-repository S3 URL is configured")
+		}
+	}
+
+	switch mode {
+	case config.ConstResticS3ModeNew:
+		bucket := strings.TrimSpace(conf.BackupResticAwsBucket)
+		if bucket == "" {
+			return resticS3Resolution{}, fmt.Errorf(
+				"backup-restic-s3-mode=new requires backup-restic-aws-bucket to be set")
+		}
+		endpoint := strings.TrimSpace(conf.BackupResticAwsEndpoint)
+		repoPath, effectivePrefix := buildResticS3RepoSpec(
+			endpoint, bucket, conf.BackupResticAwsPrefix, clusterName, appendCluster)
+		return resticS3Resolution{
+			Mode:         config.ConstResticS3ModeNew,
+			RepoPath:     repoPath,
+			Endpoint:     endpoint,
+			Bucket:       bucket,
+			Prefix:       effectivePrefix,
+			AccessKeyID:  conf.BackupResticAwsAccessKeyId,
+			AccessSecret: conf.GetDecryptedValue("backup-restic-aws-access-secret"),
+			Region:       strings.TrimSpace(conf.BackupResticAwsRegion),
+		}, nil
+
+	case config.ConstResticS3ModeLegacy:
+		legacyURL := strings.TrimSpace(conf.BackupResticRepository)
+		if !config.IsS3ResticRepository(legacyURL) {
+			return resticS3Resolution{}, fmt.Errorf(
+				"backup-restic-s3-mode=legacy requires backup-restic-repository to be a valid S3 URL")
+		}
+		parsedEndpoint, parsedBucket, parsedPrefix, parseErr := parseLegacyS3ResticRepo(legacyURL)
+		if parseErr != nil {
+			return resticS3Resolution{}, fmt.Errorf("backup-restic-s3-mode=legacy: %w", parseErr)
+		}
+		repoPath, effectivePrefix := buildResticS3RepoSpec(
+			parsedEndpoint, parsedBucket, parsedPrefix, clusterName, appendCluster)
+		return resticS3Resolution{
+			Mode:         config.ConstResticS3ModeLegacy,
+			RepoPath:     repoPath,
+			Endpoint:     parsedEndpoint,
+			Bucket:       parsedBucket,
+			Prefix:       effectivePrefix,
+			AccessKeyID:  conf.BackupResticAwsAccessKeyId,
+			AccessSecret: conf.GetDecryptedValue("backup-restic-aws-access-secret"),
+			Region:       strings.TrimSpace(conf.BackupResticAwsRegion),
+		}, nil
+
+	default:
+		return resticS3Resolution{}, fmt.Errorf("unknown backup-restic-s3-mode: %q", mode)
+	}
 }
 
 func shouldAppendClusterNameS3(bucket, prefix, clusterName string) bool {
@@ -100,8 +251,9 @@ func (cluster *Cluster) ResticS3EffectivePrefixForInit() (string, bool) {
 	if !cluster.Conf.BackupResticAws {
 		return "", false
 	}
-	bucket := strings.TrimSpace(cluster.Conf.BackupResticAwsBucket)
-	if bucket == "" {
+	res, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+	if err != nil || res.Mode != config.ConstResticS3ModeNew {
+		// For legacy mode the prefix is embedded in the URL; skip the init hint.
 		return "", false
 	}
 	_, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
@@ -109,20 +261,13 @@ func (cluster *Cluster) ResticS3EffectivePrefixForInit() (string, bool) {
 		return "", false
 	}
 	currentPrefix := strings.Trim(cluster.Conf.BackupResticAwsPrefix, "/")
-	if !shouldAppendClusterNameS3(bucket, currentPrefix, cluster.Name) {
+	if !shouldAppendClusterNameS3(res.Bucket, currentPrefix, cluster.Name) {
 		return "", false
 	}
-	_, effectivePrefix := buildResticS3RepoSpec(
-		cluster.Conf.BackupResticAwsEndpoint,
-		bucket,
-		currentPrefix,
-		cluster.Name,
-		appendCluster,
-	)
-	if effectivePrefix == "" || effectivePrefix == currentPrefix {
+	if res.Prefix == "" || res.Prefix == currentPrefix {
 		return "", false
 	}
-	return effectivePrefix, true
+	return res.Prefix, true
 }
 
 func isWithinParentPath(parent, child string) bool {
@@ -401,24 +546,25 @@ func (cluster *Cluster) ResticGetEnv() []string {
 	cacheDir := cluster.Conf.WorkingDir + "/" + cluster.Name + "/.cache/restic"
 	password := cluster.Conf.GetDecryptedValue("backup-restic-password")
 	repoPath := ""
-	// backup-restic-aws controls whether the repo path is remote; otherwise local repo is used.
-	localRepoPath, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
+	accessKeyID := ""
+	accessSecret := ""
+	region := ""
 	if cluster.Conf.BackupResticAws {
-		if strings.TrimSpace(cluster.Conf.BackupResticAwsBucket) != "" {
-			repoPath, _ = buildResticS3RepoSpec(
-				cluster.Conf.BackupResticAwsEndpoint,
-				cluster.Conf.BackupResticAwsBucket,
-				cluster.Conf.BackupResticAwsPrefix,
-				cluster.Name,
-				appendCluster,
-			)
+		res, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Restic S3 resolution failed: %s", err)
 		} else {
-			repoPath = cluster.Conf.BackupResticRepository
-			if appendCluster {
-				repoPath = repoPath + "/" + cluster.Name
-			}
+			repoPath = res.RepoPath
+			accessKeyID = res.AccessKeyID
+			accessSecret = res.AccessSecret
+			region = res.Region
 		}
 	} else {
+		localRepoPath, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
+		accessKeyID = cluster.Conf.BackupResticAwsAccessKeyId
+		accessSecret = cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret")
+		region = cluster.Conf.BackupResticAwsRegion
 		if localRepoPath != "" {
 			repoPath = localRepoPath
 			if appendCluster && shouldAppendClusterNameLocal(repoPath, cluster.Name) {
@@ -443,9 +589,9 @@ func (cluster *Cluster) ResticGetEnv() []string {
 		repoPath,
 		password,
 		cacheDir,
-		cluster.Conf.BackupResticAwsAccessKeyId,
-		cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"),
-		cluster.Conf.BackupResticAwsRegion,
+		accessKeyID,
+		accessSecret,
+		region,
 		cluster.Conf.BackupResticAdditionalEnv,
 	)
 }
@@ -454,43 +600,45 @@ func (cluster *Cluster) ResticGetEnv() []string {
 // When clearBackoff is true, the init error backoff counter is also reset
 // (used when credentials/config may have changed). When false (manual check path),
 // the backoff state is preserved to avoid resetting throttling unintentionally.
-func (cluster *Cluster) reloadResticEnvCore(clearBackoff bool) {
+func (cluster *Cluster) reloadResticEnvCore(clearBackoff bool) error {
 	if cluster.ResticManager == nil {
-		return
+		return nil
+	}
+	var s3Res *resticS3Resolution
+	if cluster.Conf.BackupResticAws {
+		res, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+		if err != nil {
+			return err // invalid S3 config — leave manager entirely unchanged
+		}
+		s3Res = &res
 	}
 	cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
-	bucket := ""
-	prefix := ""
-	endpoint := ""
-	if cluster.Conf.BackupResticAws && strings.TrimSpace(cluster.Conf.BackupResticAwsBucket) != "" {
-		_, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
-		_, prefix = buildResticS3RepoSpec(
-			cluster.Conf.BackupResticAwsEndpoint,
-			cluster.Conf.BackupResticAwsBucket,
-			cluster.Conf.BackupResticAwsPrefix,
-			cluster.Name,
-			appendCluster,
+	if s3Res != nil {
+		cluster.ResticManager.SetAwsConfig(
+			s3Res.AccessKeyID,
+			s3Res.AccessSecret,
+			s3Res.Region,
+			s3Res.Endpoint,
+			s3Res.Bucket,
+			s3Res.Prefix,
 		)
-		bucket = strings.TrimSpace(cluster.Conf.BackupResticAwsBucket)
-		endpoint = strings.TrimSpace(cluster.Conf.BackupResticAwsEndpoint)
+	} else {
+		cluster.ResticManager.SetAwsConfig("", "", "", "", "", "")
 	}
-	cluster.ResticManager.SetAwsConfig(
-		cluster.Conf.BackupResticAwsAccessKeyId,
-		cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"),
-		cluster.Conf.BackupResticAwsRegion,
-		endpoint,
-		bucket,
-		prefix,
-	)
 	if clearBackoff {
 		cluster.ResticManager.ClearInitErrorBackoffManual()
 	}
 	cluster.ResticManager.ClearRepoState()
 	cluster.ResticManager.AutoInit = cluster.Conf.BackupResticAutoInit
+	return nil
 }
 
-func (cluster *Cluster) ReloadResticEnv() {
-	cluster.reloadResticEnvCore(true)
+func (cluster *Cluster) ReloadResticEnv() error {
+	// Invalidate the boot-probe S3 mode cache so that any config change applied
+	// through the API is not silently overridden by a stale startup probe result.
+	// The startup path calls reloadResticEnvCore directly and is unaffected.
+	cluster.resolvedS3Mode = ""
+	return cluster.reloadResticEnvCore(true)
 }
 
 func (cluster *Cluster) CheckResticInstallation() {
@@ -532,10 +680,142 @@ func (cluster *Cluster) CheckResticErrors() {
 		case backupmgr.UnlockTask:
 			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic unlock error: %s", err)
+		case backupmgr.CopyTask:
+			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic repository copy error: %s", err)
 		default:
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unknown restic task error: %s", err)
 		}
 	}
+}
+
+// resticResolveSavedCopySource resolves the cluster's currently stored configuration
+// for the given backend type into an effective ResticCopySourceOption. The resolved
+// option is frozen in memory before queueing so later config changes cannot alter
+// the already-queued task (Guardrail S6). Secrets are never exposed to the caller
+// beyond the returned struct (Guardrail S0/S3).
+//
+// requestedMode must be config.ConstBackupArchiveModeResticLocal or
+// config.ConstBackupArchiveModeResticAws. For Local/SFTP, the effective mode in the
+// returned option may be upgraded to restic-sftp when the resolved path matches
+// SFTP syntax. keyHint is passed through unchanged.
+func (cluster *Cluster) resticResolveSavedCopySource(requestedMode, keyHint string) (backupmgr.ResticCopySourceOption, error) {
+	password := cluster.Conf.GetDecryptedValue("backup-restic-password")
+	if password == "" {
+		return backupmgr.ResticCopySourceOption{}, fmt.Errorf("saved source config is incomplete: backup-restic-password is empty")
+	}
+
+	switch requestedMode {
+	case config.ConstBackupArchiveModeResticLocal:
+		localRepoPath, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
+		var repoPath string
+		if localRepoPath != "" {
+			repoPath = localRepoPath
+			if appendCluster && shouldAppendClusterNameLocal(repoPath, cluster.Name) {
+				repoPath = filepath.Join(repoPath, cluster.Name)
+			}
+		} else {
+			repoPath = filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
+		}
+		if repoPath == "" {
+			return backupmgr.ResticCopySourceOption{}, fmt.Errorf("saved Local/SFTP source config is incomplete: effective repository path could not be resolved")
+		}
+		inferredMode := config.ConstBackupArchiveModeResticLocal
+		if config.IsSftpResticRepository(repoPath) {
+			inferredMode = config.ConstBackupArchiveModeResticSftp
+		}
+		return backupmgr.ResticCopySourceOption{
+			Mode:       inferredMode,
+			Repository: repoPath,
+			Password:   password,
+			KeyHint:    keyHint,
+		}, nil
+
+	case config.ConstBackupArchiveModeResticAws:
+		// Use the shared S3 resolver so that copy/migration obeys the same
+		// backup-restic-s3-mode selector as the active destination (Guardrail M3).
+		// We resolve against the stored config directly rather than routing through
+		// resolveResticRepoPolicy's BackupResticAws gate, because the operator may
+		// have since switched the destination away from AWS while the saved-source
+		// preset still points at an S3 repository.  We temporarily override the aws
+		// flag to force S3 resolution.
+		confCopy := *cluster.Conf
+		confCopy.BackupResticAws = true
+		res, err := resolveResticS3(&confCopy, cluster.Name, cluster)
+		if err != nil {
+			return backupmgr.ResticCopySourceOption{}, fmt.Errorf("saved S3 source config is incomplete: %w", err)
+		}
+		return backupmgr.ResticCopySourceOption{
+			Mode:     config.ConstBackupArchiveModeResticAws,
+			Password: password,
+			KeyHint:  keyHint,
+			AWS: &backupmgr.ResticCopySourceAWSOption{
+				Endpoint:     res.Endpoint,
+				Bucket:       res.Bucket,
+				Prefix:       res.Prefix,
+				AccessKeyID:  res.AccessKeyID,
+				AccessSecret: res.AccessSecret,
+				Region:       res.Region,
+			},
+		}, nil
+
+	default:
+		return backupmgr.ResticCopySourceOption{}, fmt.Errorf("saved-source preset is not supported for mode %q: use restic-local or restic-aws", requestedMode)
+	}
+}
+
+// ResticCopyRepoWithOptions validates and enqueues a repository copy task.
+// Static validation (mode, repo string, password, S3 credential mismatch) is
+// performed before queueing. One destination-state case is also preflight-checked
+// synchronously: init_destination+copy_chunker_params against an already-initialized
+// repo (G4). Other destination failures (e.g. corrupt/inaccessible repo) are still
+// detected asynchronously inside the worker.
+func (cluster *Cluster) ResticCopyRepoWithOptions(opt backupmgr.ResticCopyOption) error {
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("restic backup is not enabled")
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	// When use_saved_config=true, resolve the cluster's stored config for the
+	// requested backend type into a concrete source option before validation/queueing.
+	// Hybrid payloads that mix use_saved_config with inline manual fields are rejected
+	// to avoid ambiguous resolution (Guardrail S1/S3).
+	if opt.Source.UseSavedConfig {
+		src := opt.Source
+		hasInline := src.Repository != "" || src.Password != "" || src.AWS != nil
+		if hasInline {
+			return fmt.Errorf("saved-source payload is invalid: inline repository/password/aws fields are not allowed when use_saved_config=true")
+		}
+		resolved, err := cluster.resticResolveSavedCopySource(src.Mode, src.KeyHint)
+		if err != nil {
+			return err
+		}
+		opt.Source = resolved
+	}
+
+	if err := cluster.ResticManager.ValidateCopyOption(opt); err != nil {
+		return err
+	}
+
+	// G4: applying copy_chunker_params to an already-initialized destination is an
+	// error that can be detected synchronously, so reject it here rather than letting
+	// it fail silently inside the worker after the HTTP handler has returned 200.
+	if opt.InitDestination && opt.CopyChunkerParams {
+		result := cluster.ResticManager.ValidateRepoConfigManual()
+		if result.Status == backupmgr.ManualCheckStatusOK {
+			return fmt.Errorf("destination repository is already initialized; copy_chunker_params cannot be applied to an existing repository")
+		}
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+		"Queuing restic repository copy from source mode %q", opt.Source.Mode)
+	if err := cluster.ResticManager.AddCopyTask(opt); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (cluster *Cluster) CheckResticConfigBackup() {
@@ -551,7 +831,7 @@ func (cluster *Cluster) CheckResticConfigBackup() {
 // ensureResticManagerBase creates a fresh ResticManager, applies configuration, assigns it
 // to cluster.ResticManager, and calls ReloadResticEnv. It has no startup side effects
 // (no mount recovery, no unlock/fetch queuing, no auto-init).
-func (cluster *Cluster) ensureResticManagerBase() {
+func (cluster *Cluster) ensureResticManagerBase() error {
 	resticManager := backupmgr.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.MessageChan, config.ConstLogModRestic)
 	if err := cluster.Conf.ValidateResticPermissions(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Invalid restic permission config: %s", err)
@@ -564,7 +844,52 @@ func (cluster *Cluster) ensureResticManagerBase() {
 	resticManager.MountRecoveryEnabled = cluster.Conf.BackupResticMountRecoveryEnabled
 	resticManager.AutoDetectAndDisableMount()
 	cluster.ResticManager = resticManager
-	cluster.ReloadResticEnv()
+	return cluster.ReloadResticEnv()
+}
+
+// resolveResticS3AutoProbe probes new and legacy S3 candidates in order and
+// returns the first usable result.  "Usable" means the probe returned nil
+// (repo initialized) or an "initialization required" error (bucket reachable
+// but not yet initialized).  Called during StartResticManager when mode is auto
+// so the runtime applies the actually-working config instead of guessing from
+// field presence alone.
+func (cluster *Cluster) resolveResticS3AutoProbe() (resticS3Resolution, error) {
+	newConf := *cluster.Conf
+	newConf.BackupResticS3Mode = config.ConstResticS3ModeNew
+	newRes, newCandErr := resolveResticS3(&newConf, cluster.Name, nil)
+
+	if newCandErr == nil {
+		probeErr := cluster.ResticManager.ProbeS3Candidate(
+			newRes.Bucket, newRes.Prefix, newRes.Endpoint,
+			newRes.AccessKeyID, newRes.AccessSecret, newRes.Region)
+		if backupmgr.S3ProbeUsable(probeErr) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+				"Restic S3 auto-probe: new config is usable (bucket=%s)", newRes.Bucket)
+			return newRes, nil
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+			"Restic S3 auto-probe: new config not reachable (%v); trying legacy", probeErr)
+	}
+
+	legacyConf := *cluster.Conf
+	legacyConf.BackupResticS3Mode = config.ConstResticS3ModeLegacy
+	legacyRes, legacyCandErr := resolveResticS3(&legacyConf, cluster.Name, nil)
+
+	if legacyCandErr == nil {
+		probeErr := cluster.ResticManager.ProbeS3Candidate(
+			legacyRes.Bucket, legacyRes.Prefix, legacyRes.Endpoint,
+			legacyRes.AccessKeyID, legacyRes.AccessSecret, legacyRes.Region)
+		if backupmgr.S3ProbeUsable(probeErr) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+				"Restic S3 auto-probe: legacy config is usable (bucket=%s)", legacyRes.Bucket)
+			return legacyRes, nil
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+			"Restic S3 auto-probe: legacy config not reachable (%v)", probeErr)
+	}
+
+	return resticS3Resolution{}, fmt.Errorf(
+		"S3 auto-probe: no usable configuration found (new: %v; legacy: %v)", newCandErr, legacyCandErr)
 }
 
 func (cluster *Cluster) StartResticManager() error {
@@ -572,10 +897,40 @@ func (cluster *Cluster) StartResticManager() error {
 		return nil
 	}
 
-	cluster.ensureResticManagerBase()
+	if err := cluster.ensureResticManagerBase(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Restic env reload failed at startup: %s", err)
+	}
 	if cluster.ResticManager.RecoverMountStateOnStartup() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Recovered restic mount state on startup")
 	}
+
+	// For S3 auto mode, probe both candidates before committing to one so the
+	// runtime uses the config that actually works, not just whichever fields
+	// happen to be populated (Issue 2 fix).
+	if cluster.Conf.BackupResticAws && cluster.Conf.BackupResticS3Mode == config.ConstResticS3ModeAuto {
+		if res, err := cluster.resolveResticS3AutoProbe(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+				"Restic S3 auto-probe failed at startup: %s; falling back to presence-based resolution", err)
+		} else {
+			cluster.resolvedS3Mode = res.Mode
+			// Reload env so the manager immediately uses the probe-winning config.
+			if err := cluster.reloadResticEnvCore(true); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+					"Restic env reload failed after S3 auto-probe: %s", err)
+			}
+		}
+	}
+
+	// Register the boot-fetch success hook.  FetchRepo() fires it on the very
+	// first successful call — regardless of which task path called FetchRepo()
+	// (UnlockTask→FetchRepo or an explicit FetchTask).  The hook clears itself
+	// after the first invocation (Issue 1 fix).
+	if cluster.Conf.BackupResticAws {
+		cluster.ResticManager.OnBootFetchSuccess = func() {
+			cluster.promoteResticS3ModeOnBootSuccess()
+		}
+	}
+
 	cluster.ResticManager.AddUnlockTask() // Queue unlock first to avoid fetch-before-unlock race on startup.
 	go cluster.ResticFetchRepo()
 	return nil
@@ -583,6 +938,55 @@ func (cluster *Cluster) StartResticManager() error {
 
 func (cluster *Cluster) ResticInitRepo(force bool) error {
 	return cluster.ResticInitRepoWithOptions(backupmgr.ResticInitOption{Force: force})
+}
+
+// promoteResticS3ModeOnBootSuccess is called once when the startup fetch
+// succeeds.  It promotes backup-restic-s3-mode from "auto" to the concrete
+// mode determined during startup (either from the probe result stored in
+// resolvedS3Mode, or from the current resolver as a fallback) and persists
+// the change through ConfigManager (Guardrails M1, M2, M4).  The hook clears
+// itself so later passive fetches cannot retrigger it.
+func (cluster *Cluster) promoteResticS3ModeOnBootSuccess() {
+	// Clear the hook first so it cannot fire again.
+	if cluster.ResticManager != nil {
+		cluster.ResticManager.Mutex.Lock()
+		cluster.ResticManager.OnBootFetchSuccess = nil
+		cluster.ResticManager.Mutex.Unlock()
+	}
+
+	// Only promote when the selector is still "auto".
+	if cluster.Conf.BackupResticS3Mode != config.ConstResticS3ModeAuto {
+		return
+	}
+
+	// Only applies to S3 repositories (Guardrail M2).
+	if !cluster.Conf.BackupResticAws {
+		return
+	}
+
+	// Prefer the mode that was determined by the startup probe; fall back to
+	// the presence-based resolver only if no probe was run.
+	promoteTo := cluster.resolvedS3Mode
+	if promoteTo == "" {
+		res, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+				"Restic S3 boot promotion skipped: could not resolve S3 mode: %s", err)
+			return
+		}
+		promoteTo = res.Mode
+	}
+
+	cluster.Conf.BackupResticS3Mode = promoteTo
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+		"Restic S3 mode promoted from auto to %q after successful startup fetch", promoteTo)
+
+	if cluster.ConfigManager != nil && cluster.Conf.ConfRewrite {
+		cluster.ConfigManager.SaveConfig(cluster, false)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+			"Restic S3 mode resolved to %q in memory; config rewrite is disabled, on-disk value remains auto", promoteTo)
+	}
 }
 
 func (cluster *Cluster) ResticInitRepoWithOptions(options backupmgr.ResticInitOption) error {
@@ -600,6 +1004,30 @@ func (cluster *Cluster) ResticInitRepoWithOptions(options backupmgr.ResticInitOp
 	}
 
 	return err
+}
+
+// ResticWipeRepoWithOptions destroys the contents of the cluster's configured restic repository.
+// The repository is left empty and uninitialized; no automatic re-initialization is performed.
+func (cluster *Cluster) ResticWipeRepoWithOptions(opt backupmgr.ResticWipeOption) error {
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("restic backup is not enabled")
+	}
+	if cluster.ResticManager == nil {
+		return fmt.Errorf("restic manager is not initialized")
+	}
+	return cluster.ResticManager.WipeRepoWithOptions(opt)
+}
+
+// ResticWipePreview runs the non-destructive wipe preflight and returns a preview
+// describing the effective target and whether the current state permits a wipe.
+func (cluster *Cluster) ResticWipePreview() backupmgr.WipePreviewResult {
+	if cluster.ResticManager == nil {
+		return backupmgr.WipePreviewResult{
+			CanWipe: false,
+			Message: "restic manager is not initialized",
+		}
+	}
+	return cluster.ResticManager.ComputeWipePreview()
 }
 
 func (cluster *Cluster) AddPurgeTask(snapshotID string) error {
@@ -762,11 +1190,14 @@ func (cluster *Cluster) ResticFetchRepo() {
 	}
 }
 
-// ResticCheckConfigManual performs a read-only manual validation of the current restic
-// repository configuration. When cluster.ResticManager is nil it is created via
-// ensureResticManagerBase (no mount recovery, no unlock/fetch tasks, no auto-init).
-// Queues a fetch only when validation succeeds.
-func (cluster *Cluster) ResticCheckConfigManual() backupmgr.ManualCheckResult {
+// ResticCheckConfigManual performs a manual validation of the current restic repository
+// configuration. When cluster.ResticManager is nil it is created via ensureResticManagerBase
+// (no mount recovery, no unlock/fetch tasks, no auto-init).
+// When skipFetch is false and validation succeeds, a fetch task is queued.
+// The returned ManualCheckResult includes additive wipe-preview fields (Backend,
+// IsS3EmptyPrefix, CanWipe, WipeMessage) so the UI can render the wipe confirmation
+// modal from a single call to this endpoint.
+func (cluster *Cluster) ResticCheckConfigManual(skipFetch bool) backupmgr.ManualCheckResult {
 	if !cluster.Conf.BackupRestic {
 		return backupmgr.ManualCheckResult{
 			Status:  backupmgr.ManualCheckStatusError,
@@ -775,16 +1206,38 @@ func (cluster *Cluster) ResticCheckConfigManual() backupmgr.ManualCheckResult {
 	}
 
 	if cluster.ResticManager == nil {
-		cluster.ensureResticManagerBase()
+		if err := cluster.ensureResticManagerBase(); err != nil {
+			return backupmgr.ManualCheckResult{
+				Status:  backupmgr.ManualCheckStatusError,
+				Message: fmt.Sprintf("invalid restic configuration: %s", err),
+			}
+		}
 	} else {
 		// Refresh env config without clearing backoff: manual check is read-only
 		// and should not inadvertently reset init throttling state.
-		cluster.reloadResticEnvCore(false)
+		if err := cluster.reloadResticEnvCore(false); err != nil {
+			return backupmgr.ManualCheckResult{
+				Status:  backupmgr.ManualCheckStatusError,
+				Message: fmt.Sprintf("invalid restic configuration: %s", err),
+			}
+		}
 	}
 
 	result := cluster.ResticManager.ValidateRepoConfigManual()
 
-	if result.Status == backupmgr.ManualCheckStatusOK {
+	// Compute wipe preview BEFORE queuing a fetch: ComputeWipePreview rejects
+	// non-empty task queues, so computing it after ResticFetchRepo would make
+	// can_wipe=false on a healthy idle repo — a self-blocking race.
+	preview := cluster.ResticManager.ComputeWipePreview()
+	result.Backend = preview.Backend
+	result.IsS3EmptyPrefix = preview.IsS3EmptyPrefix
+	result.CanWipe = preview.CanWipe
+	result.WipeMessage = preview.Message
+	if result.RepoPath == "" {
+		result.RepoPath = preview.RepoPath
+	}
+
+	if result.Status == backupmgr.ManualCheckStatusOK && !skipFetch {
 		cluster.ResticFetchRepo()
 		result.FetchQueued = true
 		result.Message = "Repository configuration verified. Snapshot refresh queued."
@@ -1749,7 +2202,9 @@ func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Changing restic password for cluster %s", cluster.Name)
 
-	cluster.ReloadResticEnv()
+	if err := cluster.ReloadResticEnv(); err != nil {
+		return fmt.Errorf("invalid restic configuration: %w", err)
+	}
 
 	keylist, err := cluster.ResticManager.GetRepoKeyList()
 	if err != nil {
@@ -1814,7 +2269,9 @@ func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "New restic password saved in configuration successfully. Removing old key from repository using new password.")
 
 	// Reload env with new password
-	cluster.ReloadResticEnv()
+	if err := cluster.ReloadResticEnv(); err != nil {
+		return fmt.Errorf("invalid restic configuration after password change: %w", err)
+	}
 
 	// Remove old key using new password
 	err = cluster.ResticManager.RemoveRepoKey(oldkeyid)

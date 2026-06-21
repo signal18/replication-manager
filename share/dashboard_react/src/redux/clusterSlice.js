@@ -463,10 +463,10 @@ export const resticInitRepo = createGuardedAsyncThunk(
 
 export const resticCheckConfig = createGuardedAsyncThunk(
   'cluster/resticCheckConfig',
-  async ({ clusterName }, thunkAPI) => {
+  async ({ clusterName, skipFetch }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.resticCheckConfig(clusterName, baseURL)
+      const { data, status } = await clusterService.resticCheckConfig(clusterName, baseURL, skipFetch)
       if (!status || status < 200 || status >= 300) {
         const msg = (data && typeof data === 'object' && data.message) ? data.message : 'Check repository request failed'
         return thunkAPI.rejectWithValue({ errorMessage: msg, errorStatus: status || 500 })
@@ -477,6 +477,55 @@ export const resticCheckConfig = createGuardedAsyncThunk(
     }
   }
 )
+
+// Plain thunk, not createAsyncThunk: payload with secrets stays only in the call-stack closure
+// and is never stored in any module-level structure or placed in Redux action metadata.
+// showSuccessBanner/showErrorBanner only use thunkAPI.dispatch, so { dispatch } suffices.
+export const resticCopyRepo = (clusterName, payload) => async (dispatch, getState) => {
+  const thunkAPI = { dispatch }
+  try {
+    const baseURL = getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.resticCopyRepo(clusterName, payload, baseURL)
+    if (!status || status < 200 || status >= 300) {
+      const msg = (data && typeof data === 'object' && data.message)
+        ? data.message
+        : 'Restic repository copy failed!'
+      showErrorBanner('Restic repository copy failed!', msg, thunkAPI)
+      throw { errorMessage: msg, errorStatus: status || 500 }
+    }
+    showSuccessBanner('Restic repository copy queued!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    if (!error.errorMessage) {
+      showErrorBanner('Restic repository copy failed!', error, thunkAPI)
+    }
+    throw error
+  }
+}
+
+// Plain thunk — payload with confirmation text stays only in the call-stack closure
+// and is never stored in Redux action metadata.
+export const resticWipeRepo = (clusterName, payload) => async (dispatch, getState) => {
+  const thunkAPI = { dispatch }
+  try {
+    const baseURL = getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.resticWipeRepo(clusterName, payload, baseURL)
+    if (!status || status < 200 || status >= 300) {
+      const msg = (data && typeof data === 'object' && data.message)
+        ? data.message
+        : (typeof data === 'string' && data) ? data : 'Restic repository wipe failed!'
+      showErrorBanner('Restic repository wipe failed!', msg, thunkAPI)
+      throw { errorMessage: msg, errorStatus: status || 500 }
+    }
+    showSuccessBanner('Restic repository wiped successfully!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    if (!error.errorMessage) {
+      showErrorBanner('Restic repository wipe failed!', error, thunkAPI)
+    }
+    throw error
+  }
+}
 
 export const getJobs = createGuardedAsyncThunk('cluster/getJobs', async ({ clusterName }, thunkAPI) => {
   try {

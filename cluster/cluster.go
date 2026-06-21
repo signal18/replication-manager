@@ -299,6 +299,7 @@ type Cluster struct {
 	failLoadP12Cert                     bool                        `json:"-"`
 	Mailer                              *mailer.Mailer              `json:"-"`
 	ResticManager                       *backupmgr.ResticManager    `json:"-"`
+	resolvedS3Mode                      string                      // probe-resolved S3 mode during auto startup; "" if not yet probed
 	MessageChan                         chan sharedlog.Message      `json:"-"`
 	ErrorConfigs                        config.ErrorConfigs         `json:"-"` //To store error config
 	Partner                             *config.Partner             `json:"partner" groups:"web"`

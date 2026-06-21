@@ -93,6 +93,8 @@ const resticTaskType = (rtt) => {
       return "restore"
     case 7:
       return "check"
+    case 8:
+      return "copy"
     default:
       return "Unknown"
   }
@@ -462,27 +464,43 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       return []
     }
 
+    const isCopyTask = currentResticTask.task_type === 8
     const isBackupTask = currentResticTask.task_type === 2
+    const phase = currentResticTask.phase
+
     const percentDone = (() => {
-      if (!isBackupTask || typeof currentResticTask.percent_done !== 'number') {
-        return 'Running'
+      const hasPercent = typeof currentResticTask.percent_done === 'number'
+
+      if (phase === 'init_destination') {
+        return (
+          <HStack spacing={3} alignItems="center">
+            <Progress size="sm" flex="1" isIndeterminate />
+            <Box minWidth="3.5rem" textAlign="right">Preparing...</Box>
+          </HStack>
+        )
       }
 
-      const clamped = Math.min(Math.max(currentResticTask.percent_done, 0), 1)
-      const percentValue = Math.round(clamped * 100)
+      if ((isBackupTask || (isCopyTask && phase === 'copy')) && hasPercent) {
+        const clamped = Math.min(Math.max(currentResticTask.percent_done, 0), 1)
+        const percentValue = Math.round(clamped * 100)
+        return (
+          <HStack spacing={3} alignItems="center">
+            <Progress value={percentValue} size="sm" flex="1" />
+            <Box minWidth="3.5rem" textAlign="right">{percentValue}%</Box>
+          </HStack>
+        )
+      }
 
-      return (
-        <HStack spacing={3} alignItems="center">
-          <Progress value={percentValue} size="sm" flex="1" />
-          <Box minWidth="3.5rem" textAlign="right">{percentValue}%</Box>
-        </HStack>
-      )
+      return 'Running'
     })()
     const bytesValue = currentResticTask.total_bytes
       ? `${formatBytes(currentResticTask.bytes_done || 0)} / ${formatBytes(currentResticTask.total_bytes)}`
       : '-'
     const filesValue = currentResticTask.total_files
       ? `${currentResticTask.files_done || 0} / ${currentResticTask.total_files}`
+      : '-'
+    const packsValue = currentResticTask.total_packs
+      ? `${currentResticTask.packs_done || 0} / ${currentResticTask.total_packs}`
       : '-'
     const startedAt = currentResticTask.started_at ? formatDate(currentResticTask.started_at) : '-'
     const completedAt = currentResticTask.completed_at ? formatDate(currentResticTask.completed_at) : '-'
@@ -493,46 +511,23 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         : '-'
 
     return [
-      {
-        key: 'Task ID',
-        value: currentResticTask.task_id || '-'
-      },
-      {
-        key: 'Task Type',
-        value: resticTaskType(currentResticTask.task_type)
-      },
-      {
-        key: 'Status',
-        value: currentResticTask.status || '-'
-      },
-      {
-        key: 'Progress',
-        value: percentDone
-      },
-      {
-        key: 'Bytes',
-        value: bytesValue
-      },
-      {
-        key: 'Files',
-        value: filesValue
-      },
-      {
-        key: 'Snapshot ID',
-        value: currentResticTask.snapshot_id || '-'
-      },
-      {
-        key: 'Duration',
-        value: duration
-      },
-      {
-        key: 'Started',
-        value: startedAt
-      },
-      {
-        key: 'Completed',
-        value: completedAt
-      }
+      { key: 'Task ID', value: currentResticTask.task_id || '-' },
+      { key: 'Task Type', value: resticTaskType(currentResticTask.task_type) },
+      { key: 'Status', value: currentResticTask.status || '-' },
+      ...(currentResticTask.phase ? [{ key: 'Phase', value: currentResticTask.phase }] : []),
+      { key: 'Progress', value: percentDone },
+      { key: 'Bytes', value: bytesValue },
+      ...(isCopyTask
+        ? [{ key: 'Packs', value: packsValue }]
+        : [{ key: 'Files', value: filesValue }]),
+      ...(isCopyTask && currentResticTask.total_snapshots > 0 ? [{
+        key: 'Snapshots',
+        value: `${currentResticTask.completed_snapshots || 0} / ${currentResticTask.total_snapshots}`
+      }] : []),
+      { key: 'Snapshot ID', value: currentResticTask.snapshot_id || '-' },
+      { key: 'Duration', value: duration },
+      { key: 'Started', value: startedAt },
+      { key: 'Completed', value: completedAt }
     ]
   }, [currentResticTask])
 
