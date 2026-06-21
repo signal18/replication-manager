@@ -579,6 +579,10 @@ func (cluster *Cluster) CheckAlert(state state.State, resolved bool) {
 }
 
 func (cluster *Cluster) SendAlert(alert alert.Alert) error {
+	if cluster.Status != ConstMonitorActif && cluster.IsDiscovered() {
+		return nil
+	}
+
 	if cluster.IsAlertDisable {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cancel alert caused by alert disabled from scheduler")
 		return nil
