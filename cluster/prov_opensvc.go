@@ -94,7 +94,8 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.RplMgrUser, svc.RplMgrPassword = misc.SplitPair(cluster.Conf.ProvUser)
 	svc.RplMgrCodeApp = cluster.Conf.ProvCodeApp
 	svc.ProvAgents = cluster.Conf.ProvAgents
-	svc.ProvMem = cluster.Conf.ProvMem
+	provMemMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+	svc.ProvMem = strconv.Itoa(provMemMB)
 	svc.ProvPwd = cluster.GetDbPass()
 	svc.ProvIops = cluster.Conf.ProvIops
 	svc.ProvCores = cluster.Conf.ProvCores
