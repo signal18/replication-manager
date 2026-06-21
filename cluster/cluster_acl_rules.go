@@ -205,6 +205,7 @@ var clusterACLRules = []ACLRule{
 	// Intervention
 	{"/actions/intervention-start", nil, []string{config.GrantDBMaintenance}},
 	{"/actions/intervention-end", nil, []string{config.GrantDBMaintenance}},
+	{"/actions/set-active-status", nil, []string{config.GrantClusterSettings}},
 
 	{"/actions/rolling", nil, []string{config.GrantClusterRolling}},
 	{"/actions/cancel-rolling-restart", nil, []string{config.GrantClusterRolling}},

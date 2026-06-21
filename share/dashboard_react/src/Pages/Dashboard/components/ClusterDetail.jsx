@@ -504,13 +504,13 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
             <Text>Cluster</Text>
             <Box ml='auto'>
               {selectedCluster?.activePassiveStatus === 'A' ? (
-                <TagPill colorScheme='green' text={'Active'} onClick={readOnly ? undefined : () => {
+                <TagPill colorScheme='green' text={'Active'} onClick={readOnly || !g['cluster-settings'] ? undefined : () => {
                   openConfirmModal()
                   setConfirmTitle('Switch cluster to standby?')
                   setConfirmHandler(() => () => clusterService.setActiveStatus(selectedCluster?.name, baseURL))
                 }} />
               ) : selectedCluster?.activePassiveStatus === 'S' ? (
-                <TagPill colorScheme='orange' text={'Standby'} onClick={readOnly ? undefined : () => {
+                <TagPill colorScheme='orange' text={'Standby'} onClick={readOnly || !g['cluster-settings'] ? undefined : () => {
                   openConfirmModal()
                   setConfirmTitle('Switch cluster to active?')
                   setConfirmHandler(() => () => clusterService.setActiveStatus(selectedCluster?.name, baseURL))
