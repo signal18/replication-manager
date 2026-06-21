@@ -65,6 +65,7 @@ export const clusterService = {
   cancelRollingReprov,
   startIntervention,
   endIntervention,
+  setActiveStatus,
   bootstrapMasterSlave,
   bootstrapMasterSlaveNoGtid,
   bootstrapMultiMaster,
@@ -391,6 +392,10 @@ function startIntervention(clusterName, reason, baseURL, startAt, endAt) {
 
 function endIntervention(clusterName, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/actions/intervention-end`)
+}
+
+function setActiveStatus(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/set-active-status`)
 }
 
 function bootstrapMasterSlave(clusterName, baseURL) {

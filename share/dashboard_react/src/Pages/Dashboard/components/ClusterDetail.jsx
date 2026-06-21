@@ -38,6 +38,7 @@ import SetCredentialsModal from '../../../components/Modals/SetCredentialsModal'
 import NewClusterModal from '../../../components/Modals/NewClusterModal'
 import RMIconButton from '../../../components/RMIconButton'
 import { HiCog } from 'react-icons/hi'
+import { clusterService } from '../../../services/clusterService'
 
 function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings }) {
   const dispatch = useDispatch()
@@ -48,6 +49,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
   const clusterProxies = useSelector((state) => state.cluster.clusterProxies)
   const menuActionsLoading = useSelector((state) => state.cluster.loadingStates.menuActions)
   const rollingActionLoading = useSelector((state) => state.cluster.loadingStates.rollingAction)
+  const baseURL = useSelector((state) => state?.auth?.baseURL)
 
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [isNewServerModalOpen, setIsNewServerModalOpen] = useState(false)
@@ -502,9 +504,17 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
             <Text>Cluster</Text>
             <Box ml='auto'>
               {selectedCluster?.activePassiveStatus === 'A' ? (
-                <TagPill colorScheme='green' text={'Active'} />
+                <TagPill colorScheme='green' text={'Active'} onClick={readOnly ? undefined : () => {
+                  openConfirmModal()
+                  setConfirmTitle('Switch cluster to standby?')
+                  setConfirmHandler(() => () => clusterService.setActiveStatus(selectedCluster?.name, baseURL))
+                }} />
               ) : selectedCluster?.activePassiveStatus === 'S' ? (
-                <TagPill colorScheme='orange' text={'Standby'} />
+                <TagPill colorScheme='orange' text={'Standby'} onClick={readOnly ? undefined : () => {
+                  openConfirmModal()
+                  setConfirmTitle('Switch cluster to active?')
+                  setConfirmHandler(() => () => clusterService.setActiveStatus(selectedCluster?.name, baseURL))
+                }} />
               ) : null}
             </Box>
           </>
