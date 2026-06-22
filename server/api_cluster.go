@@ -10390,10 +10390,20 @@ func (repman *ReplicationManager) handlerMuxSetActiveStatus(w http.ResponseWrite
 		if mycluster.IsActive() {
 			mycluster.SetActiveStatus(cluster.ConstMonitorStandby)
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster switched to standby via API")
+			if mycluster.Conf.Arbitration {
+				if err := mycluster.ForceArbitratorElection(); err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Arbitrator election after standby toggle failed: %s", err)
+				}
+			}
 			w.Write([]byte("Cluster set to standby"))
 		} else {
 			mycluster.SetActiveStatus(cluster.ConstMonitorActif)
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster switched to active via API")
+			if mycluster.Conf.Arbitration {
+				if err := mycluster.ForceArbitratorElection(); err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Arbitrator election after active toggle failed: %s", err)
+				}
+			}
 			w.Write([]byte("Cluster set to active"))
 		}
 	} else {
