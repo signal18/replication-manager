@@ -751,7 +751,7 @@ func (cluster *Cluster) initOrchetratorNodes() {
 
 func (cluster *Cluster) initScheduler() {
 	if cluster.Conf.MonitorScheduler {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting cluster scheduler")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Initializing cluster scheduler")
 		if cluster.scheduler != nil {
 			cluster.scheduler.Stop()
 		}
@@ -769,7 +769,11 @@ func (cluster *Cluster) initScheduler() {
 		cluster.SetSchedulerAlertDisable()
 		cluster.SetSchedulerMonitorSchema()
 		cluster.SetSchedulerMonitorChecksum()
-		cluster.scheduler.Start()
+		if cluster.Status == ConstMonitorActif {
+			cluster.scheduler.Start()
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler initialized but not started, monitor is in standby mode, will start on arbitration win, disable individual jobs as needed")
+		}
 	}
 
 }

@@ -417,6 +417,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxInterventionEnd)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/set-active-status", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetActiveStatus)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/replication/bootstrap/{topology}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxBootstrapReplication)),
@@ -10513,6 +10517,39 @@ func (repman *ReplicationManager) handlerMuxInterventionEnd(w http.ResponseWrite
 			return
 		}
 		w.Write([]byte("Intervention ended"))
+	} else {
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxSetActiveStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+		if mycluster.IsActive() {
+			mycluster.SetActiveStatus(cluster.ConstMonitorStandby)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster switched to standby via API")
+			if mycluster.Conf.Arbitration {
+				if err := mycluster.ForceArbitratorElection(); err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Arbitrator election after standby toggle failed: %s", err)
+				}
+			}
+			w.Write([]byte("Cluster set to standby"))
+		} else {
+			mycluster.SetActiveStatus(cluster.ConstMonitorActif)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster switched to active via API")
+			if mycluster.Conf.Arbitration {
+				if err := mycluster.ForceArbitratorElection(); err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Arbitrator election after active toggle failed: %s", err)
+				}
+			}
+			w.Write([]byte("Cluster set to active"))
+		}
 	} else {
 		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 	}

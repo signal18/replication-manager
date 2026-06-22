@@ -53,16 +53,24 @@ func (cluster *Cluster) Heartbeat(wg *sync.WaitGroup) {
 	}
 }
 
-func (cl *Cluster) ArbitratorElection() error {
-	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
+func (cl *Cluster) ForceArbitratorElection() error {
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, "INFO", "Arbitrator: Forced election requested via API")
+	return cl.arbitratorElection()
+}
 
-	url := "http://" + cl.Conf.ArbitrationSasHosts + "/arbitrator"
+func (cl *Cluster) ArbitratorElection() error {
 	if cl.IsSplitBrainBck != cl.IsSplitBrain {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, "INFO", "Arbitrator: External check requested")
 	} else {
-		// don't need arbitration if split brain status did not change
 		return nil
 	}
+	return cl.arbitratorElection()
+}
+
+func (cl *Cluster) arbitratorElection() error {
+	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
+
+	url := "http://" + cl.Conf.ArbitrationSasHosts + "/arbitrator"
 	var mst string
 	if cl.GetMaster() != nil {
 		mst = cl.GetMaster().URL

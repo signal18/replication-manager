@@ -214,8 +214,11 @@ func (c *Cron) run() {
 	}
 }
 
-// Stop the cron scheduler.
+// Stop the cron scheduler. Safe to call even if Start() was never called.
 func (c *Cron) Stop() {
+	if !c.running {
+		return
+	}
 	c.stop <- struct{}{}
 	c.running = false
 }
