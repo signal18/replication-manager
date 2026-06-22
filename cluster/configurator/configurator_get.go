@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 )
 
@@ -83,10 +84,11 @@ func (configurator *Configurator) GetConfigReplicationDomain(ClusterName string)
 const memReserveMB int64 = 2048
 
 func (configurator *Configurator) getUsableMemoryMB() (int64, error) {
-	containermem, err := strconv.ParseInt(configurator.ClusterConfig.ProvMem, 10, 64)
+	memMB, err := config.ParseUnitMeasurementToInt("M,bytes,required", configurator.ClusterConfig.ProvMem, true)
 	if err != nil {
 		return 0, err
 	}
+	containermem := int64(memMB)
 	usable := containermem - memReserveMB
 	if usable < 0 {
 		usable = 0

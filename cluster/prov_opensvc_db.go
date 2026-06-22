@@ -567,7 +567,9 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 			svccontainer["run_args"] = svccontainer["run_args"] + " --user mysql"
 		}
 		if server.ClusterGroup.Conf.ProvDBDockerRunArgsLimit {
-			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + server.ClusterGroup.Conf.ProvMem + "m --memory-swap=" + server.ClusterGroup.Conf.ProvMem + "m --cpus=" + server.ClusterGroup.Conf.ProvCores + ".0"
+			memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", server.ClusterGroup.Conf.ProvMem, true)
+			memStr := strconv.Itoa(memMB) + "m"
+			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + memStr + " --memory-swap=" + memStr + " --cpus=" + server.ClusterGroup.Conf.ProvCores + ".0"
 			// this need to find the device with df in container
 			//  --device-read-iops=" + server.ClusterGroup.Conf.ProvIops +".0" --device-write-iops=device" + server.ClusterGroup.Conf.ProvIops
 		}
@@ -645,7 +647,8 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 			svcenv["netmask"] = server.ClusterGroup.Conf.ProvNetmask
 		svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
 		svcenv["max_iops"] = server.ClusterGroup.Conf.ProvIops
-		svcenv["max_mem"] = server.ClusterGroup.Conf.ProvMem
+		maxMemMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", server.ClusterGroup.Conf.ProvMem, true)
+		svcenv["max_mem"] = strconv.Itoa(maxMemMB)
 		svcenv["max_cores"] = server.ClusterGroup.Conf.ProvCores
 		svcenv["micro_srv"] = server.ClusterGroup.Conf.ProvType
 		svcenv["gcomm"] = server.ClusterGroup.GetGComm()
