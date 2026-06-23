@@ -78,28 +78,30 @@ function ClusterApp() {
       callServices()
       return
     }
-
     if (clusterApps?.length > 0 && appId) {
       const app = clusterApps.find((x) => x.id === appId)
       setSelectedApp(app)
     }
+  }, [appId, clusterApps])
+
+  useEffect(() => {
     if (clusterData?.apiUsers && loggedUser) {
-        const apiUser = clusterData?.apiUsers[loggedUser.User] || clusterData?.apiUsers[loggedUser.Email]
-        if (apiUser) {
-          const authorizedTabs = [
-            <>
-              <CustomIcon icon={HiArrowNarrowLeft} /> Dashboard
-            </>
-          ]
-          authorizedTabs.push('App Overview')
-          authorizedTabs.push('Storages')
-          authorizedTabs.push('Service OpenSVC')
-          authorizedTabs.push('Templates')
-          tabs.current = authorizedTabs
-          setUser(apiUser)
-        }
+      const apiUser = clusterData?.apiUsers[loggedUser.User] || clusterData?.apiUsers[loggedUser.Email]
+      if (apiUser) {
+        const authorizedTabs = [
+          <>
+            <CustomIcon icon={HiArrowNarrowLeft} /> Dashboard
+          </>
+        ]
+        authorizedTabs.push('App Overview')
+        authorizedTabs.push('Storages')
+        authorizedTabs.push('Service OpenSVC')
+        authorizedTabs.push('Templates')
+        tabs.current = authorizedTabs
+        setUser(apiUser)
+      }
     }
-  }, [appId, clusterApps, loggedUser])
+  }, [clusterData, loggedUser])
 
 
   const handleTabChange = (tabIndex) => {

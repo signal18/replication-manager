@@ -26,6 +26,7 @@ function Dropdown({
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
 
   useEffect(() => {
+    if (isConfirmModalOpen) return
     if (options && selectedValue) {
       const option = options.find((opt) => opt.value == selectedValue || opt.name === selectedValue)
       if (option) {
@@ -33,7 +34,7 @@ function Dropdown({
         setPreviousOption(option)
       }
     }
-  }, [options, selectedValue])
+  }, [options, selectedValue, isConfirmModalOpen])
 
   const handleChange = (option) => {
     setSelectedOption(option)
