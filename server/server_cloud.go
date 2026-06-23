@@ -107,6 +107,10 @@ func (repman *ReplicationManager) AcceptSubscription(userform cluster.UserForm, 
 	cl.LoadAPIUsers()
 	cl.SaveAcls()
 	cl.Save()
+	// Sponsorship is already committed above; treat cap-persist failure as a
+	// warning only — returning an error here would misreport success as failure
+	// and risk double-accept on retry.
+	cl.StartBillingCycle()
 
 	return nil
 }

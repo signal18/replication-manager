@@ -4,7 +4,7 @@ import TagPill from './TagPill'
 function ServerStatus({ state, isVirtualMaster, isBlinking = false }) {
   const [isVirtual, setIsVirtual] = useState('')
   const [colorScheme, setColorScheme] = useState('gray')
-  const [stateValue, setStateValue] = useState(state.toUpperCase())
+  const [stateValue, setStateValue] = useState(state ? state.toUpperCase() : '')
 
   useEffect(() => {
     if (state) {

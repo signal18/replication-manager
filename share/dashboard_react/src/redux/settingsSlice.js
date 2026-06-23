@@ -84,7 +84,7 @@ export const setAppSetting = createAsyncThunk('settings/setAppSetting', async ({
   try {
     // showLoaderBanner(`${setting} `, thunkAPI)
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = value !== "" ? await settingsService.setAppSetting(clusterName, appId, setting, value, baseURL) : await settingsService.clearAppSetting(clusterName, setting, baseURL)
+    const { data, status } = value !== "" ? await settingsService.setAppSetting(clusterName, appId, setting, value, baseURL) : await settingsService.clearAppSetting(clusterName, appId, setting, baseURL)
     if (status === 200) {
       showSuccessBanner(`${setting} changed successfully!`, status, thunkAPI)
       return { data, status }

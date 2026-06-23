@@ -2778,8 +2778,9 @@ export const clusterSlice = createSlice({
         }
 
         if (typePrefix === 'cluster/getClusterApps') {
-          state.clusterApps = action.payload?.data
-          state.clusterAppStates = buildClusterStateSignature(action.payload?.data)
+          const appsData = action.payload?.data
+          state.clusterApps = Array.isArray(appsData) ? appsData : []
+          state.clusterAppStates = buildClusterStateSignature(state.clusterApps)
           return
         }
 

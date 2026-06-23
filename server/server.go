@@ -1257,6 +1257,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "1", "Cpu cores. When cloud18 credit system is used, this is the base for 1 credit")
 	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "1G", "App container memory, value with unit e.g. 256M, 1G. Base for 1 credit in cloud18")
 	flags.StringVar(&conf.ProvAppHATopology, "prov-app-ha-topology", "failover", "High availability mode for application. [failover|flex]")
+	flags.StringVar(&conf.ProvAppSizingMode, "prov-app-sizing-mode", "", "Cluster-level app sizing policy: 'unit' (App Unit credit-based) or 'manual' (direct resource edit). Empty means legacy mode.")
 	flags.StringVar(&conf.ProvAppTemplateRepo, "prov-app-template-repo", "https://github.com/signal18/cloud18-templates", "Git repository for application templates (cluster-scoped)")
 	flags.StringVar(&conf.ProvAppTemplateRepoBranch, "prov-app-template-repo-branch", "main", "Git repository branch for application templates (cluster-scoped)")
 	flags.StringVar(&conf.ProvAppTemplateRepoUser, "prov-app-template-repo-user", "", "Git repository user for application templates (cluster-scoped)")
@@ -2815,6 +2816,7 @@ func (repman *ReplicationManager) Run() error {
 		repman.ProduceGitSupervisionStates()
 		if counter%60 == 0 {
 			repman.ProduceCloud18ConnectivityStates()
+			repman.RefreshCreditsFromCRM()
 		}
 		repman.ProcessAlertStateLifecycle()
 

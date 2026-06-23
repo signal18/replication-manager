@@ -41,6 +41,7 @@ func (cluster *Cluster) SetStatus() {
 	cluster.IsCapturing = cluster.IsInCaptureMode()
 	cluster.MonitorSpin = fmt.Sprintf("%d ", cluster.GetStateMachine().GetHeartbeats())
 	cluster.IsProvision = cluster.IsProvisioned()
+	cluster.IsAppProvisioned()
 	cluster.IsNeedProxiesRestart = cluster.HasRequestProxiesRestart()
 	cluster.IsNeedProxiesReprov = cluster.HasRequestProxiesReprov()
 	cluster.IsNeedDatabasesConfigChange = cluster.HasRequestDBConfigChange()

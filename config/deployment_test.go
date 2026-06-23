@@ -300,3 +300,116 @@ func TestVolumes_GroupByPool_SupportsLegacyDuplicateRows(t *testing.T) {
 		t.Fatalf("grouped[docs] = %v, want docs-volume=docs", grouped["docs"])
 	}
 }
+
+func TestNormalizeVolumeSize(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{"empty inherits default", "", "", false},
+		{"G unit stays G-based", "10G", "10", false},
+		{"T unit converts to G", "2T", "2048", false},
+		{"raw number passthrough", "20", "20", false},
+		{"invalid string", "badvalue", "", true},
+		{"M unit below G rejected", "500M", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := NormalizeVolumeSize(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("NormalizeVolumeSize(%q) expected error, got %q", tc.input, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("NormalizeVolumeSize(%q) unexpected error: %v", tc.input, err)
+			}
+			if got != tc.want {
+				t.Fatalf("NormalizeVolumeSize(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDeployment_InsertVolume_NormalizesSize(t *testing.T) {
+	d := NewDeploymentConfig()
+	d.Storages = *NewStorageMapping()
+
+	err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "data", VolumeDir: "data", Size: "10G"}, 0)
+	if err != nil {
+		t.Fatalf("InsertVolume() error = %v", err)
+	}
+
+	got, err := d.GetVolumeByName("data-volume")
+	if err != nil {
+		t.Fatalf("GetVolumeByName() error = %v", err)
+	}
+	if got.Size != "10" {
+		t.Fatalf("Size = %q, want %q", got.Size, "10")
+	}
+}
+
+func TestDeployment_InsertVolume_BlankSizeInheritsDefault(t *testing.T) {
+	d := NewDeploymentConfig()
+	d.Storages = *NewStorageMapping()
+
+	err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "data", VolumeDir: "data", Size: ""}, 0)
+	if err != nil {
+		t.Fatalf("InsertVolume() error = %v", err)
+	}
+
+	got, _ := d.GetVolumeByName("data-volume")
+	if got.Size != "" {
+		t.Fatalf("expected blank Size to remain blank, got %q", got.Size)
+	}
+}
+
+func TestDeployment_InsertVolume_RejectsInvalidSize(t *testing.T) {
+	d := NewDeploymentConfig()
+	d.Storages = *NewStorageMapping()
+
+	err := d.InsertVolume(&Volume{Name: "data-volume", PoolName: "data", VolumeDir: "data", Size: "invalid"}, 0)
+	if err == nil {
+		t.Fatal("InsertVolume() expected error for invalid size, got nil")
+	}
+}
+
+func TestDeployment_NormalizeVolumeSizes_LoadPath(t *testing.T) {
+	cases := []struct {
+		name      string
+		rawSize   string
+		wantSize  string
+		wantError bool
+	}{
+		{"G unit normalized", "10G", "10", false},
+		{"T unit converted to G", "2T", "2048", false},
+		{"already normalized number", "20", "20", false},
+		{"blank preserved", "", "", false},
+		// Invalid size must NOT be cleared — the raw value is left intact so
+		// the operator can identify and fix it. An error is returned so the
+		// caller can block provisioning.
+		{"invalid returns error and preserves raw value", "badvalue", "badvalue", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := NewDeploymentConfig()
+			d.Storages = *NewStorageMapping()
+			d.Storages.Volumes = Volumes{
+				{Name: "vol", PoolName: "data", VolumeDir: "data", Size: tc.rawSize},
+			}
+			errs := d.NormalizeVolumeSizes()
+			if d.Storages.Volumes[0].Size != tc.wantSize {
+				t.Fatalf("NormalizeVolumeSizes() Size = %q, want %q", d.Storages.Volumes[0].Size, tc.wantSize)
+			}
+			if tc.wantError && len(errs) == 0 {
+				t.Fatal("NormalizeVolumeSizes() expected an error for invalid size, got none")
+			}
+			if !tc.wantError && len(errs) > 0 {
+				t.Fatalf("NormalizeVolumeSizes() unexpected errors: %v", errs)
+			}
+		})
+	}
+}

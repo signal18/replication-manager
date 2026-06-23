@@ -26,7 +26,7 @@ function TextForm({ onSave, id, type, label, value, loading, maxLength = 120, cl
   const [isTreeModalOpen, setIsTreeModalOpen] = useState(false)
 
   useEffect(() => {
-    if (value) {
+    if (value !== undefined && value !== null) {
       setCurrentValue(value)
       setPreviousValue(value)
     }

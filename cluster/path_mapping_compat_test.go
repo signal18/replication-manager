@@ -722,3 +722,132 @@ func TestPathMapsSort_UsesLevelThenPath(t *testing.T) {
 		t.Fatalf("expected level-1 paths sorted by dockerpath, got %q then %q", paths[1].Name, paths[2].Name)
 	}
 }
+
+// TestOpenSVCAppVolumeSection_UsesEnvSizeWhenNoOverride confirms that a volume
+// with a blank Size emits "{env.size}" so provisioning falls back to the
+// app-wide disk size.
+func TestOpenSVCAppVolumeSection_UsesEnvSizeWhenNoOverride(t *testing.T) {
+	vol := &config.Volume{Name: "myapp-data", PoolName: "data", VolumeDir: "data", Size: ""}
+	section := openSVCAppVolumeSection(vol, map[string][]string{}, false)
+	if section["size"] != "{env.size}" {
+		t.Fatalf("expected size={env.size} for blank override, got %q", section["size"])
+	}
+}
+
+// TestOpenSVCAppVolumeSection_UsesOverrideSizeWhenSet confirms that a volume
+// with a non-blank Size emits the override value with a "g" suffix, matching
+// the format used by cluster.GetAppDisk.
+func TestOpenSVCAppVolumeSection_UsesOverrideSizeWhenSet(t *testing.T) {
+	vol := &config.Volume{Name: "myapp-data", PoolName: "data", VolumeDir: "data", Size: "10"}
+	section := openSVCAppVolumeSection(vol, map[string][]string{}, false)
+	if section["size"] != "10g" {
+		t.Fatalf("expected size=10g for override=10, got %q", section["size"])
+	}
+}
+
+// TestOpenSVCAppVolumeSection_SharedVolume confirms that the size override
+// is independent of the shared flag.
+func TestOpenSVCAppVolumeSection_SharedVolume(t *testing.T) {
+	vol := &config.Volume{Name: "shared-data", PoolName: "shared", VolumeDir: "data", Size: "20"}
+	section := openSVCAppVolumeSection(vol, map[string][]string{}, true)
+	if section["size"] != "20g" {
+		t.Fatalf("expected size=20g for shared override=20, got %q", section["size"])
+	}
+	if section["shared"] != "true" {
+		t.Fatalf("expected shared=true, got %q", section["shared"])
+	}
+}
+
+// TestOpenSVCAppVolumeSection_SizeRendering documents the rendering contract of
+// the low-level helper: blank → {env.size}, valid normalized → <n>g, raw
+// invalid → <invalid>g.  This shows why provision-only validation must live
+// upstream (in validateAppVolumeSizes) rather than here, so preview/MD5
+// paths are not affected.
+func TestOpenSVCAppVolumeSection_SizeRendering(t *testing.T) {
+	cases := []struct {
+		size string
+		want string
+	}{
+		{"", "{env.size}"},
+		{"10", "10g"},
+		{"badvalue", "badvalueg"},
+	}
+	for _, tc := range cases {
+		vol := &config.Volume{Name: "vol", PoolName: "data", VolumeDir: "data", Size: tc.size}
+		section := openSVCAppVolumeSection(vol, map[string][]string{}, false)
+		if section["size"] != tc.want {
+			t.Errorf("openSVCAppVolumeSection size=%q: got %q, want %q", tc.size, section["size"], tc.want)
+		}
+	}
+}
+
+// TestValidateAppVolumeSizes_RejectsInvalidSize verifies that the provision-only
+// validator returns an error for an invalid persisted size, including the app
+// name, volume name, and raw value in the message.
+func TestValidateAppVolumeSizes_RejectsInvalidSize(t *testing.T) {
+	app := &App{
+		AppConfig: &config.AppConfig{
+			AppHost: "myapp",
+			Deployment: func() *config.Deployment {
+				d := config.NewDeploymentConfig()
+				d.Storages.Volumes = config.Volumes{
+					{Name: "myapp-data", PoolName: "data", VolumeDir: "data", Size: "badvalue"},
+				}
+				return d
+			}(),
+		},
+	}
+
+	err := validateAppVolumeSizes(app)
+	if err == nil {
+		t.Fatal("validateAppVolumeSizes: expected error for invalid size, got nil")
+	}
+	msg := err.Error()
+	for _, want := range []string{"myapp", "myapp-data", "badvalue"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error message missing %q: %s", want, msg)
+		}
+	}
+}
+
+// TestValidateAppVolumeSizes_AllowsBlankSize verifies that a volume with no
+// size override is accepted (blank means inherit the app-wide default).
+func TestValidateAppVolumeSizes_AllowsBlankSize(t *testing.T) {
+	app := &App{
+		AppConfig: &config.AppConfig{
+			AppHost: "myapp",
+			Deployment: func() *config.Deployment {
+				d := config.NewDeploymentConfig()
+				d.Storages.Volumes = config.Volumes{
+					{Name: "myapp-data", PoolName: "data", VolumeDir: "data", Size: ""},
+				}
+				return d
+			}(),
+		},
+	}
+	if err := validateAppVolumeSizes(app); err != nil {
+		t.Fatalf("validateAppVolumeSizes: unexpected error for blank size: %v", err)
+	}
+}
+
+// TestValidateAppVolumeSizes_AllowsValidSizes verifies that correctly formatted
+// size strings ("10", "10G", "2T") are accepted by the provision validator.
+func TestValidateAppVolumeSizes_AllowsValidSizes(t *testing.T) {
+	for _, size := range []string{"10", "10G", "2T"} {
+		app := &App{
+			AppConfig: &config.AppConfig{
+				AppHost: "myapp",
+				Deployment: func() *config.Deployment {
+					d := config.NewDeploymentConfig()
+					d.Storages.Volumes = config.Volumes{
+						{Name: "myapp-data", PoolName: "data", VolumeDir: "data", Size: size},
+					}
+					return d
+				}(),
+			},
+		}
+		if err := validateAppVolumeSizes(app); err != nil {
+			t.Errorf("validateAppVolumeSizes: unexpected error for size=%q: %v", size, err)
+		}
+	}
+}

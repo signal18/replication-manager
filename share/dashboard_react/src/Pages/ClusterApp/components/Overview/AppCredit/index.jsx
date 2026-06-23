@@ -1,147 +1,79 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import styles from '../styles.module.scss'
-import { Flex, Text, VStack } from '@chakra-ui/react'
-import { useDispatch } from 'react-redux'
-import Gauge from '../../../../../components/Gauge'
-import { convertSize } from '../../../../../utility/common'
-import { setAppSetting } from '../../../../../redux/settingsSlice'
+import { Text, VStack } from '@chakra-ui/react'
 import TableType2 from '../../../../../components/TableType2'
-import ConfirmModal from '../../../../../components/Modals/ConfirmModal'
-import NumberInput from '../../../../../components/NumberInput'
-import { showErrorToast } from '../../../../../redux/toastSlice'
 import PropTypes from 'prop-types'
 
-function AppCredit({ clusterName, appId, config, appConfig, user }) {
-    const dispatch = useDispatch()
-    const [confirmState, setConfirmState] = useState({
-        isOpen: false,
-        title: '',
-        body: '',
-        handler: null
-    })
-    const { isOpen, title, body, handler } = confirmState
+function AppCredit({ config, appConfig }) {
+    const hasCreditsSet = config?.cloud18ApplicationCredits != null
+    const clusterCredits = config?.cloud18ApplicationCredits ?? 0
+    const clusterCreditsUsed = config?.cloud18ApplicationCreditsUsed ?? 0
+    const clusterCreditsPlanned = config?.cloud18ApplicationCreditsPlanned ?? 0
+    const clusterCreditsUnallocated = hasCreditsSet ? Math.max(0, clusterCredits - clusterCreditsPlanned) : 0
+    const appCreditsUsed = appConfig?.provAppCreditUsed ?? 0
+    const provAppCreditPlanned = appConfig?.provAppCreditPlanned || 0
+    const provAppAgents = appConfig?.provAppAgents || ''
+    const appSizingMode = appConfig?.provAppSizingMode ?? ''
+    const clusterSizingMode = config?.provAppSizingMode || ''
+    const isUnitMode = (appSizingMode || clusterSizingMode) === 'unit'
 
-    const creditStep = useMemo(() => {
-        return appConfig?.provAppAgents?.split(",").filter(agent => agent.trim() !== '').length || 0
-    }, [appConfig?.provAppAgents])
+    const agentCount = useMemo(() => {
+        if (!provAppAgents) return 1
+        const list = typeof provAppAgents === 'string'
+            ? provAppAgents.split(',').filter(a => a.trim())
+            : (Array.isArray(provAppAgents) ? provAppAgents.filter(Boolean) : [])
+        return list.length || 1
+    }, [provAppAgents])
 
-    const closeConfirmModal = () => {
-        setConfirmState({
-            isOpen: false,
-            title: '',
-            body: '',
-            handler: null
-        })
-    }
+    const creditIsValid = isUnitMode && agentCount > 0 && provAppCreditPlanned > 0
+        ? provAppCreditPlanned % agentCount === 0
+        : true
+    const appUnitPerAgent = creditIsValid && agentCount > 0 && provAppCreditPlanned > 0
+        ? provAppCreditPlanned / agentCount
+        : 0
 
-    const allowEdit = user?.grants['app-config-flag'] !== false
-    const clusterCredits = config?.cloud18ApplicationCredits || 0
-    const clusterCreditsUsed = config?.cloud18ApplicationCreditsUsed || 0
-    const clusterCreditsAvailable = clusterCredits - clusterCreditsUsed
-    const provAppMemory = convertSize(appConfig?.provAppMemory, "M", "M")
-    const provAppDiskSize = convertSize(appConfig?.provAppDiskSize, "G", "G")
-    const provAppCpuCores = appConfig?.provAppCpuCores || 0
-    const appCredits = appConfig?.provAppCreditPlanned || 0
+    const dataObject = useMemo(() => {
+        const rows = [
+            {
+                key: 'App Credit Usage',
+                value: (<Text>{appCreditsUsed} / {provAppCreditPlanned}</Text>),
+            },
+            {
+                key: 'Cluster Credit Usage',
+                value: hasCreditsSet
+                    ? (<Text>{clusterCreditsUsed} / {clusterCredits}</Text>)
+                    : (<Text>{'Not set'}</Text>),
+            },
+            {
+                key: "Unallocated Credits",
+                value: hasCreditsSet
+                    ? (<Text>{clusterCreditsUnallocated} / {clusterCredits}</Text>)
+                    : (<Text>{'Not set'}</Text>),
+            },
+        ]
 
-    const dataObject = useMemo(() => [
-        {
-            key: "Cloud18 Credits Available",
-            value: clusterCredits ? (<Text>{clusterCreditsAvailable} / {clusterCredits}</Text>) : (<Text>{'Not set'}</Text>),
-        },
-        {
-            key: 'Resources',
-            value: (
-                <Flex className={styles.resources}>
-                    <Gauge
-                        isDisabled={true}
-                        minValue={256}
-                        maxValue={256 * 1024}
-                        value={provAppMemory}
-                        text={'Memory'}
-                        width={220}
-                        height={150}
-                        hideMinMax={false}
-                        appendTextToValue='MB'
-                        textOverlayClassName={styles.textOverlay}
-                    />
-                    <Gauge
-                        isDisabled={true}
-                        minValue={1}
-                        maxValue={10000}
-                        value={provAppDiskSize}
-                        text={'Disk size'}
-                        width={220}
-                        height={150}
-                        hideMinMax={false}
-                        appendTextToValue='GB'
-                        textOverlayClassName={styles.textOverlay}
-                    />
-                    <Gauge
-                        isDisabled={true}
-                        minValue={1}
-                        maxValue={256}
-                        value={provAppCpuCores}
-                        text={'Cores'}
-                        width={220}
-                        height={150}
-                        hideMinMax={false}
-                        textOverlayClassName={styles.textOverlay}
-                    />
-                </Flex>
-            )
-        },
-        {
-            key: 'Credits',
-            value: (
-                <Flex className={styles.resources}>
-                    { creditStep ? (<NumberInput
-                        isDisabled={!allowEdit}
-                        minValue={creditStep}
-                        maxValue={10000}
-                        step={creditStep}
-                        value={appCredits}
-                        showConfirmModal={true}
-                        confirmTitle={`Confirm change for 'prov-app-credit-planned'`}
-                        confirmBody={`Are you sure you want to change the 'prov-app-credit-planned' value?`}
-                        showEditButton={true}
-                        onConfirmValidator={(value) => {
-                            if (value % creditStep !== 0) {
-                                dispatch(showErrorToast(`Value must be a multiple of ${creditStep}`))
-                                return false
-                            }
-                            return true
-                        }}
-                        onConfirm={(value) => {
-                            dispatch(
-                                setAppSetting({
-                                    clusterName: clusterName,
-                                    appId: appId,
-                                    setting: 'prov-app-credit-planned',
-                                    value: value
-                                })
-                            )
-                        }}
-                    />) : (
-                        <Text>No Agents Available</Text>
-                    )}
-                </Flex>
-            )
+        if (isUnitMode && provAppCreditPlanned > 0) {
+            rows.push({
+                key: 'App Units',
+                value: creditIsValid ? (
+                    <Text>
+                        {appUnitPerAgent} App Unit/node × {agentCount} node{agentCount !== 1 ? 's' : ''} = {provAppCreditPlanned} total credits
+                    </Text>
+                ) : (
+                    <Text color='red.500'>
+                        Invalid: {provAppCreditPlanned} credit{provAppCreditPlanned !== 1 ? 's' : ''} / {agentCount} agent{agentCount !== 1 ? 's' : ''} — not evenly divisible
+                    </Text>
+                ),
+            })
         }
-    ], [clusterCreditsAvailable, clusterCredits, provAppMemory, provAppDiskSize, provAppCpuCores, appCredits, creditStep, allowEdit, clusterName, appId, dispatch])
+
+        return rows
+    }, [hasCreditsSet, appCreditsUsed, provAppCreditPlanned, clusterCreditsUsed, clusterCredits,
+        clusterCreditsUnallocated, isUnitMode, appUnitPerAgent, agentCount, creditIsValid])
+
     return (
         <VStack>
-            <TableType2 key={creditStep} dataArray={dataObject} className={styles.table} />
-            <ConfirmModal
-                isOpen={isOpen}
-                closeModal={closeConfirmModal}
-                title={title}
-                body={body}
-                onConfirmClick={() => {
-                    console.log('onConfirmClick clicked', handler)
-                    handler()
-                    closeConfirmModal()
-                }}
-            />
+            <TableType2 dataArray={dataObject} className={styles.table} />
         </VStack>
     )
 }
@@ -149,20 +81,16 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
 export default AppCredit
 
 AppCredit.propTypes = {
-  clusterName: PropTypes.string.isRequired,
-  appId: PropTypes.string.isRequired,
   config: PropTypes.shape({
     cloud18ApplicationCredits: PropTypes.number,
-    cloud18ApplicationCreditsUsed: PropTypes.number
+    cloud18ApplicationCreditsUsed: PropTypes.number,
+    cloud18ApplicationCreditsPlanned: PropTypes.number,
+    provAppSizingMode: PropTypes.string,
   }),
   appConfig: PropTypes.shape({
-    provAppAgents: PropTypes.string,
-    provAppMemory: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
-    provAppDiskSize: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
-    provAppCpuCores: PropTypes.number,
-    provAppCreditPlanned: PropTypes.number
+    provAppCreditUsed: PropTypes.number,
+    provAppCreditPlanned: PropTypes.number,
+    provAppAgents: PropTypes.oneOfType([PropTypes.array, PropTypes.string]),
+    provAppSizingMode: PropTypes.string,
   }),
-  user: PropTypes.shape({
-    grants: PropTypes.object
-  })
 }

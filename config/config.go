@@ -687,6 +687,7 @@ type Config struct {
 	ProvAppCpuCores                           string                       `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores" groups:"apps"`
 	ProvAppAgents                             string                       `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents" groups:"apps"`
 	ProvAppHATopology                         string                       `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology" groups:"apps"`
+	ProvAppSizingMode                         string                       `mapstructure:"prov-app-sizing-mode" toml:"prov-app-sizing-mode" json:"provAppSizingMode" groups:"apps"`
 	ProvAppTemplateRepo                       string                       `mapstructure:"prov-app-template-repo" toml:"prov-app-template-repo" json:"provAppTemplateRepo" groups:"apps"`
 	ProvAppTemplateRepoBranch                 string                       `mapstructure:"prov-app-template-repo-branch" toml:"prov-app-template-repo-branch" json:"provAppTemplateRepoBranch" groups:"apps"`
 	ProvAppTemplateRepoUser                   string                       `mapstructure:"prov-app-template-repo-user" toml:"prov-app-template-repo-user" json:"provAppTemplateRepoUser" groups:"apps"`
@@ -962,7 +963,8 @@ type Config struct {
 	Cloud18AlertSlackUser                  string                 `mapstructure:"cloud18-alert-slack-user"  toml:"cloud18-alert-slack-user" json:"cloud18AlertSlackUser"`
 	Cloud18HealthRefreshInterval           int                    `mapstructure:"cloud18-health-refresh-interval"  toml:"cloud18-health-refresh-interval" json:"cloud18HealthRefreshInterval"`
 	Cloud18ApplicationCredits              int                    `mapstructure:"cloud18-application-credits" toml:"Cloud18-application-credits" json:"cloud18ApplicationCredits"`
-	Cloud18ApplicationCreditsUsed          int                    `mapstructure:"cloud18-application-credits-used" toml:"Cloud18-application-credits-used" json:"cloud18ApplicationCreditsUsed"`
+	Cloud18ApplicationCreditsUsed          int                    `mapstructure:"-" toml:"-" json:"cloud18ApplicationCreditsUsed"`
+	Cloud18ApplicationCreditsPlanned       int                    `mapstructure:"-" toml:"-" json:"cloud18ApplicationCreditsPlanned"`
 	Cloud18ApplicationCreditsPrice         int                    `mapstructure:"cloud18-application-credits-price" toml:"Cloud18-application-credits-price" json:"cloud18ApplicationCreditsPrice"`
 	ProvRegister                           bool                   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
 	ProvAdminUser                          string                 `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
@@ -1009,6 +1011,7 @@ type AppConfig struct {
 	ProvAppMem            string `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
 	ProvAppCpuCores       string `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores"`
 	ProvAppDisk           string `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
+	ProvAppDiskIops       string `mapstructure:"prov-app-disk-iops" toml:"prov-app-disk-iops" json:"provAppDiskIops"`
 	ProvAppDiskType       string `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
 	ProvAppDockerImg      string `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
 	ProvAppDockerCmd      string `mapstructure:"prov-app-docker-cmd" toml:"prov-app-docker-cmd" json:"provAppDockerCmd"`
@@ -1021,6 +1024,7 @@ type AppConfig struct {
 	ProvAppAgentsFailover string `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
 	ProvAppCreditUsed     int    `mapstructure:"prov-app-credit-used" toml:"prov-app-credit-used" json:"provAppCreditUsed"`
 	ProvAppCreditPlanned  int    `mapstructure:"prov-app-credit-planned" toml:"prov-app-credit-planned" json:"provAppCreditPlanned"`
+	ProvAppSizingMode     string `mapstructure:"prov-app-sizing-mode" toml:"prov-app-sizing-mode" json:"provAppSizingMode"`
 	AppHost               string `mapstructure:"app-host" toml:"app-host" json:"appHost"`
 	AppHostsIPV6          string `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
 	AppPort               string `mapstructure:"app-port" toml:"app-port" json:"appPort"`
@@ -1218,6 +1222,19 @@ const (
 	ConstResticS3ModeAuto   string = "auto"
 	ConstResticS3ModeNew    string = "new"
 	ConstResticS3ModeLegacy string = "legacy"
+)
+
+// App sizing modes: unit = credit-based/App Unit sizing; manual = direct resource editing.
+const (
+	AppSizingModeUnit   = "unit"
+	AppSizingModeManual = "manual"
+)
+
+// Fixed resource quantities that define one App Unit.
+const (
+	AppUnitCpuCores = 1    // 1 core per App Unit
+	AppUnitMemMB    = 4096 // 4 GB per App Unit (in MB)
+	AppUnitDiskGB   = 10   // 10 GB per App Unit
 )
 const (
 	ConstProxyMaxscale    string = "maxscale"

@@ -74,32 +74,34 @@ function ClusterApp() {
 
 
   useEffect(() => {
-    if (clusterApps?.length === 0) {
+    if (!Array.isArray(clusterApps) || clusterApps.length === 0) {
       callServices()
       return
     }
-
-    if (clusterApps?.length > 0 && appId) {
+    if (appId) {
       const app = clusterApps.find((x) => x.id === appId)
       setSelectedApp(app)
     }
+  }, [appId, clusterApps])
+
+  useEffect(() => {
     if (clusterData?.apiUsers && loggedUser) {
-        const apiUser = clusterData?.apiUsers[loggedUser.User] || clusterData?.apiUsers[loggedUser.Email]
-        if (apiUser) {
-          const authorizedTabs = [
-            <>
-              <CustomIcon icon={HiArrowNarrowLeft} /> Dashboard
-            </>
-          ]
-          authorizedTabs.push('App Overview')
-          authorizedTabs.push('Storages')
-          authorizedTabs.push('Service OpenSVC')
-          authorizedTabs.push('Templates')
-          tabs.current = authorizedTabs
-          setUser(apiUser)
-        }
+      const apiUser = clusterData?.apiUsers[loggedUser.User] || clusterData?.apiUsers[loggedUser.Email]
+      if (apiUser) {
+        const authorizedTabs = [
+          <>
+            <CustomIcon icon={HiArrowNarrowLeft} /> Dashboard
+          </>
+        ]
+        authorizedTabs.push('App Overview')
+        authorizedTabs.push('Storages')
+        authorizedTabs.push('Service OpenSVC')
+        authorizedTabs.push('Templates')
+        tabs.current = authorizedTabs
+        setUser(apiUser)
+      }
     }
-  }, [appId, clusterApps, loggedUser])
+  }, [clusterData, loggedUser])
 
 
   const handleTabChange = (tabIndex) => {
@@ -110,7 +112,7 @@ function ClusterApp() {
     }
   }
 
-  if (clusterApps?.length === 0 || !selectedApp) {
+  if (!Array.isArray(clusterApps) || clusterApps.length === 0 || !selectedApp) {
     return (
       <PageContainer>
         <Box className={styles.container}>

@@ -124,7 +124,7 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
                     />
                     <AccordionComponent
                         heading={'Infra Resources'}
-                        body={<AppCredit clusterName={clusterName} appId={appId} config={config} appConfig={appConfig} user={user} />}
+                        body={<AppCredit config={config} appConfig={appConfig} />}
                     />
                     <AccordionComponent
                         heading={'DNS Routes'}

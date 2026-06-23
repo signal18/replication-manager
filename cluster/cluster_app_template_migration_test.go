@@ -942,3 +942,102 @@ func TestRefreshTemplateContent_RepoSyncFailureWithoutCacheReturnsError(t *testi
 		t.Fatalf("expected repo-related error, got: %v", err)
 	}
 }
+
+// TestLoadAppConfig_InvalidVolumeSizeIsWarningNotFatal verifies that a persisted
+// invalid volume size does not prevent the app config from loading. The raw
+// invalid value must be preserved so the operator can identify and fix it.
+func TestLoadAppConfig_InvalidVolumeSizeIsWarningNotFatal(t *testing.T) {
+	workingDir := t.TempDir()
+	appsDir := filepath.Join(workingDir, "apps")
+	if err := os.MkdirAll(appsDir, 0o755); err != nil {
+		t.Fatalf("mkdir apps dir failed: %v", err)
+	}
+
+	const invalidSizeContent = `
+app-host = "badsize-app"
+app-port = "8080"
+prov-app-memory = "128M"
+prov-app-disk-size = "1G"
+
+[deployment.storages]
+[[deployment.storages.volumes]]
+name = "badsize-app-data"
+poolname = "data"
+volumedir = "data"
+size = "badvalue"
+`
+	if err := os.WriteFile(filepath.Join(appsDir, "badsize-app.toml"), []byte(invalidSizeContent), 0o644); err != nil {
+		t.Fatalf("write app file failed: %v", err)
+	}
+
+	cluster := &Cluster{
+		Name:       "test-cluster",
+		WorkingDir: workingDir,
+		crcTable:   crc64.MakeTable(crc64.ECMA),
+		Conf: &config.Config{
+			WorkingDir:     workingDir,
+			Apps:           make([]*config.AppConfig, 0),
+			DefaultFlagMap: map[string]interface{}{"prov-app-memory": "128M", "prov-app-disk-size": "1G"},
+		},
+	}
+
+	if err := cluster.LoadAppConfig(appsDir, "badsize-app"); err != nil {
+		t.Fatalf("LoadAppConfig must succeed for invalid volume size, got error: %v", err)
+	}
+
+	if len(cluster.Conf.Apps) != 1 {
+		t.Fatalf("expected 1 app loaded, got %d", len(cluster.Conf.Apps))
+	}
+	app := cluster.Conf.Apps[0]
+	if app.Deployment == nil || len(app.Deployment.Storages.Volumes) == 0 {
+		t.Fatal("expected deployment volumes to be present")
+	}
+	if got := app.Deployment.Storages.Volumes[0].Size; got != "badvalue" {
+		t.Fatalf("expected raw invalid size %q preserved, got %q", "badvalue", got)
+	}
+}
+
+// TestLoadAppConfigs_InvalidVolumeSizeLoadsAppButAggregateIsClean verifies that
+// LoadAppConfigs does not return an aggregate error for an app whose only problem
+// is an invalid volume size — the app is loaded with a warning so it remains
+// accessible while the operator fixes the TOML.
+func TestLoadAppConfigs_InvalidVolumeSizeLoadsAppAndNoError(t *testing.T) {
+	workingDir := t.TempDir()
+	appsDir := filepath.Join(workingDir, "apps")
+	if err := os.MkdirAll(appsDir, 0o755); err != nil {
+		t.Fatalf("mkdir apps dir failed: %v", err)
+	}
+
+	const content = `
+app-host = "badsize2"
+app-port = "9090"
+
+[deployment.storages]
+[[deployment.storages.volumes]]
+name = "badsize2-data"
+poolname = "data"
+volumedir = "data"
+size = "notanumber"
+`
+	if err := os.WriteFile(filepath.Join(appsDir, "badsize2.toml"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write app file failed: %v", err)
+	}
+
+	cluster := &Cluster{
+		Name:       "test-cluster",
+		WorkingDir: workingDir,
+		crcTable:   crc64.MakeTable(crc64.ECMA),
+		Conf: &config.Config{
+			WorkingDir:     workingDir,
+			Apps:           make([]*config.AppConfig, 0),
+			DefaultFlagMap: map[string]interface{}{},
+		},
+	}
+
+	if err := cluster.LoadAppConfigs(); err != nil {
+		t.Fatalf("LoadAppConfigs must not return error for invalid-size-only app, got: %v", err)
+	}
+	if len(cluster.Conf.Apps) != 1 {
+		t.Fatalf("expected 1 app loaded, got %d", len(cluster.Conf.Apps))
+	}
+}

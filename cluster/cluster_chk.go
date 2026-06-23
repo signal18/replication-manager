@@ -1216,8 +1216,8 @@ func (cluster *Cluster) CheckDefaultUser(i bool) {
 }
 
 func (cluster *Cluster) CheckAvailableCredit() {
-	if cluster.Conf.Cloud18ApplicationCreditsUsed > cluster.Conf.Cloud18ApplicationCredits {
-		cluster.SetState("CREDIT01", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.ClusterError["CREDIT01"], cluster.Conf.Cloud18ApplicationCredits, cluster.Conf.Cloud18ApplicationCreditsUsed), ErrFrom: "CLUSTER"})
+	if cluster.Conf.Cloud18ApplicationCreditsPlanned > cluster.Conf.Cloud18ApplicationCredits {
+		cluster.SetState("CREDIT01", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.ClusterError["CREDIT01"], cluster.Conf.Cloud18ApplicationCredits, cluster.Conf.Cloud18ApplicationCreditsPlanned), ErrFrom: "CLUSTER"})
 	}
 }
 

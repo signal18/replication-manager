@@ -125,16 +125,27 @@ func (cluster *Cluster) IsProvisioned() bool {
 }
 
 func (cluster *Cluster) IsAppProvisioned() bool {
-	if cluster.Conf.AppHosts == "" {
+	if len(cluster.Apps) == 0 {
 		return true
 	}
 
 	for _, app := range cluster.Apps {
 		if !app.HasProvisionCookie() {
-			if app.IsRunning() {
+			if app.IsRunning() && !app.HasUnprovisionCookie() {
+				// App is running without a provision cookie — recover state from a restart.
+				// Skip entirely when the unprovision cookie is present: the app was explicitly
+				// unprovisioned and may just be in a brief shutdown transition.
 				app.SetProvisionCookie()
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can App Connect creating cookie state:%s", app.GetState())
-			} else {
+				if app.AppConfig.ProvAppCreditUsed == 0 && app.AppConfig.ProvAppCreditPlanned > 0 {
+					app.AppConfig.ProvAppCreditUsed = app.AppConfig.ProvAppCreditPlanned
+					if _, err := cluster.SaveApp(app, ""); err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
+							"Failed to persist backfilled credit usage for %s: %s", app.Name, err)
+					}
+					cluster.recomputeAppCredits()
+				}
+			} else if !app.IsRunning() {
 				return false
 			}
 		}
