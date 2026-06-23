@@ -1038,6 +1038,7 @@ func (repman *ReplicationManager) handlerMuxAppUnprovision(w http.ResponseWriter
 				http.Error(w, fmt.Sprintf("Can not unprovision app service: %s", err), http.StatusInternalServerError)
 				return
 			}
+			mycluster.ClearAppProvisionedCredits(node)
 		} else {
 			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
@@ -3663,6 +3664,7 @@ func applyTemplateOwnedProjection(dst, src *config.AppConfig, templateName strin
 	dst.ProvAppMem = src.ProvAppMem
 	dst.ProvAppCpuCores = src.ProvAppCpuCores
 	dst.ProvAppDisk = src.ProvAppDisk
+	dst.ProvAppDiskIops = src.ProvAppDiskIops
 	dst.ProvAppDiskType = src.ProvAppDiskType
 	dst.ProvAppRouteAddr = src.ProvAppRouteAddr
 	dst.ProvAppRoutePort = src.ProvAppRoutePort
@@ -3670,6 +3672,8 @@ func applyTemplateOwnedProjection(dst, src *config.AppConfig, templateName strin
 	dst.ProvAppAgents = src.ProvAppAgents
 	dst.ProvAppHATopology = src.ProvAppHATopology
 	dst.ProvAppAgentsFailover = src.ProvAppAgentsFailover
+	// ProvAppSizingMode is intentionally not projected: it is app-owned (how the
+	// operator wants to manage resources), not a property the template should dictate.
 }
 
 func buildTemplateProjectionImpact(current, projected *config.AppConfig, templateName string) []appTemplateFieldChange {
@@ -3702,6 +3706,7 @@ func buildTemplateProjectionImpact(current, projected *config.AppConfig, templat
 	appendIfChanged("ProvAppMem", current.ProvAppMem, projected.ProvAppMem)
 	appendIfChanged("ProvAppCpuCores", current.ProvAppCpuCores, projected.ProvAppCpuCores)
 	appendIfChanged("ProvAppDisk", current.ProvAppDisk, projected.ProvAppDisk)
+	appendIfChanged("ProvAppDiskIops", current.ProvAppDiskIops, projected.ProvAppDiskIops)
 	appendIfChanged("ProvAppDiskType", current.ProvAppDiskType, projected.ProvAppDiskType)
 	appendIfChanged("ProvAppRouteAddr", current.ProvAppRouteAddr, projected.ProvAppRouteAddr)
 	appendIfChanged("ProvAppRoutePort", current.ProvAppRoutePort, projected.ProvAppRoutePort)

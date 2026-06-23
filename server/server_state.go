@@ -412,6 +412,11 @@ func (repman *ReplicationManager) ProduceCloud18ConnectivityStates() {
 	}
 }
 
+// RefreshCreditsFromCRM is retained for future use; credit usage is now computed
+// from per-app ProvAppCreditUsed totals and is no longer sourced from CRM.
+func (repman *ReplicationManager) RefreshCreditsFromCRM() {
+}
+
 // probeHTTPReachability performs a HEAD request to url and returns an error if
 // the host is unreachable or returns a 5xx server error.  4xx responses are
 // treated as reachable (the endpoint exists; access control is expected).

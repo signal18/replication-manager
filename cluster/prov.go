@@ -235,10 +235,6 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 }
 
 func (cluster *Cluster) InitAppService(app *App) error {
-	if app != nil {
-		app.ApplyPlannedCredits()
-	}
-
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCProvisionAppService(app)
@@ -249,6 +245,23 @@ func (cluster *Cluster) InitAppService(app *App) error {
 	err := <-cluster.errorChan
 	cluster.StateMachine.RemoveFailoverState()
 	if err == nil {
+		if app != nil {
+			app.ApplyPlannedCredits()
+			cluster.recomputeAppCredits()
+			if _, saveErr := cluster.SaveApp(app, ""); saveErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Failed to persist credit usage for %s: %s", app.Name, saveErr)
+			}
+			// Rebase cap upward if actual provisioned usage now exceeds it.
+			// No cap > 0 guard: StartBillingCycle may have legitimately zeroed the cap,
+			// and a fresh provision must still be able to raise it.
+			if cluster.Conf.Cloud18ApplicationCreditsUsed > cluster.Conf.Cloud18ApplicationCredits {
+				cluster.Conf.Cloud18ApplicationCredits = cluster.Conf.Cloud18ApplicationCreditsUsed
+				if _, saveErr := cluster.SaveConfigFile(); saveErr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Failed to persist rebased credit cap for %s: %s", app.Name, saveErr)
+				}
+			}
+		}
+		app.DelUnprovisionCookie()
 		app.SetProvisionCookie()
 	} else {
 		return err

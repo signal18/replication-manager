@@ -1385,6 +1385,57 @@ type ClusterState struct {
 	IsProvisioned bool      `json:"isProvisioned"`
 }
 
+// recomputeAppCredits recomputes Cloud18ApplicationCreditsUsed and
+// Cloud18ApplicationCreditsPlanned from the current per-app values.
+// Must be called without the cluster lock held.
+func (cluster *Cluster) recomputeAppCredits() {
+	cluster.Lock()
+	used := 0
+	planned := 0
+	for _, app := range cluster.Apps {
+		used += app.AppConfig.ProvAppCreditUsed
+		planned += app.AppConfig.ProvAppCreditPlanned
+	}
+	cluster.Unlock()
+	cluster.Conf.Cloud18ApplicationCreditsUsed = used
+	cluster.Conf.Cloud18ApplicationCreditsPlanned = planned
+}
+
+// ClearAppProvisionedCredits zeros the used credits for app, removes its provision
+// cookie, refreshes cluster totals, and persists the cleared state so restart
+// rebuilds stay correct. Call this after a successful unprovision.
+func (cluster *Cluster) ClearAppProvisionedCredits(app *App) {
+	if app == nil {
+		return
+	}
+	app.AppConfig.ProvAppCreditUsed = 0
+	app.DelProvisionCookie()
+	// Mark explicitly unprovisioned so the status-cycle backfill in IsAppProvisioned
+	// does not re-credit the app if it still briefly appears running.
+	app.SetUnprovisionCookie()
+	cluster.recomputeAppCredits()
+	if _, err := cluster.SaveApp(app, ""); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Failed to persist credit clear for %s: %s", app.Name, err)
+	}
+}
+
+// StartBillingCycle is called when a new sponsorship cycle is accepted.
+// It recomputes totals from apps and, if current usage is below the cap,
+// lowers the cap to match usage (including zero), then persists the new cap.
+// Failures are logged but never propagated — sponsorship is already committed
+// by the time this runs, so a persist failure must not misreport the outcome.
+func (cluster *Cluster) StartBillingCycle() {
+	cluster.recomputeAppCredits()
+	used := cluster.Conf.Cloud18ApplicationCreditsUsed
+	cap := cluster.Conf.Cloud18ApplicationCredits
+	if cap > 0 && used < cap {
+		cluster.Conf.Cloud18ApplicationCredits = used
+		if _, err := cluster.SaveConfigFile(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to persist billing cycle cap: %s", err)
+		}
+	}
+}
+
 type ClusterSLAState struct {
 	SLA        state.Sla   `json:"sla"`
 	SLAHistory []state.Sla `json:"slaHistory"`
@@ -2822,13 +2873,11 @@ func (c *Cluster) AddApp(app *App) error {
 	c.bumpAppListVersion()
 	c.Unlock()
 
+	c.recomputeAppCredits()
 	if app.AppConfig.ProvAppCreditPlanned > app.AppConfig.ProvAppCreditUsed {
-		c.Conf.Cloud18ApplicationCreditsUsed += app.AppConfig.ProvAppCreditPlanned
 		if app.HasProvisionCookie() {
 			app.SetReprovCookie()
 		}
-	} else {
-		c.Conf.Cloud18ApplicationCreditsUsed += app.AppConfig.ProvAppCreditUsed
 	}
 	return nil
 }

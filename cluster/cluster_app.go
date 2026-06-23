@@ -27,17 +27,22 @@ func getAppTemplateRepoLock(key string) *sync.Mutex {
 }
 
 func (cluster *Cluster) NewAppConfig(apphost, port string) *config.AppConfig {
-	return &config.AppConfig{
+	agents := cluster.GetAppAgents(nil)
+	appcnf := &config.AppConfig{
 		AppHost:           apphost,
 		AppPort:           port,
 		ProvAppDiskType:   "volume",
-		ProvAppMem:        cluster.GetAppMemory(nil),
-		ProvAppCpuCores:   cluster.GetAppCores(nil),
-		ProvAppDisk:       cluster.GetAppDisk(nil),
-		ProvAppAgents:     cluster.GetAppAgents(nil),
+		ProvAppAgents:     agents,
 		ProvAppHATopology: cluster.GetAppHATopology(nil),
 		Deployment:        config.NewDeploymentConfig(),
 	}
+	// Populate resource fields from cluster defaults so the stored TOML is explicit
+	// and the UI never shows zero resources. Sizing mode stays empty (legacy) — the
+	// operator must explicitly switch to "unit" or "manual" to enable managed sizing.
+	cluster.GetAppMemory(appcnf)
+	cluster.GetAppCores(appcnf)
+	cluster.GetAppDisk(appcnf)
+	return appcnf
 }
 
 func (cluster *Cluster) appendConfAppIfAbsent(appcnf *config.AppConfig) bool {
@@ -980,6 +985,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 			}
 		}
 	}
+	cluster.recomputeAppCredits()
 	appAdded = false
 	return nil
 }
@@ -1088,6 +1094,19 @@ func (cluster *Cluster) GetAppCores(appcnf *config.AppConfig) string {
 	}
 
 	return cores
+}
+
+func (cluster *Cluster) GetAppDiskIops(appcnf *config.AppConfig) string {
+	if appcnf != nil && appcnf.ProvAppDiskIops != "" {
+		return appcnf.ProvAppDiskIops
+	}
+
+	iops := cluster.Conf.ProvIops
+	if iops != "" && appcnf != nil {
+		appcnf.ProvAppDiskIops = iops
+	}
+
+	return iops
 }
 
 func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {

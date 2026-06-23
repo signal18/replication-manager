@@ -77,7 +77,6 @@ func (cluster *Cluster) newAppList() error {
 	}
 	pending := make([]pendingApp, 0, len(cluster.Conf.Apps))
 	news3providers := make([]string, 0)
-	cluster.Conf.Cloud18ApplicationCreditsUsed = 0
 
 	for k, appcnf := range cluster.Conf.Apps {
 		if appcnf.AppHost == "" {
@@ -116,6 +115,22 @@ func (cluster *Cluster) newAppList() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "Loaded %d apps", len(cluster.Apps))
 
 	cluster.LoadAllAppTemplateMD5Provisioned()
+
+	// Backfill ProvAppCreditUsed for apps that are provisioned but whose saved
+	// value is zero — this covers apps created before credit persistence was added.
+	// We only save when the value actually changes so restarts after backfill are
+	// no-ops.
+	for _, app := range cluster.Apps {
+		if app.HasProvisionCookie() && app.AppConfig.ProvAppCreditUsed == 0 && app.AppConfig.ProvAppCreditPlanned > 0 {
+			app.AppConfig.ProvAppCreditUsed = app.AppConfig.ProvAppCreditPlanned
+			if _, err := cluster.SaveApp(app, ""); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
+					"Failed to persist backfilled credit usage for %s: %s", app.Name, err)
+			}
+		}
+	}
+
+	cluster.recomputeAppCredits()
 
 	return nil
 }

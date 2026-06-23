@@ -4739,6 +4739,14 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return err
 		}
 		mycluster.Conf.ProvAppTemplateRepoTimeout = parsedTimeout
+	case "prov-app-sizing-mode":
+		trimmed := strings.TrimSpace(strings.ToLower(value))
+		switch trimmed {
+		case "", config.AppSizingModeUnit, config.AppSizingModeManual:
+			mycluster.Conf.ProvAppSizingMode = trimmed
+		default:
+			return fmt.Errorf("prov-app-sizing-mode must be empty, 'unit', or 'manual'")
+		}
 	default:
 		// Check if this is a plugin-config key: "plugin-config-<pluginname>-<key>"
 		// e.g. "plugin-config-errorlog-timeframe-hours"      → PluginConfig["errorlog"]["timeframe-hours"]
