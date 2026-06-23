@@ -113,7 +113,7 @@ var arbitratorCmd = &cobra.Command{
 		RepMan.InitConfig(conf, false)
 
 		if _, ok := RepMan.Confs["arbitrator"]; !ok {
-			log.Fatal("Could not find arbitrator configuration section")
+			log.Fatal("Could not find [arbitrator] configuration section. Provide a config file with an [arbitrator] section or use the Docker env-backed entrypoint configuration.")
 		}
 
 		var err error
@@ -152,11 +152,14 @@ func getArbitratorBackendStorageConnection() (*sqlx.DB, error) {
 	if RepMan.Confs["arbitrator"].ArbitratorDriver == "mysql" {
 		hosts := strings.Split(RepMan.Confs["arbitrator"].Hosts, ",")
 		if len(hosts) == 0 || hosts[0] == "" {
-			return nil, fmt.Errorf("arbitrator mysql backend requires db-servers-hosts")
+			return nil, fmt.Errorf("arbitrator mysql backend requires [arbitrator].db-servers-hosts (example: \"127.0.0.1:3306\")")
 		}
 		host, port := misc.SplitHostPort(hosts[0])
 		arbConf := RepMan.Confs["arbitrator"]
 		credential := arbConf.DecryptSecretValue("db-servers-credential", arbConf.User)
+		if !strings.Contains(credential, ":") {
+			return nil, fmt.Errorf("arbitrator mysql backend requires [arbitrator].db-servers-credential in \"user:password\" format")
+		}
 		user, pass := misc.SplitPair(credential)
 		db, err = dbhelper.MySQLConnect(user, pass, dbhelper.GetAddress(host, port, ""), fmt.Sprintf("timeout=%ds", RepMan.Confs["arbitrator"].Timeout))
 	}

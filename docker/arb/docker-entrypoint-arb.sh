@@ -49,7 +49,7 @@ if [ "$HAS_ENV_CONFIG" = "1" ]; then
   MONITORING_DATADIR=$(first_nonempty MONITORING_DATADIR REPLICATION_MANAGER_DEFAULT_MONITORING_DATADIR || printf '/var/lib/replication-manager')
 
   if [ "$DRIVER" = "mysql" ] && { [ -z "$DB_HOSTS" ] || [ -z "$DB_CREDENTIAL" ]; }; then
-    echo "error: mysql arbitrator backend requires DB_SERVERS_HOSTS and DB_SERVERS_CREDENTIAL" >&2
+    echo "error: mysql arbitrator backend requires DB_SERVERS_HOSTS and DB_SERVERS_CREDENTIAL (or REPLICATION_MANAGER_ARBITRATOR_DB_SERVERS_HOSTS and REPLICATION_MANAGER_ARBITRATOR_DB_SERVERS_CREDENTIAL)" >&2
     exit 1
   fi
 
