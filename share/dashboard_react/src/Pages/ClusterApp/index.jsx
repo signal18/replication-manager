@@ -74,11 +74,11 @@ function ClusterApp() {
 
 
   useEffect(() => {
-    if (clusterApps?.length === 0) {
+    if (!Array.isArray(clusterApps) || clusterApps.length === 0) {
       callServices()
       return
     }
-    if (clusterApps?.length > 0 && appId) {
+    if (appId) {
       const app = clusterApps.find((x) => x.id === appId)
       setSelectedApp(app)
     }
@@ -112,7 +112,7 @@ function ClusterApp() {
     }
   }
 
-  if (clusterApps?.length === 0 || !selectedApp) {
+  if (!Array.isArray(clusterApps) || clusterApps.length === 0 || !selectedApp) {
     return (
       <PageContainer>
         <Box className={styles.container}>

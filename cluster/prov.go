@@ -254,8 +254,7 @@ func (cluster *Cluster) InitAppService(app *App) error {
 			// Rebase cap upward if actual provisioned usage now exceeds it.
 			// No cap > 0 guard: StartBillingCycle may have legitimately zeroed the cap,
 			// and a fresh provision must still be able to raise it.
-			if cluster.Conf.Cloud18ApplicationCreditsUsed > cluster.Conf.Cloud18ApplicationCredits {
-				cluster.Conf.Cloud18ApplicationCredits = cluster.Conf.Cloud18ApplicationCreditsUsed
+			if cluster.rebaseAppCreditCap() {
 				if _, saveErr := cluster.SaveConfigFile(); saveErr != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Failed to persist rebased credit cap for %s: %s", app.Name, saveErr)
 				}

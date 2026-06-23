@@ -9,7 +9,7 @@ function AppCredit({ config, appConfig }) {
     const clusterCredits = config?.cloud18ApplicationCredits ?? 0
     const clusterCreditsUsed = config?.cloud18ApplicationCreditsUsed ?? 0
     const clusterCreditsPlanned = config?.cloud18ApplicationCreditsPlanned ?? 0
-    const clusterCreditsUnallocated = hasCreditsSet ? clusterCredits - clusterCreditsPlanned : 0
+    const clusterCreditsUnallocated = hasCreditsSet ? Math.max(0, clusterCredits - clusterCreditsPlanned) : 0
     const appCreditsUsed = appConfig?.provAppCreditUsed ?? 0
     const provAppCreditPlanned = appConfig?.provAppCreditPlanned || 0
     const provAppAgents = appConfig?.provAppAgents || ''
