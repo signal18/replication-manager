@@ -140,7 +140,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   const appUnitValue = (appUnitIsValid && creditStep > 0 && provAppCreditPlanned > 0)
     ? (isLegacyAppInUnitCluster ? derivedUnitFromResources : provAppCreditPlanned / creditStep)
     : (isLegacyAppInUnitCluster ? derivedUnitFromResources : 0)
-  const maxAppUnit = clusterCreditsAvailable > 0 ? Math.floor(clusterCreditsAvailable / creditStep) : 256
+  const maxAppUnit = 256
 
   const sliderDisplayValue = useMemo(() => {
     if (isUnitMode && !isLegacyAppInUnitCluster && appUnitIsValid && creditStep > 0 && provAppCreditPlanned > 0) {
@@ -363,11 +363,13 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
             onChange={(unit) => {
               const credits = unit * creditStep
               const needsModeSwitch = provAppSizingMode !== 'unit'
+              const exceedsPool = clusterCredits > 0 && clusterCreditsAvailable > 0 && credits > clusterCreditsAvailable
+              const poolWarning = exceedsPool ? ` — ⚠ exceeds available pool (${Math.floor(clusterCreditsAvailable / creditStep)} App Unit free)` : ''
               setAppUnitConfirmState({
                 isOpen: true,
                 title: needsModeSwitch
-                  ? `Switch to App Unit: ${unit} App Unit — ${formatAppUnit(unit)} × ${creditStep} agent(s) = ${credits} credits`
-                  : `Confirm App Unit change to ${unit} — ${formatAppUnit(unit)} × ${creditStep} agent(s) = ${credits} credits`,
+                  ? `Switch to App Unit: ${unit} App Unit — ${formatAppUnit(unit)} × ${creditStep} agent(s) = ${credits} credits${poolWarning}`
+                  : `Confirm App Unit change to ${unit} — ${formatAppUnit(unit)} × ${creditStep} agent(s) = ${credits} credits${poolWarning}`,
                 handler: () => {
                   const saveCredits = () => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-credit-planned', value: credits }))
                   if (needsModeSwitch) {
@@ -475,6 +477,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     substitution, user,
     sliderDisplayValue, appUnitValue, appUnitIsValid, maxAppUnit, creditStep, formatAppUnit, clusterName, appId, dispatch,
     provAppCreditPlanned, provAppCpuCores, provAppMemory, provAppDiskSize,
+    clusterCreditsAvailable, clusterCredits,
   ])
 
   return (
