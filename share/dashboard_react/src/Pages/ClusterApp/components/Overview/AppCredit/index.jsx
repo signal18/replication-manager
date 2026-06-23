@@ -10,6 +10,7 @@ function AppCredit({ config, appConfig }) {
     const clusterCreditsUsed = config?.cloud18ApplicationCreditsUsed ?? 0
     const clusterCreditsPlanned = config?.cloud18ApplicationCreditsPlanned ?? 0
     const clusterCreditsUnallocated = hasCreditsSet ? clusterCredits - clusterCreditsPlanned : 0
+    const appCreditsUsed = appConfig?.provAppCreditUsed ?? 0
     const provAppCreditPlanned = appConfig?.provAppCreditPlanned || 0
     const provAppAgents = appConfig?.provAppAgents || ''
     const appSizingMode = appConfig?.provAppSizingMode ?? ''
@@ -34,7 +35,11 @@ function AppCredit({ config, appConfig }) {
     const dataObject = useMemo(() => {
         const rows = [
             {
-                key: "Cloud18 Credit Usage",
+                key: 'App Credit Usage',
+                value: (<Text>{appCreditsUsed} / {provAppCreditPlanned}</Text>),
+            },
+            {
+                key: 'Cluster Credit Usage',
                 value: hasCreditsSet
                     ? (<Text>{clusterCreditsUsed} / {clusterCredits}</Text>)
                     : (<Text>{'Not set'}</Text>),
@@ -63,8 +68,8 @@ function AppCredit({ config, appConfig }) {
         }
 
         return rows
-    }, [hasCreditsSet, clusterCreditsUsed, clusterCredits, clusterCreditsUnallocated,
-        isUnitMode, provAppCreditPlanned, appUnitPerAgent, agentCount, creditIsValid])
+    }, [hasCreditsSet, appCreditsUsed, provAppCreditPlanned, clusterCreditsUsed, clusterCredits,
+        clusterCreditsUnallocated, isUnitMode, appUnitPerAgent, agentCount, creditIsValid])
 
     return (
         <VStack>
@@ -83,6 +88,7 @@ AppCredit.propTypes = {
     provAppSizingMode: PropTypes.string,
   }),
   appConfig: PropTypes.shape({
+    provAppCreditUsed: PropTypes.number,
     provAppCreditPlanned: PropTypes.number,
     provAppAgents: PropTypes.oneOfType([PropTypes.array, PropTypes.string]),
     provAppSizingMode: PropTypes.string,

@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { VStack, Input, HStack, Heading, Flex, Box, Text } from "@chakra-ui/react";
+import React, { useMemo, useState, useEffect } from "react";
+import { VStack, Input, HStack, Heading, Flex, Box, Text, ButtonGroup, Button } from "@chakra-ui/react";
 import styles from "./styles.module.scss";
 import TextForm from "../../../../components/TextForm";
 import { createColumnHelper } from "@tanstack/react-table";
@@ -12,6 +12,101 @@ import { getVolumeDirTokens } from "./volumeDirUtils";
 
 
 const defaultVol = { name: "", poolname: "", volumedir: "", size: "" };
+
+// Parse a stored size value (plain GB number or "10G"/"2T" string) into { num, unit }.
+const parseSizeValue = (v) => {
+    if (!v) return { num: '', unit: 'G' };
+    const s = String(v).trim().toUpperCase();
+    const m = s.match(/^(\d+(?:\.\d+)?)\s*([GT]?)$/);
+    if (!m) return { num: String(v), unit: 'G' };
+    return { num: m[1], unit: m[2] || 'G' };
+};
+
+// Shared size input: number field + GB/TB toggle.
+// Pass onSave (row edit, shows Apply/Reset) or onChange (new form, immediate).
+const SizeField = React.memo(({ value = '', onSave, onChange }) => {
+    const { num: initNum, unit: initUnit } = parseSizeValue(value);
+    const [num, setNum] = useState(initNum);
+    const [unit, setUnit] = useState(initUnit);
+    const [pending, setPending] = useState(false);
+
+    useEffect(() => {
+        if (!pending) {
+            const { num: n, unit: u } = parseSizeValue(value);
+            setNum(n);
+            setUnit(u);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [value]);
+
+    const combined = num ? `${num}${unit}` : '';
+
+    const handleNum = (e) => {
+        const v = e.target.value;
+        setNum(v);
+        if (onChange) onChange(v ? `${v}${unit}` : '');
+        if (onSave) setPending(true);
+    };
+
+    const handleUnit = (u) => {
+        setUnit(u);
+        if (onChange) onChange(num ? `${num}${u}` : '');
+        if (onSave) setPending(true);
+    };
+
+    const handleApply = () => {
+        if (onSave) {
+            onSave(combined);
+            setPending(false);
+        }
+    };
+
+    const handleReset = () => {
+        const { num: n, unit: u } = parseSizeValue(value);
+        setNum(n);
+        setUnit(u);
+        setPending(false);
+    };
+
+    return (
+        <Flex direction="column" gap={1}>
+            <HStack spacing={2} align="center">
+                <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="blank = app default"
+                    value={num}
+                    onChange={handleNum}
+                    maxW="180px"
+                />
+                <ButtonGroup isAttached variant="outline">
+                    <Button
+                        onClick={() => handleUnit('G')}
+                        variant={unit === 'G' ? 'solid' : 'outline'}
+                        colorScheme={unit === 'G' ? 'blue' : 'gray'}
+                    >
+                        GB
+                    </Button>
+                    <Button
+                        onClick={() => handleUnit('T')}
+                        variant={unit === 'T' ? 'solid' : 'outline'}
+                        colorScheme={unit === 'T' ? 'blue' : 'gray'}
+                    >
+                        TB
+                    </Button>
+                </ButtonGroup>
+                {onSave && pending && (
+                    <>
+                        <RMButton onClick={handleApply}>Apply</RMButton>
+                        <RMButton onClick={handleReset}>Reset</RMButton>
+                    </>
+                )}
+            </HStack>
+            <Text fontSize="sm" color="gray.500">Blank inherits app default; saved value is normalized to GB.</Text>
+        </Flex>
+    );
+});
 
 // AppConfigVersionV2 mirrors config.AppConfigVersionV2 (config/app_template_canonical.go):
 // the app-config-version marker at/above which intentional multiple volume
@@ -220,8 +315,7 @@ const VolumeRowForm = React.memo(({ fieldName, volume, index, poolOptions = [], 
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Size:</Text>
-                    <TextForm placeholder="Size (e.g. 10G, 2T)" confirmTitle="Change Volume Size" value={vol.size ? vol.size + 'G' : ''} onSave={(value) => onChange(fieldName, index, "size", value)} />
-                    <Text mb={1} fontSize="sm" color="gray.500">Blank inherits app default. Accepts units (e.g. 10G, 2T); saved value is normalized to GB.</Text>
+                    <SizeField value={vol.size} onSave={(value) => onChange(fieldName, index, "size", value)} />
                 </Flex>
             </Flex>
         </Flex>
@@ -276,8 +370,7 @@ const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => 
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Size:</Text>
-                    <Input placeholder="Size (e.g. 10G, blank = app default)" value={vol.size} onChange={(e) => handleArrayChange("size", e.target.value)} />
-                    <Text mb={1} fontSize="sm" color="gray.500">Blank inherits app default. Accepts units (e.g. 10G, 2T); saved value is normalized to GB.</Text>
+                    <SizeField value={vol.size} onChange={(value) => handleArrayChange("size", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <HStack spacing={2} mt={4}>
