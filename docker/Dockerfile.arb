@@ -1,33 +1,27 @@
-FROM golang:1.13-alpine as builder
-
-RUN apk --no-cache --update add make git
+FROM golang:1.25-bookworm AS builder
 
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
 
 COPY . .
+RUN make arb
 
-RUN make osc cli
-
-
-FROM alpine:3
+FROM debian:bookworm-slim
 
 RUN mkdir -p \
         /etc/replication-manager \
         /etc/replication-manager/cluster.d \
-        /var/lib/replication-manager \
-        /var/lib/replication-manager/conf \
-        /var/lib/replication-manager/recover
-RUN addgroup -S repman \
-  && adduser -S -D -G repman -h /var/lib/replication-manager -s /sbin/nologin repman \
-  && chown -R repman:repman /etc/replication-manager /etc/replication-manager/cluster.d /var/lib/replication-manager
+        /var/lib/replication-manager
 
-RUN mkdir /lib64 && ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
+RUN apt-get update && apt-get -y install ca-certificates sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/features/arbitrator/config.toml.sample.arbitrator /etc/replication-manager/config.toml
-COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-arb /usr/bin/replication-manager
+COPY docker/arb/arbitrator.toml /etc/replication-manager/config.toml
+COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-arb /usr/bin/replication-manager-arb
+COPY docker/arb/docker-entrypoint-arb.sh /usr/local/bin/docker-entrypoint-arb.sh
 
-RUN apk --no-cache --update add ca-certificates restic mariadb-client mariadb haproxy
+RUN chmod +x /usr/local/bin/docker-entrypoint-arb.sh
 
-CMD ["replication-manager-arb", "arbitrator" ]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint-arb.sh"]
+CMD ["replication-manager-arb", "--config", "/etc/replication-manager/config.toml", "arbitrator"]
 EXPOSE 10001

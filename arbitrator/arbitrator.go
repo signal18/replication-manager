@@ -14,13 +14,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/jmoiron/sqlx"
-	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/server"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	_ "modernc.org/sqlite"
@@ -92,7 +93,6 @@ type response struct {
 }
 
 var (
-	arbitratorCluster *cluster.Cluster
 	arbitratorDB      *sqlx.DB
 )
 
@@ -101,7 +101,7 @@ func init() {
 	rootCmd.AddCommand(arbitratorCmd)
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorAddress, "arbitrator-bind-address", "0.0.0.0:10001", "Arbitrator API port")
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorDriver, "arbitrator-driver", "sqlite", "sqlite|mysql, use a local sqllite or use a mysql backend")
-
+	
 }
 
 var arbitratorCmd = &cobra.Command{
@@ -114,12 +114,6 @@ var arbitratorCmd = &cobra.Command{
 
 		if _, ok := RepMan.Confs["arbitrator"]; !ok {
 			log.Fatal("Could not find arbitrator configuration section")
-		}
-
-		if RepMan.Confs["arbitrator"].ArbitratorDriver == "mysql" {
-			arbitratorCluster = new(cluster.Cluster)
-			arbitratorCluster.InitAgent(RepMan.Confs["arbitrator"])
-			arbitratorCluster.SetLogStdout()
 		}
 
 		var err error
@@ -156,7 +150,13 @@ func getArbitratorBackendStorageConnection() (*sqlx.DB, error) {
 		db, err = dbhelper.SQLiteConnect(conf.WorkingDir)
 	}
 	if RepMan.Confs["arbitrator"].ArbitratorDriver == "mysql" {
-		db, err = dbhelper.MySQLConnect(arbitratorCluster.GetServers()[0].User, arbitratorCluster.GetServers()[0].Pass, arbitratorCluster.GetServers()[0].Host+":"+arbitratorCluster.GetServers()[0].Port, fmt.Sprintf("?timeout=%ds", RepMan.Confs["arbitrator"].Timeout))
+		hosts := strings.Split(RepMan.Confs["arbitrator"].Hosts, ",")
+		if len(hosts) == 0 || hosts[0] == "" {
+			return nil, fmt.Errorf("arbitrator mysql backend requires db-servers-hosts")
+		}
+		host, port := misc.SplitHostPort(hosts[0])
+		user, pass := misc.SplitPair(RepMan.Confs["arbitrator"].User)
+		db, err = dbhelper.MySQLConnect(user, pass, dbhelper.GetAddress(host, port, ""), fmt.Sprintf("timeout=%ds", RepMan.Confs["arbitrator"].Timeout))
 	}
 	return db, err
 }

@@ -17,7 +17,6 @@ import (
 
 	"github.com/signal18/replication-manager/server"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var withArbitration = "ON"
@@ -80,7 +79,5 @@ func initLogFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&conf.LogRotateMaxSize, "log-rotate-max-size", 5, "Log rotate max size")
 	cmd.Flags().IntVar(&conf.LogRotateMaxBackup, "log-rotate-max-backup", 7, "Log rotate max backup")
 	cmd.Flags().IntVar(&conf.LogRotateMaxAge, "log-rotate-max-age", 7, "Log rotate max age")
-
-	viper.BindPFlags(cmd.Flags())
 
 }
