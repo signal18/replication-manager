@@ -155,7 +155,9 @@ func getArbitratorBackendStorageConnection() (*sqlx.DB, error) {
 			return nil, fmt.Errorf("arbitrator mysql backend requires db-servers-hosts")
 		}
 		host, port := misc.SplitHostPort(hosts[0])
-		user, pass := misc.SplitPair(RepMan.Confs["arbitrator"].User)
+		arbConf := RepMan.Confs["arbitrator"]
+		credential := arbConf.DecryptSecretValue("db-servers-credential", arbConf.User)
+		user, pass := misc.SplitPair(credential)
 		db, err = dbhelper.MySQLConnect(user, pass, dbhelper.GetAddress(host, port, ""), fmt.Sprintf("timeout=%ds", RepMan.Confs["arbitrator"].Timeout))
 	}
 	return db, err
