@@ -91,6 +91,13 @@ func (d *Deployment) InsertVolume(v *Volume, appConfigVersion int) error {
 
 	// Normalize before validating so duplicate/empty tokens don't slip in.
 	v.VolumeDir = NormalizeVolumeDirs(v.VolumeDir)
+	if v.Size != "" {
+		normalized, err := NormalizeVolumeSize(v.Size)
+		if err != nil {
+			return fmt.Errorf("invalid volume size: %w", err)
+		}
+		v.Size = normalized
+	}
 
 	if err := v.Validate(); err != nil {
 		return err
@@ -1334,6 +1341,47 @@ type Volume struct {
 	Name      string `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
 	PoolName  string `mapstructure:"poolname" toml:"poolname" json:"poolname" groups:"apps"`
 	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"etc|log|var|data" groups:"apps"`
+	Size      string `mapstructure:"size" toml:"size" json:"size" groups:"apps"`
+}
+
+// NormalizeVolumeSize normalizes a per-volume size override using the same
+// measurement convention as the app-wide disk size (base unit: G, 1024-based).
+// An empty input is returned as-is — empty means inherit the app-wide default.
+func NormalizeVolumeSize(size string) (string, error) {
+	if size == "" {
+		return "", nil
+	}
+	mtag, err := GetTagDetails("G,bytes")
+	if err != nil {
+		return size, err
+	}
+	return ParseUnitMeasurement(mtag, size, false)
+}
+
+// NormalizeVolumeSizes normalizes the Size field on every saved volume row,
+// applying the same G-based measurement convention used by NormalizeVolumeSize.
+// Rows with blank Size are left untouched. Rows with an invalid Size value are
+// left as-is and an error is returned for each offending row; the caller should
+// treat any returned errors as fatal so provisioning never runs against a
+// malformed size. Call this after loading a deployment from TOML, alongside
+// NormalizeRoutes.
+func (d *Deployment) NormalizeVolumeSizes() []error {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+
+	var errs []error
+	for _, v := range d.Storages.Volumes {
+		if v.Size == "" {
+			continue
+		}
+		normalized, err := NormalizeVolumeSize(v.Size)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("volume %q: invalid size %q: %w", v.Name, v.Size, err))
+			continue
+		}
+		v.Size = normalized
+	}
+	return errs
 }
 
 // AppMountVolumeDir is the directory token used to select (or seed) the app

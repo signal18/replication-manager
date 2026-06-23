@@ -537,6 +537,16 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 			}
 			return fmt.Errorf("invalid deployment path mapping in app config %q", filename)
 		}
+		// Normalize volume sizes. Invalid sizes are preserved as-is and logged as
+		// warnings so that apps with stale persisted configs remain loadable.
+		// OpenSVC provisioning is blocked at the provision entrypoints before any
+		// remote state is written — see validateAppVolumeSizes in prov_opensvc_app.go.
+		if sizeErrs := appcnf.Deployment.NormalizeVolumeSizes(); len(sizeErrs) > 0 {
+			for _, sizeErr := range sizeErrs {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
+					"App config %q has invalid volume size (provisioning blocked until fixed): %v", filename, sizeErr)
+			}
+		}
 		// Normalize routes eagerly so in-memory state always has canonical
 		// mode/sourcePort/destPort values, regardless of how old the TOML is.
 		appcnf.Deployment.NormalizeRoutes()

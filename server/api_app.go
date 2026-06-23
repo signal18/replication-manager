@@ -2632,6 +2632,14 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 
 					deployment.ResolveVolumePaths(vol.Name)
 
+				case "size":
+					normalized, err := config.NormalizeVolumeSize(newValue)
+					if err != nil {
+						http.Error(w, "Invalid size: "+err.Error(), http.StatusBadRequest)
+						return
+					}
+					vol.Size = normalized
+
 				default:
 					http.Error(w, "Invalid key for volumes", http.StatusInternalServerError)
 					return

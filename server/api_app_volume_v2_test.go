@@ -211,3 +211,94 @@ func TestModifyVolumePoolname_AllowsMoveOntoUsedPoolWhenV2(t *testing.T) {
 		t.Fatalf("expected second row name unchanged, got %q", volumes[1].Name)
 	}
 }
+
+// newModifyVolumeSizeRequest builds a POST request equivalent to
+// /api/clusters/{cluster}/apps/{app}/storages/volumes/index/{index}/size/modify.
+func newModifyVolumeSizeRequest(t *testing.T, repman *ReplicationManager, cl *cluster.Cluster, index int, newSize string) *http.Request {
+	t.Helper()
+	tok := issueVolumeTestJWT(t, repman)
+	body, _ := json.Marshal(map[string]string{"value": newSize})
+	url := fmt.Sprintf("/api/clusters/%s/apps/%s/storages/volumes/index/%d/size/modify", cl.Name, volumeTestAppId, index)
+	req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req = setMuxVars(req, map[string]string{
+		"clusterName": cl.Name,
+		"appName":     volumeTestAppId,
+		"field":       "volumes",
+		"index":       fmt.Sprintf("%d", index),
+		"key":         "size",
+	})
+	return req
+}
+
+// TestAddStorageVolume_WithSize verifies that adding a volume row with an
+// explicit size stores the normalized value (G as base unit).
+func TestAddStorageVolume_WithSize(t *testing.T) {
+	repman, cl, app := newVolumeTestSetup(t, config.AppConfigVersionV2)
+	req := newAddVolumeRequest(t, repman, cl, config.Volume{Name: "myapp-docs", PoolName: "docs", VolumeDir: "docs", Size: "10G"})
+
+	w := httptest.NewRecorder()
+	repman.handlerMuxAddStorage(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	volumes := app.AppConfig.Deployment.Storages.Volumes
+	if len(volumes) != 2 {
+		t.Fatalf("expected 2 volume rows, got %d", len(volumes))
+	}
+	if volumes[1].Size != "10" {
+		t.Fatalf("expected normalized size=10 (G base), got %q", volumes[1].Size)
+	}
+}
+
+// TestModifyVolumeSize sets a size override on an existing volume row and
+// verifies the normalized value is stored.
+func TestModifyVolumeSize(t *testing.T) {
+	repman, cl, app := newVolumeTestSetup(t, 0)
+	req := newModifyVolumeSizeRequest(t, repman, cl, 0, "20G")
+
+	w := httptest.NewRecorder()
+	repman.handlerMuxModifyStorageField(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for size modify, got %d: %s", w.Code, w.Body.String())
+	}
+	if app.AppConfig.Deployment.Storages.Volumes[0].Size != "20" {
+		t.Fatalf("expected size=20, got %q", app.AppConfig.Deployment.Storages.Volumes[0].Size)
+	}
+}
+
+// TestModifyVolumeSize_ClearToBlank verifies that clearing a size override
+// back to blank (empty string) is accepted and persisted as "".
+func TestModifyVolumeSize_ClearToBlank(t *testing.T) {
+	repman, cl, app := newVolumeTestSetup(t, 0)
+	app.AppConfig.Deployment.Storages.Volumes[0].Size = "10"
+
+	req := newModifyVolumeSizeRequest(t, repman, cl, 0, "")
+
+	w := httptest.NewRecorder()
+	repman.handlerMuxModifyStorageField(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for clear-to-blank, got %d: %s", w.Code, w.Body.String())
+	}
+	if app.AppConfig.Deployment.Storages.Volumes[0].Size != "" {
+		t.Fatalf("expected size cleared to blank, got %q", app.AppConfig.Deployment.Storages.Volumes[0].Size)
+	}
+}
+
+// TestModifyVolumeSize_RejectsInvalidFormat verifies that an invalid size
+// string is rejected with a 400.
+func TestModifyVolumeSize_RejectsInvalidFormat(t *testing.T) {
+	repman, cl, _ := newVolumeTestSetup(t, 0)
+	req := newModifyVolumeSizeRequest(t, repman, cl, 0, "badvalue")
+
+	w := httptest.NewRecorder()
+	repman.handlerMuxModifyStorageField(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid size, got %d: %s", w.Code, w.Body.String())
+	}
+}

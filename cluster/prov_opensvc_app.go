@@ -259,7 +259,31 @@ func (cluster *Cluster) OpenSVCClearAppInstanceState(app *App, node string) erro
 	return nil
 }
 
+// validateAppVolumeSizes checks that every non-blank volume Size in the app's
+// deployment is a valid size string.  It validates without mutating or logging
+// so it is safe to call from any provision entrypoint.  Returns the first
+// invalid entry as an error that names the app, volume, and raw size.
+func validateAppVolumeSizes(app *App) error {
+	if app.AppConfig == nil || app.AppConfig.Deployment == nil {
+		return nil
+	}
+	appcnf := app.AppConfig
+	for _, vol := range appcnf.Deployment.Storages.Volumes {
+		if vol.Size == "" {
+			continue
+		}
+		if _, err := config.NormalizeVolumeSize(vol.Size); err != nil {
+			return fmt.Errorf("app %q volume %q has invalid persisted size %q: fix the TOML and reload before provisioning", appcnf.AppHost, vol.Name, vol.Size)
+		}
+	}
+	return nil
+}
+
 func (cluster *Cluster) OpenSVCProvisionAppV3(app *App, svc opensvc.Collector, agent opensvc.Host) error {
+	if err := validateAppVolumeSizes(app); err != nil {
+		return err
+	}
+
 	err := cluster.OpenSVCCreateAppVariableMaps(agent.Node_name, app)
 	if err != nil {
 		return err
@@ -324,6 +348,12 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 		}
 		cluster.errorChan <- nil
 		return nil
+	}
+
+	if err := validateAppVolumeSizes(app); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision app: %s", err)
+		cluster.errorChan <- err
+		return err
 	}
 
 	err = cluster.OpenSVCCreateAppVariableMaps(agent.Node_name, app)
@@ -531,7 +561,11 @@ func openSVCAppVolumeSection(vol *config.Volume, pathmap map[string][]string, sh
 	svcvol := make(map[string]string)
 	svcvol["name"] = vol.Name
 	svcvol["pool"] = vol.PoolName
-	svcvol["size"] = "{env.size}"
+	if vol.Size != "" {
+		svcvol["size"] = vol.Size + "g"
+	} else {
+		svcvol["size"] = "{env.size}"
+	}
 	if shared {
 		svcvol["shared"] = "true"
 	}

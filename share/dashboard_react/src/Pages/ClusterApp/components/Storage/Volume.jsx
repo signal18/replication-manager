@@ -11,7 +11,7 @@ import { HiTrash } from "react-icons/hi";
 import { getVolumeDirTokens } from "./volumeDirUtils";
 
 
-const defaultVol = { name: "", poolname: "", volumedir: "" };
+const defaultVol = { name: "", poolname: "", volumedir: "", size: "" };
 
 // AppConfigVersionV2 mirrors config.AppConfigVersionV2 (config/app_template_canonical.go):
 // the app-config-version marker at/above which intentional multiple volume
@@ -125,6 +125,9 @@ const VolumeSection = ({
             columnHelper.accessor((row) => getVolumeDirTokens(row.volumedir).join(', '), {
                 header: 'Volume Dir'
             }),
+            columnHelper.accessor((row) => row.size ? row.size + 'G' : '(app default)', {
+                header: 'Size'
+            }),
             columnHelper.display({
                 id: 'actions',
                 cell: ({ row }) => (
@@ -215,6 +218,11 @@ const VolumeRowForm = React.memo(({ fieldName, volume, index, poolOptions = [], 
                     <TextForm placeholder="Volume Dir" confirmTitle="Change Volume Dir" value={vol.volumedir} onSave={(value) => onChange(fieldName, index, "volumedir", value)} />
                     {availableDirs.length > 1 && (<Text mb={1} fontSize="sm" color="gray.500">Directories: {availableDirs.join(', ')}</Text>)}
                 </Flex>
+                <Flex direction="column" flex="1">
+                    <Text mb={1}>Size:</Text>
+                    <TextForm placeholder="Size (e.g. 10G, 2T)" confirmTitle="Change Volume Size" value={vol.size ? vol.size + 'G' : ''} onSave={(value) => onChange(fieldName, index, "size", value)} />
+                    <Text mb={1} fontSize="sm" color="gray.500">Blank inherits app default. Accepts units (e.g. 10G, 2T); saved value is normalized to GB.</Text>
+                </Flex>
             </Flex>
         </Flex>
     )
@@ -265,6 +273,11 @@ const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => 
                     <Text mb={1}>Volume Dir:</Text>
                     <Input placeholder="Volume Dir" value={vol.volumedir} onChange={(e) => handleArrayChange("volumedir", e.target.value)} />
                     {availableDirs.length > 1 && (<Text mb={1} fontSize="sm" color="gray.500">Directories: {availableDirs.join(', ')}</Text>)}
+                </Flex>
+                <Flex direction="column" flex="1">
+                    <Text mb={1}>Size:</Text>
+                    <Input placeholder="Size (e.g. 10G, blank = app default)" value={vol.size} onChange={(e) => handleArrayChange("size", e.target.value)} />
+                    <Text mb={1} fontSize="sm" color="gray.500">Blank inherits app default. Accepts units (e.g. 10G, 2T); saved value is normalized to GB.</Text>
                 </Flex>
                 <Flex direction="column" flex="1">
                     <HStack spacing={2} mt={4}>

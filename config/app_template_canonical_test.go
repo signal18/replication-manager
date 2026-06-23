@@ -1022,3 +1022,66 @@ func TestAppConfigVersionFromRaw(t *testing.T) {
 		t.Fatalf("expected 0 for non-numeric marker, got %d", v)
 	}
 }
+
+// TestCanonicalizeV1Merge_SizeFirstRowWins confirms that when V1 same-pool
+// duplicates are merged, the first row's size value is kept and later rows'
+// conflicting size values are dropped.
+func TestCanonicalizeV1Merge_SizeFirstRowWins(t *testing.T) {
+	content := []byte(`
+[deployment.storages]
+[[deployment.storages.volumes]]
+name = "row1"
+poolname = "data"
+volumedir = "etc"
+size = "10"
+
+[[deployment.storages.volumes]]
+name = "row2"
+poolname = "data"
+volumedir = "log"
+size = "20"
+`)
+
+	out, _, err := CanonicalizeAppVolumesTOML(content, "myapp")
+	if err != nil {
+		t.Fatalf("CanonicalizeAppVolumesTOML error: %v", err)
+	}
+
+	// The merged row should keep first-row size "10".
+	if !strings.Contains(string(out), `size = "10"`) {
+		t.Fatalf("expected merged row to keep first-row size=10, got:\n%s", out)
+	}
+	// The second row's size "20" must not survive.
+	if strings.Count(string(out), "size") > 1 {
+		t.Fatalf("expected only one size entry in merged output, got:\n%s", out)
+	}
+}
+
+// TestCanonicalizeV1Merge_BlankSizeKept confirms that a blank size on the
+// first row is preserved (blank = inherit app default) and not overwritten
+// by a non-blank size from a later row.
+func TestCanonicalizeV1Merge_BlankSizeKept(t *testing.T) {
+	content := []byte(`
+[deployment.storages]
+[[deployment.storages.volumes]]
+name = "row1"
+poolname = "data"
+volumedir = "etc"
+
+[[deployment.storages.volumes]]
+name = "row2"
+poolname = "data"
+volumedir = "log"
+size = "20"
+`)
+
+	out, _, err := CanonicalizeAppVolumesTOML(content, "myapp")
+	if err != nil {
+		t.Fatalf("CanonicalizeAppVolumesTOML error: %v", err)
+	}
+
+	// No size entry from the second row should appear.
+	if strings.Contains(string(out), `size = "20"`) {
+		t.Fatalf("expected second-row size to be dropped from merged output, got:\n%s", out)
+	}
+}
