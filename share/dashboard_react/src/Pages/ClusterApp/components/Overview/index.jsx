@@ -5,8 +5,8 @@ import styles from "./styles.module.scss";
 import AccordionComponent from "../../../../components/AccordionComponent";
 import GeneralSection from "./GeneralSection";
 import AppCredit from "./AppCredit";
-import { useCallback, useMemo, useState } from "react";
-import { deploymentFieldChange, deploymentFieldIndexAdd, deploymentFieldIndexDrop, pauseAutoReload, resolveTemplateVariables } from "../../../../redux/clusterSlice";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { deploymentFieldChange, deploymentFieldIndexAdd, deploymentFieldIndexDrop, pauseAutoReload, resolveTemplateVariables, storageFieldIndexAdd, getOpenSVCPools } from "../../../../redux/clusterSlice";
 import ConfirmModal from "../../../../components/Modals/ConfirmModal";
 import Routes from "./Routes";
 import PathSection from "./Paths";
@@ -18,7 +18,16 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
     const deployment = useSelector((state) => state.cluster?.app?.deployment);
     const substitution = useSelector((state) => state.cluster?.app?.substitution);
     const dockerTemplates = useSelector((state) => state.globalClusters.monitor?.serviceTemplates);
+    const opensvcPools = useSelector((state) => state.cluster?.opensvcPools || []);
+    const isOpenSVCOrchestrator = useSelector(
+        (state) => state.cluster?.clusterData?.config?.provOrchestrator === "opensvc"
+    );
     
+    useEffect(() => {
+        if (!clusterName || !isOpenSVCOrchestrator) return;
+        dispatch(getOpenSVCPools({ clusterName }));
+    }, [clusterName, dispatch, isOpenSVCOrchestrator]);
+
     const [modalState, setModalState] = useState({
         isOpen: false,
         field: null,
@@ -56,6 +65,16 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
         () => dispatch(pauseAutoReload({ isPaused: false })),
         [dispatch]
     )
+
+    const handleSaveVolume = useCallback(
+        (field, value) => dispatch(storageFieldIndexAdd({ clusterName, appId, field, value })).unwrap(),
+        [clusterName, appId, dispatch]
+    );
+
+    const effectiveOpenSVCPools = useMemo(
+        () => isOpenSVCOrchestrator ? opensvcPools : [],
+        [isOpenSVCOrchestrator, opensvcPools]
+    );
 
     const handleResolveVariables = useCallback(
         (rawValue) => {
@@ -98,8 +117,23 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
     }, [routes, variables, actionProps, user, gateway]);
 
     const pathComponent = useMemo(() => {
-        return <PathSection storages={storages} rows={paths} fieldName={'paths'} clusterName={clusterName} appId={appId} dockerImage={dockerImage} gitCloneRows={gitClones} user={user} {...actionProps} />;
-    }, [paths, clusterName, appId, dockerImage, gitClones, actionProps, storages, user]);
+        return <PathSection
+            storages={storages}
+            rows={paths}
+            fieldName={'paths'}
+            clusterName={clusterName}
+            appId={appId}
+            dockerImage={dockerImage}
+            gitCloneRows={gitClones}
+            user={user}
+            opensvcPools={effectiveOpenSVCPools}
+            appHaTopology={appConfig?.provAppHaTopology}
+            appConfigVersion={appConfig?.appConfigVersion}
+            onSaveVolume={handleSaveVolume}
+            {...actionProps}
+        />;
+    }, [paths, clusterName, appId, dockerImage, gitClones, actionProps, storages, user,
+        effectiveOpenSVCPools, appConfig?.provAppHaTopology, appConfig?.appConfigVersion, handleSaveVolume]);
 
     const variableComponent = useMemo(() => {
         return <Variables substitution={substitution} rows={variables} agentList={agentList} fieldName={'variables'} user={user} onResolveVariable={handleResolveVariables} {...actionProps} />;
@@ -162,6 +196,8 @@ Overview.propTypes = {
     appConfig: PropTypes.shape({
         provAppDockerImg: PropTypes.string,
         provAppAgents: PropTypes.oneOfType([PropTypes.arrayOf(PropTypes.string), PropTypes.string]),
+        provAppHaTopology: PropTypes.string,
+        appConfigVersion: PropTypes.number,
     }).isRequired,
     user: PropTypes.shape({
         grants: PropTypes.object,

@@ -331,10 +331,13 @@ func (d *Deployment) InsertPath(p PathMapping) error {
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
 
-	// Check if the path already exists
+	// Check for duplicate DockerPath and duplicate Name (name drives parent resolution)
 	for _, existingPath := range d.Paths {
 		if existingPath.DockerPath == p.DockerPath {
 			return fmt.Errorf("path mapping already exists for target path: %s", p.DockerPath)
+		}
+		if p.Name != "" && existingPath.Name == p.Name {
+			return fmt.Errorf("path mapping with name %q already exists", p.Name)
 		}
 	}
 

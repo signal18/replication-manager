@@ -851,3 +851,117 @@ func TestValidateAppVolumeSizes_AllowsValidSizes(t *testing.T) {
 		}
 	}
 }
+
+// TestGetOpenSVCDeploymentPathMapping_MultiPathSameVolumeSubpaths verifies that
+// two direct path mappings referencing the same volume row but different
+// SourcePath subpaths both render as distinct OpenSVC volume_mounts entries:
+// vol-a/data:/docker/data and vol-a/config:/docker/config.
+func TestGetOpenSVCDeploymentPathMapping_MultiPathSameVolumeSubpaths(t *testing.T) {
+	deployment := config.NewDeploymentConfig()
+	deployment.Storages.Volumes = config.Volumes{
+		{Name: "vol-a", PoolName: "data", VolumeDir: "data"},
+	}
+	deployment.Paths = config.PathMaps{
+		{
+			Name:       "data-path",
+			DockerPath: "/docker/data",
+			SourceType: config.SourceVolume,
+			SourceName: "vol-a",
+			SourcePath: "data",
+			VolumeName: "vol-a",
+		},
+		{
+			Name:       "config-path",
+			DockerPath: "/docker/config",
+			SourceType: config.SourceVolume,
+			SourceName: "vol-a",
+			SourcePath: "config",
+			VolumeName: "vol-a",
+		},
+	}
+
+	if errs := deployment.ResolvePaths(); len(errs) > 0 {
+		t.Fatalf("expected deployment paths to resolve, got %v", errs)
+	}
+
+	cl := &Cluster{Name: "test", Conf: &config.Config{}}
+	app := &App{Name: "myapp", AppConfig: &config.AppConfig{Deployment: deployment}}
+
+	got := cl.GetOpenSVCDeploymentPathMapping(app)
+	tokens := strings.Fields(got)
+	if len(tokens) != 2 {
+		t.Fatalf("expected 2 mount mappings, got %d: %q", len(tokens), got)
+	}
+
+	expected := map[string]bool{
+		"vol-a/data:/docker/data":     false,
+		"vol-a/config:/docker/config": false,
+	}
+	for _, token := range tokens {
+		if _, ok := expected[token]; ok {
+			expected[token] = true
+		}
+	}
+	for token, found := range expected {
+		if !found {
+			t.Fatalf("expected mount mapping %q in output %q", token, got)
+		}
+	}
+}
+
+// TestGetOpenSVCDeploymentPathMapping_RootAndSubdirOnSameVolume verifies that a
+// root mapping (SourcePath ".") and a subdir mapping (SourcePath "config") on
+// the same volume row render as distinct entries: vol-a:/docker/root and
+// vol-a/config:/docker/config.
+func TestGetOpenSVCDeploymentPathMapping_RootAndSubdirOnSameVolume(t *testing.T) {
+	deployment := config.NewDeploymentConfig()
+	deployment.Storages.Volumes = config.Volumes{
+		{Name: "vol-a", PoolName: "data", VolumeDir: "data"},
+	}
+	deployment.Paths = config.PathMaps{
+		{
+			Name:       "root-path",
+			DockerPath: "/docker/root",
+			SourceType: config.SourceVolume,
+			SourceName: "vol-a",
+			SourcePath: ".",
+			VolumeName: "vol-a",
+		},
+		{
+			Name:       "config-path",
+			DockerPath: "/docker/config",
+			SourceType: config.SourceVolume,
+			SourceName: "vol-a",
+			SourcePath: "config",
+			VolumeName: "vol-a",
+		},
+	}
+
+	if errs := deployment.ResolvePaths(); len(errs) > 0 {
+		t.Fatalf("expected deployment paths to resolve, got %v", errs)
+	}
+
+	cl := &Cluster{Name: "test", Conf: &config.Config{}}
+	app := &App{Name: "myapp", AppConfig: &config.AppConfig{Deployment: deployment}}
+
+	got := cl.GetOpenSVCDeploymentPathMapping(app)
+	tokens := strings.Fields(got)
+	if len(tokens) != 2 {
+		t.Fatalf("expected 2 mount mappings, got %d: %q", len(tokens), got)
+	}
+
+	expected := map[string]bool{
+		"vol-a:/docker/root":          false,
+		"vol-a/config:/docker/config": false,
+	}
+	for _, token := range tokens {
+		if _, ok := expected[token]; ok {
+			expected[token] = true
+		}
+	}
+	for token, found := range expected {
+		if !found {
+			t.Fatalf("expected mount mapping %q in output %q", token, got)
+		}
+	}
+}

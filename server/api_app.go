@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net/http"
 	"os"
@@ -1965,13 +1966,41 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		errors := make([]error, 0)
 		deployment := node.AppConfig.Deployment
 		for _, row := range body {
-			if row.DockerPath == "" || row.SourceName == "" || row.SourcePath == "" {
-				http.Error(w, "All fields (destPath, sourceName, sourcePath) must be provided for path", http.StatusInternalServerError)
+			if row.DockerPath == "" {
+				http.Error(w, "dockerpath is required for all path rows", http.StatusBadRequest)
+				return
+			}
+			// A path must have a direct source or a parent to be provisionable
+			if row.SourceType == "" && row.ParentName == "" {
+				http.Error(w, "path "+row.DockerPath+" must have either srctype or parentname", http.StatusBadRequest)
+				return
+			}
+			// Reject partial source state
+			if row.SourceType != "" && row.SourceName == "" {
+				http.Error(w, "srcname is required when srctype is provided for path "+row.DockerPath, http.StatusBadRequest)
+				return
+			}
+			if row.SourceName != "" && row.SourceType == "" {
+				http.Error(w, "srctype is required when srcname is provided for path "+row.DockerPath, http.StatusBadRequest)
+				return
+			}
+			// Direct-source rows require srcpath
+			if row.SourceType != "" && row.SourcePath == "" {
+				http.Error(w, "srcpath is required for direct-source path "+row.DockerPath, http.StatusBadRequest)
+				return
+			}
+			// Inherited child rows must not mix partial source data
+			if row.ParentName != "" && row.SourceType == "" && (row.SourceName != "" || row.SourcePath != "") {
+				http.Error(w, "inherited child path "+row.DockerPath+" cannot have source fields without srctype", http.StatusBadRequest)
 				return
 			}
 			if row.Name == "" {
-				// Generate a unique name for the path if not provided
-				row.Name = fmt.Sprintf("path-%s-%s", row.SourceType, row.SourceName)
+				// Hash the raw DockerPath so the fallback name is unique for any
+				// distinct DockerPath string, including formatting variants that
+				// sanitization would otherwise collapse to the same token.
+				h := fnv.New32a()
+				h.Write([]byte(row.DockerPath))
+				row.Name = fmt.Sprintf("path-%08x", h.Sum32())
 			}
 			err := deployment.InsertPath(row)
 			if err != nil {

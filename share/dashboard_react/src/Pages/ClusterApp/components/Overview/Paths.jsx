@@ -1,4 +1,4 @@
-import { VStack, HStack, Text, Heading, Input, Select, Flex, InputGroup, Box } from '@chakra-ui/react'
+import { VStack, HStack, Text, Heading, Input, Select, Flex, InputGroup, Box, Divider } from '@chakra-ui/react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { HiFolder, HiTrash } from 'react-icons/hi'
 import { TbEdit, TbLinkPlus } from 'react-icons/tb'
@@ -17,7 +17,9 @@ import {
   composeSourcePath,
   getDisplaySubPath,
   getVolumeDirTokens,
+  normalizeSubPath,
 } from '../Storage/volumeDirUtils';
+import { VolumeNewForm } from '../Storage/Volume';
 
 const sourceTypes = [
   { value: '', name: 'Select Source', isChildOption: true },
@@ -33,7 +35,7 @@ const defaultPath = {
   parentpath: "",
   srctype: "",
   srcname: "",
-  srcpath: "/",
+  srcpath: ".",
   srcbasepath: "",
   subpath: "/",
 }
@@ -42,6 +44,8 @@ const nodeToValue = (node) => (node.type === "directory" && !node.path.endsWith(
 const nodeToString = (node) => node.name || node.path;
 
 const columnHelper = createColumnHelper()
+
+const AppConfigVersionV2 = 2;
 
 const PathSection = ({
   rows = [],
@@ -55,6 +59,10 @@ const PathSection = ({
   onSaveAdd,
   onPauseAutoReload = () => { },
   onResumeAutoReload = () => { },
+  opensvcPools = [],
+  appHaTopology,
+  appConfigVersion = 0,
+  onSaveVolume,
 }) => {
   const [newForm, setNewForm] = useState({ isVisible: false, parentRow: null, rowdata: null, index: null });
   const dispatch = useDispatch();
@@ -75,6 +83,38 @@ const PathSection = ({
   const s3Options = useMemo(() => {
     return [{ value: "", name: "Select S3" }, ...s3Rows.map(s3 => ({ ...s3, value: s3.name, name: s3.name }))];
   }, [s3Rows]);
+
+  const poolOptions = useMemo(() => {
+    if (!Array.isArray(opensvcPools) || opensvcPools.length === 0) return [];
+    const normalized = opensvcPools
+      .map((pool) => {
+        if (typeof pool === 'string') {
+          const value = pool.trim();
+          return value ? { value, name: value, shared: false } : null;
+        }
+        if (pool && typeof pool === 'object') {
+          const value = String(pool.value ?? pool.name ?? '').trim();
+          if (!value) return null;
+          const name = String(pool.name ?? value).trim() || value;
+          return { value, name, shared: Boolean(pool.shared) };
+        }
+        return null;
+      })
+      .filter(Boolean);
+    const dedup = new Map();
+    for (const option of normalized) {
+      if (!dedup.has(option.value)) dedup.set(option.value, option);
+      else if (option.shared) dedup.set(option.value, { ...dedup.get(option.value), shared: true });
+    }
+    let options = [...dedup.values()];
+    if (appHaTopology === 'failover') options = options.filter((o) => o.shared);
+    return options.sort((a, b) => a.name.localeCompare(b.name));
+  }, [opensvcPools, appHaTopology]);
+
+  const usedPoolNames = useMemo(() => {
+    if (appConfigVersion >= AppConfigVersionV2) return new Set();
+    return new Set((volumeRows || []).map((row) => row.poolname).filter(Boolean));
+  }, [volumeRows, appConfigVersion]);
 
   const resolvedRows = useMemo(() => rows.map((row) => {
     const { srctype, srcname, srcpath, parentname } = row;
@@ -194,9 +234,9 @@ const PathSection = ({
           </Heading>
           <Box className={styles.tableContainer}>
             {rowdata ? (
-              <PathRowForm fieldName={fieldName} path={rowdata} clusterName={clusterName} appId={appId} gitRows={gitRows} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={parentRow} dockerImage={dockerImage} onChange={onRowArrayChange} index={index} onCancel={handleCancel} />
+              <PathRowForm fieldName={fieldName} path={rowdata} clusterName={clusterName} appId={appId} gitRows={gitRows} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={parentRow} dockerImage={dockerImage} onChange={onRowArrayChange} index={index} onCancel={handleCancel} poolOptions={poolOptions} usedPoolNames={usedPoolNames} onSaveVolume={onSaveVolume} appConfigVersion={appConfigVersion} />
             ) : (
-              <PathNewForm clusterName={clusterName} appId={appId} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={parentRow} onSave={handleSaveAdd} onCancel={handleCancel} />
+              <PathNewForm clusterName={clusterName} appId={appId} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={parentRow} onSave={handleSaveAdd} onCancel={handleCancel} poolOptions={poolOptions} usedPoolNames={usedPoolNames} onSaveVolume={onSaveVolume} appConfigVersion={appConfigVersion} />
             )}
           </Box>
         </VStack>
@@ -217,12 +257,30 @@ export default React.memo(PathSection);
 
 const EMPTY_OBJECT = {};
 
-const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gitOptions, volumeOptions, s3Options, parentRow, onChange, onCancel = () => { } }) => {
+const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gitOptions, volumeOptions, s3Options, parentRow, onChange, onCancel = () => { }, poolOptions = [], usedPoolNames, onSaveVolume, appConfigVersion = 0 }) => {
   const dispatch = useDispatch();
   const p = path || defaultPath;
-  const { dockerpath, parentname, srctype, srcname, srcpath } = p;
+  const { dockerpath, parentname, srctype, srcname: propSrcname, srcpath } = p;
+  const [showVolumeCreate, setShowVolumeCreate] = useState(false);
+  const [localVolumes, setLocalVolumes] = useState([]);
+  // Tracks the srcname selected within this edit session (inline volume creation
+  // or manual dropdown change) so the Dropdown reflects the selection immediately,
+  // without waiting for the parent store update to flow back through the stale
+  // rowdata snapshot.
+  const [srcnameOverride, setSrcnameOverride] = useState(null);
+  const srcname = srcnameOverride !== null ? srcnameOverride : propSrcname;
 
-  const vol = useMemo(() => srctype === "volume" ? volumeOptions.find(opt => opt.name === srcname) : null, [srctype, srcname, volumeOptions]);
+  useEffect(() => { setSrcnameOverride(null); setLocalVolumes([]); }, [path]);
+
+  const effectiveVolumeOptions = useMemo(() => {
+    const existing = new Set(volumeOptions.map(v => v.name));
+    const extras = localVolumes
+      .filter(v => !existing.has(v.name))
+      .map(v => ({ ...v, value: v.name, name: v.name }));
+    return [...volumeOptions, ...extras];
+  }, [volumeOptions, localVolumes]);
+
+  const vol = useMemo(() => srctype === "volume" ? effectiveVolumeOptions.find(opt => opt.name === srcname) : null, [srctype, srcname, effectiveVolumeOptions]);
   const gc = useMemo(() => srctype === "git" ? gitOptions.find(opt => opt.value === srcname) : null, [srctype, srcname, gitOptions]);
   const s3 = useMemo(() => srctype === "s3" ? s3Options.find(opt => opt.value === srcname) : null, [srctype, srcname, s3Options]);
   const parent = useMemo(() => parentRow || { dockerpath: "", srcpath: "", srctype: "", srcname: "" }, [parentRow]);
@@ -281,6 +339,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
 
   const handleChangeSourceType = useCallback((newvalue) => {
     if (srctype != newvalue) {
+      setSrcnameOverride(null);
       onRowArrayChange(fieldName, index, "srctype", newvalue);
     }
   }, [srctype, fieldName, index, onRowArrayChange]);
@@ -303,12 +362,35 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
     }
   }, [gc, clusterName, appId, dispatch]);
 
+  // For V1 apps (one volume per pool), union parent-tracked used pools with any
+  // pool claimed by an inline-created volume in this session. This prevents the
+  // same pool from appearing selectable again before the async refresh lands.
+  // V2 apps allow multiple volumes per pool, so no extra filtering is needed.
+  const effectiveUsedPoolNames = useMemo(() => {
+    if (appConfigVersion >= AppConfigVersionV2) return usedPoolNames;
+    const localPoolNames = new Set(localVolumes.map((v) => v.poolname).filter(Boolean));
+    if (localPoolNames.size === 0) return usedPoolNames;
+    return new Set([...(usedPoolNames || []), ...localPoolNames]);
+  }, [appConfigVersion, usedPoolNames, localVolumes]);
+
+  const canCreateVolume = poolOptions.some((opt) => !effectiveUsedPoolNames?.has(opt.value));
+
+  const handleCreateVolume = useCallback((volData) => {
+    if (!onSaveVolume) return Promise.resolve();
+    return onSaveVolume('volumes', volData).then(() => {
+      setLocalVolumes(prev => [...prev, volData]);
+      setShowVolumeCreate(false);
+      setSrcnameOverride(volData.name);
+      onRowArrayChange(fieldName, index, "srcname", volData.name);
+    });
+  }, [onSaveVolume, onRowArrayChange, fieldName, index]);
+
   const srcDropdown = useMemo(() => {
     let srcOptions = [];
     let srcLabel = '';
     switch (srctype) {
       case 'volume':
-        srcOptions = volumeOptions;
+        srcOptions = effectiveVolumeOptions;
         srcLabel = 'Volume :';
         break;
       case 'git':
@@ -323,15 +405,46 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
         srcOptions = [];
         srcLabel = '';
     }
+    if (srctype === 'volume') {
+      return (
+        <Flex direction="column" flex="1">
+          <Text mb={1}>{srcLabel}</Text>
+          <HStack>
+            <Dropdown key={srctype} confirmTitle={"Source changed"} placeholder="Source" options={srcOptions} selectedValue={srcname} onChange={(value) => { setSrcnameOverride(value); onRowArrayChange(fieldName, index, "srcname", value); }} />
+            {onSaveVolume && canCreateVolume && (
+              <RMButton size="sm" onClick={() => setShowVolumeCreate((v) => !v)}>
+                {showVolumeCreate ? 'Cancel' : '+ New Volume'}
+              </RMButton>
+            )}
+          </HStack>
+          {srcbasepath && (<Text key={srcname} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)}
+          {availableDirs.length > 0 && (<Text key={`${srcname}-dirs`} mb={1} fontSize="sm" color="gray.500">Available directories: {availableDirs.join(', ')}</Text>)}
+          {onSaveVolume && poolOptions.length > 0 && !canCreateVolume && (
+            <Text fontSize="xs" color="gray.400">No eligible pools available for new volume</Text>
+          )}
+          {showVolumeCreate && (
+            <Box mt={2} p={3} borderWidth={1} borderRadius="md">
+              <Divider mb={2} />
+              <VolumeNewForm
+                poolOptions={poolOptions}
+                usedPoolNames={effectiveUsedPoolNames}
+                saveCaption="Create & Select Volume"
+                onSave={handleCreateVolume}
+                onCancel={() => setShowVolumeCreate(false)}
+              />
+            </Box>
+          )}
+        </Flex>
+      );
+    }
     return (
       <Flex direction="column" flex="1">
         <Text mb={1}>{srcLabel}</Text>
-        <Dropdown key={srctype} confirmTitle={"Source changed"} placeholder="Source" options={srcOptions} selectedValue={srcname} onChange={(value) => onRowArrayChange(fieldName, index, "srcname", value)} />
+        <Dropdown key={srctype} confirmTitle={"Source changed"} placeholder="Source" options={srcOptions} selectedValue={srcname} onChange={(value) => { setSrcnameOverride(value); onRowArrayChange(fieldName, index, "srcname", value); }} />
         {srcbasepath && (<Text key={srcname} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)}
-        {srctype === 'volume' && availableDirs.length > 0 && (<Text key={`${srcname}-dirs`} mb={1} fontSize="sm" color="gray.500">Available directories: {availableDirs.join(', ')}</Text>)}
       </Flex>
     );
-  }, [srctype, volumeOptions, gitOptions, s3Options, srcname, srcbasepath, availableDirs]);
+  }, [srctype, effectiveVolumeOptions, gitOptions, s3Options, srcname, srcbasepath, availableDirs, showVolumeCreate, canCreateVolume, poolOptions, effectiveUsedPoolNames, handleCreateVolume, onSaveVolume]);
 
   const handleOnTreeSelect = useCallback((subpaths) => {
     if (typeof subpaths === 'string') {
@@ -384,10 +497,12 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
   )
 })
 
-const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, volumeOptions, s3Options, onSave = () => { }, onCancel = () => { } }) => {
+const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, volumeOptions, s3Options, onSave = () => { }, onCancel = () => { }, poolOptions = [], usedPoolNames, onSaveVolume, appConfigVersion = 0 }) => {
   const dispatch = useDispatch();
 
   const [path, setPath] = useState(defaultPath);
+  const [showVolumeCreate, setShowVolumeCreate] = useState(false);
+  const [localVolumes, setLocalVolumes] = useState([]);
   const [browseState, setBrowseState] = useState({
     isOpen: false,
     selectedPath: '',
@@ -410,9 +525,17 @@ const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, vol
   const { isOpen, selectedPath, selectedKey } = browseState;
   const defaultExpandedValues = useMemo(() => [selectedPath], [selectedPath]);
 
+  const effectiveVolumeOptions = useMemo(() => {
+    const existing = new Set(volumeOptions.map(v => v.name));
+    const extras = localVolumes
+      .filter(v => !existing.has(v.name))
+      .map(v => ({ ...v, value: v.name, name: v.name }));
+    return [...volumeOptions, ...extras];
+  }, [volumeOptions, localVolumes]);
+
   const vol = useMemo(
-    () => srctype === 'volume' ? volumeOptions.find(opt => opt.name === srcname) : null,
-    [srctype, srcname, volumeOptions]
+    () => srctype === 'volume' ? effectiveVolumeOptions.find(opt => opt.name === srcname) : null,
+    [srctype, srcname, effectiveVolumeOptions]
   );
   const gc = useMemo(
     () => srctype === 'git' ? gitOptions.find(opt => opt.value === srcname) : null,
@@ -428,12 +551,35 @@ const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, vol
     [srctype, vol]
   );
 
+  const effectiveUsedPoolNames = useMemo(() => {
+    if (appConfigVersion >= AppConfigVersionV2) return usedPoolNames;
+    const localPoolNames = new Set(localVolumes.map((v) => v.poolname).filter(Boolean));
+    if (localPoolNames.size === 0) return usedPoolNames;
+    return new Set([...(usedPoolNames || []), ...localPoolNames]);
+  }, [appConfigVersion, usedPoolNames, localVolumes]);
+
+  const canCreateVolume = poolOptions.some((opt) => !effectiveUsedPoolNames?.has(opt.value));
+
+  const handleCreateVolume = useCallback((volData) => {
+    if (!onSaveVolume) return Promise.resolve();
+    return onSaveVolume('volumes', volData).then(() => {
+      setLocalVolumes(prev => [...prev, volData]);
+      setShowVolumeCreate(false);
+      setPath(prev => ({
+        ...prev,
+        srcname: volData.name,
+        srcbasepath: '',
+        srcpath: composeSourcePath('', prev.subpath || '/'),
+      }));
+    });
+  }, [onSaveVolume]);
+
   const srcDropdown = useMemo(() => {
     let srcOptions = [];
     let srcLabel = '';
     switch (srctype) {
       case 'volume':
-        srcOptions = volumeOptions;
+        srcOptions = effectiveVolumeOptions;
         srcLabel = 'Volume :';
         break;
       case 'git':
@@ -448,15 +594,46 @@ const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, vol
         srcOptions = [];
         srcLabel = '';
     }
+    if (srctype === 'volume') {
+      return (
+        <Flex direction="column" flex="1">
+          <Text mb={1}>{srcLabel}</Text>
+          <HStack>
+            <Dropdown key={srctype} placeholder="Source" options={srcOptions} selectedValue={srcname} onChange={(option) => handleArrayChange("srcname", option.value)} />
+            {onSaveVolume && canCreateVolume && (
+              <RMButton size="sm" onClick={() => setShowVolumeCreate((v) => !v)}>
+                {showVolumeCreate ? 'Cancel' : '+ New Volume'}
+              </RMButton>
+            )}
+          </HStack>
+          {srcbasepath && (<Text key={srcname} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)}
+          {availableDirs.length > 0 && (<Text key={`${srcname}-dirs`} mb={1} fontSize="sm" color="gray.500">Available directories: {availableDirs.join(', ')}</Text>)}
+          {onSaveVolume && poolOptions.length > 0 && !canCreateVolume && (
+            <Text fontSize="xs" color="gray.400">No eligible pools available for new volume</Text>
+          )}
+          {showVolumeCreate && (
+            <Box mt={2} p={3} borderWidth={1} borderRadius="md">
+              <Divider mb={2} />
+              <VolumeNewForm
+                poolOptions={poolOptions}
+                usedPoolNames={effectiveUsedPoolNames}
+                saveCaption="Create & Select Volume"
+                onSave={handleCreateVolume}
+                onCancel={() => setShowVolumeCreate(false)}
+              />
+            </Box>
+          )}
+        </Flex>
+      );
+    }
     return (
       <Flex direction="column" flex="1">
         <Text mb={1}>{srcLabel}</Text>
         <Dropdown key={srctype} placeholder="Source" options={srcOptions} selectedValue={srcname} onChange={(option) => handleArrayChange("srcname", option.value)} />
         {srcbasepath && (<Text key={srcname} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)}
-        {srctype === 'volume' && availableDirs.length > 0 && (<Text key={`${srcname}-dirs`} mb={1} fontSize="sm" color="gray.500">Available directories: {availableDirs.join(', ')}</Text>)}
       </Flex>
     );
-  }, [srctype, volumeOptions, gitOptions, s3Options, srcname, srcbasepath, availableDirs]);
+  }, [srctype, effectiveVolumeOptions, gitOptions, s3Options, srcname, srcbasepath, availableDirs, showVolumeCreate, canCreateVolume, poolOptions, effectiveUsedPoolNames, handleCreateVolume, onSaveVolume]);
 
   const parent = useMemo(() => (parentRow || { name: "", dockerpath: "", srcpath: "", srctype: "", srcname: "" }), [parentRow]);
   const { name: parentname, dockerpath: parentpath, srctype: parentsrctype, srcname: parentsrcname, srcpath: parentsrcpath } = parent;
@@ -611,16 +788,47 @@ const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, vol
     if (srctype === "git") return !!gc?.value;
     if (srctype === "s3") return !!s3?.value;
 
+    // No source type: only valid as an inherited child row
+    if (!srctype) return !!path.parentname;
+
     return true;
-  }, [dockerpath, subpath, srctype, vol, gc, s3]);
+  }, [dockerpath, subpath, srctype, vol, gc, s3, path.parentname]);
 
   const handleSaveAdd = useCallback(() => {
-    if (valid) {
-      onSave([path]);
-    } else {
+    if (!valid) {
       dispatch(showErrorToast({ message: "Invalid path configuration. Please check the inputs. make sure dockerpath is not root or containing parent relative paths (..)" }));
+      return;
     }
-  }, [onSave, valid, path]);
+
+    const rowName = `path-${hashMurmur(dockerpath)}`;
+
+    let payload;
+    if (srctype) {
+      // Direct-source row: canonical V2 shape
+      payload = {
+        name: rowName,
+        dockerpath,
+        srctype,
+        srcname,
+        srcpath: srcpath === "/" ? "." : srcpath,
+      };
+      if (path.parentname) {
+        payload.parentname = path.parentname;
+      }
+    } else {
+      // Inherited child row: no direct source, VolumeName resolved from parent
+      payload = {
+        name: rowName,
+        dockerpath,
+        parentname: path.parentname,
+        srctype: "",
+        srcname: "",
+        srcpath: "",
+      };
+    }
+
+    onSave([payload]);
+  }, [onSave, valid, path, dockerpath, srctype, srcname, srcpath, dispatch]);
 
   const handleCancel = useCallback(() => {
     setPath(defaultPath);
