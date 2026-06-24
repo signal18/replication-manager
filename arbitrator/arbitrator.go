@@ -185,13 +185,13 @@ func handlerHealth(w http.ResponseWriter, r *http.Request) {
 	db, err := getArbitratorDB()
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "failed", "error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "failed"})
 		return
 	}
 
 	if err := db.Ping(); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "failed", "error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "failed"})
 		return
 	}
 
