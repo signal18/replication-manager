@@ -25,12 +25,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Detect relevant file changes for branch pushes
+  # Detect relevant file changes for branch pushes.
+  # `relevant` is the broad filter used by the shared nightly/dev jobs.
+  # `arb_relevant` exists to avoid rebuilding the nightly arbitrator image when
+  # unrelated server/client/package changes happen elsewhere in the repo.
   detect-changes:
     name: Detect Changed Files
     runs-on: ubuntu-latest
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
+      arb_relevant: ${{ steps.filter.outputs.arb_relevant }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -46,6 +50,14 @@ jobs:
               - 'share/**'
               - 'etc/**'
               - '.github/workflows/**'
+            arb_relevant:
+              - 'arbitrator/**'
+              - 'main_arbitrator.go'
+              - 'utils/dbhelper/arbitration.go'
+              - 'docker/Dockerfile.arb'
+              - 'docker/arb/**'
+              - 'Makefile'
+              - '.github/workflows/docker-build-push.yml'
 
   # OSC (Open Source Community) - Only on tags
   build-osc:
@@ -460,6 +472,68 @@ jobs:
         run: |
           curl -X POST -H 'Content-Type: application/json' \
             --data "{\"text\":\":x: Docker Nightly Rootless build failed!\n**Job:** \`${WORKFLOW_NAME}\`\n**Build:** \`${RUN_NUMBER}\`\n**Branch:** \`${REF_NAME}\`\n[View Run](${SERVER_URL}/${REPO}/actions/runs/${RUN_ID})\"}" \
+            "$WEBHOOK_URL"
+
+  # Nightly Arbitrator - Runs on develop pushes only when `arb_relevant` paths changed.
+  # This keeps the nightly arb image current for arbitrator-specific changes without
+  # rebuilding it for unrelated nightly image updates.
+  build-nightly-arb:
+    name: Build Nightly Arbitrator
+    needs: detect-changes
+    if: needs.detect-changes.outputs.arb_relevant == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: signal18/replication-manager
+          tags: |
+            type=raw,value=nightly-arb
+
+      - name: Build and push nightly arbitrator
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.arb
+          push: true
+          tags: signal18/replication-manager:nightly-arb
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=nightly-arb
+          cache-to: type=gha,mode=max,scope=nightly-arb
+
+      - name: Notify failure (Mattermost)
+        if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ vars.MATTERMOST_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\":x: Docker Nightly Arbitrator build failed!\n**Job:** \`${WORKFLOW_NAME}\`\n**Build:** \`${RUN_NUMBER}\`\n**Branch:** \`${REF_NAME}\`\n[View Run](${SERVER_URL}/${REPO}/actions/runs/${RUN_ID})\"}" \
             "$WEBHOOK_URL"
 
   # DEV build - On tags, or when Go/Dockerfile files changed
