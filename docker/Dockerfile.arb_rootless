@@ -1,0 +1,32 @@
+FROM golang:1.25-bookworm AS builder
+
+RUN mkdir -p /go/src/github.com/signal18/replication-manager
+WORKDIR /go/src/github.com/signal18/replication-manager
+
+COPY . .
+RUN make arb
+
+FROM debian:bookworm-slim
+
+RUN mkdir -p \
+        /etc/replication-manager \
+        /etc/replication-manager/cluster.d \
+        /var/lib/replication-manager
+
+RUN apt-get update && apt-get -y install ca-certificates sqlite3 \
+    && groupadd -g 10001 repman \
+    && useradd -r -u 10001 -g repman -d /var/lib/replication-manager -s /usr/sbin/nologin repman \
+    && chown -R repman:repman /etc/replication-manager /etc/replication-manager/cluster.d /var/lib/replication-manager \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY docker/arb/arbitrator.toml /etc/replication-manager/config.toml
+COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-arb /usr/bin/replication-manager-arb
+COPY docker/arb/docker-entrypoint-arb.sh /usr/local/bin/docker-entrypoint-arb.sh
+
+RUN chmod +x /usr/local/bin/docker-entrypoint-arb.sh \
+    && chown repman:repman /etc/replication-manager/config.toml /usr/local/bin/docker-entrypoint-arb.sh
+
+USER repman
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint-arb.sh"]
+CMD ["replication-manager-arb", "--config", "/etc/replication-manager/config.toml", "arbitrator"]
+EXPOSE 10001
