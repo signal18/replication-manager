@@ -280,6 +280,7 @@ const VolumeSection = ({
 }
 
 export default React.memo(VolumeSection);
+export { VolumeNewForm };
 
 const VolumeRowForm = React.memo(({ fieldName, volume, index, poolOptions = [], usedPoolNames, onChange }) => {
     const vol = volume || defaultVol;
@@ -343,7 +344,9 @@ const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => 
 
     const handleSaveAdd = () => {
         if (valid) {
-            onSave(vol)
+            Promise.resolve(onSave(vol)).catch(() => {
+                // Rejection already surfaced via toast/banner from the thunk
+            });
         }
     };
 
