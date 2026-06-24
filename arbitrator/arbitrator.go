@@ -68,6 +68,12 @@ func newRouter() *mux.Router {
 
 var rs = routes{
 	route{
+		"Health",
+		"GET",
+		"/health",
+		handlerHealth,
+	},
+	route{
 		"Heartbeat",
 		"POST",
 		"/heartbeat",
@@ -93,7 +99,7 @@ type response struct {
 }
 
 var (
-	arbitratorDB      *sqlx.DB
+	arbitratorDB *sqlx.DB
 )
 
 func init() {
@@ -101,7 +107,7 @@ func init() {
 	rootCmd.AddCommand(arbitratorCmd)
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorAddress, "arbitrator-bind-address", "0.0.0.0:10001", "Arbitrator API port")
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorDriver, "arbitrator-driver", "sqlite", "sqlite|mysql, use a local sqllite or use a mysql backend")
-	
+
 }
 
 var arbitratorCmd = &cobra.Command{
@@ -171,6 +177,28 @@ func getArbitratorDB() (*sqlx.DB, error) {
 		return nil, fmt.Errorf("arbitrator database is not initialized")
 	}
 	return arbitratorDB, nil
+}
+
+func handlerHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	db, err := getArbitratorDB()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "failed", "error": err.Error()})
+		return
+	}
+
+	if err := db.Ping(); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "failed", "error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+		log.Errorln(err)
+	}
 }
 
 func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
