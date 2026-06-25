@@ -70,7 +70,7 @@ prov-proxy-tags = "spider,smallredolog,masterslave"
 
 [default]
 arbitration-external = true
-arbitration-external-id=1
+arbitration-external-unique-id=1
 arbitration-external-hosts = "reparb.signal18.io:80"
 arbitration-peer-hosts = "repmgr.signal18.io:80"
 arbitration-external-secret = "signal18.io"

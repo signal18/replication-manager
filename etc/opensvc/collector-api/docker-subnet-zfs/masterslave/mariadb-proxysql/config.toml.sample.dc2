@@ -49,7 +49,7 @@ prov-proxy-net-mask = "255.255.255.0"
 
 [default]
 arbitration-external = true
-arbitration-external-id=1
+arbitration-external-unique-id=1
 arbitration-external-hosts = "reparb.signal18.io:80"
 arbitration-peer-hosts = "repmgr.signal18.io:80"
 arbitration-external-secret = "signal18.io"

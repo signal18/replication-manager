@@ -1,6 +1,6 @@
 [arbitrator]
 title = "arbitrator"
-arbitrator-bind-address = "0.0.0.0:8080"
+arbitrator-bind-address = "0.0.0.0:10001"
 arbitrator-driver = "sqlite"
 
 [default]

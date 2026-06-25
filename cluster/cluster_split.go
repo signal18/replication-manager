@@ -18,12 +18,20 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
 )
+
+func ensureScheme(host string) string {
+	if strings.HasPrefix(host, "https://") || strings.HasPrefix(host, "http://") {
+		return host
+	}
+	return "http://" + host
+}
 
 // Heartbeat call from main cluster loop
 func (cluster *Cluster) Heartbeat(wg *sync.WaitGroup) {
@@ -70,7 +78,7 @@ func (cl *Cluster) ArbitratorElection() error {
 func (cl *Cluster) arbitratorElection() error {
 	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
 
-	url := "http://" + cl.Conf.ArbitrationSasHosts + "/arbitrator"
+	url := ensureScheme(cl.Conf.ArbitrationSasHosts) + "/arbitrator"
 	var mst string
 	if cl.GetMaster() != nil {
 		mst = cl.GetMaster().URL

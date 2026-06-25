@@ -3102,7 +3102,11 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		}
 	*/
 
-	url := "http://" + peer + "/api/heartbeat"
+	scheme := "http://"
+	if strings.HasPrefix(peer, "https://") || strings.HasPrefix(peer, "http://") {
+		scheme = ""
+	}
+	url := scheme + peer + "/api/heartbeat"
 	client := &http.Client{
 		Timeout: timeout,
 	}
