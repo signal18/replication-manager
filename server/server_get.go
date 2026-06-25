@@ -10,6 +10,17 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 )
 
+func (repman *ReplicationManager) HasActiveCluster() bool {
+	repman.Lock()
+	defer repman.Unlock()
+	for _, cl := range repman.Clusters {
+		if cl.IsActive() {
+			return true
+		}
+	}
+	return false
+}
+
 func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Cluster {
 	var c *cluster.Cluster
 	repman.Lock()

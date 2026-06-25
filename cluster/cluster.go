@@ -1208,7 +1208,7 @@ func (cluster *Cluster) StateProcessing() {
 		cluster.StateMachine.ClearState()
 		cluster.WorkloadStateMachine.ClearState()
 		cluster.SecurityStateMachine.ClearState()
-		if cluster.StateMachine.GetHeartbeats()%60 == 0 {
+		if cluster.StateMachine.GetHeartbeats()%60 == 0 && cluster.IsActive() {
 			cluster.ConfigManager.SaveConfig(cluster, false)
 		}
 	}
