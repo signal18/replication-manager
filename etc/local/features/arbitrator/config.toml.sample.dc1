@@ -30,6 +30,7 @@ log-heartbeat = true
 arbitration-external = true
 arbitration-external-secret = "13787932529099014144"
 arbitration-external-hosts = "reparb.signal18.io:80"
+arbitration-external-unique-id = 0
 arbitration-peer-hosts ="127.0.0.1:10002"
 
 http-server = true
