@@ -31,6 +31,11 @@ func (cluster *Cluster) Heartbeat(wg *sync.WaitGroup) {
 	defer wg.Done()
 	if cluster.Conf.Arbitration {
 		if cluster.IsSplitBrain {
+			if !cluster.Conf.IsEligibleForArbitration() {
+				cluster.SetState("ERR00104", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00104"], ErrFrom: "ARB"})
+				cluster.IsSplitBrainBck = cluster.IsSplitBrain
+				return
+			}
 			err := cluster.SetArbitratorReport()
 			if err != nil {
 				cluster.SetState("WARN0081", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0081"], err), ErrFrom: "ARB"})

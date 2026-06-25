@@ -3262,6 +3262,13 @@ func (conf *Config) SwitchCloud18() {
 	conf.Cloud18 = !conf.Cloud18
 }
 
+func (conf *Config) IsEligibleForArbitration() bool {
+	if conf.Cloud18GitUser == "" {
+		return false
+	}
+	return conf.Cloud18SubscriptionPlan == "support" || conf.Cloud18SubscriptionPlan == "partner"
+}
+
 func (conf *Config) SetRestoreConfigOnStart(val bool) {
 	conf.ConfRestoreOnStart = val
 }
