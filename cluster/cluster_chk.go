@@ -30,6 +30,9 @@ import (
 )
 
 func (cluster *Cluster) CheckFailed() {
+	if !cluster.IsActive() {
+		return
+	}
 	// Don't trigger a failover if a switchover is happening
 	if cluster.StateMachine.IsInFailover() {
 		cluster.SetState("ERR00001", state.State{ErrType: "WARNING", ErrDesc: clusterError["ERR00001"], ErrFrom: "CHECK"})

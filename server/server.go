@@ -2788,10 +2788,14 @@ func (repman *ReplicationManager) Run() error {
 		time.Sleep(time.Second * time.Duration(repman.Conf.MonitoringTicker))
 
 		if counter%60 == 0 {
-			repman.ConfigManager.SaveConfig(repman, true)
+			if repman.HasActiveCluster() {
+				repman.ConfigManager.SaveConfig(repman, true)
 
-			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
-				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+				if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
+					repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+				}
+			} else if repman.Conf.GitUrl != "" {
+				repman.PullActiveConfig()
 			}
 
 			if repman.Conf.Cloud18 && repman.Conf.GitUrlPull != "" {
@@ -3282,30 +3286,29 @@ func (repman *ReplicationManager) Stop() {
 		time.Sleep(time.Second)
 	}
 
-	repman.ConfigManager.SaveConfig(repman, true)
+	if repman.HasActiveCluster() {
+		repman.ConfigManager.SaveConfig(repman, true)
 
-	if repman.Conf.GitUrl != "" {
-		isNeedPush := repman.IsNeedGitPush
-		for _, cl := range repman.Clusters {
-			if cl.IsNeedGitPush {
-				repman.Logrus.Infof("Cluster %s need Git Push", cl.Name)
-				// flag as changed for git push
-				isNeedPush = true
-
-				// Remove old need push flag
-				cl.IsNeedGitPush = false
+		if repman.Conf.GitUrl != "" {
+			isNeedPush := repman.IsNeedGitPush
+			for _, cl := range repman.Clusters {
+				if cl.IsNeedGitPush {
+					repman.Logrus.Infof("Cluster %s need Git Push", cl.Name)
+					isNeedPush = true
+					cl.IsNeedGitPush = false
+				}
 			}
-		}
 
-		if isNeedPush {
-			repman.IsNeedGitPush = false
-			repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+			if isNeedPush {
+				repman.IsNeedGitPush = false
+				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+			}
 		}
 	}
 
 	repman.ConfigManager.Stop()
 
-	if !repman.IsExportPush {
+	if !repman.IsExportPush && repman.HasActiveCluster() {
 		repman.PushConfigToBackupDir()
 	}
 }

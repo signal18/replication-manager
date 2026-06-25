@@ -8,6 +8,9 @@ import (
 
 func (cluster *Cluster) GetBackupLogicalFunction() func() {
 	return func() {
+		if !cluster.IsActive() {
+			return
+		}
 		mysrv := cluster.GetBackupServer()
 		if mysrv != nil {
 			mysrv.JobBackupLogical(context.Background())
@@ -19,6 +22,9 @@ func (cluster *Cluster) GetBackupLogicalFunction() func() {
 
 func (cluster *Cluster) GetBackupPhysicalFunction() func() {
 	return func() {
+		if !cluster.IsActive() {
+			return
+		}
 		mysrv := cluster.GetBackupServer()
 		if mysrv != nil {
 			mysrv.JobBackupPhysical()
@@ -30,36 +36,54 @@ func (cluster *Cluster) GetBackupPhysicalFunction() func() {
 
 func (cluster *Cluster) GetRotateLogsFunction() func() {
 	return func() {
+		if !cluster.IsActive() {
+			return
+		}
 		cluster.RotateLogs()
 	}
 }
 
 func (cluster *Cluster) GetBackupLogsFunction() func() {
 	return func() {
+		if !cluster.IsActive() {
+			return
+		}
 		cluster.BackupLogs()
 	}
 }
 
 func (cluster *Cluster) GetRollingOptimizeFunction() func() {
 	return func() {
+		if !cluster.IsActive() {
+			return
+		}
 		cluster.RollingOptimize()
 	}
 }
 
 func (cluster *Cluster) GetRollingRestartFunction() func() {
 	return func() {
+		if !cluster.IsActive() {
+			return
+		}
 		cluster.RollingRestart()
 	}
 }
 
 func (cluster *Cluster) GetRollingReprovFunction() func() {
 	return func() {
+		if !cluster.IsActive() {
+			return
+		}
 		cluster.RollingReprov()
 	}
 }
 
 func (cluster *Cluster) GetAnalyzeFunction() func() {
 	return func() {
+		if !cluster.IsActive() {
+			return
+		}
 		cluster.JobAnalyzeSQL(cluster.Conf.AnalyzeUsePersistent)
 	}
 }
@@ -72,6 +96,9 @@ func (cluster *Cluster) GetSlaRotateFunction() func() {
 
 func (cluster *Cluster) GetDbJobsSshFunction() func() {
 	return func() {
+		if !cluster.IsActive() {
+			return
+		}
 		for _, s := range cluster.Servers {
 			if s == nil {
 				continue
@@ -97,6 +124,9 @@ func (cluster *Cluster) GetMonitorSchemasFunction() func() {
 
 func (cluster *Cluster) GetMonitorChecksumFunction() func() {
 	return func() {
+		if !cluster.IsActive() {
+			return
+		}
 		go cluster.CheckAllTableChecksum()
 	}
 }
