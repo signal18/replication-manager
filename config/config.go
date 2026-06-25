@@ -3266,7 +3266,8 @@ func (conf *Config) IsEligibleForArbitration() bool {
 	if conf.Cloud18GitUser == "" {
 		return false
 	}
-	return conf.Cloud18SubscriptionPlan == "support" || conf.Cloud18SubscriptionPlan == "partner"
+	plan := strings.ToLower(strings.TrimSpace(conf.Cloud18SubscriptionPlan))
+	return plan == "support" || plan == "partner" || plan == "support-services"
 }
 
 func (conf *Config) SetRestoreConfigOnStart(val bool) {
