@@ -106,83 +106,83 @@ type ReplicationManager struct {
 	clusterHeartbeatTrackingLock sync.RWMutex                       `json:"-"`
 	clusterHeartbeatTracking     map[string]clusterHeartbeatTracker `json:"-"`
 	//Adding default flags from AddFlags
-	CommandLineFlag      []string                    `json:"-"`
-	ConfigPathList       []string                    `json:"-"`
-	Logs                 s18log.HttpLog              `json:"logs"`
-	MonitorType          map[string]string           `json:"monitorType"`
-	ServicePlans         []config.ServicePlan        `json:"servicePlans"`
-	ServiceOrchestrators []config.ConfigVariableType `json:"serviceOrchestrators"`
-	ServiceAcl           []config.Grant              `json:"serviceAcl"`
-	ServiceRoles         []config.Role               `json:"serviceRoles"`
-	ServiceRepos         []config.DockerRepo         `json:"serviceRepos"`
-	ServiceTarballs      []config.Tarball            `json:"serviceTarballs"`
-	ServiceTemplates     []string                    `json:"serviceTemplates"`
-	ServiceFS            map[string]bool             `json:"serviceFS"`
-	ServiceVM            map[string]bool             `json:"serviceVM"`
-	ServiceDisk          map[string]string           `json:"serviceDisk"`
-	ServicePool          map[string]bool             `json:"servicePool"`
-	ServiceSSLMode       map[string]bool             `json:"serviceSslMode"`
-	BackupLogicalList    map[string]bool             `json:"backupLogicalList"`
-	BackupPhysicalList   map[string]bool             `json:"backupPhysicalList"`
-	BackupBinlogList     map[string]bool             `json:"backupBinlogList"`
-	BinlogParseList      map[string]bool             `json:"binlogParseList"`
-	GraphiteTemplateList map[string]bool             `json:"graphiteTemplateList"`
-	ServerScopeList      map[string]bool             `json:"-"`
-	currentCluster       *cluster.Cluster            `json:"-"`
-	serverGlobals        *cluster.ServerGlobals      `json:"-"`
+	CommandLineFlag             []string                    `json:"-"`
+	ConfigPathList              []string                    `json:"-"`
+	Logs                        s18log.HttpLog              `json:"logs"`
+	MonitorType                 map[string]string           `json:"monitorType"`
+	ServicePlans                []config.ServicePlan        `json:"servicePlans"`
+	ServiceOrchestrators        []config.ConfigVariableType `json:"serviceOrchestrators"`
+	ServiceAcl                  []config.Grant              `json:"serviceAcl"`
+	ServiceRoles                []config.Role               `json:"serviceRoles"`
+	ServiceRepos                []config.DockerRepo         `json:"serviceRepos"`
+	ServiceTarballs             []config.Tarball            `json:"serviceTarballs"`
+	ServiceTemplates            []string                    `json:"serviceTemplates"`
+	ServiceFS                   map[string]bool             `json:"serviceFS"`
+	ServiceVM                   map[string]bool             `json:"serviceVM"`
+	ServiceDisk                 map[string]string           `json:"serviceDisk"`
+	ServicePool                 map[string]bool             `json:"servicePool"`
+	ServiceSSLMode              map[string]bool             `json:"serviceSslMode"`
+	BackupLogicalList           map[string]bool             `json:"backupLogicalList"`
+	BackupPhysicalList          map[string]bool             `json:"backupPhysicalList"`
+	BackupBinlogList            map[string]bool             `json:"backupBinlogList"`
+	BinlogParseList             map[string]bool             `json:"binlogParseList"`
+	GraphiteTemplateList        map[string]bool             `json:"graphiteTemplateList"`
+	ServerScopeList             map[string]bool             `json:"-"`
+	currentCluster              *cluster.Cluster            `json:"-"`
+	serverGlobals               *cluster.ServerGlobals      `json:"-"`
 	IsGlobalIntervention        bool                        `json:"isGlobalIntervention"`
 	IsGlobalInterventionPending bool                        `json:"isGlobalInterventionPending"`
 	GlobalInterventionEntry     *cluster.InterventionEntry  `json:"globalInterventionEntry,omitempty"`
 	ActiveInterventionCount     int                         `json:"activeInterventionCount"`
-	UserAuthTry          sync.Map                    `json:"-"`
-	OAuthAccessToken     *oauth2.Token               `json:"-"`
-	ViperConfig          *viper.Viper                `json:"-"`
-	tlog                 s18log.TermLog
-	termlength           int
-	exitMsg              string
-	exit                 atomic.Bool
-	isStarted            bool
-	Confs                map[string]config.Config
-	VersionConfs         map[string]*config.ConfVersion `json:"-"`
-	grpcServer           *grpc.Server                   `json:"-"`
-	grpcWrapped          *grpcweb.WrappedGrpcServer     `json:"-"`
-	httpServer           *http.Server                   `json:"-"`
-	apiServer            *http.Server                   `json:"-"`
-	V3Up                 chan bool                      `json:"-"`
-	v3Config             Repmanv3Config                 `json:"-"`
-	cloud18CheckSum      hash.Hash                      `json:"-"`
-	RegStatus            RegistrationStatus             `json:"-"`
-	clog                 *clog.Logger                   `json:"-"`
-	cApiLog              *clog.Logger                   `json:"-"`
-	Logrus               *log.Logger                    `json:"-"`
-	ApiLogAdapter        *ApiLogAdapter                 `json:"-"`
-	IsSavingConfig       bool                           `json:"isSavingConfig"`
-	HasSavingConfigQueue bool                           `json:"hasSavingConfigQueue"`
-	IsGitPull            bool                           `json:"isGitPull"`
-	IsGitPush            bool                           `json:"isGitPush"`
-	GitPushLock          sync.Mutex                     `json:"-"`
-	gatewayMu            sync.Map                       `json:"-"`
-	IsNeedGitPush        bool                           `json:"-"`
-	CanConnectVault      bool                           `json:"canConnectVault"`
-	IsExportPush         bool                           `json:"-"`
-	globalScheduler      *cron.Cron                     `json:"-"`
-	CheckSumConfig       map[string]hash.Hash           `json:"-"`
-	Mailer               *mailer.Mailer                 `json:"-"`
-	IsHttpListenerReady  bool                           `json:"-"`
-	IsApiListenerReady   bool                           `json:"-"`
-	Terms                []byte                         `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
-	TermsDT              time.Time                      `json:"termsDT"`
-	ModTimes             map[string]time.Time           `json:"termsDT"`
-	SessionManager       *tty.SessionManager            `json:"-"`
-	ConfigManager        *manager.ConfigManager         `json:"-"`
-	MeetUserID           string                         `json:"-"`
-	LoginUpgradeStore    *LoginUpgradeStore             `json:"-"`
-	LoginUpgradeInitOnce sync.Once                      `json:"-"`
-	DiskStatManager      *misc.DiskStatManager          `json:"-"`
-	OpenSVCStats         atomic.Value                   `json:"-"`
-	inFetchOpenSVCStats  bool                           `json:"-"`
-	MessageChan          chan sharedlog.Message         `json:"-"`
-	fileHook             log.Hook
+	UserAuthTry                 sync.Map                    `json:"-"`
+	OAuthAccessToken            *oauth2.Token               `json:"-"`
+	ViperConfig                 *viper.Viper                `json:"-"`
+	tlog                        s18log.TermLog
+	termlength                  int
+	exitMsg                     string
+	exit                        atomic.Bool
+	isStarted                   bool
+	Confs                       map[string]config.Config
+	VersionConfs                map[string]*config.ConfVersion `json:"-"`
+	grpcServer                  *grpc.Server                   `json:"-"`
+	grpcWrapped                 *grpcweb.WrappedGrpcServer     `json:"-"`
+	httpServer                  *http.Server                   `json:"-"`
+	apiServer                   *http.Server                   `json:"-"`
+	V3Up                        chan bool                      `json:"-"`
+	v3Config                    Repmanv3Config                 `json:"-"`
+	cloud18CheckSum             hash.Hash                      `json:"-"`
+	RegStatus                   RegistrationStatus             `json:"-"`
+	clog                        *clog.Logger                   `json:"-"`
+	cApiLog                     *clog.Logger                   `json:"-"`
+	Logrus                      *log.Logger                    `json:"-"`
+	ApiLogAdapter               *ApiLogAdapter                 `json:"-"`
+	IsSavingConfig              bool                           `json:"isSavingConfig"`
+	HasSavingConfigQueue        bool                           `json:"hasSavingConfigQueue"`
+	IsGitPull                   bool                           `json:"isGitPull"`
+	IsGitPush                   bool                           `json:"isGitPush"`
+	GitPushLock                 sync.Mutex                     `json:"-"`
+	gatewayMu                   sync.Map                       `json:"-"`
+	IsNeedGitPush               bool                           `json:"-"`
+	CanConnectVault             bool                           `json:"canConnectVault"`
+	IsExportPush                bool                           `json:"-"`
+	globalScheduler             *cron.Cron                     `json:"-"`
+	CheckSumConfig              map[string]hash.Hash           `json:"-"`
+	Mailer                      *mailer.Mailer                 `json:"-"`
+	IsHttpListenerReady         bool                           `json:"-"`
+	IsApiListenerReady          bool                           `json:"-"`
+	Terms                       []byte                         `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
+	TermsDT                     time.Time                      `json:"termsDT"`
+	ModTimes                    map[string]time.Time           `json:"termsDT"`
+	SessionManager              *tty.SessionManager            `json:"-"`
+	ConfigManager               *manager.ConfigManager         `json:"-"`
+	MeetUserID                  string                         `json:"-"`
+	LoginUpgradeStore           *LoginUpgradeStore             `json:"-"`
+	LoginUpgradeInitOnce        sync.Once                      `json:"-"`
+	DiskStatManager             *misc.DiskStatManager          `json:"-"`
+	OpenSVCStats                atomic.Value                   `json:"-"`
+	inFetchOpenSVCStats         bool                           `json:"-"`
+	MessageChan                 chan sharedlog.Message         `json:"-"`
+	fileHook                    log.Hook
 	// SecurityLogrus is a dedicated logger that writes security events to
 	// security.log (path derived from log-file by inserting "-security" before
 	// the extension). Nil when log-file is not configured.
@@ -1253,9 +1253,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.AppRefreshConcurrency, "app-refresh-concurrency", 2, "Number of concurrent refresh for deployed apps")
 	flags.IntVar(&conf.LogAppLevel, "app-log-level", 3, "Log level for application")
 	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "App agents for micro services provisionning.")
-	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "4", "Disk in g for micro service VM. When cloud18 credit system is used, this is the base for 1 credit")
+	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "10G", "Disk in g for micro service VM. When cloud18 credit system is used, this is the base for 1 credit")
 	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "1", "Cpu cores. When cloud18 credit system is used, this is the base for 1 credit")
-	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "1G", "App container memory, value with unit e.g. 256M, 1G. Base for 1 credit in cloud18")
+	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "4G", "App container memory, value with unit e.g. 256M, 1G. Base for 1 credit in cloud18")
 	flags.StringVar(&conf.ProvAppHATopology, "prov-app-ha-topology", "failover", "High availability mode for application. [failover|flex]")
 	flags.StringVar(&conf.ProvAppSizingMode, "prov-app-sizing-mode", "", "Cluster-level app sizing policy: 'unit' (App Unit credit-based) or 'manual' (direct resource edit). Empty means legacy mode.")
 	flags.StringVar(&conf.ProvAppTemplateRepo, "prov-app-template-repo", "https://github.com/signal18/cloud18-templates", "Git repository for application templates (cluster-scoped)")
