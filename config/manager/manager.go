@@ -618,6 +618,13 @@ func (cm *ConfigManager) GitPush(conf *config.Config, clusterList []string, wait
 	}
 }
 
+func (cm *ConfigManager) WithGitLock(fn func()) {
+	cm.gitMutex.Lock()
+	cm.configWg.Wait()
+	cm.gitMutex.Unlock()
+	fn()
+}
+
 // Pulls the latest changes from the git repository for .pull
 func (cm *ConfigManager) GitPullDir() {
 

@@ -1240,7 +1240,20 @@ func (repman *ReplicationManager) ShallowClone() error {
 
 // PullActiveConfig pulls config from the push repo (GitUrl) when all clusters
 // are on standby. If changes were pulled, it reloads standby cluster configs.
+// It coordinates with ConfigManager's gitMutex to avoid racing with push operations.
 func (repman *ReplicationManager) PullActiveConfig() {
+	if repman.ConfigManager == nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+			"Standby: ConfigManager not initialized, skipping config pull")
+		return
+	}
+
+	repman.ConfigManager.WithGitLock(func() {
+		repman.pullActiveConfigLocked()
+	})
+}
+
+func (repman *ReplicationManager) pullActiveConfigLocked() {
 	path := repman.Conf.WorkingDir
 	tok := repman.Conf.GetDecryptedValue("git-acces-token")
 	user := repman.Conf.GitUsername
@@ -1255,7 +1268,13 @@ func (repman *ReplicationManager) PullActiveConfig() {
 	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo,
 			"Standby: initializing git repo from %s for config sync", url)
-		tmpDir, tmpErr := os.MkdirTemp(filepath.Join(path, ".tmp"), "repman-standby-clone-*")
+		tmpParent := filepath.Join(path, ".tmp")
+		if err := os.MkdirAll(tmpParent, 0755); err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+				"Standby: cannot create .tmp directory: %s", err)
+			return
+		}
+		tmpDir, tmpErr := os.MkdirTemp(tmpParent, "repman-standby-clone-*")
 		if tmpErr != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
 				"Standby: cannot create temp dir for clone: %s", tmpErr)
