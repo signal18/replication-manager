@@ -14,17 +14,16 @@ The main features are:
 
 #### Quick start
 
-The container runs with http-server enabled by default and exposed on port 10001. You can either mount a configuration file or use environment variables with `REPLICATION_MANAGER_*` prefixes and skip config reads.
+The container runs with http-server enabled by default and exposed on port 10001. You can mount your own configuration file, or layer cluster-specific settings on top of the bundled default config using `REPLICATION_MANAGER_*` environment variables (env vars take precedence over file values).
 
 Example usage, deploying a container with a config file in the working directory:
 ```
 docker run -d -p 10001:10001 -v $(pwd)/config.toml:/etc/replication-manager/config.toml --name repman signal18/replication-manager:latest
 ```
 
-Example usage, deploying with env-only config:
+Example usage, overriding cluster settings via environment variables on top of the bundled config:
 ```
 docker run -d -p 10001:10001 \
-  -e REPLICATION_MANAGER_DEFAULT_SKIP_CONFIG=true \
   -e REPLICATION_MANAGER_DEFAULT_HTTP_SERVER=true \
   -e REPLICATION_MANAGER_DEFAULT_HTTP_BIND_ADDRESS=0.0.0.0 \
   -e REPLICATION_MANAGER_DEFAULT_HTTP_PORT=10001 \
@@ -33,6 +32,42 @@ docker run -d -p 10001:10001 \
   -e REPLICATION_MANAGER_CLUSTER1_REPLICATION_CREDENTIAL=root:admin \
   --name repman signal18/replication-manager:2.0
 ```
+
+#### Auto-creating a missing config.toml (opt-in)
+
+By default the container behaves exactly as before. If you mount a directory over `/etc/replication-manager` and that directory is **empty**, you can ask the container to seed a working default `config.toml` by setting:
+
+```
+REPLICATION_MANAGER_CREATE_MISSING_CONFIG=true
+```
+
+Example:
+```
+docker run -d -p 10001:10001 \
+  -e REPLICATION_MANAGER_CREATE_MISSING_CONFIG=true \
+  -v /my/empty/config-dir:/etc/replication-manager \
+  --name repman signal18/replication-manager:latest
+```
+
+**Guardrails — the feature only acts when ALL of the following are true:**
+1. `REPLICATION_MANAGER_CREATE_MISSING_CONFIG=true` is set explicitly.
+2. `/etc/replication-manager/config.toml` does not already exist.
+3. The bundled fallback template exists in the image (`/usr/share/replication-manager/config.toml.default`).
+4. `/etc/replication-manager/` is writable at container start time.
+
+If any condition is false, the container starts normally with no file operations performed. **Existing configs are never overwritten or modified** — this includes regular files, directories, symlinks, and broken symlinks at the config path. Conditions 1 and 2 are silent no-ops (normal operation); conditions 3 and 4 log a message to stderr before continuing.
+
+The seeded template is the Docker-specific default (`etc/local/config.toml.docker`), which pre-fills binary paths for the tools bundled in the image so the container starts without additional configuration.
+
+**Rootless images (`*-rootless` tags):** the entrypoint runs as UID 10001 (`repman`). For auto-create to succeed, the mounted directory must be writable by that user:
+```
+sudo chown 10001:10001 /my/empty/config-dir
+docker run -d -p 10001:10001 \
+  -e REPLICATION_MANAGER_CREATE_MISSING_CONFIG=true \
+  -v /my/empty/config-dir:/etc/replication-manager \
+  --name repman signal18/replication-manager:latest-rootless
+```
+If the directory is not writable, auto-create is skipped with a log message and the container starts normally.
 
 The container also includes the replication-manager client. You can run commands non-interactively such as:
 ```
