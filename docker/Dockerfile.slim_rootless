@@ -35,9 +35,13 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binari
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
 
 RUN curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version="mariadb-$MARIADB_VERSION" --skip-maxscale
+COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/config.toml.docker /usr/share/replication-manager/config.toml.default
 RUN groupadd -g 10001 repman \
   && useradd -r -u 10001 -g repman -d /var/lib/replication-manager -s /usr/sbin/nologin repman \
-  && chown -R repman:repman /etc/replication-manager /etc/replication-manager/cluster.d /var/lib/replication-manager
+  && chown -R repman:repman /etc/replication-manager /etc/replication-manager/cluster.d /var/lib/replication-manager \
+  && chmod +x /usr/local/bin/docker-entrypoint.sh
 USER repman
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["replication-manager", "monitor", "--http-server"]
 EXPOSE 10001
