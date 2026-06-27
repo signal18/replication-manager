@@ -656,15 +656,6 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
 	svcenv["nodes"] = strings.ReplaceAll(cluster.GetAppAgents(appcnf), ",", " ")
 	svcenv["size"] = cluster.GetAppDisk(appcnf) + "g"
 	svcenv["app_img"] = appcnf.ProvAppDockerImg
-	svcenv["app_host"] = appcnf.AppHost
-	svcenv["app_port"] = appcnf.AppPort
-
-	svcenv["ip_pod01"] = app.GetHost()
-	svcenv["port_pod01"] = app.GetPort()
-	svcenv["port_telnet"] = app.GetPort()
-	svcenv["port_admin"] = app.GetPort()
-	svcenv["port_http"] = "80"
-	svcenv["user_admin"] = app.User
 
 	return svcenv
 }
