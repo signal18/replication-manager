@@ -21,7 +21,6 @@ import (
 
 	//jsoniter "github.com/json-iterator/go"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/opensvc"
 )
 
 func (cluster *Cluster) GetAppsSubstitutionJSon(app *App) (string, error) {
@@ -64,25 +63,7 @@ func (app *App) GetJanitorWeight() string {
 	return app.Weight
 }
 
-func (app *App) GetInitContainer(collector opensvc.Collector) string {
-	var vm string
-	if collector.ProvMicroSrv == "docker" {
-		vm = vm + `
-[container#0002]
-detach = false
-type = docker
-image = busybox
-netns = container#01
-start_timeout = 30s
-rm = true
-volume_mounts = /etc/localtime:/etc/localtime:ro {env.base_dir}/pod01:/data
-command = sh -c 'wget -qO- http://{env.mrm_api_addr}/api/clusters/{env.mrm_cluster_name}/servers/{env.ip_pod01}/{env.port_pod01}/config|tar xzvf - -C /data'
-optional=true
-
- `
-	}
-	return vm
-}
+// Remove unused method
 
 func (app *App) GetBindAddress() string {
 	if app.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
