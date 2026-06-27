@@ -289,23 +289,26 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 	cluster := server.ClusterGroup
 	server.StopSlave()
 
+	changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 	if server.IsMariaDB() {
-		return cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+		changemasteropt.Mode = "SLAVE_POS"
+	} else {
+		changemasteropt.Mode = "MASTER_AUTO_POSITION"
 	}
-
-	return cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
+	return dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion)
 }
 
 func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor) (string, error) {
 	cluster := server.ClusterGroup
 
+	changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {
-		// We can do MySQL 5.7 style failover
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Doing MySQL GTID switch of the old master")
-		return cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
+		changemasteropt.Mode = "MASTER_AUTO_POSITION"
+	} else {
+		changemasteropt.Mode = "CURRENT_POS"
 	}
-
-	return cluster.pointSlaveToMasterWithMode(server, "CURRENT_POS")
+	return dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion)
 }
 
 func (server *ServerMonitor) SetReplicationFromMaxscaleServer(master *ServerMonitor) (string, error) {
