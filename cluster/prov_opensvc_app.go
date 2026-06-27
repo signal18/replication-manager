@@ -645,8 +645,6 @@ func (cluster *Cluster) FoundAllAppAgents(app *App) ([]opensvc.Host, error) {
 }
 
 func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
-	domain := cluster.GetDomain()
-
 	appcnf := app.AppConfig
 	svcenv := make(map[string]string)
 
@@ -655,26 +653,9 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
 	svcenv["mrm_api_addr"] = cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
 	svcenv["mrm_cluster_name"] = cluster.GetClusterName()
 
-	// App section
-	// FQDN: Fully Qualified Domain Name
-	fqdn := appcnf.AppHost
-	if !strings.Contains(appcnf.AppHost, domain) {
-		fqdn = fqdn + "." + domain
-	}
-
 	svcenv["nodes"] = strings.ReplaceAll(cluster.GetAppAgents(appcnf), ",", " ")
 	svcenv["size"] = cluster.GetAppDisk(appcnf) + "g"
 	svcenv["app_img"] = appcnf.ProvAppDockerImg
-	svcenv["app_host"] = appcnf.AppHost
-	svcenv["app_port"] = appcnf.AppPort
-	svcenv["fqdn"] = fqdn
-
-	svcenv["ip_pod01"] = app.GetHost()
-	svcenv["port_pod01"] = app.GetPort()
-	svcenv["port_telnet"] = app.GetPort()
-	svcenv["port_admin"] = app.GetPort()
-	svcenv["port_http"] = "80"
-	svcenv["user_admin"] = app.User
 
 	return svcenv
 }
