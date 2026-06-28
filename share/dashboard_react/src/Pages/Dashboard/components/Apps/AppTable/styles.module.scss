@@ -1,3 +1,19 @@
 .tableContainer {
   width: 100%;
 }
+
+.appLink {
+  display: block;
+  width: 100%;
+}
+
+.appCell {
+  min-width: 0;
+}
+
+.dockerCell {
+  font-size: rem(13);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

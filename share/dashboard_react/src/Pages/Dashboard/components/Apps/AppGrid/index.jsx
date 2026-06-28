@@ -1,15 +1,13 @@
-import { Flex, SimpleGrid, Spacer, VStack, Text, Box } from '@chakra-ui/react'
-import React from 'react'
+import { Flex, SimpleGrid, Spacer, VStack } from '@chakra-ui/react'
+import PropTypes from 'prop-types'
 import AppMenu from '../AppMenu'
 import { HiTable } from 'react-icons/hi'
 import TableType2 from '../../../../../components/TableType2'
-import AccordionComponent from '../../../../../components/AccordionComponent'
 import AppStatus from '../AppStatus'
-import ServerStatus from '../../../../../components/ServerStatus'
-import TagPill from '../../../../../components/TagPill'
 import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
 import ServerName from '../../../../../components/ServerName'
+import RouteSummary from '../RouteSummary'
 
 function AppGrid({ apps = [], clusterName, showTableView, user, isDesktop, orchestrator }) {
   return (
@@ -28,6 +26,10 @@ function AppGrid({ apps = [], clusterName, showTableView, user, isDesktop, orche
             {
               key: 'Version',
               value: rowData.version
+            },
+            {
+              key: 'Routes',
+              value: <RouteSummary routeStatuses={rowData.routeStatus} configuredRouteCount={rowData.config?.deployment?.routes?.length ?? null} showIdentity />
             }
           ]
           return (
@@ -64,3 +66,12 @@ function AppGrid({ apps = [], clusterName, showTableView, user, isDesktop, orche
 }
 
 export default AppGrid
+
+AppGrid.propTypes = {
+  apps: PropTypes.array,
+  clusterName: PropTypes.string,
+  showTableView: PropTypes.func,
+  user: PropTypes.object,
+  isDesktop: PropTypes.bool,
+  orchestrator: PropTypes.string,
+}

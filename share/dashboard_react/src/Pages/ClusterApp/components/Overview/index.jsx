@@ -13,7 +13,7 @@ import PathSection from "./Paths";
 import Variables from "./Variables";
 import PropTypes from "prop-types";
 
-const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, user }) => {
+const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, user, routeStatus }) => {
     const dispatch = useDispatch();
     const deployment = useSelector((state) => state.cluster?.app?.deployment);
     const substitution = useSelector((state) => state.cluster?.app?.substitution);
@@ -113,8 +113,8 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
     const gateway = useMemo(() => config?.cloud18GatewayDomainName || '', [config]);
 
     const routeComponent = useMemo(() => {
-        return <Routes rows={routes} variables={variables} fieldName={'routes'} user={user} gateway={gateway} {...actionProps} />
-    }, [routes, variables, actionProps, user, gateway]);
+        return <Routes rows={routes} variables={variables} fieldName={'routes'} user={user} gateway={gateway} routeStatus={routeStatus} {...actionProps} />
+    }, [routes, variables, actionProps, user, gateway, routeStatus]);
 
     const pathComponent = useMemo(() => {
         return <PathSection
@@ -202,6 +202,7 @@ Overview.propTypes = {
     user: PropTypes.shape({
         grants: PropTypes.object,
     }),
+    routeStatus: PropTypes.array,
 };
 
 export default Overview;

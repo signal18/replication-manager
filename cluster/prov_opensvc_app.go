@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -340,11 +339,9 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 			cluster.errorChan <- err
 			return err
 		}
-		err = cluster.OpenSVCProvisionRoute(app)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create app route:  %s ", err)
-			cluster.errorChan <- err
-			return err
+		if err = cluster.OpenSVCProvisionRoute(app); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+				"App %s service provisioned but route publication failed: %s — retry via update-routes when DNS and gateway are ready", app.GetId(), err)
 		}
 		cluster.errorChan <- nil
 		return nil
@@ -386,11 +383,9 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 		cluster.errorChan <- err
 		return err
 	}
-	err = cluster.OpenSVCProvisionRoute(app)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create app route:  %s ", err)
-		cluster.errorChan <- err
-		return err
+	if err = cluster.OpenSVCProvisionRoute(app); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+			"App %s service provisioned but route publication failed: %s — retry via update-routes when DNS and gateway are ready", app.GetId(), err)
 	}
 	cluster.errorChan <- nil
 	return nil
@@ -1073,6 +1068,46 @@ func buildRouteObjectName(route config.Route, opensvcDNS string) string {
 	return opensvcDNS + "_" + route.DestinationPort
 }
 
+// normalizeRouteCNAME lowercases a CNAME and trims surrounding whitespace and
+// any trailing dot, matching the canonical DNS wire format used in HAProxy rules.
+func normalizeRouteCNAME(cname string) string {
+	return strings.ToLower(strings.TrimRight(strings.TrimSpace(cname), "."))
+}
+
+// buildGroupedHostRouteFragment generates a single HAProxy config fragment for
+// all host routes sharing the same destination port.  Multiple CNAMEs produce
+// multiple use_backend rules in the shared 'frontend https' block.  All CNAMEs
+// are normalized before being emitted.
+func buildGroupedHostRouteFragment(routes []config.Route, opensvcDNS string, numBE int) (fragmentKey, haproxyfragment string, err error) {
+	if len(routes) == 0 {
+		return "", "", errors.New("buildGroupedHostRouteFragment: no routes provided")
+	}
+	destPort := routes[0].DestinationPort
+	backend := opensvcDNS + "_" + destPort
+	fragmentKey = "haproxy.cfg.d/" + backend
+
+	var frontendLines strings.Builder
+	for _, r := range routes {
+		cname := normalizeRouteCNAME(r.CName)
+		fmt.Fprintf(&frontendLines, "    use_backend %s if { hdr(host) -i %s }\n", backend, cname)
+	}
+
+	haproxyfragment = fmt.Sprintf(`
+frontend https
+%s
+backend %s
+    cookie SERVER insert indirect nocache dynamic
+    balance roundrobin
+    dynamic-cookie-key mysecretphrase
+    option http-server-close
+    timeout connect 10s
+    timeout server 5m
+    timeout tunnel 1h
+    server-template srv %d %s:%s resolvers cluster check init-addr none
+`, frontendLines.String(), backend, numBE, opensvcDNS, destPort)
+	return fragmentKey, haproxyfragment, nil
+}
+
 // buildRouteFragment generates the HAProxy config fragment and its gateway
 // fragment key for the given route.  It does not perform DNS provisioning.
 //
@@ -1118,22 +1153,8 @@ backend %s
     server-template srv %d %s:%s resolvers cluster check init-addr none
 `, frontend, route.CName, route.SourcePort, backend, backend, numBE, opensvcDNS, route.DestinationPort)
 		}
-	default: // host
-		backend := routeName
-		haproxyfragment = fmt.Sprintf(`
-frontend https
-    use_backend %s if { hdr(host) -i %s }
-
-backend %s
-    cookie SERVER insert indirect nocache dynamic
-    balance roundrobin
-    dynamic-cookie-key mysecretphrase
-    option http-server-close
-    timeout connect 10s
-    timeout server 5m
-    timeout tunnel 1h
-    server-template srv %d %s:%s resolvers cluster check init-addr none
-`, backend, route.CName, backend, numBE, opensvcDNS, route.DestinationPort)
+	default:
+		return "", "", fmt.Errorf("buildRouteFragment: unsupported mode %q — host routes must use buildGroupedHostRouteFragment", route.Mode)
 	}
 	return fragmentKey, haproxyfragment, nil
 }
@@ -1264,23 +1285,47 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 
 	// Step 3: build the desired fragment set, provisioning DNS for host routes.
 	desired := make(map[string]string) // fragmentKey → haproxyfragment
+
+	// Group host routes by destination port so that multiple CNAMEs targeting
+	// the same port share one fragment with multiple use_backend rules instead
+	// of overwriting each other in the desired map.
+	hostRoutesByPort := make(map[string][]config.Route)
+	var hostPortOrder []string // preserve declaration order for deterministic output
 	for _, route := range app.AppConfig.Deployment.Routes {
-		if route.Mode == "host" {
+		if route.Mode == "host" || route.Mode == "" {
+			if _, seen := hostRoutesByPort[route.DestinationPort]; !seen {
+				hostPortOrder = append(hostPortOrder, route.DestinationPort)
+			}
+			hostRoutesByPort[route.DestinationPort] = append(hostRoutesByPort[route.DestinationPort], route)
+		}
+	}
+
+	for _, destPort := range hostPortOrder {
+		routes := hostRoutesByPort[destPort]
+		for _, route := range routes {
 			if err := cluster.provisionHostRouteDNS(route); err != nil {
 				return fmt.Errorf("DNS provisioning failed for route %s (app %s): %w", route.CName, app.Name, err)
 			}
 		}
-
-		if route.Mode == "host" || route.Mode == "" {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
-				"app %s route %s: host-mode fragment adds a use_backend rule to the shared 'frontend https' block; ensure the gateway base config defines that frontend or the HAProxy reload will fail",
-				app.Name, route.CName)
-		}
-		key, frag, fragErr := buildRouteFragment(route, opensvcDNS, numBE)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"app %s host routes on port %s: fragment adds use_backend rules to the shared 'frontend https' block; ensure the gateway base config defines that frontend or the HAProxy reload will fail",
+			app.Name, destPort)
+		key, frag, fragErr := buildGroupedHostRouteFragment(routes, opensvcDNS, numBE)
 		if fragErr != nil {
-			return fmt.Errorf("cannot build route fragment for app %s: %w", app.Name, fragErr)
+			return fmt.Errorf("cannot build host route fragment for app %s port %s: %w", app.Name, destPort, fragErr)
 		}
 		desired[key] = frag
+	}
+
+	// Port routes are per-route (CName+port combo is already unique by validation).
+	for _, route := range app.AppConfig.Deployment.Routes {
+		if route.Mode == "port" {
+			key, frag, fragErr := buildRouteFragment(route, opensvcDNS, numBE)
+			if fragErr != nil {
+				return fmt.Errorf("cannot build route fragment for app %s: %w", app.Name, fragErr)
+			}
+			desired[key] = frag
+		}
 	}
 
 	// Step 4: list existing gateway fragments and delete stale or legacy ones.
@@ -1353,42 +1398,25 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 	return nil
 }
 
-// provisionHostRouteDNS handles managed/external DNS for host-mode routes.
-// Ownership is determined using the exact configured Cloud18 managed suffix
-// (see Cluster.Cloud18ManagedSuffix).
-//
-//   - managed CNAME that doesn't resolve yet → add via BashScriptProvDNS
-//   - managed CNAME that resolves to our gateway → skip (already correct)
-//   - any CNAME that resolves to a different target → hard-fail
-//   - any CNAME that doesn't resolve and is not managed → hard-fail
+// provisionHostRouteDNS calls cloud18-domain-add-script with the full
+// normalized FQDN.  The script is the authority on which domains it manages;
+// repman does not restrict by suffix.  If no script is configured DNS is
+// considered operator-managed and provisioning is skipped without error.
 func (cluster *Cluster) provisionHostRouteDNS(route config.Route) error {
-	result, err := net.LookupCNAME(route.CName)
-	if err != nil {
-		// CNAME doesn't resolve yet — check ownership before attempting to create.
-		shortLabel, managed := cluster.ManagedHostCNAME(route.CName)
-		if !managed {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-				"CNAME %s does not resolve and is not under our managed suffix — fix DNS before provisioning", route.CName)
-			return fmt.Errorf("CNAME %s is not managed by this cluster — fix it before provisioning", route.CName)
-		}
-		if cluster.Conf.Cloud18DomainAddScript == "" {
-			return fmt.Errorf("CNAME %s requires DNS provisioning but cloud18-domain-add-script is not configured — configure it before provisioning", route.CName)
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"Adding managed CNAME %s to gateway %s", route.CName, cluster.Conf.Cloud18GatewayDomainName)
-		if err := cluster.BashScriptProvDNS(shortLabel); err != nil {
-			return err
-		}
-	} else if !strings.EqualFold(strings.TrimRight(result, "."), strings.TrimRight(cluster.Conf.Cloud18GatewayDomainName, ".")) {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-			"CNAME %s resolves to %s which is not gateway %s — fix DNS before provisioning",
-			route.CName, strings.TrimRight(result, "."), cluster.Conf.Cloud18GatewayDomainName)
-		return fmt.Errorf("CNAME %s points to %s, expected gateway %s", route.CName, strings.TrimRight(result, "."), cluster.Conf.Cloud18GatewayDomainName)
-	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"CNAME %s already resolves to gateway %s, skipping DNS add", route.CName, cluster.Conf.Cloud18GatewayDomainName)
+	cname := normalizeRouteCNAME(route.CName)
+	if cname == "" {
+		return fmt.Errorf("host route has an empty CNAME — set a valid hostname before provisioning")
 	}
-	return nil
+	if cluster.Conf.Cloud18DomainAddScript == "" {
+		if _, managed := cluster.ManagedHostCNAME(cname); !managed {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"cloud18-domain-add-script not configured and CNAME %s is not in the managed suffix %s; DNS is operator-managed and collision prevention is the operator's responsibility", cname, cluster.Cloud18ManagedSuffix())
+		}
+		return nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Provisioning DNS for CNAME %s via add script", cname)
+	return cluster.BashScriptProvDNS(cname)
 }
 
 // managedCNAMEsFile returns the path of the per-app JSON file that records
@@ -1505,13 +1533,12 @@ func (cluster *Cluster) reconcileStaleManagedCNAMEs(
 	}
 
 	for _, fqdn := range staleCNAMEs {
-		shortLabel, managed := cluster.ManagedHostCNAME(fqdn)
-		if !managed {
+		if _, managed := cluster.ManagedHostCNAME(fqdn); !managed {
 			// The FQDN was recorded under a previous managed suffix (cluster
 			// rename, domain/subdomain/zone config change, etc.).  Log a warning
 			// and retain the entry rather than aborting the whole reconcile — a
-			// misconfigured drop-script call with an empty label would be worse
-			// than leaving the entry for manual cleanup.
+			// drop-script call for an unrecognised zone would be worse than
+			// leaving the entry for manual cleanup.
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 				"Stale CNAME %s (app %s) does not match the current managed suffix — skipping drop; retaining in state for manual cleanup",
 				fqdn, app.Name)
@@ -1520,7 +1547,7 @@ func (cluster *Cluster) reconcileStaleManagedCNAMEs(
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Deleting stale managed DNS record %s (app %s)", fqdn, app.Name)
-		if err := cluster.BashScriptDeprovDNS(shortLabel); err != nil {
+		if err := cluster.BashScriptDeprovDNS(fqdn); err != nil {
 			return nil, fmt.Errorf("failed to delete stale managed DNS record %s (app %s): %w", fqdn, app.Name, err)
 		}
 	}

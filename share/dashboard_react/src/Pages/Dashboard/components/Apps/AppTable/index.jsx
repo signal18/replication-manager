@@ -1,31 +1,18 @@
 import { useMemo } from 'react'
+import PropTypes from 'prop-types'
 import { DataTable } from '../../../../../components/DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
-import { Box, VStack } from '@chakra-ui/react'
+import { Box, Tooltip } from '@chakra-ui/react'
 import AppMenu from '../AppMenu'
 import styles from './styles.module.scss'
 import { Link } from 'react-router-dom'
-import ServerName from '../../../../../components/ServerName'
-import TagPill from '../../../../../components/TagPill'
 import ServerStatus from '../../../../../components/ServerStatus'
+import ServerName from '../../../../../components/ServerName'
 import RMIconButton from '../../../../../components/RMIconButton'
 import { HiViewGrid } from 'react-icons/hi'
+import RouteSummary from '../RouteSummary'
 
 const columnHelper = createColumnHelper()
-
-function routePillText(route) {
-  const mode = route.mode || (route.protocol === 'tcp' ? 'port' : 'host')
-  if (mode === 'port') {
-    const prefix = route.name ? `${route.name} ` : ''
-    const cname = route.cname || ''
-    const sourcePort = route.sourcePort || ''
-    if (cname && sourcePort) return `${prefix}${cname}:${sourcePort}`
-    if (cname) return `${prefix}${cname}`
-    if (sourcePort) return `${prefix}:${sourcePort}`
-    return route.name || 'port route'
-  }
-  return route.cname || ''
-}
 
 function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showGridView }) {
   const columns = useMemo(
@@ -47,27 +34,55 @@ function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showG
           width: '40px'
         }
       ),
-      columnHelper.accessor((row) => (<Link to={`/clusters/${clusterName}/apps/${row?.id}`}>
-        <ServerName name={`${row.host}`} />
-      </Link>), {
-        cell: (info) => info.getValue(),
-        header: 'Apps'
+      columnHelper.accessor((row) => row.host, {
+        cell: ({ row }) => {
+          const name = row.original.host || row.original.name || row.original.id || '';
+
+          return (
+            <Tooltip label={name} placement="top" hasArrow openDelay={400}>
+              <Link to={`/clusters/${clusterName}/apps/${row.original?.id}`} className={styles.appLink}>
+                <Box className={styles.appCell}>
+                  <ServerName name={name} />
+                </Box>
+              </Link>
+            </Tooltip>
+          );
+        },
+        header: 'Apps',
+        width: 280,
+        textAlign: 'left'
       }),
-      columnHelper.accessor((row) => (<ServerStatus state={row.state} />), {
-        cell: (info) => info.getValue(),
-        header: 'Status'
+      columnHelper.accessor((row) => row.state, {
+        cell: ({ row }) => <ServerStatus state={row.original.state} />,
+        header: 'Status',
+        width: '100px'
       }),
       columnHelper.accessor((row) => row.config?.provAppDockerImg, {
-        cell: (info) => info.getValue(),
-        header: 'Docker Image'
+        cell: (info) => {
+          const val = info.getValue() || '';
+          if (!val) return null;
+          return (
+            <Tooltip label={val} placement="top" hasArrow openDelay={400}>
+              <Box className={styles.dockerCell}>
+                {val}
+              </Box>
+            </Tooltip>
+          );
+        },
+        header: 'Docker Image',
+        width: 240,
+        textAlign: 'left'
       }),
-      columnHelper.accessor((row) => (<VStack>
-        {row.routeStatus?.filter((route) => route.primary).map((route, idx) => (
-          <TagPill key={idx} colorScheme="blue" text={routePillText(route)} />
-        ))}
-      </VStack>), {
-        cell: (info) => info.getValue(),
-        header: 'Routes'
+      columnHelper.accessor((row) => row.routeStatus, {
+        cell: ({ row }) => (
+          <RouteSummary
+            routeStatuses={row.original.routeStatus}
+            configuredRouteCount={row.original.config?.deployment?.routes?.length ?? null}
+            compact
+          />
+        ),
+        header: 'Routes',
+        width: 160
       }),
     ],
     [clusterName, isDesktop, orchestrator, user, showGridView]
@@ -81,3 +96,12 @@ function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showG
 }
 
 export default AppTable
+
+AppTable.propTypes = {
+  apps: PropTypes.array,
+  isDesktop: PropTypes.bool,
+  clusterName: PropTypes.string,
+  user: PropTypes.object,
+  orchestrator: PropTypes.string,
+  showGridView: PropTypes.func,
+}

@@ -57,6 +57,19 @@
     background-color: var(--warning-tertiary-color);
   }
 }
+
+:global(.dark) {
+  .table {
+    .redBlinking {
+      background-color: rgba(229, 62, 62, 0.28);
+    }
+
+    .orangeBlinking {
+      background-color: rgba(221, 107, 32, 0.26);
+    }
+  }
+}
+
 .paginationContainer {
   gap: rem(8);
   align-items: center;

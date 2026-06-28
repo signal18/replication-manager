@@ -16,6 +16,7 @@ function PageContainer({ children }) {
   const [fullVersion, setFullVersion] = useState('')
 
   const isLogged = useSelector((state) => state.auth.isLogged)
+  const sessionStatus = useSelector((state) => state.auth.sessionStatus)
   const user = useSelector((state) => state.auth.user)
   const monitor = useSelector((state) => state.globalClusters.monitor)
   const { isMobile, isTablet, isDesktop } = useSelector((state) => state.common)
@@ -53,7 +54,8 @@ function PageContainer({ children }) {
   }, [currentBreakpoint, dispatch, isDesktop, isMobile, isTablet])
 
   useEffect(() => {
-    if (isAuthorized() && (user === null || user.User === undefined)) {
+    const isViewerRoute = location.pathname === '/dashboard' || location.pathname === '/slideshow'
+    if (!isViewerRoute && isAuthorized() && (user === null || user.User === undefined)) {
       dispatch(whoami({}))
     }
     handleResize() // Initial setup
@@ -66,12 +68,19 @@ function PageContainer({ children }) {
   }, [dispatch, handleResize, user])
 
   useEffect(() => {
-    const isPublicAuthPage = location.pathname === '/login' || location.pathname === '/signup'
-    if (!isLogged && user === null && !isAuthorized() && !isPublicAuthPage) {
-      // Slideshow auth goes through /dashboard (viewer token) not /login (regular autologin → /)
+    const isPublicAuthPage = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/dashboard'
+    if (isPublicAuthPage) return
+    // Redirect on confirmed unauthenticated state (401 from whoami or apiHelper).
+    // Skip 'unknown' (still checking) and 'unavailable' (server restarting — keep user in app).
+    if (sessionStatus === 'unauthenticated') {
+      navigate(location.pathname === '/slideshow' ? '/dashboard' : '/login')
+      return
+    }
+    // Legacy fallback: no token and no logged-in state.
+    if (!isLogged && user === null && !isAuthorized()) {
       navigate(location.pathname === '/slideshow' ? '/dashboard' : '/login')
     }
-  }, [isLogged, location.pathname, navigate, user])
+  }, [isLogged, sessionStatus, location.pathname, navigate, user])
 
   return (
     <Box className={styles.container}>

@@ -8,6 +8,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,10 +17,64 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+// canonicalExpectStatus returns a sorted, deduplicated representation of a
+// (post-Normalize) expect-status string so that "200,204" and "204,200"
+// produce the same key.  Falls back to the raw string on parse failure
+// (defensive; valid configs always parse after Normalize).
+func canonicalExpectStatus(s string) string {
+	codes, err := config.ParseExpectStatus(s)
+	if err != nil || len(codes) == 0 {
+		return s
+	}
+	sort.Ints(codes)
+	parts := make([]string, len(codes))
+	for i, c := range codes {
+		parts[i] = strconv.Itoa(c)
+	}
+	return strings.Join(parts, ",")
+}
+
+// buildLocalCheckKey returns a deduplication key for a route's local
+// reachability probe.  Routes with identical keys exercise the same local
+// network path and share a single check result.
+//
+//	tcp:        local-host + destination-port
+//	http/https: local-host + destination-port + monitor contract
+//	            (path, expected status, auth type/user/secret ref)
+//
+// http and https routes collapse to the same "http" local class because TLS
+// terminates at the HAProxy gateway; the backend always speaks plain HTTP
+// regardless of the external scheme.
+func buildLocalCheckKey(appHost string, route config.Route) string {
+	port := route.DestinationPort
+	if port == "" {
+		port = route.Port
+	}
+	switch route.Protocol {
+	case "tcp":
+		return "local|tcp|" + appHost + "|" + port
+	case "http", "https":
+		// Defaults match what RouteMonitor.Normalize() would produce for a zero-value
+		// monitor, ensuring nil and explicit-default monitors share the same key.
+		monPath, expectStatus, authType, authUser, authSecretVar := "/", "200", "", "", ""
+		if route.Monitor != nil {
+			m := *route.Monitor
+			m.Normalize()
+			monPath = m.Path
+			expectStatus = canonicalExpectStatus(m.ExpectStatus)
+			authType = m.AuthType
+			authUser = m.AuthUser
+			authSecretVar = m.AuthSecretVar
+		}
+		return strings.Join([]string{"local", "http", appHost, port, monPath, expectStatus, authType, authUser, authSecretVar}, "|")
+	default:
+		return "local|unsupported|" + route.Protocol + "|" + appHost + "|" + port
+	}
+}
+
 func (app *App) GetMonitoringStatus() string {
 	cluster := app.ClusterGroup
 	routes := app.GetAppConfig().Deployment.Routes
-	var primaryStatus = stateAppRunning
 	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict}
 	errStates := make(map[string]state.State)
 
@@ -81,6 +137,36 @@ func (app *App) GetMonitoringStatus() string {
 		return stateFailed
 	}
 
+	// Run each unique local endpoint check exactly once.
+	type localResult struct {
+		err    error
+		status int    // HTTP status code; 0 for TCP
+		errKey string // error key for debounce reporting on HTTP failure
+	}
+	appHost := app.GetHost()
+	localCache := make(map[string]*localResult)
+	for _, route := range routes {
+		lKey := buildLocalCheckKey(appHost, route)
+		if _, seen := localCache[lKey]; seen {
+			continue
+		}
+		switch route.Protocol {
+		case "https", "http":
+			status, _, err := app.GetAppLocalHTTPStatus(route, false)
+			res := &localResult{err: err, status: status, errKey: ErrAppConnectFailed}
+			if err != nil && strings.HasPrefix(err.Error(), "unexpected status code") {
+				res.errKey = ErrAppUnexpectedStatus
+			}
+			localCache[lKey] = res
+		case "tcp":
+			err := app.GetAppLocalTCPStatus(route)
+			localCache[lKey] = &localResult{err: err, errKey: ErrAppTCPConnectFailed}
+		default:
+			localCache[lKey] = &localResult{err: fmt.Errorf("unsupported protocol: %s", route.Protocol)}
+		}
+	}
+
+	// Evaluate each route using cached local results; also run external checks.
 	routeStatuses := make([]config.RouteStatus, 0, len(routes))
 	for _, route := range routes {
 		routeKey := routeEndpoint(route)
@@ -88,114 +174,89 @@ func (app *App) GetMonitoringStatus() string {
 		routeNorm := route
 		routeNorm.Normalize()
 		routeLabel := " on route " + routeNorm.Label()
+		lKey := buildLocalCheckKey(appHost, route)
+
 		switch route.Protocol {
-		case "https":
-			httpStatus, _, err := app.GetAppHTTPStatus(route, false)
-			if err == nil {
-				markSuccessfulRouteCheck(routeKey)
+		case "https", "http":
+			localRes := localCache[lKey]
+			if localRes.err != nil {
+				errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), localRes.err)
+				if localRes.errKey == ErrAppUnexpectedStatus {
+					errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), localRes.status)
+				}
+				debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: localRes.errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, localRes.err)
+				routeStatus.Status = stateFailed
 			} else {
-				routeStatus.Status = stateAppWarning
-				// Don't set primaryStatus yet — defer until local check outcome is known.
-
-				errKey := ErrAppConnectFailed
-				errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
-				if strings.HasPrefix(err.Error(), "unexpected status code") {
-					errKey = ErrAppUnexpectedStatus
-					errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus)
-				}
-
-				httpStatus, _, err := app.GetAppLocalHTTPStatus(route, false)
-				if err != nil {
-					if strings.HasPrefix(err.Error(), "unexpected status code") {
-						errKey = ErrAppUnexpectedStatus
-						errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus)
-					} else {
-						errKey = ErrAppConnectFailed
-						errDesc = fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
-					}
-
-					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, err)
-
-					if route.Primary {
-						primaryStatus = stateFailed
-					} else {
-						primaryStatus = stateAppWarning
-					}
-					routeStatus.Status = stateFailed
-				} else {
+				extStatus, _, extErr := app.GetAppHTTPStatus(route, false)
+				if extErr == nil {
 					markSuccessfulRouteCheck(routeKey)
-				}
-			}
-		case "http":
-			httpStatus, _, err := app.GetAppHTTPStatus(route, false)
-			if err == nil {
-				markSuccessfulRouteCheck(routeKey)
-			} else {
-				routeStatus.Status = stateAppWarning
-				// Don't set primaryStatus yet — defer until local check outcome is known.
-				errKey := ErrAppConnectFailed
-				errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
-				if strings.HasPrefix(err.Error(), "unexpected status code") {
-					errKey = ErrAppUnexpectedStatus
-					errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus)
-				}
-				httpStatus, _, err = app.GetAppLocalHTTPStatus(route, false)
-				if err != nil {
-					if strings.HasPrefix(err.Error(), "unexpected status code") {
-						errKey = ErrAppUnexpectedStatus
-						errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus)
-					} else {
-						errKey = ErrAppConnectFailed
-						errDesc = fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
-					}
-					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, err)
-					if route.Primary {
-						primaryStatus = stateFailed
-					} else {
-						primaryStatus = stateAppWarning
-					}
-					routeStatus.Status = stateFailed
 				} else {
-					markSuccessfulRouteCheck(routeKey)
+					errKey := ErrAppConnectFailed
+					errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), extErr)
+					if strings.HasPrefix(extErr.Error(), "unexpected status code") {
+						errKey = ErrAppUnexpectedStatus
+						errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), extStatus)
+					}
+					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, extErr)
+					routeStatus.Status = stateAppWarning
 				}
 			}
 		case "tcp":
-			err := app.GetAppTCPStatus(route)
-			if err == nil {
-				markSuccessfulRouteCheck(routeKey)
-			} else {
+			localRes := localCache[lKey]
+			if localRes.err != nil {
+				// Temporary compatibility: emit APPERR003 (canonical) and APPERR001 together.
+				debouncedRecordAppErr(routeKey, []state.State{
+					{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), localRes.err) + routeLabel, ServerUrl: app.Host},
+					{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), localRes.err) + routeLabel, ServerUrl: app.Host},
+				}, localRes.err)
+				routeStatus.Status = stateFailed
+			} else if extErr := app.GetAppTCPStatus(route); extErr != nil {
 				routeStatus.Status = stateAppWarning
-				primaryStatus = stateAppWarning
-
-				if err := app.GetAppLocalTCPStatus(route); err != nil {
-					// Temporary compatibility: emit APPERR003 (canonical) and APPERR001 together.
-					debouncedRecordAppErr(routeKey, []state.State{
-						{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), err) + routeLabel, ServerUrl: app.Host},
-						{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err) + routeLabel, ServerUrl: app.Host},
-					}, err)
-
-					routeStatus.Status = stateFailed
-					if route.Primary {
-						primaryStatus = stateFailed
-					}
-				} else {
-					markSuccessfulRouteCheck(routeKey)
-				}
+			} else {
+				markSuccessfulRouteCheck(routeKey)
 			}
 		default:
 			// Keep APPERR004 argument order aligned with config.ClusterError format string.
 			errStates[ErrAppUnsupportedProto] = state.State{ErrType: "WARN", ErrKey: ErrAppUnsupportedProto, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppUnsupportedProto], route.Protocol, app.GetId()) + routeLabel, ServerUrl: app.Host}
 			app.ResetAppErrConsecutiveCnt(routeKey)
 			routeStatus.Status = stateFailed
-
-			if route.Primary {
-				primaryStatus = stateFailed
-			} else {
-				primaryStatus = stateAppWarning
-			}
 		}
 
 		routeStatuses = append(routeStatuses, routeStatus)
+	}
+
+	// Aggregate app status:
+	//   Failed     – all deduped local endpoints are down (vacuously true when no local checks exist)
+	//   AppWarning – at least one local endpoint succeeds but some route has an issue
+	//   Running    – all checks pass
+	//
+	// Note: route.Primary is intentionally not used here. A primary route can be
+	// locally down while a secondary route's local check keeps the app at
+	// AppWarning; Failed is only reached when every unique local backend fails.
+	allLocalFailed := true
+	for _, res := range localCache {
+		if res.err == nil {
+			allLocalFailed = false
+			break
+		}
+	}
+
+	var primaryStatus string
+	if allLocalFailed {
+		primaryStatus = stateFailed
+	} else {
+		anyNotRunning := false
+		for _, rs := range routeStatuses {
+			if rs.Status != stateAppRunning {
+				anyNotRunning = true
+				break
+			}
+		}
+		if anyNotRunning {
+			primaryStatus = stateAppWarning
+		} else {
+			primaryStatus = stateAppRunning
+		}
 	}
 
 	for _, key := range appErrKeys {
