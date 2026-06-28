@@ -7,34 +7,16 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-func TestBuildRouteFragment_HostRouteUsesOriginDevelopNames(t *testing.T) {
+func TestBuildRouteFragment_HostRouteReturnsErrorNotSingleRoute(t *testing.T) {
 	route := config.Route{
 		Mode:            "host",
 		Protocol:        "https",
 		CName:           "console.example.com",
 		DestinationPort: "9001",
 	}
-
-	key, fragment, err := buildRouteFragment(route, "minio.crm.svc.cluster.local", 2)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	want := "haproxy.cfg.d/minio.crm.svc.cluster.local_9001"
-	if key != want {
-		t.Fatalf("unexpected fragment key: got %q want %q", key, want)
-	}
-	if !strings.Contains(fragment, "use_backend minio.crm.svc.cluster.local_9001 if { hdr(host) -i console.example.com }") {
-		t.Fatalf("host fragment lost origin/develop backend naming: %s", fragment)
-	}
-	if !strings.Contains(fragment, "backend minio.crm.svc.cluster.local_9001") {
-		t.Fatalf("host backend name mismatch: %s", fragment)
-	}
-	if !strings.Contains(fragment, "timeout tunnel 1h") {
-		t.Fatalf("host fragment missing websocket timeout tunnel: %s", fragment)
-	}
-	if strings.Contains(fragment, "be_") || strings.Contains(fragment, "repman_") {
-		t.Fatalf("host fragment still contains tokenized naming: %s", fragment)
+	_, _, err := buildRouteFragment(route, "minio.crm.svc.cluster.local", 2)
+	if err == nil {
+		t.Fatal("expected error for host-mode route, got nil")
 	}
 }
 
@@ -98,20 +80,15 @@ func TestBuildRouteFragment_PortRoutesDifferentCNamesHaveDifferentKeys(t *testin
 	}
 }
 
-func TestBuildRouteFragment_HostRouteEmitsLegacyCookieKey(t *testing.T) {
+func TestBuildRouteFragment_HostRouteReturnsError(t *testing.T) {
 	route := config.Route{
 		Mode:            "host",
-		Protocol:        "https",
 		CName:           "app.example.com",
 		DestinationPort: "8080",
 	}
-
-	_, fragment, err := buildRouteFragment(route, "app.cluster.svc.local", 2)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(fragment, "dynamic-cookie-key mysecretphrase") {
-		t.Fatalf("host-route fragment must preserve legacy dynamic-cookie-key; got:\n%s", fragment)
+	_, _, err := buildRouteFragment(route, "app.cluster.svc.local", 2)
+	if err == nil {
+		t.Fatal("expected error for host-mode route, got nil")
 	}
 }
 

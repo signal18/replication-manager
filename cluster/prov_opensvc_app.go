@@ -1153,22 +1153,8 @@ backend %s
     server-template srv %d %s:%s resolvers cluster check init-addr none
 `, frontend, route.CName, route.SourcePort, backend, backend, numBE, opensvcDNS, route.DestinationPort)
 		}
-	default: // host
-		backend := routeName
-		haproxyfragment = fmt.Sprintf(`
-frontend https
-    use_backend %s if { hdr(host) -i %s }
-
-backend %s
-    cookie SERVER insert indirect nocache dynamic
-    balance roundrobin
-    dynamic-cookie-key mysecretphrase
-    option http-server-close
-    timeout connect 10s
-    timeout server 5m
-    timeout tunnel 1h
-    server-template srv %d %s:%s resolvers cluster check init-addr none
-`, backend, route.CName, backend, numBE, opensvcDNS, route.DestinationPort)
+	default:
+		return "", "", fmt.Errorf("buildRouteFragment: unsupported mode %q — host routes must use buildGroupedHostRouteFragment", route.Mode)
 	}
 	return fragmentKey, haproxyfragment, nil
 }

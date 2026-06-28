@@ -36,7 +36,7 @@ function SessionGuard() {
     if (localStorage.getItem('user_token') && sessionStatus === 'unknown') {
       dispatch(whoami())
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pathname, sessionStatus, dispatch])
 
   useEffect(() => {
     const handle401 = () => dispatch(logout())
