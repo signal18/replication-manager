@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Suspense } from 'react'
+import React, { useCallback, useEffect, useRef, useState, Suspense } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { login, logout, setUserData } from '../../redux/authSlice'
@@ -24,38 +24,55 @@ function Login({ dashboard = false }) {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const {
-    auth: { isLogged, loading, loadingGitLogin, user, error }
+    auth: { isLogged, loading, loadingGitLogin, user, error, sessionStatus }
   } = useSelector((state) => state)
 
-  useEffect(() => {
-    // In dashboard mode always fetch a fresh token so the viewer lands on
-    // /slideshow even when a stale token is already in localStorage.
-    if (!dashboard && isAuthorized()) {
-      navigate('/')
-      return
-    }
+  // Guards against concurrent autologin fetches. Reset to false on network failure
+  // so a later retry is allowed; stays true after a definitive success or server rejection.
+  const autologinCalledRef = useRef(false)
+  const [autologinRetryCount, setAutologinRetryCount] = useState(0)
 
-    if (!dashboard) {
-      // Normal login page: try autologin once, fall through to manual login form on failure.
-      fetch('/api/autologin')
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data && data.token) {
-            localStorage.setItem('user_token', data.token)
-            localStorage.setItem('username', data.username || 'admin')
-            dispatch(setUserData())
-            navigate('/')
-          } else {
-            dispatch(logout())
-            dispatch(clearClusters())
-            dispatch(clearCluster())
-          }
-        })
-        .catch(() => {
+  const doAutologin = useCallback(() => {
+    if (autologinCalledRef.current) return
+    autologinCalledRef.current = true
+    fetch('/api/autologin')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.token) {
+          localStorage.setItem('user_token', data.token)
+          localStorage.setItem('username', data.username || 'admin')
+          dispatch(setUserData())
+          navigate('/')
+        } else {
+          // Server is up but autologin is not configured — no retry.
           dispatch(logout())
           dispatch(clearClusters())
           dispatch(clearCluster())
-        })
+        }
+      })
+      .catch(() => {
+        // Network failure — server not up yet.
+        // Keep the guard set until the timer fires: dispatch(logout()) below will
+        // flip sessionStatus to 'unauthenticated', which would immediately re-trigger
+        // the sessionStatus effect. The guard being true prevents that instant retry.
+        dispatch(logout())
+        dispatch(clearClusters())
+        dispatch(clearCluster())
+        setTimeout(() => {
+          autologinCalledRef.current = false  // allow next attempt only after the delay
+          setAutologinRetryCount((c) => c + 1)
+        }, 10_000)
+      })
+  }, [dispatch, navigate])
+
+  useEffect(() => {
+    if (!dashboard) {
+      // If a token exists, SessionGuard (App.jsx) is already validating it via whoami.
+      // doAutologin will be called reactively below if whoami clears the stale token.
+      if (isAuthorized()) return
+
+      // No token on mount: try autologin immediately.
+      doAutologin()
       return
     }
 
@@ -89,6 +106,16 @@ function Login({ dashboard = false }) {
       clearTimeout(retryTimer)
     }
   }, [])
+
+  // Fires when:
+  //  - sessionStatus changes to 'unauthenticated' (stale token cleared by SessionGuard), or
+  //  - autologinRetryCount increments (previous attempt hit a network failure during restart).
+  useEffect(() => {
+    if (dashboard) return
+    if (sessionStatus !== 'unauthenticated') return
+    if (isAuthorized()) return
+    doAutologin()
+  }, [sessionStatus, autologinRetryCount, doAutologin])
 
   useEffect(() => {
     if (!loading || !loadingGitLogin) {

@@ -1,6 +1,9 @@
-import { VStack, HStack, Text, Heading, Input, Select, Flex, Tooltip, Code, Box } from '@chakra-ui/react'
+import {
+  VStack, HStack, Text, Heading, Input, Select, Flex, Tooltip, Box,
+  Table, Thead, Tbody, Tr, Th, Td, Badge,
+} from '@chakra-ui/react'
 import React, { useState } from 'react'
-import { HiTrash, HiInformationCircle } from 'react-icons/hi'
+import { HiTrash, HiInformationCircle, HiChevronDown, HiChevronRight } from 'react-icons/hi'
 import PropTypes from 'prop-types'
 import TextForm from '../../../../components/TextForm';
 import RMIconButton from '../../../../components/RMIconButton';
@@ -59,20 +62,6 @@ function defaultProtocolForMode(mode) {
   return mode === 'port' ? 'tcp' : 'https';
 }
 
-function routePreview(p) {
-  const mode = effectiveMode(p);
-  const backendPort = p.destPort || p.port;
-  if (mode === 'host') {
-    const proto = p.protocol || 'https';
-    const host = p.cname || '(public hostname)';
-    return `${proto}://${host}  →  backend :${backendPort || '?'}`;
-  }
-  const listener = p.cname
-    ? `${p.cname}:${p.sourcePort || '?'}`
-    : `(listener cname):${p.sourcePort || '?'}`;
-  return `${listener}  →  backend :${backendPort || '?'}`;
-}
-
 function newRoutePreview(p) {
   const backendPort = p.mode === 'host' ? (p.port || '?') : (p.destPort || '?');
   if (p.mode === 'host') {
@@ -123,10 +112,46 @@ function normalizeNewRouteMonitorDraft(draft) {
   };
 }
 
+function routeKey(route) {
+  const mode = effectiveMode(route);
+  const cname = route.cname?.toLowerCase() || '';
+  const proto = route.protocol || '';
+  if (mode === 'port') return `port:${cname}:${route.sourcePort || ''}:${route.destPort || route.port || ''}:${proto}`;
+  return `host:${cname}:${route.destPort || route.port || ''}:${proto}`;
+}
+
+function matchRouteStatus(route, routeStatuses) {
+  if (!routeStatuses?.length) return null;
+  const key = routeKey(route);
+  for (const rs of routeStatuses) {
+    if (routeKey(rs) === key) return rs;
+  }
+  return null;
+}
+
+function StatusBadge({ status }) {
+  if (!status) return <Badge colorScheme="gray" fontSize="2xs" px={1}>—</Badge>;
+  if (status === 'AppRunning') return <Badge colorScheme="green" fontSize="2xs" px={1}>Running</Badge>;
+  if (status === 'AppWarning') return <Badge colorScheme="yellow" fontSize="2xs" px={1}>Warning</Badge>;
+  return <Badge colorScheme="red" fontSize="2xs" px={1}>Failed</Badge>;
+}
+
+function MonitoringSummary({ route }) {
+  const m = route.monitor;
+  if (!isHTTPMonitorCapable(route) || !m) return <Text fontSize="xs" color="gray.400">—</Text>;
+  const parts = [];
+  if (m.path) parts.push(m.path);
+  if (m.expectStatus) parts.push(m.expectStatus);
+  if (m.authType && m.authType !== 'none') parts.push(m.authType.charAt(0).toUpperCase() + m.authType.slice(1));
+  if (!parts.length) return <Text fontSize="xs" color="gray.400">—</Text>;
+  return <Text fontSize="xs" color="gray.600" whiteSpace="nowrap">{parts.join(' · ')}</Text>;
+}
+
 const Routes = React.memo(function Routes({
   gateway = "",
   rows = [],
   variables = [],
+  routeStatus = [],
   fieldName = 'routes',
   onRowArrayChange,
   onRowDropIndex,
@@ -136,7 +161,16 @@ const Routes = React.memo(function Routes({
 }) {
 
   const [formData, setFormData] = useState([]);
+  const [expandedMonitorKeys, setExpandedMonitorKeys] = useState(new Set());
   const secretVarOpts = secretVariableOptions(variables);
+
+  const toggleMonitorRow = (key) => {
+    setExpandedMonitorKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   const handleArrayChange = (index, key, value) => {
     setFormData(prevState => prevState.map((item, i) => {
@@ -148,11 +182,9 @@ const Routes = React.memo(function Routes({
           updated.port = item.destPort || item.port || '';
           updated.destPort = '';
           updated.sourcePort = '';
-          // cname is kept — host routes use it as the public hostname
         } else {
           updated.destPort = item.port || item.destPort || '';
           updated.port = '';
-          // cname is kept — port routes require it as the listener CNAME
         }
       }
       return updated;
@@ -227,155 +259,180 @@ const Routes = React.memo(function Routes({
             <span><HiInformationCircle size={16} style={{ cursor: 'pointer', color: 'gray' }} /></span>
           </Tooltip>
         </HStack>
-        <Text fontSize="sm" color="gray.600">
-          Each row exposes one public entrypoint.{' '}
-          <strong>Host</strong> routes by hostname (HTTPS) via the shared gateway frontend.{' '}
-          <strong>Port</strong> routes by listener hostname + port (TCP or HTTP) — the gateway binds the
-          resolved listener address; wildcard binds are not allowed.{' '}
-          You can mix both in the same app.
-        </Text>
 
-        {rows?.length > 0
-          ? rows.map((p, index) => {
-            const mode = effectiveMode(p);
-            const isHost = mode === 'host';
-            const protocolOpts = isHost ? hostProtocolOptions : portProtocolOptions;
-            const rowKey = `row_${index}`;
-            const availableModeOptions = !isHost && !p.cname
-              ? modeOptions.filter(o => o.value !== 'host')
-              : modeOptions;
-            const modeHelp = isHost
-              ? 'Clients connect using this hostname over HTTPS via the shared gateway frontend. Traffic is forwarded to the backend port.'
-              : 'Clients connect to the listener endpoint (cname:sourcePort). The gateway resolves the listener CNAME to a local bind address — wildcard binds are not allowed.';
-            const monitorCapable = isHTTPMonitorCapable(p);
-            const authType = p.monitor?.authType || 'none';
-            const savedSecretVarOpts = [{ value: '__none__', name: '— none —' }, ...secretVarOpts];
-            return (
-              <VStack key={rowKey} align="stretch" spacing={1}>
-                <HStack align="center">
-                  <Tooltip label={modeHelp} placement="top" hasArrow>
-                    <span>
-                      <Dropdown
-                        confirmTitle={"Route mode changed — protocol will be reset to the new mode's default"}
-                        name={`${rowKey}.mode`}
-                        selectedValue={mode}
-                        onChange={(value) => onRowArrayChange(fieldName, index, "mode", value)}
-                        options={availableModeOptions}
-                      />
-                    </span>
-                  </Tooltip>
-                  {isHost ? (
-                    <>
-                      <TextForm
-                        confirmTitle={"Public hostname changed"}
-                        name={`${rowKey}.cname`}
-                        placeholder="Public hostname"
-                        value={p.cname}
-                        onSave={(value) => onRowArrayChange(fieldName, index, "cname", value)}
-                      />
-                      <TextForm
-                        confirmTitle={"Backend port changed"}
-                        pattern='^[0-9]{1,5}$'
-                        name={`${rowKey}.port`}
-                        placeholder="Backend port"
-                        value={p.destPort || p.port}
-                        onSave={(value) => onRowArrayChange(fieldName, index, "port", sanitizePort(value))}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <TextForm
-                        confirmTitle={"Listener CNAME changed — gateway will re-resolve the bind address on next reconcile"}
-                        name={`${rowKey}.cname`}
-                        placeholder="Listener CNAME"
-                        value={p.cname}
-                        onSave={(value) => onRowArrayChange(fieldName, index, "cname", value)}
-                      />
-                      <TextForm
-                        confirmTitle={"Source port changed"}
-                        pattern='^[0-9]{1,5}$'
-                        name={`${rowKey}.sourcePort`}
-                        placeholder="Source port"
-                        value={p.sourcePort}
-                        onSave={(value) => onRowArrayChange(fieldName, index, "sourceport", sanitizePort(value))}
-                      />
-                      <TextForm
-                        confirmTitle={"Destination port changed"}
-                        pattern='^[0-9]{1,5}$'
-                        name={`${rowKey}.destPort`}
-                        placeholder="Dest port"
-                        value={p.destPort || p.port}
-                        onSave={(value) => onRowArrayChange(fieldName, index, "destport", sanitizePort(value))}
-                      />
-                    </>
-                  )}
-                  <Dropdown
-                    confirmTitle={"Protocol changed"}
-                    name={`${rowKey}.protocol`}
-                    selectedValue={p.protocol}
-                    onChange={(value) => onRowArrayChange(fieldName, index, "protocol", value)}
-                    options={protocolOpts}
-                  />
-                  <RMIconButton icon={HiTrash} aria-label="Delete Route" onClick={() => onRowDropIndex(fieldName, index)} />
-                </HStack>
-                <Code fontSize="xs" color="gray.500" bg="transparent" pl={1}>{routePreview(p)}</Code>
-                {monitorCapable && (
-                  <Box pl={1} pt={1} borderLeft="2px solid" borderColor="gray.200">
-                    <HStack spacing={2} flexWrap="wrap" align="flex-start">
-                      <Text fontSize="xs" color="gray.400" fontWeight="semibold" minW="75px" pt={1}>Monitoring</Text>
-                      <TextForm
-                        confirmTitle="Monitor path changed"
-                        name={`${rowKey}.monitor.path`}
-                        placeholder="/ (default)"
-                        value={p.monitor?.path || ''}
-                        onSave={(value) => onRowArrayChange(fieldName, index, 'monitor.path', value)}
-                      />
-                      <Dropdown
-                        confirmTitle="Monitor auth type changed"
-                        name={`${rowKey}.monitor.auth-type`}
-                        selectedValue={authType}
-                        onChange={(value) => onRowArrayChange(fieldName, index, 'monitor.auth-type', value)}
-                        options={authTypeOptions}
-                      />
-                      {authType === 'basic' && (
-                        <TextForm
-                          confirmTitle="Monitor auth user changed"
-                          name={`${rowKey}.monitor.auth-user`}
-                          placeholder="Username"
-                          value={p.monitor?.authUser || ''}
-                          onSave={(value) => onRowArrayChange(fieldName, index, 'monitor.auth-user', value)}
-                        />
+        {rows?.length > 0 ? (
+          <Box overflowX="auto">
+            <Table size="sm" variant="simple">
+              <Thead>
+                <Tr>
+                  <Th px={2} fontSize="xs">Status</Th>
+                  <Th px={2} fontSize="xs">Mode</Th>
+                  <Th px={2} fontSize="xs">Hostname / Listener</Th>
+                  <Th px={2} fontSize="xs">Src Port</Th>
+                  <Th px={2} fontSize="xs">Backend</Th>
+                  <Th px={2} fontSize="xs">Protocol</Th>
+                  <Th px={2} fontSize="xs">Monitoring</Th>
+                  <Th px={2}></Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {rows.map((p, index) => {
+                  const mode = effectiveMode(p);
+                  const isHost = mode === 'host';
+                  const protocolOpts = isHost ? hostProtocolOptions : portProtocolOptions;
+                  const rowKey = `row_${index}`;
+                  const availableModeOptions = !isHost && !p.cname
+                    ? modeOptions.filter(o => o.value !== 'host')
+                    : modeOptions;
+                  const modeHelp = isHost
+                    ? 'Clients connect using this hostname over HTTPS via the shared gateway frontend.'
+                    : 'Clients connect to the listener endpoint (cname:sourcePort). Wildcard binds are not allowed.';
+                  const monitorCapable = isHTTPMonitorCapable(p);
+                  const authType = p.monitor?.authType || 'none';
+                  const savedSecretVarOpts = [{ value: '__none__', name: '— none —' }, ...secretVarOpts];
+                  const matched = matchRouteStatus(p, routeStatus);
+                  const rKey = routeKey(p);
+                  const monitorExpanded = expandedMonitorKeys.has(rKey);
+
+                  return (
+                    <React.Fragment key={rowKey}>
+                      <Tr>
+                        <Td px={2} py={1}>
+                          <StatusBadge status={matched?.status} />
+                        </Td>
+                        <Td px={2} py={1}>
+                          <Tooltip label={modeHelp} placement="top" hasArrow>
+                            <span>
+                              <Dropdown
+                                confirmTitle={"Route mode changed — protocol will be reset"}
+                                name={`${rowKey}.mode`}
+                                selectedValue={mode}
+                                onChange={(value) => onRowArrayChange(fieldName, index, "mode", value)}
+                                options={availableModeOptions}
+                              />
+                            </span>
+                          </Tooltip>
+                        </Td>
+                        <Td px={2} py={1}>
+                          <TextForm
+                            confirmTitle={isHost ? "Public hostname changed" : "Listener CNAME changed"}
+                            name={`${rowKey}.cname`}
+                            placeholder={isHost ? "Public hostname" : "Listener CNAME"}
+                            value={p.cname}
+                            onSave={(value) => onRowArrayChange(fieldName, index, "cname", value)}
+                          />
+                        </Td>
+                        <Td px={2} py={1}>
+                          {!isHost && (
+                            <TextForm
+                              confirmTitle={"Source port changed"}
+                              pattern='^[0-9]{1,5}$'
+                              name={`${rowKey}.sourcePort`}
+                              placeholder="Src port"
+                              value={p.sourcePort}
+                              onSave={(value) => onRowArrayChange(fieldName, index, "sourceport", sanitizePort(value))}
+                            />
+                          )}
+                        </Td>
+                        <Td px={2} py={1}>
+                          <TextForm
+                            confirmTitle={"Backend port changed"}
+                            pattern='^[0-9]{1,5}$'
+                            name={`${rowKey}.port`}
+                            placeholder="Port"
+                            value={isHost ? (p.destPort || p.port) : (p.destPort || p.port)}
+                            onSave={(value) => onRowArrayChange(fieldName, index, isHost ? "port" : "destport", sanitizePort(value))}
+                          />
+                        </Td>
+                        <Td px={2} py={1}>
+                          <Dropdown
+                            confirmTitle={"Protocol changed"}
+                            name={`${rowKey}.protocol`}
+                            selectedValue={p.protocol}
+                            onChange={(value) => onRowArrayChange(fieldName, index, "protocol", value)}
+                            options={protocolOpts}
+                          />
+                        </Td>
+                        <Td px={2} py={1}>
+                          <HStack spacing={1}>
+                            <MonitoringSummary route={p} />
+                            {monitorCapable && (
+                              <RMIconButton
+                                size="xs"
+                                icon={monitorExpanded ? HiChevronDown : HiChevronRight}
+                                aria-label={monitorExpanded ? "Collapse monitoring" : "Edit monitoring"}
+                                onClick={() => toggleMonitorRow(rKey)}
+                              />
+                            )}
+                          </HStack>
+                        </Td>
+                        <Td px={2} py={1}>
+                          <RMIconButton icon={HiTrash} aria-label="Delete Route" onClick={() => onRowDropIndex(fieldName, index)} />
+                        </Td>
+                      </Tr>
+                      {monitorExpanded && monitorCapable && (
+                        <Tr>
+                          <Td colSpan={8} px={3} py={2} bg="gray.50">
+                            <HStack spacing={2} flexWrap="wrap" align="flex-start">
+                              <Text fontSize="xs" color="gray.500" fontWeight="semibold" minW="60px" pt={1}>Monitor</Text>
+                              <TextForm
+                                confirmTitle="Monitor path changed"
+                                name={`${rowKey}.monitor.path`}
+                                placeholder="/ (default)"
+                                value={p.monitor?.path || ''}
+                                onSave={(value) => onRowArrayChange(fieldName, index, 'monitor.path', value)}
+                              />
+                              <Dropdown
+                                confirmTitle="Monitor auth type changed"
+                                name={`${rowKey}.monitor.auth-type`}
+                                selectedValue={authType}
+                                onChange={(value) => onRowArrayChange(fieldName, index, 'monitor.auth-type', value)}
+                                options={authTypeOptions}
+                              />
+                              {authType === 'basic' && (
+                                <TextForm
+                                  confirmTitle="Monitor auth user changed"
+                                  name={`${rowKey}.monitor.auth-user`}
+                                  placeholder="Username"
+                                  value={p.monitor?.authUser || ''}
+                                  onSave={(value) => onRowArrayChange(fieldName, index, 'monitor.auth-user', value)}
+                                />
+                              )}
+                              {(authType === 'basic' || authType === 'bearer') && (
+                                <Dropdown
+                                  confirmTitle="Monitor secret variable changed"
+                                  name={`${rowKey}.monitor.auth-secret-var`}
+                                  selectedValue={p.monitor?.authSecretVar || '__none__'}
+                                  onChange={(value) => onRowArrayChange(fieldName, index, 'monitor.auth-secret-var', value === '__none__' ? '' : value)}
+                                  options={savedSecretVarOpts}
+                                  placeholder="Secret var"
+                                />
+                              )}
+                              <TextForm
+                                confirmTitle="Expected status codes changed"
+                                name={`${rowKey}.monitor.expect-status`}
+                                placeholder="200"
+                                value={p.monitor?.expectStatus || ''}
+                                onSave={(value) => onRowArrayChange(fieldName, index, 'monitor.expect-status', value)}
+                              />
+                              {hasMonitorConfig(p) && (
+                                <RMButton size="xs" variant="outline" onClick={() => onRowArrayChange(fieldName, index, 'monitor.clear', 'true')}>
+                                  Clear
+                                </RMButton>
+                              )}
+                            </HStack>
+                          </Td>
+                        </Tr>
                       )}
-                      {(authType === 'basic' || authType === 'bearer') && (
-                        <Dropdown
-                          confirmTitle="Monitor secret variable changed"
-                          name={`${rowKey}.monitor.auth-secret-var`}
-                          selectedValue={p.monitor?.authSecretVar || '__none__'}
-                          onChange={(value) => onRowArrayChange(fieldName, index, 'monitor.auth-secret-var', value === '__none__' ? '' : value)}
-                          options={savedSecretVarOpts}
-                          placeholder="Secret var"
-                        />
-                      )}
-                      <TextForm
-                        confirmTitle="Expected status codes changed"
-                        name={`${rowKey}.monitor.expect-status`}
-                        placeholder="200"
-                        value={p.monitor?.expectStatus || ''}
-                        onSave={(value) => onRowArrayChange(fieldName, index, 'monitor.expect-status', value)}
-                      />
-                      {hasMonitorConfig(p) && (
-                        <RMButton size="xs" variant="outline" onClick={() => onRowArrayChange(fieldName, index, 'monitor.clear', 'true')}>
-                          Clear Monitoring
-                        </RMButton>
-                      )}
-                    </HStack>
-                  </Box>
-                )}
-              </VStack>
-            );
-          })
-          : <Text>No saved route mappings</Text>
-        }
+                    </React.Fragment>
+                  );
+                })}
+              </Tbody>
+            </Table>
+          </Box>
+        ) : (
+          <Text fontSize="sm" color="gray.500">No saved route mappings</Text>
+        )}
       </VStack>
 
       {formData.length > 0 && (
@@ -454,7 +511,7 @@ const Routes = React.memo(function Routes({
                   </Select>
                   <RMIconButton icon={HiTrash} aria-label="Delete Route" onClick={() => handleRemoveItem(index)} />
                 </HStack>
-                <Code fontSize="xs" color="gray.500" bg="transparent" pl={1}>{newRoutePreview(p)}</Code>
+                <Text fontSize="xs" color="gray.500" pl={1} fontFamily="mono">{newRoutePreview(p)}</Text>
                 {newMonitorCapable && (
                   <Box pl={1} pt={1} borderLeft="2px solid" borderColor="gray.200">
                     <HStack spacing={2} flexWrap="wrap" align="flex-start">
@@ -549,6 +606,7 @@ Routes.propTypes = {
   gateway: PropTypes.string,
   rows: PropTypes.array,
   variables: PropTypes.array,
+  routeStatus: PropTypes.array,
   fieldName: PropTypes.string,
   onRowArrayChange: PropTypes.func,
   onRowDropIndex: PropTypes.func,

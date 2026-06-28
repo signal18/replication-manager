@@ -1,31 +1,17 @@
 import { useMemo } from 'react'
 import { DataTable } from '../../../../../components/DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
-import { Box, VStack } from '@chakra-ui/react'
+import { Box } from '@chakra-ui/react'
 import AppMenu from '../AppMenu'
 import styles from './styles.module.scss'
 import { Link } from 'react-router-dom'
 import ServerName from '../../../../../components/ServerName'
-import TagPill from '../../../../../components/TagPill'
 import ServerStatus from '../../../../../components/ServerStatus'
 import RMIconButton from '../../../../../components/RMIconButton'
 import { HiViewGrid } from 'react-icons/hi'
+import RouteSummary from '../RouteSummary'
 
 const columnHelper = createColumnHelper()
-
-function routePillText(route) {
-  const mode = route.mode || (route.protocol === 'tcp' ? 'port' : 'host')
-  if (mode === 'port') {
-    const prefix = route.name ? `${route.name} ` : ''
-    const cname = route.cname || ''
-    const sourcePort = route.sourcePort || ''
-    if (cname && sourcePort) return `${prefix}${cname}:${sourcePort}`
-    if (cname) return `${prefix}${cname}`
-    if (sourcePort) return `${prefix}:${sourcePort}`
-    return route.name || 'port route'
-  }
-  return route.cname || ''
-}
 
 function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showGridView }) {
   const columns = useMemo(
@@ -61,11 +47,7 @@ function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showG
         cell: (info) => info.getValue(),
         header: 'Docker Image'
       }),
-      columnHelper.accessor((row) => (<VStack>
-        {row.routeStatus?.filter((route) => route.primary).map((route, idx) => (
-          <TagPill key={idx} colorScheme="blue" text={routePillText(route)} />
-        ))}
-      </VStack>), {
+      columnHelper.accessor((row) => (<RouteSummary routeStatuses={row.routeStatus} configuredRouteCount={row.config?.deployment?.routes?.length ?? null} showIdentity />), {
         cell: (info) => info.getValue(),
         header: 'Routes'
       }),

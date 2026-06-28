@@ -114,12 +114,20 @@ const performRequest = async (method, apiUrl, params, authValue, baseUrl = '') =
   try {
     const response = await fetch(url, options);
 
-    if (response.status === 401 && baseUrl === '') {
+    // Only invalidate the session when the request actually carried an auth token.
+    // Public 401s (login form, autologin, unauthenticated endpoints) must not
+    // clear a valid concurrent session.
+    if (response.status === 401 && baseUrl === '' && headers.Authorization) {
+      // If a newer token was stored between request dispatch and response arrival,
+      // this 401 came from a stale request — don't evict the fresh token.
+      const tokenUsed = headers.Authorization.slice('Bearer '.length)
+      const currentToken = localStorage.getItem('user_token')
+      if (tokenUsed && currentToken && tokenUsed !== currentToken) {
+        return handleResponse(response)
+      }
       clearLocalStorageByPrefix('user_token');
       localStorage.removeItem('username');
-      if (window.location.pathname !== '/login') {
-        window.location.reload();
-      }
+      window.dispatchEvent(new CustomEvent('repman:auth401'));
     }
 
     return handleResponse(response);

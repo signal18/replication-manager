@@ -16,6 +16,8 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
   const appName = selectedApp?.name
   const appHost = selectedApp?.host
 
+  const appRouteStatus = selectedApp?.routeStatus
+
   const overviewComponent = useMemo(() => {
     return (
       <Overview
@@ -26,9 +28,10 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
         appConfig={appConfig}
         config={config}
         user={user}
+        routeStatus={appRouteStatus}
       />
     )
-  }, [clusterName, appId, appName, appHost, appConfig, config, user])
+  }, [clusterName, appId, appName, appHost, appConfig, config, user, appRouteStatus])
 
   const storagesComponent = useMemo(() => {
     return (
