@@ -1,5 +1,5 @@
 import { Flex, SimpleGrid, Spacer, VStack } from '@chakra-ui/react'
-import React from 'react'
+import PropTypes from 'prop-types'
 import AppMenu from '../AppMenu'
 import { HiTable } from 'react-icons/hi'
 import TableType2 from '../../../../../components/TableType2'
@@ -29,7 +29,7 @@ function AppGrid({ apps = [], clusterName, showTableView, user, isDesktop, orche
             },
             {
               key: 'Routes',
-              value: <RouteSummary routeStatuses={rowData.routeStatus} configuredRouteCount={rowData.config?.deployment?.routes?.length ?? null} />
+              value: <RouteSummary routeStatuses={rowData.routeStatus} configuredRouteCount={rowData.config?.deployment?.routes?.length ?? null} showIdentity />
             }
           ]
           return (
@@ -66,3 +66,12 @@ function AppGrid({ apps = [], clusterName, showTableView, user, isDesktop, orche
 }
 
 export default AppGrid
+
+AppGrid.propTypes = {
+  apps: PropTypes.array,
+  clusterName: PropTypes.string,
+  showTableView: PropTypes.func,
+  user: PropTypes.object,
+  isDesktop: PropTypes.bool,
+  orchestrator: PropTypes.string,
+}

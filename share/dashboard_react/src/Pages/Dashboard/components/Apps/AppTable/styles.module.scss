@@ -1,3 +1,20 @@
 .tableContainer {
   width: 100%;
 }
+
+.appLink {
+  display: block;
+  width: 100%;
+}
+
+.appCell {
+  min-width: 0;
+}
+
+.appName {
+  font-size: rem(14);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
