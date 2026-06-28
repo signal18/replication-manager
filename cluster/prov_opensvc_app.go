@@ -340,7 +340,7 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 			return err
 		}
 		if err = cluster.OpenSVCProvisionRoute(app); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 				"App %s service provisioned but route publication failed: %s — retry via update-routes when DNS and gateway are ready", app.GetId(), err)
 		}
 		cluster.errorChan <- nil
@@ -384,7 +384,7 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 		return err
 	}
 	if err = cluster.OpenSVCProvisionRoute(app); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 			"App %s service provisioned but route publication failed: %s — retry via update-routes when DNS and gateway are ready", app.GetId(), err)
 	}
 	cluster.errorChan <- nil
