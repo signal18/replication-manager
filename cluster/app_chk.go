@@ -89,110 +89,55 @@ func (app *App) GetMonitoringStatus() string {
 		routeNorm.Normalize()
 		routeLabel := " on route " + routeNorm.Label()
 		switch route.Protocol {
-		case "https":
-			httpStatus, _, err := app.GetAppHTTPStatus(route, false)
-			if err == nil {
-				markSuccessfulRouteCheck(routeKey)
-			} else {
-				routeStatus.Status = stateAppWarning
-				// Don't set primaryStatus yet — defer until local check outcome is known.
-
+		case "https", "http":
+			localStatus, _, localErr := app.GetAppLocalHTTPStatus(route, false)
+			if localErr != nil {
 				errKey := ErrAppConnectFailed
-				errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
-				if strings.HasPrefix(err.Error(), "unexpected status code") {
+				errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), localErr)
+				if strings.HasPrefix(localErr.Error(), "unexpected status code") {
 					errKey = ErrAppUnexpectedStatus
-					errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus)
+					errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), localStatus)
 				}
-
-				httpStatus, _, err := app.GetAppLocalHTTPStatus(route, false)
-				if err != nil {
-					if strings.HasPrefix(err.Error(), "unexpected status code") {
-						errKey = ErrAppUnexpectedStatus
-						errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus)
-					} else {
-						errKey = ErrAppConnectFailed
-						errDesc = fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
-					}
-
-					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, err)
-
-					if route.Primary {
-						primaryStatus = stateFailed
-					} else {
-						primaryStatus = stateAppWarning
-					}
-					routeStatus.Status = stateFailed
-				} else {
-					markSuccessfulRouteCheck(routeKey)
-				}
-			}
-		case "http":
-			httpStatus, _, err := app.GetAppHTTPStatus(route, false)
-			if err == nil {
-				markSuccessfulRouteCheck(routeKey)
+				debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, localErr)
+				primaryStatus = stateFailed
+				routeStatus.Status = stateFailed
 			} else {
-				routeStatus.Status = stateAppWarning
-				// Don't set primaryStatus yet — defer until local check outcome is known.
-				errKey := ErrAppConnectFailed
-				errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
-				if strings.HasPrefix(err.Error(), "unexpected status code") {
-					errKey = ErrAppUnexpectedStatus
-					errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus)
-				}
-				httpStatus, _, err = app.GetAppLocalHTTPStatus(route, false)
-				if err != nil {
-					if strings.HasPrefix(err.Error(), "unexpected status code") {
-						errKey = ErrAppUnexpectedStatus
-						errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), httpStatus)
-					} else {
-						errKey = ErrAppConnectFailed
-						errDesc = fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err)
-					}
-					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, err)
-					if route.Primary {
-						primaryStatus = stateFailed
-					} else {
-						primaryStatus = stateAppWarning
-					}
-					routeStatus.Status = stateFailed
-				} else {
+				extStatus, _, extErr := app.GetAppHTTPStatus(route, false)
+				if extErr == nil {
 					markSuccessfulRouteCheck(routeKey)
+				} else {
+					errKey := ErrAppConnectFailed
+					errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), extErr)
+					if strings.HasPrefix(extErr.Error(), "unexpected status code") {
+						errKey = ErrAppUnexpectedStatus
+						errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), extStatus)
+					}
+					debouncedRecordAppErr(routeKey, []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: errDesc + routeLabel, ServerUrl: app.Host}}, extErr)
+					primaryStatus = stateAppWarning
+					routeStatus.Status = stateAppWarning
 				}
 			}
 		case "tcp":
-			err := app.GetAppTCPStatus(route)
-			if err == nil {
-				markSuccessfulRouteCheck(routeKey)
-			} else {
-				routeStatus.Status = stateAppWarning
+			if localErr := app.GetAppLocalTCPStatus(route); localErr != nil {
+				// Temporary compatibility: emit APPERR003 (canonical) and APPERR001 together.
+				debouncedRecordAppErr(routeKey, []state.State{
+					{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), localErr) + routeLabel, ServerUrl: app.Host},
+					{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), localErr) + routeLabel, ServerUrl: app.Host},
+				}, localErr)
+				primaryStatus = stateFailed
+				routeStatus.Status = stateFailed
+			} else if extErr := app.GetAppTCPStatus(route); extErr != nil {
 				primaryStatus = stateAppWarning
-
-				if err := app.GetAppLocalTCPStatus(route); err != nil {
-					// Temporary compatibility: emit APPERR003 (canonical) and APPERR001 together.
-					debouncedRecordAppErr(routeKey, []state.State{
-						{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), err) + routeLabel, ServerUrl: app.Host},
-						{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err) + routeLabel, ServerUrl: app.Host},
-					}, err)
-
-					routeStatus.Status = stateFailed
-					if route.Primary {
-						primaryStatus = stateFailed
-					}
-				} else {
-					markSuccessfulRouteCheck(routeKey)
-				}
+				routeStatus.Status = stateAppWarning
+			} else {
+				markSuccessfulRouteCheck(routeKey)
 			}
 		default:
 			// Keep APPERR004 argument order aligned with config.ClusterError format string.
 			errStates[ErrAppUnsupportedProto] = state.State{ErrType: "WARN", ErrKey: ErrAppUnsupportedProto, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppUnsupportedProto], route.Protocol, app.GetId()) + routeLabel, ServerUrl: app.Host}
 			app.ResetAppErrConsecutiveCnt(routeKey)
 			routeStatus.Status = stateFailed
-
-			if route.Primary {
-				primaryStatus = stateFailed
-			} else {
-				primaryStatus = stateAppWarning
-			}
+			primaryStatus = stateFailed
 		}
 
 		routeStatuses = append(routeStatuses, routeStatus)
