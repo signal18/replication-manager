@@ -1408,8 +1408,10 @@ func (cluster *Cluster) provisionHostRouteDNS(route config.Route) error {
 		return fmt.Errorf("host route has an empty CNAME — set a valid hostname before provisioning")
 	}
 	if cluster.Conf.Cloud18DomainAddScript == "" {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"cloud18-domain-add-script not configured, skipping DNS provisioning for CNAME %s", cname)
+		if _, managed := cluster.ManagedHostCNAME(cname); !managed {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"cloud18-domain-add-script not configured and CNAME %s is not in the managed suffix %s; DNS is operator-managed and collision prevention is the operator's responsibility", cname, cluster.Cloud18ManagedSuffix())
+		}
 		return nil
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
