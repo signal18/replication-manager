@@ -229,6 +229,10 @@ func (app *App) GetMonitoringStatus() string {
 	//   Failed     – all deduped local endpoints are down (vacuously true when no local checks exist)
 	//   AppWarning – at least one local endpoint succeeds but some route has an issue
 	//   Running    – all checks pass
+	//
+	// Note: route.Primary is intentionally not used here. A primary route can be
+	// locally down while a secondary route's local check keeps the app at
+	// AppWarning; Failed is only reached when every unique local backend fails.
 	allLocalFailed := true
 	for _, res := range localCache {
 		if res.err == nil {
