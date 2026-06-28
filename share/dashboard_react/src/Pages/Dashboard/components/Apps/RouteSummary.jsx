@@ -54,9 +54,9 @@ function getRouteBadgeProps(theme, kind) {
   }
 }
 
-function RouteStateBadges({ up, warn, down, theme }) {
+function RouteStateBadges({ up, warn, down, theme, compact }) {
   return (
-    <HStack spacing={1} flexWrap="nowrap" align="center">
+    <HStack spacing={1} flexWrap="nowrap" align="center" justify={compact ? 'center' : 'flex-start'} width={compact ? '100%' : 'auto'}>
       {up > 0 && <Badge fontSize="2xs" px={1.5} {...getRouteBadgeProps(theme, 'green')}>{up} up</Badge>}
       {warn > 0 && <Badge fontSize="2xs" px={1.5} {...getRouteBadgeProps(theme, 'yellow')}>{warn} warn</Badge>}
       {down > 0 && <Badge fontSize="2xs" px={1.5} {...getRouteBadgeProps(theme, 'red')}>{down} down</Badge>}
@@ -100,7 +100,7 @@ function RouteSummary({ routeStatuses, configuredRouteCount = null, showIdentity
   );
 
   if (compact) {
-    return <RouteStateBadges up={up} warn={warn} down={down} theme={theme} />;
+    return <RouteStateBadges up={up} warn={warn} down={down} theme={theme} compact />;
   }
 
   return summary;
@@ -120,4 +120,5 @@ RouteStateBadges.propTypes = {
   warn: PropTypes.number.isRequired,
   down: PropTypes.number.isRequired,
   theme: PropTypes.string.isRequired,
+  compact: PropTypes.bool,
 }

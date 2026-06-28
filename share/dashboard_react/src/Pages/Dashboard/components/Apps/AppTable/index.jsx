@@ -2,11 +2,12 @@ import { useMemo } from 'react'
 import PropTypes from 'prop-types'
 import { DataTable } from '../../../../../components/DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
-import { Box, Text, Tooltip } from '@chakra-ui/react'
+import { Box, Tooltip } from '@chakra-ui/react'
 import AppMenu from '../AppMenu'
 import styles from './styles.module.scss'
 import { Link } from 'react-router-dom'
 import ServerStatus from '../../../../../components/ServerStatus'
+import ServerName from '../../../../../components/ServerName'
 import RMIconButton from '../../../../../components/RMIconButton'
 import { HiViewGrid } from 'react-icons/hi'
 import RouteSummary from '../RouteSummary'
@@ -41,16 +42,15 @@ function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showG
             <Tooltip label={name} placement="top" hasArrow openDelay={400}>
               <Link to={`/clusters/${clusterName}/apps/${row.original?.id}`} className={styles.appLink}>
                 <Box className={styles.appCell}>
-                  <Text className={styles.appName}>
-                    {name}
-                  </Text>
+                  <ServerName name={name} />
                 </Box>
               </Link>
             </Tooltip>
           );
         },
         header: 'Apps',
-        minWidth: '280px'
+        width: 280,
+        textAlign: 'left'
       }),
       columnHelper.accessor((row) => row.state, {
         cell: ({ row }) => <ServerStatus state={row.original.state} />,
@@ -63,14 +63,15 @@ function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showG
           if (!val) return null;
           return (
             <Tooltip label={val} placement="top" hasArrow openDelay={400}>
-              <Text fontSize="xs" color="gray.600" whiteSpace="nowrap" overflow="hidden" textOverflow="ellipsis" maxW="200px">
+              <Box className={styles.dockerCell}>
                 {val}
-              </Text>
+              </Box>
             </Tooltip>
           );
         },
         header: 'Docker Image',
-        minWidth: '220px'
+        width: 240,
+        textAlign: 'left'
       }),
       columnHelper.accessor((row) => row.routeStatus, {
         cell: ({ row }) => (
@@ -81,7 +82,7 @@ function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showG
           />
         ),
         header: 'Routes',
-        minWidth: '190px'
+        width: 160
       }),
     ],
     [clusterName, isDesktop, orchestrator, user, showGridView]
