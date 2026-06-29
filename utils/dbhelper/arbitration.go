@@ -4,8 +4,42 @@
 
 package dbhelper
 
-import "github.com/jmoiron/sqlx"
-import log "github.com/sirupsen/logrus"
+import (
+	"github.com/jmoiron/sqlx"
+	log "github.com/sirupsen/logrus"
+)
+
+// heartbeatTable returns the schema-qualified heartbeat table name for the given driver.
+func heartbeatTable(db *sqlx.DB) string {
+	if db.DriverName() == "mysql" {
+		return "replication_manager_schema.heartbeat"
+	}
+	return "heartbeat"
+}
+
+// nowExpr returns the SQL current-timestamp expression for the given driver.
+func nowExpr(db *sqlx.DB) string {
+	if db.DriverName() == "mysql" {
+		return "NOW()"
+	}
+	return "DATETIME('now')"
+}
+
+// tenSecondsAgoExpr returns the SQL expression for ten seconds ago for the given driver.
+func tenSecondsAgoExpr(db *sqlx.DB) string {
+	if db.DriverName() == "mysql" {
+		return "DATE_SUB(NOW(), INTERVAL 10 SECOND)"
+	}
+	return "DATETIME('now', '-10 seconds')"
+}
+
+// upsertVerb returns the SQL upsert keyword for the given driver.
+func upsertVerb(db *sqlx.DB) string {
+	if db.DriverName() == "mysql" {
+		return "REPLACE"
+	}
+	return "INSERT OR REPLACE"
+}
 
 func SetHeartbeatTable(db *sqlx.DB) error {
 
@@ -52,30 +86,18 @@ func SetHeartbeatTable(db *sqlx.DB) error {
 
 func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int, hosts int, failed int) error {
 
-	var stmt string
-	if db.DriverName() == "mysql" {
-		stmt = "REPLACE INTO replication_manager_schema.heartbeat (secret,uuid,uid,master,date,cluster,hosts,failed) VALUES(?,?,?,?,NOW(),?,?,?)"
-	} else {
-		stmt = "INSERT OR REPLACE INTO heartbeat (secret,uuid,uid,master,date,cluster,hosts,failed) VALUES(?,?,?,?,DATETIME('now'),?,?,?)"
-	}
+	tbl := heartbeatTable(db)
+	stmt := upsertVerb(db) + " INTO " + tbl + " (secret,uuid,uid,master,date,cluster,hosts,failed) VALUES(?,?,?,?," + nowExpr(db) + ",?,?,?)"
 	_, err := db.Exec(stmt, secret, uuid, uid, master, cluster, hosts, failed)
 	if err != nil {
 		return err
 	}
 
 	var count int
-	if db.DriverName() == "mysql" {
-		stmt = "SELECT count(distinct master) FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND date > DATE_SUB(NOW(), INTERVAL 10 SECOND)"
-	} else {
-		stmt = "SELECT count(distinct master) FROM heartbeat WHERE cluster=? AND secret=? AND date > DATETIME('now', '-10 seconds')"
-	}
+	stmt = "SELECT count(distinct master) FROM " + tbl + " WHERE cluster=? AND secret=? AND date > " + tenSecondsAgoExpr(db)
 	err = db.QueryRowx(stmt, cluster, secret).Scan(&count)
 	if err == nil && count == 1 {
-		if db.DriverName() == "mysql" {
-			stmt = "UPDATE replication_manager_schema.heartbeat set status='U' WHERE status='E' AND cluster=? AND secret=?"
-		} else {
-			stmt = "UPDATE heartbeat set status='U' WHERE status='E' AND cluster=? AND secret=?"
-		}
+		stmt = "UPDATE " + tbl + " set status='U' WHERE status='E' AND cluster=? AND secret=?"
 		_, err = db.Exec(stmt, cluster, secret)
 		if err != nil {
 			return err
@@ -89,12 +111,7 @@ func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, mas
 
 func ForgetArbitration(db *sqlx.DB, secret string) error {
 
-	var stmt string
-	if db.DriverName() == "mysql" {
-		stmt = "DELETE FROM replication_manager_schema.heartbeat WHERE secret=?"
-	} else {
-		stmt = "DELETE FROM heartbeat WHERE secret=?"
-	}
+	stmt := "DELETE FROM " + heartbeatTable(db) + " WHERE secret=?"
 	_, err := db.Exec(stmt, secret)
 	if err != nil {
 		return err
@@ -111,34 +128,21 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 		log.Error("(dbhelper.RequestArbitration) Error opening transaction: ", err)
 		return false
 	}
+	tbl := heartbeatTable(db)
 	// count the number of replication manager Elected that is not me for this cluster
-	var stmt string
-	if db.DriverName() == "mysql" {
-		stmt = "SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND status='E' and uid<>?"
-	} else {
-		stmt = "SELECT count(*) FROM heartbeat WHERE cluster=? AND secret=? AND status='E' and uid<>?"
-	}
+	stmt := "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status='E' and uid<>?"
 	err = tx.QueryRowx(stmt, cluster, secret, uid).Scan(&count)
 	// If none i can consider myself the elected replication-manager
 	if err == nil && count == 0 {
 		log.Info("No elected managers found for this cluster")
 		// A non elected replication-manager may see more nodes than me than in this case lose the election
-		if db.DriverName() == "mysql" {
-			stmt = "SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ?"
-		} else {
-			stmt = "SELECT count(*) FROM heartbeat WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ?"
-		}
+		stmt = "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ?"
 		err = tx.QueryRowx(stmt, cluster, secret, uid, failed).Scan(&count)
 		if err == nil && count == 0 {
 			log.Info("Node won election")
 			// stmt = "INSERT INTO heartbeat(secret,uuid,uid,master,date,arbitration_date,cluster, hosts, failed ) VALUES('" + secret + "','" + uuid + "'," + uid + ",'" + master + "', DATETIME('now'), DATETIME('now'),'" + cluster + "'," + hosts + "," + failed + ") ON DUPLICATE KEY UPDATE arbitration_date=DATETIME('now'),date=DATETIME('now'),master='" + master + "',status='E', uuid='" + uuid + "',hosts=" + hosts + ",failed=" + failed
-			if db.DriverName() == "mysql" {
-				stmt = `REPLACE INTO replication_manager_schema.heartbeat (secret,uuid,uid,master,date,arbitration_date,cluster,hosts,failed,status)
-      VALUES(?,?,?,?,NOW(),NOW(),?,?,?,'E')`
-			} else {
-				stmt = `INSERT OR REPLACE INTO heartbeat (secret,uuid,uid,master,date,arbitration_date,cluster,hosts,failed,status)
-      VALUES(?,?,?,?,DATETIME('now'),DATETIME('now'),?,?,?,'E')`
-			}
+			now := nowExpr(db)
+			stmt = upsertVerb(db) + " INTO " + tbl + " (secret,uuid,uid,master,date,arbitration_date,cluster,hosts,failed,status) VALUES(?,?,?,?," + now + "," + now + ",?,?,?,'E')"
 			_, err = tx.Exec(stmt, secret, uuid, uid, master, cluster, hosts, failed)
 			if err != nil {
 				log.Error("(dbhelper.RequestArbitration) Error executing transaction: ", err)
@@ -163,12 +167,7 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 func GetArbitrationMaster(db *sqlx.DB, secret string, cluster string) string {
 	var master string
 	// count the number of replication manager Elected that is not me for this cluster
-	var stmt string
-	if db.DriverName() == "mysql" {
-		stmt = "SELECT master FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=?  AND status IN ('E')"
-	} else {
-		stmt = "SELECT master FROM heartbeat WHERE cluster=? AND secret=?  AND status IN ('E')"
-	}
+	stmt := "SELECT master FROM " + heartbeatTable(db) + " WHERE cluster=? AND secret=?  AND status IN ('E')"
 	err := db.QueryRowx(stmt, cluster, secret).Scan(&master)
 	if err == nil {
 		return master
@@ -177,6 +176,9 @@ func GetArbitrationMaster(db *sqlx.DB, secret string, cluster string) string {
 }
 
 // SetStatusActiveHeartbeat arbitrator can set or remove election flag "E"
+// NOTE: this function omits cluster from the INSERT, but the MySQL table's PRIMARY KEY
+// is (secret, cluster, uid), so it cannot be made MySQL-safe without adding cluster to
+// the signature. It is currently unused by the active arbitrator flow.
 func SetStatusActiveHeartbeat(db *sqlx.DB, uuid string, status string, master string, secret string, uid int) error {
 
 	//stmt := "INSERT INTO heartbeat(secret,uid,master,date ) VALUES('" + secret + "','" + uid + "', DATETIME('now')) ON DUPLICATE KEY UPDATE uuid='" + uuid + "', date=DATETIME('now'),master='" + master + "', status='" + status + "' "
