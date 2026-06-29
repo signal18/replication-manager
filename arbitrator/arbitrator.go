@@ -160,14 +160,29 @@ func getArbitratorBackendStorageConnection() (*sqlx.DB, error) {
 		if len(hosts) == 0 || hosts[0] == "" {
 			return nil, fmt.Errorf("arbitrator mysql backend requires [arbitrator].db-servers-hosts (example: \"127.0.0.1:3306\")")
 		}
-		host, port := misc.SplitHostPort(hosts[0])
 		arbConf := RepMan.Confs["arbitrator"]
 		credential := arbConf.DecryptSecretValue("db-servers-credential", arbConf.User)
 		if !strings.Contains(credential, ":") {
 			return nil, fmt.Errorf("arbitrator mysql backend requires [arbitrator].db-servers-credential in \"user:password\" format")
 		}
 		user, pass := misc.SplitPair(credential)
-		db, err = dbhelper.MySQLConnect(user, pass, dbhelper.GetAddress(host, port, ""), fmt.Sprintf("timeout=%ds", RepMan.Confs["arbitrator"].Timeout))
+		for _, h := range hosts {
+			h = strings.TrimSpace(h)
+			if h == "" {
+				continue
+			}
+			host, port := misc.SplitHostPort(h)
+			db, err = dbhelper.MySQLConnect(user, pass, dbhelper.GetAddress(host, port, ""), fmt.Sprintf("timeout=%ds", RepMan.Confs["arbitrator"].Timeout))
+			if err == nil {
+				if pingErr := db.Ping(); pingErr == nil {
+					log.Infof("Arbitrator connected to MySQL backend %s", h)
+					return db, nil
+				}
+				db.Close()
+			}
+			log.Warnf("Arbitrator failed to connect to MySQL backend %s: %s", h, err)
+		}
+		return nil, fmt.Errorf("arbitrator could not connect to any MySQL backend from: %s", RepMan.Confs["arbitrator"].Hosts)
 	}
 	return db, err
 }
