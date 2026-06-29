@@ -33,6 +33,15 @@ func ensureScheme(host string) string {
 	return "http://" + host
 }
 
+func (cl *Cluster) arbitratorURL(path string) string {
+	base := ensureScheme(cl.Conf.ArbitrationSasHosts) + path
+	uri := cl.Conf.Cloud18Domain + "." + cl.Conf.Cloud18SubDomain + "." + cl.Conf.Cloud18SubDomainZone
+	if uri != ".." {
+		return base + "?uri=" + uri
+	}
+	return base
+}
+
 // Heartbeat call from main cluster loop
 func (cluster *Cluster) Heartbeat(wg *sync.WaitGroup) {
 
@@ -83,7 +92,7 @@ func (cl *Cluster) ArbitratorElection() error {
 func (cl *Cluster) arbitratorElection() error {
 	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
 
-	url := ensureScheme(cl.Conf.ArbitrationSasHosts) + "/arbitrator"
+	url := cl.arbitratorURL("/arbitrator")
 	var mst string
 	if cl.GetMaster() != nil {
 		mst = cl.GetMaster().URL

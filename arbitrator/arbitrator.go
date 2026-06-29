@@ -15,6 +15,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/jmoiron/sqlx"
@@ -56,14 +58,79 @@ func newRouter() *mux.Router {
 
 	router := mux.NewRouter().StrictSlash(true)
 	for _, r := range rs {
+		handler := r.HandlerFunc
+		if r.Pattern != "/health" && r.Pattern != "/status" && r.Pattern != "/stats" && RepMan.Confs["arbitrator"].ArbitratorURICheck {
+			handler = uriCheckMiddleware(handler)
+		}
 		router.
 			Methods(r.Method).
 			Path(r.Pattern).
 			Name(r.Name).
-			Handler(r.HandlerFunc)
+			Handler(handler)
 	}
 
 	return router
+}
+
+var (
+	uriCacheMu sync.RWMutex
+	uriCache   = make(map[string]time.Time)
+	uriCacheTTL = 5 * time.Minute
+	crmClient  = &http.Client{Timeout: 5 * time.Second}
+)
+
+func uriCheckMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		uri := r.URL.Query().Get("uri")
+		if uri == "" {
+			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"error": "missing required uri parameter"})
+			log.Warnf("Rejected request to %s: missing uri parameter", r.URL.Path)
+			return
+		}
+
+		uriCacheMu.RLock()
+		if t, ok := uriCache[uri]; ok && time.Since(t) < uriCacheTTL {
+			uriCacheMu.RUnlock()
+			next(w, r)
+			return
+		}
+		uriCacheMu.RUnlock()
+
+		checkURL := RepMan.Confs["arbitrator"].ArbitratorURICheckURL
+		if checkURL == "" {
+			log.Warn("arbitrator-uri-check enabled but arbitrator-uri-check-url not set, rejecting all requests")
+			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{"error": "uri check not configured"})
+			return
+		}
+
+		resp, err := crmClient.Get(checkURL + "?uri=" + uri)
+		if err != nil {
+			log.Warnf("CRM uri check failed for %s: %s", uri, err)
+			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{"error": "uri check unavailable"})
+			return
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			log.Warnf("Rejected request to %s: CRM returned %d for uri %s", r.URL.Path, resp.StatusCode, uri)
+			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"error": "uri not registered"})
+			return
+		}
+
+		uriCacheMu.Lock()
+		uriCache[uri] = time.Now()
+		uriCacheMu.Unlock()
+
+		next(w, r)
+	}
 }
 
 var rs = routes{
@@ -72,6 +139,18 @@ var rs = routes{
 		"GET",
 		"/health",
 		handlerHealth,
+	},
+	route{
+		"Status",
+		"GET",
+		"/status",
+		handlerHealth,
+	},
+	route{
+		"Stats",
+		"GET",
+		"/stats",
+		handlerStats,
 	},
 	route{
 		"Heartbeat",
@@ -107,6 +186,8 @@ func init() {
 	rootCmd.AddCommand(arbitratorCmd)
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorAddress, "arbitrator-bind-address", "0.0.0.0:10001", "Arbitrator API port")
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorDriver, "arbitrator-driver", "sqlite", "sqlite|mysql, use a local sqllite or use a mysql backend")
+	arbitratorCmd.Flags().BoolVar(&conf.ArbitratorURICheck, "arbitrator-uri-check", false, "When true, validate client URI against CRM before accepting requests")
+	arbitratorCmd.Flags().StringVar(&conf.ArbitratorURICheckURL, "arbitrator-uri-check-url", "", "CRM health endpoint URL for URI validation (e.g. https://crm.cloud18.io/api/health)")
 
 }
 
@@ -160,14 +241,29 @@ func getArbitratorBackendStorageConnection() (*sqlx.DB, error) {
 		if len(hosts) == 0 || hosts[0] == "" {
 			return nil, fmt.Errorf("arbitrator mysql backend requires [arbitrator].db-servers-hosts (example: \"127.0.0.1:3306\")")
 		}
-		host, port := misc.SplitHostPort(hosts[0])
 		arbConf := RepMan.Confs["arbitrator"]
 		credential := arbConf.DecryptSecretValue("db-servers-credential", arbConf.User)
 		if !strings.Contains(credential, ":") {
 			return nil, fmt.Errorf("arbitrator mysql backend requires [arbitrator].db-servers-credential in \"user:password\" format")
 		}
 		user, pass := misc.SplitPair(credential)
-		db, err = dbhelper.MySQLConnect(user, pass, dbhelper.GetAddress(host, port, ""), fmt.Sprintf("timeout=%ds", RepMan.Confs["arbitrator"].Timeout))
+		for _, h := range hosts {
+			h = strings.TrimSpace(h)
+			if h == "" {
+				continue
+			}
+			host, port := misc.SplitHostPort(h)
+			db, err = dbhelper.MySQLConnect(user, pass, dbhelper.GetAddress(host, port, ""), fmt.Sprintf("timeout=%ds", RepMan.Confs["arbitrator"].Timeout))
+			if err == nil {
+				if pingErr := db.Ping(); pingErr == nil {
+					log.Infof("Arbitrator connected to MySQL backend %s", h)
+					return db, nil
+				}
+				db.Close()
+			}
+			log.Warnf("Arbitrator failed to connect to MySQL backend %s: %s", h, err)
+		}
+		return nil, fmt.Errorf("arbitrator could not connect to any MySQL backend from: %s", RepMan.Confs["arbitrator"].Hosts)
 	}
 	return db, err
 }
@@ -349,4 +445,154 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+}
+
+type clusterStats struct {
+	Cluster   string           `json:"cluster"`
+	Instances []instanceStats  `json:"instances"`
+}
+
+type instanceStats struct {
+	UID    int    `json:"uid"`
+	Status string `json:"status"`
+	Date   string `json:"last_heartbeat"`
+	Hosts  int    `json:"hosts"`
+	Failed int    `json:"failed"`
+}
+
+func handlerStats(w http.ResponseWriter, r *http.Request) {
+	db, err := getArbitratorDB()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, "Database unavailable")
+		return
+	}
+
+	rows, err := db.Queryx("SELECT cluster, uid, status, date, hosts, failed FROM heartbeat ORDER BY cluster, uid")
+	if err != nil {
+		w.WriteHeader(500)
+		fmt.Fprint(w, "Query error")
+		return
+	}
+	defer rows.Close()
+
+	clusters := make(map[string]*clusterStats)
+	var order []string
+	for rows.Next() {
+		var cluster, status, date string
+		var uid, hosts, failed int
+		if err := rows.Scan(&cluster, &uid, &status, &date, &hosts, &failed); err != nil {
+			continue
+		}
+		statusLabel := "Standby"
+		if status == "E" {
+			statusLabel = "Active"
+		}
+		if _, ok := clusters[cluster]; !ok {
+			clusters[cluster] = &clusterStats{Cluster: cluster}
+			order = append(order, cluster)
+		}
+		clusters[cluster].Instances = append(clusters[cluster].Instances, instanceStats{
+			UID:    uid,
+			Status: statusLabel,
+			Date:   date,
+			Hosts:  hosts,
+			Failed: failed,
+		})
+	}
+
+	crmStatus := ""
+	crmOK := false
+	if RepMan.Confs["arbitrator"].ArbitratorURICheck {
+		checkURL := RepMan.Confs["arbitrator"].ArbitratorURICheckURL
+		if checkURL == "" {
+			crmStatus = "Not configured"
+		} else {
+			resp, err := crmClient.Get(checkURL)
+			if err != nil {
+				crmStatus = "Unreachable"
+			} else {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					crmStatus = "OK"
+					crmOK = true
+				} else {
+					crmStatus = fmt.Sprintf("HTTP %d", resp.StatusCode)
+				}
+			}
+		}
+	}
+
+	if r.URL.Query().Get("format") == "json" {
+		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+		result := map[string]interface{}{}
+		var clusterList []clusterStats
+		for _, name := range order {
+			clusterList = append(clusterList, *clusters[name])
+		}
+		result["clusters"] = clusterList
+		if RepMan.Confs["arbitrator"].ArbitratorURICheck {
+			result["crm"] = map[string]interface{}{"status": crmStatus, "ok": crmOK}
+		}
+		json.NewEncoder(w).Encode(result)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=UTF-8")
+	fmt.Fprint(w, `<!DOCTYPE html>
+<html><head><title>Arbitrator Stats</title>
+<meta http-equiv="refresh" content="10">
+<style>
+body{font-family:sans-serif;margin:20px;background:#1a1a2e;color:#e0e0e0}
+h1{color:#00d4aa}
+table{border-collapse:collapse;margin-bottom:20px;width:100%;max-width:800px}
+th{background:#16213e;color:#00d4aa;padding:8px 12px;text-align:left;border:1px solid #0f3460}
+td{padding:6px 12px;border:1px solid #0f3460}
+tr:nth-child(even){background:#16213e}
+.active{color:#00d4aa;font-weight:bold}
+.standby{color:#e94560}
+.failed{color:#e94560;font-weight:bold}
+.ok{color:#00d4aa}
+.err{color:#e94560}
+h2{color:#e0e0e0;margin-top:30px}
+.footer{color:#666;font-size:12px;margin-top:40px}
+.info{margin-bottom:20px}
+</style></head><body>
+<h1>Arbitrator Statistics</h1>`)
+
+	if RepMan.Confs["arbitrator"].ArbitratorURICheck {
+		crmClass := "err"
+		if crmOK {
+			crmClass = "ok"
+		}
+		fmt.Fprintf(w, `<div class="info">URI Check: enabled · CRM: <span class="%s">%s</span></div>`, crmClass, crmStatus)
+	} else {
+		fmt.Fprint(w, `<div class="info">URI Check: disabled</div>`)
+	}
+
+	if len(order) == 0 {
+		fmt.Fprint(w, "<p>No clusters registered.</p>")
+	}
+
+	for _, name := range order {
+		cs := clusters[name]
+		fmt.Fprintf(w, `<h2>%s</h2>
+<table>
+<tr><th>Instance</th><th>Status</th><th>Last Heartbeat</th><th>Hosts</th><th>Failed</th></tr>`, cs.Cluster)
+		for _, inst := range cs.Instances {
+			statusClass := "standby"
+			if inst.Status == "Active" {
+				statusClass = "active"
+			}
+			failedClass := ""
+			if inst.Failed > 0 {
+				failedClass = ` class="failed"`
+			}
+			fmt.Fprintf(w, `<tr><td>%d</td><td class="%s">%s</td><td>%s</td><td>%d</td><td%s>%d</td></tr>`,
+				inst.UID, statusClass, inst.Status, inst.Date, inst.Hosts, failedClass, inst.Failed)
+		}
+		fmt.Fprint(w, "</table>")
+	}
+
+	fmt.Fprint(w, `<div class="footer">Auto-refresh every 10s · <a href="/stats?format=json" style="color:#00d4aa">JSON</a></div></body></html>`)
 }
