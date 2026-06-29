@@ -1541,6 +1541,9 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					node.Unlock()
 					row.Name = newValue
 				case "value":
+					if row.Type == config.VariableTypeEnv {
+						newValue = mycluster.ResolveEnvVariableValue(node, newValue)
+					}
 					if row.Value == newValue {
 						http.Error(w, "Variable value unchanged", http.StatusBadRequest)
 						return
@@ -1561,19 +1564,13 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					row.Type = newValue
 				case "conditional":
 					old := row.Conditional
-					// addFunc := func(new config.AgentVariable) config.AgentVariable {
-					// 	// new.Value, _ = node.ClusterGroup.ParseAppTemplate(new.Value, node.AppClusterSubstitute)
-					// 	return new
-					// }
-					// updateFunc := func(old, new config.AgentVariable) config.AgentVariable {
-					// 	// new.Value, _ = node.ClusterGroup.ParseAppTemplate(new.Value, node.AppClusterSubstitute)
-					// 	return new
-					// }
-
 					if row.Type == config.VariableTypeSecret {
 						for i, v := range condValue {
-							// Decrypt the value if it's a secret
 							condValue[i].Value = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(row.Name+"@"+v.Agent, v.Value))
+						}
+					} else if row.Type == config.VariableTypeEnv {
+						for i, c := range condValue {
+							condValue[i].Value = mycluster.ResolveEnvVariableValue(node, c.Value)
 						}
 					}
 

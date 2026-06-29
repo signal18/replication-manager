@@ -1223,6 +1223,32 @@ func (cluster *Cluster) GetAppEncryptedVariableValue(app *App, key string) (stri
 	return cluster.Conf.GetEncryptedString(decrypted), nil
 }
 
+// ResolveEnvVariableValue resolves template placeholders in rawValue using the app's
+// substitution context. Returns the resolved value only when all placeholders are resolved;
+// returns rawValue unchanged if substitution data is unavailable or any placeholder is unresolvable.
+func (cluster *Cluster) ResolveEnvVariableValue(app *App, rawValue string) string {
+	if app == nil {
+		return rawValue
+	}
+	sub := app.AppClusterSubstitute
+	if sub == "" {
+		var err error
+		sub, err = cluster.GetAppsSubstitutionJSon(app)
+		if err != nil || sub == "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+				"App %s: substitution data unavailable for env variable resolution", app.Name)
+			return rawValue
+		}
+	}
+	resolved, err := cluster.ParseAppTemplate(rawValue, sub)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg,
+			"App %s: env variable has unresolvable placeholders, keeping raw value: %v", app.Name, err)
+		return rawValue
+	}
+	return resolved
+}
+
 func (cluster *Cluster) SetAppVariableValue(app *App, v config.VariableMapping) error {
 	if app == nil || app.AppConfig == nil || app.AppConfig.Deployment == nil {
 		return errors.New("app or app configuration is not initialized")
@@ -1230,6 +1256,8 @@ func (cluster *Cluster) SetAppVariableValue(app *App, v config.VariableMapping) 
 	newValue := v.Value
 	if v.Type == config.VariableTypeSecret {
 		newValue = cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedPassword(v.Name, v.Value))
+	} else if v.Type == config.VariableTypeEnv {
+		newValue = cluster.ResolveEnvVariableValue(app, v.Value)
 	}
 
 	for i, variable := range app.AppConfig.Deployment.Variables {
@@ -1243,6 +1271,14 @@ func (cluster *Cluster) SetAppVariableValue(app *App, v config.VariableMapping) 
 	// If the variable does not exist, add it — preserve all fields from the input
 	newVar := v
 	newVar.Value = newValue
+	if v.Type == config.VariableTypeEnv && len(v.Conditional) > 0 {
+		resolvedCond := make(config.AVSlice, len(v.Conditional))
+		copy(resolvedCond, v.Conditional)
+		for i, c := range resolvedCond {
+			resolvedCond[i].Value = cluster.ResolveEnvVariableValue(app, c.Value)
+		}
+		newVar.Conditional = resolvedCond
+	}
 	app.AppConfig.Deployment.Variables = append(app.AppConfig.Deployment.Variables, newVar)
 	return nil
 }
