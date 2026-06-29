@@ -468,7 +468,11 @@ func handlerStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := db.Queryx("SELECT cluster, uid, status, date, hosts, failed FROM heartbeat ORDER BY cluster, uid")
+	statsQuery := "SELECT cluster, uid, status, date, hosts, failed FROM heartbeat ORDER BY cluster, uid"
+	if db.DriverName() == "mysql" {
+		statsQuery = "SELECT cluster, uid, status, date, hosts, failed FROM replication_manager_schema.heartbeat ORDER BY cluster, uid"
+	}
+	rows, err := db.Queryx(statsQuery)
 	if err != nil {
 		w.WriteHeader(500)
 		fmt.Fprint(w, "Query error")
