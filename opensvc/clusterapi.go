@@ -715,6 +715,41 @@ var ErrUnknownService = errors.New("unknown service")
 // ObjectExistsV2 checks whether a secret or config object exists on the V2 collector
 // by querying the /object_status endpoint. Returns (true, nil) when the object exists,
 // (false, nil) when it is absent (404 or status!=0), and (false, err) on server errors.
+// objectStatusV2Exists inspects a 2xx object_status body and reports whether
+// the object actually exists. Upstream b2.1 returns 200 {"nodes":{}} for a
+// missing object — HTTP 200 alone is not a sufficient existence signal.
+//
+// An object is considered to exist when:
+//   - the top-level JSON contains fields other than "nodes" (e.g. "kind",
+//     "updated", "placement"), indicating a real object record; OR
+//   - the "nodes" map contains at least one entry.
+//
+// A non-empty "error" field is returned as an error regardless of existence.
+func objectStatusV2Exists(body []byte) (bool, error) {
+	if errField := gjson.GetBytes(body, "error"); errField.Exists() {
+		if msg := strings.TrimSpace(errField.String()); msg != "" {
+			return false, fmt.Errorf("opensvc object_status error: %s", msg)
+		}
+	}
+	// Any top-level field other than "nodes" or "error" means the object is
+	// recorded (e.g. "kind", "updated", "placement"). "error" is a response
+	// meta-field, not object data.
+	hasObjectFields := false
+	gjson.ParseBytes(body).ForEach(func(key, _ gjson.Result) bool {
+		k := key.String()
+		if k != "nodes" && k != "error" {
+			hasObjectFields = true
+			return false
+		}
+		return true
+	})
+	if hasObjectFields {
+		return true, nil
+	}
+	// Non-empty nodes map means the object is provisioned on at least one node.
+	return len(gjson.GetBytes(body, "nodes").Map()) > 0, nil
+}
+
 func (collector *Collector) ObjectExistsV2(path string, agent string) (bool, error) {
 	urlget := fmt.Sprintf("https://%s:%s/object_status?path=%s", collector.Host, collector.Port, url.QueryEscape(path))
 
@@ -752,11 +787,7 @@ func (collector *Collector) ObjectExistsV2(path string, agent string) (bool, err
 		return false, fmt.Errorf("object_status HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
-	// status=0 means the object exists; any other value (including status=1) means absent
-	if gjson.GetBytes(body, "status").Int() != 0 {
-		return false, nil
-	}
-	return true, nil
+	return objectStatusV2Exists(body)
 }
 
 func (collector *Collector) KeysExists(path string, agent string) (bool, error) {

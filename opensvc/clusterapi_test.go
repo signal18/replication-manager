@@ -884,6 +884,147 @@ func TestCreateKeyValueV2_BodyErrors(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// objectStatusV2Exists unit tests (body-level existence logic)
+// ---------------------------------------------------------------------------
+
+func TestObjectStatusV2Exists(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       []byte
+		wantExists bool
+		wantErr    bool
+	}{
+		// user-specified cases
+		{
+			name:       "empty nodes map → not exists",
+			body:       []byte(`{"nodes":{}}`),
+			wantExists: false,
+		},
+		{
+			name:       "object fields plus empty nodes → exists",
+			body:       []byte(`{"updated":123,"kind":"sec","nodes":{}}`),
+			wantExists: true,
+		},
+		{
+			name:       "nodes with node entry → exists",
+			body:       []byte(`{"nodes":{"n1":{"status":{"kind":"sec"}}}}`),
+			wantExists: true,
+		},
+		{
+			name:    "error field set → error",
+			body:    []byte(`{"error":"unknown service"}`),
+			wantErr: true,
+		},
+		// additional guard cases
+		{
+			name:       "empty body → not exists",
+			body:       []byte{},
+			wantExists: false,
+		},
+		{
+			name:       "empty object → not exists",
+			body:       []byte(`{}`),
+			wantExists: false,
+		},
+		{
+			name:       "null nodes → not exists",
+			body:       []byte(`{"nodes":null}`),
+			wantExists: false,
+		},
+		{
+			name:       "error empty string → not exists, no error",
+			body:       []byte(`{"error":"","nodes":{}}`),
+			wantExists: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exists, err := objectStatusV2Exists(tt.body)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if exists != tt.wantExists {
+				t.Errorf("exists = %v, want %v", exists, tt.wantExists)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ObjectExistsV2 integration tests (HTTP layer)
+// ---------------------------------------------------------------------------
+
+func TestObjectExistsV2(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		respBody   string
+		wantExists bool
+		wantErr    bool
+	}{
+		{
+			name:       "404 → not exists",
+			statusCode: http.StatusNotFound,
+			respBody:   "",
+			wantExists: false,
+		},
+		{
+			name:       "200 empty nodes → not exists (real V2 missing-object response)",
+			statusCode: http.StatusOK,
+			respBody:   `{"nodes":{}}`,
+			wantExists: false,
+		},
+		{
+			name:       "200 object fields plus empty nodes → exists",
+			statusCode: http.StatusOK,
+			respBody:   `{"updated":123,"kind":"sec","nodes":{}}`,
+			wantExists: true,
+		},
+		{
+			name:       "200 non-empty nodes → exists",
+			statusCode: http.StatusOK,
+			respBody:   `{"nodes":{"n1":{"status":{"kind":"sec"}}}}`,
+			wantExists: true,
+		},
+		{
+			name:       "200 error field → error",
+			statusCode: http.StatusOK,
+			respBody:   `{"error":"unknown service"}`,
+			wantExists: false,
+			wantErr:    true,
+		},
+		{
+			name:       "500 → error",
+			statusCode: http.StatusInternalServerError,
+			respBody:   `server error`,
+			wantExists: false,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/object_status", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				fmt.Fprint(w, tt.respBody)
+			})
+			srv := newV2TLSServer(t, mux)
+			c := newV2TestCollector(t, srv.URL)
+
+			exists, err := c.ObjectExistsV2("ns/sec/svc", "")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if exists != tt.wantExists {
+				t.Errorf("exists = %v, want %v", exists, tt.wantExists)
+			}
+		})
+	}
+}
+
 func TestCreateObjectV2_BodyErrors(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -912,11 +1053,13 @@ func TestCreateObjectV2_BodyErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		tt := tt
-		// object_status returns 404 so ObjectExistsV2 reports "not exists" and /create is called
+		// object_status returns the real V2 missing-object response {"nodes":{}} so
+		// ObjectExistsV2 correctly reports "not exists" and /create is called.
 		setupMux := func(createBody string) *http.ServeMux {
 			mux := http.NewServeMux()
 			mux.HandleFunc("/object_status", func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusNotFound)
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprint(w, `{"nodes":{}}`)
 			})
 			mux.HandleFunc("/create", func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
