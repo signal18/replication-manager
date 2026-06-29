@@ -44,14 +44,8 @@ func upsertVerb(db *sqlx.DB) string {
 func SetHeartbeatTable(db *sqlx.DB) error {
 
 	if db.DriverName() == "mysql" {
-		stmt := "SET sql_log_bin=0"
+		stmt := "CREATE DATABASE IF NOT EXISTS replication_manager_schema"
 		_, err := db.Exec(stmt)
-		if err != nil {
-			return err
-		}
-
-		stmt = "CREATE DATABASE IF NOT EXISTS replication_manager_schema"
-		_, err = db.Exec(stmt)
 		if err != nil {
 			return err
 		}
