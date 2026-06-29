@@ -173,6 +173,7 @@ export const clusterService = {
   provisionApp,
   unprovisionApp,
   updateRoutesApp,
+  updateOpenSVCConfigApp,
   startApp,
   stopApp,
   restartApp,
@@ -800,6 +801,10 @@ function unprovisionApp(clusterName, appId, baseURL) {
 
 function updateRoutesApp(clusterName, appId, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/actions/update-routes`)
+}
+
+function updateOpenSVCConfigApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/actions/update-opensvc-config`)
 }
 
 function startApp(clusterName, appId, baseURL) {

@@ -745,3 +745,357 @@ func TestGetPoolInfoListV3_ParsesShared(t *testing.T) {
 		t.Fatalf("pool-c should not be shared")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// checkV2ResponseBody unit tests
+// ---------------------------------------------------------------------------
+
+func TestCheckV2ResponseBody(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    []byte
+		wantErr bool
+	}{
+		{"empty body", []byte{}, false},
+		{"status zero", []byte(`{"status":0}`), false},
+		{"status nonzero", []byte(`{"status":1}`), true},
+		{"error field set", []byte(`{"status":0,"error":"permission denied"}`), true},
+		{"error field empty string", []byte(`{"status":0,"error":""}`), false},
+		{"error field whitespace only", []byte(`{"status":0,"error":"   "}`), false},
+		{"error only no status field", []byte(`{"error":"bad key"}`), true},
+		{"both nonzero status and error", []byte(`{"status":2,"error":"disk full"}`), true},
+		{"non-json body", []byte(`not json at all`), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkV2ResponseBody(tt.body)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("checkV2ResponseBody(%q) error = %v, wantErr %v", tt.body, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Integration tests: /key and /create body-error detection
+// ---------------------------------------------------------------------------
+
+// newV2TestCollector returns a Collector wired to the given httptest TLS server URL.
+// UseCollectorAPI=true skips the P12 cert load path in GetHttpClient.
+func newV2TestCollector(t *testing.T, serverURL string) *Collector {
+	t.Helper()
+	parsed, err := url.Parse(serverURL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	return &Collector{
+		Host:                 parsed.Hostname(),
+		Port:                 parsed.Port(),
+		RplMgrUser:           "user",
+		RplMgrPassword:       "pass",
+		UseCollectorAPI:      true,
+		ContextTimeoutSecond: 2,
+	}
+}
+
+// newV2TLSServer starts an httptest TLS server with HTTP/2 enabled so that
+// GetHttpClient's http2.Transport can complete the ALPN handshake.
+func newV2TLSServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewUnstartedServer(handler)
+	srv.EnableHTTP2 = true
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestCreateKeyValueV2_BodyErrors(t *testing.T) {
+	tests := []struct {
+		name        string
+		respBody    string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:     "success status zero",
+			respBody: `{"status":0}`,
+			wantErr:  false,
+		},
+		{
+			name:        "body status nonzero",
+			respBody:    `{"status":1}`,
+			wantErr:     true,
+			errContains: "non-zero status 1",
+		},
+		{
+			name:        "body error field set",
+			respBody:    `{"status":0,"error":"key already exists"}`,
+			wantErr:     true,
+			errContains: "key already exists",
+		},
+		{
+			name:     "empty error field ignored",
+			respBody: `{"status":0,"error":""}`,
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run("CreateSecretKeyValueV2/"+tt.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/key", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprint(w, tt.respBody)
+			})
+			srv := newV2TLSServer(t, mux)
+
+			c := newV2TestCollector(t, srv.URL)
+			err := c.CreateSecretKeyValueV2("ns", "svc", "mykey", "myval")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errContains != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("error %q does not contain %q", err.Error(), tt.errContains)
+				}
+			}
+		})
+
+		t.Run("CreateConfigKeyValueV2/"+tt.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/key", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprint(w, tt.respBody)
+			})
+			srv := newV2TLSServer(t, mux)
+
+			c := newV2TestCollector(t, srv.URL)
+			err := c.CreateConfigKeyValueV2("ns", "svc", "mykey", "myval")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errContains != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("error %q does not contain %q", err.Error(), tt.errContains)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// objectStatusV2Exists unit tests (body-level existence logic)
+// ---------------------------------------------------------------------------
+
+func TestObjectStatusV2Exists(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       []byte
+		wantExists bool
+		wantErr    bool
+	}{
+		// user-specified cases
+		{
+			name:       "empty nodes map → not exists",
+			body:       []byte(`{"nodes":{}}`),
+			wantExists: false,
+		},
+		{
+			name:       "object fields plus empty nodes → exists",
+			body:       []byte(`{"updated":123,"kind":"sec","nodes":{}}`),
+			wantExists: true,
+		},
+		{
+			name:       "nodes with node entry → exists",
+			body:       []byte(`{"nodes":{"n1":{"status":{"kind":"sec"}}}}`),
+			wantExists: true,
+		},
+		{
+			name:    "error field set → error",
+			body:    []byte(`{"error":"unknown service"}`),
+			wantErr: true,
+		},
+		// additional guard cases
+		{
+			name:       "empty body → not exists",
+			body:       []byte{},
+			wantExists: false,
+		},
+		{
+			name:       "empty object → not exists",
+			body:       []byte(`{}`),
+			wantExists: false,
+		},
+		{
+			name:       "null nodes → not exists",
+			body:       []byte(`{"nodes":null}`),
+			wantExists: false,
+		},
+		{
+			name:       "error empty string → not exists, no error",
+			body:       []byte(`{"error":"","nodes":{}}`),
+			wantExists: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exists, err := objectStatusV2Exists(tt.body)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if exists != tt.wantExists {
+				t.Errorf("exists = %v, want %v", exists, tt.wantExists)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ObjectExistsV2 integration tests (HTTP layer)
+// ---------------------------------------------------------------------------
+
+func TestObjectExistsV2(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		respBody   string
+		wantExists bool
+		wantErr    bool
+	}{
+		{
+			name:       "404 → not exists",
+			statusCode: http.StatusNotFound,
+			respBody:   "",
+			wantExists: false,
+		},
+		{
+			name:       "200 empty nodes → not exists (real V2 missing-object response)",
+			statusCode: http.StatusOK,
+			respBody:   `{"nodes":{}}`,
+			wantExists: false,
+		},
+		{
+			name:       "200 object fields plus empty nodes → exists",
+			statusCode: http.StatusOK,
+			respBody:   `{"updated":123,"kind":"sec","nodes":{}}`,
+			wantExists: true,
+		},
+		{
+			name:       "200 non-empty nodes → exists",
+			statusCode: http.StatusOK,
+			respBody:   `{"nodes":{"n1":{"status":{"kind":"sec"}}}}`,
+			wantExists: true,
+		},
+		{
+			name:       "200 error field → error",
+			statusCode: http.StatusOK,
+			respBody:   `{"error":"unknown service"}`,
+			wantExists: false,
+			wantErr:    true,
+		},
+		{
+			name:       "500 → error",
+			statusCode: http.StatusInternalServerError,
+			respBody:   `server error`,
+			wantExists: false,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/object_status", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				fmt.Fprint(w, tt.respBody)
+			})
+			srv := newV2TLSServer(t, mux)
+			c := newV2TestCollector(t, srv.URL)
+
+			exists, err := c.ObjectExistsV2("ns/sec/svc", "")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if exists != tt.wantExists {
+				t.Errorf("exists = %v, want %v", exists, tt.wantExists)
+			}
+		})
+	}
+}
+
+func TestCreateObjectV2_BodyErrors(t *testing.T) {
+	tests := []struct {
+		name        string
+		respBody    string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:     "success status zero",
+			respBody: `{"status":0}`,
+			wantErr:  false,
+		},
+		{
+			name:        "body status nonzero",
+			respBody:    `{"status":1}`,
+			wantErr:     true,
+			errContains: "non-zero status 1",
+		},
+		{
+			name:        "body error field set",
+			respBody:    `{"status":0,"error":"no space left"}`,
+			wantErr:     true,
+			errContains: "no space left",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		// object_status returns the real V2 missing-object response {"nodes":{}} so
+		// ObjectExistsV2 correctly reports "not exists" and /create is called.
+		setupMux := func(createBody string) *http.ServeMux {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/object_status", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprint(w, `{"nodes":{}}`)
+			})
+			mux.HandleFunc("/create", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprint(w, createBody)
+			})
+			return mux
+		}
+
+		t.Run("CreateSecretV2/"+tt.name, func(t *testing.T) {
+			srv := newV2TLSServer(t, setupMux(tt.respBody))
+
+			c := newV2TestCollector(t, srv.URL)
+			err := c.CreateSecretV2("ns", "svc", "")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errContains != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("error %q does not contain %q", err.Error(), tt.errContains)
+				}
+			}
+		})
+
+		t.Run("CreateConfigV2/"+tt.name, func(t *testing.T) {
+			srv := newV2TLSServer(t, setupMux(tt.respBody))
+
+			c := newV2TestCollector(t, srv.URL)
+			err := c.CreateConfigV2("ns", "svc", "")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errContains != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("error %q does not contain %q", err.Error(), tt.errContains)
+				}
+			}
+		})
+	}
+}

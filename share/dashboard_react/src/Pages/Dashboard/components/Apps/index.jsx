@@ -18,6 +18,7 @@ function Apps({ selectedCluster, user }) {
         isDesktop={isDesktop}
         clusterName={selectedCluster?.name}
         orchestrator={selectedCluster?.config?.provOrchestrator}
+        collectorAPI={selectedCluster?.config?.opensvcUseCollectorApi}
         user={user}
         showGridView={showGridView}
       />
@@ -28,6 +29,7 @@ function Apps({ selectedCluster, user }) {
         clusterName={selectedCluster?.name}
         showTableView={showTableView}
         orchestrator={selectedCluster?.config?.provOrchestrator}
+        collectorAPI={selectedCluster?.config?.opensvcUseCollectorApi}
         user={user}
       />
     )

@@ -75,6 +75,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppUpdateRoutes)),
 	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/update-opensvc-config", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppUpdateOpenSVCConfig)),
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/stop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppStop)),
@@ -1004,6 +1008,47 @@ func (repman *ReplicationManager) handlerMuxAppUpdateRoutes(w http.ResponseWrite
 		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
+}
+
+// @Summary Push OpenSVC config/secret maps for an app
+// @Description Upserts the latest OpenSVC app config and secret variable maps to the live OpenSVC objects
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Success 200 {string} string "App config/secret maps updated"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "App Not Found"
+// @Failure 500 {string} string "Cluster Not Found"
+// @Router /api/clusters/{clusterName}/apps/{appName}/actions/update-opensvc-config [post]
+func (repman *ReplicationManager) handlerMuxAppUpdateOpenSVCConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if mycluster.GetOrchestrator() != "opensvc" {
+		http.Error(w, "Orchestrator not supported", http.StatusInternalServerError)
+		return
+	}
+	node := mycluster.GetAppFromName(vars["appName"])
+	if node == nil {
+		http.Error(w, "App Not Found", http.StatusNotFound)
+		return
+	}
+	if err := mycluster.OpenSVCPushAppVariableMaps(node); err != nil {
+		http.Error(w, "Failed to push app config/secret maps: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	fmt.Fprintf(w, "App config/secret maps updated")
 }
 
 // @Summary Unprovision App Service
