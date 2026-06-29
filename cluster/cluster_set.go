@@ -1316,7 +1316,7 @@ func (cl *Cluster) SetArbitratorReport() error {
 	cl.IsLostMajority = cl.LostMajority()
 	// SplitBrain
 
-	url := ensureScheme(cl.Conf.ArbitrationSasHosts) + "/heartbeat"
+	url := cl.arbitratorURL("/heartbeat")
 	var mst string
 	if cl.GetMaster() != nil {
 		mst = cl.GetMaster().URL

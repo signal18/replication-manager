@@ -526,6 +526,8 @@ type Config struct {
 	ArbitrationFailedMasterScript             string                       `scope:"server" mapstructure:"arbitration-failed-master-script" toml:"arbitration-failed-master-script" json:"arbitrationFailedMasterScript"`
 	ArbitratorAddress                         string                       `mapstructure:"arbitrator-bind-address" toml:"arbitrator-bind-address" json:"arbitratorBindAddress"`
 	ArbitratorDriver                          string                       `mapstructure:"arbitrator-driver" toml:"arbitrator-driver" json:"arbitratorDriver"`
+	ArbitratorURICheck                        bool                         `mapstructure:"arbitrator-uri-check" toml:"arbitrator-uri-check" json:"arbitratorUriCheck"`
+	ArbitratorURICheckURL                     string                       `mapstructure:"arbitrator-uri-check-url" toml:"arbitrator-uri-check-url" json:"arbitratorUriCheckUrl"`
 	ArbitrationReadTimout                     int                          `scope:"server" mapstructure:"arbitration-read-timeout" toml:"arbitration-read-timeout" json:"arbitrationReadTimout"`
 	SwitchoverCopyOldLeaderGtid               bool                         `toml:"-" json:"-"` //suspicious code
 	Test                                      bool                         `mapstructure:"test" toml:"test" json:"test"`

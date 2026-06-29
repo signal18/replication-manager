@@ -377,7 +377,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	}
 	//	cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover External Arbitration")
 
-	url := "http://" + cluster.Conf.ArbitrationSasHosts + "/arbitrator"
+	url := cluster.arbitratorURL("/arbitrator")
 	var mst string
 	if cluster.master != nil {
 		mst = cluster.master.URL
