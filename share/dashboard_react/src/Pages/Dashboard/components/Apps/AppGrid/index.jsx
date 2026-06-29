@@ -9,7 +9,7 @@ import styles from './styles.module.scss'
 import ServerName from '../../../../../components/ServerName'
 import RouteSummary from '../RouteSummary'
 
-function AppGrid({ apps = [], clusterName, showTableView, user, isDesktop, orchestrator }) {
+function AppGrid({ apps = [], clusterName, showTableView, user, isDesktop, orchestrator, collectorAPI }) {
   return (
     <SimpleGrid columns={{ base: 1, sm: 1, md: 2, lg: 3 }} spacing={2} spacingY={6} spacingX={6} marginTop='4px'>
       {apps?.length > 0 &&
@@ -46,6 +46,7 @@ function AppGrid({ apps = [], clusterName, showTableView, user, isDesktop, orche
                     isDesktop={isDesktop}
                     user={user}
                     orchestrator={orchestrator}
+                    collectorAPI={collectorAPI}
                   />
               </Flex>
 
@@ -74,4 +75,5 @@ AppGrid.propTypes = {
   user: PropTypes.object,
   isDesktop: PropTypes.bool,
   orchestrator: PropTypes.string,
+  collectorAPI: PropTypes.bool,
 }

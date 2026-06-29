@@ -618,6 +618,22 @@ func (cluster *Cluster) OpenSVCFoundAppAgent(app *App) (opensvc.Host, error) {
 	return agent, errors.New("Indice not found in apps agent list")
 }
 
+func (cluster *Cluster) OpenSVCPushAppVariableMaps(app *App) error {
+	// Agent is used only for the object-creation step (CreateSecret/CreateConfig).
+	// On V3 the agent argument is ignored entirely; on V2 it becomes the o-node
+	// header, with an empty string falling back to "ANY". Key-value writes always
+	// use ANY. So we try to resolve the agent but do not block on failure.
+	agentName := ""
+	if agent, err := cluster.OpenSVCFoundAppAgent(app); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+			"Could not resolve agent for app %q (configured agents: %s): %v — proceeding with agent=ANY",
+			app.Name, cluster.GetAppAgents(app.AppConfig), err)
+	} else {
+		agentName = agent.Node_name
+	}
+	return cluster.OpenSVCCreateAppVariableMaps(agentName, app)
+}
+
 func (cluster *Cluster) FoundAllAppAgents(app *App) ([]opensvc.Host, error) {
 	svc := cluster.OpenSVCConnect()
 	svc.ProvAppAgents = cluster.GetAppAgents(app.AppConfig)
@@ -888,8 +904,8 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 
 	err := svc.CreateSecret(cluster.Name, app.Name, agent)
 	if err != nil {
-		if isOpenSVCAlreadyExists(err) && cluster.Conf.ProvObjectAllowOverwrite {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Overwriting existing secret for app %s without truncation", app.Name)
+		if isOpenSVCAlreadyExists(err) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Secret object already exists for app %s, proceeding with key upserts", app.Name)
 		} else {
 			return err
 		}
@@ -897,10 +913,18 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 
 	err = svc.CreateConfig(cluster.Name, app.Name, agent)
 	if err != nil {
-		if isOpenSVCAlreadyExists(err) && cluster.Conf.ProvObjectAllowOverwrite {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Overwriting existing config for app %s without truncation", app.Name)
+		if isOpenSVCAlreadyExists(err) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Config object already exists for app %s, proceeding with key upserts", app.Name)
 		} else {
 			return err
+		}
+	}
+
+	var keyErrs []error
+
+	addKeyErr := func(err error) {
+		if err != nil {
+			keyErrs = append(keyErrs, err)
 		}
 	}
 
@@ -909,6 +933,7 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 			err = svc.CreateSecretKeyValue(cluster.Name, app.Name, v.Name, cluster.Conf.GetDecryptedPassword(v.Name, v.Value))
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", v.Name, err)
+				addKeyErr(fmt.Errorf("secret key %q: %w", v.Name, err))
 			}
 
 			for _, cd := range v.Conditional {
@@ -916,12 +941,14 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 				err = svc.CreateSecretKeyValue(cluster.Name, app.Name, cdname, cluster.Conf.GetDecryptedPassword(cdname, cd.Value))
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add conditional key to secret: %s %s ", cdname, err)
+					addKeyErr(fmt.Errorf("secret key %q: %w", cdname, err))
 				}
 			}
 		} else {
 			err = svc.CreateConfigKeyValue(cluster.Name, app.Name, v.Name, cluster.Conf.GetDecryptedPassword(v.Name, v.Value))
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", v.Name, err)
+				addKeyErr(fmt.Errorf("config key %q: %w", v.Name, err))
 			}
 
 			for _, cd := range v.Conditional {
@@ -929,6 +956,7 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 				err = svc.CreateConfigKeyValue(cluster.Name, app.Name, cdname, cluster.Conf.GetDecryptedPassword(cdname, cd.Value))
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add conditional key to config: %s %s ", cdname, err)
+					addKeyErr(fmt.Errorf("config key %q: %w", cdname, err))
 				}
 			}
 		}
@@ -955,12 +983,14 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 			err = svc.CreateConfigKeyValue(cluster.Name, app.Name, vName, val)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", vName, err)
+				addKeyErr(fmt.Errorf("config key %q: %w", vName, err))
 			}
 		}
 
 		err = svc.CreateSecretKeyValue(cluster.Name, app.Name, prefix+config.GitVarSuffixPass, cluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass))
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.GitVarSuffixPass, err)
+			addKeyErr(fmt.Errorf("secret key %q: %w", prefix+config.GitVarSuffixPass, err))
 		}
 	}
 
@@ -993,15 +1023,20 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 			err = svc.CreateConfigKeyValue(cluster.Name, app.Name, vName, val)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", vName, err)
+				addKeyErr(fmt.Errorf("config key %q: %w", vName, err))
 			}
 		}
 
 		err = svc.CreateSecretKeyValue(cluster.Name, app.Name, prefix+config.S3VarSuffixSecretKey, cluster.Conf.GetDecryptedPassword(s3m.Name, s3m.SecretKey))
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.S3VarSuffixSecretKey, err)
+			addKeyErr(fmt.Errorf("secret key %q: %w", prefix+config.S3VarSuffixSecretKey, err))
 		}
 	}
 
+	if len(keyErrs) > 0 {
+		return fmt.Errorf("partial map update for app %s: %d key(s) failed: %w", app.Name, len(keyErrs), errors.Join(keyErrs...))
+	}
 	return nil
 }
 

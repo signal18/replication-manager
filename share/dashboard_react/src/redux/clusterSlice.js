@@ -2218,6 +2218,21 @@ export const updateRoutesApp = createGuardedAsyncThunk(
   }
 )
 
+export const updateOpenSVCConfigApp = createGuardedAsyncThunk(
+  'cluster/updateOpenSVCConfigApp',
+  async ({ clusterName, appId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.updateOpenSVCConfigApp(clusterName, appId, baseURL)
+      showSuccessBanner('Config/secret maps updated successfully!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Updating config/secret maps failed!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const startApp = createGuardedAsyncThunk('cluster/startApp', async ({ clusterName, appId }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -2863,6 +2878,7 @@ export const clusterSlice = createSlice({
         provisionApp.pending,
         unprovisionApp.pending,
         updateRoutesApp.pending,
+        updateOpenSVCConfigApp.pending,
         startApp.pending,
         stopApp.pending,
         restartApp.pending,
@@ -2949,6 +2965,7 @@ export const clusterSlice = createSlice({
         provisionApp.fulfilled,
         unprovisionApp.fulfilled,
         updateRoutesApp.fulfilled,
+        updateOpenSVCConfigApp.fulfilled,
         startApp.fulfilled,
         stopApp.fulfilled,
         restartApp.fulfilled,
@@ -3036,6 +3053,7 @@ export const clusterSlice = createSlice({
         provisionApp.rejected,
         unprovisionApp.rejected,
         updateRoutesApp.rejected,
+        updateOpenSVCConfigApp.rejected,
         startApp.rejected,
         stopApp.rejected,
         restartApp.rejected,

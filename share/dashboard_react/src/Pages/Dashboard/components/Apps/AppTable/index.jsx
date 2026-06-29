@@ -14,7 +14,7 @@ import RouteSummary from '../RouteSummary'
 
 const columnHelper = createColumnHelper()
 
-function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showGridView }) {
+function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, collectorAPI, showGridView }) {
   const columns = useMemo(
     () => [
       columnHelper.accessor(
@@ -27,6 +27,7 @@ function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showG
               clusterName={clusterName}
               user={user}
               orchestrator={orchestrator}
+              collectorAPI={collectorAPI}
             />
           ),
           id: 'options',
@@ -85,7 +86,7 @@ function AppTable({ apps = [], isDesktop, clusterName, user, orchestrator, showG
         width: 160
       }),
     ],
-    [clusterName, isDesktop, orchestrator, user, showGridView]
+    [clusterName, collectorAPI, isDesktop, orchestrator, user, showGridView]
   )
 
   return (
@@ -103,5 +104,6 @@ AppTable.propTypes = {
   clusterName: PropTypes.string,
   user: PropTypes.object,
   orchestrator: PropTypes.string,
+  collectorAPI: PropTypes.bool,
   showGridView: PropTypes.func,
 }

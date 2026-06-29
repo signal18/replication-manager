@@ -549,6 +549,23 @@ func (collector *Collector) ListConfigKeysV2(namespace, service string) ([]strin
 	return keys, nil
 }
 
+// checkV2ResponseBody inspects the JSON body returned by V2 write endpoints
+// (/key and /create) for logical-level failures that are signalled inside a
+// 2xx response via {"error":"..."} or {"status":<non-zero>}.
+func checkV2ResponseBody(body []byte) error {
+	if errField := gjson.GetBytes(body, "error"); errField.Exists() {
+		if msg := strings.TrimSpace(errField.String()); msg != "" {
+			return fmt.Errorf("opensvc API error: %s", msg)
+		}
+	}
+	if statusField := gjson.GetBytes(body, "status"); statusField.Exists() {
+		if statusField.Int() != 0 {
+			return fmt.Errorf("opensvc API returned non-zero status %d", statusField.Int())
+		}
+	}
+	return nil
+}
+
 func (collector *Collector) CreateConfigKeyValueV2(namespace string, service string, key string, value string) error {
 	// Construction de l'URL de manière plus propre
 	urlpost := fmt.Sprintf("https://%s:%s/key", collector.Host, collector.Port)
@@ -617,7 +634,7 @@ func (collector *Collector) CreateConfigKeyValueV2(namespace string, service str
 		return fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	return nil
+	return checkV2ResponseBody(body)
 }
 
 func (collector *Collector) CreateSecretKeyValue(namespace string, service string, key string, value string) error {
@@ -677,7 +694,12 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlInfo) {
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
-	return nil
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return checkV2ResponseBody(body)
 }
 
 type CreateRequest struct {
@@ -806,8 +828,8 @@ func (collector *Collector) CreateSecret(namespace string, service string, agent
 
 func (collector *Collector) CreateSecretV2(namespace string, service string, agent string) error {
 	path := fmt.Sprintf("%s/sec/%s", namespace, service)
-	exists, err := collector.KeysExists(path, agent)
-	if err != nil && !errors.Is(err, ErrUnknownService) {
+	exists, err := collector.ObjectExistsV2(path, agent)
+	if err != nil {
 		return err
 	}
 	if exists {
@@ -864,7 +886,12 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlInfo) {
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
-	return nil
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return checkV2ResponseBody(body)
 }
 
 func (collector *Collector) CreateConfig(namespace string, service string, agent string) error {
@@ -877,8 +904,8 @@ func (collector *Collector) CreateConfig(namespace string, service string, agent
 
 func (collector *Collector) CreateConfigV2(namespace string, service string, agent string) error {
 	path := fmt.Sprintf("%s/cfg/%s", namespace, service)
-	exists, err := collector.KeysExists(path, agent)
-	if err != nil && !errors.Is(err, ErrUnknownService) {
+	exists, err := collector.ObjectExistsV2(path, agent)
+	if err != nil {
 		return err
 	}
 	if exists {
@@ -935,7 +962,12 @@ func (collector *Collector) CreateConfigV2(namespace string, service string, age
 	if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlInfo) {
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("Api Response: ", string(body))
 	}
-	return nil
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return checkV2ResponseBody(body)
 }
 
 // CreateTemplateV2 post a template to the collector

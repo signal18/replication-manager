@@ -91,6 +91,7 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
                 row={selectedApp}
                 user={user}
                 orchestrator={config?.provOrchestrator}
+                collectorAPI={config?.opensvcUseCollectorApi}
               />
               <ServerStatus state={selectedApp?.state} />
               <ServerName className={styles.appName} name={`${selectedApp?.host}`} />

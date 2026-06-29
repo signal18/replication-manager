@@ -123,6 +123,7 @@ var appACLRules = []ACLRule{
 	{"/actions/provision", nil, []string{config.GrantProvAppProvision}},
 	{"/service-opensvc", nil, []string{config.GrantProvAppProvision}},
 	{"/actions/update-routes", nil, []string{config.GrantProvAppProvision}},
+	{"/actions/update-opensvc-config", nil, []string{config.GrantProvAppProvision}},
 	{"/actions/unprovision", nil, []string{config.GrantProvAppUnprovision}},
 	{"/actions/drop", nil, []string{config.GrantProvAppUnprovision}},
 	{"/deployment/", nil, []string{config.GrantAppDeployment}},
