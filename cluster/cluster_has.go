@@ -452,6 +452,12 @@ func (cluster *Cluster) IsActive() bool {
 	}
 }
 
+// SetArbitrationResultCallback registers a function called after each external
+// arbitrator election so the owning ReplicationManager can update its repman-wide role.
+func (cl *Cluster) SetArbitrationResultCallback(fn func(string)) {
+	cl.onArbitrationResult = fn
+}
+
 func (cluster *Cluster) IsVerbose() bool {
 	if cluster.Conf.Verbose {
 		return true

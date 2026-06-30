@@ -96,6 +96,23 @@ type Cluster struct {
 	Status                        string                 `json:"activePassiveStatus" groups:"web"`
 	IsSplitBrain                  bool                   `json:"isSplitBrain" groups:"web"`
 	IsSplitBrainBck               bool                   `json:"-"`
+	// RepmanArbitrationRequired gates cluster-side external arbitrator contact.
+	// Set from the repman-wide ArbitrationRequired flag; must not be written from
+	// cluster topology logic so it stays decoupled from IsSplitBrain.
+	RepmanArbitrationRequired    bool `json:"-"`
+	RepmanArbitrationRequiredBck bool `json:"-"`
+	// IsAuthorityCluster is true for the single cluster that is permitted to
+	// contact the arbitrator and update repman-wide role.  Set once at startup
+	// from ImmutableClusterList[0]; never changes at runtime.
+	IsAuthorityCluster bool `json:"-"`
+	// RoleEstablished is propagated from ReplicationManager.RoleEstablished and
+	// is true after the authority cluster has completed its first arbitrator
+	// election (bootstrap).  Once true, automatic split-brain recovery is gated
+	// by IsEligibleForArbitration().
+	RoleEstablished bool `json:"-"`
+	// onArbitrationResult is called after an arbitrator election completes so the
+	// owning ReplicationManager can update its repman-wide role.
+	onArbitrationResult func(string)
 	IsFailedArbitrator            bool                   `json:"isFailedArbitrator" groups:"web"`
 	IsLostMajority                bool                   `json:"isLostMajority" groups:"web"`
 	IsDown                        bool                   `json:"isDown" groups:"web"`

@@ -169,6 +169,30 @@ func GetArbitrationMaster(db *sqlx.DB, secret string, cluster string) string {
 	return ""
 }
 
+// GetArbitrationWinnerUUID returns the UUID of the elected repman (status='E') for the
+// given authority cluster/secret pair.  Returns "" if no elected row exists.
+func GetArbitrationWinnerUUID(db *sqlx.DB, secret string, cluster string) string {
+	var uuid string
+	stmt := "SELECT uuid FROM " + heartbeatTable(db) + " WHERE cluster=? AND secret=? AND status='E'"
+	err := db.QueryRowx(stmt, cluster, secret).Scan(&uuid)
+	if err == nil {
+		return uuid
+	}
+	return ""
+}
+
+// GetHeartbeatMasterForUUID returns the last master URL reported by the repman instance
+// identified by uuid for the given cluster/secret pair.  Returns "" if no row exists.
+func GetHeartbeatMasterForUUID(db *sqlx.DB, secret string, cluster string, uuid string) string {
+	var master string
+	stmt := "SELECT master FROM " + heartbeatTable(db) + " WHERE cluster=? AND secret=? AND uuid=?"
+	err := db.QueryRowx(stmt, cluster, secret, uuid).Scan(&master)
+	if err == nil {
+		return master
+	}
+	return ""
+}
+
 // SetStatusActiveHeartbeat arbitrator can set or remove election flag "E"
 // NOTE: this function omits cluster from the INSERT, but the MySQL table's PRIMARY KEY
 // is (secret, cluster, uid), so it cannot be made MySQL-safe without adding cluster to

@@ -174,6 +174,112 @@ func TestRequestArbitration_Winner_MySQL_SQL(t *testing.T) {
 	}
 }
 
+// ---- GetArbitrationWinnerUUID tests ----
+
+func TestGetArbitrationWinnerUUID_SQLite(t *testing.T) {
+	db := newSQLiteArbitrationDB(t)
+
+	// No elected row → returns ""
+	if got := GetArbitrationWinnerUUID(db, "secret1", "cluster1"); got != "" {
+		t.Errorf("expected empty UUID before election, got %q", got)
+	}
+
+	// After election, the elected UUID is returned.
+	RequestArbitration(db, "uuid-winner", "secret1", "cluster1", "master1", 1, 2, 0)
+	if got := GetArbitrationWinnerUUID(db, "secret1", "cluster1"); got != "uuid-winner" {
+		t.Errorf("GetArbitrationWinnerUUID: got %q, want uuid-winner", got)
+	}
+
+	// Different secret → no match.
+	if got := GetArbitrationWinnerUUID(db, "other-secret", "cluster1"); got != "" {
+		t.Errorf("expected empty UUID for wrong secret, got %q", got)
+	}
+}
+
+func TestGetArbitrationWinnerUUID_MySQL_SQL(t *testing.T) {
+	db, mock := mockDB(t, "mysql")
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT uuid FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND status='E'",
+	)).WillReturnRows(sqlmock.NewRows([]string{"uuid"}).AddRow("uuid-winner"))
+
+	if got := GetArbitrationWinnerUUID(db, "secret1", "cluster1"); got != "uuid-winner" {
+		t.Errorf("got %q, want uuid-winner", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+// ---- GetHeartbeatMasterForUUID tests ----
+
+func TestGetHeartbeatMasterForUUID_SQLite(t *testing.T) {
+	db := newSQLiteArbitrationDB(t)
+
+	// No row → returns ""
+	if got := GetHeartbeatMasterForUUID(db, "secret1", "cluster2", "uuid-winner"); got != "" {
+		t.Errorf("expected empty master before heartbeat, got %q", got)
+	}
+
+	// After writing a heartbeat for cluster2 with the winner's UUID, master is returned.
+	if err := WriteHeartbeat(db, "uuid-winner", "secret1", "cluster2", "master2", 1, 2, 0); err != nil {
+		t.Fatalf("WriteHeartbeat: %v", err)
+	}
+	if got := GetHeartbeatMasterForUUID(db, "secret1", "cluster2", "uuid-winner"); got != "master2" {
+		t.Errorf("GetHeartbeatMasterForUUID: got %q, want master2", got)
+	}
+
+	// Different UUID → no match.
+	if got := GetHeartbeatMasterForUUID(db, "secret1", "cluster2", "uuid-loser"); got != "" {
+		t.Errorf("expected empty master for non-winner UUID, got %q", got)
+	}
+}
+
+func TestGetHeartbeatMasterForUUID_MySQL_SQL(t *testing.T) {
+	db, mock := mockDB(t, "mysql")
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT master FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND uuid=?",
+	)).WillReturnRows(sqlmock.NewRows([]string{"master"}).AddRow("master2"))
+
+	if got := GetHeartbeatMasterForUUID(db, "secret1", "cluster2", "uuid-winner"); got != "master2" {
+		t.Errorf("got %q, want master2", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+// ---- End-to-end: loser-side master resolution via two-step lookup ----
+
+// TestLoserMasterResolution_SQLite verifies the combined two-step lookup flow used
+// by ReconcileLostArbitrationMaster: first get the winner UUID from the authority
+// cluster key, then get the master that winner reported for the target cluster.
+func TestLoserMasterResolution_SQLite(t *testing.T) {
+	db := newSQLiteArbitrationDB(t)
+
+	const secret = "s"
+	const authCluster = "auth-cluster"
+	const targetCluster = "target-cluster"
+	const winnerUUID = "uuid-A"
+
+	// Simulate: winning repman wins election on authority cluster.
+	RequestArbitration(db, winnerUUID, secret, authCluster, "auth-master", 1, 3, 0)
+
+	// Simulate: winning repman also publishes heartbeat for the target cluster.
+	if err := WriteHeartbeat(db, winnerUUID, secret, targetCluster, "target-master-A", 2, 3, 0); err != nil {
+		t.Fatalf("WriteHeartbeat: %v", err)
+	}
+
+	// Two-step lookup:
+	uuid := GetArbitrationWinnerUUID(db, secret, authCluster)
+	if uuid != winnerUUID {
+		t.Fatalf("GetArbitrationWinnerUUID: got %q, want %q", uuid, winnerUUID)
+	}
+	master := GetHeartbeatMasterForUUID(db, secret, targetCluster, uuid)
+	if master != "target-master-A" {
+		t.Errorf("GetHeartbeatMasterForUUID: got %q, want target-master-A", master)
+	}
+}
+
 func TestWriteHeartbeat_MySQL_SQL(t *testing.T) {
 	db, mock := mockDB(t, "mysql")
 

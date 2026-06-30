@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,31 +48,41 @@ func (cluster *Cluster) Heartbeat(wg *sync.WaitGroup) {
 
 	defer wg.Done()
 	if cluster.Conf.Arbitration {
-		if cluster.IsSplitBrain {
-			if !cluster.Conf.IsEligibleForArbitration() {
-				cluster.SetState("ERR00104", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00104"], ErrFrom: "ARB"})
-				cluster.IsSplitBrainBck = cluster.IsSplitBrain
-				return
-			}
-			err := cluster.SetArbitratorReport()
-			if err != nil {
+		if cluster.RepmanArbitrationRequired {
+			// All clusters publish their current state to the arbitrator heartbeat table
+			// so the loser-side reconciliation can resolve master for any cluster key.
+			if err := cluster.SetArbitratorReport(); err != nil {
 				cluster.SetState("WARN0081", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0081"], err), ErrFrom: "ARB"})
 			}
-			if cluster.IsSplitBrainBck != cluster.IsSplitBrain {
+		}
+
+		if cluster.RepmanArbitrationRequired && cluster.IsAuthorityCluster {
+			// Only the authority cluster drives the repman-wide election.
+			// All other clusters have their role driven exclusively by syncClustersFromRepmanRole().
+			if !cluster.Conf.IsEligibleForArbitration() {
+				if cluster.RoleEstablished {
+					// automatic split-brain recovery is subscription-gated
+					cluster.SetState("ERR00104", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00104"], ErrFrom: "ARB"})
+					cluster.RepmanArbitrationRequiredBck = cluster.RepmanArbitrationRequired
+					return
+				}
+				// bootstrap election is allowed for any plan
+			}
+			if cluster.RepmanArbitrationRequiredBck != cluster.RepmanArbitrationRequired {
 				time.Sleep(5 * time.Second)
 			}
 			i := 1
 			for i <= 3 {
 				i++
-				err = cluster.ArbitratorElection()
+				err := cluster.ArbitratorElection()
 				if err != nil {
 					cluster.SetState("WARN0082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0082"], err), ErrFrom: "ARB"})
 				} else {
-					break //break the loop on success retry 3 times
+					break // break the loop on success, retry 3 times
 				}
 			}
 		}
-		cluster.IsSplitBrainBck = cluster.IsSplitBrain
+		cluster.RepmanArbitrationRequiredBck = cluster.RepmanArbitrationRequired
 	}
 }
 
@@ -80,8 +91,89 @@ func (cl *Cluster) ForceArbitratorElection() error {
 	return cl.arbitratorElection()
 }
 
+// ReconcileLostArbitrationMaster resolves the winning repman's last-known master for
+// this cluster by querying the arbitrator's /winner-master endpoint and runs split-brain
+// master protection if it differs from the local master.
+//
+// authorityCluster is the cluster key that held the repman-wide election.  The arbitrator
+// looks up the elected UUID from that key, then returns the master that UUID last reported
+// for this cluster — without triggering a new election.
+//
+// Must not modify repman.Status, cluster.Status, or RoleEstablished; it is strictly
+// read/repair.
+func (cl *Cluster) ReconcileLostArbitrationMaster(authorityCluster string) {
+	if !cl.Conf.Arbitration {
+		return
+	}
+	localMaster := ""
+	if cl.GetMaster() != nil {
+		localMaster = cl.GetMaster().URL
+	}
+	if localMaster == "" {
+		return
+	}
+
+	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
+
+	// Build the read-only lookup URL.  We append query params to the arbitratorURL
+	// base so the Cloud18 uri parameter (if any) is preserved alongside our params.
+	base := cl.arbitratorURL("/winner-master")
+	sep := "&"
+	if !strings.Contains(base, "?") {
+		sep = "?"
+	}
+	reqURL := base + sep +
+		"secret=" + url.QueryEscape(cl.Conf.ArbitrationSasSecret) +
+		"&authority_cluster=" + url.QueryEscape(authorityCluster) +
+		"&cluster=" + url.QueryEscape(cl.GetName())
+
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlErr,
+			"LoserProtection: could not build arbitrator request for cluster %s: %s", cl.GetName(), err)
+		return
+	}
+
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlWarn,
+			"LoserProtection: could not reach arbitrator for cluster %s: %s", cl.GetName(), err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		// No elected winner row for the authority cluster yet — skip protection.
+		return
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+
+	type winnerMasterResponse struct {
+		WinnerUUID string `json:"winner_uuid"`
+		Master     string `json:"master"`
+	}
+	var r winnerMasterResponse
+	if err := json.Unmarshal(body, &r); err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlWarn,
+			"LoserProtection: arbitrator returned invalid JSON for cluster %s: %s", cl.GetName(), body)
+		return
+	}
+	if r.Master == "" {
+		// Winner hasn't reported a master for this cluster yet.
+		return
+	}
+	if r.Master != localMaster {
+		cl.LostArbitration(r.Master)
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo,
+			"LoserProtection: cluster %s local master %s differs from winner master %s, applied split-brain protection",
+			cl.GetName(), localMaster, r.Master)
+	}
+}
+
 func (cl *Cluster) ArbitratorElection() error {
-	if cl.IsSplitBrainBck != cl.IsSplitBrain {
+	if cl.RepmanArbitrationRequiredBck != cl.RepmanArbitrationRequired {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, "INFO", "Arbitrator: External check requested")
 	} else {
 		return nil
@@ -131,6 +223,7 @@ func (cl *Cluster) arbitratorElection() error {
 	}
 
 	cl.IsFailedArbitrator = false
+	cl.RoleEstablished = true
 	if r.Arbitration == "winner" {
 		cl.SetActiveStatus(ConstMonitorActif)
 		cl.SetState("WARN0083", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0083"], ErrFrom: "ARB"})
@@ -144,6 +237,10 @@ func (cl *Cluster) arbitratorElection() error {
 				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, "INFO", "Election Lost - Current master %s different from winner master %s, %s is split brain victim. ", mst, r.Master, mst)
 			}
 		}
+	}
+	// Notify the owning ReplicationManager so it can update its repman-wide role.
+	if cl.onArbitrationResult != nil {
+		cl.onArbitrationResult(cl.Status)
 	}
 	return nil
 }

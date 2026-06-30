@@ -10539,20 +10539,31 @@ func (repman *ReplicationManager) handlerMuxSetActiveStatus(w http.ResponseWrite
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		if mycluster.IsActive() {
-			mycluster.SetActiveStatus(cluster.ConstMonitorStandby)
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster switched to standby via API")
-			if mycluster.Conf.Arbitration {
-				if err := mycluster.ForceArbitratorElection(); err != nil {
+		// Manual role toggle operates on the repman-wide role so all clusters
+		// remain consistent (documented: stop other instances first when
+		// arbitrator-assisted failover is unavailable).
+		//
+		// ForceArbitratorElection must always run on the authority cluster so the
+		// result propagates back through the registered onArbitrationResult callback
+		// and keeps repman.Status in sync with the arbitrator's decision.
+		authCluster := repman.getClusterByName(repman.authorityClusterName())
+		if authCluster == nil {
+			authCluster = mycluster
+		}
+		if repman.IsRepmanActive() {
+			repman.SetRepmanRoleStandby()
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "RepMan switched to standby via API")
+			if authCluster.Conf.Arbitration {
+				if err := authCluster.ForceArbitratorElection(); err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Arbitrator election after standby toggle failed: %s", err)
 				}
 			}
 			w.Write([]byte("Cluster set to standby"))
 		} else {
-			mycluster.SetActiveStatus(cluster.ConstMonitorActif)
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster switched to active via API")
-			if mycluster.Conf.Arbitration {
-				if err := mycluster.ForceArbitratorElection(); err != nil {
+			repman.SetRepmanRoleActive()
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "RepMan switched to active via API")
+			if authCluster.Conf.Arbitration {
+				if err := authCluster.ForceArbitratorElection(); err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Arbitrator election after active toggle failed: %s", err)
 				}
 			}

@@ -93,7 +93,18 @@ type ReplicationManager struct {
 	UUID                         string                             `json:"uuid"`
 	Hostname                     string                             `json:"hostname"`
 	Status                       string                             `json:"status"`
-	SplitBrain                   bool                               `json:"splitBrain"`
+	// ArbitrationRequired is true when a peer repman is unreachable and external
+	// arbitration is needed to decide repman-wide ownership.  Internal only;
+	// the public JSON contract uses splitBrain for backwards compatibility.
+	ArbitrationRequired bool `json:"-"`
+	// SplitBrain is the public JSON field for ArbitrationRequired, kept for
+	// backwards compatibility with older dashboards and swagger consumers.
+	SplitBrain bool `json:"splitBrain"`
+	// RoleEstablished becomes true after the authority cluster completes its
+	// first successful arbitrator election (bootstrap).  Once true, automatic
+	// split-brain recovery on unsupported/free plans is gated with ERR00104.
+	// Propagated to all cl.RoleEstablished fields each peer-heartbeat tick.
+	RoleEstablished bool `json:"-"`
 	ClusterList                  []string                           `json:"clusters"`
 	ImmutableClusterList         []string                           `json:"-"`
 	DeprecatedKeys               map[string]map[string]bool         `json:"-"`
@@ -1680,7 +1691,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		repman.Logrus.Debug("No include directory in default section")
 	}
 
-	repman.ImmutableClusterList = strings.Split(repman.DiscoverClusters(firstRead), ",")
+	discoveredClusters := strings.Split(repman.DiscoverClusters(firstRead), ",")
+	sort.Strings(discoveredClusters)
+	repman.ImmutableClusterList = discoveredClusters
 
 	for _, clusterName := range repman.ImmutableClusterList {
 		clRead := firstRead.Sub(clusterName)
@@ -2361,6 +2374,7 @@ func (repman *ReplicationManager) Run() error {
 	} else {
 		repman.Status = ConstMonitorActif
 	}
+	repman.ArbitrationRequired = false
 	repman.SplitBrain = false
 	repman.Hostname, err = os.Hostname()
 	regtest := new(regtest.RegTest)
@@ -2901,6 +2915,44 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	repman.currentCluster.DiskStatManager = repman.DiskStatManager
 	repman.currentCluster.Mailer = repman.Mailer
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
+
+	// Mark the authority cluster (first in ImmutableClusterList).  Only this
+	// cluster is permitted to contact the arbitrator and update repman-wide role.
+	repman.currentCluster.IsAuthorityCluster = (clusterName == repman.authorityClusterName())
+
+	if repman.currentCluster.IsAuthorityCluster {
+		repman.currentCluster.SetArbitrationResultCallback(func(status string) {
+			repman.Lock()
+			defer repman.Unlock()
+			if status == cluster.ConstMonitorActif {
+				repman.Status = ConstMonitorActif
+			} else {
+				repman.Status = ConstMonitorStandby
+			}
+			// Mark repman-wide bootstrap as complete.  This is propagated to all
+			// cl.RoleEstablished fields on the next peer-heartbeat tick so that
+			// unsupported/free plans are gated on ERR00104 from that point on.
+			repman.RoleEstablished = true
+			repman.syncClustersFromRepmanRole()
+
+			// Loser-side split-brain master protection for all non-authority clusters.
+			// The authority cluster already ran LostArbitration() inline inside
+			// arbitratorElection(), so it is skipped here.  The reconciler queries
+			// the arbitrator's /winner-master endpoint using the authority cluster key
+			// to find who won and what master they reported for each target cluster.
+			if repman.Status == ConstMonitorStandby {
+				authName := repman.authorityClusterName()
+				for _, cl := range repman.Clusters {
+					if cl.IsAuthorityCluster {
+						continue
+					}
+					cl := cl // capture loop var for goroutine
+					go cl.ReconcileLostArbitrationMaster(authName)
+				}
+			}
+		})
+	}
+
 	repman.Lock()
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.Unlock()
@@ -3095,108 +3147,181 @@ func (repman *ReplicationManager) RecomputeGatewayConflicts(changedClusterName, 
 	}
 }
 
-func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {
-	timeout := time.Duration(time.Duration(repman.Conf.MonitoringTicker) * time.Second * 4)
-	/*	Host, _ := misc.SplitHostPort(peer)
-		ha, err := net.LookupHost(Host)
-		if err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose,config.ConstLogModGeneral,config.LvlErr,"Heartbeat: Resolv %s DNS err: %s", Host, err)
+// IsRepmanActive reports whether this replication-manager instance currently
+// holds the active (orchestrating) role.
+func (repman *ReplicationManager) IsRepmanActive() bool {
+	return repman.Status == ConstMonitorActif
+}
+
+// authorityClusterName returns the name of the single cluster authorised to
+// update repman-wide role after an arbitration result.  It is always the first
+// entry in ImmutableClusterList so the authority is deterministic and stable
+// for the lifetime of the process.
+func (repman *ReplicationManager) authorityClusterName() string {
+	if len(repman.ImmutableClusterList) > 0 {
+		return repman.ImmutableClusterList[0]
+	}
+	return ""
+}
+
+// SetRepmanRoleActive promotes this instance to the active repman role and
+// propagates the change to all monitored clusters.
+func (repman *ReplicationManager) SetRepmanRoleActive() {
+	repman.Status = ConstMonitorActif
+	repman.syncClustersFromRepmanRole()
+}
+
+// SetRepmanRoleStandby demotes this instance to the standby repman role and
+// propagates the change to all monitored clusters.
+func (repman *ReplicationManager) SetRepmanRoleStandby() {
+	repman.Status = ConstMonitorStandby
+	repman.syncClustersFromRepmanRole()
+}
+
+// syncClustersFromRepmanRole sets every monitored cluster's active/standby
+// status to match the current repman-wide role.  Existing per-cluster standby
+// protections continue to work because they key off cluster.Status.
+func (repman *ReplicationManager) syncClustersFromRepmanRole() {
+	for _, cl := range repman.Clusters {
+		if repman.IsRepmanActive() {
+			cl.SetActiveStatus(cluster.ConstMonitorActif)
 		} else {
-			repman.LogModulePrintf(repman.Conf.Verbose,config.ConstLogModGeneral,config.LvlErr,"Heartbeat: Resolv %s DNS say: %s", Host, ha[0])
+			cl.SetActiveStatus(cluster.ConstMonitorStandby)
 		}
-	*/
+	}
+}
+
+// fetchPeerHeartbeat contacts a single peer repman via /api/heartbeat.
+// It returns the peer's Status string, whether the response was valid (correct
+// secret, parseable JSON, not our own UUID), and whether the peer was reachable.
+// Peers that are reachable but invalid (self, secret mismatch, bad JSON) must
+// be ignored by the caller — they are neither counted as reachable-valid nor
+// as unreachable.
+func (repman *ReplicationManager) fetchPeerHeartbeat(peer string, logOnFirst bool) (status string, valid bool, reachable bool) {
+	timeout := time.Duration(time.Duration(repman.Conf.MonitoringTicker) * time.Second * 4)
 
 	scheme := "http://"
 	if strings.HasPrefix(peer, "https://") || strings.HasPrefix(peer, "http://") {
 		scheme = ""
 	}
 	url := scheme + peer + "/api/heartbeat"
-	client := &http.Client{
-		Timeout: timeout,
-	}
+	client := &http.Client{Timeout: timeout}
 	if repman.Conf.LogHeartbeat {
 		repman.Logrus.Debugf("Heartbeat: Sending peer request to node %s", peer)
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		if !bcksplitbrain {
-			repman.Logrus.Debugf("Error building HTTP request: %s", err)
+		if logOnFirst {
+			repman.Logrus.Debugf("Heartbeat: Error building HTTP request to peer %s: %s", peer, err)
 		}
-		return true
+		return "", false, false
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		if !bcksplitbrain {
-			repman.Logrus.Debugf("Could not reach peer node, might be down or incorrect address")
+		if logOnFirst {
+			repman.Logrus.Debugf("Heartbeat: Could not reach peer node %s, arbitration may be needed", peer)
 		}
-		return true
+		return "", false, false
 	}
 	defer resp.Body.Close()
 	monjson, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if !bcksplitbrain {
-			repman.Logrus.Debugf("Could not read body from peer response")
+		if logOnFirst {
+			repman.Logrus.Debugf("Heartbeat: Could not read body from peer %s response", peer)
 		}
-		return true
+		return "", false, true
 	}
 	if repman.Conf.LogHeartbeat {
-		repman.Logrus.Debugf("splitbrain http call result: %s ", monjson)
+		repman.Logrus.Debugf("Heartbeat: peer %s response: %s", peer, monjson)
 	}
-	// Use json.Decode for reading streams of JSON data
 	var h Heartbeat
 	if err := json.Unmarshal(monjson, &h); err != nil {
 		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Debugf("Could not unmarshal JSON from peer response %s", err)
+			repman.Logrus.Debugf("Heartbeat: Could not unmarshal JSON from peer %s: %s", peer, err)
 		}
-		return true
-	} else {
-
-		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Debugf("RETURN: %v", h)
-		}
-
-		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Infof("No peer split brain setting status to %s", repman.Status)
-		}
-
+		return "", false, true
 	}
-
-	return false
+	if h.UUID == repman.UUID {
+		return "", false, true
+	}
+	if repman.Conf.ArbitrationSasSecret != "" && h.Secret != repman.Conf.ArbitrationSasSecret {
+		if repman.Conf.LogHeartbeat {
+			repman.Logrus.Debugf("Heartbeat: peer %s secret mismatch, ignoring", peer)
+		}
+		return "", false, true
+	}
+	if repman.Conf.LogHeartbeat {
+		repman.Logrus.Debugf("Heartbeat: peer %s reports status=%s uuid=%s", peer, h.Status, h.UUID)
+	}
+	return h.Status, true, true
 }
 
+// Heartbeat performs peer-to-peer repman heartbeats and propagates the
+// ArbitrationRequired flag to all monitored clusters.  It uses explicit
+// status-aware aggregation so that a reachable standby peer does not
+// suppress arbitration incorrectly.  It does NOT write cluster.IsSplitBrain.
+//
+// Decision logic:
+//   - local active  + any reachable active peer  → dual-active conflict  → arbitrate
+//   - local active  + only standby/no valid peer → we own it             → no arbitrate
+//   - local standby + any reachable active peer  → peer owns it          → no arbitrate
+//   - local standby + no reachable active peer   → need to establish     → arbitrate
 func (repman *ReplicationManager) Heartbeat() {
 	if cfgGroup == "arbitrator" {
-		repman.Logrus.Debugf("Arbitrator cannot send heartbeat to itself. Exiting")
+		repman.Logrus.Debugf("Heartbeat: Arbitrator cannot send heartbeat to itself. Exiting")
 		return
 	}
 
 	var peerList []string
-	// try to found an active peer replication-manager
 	if repman.Conf.ArbitrationPeerHosts != "" {
 		peerList = strings.Split(repman.Conf.ArbitrationPeerHosts, ",")
 	} else {
-		repman.Logrus.Debugf("Arbitration peer not specified. Disabling arbitration")
+		repman.Logrus.Debugf("Heartbeat: Arbitration peer not specified. Disabling arbitration")
 		repman.Conf.Arbitration = false
 		return
 	}
 
-	bcksplitbrain := repman.SplitBrain
+	prevRequired := repman.ArbitrationRequired
 
+	// Collect per-peer facts; peers that are reachable but invalid (self,
+	// secret mismatch, bad JSON) are silently skipped.
+	anyReachableActivePeer := false
 	for _, peer := range peerList {
-		repman.Lock()
-		repman.SplitBrain = repman.HeartbeatPeerSplitBrain(peer, bcksplitbrain)
-		repman.Unlock()
-		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Infof("SplitBrain set to %t on peer %s", repman.SplitBrain, peer)
+		peerStatus, valid, _ := repman.fetchPeerHeartbeat(peer, !prevRequired)
+		if !valid {
+			continue
 		}
-	} //end check all peers
+		if peerStatus == ConstMonitorActif {
+			anyReachableActivePeer = true
+		}
+	}
 
-	// propagate SplitBrain state to clusters after peer negotiation
+	localIsActive := repman.IsRepmanActive()
+	var arbitrationNeeded bool
+	if localIsActive {
+		arbitrationNeeded = anyReachableActivePeer
+	} else {
+		arbitrationNeeded = !anyReachableActivePeer
+	}
+
+	repman.Lock()
+	repman.ArbitrationRequired = arbitrationNeeded
+	repman.SplitBrain = arbitrationNeeded // deprecated alias kept for JSON compat
+	repman.Unlock()
+
+	if repman.Conf.LogHeartbeat {
+		repman.Logrus.Infof("Heartbeat: localActive=%t anyReachableActivePeer=%t ArbitrationRequired=%t",
+			localIsActive, anyReachableActivePeer, repman.ArbitrationRequired)
+	}
+
+	// Propagate repman-wide arbitration state to all cluster fields.
+	// Cluster.IsSplitBrain is intentionally NOT touched here.
 	for _, cl := range repman.Clusters {
-		cl.IsSplitBrain = repman.SplitBrain
-
+		cl.RepmanArbitrationRequired = repman.ArbitrationRequired
+		cl.RoleEstablished = repman.RoleEstablished
 		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Infof("SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
+			repman.Logrus.Infof("Heartbeat: cluster %s RepmanArbitrationRequired=%t RoleEstablished=%t",
+				cl.Name, cl.RepmanArbitrationRequired, cl.RoleEstablished)
 		}
 	}
 }
