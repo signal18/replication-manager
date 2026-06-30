@@ -41,6 +41,15 @@ func upsertVerb(db *sqlx.DB) string {
 	return "INSERT OR REPLACE"
 }
 
+// forUpdateSuffix returns " FOR UPDATE" for MySQL/InnoDB (row-level locking)
+// and empty string for SQLite (which uses database-level locking).
+func forUpdateSuffix(db *sqlx.DB) string {
+	if db.DriverName() == "mysql" {
+		return " FOR UPDATE"
+	}
+	return ""
+}
+
 func SetHeartbeatTable(db *sqlx.DB) error {
 
 	if db.DriverName() == "mysql" {
@@ -90,15 +99,18 @@ func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, mas
 	var count int
 	stmt = "SELECT count(distinct master) FROM " + tbl + " WHERE cluster=? AND secret=? AND date > " + tenSecondsAgoExpr(db)
 	err = db.QueryRowx(stmt, cluster, secret).Scan(&count)
-	if err == nil && count == 1 {
+	if err != nil {
+		return err
+	}
+	// count==1 means both instances agree on the same master: split-brain is resolved,
+	// keep the elected status so the winner stays active.
+	// count>1 means masters diverge: true split-brain, reset election so a new one can run.
+	if count > 1 {
 		stmt = "UPDATE " + tbl + " set status='U' WHERE status='E' AND cluster=? AND secret=?"
 		_, err = db.Exec(stmt, cluster, secret)
 		if err != nil {
 			return err
 		}
-
-	} else {
-		return err
 	}
 	return nil
 }
@@ -123,14 +135,15 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 		return false
 	}
 	tbl := heartbeatTable(db)
+	lockSuffix := forUpdateSuffix(db)
 	// count the number of replication manager Elected that is not me for this cluster
-	stmt := "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status='E' and uid<>?"
+	stmt := "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status='E' and uid<>?" + lockSuffix
 	err = tx.QueryRowx(stmt, cluster, secret, uid).Scan(&count)
 	// If none i can consider myself the elected replication-manager
 	if err == nil && count == 0 {
 		log.Info("No elected managers found for this cluster")
 		// A non elected replication-manager may see more nodes than me than in this case lose the election
-		stmt = "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ?"
+		stmt = "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ?" + lockSuffix
 		err = tx.QueryRowx(stmt, cluster, secret, uid, failed).Scan(&count)
 		if err == nil && count == 0 {
 			log.Info("Node won election")
