@@ -137,7 +137,7 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 	tbl := heartbeatTable(db)
 	lockSuffix := forUpdateSuffix(db)
 	// count the number of replication manager Elected that is not me for this cluster
-	stmt := "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status='E' and uid<>?" + lockSuffix
+	stmt := "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status='E' AND uid<>? AND date > " + tenSecondsAgoExpr(db) + lockSuffix
 	err = tx.QueryRowx(stmt, cluster, secret, uid).Scan(&count)
 	// If none i can consider myself the elected replication-manager
 	if err == nil && count == 0 {
