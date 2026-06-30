@@ -139,7 +139,7 @@ function Navbar({ username, user }) {
             <TextLogo className={`${styles.logo} ${theme === 'light' ? styles.lightTextLogo : styles.darkTextLogo}`} text={logoText} />
           </HStack>
         </Link>
-        {isAuthorized() && monitor?.config?.arbitration && (
+        {isAuthorized() && monitor?.config?.arbitrationExternal && (
           <TagPill
             colorScheme={monitor?.status === 'A' ? 'green' : 'orange'}
             text={monitor?.status === 'A' ? 'Active' : 'Standby'}
