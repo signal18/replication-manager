@@ -20,6 +20,7 @@ import { getApi } from '../../services/apiHelper'
 import styles from './styles.module.scss'
 import RMButton from '../RMButton'
 import RMIconButton from '../RMIconButton'
+import TagPill from '../TagPill'
 import { useTheme } from '../../ThemeProvider'
 import AddUserModal from '../Modals/AddUserModal'
 import MattermostIntegration from '../../Pages/Mattermost';
@@ -137,6 +138,13 @@ function Navbar({ username, user }) {
             <TextLogo className={`${styles.logo} ${theme === 'light' ? styles.lightTextLogo : styles.darkTextLogo}`} text={logoText} />
           </HStack>
         </Link>
+        {isAuthorized() && monitor?.config?.arbitration && (
+          <TagPill
+            colorScheme={monitor?.status === 'A' ? 'green' : 'orange'}
+            text={monitor?.status === 'A' ? 'Active' : 'Standby'}
+            isBlinking={monitor?.splitBrain}
+          />
+        )}
         <Spacer />
 
         {isAuthorized() && isDesktop && location.pathname !== '/slideshow' && <RefreshCounter clusterName={clusterData?.name} />}

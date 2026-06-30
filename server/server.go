@@ -2358,8 +2358,10 @@ func (repman *ReplicationManager) Run() error {
 	repman.UUID = misc.GetUUID()
 	if repman.Conf.Arbitration {
 		repman.Status = ConstMonitorStandby
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server starting in standby mode (arbitration enabled)")
 	} else {
 		repman.Status = ConstMonitorActif
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server starting in active mode (no arbitration)")
 	}
 	repman.SplitBrain = false
 	repman.Hostname, err = os.Hostname()
@@ -3100,9 +3102,9 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	/*	Host, _ := misc.SplitHostPort(peer)
 		ha, err := net.LookupHost(Host)
 		if err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose,config.ConstLogModGeneral,config.LvlErr,"Heartbeat: Resolv %s DNS err: %s", Host, err)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlErr, "Resolv %s DNS err: %s", Host, err)
 		} else {
-			repman.LogModulePrintf(repman.Conf.Verbose,config.ConstLogModGeneral,config.LvlErr,"Heartbeat: Resolv %s DNS say: %s", Host, ha[0])
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlErr, "Resolv %s DNS say: %s", Host, ha[0])
 		}
 	*/
 
@@ -3114,20 +3116,18 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	client := &http.Client{
 		Timeout: timeout,
 	}
-	if repman.Conf.LogHeartbeat {
-		repman.Logrus.Debugf("Heartbeat: Sending peer request to node %s", peer)
-	}
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Sending peer request to node %s", peer)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if !bcksplitbrain {
-			repman.Logrus.Debugf("Error building HTTP request: %s", err)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Error building HTTP request: %s", err)
 		}
 		return true
 	}
 	resp, err := client.Do(req)
 	if err != nil {
 		if !bcksplitbrain {
-			repman.Logrus.Debugf("Could not reach peer node, might be down or incorrect address")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Could not reach peer node, might be down or incorrect address")
 		}
 		return true
 	}
@@ -3135,30 +3135,19 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	monjson, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if !bcksplitbrain {
-			repman.Logrus.Debugf("Could not read body from peer response")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Could not read body from peer response")
 		}
 		return true
 	}
-	if repman.Conf.LogHeartbeat {
-		repman.Logrus.Debugf("splitbrain http call result: %s ", monjson)
-	}
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer response: %s", monjson)
 	// Use json.Decode for reading streams of JSON data
 	var h Heartbeat
 	if err := json.Unmarshal(monjson, &h); err != nil {
-		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Debugf("Could not unmarshal JSON from peer response %s", err)
-		}
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Could not unmarshal JSON from peer response %s", err)
 		return true
 	} else {
-
-		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Debugf("RETURN: %v", h)
-		}
-
-		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Infof("No peer split brain setting status to %s", repman.Status)
-		}
-
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer heartbeat response: %v", h)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "No peer split brain, status is %s", repman.Status)
 	}
 
 	return false
@@ -3166,7 +3155,7 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 
 func (repman *ReplicationManager) Heartbeat() {
 	if cfgGroup == "arbitrator" {
-		repman.Logrus.Debugf("Arbitrator cannot send heartbeat to itself. Exiting")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Arbitrator cannot send heartbeat to itself. Exiting")
 		return
 	}
 
@@ -3175,7 +3164,7 @@ func (repman *ReplicationManager) Heartbeat() {
 	if repman.Conf.ArbitrationPeerHosts != "" {
 		peerList = strings.Split(repman.Conf.ArbitrationPeerHosts, ",")
 	} else {
-		repman.Logrus.Debugf("Arbitration peer not specified. Disabling arbitration")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Arbitration peer not specified. Disabling arbitration")
 		repman.Conf.Arbitration = false
 		return
 	}
@@ -3186,18 +3175,17 @@ func (repman *ReplicationManager) Heartbeat() {
 		repman.Lock()
 		repman.SplitBrain = repman.HeartbeatPeerSplitBrain(peer, bcksplitbrain)
 		repman.Unlock()
-		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Infof("SplitBrain set to %t on peer %s", repman.SplitBrain, peer)
-		}
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "SplitBrain set to %t on peer %s", repman.SplitBrain, peer)
 	} //end check all peers
+
+	if bcksplitbrain != repman.SplitBrain {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server split-brain state changed: %t -> %t", bcksplitbrain, repman.SplitBrain)
+	}
 
 	// propagate SplitBrain state to clusters after peer negotiation
 	for _, cl := range repman.Clusters {
 		cl.IsSplitBrain = repman.SplitBrain
-
-		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Infof("SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
-		}
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
 	}
 }
 

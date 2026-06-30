@@ -1325,7 +1325,7 @@ func (cl *Cluster) SetArbitratorReport() error {
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		if cl.Conf.LogHeartbeat {
-			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, "INFO", "Failed to post http new request to arbitrator %s ", jsonStr)
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Failed to post http new request to arbitrator %s ", jsonStr)
 		}
 		cl.IsFailedArbitrator = true
 		return err

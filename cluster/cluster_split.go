@@ -76,13 +76,13 @@ func (cluster *Cluster) Heartbeat(wg *sync.WaitGroup) {
 }
 
 func (cl *Cluster) ForceArbitratorElection() error {
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, "INFO", "Arbitrator: Forced election requested via API")
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Arbitrator: Forced election requested via API")
 	return cl.arbitratorElection()
 }
 
 func (cl *Cluster) ArbitratorElection() error {
 	if cl.IsSplitBrainBck != cl.IsSplitBrain {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, "INFO", "Arbitrator: External check requested")
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Arbitrator: External check requested")
 	} else {
 		return nil
 	}
@@ -101,7 +101,7 @@ func (cl *Cluster) arbitratorElection() error {
 	var jsonStr = []byte(`{"uuid":"` + cl.runUUID + `","secret":"` + cl.Conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(cl.Conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	if err != nil {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, "ERROR", "Could not create http request to arbitrator: %s", err)
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlErr, "Could not create http request to arbitrator: %s", err)
 		cl.IsFailedArbitrator = true
 		return err
 	}
@@ -111,7 +111,7 @@ func (cl *Cluster) arbitratorElection() error {
 	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, "ERROR", "Could not receive http response from arbitration: %s", err)
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlErr, "Could not receive http response from arbitration: %s", err)
 		cl.IsFailedArbitrator = true
 		return err
 	}
@@ -125,23 +125,25 @@ func (cl *Cluster) arbitratorElection() error {
 	var r response
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, "ERROR", "Arbitrator sent back invalid JSON, %s", body)
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlErr, "Arbitrator sent back invalid JSON, %s", body)
 		cl.IsFailedArbitrator = true
 		return err
 	}
 
 	cl.IsFailedArbitrator = false
 	if r.Arbitration == "winner" {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Arbitrator election won for cluster %s, switching to active", cl.GetName())
 		cl.SetActiveStatus(ConstMonitorActif)
 		cl.SetState("WARN0083", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0083"], ErrFrom: "ARB"})
 	} else {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Arbitrator election lost for cluster %s, switching to standby", cl.GetName())
 		cl.SetActiveStatus(ConstMonitorStandby)
 		cl.SetState("ERR00068", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00068"], ErrFrom: "ARB"})
 		if cl.GetMaster() != nil {
 			mst = cl.GetMaster().URL
 			if r.Master != mst {
 				cl.LostArbitration(r.Master)
-				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, "INFO", "Election Lost - Current master %s different from winner master %s, %s is split brain victim. ", mst, r.Master, mst)
+				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Election lost - current master %s differs from winner master %s, %s is split brain victim", mst, r.Master, mst)
 			}
 		}
 	}
