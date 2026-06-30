@@ -143,7 +143,7 @@ function Navbar({ username, user }) {
           <TagPill
             colorScheme={monitor?.status === 'A' ? 'green' : 'orange'}
             text={monitor?.status === 'A' ? 'Active' : 'Standby'}
-            isBlinking={monitor?.splitBrain}
+            isBlinking={monitor?.status !== 'A' && monitor?.splitBrain}
             onClick={username === 'admin' ? () => {
               const target = monitor?.status === 'A' ? 'standby' : 'active'
               if (window.confirm(`Switch server to ${target}?`)) {
