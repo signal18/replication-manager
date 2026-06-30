@@ -3147,7 +3147,7 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		return true
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer heartbeat response: %v", h)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "No peer split brain, status is %s", repman.Status)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "No peer split brain, peer status is %s, my status is %s", h.Status, repman.Status)
 	}
 
 	return false
@@ -3200,23 +3200,6 @@ func (repman *ReplicationManager) Heartbeat() {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
 	}
 
-	// server-level status: Active if we can reach the arbitrator
-	var serverStatus string
-	if !repman.SplitBrain {
-		serverStatus = ConstMonitorActif
-	} else {
-		serverStatus = ConstMonitorStandby
-		for _, cl := range repman.Clusters {
-			if !cl.IsFailedArbitrator {
-				serverStatus = ConstMonitorActif
-				break
-			}
-		}
-	}
-	if repman.Status != serverStatus {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server status changed: %s -> %s", repman.Status, serverStatus)
-		repman.Status = serverStatus
-	}
 }
 
 func (repman *ReplicationManager) resolveHostIp() string {

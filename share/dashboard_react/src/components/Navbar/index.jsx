@@ -141,17 +141,9 @@ function Navbar({ username, user }) {
         </Link>
         {isAuthorized() && monitor?.config?.arbitrationExternal && (
           <TagPill
-            colorScheme={monitor?.status === 'A' ? 'green' : 'orange'}
-            text={monitor?.status === 'A' ? 'Active' : 'Standby'}
-            isBlinking={monitor?.status !== 'A' && monitor?.splitBrain}
-            onClick={username === 'admin' ? () => {
-              const target = monitor?.status === 'A' ? 'standby' : 'active'
-              if (window.confirm(`Switch server to ${target}?`)) {
-                globalClustersService.setServerActiveStatus(baseURL).then(() => {
-                  dispatch(getMonitoredData({}))
-                })
-              }
-            } : undefined}
+            colorScheme={monitor?.splitBrain ? 'red' : 'green'}
+            text={monitor?.splitBrain ? 'Split Brain' : 'In Majority'}
+            isBlinking={!!monitor?.splitBrain}
           />
         )}
         <Spacer />
