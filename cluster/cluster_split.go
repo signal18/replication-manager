@@ -114,17 +114,20 @@ func (cl *Cluster) ReconcileLostArbitrationMaster(authorityCluster string) {
 	}
 
 	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
+	if timeout <= 0 {
+		timeout = 2 * time.Second
+	}
 
 	// Build the read-only lookup URL.  We append query params to the arbitratorURL
 	// base so the Cloud18 uri parameter (if any) is preserved alongside our params.
+	// The secret is sent in X-Arbitration-Secret to avoid exposure in access logs.
 	base := cl.arbitratorURL("/winner-master")
 	sep := "&"
 	if !strings.Contains(base, "?") {
 		sep = "?"
 	}
 	reqURL := base + sep +
-		"secret=" + url.QueryEscape(cl.Conf.ArbitrationSasSecret) +
-		"&authority_cluster=" + url.QueryEscape(authorityCluster) +
+		"authority_cluster=" + url.QueryEscape(authorityCluster) +
 		"&cluster=" + url.QueryEscape(cl.GetName())
 
 	req, err := http.NewRequest("GET", reqURL, nil)
@@ -133,6 +136,7 @@ func (cl *Cluster) ReconcileLostArbitrationMaster(authorityCluster string) {
 			"LoserProtection: could not build arbitrator request for cluster %s: %s", cl.GetName(), err)
 		return
 	}
+	req.Header.Set("X-Arbitration-Secret", cl.Conf.ArbitrationSasSecret)
 
 	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(req)
@@ -150,6 +154,8 @@ func (cl *Cluster) ReconcileLostArbitrationMaster(authorityCluster string) {
 
 	body, _ := io.ReadAll(resp.Body)
 
+	// winnerMasterResponse mirrors server.WinnerMasterResponse; cluster cannot
+	// import server (circular dependency), so the type is redeclared locally.
 	type winnerMasterResponse struct {
 		WinnerUUID string `json:"winner_uuid"`
 		Master     string `json:"master"`
@@ -165,6 +171,10 @@ func (cl *Cluster) ReconcileLostArbitrationMaster(authorityCluster string) {
 		return
 	}
 	if r.Master != localMaster {
+		if cl.GetServerFromURL(r.Master) == nil {
+			cl.SetState("WARN0082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0082"], fmt.Sprintf("LoserProtection: winner master %s not found in local server list for cluster %s — check host/IP canonicalization between repman peers", r.Master, cl.GetName())), ErrFrom: "ARB"})
+			return
+		}
 		cl.LostArbitration(r.Master)
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo,
 			"LoserProtection: cluster %s local master %s differs from winner master %s, applied split-brain protection",
@@ -183,6 +193,9 @@ func (cl *Cluster) ArbitratorElection() error {
 
 func (cl *Cluster) arbitratorElection() error {
 	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
+	if timeout <= 0 {
+		timeout = 2 * time.Second
+	}
 
 	url := cl.arbitratorURL("/arbitrator")
 	var mst string

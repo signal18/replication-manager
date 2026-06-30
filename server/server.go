@@ -287,6 +287,15 @@ type Heartbeat struct {
 	Failed  int    `json:"failed"`
 }
 
+// WinnerMasterResponse is the JSON payload returned by the arbitrator's
+// /winner-master endpoint and consumed by cluster.ReconcileLostArbitrationMaster.
+// The struct is defined here so that arbitrator/arbitrator.go can import it
+// without creating a circular dependency (cluster cannot import server).
+type WinnerMasterResponse struct {
+	WinnerUUID string `json:"winner_uuid"`
+	Master     string `json:"master"`
+}
+
 var confs = make(map[string]config.Config)
 
 var cfgGroup string
@@ -3315,9 +3324,10 @@ func (repman *ReplicationManager) Heartbeat() {
 	}
 
 	// Propagate repman-wide arbitration state to all cluster fields.
-	// Cluster.IsSplitBrain is intentionally NOT touched here.
+	// IsSplitBrain is kept as a JSON-compat alias (dashboard + WARN0079 in cluster_topo.go).
 	for _, cl := range repman.Clusters {
 		cl.RepmanArbitrationRequired = repman.ArbitrationRequired
+		cl.IsSplitBrain = repman.ArbitrationRequired
 		cl.RoleEstablished = repman.RoleEstablished
 		if repman.Conf.LogHeartbeat {
 			repman.Logrus.Infof("Heartbeat: cluster %s RepmanArbitrationRequired=%t RoleEstablished=%t",

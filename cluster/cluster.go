@@ -95,7 +95,6 @@ type Cluster struct {
 	FailoverTs                    int64                  `json:"failoverLastTime" groups:"web"`
 	Status                        string                 `json:"activePassiveStatus" groups:"web"`
 	IsSplitBrain                  bool                   `json:"isSplitBrain" groups:"web"`
-	IsSplitBrainBck               bool                   `json:"-"`
 	// RepmanArbitrationRequired gates cluster-side external arbitrator contact.
 	// Set from the repman-wide ArbitrationRequired flag; must not be written from
 	// cluster topology logic so it stays decoupled from IsSplitBrain.

@@ -356,22 +356,24 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 // handlerWinnerMaster is a read-only lookup endpoint used by losing repman instances
 // to perform loser-side split-brain master protection for non-authority clusters.
 //
-// Query params:
-//   secret           - arbitration secret
-//   authority_cluster - cluster key used for the repman-wide election
-//   cluster          - target cluster whose winner master is requested
+// The arbitration secret is read from the X-Arbitration-Secret header (not a query
+// param) to avoid leaking it into server access logs.
 //
-// Response: {"winner_uuid":"...","master":"..."}
+// Query params:
+//   authority_cluster - cluster key used for the repman-wide election
+//   cluster           - target cluster whose winner master is requested
+//
+// Response: server.WinnerMasterResponse JSON {"winner_uuid":"...","master":"..."}
 // Returns 404 JSON if no elected row exists for the authority cluster.
 func handlerWinnerMaster(w http.ResponseWriter, r *http.Request) {
-	secret := r.URL.Query().Get("secret")
+	secret := r.Header.Get("X-Arbitration-Secret")
 	authCluster := r.URL.Query().Get("authority_cluster")
 	targetCluster := r.URL.Query().Get("cluster")
 
 	if secret == "" || authCluster == "" || targetCluster == "" {
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "secret, authority_cluster and cluster are required"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "X-Arbitration-Secret header and authority_cluster, cluster query params are required"})
 		return
 	}
 
@@ -393,11 +395,7 @@ func handlerWinnerMaster(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusOK)
-	type winnerMasterResponse struct {
-		WinnerUUID string `json:"winner_uuid"`
-		Master     string `json:"master"`
-	}
-	json.NewEncoder(w).Encode(winnerMasterResponse{WinnerUUID: winnerUUID, Master: master})
+	json.NewEncoder(w).Encode(server.WinnerMasterResponse{WinnerUUID: winnerUUID, Master: master})
 }
 
 func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
