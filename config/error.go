@@ -277,4 +277,8 @@ var GlobalError = map[string]string{
 	"GERR001":  "ReplicationManager detected prolonged stalled cluster heartbeat for %s",
 	"GERR002":  "ReplicationManager git push reported persistent failure: %s",
 	"GERR003":  "ReplicationManager git pull reported persistent failure: %s",
+	"GWARN006": "Server split-brain detected: peer unreachable, server status is %s",
+	"GWARN007": "Server arbitration winner, all clusters set to active",
+	"GWARN008": "Server arbitration loser, all clusters set to standby",
+	"GERR004":  "Server arbitration not eligible: %s",
 }
