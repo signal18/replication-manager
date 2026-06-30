@@ -3199,6 +3199,24 @@ func (repman *ReplicationManager) Heartbeat() {
 		cl.IsSplitBrain = repman.SplitBrain
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
 	}
+
+	// server-level status: Active if we can reach the arbitrator
+	var serverStatus string
+	if !repman.SplitBrain {
+		serverStatus = ConstMonitorActif
+	} else {
+		serverStatus = ConstMonitorStandby
+		for _, cl := range repman.Clusters {
+			if !cl.IsFailedArbitrator {
+				serverStatus = ConstMonitorActif
+				break
+			}
+		}
+	}
+	if repman.Status != serverStatus {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server status changed: %s -> %s", repman.Status, serverStatus)
+		repman.Status = serverStatus
+	}
 }
 
 func (repman *ReplicationManager) resolveHostIp() string {
