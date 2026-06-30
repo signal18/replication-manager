@@ -502,7 +502,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
         header={
           <>
             <Text>Cluster</Text>
-            <Box ml='auto'>
+            <Box ml='auto' display='flex' gap={1} alignItems='center'>
               {selectedCluster?.activePassiveStatus === 'A' ? (
                 <TagPill colorScheme='green' text={'Active'} onClick={readOnly || !g['cluster-settings'] ? undefined : () => {
                   openConfirmModal()
@@ -516,6 +516,12 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
                   setConfirmHandler(() => () => clusterService.setActiveStatus(selectedCluster?.name, baseURL))
                 }} />
               ) : null}
+              {selectedCluster?.config?.arbitrationExternal && (
+                <TagPill
+                  colorScheme={selectedCluster?.isFailedArbitrator ? 'red' : 'green'}
+                  text='ARB'
+                />
+              )}
             </Box>
           </>
         }
