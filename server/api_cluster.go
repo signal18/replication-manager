@@ -10539,26 +10539,38 @@ func (repman *ReplicationManager) handlerMuxSetActiveStatus(w http.ResponseWrite
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		if mycluster.IsActive() {
-			mycluster.SetActiveStatus(cluster.ConstMonitorStandby)
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster switched to standby via API")
-			if mycluster.Conf.Arbitration {
-				if err := mycluster.ForceArbitratorElection(); err != nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Arbitrator election after standby toggle failed: %s", err)
-				}
-			}
-			w.Write([]byte("Cluster set to standby"))
-		} else {
-			mycluster.SetActiveStatus(cluster.ConstMonitorActif)
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster switched to active via API")
-			if mycluster.Conf.Arbitration {
-				if err := mycluster.ForceArbitratorElection(); err != nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Arbitrator election after active toggle failed: %s", err)
-				}
-			}
-			w.Write([]byte("Cluster set to active"))
-		}
+		repman.toggleServerActiveStatus()
+		w.Write([]byte("Server set to " + repman.Status))
 	} else {
 		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxSetServerActiveStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if valid, _ := repman.IsValidClusterACL(r, repman.currentCluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	repman.toggleServerActiveStatus()
+	w.Write([]byte("Server set to " + repman.Status))
+}
+
+func (repman *ReplicationManager) toggleServerActiveStatus() {
+	var newStatus string
+	if repman.Status == cluster.ConstMonitorActif {
+		newStatus = cluster.ConstMonitorStandby
+	} else {
+		newStatus = cluster.ConstMonitorActif
+	}
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server status toggled via API: %s -> %s", repman.Status, newStatus)
+	repman.Status = newStatus
+	for _, cl := range repman.Clusters {
+		cl.SetActiveStatus(newStatus)
+		if repman.Conf.Arbitration {
+			if err := cl.ForceArbitratorElection(); err != nil {
+				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlWarn, "Arbitrator election after server toggle failed: %s", err)
+			}
+		}
 	}
 }

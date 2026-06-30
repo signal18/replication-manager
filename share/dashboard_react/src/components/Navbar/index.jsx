@@ -27,6 +27,7 @@ import MattermostIntegration from '../../Pages/Mattermost';
 import { getMeetInfo, logoutFromMeet } from '../../redux/meetSlice';
 import { selectMeetUIState } from '../../redux/memoize'
 import { clearClusters, getMonitoredData } from '../../redux/globalClustersSlice'
+import { globalClustersService } from '../../services/globalClustersService'
 
 function Navbar({ username, user }) {
   const dispatch = useDispatch()
@@ -143,6 +144,14 @@ function Navbar({ username, user }) {
             colorScheme={monitor?.status === 'A' ? 'green' : 'orange'}
             text={monitor?.status === 'A' ? 'Active' : 'Standby'}
             isBlinking={monitor?.splitBrain}
+            onClick={username === 'admin' ? () => {
+              const target = monitor?.status === 'A' ? 'standby' : 'active'
+              if (window.confirm(`Switch server to ${target}?`)) {
+                globalClustersService.setServerActiveStatus(baseURL).then(() => {
+                  dispatch(getMonitoredData({}))
+                })
+              }
+            } : undefined}
           />
         )}
         <Spacer />

@@ -342,6 +342,10 @@ func (repman *ReplicationManager) httpserver() {
 			negroni.HandlerFunc(repman.validateTokenMiddleware),
 			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalInterventionEnd)),
 		))
+		router.Handle("/api/actions/set-active-status", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetServerActiveStatus)),
+		))
 		router.Handle("/api/email/send", negroni.New(
 			negroni.HandlerFunc(repman.validateTokenMiddleware),
 			negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendEmail)),
