@@ -48,7 +48,7 @@
     "react-router-dom": "^6.30.4",
     "react-select": "^5.10.0",
     "react-time-picker": "^7.0.0",
-    "recharts": "^2.15.1",
+    "recharts": "2.15.4",
     "redux-logger": "^3.0.6",
     "remark-gfm": "^4.0.1",
     "sass": "^1.85.0",
