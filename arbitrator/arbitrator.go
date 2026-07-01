@@ -597,9 +597,16 @@ h2{color:#e0e0e0;margin-top:30px}
 			masterClass = "err"
 			masterLabel = "No"
 		}
-		fmt.Fprintf(w, `<h2>%s <span style="font-size:14px;margin-left:10px">Same Master: <span class="%s">%s</span></span></h2>
+		winnerLabel := "None"
+		for _, inst := range cs.Instances {
+			if inst.Status == "Active" {
+				winnerLabel = fmt.Sprintf("UID %d", inst.UID)
+				break
+			}
+		}
+		fmt.Fprintf(w, `<h2>%s <span style="font-size:14px;margin-left:10px">Same Master: <span class="%s">%s</span> · Winner: <span class="active">%s</span></span></h2>
 <table>
-<tr><th>Instance</th><th>Status</th><th>Last Heartbeat</th><th>Hosts</th><th>Failed</th></tr>`, cs.Cluster, masterClass, masterLabel)
+<tr><th>Instance</th><th>Status</th><th>Last Heartbeat</th><th>Hosts</th><th>Failed</th></tr>`, cs.Cluster, masterClass, masterLabel, winnerLabel)
 		for _, inst := range cs.Instances {
 			statusClass := "standby"
 			if inst.Status == "Active" {
