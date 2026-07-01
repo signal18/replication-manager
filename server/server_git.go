@@ -1315,6 +1315,14 @@ func (repman *ReplicationManager) pullActiveConfigLocked() {
 		return
 	}
 
+	err = w.Checkout(&git.CheckoutOptions{
+		Force: true,
+	})
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn,
+			"Standby: git checkout --force failed: %s", err)
+	}
+
 	err = w.Pull(&git.PullOptions{
 		RemoteName:   "origin",
 		Auth:         auth,
