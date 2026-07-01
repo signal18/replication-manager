@@ -1344,7 +1344,7 @@ func (repman *ReplicationManager) pullActiveConfigLocked() {
 func (repman *ReplicationManager) ReloadStandbyConfigsFromDisk() {
 	for _, name := range repman.ClusterList {
 		cl := repman.getClusterByName(name)
-		if cl == nil || cl.IsActive() {
+		if cl == nil || cl.IsActive() || !cl.Conf.GitConfigSyncStandby {
 			continue
 		}
 

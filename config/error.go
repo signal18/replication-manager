@@ -252,6 +252,7 @@ var ClusterError = map[string]string{
 	"WARN0173":  "Intervention active since %s by %s: %s — notifications muted",
 	"WARN0174":  "Waiting for global backup slot (%d/%d in use)",
 	"WARN0175":  "Running logical backup %s on server %s",
+	"WARN0176":  "Arbitration enabled but instance not registered — config sync disabled",
 	// Log-tailer plugin state codes (WARN0200-WARN0299 reserved for logplugin)
 	"WARN0200":  "Server %s has recent ERROR entries in database error log (last 24h)",
 	"WARN0201":  "Server %s has recent SQL errors in SQL error log (last 24h)",

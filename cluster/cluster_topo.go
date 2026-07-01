@@ -160,6 +160,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		if cluster.IsFailedArbitrator {
 			cluster.SetState("WARN0090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0090"], cluster.Conf.ArbitratorAddress), ErrFrom: "ARB"})
 		}
+		if cluster.Conf.GitUrl == "" {
+			cluster.SetState("WARN0176", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0176"], ErrFrom: "ARB"})
+		}
 	}
 
 	// Check topology Cluster all servers down

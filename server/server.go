@@ -656,6 +656,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.GitUsername, "git-username", "", "GitHub username")
 	flags.StringVar(&conf.GitAccesToken, "git-acces-token", "", "GitHub personnal acces token")
 	flags.IntVar(&conf.GitMonitoringTicker, "git-monitoring-ticker", 300, "Git monitoring interval in seconds")
+	flags.BoolVar(&conf.GitConfigSyncStandby, "git-config-sync-standby", true, "Pull config from git when cluster is standby with arbitration")
 	// flags.IntVar(&conf.GitMinWorker, "git-min-worker", 1, "Minimum number of worker to add files for git commit")
 	// flags.IntVar(&conf.GitMaxWorker, "git-max-worker", 5, "Maximum number of worker to add files for git commit")
 	flags.BoolVar(&conf.LogGit, "log-git", true, "To log clone/push/pull from git")
@@ -2793,14 +2794,13 @@ func (repman *ReplicationManager) Run() error {
 		time.Sleep(time.Second * time.Duration(repman.Conf.MonitoringTicker))
 
 		if counter%60 == 0 {
-			if repman.HasActiveCluster() {
-				repman.ConfigManager.SaveConfig(repman, true)
+			repman.ConfigManager.SaveConfig(repman, true)
 
-				if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
-					repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
+				if repman.Conf.Arbitration && repman.HasStandbyClusterWithGitSync() {
+					repman.PullActiveConfig()
 				}
-			} else if repman.Conf.GitUrl != "" {
-				repman.PullActiveConfig()
+				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
 			}
 
 			if repman.Conf.Cloud18 && repman.Conf.GitUrlPull != "" {
