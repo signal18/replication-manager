@@ -506,7 +506,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
               {selectedCluster?.activePassiveStatus === 'A' ? (
                 <TagPill colorScheme='green' text={'Active'} />
               ) : selectedCluster?.activePassiveStatus === 'S' ? (
-                <TagPill colorScheme='orange' text={'Standby'} />
+                <TagPill colorScheme='orange' text={'Standby'} isBlinking={true} />
               ) : null}
               {selectedCluster?.config?.arbitrationExternal && (
                 <TagPill

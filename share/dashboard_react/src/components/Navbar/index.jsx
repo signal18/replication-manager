@@ -139,7 +139,7 @@ function Navbar({ username, user }) {
             <TextLogo className={`${styles.logo} ${theme === 'light' ? styles.lightTextLogo : styles.darkTextLogo}`} text={logoText} />
           </HStack>
         </Link>
-        {isAuthorized() && monitor?.config?.arbitrationExternal && (
+        {isAuthorized() && !clusterData && monitor?.config?.arbitrationExternal && (
           <TagPill
             colorScheme={monitor?.splitBrain ? 'red' : 'green'}
             text={monitor?.splitBrain ? 'Split Brain' : 'In Majority'}
