@@ -52,7 +52,7 @@ The `status` field is `repman.Status`. The `Heartbeat` struct also has `Cluster`
 
 ### Cluster Level — Arbitrator Reporting and Election
 
-**File**: `cluster/cluster_split.go` — `Heartbeat()` (misleading name — handles arbitrator communication, not peer heartbeating)
+**File**: `cluster/cluster_split.go` — `ArbitratorHandler()`
 
 Each cluster runs its own arbitrator handler per-cluster in the monitor loop. **It does NOT ping the peer.** It only communicates with the **external arbitrator service** and only when `IsSplitBrain == true`.
 
@@ -141,21 +141,9 @@ This handles the case where the master is on the losing side of the partition �
 
 ## Known Issues
 
-### Hosts=0 Data Race
+### ~~Hosts=0 Data Race~~ (Fixed)
 
-In the cluster monitor loop, `TopologyDiscover()` and `Heartbeat()` run as **parallel goroutines**:
-
-```go
-go cluster.TopologyDiscover(wg)
-go cluster.Heartbeat(wg)
-```
-
-`TopologyDiscover` calls `newServerList()` which recreates `cluster.Servers` every tick:
-```go
-cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
-```
-
-`Heartbeat` → `SetArbitratorReport` reads `len(cl.GetServers())` without acquiring the cluster lock. This race causes the arbitrator to receive `hosts=0` for clusters that actually have servers. The election logic uses the `failed` count to pick a winner, so incorrect `hosts=0` / `failed=0` can produce wrong election results.
+Previously `TopologyDiscover()` and `Heartbeat()` ran as parallel goroutines, causing `SetArbitratorReport` to read `Servers` while `newServerList()` was recreating it. Fixed by restructuring the monitor loop into phases: `TopologyDiscover` runs alone in Phase 1, `ArbitratorHandler` runs in Phase 2 after topology is stable.
 
 ### Election Is One-Shot Per Transition
 
@@ -164,10 +152,6 @@ cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 ### Server-Level Status Not Derived from Quorum
 
 `repman.Status` is set to Standby at startup (when arbitration enabled) and is only changed by the manual toggle API. It does not reflect the actual quorum state. The GUI Navbar shows split brain state (`"In Majority"` / `"Split Brain"`) based on `repman.SplitBrain`, but this only checks peer reachability — not arbitrator reachability. A full lost-majority state (peer AND arbitrator unreachable) is not surfaced at the server level.
-
-### Naming Confusion
-
-`cluster.Heartbeat()` does NOT heartbeat — it handles arbitrator communication. The actual heartbeat (peer pinging) is `repman.HeartbeatPeerSplitBrain()` at the server level.
 
 ## Multi-Cluster Split Brain Scenarios
 
@@ -194,47 +178,4 @@ Different clusters on the same repman instance can have different Active/Standby
 
 ## Flow Diagram
 
-```
-Server Heartbeat (every tick)
-    │
-    ├── For each peer:
-    │   └── HTTP GET /api/heartbeat
-    │       ├── Success → SplitBrain = false (peer reachable)
-    │       └── Failure → SplitBrain = true  (peer unreachable)
-    │
-    ├── Log split brain transition if changed
-    │
-    └── Propagate SplitBrain to all clusters
-            │
-            ▼
-Cluster Monitor Loop (every tick, per cluster)
-    │
-    ├── TopologyDiscover() ──┐
-    │   ├── newServerList()  │
-    │   └── State alerts:    ├── parallel (race condition on Servers)
-    │       WARN0079/80/90   │
-    │                        │
-    └── cluster.Heartbeat()──┘
-         │
-         └── if Arbitration enabled AND IsSplitBrain:
-              │
-              ├── IsEligibleForArbitration()?
-              │   └── No → consume transition, return
-              │
-              ├── SetArbitratorReport()
-              │   ├── Compute IsLostMajority (db server majority)
-              │   ├── POST /heartbeat to arbitrator
-              │   └── Set IsFailedArbitrator on failure
-              │
-              └── if transition (IsSplitBrainBck != IsSplitBrain):
-                   │
-                   ├── Sleep 5s (let arbitrator collect both sides)
-                   │
-                   └── ArbitratorElection() (3 retries)
-                       └── POST /arbitrator to arbitrator
-                           ├── "winner" → SetActiveStatus("A")
-                           └── "loser"  → SetActiveStatus("S")
-                                          └── if master differs:
-                                              LostArbitration()
-                                              (rejoin master to winner)
-```
+See [MONITOR_LOOP_FLOW.md](MONITOR_LOOP_FLOW.md) for the full phased execution diagram of the cluster monitor tick.

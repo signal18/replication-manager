@@ -868,40 +868,28 @@ func (cluster *Cluster) Run() {
 						}
 					}
 				}
+				// Phase 1: topology discovery must complete before anything reads Servers
 				wg := new(sync.WaitGroup)
 				wg.Add(1)
 				go cluster.TopologyDiscover(wg)
-				wg.Add(1)
-				go cluster.Heartbeat(wg)
 				wg.Wait()
-				// Check scheduled/auto-end interventions on every tick
+
 				cluster.CheckInterventionSchedule()
 
-				// Heartbeat switchover or failover controller runs only on active repman
-
 				if cluster.runOnceAfterTopology {
-					// Preserved server state in proxy during reload config
 					if !cluster.IsInFailover() {
 						cluster.initProxies()
 					}
 					go cluster.initOrchetratorNodes()
 					go cluster.ResticFetchRepo()
 					cluster.SetRollingJobsUpgradeState()
-					// Clean up any lingering restart cookies from previous runs
 					cluster.CleanupRestartCookies()
-					// Scan cluster.WorkingDir/plugins/ for subscription plugin binaries
 					cluster.ReloadLogPlugins()
-					// If master has no cached DictTables (no serverstate.json or old
-					// version without dictTables), trigger schema monitoring once so
-					// the table list is populated on startup.
 					if master := cluster.GetMaster(); master != nil {
 						cachedTables := master.DictTables.ToNewMap()
 						if len(cachedTables) == 0 {
 							go cluster.MonitorSchema()
 						} else {
-							// Recompute workload totals from cached DictTables so the
-							// dashboard gauges show table/index sizes before the first
-							// scheduled MonitorSchema run.
 							var tottablesize, totindexsize int64
 							for _, t := range cachedTables {
 								tottablesize += t.DataLength
@@ -914,54 +902,103 @@ func (cluster *Cluster) Run() {
 					cluster.runOnceAfterTopology = false
 				} else {
 
-					// Preserved server state in proxy during reload config
 					if !cluster.IsInFailover() {
-						wg.Add(2)
-						go cluster.refreshProxies(wg)
-						go cluster.refreshApps(wg)
-						cluster.CheckAppsCredit()
-						cluster.CheckWaitRunJobSSH()
-						cluster.CheckDummyConfigSendCookies()
-						cluster.CheckRestartContainerCookies()
+						goRun := func(fn func()) {
+							wg.Add(1)
+							go func() {
+								defer wg.Done()
+								fn()
+							}()
+						}
+						heartbeats := cluster.StateMachine.GetHeartbeats()
 
-						// Monitor schema when shardproxy is used else it will be trigger by scheduler
+						// Fire-and-forget: no synchronization needed
 						if cluster.Conf.MdbsProxyOn {
 							go cluster.MonitorSchema()
 						}
-
-						if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
-							cluster.InjectProxiesTraffic()
+						if cluster.SlavesOldestMasterFile.Suffix == 0 {
+							go cluster.CheckSlavesReplicationsPurge()
+						}
+						if heartbeats%30 == 0 {
+							go cluster.initOrchetratorNodes()
+							go cluster.CheckCredentialRotation()
+						}
+						if heartbeats%3600 == 0 {
+							go cluster.RefreshAllAppTemplateMD5()
+						}
+						if cluster.Conf.BackupReconcileInterval > 0 && heartbeats%int64(cluster.Conf.BackupReconcileInterval) == 0 {
+							cluster.ReconcileSnapshotMetadataAsync()
 						}
 
-						if cluster.StateMachine.GetHeartbeats()%10 == 0 {
-							cluster.CheckJobsVersion()
-							cluster.MonitorTableSchemaDiff()
-						} else {
+						// Phase 2: parallel reads of stable topology — Phase 3 depends on these
+						goRun(cluster.ArbitratorHandler)
+						wg.Add(2)
+						go cluster.refreshProxies(wg)
+						go cluster.refreshApps(wg)
+						if heartbeats%10 == 0 {
+							goRun(cluster.MonitorTableSchemaDiff)
+						}
+						if heartbeats%30 == 0 {
+							goRun(cluster.ResticFetchRepo)
+							goRun(cluster.MonitorVariablesDiff)
+							goRun(cluster.MonitorVariablesChange)
+						}
+						wg.Wait()
+
+						// Phase 3: parallel — depends on Phase 2, independent of each other
+						if heartbeats%30 == 0 {
+							goRun(cluster.MonitorQueryRules)
+						}
+						if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
+							goRun(cluster.InjectProxiesTraffic)
+						}
+						if heartbeats%3600 == 0 {
+							goRun(func() { cluster.ResticPurgeRepo(false) })
+							goRun(cluster.RefreshToolVersions)
+							goRun(cluster.CheckBackupToolVersions)
+							goRun(cluster.CheckComplianceUpdate)
+							goRun(cluster.ReloadDockerRepos)
+						}
+						goRun(cluster.CheckAppsCredit)
+						goRun(cluster.CheckWaitRunJobSSH)
+						goRun(cluster.CheckDummyConfigSendCookies)
+						goRun(cluster.CheckRestartContainerCookies)
+						goRun(cluster.PrintDelayStat)
+						if heartbeats%10 == 0 {
+							goRun(cluster.CheckJobsVersion)
+						}
+						if heartbeats%30 == 0 {
+							goRun(func() { cluster.IsValidBackup = cluster.HasValidBackup() })
+							goRun(cluster.CheckCanSaveDynamicConfig)
+							goRun(cluster.CheckIsOverwrite)
+							goRun(cluster.CheckAllBackupEstimatedSize)
+							goRun(cluster.CheckAvailableCredit)
+							goRun(cluster.CheckOpenSVCTresholds)
+							goRun(cluster.JobsCheckSchedulerTable)
+							goRun(cluster.CheckOnPremiseSSHKey)
+							goRun(cluster.CheckConfiguratorPrerequisites)
+							goRun(cluster.CheckGlobalDeprecatedKeys)
+							goRun(cluster.CheckClusterDeprecatedKeys)
+							goRun(cluster.CheckClusterServiceAgents)
+						}
+						if cluster.Conf.GraphiteMetrics && heartbeats%5 == 0 {
+							goRun(func() { cluster.SendGraphiteMetrics() })
+							goRun(cluster.CheckDisksUsage)
+						}
+						wg.Wait()
+
+						// PreserveState for non-running ticks (fast, no I/O)
+						if heartbeats%10 != 0 {
 							cluster.StateMachine.PreserveState("WARN0147", "WARN0164")
 						}
-
-						if cluster.StateMachine.GetHeartbeats()%30 == 0 {
-							// Check if restic repo is available
-							cluster.ResticFetchRepo()
-							go cluster.initOrchetratorNodes()
-							cluster.MonitorQueryRules()
-							cluster.MonitorVariablesDiff()
-							cluster.MonitorVariablesChange()
-							cluster.IsValidBackup = cluster.HasValidBackup()
-							go cluster.CheckCredentialRotation()
-							cluster.CheckCanSaveDynamicConfig()
-							cluster.CheckIsOverwrite()
-							cluster.CheckAllBackupEstimatedSize()
-							cluster.CheckAvailableCredit()
-							cluster.CheckOpenSVCTresholds()
-							cluster.JobsCheckSchedulerTable()
-							cluster.CheckOnPremiseSSHKey()
-							cluster.CheckConfiguratorPrerequisites()
-							cluster.CheckGlobalDeprecatedKeys()
-							cluster.CheckClusterDeprecatedKeys()
-							cluster.CheckClusterServiceAgents()
-						} else {
+						if heartbeats%30 != 0 {
 							cluster.StateMachine.PreserveState(pstates30...)
+						}
+						if heartbeats%3600 != 0 {
+							cluster.StateMachine.PreserveState(pstates3600...)
+						}
+						if !(cluster.Conf.GraphiteMetrics && heartbeats%5 == 0) {
+							cluster.StateMachine.PreserveState("WARN0139", "WARN0140")
 						}
 						if !cluster.CanInitNodes {
 							cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
@@ -969,38 +1006,9 @@ func (cluster *Cluster) Run() {
 						if !cluster.CanConnectVault {
 							cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], cluster.errorConnectVault), ErrFrom: "OPENSVC"})
 						}
-						if cluster.StateMachine.GetHeartbeats()%3600 == 0 {
-							// Set in parallel since it will wait for fetch to finish
-							go cluster.RefreshAllAppTemplateMD5()
-							cluster.ResticPurgeRepo(false)
-							cluster.RefreshToolVersions()
-							cluster.CheckBackupToolVersions()
-							cluster.CheckComplianceUpdate()
-							cluster.ReloadDockerRepos()
-						} else {
-							// Preserve tools if not installed or has problem
-							cluster.StateMachine.PreserveState(pstates3600...)
-						}
-						// Reconciliation: Check for drift between metadata and snapshots
-						if cluster.Conf.BackupReconcileInterval > 0 && cluster.StateMachine.GetHeartbeats()%int64(cluster.Conf.BackupReconcileInterval) == 0 {
-							cluster.ReconcileSnapshotMetadataAsync()
-						}
-						if cluster.SlavesOldestMasterFile.Suffix == 0 {
-							go cluster.CheckSlavesReplicationsPurge()
-						}
-						cluster.PrintDelayStat()
-
-						if cluster.Conf.GraphiteMetrics && cluster.StateMachine.GetHeartbeats()%5 == 0 {
-							cluster.SendGraphiteMetrics()
-							cluster.CheckDisksUsage()
-						} else {
-							cluster.StateMachine.PreserveState("WARN0139", "WARN0140")
-						}
 					} else {
 						cluster.StateMachine.PreserveState("ERR00100")
 					}
-
-					wg.Wait()
 				}
 
 				cluster.EmitAppErrors()

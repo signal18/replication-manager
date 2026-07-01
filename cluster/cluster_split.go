@@ -19,7 +19,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -42,10 +41,10 @@ func (cl *Cluster) arbitratorURL(path string) string {
 	return base
 }
 
-// Heartbeat call from main cluster loop
-func (cluster *Cluster) Heartbeat(wg *sync.WaitGroup) {
-
-	defer wg.Done()
+// ArbitratorHandler communicates with the external arbitrator service during split brain.
+// It reports cluster state and triggers elections. Runs after TopologyDiscover to avoid
+// data races on Servers.
+func (cluster *Cluster) ArbitratorHandler() {
 	if cluster.Conf.Arbitration {
 		if cluster.IsSplitBrain {
 			if !cluster.Conf.IsEligibleForArbitration() {
