@@ -375,14 +375,15 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	if !cluster.Conf.Arbitration {
 		return true
 	}
-	//	cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover External Arbitration")
-
 	url := cluster.arbitratorURL("/arbitrator")
 	var mst string
 	if cluster.master != nil {
 		mst = cluster.master.URL
 	}
-	var jsonStr = []byte(`{"uuid":"` + cluster.runUUID + `","secret":"` + cluster.Conf.ArbitrationSasSecret + `","cluster":"` + cluster.Name + `","master":"` + mst + `","id":` + strconv.Itoa(cluster.Conf.ArbitrationSasUniqueId) + `}`)
+	hosts := len(cluster.GetServers())
+	failed := cluster.CountFailed(cluster.GetServers())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArbitration, config.LvlDbg, "isActiveArbitration: sending hosts=%d failed=%d cluster=%s", hosts, failed, cluster.Name)
+	var jsonStr = []byte(`{"uuid":"` + cluster.runUUID + `","secret":"` + cluster.Conf.ArbitrationSasSecret + `","cluster":"` + cluster.Name + `","master":"` + mst + `","id":` + strconv.Itoa(cluster.Conf.ArbitrationSasUniqueId) + `,"hosts":` + strconv.Itoa(hosts) + `,"failed":` + strconv.Itoa(failed) + `}`)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")

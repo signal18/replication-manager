@@ -234,7 +234,11 @@ function ProcessCard({ proc, isDesktop }) {
 
 function GlobalLogs() {
   const logs = useSelector((state) => state.globalClusters.globalLogs?.general)
-  return <Logs logs={logs?.buffer} searchable={true} className={styles.logContainer} />
+  return (
+    <Box className={styles.logContainer}>
+      <Logs logs={logs?.buffer} searchable={true} isScrollable={false} />
+    </Box>
+  )
 }
 
 function AlertSection({ title, items, colorScheme, onOpenModal }) {
