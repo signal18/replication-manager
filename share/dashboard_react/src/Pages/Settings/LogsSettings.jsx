@@ -170,9 +170,14 @@ function LogsSettings({ selectedCluster, user }) {
       key: 'Core Monitoring',
       value: [
         {
-          key: 'Log HeartBeat',
-          help: h(lh('Log HeartBeat', 'log-level-heartbeat'), 'Log HeartBeat'),
+          key: 'Log HeartBeat (Server)',
+          help: h(lh('Log HeartBeat (Server)', 'log-level-heartbeat'), 'Log HeartBeat (Server)'),
           value: sl('log-level-heartbeat', 'logHeartbeatLevel')
+        },
+        {
+          key: 'Log Arbitration',
+          help: h(lh('Log Arbitration', 'log-level-arbitration'), 'Log Arbitration'),
+          value: sl('log-level-arbitration', 'logArbitrationLevel')
         },
         {
           key: 'Log Config Load',

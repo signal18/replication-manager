@@ -1321,11 +1321,14 @@ func (cl *Cluster) SetArbitratorReport() error {
 	if cl.GetMaster() != nil {
 		mst = cl.GetMaster().URL
 	}
-	var jsonStr = []byte(`{"uuid":"` + cl.runUUID + `","secret":"` + cl.Conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(cl.Conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(len(cl.GetServers())) + `,"failed":` + strconv.Itoa(cl.CountFailed(cl.GetServers())) + `}`)
+	hosts := len(cl.GetServers())
+	failed := cl.CountFailed(cl.GetServers())
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "SetArbitratorReport: sending hosts=%d failed=%d cluster=%s", hosts, failed, cl.GetName())
+	var jsonStr = []byte(`{"uuid":"` + cl.runUUID + `","secret":"` + cl.Conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(cl.Conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(hosts) + `,"failed":` + strconv.Itoa(failed) + `}`)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		if cl.Conf.LogHeartbeat {
-			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Failed to post http new request to arbitrator %s ", jsonStr)
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Failed to post http new request to arbitrator %s ", jsonStr)
 		}
 		cl.IsFailedArbitrator = true
 		return err
@@ -1346,7 +1349,7 @@ func (cl *Cluster) SetArbitratorReport() error {
 	defer client.CloseIdleConnections()
 	stopConnect := time.Now()
 	// if cl.GetLogLevel() > 2 {
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, " Report abitrator connect took: %s\n", stopConnect.Sub(startConnect))
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, " Report abitrator connect took: %s\n", stopConnect.Sub(startConnect))
 	// }
 	io.ReadAll(resp.Body)
 	defer resp.Body.Close()

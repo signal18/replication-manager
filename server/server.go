@@ -430,6 +430,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
 	flags.IntVar(&conf.LogHeartbeatLevel, "log-level-heartbeat", 1, "Log Heartbeat Level")
 
+	flags.BoolVar(&conf.LogArbitration, "log-arbitration", false, "Log cluster-level arbitration (split brain elections)")
+	flags.IntVar(&conf.LogArbitrationLevel, "log-level-arbitration", 1, "Log arbitration level")
+
 	flags.BoolVar(&conf.LogWriterElection, "log-writer-election", true, "Log writer election")
 	flags.IntVar(&conf.LogWriterElectionLevel, "log-level-writer-election", 1, "Log writer election Level")
 

@@ -195,6 +195,8 @@ type Config struct {
 	LogLevelDatabaseSlowquery                 int                          `mapstructure:"log-level-database-slowquery" toml:"log-level-database-slowquery" json:"logLevelDatabaseSlowquery"`
 	LogLevelDatabaseOptimize                  int                          `mapstructure:"log-level-database-optimize" toml:"log-level-database-optimize" json:"logLevelDatabaseOptimize"`
 	LogLevelDatabaseAudit                     int                          `mapstructure:"log-level-database-audit" toml:"log-level-database-audit" json:"logLevelDatabaseAudit"`
+	LogArbitration                            bool                         `mapstructure:"log-arbitration" toml:"log-arbitration" json:"logArbitration"`
+	LogArbitrationLevel                       int                          `mapstructure:"log-level-arbitration" toml:"log-level-arbitration" json:"logArbitrationLevel"`
 	LogPlugin                                 bool                         `mapstructure:"log-plugin" toml:"log-plugin" json:"logPlugin"`
 	MonitorBinlogEvents                       bool                         `mapstructure:"monitoring-binlog-events" toml:"monitoring-binlog-events" json:"monitoringBinlogEvents"`
 	MonitoringLogAPILogin                     bool                         `scope:"server" mapstructure:"monitoring-log-api-login" toml:"monitoring-log-api-login" json:"monitoringLogApiLogin"`
@@ -1472,7 +1474,8 @@ const (
 	// ConstLogModMaintenance covers planned-operations modules (backup, SST,
 	// task execution, purge, orchestrator provisioning). Routed to maintenance.log
 	// when configured so operational noise does not pollute the HA main log.
-	ConstLogModMaintenance = 31
+	ConstLogModMaintenance  = 31
+	ConstLogModArbitration = 32
 )
 
 /*
@@ -1510,6 +1513,7 @@ const (
 	ConstLogNameDbAuditlog     string = "log-database-auditlog"
 	ConstLogNameDbSqlError     string = "log-database-sqlerrorlog"
 	ConstLogNamePlugin         string = "log-plugin" // generic log-tailer plugin module
+	ConstLogNameArbitration    string = "log-arbitration"
 )
 
 /*
@@ -2945,6 +2949,10 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			if conf.LogPlugin {
 				return conf.LogPluginLevel >= lvl
 			}
+		case module == ConstLogModArbitration:
+			if conf.LogArbitration {
+				return conf.LogArbitrationLevel >= lvl
+			}
 		case module == ConstLogModMaintenance:
 			return true // always eligible; routing is handled by MaintenanceLogrus
 		}
@@ -3136,6 +3144,8 @@ func GetTagsForLog(module int) string {
 		return "plugin"
 	case ConstLogModMaintenance:
 		return "maintenance"
+	case ConstLogModArbitration:
+		return "arbitration"
 	}
 	return ""
 }
@@ -3218,6 +3228,8 @@ func GetIndexFromModuleName(module string) int {
 		return ConstLogModDbAudit
 	case ConstLogNamePlugin:
 		return ConstLogModPlugin
+	case ConstLogNameArbitration:
+		return ConstLogModArbitration
 	}
 	return -1
 }
