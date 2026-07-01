@@ -269,6 +269,23 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      key: 'Log HeartBeat',
+      value: (
+        <LogSlider
+          value={config?.logHeartbeatLevel}
+          confirmTitle={`Confirm change 'log-level-heartbeat' to: `}
+          onChange={(val) =>
+            dispatch(
+              setGlobalSetting({
+                setting: 'log-level-heartbeat',
+                value: val
+              })
+            )
+          }
+        />
+      )
+    },
+    {
       key: 'Enable API Swagger',
       value: (
         <HStack>
