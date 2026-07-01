@@ -5060,6 +5060,9 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "log-stats-level", "log-level-stats":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.LogStatsLevel = val
+	case "log-heartbeat-level", "log-level-heartbeat":
+		val, _ := strconv.Atoi(value)
+		repman.Conf.LogHeartbeatLevel = val
 	case "mail-smtp-addr":
 		repman.Conf.SetMailSmtpAddr(value)
 		repman.Mailer.UpdateAddress(value)
@@ -5179,6 +5182,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Mailer.UpdateTLSConfig(repman.Conf.MailSMTPTLSSkipVerify)
 	case "log-support":
 		repman.Conf.LogSupport = !repman.Conf.LogSupport
+	case "log-heartbeat":
+		repman.Conf.LogHeartbeat = !repman.Conf.LogHeartbeat
 	case "monitoring-log-api-login":
 		repman.Conf.MonitoringLogAPILogin = !repman.Conf.MonitoringLogAPILogin
 	case "cloud18-disable-peers":
