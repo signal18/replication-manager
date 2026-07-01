@@ -271,6 +271,16 @@ function GlobalSettings({ config }) {
     {
       key: 'Log HeartBeat',
       value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch global settings for Log HeartBeat?'}
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'log-heartbeat', setRefresh }))}
+          isChecked={config?.logHeartbeat}
+        />
+      )
+    },
+    {
+      key: 'Log HeartBeat Level',
+      value: (
         <LogSlider
           value={config?.logHeartbeatLevel}
           confirmTitle={`Confirm change 'log-level-heartbeat' to: `}

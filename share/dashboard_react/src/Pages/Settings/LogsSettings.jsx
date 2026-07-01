@@ -171,7 +171,18 @@ function LogsSettings({ selectedCluster, user }) {
       value: [
         {
           key: 'Log Arbitration',
-          help: h(lh('Log Arbitration', 'log-level-arbitration'), 'Log Arbitration'),
+          value: (
+            <RMSwitch
+              confirmTitle={'Confirm switch settings for log-arbitration?'}
+              onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'log-arbitration' }))}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              isChecked={selectedCluster?.config?.logArbitration}
+            />
+          )
+        },
+        {
+          key: 'Log Arbitration Level',
+          help: h(lh('Log Arbitration Level', 'log-level-arbitration'), 'Log Arbitration Level'),
           value: sl('log-level-arbitration', 'logArbitrationLevel')
         },
         {
