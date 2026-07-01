@@ -5070,6 +5070,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "log-heartbeat-level", "log-level-heartbeat":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.LogHeartbeatLevel = val
+		repman.Conf.ImmuableFlagMap["log-level-heartbeat"] = val
 	case "mail-smtp-addr":
 		repman.Conf.SetMailSmtpAddr(value)
 		repman.Mailer.UpdateAddress(value)
@@ -5191,6 +5192,7 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.LogSupport = !repman.Conf.LogSupport
 	case "log-heartbeat":
 		repman.Conf.LogHeartbeat = !repman.Conf.LogHeartbeat
+		repman.Conf.ImmuableFlagMap["log-heartbeat"] = repman.Conf.LogHeartbeat
 	case "monitoring-log-api-login":
 		repman.Conf.MonitoringLogAPILogin = !repman.Conf.MonitoringLogAPILogin
 	case "cloud18-disable-peers":
