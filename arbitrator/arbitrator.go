@@ -453,12 +453,13 @@ type clusterStats struct {
 }
 
 type instanceStats struct {
-	UID    int    `json:"uid"`
-	Status string `json:"status"`
-	Date   string `json:"last_heartbeat"`
-	Hosts  int    `json:"hosts"`
-	Failed int    `json:"failed"`
-	Master string `json:"master"`
+	UID             int    `json:"uid"`
+	Status          string `json:"status"`
+	Date            string `json:"last_heartbeat"`
+	ArbitrationDate string `json:"arbitration_date"`
+	Hosts           int    `json:"hosts"`
+	Failed          int    `json:"failed"`
+	Master          string `json:"master"`
 }
 
 func handlerStats(w http.ResponseWriter, r *http.Request) {
@@ -469,9 +470,9 @@ func handlerStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	statsQuery := "SELECT cluster, uid, status, date, hosts, failed, master FROM heartbeat ORDER BY cluster, uid"
+	statsQuery := "SELECT cluster, uid, status, date, hosts, failed, master, arbitration_date FROM heartbeat ORDER BY cluster, uid"
 	if db.DriverName() == "mysql" {
-		statsQuery = "SELECT cluster, uid, status, date, hosts, failed, master FROM replication_manager_schema.heartbeat ORDER BY cluster, uid"
+		statsQuery = "SELECT cluster, uid, status, date, hosts, failed, master, arbitration_date FROM replication_manager_schema.heartbeat ORDER BY cluster, uid"
 	}
 	rows, err := db.Queryx(statsQuery)
 	if err != nil {
@@ -484,9 +485,9 @@ func handlerStats(w http.ResponseWriter, r *http.Request) {
 	clusters := make(map[string]*clusterStats)
 	var order []string
 	for rows.Next() {
-		var cluster, status, date, master string
+		var cluster, status, date, master, arbDate string
 		var uid, hosts, failed int
-		if err := rows.Scan(&cluster, &uid, &status, &date, &hosts, &failed, &master); err != nil {
+		if err := rows.Scan(&cluster, &uid, &status, &date, &hosts, &failed, &master, &arbDate); err != nil {
 			continue
 		}
 		statusLabel := "Standby"
@@ -498,12 +499,13 @@ func handlerStats(w http.ResponseWriter, r *http.Request) {
 			order = append(order, cluster)
 		}
 		clusters[cluster].Instances = append(clusters[cluster].Instances, instanceStats{
-			UID:    uid,
-			Status: statusLabel,
-			Date:   date,
-			Hosts:  hosts,
-			Failed: failed,
-			Master: master,
+			UID:             uid,
+			Status:          statusLabel,
+			Date:            date,
+			ArbitrationDate: arbDate,
+			Hosts:           hosts,
+			Failed:          failed,
+			Master:          master,
 		})
 	}
 
@@ -560,6 +562,7 @@ tr:nth-child(even){background:#16213e}
 .failed{color:#e94560;font-weight:bold}
 .ok{color:#00d4aa}
 .err{color:#e94560}
+.winner{background:#0a3a2a;border-left:3px solid #00d4aa}
 h2{color:#e0e0e0;margin-top:30px}
 .footer{color:#666;font-size:12px;margin-top:40px}
 .info{margin-bottom:20px}
@@ -598,26 +601,55 @@ h2{color:#e0e0e0;margin-top:30px}
 			masterLabel = "No"
 		}
 		winnerLabel := "None"
+		winnerUID := -1
+		staleThreshold := time.Now().UTC().Add(-10 * time.Second)
 		for _, inst := range cs.Instances {
-			if inst.Status == "Active" {
-				winnerLabel = fmt.Sprintf("UID %d", inst.UID)
-				break
+			t, err := time.Parse("2006-01-02 15:04:05", inst.Date)
+			if err != nil || t.Before(staleThreshold) {
+				continue
 			}
+			if inst.Status == "Active" {
+				if winnerUID == -1 {
+					winnerUID = inst.UID
+				}
+			}
+		}
+		if winnerUID == -1 {
+			// No elected non-stale instance: apply the algorithm —
+			// winner would be the non-stale instance with fewest failures
+			minFailed := -1
+			for _, inst := range cs.Instances {
+				t, err := time.Parse("2006-01-02 15:04:05", inst.Date)
+				if err != nil || t.Before(staleThreshold) {
+					continue
+				}
+				if minFailed == -1 || inst.Failed < minFailed {
+					minFailed = inst.Failed
+					winnerUID = inst.UID
+				}
+			}
+		}
+		if winnerUID >= 0 {
+			winnerLabel = fmt.Sprintf("UID %d", winnerUID)
 		}
 		fmt.Fprintf(w, `<h2>%s <span style="font-size:14px;margin-left:10px">Same Master: <span class="%s">%s</span> · Winner: <span class="active">%s</span></span></h2>
 <table>
 <tr><th>Instance</th><th>Status</th><th>Last Heartbeat</th><th>Hosts</th><th>Failed</th></tr>`, cs.Cluster, masterClass, masterLabel, winnerLabel)
 		for _, inst := range cs.Instances {
 			statusClass := "standby"
-			if inst.Status == "Active" {
+			statusDisplay := "Looser"
+			rowClass := ""
+			if inst.UID == winnerUID {
 				statusClass = "active"
+				statusDisplay = "Winner"
+				rowClass = ` class="winner"`
 			}
 			failedClass := ""
 			if inst.Failed > 0 {
 				failedClass = ` class="failed"`
 			}
-			fmt.Fprintf(w, `<tr><td>%d</td><td class="%s">%s</td><td>%s</td><td>%d</td><td%s>%d</td></tr>`,
-				inst.UID, statusClass, inst.Status, inst.Date, inst.Hosts, failedClass, inst.Failed)
+			fmt.Fprintf(w, `<tr%s><td>%d</td><td class="%s">%s</td><td>%s</td><td>%d</td><td%s>%d</td></tr>`,
+				rowClass, inst.UID, statusClass, statusDisplay, inst.Date, inst.Hosts, failedClass, inst.Failed)
 		}
 		fmt.Fprint(w, "</table>")
 	}
