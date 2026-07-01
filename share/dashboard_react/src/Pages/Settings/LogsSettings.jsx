@@ -1,5 +1,5 @@
 import { Box, Flex } from '@chakra-ui/react'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { useState } from 'react'
 import PropTypes from 'prop-types'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
@@ -9,6 +9,7 @@ import LogSlider from '../../components/Sliders/LogSlider'
 import RMSlider from '../../components/Sliders/RMSlider'
 import RMSwitch from '../../components/RMSwitch'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
+import { setGlobalSetting } from '../../redux/globalClustersSlice'
 import styles from './styles.module.scss'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
@@ -17,6 +18,7 @@ import remarkGfm from 'remark-gfm'
 
 function LogsSettings({ selectedCluster, user }) {
   const dispatch = useDispatch()
+  const globalConfig = useSelector((state) => state?.globalClusters?.monitor?.config)
   const [action, setAction] = useState({ title: '', body: <></> })
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
 
@@ -52,6 +54,21 @@ function LogsSettings({ selectedCluster, user }) {
   )
 
   const lh = (name, configkey) => `**${name}**\n\nLog verbosity level for this module.\n\n- **0** — disabled\n- **1** — errors only\n- **2** — errors + warnings\n- **3** — informational\n- **4** — debug\n- **5** — trace (very verbose)\n\nConfig: \`${configkey}\``
+
+  const gsl = (setting, configKey) => (
+    <LogSlider
+      value={globalConfig?.[configKey]}
+      confirmTitle={`Confirm change '${setting}' to: `}
+      onChange={(val) =>
+        dispatch(
+          setGlobalSetting({
+            setting,
+            value: val
+          })
+        )
+      }
+    />
+  )
 
   const hVerbose = `**Verbose Mode**\n\nGlobal verbose flag. When enabled all modules log at their maximum configured level.\nDisable on production to reduce log volume.\n\nConfig: \`verbose\``
   const hSyslog = `**Log to SysLog**\n\nForwards all log output to the system syslog daemon in addition to the local log file.\n\nConfig: \`log-syslog\``
@@ -90,7 +107,12 @@ function LogsSettings({ selectedCluster, user }) {
             />
           )
         },
-        { key: 'Log Level', help: h(hLogLevel, 'Log Level'), value: sl('log-level', 'logLevel') }
+        { key: 'Log Level', help: h(hLogLevel, 'Log Level'), value: sl('log-level', 'logLevel') },
+        {
+          key: 'Log HeartBeat (Server)',
+          help: h(lh('Log HeartBeat (Server)', 'log-level-heartbeat'), 'Log HeartBeat (Server)'),
+          value: gsl('log-level-heartbeat', 'logHeartbeatLevel')
+        }
       ]
     },
     {
@@ -169,11 +191,6 @@ function LogsSettings({ selectedCluster, user }) {
     {
       key: 'Core Monitoring',
       value: [
-        {
-          key: 'Log HeartBeat (Server)',
-          help: h(lh('Log HeartBeat (Server)', 'log-level-heartbeat'), 'Log HeartBeat (Server)'),
-          value: sl('log-level-heartbeat', 'logHeartbeatLevel')
-        },
         {
           key: 'Log Arbitration',
           help: h(lh('Log Arbitration', 'log-level-arbitration'), 'Log Arbitration'),

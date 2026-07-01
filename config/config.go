@@ -160,8 +160,8 @@ type Config struct {
 	LogSST                                    bool                         `mapstructure:"log-sst" toml:"log-sst" json:"logSst"`                  // internal replication-manager sst
 	LogSSTLevel                               int                          `mapstructure:"log-level-sst" toml:"log-level-sst" json:"logSstLevel"` // internal replication-manager sst
 	SSTSendBuffer                             int                          `mapstructure:"sst-send-buffer" toml:"sst-send-buffer" json:"sstSendBuffer"`
-	LogHeartbeat                              bool                         `mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
-	LogHeartbeatLevel                         int                          `mapstructure:"log-level-heartbeat" toml:"log-level-heartbeat" json:"logHeartbeatLevel"`
+	LogHeartbeat                              bool                         `scope:"server" mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
+	LogHeartbeatLevel                         int                          `scope:"server" mapstructure:"log-level-heartbeat" toml:"log-level-heartbeat" json:"logHeartbeatLevel"`
 	LogSQLInMonitoring                        bool                         `mapstructure:"log-sql-in-monitoring"  toml:"log-sql-in-monitoring" json:"logSqlInMonitoring"`
 	LogSQLLevel                               int                          `mapstructure:"log-level-sql"  toml:"log-level-sql" json:"logSqlLevel"`
 	LogAppLevel                               int                          `mapstructure:"log-level-app"  toml:"log-level-app" json:"logAppLevel"`
