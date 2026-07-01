@@ -458,6 +458,7 @@ type instanceStats struct {
 	Date   string `json:"last_heartbeat"`
 	Hosts  int    `json:"hosts"`
 	Failed int    `json:"failed"`
+	Master string `json:"master"`
 }
 
 func handlerStats(w http.ResponseWriter, r *http.Request) {
@@ -468,9 +469,9 @@ func handlerStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	statsQuery := "SELECT cluster, uid, status, date, hosts, failed FROM heartbeat ORDER BY cluster, uid"
+	statsQuery := "SELECT cluster, uid, status, date, hosts, failed, master FROM heartbeat ORDER BY cluster, uid"
 	if db.DriverName() == "mysql" {
-		statsQuery = "SELECT cluster, uid, status, date, hosts, failed FROM replication_manager_schema.heartbeat ORDER BY cluster, uid"
+		statsQuery = "SELECT cluster, uid, status, date, hosts, failed, master FROM replication_manager_schema.heartbeat ORDER BY cluster, uid"
 	}
 	rows, err := db.Queryx(statsQuery)
 	if err != nil {
@@ -483,9 +484,9 @@ func handlerStats(w http.ResponseWriter, r *http.Request) {
 	clusters := make(map[string]*clusterStats)
 	var order []string
 	for rows.Next() {
-		var cluster, status, date string
+		var cluster, status, date, master string
 		var uid, hosts, failed int
-		if err := rows.Scan(&cluster, &uid, &status, &date, &hosts, &failed); err != nil {
+		if err := rows.Scan(&cluster, &uid, &status, &date, &hosts, &failed, &master); err != nil {
 			continue
 		}
 		statusLabel := "Standby"
@@ -502,6 +503,7 @@ func handlerStats(w http.ResponseWriter, r *http.Request) {
 			Date:   date,
 			Hosts:  hosts,
 			Failed: failed,
+			Master: master,
 		})
 	}
 
@@ -580,9 +582,24 @@ h2{color:#e0e0e0;margin-top:30px}
 
 	for _, name := range order {
 		cs := clusters[name]
-		fmt.Fprintf(w, `<h2>%s</h2>
+		sameMaster := true
+		if len(cs.Instances) > 1 {
+			for i := 1; i < len(cs.Instances); i++ {
+				if cs.Instances[i].Master != cs.Instances[0].Master {
+					sameMaster = false
+					break
+				}
+			}
+		}
+		masterClass := "ok"
+		masterLabel := "Yes"
+		if !sameMaster {
+			masterClass = "err"
+			masterLabel = "No"
+		}
+		fmt.Fprintf(w, `<h2>%s <span style="font-size:14px;margin-left:10px">Same Master: <span class="%s">%s</span></span></h2>
 <table>
-<tr><th>Instance</th><th>Status</th><th>Last Heartbeat</th><th>Hosts</th><th>Failed</th></tr>`, cs.Cluster)
+<tr><th>Instance</th><th>Status</th><th>Last Heartbeat</th><th>Hosts</th><th>Failed</th></tr>`, cs.Cluster, masterClass, masterLabel)
 		for _, inst := range cs.Instances {
 			statusClass := "standby"
 			if inst.Status == "Active" {
