@@ -2856,6 +2856,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.BackupResticRepoAppendCluster = !mycluster.Conf.BackupResticRepoAppendCluster
 	case "log-plugin":
 		mycluster.Conf.LogPlugin = !mycluster.Conf.LogPlugin
+	case "log-arbitration":
+		mycluster.Conf.LogArbitration = !mycluster.Conf.LogArbitration
+	case "onpremise-ssh":
+		mycluster.Conf.OnPremiseSSH = !mycluster.Conf.OnPremiseSSH
 	case "monitoring-binlog-events":
 		mycluster.SwitchMonitorBinlogEvents()
 	default:
@@ -3673,6 +3677,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-heartbeat-level", "log-level-heartbeat":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogHeartbeatLevel(val)
+	case "log-arbitration-level", "log-level-arbitration":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.LogArbitrationLevel = val
 	case "log-sql-level", "log-level-sql":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogSQLLevel(val)
