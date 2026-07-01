@@ -60,21 +60,34 @@ Each cluster runs its own arbitrator handler per-cluster in the monitor loop. **
 
 1. **Eligibility check**: `IsEligibleForArbitration()` — requires `Cloud18GitUser != ""` AND a paid plan (support/partner/support-services). If not eligible, sets `IsSplitBrainBck = IsSplitBrain` (consuming the transition) and returns.
 
-2. **Report to arbitrator**: `SetArbitratorReport()` (`cluster/cluster_set.go`):
+2. **Heartbeat**: `SetArbitratorReport()` (`cluster/cluster_set.go`):
    - Computes `IsLostMajority` via `LostMajority()` — checks if more than half of database servers in the cluster are failed
    - HTTP POST to arbitrator's `/heartbeat` endpoint with: `uuid`, `secret`, `cluster`, `master` URL, `id` (ArbitrationSasUniqueId), `status` (cluster Active/Standby), `hosts` (server count), `failed` (failed server count)
    - On failure: sets `IsFailedArbitrator = true`
    - On success: sets `IsFailedArbitrator = false`
 
-3. **Election** (only on split brain transition `IsSplitBrainBck != IsSplitBrain`):
-   - Waits 5 seconds to let arbitrator collect heartbeats from both sides
-   - Calls `ArbitratorElection()` with 3 retries
-   - HTTP POST to arbitrator's `/arbitrator` endpoint
+3. **Election**: `arbitratorElection()` — runs **every tick** during split-brain (not just on transition):
+   - HTTP POST to arbitrator's `/arbitrator` endpoint with: `uuid`, `secret`, `cluster`, `master`, `id`, `status`, `hosts`, `failed`
    - On failure: sets `IsFailedArbitrator = true`
    - On "winner": `SetActiveStatus("A")` — cluster becomes Active
    - On "loser": `SetActiveStatus("S")` — cluster becomes Standby, calls `LostArbitration()` if master differs from winner's master (reattaches failed master to winner's master via GTID rejoin)
 
 4. Updates `IsSplitBrainBck = IsSplitBrain`
+
+**Important**: Heartbeat runs BEFORE election every tick. This matters because `WriteHeartbeat` (via INSERT OR REPLACE without status column) resets `status='E'` to `status='U'`. The election then re-evaluates and writes `status='E'` for the winner. If both instances report the same master, `WriteHeartbeat` preserves the existing election status. If masters diverge (`count(distinct master) > 1`), it resets all elections to force a new one.
+
+#### Why election runs every tick (not one-shot)
+
+During split-brain, the election must run continuously because:
+- **Master comparison**: Each tick re-checks which master each side sees — critical for detecting split-brain resolution
+- **Status recovery**: If one repman instance is stopped, the other needs to re-elect on the next tick to take over as Active
+- **Heartbeat destroys election status**: `WriteHeartbeat` uses INSERT OR REPLACE which resets `status='E'` back to default `'U'`, so the election must re-assert the winner every tick
+
+#### Election transfer on peer stop
+
+When one repman instance stops (e.g., for maintenance), the remaining instance's `ArbitratorHandler` continues running every tick during split-brain. The stopped instance's heartbeat row goes stale (date > 10 seconds ago). The `RequestArbitration` algorithm filters stale rows, so the remaining instance wins the election and becomes Active on all its clusters.
+
+**Critical path**: `CheckFailed()` in the monitoring loop gates on `!cluster.IsActive()` — it returns early for Standby clusters. This means `isActiveArbitration()` (called from `CheckFailed`) only runs for already-Active clusters. The `ArbitratorHandler` is the path that handles election for Standby clusters during split-brain — it runs unconditionally when `IsSplitBrain == true`, regardless of Active/Standby state.
 
 #### State alerts in TopologyDiscover (`cluster_topo.go`):
 
@@ -139,19 +152,64 @@ When a cluster loses the election AND its current master differs from the winner
 
 This handles the case where the master is on the losing side of the partition — it gets demoted and rejoined to the winner's master.
 
-## Known Issues
+## Known Issues (Resolved)
+
+### ~~Hosts=0 in Arbitrator Stats~~ (Fixed)
+
+`isActiveArbitration()` in `CheckFailed` was posting to `/arbitrator` without `hosts` and `failed` fields, causing them to default to 0 in the arbitrator DB. Fixed by adding `hosts` and `failed` to the JSON payload.
 
 ### ~~Hosts=0 Data Race~~ (Fixed)
 
 Previously `TopologyDiscover()` and `Heartbeat()` ran as parallel goroutines, causing `SetArbitratorReport` to read `Servers` while `newServerList()` was recreating it. Fixed by restructuring the monitor loop into phases: `TopologyDiscover` runs alone in Phase 1, `ArbitratorHandler` runs in Phase 2 after topology is stable.
 
-### Election Is One-Shot Per Transition
+### ~~Status Flapping Active/Standby~~ (Fixed)
 
-`ArbitratorElection()` only fires when `IsSplitBrainBck != IsSplitBrain`. After the first tick, `IsSplitBrainBck` is updated to match, so subsequent ticks skip the election. If all 3 retry attempts fail, the election is not retried until the next split brain transition (must go false→true again). If `IsEligibleForArbitration()` returns false on the transition tick, the transition is consumed and the election never fires.
+Two writers to the same arbitrator row caused flapping: `WriteHeartbeat` (POST `/heartbeat`) resets `status` to default `'U'` via INSERT OR REPLACE (omits status column), then `RequestArbitration` (POST `/arbitrator`) sets `status='E'` for the winner. When these ran in different order or from different code paths, the status flapped. Fixed by ensuring `ArbitratorHandler` always runs heartbeat THEN election every tick, so election writes last.
+
+### ~~Election One-Shot Per Transition~~ (Fixed)
+
+Previously `ArbitratorElection()` only fired on the split-brain transition (`IsSplitBrainBck != IsSplitBrain`). After the first tick, `IsSplitBrainBck` was updated to match, so subsequent ticks skipped the election. This broke election transfer when one repman was stopped. Fixed: election now runs every tick during split-brain via `arbitratorElection()`.
+
+## Known Issues (Current)
+
+### INSERT OR REPLACE Destroys Election Status
+
+`WriteHeartbeat` uses INSERT OR REPLACE without the `status` column, which deletes the old row and inserts a new one with `status DEFAULT 'U'`. This destroys the `status='E'` set by `RequestArbitration`. Both instances can end up with `status='E'` (stale rows) — the arbitrator stats handle this by filtering stale heartbeats (date > 10 seconds ago) to determine the real winner.
+
+### Two Code Paths Call /arbitrator
+
+Both `ArbitratorHandler` (via `arbitratorElection()`, runs during split-brain) and `CheckFailed` (via `isActiveArbitration()`, runs for Active clusters every tick) POST to the arbitrator's `/arbitrator` endpoint. This is by design: `ArbitratorHandler` handles elections during split-brain for both Active and Standby clusters, while `isActiveArbitration` re-validates the Active status every tick after split-brain resolves.
 
 ### Server-Level Status Not Derived from Quorum
 
 `repman.Status` is set to Standby at startup (when arbitration enabled) and is only changed by the manual toggle API. It does not reflect the actual quorum state. The GUI Navbar shows split brain state (`"In Majority"` / `"Split Brain"`) based on `repman.SplitBrain`, but this only checks peer reachability — not arbitrator reachability. A full lost-majority state (peer AND arbitrator unreachable) is not surfaced at the server level.
+
+### Split-Brain Badge Scope
+
+The split-brain badge in the navbar only shows on top-level views (cluster list, global settings). When inside a cluster view, the Active/Standby badge on the cluster card is the relevant indicator — the split-brain badge is hidden to avoid stale global state confusing the per-cluster view.
+
+## Arbitrator Stats Page
+
+The `/stats` endpoint displays per-cluster election status with auto-refresh (10s).
+
+### Winner Determination
+
+The stats page mirrors the `RequestArbitration` algorithm to determine the winner:
+
+1. **Filter stale instances**: heartbeat date older than 10 seconds is excluded (same threshold as `RequestArbitration`)
+2. **Check elected status**: among non-stale instances, if one has `status='E'`, it is the winner
+3. **Fewest failures fallback**: if no instance is elected, the non-stale instance with the fewest `failed` count would win (same as the `failed < ?` check in `RequestArbitration`)
+
+### Display
+
+- **Per-cluster header**: cluster name, "Same Master: Yes/No" (compares master URLs across instances — does NOT reveal hostnames in the public HTML), "Winner: UID X"
+- **Per-instance rows**: UID, Winner/Looser status, last heartbeat timestamp, hosts count, failed count
+- **Winner row**: highlighted with green accent background
+- **JSON output** (`/stats?format=json`): includes master URLs and arbitration_date for programmatic use
+
+### Security
+
+The `/stats` endpoint is public (no auth). Master hostnames are intentionally excluded from the HTML view to avoid exposing internal infrastructure. They are included in the JSON output which can be access-controlled at the network level.
 
 ## Multi-Cluster Split Brain Scenarios
 
