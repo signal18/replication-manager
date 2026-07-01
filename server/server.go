@@ -2735,6 +2735,7 @@ func (repman *ReplicationManager) Run() error {
 					newSecret := repman.Conf.Secrets["git-acces-token"]
 					newSecret.OldValue = newSecret.Value
 					newSecret.Value = new_tok
+					repman.Conf.Secrets["git-acces-token"] = newSecret
 					for _, cluster := range repman.Clusters {
 						cluster.Conf.Secrets["git-acces-token"] = newSecret
 					}
