@@ -193,9 +193,11 @@ func (cluster *Cluster) SwitchCompressBackups() {
 func (cluster *Cluster) SwitchInteractive() {
 	if cluster.Conf.Interactive {
 		cluster.Conf.Interactive = false
+		cluster.Conf.FailMode = "automatic"
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover monitor switched to automatic mode")
 	} else {
 		cluster.Conf.Interactive = true
+		cluster.Conf.FailMode = "manual"
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover monitor switched to manual mode")
 	}
 }

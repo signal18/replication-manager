@@ -1384,6 +1384,22 @@ func (repman *ReplicationManager) ReloadStandbyConfigsFromDisk() {
 			continue
 		}
 
+		overwriteFile := filepath.Join(repman.Conf.WorkingDir, name, "overwrite.toml")
+		if _, err := os.Stat(overwriteFile); err == nil {
+			ov := viper.New()
+			ov.SetConfigType("toml")
+			ov.SetConfigFile(overwriteFile)
+			if err := ov.ReadInConfig(); err != nil {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
+					"Standby: cannot read overwrite config for %s: %s", name, err)
+			} else if ovSub := ov.Sub("overwrite-" + name); ovSub != nil {
+				if err := ovSub.Unmarshal(&newConf); err != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
+						"Standby: cannot unmarshal overwrite config for %s: %s", name, err)
+				}
+			}
+		}
+
 		cl.ReloadConfig(newConf)
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
 			"Standby: reloaded config for cluster %s from active node", name)

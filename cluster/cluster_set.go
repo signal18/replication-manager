@@ -107,8 +107,10 @@ func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
 func (cluster *Cluster) SetInteractive(check bool) {
 	cluster.Conf.Interactive = check
 	if cluster.Conf.Interactive {
+		cluster.Conf.FailMode = "manual"
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover monitor switched to interactive mode")
 	} else {
+		cluster.Conf.FailMode = "automatic"
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover monitor switched to automatic mode")
 	}
 
