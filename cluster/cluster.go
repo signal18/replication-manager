@@ -912,12 +912,9 @@ func (cluster *Cluster) Run() {
 						}
 						heartbeats := cluster.StateMachine.GetHeartbeats()
 
-						// Fire-and-forget: no synchronization needed
+						// Fire-and-forget: long-running, no synchronization needed
 						if cluster.Conf.MdbsProxyOn {
 							go cluster.MonitorSchema()
-						}
-						if cluster.SlavesOldestMasterFile.Suffix == 0 {
-							go cluster.CheckSlavesReplicationsPurge()
 						}
 						if heartbeats%30 == 0 {
 							go cluster.initOrchetratorNodes()
@@ -964,6 +961,9 @@ func (cluster *Cluster) Run() {
 						goRun(cluster.CheckDummyConfigSendCookies)
 						goRun(cluster.CheckRestartContainerCookies)
 						goRun(cluster.PrintDelayStat)
+						if cluster.SlavesOldestMasterFile.Suffix == 0 {
+							goRun(cluster.CheckSlavesReplicationsPurge)
+						}
 						if heartbeats%10 == 0 {
 							goRun(cluster.CheckJobsVersion)
 						}
