@@ -53,17 +53,13 @@ func (cluster *Cluster) ArbitratorHandler() {
 				return
 			}
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "ArbitratorHandler: IsSplitBrainBck=%t IsSplitBrain=%t hosts=%d", cluster.IsSplitBrainBck, cluster.IsSplitBrain, len(cluster.GetServers()))
-			if cluster.IsSplitBrainBck != cluster.IsSplitBrain {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "ArbitratorHandler: split brain transition, sleeping 5s before election")
-				time.Sleep(5 * time.Second)
-				for i := 1; i <= 3; i++ {
-					err := cluster.arbitratorElection()
-					if err != nil {
-						cluster.SetState("WARN0082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0082"], err), ErrFrom: "ARB"})
-					} else {
-						break
-					}
-				}
+			err := cluster.SetArbitratorReport()
+			if err != nil {
+				cluster.SetState("WARN0081", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0081"], err), ErrFrom: "ARB"})
+			}
+			err = cluster.arbitratorElection()
+			if err != nil {
+				cluster.SetState("WARN0082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0082"], err), ErrFrom: "ARB"})
 			}
 		}
 		cluster.IsSplitBrainBck = cluster.IsSplitBrain
