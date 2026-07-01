@@ -7,7 +7,9 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"runtime"
@@ -249,4 +251,63 @@ func (repman *ReplicationManager) handlerMuxGlobalMetrics(w http.ResponseWriter,
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(out)
+}
+
+// handlerMuxForgetArbitration resets all arbitration data by calling the
+// arbitrator's /forget/ endpoint with the configured secret.
+//
+// @Summary Reset arbitration data
+// @Description Deletes all heartbeat rows from the arbitrator for the configured secret.
+// @Tags Global
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Success 200 {string} string "OK"
+// @Failure 401 {string} string "Unauthorized"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /api/actions/forget-arbitration [post]
+func (repman *ReplicationManager) handlerMuxForgetArbitration(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if !repman.UserHasGlobalGrant(r, config.GrantGlobalAdminShow) {
+		http.Error(w, "Forbidden: requires "+config.GrantGlobalAdminShow+" grant", http.StatusForbidden)
+		return
+	}
+
+	secret := repman.Conf.ArbitrationSasSecret
+	if secret == "" {
+		http.Error(w, "arbitration-sas-secret is not configured", http.StatusBadRequest)
+		return
+	}
+
+	arbHost := repman.Conf.ArbitrationSasHosts
+	if arbHost == "" {
+		http.Error(w, "arbitration-sas-hosts is not configured", http.StatusBadRequest)
+		return
+	}
+
+	url := arbHost + "/forget/"
+	if len(url) > 0 && url[0] != 'h' {
+		url = "http://" + url
+	}
+
+	jsonStr := []byte(`{"secret":"` + secret + `"}`)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+	if err != nil {
+		http.Error(w, "Failed to create request: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "Failed to reach arbitrator: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	w.Write(body)
 }
