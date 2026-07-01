@@ -409,7 +409,9 @@ func (cluster *Cluster) isActiveArbitration() bool {
 		return false
 	}
 	if r.Arbitration == "winner" {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitrator says: winner")
+		if cluster.StateMachine.IsInState("ERR00022") {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitrator says: winner")
+		}
 		return true
 	}
 	cluster.SetState("ERR00022", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00022"], ErrFrom: "CHECK"})
