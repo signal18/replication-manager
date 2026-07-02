@@ -80,6 +80,7 @@ func (repman *ReplicationManager) LogModuleWithFieldsPrintf(forcingLog bool, mod
 				Text:      fmt.Sprintf(httpformat, args...),
 			}
 			line = repman.Logs.Add(msg)
+			repman.GlobalLogs.Add(msg)
 		}
 
 		if repman.Conf.Daemon {

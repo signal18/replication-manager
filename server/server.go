@@ -109,6 +109,7 @@ type ReplicationManager struct {
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
 	Logs                        s18log.HttpLog              `json:"logs"`
+	GlobalLogs                  s18log.HttpLog              `json:"globalLogs"`
 	MonitorType                 map[string]string           `json:"monitorType"`
 	ServicePlans                []config.ServicePlan        `json:"servicePlans"`
 	ServiceOrchestrators        []config.ConfigVariableType `json:"serviceOrchestrators"`
@@ -2497,6 +2498,7 @@ func (repman *ReplicationManager) Run() error {
 	loglen := repman.termlength - 9 - (len(strings.Split(repman.Conf.Hosts, ",")) * 3)
 	repman.tlog = s18log.NewTermLog(loglen)
 	repman.Logs = s18log.NewHttpLog(200)
+	repman.GlobalLogs = s18log.NewHttpLog(200)
 	repman.Terms = make([]byte, 0)
 	repman.TermsDT = time.Now()
 	repman.InitServicePlans()

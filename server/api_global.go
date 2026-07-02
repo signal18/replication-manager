@@ -59,16 +59,16 @@ func (repman *ReplicationManager) handlerMuxGlobalLogs(w http.ResponseWriter, r 
 		return
 	}
 
-	repman.Logs.L.Lock()
-	raw := make([]s18log.HttpMessage, len(repman.Logs.Buffer))
-	copy(raw, repman.Logs.Buffer)
-	logLen := repman.Logs.Len
-	logLine := repman.Logs.Line
-	repman.Logs.L.Unlock()
+	repman.GlobalLogs.L.Lock()
+	raw := make([]s18log.HttpMessage, len(repman.GlobalLogs.Buffer))
+	copy(raw, repman.GlobalLogs.Buffer)
+	logLen := repman.GlobalLogs.Len
+	logLine := repman.GlobalLogs.Line
+	repman.GlobalLogs.L.Unlock()
 
 	buf := make([]s18log.HttpMessage, 0, len(raw))
 	for _, msg := range raw {
-		if msg.Timestamp != "" && msg.Group == s18log.GroupNone {
+		if msg.Timestamp != "" {
 			buf = append(buf, msg)
 		}
 	}
