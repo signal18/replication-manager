@@ -16,6 +16,7 @@ var ClusterError = map[string]string{
 	"APPERR003": "Error connecting to application %s via TCP. Err: %s",
 	"APPERR004": "Unsupported protocol %s for application %s",
 	"APPERR005": "Gateway route conflict for application %s: %s — gateway routes blocked, fix route config to resolve",
+	"APPERR006": "Failed to create provision cookie for application %s: %s",
 	"CREDIT01":  "Credit cap (%d) exceeded by planned allocation (%d). Over-subscription is allowed; cap auto-rebases to actual usage on successful provision.",
 	"CREDIT02":  "Application %s has negative planned credit (%d). Please check the configuration.",
 	"CREDIT03":  "Application %s has negative used credit (%d). Please check the configuration.",

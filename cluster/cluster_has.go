@@ -135,7 +135,9 @@ func (cluster *Cluster) IsAppProvisioned() bool {
 				// App is running without a provision cookie — recover state from a restart.
 				// Skip entirely when the unprovision cookie is present: the app was explicitly
 				// unprovisioned and may just be in a brief shutdown transition.
-				app.SetProvisionCookie()
+				if err := app.SetProvisionCookie(); err != nil {
+					cluster.SetState("APPERR006", state.State{ErrType: "WARNING", ErrDesc: clusterError["APPERR006"], ErrFrom: "TOPO", ServerUrl: app.GetURL()})
+				}
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can App Connect creating cookie state:%s", app.GetState())
 				if app.AppConfig.ProvAppCreditUsed == 0 && app.AppConfig.ProvAppCreditPlanned > 0 {
 					app.AppConfig.ProvAppCreditUsed = app.AppConfig.ProvAppCreditPlanned
