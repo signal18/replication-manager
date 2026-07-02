@@ -25,7 +25,6 @@ import (
 	"os"
 	"runtime/debug"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -50,6 +49,7 @@ import (
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/meethelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/tty"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
@@ -1491,7 +1491,7 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 			}
 		}
 
-		sort.Sort(cluster.ClusterSorter(clusters))
+		misc.SortByKey(clusters, func(c *cluster.Cluster) string { return c.Name })
 
 		var cl = []byte("[")
 

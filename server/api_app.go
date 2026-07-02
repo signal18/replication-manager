@@ -26,6 +26,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/githelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/tidwall/sjson"
 )
 
@@ -1309,7 +1310,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				}
 
 				condValue = body.Value
-				sort.Sort(condValue)
+				misc.SortByKey(condValue, func(av config.AgentVariable) string { return av.Agent })
 			} else {
 				type FieldValue struct {
 					Value string `json:"value"`

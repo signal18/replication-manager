@@ -363,38 +363,6 @@ type SlavesOldestMasterFile struct {
 	sync.Mutex
 }
 
-type ClusterSorter []*Cluster
-
-func (a ClusterSorter) Len() int           { return len(a) }
-func (a ClusterSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a ClusterSorter) Less(i, j int) bool { return a[i].Name < a[j].Name }
-
-type QueryRuleSorter []config.QueryRule
-
-func (a QueryRuleSorter) Len() int           { return len(a) }
-func (a QueryRuleSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a QueryRuleSorter) Less(i, j int) bool { return a[i].Id < a[j].Id }
-
-type FullProcessListSorterByQueryTime []dbhelper.Processlist
-
-func (a FullProcessListSorterByQueryTime) Len() int      { return len(a) }
-func (a FullProcessListSorterByQueryTime) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a FullProcessListSorterByQueryTime) Less(i, j int) bool {
-	return a[i].Time.Float64 > a[j].Time.Float64
-}
-
-type FullProcessListSorterByTrxTime []dbhelper.Processlist
-
-func (a FullProcessListSorterByTrxTime) Len() int      { return len(a) }
-func (a FullProcessListSorterByTrxTime) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a FullProcessListSorterByTrxTime) Less(i, j int) bool {
-	if a[i].TrxTime == a[j].TrxTime {
-		return a[i].Time.Float64 > a[j].Time.Float64
-	} else {
-		return a[i].TrxTime > a[j].TrxTime
-	}
-}
-
 // The Agent describes the server where the cluster runs on.
 // swagger:response agent
 type Agent struct {

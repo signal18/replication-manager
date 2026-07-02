@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,7 +18,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -1244,7 +1244,7 @@ func (cluster *Cluster) GetQueryRules() []config.QueryRule {
 	for _, value := range cluster.QueryRules {
 		r = append(r, value)
 	}
-	sort.Sort(QueryRuleSorter(r))
+	misc.SortByKey(r, func(q config.QueryRule) uint32 { return q.Id })
 	return r
 }
 
@@ -1347,10 +1347,15 @@ func (cluster *Cluster) GetTopMetrics(srvid string) []config.ServerTop {
 		sv := config.ServerTop{Id: srv.Id, Url: srv.URL, Header: topheader}
 		srvps := srv.FullProcessList
 		if cluster.Conf.MonitorProcessListTransactions {
-			sort.Sort(FullProcessListSorterByTrxTime(srvps))
-
+			// Sort by TrxTime desc, tie-broken by Time desc.
+			slices.SortStableFunc(srvps, func(a, b dbhelper.Processlist) int {
+				if a.TrxTime != b.TrxTime {
+					return cmp.Compare(b.TrxTime, a.TrxTime)
+				}
+				return cmp.Compare(b.Time.Float64, a.Time.Float64)
+			})
 		} else {
-			sort.Sort(FullProcessListSorterByQueryTime(srvps))
+			misc.SortByKeyDesc(srvps, func(p dbhelper.Processlist) float64 { return p.Time.Float64 })
 		}
 		ct := 0
 		for _, value := range srvps {

@@ -10,6 +10,7 @@
 package misc
 
 import (
+	"cmp"
 	"fmt"
 	"log"
 	"net"
@@ -198,32 +199,30 @@ func RemoveEmptyString(slice []string) []string {
 }
 
 func SortKeysAsc(keys []string) []string {
-	// Sort them so it will not push if no changes are made
-	slices.SortStableFunc(keys, func(a, b string) int {
-		if a < b {
-			return -1
-		} else if a > b {
-			return 1
-		} else {
-			return 0
-		}
-	})
-
-	return keys
+	return SortByKey(keys, func(s string) string { return s })
 }
 
 func SortKeysDesc(keys []string) []string {
-	// Sort them so it will not push if no changes are made
-	slices.SortStableFunc(keys, func(a, b string) int {
-		if a > b {
-			return -1
-		} else if a < b {
-			return 1
-		} else {
-			return 0
-		}
+	return SortByKeyDesc(keys, func(s string) string { return s })
+}
+
+// SortByKey sorts s in place ascending by the comparable key extracted via keyFn,
+// and returns s for convenience. Replaces the family of hand-written
+// sort.Interface types (Len/Swap/Less) that only differed by element type
+// and the field being compared.
+func SortByKey[T any, K cmp.Ordered](s []T, keyFn func(T) K) []T {
+	slices.SortStableFunc(s, func(a, b T) int {
+		return cmp.Compare(keyFn(a), keyFn(b))
 	})
-	return keys
+	return s
+}
+
+// SortByKeyDesc is SortByKey in descending order.
+func SortByKeyDesc[T any, K cmp.Ordered](s []T, keyFn func(T) K) []T {
+	slices.SortStableFunc(s, func(a, b T) int {
+		return cmp.Compare(keyFn(b), keyFn(a))
+	})
+	return s
 }
 
 func GenerateRegex(whitelist, exclude []string) (*regexp.Regexp, error) {

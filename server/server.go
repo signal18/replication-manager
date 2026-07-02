@@ -25,7 +25,6 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"slices"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -3391,18 +3390,6 @@ func (repman *ReplicationManager) InitServicePlans() error {
 	return nil
 }
 
-type GrantSorter []config.Grant
-
-func (a GrantSorter) Len() int           { return len(a) }
-func (a GrantSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a GrantSorter) Less(i, j int) bool { return a[i].Grant < a[j].Grant }
-
-type RoleSorter []config.Role
-
-func (a RoleSorter) Len() int           { return len(a) }
-func (a RoleSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a RoleSorter) Less(i, j int) bool { return a[i].Role < a[j].Role }
-
 func (repman *ReplicationManager) InitGrants() error {
 	acls := []config.Grant{}
 	for _, value := range config.GetGrantType() {
@@ -3411,7 +3398,7 @@ func (repman *ReplicationManager) InitGrants() error {
 		acls = append(acls, acl)
 	}
 	repman.ServiceAcl = acls
-	sort.Sort(GrantSorter(repman.ServiceAcl))
+	misc.SortByKey(repman.ServiceAcl, func(g config.Grant) string { return g.Grant })
 	return nil
 }
 
@@ -3423,7 +3410,7 @@ func (repman *ReplicationManager) InitRoles() error {
 		roles = append(roles, acl)
 	}
 	repman.ServiceRoles = roles
-	sort.Sort(RoleSorter(repman.ServiceRoles))
+	misc.SortByKey(repman.ServiceRoles, func(r config.Role) string { return r.Role })
 	return nil
 }
 
