@@ -3169,6 +3169,10 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		return true
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer heartbeat response: %v", h)
+		if h.Status == ConstMonitorStandby && repman.Status == ConstMonitorStandby {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Both peers are standby, triggering arbitration election")
+			return true
+		}
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "No peer split brain, peer status is %s, my status is %s", h.Status, repman.Status)
 	}
 
