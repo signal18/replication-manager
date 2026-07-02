@@ -2799,24 +2799,40 @@ func (repman *ReplicationManager) Run() error {
 		if counter%60 == 0 {
 			repman.ConfigManager.SaveConfig(repman, true)
 
+			var wg sync.WaitGroup
+
 			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
-				if repman.Conf.Arbitration && repman.HasStandbyClusterWithGitSync() {
-					repman.PullActiveConfig()
-				}
-				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					if repman.Conf.Arbitration && repman.HasStandbyClusterWithGitSync() {
+						repman.PullActiveConfig()
+					}
+					repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+				}()
 			}
 
 			if repman.Conf.Cloud18 && repman.Conf.GitUrlPull != "" {
-				repman.PullCloud18Configs()
-				repman.ReloadTerms()
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					repman.PullCloud18Configs()
+					repman.ReloadTerms()
+				}()
 			}
 
 			if repman.Conf.Cloud18 && !repman.Conf.Cloud18DisablePeers {
-				repman.dispatchPeerHealthPoll()
-				repman.UpdateLocalPeer()
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					repman.dispatchPeerHealthPoll()
+					repman.UpdateLocalPeer()
+				}()
 			}
 
-			repman.ReloadOpenSVCStats()
+			go repman.ReloadOpenSVCStats()
+
+			wg.Wait()
 		}
 
 		if counter%300 == 0 {
