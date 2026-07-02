@@ -1763,18 +1763,26 @@ func (server *ServerMonitor) JobReseedBackupScript() error {
 	return nil
 }
 
+// GetMyBackupDirectoryPath returns this server's backup output directory
+// without creating it on disk. Use GetMyBackupDirectory when the directory
+// needs to exist, e.g. before writing a backup file.
+func (server *ServerMonitor) GetMyBackupDirectoryPath() string {
+	cluster := server.ClusterGroup
+	return cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name + "/" + server.Host + "_" + server.Port + "/"
+}
+
 func (server *ServerMonitor) GetMyBackupDirectory() string {
 	cluster := server.ClusterGroup
-	s3dir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name + "/" + server.Host + "_" + server.Port
+	s3dir := server.GetMyBackupDirectoryPath()
 
 	if _, err := os.Stat(s3dir); os.IsNotExist(err) {
 		err := os.MkdirAll(s3dir, os.ModePerm)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Create backup path failed: %s", s3dir, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Create backup path failed: %s: %s", s3dir, err)
 		}
 	}
 
-	return s3dir + "/"
+	return s3dir
 
 }
 
@@ -2889,12 +2897,13 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, u
 
 	var needpurge bool
 
-	defer cluster.UpdateDiskStat(cluster.GetResticLocalDir())
+	resticLocalDir := cluster.GetResticEffectiveLocalRepoPath()
+	defer cluster.UpdateDiskStat(resticLocalDir)
 
 	if cluster.Conf.BackupCheckFreeSpace {
-		diskstat, err := cluster.GetDiskStat(cluster.GetResticLocalDir())
+		diskstat, err := cluster.GetDiskStat(resticLocalDir)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting disk stat for restic backup dir: %s", cluster.GetResticLocalDir())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting disk stat for restic backup dir: %s", resticLocalDir)
 			cluster.ResticManager.PauseWorkerOnDisk()
 		} else {
 			// Use specific treshold if defined

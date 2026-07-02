@@ -1652,6 +1652,66 @@ func (cluster *Cluster) GetResticLocalDir() string {
 	return cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive/" + cluster.Name
 }
 
+// GetResticEffectiveLocalRepoPath returns the local filesystem path restic
+// actually uses as its repository for local backups, applying the same
+// backup-restic-repo-append-cluster resolution as ResticGetEnv (cluster_bck.go).
+// GetResticLocalDir does not apply that join, so on its own it can point at
+// the parent of the real per-cluster repo directory when append-cluster is
+// enabled. Remote specs (s3:, sftp:) never reach resolveResticRepoPolicy's
+// join logic; they fall back to the local per-cluster staging directory,
+// same as GetResticLocalDir. This is a pure read: no filesystem writes.
+func (cluster *Cluster) GetResticEffectiveLocalRepoPath() string {
+	defaultDir := filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
+
+	repo := cluster.Conf.BackupResticLocalRepository
+	if repo == "" || config.IsSftpResticRepository(repo) || config.IsS3ResticRepository(repo) {
+		return defaultDir
+	}
+
+	localRepoPath, appendCluster := resolveResticRepoPolicy(cluster.Conf, repo, cluster)
+	if localRepoPath == "" {
+		return defaultDir
+	}
+	if appendCluster && shouldAppendClusterNameLocal(localRepoPath, cluster.Name) {
+		return filepath.Join(localRepoPath, cluster.Name)
+	}
+	return localRepoPath
+}
+
+// GetBackupDiskPaths returns the local filesystem paths this cluster relies
+// on for backup storage: each server's backup output directory, plus the
+// local restic repository/staging directory when restic backups are
+// enabled. Used to scope disk space monitoring to backup-relevant storage
+// instead of every mount visible to the process. It performs no filesystem
+// writes and never returns remote restic repo specs (s3:, sftp:) since
+// GetResticEffectiveLocalRepoPath already resolves those to a local staging
+// path.
+func (cluster *Cluster) GetBackupDiskPaths() []string {
+	seen := make(map[string]bool)
+	paths := make([]string, 0, len(cluster.Servers)+1)
+
+	add := func(p string) {
+		if p == "" || seen[p] {
+			return
+		}
+		seen[p] = true
+		paths = append(paths, p)
+	}
+
+	for _, server := range cluster.Servers {
+		if server == nil {
+			continue
+		}
+		add(server.GetMyBackupDirectoryPath())
+	}
+
+	if cluster.Conf.BackupRestic {
+		add(cluster.GetResticEffectiveLocalRepoPath())
+	}
+
+	return paths
+}
+
 func (cluster *Cluster) GetExecEnv() []string {
 	adminuser := "admin"
 	adminpassword := "repman"
