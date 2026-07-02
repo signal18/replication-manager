@@ -30,6 +30,9 @@ import (
 )
 
 func (cluster *Cluster) CheckFailed() {
+	if cluster.Conf.Arbitration {
+		cluster.isActiveArbitration()
+	}
 	if !cluster.IsActive() {
 		return
 	}
