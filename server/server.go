@@ -3221,9 +3221,20 @@ func (repman *ReplicationManager) Heartbeat() {
 	}
 
 	// propagate SplitBrain state to clusters after peer negotiation
+	hasActive := false
 	for _, cl := range repman.Clusters {
 		cl.IsSplitBrain = repman.SplitBrain
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
+		if cl.IsActive() {
+			hasActive = true
+		}
+	}
+	if hasActive && repman.Status == ConstMonitorStandby {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Cluster won arbitration, server status changing from standby to active")
+		repman.Status = ConstMonitorActif
+	} else if !hasActive && repman.Status == ConstMonitorActif && repman.Conf.Arbitration {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "No active cluster, server status changing from active to standby")
+		repman.Status = ConstMonitorStandby
 	}
 
 }
