@@ -566,6 +566,27 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover in automatic mode")
 	}
 
+	// go-mysql's replication.NewBinlogSyncer calls Logger.Fatal (os.Exit(1))
+	// when its ServerID is 0. The binlog syncer call sites (srv_binlog.go)
+	// derive that ServerID from check-binlog-server-id (offset 0 for the
+	// metadata/position syncers, +2000 for the query-event scanner) via
+	// binlogSyncerServerIDFor's uint32 conversion, which wraps — so check the
+	// actual computed value for both offsets, not just the literal inputs
+	// (0 and -2000) that happen to produce it, to also catch values like
+	// 4294967296 that wrap around to 0. Catch this once, loudly, at cluster
+	// startup rather than letting it silently kill the whole process the
+	// first time a binlog syncer opens.
+	if _, ok := binlogSyncerServerIDFor(cluster.Conf.CheckBinServerId, 0); !ok {
+		cluster.LogModulePrintf(true, config.ConstLogModPurge, config.LvlErr,
+			"check-binlog-server-id=%d produces an invalid binlog syncer server-id of 0: binlog metadata refresh and timestamp lookup will be disabled to avoid an unrecoverable go-mysql error. Set check-binlog-server-id to a different value.",
+			cluster.Conf.CheckBinServerId)
+	}
+	if _, ok := binlogSyncerServerIDFor(cluster.Conf.CheckBinServerId, 2000); !ok {
+		cluster.LogModulePrintf(true, config.ConstLogModPurge, config.LvlErr,
+			"check-binlog-server-id=%d produces an invalid binlog syncer server-id of 0 with the query-event scanner's +2000 offset: query-event scanning will be disabled to avoid an unrecoverable go-mysql error. Set check-binlog-server-id to a different value.",
+			cluster.Conf.CheckBinServerId)
+	}
+
 	//working directory of the cluster is working directory of server and cluster name
 	if _, err := os.Stat(cluster.WorkingDir); os.IsNotExist(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Creating directory  %s", cluster.WorkingDir)

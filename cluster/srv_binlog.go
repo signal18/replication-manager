@@ -60,6 +60,32 @@ func (server *ServerMonitor) binlogSyncerTLSConfig() *tls.Config {
 	return nil
 }
 
+// binlogSyncerServerIDFor computes the go-mysql server-id for check-binlog-server-id
+// plus offset, using the exact uint32 conversion go-mysql performs internally
+// (which wraps, so large values such as 4294967296 also produce 0, not just
+// literal 0 or -offset). Shared by binlogSyncerServerID and InitFromConf's
+// startup validation so the two can't drift apart on what counts as invalid.
+func binlogSyncerServerIDFor(checkBinServerId, offset int) (uint32, bool) {
+	id := uint32(checkBinServerId + offset)
+	return id, id != 0
+}
+
+// binlogSyncerServerID computes the go-mysql server-id for a binlog syncer
+// (check-binlog-server-id plus offset) and refuses a value of 0: go-mysql's
+// NewBinlogSyncer calls Logger.Fatal (os.Exit(1)) on ServerID==0 with no way
+// to recover. InitFromConf already logs a loud, one-time error at cluster
+// startup when the config produces this; this guard just makes sure the
+// syncer is never actually started with it, without re-logging every tick.
+func (server *ServerMonitor) binlogSyncerServerID(offset int) (uint32, bool) {
+	cluster := server.ClusterGroup
+	id, ok := binlogSyncerServerIDFor(cluster.Conf.CheckBinServerId, offset)
+	if !ok {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg,
+			"check-binlog-server-id produces server-id 0 for %s, skipping binlog syncer", server.URL)
+	}
+	return id, ok
+}
+
 func (server *ServerMonitor) RefreshBinaryLogs() error {
 	var err error
 	cluster := server.ClusterGroup
@@ -126,13 +152,19 @@ func (server *ServerMonitor) RefreshBinlogMetaGoMySQL(meta *dbhelper.BinaryLogMe
 	cluster := server.ClusterGroup
 	port, _ := strconv.Atoi(server.Port)
 
+	serverID, ok := server.binlogSyncerServerID(0)
+	if !ok {
+		return errors.New("check-binlog-server-id produces an invalid server-id of 0")
+	}
+
 	cfg := replication.BinlogSyncerConfig{
-		ServerID: uint32(cluster.Conf.CheckBinServerId),
+		ServerID: serverID,
 		Flavor:   server.DBVersion.Flavor,
 		Host:     server.Host,
 		Port:     uint16(port),
 		User:     server.User,
 		Password: server.Pass,
+		Logger:   s18log.NewBinlogSyncerLogger(cluster, server.URL, "binlog-meta", config.ConstLogModPurge),
 	}
 
 	cfg.TLSConfig = server.binlogSyncerTLSConfig()
@@ -859,9 +891,13 @@ func (server *ServerMonitor) ReadAndExecBinaryLogsWithinRange(start backupmgr.Re
 	}
 
 	if start.Filename == end.Filename {
-		server.GetBinlogPositionFromTimestamp(uint32(start.Position), &end)
+		if err := server.GetBinlogPositionFromTimestamp(uint32(start.Position), &end); err != nil {
+			return fmt.Errorf("failed to resolve binlog end position: %w", err)
+		}
 	} else {
-		server.GetBinlogPositionFromTimestamp(4, &end)
+		if err := server.GetBinlogPositionFromTimestamp(4, &end); err != nil {
+			return fmt.Errorf("failed to resolve binlog end position: %w", err)
+		}
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Continue for injecting binary logs on %s until %s pos: %d", dest.URL, end.Filename, end.Position)
@@ -900,13 +936,19 @@ func (server *ServerMonitor) GetBinlogPositionFromTimestamp(start uint32, end *b
 	cluster := server.ClusterGroup
 	port, _ := strconv.Atoi(server.Port)
 
+	serverID, ok := server.binlogSyncerServerID(0)
+	if !ok {
+		return errors.New("check-binlog-server-id produces an invalid server-id of 0")
+	}
+
 	cfg := replication.BinlogSyncerConfig{
-		ServerID: uint32(cluster.Conf.CheckBinServerId),
+		ServerID: serverID,
 		Flavor:   server.DBVersion.Flavor,
 		Host:     server.Host,
 		Port:     uint16(port),
 		User:     server.User,
 		Password: server.Pass,
+		Logger:   s18log.NewBinlogSyncerLogger(cluster, server.URL, "binlog-position", config.ConstLogModPurge),
 	}
 
 	cfg.TLSConfig = server.binlogSyncerTLSConfig()
@@ -1087,16 +1129,22 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 		// Tear down the previous syncer cleanly before opening a new one.
 		server.CloseBinlogEventSyncer()
 
+		// Use a server-id that is distinct from the metadata syncer
+		// (CheckBinServerId) and from any real replica, to avoid
+		// "duplicate server-id" errors.
+		serverID, ok := server.binlogSyncerServerID(2000)
+		if !ok {
+			return
+		}
+
 		cfg := replication.BinlogSyncerConfig{
-			// Use a server-id that is distinct from the metadata syncer
-			// (CheckBinServerId) and from any real replica, to avoid
-			// "duplicate server-id" errors.
-			ServerID: uint32(cluster.Conf.CheckBinServerId + 2000),
+			ServerID: serverID,
 			Flavor:   server.DBVersion.Flavor,
 			Host:     server.Host,
 			Port:     uint16(port),
 			User:     server.User,
 			Password: server.Pass,
+			Logger:   s18log.NewBinlogSyncerLogger(cluster, server.URL, "binlog-scan", config.ConstLogModPurge),
 		}
 		cfg.TLSConfig = server.binlogSyncerTLSConfig()
 
