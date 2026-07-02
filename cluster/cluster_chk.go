@@ -30,7 +30,7 @@ import (
 )
 
 func (cluster *Cluster) CheckFailed() {
-	if cluster.Conf.Arbitration {
+	if cluster.Conf.Arbitration && !cluster.IsSplitBrain && cluster.StateMachine.GetHeartbeats()%5 == 0 {
 		cluster.isActiveArbitration()
 	}
 	if !cluster.IsActive() {
