@@ -30,6 +30,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failover/Switchover not allowed in active-passive mode")
 		return false
 	}
+	if cluster.Conf.Arbitration && !cluster.IsActive() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failover/Switchover not allowed in standby mode")
+		return false
+	}
 
 	if cluster.GetTopology() == config.TopoMultiMasterRing || cluster.GetTopology() == config.TopoMultiMasterWsrep || cluster.GetTopology() == config.TopoMultiMasterGrouprep {
 		res := cluster.VMasterFailover(fail)

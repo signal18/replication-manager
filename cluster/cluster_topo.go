@@ -151,6 +151,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		}
 	}
 	if cluster.Conf.Arbitration {
+		if !cluster.IsActive() {
+			cluster.SetState("ERR00105", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00105"], ErrFrom: "ARB"})
+		}
 		if cluster.IsSplitBrain {
 			cluster.SetState("WARN0079", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0079"], ErrFrom: "ARB"})
 		}
