@@ -26,6 +26,7 @@ import (
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -1394,7 +1395,7 @@ func (cluster *Cluster) CheckDisksUsage() {
 		reducePolicy = "Considering reducing restic keep-* policies to save disk space."
 	}
 
-	overThreshold := cluster.DiskStatManager.GetOverThresholdPaths(float64(cluster.Conf.BackupDiskTresholdWarn), float64(cluster.Conf.BackupDiskTresholdCrit))
+	overThreshold := cluster.getOverThresholdBackupPaths(float64(cluster.Conf.BackupDiskTresholdWarn), float64(cluster.Conf.BackupDiskTresholdCrit))
 	for level, statlist := range overThreshold {
 		switch level {
 		case "critical":
@@ -1403,6 +1404,43 @@ func (cluster *Cluster) CheckDisksUsage() {
 			cluster.SetState("WARN0139", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0139"], statlist, cluster.Conf.BackupDiskTresholdWarn), ErrFrom: "JOB"})
 		}
 	}
+}
+
+// getOverThresholdBackupPaths checks disk usage only for paths this cluster
+// actually uses for backup storage (see GetBackupDiskPaths), rather than
+// every mount tracked in the shared DiskStatManager. The manager is shared
+// across all clusters and, on containerized hosts, accumulates bind mounts
+// (e.g. /etc/hostname, /etc/resolv.conf) that are unrelated to backups but
+// would otherwise be reported as over-threshold "backup partitions".
+// Multiple backup paths that resolve to the same underlying filesystem are
+// deduplicated so a single full partition doesn't produce repeated alerts.
+// Identity is the resolved stat's own Path (the mount/directory the stat was
+// recorded under, see DiskStatManager.UpdateStat), not the usage numbers -
+// two distinct filesystems can easily report identical totals/usage.
+func (cluster *Cluster) getOverThresholdBackupPaths(warn, crit float64) map[string][]misc.DiskUsagePercentage {
+	overThreshold := make(map[string][]misc.DiskUsagePercentage)
+	seen := make(map[string]bool)
+
+	for _, path := range cluster.GetBackupDiskPaths() {
+		stat, err := cluster.GetDiskStat(path)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Cannot get disk stat for backup path %s: %s", path, err)
+			continue
+		}
+
+		if seen[stat.Path] {
+			continue
+		}
+		seen[stat.Path] = true
+
+		if stat.UsedPercent > crit {
+			overThreshold["critical"] = append(overThreshold["critical"], misc.DiskUsagePercentage{Path: path, UsedPercent: stat.UsedPercent})
+		} else if stat.UsedPercent > warn {
+			overThreshold["warning"] = append(overThreshold["warning"], misc.DiskUsagePercentage{Path: path, UsedPercent: stat.UsedPercent})
+		}
+	}
+
+	return overThreshold
 }
 
 func (cluster *Cluster) CheckAllBackupEstimatedSize() {
