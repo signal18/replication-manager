@@ -3,6 +3,18 @@ import react from '@vitejs/plugin-react'
 import viteCompression from 'vite-plugin-compression'
 import basicSSL from '@vitejs/plugin-basic-ssl'
 
+// These recharts transitive deps use a lazy cross-chunk class-init pattern that breaks
+// when Rollup isolates them into their own chunk (same failure class as the
+// react-gauge-component/d3-shape "init_arc is not defined" bug) - keep them out of
+// manualChunks so Rollup's default chunking co-locates them correctly with recharts.
+const RECHARTS_UNSAFE_CHUNK_DEPS = new Set([
+  'internmap', // confirmed cause of "k is not a constructor"
+  'clsx',
+  'react-smooth',
+  'eventemitter3',
+  'decimal.js-light',
+])
+
 // https://vitejs.dev/config/
 export default defineConfig({
   server: {
@@ -45,7 +57,11 @@ export default defineConfig({
               ? `${parts[0]}/${parts[1]}`
               : parts[0]
 
-            if (packageName === 'react-gauge-component' || packageName.startsWith('d3')) {
+            if (
+              packageName === 'react-gauge-component' ||
+              packageName.startsWith('d3') ||
+              RECHARTS_UNSAFE_CHUNK_DEPS.has(packageName)
+            ) {
               return
             }
 
