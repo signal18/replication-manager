@@ -138,7 +138,7 @@ func (cluster *Cluster) IsAppProvisioned() bool {
 				if err := app.SetProvisionCookie(); err != nil {
 					cluster.SetState("APPERR006", state.State{ErrType: "WARNING", ErrDesc: clusterError["APPERR006"], ErrFrom: "TOPO", ServerUrl: app.GetURL()})
 				}
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can App Connect creating cookie state:%s", app.GetState())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can App Connect creating cookie for app URL:%s", app.GetURL())
 				if app.AppConfig.ProvAppCreditUsed == 0 && app.AppConfig.ProvAppCreditPlanned > 0 {
 					app.AppConfig.ProvAppCreditUsed = app.AppConfig.ProvAppCreditPlanned
 					if _, err := cluster.SaveApp(app, ""); err != nil {
