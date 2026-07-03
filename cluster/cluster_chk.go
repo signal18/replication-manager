@@ -30,8 +30,14 @@ import (
 )
 
 func (cluster *Cluster) CheckFailed() {
-	if cluster.Conf.Arbitration && !cluster.IsSplitBrain && cluster.StateMachine.GetHeartbeats()%5 == 0 {
-		cluster.isActiveArbitration()
+	if cluster.Conf.Arbitration && !cluster.IsSplitBrain {
+		if cluster.StateMachine.GetHeartbeats()%5 == 0 {
+			cluster.isActiveArbitration()
+		} else {
+			// The arbitrator probe only runs every 5th tick; carry its state
+			// over the skipped ticks so ERR00022 does not flap open/resolved.
+			cluster.StateMachine.PreserveState("ERR00022")
+		}
 	}
 	if !cluster.IsActive() {
 		return
