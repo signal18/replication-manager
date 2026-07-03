@@ -1325,7 +1325,7 @@ func (cl *Cluster) SetArbitratorReport() error {
 	}
 	hosts := len(cl.GetServers())
 	failed := cl.CountFailed(cl.GetServers())
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "SetArbitratorReport: sending hosts=%d failed=%d cluster=%s", hosts, failed, cl.GetName())
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlDbg, "SetArbitratorReport: sending hosts=%d failed=%d cluster=%s", hosts, failed, cl.GetName())
 	var jsonStr = []byte(`{"uuid":"` + cl.runUUID + `","secret":"` + cl.Conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(cl.Conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(hosts) + `,"failed":` + strconv.Itoa(failed) + `}`)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	if err != nil {

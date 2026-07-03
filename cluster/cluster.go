@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -354,7 +355,10 @@ type Cluster struct {
 	pluginRejections    map[string]string `json:"-"`
 	pluginPubKeyMissing string            `json:"-"`
 	pluginStateLock     sync.Mutex        `json:"-"`
-	initiated           bool
+	// variableDiffSignature is the identity of the last logged variable diff
+	// set so MonitorVariablesDiff only logs/persists on real changes.
+	variableDiffSignature string `json:"-"`
+	initiated             bool
 }
 
 // PluginRegistry returns the per-cluster plugin registry, which contains both
@@ -2369,16 +2373,28 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		}
 	}
 	if hasDiff {
+		// Deterministic order: alldiff is built from map iteration, which is
+		// random per run — sort so the signature, log order and state
+		// description are stable across checks.
+		sort.Slice(alldiff, func(i, j int) bool { return alldiff[i].VariableName < alldiff[j].VariableName })
+		sig := variableDiffSignature(alldiff)
+		changed := sig != cluster.variableDiffSignature
+		cluster.variableDiffSignature = sig
 		cluster.DiffVariables = alldiff
-		cluster.SaveVariableDiff(alldiff)
-		for _, d := range alldiff {
-			for _, dv := range d.DiffValues {
-				if dv.Role != "leader" {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-						"Variable %s differs on %s (%s): %s", d.VariableName, dv.Server, dv.Role, dv.VariableValue)
+		// Log details and persist the file only when the diff set actually
+		// changed — re-logging identical diffs on every check flooded the log.
+		if changed {
+			cluster.SaveVariableDiff(alldiff)
+			for _, d := range alldiff {
+				for _, dv := range d.DiffValues {
+					if dv.Role != "leader" {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+							"Variable %s differs on %s (%s): %s", d.VariableName, dv.Server, dv.Role, dv.VariableValue)
+					}
 				}
 			}
 		}
+		// Re-assert the state on every run so it stays open while the diff persists.
 		cluster.SetState("WARN0084", state.State{
 			ErrType:   "WARNING",
 			ErrDesc:   fmt.Sprintf(clusterError["WARN0084"], cluster.FormatVariableDiffTable(alldiff)),
@@ -2387,7 +2403,20 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		})
 	} else {
 		cluster.DiffVariables = nil
+		cluster.variableDiffSignature = ""
 	}
+}
+
+// variableDiffSignature returns a stable identity for a variable diff set so
+// MonitorVariablesDiff can detect real changes between runs.
+func variableDiffSignature(diffs []VariableDiff) string {
+	var b strings.Builder
+	for _, d := range diffs {
+		for _, dv := range d.DiffValues {
+			fmt.Fprintf(&b, "%s|%s|%s\n", d.VariableName, dv.Server, dv.VariableValue)
+		}
+	}
+	return b.String()
 }
 
 func (cluster *Cluster) FormatVariableDiffTable(diffs []VariableDiff) string {

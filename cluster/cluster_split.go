@@ -52,7 +52,10 @@ func (cluster *Cluster) ArbitratorHandler() {
 				cluster.IsSplitBrainBck = cluster.IsSplitBrain
 				return
 			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "ArbitratorHandler: IsSplitBrainBck=%t IsSplitBrain=%t hosts=%d", cluster.IsSplitBrainBck, cluster.IsSplitBrain, len(cluster.GetServers()))
+			// Per-tick chatter: elections run every tick while split brain
+			// persists (the winner's arbitrator row needs refreshing — see
+			// dbhelper.WriteHeartbeat), so keep this at debug level.
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArbitration, config.LvlDbg, "ArbitratorHandler: IsSplitBrainBck=%t IsSplitBrain=%t hosts=%d", cluster.IsSplitBrainBck, cluster.IsSplitBrain, len(cluster.GetServers()))
 			err := cluster.SetArbitratorReport()
 			if err != nil {
 				cluster.SetState("WARN0081", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0081"], err), ErrFrom: "ARB"})
@@ -92,7 +95,7 @@ func (cl *Cluster) arbitratorElection() error {
 	hosts := len(cl.GetServers())
 	failed := cl.CountFailed(cl.GetServers())
 	var jsonStr = []byte(`{"uuid":"` + cl.runUUID + `","secret":"` + cl.Conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(cl.Conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(hosts) + `,"failed":` + strconv.Itoa(failed) + `}`)
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "arbitratorElection: sending hosts=%d failed=%d cluster=%s", hosts, failed, cl.GetName())
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlDbg, "arbitratorElection: sending hosts=%d failed=%d cluster=%s", hosts, failed, cl.GetName())
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlErr, "Could not create http request to arbitrator: %s", err)
@@ -125,12 +128,19 @@ func (cl *Cluster) arbitratorElection() error {
 	}
 
 	cl.IsFailedArbitrator = false
+	// Elections repeat on every tick while split brain persists, so log the
+	// outcome only on an actual status transition — the state machine keeps
+	// WARN0083/ERR00068 visible in between.
 	if r.Arbitration == "winner" {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Arbitrator election won for cluster %s, switching to active", cl.GetName())
+		if cl.Status != ConstMonitorActif {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Arbitrator election won for cluster %s, switching to active", cl.GetName())
+		}
 		cl.SetActiveStatus(ConstMonitorActif)
 		cl.SetState("WARN0083", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0083"], ErrFrom: "ARB"})
 	} else {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Arbitrator election lost for cluster %s, switching to standby", cl.GetName())
+		if cl.Status != ConstMonitorStandby {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Arbitrator election lost for cluster %s, switching to standby", cl.GetName())
+		}
 		cl.SetActiveStatus(ConstMonitorStandby)
 		cl.SetState("ERR00068", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00068"], ErrFrom: "ARB"})
 		if cl.GetMaster() != nil {
