@@ -808,7 +808,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	if WithArbitrationClient == "ON" {
 		flags.BoolVar(&conf.Arbitration, "arbitration-external", false, "Multi moninitor sas arbitration")
 		flags.StringVar(&conf.ArbitrationSasSecret, "arbitration-external-secret", "", "Secret for arbitration")
-		flags.StringVar(&conf.ArbitrationSasHosts, "arbitration-external-hosts", "88.191.151.84:80", "Arbitrator address")
+		flags.StringVar(&conf.ArbitrationSasHosts, "arbitration-external-hosts", "https://arbitrator.cloud18.io", "Arbitrator address")
 		flags.IntVar(&conf.ArbitrationSasUniqueId, "arbitration-external-unique-id", 0, "Unique replication-manager instance idententifier")
 		flags.StringVar(&conf.ArbitrationPeerHosts, "arbitration-peer-hosts", "127.0.0.1:10001", "Peer replication-manager hosts http port")
 		flags.StringVar(&conf.DBServersLocality, "db-servers-locality", "127.0.0.1", "List database servers that are in same network locality")

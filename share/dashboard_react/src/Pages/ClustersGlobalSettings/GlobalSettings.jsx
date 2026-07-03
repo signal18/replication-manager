@@ -1,4 +1,4 @@
-import { Button, Flex, HStack, Link, useToast } from '@chakra-ui/react'
+import { Flex, HStack } from '@chakra-ui/react'
 import React, { useEffect, useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
@@ -20,8 +20,6 @@ function GlobalSettings({ config }) {
   const baseURL = useSelector((state) => state?.auth?.baseURL)
   const [isInterventionModalOpen, setIsInterventionModalOpen] = useState(false)
   const [isEndInterventionModalOpen, setIsEndInterventionModalOpen] = useState(false)
-  const [isForgetArbModalOpen, setIsForgetArbModalOpen] = useState(false)
-  const toast = useToast()
 
   useEffect(() => {
     // Re-render when the config prop changes
@@ -37,18 +35,6 @@ function GlobalSettings({ config }) {
     getApi(baseURL).post('actions/intervention-end')
       .then(() => setIsEndInterventionModalOpen(false))
       .catch((err) => console.error('Failed to end global intervention:', err))
-  }
-
-  const handleForgetArbitration = () => {
-    getApi(baseURL).post('actions/forget-arbitration')
-      .then(() => {
-        setIsForgetArbModalOpen(false)
-        toast({ title: 'Arbitration data reset', status: 'success', duration: 3000 })
-      })
-      .catch((err) => {
-        setIsForgetArbModalOpen(false)
-        toast({ title: 'Failed to reset arbitration', description: err?.message, status: 'error', duration: 5000 })
-      })
   }
 
   const dataObject = [
@@ -344,14 +330,6 @@ function GlobalSettings({ config }) {
         />
       )
     },
-    {
-      key: 'Reset Arbitration',
-      value: (
-        <Button size='sm' colorScheme='red' variant='outline' onClick={() => setIsForgetArbModalOpen(true)}>
-          Reset
-        </Button>
-      )
-    },
   ]
 
   return (
@@ -372,14 +350,6 @@ function GlobalSettings({ config }) {
           closeModal={() => setIsEndInterventionModalOpen(false)}
           title={`End global intervention? All clusters will resume notifications.`}
           onConfirmClick={handleEndGlobalIntervention}
-        />
-      )}
-      {isForgetArbModalOpen && (
-        <ConfirmModal
-          isOpen={isForgetArbModalOpen}
-          closeModal={() => setIsForgetArbModalOpen(false)}
-          title='Reset all arbitration data? This deletes all heartbeat rows from the arbitrator. A new election will run on the next monitoring tick.'
-          onConfirmClick={handleForgetArbitration}
         />
       )}
     </>
