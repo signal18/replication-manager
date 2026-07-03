@@ -327,6 +327,9 @@ func (proxy *Proxy) GetConfigProxyModule(variable string) string {
 	i := 0
 	DNS := ""
 	for _, db := range proxy.ClusterGroup.Servers {
+		if db == nil {
+			continue
+		}
 
 		i++
 		if i > 1 {
