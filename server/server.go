@@ -3576,71 +3576,58 @@ func maintenanceLogPath(logFile string) string {
 
 func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string {
 	switch key {
-	case "api-credentials":
+	case "api-credentials", "api-credentials-external":
 		var tab_ApiUser []string
-		lst_Users := strings.Split(repman.Conf.Secrets["api-credentials"].Value, ",")
+		lst_Users := strings.Split(repman.Conf.Secrets[key].Value, ",")
 		for ind := range lst_Users {
 			user_pass := strings.Split(lst_Users[ind], ":")
 			for _, cluster := range repman.Clusters {
 				if u, ok := cluster.APIUsers[user_pass[0]]; ok {
-					tab_ApiUser = append(tab_ApiUser, u.User+":"+repman.Conf.GetEncryptedString(u.Password))
+					tab_ApiUser = append(tab_ApiUser, u.User+":"+u.Password)
 					break
 				}
 			}
 		}
-		return strings.Join(tab_ApiUser, ",")
-	case "api-credentials-external":
-		var tab_ApiUser []string
-		lst_Users := strings.Split(repman.Conf.Secrets["api-credentials-external"].Value, ",")
-		for ind := range lst_Users {
-			user_pass := strings.Split(lst_Users[ind], ":")
-			for _, cluster := range repman.Clusters {
-				if u, ok := cluster.APIUsers[user_pass[0]]; ok {
-					tab_ApiUser = append(tab_ApiUser, u.User+":"+repman.Conf.GetEncryptedString(u.Password))
-					break
-				}
-			}
-		}
-		return strings.Join(tab_ApiUser, ",")
+		return repman.Conf.GetStableEncryptedValue(key, strings.Join(tab_ApiUser, ","))
 	case "backup-restic-password":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-restic-password"))
+		return repman.Conf.GetStableEncryptedValue("backup-restic-password", repman.Conf.GetDecryptedValue("backup-restic-password"))
 	case "haproxy-password":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("haproxy-password"))
+		return repman.Conf.GetStableEncryptedValue("haproxy-password", repman.Conf.GetDecryptedValue("haproxy-password"))
 	case "maxscale-pass":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("maxscale-pass"))
+		return repman.Conf.GetStableEncryptedValue("maxscale-pass", repman.Conf.GetDecryptedValue("maxscale-pass"))
 	case "myproxy-password":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("proxysql-password"))
+		return repman.Conf.GetStableEncryptedValue("proxysql-password", repman.Conf.GetDecryptedValue("proxysql-password"))
 	case "proxysql-password":
 		if repman.Conf.IsPath(repman.Conf.ProxysqlPassword) && repman.Conf.IsVaultUsed() {
 			return ""
 		}
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("proxysql-password"))
+		return repman.Conf.GetStableEncryptedValue("proxysql-password", repman.Conf.GetDecryptedValue("proxysql-password"))
 	case "proxyjanitor-password":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("proxyjanitor-password"))
+		return repman.Conf.GetStableEncryptedValue("proxyjanitor-password", repman.Conf.GetDecryptedValue("proxyjanitor-password"))
 	case "vault-secret-id":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("vault-secret-id"))
+		return repman.Conf.GetStableEncryptedValue("vault-secret-id", repman.Conf.GetDecryptedValue("vault-secret-id"))
 	case "opensvc-p12-secret":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("opensvc-p12-secret"))
+		return repman.Conf.GetStableEncryptedValue("opensvc-p12-secret", repman.Conf.GetDecryptedValue("opensvc-p12-secret"))
 	case "backup-restic-aws-access-secret":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
+		return repman.Conf.GetStableEncryptedValue("backup-restic-aws-access-secret", repman.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
 	case "backup-streaming-aws-access-secret":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-streaming-aws-access-secret"))
+		return repman.Conf.GetStableEncryptedValue("backup-streaming-aws-access-secret", repman.Conf.GetDecryptedValue("backup-streaming-aws-access-secret"))
 	case "arbitration-external-secret":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("arbitration-external-secret"))
+		return repman.Conf.GetStableEncryptedValue("arbitration-external-secret", repman.Conf.GetDecryptedValue("arbitration-external-secret"))
 	case "alert-pushover-user-token":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("alert-pushover-user-token"))
+		return repman.Conf.GetStableEncryptedValue("alert-pushover-user-token", repman.Conf.GetDecryptedValue("alert-pushover-user-token"))
 	case "alert-pushover-app-token":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("alert-pushover-app-token"))
+		return repman.Conf.GetStableEncryptedValue("alert-pushover-app-token", repman.Conf.GetDecryptedValue("alert-pushover-app-token"))
 	case "mail-smtp-password":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("mail-smtp-password"))
+		return repman.Conf.GetStableEncryptedValue("mail-smtp-password", repman.Conf.GetDecryptedValue("mail-smtp-password"))
 	case "api-oauth-client-secret":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("api-oauth-client-secret"))
+		return repman.Conf.GetStableEncryptedValue("api-oauth-client-secret", repman.Conf.GetDecryptedValue("api-oauth-client-secret"))
 	case "cloud18-gitlab-password":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("cloud18-gitlab-password"))
+		return repman.Conf.GetStableEncryptedValue("cloud18-gitlab-password", repman.Conf.GetDecryptedValue("cloud18-gitlab-password"))
 	case "git-acces-token":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("git-acces-token"))
+		return repman.Conf.GetStableEncryptedValue("git-acces-token", repman.Conf.GetDecryptedValue("git-acces-token"))
 	case "vault-token":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("vault-token"))
+		return repman.Conf.GetStableEncryptedValue("vault-token", repman.Conf.GetDecryptedValue("vault-token"))
 	default:
 		return ""
 	}

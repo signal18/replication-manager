@@ -1121,6 +1121,11 @@ type ConfigVariableType struct {
 type Secret struct {
 	OldValue string
 	Value    string
+	// Crypted caches the ciphertext for Value so periodic config saves reuse
+	// it instead of re-encrypting with a fresh random IV on every save (which
+	// made every saved file differ and churned git config sync). Invalidated
+	// naturally whenever the Secret is replaced on a runtime change.
+	Crypted string
 }
 
 type Partner struct {
@@ -1674,35 +1679,35 @@ func (conf *Config) GetSecrets() map[string]Secret {
 
 func (conf *Config) DecryptSecretsFromConfig() {
 	conf.Secrets = map[string]Secret{
-		"api-credentials":                       {"", ""},
-		"api-credentials-external":              {"", ""},
-		"db-servers-credential":                 {"", ""},
-		"monitoring-write-heartbeat-credential": {"", ""},
-		"onpremise-ssh-credential":              {"", ""},
-		"replication-credential":                {"", ""},
-		"shardproxy-credential":                 {"", ""},
-		"haproxy-password":                      {"", ""},
-		"maxscale-pass":                         {"", ""},
-		"myproxy-password":                      {"", ""},
-		"proxysql-password":                     {"", ""},
-		"proxyjanitor-password":                 {"", ""},
-		"vault-secret-id":                       {"", ""},
-		"opensvc-p12-secret":                    {"", ""},
-		"backup-restic-aws-access-secret":       {"", ""},
-		"backup-streaming-aws-access-secret":    {"", ""},
-		"backup-restic-password":                {"", ""},
-		"arbitration-external-secret":           {"", ""},
-		"alert-pushover-user-token":             {"", ""},
-		"alert-pushover-app-token":              {"", ""},
-		"git-acces-token":                       {"", ""},
-		"mail-smtp-password":                    {"", ""},
-		"cloud18-gitlab-password":               {"", ""},
-		"cloud18-dba-user-credentials":          {"", ""},
-		"cloud18-sponsor-user-credentials":      {"", ""},
-		"cloud18-domain-secret":                 {"", ""},
-		"vault-token":                           {"", ""},
-		"api-oauth-client-secret":               {"", ""},
-		"meet-token":                            {"", ""}}
+		"api-credentials":                       {},
+		"api-credentials-external":              {},
+		"db-servers-credential":                 {},
+		"monitoring-write-heartbeat-credential": {},
+		"onpremise-ssh-credential":              {},
+		"replication-credential":                {},
+		"shardproxy-credential":                 {},
+		"haproxy-password":                      {},
+		"maxscale-pass":                         {},
+		"myproxy-password":                      {},
+		"proxysql-password":                     {},
+		"proxyjanitor-password":                 {},
+		"vault-secret-id":                       {},
+		"opensvc-p12-secret":                    {},
+		"backup-restic-aws-access-secret":       {},
+		"backup-streaming-aws-access-secret":    {},
+		"backup-restic-password":                {},
+		"arbitration-external-secret":           {},
+		"alert-pushover-user-token":             {},
+		"alert-pushover-app-token":              {},
+		"git-acces-token":                       {},
+		"mail-smtp-password":                    {},
+		"cloud18-gitlab-password":               {},
+		"cloud18-dba-user-credentials":          {},
+		"cloud18-sponsor-user-credentials":      {},
+		"cloud18-domain-secret":                 {},
+		"vault-token":                           {},
+		"api-oauth-client-secret":               {},
+		"meet-token":                            {}}
 
 	for k := range conf.Secrets {
 
@@ -1722,6 +1727,11 @@ func (conf *Config) DecryptSecretsFromConfig() {
 			log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).Infof("DecryptSecretsFromConfig: %s", secret.Value)
 		}
 
+		// Seed the ciphertext cache from the loaded config value so the first
+		// save reuses it instead of re-encrypting with a fresh IV.
+		if strings.Contains(secret.Value, "hash_") {
+			secret.Crypted = secret.Value
+		}
 		secret.Value = conf.DecryptSecretValue(k, secret.Value)
 		//log.Printf("Decrypting secret variable %s=%s", k, secret.Value)
 		conf.Secrets[k] = secret
@@ -1748,6 +1758,64 @@ func (conf *Config) DecryptSecretValue(key string, value string) string {
 		}
 	}
 	return strings.Join(tab_cred, ",")
+}
+
+// EncryptSecretValue encrypts a secret payload while preserving composite
+// credential structure ("user:hash_..." and comma-separated lists), mirroring
+// DecryptSecretValue: only password parts are encrypted.
+func (conf *Config) EncryptSecretValue(value string) string {
+	var out []string
+	for _, cred := range strings.Split(value, ",") {
+		if strings.Contains(cred, ":") {
+			user, pass := misc.SplitPair(cred)
+			out = append(out, user+":"+conf.GetEncryptedString(pass))
+		} else if cred != "" {
+			out = append(out, conf.GetEncryptedString(cred))
+		} else {
+			out = append(out, cred)
+		}
+	}
+	return strings.Join(out, ",")
+}
+
+// GetStableEncryptedValue returns a ciphertext for secret <key> that is
+// STABLE across saves: the ciphertext loaded from the config file (or cached
+// from a previous save) is reused as long as it still decrypts to the given
+// plain value. A fresh encryption (fresh random IV) is produced only when the
+// value actually changed. Without this, every periodic SaveConfig rewrote all
+// secrets with new IVs, so saved files always differed, git config sync
+// pushed on every cycle, and peer/standby nodes reloaded on every pull.
+func (conf *Config) GetStableEncryptedValue(key string, value string) string {
+	if value == "" {
+		return ""
+	}
+	sec, ok := conf.Secrets[key]
+	if ok && sec.Crypted != "" && conf.DecryptSecretValue(key, sec.Crypted) == value {
+		return sec.Crypted
+	}
+	// Reuse the raw value the config was loaded with when it still encodes
+	// the current value.
+	for _, m := range []map[string]interface{}{conf.DynamicFlagMap, conf.ImmuableFlagMap} {
+		if m == nil {
+			continue
+		}
+		if raw, found := m[key]; found {
+			s := fmt.Sprintf("%v", raw)
+			if strings.Contains(s, "hash_") && conf.DecryptSecretValue(key, s) == value {
+				if ok {
+					sec.Crypted = s
+					conf.Secrets[key] = sec
+				}
+				return s
+			}
+		}
+	}
+	enc := conf.EncryptSecretValue(value)
+	if ok {
+		sec.Crypted = enc
+		conf.Secrets[key] = sec
+	}
+	return enc
 }
 
 func (conf *Config) GetVaultCredentials(client *vault.Client, path string, key string) (string, error) {

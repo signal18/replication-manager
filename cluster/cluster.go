@@ -1888,89 +1888,79 @@ func (cluster *Cluster) Overwrite() (bool, error) {
 
 func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 	switch key {
-	case "api-credentials":
+	case "api-credentials", "api-credentials-external":
 		var tab_ApiUser []string
-		lst_Users := strings.Split(cluster.Conf.Secrets["api-credentials"].Value, ",")
+		lst_Users := strings.Split(cluster.Conf.Secrets[key].Value, ",")
 		for ind := range lst_Users {
 			user_pass := strings.Split(lst_Users[ind], ":")
 			if APIuser, ok := cluster.APIUsers[user_pass[0]]; ok {
-				tab_ApiUser = append(tab_ApiUser, APIuser.User+":"+cluster.Conf.GetEncryptedString(APIuser.Password))
+				tab_ApiUser = append(tab_ApiUser, APIuser.User+":"+APIuser.Password)
 			}
 		}
-		return strings.Join(tab_ApiUser, ",")
-	case "api-credentials-external":
-		var tab_ApiUser []string
-		lst_Users := strings.Split(cluster.Conf.Secrets["api-credentials-external"].Value, ",")
-		for ind := range lst_Users {
-			user_pass := strings.Split(lst_Users[ind], ":")
-			if APIuser, ok := cluster.APIUsers[user_pass[0]]; ok {
-				tab_ApiUser = append(tab_ApiUser, APIuser.User+":"+cluster.Conf.GetEncryptedString(APIuser.Password))
-			}
-		}
-		return strings.Join(tab_ApiUser, ",")
+		return cluster.Conf.GetStableEncryptedValue(key, strings.Join(tab_ApiUser, ","))
 	case "db-servers-credential":
 		if cluster.Conf.IsPath(cluster.Conf.User) && cluster.Conf.IsVaultUsed() {
 			return ""
 		}
-		return cluster.GetDbUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetDbPass())
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetDbUser()+":"+cluster.GetDbPass())
 	case "monitoring-write-heartbeat-credential":
-		return cluster.GetMonitorWriteHearbeatUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetMonitorWriteHeartbeatPass())
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetMonitorWriteHearbeatUser()+":"+cluster.GetMonitorWriteHeartbeatPass())
 	case "onpremise-ssh-credential":
-		return cluster.GetOnPremiseSSHUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetOnPremiseSSHPass())
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetOnPremiseSSHUser()+":"+cluster.GetOnPremiseSSHPass())
 
 	case "replication-credential":
 		if cluster.Conf.IsPath(cluster.Conf.RplUser) && cluster.Conf.IsVaultUsed() {
 			return ""
 		}
-		return cluster.GetRplUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetRplPass())
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetRplUser()+":"+cluster.GetRplPass())
 	case "shardproxy-credential":
 		if cluster.Conf.IsPath(cluster.Conf.MdbsProxyCredential) && cluster.Conf.IsVaultUsed() {
 			return ""
 		}
-		return cluster.GetShardUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetShardPass())
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetShardUser()+":"+cluster.GetShardPass())
 	case "backup-restic-password":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("backup-restic-password"))
+		return cluster.Conf.GetStableEncryptedValue("backup-restic-password", cluster.Conf.GetDecryptedValue("backup-restic-password"))
 	case "haproxy-password":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("haproxy-password"))
+		return cluster.Conf.GetStableEncryptedValue("haproxy-password", cluster.Conf.GetDecryptedValue("haproxy-password"))
 	case "maxscale-pass":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("maxscale-pass"))
+		return cluster.Conf.GetStableEncryptedValue("maxscale-pass", cluster.Conf.GetDecryptedValue("maxscale-pass"))
 	case "myproxy-password":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("proxysql-password"))
+		return cluster.Conf.GetStableEncryptedValue("proxysql-password", cluster.Conf.GetDecryptedValue("proxysql-password"))
 	case "proxysql-password":
 		if cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword) && cluster.Conf.IsVaultUsed() {
 			return ""
 		}
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("proxysql-password"))
+		return cluster.Conf.GetStableEncryptedValue("proxysql-password", cluster.Conf.GetDecryptedValue("proxysql-password"))
 	case "proxyjanitor-password":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("proxyjanitor-password"))
+		return cluster.Conf.GetStableEncryptedValue("proxyjanitor-password", cluster.Conf.GetDecryptedValue("proxyjanitor-password"))
 	case "vault-secret-id":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("vault-secret-id"))
+		return cluster.Conf.GetStableEncryptedValue("vault-secret-id", cluster.Conf.GetDecryptedValue("vault-secret-id"))
 	case "opensvc-p12-secret":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("opensvc-p12-secret"))
+		return cluster.Conf.GetStableEncryptedValue("opensvc-p12-secret", cluster.Conf.GetDecryptedValue("opensvc-p12-secret"))
 	case "backup-restic-aws-access-secret":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
+		return cluster.Conf.GetStableEncryptedValue("backup-restic-aws-access-secret", cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
 	case "backup-streaming-aws-access-secret":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("backup-streaming-aws-access-secret"))
+		return cluster.Conf.GetStableEncryptedValue("backup-streaming-aws-access-secret", cluster.Conf.GetDecryptedValue("backup-streaming-aws-access-secret"))
 	case "arbitration-external-secret":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("arbitration-external-secret"))
+		return cluster.Conf.GetStableEncryptedValue("arbitration-external-secret", cluster.Conf.GetDecryptedValue("arbitration-external-secret"))
 	case "alert-pushover-user-token":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("alert-pushover-user-token"))
+		return cluster.Conf.GetStableEncryptedValue("alert-pushover-user-token", cluster.Conf.GetDecryptedValue("alert-pushover-user-token"))
 	case "alert-pushover-app-token":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("alert-pushover-app-token"))
+		return cluster.Conf.GetStableEncryptedValue("alert-pushover-app-token", cluster.Conf.GetDecryptedValue("alert-pushover-app-token"))
 	case "mail-smtp-password":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("mail-smtp-password"))
+		return cluster.Conf.GetStableEncryptedValue("mail-smtp-password", cluster.Conf.GetDecryptedValue("mail-smtp-password"))
 	case "api-oauth-client-secret":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("api-oauth-client-secret"))
+		return cluster.Conf.GetStableEncryptedValue("api-oauth-client-secret", cluster.Conf.GetDecryptedValue("api-oauth-client-secret"))
 	case "cloud18-gitlab-password":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("cloud18-gitlab-password"))
+		return cluster.Conf.GetStableEncryptedValue("cloud18-gitlab-password", cluster.Conf.GetDecryptedValue("cloud18-gitlab-password"))
 	case "cloud18-dba-user-credentials":
-		return cluster.GetDbaUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetDbaPass())
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetDbaUser()+":"+cluster.GetDbaPass())
 	case "cloud18-sponsor-user-credentials":
-		return cluster.GetSponsorUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetSponsorPass())
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetSponsorUser()+":"+cluster.GetSponsorPass())
 	case "git-acces-token":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("git-acces-token"))
+		return cluster.Conf.GetStableEncryptedValue("git-acces-token", cluster.Conf.GetDecryptedValue("git-acces-token"))
 	case "vault-token":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("vault-token"))
+		return cluster.Conf.GetStableEncryptedValue("vault-token", cluster.Conf.GetDecryptedValue("vault-token"))
 	default:
 		return ""
 	}
