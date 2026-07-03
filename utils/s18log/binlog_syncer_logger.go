@@ -23,19 +23,23 @@ type ModulePrintf interface {
 //
 // go-mysql's default logger writes every connection lifecycle event
 // ("create BinlogSyncer with config ...", "rotate to ...", "syncer is
-// closing...") to stdout at Info level, unconditionally. Since
-// replication-manager opens a syncer per monitoring tick (binlog metadata
-// refresh, timestamp lookup, query-event scan), this floods the logs with
-// routine noise.
+// closing...") to stdout at Info level, unconditionally. replication-manager
+// opens one of these syncers for binlog metadata refresh on every monitoring
+// tick, plus query-event scanning each tick when MonitorBinlogEvents is
+// enabled, plus timestamp lookups during PITR binlog replay — frequent
+// enough in the common case that this floods the logs with routine noise.
 //
 // All call sites use config.ConstLogModPurge, so every level is mapped
 // (never dropped) and gated purely by the existing log-binlog-purge /
 // log-level-binlog-purge knobs — the same knobs that already control the
-// rest of the binlog purge logging. Raising log-level-binlog-purge to
-// INFO/DEBUG re-enables the routine chatter for troubleshooting without any
-// new config. This intentionally does NOT honor cluster.Conf.Verbose as a
-// force-print override (the repo-wide convention elsewhere): verbose mode
-// would otherwise make this logger impossible to fully suppress.
+// rest of the binlog purge logging. Upstream Info is deliberately downgraded
+// to DEBUG here (see the Info* methods below) since it is otherwise the
+// dominant source of noise; Warn/Error/Fatal/Panic keep their original
+// severity. Raising log-level-binlog-purge to DEBUG re-enables the routine
+// chatter for troubleshooting without any new config. This intentionally
+// does NOT honor cluster.Conf.Verbose as a force-print override (the
+// repo-wide convention elsewhere): verbose mode would otherwise make this
+// logger impossible to fully suppress.
 //
 // Fatal/Panic are the one deliberate exception: they are always force-logged
 // regardless of the module gate. NewBinlogSyncer calls Logger.Fatal (then
@@ -73,14 +77,22 @@ func (l *BinlogSyncerLogger) Debugln(args ...interface{}) {
 	l.log(false, config.LvlDbg, fmt.Sprintln(args...))
 }
 
+// Info* is downgraded to DEBUG here: go-mysql logs routine connection
+// lifecycle events (create/open/close, rotate, kill last connection) at Info
+// unconditionally, and replication-manager opens a syncer per monitoring
+// tick, so passing these through at Info would flood the logs. Raise
+// log-level-binlog-purge to DEBUG to see them again. This does not affect
+// replication-manager's own binlog-purge Info logs (e.g. "Refreshed oldest
+// timestamp..."), which are logged directly via cluster.LogModulePrintf, not
+// through this adapter.
 func (l *BinlogSyncerLogger) Info(args ...interface{}) {
-	l.log(false, config.LvlInfo, fmt.Sprint(args...))
+	l.log(false, config.LvlDbg, fmt.Sprint(args...))
 }
 func (l *BinlogSyncerLogger) Infof(f string, args ...interface{}) {
-	l.log(false, config.LvlInfo, fmt.Sprintf(f, args...))
+	l.log(false, config.LvlDbg, fmt.Sprintf(f, args...))
 }
 func (l *BinlogSyncerLogger) Infoln(args ...interface{}) {
-	l.log(false, config.LvlInfo, fmt.Sprintln(args...))
+	l.log(false, config.LvlDbg, fmt.Sprintln(args...))
 }
 
 // Print* is never actually called by go-mysql's BinlogSyncer; mapped to
