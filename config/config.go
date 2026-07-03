@@ -1094,10 +1094,6 @@ func (old AVSlice) Merge(new AVSlice, addFunc func(new AgentVariable) AgentVaria
 	return merged
 }
 
-func (a AVSlice) Len() int           { return len(a) }
-func (a AVSlice) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a AVSlice) Less(i, j int) bool { return a[i].Agent < a[j].Agent }
-
 type WorkLoad struct {
 	DBTableSize   int64   `json:"dbTableSize"`
 	DBIndexSize   int64   `json:"dbIndexSize"`
@@ -3021,12 +3017,6 @@ func (t *Task) Set(nt Task) {
 	t.Start = nt.Start
 	t.End = nt.End
 }
-
-type TaskSorter []Task
-
-func (a TaskSorter) Len() int           { return len(a) }
-func (a TaskSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a TaskSorter) Less(i, j int) bool { return a[i].Task < a[j].Task }
 
 func GetLabels(v any) []string {
 	t := reflect.TypeOf(v)

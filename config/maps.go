@@ -524,12 +524,6 @@ func FromVersionsMap(m *VersionsMap, c *VersionsMap) *VersionsMap {
 	return m
 }
 
-type VarStateSorter []VariableState
-
-func (a VarStateSorter) Len() int           { return len(a) }
-func (a VarStateSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a VarStateSorter) Less(i, j int) bool { return a[i].VariableName < a[j].VariableName }
-
 type SingleValue string
 
 func (s SingleValue) String() string {

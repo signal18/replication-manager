@@ -89,17 +89,6 @@ type PFSQuery struct {
 	Value            string          `json:"value"`
 }
 
-// PFSQuerySorter sorts PFSQuery by value
-type PFSQuerySorter []PFSQuery
-
-func (a PFSQuerySorter) Len() int      { return len(a) }
-func (a PFSQuerySorter) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a PFSQuerySorter) Less(i, j int) bool {
-	l, _ := strconv.ParseFloat(a[i].Value, 64)
-	r, _ := strconv.ParseFloat(a[j].Value, 64)
-	return l > r
-}
-
 // Column represents a table column definition
 type Column struct {
 	Name      string  `json:"name"`
@@ -417,15 +406,6 @@ func (x *Table) GetTableSync() string {
 	return ""
 }
 
-// TableSizeSorter sorts tables by size (data + index length)
-type TableSizeSorter []*Table
-
-func (a TableSizeSorter) Len() int      { return len(a) }
-func (a TableSizeSorter) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a TableSizeSorter) Less(i, j int) bool {
-	return a[i].DataLength+a[i].IndexLength > a[j].DataLength+a[j].IndexLength
-}
-
 // Disk represents disk usage information
 type Disk struct {
 	Disk      string
@@ -737,13 +717,6 @@ type Explain struct {
 	Rows          sql.NullString `db:"rows" json:"rows"`
 	Extra         sql.NullString `db:"Extra" json:"extra"`
 }
-
-// VariableSorter sorts variables by name
-type VariableSorter []Variable
-
-func (a VariableSorter) Len() int           { return len(a) }
-func (a VariableSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a VariableSorter) Less(i, j int) bool { return a[i].Variable_name < a[j].Variable_name }
 
 // ChangeMasterOpt contains options for CHANGE MASTER/REPLICATION SOURCE command
 type ChangeMasterOpt struct {

@@ -26,6 +26,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
@@ -346,7 +347,7 @@ func (server *ServerMonitor) GetQueryResponseTime() []dbhelper.ResponseTime {
 
 func (server *ServerMonitor) GetVariables(diff bool) []config.VariableState {
 	variables := server.VariablesMap.GetVariables(diff)
-	sort.Sort(config.VarStateSorter(variables))
+	misc.SortByKey(variables, func(v config.VariableState) string { return v.VariableName })
 	return variables
 }
 
@@ -464,7 +465,7 @@ func (server *ServerMonitor) GetStatus() []dbhelper.Variable {
 		return true
 	}
 	server.Status.Callback(statf)
-	sort.Sort(dbhelper.VariableSorter(status))
+	misc.SortByKey(status, func(v dbhelper.Variable) string { return v.Variable_name })
 	return status
 }
 
@@ -495,7 +496,7 @@ func (server *ServerMonitor) GetStatusDelta() []dbhelper.Variable {
 		return true
 	}
 	server.Status.Callback(deltaf)
-	sort.Sort(dbhelper.VariableSorter(delta))
+	misc.SortByKey(delta, func(v dbhelper.Variable) string { return v.Variable_name })
 	return delta
 }
 
@@ -1066,7 +1067,7 @@ func (server *ServerMonitor) GetPFSStatements() []dbhelper.PFSQuery {
 	for _, v := range server.PFSQueries.ToNewMap() {
 		rows = append(rows, *v)
 	}
-	sort.Sort(dbhelper.PFSQuerySorter(rows))
+	misc.SortByKeyDesc(rows, func(q dbhelper.PFSQuery) float64 { v, _ := strconv.ParseFloat(q.Value, 64); return v })
 	return rows
 }
 
@@ -1110,7 +1111,7 @@ func (server *ServerMonitor) GetPFSStatementsSlowLog() []dbhelper.PFSQuery {
 	for _, v := range SlowPFSQueries {
 		rows = append(rows, v)
 	}
-	sort.Sort(dbhelper.PFSQuerySorter(rows))
+	misc.SortByKeyDesc(rows, func(q dbhelper.PFSQuery) float64 { v, _ := strconv.ParseFloat(q.Value, 64); return v })
 	var limits []dbhelper.PFSQuery
 	i := 0
 	for _, v := range rows {
@@ -1149,7 +1150,7 @@ func (server *ServerMonitor) GetSlowLog() []dbhelper.PFSQuery {
 			rows = append(rows, nval)
 		}
 	}
-	sort.Sort(dbhelper.PFSQuerySorter(rows))
+	misc.SortByKeyDesc(rows, func(q dbhelper.PFSQuery) float64 { v, _ := strconv.ParseFloat(q.Value, 64); return v })
 	return rows
 }
 
@@ -1360,7 +1361,7 @@ func (server *ServerMonitor) GetDictTables() []*dbhelper.Table {
 		cluster.SetWaitMonitorSchema()
 	}
 
-	sort.Sort(dbhelper.TableSizeSorter(tables))
+	misc.SortByKeyDesc(tables, func(t *dbhelper.Table) int64 { return t.DataLength + t.IndexLength })
 	return tables
 }
 
@@ -1377,7 +1378,7 @@ func (server *ServerMonitor) GetInnoDBStatus() []dbhelper.Variable {
 		return true
 	}
 	server.EngineInnoDB.Callback(getf)
-	sort.Sort(dbhelper.VariableSorter(status))
+	misc.SortByKey(status, func(v dbhelper.Variable) string { return v.Variable_name })
 	return status
 
 }
@@ -1638,7 +1639,7 @@ func (server *ServerMonitor) JobsGetEntries() config.ServerTaskList {
 		sTask.Tasks = append(sTask.Tasks, *v.(*config.Task))
 		return true
 	})
-	sort.Sort(config.TaskSorter(sTask.Tasks))
+	misc.SortByKey(sTask.Tasks, func(t config.Task) string { return t.Task })
 	return sTask
 }
 
