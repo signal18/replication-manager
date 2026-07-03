@@ -17,10 +17,14 @@ import (
 )
 
 func (server *ServerMonitor) delCookie(key string) error {
-	cluster := server.ClusterGroup
 	err := os.Remove(server.Datadir + "/@" + key)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Remove cookie (%s) %s", key, err)
+		// ClusterGroup may be nil on a detached server, and concurrent
+		// deleters losing the os.Remove race land here — never panic for a
+		// debug log line.
+		if cluster := server.ClusterGroup; cluster != nil && cluster.Conf != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Remove cookie (%s) %s", key, err)
+		}
 	}
 
 	return err

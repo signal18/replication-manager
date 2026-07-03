@@ -173,7 +173,7 @@ type ReplicationManager struct {
 	IsApiListenerReady          bool                           `json:"-"`
 	Terms                       []byte                         `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
 	TermsDT                     time.Time                      `json:"termsDT"`
-	ModTimes                    map[string]time.Time           `json:"termsDT"`
+	ModTimes                    map[string]time.Time           `json:"-"`
 	SessionManager              *tty.SessionManager            `json:"-"`
 	ConfigManager               *manager.ConfigManager         `json:"-"`
 	MeetUserID                  string                         `json:"-"`
