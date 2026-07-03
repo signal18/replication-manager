@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -72,10 +73,13 @@ func binlogSyncerServerIDFor(checkBinServerId, offset int) (uint32, bool) {
 
 // binlogSyncerServerID computes the go-mysql server-id for a binlog syncer
 // (check-binlog-server-id plus offset) and refuses a value of 0: go-mysql's
-// NewBinlogSyncer calls Logger.Fatal (os.Exit(1)) on ServerID==0 with no way
-// to recover. InitFromConf already logs a loud, one-time error at cluster
-// startup when the config produces this; this guard just makes sure the
-// syncer is never actually started with it, without re-logging every tick.
+// NewBinlogSyncer calls Logger.Fatal on ServerID==0 with no way to recover
+// unless the call goes through newSafeBinlogSyncer. InitFromConf already logs
+// a loud, one-time error at cluster startup when the config produces this;
+// this guard just makes sure the syncer is never actually started with it,
+// without re-logging every tick. This is the primary prevention layer;
+// newSafeBinlogSyncer is the last-resort safety net if it's ever missed or a
+// future go-mysql version adds new Fatal conditions.
 func (server *ServerMonitor) binlogSyncerServerID(offset int) (uint32, bool) {
 	cluster := server.ClusterGroup
 	id, ok := binlogSyncerServerIDFor(cluster.Conf.CheckBinServerId, offset)
@@ -84,6 +88,43 @@ func (server *ServerMonitor) binlogSyncerServerID(offset int) (uint32, bool) {
 			"check-binlog-server-id produces server-id 0 for %s, skipping binlog syncer", server.URL)
 	}
 	return id, ok
+}
+
+// newSafeBinlogSyncer is the only place cluster code may call
+// replication.NewBinlogSyncer directly; every call site in this file must go
+// through it (enforced by TestBinlogSyncerConstructionOnlyThroughSafeWrapper
+// in srv_binlog_test.go).
+//
+// go-mysql's NewBinlogSyncer calls Logger.Fatal(...) synchronously on
+// ServerID==0, and BinlogSyncerLogger.Fatal panics with s18log.FatalError
+// rather than calling os.Exit(1) precisely so this constructor can recover
+// from it. binlogSyncerServerID already prevents ServerID==0 from reaching
+// this call in normal operation; this recover is defense in depth for a
+// validation gap, a future call site that forgets it, or a future go-mysql
+// version that fails closed somewhere else in the constructor.
+//
+// Recovery policy: this narrow boundary recovers ALL panics from the
+// constructor call, not just *FatalError, and always returns an error instead
+// — a single bad binlog syncer must never exit the process or affect other
+// clusters. Every recovery is force-logged at Error level with the panic
+// value and a stack trace via cfg.Logger.Recovered, regardless of what level
+// the caller that receives the returned error chooses to log it at, so this
+// specific failure mode is never silently downgraded to Debug.
+func newSafeBinlogSyncer(cfg replication.BinlogSyncerConfig) (syncer *replication.BinlogSyncer, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			syncer = nil
+			if fe, ok := r.(*s18log.FatalError); ok {
+				err = fmt.Errorf("binlog syncer construction failed: %w", fe)
+			} else {
+				err = fmt.Errorf("binlog syncer construction panicked: %v", r)
+			}
+			if l, ok := cfg.Logger.(*s18log.BinlogSyncerLogger); ok {
+				l.Recovered(fmt.Sprintf("recovered from panic constructing binlog syncer: %v\n%s", r, debug.Stack()))
+			}
+		}
+	}()
+	return replication.NewBinlogSyncer(cfg), nil
 }
 
 func (server *ServerMonitor) RefreshBinaryLogs() error {
@@ -169,7 +210,10 @@ func (server *ServerMonitor) RefreshBinlogMetaGoMySQL(meta *dbhelper.BinaryLogMe
 
 	cfg.TLSConfig = server.binlogSyncerTLSConfig()
 
-	syncer := replication.NewBinlogSyncer(cfg)
+	syncer, err := newSafeBinlogSyncer(cfg)
+	if err != nil {
+		return err
+	}
 	defer syncer.Close()
 
 	streamer, err := syncer.StartSync(mysql.Position{Name: meta.Filename, Pos: 0})
@@ -953,7 +997,10 @@ func (server *ServerMonitor) GetBinlogPositionFromTimestamp(start uint32, end *b
 
 	cfg.TLSConfig = server.binlogSyncerTLSConfig()
 
-	syncer := replication.NewBinlogSyncer(cfg)
+	syncer, err := newSafeBinlogSyncer(cfg)
+	if err != nil {
+		return err
+	}
 	defer syncer.Close()
 
 	streamer, err := syncer.StartSync(mysql.Position{Name: end.Filename, Pos: start})
@@ -1148,7 +1195,12 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 		}
 		cfg.TLSConfig = server.binlogSyncerTLSConfig()
 
-		syncer := replication.NewBinlogSyncer(cfg)
+		syncer, err := newSafeBinlogSyncer(cfg)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
+				"[binlog-scan] failed to create binlog syncer on %s: %v", server.URL, err)
+			return
+		}
 		// Start from the beginning of the current file so we see all events
 		// written since the last rotation.  Position 4 skips the 4-byte magic
 		// header that precedes the first real event.
@@ -1167,7 +1219,12 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 					"[binlog-scan] auto-enabled TLS with InsecureSkipVerify=true for %s (error 3159)."+
 						" Certificate authenticity is NOT verified — configure monitoring-ssl-ca/cert/key for full TLS validation.", server.URL)
 				cfg.TLSConfig = server.binlogSyncerTLSConfig()
-				syncer = replication.NewBinlogSyncer(cfg)
+				syncer, err = newSafeBinlogSyncer(cfg)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
+						"[binlog-scan] failed to recreate binlog syncer on %s: %v", server.URL, err)
+					return
+				}
 				streamer, err = syncer.StartSync(mysql.Position{Name: currentFile, Pos: 4})
 				if err != nil {
 					syncer.Close()

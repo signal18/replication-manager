@@ -6,7 +6,6 @@ package s18log
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -42,10 +41,13 @@ type ModulePrintf interface {
 // logger impossible to fully suppress.
 //
 // Fatal/Panic are the one deliberate exception: they are always force-logged
-// regardless of the module gate. NewBinlogSyncer calls Logger.Fatal (then
-// os.Exit(1)) when ServerID==0, and nothing else in the monitoring loop
-// captures that failure — silently dropping the line would turn a
-// misconfiguration into an unexplained process exit.
+// regardless of the module gate. NewBinlogSyncer calls Logger.Fatal when
+// ServerID==0, and nothing else in the monitoring loop captures that failure
+// — silently dropping the line would turn a misconfiguration into an
+// unexplained process exit. Fatal* panics with the FatalError sentinel below
+// instead of calling os.Exit(1), so a recover()-based wrapper around the
+// syncer constructor (cluster.newSafeBinlogSyncer) can turn it into an
+// ordinary error instead of killing the whole replication-manager process.
 type BinlogSyncerLogger struct {
 	printer   ModulePrintf
 	serverURL string
@@ -128,19 +130,52 @@ func (l *BinlogSyncerLogger) Errorln(args ...interface{}) {
 	l.log(false, config.LvlErr, fmt.Sprintln(args...))
 }
 
-// Fatal* mirrors go-log's default logger (log as error, then os.Exit(1)).
-// Always force-logged — see the type doc comment for why.
+// FatalError is the panic value used by Fatal*/Fatalf/Fatalln in place of
+// os.Exit(1). go-mysql's replication.NewBinlogSyncer calls Logger.Fatal(...)
+// when its ServerID is 0, with no way to recover short of intercepting the
+// panic.
+//
+// Recovery policy: cluster.newSafeBinlogSyncer is the sole, narrow boundary
+// that recovers this. It deliberately recovers ALL panics raised during
+// construction, not just *FatalError — a single misconfigured or unexpected
+// binlog syncer must never be allowed to exit the process or take down other
+// monitored clusters, so the boundary fails safe regardless of the panic's
+// type. *FatalError is distinguished from other panics only to produce a
+// clearer wrapped error message; both are contained the same way.
+type FatalError struct {
+	msg string
+}
+
+func (e *FatalError) Error() string { return e.msg }
+
+// Recovered force-logs msg at Error level, unconditionally (like Fatal/Panic
+// — see the type doc comment for why). It is meant to be called by a
+// recover()-based wrapper (cluster.newSafeBinlogSyncer) right after it
+// catches a panic raised during construction, so the recovery itself is
+// always high-visibility — independent of whatever level a caller further
+// up the stack chooses to log its returned error at.
+func (l *BinlogSyncerLogger) Recovered(msg string) {
+	l.log(true, config.LvlErr, msg)
+}
+
+// Fatal* mirrors go-log's default logger in that it always logs as error
+// first, but panics with FatalError instead of calling os.Exit(1) — see the
+// FatalError doc comment for why. Always force-logged — see the type doc
+// comment for why.
 func (l *BinlogSyncerLogger) Fatal(args ...interface{}) {
-	l.log(true, config.LvlErr, fmt.Sprint(args...))
-	os.Exit(1)
+	msg := fmt.Sprint(args...)
+	l.log(true, config.LvlErr, msg)
+	panic(&FatalError{msg: msg})
 }
 func (l *BinlogSyncerLogger) Fatalf(f string, args ...interface{}) {
-	l.log(true, config.LvlErr, fmt.Sprintf(f, args...))
-	os.Exit(1)
+	msg := fmt.Sprintf(f, args...)
+	l.log(true, config.LvlErr, msg)
+	panic(&FatalError{msg: msg})
 }
 func (l *BinlogSyncerLogger) Fatalln(args ...interface{}) {
-	l.log(true, config.LvlErr, fmt.Sprintln(args...))
-	os.Exit(1)
+	msg := fmt.Sprintln(args...)
+	l.log(true, config.LvlErr, msg)
+	panic(&FatalError{msg: msg})
 }
 
 // Panic* mirrors go-log's default logger (log as error, then panic). Always
