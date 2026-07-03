@@ -348,6 +348,7 @@ type Cluster struct {
 	// Kept separate from GlobalRegistry so that one cluster's external plugins do
 	// not pollute the monitoring loop of other clusters.
 	pluginRegistry *logplugin.Registry `json:"-"`
+	initiated      bool
 }
 
 // PluginRegistry returns the per-cluster plugin registry, which contains both
@@ -472,6 +473,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 
 	cluster.InitFromConf()
 	cluster.NewClusterGraphite()
+	cluster.initiated = true
 	return nil
 }
 
@@ -630,7 +632,11 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogSlack.Activate("cloud18", true)
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "START", "Replication manager started with version: %s", cluster.Conf.Version)
+	startMsg := "Replication manager cluster started with version: %s"
+	if cluster.initiated {
+		startMsg = "Replication manager cluster config reloaded with version: %s"
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "START", startMsg, cluster.Conf.Version)
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
 		Filename:   cluster.WorkingDir + "/sql_error.log",
