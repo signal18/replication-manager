@@ -707,6 +707,41 @@ make plugins-clean # remove build artifacts
 
 For dev builds without credentials, a local keypair is generated automatically.
 
+### Runtime Signature Verification
+
+When `plugin-signing-public-key` points to an existing key file (the default:
+`<ShareDir>/plugins/plugin-signing.pub`), every `plugin-*` binary must have a
+valid Ed25519 `.sig` in `<ShareDir>/plugins/` to be loaded.
+
+`.sig` files come ONLY from the package / image build (`make plugin-sigs`
+writes them to `share/plugins/` next to the public key). They are deliberately
+NOT accepted from the git pull repo: a compromised pull repo could otherwise
+replay an old officially-signed binary together with its old valid signature
+(downgrade attack), or a foreign binary+sig pair. A binary hot-pushed through
+the pull repo therefore verifies against the locally shipped signatures and is
+skipped when it does not match — this is the intended trust boundary, not a
+bug. Dev/nightly docker images stay self-consistent because every
+`docker/dev/restart.sh` build re-runs `make plugins` → `plugin-sigs`, signing
+the freshly built binaries with the image-local key and placing sigs + public
+key in `share/plugins/`.
+
+### Rejection States (WARN0206 / WARN0207)
+
+Plugins rejected at load time are reported through the cluster state machine,
+not by repeated log lines. `ReloadLogPlugins()` stores the rejection set
+(plugin name → reason); `CheckPluginRejectionStates()` re-asserts one state per
+plugin type on every monitoring tick:
+
+| Code | Key example | Meaning |
+|------|-------------|---------|
+| WARN0206 | `WARN0206@security` | Plugin rejected (e.g. bad/missing signature); reason in description |
+| WARN0207 | `WARN0207` | `plugin-signing-public-key` configured but key file missing — verification skipped |
+
+Lifecycle: one `OPENED` log line and a visible GUI alert while the rejection
+persists, one `RESOLV` line when a reload loads the plugin cleanly. These are
+HA *warnings* (monitoring degraded), never HA blockers — they do not gate
+failover decisions.
+
 ---
 
 ## Existing Plugins

@@ -580,25 +580,25 @@ func (cluster *Cluster) ReloadLogPlugins() {
 		)
 		return
 	}
+	// Store rejections for the state machine instead of re-logging them on
+	// every reload: CheckPluginRejectionStates asserts one WARN0206 state per
+	// plugin type each monitoring tick, so complaints surface once (OPENED)
+	// and resolve when the plugin loads cleanly.
+	rejected := make(map[string]string)
+	pubKeyMissing := ""
 	for _, msg := range rejections {
 		if strings.HasPrefix(msg, "pubKeyMissing:") {
-			cluster.LogModulePrintf(
-				cluster.Conf.Verbose,
-				config.ConstLogModPlugin,
-				config.LvlWarn,
-				"[logplugin] %s",
-				strings.TrimPrefix(msg, "pubKeyMissing: "),
-			)
+			pubKeyMissing = strings.TrimPrefix(msg, "pubKeyMissing: ")
+		} else if name, reason, ok := strings.Cut(msg, ": "); ok {
+			rejected[name] = reason
 		} else {
-			cluster.LogModulePrintf(
-				cluster.Conf.Verbose,
-				config.ConstLogModPlugin,
-				config.LvlErr,
-				"[logplugin] rejected plugin (bad signature): %s",
-				msg,
-			)
+			rejected[msg] = "rejected"
 		}
 	}
+	cluster.pluginStateLock.Lock()
+	cluster.pluginRejections = rejected
+	cluster.pluginPubKeyMissing = pubKeyMissing
+	cluster.pluginStateLock.Unlock()
 	for _, p := range cluster.pluginRegistry.All() {
 		cluster.LogModulePrintf(
 			cluster.Conf.Verbose,
@@ -624,6 +624,22 @@ func (cluster *Cluster) ReloadLogPlugins() {
 			"[logplugin] no external plugins found in %s",
 			dir,
 		)
+	}
+}
+
+// CheckPluginRejectionStates asserts one state per rejected external plugin on
+// every monitoring tick. Signature problems appear once in the state machine
+// (OPENED WARN0206@<plugin-type>) and resolve when the plugin loads cleanly.
+// These are HA warnings: monitoring is degraded but failover is not blocked.
+func (cluster *Cluster) CheckPluginRejectionStates() {
+	cluster.pluginStateLock.Lock()
+	defer cluster.pluginStateLock.Unlock()
+	if cluster.pluginPubKeyMissing != "" {
+		cluster.SetState("WARN0207", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0207"], cluster.pluginPubKeyMissing), ErrFrom: "PLUGIN"})
+	}
+	for name, reason := range cluster.pluginRejections {
+		pluginType := strings.TrimPrefix(name, "plugin-")
+		cluster.SetState("WARN0206@"+pluginType, state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0206"], name, reason), ErrFrom: "PLUGIN"})
 	}
 }
 

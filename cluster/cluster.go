@@ -348,7 +348,13 @@ type Cluster struct {
 	// Kept separate from GlobalRegistry so that one cluster's external plugins do
 	// not pollute the monitoring loop of other clusters.
 	pluginRegistry *logplugin.Registry `json:"-"`
-	initiated      bool
+	// pluginRejections tracks external plugins rejected on the last reload
+	// (binary name -> reason) so CheckPluginRejectionStates can assert one
+	// WARN0206 state per plugin type on every monitoring tick.
+	pluginRejections    map[string]string `json:"-"`
+	pluginPubKeyMissing string            `json:"-"`
+	pluginStateLock     sync.Mutex        `json:"-"`
+	initiated           bool
 }
 
 // PluginRegistry returns the per-cluster plugin registry, which contains both
@@ -1041,6 +1047,7 @@ func (cluster *Cluster) Run() {
 				cluster.SetStatus()
 				cluster.CheckBackupStates()
 				cluster.CheckResticErrors()
+				cluster.CheckPluginRejectionStates()
 				cluster.StateProcessing()
 				cluster.CheckHasFailCertLoadP12()
 				go cluster.GetSlowLogTable() // prevent blocking cycle
