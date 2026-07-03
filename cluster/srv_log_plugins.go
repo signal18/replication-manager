@@ -9,6 +9,7 @@ package cluster
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -561,6 +562,33 @@ func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
 
 func (cluster *Cluster) ReloadLogPlugins() {
 	dir := logplugin.PluginDir(cluster.WorkingDir)
+
+	// Self-heal the per-cluster plugins symlink (<cluster>/plugins → ../plugins).
+	// It is normally created at startup or by the git pull sync, but the cluster
+	// working dir may not exist yet at that point, or may have been wiped by a
+	// config restore — in which case plugins silently stay unloaded (or worse,
+	// stale registry entries fork/exec dangling paths). Recreate it here so
+	// loading never depends on startup ordering.
+	if _, err := os.Lstat(dir); os.IsNotExist(err) {
+		sharedDir := filepath.Join(cluster.Conf.WorkingDir, logplugin.PluginDirName)
+		if fi, serr := os.Stat(sharedDir); serr == nil && fi.IsDir() {
+			rel, rerr := filepath.Rel(filepath.Dir(dir), sharedDir)
+			if rerr != nil {
+				rel = sharedDir
+			}
+			if merr := os.MkdirAll(filepath.Dir(dir), 0755); merr == nil {
+				if lerr := os.Symlink(rel, dir); lerr == nil {
+					cluster.LogModulePrintf(
+						cluster.Conf.Verbose,
+						config.ConstLogModPlugin,
+						config.LvlInfo,
+						"[logplugin] created missing plugin symlink %s → %s",
+						dir, rel,
+					)
+				}
+			}
+		}
+	}
 
 	opts := logplugin.LoadOptions{
 		PubKeyPath: cluster.Conf.PluginSigningPublicKey,
