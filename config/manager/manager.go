@@ -839,6 +839,7 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []
 
 	cm.AddPullToGitignore(conf)
 	cm.AddTempDirToGitignore(conf)
+	cm.AddConfigSyncToGitignore(conf)
 
 	cm.logger.Infof("none", config.ConstLogModGit, "Pushing All Configs To Git")
 
@@ -1305,6 +1306,55 @@ func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 func (cm *ConfigManager) AddTempDirToGitignore(conf *config.Config) {
 	gitignoreFile := conf.WorkingDir + "/.gitignore"
 	lineToAdd := ".tmp/"
+
+	// Check if .gitignore exists
+	if _, err := os.Stat(gitignoreFile); os.IsNotExist(err) {
+		// If .gitignore doesn't exist, create it and write the line
+		err := os.WriteFile(gitignoreFile, []byte(lineToAdd+"\n"), 0644)
+		if err != nil {
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error creating .gitignore: %v", err)
+		}
+		return
+	}
+
+	// Open .gitignore for reading and appending
+	file, err := os.OpenFile(gitignoreFile, os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error opening .gitignore: %v", err)
+		return
+	}
+	defer file.Close()
+
+	// Check if the line already exists
+	scanner := bufio.NewScanner(file)
+	lineExists := false
+	for scanner.Scan() {
+		if strings.TrimSpace(scanner.Text()) == lineToAdd {
+			lineExists = true
+			break
+		}
+	}
+
+	if scanner.Err() != nil {
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error reading .gitignore: %v", scanner.Err())
+		return
+	}
+
+	// Append the line if it doesn't already exist
+	if !lineExists {
+		_, err := file.WriteString(lineToAdd + "\n")
+		if err != nil {
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error appending to .gitignore: %v", err)
+		}
+	}
+}
+
+// Ensures ".config/" is in .gitignore (isolated clone of the shared config
+// repo used by the standby config sync so the live working dir is never
+// force-reset by a pull).
+func (cm *ConfigManager) AddConfigSyncToGitignore(conf *config.Config) {
+	gitignoreFile := conf.WorkingDir + "/.gitignore"
+	lineToAdd := ".config/"
 
 	// Check if .gitignore exists
 	if _, err := os.Stat(gitignoreFile); os.IsNotExist(err) {

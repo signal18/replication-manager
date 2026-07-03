@@ -221,6 +221,44 @@ When multiple clusters are monitored and a split brain occurs:
 
 Different clusters on the same repman instance can have different Active/Standby states depending on where their masters are located relative to the network partition.
 
+### Design Decision: Election Stays Per Cluster (2026-07-03)
+
+A server-level election (elect once per repman pair, push the result down to
+all clusters) was considered and REJECTED. What arbitration protects is each
+cluster's **master**: during a partition, different masters legitimately sit
+on different sides, and only a per-cluster election lets each cluster stay
+active where its master is healthy. A server-level election would force
+whole-side failovers on clusters whose masters are fine. Accepted
+consequences: `repman.Status` is inferred from cluster outcomes, and
+arbitrator election traffic scales with cluster count during split brain.
+
+### Design Decision: Role-Free Git Config Sync (2026-07-03)
+
+Per-cluster elections are incompatible with *role-based* git sync ("active
+pushes, standby pulls"): with a mixed active/standby cluster set there is no
+server-level role to gate on. The sync is therefore role-free and
+change-driven:
+
+- **Push on change, from wherever the change happened.** `GitPush` is
+  ungated; since secrets keep a stable ciphertext across saves, nodes with no
+  real edits push nothing.
+- **Pull everywhere.** `PullActiveConfig` runs on both peers whenever
+  arbitration is enabled. The pull lands in an **isolated clone**
+  `WorkingDir/.config/` (same principle as `.pull/` for the BO repo) — the
+  live working dir is never force-reset by a pull, so a node that is active
+  for some clusters cannot lose locally saved state.
+- **Apply per cluster.** Files (`<name>.toml`, `overwrite.toml`) are copied
+  from `.config/<name>/` into the live tree only for clusters where this node
+  is standby (`!IsActive() && GitConfigSyncStandby`) and only when the bytes
+  actually differ; `ReloadStandbyConfigsFromDisk` then reloads just those
+  clusters. Active clusters' files are never touched by the pull path.
+
+The old implementation ran `git checkout --force` + `pull --force` directly
+on the live working dir, gated by `HasStandbyClusterWithGitSync` (any single
+standby cluster). That was destructive on mixed-role nodes and, combined with
+secrets being re-encrypted on every save, produced a push/pull/reload
+ping-pong between the peers every git tick.
+
 ## Configuration
 
 | Setting | Description |

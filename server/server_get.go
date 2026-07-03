@@ -21,17 +21,6 @@ func (repman *ReplicationManager) HasActiveCluster() bool {
 	return false
 }
 
-func (repman *ReplicationManager) HasStandbyClusterWithGitSync() bool {
-	repman.Lock()
-	defer repman.Unlock()
-	for _, cl := range repman.Clusters {
-		if !cl.IsActive() && cl.Conf.GitConfigSyncStandby {
-			return true
-		}
-	}
-	return false
-}
-
 func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Cluster {
 	var c *cluster.Cluster
 	repman.Lock()

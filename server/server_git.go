@@ -1255,89 +1255,55 @@ func (repman *ReplicationManager) PullActiveConfig() {
 
 func (repman *ReplicationManager) pullActiveConfigLocked() {
 	path := repman.Conf.WorkingDir
+	syncDir := filepath.Join(path, ".config")
 	tok := repman.Conf.GetDecryptedValue("git-acces-token")
-	user := repman.Conf.GitUsername
-	url := repman.Conf.GitUrl
 
-	auth := &git_https.BasicAuth{
-		Username: user,
-		Password: tok,
-	}
-
-	gitDir := filepath.Join(path, ".git")
-	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo,
-			"Standby: initializing git repo from %s for config sync", url)
-		tmpParent := filepath.Join(path, ".tmp")
-		if err := os.MkdirAll(tmpParent, 0755); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-				"Standby: cannot create .tmp directory: %s", err)
-			return
-		}
-		tmpDir, tmpErr := os.MkdirTemp(tmpParent, "repman-standby-clone-*")
-		if tmpErr != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-				"Standby: cannot create temp dir for clone: %s", tmpErr)
-			return
-		}
-		defer os.RemoveAll(tmpDir)
-
-		_, cloneErr := git.PlainClone(tmpDir, false, &git.CloneOptions{
-			URL:          url,
-			Auth:         auth,
-			Depth:        1,
-			SingleBranch: true,
-		})
-		if cloneErr != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-				"Standby: cannot clone config repo: %s", cloneErr)
-			return
-		}
-
-		if err := os.Rename(filepath.Join(tmpDir, ".git"), gitDir); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-				"Standby: cannot move .git metadata: %s", err)
-			return
-		}
-	}
-
-	r, err := git.PlainOpen(path)
-	if err != nil {
+	// Pull the shared config repo into an isolated clone (.config/), same
+	// principle as .pull/: the live working dir is never force-reset by the
+	// pull path, so a node that is active for some clusters cannot lose
+	// locally saved state. This makes the sync safe to run on both peers
+	// regardless of per-cluster active/standby roles.
+	if err := repman.Conf.CloneConfigFromGit(repman.Conf.GitUrl, repman.Conf.GitUsername, tok, syncDir); err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-			"Standby: cannot open git repo at %s: %s", path, err)
+			"Standby: cannot sync config repo clone %s: %s", syncDir, err)
 		return
 	}
 
-	w, err := r.Worktree()
-	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-			"Standby: cannot get worktree: %s", err)
-		return
+	// Apply pulled files only to clusters where this node is standby, and
+	// only when the content actually changed.
+	applied := false
+	for _, name := range repman.ClusterList {
+		cl := repman.getClusterByName(name)
+		if cl == nil || cl.IsActive() || !cl.Conf.GitConfigSyncStandby {
+			continue
+		}
+		for _, f := range []string{name + ".toml", "overwrite.toml"} {
+			src := filepath.Join(syncDir, name, f)
+			data, rerr := os.ReadFile(src)
+			if rerr != nil {
+				continue
+			}
+			dst := filepath.Join(path, name, f)
+			if old, oerr := os.ReadFile(dst); oerr == nil && bytes.Equal(old, data) {
+				continue
+			}
+			if merr := os.MkdirAll(filepath.Dir(dst), 0755); merr != nil {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+					"Standby: cannot create config dir for %s: %s", name, merr)
+				continue
+			}
+			if werr := os.WriteFile(dst, data, 0600); werr != nil {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+					"Standby: cannot apply pulled config %s: %s", dst, werr)
+				continue
+			}
+			applied = true
+		}
 	}
 
-	err = w.Checkout(&git.CheckoutOptions{
-		Force: true,
-	})
-	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn,
-			"Standby: git checkout --force failed: %s", err)
-	}
-
-	err = w.Pull(&git.PullOptions{
-		RemoteName:   "origin",
-		Auth:         auth,
-		SingleBranch: true,
-		Force:        true,
-	})
-
-	if err == git.NoErrAlreadyUpToDate {
+	if !applied {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg,
 			"Standby: config already up to date")
-		return
-	}
-	if err != nil && err != transport.ErrEmptyRemoteRepository {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-			"Standby: git pull failed: %s", err)
 		return
 	}
 

@@ -1758,7 +1758,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		// }
 
 		for _, f := range files {
-			if f.IsDir() && f.Name() != "graphite" && f.Name() != ".pull" && f.Name() != ".git" {
+			if f.IsDir() && f.Name() != "graphite" && f.Name() != ".pull" && f.Name() != ".git" && f.Name() != ".config" && f.Name() != ".tmp" {
 				firstRead.SetConfigName(f.Name())
 				dynRead.SetConfigName("overwrite-" + f.Name())
 				if _, err := os.Stat(conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml"); os.IsNotExist(err) || f.Name() == "overwrite" {
@@ -2805,7 +2805,11 @@ func (repman *ReplicationManager) Run() error {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					if repman.Conf.Arbitration && repman.HasStandbyClusterWithGitSync() {
+					if repman.Conf.Arbitration {
+						// Role-free config sync: the pull lands in an isolated
+						// .config/ clone and applies only to clusters where this
+						// node is standby, so it is safe and meaningful on both
+						// peers regardless of per-cluster active/standby mix.
 						repman.PullActiveConfig()
 					}
 					repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
