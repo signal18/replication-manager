@@ -6,7 +6,7 @@ import RefreshCounter from '../RefreshCounter'
 import { isAuthorized } from '../../utility/common'
 import { Link } from 'react-router-dom'
 import { clearCluster } from '../../redux/clusterSlice'
-import AlertBadge from '../AlertBadge'
+import AlertBadge, { HAAlertBadge } from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
 import SecurityScoreModal from '../Modals/SecurityScoreModal'
 import WorkloadModal from '../Modals/WorkloadModal'
@@ -158,17 +158,11 @@ function Navbar({ username, user }) {
 
           {isAuthorized() && !clusterData && (
             <Flex className={styles.alerts}>
-              <AlertBadge
-                isBlocking={true}
-                text='G-Blockers'
-                count={globalAlerts?.errors?.length || 0}
-                onClick={() => setGlobalAlertModalType('error')}
-                showText={!isMobile}
-              />
-              <AlertBadge
-                text='G-Warnings'
-                count={globalAlerts?.warnings?.length || 0}
-                onClick={() => setGlobalAlertModalType('warning')}
+              <HAAlertBadge
+                text='G-HA'
+                blockers={globalAlerts?.errors?.length || 0}
+                warnings={globalAlerts?.warnings?.length || 0}
+                onClick={() => setGlobalAlertModalType('ha')}
                 showText={!isMobile}
               />
               <AlertBadge
@@ -185,17 +179,11 @@ function Navbar({ username, user }) {
 
           {isAuthorized() && clusterData && (
             <Flex className={styles.alerts}>
-              <AlertBadge
-                isBlocking={true}
-                text='Blockers'
-                count={clusterAlerts?.errors?.length || 0}
-                onClick={() => openAlertModal('error')}
-                showText={!isMobile}
-              />
-              <AlertBadge
-                text='Warnings'
-                count={clusterAlerts?.warnings?.length || 0}
-                onClick={() => openAlertModal('warning')}
+              <HAAlertBadge
+                text='HA'
+                blockers={clusterAlerts?.errors?.length || 0}
+                warnings={clusterAlerts?.warnings?.length || 0}
+                onClick={() => openAlertModal('ha')}
                 showText={!isMobile}
               />
               {clusterData?.securityScore?.grade && (

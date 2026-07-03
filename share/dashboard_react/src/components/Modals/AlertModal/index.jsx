@@ -20,7 +20,12 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
   const [data, setData] = useState([])
 
   useEffect(() => {
-    if (type === 'error' && source?.errors?.length > 0) {
+    if (type === 'ha') {
+      setData([
+        ...(source?.errors || []).map((row) => ({ ...row, severity: 'Blocker' })),
+        ...(source?.warnings || []).map((row) => ({ ...row, severity: 'Warning' }))
+      ])
+    } else if (type === 'error' && source?.errors?.length > 0) {
       setData(source.errors)
     } else if (type === 'warning' && source?.warnings?.length > 0) {
       setData(source.warnings)
@@ -29,9 +34,31 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
     }
   }, [source, type])
 
+  const blockerCount = source?.errors?.length || 0
+  const warningCount = source?.warnings?.length || 0
+
   const columnHelper = createColumnHelper()
   const columns = useMemo(
     () => [
+      ...(type === 'ha'
+        ? [
+            columnHelper.accessor((row) => row.severity, {
+              id: 'severity',
+              cell: (info) => (
+                <span
+                  style={{
+                    color:
+                      info.getValue() === 'Blocker' ? 'var(--danger-primary-color)' : 'var(--warning-primary-color)',
+                    fontWeight: 'bold'
+                  }}>
+                  {info.getValue()}
+                </span>
+              ),
+              header: () => <span>Severity</span>,
+              maxWidth: '120'
+            })
+          ]
+        : []),
       columnHelper.accessor((row) => row.desc, {
         id: 'desc',
         cell: (info) => (
@@ -54,7 +81,7 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
         maxWidth: '200'
       })
     ],
-    []
+    [type]
   )
   return (
     <Modal isOpen={isOpen} onClose={closeModal}>
@@ -69,17 +96,25 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
         overflow='hidden'>
         <ModalHeader
           whiteSpace='pre-line'
-          className={`${styles.header} ${type === 'error' ? styles.red : styles.orange}`}>
-          {type === 'error' ? `Errors: ${data.length}` : `Warnings: ${data.length}`}
+          className={`${styles.header} ${
+            type === 'error' || (type === 'ha' && blockerCount > 0) ? styles.red : styles.orange
+          }`}>
+          {type === 'ha'
+            ? `HA — Blockers: ${blockerCount} / Warnings: ${warningCount}`
+            : type === 'error'
+              ? `Errors: ${data.length}`
+              : `Warnings: ${data.length}`}
         </ModalHeader>
         <ModalCloseButton />
         <ModalBody className={styles.body}>
           {data.length === 0 ? (
-            <NotFound text={`No ${type} alerts found`} />
+            <NotFound text={type === 'ha' ? 'No HA alerts found' : `No ${type} alerts found`} />
           ) : (
             <DataTable
               key="Alerts"
-              className={`${styles.table}  ${type === 'error' ? styles.red : styles.orange}`}
+              className={`${styles.table}  ${
+                type === 'error' || (type === 'ha' && blockerCount > 0) ? styles.red : styles.orange
+              }`}
               columns={columns}
               data={data}
               cellValueAlign='start'
