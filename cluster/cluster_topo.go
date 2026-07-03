@@ -30,21 +30,29 @@ func (cluster *Cluster) newServerList() error {
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModTopology,config.LvlErr, "hello %+v", cluster.Conf.Hosts)
 	cluster.Lock()
 	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Processing host: %s", cluster.Conf.Hosts)
-	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 	// split("")  return len = 1
+	servers := make([]*ServerMonitor, 0, len(cluster.hostList))
 
 	if cluster.Conf.Hosts != "" {
 		for k, url := range cluster.hostList {
 			// Source name will equal to cluster name
-			cluster.Servers[k], _ = cluster.newServerMonitor(url, cluster.GetDbUser(), cluster.GetDbPass(), false, cluster.GetDomain(), cluster.Name)
-			cluster.Servers[k].SetPlacement(k, cluster.Conf.ProvAgents, cluster.Conf.SlapOSDBPartitions, cluster.Conf.SchedulerReceiverPorts)
+			srv, err := cluster.newServerMonitor(url, cluster.GetDbUser(), cluster.GetDbPass(), false, cluster.GetDomain(), cluster.Name)
+			if err != nil || srv == nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Failed to create server monitor for %s: %s", url, err)
+				continue
+			}
+			// Placement index k is kept relative to the host list position so agent/partition/port
+			// assignment stays stable even when other hosts in the list fail to initialize.
+			srv.SetPlacement(k, cluster.Conf.ProvAgents, cluster.Conf.SlapOSDBPartitions, cluster.Conf.SchedulerReceiverPorts)
+			servers = append(servers, srv)
 
 			if cluster.Conf.Verbose {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "New database monitored: %v", cluster.Servers[k].URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "New database monitored: %v", srv.URL)
 			}
 
 		}
 	}
+	cluster.Servers = servers
 
 	cluster.RefreshDatabaseConfigs()
 	cluster.Unlock()
