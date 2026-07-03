@@ -95,6 +95,9 @@ func (cluster *Cluster) HasNoValidSlave() bool {
 }
 
 func (cluster *Cluster) IsProvisioned() bool {
+	cluster.Lock()
+	defer cluster.Unlock()
+
 	if cluster.GetOrchestrator() == config.ConstOrchestratorOnPremise {
 		return true
 	}
