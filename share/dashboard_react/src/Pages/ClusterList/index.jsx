@@ -13,6 +13,7 @@ import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import { FaUserPlus } from 'react-icons/fa'
 import RMIconButton from '../../components/RMIconButton'
+import TagPill from '../../components/TagPill'
 import AddUserModal from '../../components/Modals/AddUserModal'
 import SearchBox from '../../components/SearchBox'
 
@@ -86,6 +87,21 @@ function ClusterList({ onClick }) {
                 </HStack>
               )
             },
+            ...(clusterItem.config?.arbitrationExternal
+              ? [
+                  {
+                    key: 'Arbitration',
+                    value:
+                      clusterItem.activePassiveStatus === 'A' ? (
+                        <TagPill colorScheme='green' text='Active' />
+                      ) : clusterItem.activePassiveStatus === 'S' ? (
+                        <TagPill colorScheme='orange' text='Standby' isBlinking={true} />
+                      ) : (
+                        <Text>-</Text>
+                      )
+                  }
+                ]
+              : []),
             { key: 'Topology', value: clusterItem.topology },
             { key: 'Orchestrator', value: clusterItem.config?.provOrchestrator },
             { key: 'Databases', value: clusterItem.dbServers?.length },
