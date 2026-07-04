@@ -171,15 +171,6 @@ function Navbar({ username, user }) {
                 onClick={() => setGlobalAlertModalType('health')}
                 showText={!isMobile}
               />
-              <AlertBadge
-                colorScheme={monitor?.activeInterventionCount > 0 ? 'red' : monitor?.isGlobalInterventionPending ? 'orange' : 'teal'}
-                icon={MdNotificationsOff}
-                text={monitor?.activeInterventionCount > 0 ? 'Muted' : monitor?.isGlobalInterventionPending ? 'Scheduled' : 'Mute'}
-                count={monitor?.activeInterventionCount || ''}
-                onClick={() => setIsInterventionPanelOpen(true)}
-                showText={!isMobile}
-                blink={monitor?.activeInterventionCount > 0}
-              />
             </Flex>
           )}
 
@@ -214,15 +205,6 @@ function Navbar({ username, user }) {
                 onClick={() => setIsWorkloadModalOpen(true)}
                 showText={!isMobile}
               />
-              <AlertBadge
-                colorScheme={clusterData?.isIntervention ? 'red' : clusterData?.interventionPending ? 'orange' : 'teal'}
-                icon={MdNotificationsOff}
-                text={clusterData?.isIntervention ? 'Muted' : clusterData?.interventionPending ? 'Scheduled' : 'Mute'}
-                count={clusterData?.interventionSuppressedAlerts || ''}
-                onClick={() => setIsInterventionPanelOpen(true)}
-                showText={!isMobile}
-                blink={clusterData?.isIntervention}
-              />
             </Flex>
           )}
 
@@ -249,14 +231,38 @@ function Navbar({ username, user }) {
                   onClick={openAddUserModal}
                 />
               )}
-              <AlertBadge
-                colorScheme='blue'
-                icon={FaUserCircle}
-                text={username ? (username.length > 5 ? username.substring(0, 5) + '..' : username) : ''}
-                count=''
-                onClick={() => setIsUserInfoPanelOpen(true)}
-                showText={!isMobile}
-              />
+              {/* Mute and user badges grouped tight — no counters on them */}
+              <Flex className={styles.alerts}>
+                {clusterData ? (
+                  <AlertBadge
+                    colorScheme={clusterData?.isIntervention ? 'red' : clusterData?.interventionPending ? 'orange' : 'teal'}
+                    icon={MdNotificationsOff}
+                    text={clusterData?.isIntervention ? 'Muted' : clusterData?.interventionPending ? 'Scheduled' : 'Mute'}
+                    count={clusterData?.interventionSuppressedAlerts || ''}
+                    onClick={() => setIsInterventionPanelOpen(true)}
+                    showText={!isMobile}
+                    blink={clusterData?.isIntervention}
+                  />
+                ) : (
+                  <AlertBadge
+                    colorScheme={monitor?.activeInterventionCount > 0 ? 'red' : monitor?.isGlobalInterventionPending ? 'orange' : 'teal'}
+                    icon={MdNotificationsOff}
+                    text={monitor?.activeInterventionCount > 0 ? 'Muted' : monitor?.isGlobalInterventionPending ? 'Scheduled' : 'Mute'}
+                    count={monitor?.activeInterventionCount || ''}
+                    onClick={() => setIsInterventionPanelOpen(true)}
+                    showText={!isMobile}
+                    blink={monitor?.activeInterventionCount > 0}
+                  />
+                )}
+                <AlertBadge
+                  colorScheme='blue'
+                  icon={FaUserCircle}
+                  text={username ? (username.length > 5 ? username.substring(0, 5) + '..' : username) : ''}
+                  count=''
+                  onClick={() => setIsUserInfoPanelOpen(true)}
+                  showText={!isMobile}
+                />
+              </Flex>
             </>
           )}
 
