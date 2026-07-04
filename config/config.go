@@ -2114,6 +2114,10 @@ func (conf *Config) PrintSecret(value string) string {
 	return masker.String(masker.MAddress, value)
 }
 
+// gitNetworkTimeout bounds every go-git network operation: without it a hung
+// remote holds the git mutex forever and freezes config saves.
+const gitNetworkTimeout = 120 * time.Second
+
 func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir string) error {
 	var err error
 	var r *git.Repository
@@ -2150,7 +2154,11 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 		}
 		// Pull the latest changes from the origin remote and merge into the current branch
 		//git_ex.Info("git pull origin")
-		err = w.Pull(&git.PullOptions{
+		// Bounded: go-git has no default network timeout and a hung pull
+		// holds the git mutex forever, freezing config saves and the main loop.
+		ctx, cancel := context.WithTimeout(context.Background(), gitNetworkTimeout)
+		defer cancel()
+		err = w.PullContext(ctx, &git.PullOptions{
 			RemoteName:   "origin",
 			Auth:         auth,
 			SingleBranch: true,
@@ -2171,7 +2179,9 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 		// Clone the given repository to the given directory
 		//git_ex.Info("git clone %s %s --recursive", url, path)
 
-		_, err = git.PlainClone(path, false, &git.CloneOptions{
+		ctx, cancel := context.WithTimeout(context.Background(), gitNetworkTimeout)
+		defer cancel()
+		_, err = git.PlainCloneContext(ctx, path, false, &git.CloneOptions{
 			URL:               url,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 			Auth:              auth,
@@ -2202,9 +2212,14 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 	}
 	path := dir
 
+	// Bounded like CloneConfigFromGit: go-git has no default network timeout
+	// and the push worker holds the git mutex — a hang here freezes saves.
+	ctx, cancel := context.WithTimeout(context.Background(), gitNetworkTimeout)
+	defer cancel()
+
 	var r *git.Repository
 	if _, err := os.Stat(path + "/.git"); os.IsNotExist(err) {
-		r, err = git.PlainClone(path, false, &git.CloneOptions{
+		r, err = git.PlainCloneContext(ctx, path, false, &git.CloneOptions{
 			URL:               url,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 			Auth:              auth,
@@ -2212,7 +2227,7 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 		if err != nil {
 			if err == transport.ErrRepositoryNotFound {
 				conf.CreateGitlabProjects()
-				r, err = git.PlainClone(path, false, &git.CloneOptions{
+				r, err = git.PlainCloneContext(ctx, path, false, &git.CloneOptions{
 					URL:               url,
 					RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 					Auth:              auth,
@@ -2318,7 +2333,7 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 		return err
 	}
 
-	err = w.Pull(&git.PullOptions{
+	err = w.PullContext(ctx, &git.PullOptions{
 		RemoteName: "origin",
 		Auth:       auth,
 		RemoteURL:  url,
@@ -2330,7 +2345,7 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 	}
 
 	// push using default options
-	err = r.Push(&git.PushOptions{Auth: auth, RemoteURL: url})
+	err = r.PushContext(ctx, &git.PushOptions{Auth: auth, RemoteURL: url})
 	if err != nil {
 		log.Errorf("Git error : cannot Push : %s", err)
 	}

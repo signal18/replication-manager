@@ -2800,7 +2800,10 @@ func (repman *ReplicationManager) Run() error {
 		time.Sleep(time.Second * time.Duration(repman.Conf.MonitoringTicker))
 
 		if counter%60 == 0 {
-			repman.ConfigManager.SaveConfig(repman, true)
+			// Never wait on the manager queue from the main loop: if the git
+			// worker is wedged behind a hung network call, wait=true freezes
+			// every state producer (observed on dbaas-fr-2/-dr).
+			repman.ConfigManager.SaveConfig(repman, false)
 
 			// Network tasks run detached and guarded: the main loop must never
 			// block on git or HTTP I/O (go-git has no timeout — a single hung
