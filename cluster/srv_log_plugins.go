@@ -487,6 +487,48 @@ func (cluster *Cluster) assertDomainObservabilityStates() {
 	if !cluster.Conf.ProvDBConfig && cluster.ConfigStateMachine != nil {
 		cluster.ConfigStateMachine.AddState("CINF0003@config-configurator", state.State{ErrType: "INFO", ErrKey: "CINF0003", ErrDesc: fmt.Sprintf(clusterError["CINF0003"], "configurator", "prov-db-config"), ErrFrom: "CONFIG"})
 	}
+	// Configurator vs production drift. Per variable, the configurator output
+	// (dummy.cnf) is compared to the config running in production (current.cnf,
+	// shipped back from the node by dbjobs). Two distinct situations:
+	// WARN0180 — the node never reported a deployed config (dbjobs never ran
+	// or config was never applied); WARN0179 — a deployed config exists but
+	// differs (dbjobs has not applied the latest output, or out-of-band edit).
+	// States carry server names only — the full variable diff is rendered in
+	// the database configurator view and must never bloat a state description.
+	// The flags live on the ServerMonitor object, which is recreated on config
+	// reload / plan change and only meaningful after its first Refresh —
+	// preserve both states until every server has been monitored at least
+	// once so reloads (frequent on git-sync standbys) do not flap them.
+	if cluster.ConfigStateMachine != nil && cluster.Conf.ProvDBConfig {
+		ready := true
+		for _, srv := range cluster.Servers {
+			if srv != nil && srv.MonitorTime == 0 {
+				ready = false
+				break
+			}
+		}
+		if !ready {
+			cluster.ConfigStateMachine.PreserveState("WARN0179", "WARN0180")
+		} else {
+			var drift, undeployed []string
+			for _, srv := range cluster.Servers {
+				if srv == nil || srv.VariablesMap == nil || !srv.VariablesMap.HasConfigValues() {
+					continue
+				}
+				if !srv.VariablesMap.HasDeployedValues() {
+					undeployed = append(undeployed, srv.URL)
+				} else if srv.HasConfigDiff {
+					drift = append(drift, srv.URL)
+				}
+			}
+			if len(undeployed) > 0 {
+				cluster.ConfigStateMachine.AddState("WARN0180", state.State{ErrType: "WARNING", ErrKey: "WARN0180", ErrDesc: fmt.Sprintf(clusterError["WARN0180"], len(undeployed), strings.Join(undeployed, ", ")), ErrFrom: "CONFIG"})
+			}
+			if len(drift) > 0 {
+				cluster.ConfigStateMachine.AddState("WARN0179", state.State{ErrType: "WARNING", ErrKey: "WARN0179", ErrDesc: fmt.Sprintf(clusterError["WARN0179"], len(drift), strings.Join(drift, ", ")), ErrFrom: "CONFIG"})
+			}
+		}
+	}
 	// Config domain: databases with pending configuration changes (config
 	// cookie waiting to be applied, or restart required to activate it).
 	if cluster.ConfigStateMachine != nil {

@@ -264,6 +264,8 @@ var ClusterError = map[string]string{
 	"WARN0205":  "Server %s has a log event spike detected vs dynamic multi-granularity baseline",
 	"WARN0177":  "%d database(s) have configuration changes to resolve: %s",
 	"WARN0178":  "On-premise SSH unreachable on %d node(s): %s",
+	"WARN0179":  "%d database(s) differ from configurator generated config: %s",
+	"WARN0180":  "%d database(s) have no deployed config received from dbjobs: %s",
 	"WARN0206":  "Log plugin %s rejected: %s",
 	"WARN0207":  "Plugin signature verification skipped: %s",
 	// CINF: cluster observability statuses (INFO, state-as-tag) — each domain
