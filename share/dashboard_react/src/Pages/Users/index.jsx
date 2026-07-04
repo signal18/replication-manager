@@ -18,7 +18,6 @@ import TextInputModal from '../../components/Modals/TextInputModal'
 
 function Users({ selectedCluster, user }) {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
-  const canAddUser = !!(monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0)
   const [data, setData] = useState([])
   const [selectedUser, setSelectedUser] = useState(null)
   const [action, setAction] = useState({ type: '', title: '', payload: '' })
@@ -31,6 +30,7 @@ function Users({ selectedCluster, user }) {
   const {
     globalClusters: { monitor },
   } = useSelector((state) => state)
+  const canAddUser = !!(monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0)
 
   const showUser = (user, item) => {
     if (user.user === "admin") {
