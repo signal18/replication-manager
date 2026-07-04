@@ -1,6 +1,6 @@
 import { Badge, Box } from '@chakra-ui/react'
 import React from 'react'
-import { HiBan, HiExclamation } from 'react-icons/hi'
+import { HiBan, HiExclamation, HiRefresh } from 'react-icons/hi'
 import { BiSupport } from "react-icons/bi";
 import styles from './styles.module.scss'
 import CustomIcon from '../Icons/CustomIcon'
@@ -83,6 +83,34 @@ export function HealthAlertBadge({ blockers = 0, warnings = 0, text = 'Health', 
       </Box>
       <CustomIcon icon={icon} />
       {showText ? (blockers > 0 ? `${text} Blocker` : text) : ''}
+    </Badge>
+  )
+}
+
+// NetworkBadge is the refresh-toolbar trigger, sized and placed like the
+// other alert badges. The monitor loop tick shows as a rolling 0-99 counter
+// in a top-left bubble (liveness pulse); green when healthy, red blinking
+// when the loop stalls or the peer heartbeat fails.
+export function NetworkBadge({ tick, stalled = false, heartbeatFailed = false, text = 'Network', onClick, showText }) {
+  const unhealthy = stalled || heartbeatFailed
+  const colorScheme = unhealthy ? 'red' : 'green'
+  const label = stalled ? 'Stalled' : heartbeatFailed ? 'Heartbeat' : text
+  return (
+    <Badge
+      as={'button'}
+      {...(onClick ? { onClick: onClick } : {})}
+      colorScheme={colorScheme}
+      className={`${styles.badge} ${unhealthy ? styles.blinking : ''}`}>
+      {tick !== undefined && (
+        <Box
+          as='span'
+          className={`alertCount ${styles.alertCount} ${unhealthy ? styles.blocker : styles.support}`}
+          style={{ right: 'auto', left: '-10px' }}>
+          {tick % 100}
+        </Box>
+      )}
+      <CustomIcon icon={HiRefresh} />
+      {showText ? label : ''}
     </Badge>
   )
 }

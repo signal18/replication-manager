@@ -6,7 +6,7 @@ import RefreshCounter from '../RefreshCounter'
 import { isAuthorized } from '../../utility/common'
 import { Link } from 'react-router-dom'
 import { clearCluster } from '../../redux/clusterSlice'
-import AlertBadge, { HealthAlertBadge } from '../AlertBadge'
+import AlertBadge, { HealthAlertBadge, NetworkBadge } from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
 import SecurityScoreModal from '../Modals/SecurityScoreModal'
 import WorkloadModal from '../Modals/WorkloadModal'
@@ -171,39 +171,8 @@ function Navbar({ username, user }) {
             <TextLogo className={`${styles.logo} ${theme === 'light' ? styles.lightTextLogo : styles.darkTextLogo}`} text={logoText} />
           </HStack>
         </Link>
-        {isAuthorized() && !clusterData && loopTick !== undefined && (
-          // Single NETWORK pill: monitor loop liveness + peer heartbeat.
-          // Green with the live tick when everything is fine; red naming
-          // the failing part otherwise.
-          <TagPill
-            colorScheme={monitorStalled || monitor?.splitBrain ? 'red' : 'green'}
-            text={
-              monitorStalled
-                ? 'Network: Monitor Stalled'
-                : monitor?.config?.arbitrationExternal && monitor?.splitBrain
-                  ? 'Network: Heartbeat Failed'
-                  : `Network ${loopTick}`
-            }
-            isBlinking={monitorStalled || !!monitor?.splitBrain}
-          />
-        )}
         <Spacer />
 
-        {isAuthorized() && location.pathname !== '/slideshow' && (
-          <Popover placement='bottom'>
-            <PopoverTrigger>
-              <Box as='span'>
-                <RMIconButton icon={HiRefresh} tooltip='Auto refresh settings' variant='outline' px='2' />
-              </Box>
-            </PopoverTrigger>
-            <PopoverContent width='auto'>
-              <PopoverArrow />
-              <PopoverBody>
-                <RefreshCounter clusterName={clusterData?.name} />
-              </PopoverBody>
-            </PopoverContent>
-          </Popover>
-        )}
 
 
         <Spacer />
@@ -213,6 +182,24 @@ function Navbar({ username, user }) {
 
           {isAuthorized() && !clusterData && (
             <Flex className={styles.alerts}>
+              <Popover placement='bottom'>
+                <PopoverTrigger>
+                  <Box as='span'>
+                    <NetworkBadge
+                      tick={loopTick}
+                      stalled={monitorStalled}
+                      heartbeatFailed={!!(monitor?.config?.arbitrationExternal && monitor?.splitBrain)}
+                      showText={!isMobile}
+                    />
+                  </Box>
+                </PopoverTrigger>
+                <PopoverContent width='auto'>
+                  <PopoverArrow />
+                  <PopoverBody>
+                    <RefreshCounter clusterName={clusterData?.name} />
+                  </PopoverBody>
+                </PopoverContent>
+              </Popover>
               <HealthAlertBadge
                 text='Monitor'
                 blockers={globalAlerts?.errors?.length || 0}
@@ -225,6 +212,24 @@ function Navbar({ username, user }) {
 
           {isAuthorized() && clusterData && (
             <Flex className={styles.alerts}>
+              <Popover placement='bottom'>
+                <PopoverTrigger>
+                  <Box as='span'>
+                    <NetworkBadge
+                      tick={loopTick}
+                      stalled={monitorStalled}
+                      heartbeatFailed={!!(monitor?.config?.arbitrationExternal && monitor?.splitBrain)}
+                      showText={!isMobile}
+                    />
+                  </Box>
+                </PopoverTrigger>
+                <PopoverContent width='auto'>
+                  <PopoverArrow />
+                  <PopoverBody>
+                    <RefreshCounter clusterName={clusterData?.name} />
+                  </PopoverBody>
+                </PopoverContent>
+              </Popover>
               <HealthAlertBadge
                 text='Cluster'
                 blockers={clusterAlerts?.errors?.length || 0}
