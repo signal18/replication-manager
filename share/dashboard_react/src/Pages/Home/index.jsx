@@ -47,7 +47,8 @@ import Shards from '../Shards'
 import QueryRules from '../QueryRules'
 import PeerClusterList from '../PeerClusterList'
 import ClustersGlobalSettings from '../ClustersGlobalSettings'
-import GlobalItems from '../GlobalItems'
+import GlobalItems, { GlobalLogs } from '../GlobalItems'
+import AccordionComponent from '../../components/AccordionComponent'
 import Billing from '../Billing'
 import NewClusterModal from '../../components/Modals/NewClusterModal'
 import { FaPlus } from 'react-icons/fa'
@@ -217,6 +218,7 @@ function Home() {
         if (!isPaused) {
           dispatch(getMonitoredData({}))
           dispatch(getClusters({}))
+          dispatch(getGlobalLogs({}))
         }
       }
       if (
@@ -366,7 +368,10 @@ function Home() {
           tabPrefix={[...(selectedClusterNameRef.current == '' && localStorage.getItem('username') == "admin" ? [<div onClick={openNewClusterModal} className={styles.tabSelected}><CustomIcon icon={FaPlus} /></div>] : [])]}
           tabSuffix={[...(selectedClusterNameRef.current == '' && localStorage.getItem('username') == "admin" ? [<div onClick={openTerminalPage} className={styles.tabNormal}>Terminal</div>] : [])]}
           tabContents={[
-            <ClusterList onClick={setDashboardTab} />,
+            <>
+              <ClusterList onClick={setDashboardTab} />
+              {!isClusterOpenRef.current && <AccordionComponent heading={'Global Logs'} body={<GlobalLogs />} />}
+            </>,
             ...(isClusterOpenRef.current
               ? [
                 <Dashboard user={user} selectedCluster={selectedCluster} openSettings={{ topology: openTopologySettings, proxies: openProxiesSettings, logs: openLogsSettings, scheduler: openSchedulerSettings, monitoring: openMonitoringSettings, plugins: openPluginsSettings, graphs: openGraphsSettings, failover: openFailoverSettings }} />,

@@ -358,6 +358,84 @@ func (repman *ReplicationManager) getClusterHeartbeatStallThresholdCycles() int6
 	return int64(defaultMonitorGlobalHeartbeatStallThreshold)
 }
 
+// ProduceClusterAggregateStates rolls per-cluster conditions up to the
+// monitor-level state machine so the global Monitor button reflects fleet
+// health: clusters with open blockers (GERR005, error), unprovisioned
+// clusters (GWARN009) and unmonitored clusters (GWARN010). States are
+// re-asserted every cycle and auto-resolve when the condition clears.
+func (repman *ReplicationManager) ProduceClusterAggregateStates() {
+	if repman == nil || repman.StateMachine == nil {
+		return
+	}
+
+	repman.Lock()
+	clusterSnapshot := make(map[string]*cluster.Cluster)
+	if repman.Clusters != nil {
+		for name, cl := range repman.Clusters {
+			clusterSnapshot[name] = cl
+		}
+	}
+	repman.Unlock()
+
+	var withBlockers, unprovisioned, unmonitored, pullConfig []string
+	for name, cl := range clusterSnapshot {
+		if cl == nil {
+			continue
+		}
+		if sm := cl.GetStateMachine(); sm != nil && len(sm.GetOpenErrors()) > 0 {
+			withBlockers = append(withBlockers, name)
+		}
+		if !cl.IsProvision {
+			unprovisioned = append(unprovisioned, name)
+		}
+		if cl.Conf.MonitorPause {
+			unmonitored = append(unmonitored, name)
+		}
+		// Same condition as the standby config sync apply loop: this cluster's
+		// config is being pulled from the active peer.
+		if !cl.IsActive() && cl.Conf.GitConfigSyncStandby {
+			pullConfig = append(pullConfig, name)
+		}
+	}
+	sort.Strings(withBlockers)
+	sort.Strings(unprovisioned)
+	sort.Strings(unmonitored)
+	sort.Strings(pullConfig)
+
+	if len(withBlockers) > 0 {
+		repman.SetState("GERR005", state.State{
+			ErrType: "ERROR",
+			ErrKey:  "GERR005",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GERR005"], len(withBlockers), strings.Join(withBlockers, ", ")),
+			ErrFrom: "REPMAN",
+		})
+	}
+	if len(unprovisioned) > 0 {
+		repman.SetState("GWARN009", state.State{
+			ErrType: "WARNING",
+			ErrKey:  "GWARN009",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN009"], len(unprovisioned), strings.Join(unprovisioned, ", ")),
+			ErrFrom: "REPMAN",
+		})
+	}
+	if len(unmonitored) > 0 {
+		repman.SetState("GWARN010", state.State{
+			ErrType: "WARNING",
+			ErrKey:  "GWARN010",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN010"], len(unmonitored), strings.Join(unmonitored, ", ")),
+			ErrFrom: "REPMAN",
+		})
+	}
+	if len(pullConfig) > 0 {
+		repman.SetState("GWARN011", state.State{
+			ErrType: "WARNING",
+			ErrKey:  "GWARN011",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN011"], len(pullConfig), strings.Join(pullConfig, ", ")),
+			ErrFrom: "REPMAN",
+		})
+	}
+}
+
 // ProduceCloud18ConnectivityStates probes the GitLab identity provider and the
 // CRM API for reachability and opens/closes GWARN004 / GWARN005 global alert
 // states accordingly.  It is a no-op when Cloud18 is not enabled.

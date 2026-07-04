@@ -232,7 +232,7 @@ function ProcessCard({ proc, isDesktop }) {
 
 // ─── global logs ─────────────────────────────────────────────────────────────
 
-function GlobalLogs() {
+export function GlobalLogs() {
   const logs = useSelector((state) => state.globalClusters.globalLogs?.general)
   return (
     <Box className={styles.logContainer}>

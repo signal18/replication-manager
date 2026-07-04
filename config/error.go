@@ -286,4 +286,8 @@ var GlobalError = map[string]string{
 	"GWARN007": "Server arbitration winner, all clusters set to active",
 	"GWARN008": "Server arbitration loser, all clusters set to standby",
 	"GERR004":  "Server arbitration not eligible: %s",
+	"GERR005":  "ReplicationManager has %d cluster(s) with open blockers: %s",
+	"GWARN009": "ReplicationManager has %d unprovisioned cluster(s): %s",
+	"GWARN010": "ReplicationManager has %d unmonitored cluster(s): %s",
+	"GWARN011": "ReplicationManager has %d cluster(s) in standby pulling config from active peer: %s",
 }
