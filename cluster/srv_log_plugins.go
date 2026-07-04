@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -479,6 +480,23 @@ func (cluster *Cluster) assertDomainObservabilityStates() {
 		}
 		if d.gate != "" {
 			d.sm.AddState("CINF0003@"+d.name, state.State{ErrType: "INFO", ErrKey: "CINF0003", ErrDesc: fmt.Sprintf(clusterError["CINF0003"], d.name, d.gate), ErrFrom: "PLUGIN"})
+		}
+	}
+	// Config domain: databases with pending configuration changes (config
+	// cookie waiting to be applied, or restart required to activate it).
+	if cluster.ConfigStateMachine != nil {
+		var pending []string
+		for _, srv := range cluster.Servers {
+			if srv == nil {
+				continue
+			}
+			if srv.HasConfigCookie() || srv.HasRestartCookie() {
+				pending = append(pending, srv.URL)
+			}
+		}
+		if len(pending) > 0 {
+			sort.Strings(pending)
+			cluster.ConfigStateMachine.AddState("WARN0177", state.State{ErrType: "WARNING", ErrKey: "WARN0177", ErrDesc: fmt.Sprintf(clusterError["WARN0177"], len(pending), strings.Join(pending, ", ")), ErrFrom: "CONFIG"})
 		}
 	}
 	// Schema monitor lifecycle tags: next scheduled run and in-progress runs.
