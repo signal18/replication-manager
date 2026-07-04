@@ -97,6 +97,7 @@ func (repman *ReplicationManager) handlerMuxGlobalLogs(w http.ResponseWriter, r 
 type globalAlertsResponse struct {
 	Errors   []state.StateHttp `json:"errors"`
 	Warnings []state.StateHttp `json:"warnings"`
+	Infos    []state.StateHttp `json:"infos"`
 }
 
 // handlerMuxGlobalAlerts returns the open errors and warnings from the
@@ -121,6 +122,7 @@ func (repman *ReplicationManager) handlerMuxGlobalAlerts(w http.ResponseWriter, 
 	resp := globalAlertsResponse{
 		Errors:   []state.StateHttp{},
 		Warnings: []state.StateHttp{},
+		Infos:    []state.StateHttp{},
 	}
 
 	sm := repman.GetStateMachine()
@@ -130,6 +132,9 @@ func (repman *ReplicationManager) handlerMuxGlobalAlerts(w http.ResponseWriter, 
 		}
 		if warns := sm.GetOpenWarnings(); warns != nil {
 			resp.Warnings = warns
+		}
+		if infos := sm.GetOpenInfos(); infos != nil {
+			resp.Infos = infos
 		}
 	}
 
