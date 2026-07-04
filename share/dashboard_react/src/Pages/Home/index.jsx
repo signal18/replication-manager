@@ -219,6 +219,7 @@ function Home() {
           dispatch(getMonitoredData({}))
           dispatch(getClusters({}))
           dispatch(getGlobalLogs({}))
+          dispatch(getGlobalAlerts({}))
         }
       }
       if (

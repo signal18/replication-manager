@@ -3250,13 +3250,13 @@ func (repman *ReplicationManager) Heartbeat() {
 	}
 
 	if repman.SplitBrain {
-		repman.SetState("GWARN006", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.ClusterError["GWARN006"], repman.Status), ErrFrom: "ARB"})
+		repman.SetState("GWARN006", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN006"], repman.Status), ErrFrom: "ARB"})
 		if !repman.Conf.IsEligibleForArbitration() {
 			reason := "not registered or no support/partner subscription"
 			if repman.Conf.Cloud18GitUser == "" {
 				reason = "Cloud18GitUser is empty (registration or git pull may have failed)"
 			}
-			repman.SetState("GERR004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(config.ClusterError["GERR004"], reason), ErrFrom: "ARB"})
+			repman.SetState("GERR004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(config.GlobalError["GERR004"], reason), ErrFrom: "ARB"})
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlErr, "Server arbitration not eligible: %s", reason)
 		}
 	}
