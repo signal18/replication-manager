@@ -94,6 +94,7 @@ type ReplicationManager struct {
 	Hostname                     string                             `json:"hostname"`
 	Status                       string                             `json:"status"`
 	SplitBrain                   bool                               `json:"splitBrain"`
+	LoopTick                     int64                              `json:"loopTick"`
 	ClusterList                  []string                           `json:"clusters"`
 	ImmutableClusterList         []string                           `json:"-"`
 	DeprecatedKeys               map[string]map[string]bool         `json:"-"`
@@ -2794,6 +2795,9 @@ func (repman *ReplicationManager) Run() error {
 
 	var counter int64 = 0
 	for !repman.exit.Load() {
+		// Liveness signal for the GUI: a frozen loop cannot report itself
+		// through states, so the dashboard watches this tick advance instead.
+		repman.LoopTick = counter
 		if repman.Conf.Arbitration {
 			repman.Heartbeat()
 		}

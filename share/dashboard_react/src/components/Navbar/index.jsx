@@ -1,5 +1,5 @@
 import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure } from '@chakra-ui/react'
-import React, { useState, useEffect} from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../redux/authSlice'
 import RefreshCounter from '../RefreshCounter'
@@ -57,6 +57,23 @@ function Navbar({ username, user }) {
   const userClusterGrants = clusterData?.name && user?.grants
     ? user.grants[clusterData.name]
     : null
+
+  // Monitor loop liveness: a frozen main loop cannot report itself through
+  // states, so we watch loopTick advance between polls. Stalled when it has
+  // not moved for ~5 monitoring ticks (min 15s).
+  const loopTick = monitor?.loopTick
+  const lastTickRef = useRef({ tick: undefined, at: Date.now() })
+  const [monitorStalled, setMonitorStalled] = useState(false)
+  useEffect(() => {
+    if (loopTick === undefined) return
+    const stallMs = Math.max((monitor?.config?.monitoringTicker || 2) * 5000, 15000)
+    if (loopTick !== lastTickRef.current.tick) {
+      lastTickRef.current = { tick: loopTick, at: Date.now() }
+      setMonitorStalled(false)
+    } else if (Date.now() - lastTickRef.current.at > stallMs) {
+      setMonitorStalled(true)
+    }
+  }, [monitor])
 
   useEffect(() => {
     if (isLogged){
@@ -145,6 +162,13 @@ function Navbar({ username, user }) {
             <TextLogo className={`${styles.logo} ${theme === 'light' ? styles.lightTextLogo : styles.darkTextLogo}`} text={logoText} />
           </HStack>
         </Link>
+        {isAuthorized() && !clusterData && loopTick !== undefined && (
+          <TagPill
+            colorScheme={monitorStalled ? 'red' : 'green'}
+            text={monitorStalled ? 'Monitor Stalled' : `Tick ${loopTick}`}
+            isBlinking={monitorStalled}
+          />
+        )}
         {isAuthorized() && !clusterData && monitor?.config?.arbitrationExternal && (
           <TagPill
             colorScheme={monitor?.splitBrain ? 'red' : 'green'}
