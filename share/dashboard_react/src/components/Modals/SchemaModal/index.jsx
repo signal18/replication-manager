@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react'
 import {
   Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay,
-  Badge, Wrap, WrapItem, Text
+  Wrap, WrapItem, Text
 } from '@chakra-ui/react'
+import TagPill from '../../TagPill'
 import { useSelector } from 'react-redux'
 import { DataTable } from '../../DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
@@ -99,9 +100,7 @@ function SchemaModal({ isOpen, closeModal }) {
             <Wrap p='12px' justify='center'>
               {tags.map((t) => (
                 <WrapItem key={t.ErrKey}>
-                  <Badge colorScheme='cyan' variant='subtle' px='2' py='1' textTransform='none'>
-                    {t.ErrDesc}
-                  </Badge>
+                  <TagPill colorScheme='cyan' text={t.ErrDesc} />
                 </WrapItem>
               ))}
             </Wrap>

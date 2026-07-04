@@ -1,12 +1,13 @@
 import React, { useMemo, useState } from 'react'
 import {
   Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay,
-  HStack, Button, Tooltip, Badge, Wrap, WrapItem, Text, Box
+  HStack, Button, Tooltip, Wrap, WrapItem, Text, Box
 } from '@chakra-ui/react'
 import { useSelector, useDispatch } from 'react-redux'
 import { DataTable } from '../../DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
 import NotFound from '../../NotFound'
+import TagPill from '../../TagPill'
 import parentStyles from '../styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
 import { clusterService } from '../../../services/clusterService'
@@ -150,9 +151,9 @@ function WorkloadModal({ isOpen, closeModal }) {
                 {statusTags.map((t) => (
                   <WrapItem key={t.key}>
                     <Tooltip label={t.desc} placement='top'>
-                      <Badge colorScheme='purple' variant='subtle' px={2} py={1} borderRadius='md'>
-                        {t.label}{t.pct ? ` ${t.pct}` : ''}
-                      </Badge>
+                      <span>
+                        <TagPill colorScheme='purple' text={`${t.label}${t.pct ? ` ${t.pct}` : ''}`} />
+                      </span>
                     </Tooltip>
                   </WrapItem>
                 ))}
@@ -166,9 +167,9 @@ function WorkloadModal({ isOpen, closeModal }) {
                 {digestTags.map((t) => (
                   <WrapItem key={t.key}>
                     <Tooltip label={t.desc} placement='top'>
-                      <Badge colorScheme='teal' variant='subtle' px={2} py={1} borderRadius='md'>
-                        {t.label}{t.pct ? ` ${t.pct}` : ''}
-                      </Badge>
+                      <span>
+                        <TagPill colorScheme='teal' text={`${t.label}${t.pct ? ` ${t.pct}` : ''}`} />
+                      </span>
                     </Tooltip>
                   </WrapItem>
                 ))}
