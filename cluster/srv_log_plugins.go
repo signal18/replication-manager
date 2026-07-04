@@ -465,6 +465,7 @@ func (cluster *Cluster) assertDomainObservabilityStates() {
 		{"security", cluster.SecurityStateMachine, map[bool]string{true: "", false: "log-plugin"}[cluster.Conf.LogPlugin]},
 		{"workload", cluster.WorkloadStateMachine, map[bool]string{true: "", false: "log-plugin"}[cluster.Conf.LogPlugin]},
 		{"schema", cluster.SchemaStateMachine, map[bool]string{true: "", false: "log-plugin"}[cluster.Conf.LogPlugin]},
+		{"config", cluster.ConfigStateMachine, map[bool]string{true: "", false: "log-plugin"}[cluster.Conf.LogPlugin]},
 	}
 	for _, d := range domains {
 		if d.sm == nil {
@@ -481,6 +482,10 @@ func (cluster *Cluster) assertDomainObservabilityStates() {
 		if d.gate != "" {
 			d.sm.AddState("CINF0003@"+d.name, state.State{ErrType: "INFO", ErrKey: "CINF0003", ErrDesc: fmt.Sprintf(clusterError["CINF0003"], d.name, d.gate), ErrFrom: "PLUGIN"})
 		}
+	}
+	// Configurator disabled: config tracking/deployment to databases is off.
+	if !cluster.Conf.ProvDBConfig && cluster.ConfigStateMachine != nil {
+		cluster.ConfigStateMachine.AddState("CINF0003@config-configurator", state.State{ErrType: "INFO", ErrKey: "CINF0003", ErrDesc: fmt.Sprintf(clusterError["CINF0003"], "configurator", "prov-db-config"), ErrFrom: "CONFIG"})
 	}
 	// Config domain: databases with pending configuration changes (config
 	// cookie waiting to be applied, or restart required to activate it).

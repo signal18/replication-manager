@@ -263,6 +263,7 @@ var ClusterError = map[string]string{
 	"WARN0204":  "Server %s has new query templates in audit log not seen in baseline window",
 	"WARN0205":  "Server %s has a log event spike detected vs dynamic multi-granularity baseline",
 	"WARN0177":  "%d database(s) have configuration changes to resolve: %s",
+	"WARN0178":  "On-premise SSH unreachable on %d node(s): %s",
 	"WARN0206":  "Log plugin %s rejected: %s",
 	"WARN0207":  "Plugin signature verification skipped: %s",
 	// CINF: cluster observability statuses (INFO, state-as-tag) — each domain

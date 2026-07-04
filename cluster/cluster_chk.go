@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -26,6 +27,7 @@ import (
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -1290,6 +1292,61 @@ func (cluster *Cluster) CheckOnPremiseSSHKey() {
 		cluster.SetState("WARN0169", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0169"], key), ErrFrom: "CHECK"})
 	}
 	cluster.HaveSSHKeyChecked = true
+}
+
+// CheckOnPremiseSSHConnect probes SSH reachability of every database and
+// proxy node when on-premise SSH provisioning is enabled — dbjobs and config
+// push depend on it. A TCP dial with timeout guards the probe: the ssh client
+// library has no dial timeout, so an unroutable node must not stall the
+// monitoring tick.
+func (cluster *Cluster) CheckOnPremiseSSHConnect() {
+	if !cluster.Conf.OnPremiseSSH || cluster.IsInFailover() {
+		return
+	}
+	if cluster.Conf.ProvOrchestrator != "onpremise" && cluster.Conf.ProvOrchestrator != "local" && cluster.Conf.ProvOrchestrator != "" {
+		return
+	}
+	probe := func(host string) string {
+		addr := misc.Unbracket(host) + ":" + strconv.Itoa(cluster.Conf.OnPremiseSSHPort)
+		conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+		if err != nil {
+			return err.Error()
+		}
+		conn.Close()
+		return ""
+	}
+	var failed []string
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+		if msg := probe(srv.Host); msg != "" {
+			failed = append(failed, srv.URL+": "+msg)
+			continue
+		}
+		if client, err := cluster.OnPremiseConnect(srv); err != nil {
+			failed = append(failed, srv.URL+": "+err.Error())
+		} else {
+			client.Close()
+		}
+	}
+	for _, prx := range cluster.Proxies {
+		if prx == nil {
+			continue
+		}
+		if msg := probe(prx.GetHost()); msg != "" {
+			failed = append(failed, prx.GetURL()+": "+msg)
+			continue
+		}
+		if client, err := cluster.OnPremiseConnectProxy(prx); err != nil {
+			failed = append(failed, prx.GetURL()+": "+err.Error())
+		} else {
+			client.Close()
+		}
+	}
+	if len(failed) > 0 {
+		cluster.ConfigStateMachine.AddState("WARN0178", state.State{ErrType: "WARNING", ErrKey: "WARN0178", ErrDesc: fmt.Sprintf(clusterError["WARN0178"], len(failed), strings.Join(failed, "\n")), ErrFrom: "CHECK"})
+	}
 }
 
 func (cluster *Cluster) CheckConfiguratorPrerequisites() {

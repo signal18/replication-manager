@@ -1011,6 +1011,7 @@ func (cluster *Cluster) Run() {
 							goRun(cluster.CheckOpenSVCTresholds)
 							goRun(cluster.JobsCheckSchedulerTable)
 							goRun(cluster.CheckOnPremiseSSHKey)
+							goRun(cluster.CheckOnPremiseSSHConnect)
 							goRun(cluster.CheckConfiguratorPrerequisites)
 							goRun(cluster.CheckGlobalDeprecatedKeys)
 							goRun(cluster.CheckClusterDeprecatedKeys)
@@ -1024,11 +1025,12 @@ func (cluster *Cluster) Run() {
 
 						// PreserveState for non-running ticks (fast, no I/O)
 						if heartbeats%10 != 0 {
-							cluster.StateMachine.PreserveState("WARN0147", "WARN0164")
+							cluster.StateMachine.PreserveState("WARN0147")
+							cluster.SchemaStateMachine.PreserveState("WARN0164")
 						}
 						if heartbeats%30 != 0 {
 							cluster.StateMachine.PreserveState(pstates30...)
-							cluster.ConfigStateMachine.PreserveState("WARN0159", "WARN0160")
+							cluster.ConfigStateMachine.PreserveState("WARN0159", "WARN0160", "WARN0178")
 						}
 						if heartbeats%3600 != 0 {
 							cluster.StateMachine.PreserveState(pstates3600...)
@@ -2853,7 +2855,7 @@ func (cluster *Cluster) MonitorTableSchemaDiff() {
 
 		diffs, _ := cluster.CompareSchemaBetweenMasterAndSlave(sl)
 		if len(diffs) > 0 {
-			cluster.SetState("WARN0164", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0164"], sl.URL, strings.Join(diffs, "\n")), ErrFrom: "MON", ServerUrl: sl.URL})
+			cluster.SchemaStateMachine.AddState("WARN0164", state.State{ErrType: "WARNING", ErrKey: "WARN0164", ErrDesc: fmt.Sprintf(clusterError["WARN0164"], sl.URL, strings.Join(diffs, "\n")), ErrFrom: "MON", ServerUrl: sl.URL})
 		}
 	}
 }
