@@ -20,7 +20,7 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
   const [data, setData] = useState([])
 
   useEffect(() => {
-    if (type === 'ha') {
+    if (type === 'health') {
       setData([
         ...(source?.errors || []).map((row) => ({ ...row, severity: 'Blocker' })),
         ...(source?.warnings || []).map((row) => ({ ...row, severity: 'Warning' }))
@@ -40,7 +40,7 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
   const columnHelper = createColumnHelper()
   const columns = useMemo(
     () => [
-      ...(type === 'ha'
+      ...(type === 'health'
         ? [
             columnHelper.accessor((row) => row.severity, {
               id: 'severity',
@@ -97,10 +97,10 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
         <ModalHeader
           whiteSpace='pre-line'
           className={`${styles.header} ${
-            type === 'error' || (type === 'ha' && blockerCount > 0) ? styles.red : styles.orange
+            type === 'error' || (type === 'health' && blockerCount > 0) ? styles.red : styles.orange
           }`}>
-          {type === 'ha'
-            ? `HA — Blockers: ${blockerCount} / Warnings: ${warningCount}`
+          {type === 'health'
+            ? `Health — Blockers: ${blockerCount} / Warnings: ${warningCount}`
             : type === 'error'
               ? `Errors: ${data.length}`
               : `Warnings: ${data.length}`}
@@ -108,12 +108,12 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
         <ModalCloseButton />
         <ModalBody className={styles.body}>
           {data.length === 0 ? (
-            <NotFound text={type === 'ha' ? 'No HA alerts found' : `No ${type} alerts found`} />
+            <NotFound text={type === 'health' ? 'No health alerts found' : `No ${type} alerts found`} />
           ) : (
             <DataTable
               key="Alerts"
               className={`${styles.table}  ${
-                type === 'error' || (type === 'ha' && blockerCount > 0) ? styles.red : styles.orange
+                type === 'error' || (type === 'health' && blockerCount > 0) ? styles.red : styles.orange
               }`}
               columns={columns}
               data={data}

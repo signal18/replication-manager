@@ -57,11 +57,11 @@ function AlertBadge({
   )
 }
 
-// HAAlertBadge is the single HA health button: red when blockers exist,
+// HealthAlertBadge is the single health button: red when blockers exist,
 // orange when only warnings, green when clean. Both counters are shown on
 // the button — blockers top-right (red bubble, blinking), warnings
 // bottom-right (orange bubble).
-export function HAAlertBadge({ blockers = 0, warnings = 0, text = 'HA', onClick, showText }) {
+export function HealthAlertBadge({ blockers = 0, warnings = 0, text = 'Health', onClick, showText }) {
   const colorScheme = blockers > 0 ? 'red' : warnings > 0 ? 'orange' : 'green'
   const icon = blockers > 0 ? HiBan : HiExclamation
   return (

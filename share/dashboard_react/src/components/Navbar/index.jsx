@@ -6,7 +6,7 @@ import RefreshCounter from '../RefreshCounter'
 import { isAuthorized } from '../../utility/common'
 import { Link } from 'react-router-dom'
 import { clearCluster } from '../../redux/clusterSlice'
-import AlertBadge, { HAAlertBadge } from '../AlertBadge'
+import AlertBadge, { HealthAlertBadge } from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
 import SecurityScoreModal from '../Modals/SecurityScoreModal'
 import WorkloadModal from '../Modals/WorkloadModal'
@@ -158,11 +158,11 @@ function Navbar({ username, user }) {
 
           {isAuthorized() && !clusterData && (
             <Flex className={styles.alerts}>
-              <HAAlertBadge
-                text='G-HA'
+              <HealthAlertBadge
+                text='G-Health'
                 blockers={globalAlerts?.errors?.length || 0}
                 warnings={globalAlerts?.warnings?.length || 0}
-                onClick={() => setGlobalAlertModalType('ha')}
+                onClick={() => setGlobalAlertModalType('health')}
                 showText={!isMobile}
               />
               <AlertBadge
@@ -179,11 +179,11 @@ function Navbar({ username, user }) {
 
           {isAuthorized() && clusterData && (
             <Flex className={styles.alerts}>
-              <HAAlertBadge
-                text='HA'
+              <HealthAlertBadge
+                text='Health'
                 blockers={clusterAlerts?.errors?.length || 0}
                 warnings={clusterAlerts?.warnings?.length || 0}
-                onClick={() => openAlertModal('ha')}
+                onClick={() => openAlertModal('health')}
                 showText={!isMobile}
               />
               {clusterData?.securityScore?.grade && (
