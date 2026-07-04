@@ -384,7 +384,57 @@ func snapshotSlowLog(sl *s18log.SlowLog) []logplugin.StdioSlowMsg {
 	return out
 }
 
+// assertDomainObservabilityStates keeps every domain state machine
+// self-documenting: when a domain cannot fully report, a standing INFO
+// explains why — not registered on Cloud18 (CINF0001), no plugin of the type
+// loaded (CINF0002), or a gating variable turned off (CINF0003). Asserted on
+// every tick so the states resolve as soon as the capability appears; an
+// empty badge then always means "monitored and healthy", never "blind".
+func (cluster *Cluster) assertDomainObservabilityStates() {
+	registered := cluster.Conf.Cloud18 && cluster.Conf.Cloud18GitUser != "" && cluster.Conf.GetDecryptedValue("git-acces-token") != ""
+
+	hasPluginOfType := func(domain string) bool {
+		if cluster.pluginRegistry == nil {
+			return false
+		}
+		for _, p := range cluster.pluginRegistry.All() {
+			if strings.Contains(p.Name(), domain) {
+				return true
+			}
+		}
+		return false
+	}
+
+	domains := []struct {
+		name string
+		sm   *state.StateMachine
+		gate string // gating variable currently off; empty when enabled
+	}{
+		{"security", cluster.SecurityStateMachine, map[bool]string{true: "", false: "log-plugin"}[cluster.Conf.LogPlugin]},
+		{"workload", cluster.WorkloadStateMachine, map[bool]string{true: "", false: "log-plugin"}[cluster.Conf.LogPlugin]},
+	}
+	for _, d := range domains {
+		if d.sm == nil {
+			continue
+		}
+		if !registered {
+			d.sm.AddState("CINF0001@"+d.name, state.State{ErrType: "INFO", ErrKey: "CINF0001", ErrDesc: fmt.Sprintf(clusterError["CINF0001"], d.name), ErrFrom: "PLUGIN"})
+		}
+		if !hasPluginOfType(d.name) {
+			d.sm.AddState("CINF0002@"+d.name, state.State{ErrType: "INFO", ErrKey: "CINF0002", ErrDesc: fmt.Sprintf(clusterError["CINF0002"], d.name), ErrFrom: "PLUGIN"})
+		}
+		if d.gate != "" {
+			d.sm.AddState("CINF0003@"+d.name, state.State{ErrType: "INFO", ErrKey: "CINF0003", ErrDesc: fmt.Sprintf(clusterError["CINF0003"], d.name, d.gate), ErrFrom: "PLUGIN"})
+		}
+	}
+	// Workload spike detection additionally needs graphite metrics.
+	if cluster.Conf.LogPlugin && !cluster.Conf.GraphiteMetrics && cluster.WorkloadStateMachine != nil {
+		cluster.WorkloadStateMachine.AddState("CINF0003@workload-spikes", state.State{ErrType: "INFO", ErrKey: "CINF0003", ErrDesc: fmt.Sprintf(clusterError["CINF0003"], "workload spike", "graphite-metrics"), ErrFrom: "PLUGIN"})
+	}
+}
+
 func (cluster *Cluster) CheckLogPlugins() {
+	cluster.assertDomainObservabilityStates()
 	if !cluster.Conf.LogPlugin {
 		// WARN0314 — plugins are present on disk but log-plugin is disabled.
 		// Raise an advisory with a direct API link so the operator can enable
