@@ -148,7 +148,7 @@ function Navbar({ username, user }) {
         {isAuthorized() && !clusterData && monitor?.config?.arbitrationExternal && (
           <TagPill
             colorScheme={monitor?.splitBrain ? 'red' : 'green'}
-            text={monitor?.splitBrain ? 'Split Brain' : 'In Majority'}
+            text={monitor?.splitBrain ? 'Heartbeat Failed' : 'Heartbeat Ok'}
             isBlinking={!!monitor?.splitBrain}
           />
         )}
