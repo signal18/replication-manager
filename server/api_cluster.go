@@ -1395,6 +1395,7 @@ func (repman *ReplicationManager) handlerMuxAlerts(w http.ResponseWriter, r *htt
 	if mycluster != nil {
 		a.Errors = mycluster.GetStateMachine().GetOpenErrors()
 		a.Warnings = mycluster.GetStateMachine().GetOpenWarnings()
+		a.Infos = mycluster.GetStateMachine().GetOpenInfos()
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		err := e.Encode(a)

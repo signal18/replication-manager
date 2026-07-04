@@ -276,7 +276,7 @@ function AlertSection({ title, items, colorScheme, onOpenModal }) {
                   size='xs'
                   variant='outline'
                   colorScheme={colorScheme}
-                  onClick={() => onOpenModal(title === 'Errors' ? 'error' : 'warning')}>
+                  onClick={() => onOpenModal(title === 'Errors' ? 'error' : title === 'Infos' ? 'info' : 'warning')}>
                   Open in modal
                 </Button>
               </Box>
@@ -291,11 +291,13 @@ function AlertSection({ title, items, colorScheme, onOpenModal }) {
 function GlobalAlertsBody({ globalAlerts, onOpenModal }) {
   const warnings = globalAlerts?.warnings ?? []
   const errors = globalAlerts?.errors ?? []
+  const infos = globalAlerts?.infos ?? []
 
   return (
     <Flex direction='column' gap='12px' p='12px'>
       <AlertSection title='Errors' items={errors} colorScheme='red' onOpenModal={onOpenModal} />
       <AlertSection title='Warnings' items={warnings} colorScheme='orange' onOpenModal={onOpenModal} />
+      <AlertSection title='Infos' items={infos} colorScheme='blue' onOpenModal={onOpenModal} />
     </Flex>
   )
 }

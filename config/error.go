@@ -287,8 +287,9 @@ var GlobalError = map[string]string{
 	"GWARN008": "Server arbitration loser, all clusters set to standby",
 	"GERR004":  "Server arbitration not eligible: %s",
 	"GERR005":  "ReplicationManager has %d cluster(s) with open blockers: %s",
-	"GWARN009": "ReplicationManager has %d unprovisioned cluster(s): %s",
-	"GWARN010": "ReplicationManager has %d unmonitored cluster(s): %s",
-	"GWARN011": "ReplicationManager has %d cluster(s) in standby pulling config from active peer: %s",
 	"GWARN012": "ReplicationManager cannot reach Meet support service: %s",
+	// GINF: informational operating modes (state-as-tag), never counted as alerts
+	"GINF001":  "ReplicationManager has %d cluster(s) in standby pulling config from active peer: %s",
+	"GINF002":  "ReplicationManager has %d unprovisioned cluster(s): %s",
+	"GINF003":  "ReplicationManager has %d unmonitored cluster(s): %s",
 }

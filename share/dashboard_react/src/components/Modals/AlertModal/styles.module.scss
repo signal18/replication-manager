@@ -5,6 +5,9 @@
   &.orange {
     background-color: var(--warning-secondary-color);
   }
+  &.blue {
+    background-color: var(--chakra-colors-blue-600);
+  }
 }
 
 .body {
@@ -27,6 +30,13 @@
     thead {
       tr {
         background-color: var(--warning-tertiary-color);
+      }
+    }
+  }
+  &.blue {
+    thead {
+      tr {
+        background-color: var(--chakra-colors-blue-800);
       }
     }
   }

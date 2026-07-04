@@ -412,27 +412,27 @@ func (repman *ReplicationManager) ProduceClusterAggregateStates() {
 			ErrFrom: "REPMAN",
 		})
 	}
+	if len(pullConfig) > 0 {
+		repman.SetState("GINF001", state.State{
+			ErrType: "INFO",
+			ErrKey:  "GINF001",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GINF001"], len(pullConfig), strings.Join(pullConfig, ", ")),
+			ErrFrom: "REPMAN",
+		})
+	}
 	if len(unprovisioned) > 0 {
-		repman.SetState("GWARN009", state.State{
-			ErrType: "WARNING",
-			ErrKey:  "GWARN009",
-			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN009"], len(unprovisioned), strings.Join(unprovisioned, ", ")),
+		repman.SetState("GINF002", state.State{
+			ErrType: "INFO",
+			ErrKey:  "GINF002",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GINF002"], len(unprovisioned), strings.Join(unprovisioned, ", ")),
 			ErrFrom: "REPMAN",
 		})
 	}
 	if len(unmonitored) > 0 {
-		repman.SetState("GWARN010", state.State{
-			ErrType: "WARNING",
-			ErrKey:  "GWARN010",
-			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN010"], len(unmonitored), strings.Join(unmonitored, ", ")),
-			ErrFrom: "REPMAN",
-		})
-	}
-	if len(pullConfig) > 0 {
-		repman.SetState("GWARN011", state.State{
-			ErrType: "WARNING",
-			ErrKey:  "GWARN011",
-			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN011"], len(pullConfig), strings.Join(pullConfig, ", ")),
+		repman.SetState("GINF003", state.State{
+			ErrType: "INFO",
+			ErrKey:  "GINF003",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GINF003"], len(unmonitored), strings.Join(unmonitored, ", ")),
 			ErrFrom: "REPMAN",
 		})
 	}

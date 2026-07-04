@@ -424,6 +424,7 @@ type Agent struct {
 type Alerts struct {
 	Errors   []state.StateHttp `json:"errors"`
 	Warnings []state.StateHttp `json:"warnings"`
+	Infos    []state.StateHttp `json:"infos"`
 }
 
 type Diff struct {
