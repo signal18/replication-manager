@@ -537,6 +537,7 @@ func (cluster *Cluster) CheckLogPlugins() {
 		cluster.WorkloadStates = cluster.WorkloadStateMachine.GetOpenStates()
 		cluster.WorkloadRemediations = cluster.GetWorkloadRemediationPlan()
 		cluster.SchemaStates = cluster.SchemaStateMachine.GetOpenStates()
+		cluster.ConfigStates = cluster.ConfigStateMachine.GetOpenStates()
 		return
 	}
 	// Clear WARN0314 if log-plugin was just enabled.
@@ -650,6 +651,16 @@ func (cluster *Cluster) CheckLogPlugins() {
 		}
 		workload = append(workload, s)
 	}
+	cluster.ConfigStates = cluster.ConfigStateMachine.GetOpenStates()
+	slices.SortStableFunc(cluster.ConfigStates, func(a, b state.State) int {
+		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl
+		if ak < bk {
+			return -1
+		} else if ak > bk {
+			return 1
+		}
+		return 0
+	})
 	cluster.SchemaStates = cluster.SchemaStateMachine.GetOpenStates()
 	slices.SortStableFunc(cluster.SchemaStates, func(a, b state.State) int {
 		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl

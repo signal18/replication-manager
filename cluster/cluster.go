@@ -208,6 +208,9 @@ type Cluster struct {
 	// (wire v3 Tables snapshot): engine/row-format inventory tags (SCHTAG),
 	// row-size risks and future DDL/table-diff findings (SCH).
 	SchemaStateMachine *state.StateMachine `json:"schemaStateMachine" groups:"web"`
+	// ConfigStateMachine tracks configuration findings: deprecated variables
+	// (WARN0159/0160) and pending compliance modulesets (WARN0168).
+	ConfigStateMachine *state.StateMachine `json:"configStateMachine" groups:"web"`
 	// SecurityStates is a snapshot of all open security findings from the current monitoring
 	// tick, serialised into the cluster JSON for the dashboard (SecurityStateMachine.CurState
 	// has json:"-" so it cannot be read directly). Updated by CheckLogPlugins.
@@ -224,6 +227,7 @@ type Cluster struct {
 	// tick. Updated by CheckLogPlugins after all servers have been evaluated.
 	WorkloadStates []state.State `json:"workloadStates" groups:"web"`
 	SchemaStates   []state.State `json:"schemaStates" groups:"web"`
+	ConfigStates   []state.State `json:"configStates" groups:"web"`
 	SecurityScore  SecurityScore `json:"securityScore" groups:"web"`
 	// Set by dbjob SSH scripts scanning my.cnf/.my.cnf on DB servers
 	SecurityClearPwdConfig bool `json:"securityClearPwdConfig"`
@@ -579,6 +583,9 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.SchemaStateMachine = new(state.StateMachine)
 	cluster.SchemaStateMachine.Init()
 	cluster.SchemaStateMachine.SetMasterUpAndSync(false, false, false)
+	cluster.ConfigStateMachine = new(state.StateMachine)
+	cluster.ConfigStateMachine.Init()
+	cluster.ConfigStateMachine.SetMasterUpAndSync(false, false, false)
 	// k, _ := cluster.Conf.LoadEncrytionKey()
 	// if k == nil {
 	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key")
@@ -824,14 +831,13 @@ var pstates30 = []string{
 	"WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
 	"WARN0153",             // Job related
 	"WARN0158",             // Job secrets mismatch
-	"WARN0159", "WARN0160", // Deprecated config keys
 	"CREDIT01", // Credit related
 }
 
 var pstates3600 = []string{
 	"WARN0094",             // Restic
 	"WARN0132", "WARN0137", // App templates
-	"WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121", "WARN0156", "WARN0157", "WARN0167", "WARN0168", // Tools versions + compliance
+	"WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121", "WARN0156", "WARN0157", "WARN0167", // Tools versions
 }
 
 func (cluster *Cluster) Run() {
@@ -1022,9 +1028,11 @@ func (cluster *Cluster) Run() {
 						}
 						if heartbeats%30 != 0 {
 							cluster.StateMachine.PreserveState(pstates30...)
+							cluster.ConfigStateMachine.PreserveState("WARN0159", "WARN0160")
 						}
 						if heartbeats%3600 != 0 {
 							cluster.StateMachine.PreserveState(pstates3600...)
+							cluster.ConfigStateMachine.PreserveState("WARN0168")
 						}
 						if !(cluster.Conf.GraphiteMetrics && heartbeats%5 == 0) {
 							cluster.StateMachine.PreserveState("WARN0139", "WARN0140")
@@ -1247,6 +1255,7 @@ func (cluster *Cluster) StateProcessing() {
 		cluster.WorkloadStateMachine.ClearState()
 		cluster.SecurityStateMachine.ClearState()
 		cluster.SchemaStateMachine.ClearState()
+		cluster.ConfigStateMachine.ClearState()
 		if cluster.StateMachine.GetHeartbeats()%60 == 0 && cluster.IsActive() {
 			cluster.ConfigManager.SaveConfig(cluster, false)
 		}

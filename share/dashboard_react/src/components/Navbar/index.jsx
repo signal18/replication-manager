@@ -11,8 +11,9 @@ import AlertModal from '../Modals/AlertModal'
 import SecurityScoreModal from '../Modals/SecurityScoreModal'
 import WorkloadModal from '../Modals/WorkloadModal'
 import SchemaModal from '../Modals/SchemaModal'
+import ConfigModal from '../Modals/ConfigModal'
 import { FaUserPlus, FaUserCircle } from 'react-icons/fa'
-import { MdSecurity, MdNotificationsOff, MdSchema } from 'react-icons/md'
+import { MdSecurity, MdNotificationsOff, MdSchema, MdSettings } from 'react-icons/md'
 import { HiRefresh } from 'react-icons/hi'
 import { RiSpeedFill } from 'react-icons/ri'
 import InterventionPanel from '../Modals/InterventionPanel'
@@ -39,6 +40,7 @@ function Navbar({ username, user }) {
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false)
   const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false)
   const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false)
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [isInterventionPanelOpen, setIsInterventionPanelOpen] = useState(false)
   const [isUserInfoPanelOpen, setIsUserInfoPanelOpen] = useState(false)
@@ -279,6 +281,24 @@ function Navbar({ username, user }) {
                 onClick={() => setIsSchemaModalOpen(true)}
                 showText={!isMobile}
               />
+              <AlertBadge
+                colorScheme={
+                  (clusterData?.configStates || []).some((s) => s.ErrType === 'ERROR')
+                    ? 'red'
+                    : (clusterData?.configStates || []).length > 0
+                      ? 'blue'
+                      : 'gray'
+                }
+                icon={MdSettings}
+                text='Config'
+                count={(clusterData?.configStates || []).length}
+                bubbleStyle={{
+                  background: `var(--chakra-colors-${(clusterData?.configStates || []).length > 0 ? 'blue' : 'gray'}-600)`,
+                  color: 'white',
+                }}
+                onClick={() => setIsConfigModalOpen(true)}
+                showText={!isMobile}
+              />
             </Flex>
           )}
 
@@ -353,6 +373,9 @@ function Navbar({ username, user }) {
       )}
       {isSchemaModalOpen && (
         <SchemaModal isOpen={isSchemaModalOpen} closeModal={() => setIsSchemaModalOpen(false)} />
+      )}
+      {isConfigModalOpen && (
+        <ConfigModal isOpen={isConfigModalOpen} closeModal={() => setIsConfigModalOpen(false)} />
       )}
       {isInterventionPanelOpen && (
         <InterventionPanel
