@@ -292,4 +292,6 @@ var GlobalError = map[string]string{
 	"GINF001":  "ReplicationManager has %d cluster(s) in standby pulling config from active peer: %s",
 	"GINF002":  "ReplicationManager has %d unprovisioned cluster(s): %s",
 	"GINF003":  "ReplicationManager has %d unmonitored cluster(s): %s",
+	"GINF004":  "ReplicationManager registered on Cloud18 as %s (plan %s)",
+	"GINF005":  "Support chat connected",
 }

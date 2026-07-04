@@ -420,6 +420,23 @@ func (repman *ReplicationManager) ProduceClusterAggregateStates() {
 			ErrFrom: "REPMAN",
 		})
 	}
+	// Monitor-mode tags: Cloud18 registration and active support chat.
+	if repman.Conf != nil && repman.Conf.Cloud18 && repman.Conf.Cloud18GitUser != "" {
+		repman.SetState("GINF004", state.State{
+			ErrType: "INFO",
+			ErrKey:  "GINF004",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GINF004"], repman.Conf.Cloud18GitUser, repman.Conf.Cloud18SubscriptionPlan),
+			ErrFrom: "REPMAN",
+		})
+	}
+	if repman.MeetUserID != "" {
+		repman.SetState("GINF005", state.State{
+			ErrType: "INFO",
+			ErrKey:  "GINF005",
+			ErrDesc: config.GlobalError["GINF005"],
+			ErrFrom: "REPMAN",
+		})
+	}
 	if len(unprovisioned) > 0 {
 		repman.SetState("GINF002", state.State{
 			ErrType: "INFO",
