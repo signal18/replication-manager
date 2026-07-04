@@ -36,10 +36,7 @@ var (
 var secretHashTokenRegex = regexp.MustCompile(`hash_[^,:\s]+`)
 
 func init() {
-	if RepMan == nil {
-		RepMan = new(ReplicationManager)
-		RepMan.InitUser()
-	}
+	ensureRepMan()
 
 	secretStorePruneCmd.Flags().IntVar(&secretStorePruneKeepLast, "keep-last", 0, "Retain only the last N versions per secret key (required)")
 	secretStorePruneCmd.Flags().BoolVar(&secretStorePruneDryRun, "dry-run", false, "Preview pruning without writing secret_store.json")

@@ -16,10 +16,7 @@ import (
 func init() {
 	rootCmd.AddCommand(decryptCmd)
 	keygenCmd.Flags().StringVar(&keyPath, "decrypt", "/etc/replication-manager/.replication-manager.key", "Decryption key file path")
-	if RepMan == nil {
-		RepMan = new(ReplicationManager)
-		RepMan.InitUser()
-	}
+	ensureRepMan()
 }
 
 var decryptCmd = &cobra.Command{
