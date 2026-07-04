@@ -443,16 +443,17 @@ func (cluster *Cluster) getSchemaWireTables() []logplugin.StdioTable {
 func (cluster *Cluster) assertDomainObservabilityStates() {
 	registered := cluster.Conf.Cloud18 && cluster.Conf.Cloud18GitUser != "" && cluster.Conf.GetDecryptedValue("git-acces-token") != ""
 
-	hasPluginOfType := func(domain string) bool {
+	countPluginsOfType := func(domain string) int {
 		if cluster.pluginRegistry == nil {
-			return false
+			return 0
 		}
+		n := 0
 		for _, p := range cluster.pluginRegistry.All() {
 			if strings.Contains(p.Name(), domain) {
-				return true
+				n++
 			}
 		}
-		return false
+		return n
 	}
 
 	domains := []struct {
@@ -471,11 +472,25 @@ func (cluster *Cluster) assertDomainObservabilityStates() {
 		if !registered {
 			d.sm.AddState("CINF0001@"+d.name, state.State{ErrType: "INFO", ErrKey: "CINF0001", ErrDesc: fmt.Sprintf(clusterError["CINF0001"], d.name), ErrFrom: "PLUGIN"})
 		}
-		if !hasPluginOfType(d.name) {
+		if n := countPluginsOfType(d.name); n == 0 {
 			d.sm.AddState("CINF0002@"+d.name, state.State{ErrType: "INFO", ErrKey: "CINF0002", ErrDesc: fmt.Sprintf(clusterError["CINF0002"], d.name), ErrFrom: "PLUGIN"})
+		} else {
+			d.sm.AddState("CINF0004@"+d.name, state.State{ErrType: "INFO", ErrKey: "CINF0004", ErrDesc: fmt.Sprintf(clusterError["CINF0004"], n, d.name), ErrFrom: "PLUGIN"})
 		}
 		if d.gate != "" {
 			d.sm.AddState("CINF0003@"+d.name, state.State{ErrType: "INFO", ErrKey: "CINF0003", ErrDesc: fmt.Sprintf(clusterError["CINF0003"], d.name, d.gate), ErrFrom: "PLUGIN"})
+		}
+	}
+	// Schema monitor lifecycle tags: next scheduled run and in-progress runs.
+	if cluster.SchemaStateMachine != nil {
+		if cluster.StateMachine != nil && cluster.StateMachine.IsInSchemaMonitor() {
+			cluster.SchemaStateMachine.AddState("CINF0006@schema", state.State{ErrType: "INFO", ErrKey: "CINF0006", ErrDesc: clusterError["CINF0006"], ErrFrom: "PLUGIN"})
+		}
+		if cluster.Conf.MonitorSchemaChange && cluster.Conf.MonitorSchemaScheduler {
+			if e := cluster.GetSchedule("monitorschema"); e != nil && e.Schedule != nil {
+				next := e.Schedule.Next(time.Now()).Format("2006-01-02 15:04:05")
+				cluster.SchemaStateMachine.AddState("CINF0005@schema", state.State{ErrType: "INFO", ErrKey: "CINF0005", ErrDesc: fmt.Sprintf(clusterError["CINF0005"], next), ErrFrom: "PLUGIN"})
+			}
 		}
 	}
 	// Schema plugins additionally need the schema monitor to feed the
