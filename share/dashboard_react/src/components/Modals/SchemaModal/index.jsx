@@ -12,9 +12,14 @@ import { useTheme } from '../../../ThemeProvider'
 
 const columnHelper = createColumnHelper()
 
-// SchemaModal lists the cluster SchemaStateMachine content: inventory and
-// lifecycle tags (SCHTAG / CINF info states) as pills, findings (SCH errors
-// and warnings) as a table.
+const severityOf = (s) =>
+  s.ErrType === 'ERROR' ? 'Blocker' : s.ErrType === 'INFO' ? 'Info' : 'Warning'
+
+const severityRank = { Blocker: 0, Warning: 1, Info: 2 }
+
+// SchemaModal lists the cluster SchemaStateMachine content: inventory tags
+// (SCHTAG counts) as pills, every other state (SCH findings, CINF lifecycle
+// infos) in a severity table matching the health AlertModal.
 function SchemaModal({ isOpen, closeModal }) {
   const { theme } = useTheme()
   const { isTablet, isDesktop } = useSelector((state) => state.common)
@@ -23,16 +28,43 @@ function SchemaModal({ isOpen, closeModal }) {
   const allStates = clusterData?.schemaStates || []
 
   const tags = useMemo(
-    () => allStates.filter((s) => (s.ErrKey || '').startsWith('SCHTAG') || (s.ErrKey || '').startsWith('CINF')),
+    () => allStates.filter((s) => (s.ErrKey || '').startsWith('SCHTAG')),
     [allStates]
   )
   const findings = useMemo(
-    () => allStates.filter((s) => !(s.ErrKey || '').startsWith('SCHTAG') && !(s.ErrKey || '').startsWith('CINF')),
+    () =>
+      allStates
+        .filter((s) => !(s.ErrKey || '').startsWith('SCHTAG'))
+        .map((s) => ({ ...s, severity: severityOf(s) }))
+        .sort((a, b) => severityRank[a.severity] - severityRank[b.severity]),
     [allStates]
   )
 
+  const blockerCount = findings.filter((s) => s.severity === 'Blocker').length
+  const infoCount = findings.filter((s) => s.severity === 'Info').length
+  const warningCount = findings.length - blockerCount - infoCount
+
   const columns = useMemo(
     () => [
+      columnHelper.accessor((row) => row.severity, {
+        id: 'severity',
+        cell: (info) => (
+          <span
+            style={{
+              color:
+                info.getValue() === 'Blocker'
+                  ? 'var(--danger-primary-color)'
+                  : info.getValue() === 'Info'
+                    ? 'var(--chakra-colors-blue-400)'
+                    : 'var(--warning-primary-color)',
+              fontWeight: 'bold'
+            }}>
+            {info.getValue()}
+          </span>
+        ),
+        header: 'Severity',
+        maxWidth: 120
+      }),
       columnHelper.accessor((row) => row.ErrKey, { cell: (i) => i.getValue(), header: 'Key', id: 'key', maxWidth: 120 }),
       columnHelper.accessor(
         (row) => (
@@ -59,7 +91,7 @@ function SchemaModal({ isOpen, closeModal }) {
         textAlign='center'
         overflow='hidden'>
         <ModalHeader whiteSpace='pre-line'>
-          {`Schema — Findings: ${findings.length} / Tags: ${tags.length}`}
+          {`Schema — Blockers: ${blockerCount} / Warnings: ${warningCount} / Infos: ${infoCount} / Tags: ${tags.length}`}
         </ModalHeader>
         <ModalCloseButton />
         <ModalBody overflow='auto' p='0'>

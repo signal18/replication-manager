@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react'
 import {
-  Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay,
-  Badge, Wrap, WrapItem, Text
+  Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Text
 } from '@chakra-ui/react'
 import { useSelector } from 'react-redux'
 import { DataTable } from '../../DataTable'
@@ -12,27 +11,52 @@ import { useTheme } from '../../../ThemeProvider'
 
 const columnHelper = createColumnHelper()
 
-// ConfigModal lists the cluster ConfigStateMachine content: observability
-// tags (CINF info states) as pills, findings (deprecated variables, pending
-// compliance modulesets) as a table.
+const severityOf = (s) =>
+  s.ErrType === 'ERROR' ? 'Blocker' : s.ErrType === 'INFO' ? 'Info' : 'Warning'
+
+const severityRank = { Blocker: 0, Warning: 1, Info: 2 }
+
+// ConfigModal lists the cluster ConfigStateMachine content (deprecated
+// variables, pending compliance modulesets, unapplied config changes) in a
+// severity table matching the health AlertModal.
 function ConfigModal({ isOpen, closeModal }) {
   const { theme } = useTheme()
   const { isTablet, isDesktop } = useSelector((state) => state.common)
   const clusterData = useSelector((state) => state.cluster.clusterData)
 
-  const allStates = clusterData?.configStates || []
-
-  const tags = useMemo(
-    () => allStates.filter((s) => (s.ErrKey || '').startsWith('CINF')),
-    [allStates]
-  )
   const findings = useMemo(
-    () => allStates.filter((s) => !(s.ErrKey || '').startsWith('CINF')),
-    [allStates]
+    () =>
+      (clusterData?.configStates || [])
+        .map((s) => ({ ...s, severity: severityOf(s) }))
+        .sort((a, b) => severityRank[a.severity] - severityRank[b.severity]),
+    [clusterData?.configStates]
   )
+
+  const blockerCount = findings.filter((s) => s.severity === 'Blocker').length
+  const infoCount = findings.filter((s) => s.severity === 'Info').length
+  const warningCount = findings.length - blockerCount - infoCount
 
   const columns = useMemo(
     () => [
+      columnHelper.accessor((row) => row.severity, {
+        id: 'severity',
+        cell: (info) => (
+          <span
+            style={{
+              color:
+                info.getValue() === 'Blocker'
+                  ? 'var(--danger-primary-color)'
+                  : info.getValue() === 'Info'
+                    ? 'var(--chakra-colors-blue-400)'
+                    : 'var(--warning-primary-color)',
+              fontWeight: 'bold'
+            }}>
+            {info.getValue()}
+          </span>
+        ),
+        header: 'Severity',
+        maxWidth: 120
+      }),
       columnHelper.accessor((row) => row.ErrKey, { cell: (i) => i.getValue(), header: 'Key', id: 'key', maxWidth: 120 }),
       columnHelper.accessor(
         (row) => (
@@ -59,21 +83,10 @@ function ConfigModal({ isOpen, closeModal }) {
         textAlign='center'
         overflow='hidden'>
         <ModalHeader whiteSpace='pre-line'>
-          {`Config — Findings: ${findings.length} / Tags: ${tags.length}`}
+          {`Config — Blockers: ${blockerCount} / Warnings: ${warningCount} / Infos: ${infoCount}`}
         </ModalHeader>
         <ModalCloseButton />
         <ModalBody overflow='auto' p='0'>
-          {tags.length > 0 && (
-            <Wrap p='12px' justify='center'>
-              {tags.map((t) => (
-                <WrapItem key={t.ErrKey}>
-                  <Badge colorScheme='cyan' variant='subtle' px='2' py='1' textTransform='none'>
-                    {t.ErrDesc}
-                  </Badge>
-                </WrapItem>
-              ))}
-            </Wrap>
-          )}
           {findings.length === 0 ? (
             <NotFound text='No config findings' />
           ) : (
