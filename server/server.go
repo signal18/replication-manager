@@ -105,6 +105,9 @@ type ReplicationManager struct {
 	StateMachine                 *state.StateMachine                `json:"stateMachine" groups:"web"`
 	clusterHeartbeatTrackingLock sync.RWMutex                       `json:"-"`
 	clusterHeartbeatTracking     map[string]clusterHeartbeatTracker `json:"-"`
+	gitSyncBusy                  atomic.Bool                        `json:"-"`
+	cloud18PullBusy              atomic.Bool                        `json:"-"`
+	peerHealthBusy               atomic.Bool                        `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
@@ -2799,44 +2802,54 @@ func (repman *ReplicationManager) Run() error {
 		if counter%60 == 0 {
 			repman.ConfigManager.SaveConfig(repman, true)
 
-			var wg sync.WaitGroup
-
+			// Network tasks run detached and guarded: the main loop must never
+			// block on git or HTTP I/O (go-git has no timeout — a single hung
+			// pull used to freeze every state producer silently). When a task
+			// is still running at the next cycle, skip it and surface GWARN013
+			// so the hang shows in the Monitor button instead of killing it.
 			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					if repman.Conf.Arbitration {
-						// Role-free config sync: the pull lands in an isolated
-						// .config/ clone and applies only to clusters where this
-						// node is standby, so it is safe and meaningful on both
-						// peers regardless of per-cluster active/standby mix.
-						repman.PullActiveConfig()
-					}
-					repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
-				}()
+				if repman.gitSyncBusy.CompareAndSwap(false, true) {
+					go func() {
+						defer repman.gitSyncBusy.Store(false)
+						if repman.Conf.Arbitration {
+							// Role-free config sync: the pull lands in an isolated
+							// .config/ clone and applies only to clusters where this
+							// node is standby, so it is safe and meaningful on both
+							// peers regardless of per-cluster active/standby mix.
+							repman.PullActiveConfig()
+						}
+						repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+					}()
+				} else {
+					repman.SetState("GWARN013@gitsync", state.State{ErrType: "WARNING", ErrKey: "GWARN013", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN013"], "git config sync"), ErrFrom: "REPMAN"})
+				}
 			}
 
 			if repman.Conf.Cloud18 && repman.Conf.GitUrlPull != "" {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					repman.PullCloud18Configs()
-					repman.ReloadTerms()
-				}()
+				if repman.cloud18PullBusy.CompareAndSwap(false, true) {
+					go func() {
+						defer repman.cloud18PullBusy.Store(false)
+						repman.PullCloud18Configs()
+						repman.ReloadTerms()
+					}()
+				} else {
+					repman.SetState("GWARN013@cloud18pull", state.State{ErrType: "WARNING", ErrKey: "GWARN013", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN013"], "cloud18 pull-repo sync"), ErrFrom: "REPMAN"})
+				}
 			}
 
 			if repman.Conf.Cloud18 && !repman.Conf.Cloud18DisablePeers {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					repman.dispatchPeerHealthPoll()
-					repman.UpdateLocalPeer()
-				}()
+				if repman.peerHealthBusy.CompareAndSwap(false, true) {
+					go func() {
+						defer repman.peerHealthBusy.Store(false)
+						repman.dispatchPeerHealthPoll()
+						repman.UpdateLocalPeer()
+					}()
+				} else {
+					repman.SetState("GWARN013@peerhealth", state.State{ErrType: "WARNING", ErrKey: "GWARN013", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN013"], "peer health poll"), ErrFrom: "REPMAN"})
+				}
 			}
 
 			go repman.ReloadOpenSVCStats()
-
-			wg.Wait()
 		}
 
 		if counter%300 == 0 {
