@@ -421,7 +421,11 @@ func (repman *ReplicationManager) ProduceClusterAggregateStates() {
 		})
 	}
 	// Monitor-mode tags: Cloud18 registration and active support chat.
-	if repman.Conf != nil && repman.Conf.Cloud18 && repman.Conf.Cloud18GitUser != "" {
+	// Registered means the GitLab SSO login of the instance actually
+	// succeeded — InitGitConfig acquired a personal access token (and turns
+	// Cloud18 off on auth failure) — not merely that credentials are present
+	// in the config.
+	if repman.Conf != nil && repman.Conf.Cloud18 && repman.Conf.Cloud18GitUser != "" && repman.Conf.GetDecryptedValue("git-acces-token") != "" {
 		repman.SetState("GINF004", state.State{
 			ErrType: "INFO",
 			ErrKey:  "GINF004",
