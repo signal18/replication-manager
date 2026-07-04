@@ -424,12 +424,26 @@ func (repman *ReplicationManager) ProduceClusterAggregateStates() {
 	// Registered means the GitLab SSO login of the instance actually
 	// succeeded — InitGitConfig acquired a personal access token (and turns
 	// Cloud18 off on auth failure) — not merely that credentials are present
-	// in the config.
-	if repman.Conf != nil && repman.Conf.Cloud18 && repman.Conf.Cloud18GitUser != "" && repman.Conf.GetDecryptedValue("git-acces-token") != "" {
+	// in the config. Not registered surfaces as a warning: community
+	// features (support chat, marketplace, arbitration, peers) may be
+	// disabled without registration.
+	registered := repman.Conf != nil && repman.Conf.Cloud18 && repman.Conf.Cloud18GitUser != "" && repman.Conf.GetDecryptedValue("git-acces-token") != ""
+	if registered {
 		repman.SetState("GINF004", state.State{
 			ErrType: "INFO",
 			ErrKey:  "GINF004",
 			ErrDesc: fmt.Sprintf(config.GlobalError["GINF004"], repman.Conf.Cloud18GitUser, repman.Conf.Cloud18SubscriptionPlan),
+			ErrFrom: "REPMAN",
+		})
+	} else {
+		reason := "cloud18 disabled"
+		if repman.Conf != nil && repman.Conf.Cloud18 {
+			reason = "GitLab SSO login not completed"
+		}
+		repman.SetState("GWARN014", state.State{
+			ErrType: "WARNING",
+			ErrKey:  "GWARN014",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN014"], reason),
 			ErrFrom: "REPMAN",
 		})
 	}
