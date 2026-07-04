@@ -236,7 +236,7 @@ export function GlobalLogs() {
   const logs = useSelector((state) => state.globalClusters.globalLogs?.general)
   return (
     <Box className={styles.logContainer}>
-      <Logs logs={logs?.buffer} searchable={true} isScrollable={false} />
+      <Logs logs={logs?.buffer} searchable={true} isScrollable={true} />
     </Box>
   )
 }
