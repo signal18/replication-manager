@@ -30,7 +30,13 @@ const (
 	gitlabConnectWarnErrKey                     = "GWARN004"
 	crmConnectWarnErrKey                        = "GWARN005"
 	meetConnectWarnErrKey                       = "GWARN012"
-	defaultMonitorGlobalHeartbeatStallThreshold = 5
+	// Stall detection counts repman loop ticks (monitoring-ticker, 2s) with an
+	// unchanged cluster heartbeat — but a busy cluster tick can legitimately
+	// take 10s+ (slow DB connection attempts during an outage), so a tight
+	// threshold flaps STALLED/RESUME on every cluster tick. A truly stalled
+	// cluster loop stays stalled for minutes: 30 ticks (~60s) detects it fast
+	// without flapping. Tunable via monitor-global-heartbeat-stall-threshold.
+	defaultMonitorGlobalHeartbeatStallThreshold = 30
 	heartbeatCriticalThresholdMultiplier        = int64(3)
 
 	// cloud18ConnectivityProbeTimeout is the per-request deadline for the
