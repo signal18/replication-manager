@@ -58,9 +58,9 @@ function AlertBadge({
 }
 
 // HealthAlertBadge is the single health button: red when blockers exist,
-// orange when only warnings, green when clean. Both counters are shown on
-// the button — blockers top-right (red bubble, blinking), warnings
-// bottom-right (orange bubble).
+// orange when only warnings, green when clean. Both counters sit side by
+// side at the top-right — blockers (red bubble, blinking) left of the
+// warnings (orange bubble).
 export function HealthAlertBadge({ blockers = 0, warnings = 0, text = 'Health', onClick, showText }) {
   const colorScheme = blockers > 0 ? 'red' : warnings > 0 ? 'orange' : 'green'
   const icon = blockers > 0 ? HiBan : HiExclamation
@@ -72,13 +72,13 @@ export function HealthAlertBadge({ blockers = 0, warnings = 0, text = 'Health', 
       className={styles.badge}>
       <Box
         as='span'
-        className={`alertCount ${styles.alertCount} ${styles.blocker} ${blockers > 0 ? styles.blinking : ''}`}>
+        className={`alertCount ${styles.alertCount} ${styles.blocker} ${blockers > 0 ? styles.blinking : ''}`}
+        style={{ right: '16px' }}>
         {blockers}
       </Box>
       <Box
         as='span'
-        className={`alertCount ${styles.alertCount} ${styles.warning}`}
-        style={{ top: 'auto', bottom: '-10px' }}>
+        className={`alertCount ${styles.alertCount} ${styles.warning}`}>
         {warnings}
       </Box>
       <CustomIcon icon={icon} />
