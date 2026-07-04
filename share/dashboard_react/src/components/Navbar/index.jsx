@@ -254,15 +254,6 @@ function Navbar({ username, user }) {
                   />
                 </Flex>
               )}
-              {clusterData && monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0 && (
-                <RMIconButton
-                  icon={FaUserPlus}
-                  tooltip={'Add User'}
-                  px='2'
-                  variant='outline'
-                  onClick={openAddUserModal}
-                />
-              )}
               {/* Mute and user badges grouped tight — no counters on them */}
               <Flex className={styles.alerts}>
                 {clusterData ? (
@@ -360,6 +351,11 @@ function Navbar({ username, user }) {
           isOpen={isUserInfoPanelOpen}
           closeModal={() => setIsUserInfoPanelOpen(false)}
           user={user}
+          canAddUser={!!(clusterData && monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0)}
+          onAddUser={() => {
+            setIsUserInfoPanelOpen(false)
+            openAddUserModal()
+          }}
           onLogout={() => {
             setIsUserInfoPanelOpen(false)
             handleLogout()
