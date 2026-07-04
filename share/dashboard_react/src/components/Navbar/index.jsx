@@ -1,4 +1,4 @@
-import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure } from '@chakra-ui/react'
+import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure, Popover, PopoverTrigger, PopoverContent, PopoverArrow, PopoverBody } from '@chakra-ui/react'
 import React, { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../redux/authSlice'
@@ -12,6 +12,7 @@ import SecurityScoreModal from '../Modals/SecurityScoreModal'
 import WorkloadModal from '../Modals/WorkloadModal'
 import { FaUserPlus, FaUserCircle } from 'react-icons/fa'
 import { MdSecurity, MdNotificationsOff } from 'react-icons/md'
+import { HiRefresh } from 'react-icons/hi'
 import { RiSpeedFill } from 'react-icons/ri'
 import InterventionPanel from '../Modals/InterventionPanel'
 import UserInfoPanel from '../Modals/UserInfoPanel'
@@ -171,22 +172,38 @@ function Navbar({ username, user }) {
           </HStack>
         </Link>
         {isAuthorized() && !clusterData && loopTick !== undefined && (
+          // Single NETWORK pill: monitor loop liveness + peer heartbeat.
+          // Green with the live tick when everything is fine; red naming
+          // the failing part otherwise.
           <TagPill
-            colorScheme={monitorStalled ? 'red' : 'green'}
-            text={monitorStalled ? 'Monitor Stalled' : `Tick ${loopTick}`}
-            isBlinking={monitorStalled}
-          />
-        )}
-        {isAuthorized() && !clusterData && monitor?.config?.arbitrationExternal && (
-          <TagPill
-            colorScheme={monitor?.splitBrain ? 'red' : 'green'}
-            text={monitor?.splitBrain ? 'Heartbeat Failed' : 'Heartbeat Ok'}
-            isBlinking={!!monitor?.splitBrain}
+            colorScheme={monitorStalled || monitor?.splitBrain ? 'red' : 'green'}
+            text={
+              monitorStalled
+                ? 'Network: Monitor Stalled'
+                : monitor?.config?.arbitrationExternal && monitor?.splitBrain
+                  ? 'Network: Heartbeat Failed'
+                  : `Network ${loopTick}`
+            }
+            isBlinking={monitorStalled || !!monitor?.splitBrain}
           />
         )}
         <Spacer />
 
-        {isAuthorized() && isDesktop && location.pathname !== '/slideshow' && <RefreshCounter clusterName={clusterData?.name} />}
+        {isAuthorized() && location.pathname !== '/slideshow' && (
+          <Popover placement='bottom'>
+            <PopoverTrigger>
+              <Box as='span'>
+                <RMIconButton icon={HiRefresh} tooltip='Auto refresh settings' variant='outline' px='2' />
+              </Box>
+            </PopoverTrigger>
+            <PopoverContent width='auto'>
+              <PopoverArrow />
+              <PopoverBody>
+                <RefreshCounter clusterName={clusterData?.name} />
+              </PopoverBody>
+            </PopoverContent>
+          </Popover>
+        )}
 
 
         <Spacer />
@@ -294,11 +311,6 @@ function Navbar({ username, user }) {
 
       <MattermostIntegration isOpen={isChatOpen} setIsChatOpen={setIsChatOpen} onClose={() => setIsChatOpen(false)} cloud18={monitor?.config?.cloud18} />
 
-      {isAuthorized() && !isDesktop && location.pathname !== '/slideshow' && (
-        <Box mx='auto' p='8px' marginTop='60px'>
-          <RefreshCounter clusterName={clusterData?.name} />
-        </Box>
-      )}
       {alertModalType && (
         <AlertModal type={alertModalType} title='Cluster' isOpen={alertModalType.length !== 0} closeModal={closeAlertModal} />
       )}
