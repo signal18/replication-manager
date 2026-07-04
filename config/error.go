@@ -290,4 +290,5 @@ var GlobalError = map[string]string{
 	"GWARN009": "ReplicationManager has %d unprovisioned cluster(s): %s",
 	"GWARN010": "ReplicationManager has %d unmonitored cluster(s): %s",
 	"GWARN011": "ReplicationManager has %d cluster(s) in standby pulling config from active peer: %s",
+	"GWARN012": "ReplicationManager cannot reach Meet support service: %s",
 }

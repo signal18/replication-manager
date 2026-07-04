@@ -16,6 +16,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
+	"github.com/signal18/replication-manager/utils/meethelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -28,6 +29,7 @@ const (
 	gitPullErrErrKey                            = "GERR003"
 	gitlabConnectWarnErrKey                     = "GWARN004"
 	crmConnectWarnErrKey                        = "GWARN005"
+	meetConnectWarnErrKey                       = "GWARN012"
 	defaultMonitorGlobalHeartbeatStallThreshold = 5
 	heartbeatCriticalThresholdMultiplier        = int64(3)
 
@@ -487,6 +489,20 @@ func (repman *ReplicationManager) ProduceCloud18ConnectivityStates() {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 				"Cloud18 CRM API unreachable (%s): %s", crmProbeURL, crmErr)
 		}
+	}
+
+	// ── Meet / support service probe ────────────────────────────────────────
+	meetErr := probeHTTPReachability(client, meethelper.MeetURL)
+	if meetErr != nil {
+		desc := fmt.Sprintf(config.GlobalError[meetConnectWarnErrKey], meetErr.Error())
+		repman.SetState(meetConnectWarnErrKey, state.State{
+			ErrType: "WARNING",
+			ErrKey:  meetConnectWarnErrKey,
+			ErrDesc: desc,
+			ErrFrom: "REPMAN",
+		})
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"Meet support service unreachable (%s): %s", meethelper.MeetURL, meetErr)
 	}
 }
 
