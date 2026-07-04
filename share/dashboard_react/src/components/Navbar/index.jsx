@@ -24,7 +24,7 @@ import TagPill from '../TagPill'
 import { useTheme } from '../../ThemeProvider'
 import AddUserModal from '../Modals/AddUserModal'
 import MattermostIntegration from '../../Pages/Mattermost';
-import { getMeetInfo, logoutFromMeet } from '../../redux/meetSlice';
+import { getMeetInfo, logoutFromMeet, resetMeetError } from '../../redux/meetSlice';
 import { selectMeetUIState } from '../../redux/memoize'
 import { clearClusters, getMonitoredData } from '../../redux/globalClustersSlice'
 import { globalClustersService } from '../../services/globalClustersService'
@@ -83,6 +83,12 @@ function Navbar({ username, user }) {
 
   //to toggle chat and save state
   const toggleChat = () => {
+    if (!isChatOpen && meetError) {
+      // Un-latch a stale failure and retry: the chat may work even though a
+      // previous getMeetInfo failed (e.g. during a server restart).
+      dispatch(resetMeetError())
+      dispatch(getMeetInfo())
+    }
     setIsChatOpen(prevState => !prevState);
   };
   //
@@ -159,7 +165,7 @@ function Navbar({ username, user }) {
           {isAuthorized() && !clusterData && (
             <Flex className={styles.alerts}>
               <HealthAlertBadge
-                text='G-Health'
+                text='Server'
                 blockers={globalAlerts?.errors?.length || 0}
                 warnings={globalAlerts?.warnings?.length || 0}
                 onClick={() => setGlobalAlertModalType('health')}
@@ -180,7 +186,7 @@ function Navbar({ username, user }) {
           {isAuthorized() && clusterData && (
             <Flex className={styles.alerts}>
               <HealthAlertBadge
-                text='Health'
+                text='Cluster'
                 blockers={clusterAlerts?.errors?.length || 0}
                 warnings={clusterAlerts?.warnings?.length || 0}
                 onClick={() => openAlertModal('health')}
@@ -227,7 +233,7 @@ function Navbar({ username, user }) {
                   <AlertBadge
                     isSupport={true}
                     isConnect={!meetError}
-                    text={meetError ? 'Support (disconnected)' : 'Support'}
+                    text='Support'
                     count={unreadMessagesCount || 0}
                     onClick={toggleChat}
                     showText={!isMobile}
@@ -265,10 +271,10 @@ function Navbar({ username, user }) {
         </Box>
       )}
       {alertModalType && (
-        <AlertModal type={alertModalType} isOpen={alertModalType.length !== 0} closeModal={closeAlertModal} />
+        <AlertModal type={alertModalType} title='Cluster' isOpen={alertModalType.length !== 0} closeModal={closeAlertModal} />
       )}
       {globalAlertModalType && (
-        <AlertModal type={globalAlertModalType} isOpen={globalAlertModalType.length !== 0} closeModal={() => setGlobalAlertModalType('')} alerts={globalAlerts} />
+        <AlertModal type={globalAlertModalType} title='Server' isOpen={globalAlertModalType.length !== 0} closeModal={() => setGlobalAlertModalType('')} alerts={globalAlerts} />
       )}
       {isAddUserModalOpen && (
         <AddUserModal clusterName={clusterData?.name} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />

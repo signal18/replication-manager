@@ -10,7 +10,7 @@ import styles from './styles.module.scss'
 import parentStyles from '../styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
 
-function AlertModal({ type, isOpen, closeModal, alerts }) {
+function AlertModal({ type, isOpen, closeModal, alerts, title = 'Health' }) {
   const { theme } = useTheme()
   const {
     common: { isMobile, isTablet, isDesktop }
@@ -100,7 +100,7 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
             type === 'error' || (type === 'health' && blockerCount > 0) ? styles.red : styles.orange
           }`}>
           {type === 'health'
-            ? `Health — Blockers: ${blockerCount} / Warnings: ${warningCount}`
+            ? `${title} — Blockers: ${blockerCount} / Warnings: ${warningCount}`
             : type === 'error'
               ? `Errors: ${data.length}`
               : `Warnings: ${data.length}`}
@@ -108,7 +108,7 @@ function AlertModal({ type, isOpen, closeModal, alerts }) {
         <ModalCloseButton />
         <ModalBody className={styles.body}>
           {data.length === 0 ? (
-            <NotFound text={type === 'health' ? 'No health alerts found' : `No ${type} alerts found`} />
+            <NotFound text={type === 'health' ? 'No open alerts' : `No ${type} alerts found`} />
           ) : (
             <DataTable
               key="Alerts"
