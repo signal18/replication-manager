@@ -69,7 +69,7 @@ export function HealthAlertBadge({ blockers = 0, warnings = 0, text = 'Health', 
       as={'button'}
       {...(onClick ? { onClick: onClick } : {})}
       colorScheme={colorScheme}
-      className={styles.badge}>
+      className={`${styles.badge} ${styles.healthBadge}`}>
       <Box
         as='span'
         className={`alertCount ${styles.alertCount} ${styles.blocker} ${blockers > 0 ? styles.blinking : ''}`}
