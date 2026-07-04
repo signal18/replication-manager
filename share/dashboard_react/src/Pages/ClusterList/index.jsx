@@ -18,6 +18,7 @@ import RMIconButton from '../../components/RMIconButton'
 import TagPill from '../../components/TagPill'
 import AddUserModal from '../../components/Modals/AddUserModal'
 import SearchBox from '../../components/SearchBox'
+import AccordionComponent from '../../components/AccordionComponent'
 
 const columnHelper = createColumnHelper()
 
@@ -87,8 +88,8 @@ function ClusterList({ onClick }) {
       </HStack>
     ) : !clusterItem.isFailable ? (
       <HStack spacing='2'>
-        <CustomIcon icon={HiExclamation} color='orange' />
-        <Text>Warning</Text>
+        <CustomIcon icon={HiExclamation} color='red' />
+        <Text>Blocker</Text>
       </HStack>
     ) : (
       <HStack spacing='2'>
@@ -190,19 +191,21 @@ function ClusterList({ onClick }) {
     <NotFound text={'No cluster found!'} />
   ) : (
     <>
-      <Flex className={styles.searchWrapper} gap='2' align='center'>
-        <SearchBox className={styles.searchBox} value={search} size='md' placeholder='Search' onChange={setSearch} />
-        {viewType === 'table' ? (
-          <RMIconButton icon={HiViewGrid} tooltip='Show grid view' onClick={() => setViewType('grid')} />
+      <AccordionComponent
+        heading={'Clusters'}
+        headerActions={
+          <HStack spacing='2'>
+            <SearchBox className={styles.searchBox} value={search} size='sm' placeholder='Search' onChange={setSearch} />
+            {viewType === 'table' ? (
+              <RMIconButton icon={HiViewGrid} tooltip='Show grid view' onClick={() => setViewType('grid')} />
+            ) : (
+              <RMIconButton icon={HiTable} tooltip='Show table view' onClick={() => setViewType('table')} />
+            )}
+          </HStack>
+        }
+        body={viewType === 'table' ? (
+          <DataTable data={clusterList} columns={columns} />
         ) : (
-          <RMIconButton icon={HiTable} tooltip='Show table view' onClick={() => setViewType('table')} />
-        )}
-      </Flex>
-      {viewType === 'table' ? (
-        <Box className={styles.tableWrapper} px='4'>
-          <DataTable data={clusterList} columns={columns} className={styles.table} />
-        </Box>
-      ) : (
         <Flex className={styles.clusterList}>
           {clusterList?.map((clusterItem, index) => {
             const headerText = clusterItem.name
@@ -302,7 +305,8 @@ function ClusterList({ onClick }) {
             )
           })}
         </Flex>
-      )}
+        )}
+      />
       {isAddUserModalOpen && (
         <AddUserModal clusterName={clusterName} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />
       )}
