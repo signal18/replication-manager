@@ -156,7 +156,15 @@ function Navbar({ username, user }) {
         className={`${styles.navbarContainer} ${theme === 'light' ? styles.lightBackground : styles.darkBackground} `}
         gap='2'
         align='center'>
-        <Link to='/'>
+        <Link
+          to='/'
+          onClick={() => {
+            // Leaving via the logo must also leave the cluster context,
+            // otherwise the navbar stays on the last visited cluster.
+            if (clusterData) {
+              dispatch(clearCluster({}))
+            }
+          }}>
           <HStack>
             {showImageLogo && <Image loading='lazy' height='50px' width={'fit-content'} className={`${styles.logo}`} objectFit='contain' src={`${theme === 'light' ? '/images/logo-no-text.png' : '/images/logo-no-text-dark.png'}`} onError={() => { setShowImageLogo(false) }} />}
             <TextLogo className={`${styles.logo} ${theme === 'light' ? styles.lightTextLogo : styles.darkTextLogo}`} text={logoText} />

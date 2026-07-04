@@ -390,7 +390,10 @@ func (repman *ReplicationManager) ProduceClusterAggregateStates() {
 		if cl == nil {
 			continue
 		}
-		if sm := cl.GetStateMachine(); sm != nil && len(sm.GetOpenErrors()) > 0 {
+		// Unprovisioned or unmonitored clusters carry inherent error states
+		// (unreachable databases): they are surfaced as GINF002/GINF003 tags
+		// and must not pollute the fleet blocker count.
+		if sm := cl.GetStateMachine(); sm != nil && len(sm.GetOpenErrors()) > 0 && cl.IsProvision && !cl.Conf.MonitorPause {
 			withBlockers = append(withBlockers, name)
 		}
 		if !cl.IsProvision {
