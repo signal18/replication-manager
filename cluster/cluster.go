@@ -204,6 +204,10 @@ type Cluster struct {
 	// plugins (WORKLOAD severity). Kept separate from the HA StateMachine so performance
 	// noise does not obscure operational cluster health or trigger false failover gates.
 	WorkloadStateMachine *state.StateMachine `json:"workloadStateMachine" groups:"web"`
+	// SchemaStateMachine tracks schema advisory findings from schema plugins
+	// (wire v3 Tables snapshot): engine/row-format inventory tags (SCHTAG),
+	// row-size risks and future DDL/table-diff findings (SCH).
+	SchemaStateMachine *state.StateMachine `json:"schemaStateMachine" groups:"web"`
 	// SecurityStates is a snapshot of all open security findings from the current monitoring
 	// tick, serialised into the cluster JSON for the dashboard (SecurityStateMachine.CurState
 	// has json:"-" so it cannot be read directly). Updated by CheckLogPlugins.
@@ -219,6 +223,7 @@ type Cluster struct {
 	// WorkloadStates is a snapshot of all open workload findings from the current monitoring
 	// tick. Updated by CheckLogPlugins after all servers have been evaluated.
 	WorkloadStates []state.State `json:"workloadStates" groups:"web"`
+	SchemaStates   []state.State `json:"schemaStates" groups:"web"`
 	SecurityScore  SecurityScore `json:"securityScore" groups:"web"`
 	// Set by dbjob SSH scripts scanning my.cnf/.my.cnf on DB servers
 	SecurityClearPwdConfig bool `json:"securityClearPwdConfig"`
@@ -358,6 +363,10 @@ type Cluster struct {
 	// variableDiffSignature is the identity of the last logged variable diff
 	// set so MonitorVariablesDiff only logs/persists on real changes.
 	variableDiffSignature string `json:"-"`
+	// schemaWireTables caches the wire v3 Tables snapshot for plugin requests,
+	// rebuilt when the schema monitor refreshes the table dictionary.
+	schemaWireTables []logplugin.StdioTable `json:"-"`
+	schemaWireLock   sync.RWMutex           `json:"-"`
 	initiated             bool
 }
 
@@ -567,6 +576,9 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.WorkloadStateMachine = new(state.StateMachine)
 	cluster.WorkloadStateMachine.Init()
 	cluster.WorkloadStateMachine.SetMasterUpAndSync(false, false, false)
+	cluster.SchemaStateMachine = new(state.StateMachine)
+	cluster.SchemaStateMachine.Init()
+	cluster.SchemaStateMachine.SetMasterUpAndSync(false, false, false)
 	// k, _ := cluster.Conf.LoadEncrytionKey()
 	// if k == nil {
 	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key")
@@ -1234,6 +1246,7 @@ func (cluster *Cluster) StateProcessing() {
 		cluster.StateMachine.ClearState()
 		cluster.WorkloadStateMachine.ClearState()
 		cluster.SecurityStateMachine.ClearState()
+		cluster.SchemaStateMachine.ClearState()
 		if cluster.StateMachine.GetHeartbeats()%60 == 0 && cluster.IsActive() {
 			cluster.ConfigManager.SaveConfig(cluster, false)
 		}
@@ -2866,6 +2879,10 @@ func (cluster *Cluster) MonitorSchema() {
 	}()
 
 	err := cluster.MonitorMasterTableSchema()
+	if err == nil {
+		// Refresh the wire v3 Tables snapshot handed to schema plugins.
+		cluster.RefreshSchemaWireTables()
+	}
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error during schema monitoring: %s", err)
 	}

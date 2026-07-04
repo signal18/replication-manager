@@ -664,7 +664,30 @@ Error keys follow the pattern `WARN<NNNN>` or a severity-specific prefix. The ra
 | WTAG0100–WTAG0199 | Workload optimizer path detection |
 | WTAG0200–WTAG0299 | PFS digest workload findings |
 
+| SCH0001+ | Schema advisories (errors/warnings, e.g. row-size risk) |
+| SCHTAG0001+ | Schema inventory tags (engine/row-format counts) |
+
 Choose a key in the WARN0400+ range for custom plugins to avoid collisions.
+
+## Wire v3 — Schema Snapshot
+
+Wire version 3 adds two things:
+
+1. **`tables` request field** — the schema dictionary snapshot: one entry per
+   table with `schema`, `name`, `engine`, `row_format`, `rows`, `data_length`
+   and `columns` (name, full type string, nullable, charset, collation).
+   Derive byte widths in the plugin from the type string and charset
+   (`varchar(255)` × utf8mb4 = 1020 bytes). The snapshot refreshes with the
+   schema monitor (daily cron `monitoring-schema-scheduler-cron` by default,
+   plus boot and on-demand runs) and is populated ONLY on the master server's
+   request so per-tick payloads stay flat across replicas.
+2. **`SCHEMA` finding severity** — findings with this severity are routed to
+   the cluster `SchemaStateMachine` (exposed as `schemaStates` in the cluster
+   API payload). Use `SCHTAG0xxx` keys with `count` for inventory tags and
+   `SCH0xxx` for advisories. Planned first plugins: `plugin-schema-tags`
+   (engine/row-format inventory) and `plugin-schema-row-size` (InnoDB
+   Compact/Redundant tables whose short-varchar byte sum exceeds 8126B —
+   half a 16K page — risking "Row size too large" on DML).
 
 ---
 

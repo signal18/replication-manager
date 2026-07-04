@@ -44,6 +44,10 @@ const (
 	// It is rendered distinctly from operational WARNING/ERROR in the UI and
 	// API responses, allowing operators to filter security findings separately.
 	SeveritySecurity Severity = "SECURITY"
+	// SeveritySchema is used by schema advisory plugins (SCH0xxx error keys,
+	// SCHTAG0xxx inventory tags). Findings are routed to the cluster
+	// SchemaStateMachine.
+	SeveritySchema Severity = "SCHEMA"
 	// SeverityWorkload is used by workload/performance spike detection plugins.
 	// These detect Graphite-based anomalies (slow query regressions, connection
 	// storms, tmp-table storms, etc.) and are tracked in the WorkloadStateMachine
@@ -253,6 +257,29 @@ type LogSource struct {
 	// PluginDataDir is the directory where plugin sidecar data files are stored
 	// (e.g. lts-versions.json). Plugins should read data files from this path.
 	PluginDataDir string
+	// Tables is the schema dictionary snapshot (wire v3), refreshed with the
+	// schema monitor. Populated only for the master server's evaluation.
+	Tables []StdioTable
+}
+
+// StdioTableColumn mirrors wire.TableColumn.
+type StdioTableColumn struct {
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Nullable  bool   `json:"nullable"`
+	Charset   string `json:"charset,omitempty"`
+	Collation string `json:"collation,omitempty"`
+}
+
+// StdioTable mirrors wire.Table.
+type StdioTable struct {
+	Schema     string             `json:"schema"`
+	Name       string             `json:"name"`
+	Engine     string             `json:"engine"`
+	RowFormat  string             `json:"row_format"`
+	Rows       int64              `json:"rows,omitempty"`
+	DataLength int64              `json:"data_length,omitempty"`
+	Columns    []StdioTableColumn `json:"columns,omitempty"`
 }
 
 // ClusterContext carries cluster-level facts passed to every plugin.

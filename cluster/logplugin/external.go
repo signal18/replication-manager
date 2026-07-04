@@ -92,6 +92,9 @@ type StdioRequest struct {
 	// DatabaseUsers is a snapshot of mysql.user rows (no password hashes).
 	DatabaseUsers []StdioDBUser `json:"database_users"`
 
+	// Tables is the schema dictionary snapshot (wire v3, master request only).
+	Tables []StdioTable `json:"tables,omitempty"`
+
 	// ClusterContext carries cluster-level facts (proxies, backup encryption, etc.)
 	ClusterContext ClusterContext `json:"cluster_context"`
 
@@ -336,6 +339,7 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 		ClusterContext:   src.ClusterContext,
 		PluginDataDir:    src.PluginDataDir,
 		Config:           src.Config,
+		Tables:           src.Tables,
 	}
 
 	// SECURITY NOTE: req (wire.Request) includes a full SHOW GLOBAL VARIABLES snapshot,

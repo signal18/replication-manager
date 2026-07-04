@@ -109,6 +109,11 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			ClusterContext:   buildClusterContext(cluster, server),
 			PluginDataDir:    cluster.Conf.ShareDir + "/plugins/data",
 		}
+		// Schema dictionary snapshot rides only on the master request to keep
+		// per-tick payloads flat across replicas.
+		if cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL {
+			src.Tables = cluster.getSchemaWireTables()
+		}
 		if !src.IsEnabled() {
 			// Plugin type is not known yet (Evaluate hasn't run), so we cannot
 			// route this to the correct dedicated log. Drop silently — a disabled
@@ -227,6 +232,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 
 			isSecurity := f.Severity == logplugin.SeveritySecurity
 			isWorkload := f.Severity == logplugin.SeverityWorkload
+			isSchema := f.Severity == logplugin.SeveritySchema
 
 			var sm *state.StateMachine
 			switch {
@@ -234,6 +240,8 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				sm = cluster.SecurityStateMachine
 			case isWorkload:
 				sm = cluster.WorkloadStateMachine
+			case isSchema:
+				sm = cluster.SchemaStateMachine
 			default:
 				sm = cluster.StateMachine
 			}
@@ -384,6 +392,48 @@ func snapshotSlowLog(sl *s18log.SlowLog) []logplugin.StdioSlowMsg {
 	return out
 }
 
+// RefreshSchemaWireTables rebuilds the wire v3 Tables snapshot handed to
+// schema plugins. Called when the schema monitor refreshes the master table
+// dictionary (daily cron by default, plus boot and on-demand runs).
+func (cluster *Cluster) RefreshSchemaWireTables() {
+	master := cluster.GetMaster()
+	if master == nil || master.DictTables == nil {
+		return
+	}
+	dict := master.DictTables.ToNewMap()
+	tables := make([]logplugin.StdioTable, 0, len(dict))
+	for _, t := range dict {
+		wt := logplugin.StdioTable{
+			Schema:     t.TableSchema,
+			Name:       t.TableName,
+			Engine:     t.Engine,
+			RowFormat:  t.RowFormat,
+			Rows:       t.TableRows,
+			DataLength: t.DataLength,
+		}
+		for _, c := range t.TableColumns {
+			col := logplugin.StdioTableColumn{Name: c.Name, Type: c.Type, Nullable: c.Nullable}
+			if c.Charset != nil {
+				col.Charset = *c.Charset
+			}
+			if c.Collation != nil {
+				col.Collation = *c.Collation
+			}
+			wt.Columns = append(wt.Columns, col)
+		}
+		tables = append(tables, wt)
+	}
+	cluster.schemaWireLock.Lock()
+	cluster.schemaWireTables = tables
+	cluster.schemaWireLock.Unlock()
+}
+
+func (cluster *Cluster) getSchemaWireTables() []logplugin.StdioTable {
+	cluster.schemaWireLock.RLock()
+	defer cluster.schemaWireLock.RUnlock()
+	return cluster.schemaWireTables
+}
+
 // assertDomainObservabilityStates keeps every domain state machine
 // self-documenting: when a domain cannot fully report, a standing INFO
 // explains why — not registered on Cloud18 (CINF0001), no plugin of the type
@@ -412,6 +462,7 @@ func (cluster *Cluster) assertDomainObservabilityStates() {
 	}{
 		{"security", cluster.SecurityStateMachine, map[bool]string{true: "", false: "log-plugin"}[cluster.Conf.LogPlugin]},
 		{"workload", cluster.WorkloadStateMachine, map[bool]string{true: "", false: "log-plugin"}[cluster.Conf.LogPlugin]},
+		{"schema", cluster.SchemaStateMachine, map[bool]string{true: "", false: "log-plugin"}[cluster.Conf.LogPlugin]},
 	}
 	for _, d := range domains {
 		if d.sm == nil {
@@ -426,6 +477,11 @@ func (cluster *Cluster) assertDomainObservabilityStates() {
 		if d.gate != "" {
 			d.sm.AddState("CINF0003@"+d.name, state.State{ErrType: "INFO", ErrKey: "CINF0003", ErrDesc: fmt.Sprintf(clusterError["CINF0003"], d.name, d.gate), ErrFrom: "PLUGIN"})
 		}
+	}
+	// Schema plugins additionally need the schema monitor to feed the
+	// table dictionary snapshot.
+	if cluster.Conf.LogPlugin && !cluster.Conf.MonitorSchemaChange && cluster.SchemaStateMachine != nil {
+		cluster.SchemaStateMachine.AddState("CINF0003@schema-dictionary", state.State{ErrType: "INFO", ErrKey: "CINF0003", ErrDesc: fmt.Sprintf(clusterError["CINF0003"], "schema dictionary", "monitoring-schema-change"), ErrFrom: "PLUGIN"})
 	}
 	// Workload spike detection additionally needs graphite metrics.
 	if cluster.Conf.LogPlugin && !cluster.Conf.GraphiteMetrics && cluster.WorkloadStateMachine != nil {
@@ -465,6 +521,7 @@ func (cluster *Cluster) CheckLogPlugins() {
 		cluster.SecurityRemediations = cluster.GetRemediationPlan()
 		cluster.WorkloadStates = cluster.WorkloadStateMachine.GetOpenStates()
 		cluster.WorkloadRemediations = cluster.GetWorkloadRemediationPlan()
+		cluster.SchemaStates = cluster.SchemaStateMachine.GetOpenStates()
 		return
 	}
 	// Clear WARN0314 if log-plugin was just enabled.
@@ -578,6 +635,16 @@ func (cluster *Cluster) CheckLogPlugins() {
 		}
 		workload = append(workload, s)
 	}
+	cluster.SchemaStates = cluster.SchemaStateMachine.GetOpenStates()
+	slices.SortStableFunc(cluster.SchemaStates, func(a, b state.State) int {
+		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl
+		if ak < bk {
+			return -1
+		} else if ak > bk {
+			return 1
+		}
+		return 0
+	})
 	cluster.WorkloadStates = workload
 	slices.SortStableFunc(cluster.WorkloadStates, func(a, b state.State) int {
 		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl
