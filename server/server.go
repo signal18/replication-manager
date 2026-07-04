@@ -2870,6 +2870,22 @@ func (repman *ReplicationManager) Run() error {
 		if counter%60 == 0 {
 			repman.ProduceCloud18ConnectivityStates()
 			repman.RefreshCreditsFromCRM()
+		} else {
+			// The connectivity probes only run every %60 ticks while the
+			// lifecycle clears every tick: carry their states across the
+			// skipped ticks so they do not flap open/resolved.
+			repman.PreserveState(gitlabConnectWarnErrKey, crmConnectWarnErrKey, meetConnectWarnErrKey)
+		}
+		// Busy-overrun states are asserted only at their tick boundaries:
+		// keep them open while the corresponding task is still running.
+		if repman.gitSyncBusy.Load() {
+			repman.PreserveState("GWARN013@gitsync")
+		}
+		if repman.cloud18PullBusy.Load() {
+			repman.PreserveState("GWARN013@cloud18pull")
+		}
+		if repman.peerHealthBusy.Load() {
+			repman.PreserveState("GWARN013@peerhealth")
 		}
 		repman.ProcessAlertStateLifecycle()
 
