@@ -165,7 +165,7 @@ function Navbar({ username, user }) {
           {isAuthorized() && !clusterData && (
             <Flex className={styles.alerts}>
               <HealthAlertBadge
-                text='Server'
+                text='Monitor'
                 blockers={globalAlerts?.errors?.length || 0}
                 warnings={globalAlerts?.warnings?.length || 0}
                 onClick={() => setGlobalAlertModalType('health')}
@@ -274,7 +274,7 @@ function Navbar({ username, user }) {
         <AlertModal type={alertModalType} title='Cluster' isOpen={alertModalType.length !== 0} closeModal={closeAlertModal} />
       )}
       {globalAlertModalType && (
-        <AlertModal type={globalAlertModalType} title='Server' isOpen={globalAlertModalType.length !== 0} closeModal={() => setGlobalAlertModalType('')} alerts={globalAlerts} />
+        <AlertModal type={globalAlertModalType} title='Monitor' isOpen={globalAlertModalType.length !== 0} closeModal={() => setGlobalAlertModalType('')} alerts={globalAlerts} />
       )}
       {isAddUserModalOpen && (
         <AddUserModal clusterName={clusterData?.name} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />
