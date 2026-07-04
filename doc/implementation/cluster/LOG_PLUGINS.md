@@ -56,8 +56,9 @@ exit ≠0 = error    (repman logs WARN0203 and skips state injection)
 The plugin has **5 seconds** to complete. If it exceeds this deadline the server
 kills it and records a timeout finding (WARN0203).
 
-The current wire version is **2** (`WireVersion = 2` in `wire.go`), introduced in
-v3.1.30. Wire v1 plugins continue to work — new fields are additive.
+The current wire version is **3** (`WireVersion = 3` in `wire.go`) — see
+"Wire v3 — Schema Snapshot" below. Wire v1/v2 plugins continue to work — new
+fields are additive.
 
 ### Request
 
@@ -91,6 +92,7 @@ type Request struct {
     PluginDataDir   string            `json:"plugin_data_dir"`
 
     Config          map[string]string `json:"config,omitempty"`
+    Tables          []Table           `json:"tables,omitempty"`             // wire v3, master request only
 }
 ```
 
@@ -119,6 +121,7 @@ type Request struct {
 | `cluster_context` | Always | Cluster-level facts (proxies, backup, Docker, tool versions) |
 | `plugin_data_dir` | Always | Path to plugin sidecar data files |
 | `config` | Per-plugin config set | Plugin-specific settings from cluster TOML / GUI |
+| `tables` | Master request, schema monitor has run | Schema dictionary snapshot: engine, row format, columns (wire v3) |
 
 #### Msg (error log, SQL error log, audit log)
 
