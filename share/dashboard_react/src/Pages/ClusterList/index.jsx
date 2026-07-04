@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { getClusters } from '../../redux/globalClustersSlice'
-import { getClusterData, setCluster } from '../../redux/clusterSlice'
+import { setCluster } from '../../redux/clusterSlice'
 import { Box, Flex, HStack, Text, Wrap } from '@chakra-ui/react'
 import NotFound from '../../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
@@ -26,6 +26,7 @@ function ClusterList({ onClick }) {
   const dispatch = useDispatch()
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [clusterName, setClusterName] = useState('')
+  const [addUserApiUsers, setAddUserApiUsers] = useState(null)
   const [clusterList, setClusterList] = useState([])
   const [search, setSearch] = useState("")
   const [viewType, setViewType] = useState('table')
@@ -59,16 +60,17 @@ function ClusterList({ onClick }) {
     }
   }
 
-  const openAddUserModal = (e, name) => {
+  const openAddUserModal = (e, clusterItem) => {
     e.stopPropagation()
-    setClusterName(name)
-    dispatch(getClusterData({ clusterName: name }))
+    setClusterName(clusterItem.name)
+    setAddUserApiUsers(clusterItem.apiUsers || {})
     setIsAddUserModalOpen(true)
   }
 
   const closeAddUserModal = () => {
     setIsAddUserModalOpen(false)
     setClusterName('')
+    setAddUserApiUsers(null)
   }
 
   const arbitrationPill = (clusterItem) =>
@@ -176,7 +178,7 @@ function ClusterList({ onClick }) {
                   tooltip={'Add User'}
                   px='2'
                   variant='outline'
-                  onClick={(e) => openAddUserModal(e, row.name)}
+                  onClick={(e) => openAddUserModal(e, row)}
                 />
               ),
               { cell: (info) => info.getValue(), header: '', id: 'options' }
@@ -286,7 +288,7 @@ function ClusterList({ onClick }) {
                           tooltip={'Add User'}
                           px='2'
                           variant='outline'
-                          onClick={(e) => openAddUserModal(e, clusterItem.name)}
+                          onClick={(e) => openAddUserModal(e, clusterItem)}
                           className={styles.btnAddUser}
                         />
                       )}
@@ -308,7 +310,7 @@ function ClusterList({ onClick }) {
         )}
       />
       {isAddUserModalOpen && (
-        <AddUserModal clusterName={clusterName} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />
+        <AddUserModal clusterName={clusterName} apiUsers={addUserApiUsers} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />
       )}
     </>
   )
