@@ -1,4 +1,4 @@
-import { Flex, HStack } from '@chakra-ui/react'
+import { Box, Flex, HStack } from '@chakra-ui/react'
 import React, { useEffect, useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
@@ -13,6 +13,11 @@ import NumberInput from '../../components/NumberInput'
 import InterventionModal from '../../components/Modals/InterventionModal'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { getApi } from '../../services/apiHelper'
+import CommonModal from '../../components/Modals/CommonModal'
+import modalStyles from '../../components/Modals/styles.module.scss'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { HiQuestionMarkCircle } from 'react-icons/hi'
 
 function GlobalSettings({ config }) {
   const dispatch = useDispatch()
@@ -20,6 +25,40 @@ function GlobalSettings({ config }) {
   const baseURL = useSelector((state) => state?.auth?.baseURL)
   const [isInterventionModalOpen, setIsInterventionModalOpen] = useState(false)
   const [isEndInterventionModalOpen, setIsEndInterventionModalOpen] = useState(false)
+  const [action, setAction] = useState({ title: '', body: <></> })
+  const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
+
+  const openInfoModal = (title, content) => {
+    setAction({ title, body: <Box className={modalStyles.infoTooltip}><Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown></Box> })
+    setIsCommonModalOpen(true)
+  }
+
+  const h = (content, title) => (
+    <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal(title, content)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
+  )
+
+  const hBackupSlots = `**Concurrent Backup Slots**\n\nMaximum number of backups allowed to run at the same time across all clusters. Additional backup requests queue until a slot frees up.\n\nConfig: \`backup-concurrent-slots\``
+  const hIntervention = `**Global Intervention**\n\nMutes alerting on every cluster while a maintenance intervention is in progress. Suppressed alerts are counted on the Mute pill and released when the intervention ends.`
+  const hTokenTimeout = `**API Token Timeout**\n\nLifetime in hours of API session tokens (JWT). Users must log in again after expiry.\n\nConfig: \`api-token-timeout\``
+  const hPublicUrl = `**API Public URL**\n\nPublic URL of this replication-manager instance, used in generated links (alerts, peer lists, marketplace).\n\nConfig: \`api-public-url\``
+  const hMailFrom = `**Mail From**\n\nSender address used in alert emails.\nExample: \`replication-manager@company.com\`\n\nConfig: \`mail-from\``
+  const hMailTo = `**Mail To**\n\nComma-separated list of recipient addresses for alert emails.\n\nConfig: \`mail-to\``
+  const hMailSmtp = `**Mail SMTP Address**\n\nSMTP server in \`host:port\` format.\nExample: \`smtp.company.com:587\`\n\nConfig: \`mail-smtp-addr\``
+  const hMailUser = `**Mail SMTP User**\n\nSMTP authentication username.\n\nConfig: \`mail-smtp-user\``
+  const hMailPass = `**Mail SMTP Password**\n\nSMTP authentication password.\n\nConfig: \`mail-smtp-password\``
+  const hMailTls = `**Mail SMTP TLS Skip Verify**\n\nSkips TLS certificate verification for the SMTP connection.\nOnly enable in controlled environments.\n\nConfig: \`mail-smtp-tls-skip-verify\``
+  const hMailPool = `**Max Pool Connections**\n\nMaximum simultaneous SMTP connections in the mail pool.\n\nConfig: \`mail-max-pool\``
+  const hMailTimeout = `**Mail Timeout**\n\nTimeout in seconds for SMTP operations. 0 disables the timeout.\n\nConfig: \`mail-timeout\``
+  const hLogFile = `**Log File Level**\n\nVerbosity of the main log file: higher values include more detail up to debug.\n\nConfig: \`log-level-file\``
+  const hLogGit = `**Log GIT**\n\nVerbosity of git config sync logging. Note: raising this level also shortens the git sync cadence.\n\nConfig: \`log-level-git\``
+  const hLogSupport = `**Log Support**\n\nEnables the support log channel, shared with Cloud18 support when assistance is requested.\n\nConfig: \`log-support\``
+  const hLogSupportLevel = `**Log Support Level**\n\nVerbosity of the support log channel.\n\nConfig: \`log-level-support\``
+  const hLogStats = `**Log Stats Level**\n\nVerbosity of internal statistics logging.\n\nConfig: \`log-level-stats\``
+  const hLogHeartbeat = `**Log HeartBeat**\n\nEnables logging of arbitration heartbeats exchanged with the arbitrator and peers.\n\nConfig: \`log-heartbeat\``
+  const hLogHeartbeatLevel = `**Log HeartBeat Level**\n\nVerbosity of the heartbeat log channel.\n\nConfig: \`log-level-heartbeat\``
+  const hSwagger = `**Enable API Swagger**\n\nServes the interactive API explorer at \`/api-docs/\`.\n\nConfig: \`api-swagger-enabled\``
+  const hLogApiLogin = `**Log API Login**\n\nRecords every API login in the security log.\n\nConfig: \`monitoring-log-api-login\``
+  const hLogApiSilent = `**Log API Login Silent Users**\n\nComma-separated users whose logins are not recorded (health probes, internal accounts).\n\nConfig: \`monitoring-log-api-login-silent-users\``
 
   useEffect(() => {
     // Re-render when the config prop changes
@@ -40,6 +79,7 @@ function GlobalSettings({ config }) {
   const dataObject = [
     {
       key: 'Concurrent Backup Slots',
+      help: h(hBackupSlots, 'Concurrent Backup Slots'),
       value: (
         <NumberInput
           min={0}
@@ -53,6 +93,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Global Intervention',
+      help: h(hIntervention, 'Global Intervention'),
       value: (
         <RMSwitch
           isChecked={monitor?.isGlobalIntervention}
@@ -71,6 +112,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'API Token Timeout in Hours',
+      help: h(hTokenTimeout, 'API Token Timeout'),
       value: (
         <NumberInput
           min={1}
@@ -84,6 +126,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'API Public URL',
+      help: h(hPublicUrl, 'API Public URL'),
       value: (
         <TextForm
           value={config?.apiPublicUrl}
@@ -96,6 +139,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Mail From',
+      help: h(hMailFrom, 'Mail From'),
       value: (
         <TextForm
           value={config?.mailFrom}
@@ -108,6 +152,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Mail To',
+      help: h(hMailTo, 'Mail To'),
       value: (
         <TextForm
           value={config?.mailTo}
@@ -120,6 +165,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Mail SMTP Address',
+      help: h(hMailSmtp, 'Mail SMTP Address'),
       value: (
         <TextForm
           value={config?.mailSmtpAddr}
@@ -132,6 +178,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Mail SMTP User',
+      help: h(hMailUser, 'Mail SMTP User'),
       value: (
         <TextForm
           value={config?.mailSmtpUser}
@@ -144,6 +191,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Mail SMTP Password',
+      help: h(hMailPass, 'Mail SMTP Password'),
       value: (
         <TextForm
           value={config?.mailSmtpPassword}
@@ -156,6 +204,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Mail SMTP TLS (Skip Verify)',
+      help: h(hMailTls, 'Mail SMTP TLS'),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch global settings for Mail SMTP TLS?'}
@@ -166,6 +215,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Max Pool Connections',
+      help: h(hMailPool, 'Max Pool Connections'),
       value: (
         <NumberInput
           min={1}
@@ -179,6 +229,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Mail Timeout in Seconds (0 = no timeout)',
+      help: h(hMailTimeout, 'Mail Timeout'),
       value: (
         <NumberInput
           min={0}
@@ -192,6 +243,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Log File Level',
+      help: h(hLogFile, 'Log File Level'),
       value: (
         <LogSlider
           value={config?.logFileLevel}
@@ -209,6 +261,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Log GIT',
+      help: h(hLogGit, 'Log GIT'),
       value: (
         <LogSlider
           value={config?.logGitLevel}
@@ -226,6 +279,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Log Support',
+      help: h(hLogSupport, 'Log Support'),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch global settings for Log Support?'}
@@ -236,6 +290,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Log Support Level',
+      help: h(hLogSupportLevel, 'Log Support Level'),
       value: (
         <LogSlider
           value={config?.logSupportLevel}
@@ -253,6 +308,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Log Stats Level',
+      help: h(hLogStats, 'Log Stats Level'),
       value: (
         <LogSlider
           value={config?.logStatsLevel}
@@ -270,6 +326,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Log HeartBeat',
+      help: h(hLogHeartbeat, 'Log HeartBeat'),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch global settings for Log HeartBeat?'}
@@ -280,6 +337,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Log HeartBeat Level',
+      help: h(hLogHeartbeatLevel, 'Log HeartBeat Level'),
       value: (
         <LogSlider
           value={config?.logHeartbeatLevel}
@@ -297,6 +355,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Enable API Swagger',
+      help: h(hSwagger, 'Enable API Swagger'),
       value: (
         <HStack>
           <RMSwitch
@@ -310,6 +369,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Log API Login',
+      help: h(hLogApiLogin, 'Log API Login'),
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch global settings for Log API Login?'}
@@ -320,6 +380,7 @@ function GlobalSettings({ config }) {
     },
     {
       key: 'Log API Login Silent Users',
+      help: h(hLogApiSilent, 'Log API Login Silent Users'),
       value: (
         <TextForm
           value={config?.monitoringLogApiLoginSilentUsers}
@@ -335,8 +396,9 @@ function GlobalSettings({ config }) {
   return (
     <>
       <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={dataObject} className={styles.table} />
+        <TableType2 dataArray={dataObject} className={styles.table} helpColumn={true} />
       </Flex>
+      <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
       {isInterventionModalOpen && (
         <InterventionModal
           isOpen={isInterventionModalOpen}
