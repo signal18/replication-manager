@@ -1,6 +1,19 @@
 # Config Event Log — peer-symmetric config change replication
 
-Status: DESIGN APPROVED 2026-07-06 (svaroqui) — not yet implemented.
+Status: IMPLEMENTED 2026-07-06 (design approved by svaroqui).
+
+Implementation map:
+- Authoring: `cluster/cluster_eventlog.go` (`saveConfigArtifact`,
+  `emitConfigChangeEvents`) hooked into `SaveConfigFile`,
+  `SaveImmutableConfig` and `Overwrite()` — all three files are written
+  crash-safe (`.new` + rename) and key-diffed against the previous save.
+- Transport: `config.FetchRemoteRootFiles` (fetch + remote-tracking-ref blob
+  read, no checkout).
+- Replay: `server/server_eventlog.go` (`ReplayPeerConfigEvents`,
+  `applyPeerConfigEvent`), wired into the detached git-sync task before
+  `GitPush`; state in `WorkingDir/event-log-state.json` (gitignored).
+- The `.config/` isolated clone and `ReloadStandbyConfigsFromDisk` are
+  removed; leftovers are deleted at push time.
 
 ## Problem
 
@@ -77,9 +90,10 @@ full-state standby pull, then sets its cursor to the current head.
    timestamp order, last-writer-wins. No coupling to arbitration status.
 4. **Rotation** — logs are append-only in a git repo and grow forever.
    Policy: rotate once every known peer's cursor has passed an offset, or
-   size-based rotation; a peer that is too far behind (cursor older than the
-   rotated tail) falls back to the full config pull, which already exists as
-   the standby sync baseline.
+   size-based rotation. A peer whose cursor is beyond the rotated log's
+   length replays the remaining log from the start — per-key LWW skips
+   everything older than what it already holds, so a rewind converges
+   instead of regressing. (Rotation itself is not yet automated.)
 5. **Scope** — log every variable change, and peers **re-apply every event**
    (decided 2026-07-06: no apply-allowlist, no scope exclusion). This
    includes immutable `scope:"server"` settings: a runtime change to one is
@@ -128,9 +142,10 @@ Accepted trade-offs of save-diff authoring:
 
 ## Interaction with existing mechanisms
 
-- **Standby full pull** (`.config/` clone, applies `<cluster>.toml` byte-diff
-  to standby clusters) remains the baseline full-state sync and the recovery
-  path when cursors are lost or logs rotated away.
+- **Standby full pull is removed** (the `.config/` clone and
+  `ReloadStandbyConfigsFromDisk`): the event log replicates every change
+  peer-symmetrically, so the one-way toml copy is obsolete. Recovery from
+  lost cursors/state is replay-from-log-start under LWW.
 - **inject.toml** (BO channel) is unchanged — BO-authored one-shot injection.
 - **GitPush** stays ungated; the log is pushed with the regular config push.
 - The authoritative active-side `<cluster>.toml` will eventually contain the

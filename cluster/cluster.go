@@ -9,7 +9,6 @@ package cluster
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -190,6 +189,11 @@ type Cluster struct {
 	StagingServer  *ServerMonitor             `json:"-" groups:"web"`
 	mxs            *maxscale.MaxScale         `json:"-"`
 	CheckSumConfig map[string]hash.Hash       `json:"-"`
+	// eventProv is the config event log provenance table: where the current
+	// value of each saved key came from (echo subtraction + LWW). See
+	// cluster_eventlog.go and doc/implementation/config/CONFIG_EVENT_LOG.md.
+	eventProv     map[string]EventProvenanceEntry `json:"-"`
+	eventProvLock sync.Mutex                      `json:"-"`
 	//dbUser                        string                      `json:"-"`
 	//oldDbUser string `json:"-"`
 	//dbPass                        string                      `json:"-"`
@@ -1712,20 +1716,11 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 	keys := t.Keys()
 	keys = misc.SortKeysAsc(keys)
 
-	// Write sorted values to file
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-	if err != nil {
-		if os.IsPermission(err) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error opening file: %s", err)
-		}
-		return false, err
-	}
-	defer file.Close()
-
-	// Write header
-	file.WriteString(header)
+	// Build the full content in memory: the save is written crash-safe
+	// (.new + rename) and key-diffed against the previous save to derive
+	// config change events (see cluster_eventlog.go).
+	var buf bytes.Buffer
+	buf.WriteString(header)
 
 	for _, key := range keys {
 		_, ok := cluster.Conf.ImmuableFlagMap[key]
@@ -1741,36 +1736,19 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 				s.Delete(key)
 				//to encrypt credentials before writting in the config file
 				encrypt_val := cluster.GetEncryptedValueFromMemory(key)
-				file.WriteString(key + " = \"" + encrypt_val + "\"\n")
+				buf.WriteString(key + " = \"" + encrypt_val + "\"\n")
 
 			}
 		}
 	}
 
-	s.WriteTo(file)
-	//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.Conf.ImmuableFlagMap)
-	//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.Conf.DynamicFlagMap)
-	new_h := md5.New()
-	if _, err := io.Copy(new_h, file); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
-	}
+	s.WriteTo(&buf)
 
-	h, ok := cluster.CheckSumConfig["saved"]
-	if !ok {
-		has_changed = true
-	}
-	if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
-		has_changed = true
-	}
-
-	cluster.CheckSumConfig["saved"] = new_h
-
-	return has_changed, nil
+	has_changed, err = cluster.saveConfigArtifact(filePath, buf.Bytes(), "saved-"+cluster.Name, true)
+	return has_changed, err
 }
 
 func (cluster *Cluster) SaveImmutableConfig() (bool, error) {
-	var has_changed bool
-
 	// Get Sorted Keys
 	keys := make([]string, 0)
 	for key := range cluster.Conf.ImmuableFlagMap {
@@ -1779,47 +1757,23 @@ func (cluster *Cluster) SaveImmutableConfig() (bool, error) {
 
 	keys = misc.SortKeysAsc(keys)
 
-	// Open file and
-	file2, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-	if err != nil {
-		if os.IsPermission(err) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml")
-		}
-		return false, err
-	}
-	defer file2.Close()
-
+	var buf bytes.Buffer
 	for _, key := range keys {
 		val := cluster.Conf.ImmuableFlagMap[key]
 		_, ok := cluster.Conf.Secrets[key]
 		if ok {
 			encrypt_val := cluster.GetEncryptedValueFromMemory(key)
-			file2.WriteString(key + " = \"" + encrypt_val + "\"\n")
+			buf.WriteString(key + " = \"" + encrypt_val + "\"\n")
 		} else {
 			if fmt.Sprintf("%T", val) == "string" {
-				file2.WriteString(key + " = \"" + fmt.Sprintf("%v", val) + "\"\n")
+				buf.WriteString(key + " = \"" + fmt.Sprintf("%v", val) + "\"\n")
 			} else {
-				file2.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
+				buf.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
 			}
 		}
 	}
 
-	new_h := md5.New()
-	if _, err := io.Copy(new_h, file2); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
-	}
-
-	h, ok := cluster.CheckSumConfig["immutable"]
-	if !ok {
-		has_changed = true
-	}
-	if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
-		has_changed = true
-	}
-
-	cluster.CheckSumConfig["immutable"] = new_h
-
-	return has_changed, nil
+	return cluster.saveConfigArtifact(cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml", buf.Bytes(), "", true)
 }
 
 func (cluster *Cluster) SaveCacheConfig() error {
@@ -1856,15 +1810,6 @@ func (cluster *Cluster) Overwrite() (bool, error) {
 	var has_changed bool
 
 	if cluster.Conf.ConfRewrite {
-		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-		if err != nil {
-			if os.IsPermission(err) {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml")
-			}
-			return false, err
-		}
-		defer file.Close()
-
 		readconf, _ := toml.Marshal(*cluster.Conf)
 		t, _ := toml.LoadBytes(readconf)
 		s := t
@@ -1892,23 +1837,15 @@ func (cluster *Cluster) Overwrite() (bool, error) {
 
 		}
 
-		file.WriteString("[overwrite-" + cluster.Name + "]\n")
-		s.WriteTo(file)
+		var buf bytes.Buffer
+		buf.WriteString("[overwrite-" + cluster.Name + "]\n")
+		s.WriteTo(&buf)
 
-		new_h := md5.New()
-		if _, err := io.Copy(new_h, file); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
+		var err error
+		has_changed, err = cluster.saveConfigArtifact(cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", buf.Bytes(), "overwrite-"+cluster.Name, true)
+		if err != nil {
+			return has_changed, err
 		}
-
-		h, ok := cluster.CheckSumConfig["overwrite"]
-		if !ok {
-			has_changed = true
-		}
-		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
-			has_changed = true
-		}
-
-		cluster.CheckSumConfig["overwrite"] = new_h
 
 	}
 

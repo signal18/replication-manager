@@ -242,22 +242,23 @@ change-driven:
 - **Push on change, from wherever the change happened.** `GitPush` is
   ungated; since secrets keep a stable ciphertext across saves, nodes with no
   real edits push nothing.
-- **Pull everywhere.** `PullActiveConfig` runs on both peers whenever
-  arbitration is enabled. The pull lands in an **isolated clone**
-  `WorkingDir/.config/` (same principle as `.pull/` for the BO repo) — the
-  live working dir is never force-reset by a pull, so a node that is active
-  for some clusters cannot lose locally saved state.
-- **Apply per cluster.** Files (`<name>.toml`, `overwrite.toml`) are copied
-  from `.config/<name>/` into the live tree only for clusters where this node
-  is standby (`!IsActive() && GitConfigSyncStandby`) and only when the bytes
-  actually differ; `ReloadStandbyConfigsFromDisk` then reloads just those
-  clusters. Active clusters' files are never touched by the pull path.
+- **Replay everywhere (2026-07-06, replaces the `.config/` clone).** Config
+  changes are replicated peer-symmetrically through the **config event log**:
+  each instance appends its locally-born mutations to
+  `event-changed.<RRBid>.log` (derived from the save diff), and every peer
+  fetches the others' logs from the remote-tracking ref — the working tree is
+  never merged into — and replays events under per-key last-writer-wins.
+  Mutations born on a peer that is *standby* for a cluster (e.g. a marketplace
+  user signup) now reach the active peer too, which the one-way toml copy
+  never allowed. Full design:
+  `doc/implementation/config/CONFIG_EVENT_LOG.md`.
 
-The old implementation ran `git checkout --force` + `pull --force` directly
-on the live working dir, gated by `HasStandbyClusterWithGitSync` (any single
-standby cluster). That was destructive on mixed-role nodes and, combined with
-secrets being re-encrypted on every save, produced a push/pull/reload
-ping-pong between the peers every git tick.
+Two earlier implementations are gone: the original `git checkout --force` +
+`pull --force` on the live working dir (destructive on mixed-role nodes,
+push/pull/reload ping-pong when combined with unstable secret ciphertext),
+and the intermediate `.config/` isolated clone that copied `<name>.toml` to
+standby clusters only (one-directional: standby-born changes were stranded
+and eventually overwritten).
 
 ## Configuration
 

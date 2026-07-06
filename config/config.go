@@ -2118,6 +2118,62 @@ func (conf *Config) PrintSecret(value string) string {
 // remote holds the git mutex forever and freezes config saves.
 const gitNetworkTimeout = 120 * time.Second
 
+// FetchRemoteRootFiles fetches origin on the git repo at dir (bounded by
+// gitNetworkTimeout) and returns the contents of repo-root files whose name
+// matches prefix+suffix, read directly from the fetched remote-tracking ref.
+// The working tree is never touched — no checkout, no merge, no conflicts —
+// which is what makes it safe to run on a repo whose working tree is also
+// written locally (config saves, event logs). Used to read peer
+// event-changed.<id>.log files (doc/implementation/config/CONFIG_EVENT_LOG.md).
+func (conf *Config) FetchRemoteRootFiles(dir string, user string, tok string, prefix string, suffix string) (map[string][]byte, error) {
+	r, err := git.PlainOpen(dir)
+	if err != nil {
+		return nil, err
+	}
+	auth := &git_https.BasicAuth{
+		Username: user,
+		Password: tok,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), gitNetworkTimeout)
+	defer cancel()
+	err = r.FetchContext(ctx, &git.FetchOptions{RemoteName: "origin", Auth: auth, Force: true})
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		return nil, err
+	}
+	head, err := r.Head()
+	if err != nil {
+		return nil, err
+	}
+	ref, err := r.Reference(plumbing.NewRemoteReferenceName("origin", head.Name().Short()), true)
+	if err != nil {
+		return nil, err
+	}
+	commit, err := r.CommitObject(ref.Hash())
+	if err != nil {
+		return nil, err
+	}
+	tree, err := commit.Tree()
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][]byte)
+	for _, e := range tree.Entries {
+		if !strings.HasPrefix(e.Name, prefix) || !strings.HasSuffix(e.Name, suffix) {
+			continue
+		}
+		f, ferr := tree.File(e.Name)
+		if ferr != nil {
+			continue
+		}
+		c, cerr := f.Contents()
+		if cerr != nil {
+			continue
+		}
+		out[e.Name] = []byte(c)
+	}
+	return out, nil
+}
+
 func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir string) error {
 	var err error
 	var r *git.Repository

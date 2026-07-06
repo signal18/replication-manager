@@ -2818,13 +2818,12 @@ func (repman *ReplicationManager) Run() error {
 				if repman.gitSyncBusy.CompareAndSwap(false, true) {
 					go func() {
 						defer repman.gitSyncBusy.Store(false)
-						if repman.Conf.Arbitration {
-							// Role-free config sync: the pull lands in an isolated
-							// .config/ clone and applies only to clusters where this
-							// node is standby, so it is safe and meaningful on both
-							// peers regardless of per-cluster active/standby mix.
-							repman.PullActiveConfig()
-						}
+						// Peer-symmetric config sync: replay peer config change
+						// events (event-changed.<id>.log, fetched from the remote
+						// without touching the working tree) before the push so
+						// replayed changes land in this same save cycle. See
+						// doc/implementation/config/CONFIG_EVENT_LOG.md.
+						repman.ReplayPeerConfigEvents()
 						repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
 					}()
 				} else {

@@ -23,7 +23,6 @@ import (
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/meethelper"
 	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 )
 
 func (repman *ReplicationManager) GetIsGitPush() bool {
@@ -217,6 +216,12 @@ func (repman *ReplicationManager) PushAllConfigsToGit() error {
 	repman.AddPluginDirToGitignore()
 	repman.AddDictTablesToGitignore()
 	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "*/variable-diff.json")
+	// Event log instance-local state and crash-safe temp files never travel.
+	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "event-log-state.json")
+	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "*.new")
+	// The .config isolated clone is replaced by the config event log
+	// (doc/implementation/config/CONFIG_EVENT_LOG.md); drop leftovers.
+	os.RemoveAll(filepath.Join(repman.Conf.WorkingDir, ".config"))
 
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Pushing All Configs To Git")
 
@@ -1238,136 +1243,3 @@ func (repman *ReplicationManager) ShallowClone() error {
 	return err
 }
 
-// PullActiveConfig pulls config from the push repo (GitUrl) when all clusters
-// are on standby. If changes were pulled, it reloads standby cluster configs.
-// It coordinates with ConfigManager's gitMutex to avoid racing with push operations.
-func (repman *ReplicationManager) PullActiveConfig() {
-	if repman.ConfigManager == nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-			"Standby: ConfigManager not initialized, skipping config pull")
-		return
-	}
-
-	repman.ConfigManager.WithGitLock(func() {
-		repman.pullActiveConfigLocked()
-	})
-}
-
-func (repman *ReplicationManager) pullActiveConfigLocked() {
-	path := repman.Conf.WorkingDir
-	syncDir := filepath.Join(path, ".config")
-	tok := repman.Conf.GetDecryptedValue("git-acces-token")
-
-	// Pull the shared config repo into an isolated clone (.config/), same
-	// principle as .pull/: the live working dir is never force-reset by the
-	// pull path, so a node that is active for some clusters cannot lose
-	// locally saved state. This makes the sync safe to run on both peers
-	// regardless of per-cluster active/standby roles.
-	if err := repman.Conf.CloneConfigFromGit(repman.Conf.GitUrl, repman.Conf.GitUsername, tok, syncDir); err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-			"Standby: cannot sync config repo clone %s: %s", syncDir, err)
-		return
-	}
-
-	// Apply pulled files only to clusters where this node is standby, and
-	// only when the content actually changed.
-	applied := false
-	for _, name := range repman.ClusterList {
-		cl := repman.getClusterByName(name)
-		if cl == nil || cl.IsActive() || !cl.Conf.GitConfigSyncStandby {
-			continue
-		}
-		for _, f := range []string{name + ".toml", "overwrite.toml"} {
-			src := filepath.Join(syncDir, name, f)
-			data, rerr := os.ReadFile(src)
-			if rerr != nil {
-				continue
-			}
-			dst := filepath.Join(path, name, f)
-			if old, oerr := os.ReadFile(dst); oerr == nil && bytes.Equal(old, data) {
-				continue
-			}
-			if merr := os.MkdirAll(filepath.Dir(dst), 0755); merr != nil {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-					"Standby: cannot create config dir for %s: %s", name, merr)
-				continue
-			}
-			if werr := os.WriteFile(dst, data, 0600); werr != nil {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-					"Standby: cannot apply pulled config %s: %s", dst, werr)
-				continue
-			}
-			applied = true
-		}
-	}
-
-	if !applied {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg,
-			"Standby: config already up to date")
-		return
-	}
-
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo,
-		"Standby: pulled config changes from active node, reloading")
-
-	repman.ReloadStandbyConfigsFromDisk()
-}
-
-// ReloadStandbyConfigsFromDisk re-reads config files from the working directory
-// for each standby cluster and reloads if the config changed.
-func (repman *ReplicationManager) ReloadStandbyConfigsFromDisk() {
-	for _, name := range repman.ClusterList {
-		cl := repman.getClusterByName(name)
-		if cl == nil || cl.IsActive() || !cl.Conf.GitConfigSyncStandby {
-			continue
-		}
-
-		configFile := filepath.Join(repman.Conf.WorkingDir, name, name+".toml")
-		if _, err := os.Stat(configFile); os.IsNotExist(err) {
-			continue
-		}
-
-		v := viper.New()
-		v.SetConfigType("toml")
-		v.SetConfigFile(configFile)
-		if err := v.ReadInConfig(); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
-				"Standby: cannot read saved config for %s: %s", name, err)
-			continue
-		}
-
-		sub := v.Sub("saved-" + name)
-		if sub == nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg,
-				"Standby: no saved section found in %s", configFile)
-			continue
-		}
-
-		newConf := *cl.Conf
-		if err := sub.Unmarshal(&newConf); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
-				"Standby: cannot unmarshal saved config for %s: %s", name, err)
-			continue
-		}
-
-		overwriteFile := filepath.Join(repman.Conf.WorkingDir, name, "overwrite.toml")
-		if _, err := os.Stat(overwriteFile); err == nil {
-			ov := viper.New()
-			ov.SetConfigType("toml")
-			ov.SetConfigFile(overwriteFile)
-			if err := ov.ReadInConfig(); err != nil {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
-					"Standby: cannot read overwrite config for %s: %s", name, err)
-			} else if ovSub := ov.Sub("overwrite-" + name); ovSub != nil {
-				if err := ovSub.Unmarshal(&newConf); err != nil {
-					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
-						"Standby: cannot unmarshal overwrite config for %s: %s", name, err)
-				}
-			}
-		}
-
-		cl.ReloadConfig(newConf)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
-			"Standby: reloaded config for cluster %s from active node", name)
-	}
-}
