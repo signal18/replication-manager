@@ -2364,6 +2364,24 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 		}
 	}
 
+	// Stage this instance's config event log: peers replicate config changes
+	// by replaying it (doc/implementation/config/CONFIG_EVENT_LOG.md) — an
+	// unstaged log means events never leave this node. This is the push
+	// implementation the ConfigManager queue actually uses; the legacy
+	// server-side PushConfigToGit stages it too.
+	if entries, rerr := os.ReadDir(conf.WorkingDir); rerr == nil {
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasPrefix(e.Name(), "event-changed.") || !strings.HasSuffix(e.Name(), ".log") {
+				continue
+			}
+			if _, aerr := w.Add(e.Name()); aerr != nil {
+				if conf.IsEligibleForPrinting(ConstLogModGit, LvlErr) {
+					log.Errorf("Git error : cannot Add %s : %s", e.Name(), aerr)
+				}
+			}
+		}
+	}
+
 	// cloud18.toml will be in pull repo
 	// if _, err := os.Stat(conf.WorkingDir + "/.pull/cloud18.toml"); !os.IsNotExist(err) {
 	// 	_, err = w.Add("cloud18.toml")
