@@ -79,13 +79,14 @@ full-state standby pull, then sets its cursor to the current head.
    size-based rotation; a peer that is too far behind (cursor older than the
    rotated tail) falls back to the full config pull, which already exists as
    the standby sync baseline.
-5. **Scope** — log every dynamic variable change, and peers **re-apply every
-   event** (decided 2026-07-06: no apply-allowlist). Only dynamic
-   cluster-scope settings flow through the mutation hooks — immutable
-   `scope:"server"` flags never enter the log — so every logged event is by
-   definition a cluster setting that peers must converge on; LWW (decision 3)
-   resolves concurrent writes. The log doubles as a config-change audit
-   trail, valuable even without arbitration or peers.
+5. **Scope** — log every variable change, and peers **re-apply every event**
+   (decided 2026-07-06: no apply-allowlist, no scope exclusion). This
+   includes immutable `scope:"server"` settings: a runtime change to one is
+   lost on restart anyway, so replaying it on a peer carries no more risk
+   than making it locally — and peers converging on the same runtime value
+   is the desired behaviour. LWW (decision 3) resolves concurrent writes.
+   The log doubles as a config-change audit trail, valuable even without
+   arbitration or peers.
 
 ## Interaction with existing mechanisms
 
