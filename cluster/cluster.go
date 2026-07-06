@@ -792,7 +792,11 @@ func (cluster *Cluster) initOrchetratorNodes() {
 		log.Fatalln("prov-orchestrator not supported", cluster.Conf.ProvOrchestrator)
 	}
 
-	cluster.SetAgentsCpuCoreMem()
+	// Per-agent capacity (cpuCores/memBytes) is published through
+	// agents.json, which the config push already stages for the BO. The old
+	// SetAgentsCpuCoreMem min() into ImmuableFlagMap was write-only, flapped
+	// at boot (empty agent list) and persisted 0 when agents had not
+	// reported capacity — removed 2026-07-06.
 	cluster.SetAgentsMaxCpuFreq()
 	cluster.inInitNodes = false
 

@@ -133,6 +133,10 @@ func (cluster *Cluster) SaveUserRoles(user string) string {
 			aEnabledRoles = append(aEnabledRoles, role)
 		}
 	}
+	// Map iteration order is random: an unsorted role list makes the ACL
+	// string differ between saves without any real change, flooding the
+	// config event log with phantom acl-allow-external updates.
+	sort.Strings(aEnabledRoles)
 	return strings.Join(aEnabledRoles, " ")
 }
 

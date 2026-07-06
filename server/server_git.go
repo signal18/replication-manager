@@ -1153,6 +1153,23 @@ func (repman *ReplicationManager) PushConfigToGit() error {
 		}
 	}
 
+	// Add this instance's config event log: peers replicate config changes
+	// by replaying it (doc/implementation/config/CONFIG_EVENT_LOG.md) — an
+	// unstaged log means events never leave this node.
+	if entries, err := os.ReadDir(path); err == nil {
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasPrefix(e.Name(), "event-changed.") || !strings.HasSuffix(e.Name(), ".log") {
+				continue
+			}
+			if _, err := w.Add(e.Name()); err == nil {
+				changedFiles = append(changedFiles, e.Name())
+			} else {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+					"Git error: cannot add %s: %s", e.Name(), err)
+			}
+		}
+	}
+
 	// Skip commit if no files were changed
 	if len(changedFiles) == 0 {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg,
