@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../redux/authSlice'
 import RefreshCounter from '../RefreshCounter'
 import { isAuthorized } from '../../utility/common'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { clearCluster } from '../../redux/clusterSlice'
 import AlertBadge, { HealthAlertBadge, NetworkBadge } from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
@@ -53,6 +53,12 @@ function Navbar({ username, user }) {
   const { isMobile, isDesktop } = useSelector((state) => state.common)
   const clusterAlerts = useSelector((state) => state?.cluster?.clusterAlerts)
   const clusterData = useSelector((state) => state?.cluster?.clusterData)
+  // Which header to show is derived from the ROUTE, never from leftover
+  // store state: clusterData can survive navigation (re-register flows,
+  // deep links, fetches racing clearCluster), and every such leak used to
+  // resurrect the per-cluster header on the cluster-list dashboard.
+  const { pathname } = useLocation()
+  const inClusterContext = /^\/clusters\/[^/]+/.test(pathname)
   const globalAlerts = useSelector((state) => state?.globalClusters?.globalAlerts)
   const isLogged = useSelector((state) => state?.auth?.isLogged)
   const baseURL = useSelector((state) => state?.auth?.baseURL)
@@ -184,7 +190,7 @@ function Navbar({ username, user }) {
           
 
 
-          {isAuthorized() && !clusterData && (
+          {isAuthorized() && !inClusterContext && (
             <Flex className={styles.alerts}>
               <Popover placement='bottom'>
                 <PopoverTrigger>
@@ -214,7 +220,7 @@ function Navbar({ username, user }) {
             </Flex>
           )}
 
-          {isAuthorized() && clusterData && (
+          {isAuthorized() && inClusterContext && clusterData && (
             <Flex className={styles.alerts}>
               <Popover placement='bottom'>
                 <PopoverTrigger>
@@ -318,7 +324,7 @@ function Navbar({ username, user }) {
               )}
               {/* Mute and user badges grouped tight — no counters on them */}
               <Flex className={styles.alerts}>
-                {clusterData ? (
+                {inClusterContext && clusterData ? (
                   <AlertBadge
                     colorScheme={clusterData?.isIntervention ? 'red' : clusterData?.interventionPending ? 'orange' : 'teal'}
                     icon={MdNotificationsOff}
@@ -383,7 +389,7 @@ function Navbar({ username, user }) {
           closeModal={() => setIsInterventionPanelOpen(false)}
           isGlobal={!clusterData}
           canManage={!!userClusterGrants?.['db-maintenance'] || !clusterData}
-          isActive={clusterData ? (clusterData?.isIntervention || !!clusterData?.interventionPending) : (monitor?.activeInterventionCount > 0 || monitor?.isGlobalInterventionPending)}
+          isActive={inClusterContext && clusterData ? (clusterData?.isIntervention || !!clusterData?.interventionPending) : (monitor?.activeInterventionCount > 0 || monitor?.isGlobalInterventionPending)}
           current={clusterData ? (clusterData?.interventionCurrent || clusterData?.interventionPending) : monitor?.globalInterventionEntry}
           isPending={clusterData ? (!!clusterData?.interventionPending && !clusterData?.isIntervention) : (monitor?.isGlobalInterventionPending && !monitor?.isGlobalIntervention)}
           history={clusterData ? (clusterData?.interventionHistory || []) : []}
