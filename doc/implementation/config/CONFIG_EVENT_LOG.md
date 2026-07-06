@@ -66,10 +66,11 @@ full-state standby pull, then sets its cursor to the current head.
 
 ## Approved decisions
 
-1. **Echo suppression** — only *locally-originated* mutations are logged
-   (API set, user add/drop, GUI switch). Applying a peer's event bypasses
-   the normal "mutate + log" path and must not append to our own log,
-   otherwise two peers ping-pong forever.
+1. **Echo suppression** — only *locally-originated* mutations end up in the
+   log. Enforced by save-diff authoring with provenance subtraction (see
+   "Authoring and echo prevention" below), NOT by hooking setters (rejected
+   2026-07-06: touches dozens of call sites and every future setter must
+   remember to log).
 2. **Secrets** — log entries carry the `hash_` ciphertext only. Plaintext
    never enters the log.
 3. **Conflicts** — same key changed on both peers between saves: apply in
@@ -87,6 +88,43 @@ full-state standby pull, then sets its cursor to the current head.
    is the desired behaviour. LWW (decision 3) resolves concurrent writes.
    The log doubles as a config-change audit trail, valuable even without
    arbitration or peers.
+
+## Authoring and echo prevention (approved 2026-07-06)
+
+Events are DERIVED FROM THE SAVE, not captured in setters. Everything
+happens in one place, the SaveConfig cycle:
+
+1. **Replay first.** Read peer logs, apply events past the cursor (with the
+   LWW check of decision 3). While applying, record each applied key in a
+   provenance table: `(cluster, key) → (value, ts, author)`.
+2. **Diff the save.** Before SaveConfig overwrites `<cluster>.toml`,
+   key-level-diff the new content against the previous save's content.
+   Every differing key is a candidate event.
+3. **Subtract echoes.** Candidate whose current value came from a peer
+   replay (provenance author ≠ self, value matches) is skipped — we just
+   applied it, it is not ours. Everything left is by definition a
+   locally-born change: append to `event-changed.<RRBid>.log` with
+   author = self, ts = now, provenance updated to self.
+4. **Persist together.** Cursors + provenance table are saved with the
+   config. A lost table is recovered by the full-pull baseline + cursor
+   reset, same as decision 4.
+
+Why this cannot ping-pong: an applied peer event is subtracted from the
+save diff by construction (step 3), so it is never re-emitted; cursors only
+move forward, so it applies at most once per instance; per-key LWW with
+author-id tie-break makes all peers pick the same winner, so a stale event
+arriving late is skipped instead of causing divergence.
+
+Accepted trade-offs of save-diff authoring:
+- Timestamps are save-cycle-coarse (~2 min): "last writer" means "last
+  save", resolved deterministically by author-id ties.
+- Set-then-revert within one save window emits no event (net change nil);
+  the audit trail loses the transient.
+- Attribution is thinner than a setter hook (no acting username in the
+  event); if the audit view later needs "changed by whom", take it from the
+  security log rather than re-hooking setters.
+- Secrets diff in their stable `hash_` ciphertext form (ed92556a2), which
+  is deterministic across saves — a prerequisite this design relies on.
 
 ## Interaction with existing mechanisms
 
