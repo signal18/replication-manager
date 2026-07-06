@@ -78,6 +78,38 @@ definitions:
       total_size:
         type: integer
     type: object
+  backupmgr.ManualCheckResult:
+    properties:
+      backend:
+        description: Wipe preview fields populated by ResticCheckConfigManual
+        type: string
+      can_init:
+        type: boolean
+      can_wipe:
+        type: boolean
+      fetch_queued:
+        type: boolean
+      is_s3_empty_prefix:
+        type: boolean
+      message:
+        type: string
+      repo_path:
+        type: string
+      status:
+        $ref: '#/definitions/backupmgr.ManualCheckStatus'
+      wipe_message:
+        type: string
+    type: object
+  backupmgr.ManualCheckStatus:
+    enum:
+    - ok
+    - initialization_required
+    - error
+    type: string
+    x-enum-varnames:
+    - ManualCheckStatusOK
+    - ManualCheckStatusInitRequired
+    - ManualCheckStatusError
   backupmgr.PointInTimeMeta:
     properties:
       backup:
@@ -166,6 +198,61 @@ definitions:
         type: string
       with_cache:
         description: 'Use cache (default: false for check)'
+        type: boolean
+    type: object
+  backupmgr.ResticCopyOption:
+    properties:
+      copy_chunker_params:
+        type: boolean
+      host:
+        items:
+          type: string
+        type: array
+      init_destination:
+        type: boolean
+      path:
+        items:
+          type: string
+        type: array
+      snapshot_ids:
+        items:
+          type: string
+        type: array
+      source:
+        $ref: '#/definitions/backupmgr.ResticCopySourceOption'
+      tag:
+        items:
+          type: string
+        type: array
+    type: object
+  backupmgr.ResticCopySourceAWSOption:
+    properties:
+      access_key_id:
+        type: string
+      access_secret:
+        type: string
+      bucket:
+        type: string
+      endpoint:
+        type: string
+      prefix:
+        type: string
+      region:
+        type: string
+    type: object
+  backupmgr.ResticCopySourceOption:
+    properties:
+      aws:
+        $ref: '#/definitions/backupmgr.ResticCopySourceAWSOption'
+      key_hint:
+        type: string
+      mode:
+        type: string
+      password:
+        type: string
+      repository:
+        type: string
+      use_saved_config:
         type: boolean
     type: object
   backupmgr.ResticFetchOption:
@@ -453,6 +540,9 @@ definitions:
         type: integer
       completed_at:
         type: string
+      completed_snapshots:
+        description: snapshots completed during copy
+        type: integer
       data_added:
         type: integer
       data_blobs:
@@ -475,8 +565,14 @@ definitions:
         type: integer
       last_update:
         type: string
+      packs_done:
+        description: packs copied (copy task only)
+        type: integer
       percent_done:
         type: number
+      phase:
+        description: init_destination or copy
+        type: string
       seconds_elapsed:
         type: integer
       snapshot_id:
@@ -500,6 +596,12 @@ definitions:
         type: integer
       total_files_processed:
         type: integer
+      total_packs:
+        description: total packs to copy (copy task only)
+        type: integer
+      total_snapshots:
+        description: total snapshots to copy
+        type: integer
       tree_blobs:
         type: integer
     type: object
@@ -508,6 +610,15 @@ definitions:
       remove_all:
         description: Remove all locks, including from other hosts
         type: boolean
+    type: object
+  backupmgr.ResticWipeOption:
+    properties:
+      allow_empty_prefix:
+        type: boolean
+      confirm:
+        type: boolean
+      typed_target_confirm:
+        type: string
     type: object
   backupmgr.TaskType:
     enum:
@@ -519,6 +630,7 @@ definitions:
     - 5
     - 6
     - 7
+    - 8
     type: integer
     x-enum-varnames:
     - InitTask
@@ -529,6 +641,7 @@ definitions:
     - ChangePassTask
     - RestoreTask
     - CheckTask
+    - CopyTask
   cluster.APIUser:
     properties:
       grants:
@@ -680,6 +793,10 @@ definitions:
         type: array
       backupList:
         $ref: '#/definitions/backupmgr.BackupMetaMap'
+      backupSlotsInUse:
+        type: integer
+      backupSlotsTotal:
+        type: integer
       blacklist:
         items:
           $ref: '#/definitions/regexp.Regexp'
@@ -730,6 +847,10 @@ definitions:
       fsType:
         additionalProperties:
           type: boolean
+        type: object
+      gatewayConflicts:
+        additionalProperties:
+          type: string
         type: object
       haveAutoTLS:
         description: set when any server auto-detected require_secure_transport=ON
@@ -916,6 +1037,8 @@ definitions:
         items:
           $ref: '#/definitions/cluster.SysBenchTpcResultPerMinute'
         type: array
+      sysbenchHistory:
+        $ref: '#/definitions/cluster.SysbenchLog'
       tenant:
         type: string
       topology:
@@ -1034,6 +1157,8 @@ definitions:
     type: object
   cluster.Diff:
     properties:
+      role:
+        type: string
       serverName:
         type: string
       variableValue:
@@ -1722,6 +1847,137 @@ definitions:
         format: int32
         type: integer
     type: object
+  cluster.SysbenchLog:
+    properties:
+      entries:
+        items:
+          $ref: '#/definitions/cluster.SysbenchLogEntry'
+        type: array
+    type: object
+  cluster.SysbenchLogEntry:
+    properties:
+      avgLatency:
+        type: number
+      avgTps:
+        type: number
+      clusterDbu:
+        description: DBU × (replicas + 1)
+        type: number
+      configTags:
+        description: prov-db-tags at run time
+        type: string
+      cores:
+        description: prov-db-cpu-cores (docker cap)
+        type: string
+      dbFlavor:
+        description: MariaDB, MySQL, Percona, PostgreSQL
+        type: string
+      dbVersion:
+        type: string
+      dbu:
+        description: 'database units: max(cores/1, mem/4096, disk/40, iops/1000)'
+        type: number
+      diskGB:
+        description: prov-db-disk-size in GB (docker cap)
+        type: string
+      duration:
+        description: seconds
+        type: integer
+      endedAt:
+        type: string
+      graphiteHost:
+        description: graphite metric hostname (@@hostname with replacements)
+        type: string
+      isScale:
+        description: true if part of a thread-scaling run
+        type: boolean
+      memoryMB:
+        description: prov-db-memory in MB (docker cap)
+        type: string
+      proxyType:
+        description: proxysql, haproxy, maxscale, myproxy
+        type: string
+      proxyVersion:
+        type: string
+      records:
+        items:
+          $ref: '#/definitions/cluster.SysbenchRecord'
+        type: array
+      replicas:
+        type: integer
+      results:
+        items:
+          $ref: '#/definitions/cluster.SysBenchTpcResultPerMinute'
+        type: array
+      scale:
+        description: sysbench-scale (tpcc warehouses)
+        type: integer
+      scaleGroup:
+        description: ties scale entries together (start time of the scale run)
+        type: string
+      servicePlan:
+        type: string
+      startedAt:
+        type: string
+      step:
+        description: prepare, run, cleanup — only set for scale entries
+        type: string
+      tableSize:
+        type: integer
+      tables:
+        description: sysbench-tables
+        type: integer
+      testMode:
+        description: complex, simple, nontrx (legacy oltp)
+        type: string
+      testType:
+        description: oltp_read_write, oltp_read_only, oltp_update_index, oltp_update_non_index,
+          tpcc
+        type: string
+      threads:
+        type: integer
+      totalErrors:
+        type: integer
+      tpsPerDbu:
+        description: avgTps / clusterDBU — performance efficiency
+        type: number
+    type: object
+  cluster.SysbenchRecord:
+    properties:
+      errorPerSec:
+        format: float64
+        type: number
+      latency:
+        format: float64
+        type: number
+      latencyLimit:
+        format: float64
+        type: number
+      otherQPS:
+        format: float64
+        type: number
+      qps:
+        format: float64
+        type: number
+      readQPS:
+        format: float64
+        type: number
+      reconnectPerSec:
+        format: float64
+        type: number
+      second:
+        format: int32
+        type: integer
+      threads:
+        format: int32
+        type: integer
+      tps:
+        format: float64
+        type: number
+      writeQPS:
+        format: float64
+        type: number
+    type: object
   cluster.Test:
     properties:
       config-file:
@@ -1764,6 +2020,13 @@ definitions:
     type: object
   config.AppConfig:
     properties:
+      appConfigVersion:
+        description: |-
+          AppConfigVersion is the explicit persisted migration marker stamped by
+          cluster.CanonicalizeAppContent. 0/missing means unflagged legacy (V1)
+          content; AppConfigVersionV2 means content already matches the V1 -> V2
+          migration baseline and does not need re-canonicalizing for shape alone.
+        type: integer
       appDbPass:
         type: string
       appDbSchema:
@@ -1790,6 +2053,8 @@ definitions:
         type: integer
       provAppCreditUsed:
         type: integer
+      provAppDiskIops:
+        type: string
       provAppDiskSize:
         type: string
       provAppDiskType:
@@ -1809,6 +2074,8 @@ definitions:
       provAppRoutePort:
         type: string
       provAppServiceType:
+        type: string
+      provAppSizingMode:
         type: string
       provAppTemplate:
         type: string
@@ -1950,6 +2217,12 @@ definitions:
       mode:
         description: Explicit source/destination fields.
         type: string
+      monitor:
+        allOf:
+        - $ref: '#/definitions/config.RouteMonitor'
+        description: |-
+          Optional per-route monitoring customization.  Nil means no monitor block
+          was configured; legacy routes keep nil so no defaults are injected.
       name:
         type: string
       port:
@@ -1959,6 +2232,19 @@ definitions:
       protocol:
         type: string
       sourcePort:
+        type: string
+    type: object
+  config.RouteMonitor:
+    properties:
+      authSecretVar:
+        type: string
+      authType:
+        type: string
+      authUser:
+        type: string
+      expectStatus:
+        type: string
+      path:
         type: string
     type: object
   config.RouteStatus:
@@ -1971,6 +2257,12 @@ definitions:
       mode:
         description: Explicit source/destination fields.
         type: string
+      monitor:
+        allOf:
+        - $ref: '#/definitions/config.RouteMonitor'
+        description: |-
+          Optional per-route monitoring customization.  Nil means no monitor block
+          was configured; legacy routes keep nil so no defaults are injected.
       name:
         type: string
       port:
@@ -2197,6 +2489,8 @@ definitions:
       name:
         type: string
       poolname:
+        type: string
+      size:
         type: string
       volumedir:
         type: string
@@ -2498,6 +2792,10 @@ definitions:
         type: string
       arbitratorDriver:
         type: string
+      arbitratorUriCheck:
+        type: boolean
+      arbitratorUriCheckUrl:
+        type: string
       autorejoin:
         type: boolean
       autorejoinBackupBinlog:
@@ -2526,12 +2824,16 @@ definitions:
         type: boolean
       backup:
         type: boolean
+      backupArchiveMode:
+        type: string
       backupBinlogs:
         type: boolean
       backupBinlogsKeep:
         type: integer
       backupCheckFreeSpace:
         type: boolean
+      backupConcurrentSlots:
+        type: integer
       backupDiskTresholdCrit:
         type: integer
       backupDiskTresholdWarn:
@@ -2629,6 +2931,8 @@ definitions:
       backupResticAdditionalEnv:
         type: string
       backupResticAllowUnsafeMount:
+        type: boolean
+      backupResticAutoInit:
         type: boolean
       backupResticAws:
         type: boolean
@@ -2730,6 +3034,8 @@ definitions:
         type: string
       backupResticReseedTimeout:
         type: integer
+      backupResticS3Mode:
+        type: string
       backupResticTags:
         type: string
       backupResticTimeout:
@@ -2792,9 +3098,22 @@ definitions:
         type: string
       cloud18ApplicationCredits:
         type: integer
+      cloud18ApplicationCreditsPlanned:
+        type: integer
       cloud18ApplicationCreditsPrice:
         type: integer
       cloud18ApplicationCreditsUsed:
+        type: integer
+      cloud18ApplicationExcessCpuCores:
+        description: |-
+          Cloud18ApplicationExcessCpuCores/Memory/Disk are the cluster-wide sum of
+          each manual-mode app's current configured-resource delta above its
+          included App Unit entitlement (see App.ManualCreditExcess). Runtime-only,
+          recomputed on demand; never persisted.
+        type: integer
+      cloud18ApplicationExcessDiskGB:
+        type: integer
+      cloud18ApplicationExcessMemoryMB:
         type: integer
       cloud18CostCurrency:
         type: string
@@ -3620,6 +3939,8 @@ definitions:
       provAppHaTopology:
         type: string
       provAppMemory:
+        type: string
+      provAppSizingMode:
         type: string
       provAppTemplateRepo:
         type: string
@@ -7608,6 +7929,51 @@ paths:
       summary: Unprovision App Service
       tags:
       - Apps
+  /api/clusters/{clusterName}/apps/{appName}/actions/update-opensvc-config:
+    post:
+      consumes:
+      - application/json
+      description: Upserts the latest OpenSVC app config and secret variable maps
+        to the live OpenSVC objects
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App config/secret maps updated
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: App Not Found
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Push OpenSVC config/secret maps for an app
+      tags:
+      - Apps
   /api/clusters/{clusterName}/apps/{appName}/actions/update-routes:
     post:
       consumes:
@@ -9610,6 +9976,86 @@ paths:
       summary: Retrieve query rules for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/restic/check-config:
+    post:
+      description: Validates the current restic repository configuration read-only.
+        Returns ok, initialization_required, or error.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Repository check result
+          schema:
+            $ref: '#/definitions/backupmgr.ManualCheckResult'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Check Restic Repository Config
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/copy:
+    post:
+      consumes:
+      - application/json
+      description: Copies snapshots from a source repository into the cluster's configured
+        Restic repository.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Copy options
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/backupmgr.ResticCopyOption'
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Restic repository copy queued
+          schema:
+            type: string
+        "400":
+          description: Invalid payload or guardrail rejection
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Copy Restic Repository
+      tags:
+      - ClusterRestic
   /api/clusters/{clusterName}/restic/fetch:
     post:
       description: Fetches the restic backup for the specified cluster.
@@ -10197,6 +10643,57 @@ paths:
           schema:
             type: string
       summary: Unlock Restic Repository
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/wipe:
+    post:
+      consumes:
+      - application/json
+      description: Execute-only destructive repository wipe. Requires confirm=true
+        and typed_target_confirm matching the server-computed repo_path. Use POST
+        /restic/check-config to obtain the preview/target before calling this endpoint.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Wipe payload (confirm=true, typed_target_confirm, allow_empty_prefix)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/backupmgr.ResticWipeOption'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Repository wiped successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid payload, missing confirmation, or guardrail rejection
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: No valid ACL or insufficient grant (db-backup required)
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Wipe Restic Repository
       tags:
       - ClusterRestic
   /api/clusters/{clusterName}/sales/accept-subscription:
@@ -17543,7 +18040,10 @@ paths:
       - Cluster
   /api/clusters/{clusterName}/topology/http-logs:
     get:
-      description: This endpoint retrieves the web logs.
+      deprecated: true
+      description: 'Returns cluster logs for the specified type. Available types:
+        general, task, security, workload, ddl, variable-change, sysbench. Without
+        logType returns all logs.'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -17551,25 +18051,36 @@ paths:
         name: Authorization
         required: true
         type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
       produces:
       - application/json
       responses:
         "200":
-          description: List of web logs
+          description: Log data
           schema:
-            items:
-              type: string
-            type: array
-        "500":
-          description: Internal Server Error
+            additionalProperties: true
+            type: object
+        "403":
+          description: No valid ACL
           schema:
             type: string
-      summary: Retrieve web logs
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Retrieve cluster logs by type
       tags:
       - ClusterTopology
   /api/clusters/{clusterName}/topology/http-logs/{logType}:
     get:
-      description: This endpoint retrieves the web logs.
+      deprecated: true
+      description: 'Returns cluster logs for the specified type. Available types:
+        general, task, security, workload, ddl, variable-change, sysbench. Without
+        logType returns all logs.'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -17577,20 +18088,33 @@ paths:
         name: Authorization
         required: true
         type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: 'Log type: general, task, security, workload, ddl, variable-change,
+          sysbench'
+        in: path
+        name: logType
+        type: string
       produces:
       - application/json
       responses:
         "200":
-          description: List of web logs
+          description: Log data
           schema:
-            items:
-              type: string
-            type: array
-        "500":
-          description: Internal Server Error
+            additionalProperties: true
+            type: object
+        "403":
+          description: No valid ACL
           schema:
             type: string
-      summary: Retrieve web logs
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Retrieve cluster logs by type
       tags:
       - ClusterTopology
   /api/clusters/{clusterName}/topology/logs:
@@ -17622,6 +18146,48 @@ paths:
           schema:
             type: string
       summary: Retrieve logs for a specific cluster
+      tags:
+      - ClusterTopology
+  /api/clusters/{clusterName}/topology/logs/{logType}:
+    get:
+      deprecated: true
+      description: 'Returns cluster logs for the specified type. Available types:
+        general, task, security, workload, ddl, variable-change, sysbench. Without
+        logType returns all logs.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: 'Log type: general, task, security, workload, ddl, variable-change,
+          sysbench'
+        in: path
+        name: logType
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Log data
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Retrieve cluster logs by type
       tags:
       - ClusterTopology
   /api/clusters/{clusterName}/topology/master:

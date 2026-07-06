@@ -3842,6 +3842,71 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/apps/{appName}/actions/update-opensvc-config": {
+            "post": {
+                "description": "Upserts the latest OpenSVC app config and secret variable maps to the live OpenSVC objects",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Push OpenSVC config/secret maps for an app",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "App config/secret maps updated",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "App Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/apps/{appName}/actions/update-routes": {
             "post": {
                 "description": "Push route configuration to the OpenSVC gateway service for a given app",
@@ -6736,6 +6801,122 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/restic/check-config": {
+            "post": {
+                "description": "Validates the current restic repository configuration read-only. Returns ok, initialization_required, or error.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterRestic"
+                ],
+                "summary": "Check Restic Repository Config",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Repository check result",
+                        "schema": {
+                            "$ref": "#/definitions/backupmgr.ManualCheckResult"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/restic/copy": {
+            "post": {
+                "description": "Copies snapshots from a source repository into the cluster's configured Restic repository.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterRestic"
+                ],
+                "summary": "Copy Restic Repository",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Copy options",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/backupmgr.ResticCopyOption"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Restic repository copy queued",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid payload or guardrail rejection",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/restic/fetch": {
             "post": {
                 "description": "Fetches the restic backup for the specified cluster.",
@@ -7587,6 +7768,79 @@
                     },
                     "403": {
                         "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/restic/wipe": {
+            "post": {
+                "description": "Execute-only destructive repository wipe. Requires confirm=true and typed_target_confirm matching the server-computed repo_path. Use POST /restic/check-config to obtain the preview/target before calling this endpoint.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterRestic"
+                ],
+                "summary": "Wipe Restic Repository",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Wipe payload (confirm=true, typed_target_confirm, allow_empty_prefix)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/backupmgr.ResticWipeOption"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Repository wiped successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid payload, missing confirmation, or guardrail rejection",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL or insufficient grant (db-backup required)",
                         "schema": {
                             "type": "string"
                         }
@@ -18230,14 +18484,15 @@
         },
         "/api/clusters/{clusterName}/topology/http-logs": {
             "get": {
-                "description": "This endpoint retrieves the web logs.",
+                "description": "Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, variable-change, sysbench. Without logType returns all logs.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "ClusterTopology"
                 ],
-                "summary": "Retrieve web logs",
+                "summary": "Retrieve cluster logs by type",
+                "deprecated": true,
                 "parameters": [
                     {
                         "type": "string",
@@ -18246,20 +18501,31 @@
                         "name": "Authorization",
                         "in": "header",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "List of web logs",
+                        "description": "Log data",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Cluster Not Found",
                         "schema": {
                             "type": "string"
                         }
@@ -18269,14 +18535,15 @@
         },
         "/api/clusters/{clusterName}/topology/http-logs/{logType}": {
             "get": {
-                "description": "This endpoint retrieves the web logs.",
+                "description": "Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, variable-change, sysbench. Without logType returns all logs.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "ClusterTopology"
                 ],
-                "summary": "Retrieve web logs",
+                "summary": "Retrieve cluster logs by type",
+                "deprecated": true,
                 "parameters": [
                     {
                         "type": "string",
@@ -18285,20 +18552,37 @@
                         "name": "Authorization",
                         "in": "header",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Log type: general, task, security, workload, ddl, variable-change, sysbench",
+                        "name": "logType",
+                        "in": "path"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "List of web logs",
+                        "description": "Log data",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Cluster Not Found",
                         "schema": {
                             "type": "string"
                         }
@@ -18345,6 +18629,63 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/topology/logs/{logType}": {
+            "get": {
+                "description": "Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, variable-change, sysbench. Without logType returns all logs.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterTopology"
+                ],
+                "summary": "Retrieve cluster logs by type",
+                "deprecated": true,
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Log type: general, task, security, workload, ddl, variable-change, sysbench",
+                        "name": "logType",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Log data",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found",
                         "schema": {
                             "type": "string"
                         }
@@ -21298,6 +21639,52 @@
                 }
             }
         },
+        "backupmgr.ManualCheckResult": {
+            "type": "object",
+            "properties": {
+                "backend": {
+                    "description": "Wipe preview fields populated by ResticCheckConfigManual",
+                    "type": "string"
+                },
+                "can_init": {
+                    "type": "boolean"
+                },
+                "can_wipe": {
+                    "type": "boolean"
+                },
+                "fetch_queued": {
+                    "type": "boolean"
+                },
+                "is_s3_empty_prefix": {
+                    "type": "boolean"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "repo_path": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/backupmgr.ManualCheckStatus"
+                },
+                "wipe_message": {
+                    "type": "string"
+                }
+            }
+        },
+        "backupmgr.ManualCheckStatus": {
+            "type": "string",
+            "enum": [
+                "ok",
+                "initialization_required",
+                "error"
+            ],
+            "x-enum-varnames": [
+                "ManualCheckStatusOK",
+                "ManualCheckStatusInitRequired",
+                "ManualCheckStatusError"
+            ]
+        },
         "backupmgr.PointInTimeMeta": {
             "type": "object",
             "properties": {
@@ -21421,6 +21808,90 @@
                 },
                 "with_cache": {
                     "description": "Use cache (default: false for check)",
+                    "type": "boolean"
+                }
+            }
+        },
+        "backupmgr.ResticCopyOption": {
+            "type": "object",
+            "properties": {
+                "copy_chunker_params": {
+                    "type": "boolean"
+                },
+                "host": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "init_destination": {
+                    "type": "boolean"
+                },
+                "path": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "snapshot_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "source": {
+                    "$ref": "#/definitions/backupmgr.ResticCopySourceOption"
+                },
+                "tag": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "backupmgr.ResticCopySourceAWSOption": {
+            "type": "object",
+            "properties": {
+                "access_key_id": {
+                    "type": "string"
+                },
+                "access_secret": {
+                    "type": "string"
+                },
+                "bucket": {
+                    "type": "string"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "prefix": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                }
+            }
+        },
+        "backupmgr.ResticCopySourceOption": {
+            "type": "object",
+            "properties": {
+                "aws": {
+                    "$ref": "#/definitions/backupmgr.ResticCopySourceAWSOption"
+                },
+                "key_hint": {
+                    "type": "string"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "repository": {
+                    "type": "string"
+                },
+                "use_saved_config": {
                     "type": "boolean"
                 }
             }
@@ -21858,6 +22329,10 @@
                 "completed_at": {
                     "type": "string"
                 },
+                "completed_snapshots": {
+                    "description": "snapshots completed during copy",
+                    "type": "integer"
+                },
                 "data_added": {
                     "type": "integer"
                 },
@@ -21891,8 +22366,16 @@
                 "last_update": {
                     "type": "string"
                 },
+                "packs_done": {
+                    "description": "packs copied (copy task only)",
+                    "type": "integer"
+                },
                 "percent_done": {
                     "type": "number"
+                },
+                "phase": {
+                    "description": "init_destination or copy",
+                    "type": "string"
                 },
                 "seconds_elapsed": {
                     "type": "integer"
@@ -21928,6 +22411,14 @@
                 "total_files_processed": {
                     "type": "integer"
                 },
+                "total_packs": {
+                    "description": "total packs to copy (copy task only)",
+                    "type": "integer"
+                },
+                "total_snapshots": {
+                    "description": "total snapshots to copy",
+                    "type": "integer"
+                },
                 "tree_blobs": {
                     "type": "integer"
                 }
@@ -21942,6 +22433,20 @@
                 }
             }
         },
+        "backupmgr.ResticWipeOption": {
+            "type": "object",
+            "properties": {
+                "allow_empty_prefix": {
+                    "type": "boolean"
+                },
+                "confirm": {
+                    "type": "boolean"
+                },
+                "typed_target_confirm": {
+                    "type": "string"
+                }
+            }
+        },
         "backupmgr.TaskType": {
             "type": "integer",
             "enum": [
@@ -21952,7 +22457,8 @@
                 4,
                 5,
                 6,
-                7
+                7,
+                8
             ],
             "x-enum-varnames": [
                 "InitTask",
@@ -21962,7 +22468,8 @@
                 "UnlockTask",
                 "ChangePassTask",
                 "RestoreTask",
-                "CheckTask"
+                "CheckTask",
+                "CopyTask"
             ]
         },
         "cluster.APIUser": {
@@ -22194,6 +22701,12 @@
                 "backupList": {
                     "$ref": "#/definitions/backupmgr.BackupMetaMap"
                 },
+                "backupSlotsInUse": {
+                    "type": "integer"
+                },
+                "backupSlotsTotal": {
+                    "type": "integer"
+                },
                 "blacklist": {
                     "type": "array",
                     "items": {
@@ -22267,6 +22780,12 @@
                     "type": "object",
                     "additionalProperties": {
                         "type": "boolean"
+                    }
+                },
+                "gatewayConflicts": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
                     }
                 },
                 "haveAutoTLS": {
@@ -22522,6 +23041,9 @@
                         "$ref": "#/definitions/cluster.SysBenchTpcResultPerMinute"
                     }
                 },
+                "sysbenchHistory": {
+                    "$ref": "#/definitions/cluster.SysbenchLog"
+                },
                 "tenant": {
                     "type": "string"
                 },
@@ -22692,6 +23214,9 @@
         "cluster.Diff": {
             "type": "object",
             "properties": {
+                "role": {
+                    "type": "string"
+                },
                 "serverName": {
                     "type": "string"
                 },
@@ -23711,6 +24236,188 @@
                 }
             }
         },
+        "cluster.SysbenchLog": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.SysbenchLogEntry"
+                    }
+                }
+            }
+        },
+        "cluster.SysbenchLogEntry": {
+            "type": "object",
+            "properties": {
+                "avgLatency": {
+                    "type": "number"
+                },
+                "avgTps": {
+                    "type": "number"
+                },
+                "clusterDbu": {
+                    "description": "DBU × (replicas + 1)",
+                    "type": "number"
+                },
+                "configTags": {
+                    "description": "prov-db-tags at run time",
+                    "type": "string"
+                },
+                "cores": {
+                    "description": "prov-db-cpu-cores (docker cap)",
+                    "type": "string"
+                },
+                "dbFlavor": {
+                    "description": "MariaDB, MySQL, Percona, PostgreSQL",
+                    "type": "string"
+                },
+                "dbVersion": {
+                    "type": "string"
+                },
+                "dbu": {
+                    "description": "database units: max(cores/1, mem/4096, disk/40, iops/1000)",
+                    "type": "number"
+                },
+                "diskGB": {
+                    "description": "prov-db-disk-size in GB (docker cap)",
+                    "type": "string"
+                },
+                "duration": {
+                    "description": "seconds",
+                    "type": "integer"
+                },
+                "endedAt": {
+                    "type": "string"
+                },
+                "graphiteHost": {
+                    "description": "graphite metric hostname (@@hostname with replacements)",
+                    "type": "string"
+                },
+                "isScale": {
+                    "description": "true if part of a thread-scaling run",
+                    "type": "boolean"
+                },
+                "memoryMB": {
+                    "description": "prov-db-memory in MB (docker cap)",
+                    "type": "string"
+                },
+                "proxyType": {
+                    "description": "proxysql, haproxy, maxscale, myproxy",
+                    "type": "string"
+                },
+                "proxyVersion": {
+                    "type": "string"
+                },
+                "records": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.SysbenchRecord"
+                    }
+                },
+                "replicas": {
+                    "type": "integer"
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.SysBenchTpcResultPerMinute"
+                    }
+                },
+                "scale": {
+                    "description": "sysbench-scale (tpcc warehouses)",
+                    "type": "integer"
+                },
+                "scaleGroup": {
+                    "description": "ties scale entries together (start time of the scale run)",
+                    "type": "string"
+                },
+                "servicePlan": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "step": {
+                    "description": "prepare, run, cleanup — only set for scale entries",
+                    "type": "string"
+                },
+                "tableSize": {
+                    "type": "integer"
+                },
+                "tables": {
+                    "description": "sysbench-tables",
+                    "type": "integer"
+                },
+                "testMode": {
+                    "description": "complex, simple, nontrx (legacy oltp)",
+                    "type": "string"
+                },
+                "testType": {
+                    "description": "oltp_read_write, oltp_read_only, oltp_update_index, oltp_update_non_index, tpcc",
+                    "type": "string"
+                },
+                "threads": {
+                    "type": "integer"
+                },
+                "totalErrors": {
+                    "type": "integer"
+                },
+                "tpsPerDbu": {
+                    "description": "avgTps / clusterDBU — performance efficiency",
+                    "type": "number"
+                }
+            }
+        },
+        "cluster.SysbenchRecord": {
+            "type": "object",
+            "properties": {
+                "errorPerSec": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "latency": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "latencyLimit": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "otherQPS": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "qps": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "readQPS": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "reconnectPerSec": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "second": {
+                    "type": "integer",
+                    "format": "int32"
+                },
+                "threads": {
+                    "type": "integer",
+                    "format": "int32"
+                },
+                "tps": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "writeQPS": {
+                    "type": "number",
+                    "format": "float64"
+                }
+            }
+        },
         "cluster.Test": {
             "type": "object",
             "properties": {
@@ -23776,6 +24483,10 @@
         "config.AppConfig": {
             "type": "object",
             "properties": {
+                "appConfigVersion": {
+                    "description": "AppConfigVersion is the explicit persisted migration marker stamped by\ncluster.CanonicalizeAppContent. 0/missing means unflagged legacy (V1)\ncontent; AppConfigVersionV2 means content already matches the V1 -\u003e V2\nmigration baseline and does not need re-canonicalizing for shape alone.",
+                    "type": "integer"
+                },
                 "appDbPass": {
                     "type": "string"
                 },
@@ -23815,6 +24526,9 @@
                 "provAppCreditUsed": {
                     "type": "integer"
                 },
+                "provAppDiskIops": {
+                    "type": "string"
+                },
                 "provAppDiskSize": {
                     "type": "string"
                 },
@@ -23843,6 +24557,9 @@
                     "type": "string"
                 },
                 "provAppServiceType": {
+                    "type": "string"
+                },
+                "provAppSizingMode": {
                     "type": "string"
                 },
                 "provAppTemplate": {
@@ -24060,6 +24777,14 @@
                     "description": "Explicit source/destination fields.",
                     "type": "string"
                 },
+                "monitor": {
+                    "description": "Optional per-route monitoring customization.  Nil means no monitor block\nwas configured; legacy routes keep nil so no defaults are injected.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.RouteMonitor"
+                        }
+                    ]
+                },
                 "name": {
                     "type": "string"
                 },
@@ -24077,6 +24802,26 @@
                 }
             }
         },
+        "config.RouteMonitor": {
+            "type": "object",
+            "properties": {
+                "authSecretVar": {
+                    "type": "string"
+                },
+                "authType": {
+                    "type": "string"
+                },
+                "authUser": {
+                    "type": "string"
+                },
+                "expectStatus": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
         "config.RouteStatus": {
             "type": "object",
             "properties": {
@@ -24090,6 +24835,14 @@
                 "mode": {
                     "description": "Explicit source/destination fields.",
                     "type": "string"
+                },
+                "monitor": {
+                    "description": "Optional per-route monitoring customization.  Nil means no monitor block\nwas configured; legacy routes keep nil so no defaults are injected.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.RouteMonitor"
+                        }
+                    ]
                 },
                 "name": {
                     "type": "string"
@@ -24423,6 +25176,9 @@
                     "type": "string"
                 },
                 "poolname": {
+                    "type": "string"
+                },
+                "size": {
                     "type": "string"
                 },
                 "volumedir": {
@@ -24873,6 +25629,12 @@
                 "arbitratorDriver": {
                     "type": "string"
                 },
+                "arbitratorUriCheck": {
+                    "type": "boolean"
+                },
+                "arbitratorUriCheckUrl": {
+                    "type": "string"
+                },
                 "autorejoin": {
                     "type": "boolean"
                 },
@@ -24915,6 +25677,9 @@
                 "backup": {
                     "type": "boolean"
                 },
+                "backupArchiveMode": {
+                    "type": "string"
+                },
                 "backupBinlogs": {
                     "type": "boolean"
                 },
@@ -24923,6 +25688,9 @@
                 },
                 "backupCheckFreeSpace": {
                     "type": "boolean"
+                },
+                "backupConcurrentSlots": {
+                    "type": "integer"
                 },
                 "backupDiskTresholdCrit": {
                     "type": "integer"
@@ -25071,6 +25839,9 @@
                 "backupResticAllowUnsafeMount": {
                     "type": "boolean"
                 },
+                "backupResticAutoInit": {
+                    "type": "boolean"
+                },
                 "backupResticAws": {
                     "type": "boolean"
                 },
@@ -25215,6 +25986,9 @@
                 "backupResticReseedTimeout": {
                     "type": "integer"
                 },
+                "backupResticS3Mode": {
+                    "type": "string"
+                },
                 "backupResticTags": {
                     "type": "string"
                 },
@@ -25308,10 +26082,23 @@
                 "cloud18ApplicationCredits": {
                     "type": "integer"
                 },
+                "cloud18ApplicationCreditsPlanned": {
+                    "type": "integer"
+                },
                 "cloud18ApplicationCreditsPrice": {
                     "type": "integer"
                 },
                 "cloud18ApplicationCreditsUsed": {
+                    "type": "integer"
+                },
+                "cloud18ApplicationExcessCpuCores": {
+                    "description": "Cloud18ApplicationExcessCpuCores/Memory/Disk are the cluster-wide sum of\neach manual-mode app's current configured-resource delta above its\nincluded App Unit entitlement (see App.ManualCreditExcess). Runtime-only,\nrecomputed on demand; never persisted.",
+                    "type": "integer"
+                },
+                "cloud18ApplicationExcessDiskGB": {
+                    "type": "integer"
+                },
+                "cloud18ApplicationExcessMemoryMB": {
                     "type": "integer"
                 },
                 "cloud18CostCurrency": {
@@ -26548,6 +27335,9 @@
                     "type": "string"
                 },
                 "provAppMemory": {
+                    "type": "string"
+                },
+                "provAppSizingMode": {
                     "type": "string"
                 },
                 "provAppTemplateRepo": {
