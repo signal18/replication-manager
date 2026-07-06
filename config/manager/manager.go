@@ -1530,6 +1530,21 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: "default", Filename: defaultToml, W: w, WaitGroup: &cwg})
 	}
 
+	// Add this instance's config event log (event-changed.<id>.log): peers
+	// replicate config changes by replaying it
+	// (doc/implementation/config/CONFIG_EVENT_LOG.md) — an unstaged log
+	// means events never leave this node. This worker is the push path the
+	// ConfigManager queue actually runs.
+	if entries, rerr := os.ReadDir(path); rerr == nil {
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasPrefix(e.Name(), "event-changed.") || !strings.HasSuffix(e.Name(), ".log") {
+				continue
+			}
+			cwg.Add(1)
+			cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: "default", Filename: e.Name(), W: w, WaitGroup: &cwg})
+		}
+	}
+
 	cwg.Wait()
 
 	cm.logger.Debugf("none", config.ConstLogModGit, "Total file add took: %s", time.Since(allstart))
