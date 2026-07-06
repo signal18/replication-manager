@@ -140,6 +140,28 @@ Accepted trade-offs of save-diff authoring:
 - Secrets diff in their stable `hash_` ciphertext form (ed92556a2), which
   is deterministic across saves — a prerequisite this design relies on.
 
+## Instance-local keys (2026-07-06)
+
+Some secrets are per-instance identity, not shared cluster state: each
+instance derives its own GitLab PAT from its own OAuth session (rotated at
+boot and daily), and Vault/OAuth client credentials follow the same rule.
+Replaying a peer's value would clobber the local credential — and two peers
+rotating the same named PAT would invalidate each other. These keys are
+excluded from the event log on both sides (never authored, never applied):
+`git-acces-token`, `vault-role-id`, `vault-secret-id`,
+`api-oauth-client-id`, `api-oauth-client-secret`
+(`cluster.IsInstanceLocalConfigKey`).
+
+Related authoring hygiene, found during live validation:
+- Secrets are diffed by **decrypted value**, not ciphertext — random-IV
+  re-encryption (e.g. after a restart) is not a config change.
+- `Cluster.Save()` is gated until `InitFromConf` completes: the save queue
+  is async and a save executing mid-init captured a half-loaded config,
+  emitting transient unset/set pairs.
+- ACL role lists are sorted (map iteration order flapped the string) and
+  runtime-discovered agent capacity is no longer laundered through the
+  immutable map.
+
 ## Interaction with existing mechanisms
 
 - **Standby full pull is removed** (the `.config/` clone and
