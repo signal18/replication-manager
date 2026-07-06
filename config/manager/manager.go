@@ -2,6 +2,7 @@ package manager
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -1480,6 +1481,28 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 	if err != nil {
 		cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot get worktree: %s", err)
 		return err
+	}
+
+	// Build this commit on top of the freshest remote head: fetch (bounded),
+	// then mixed-reset the local branch to the remote-tracking head while
+	// keeping the working files — local content always wins, only the
+	// branch pointer and index move. Every push is then a fast-forward made
+	// of objects we hold. Without this, the shallow clone races the peer's
+	// pushes and dies with 'object not found' across the graft boundary,
+	// trapping local commits (and the config event log) forever.
+	fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer fetchCancel()
+	if ferr := r.FetchContext(fetchCtx, &git.FetchOptions{RemoteName: "origin", Auth: auth, Force: true}); ferr != nil && !errors.Is(ferr, git.NoErrAlreadyUpToDate) {
+		cm.logger.Warnf("none", config.ConstLogModGit, "Fetch before push failed (continuing with local head): %v", ferr)
+	}
+	if head, herr := r.Head(); herr == nil {
+		if remoteRef, rerr := r.Reference(plumbing.NewRemoteReferenceName("origin", head.Name().Short()), true); rerr == nil && remoteRef.Hash() != head.Hash() {
+			if resetErr := w.Reset(&git.ResetOptions{Commit: remoteRef.Hash(), Mode: git.MixedReset}); resetErr != nil {
+				cm.logger.Warnf("none", config.ConstLogModGit, "Reset to remote head failed (continuing): %v", resetErr)
+			} else {
+				cm.logger.Debugf("none", config.ConstLogModGit, "Local branch rebased onto remote head %s before commit", remoteRef.Hash().String()[:8])
+			}
+		}
 	}
 
 	allstart := time.Now()
