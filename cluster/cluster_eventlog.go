@@ -194,6 +194,15 @@ func (cluster *Cluster) emitConfigChangeEvents(oldData []byte, newData []byte, s
 		if ook && nok && ov == nv {
 			continue
 		}
+		// Secrets: compare decrypted values, not ciphertext. Encryption uses
+		// a random IV, so the same secret re-encrypted (e.g. after a restart
+		// when the ciphertext cache did not survive) produces different
+		// bytes — that is not a config change and must not emit an event.
+		if _, isSecret := cluster.Conf.Secrets[k]; isSecret && ook && nok &&
+			strings.Contains(ov, "hash_") && strings.Contains(nv, "hash_") &&
+			cluster.Conf.DecryptSecretValue(k, ov) == cluster.Conf.DecryptSecretValue(k, nv) {
+			continue
+		}
 		action, val := "set", nv
 		if !nok {
 			action, val = "unset", ""
