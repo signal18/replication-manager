@@ -3002,6 +3002,27 @@ func (repman *ReplicationManager) handlerMuxDropStorageFieldRow(w http.ResponseW
 	w.Write([]byte("Storage field row removed"))
 }
 
+// appResourceSettingsRequiringGlobalSettings lists the manual resource sizing
+// settings that only users with GrantGlobalSettings may write. Manual resource
+// sizing bypasses App Unit credit accounting, so it is gated to admins.
+var appResourceSettingsRequiringGlobalSettings = map[string]bool{
+	"prov-app-memory":    true,
+	"prov-app-disk-size": true,
+	"prov-app-cpu-cores": true,
+}
+
+// requiresGlobalSettingsForAppSetting reports whether writing the given app
+// setting/value is restricted to users holding GrantGlobalSettings. Switching
+// into manual sizing mode is gated alongside the resource fields themselves,
+// since that switch is the entrypoint into manual editing; switching to unit
+// mode remains unrestricted so App Unit conversion keeps working as today.
+func requiresGlobalSettingsForAppSetting(setting, value string) bool {
+	if appResourceSettingsRequiringGlobalSettings[setting] {
+		return true
+	}
+	return setting == "prov-app-sizing-mode" && value == config.AppSizingModeManual
+}
+
 // @Summary Set App Setting
 // @Description Set a specific setting for a given app in a cluster
 // @Tags Apps
@@ -3021,7 +3042,8 @@ func (repman *ReplicationManager) handlerMuxAppSetSetting(w http.ResponseWriter,
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		valid, uname := repman.IsValidClusterACL(r, mycluster)
+		if !valid {
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
@@ -3036,6 +3058,15 @@ func (repman *ReplicationManager) handlerMuxAppSetSetting(w http.ResponseWriter,
 
 			setting := vars["setting"]
 			value := vars["value"]
+
+			if requiresGlobalSettingsForAppSetting(setting, value) {
+				u, ok := mycluster.APIUsers[uname]
+				if !ok || !u.Grants[config.GrantGlobalSettings] {
+					http.Error(w, "No valid ACL", http.StatusForbidden)
+					return
+				}
+			}
+
 			err := node.SetSetting(setting, value)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Error setting %s: %s", setting, err.Error()), http.StatusInternalServerError)
@@ -3121,7 +3152,8 @@ func (repman *ReplicationManager) handlerMuxAppClearSetting(w http.ResponseWrite
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		valid, uname := repman.IsValidClusterACL(r, mycluster)
+		if !valid {
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
@@ -3135,6 +3167,17 @@ func (repman *ReplicationManager) handlerMuxAppClearSetting(w http.ResponseWrite
 			}
 
 			setting := vars["setting"]
+
+			// Clearing sizing mode can re-derive/escape the mode set via the
+			// (admin-gated) manual sizing switch, so gate it the same way.
+			if setting == "prov-app-sizing-mode" {
+				u, ok := mycluster.APIUsers[uname]
+				if !ok || !u.Grants[config.GrantGlobalSettings] {
+					http.Error(w, "No valid ACL", http.StatusForbidden)
+					return
+				}
+			}
+
 			err := node.SetSetting(setting, "")
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Error clearing setting %s: %s", setting, err.Error()), http.StatusInternalServerError)

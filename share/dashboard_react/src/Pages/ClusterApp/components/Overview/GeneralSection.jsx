@@ -383,7 +383,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
           />
           <Flex className={styles.resources} flexWrap='wrap'>
             <Gauge
-              isDisabled={user?.grants['app-config'] == false}
+              isDisabled={user?.grants['app-config'] == false || user?.grants['global-settings'] == false}
               minValue={256}
               maxValue={262144}
               value={parseFloat(convertSize(provAppMemory, 'M', 'M')) || 0}
@@ -410,7 +410,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
               }}
             />
             <Gauge
-              isDisabled={user?.grants['app-config'] == false}
+              isDisabled={user?.grants['app-config'] == false || user?.grants['global-settings'] == false}
               minValue={1}
               maxValue={10000}
               value={parseFloat(convertSize(provAppDiskSize, 'G', 'G')) || 0}
@@ -436,7 +436,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
               }}
             />
             <Gauge
-              isDisabled={user?.grants['app-config'] == false}
+              isDisabled={user?.grants['app-config'] == false || user?.grants['global-settings'] == false}
               minValue={1}
               maxValue={256}
               value={parseInt(provAppCpuCores) || 0}
