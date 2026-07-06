@@ -79,13 +79,13 @@ full-state standby pull, then sets its cursor to the current head.
    size-based rotation; a peer that is too far behind (cursor older than the
    rotated tail) falls back to the full config pull, which already exists as
    the standby sync baseline.
-5. **Scope** — *log* every dynamic variable change from day one (the log
-   doubles as a config-change audit trail, valuable even without arbitration
-   or peers). What peers *apply* starts with an allowlist: the user/ACL
-   family (`api-credentials-external`, `api-credentials-acl-allow-external`,
-   `api-credentials-acl-discard-external`) — the same family
-   `SetInjectVariables` already supports — then widens as merge semantics
-   per key are validated.
+5. **Scope** — log every dynamic variable change, and peers **re-apply every
+   event** (decided 2026-07-06: no apply-allowlist). Only dynamic
+   cluster-scope settings flow through the mutation hooks — immutable
+   `scope:"server"` flags never enter the log — so every logged event is by
+   definition a cluster setting that peers must converge on; LWW (decision 3)
+   resolves concurrent writes. The log doubles as a config-change audit
+   trail, valuable even without arbitration or peers.
 
 ## Interaction with existing mechanisms
 
