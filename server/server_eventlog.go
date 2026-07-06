@@ -188,6 +188,11 @@ func (repman *ReplicationManager) applyPeerConfigEvent(ev cluster.ConfigChangeEv
 	if cl == nil {
 		return false
 	}
+	// Instance-local keys are never applied, even from logs written before
+	// the exclusion existed.
+	if cluster.IsInstanceLocalConfigKey(ev.Key) {
+		return false
+	}
 	// LWW: never let a stale event overwrite a newer value; author id breaks
 	// timestamp ties so all peers pick the same winner.
 	if p, ok := cl.GetEventProvenance(ev.Key); ok {

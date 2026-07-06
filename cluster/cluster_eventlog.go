@@ -57,6 +57,24 @@ func EventLogPath(workingDir string, author int) string {
 	return filepath.Join(workingDir, fmt.Sprintf("event-changed.%d.log", author))
 }
 
+// instanceLocalConfigKeys never replicate between peers: each instance owns
+// its own value (per-instance identity and credentials), and replaying a
+// peer's value would clobber it — e.g. each instance derives its own GitLab
+// PAT from its own OAuth session and rotates it at boot and daily.
+var instanceLocalConfigKeys = map[string]bool{
+	"git-acces-token":         true,
+	"vault-role-id":           true,
+	"vault-secret-id":         true,
+	"api-oauth-client-id":     true,
+	"api-oauth-client-secret": true,
+}
+
+// IsInstanceLocalConfigKey reports whether a config key is excluded from
+// event-log replication (never authored, never applied).
+func IsInstanceLocalConfigKey(key string) bool {
+	return instanceLocalConfigKeys[key]
+}
+
 // eventLogWriteLock serializes appends to this instance's own event log:
 // cluster saves are queued but defensive against future parallel callers.
 var eventLogWriteLock sync.Mutex
@@ -189,6 +207,9 @@ func (cluster *Cluster) emitConfigChangeEvents(oldData []byte, newData []byte, s
 	now := time.Now()
 	var events []ConfigChangeEvent
 	for _, k := range sorted {
+		if IsInstanceLocalConfigKey(k) {
+			continue
+		}
 		ov, ook := o[k]
 		nv, nok := n[k]
 		if ook && nok && ov == nv {

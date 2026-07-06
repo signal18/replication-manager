@@ -293,6 +293,7 @@ type Cluster struct {
 	Configurator                        configurator.Configurator   `json:"configurator" groups:"web"`
 	DiffVariables                       []VariableDiff              `json:"diffVariables" groups:"web"`
 	inInitNodes                         bool                        `json:"-"`
+	initConfigDone                      atomic.Bool                 `json:"-"`
 	inOptimizeTables                    bool                        `json:"inOptimizeTables" groups:"web"`
 	inAnalyzeTables                     bool                        `json:"inAnalyzeTables" groups:"web"`
 	inConnectVault                      bool                        `json:"-"`
@@ -759,6 +760,11 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.RefreshToolVersions()
 	cluster.initResticLocalDir()
 	cluster.StartResticManager()
+	// Config persistence is unlocked only now: the save queue is async and a
+	// save executing mid-init captures a half-loaded config (missing external
+	// users, restic paths, ACLs), emitting transient config change events
+	// that then replay on peers.
+	cluster.initConfigDone.Store(true)
 	if persistRebasedAppCreditCap {
 		if _, saveErr := cluster.SaveConfigFile(); saveErr != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
@@ -1562,6 +1568,10 @@ type ClusterSLAState struct {
 }
 
 func (cluster *Cluster) Save() error {
+	if !cluster.initConfigDone.Load() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Skipping config save: cluster init not complete")
+		return nil
+	}
 
 	_, file, no, ok := runtime.Caller(1)
 	if ok {
