@@ -148,7 +148,7 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 			return err
 		}
 
-		tokenName := conf.Cloud18Domain + "-" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
+		tokenName := conf.GetInstancePATName()
 		personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, tokenName, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 		if personal_access_token == "" {
 			personal_access_token, err = githelper.CreatePersonalAccessTokenCSRF(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), tokenName)

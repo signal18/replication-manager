@@ -1672,6 +1672,15 @@ const (
 	TopoActivePassive       string = "active-passive"
 )
 
+// GetInstancePATName returns the per-instance GitLab PAT name: the cloud18
+// domain triplet plus this instance's unique id. Peers share the GitLab
+// account, so a shared token name meant every boot (and daily rotation) of
+// either instance rotated — and invalidated — the other's token, breaking
+// its git access until its own next restart.
+func (conf *Config) GetInstancePATName() string {
+	return conf.Cloud18Domain + "-" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + "-" + strconv.Itoa(conf.ArbitrationSasUniqueId)
+}
+
 func (conf *Config) GetSecrets() map[string]Secret {
 	// to store the flags to encrypt in the git (in Save() function)
 	return conf.Secrets
