@@ -954,7 +954,11 @@ func (cluster *Cluster) RepairTableChecksum(schema string, table string) {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not process chunck %s %s", query, err)
 					return
 				}
-				query = "DELETE FROM " + schema + "." + table + " A WHERE  " + chunk.ChunkRangeCondition
+				// Multi-table DELETE form: the chunk condition is built with
+				// A.-qualified predicates, and single-table DELETE only accepts
+				// an alias on MariaDB >= 11.6 (MDEV-33988; backport to LTS
+				// refused in MDEV-37227). DELETE A FROM ... A works everywhere.
+				query = "DELETE A FROM " + schema + "." + table + " A WHERE  " + chunk.ChunkRangeCondition
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Repair chunk %d/%d %s", i, len(ts.TableChunksError), query)
 				_, err = Conn.Exec(query)
 				if err != nil {
