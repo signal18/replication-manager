@@ -1426,20 +1426,29 @@ type ClusterState struct {
 	IsProvisioned bool `json:"isProvisioned"`
 }
 
-// recomputeAppCredits recomputes Cloud18ApplicationCreditsUsed and
-// Cloud18ApplicationCreditsPlanned from the current per-app values.
-// Must be called without the cluster lock held.
+// recomputeAppCredits recomputes Cloud18ApplicationCreditsUsed,
+// Cloud18ApplicationCreditsPlanned, and the aggregate manual-mode resource
+// excess from the current per-app values. Must be called without the cluster
+// lock held.
 func (cluster *Cluster) recomputeAppCredits() {
 	cluster.Lock()
 	used := 0
 	planned := 0
+	excessCpuCores, excessMemMB, excessDiskGB := 0, 0, 0
 	for _, app := range cluster.Apps {
 		used += app.AppConfig.ProvAppCreditUsed
 		planned += app.AppConfig.ProvAppCreditPlanned
+		cpuExcess, memExcess, diskExcess := app.ManualCreditExcess()
+		excessCpuCores += cpuExcess
+		excessMemMB += memExcess
+		excessDiskGB += diskExcess
 	}
 	cluster.Unlock()
 	cluster.Conf.Cloud18ApplicationCreditsUsed = used
 	cluster.Conf.Cloud18ApplicationCreditsPlanned = planned
+	cluster.Conf.Cloud18ApplicationExcessCpuCores = excessCpuCores
+	cluster.Conf.Cloud18ApplicationExcessMemoryMB = excessMemMB
+	cluster.Conf.Cloud18ApplicationExcessDiskGB = excessDiskGB
 }
 
 // rebaseAppCreditCap raises Cloud18ApplicationCredits to the current used total

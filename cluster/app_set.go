@@ -140,6 +140,56 @@ func (app *App) effectiveSizingMode() string {
 	return ""
 }
 
+// IsManualCreditMode reports whether this app is currently governed by manual
+// resource sizing (as opposed to unit/App-Unit or legacy sizing).
+func (app *App) IsManualCreditMode() bool {
+	return app.effectiveSizingMode() == config.AppSizingModeManual
+}
+
+// ManualCreditExcess computes the app's current configured resources (CPU
+// cores, memory MB, disk GB) above the entitlement included by its planned
+// credits. Only positive excess is tracked; zero outside manual mode. Pure,
+// runtime-only computation — never persisted.
+//
+// ProvAppCpuCores/ProvAppMem/ProvAppDisk are per-agent-node values while
+// credits/entitlement are whole-app totals, so per-node resources are scaled
+// by agent count before comparing, or multi-agent apps undercount excess.
+//
+// Resources/agents are read through the cluster.GetApp{Cores,Memory,Disk,Agents}
+// fallback resolvers rather than raw AppConfig fields, since apps that leave
+// these empty inherit cluster-level defaults at provisioning time — reading
+// raw fields would treat an inherited default as zero and undercount excess.
+func (app *App) ManualCreditExcess() (cpuExcessCores, memExcessMB, diskExcessGB int) {
+	if !app.IsManualCreditMode() {
+		return 0, 0, 0
+	}
+
+	cluster := app.ClusterGroup
+	cores, _ := strconv.Atoi(cluster.GetAppCores(app.AppConfig))
+	memMB, _ := config.ParseUnitMeasurementToInt("M", cluster.GetAppMemory(app.AppConfig), false)
+	diskGB, _ := config.ParseUnitMeasurementToInt("G", cluster.GetAppDisk(app.AppConfig), false)
+
+	numAgents := 0
+	for _, agent := range strings.Split(cluster.GetAppAgents(app.AppConfig), ",") {
+		if strings.TrimSpace(agent) != "" {
+			numAgents++
+		}
+	}
+	if numAgents == 0 {
+		numAgents = 1
+	}
+	totalCores := cores * numAgents
+	totalMemMB := memMB * numAgents
+	totalDiskGB := diskGB * numAgents
+
+	credits := app.AppConfig.ProvAppCreditPlanned
+	includedCPU := credits * config.AppUnitCpuCores
+	includedMemMB := credits * config.AppUnitMemMB
+	includedDiskGB := credits * config.AppUnitDiskGB
+
+	return max(totalCores-includedCPU, 0), max(totalMemMB-includedMemMB, 0), max(totalDiskGB-includedDiskGB, 0)
+}
+
 // preservedLegacyInUnitPolicy reports whether the effective unit policy is coming
 // from the cluster while this app itself has not been explicitly stamped as a
 // unit-managed app. In that case, the app's stored CPU/memory/disk values are
