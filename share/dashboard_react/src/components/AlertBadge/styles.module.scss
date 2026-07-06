@@ -20,6 +20,13 @@
   align-items: center;
   gap: rem(4);
 }
+
+// Health badge carries two side-by-side count bubbles at the top-right:
+// widen the horizontal padding so they never overlap the label.
+.healthBadge {
+  padding-right: rem(44) !important;
+  padding-left: rem(12) !important;
+}
 .alertCount {
   width: rem(24);
   height: rem(24);

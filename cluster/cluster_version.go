@@ -49,7 +49,7 @@ func (cluster *Cluster) CheckComplianceUpdate() {
 	pluginDataDir := cluster.Conf.ShareDir + "/plugins/data"
 	pending := cluster.Configurator.CheckComplianceUpdate(pluginDataDir)
 	if !pending {
-		cluster.GetStateMachine().DeleteState("WARN0168")
+		cluster.ConfigStateMachine.DeleteState("WARN0168")
 		return
 	}
 
@@ -57,8 +57,9 @@ func (cluster *Cluster) CheckComplianceUpdate() {
 	desc := fmt.Sprintf(clusterError["WARN0168"],
 		cluster.Configurator.ActiveDBCRC, cluster.Configurator.PendingDBCRC,
 		cluster.Configurator.ActivePrxCRC, cluster.Configurator.PendingPrxCRC)
-	cluster.SetState("WARN0168", state.State{
+	cluster.ConfigStateMachine.AddState("WARN0168", state.State{
 		ErrType: "WARNING",
+		ErrKey:  "WARN0168",
 		ErrDesc: desc,
 		ErrFrom: "CLUSTER",
 	})
@@ -79,7 +80,7 @@ func (cluster *Cluster) AcceptComplianceUpdate() error {
 	if err := cluster.Configurator.AcceptComplianceUpdate(pluginDataDir); err != nil {
 		return err
 	}
-	cluster.GetStateMachine().DeleteState("WARN0168")
+	cluster.ConfigStateMachine.DeleteState("WARN0168")
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Compliance update accepted — configurator reloaded with new modules (DB CRC: %08x, Proxy CRC: %08x)",
 		cluster.Configurator.ActiveDBCRC, cluster.Configurator.ActivePrxCRC)

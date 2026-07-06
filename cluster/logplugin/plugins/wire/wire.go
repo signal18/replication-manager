@@ -12,7 +12,7 @@ import (
 // WireVersion is the version of the stdin/stdout JSON protocol.
 // Increment this when a breaking change is made to Request or Response.
 // The Makefile reads this value to organise the plugin distribution repository.
-const WireVersion = 2
+const WireVersion = 3
 
 // ServerVersion carries the already-parsed database version so plugins
 // do not need to re-parse the raw version string from ServerVariables.
@@ -41,6 +41,31 @@ type PFSExplain struct {
 	Plan       []PFSExplainRow  `json:"plan"`
 }
 
+// TableColumn is one column of a schema table (wire v3).
+// MaxBytes is not provided: derive it from Type (e.g. "varchar(255)") and
+// Charset (utf8mb4 = 4 bytes/char) in the plugin.
+type TableColumn struct {
+	Name      string `json:"name"`
+	Type      string `json:"type"` // full column type, e.g. "varchar(255)"
+	Nullable  bool   `json:"nullable"`
+	Charset   string `json:"charset,omitempty"`
+	Collation string `json:"collation,omitempty"`
+}
+
+// Table is one table of the schema dictionary snapshot (wire v3).
+// The snapshot is refreshed with the schema monitor (daily cron by default,
+// plus boot and on-demand runs) and is populated ONLY on the master server's
+// request to keep per-tick payloads flat.
+type Table struct {
+	Schema     string        `json:"schema"`
+	Name       string        `json:"name"`
+	Engine     string        `json:"engine"`
+	RowFormat  string        `json:"row_format"`
+	Rows       int64         `json:"rows,omitempty"`
+	DataLength int64         `json:"data_length,omitempty"`
+	Columns    []TableColumn `json:"columns,omitempty"`
+}
+
 // Request is written to the plugin's stdin as a single JSON object.
 type Request struct {
 	ServerURL        string            `json:"server_url"`
@@ -67,6 +92,9 @@ type Request struct {
 	// Keys are kebab-case (e.g. "timeframe-hours"). Use CfgInt/CfgFloat/CfgStr helpers to read.
 	// REPMAN_* environment variables are still honoured as a fallback for backward compatibility.
 	Config           map[string]string `json:"config,omitempty"`
+	// Tables is the schema dictionary snapshot (wire v3): engine, row format
+	// and columns per table. Populated only on the master server's request.
+	Tables           []Table           `json:"tables,omitempty"`
 }
 
 // ClusterContext carries cluster-level facts that cannot be derived from
@@ -180,7 +208,7 @@ type Remediation struct {
 
 type Finding struct {
 	ErrKey       string        `json:"err_key"`
-	Severity     string        `json:"severity"` // "WARNING", "ERROR", "SECURITY", or "WORKLOAD"
+	Severity     string        `json:"severity"` // "WARNING", "ERROR", "SECURITY", "WORKLOAD", or "SCHEMA"
 	Description  string        `json:"description"`
 	Count        int64         `json:"count,omitempty"`
 	Total        int64         `json:"total,omitempty"`

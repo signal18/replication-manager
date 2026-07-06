@@ -25,7 +25,8 @@ export const globalClustersService = {
   unregister,
   getSubscription,
   changeSubscription,
-  getSubscriptionPlans
+  getSubscriptionPlans,
+  setServerActiveStatus
 }
 
 function getClusters(baseURL) {
@@ -127,4 +128,8 @@ function changeSubscription(plan) {
 
 function getSubscriptionPlans() {
   return getApi().get('register/subscription/plans')
+}
+
+function setServerActiveStatus(baseURL) {
+  return getApi(baseURL).get('actions/set-active-status')
 }

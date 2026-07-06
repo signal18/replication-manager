@@ -2,3 +2,9 @@
   padding: rem(8);
   width: 100%;
 }
+
+.logContainer {
+  min-height: rem(350);
+  max-height: rem(600);
+  overflow: auto;
+}

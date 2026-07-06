@@ -27,7 +27,7 @@ import Message from '../Message'
 import { addUser } from '../../redux/clusterSlice'
 import GrantCheckList from '../GrantCheckList'
 
-function AddUserModal({ clusterName, isOpen, closeModal }) {
+function AddUserModal({ clusterName, isOpen, closeModal, apiUsers }) {
   const dispatch = useDispatch()
   const [user, setUser] = useState(null) 
   const [isConfirm, setIsConfirm] = useState(false)
@@ -60,16 +60,18 @@ function AddUserModal({ clusterName, isOpen, closeModal }) {
   }, [monitor])
 
   useEffect(() => {
-    if (clusterData) {
-      if (clusterData.apiUsers) {
-        const loggedUser = localStorage.getItem('username')
-        if (loggedUser && clusterData?.apiUsers[loggedUser]) {
-          const apiUser = clusterData.apiUsers[loggedUser]
-          setUser(apiUser)
-        }
+    // Prefer apiUsers passed by the caller (cluster list rows already carry
+    // them) so opening the modal from the list does not require loading the
+    // cluster into the global store — which flipped the navbar into cluster
+    // context while still on the list.
+    const users = apiUsers ?? clusterData?.apiUsers
+    if (users) {
+      const loggedUser = localStorage.getItem('username')
+      if (loggedUser && users[loggedUser]) {
+        setUser(users[loggedUser])
       }
     }
-  }, [clusterData])
+  }, [apiUsers, clusterData])
 
   const isAllowedGrant = (user, item) => {
     if (user.roles['sysops']) {

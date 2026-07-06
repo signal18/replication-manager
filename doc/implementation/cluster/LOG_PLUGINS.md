@@ -56,8 +56,9 @@ exit ≠0 = error    (repman logs WARN0203 and skips state injection)
 The plugin has **5 seconds** to complete. If it exceeds this deadline the server
 kills it and records a timeout finding (WARN0203).
 
-The current wire version is **2** (`WireVersion = 2` in `wire.go`), introduced in
-v3.1.30. Wire v1 plugins continue to work — new fields are additive.
+The current wire version is **3** (`WireVersion = 3` in `wire.go`) — see
+"Wire v3 — Schema Snapshot" below. Wire v1/v2 plugins continue to work — new
+fields are additive.
 
 ### Request
 
@@ -91,6 +92,7 @@ type Request struct {
     PluginDataDir   string            `json:"plugin_data_dir"`
 
     Config          map[string]string `json:"config,omitempty"`
+    Tables          []Table           `json:"tables,omitempty"`             // wire v3, master request only
 }
 ```
 
@@ -119,6 +121,7 @@ type Request struct {
 | `cluster_context` | Always | Cluster-level facts (proxies, backup, Docker, tool versions) |
 | `plugin_data_dir` | Always | Path to plugin sidecar data files |
 | `config` | Per-plugin config set | Plugin-specific settings from cluster TOML / GUI |
+| `tables` | Master request, schema monitor has run | Schema dictionary snapshot: engine, row format, columns (wire v3) |
 
 #### Msg (error log, SQL error log, audit log)
 
@@ -664,7 +667,30 @@ Error keys follow the pattern `WARN<NNNN>` or a severity-specific prefix. The ra
 | WTAG0100–WTAG0199 | Workload optimizer path detection |
 | WTAG0200–WTAG0299 | PFS digest workload findings |
 
+| SCH0001+ | Schema advisories (errors/warnings, e.g. row-size risk) |
+| SCHTAG0001+ | Schema inventory tags (engine/row-format counts) |
+
 Choose a key in the WARN0400+ range for custom plugins to avoid collisions.
+
+## Wire v3 — Schema Snapshot
+
+Wire version 3 adds two things:
+
+1. **`tables` request field** — the schema dictionary snapshot: one entry per
+   table with `schema`, `name`, `engine`, `row_format`, `rows`, `data_length`
+   and `columns` (name, full type string, nullable, charset, collation).
+   Derive byte widths in the plugin from the type string and charset
+   (`varchar(255)` × utf8mb4 = 1020 bytes). The snapshot refreshes with the
+   schema monitor (daily cron `monitoring-schema-scheduler-cron` by default,
+   plus boot and on-demand runs) and is populated ONLY on the master server's
+   request so per-tick payloads stay flat across replicas.
+2. **`SCHEMA` finding severity** — findings with this severity are routed to
+   the cluster `SchemaStateMachine` (exposed as `schemaStates` in the cluster
+   API payload). Use `SCHTAG0xxx` keys with `count` for inventory tags and
+   `SCH0xxx` for advisories. Planned first plugins: `plugin-schema-tags`
+   (engine/row-format inventory) and `plugin-schema-row-size` (InnoDB
+   Compact/Redundant tables whose short-varchar byte sum exceeds 8126B —
+   half a 16K page — risking "Row size too large" on DML).
 
 ---
 
@@ -706,6 +732,41 @@ make plugins-clean # remove build artifacts
 ```
 
 For dev builds without credentials, a local keypair is generated automatically.
+
+### Runtime Signature Verification
+
+When `plugin-signing-public-key` points to an existing key file (the default:
+`<ShareDir>/plugins/plugin-signing.pub`), every `plugin-*` binary must have a
+valid Ed25519 `.sig` in `<ShareDir>/plugins/` to be loaded.
+
+`.sig` files come ONLY from the package / image build (`make plugin-sigs`
+writes them to `share/plugins/` next to the public key). They are deliberately
+NOT accepted from the git pull repo: a compromised pull repo could otherwise
+replay an old officially-signed binary together with its old valid signature
+(downgrade attack), or a foreign binary+sig pair. A binary hot-pushed through
+the pull repo therefore verifies against the locally shipped signatures and is
+skipped when it does not match — this is the intended trust boundary, not a
+bug. Dev/nightly docker images stay self-consistent because every
+`docker/dev/restart.sh` build re-runs `make plugins` → `plugin-sigs`, signing
+the freshly built binaries with the image-local key and placing sigs + public
+key in `share/plugins/`.
+
+### Rejection States (WARN0206 / WARN0207)
+
+Plugins rejected at load time are reported through the cluster state machine,
+not by repeated log lines. `ReloadLogPlugins()` stores the rejection set
+(plugin name → reason); `CheckPluginRejectionStates()` re-asserts one state per
+plugin type on every monitoring tick:
+
+| Code | Key example | Meaning |
+|------|-------------|---------|
+| WARN0206 | `WARN0206@security` | Plugin rejected (e.g. bad/missing signature); reason in description |
+| WARN0207 | `WARN0207` | `plugin-signing-public-key` configured but key file missing — verification skipped |
+
+Lifecycle: one `OPENED` log line and a visible GUI alert while the rejection
+persists, one `RESOLV` line when a reload loads the plugin cleanly. These are
+HA *warnings* (monitoring degraded), never HA blockers — they do not gate
+failover decisions.
 
 ---
 

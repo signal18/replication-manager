@@ -419,7 +419,26 @@ func (SM *StateMachine) GetOpenWarnings() []StateHttp {
 	var log []StateHttp
 	SM.Lock()
 	for key, value := range *SM.OldState {
-		if value.ErrType != "ERROR" {
+		if value.ErrType != "ERROR" && value.ErrType != "INFO" {
+			var httplog StateHttp
+			httplog.ErrDesc = value.ErrDesc
+			httplog.ErrNumber = key
+			httplog.ErrFrom = value.ErrFrom
+			log = append(log, httplog)
+		}
+	}
+	SM.Unlock()
+	sort.SliceStable(log, func(i, j int) bool { return log[i].ErrNumber < log[j].ErrNumber })
+	return log
+}
+
+// GetOpenInfos returns open INFO states: normal-but-noteworthy operating
+// modes (state-as-tag), excluded from the blocker/warning alert counters.
+func (SM *StateMachine) GetOpenInfos() []StateHttp {
+	var log []StateHttp
+	SM.Lock()
+	for key, value := range *SM.OldState {
+		if value.ErrType == "INFO" {
 			var httplog StateHttp
 			httplog.ErrDesc = value.ErrDesc
 			httplog.ErrNumber = key

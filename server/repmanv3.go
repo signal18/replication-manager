@@ -657,6 +657,7 @@ func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stre
 		a := new(cluster.Alerts)
 		a.Errors = mycluster.GetStateMachine().GetOpenErrors()
 		a.Warnings = mycluster.GetStateMachine().GetOpenWarnings()
+		a.Infos = mycluster.GetStateMachine().GetOpenInfos()
 
 		return marshalAndSend(a, stream.Send)
 	}

@@ -101,7 +101,7 @@ func (repman *ReplicationManager) handlerMuxProxy(w http.ResponseWriter, r *http
 			}
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
-			err = e.Encode(prx)
+			err = e.Encode(&prx)
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 				http.Error(w, "Encoding error", 500)

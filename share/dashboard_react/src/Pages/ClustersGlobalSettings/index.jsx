@@ -9,6 +9,7 @@ import CloudSettings from './CloudSettings'
 import MarketplaceSettings from './MarketplaceSettings'
 import { useDispatch, useSelector } from 'react-redux'
 import GlobalSettings from './GlobalSettings'
+import ArbitrationSettings from './ArbitrationSettings'
 import { setGlobalSetting } from '../../redux/globalClustersSlice'
 import AppTemplateRepoSection from '../Settings/components/AppTemplateRepoSection'
 
@@ -47,6 +48,12 @@ function ClustersGlobalSettings({ user }) {
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<GlobalSettings config={monitor?.config} openConfirmModal={openConfirmModal} />}
+      />
+      <AccordionComponent
+        heading={'Arbitration'}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        body={<ArbitrationSettings config={monitor?.config} />}
       />
       {monitor?.config?.cloud18 && (
         <AccordionComponent

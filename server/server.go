@@ -93,6 +93,7 @@ type ReplicationManager struct {
 	Hostname                     string                             `json:"hostname"`
 	Status                       string                             `json:"status"`
 	SplitBrain                   bool                               `json:"splitBrain"`
+	LoopTick                     int64                              `json:"loopTick"`
 	ClusterList                  []string                           `json:"clusters"`
 	ImmutableClusterList         []string                           `json:"-"`
 	DeprecatedKeys               map[string]map[string]bool         `json:"-"`
@@ -104,10 +105,14 @@ type ReplicationManager struct {
 	StateMachine                 *state.StateMachine                `json:"stateMachine" groups:"web"`
 	clusterHeartbeatTrackingLock sync.RWMutex                       `json:"-"`
 	clusterHeartbeatTracking     map[string]clusterHeartbeatTracker `json:"-"`
+	gitSyncBusy                  atomic.Bool                        `json:"-"`
+	cloud18PullBusy              atomic.Bool                        `json:"-"`
+	peerHealthBusy               atomic.Bool                        `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
 	Logs                        s18log.HttpLog              `json:"logs"`
+	GlobalLogs                  s18log.HttpLog              `json:"globalLogs"`
 	MonitorType                 map[string]string           `json:"monitorType"`
 	ServicePlans                []config.ServicePlan        `json:"servicePlans"`
 	ServiceOrchestrators        []config.ConfigVariableType `json:"serviceOrchestrators"`
@@ -171,7 +176,7 @@ type ReplicationManager struct {
 	IsApiListenerReady          bool                           `json:"-"`
 	Terms                       []byte                         `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
 	TermsDT                     time.Time                      `json:"termsDT"`
-	ModTimes                    map[string]time.Time           `json:"termsDT"`
+	ModTimes                    map[string]time.Time           `json:"-"`
 	SessionManager              *tty.SessionManager            `json:"-"`
 	ConfigManager               *manager.ConfigManager         `json:"-"`
 	MeetUserID                  string                         `json:"-"`
@@ -426,8 +431,11 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogSQLInMonitoring, "log-sql-in-monitoring", false, "Log SQL queries send to servers in monitoring")
 	flags.IntVar(&conf.LogSQLLevel, "log-level-sql", 2, "Log SQL Level")
 
-	flags.BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
+	flags.BoolVar(&conf.LogHeartbeat, "log-heartbeat", true, "Log Heartbeat")
 	flags.IntVar(&conf.LogHeartbeatLevel, "log-level-heartbeat", 1, "Log Heartbeat Level")
+
+	flags.BoolVar(&conf.LogArbitration, "log-arbitration", true, "Log cluster-level arbitration (split brain elections)")
+	flags.IntVar(&conf.LogArbitrationLevel, "log-level-arbitration", 1, "Log arbitration level")
 
 	flags.BoolVar(&conf.LogWriterElection, "log-writer-election", true, "Log writer election")
 	flags.IntVar(&conf.LogWriterElectionLevel, "log-level-writer-election", 1, "Log writer election Level")
@@ -652,6 +660,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.GitUsername, "git-username", "", "GitHub username")
 	flags.StringVar(&conf.GitAccesToken, "git-acces-token", "", "GitHub personnal acces token")
 	flags.IntVar(&conf.GitMonitoringTicker, "git-monitoring-ticker", 300, "Git monitoring interval in seconds")
+	flags.BoolVar(&conf.GitConfigSyncStandby, "git-config-sync-standby", true, "Pull config from git when cluster is standby with arbitration")
 	// flags.IntVar(&conf.GitMinWorker, "git-min-worker", 1, "Minimum number of worker to add files for git commit")
 	// flags.IntVar(&conf.GitMaxWorker, "git-max-worker", 5, "Maximum number of worker to add files for git commit")
 	flags.BoolVar(&conf.LogGit, "log-git", true, "To log clone/push/pull from git")
@@ -802,7 +811,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	if WithArbitrationClient == "ON" {
 		flags.BoolVar(&conf.Arbitration, "arbitration-external", false, "Multi moninitor sas arbitration")
 		flags.StringVar(&conf.ArbitrationSasSecret, "arbitration-external-secret", "", "Secret for arbitration")
-		flags.StringVar(&conf.ArbitrationSasHosts, "arbitration-external-hosts", "88.191.151.84:80", "Arbitrator address")
+		flags.StringVar(&conf.ArbitrationSasHosts, "arbitration-external-hosts", "https://arbitrator.cloud18.io", "Arbitrator address")
 		flags.IntVar(&conf.ArbitrationSasUniqueId, "arbitration-external-unique-id", 0, "Unique replication-manager instance idententifier")
 		flags.StringVar(&conf.ArbitrationPeerHosts, "arbitration-peer-hosts", "127.0.0.1:10001", "Peer replication-manager hosts http port")
 		flags.StringVar(&conf.DBServersLocality, "db-servers-locality", "127.0.0.1", "List database servers that are in same network locality")
@@ -1752,7 +1761,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		// }
 
 		for _, f := range files {
-			if f.IsDir() && f.Name() != "graphite" && f.Name() != ".pull" && f.Name() != ".git" {
+			if f.IsDir() && f.Name() != "graphite" && f.Name() != ".pull" && f.Name() != ".git" && f.Name() != ".config" && f.Name() != ".tmp" {
 				firstRead.SetConfigName(f.Name())
 				dynRead.SetConfigName("overwrite-" + f.Name())
 				if _, err := os.Stat(conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml"); os.IsNotExist(err) || f.Name() == "overwrite" {
@@ -1995,8 +2004,13 @@ func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, Immua
 
 		//fmt.Printf("%+v\n", cf2.AllSettings())
 		repman.DynamicFlagMaps[cluster] = clustDynamicMap
-		//if dynamic config, load modified parameter from the saved config
-		if cf2 != nil && clusterconf.ConfRewrite {
+		//if dynamic config, load modified parameter from the saved config.
+		// Deliberately NOT gated on cf2 (the static cluster section):
+		// dynamically-created clusters exist only through their
+		// saved-<name> section — gating on cf2 made them lose their entire
+		// persisted config at every restart (secrets regenerated, restic
+		// paths and ACLs rebuilt from defaults each boot).
+		if clusterconf.ConfRewrite {
 
 			cf3 := firstRead.Sub("saved-" + cluster)
 
@@ -2357,8 +2371,10 @@ func (repman *ReplicationManager) Run() error {
 	repman.UUID = misc.GetUUID()
 	if repman.Conf.Arbitration {
 		repman.Status = ConstMonitorStandby
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server starting in standby mode (arbitration enabled)")
 	} else {
 		repman.Status = ConstMonitorActif
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server starting in active mode (no arbitration)")
 	}
 	repman.SplitBrain = false
 	repman.Hostname, err = os.Hostname()
@@ -2489,7 +2505,8 @@ func (repman *ReplicationManager) Run() error {
 	repman.Logrus.WithField("version", repman.Version).Info("Replication-Manager started in daemon mode")
 	loglen := repman.termlength - 9 - (len(strings.Split(repman.Conf.Hosts, ",")) * 3)
 	repman.tlog = s18log.NewTermLog(loglen)
-	repman.Logs = s18log.NewHttpLog(80)
+	repman.Logs = s18log.NewHttpLog(200)
+	repman.GlobalLogs = s18log.NewHttpLog(200)
 	repman.Terms = make([]byte, 0)
 	repman.TermsDT = time.Now()
 	repman.InitServicePlans()
@@ -2721,13 +2738,14 @@ func (repman *ReplicationManager) Run() error {
 					//to obtain new app access token
 					repman.OAuthAccessToken.AccessToken, repman.OAuthAccessToken.RefreshToken, err = githelper.RefreshAccessToken(repman.OAuthAccessToken.RefreshToken, repman.Conf.OAuthClientID, repman.Conf.GetDecryptedPassword("api-oauth-client-secret", repman.Conf.OAuthClientSecret), repman.Conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 					//to obtain a new PAT
-					tokenName := conf.Cloud18Domain + "-" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
+					tokenName := conf.GetInstancePATName()
 					new_tok, _ := githelper.GetGitLabTokenOAuth(repman.OAuthAccessToken.AccessToken, tokenName, repman.Conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 
 					//save the new PAT
 					newSecret := repman.Conf.Secrets["git-acces-token"]
 					newSecret.OldValue = newSecret.Value
 					newSecret.Value = new_tok
+					repman.Conf.Secrets["git-acces-token"] = newSecret
 					for _, cluster := range repman.Clusters {
 						cluster.Conf.Secrets["git-acces-token"] = newSecret
 					}
@@ -2781,33 +2799,67 @@ func (repman *ReplicationManager) Run() error {
 
 	var counter int64 = 0
 	for !repman.exit.Load() {
+		// Liveness signal for the GUI: a frozen loop cannot report itself
+		// through states, so the dashboard watches this tick advance instead.
+		repman.LoopTick = counter
 		if repman.Conf.Arbitration {
 			repman.Heartbeat()
 		}
 		time.Sleep(time.Second * time.Duration(repman.Conf.MonitoringTicker))
 
 		if counter%60 == 0 {
-			if repman.HasActiveCluster() {
-				repman.ConfigManager.SaveConfig(repman, true)
+			// Never wait on the manager queue from the main loop: if the git
+			// worker is wedged behind a hung network call, wait=true freezes
+			// every state producer (observed on dbaas-fr-2/-dr).
+			repman.ConfigManager.SaveConfig(repman, false)
 
-				if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
-					repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+			// Network tasks run detached and guarded: the main loop must never
+			// block on git or HTTP I/O (go-git has no timeout — a single hung
+			// pull used to freeze every state producer silently). When a task
+			// is still running at the next cycle, skip it and surface GWARN013
+			// so the hang shows in the Monitor button instead of killing it.
+			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
+				if repman.gitSyncBusy.CompareAndSwap(false, true) {
+					go func() {
+						defer repman.gitSyncBusy.Store(false)
+						// Peer-symmetric config sync: replay peer config change
+						// events (event-changed.<id>.log, fetched from the remote
+						// without touching the working tree) before the push so
+						// replayed changes land in this same save cycle. See
+						// doc/implementation/config/CONFIG_EVENT_LOG.md.
+						repman.ReplayPeerConfigEvents()
+						repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+					}()
+				} else {
+					repman.SetState("GWARN013@gitsync", state.State{ErrType: "WARNING", ErrKey: "GWARN013", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN013"], "git config sync"), ErrFrom: "REPMAN"})
 				}
-			} else if repman.Conf.GitUrl != "" {
-				repman.PullActiveConfig()
 			}
 
 			if repman.Conf.Cloud18 && repman.Conf.GitUrlPull != "" {
-				repman.PullCloud18Configs()
-				repman.ReloadTerms()
+				if repman.cloud18PullBusy.CompareAndSwap(false, true) {
+					go func() {
+						defer repman.cloud18PullBusy.Store(false)
+						repman.PullCloud18Configs()
+						repman.ReloadTerms()
+					}()
+				} else {
+					repman.SetState("GWARN013@cloud18pull", state.State{ErrType: "WARNING", ErrKey: "GWARN013", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN013"], "cloud18 pull-repo sync"), ErrFrom: "REPMAN"})
+				}
 			}
 
 			if repman.Conf.Cloud18 && !repman.Conf.Cloud18DisablePeers {
-				repman.dispatchPeerHealthPoll()
-				repman.UpdateLocalPeer()
+				if repman.peerHealthBusy.CompareAndSwap(false, true) {
+					go func() {
+						defer repman.peerHealthBusy.Store(false)
+						repman.dispatchPeerHealthPoll()
+						repman.UpdateLocalPeer()
+					}()
+				} else {
+					repman.SetState("GWARN013@peerhealth", state.State{ErrType: "WARNING", ErrKey: "GWARN013", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN013"], "peer health poll"), ErrFrom: "REPMAN"})
+				}
 			}
 
-			repman.ReloadOpenSVCStats()
+			go repman.ReloadOpenSVCStats()
 		}
 
 		if counter%300 == 0 {
@@ -2817,9 +2869,26 @@ func (repman *ReplicationManager) Run() error {
 
 		repman.ProduceClusterHeartbeatSupervisionStates()
 		repman.ProduceGitSupervisionStates()
+		repman.ProduceClusterAggregateStates()
 		if counter%60 == 0 {
 			repman.ProduceCloud18ConnectivityStates()
 			repman.RefreshCreditsFromCRM()
+		} else {
+			// The connectivity probes only run every %60 ticks while the
+			// lifecycle clears every tick: carry their states across the
+			// skipped ticks so they do not flap open/resolved.
+			repman.PreserveState(gitlabConnectWarnErrKey, crmConnectWarnErrKey, meetConnectWarnErrKey)
+		}
+		// Busy-overrun states are asserted only at their tick boundaries:
+		// keep them open while the corresponding task is still running.
+		if repman.gitSyncBusy.Load() {
+			repman.PreserveState("GWARN013@gitsync")
+		}
+		if repman.cloud18PullBusy.Load() {
+			repman.PreserveState("GWARN013@cloud18pull")
+		}
+		if repman.peerHealthBusy.Load() {
+			repman.PreserveState("GWARN013@peerhealth")
 		}
 		repman.ProcessAlertStateLifecycle()
 
@@ -3099,9 +3168,9 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	/*	Host, _ := misc.SplitHostPort(peer)
 		ha, err := net.LookupHost(Host)
 		if err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose,config.ConstLogModGeneral,config.LvlErr,"Heartbeat: Resolv %s DNS err: %s", Host, err)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlErr, "Resolv %s DNS err: %s", Host, err)
 		} else {
-			repman.LogModulePrintf(repman.Conf.Verbose,config.ConstLogModGeneral,config.LvlErr,"Heartbeat: Resolv %s DNS say: %s", Host, ha[0])
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlErr, "Resolv %s DNS say: %s", Host, ha[0])
 		}
 	*/
 
@@ -3113,20 +3182,18 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	client := &http.Client{
 		Timeout: timeout,
 	}
-	if repman.Conf.LogHeartbeat {
-		repman.Logrus.Debugf("Heartbeat: Sending peer request to node %s", peer)
-	}
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Sending peer request to node %s", peer)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if !bcksplitbrain {
-			repman.Logrus.Debugf("Error building HTTP request: %s", err)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Error building HTTP request: %s", err)
 		}
 		return true
 	}
 	resp, err := client.Do(req)
 	if err != nil {
 		if !bcksplitbrain {
-			repman.Logrus.Debugf("Could not reach peer node, might be down or incorrect address")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Could not reach peer node, might be down or incorrect address")
 		}
 		return true
 	}
@@ -3134,30 +3201,23 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	monjson, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if !bcksplitbrain {
-			repman.Logrus.Debugf("Could not read body from peer response")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Could not read body from peer response")
 		}
 		return true
 	}
-	if repman.Conf.LogHeartbeat {
-		repman.Logrus.Debugf("splitbrain http call result: %s ", monjson)
-	}
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer response: %s", monjson)
 	// Use json.Decode for reading streams of JSON data
 	var h Heartbeat
 	if err := json.Unmarshal(monjson, &h); err != nil {
-		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Debugf("Could not unmarshal JSON from peer response %s", err)
-		}
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Could not unmarshal JSON from peer response %s", err)
 		return true
 	} else {
-
-		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Debugf("RETURN: %v", h)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer heartbeat response: %v", h)
+		if h.Status == ConstMonitorStandby && repman.Status == ConstMonitorStandby {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Both peers are standby, triggering arbitration election")
+			return true
 		}
-
-		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Infof("No peer split brain setting status to %s", repman.Status)
-		}
-
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "No peer split brain, peer status is %s, my status is %s", h.Status, repman.Status)
 	}
 
 	return false
@@ -3165,7 +3225,7 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 
 func (repman *ReplicationManager) Heartbeat() {
 	if cfgGroup == "arbitrator" {
-		repman.Logrus.Debugf("Arbitrator cannot send heartbeat to itself. Exiting")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Arbitrator cannot send heartbeat to itself. Exiting")
 		return
 	}
 
@@ -3174,7 +3234,7 @@ func (repman *ReplicationManager) Heartbeat() {
 	if repman.Conf.ArbitrationPeerHosts != "" {
 		peerList = strings.Split(repman.Conf.ArbitrationPeerHosts, ",")
 	} else {
-		repman.Logrus.Debugf("Arbitration peer not specified. Disabling arbitration")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Arbitration peer not specified. Disabling arbitration")
 		repman.Conf.Arbitration = false
 		return
 	}
@@ -3185,19 +3245,42 @@ func (repman *ReplicationManager) Heartbeat() {
 		repman.Lock()
 		repman.SplitBrain = repman.HeartbeatPeerSplitBrain(peer, bcksplitbrain)
 		repman.Unlock()
-		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Infof("SplitBrain set to %t on peer %s", repman.SplitBrain, peer)
-		}
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "SplitBrain set to %t on peer %s", repman.SplitBrain, peer)
 	} //end check all peers
 
-	// propagate SplitBrain state to clusters after peer negotiation
-	for _, cl := range repman.Clusters {
-		cl.IsSplitBrain = repman.SplitBrain
+	if bcksplitbrain != repman.SplitBrain {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server split-brain state changed: %t -> %t", bcksplitbrain, repman.SplitBrain)
+	}
 
-		if repman.Conf.LogHeartbeat {
-			repman.Logrus.Infof("SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
+	if repman.SplitBrain {
+		repman.SetState("GWARN006", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN006"], repman.Status), ErrFrom: "ARB"})
+		if !repman.Conf.IsEligibleForArbitration() {
+			reason := "not registered or no support/partner subscription"
+			if repman.Conf.Cloud18GitUser == "" {
+				reason = "Cloud18GitUser is empty (registration or git pull may have failed)"
+			}
+			repman.SetState("GERR004", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(config.GlobalError["GERR004"], reason), ErrFrom: "ARB"})
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlErr, "Server arbitration not eligible: %s", reason)
 		}
 	}
+
+	// propagate SplitBrain state to clusters after peer negotiation
+	hasActive := false
+	for _, cl := range repman.Clusters {
+		cl.IsSplitBrain = repman.SplitBrain
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
+		if cl.IsActive() {
+			hasActive = true
+		}
+	}
+	if hasActive && repman.Status == ConstMonitorStandby {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Cluster won arbitration, server status changing from standby to active")
+		repman.Status = ConstMonitorActif
+	} else if !hasActive && repman.Status == ConstMonitorActif && repman.Conf.Arbitration {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "No active cluster, server status changing from active to standby")
+		repman.Status = ConstMonitorStandby
+	}
+
 }
 
 func (repman *ReplicationManager) resolveHostIp() string {
@@ -3525,71 +3608,58 @@ func maintenanceLogPath(logFile string) string {
 
 func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string {
 	switch key {
-	case "api-credentials":
+	case "api-credentials", "api-credentials-external":
 		var tab_ApiUser []string
-		lst_Users := strings.Split(repman.Conf.Secrets["api-credentials"].Value, ",")
+		lst_Users := strings.Split(repman.Conf.Secrets[key].Value, ",")
 		for ind := range lst_Users {
 			user_pass := strings.Split(lst_Users[ind], ":")
 			for _, cluster := range repman.Clusters {
 				if u, ok := cluster.APIUsers[user_pass[0]]; ok {
-					tab_ApiUser = append(tab_ApiUser, u.User+":"+repman.Conf.GetEncryptedString(u.Password))
+					tab_ApiUser = append(tab_ApiUser, u.User+":"+u.Password)
 					break
 				}
 			}
 		}
-		return strings.Join(tab_ApiUser, ",")
-	case "api-credentials-external":
-		var tab_ApiUser []string
-		lst_Users := strings.Split(repman.Conf.Secrets["api-credentials-external"].Value, ",")
-		for ind := range lst_Users {
-			user_pass := strings.Split(lst_Users[ind], ":")
-			for _, cluster := range repman.Clusters {
-				if u, ok := cluster.APIUsers[user_pass[0]]; ok {
-					tab_ApiUser = append(tab_ApiUser, u.User+":"+repman.Conf.GetEncryptedString(u.Password))
-					break
-				}
-			}
-		}
-		return strings.Join(tab_ApiUser, ",")
+		return repman.Conf.GetStableEncryptedValue(key, strings.Join(tab_ApiUser, ","))
 	case "backup-restic-password":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-restic-password"))
+		return repman.Conf.GetStableEncryptedValue("backup-restic-password", repman.Conf.GetDecryptedValue("backup-restic-password"))
 	case "haproxy-password":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("haproxy-password"))
+		return repman.Conf.GetStableEncryptedValue("haproxy-password", repman.Conf.GetDecryptedValue("haproxy-password"))
 	case "maxscale-pass":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("maxscale-pass"))
+		return repman.Conf.GetStableEncryptedValue("maxscale-pass", repman.Conf.GetDecryptedValue("maxscale-pass"))
 	case "myproxy-password":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("proxysql-password"))
+		return repman.Conf.GetStableEncryptedValue("proxysql-password", repman.Conf.GetDecryptedValue("proxysql-password"))
 	case "proxysql-password":
 		if repman.Conf.IsPath(repman.Conf.ProxysqlPassword) && repman.Conf.IsVaultUsed() {
 			return ""
 		}
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("proxysql-password"))
+		return repman.Conf.GetStableEncryptedValue("proxysql-password", repman.Conf.GetDecryptedValue("proxysql-password"))
 	case "proxyjanitor-password":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("proxyjanitor-password"))
+		return repman.Conf.GetStableEncryptedValue("proxyjanitor-password", repman.Conf.GetDecryptedValue("proxyjanitor-password"))
 	case "vault-secret-id":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("vault-secret-id"))
+		return repman.Conf.GetStableEncryptedValue("vault-secret-id", repman.Conf.GetDecryptedValue("vault-secret-id"))
 	case "opensvc-p12-secret":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("opensvc-p12-secret"))
+		return repman.Conf.GetStableEncryptedValue("opensvc-p12-secret", repman.Conf.GetDecryptedValue("opensvc-p12-secret"))
 	case "backup-restic-aws-access-secret":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
+		return repman.Conf.GetStableEncryptedValue("backup-restic-aws-access-secret", repman.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
 	case "backup-streaming-aws-access-secret":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-streaming-aws-access-secret"))
+		return repman.Conf.GetStableEncryptedValue("backup-streaming-aws-access-secret", repman.Conf.GetDecryptedValue("backup-streaming-aws-access-secret"))
 	case "arbitration-external-secret":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("arbitration-external-secret"))
+		return repman.Conf.GetStableEncryptedValue("arbitration-external-secret", repman.Conf.GetDecryptedValue("arbitration-external-secret"))
 	case "alert-pushover-user-token":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("alert-pushover-user-token"))
+		return repman.Conf.GetStableEncryptedValue("alert-pushover-user-token", repman.Conf.GetDecryptedValue("alert-pushover-user-token"))
 	case "alert-pushover-app-token":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("alert-pushover-app-token"))
+		return repman.Conf.GetStableEncryptedValue("alert-pushover-app-token", repman.Conf.GetDecryptedValue("alert-pushover-app-token"))
 	case "mail-smtp-password":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("mail-smtp-password"))
+		return repman.Conf.GetStableEncryptedValue("mail-smtp-password", repman.Conf.GetDecryptedValue("mail-smtp-password"))
 	case "api-oauth-client-secret":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("api-oauth-client-secret"))
+		return repman.Conf.GetStableEncryptedValue("api-oauth-client-secret", repman.Conf.GetDecryptedValue("api-oauth-client-secret"))
 	case "cloud18-gitlab-password":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("cloud18-gitlab-password"))
+		return repman.Conf.GetStableEncryptedValue("cloud18-gitlab-password", repman.Conf.GetDecryptedValue("cloud18-gitlab-password"))
 	case "git-acces-token":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("git-acces-token"))
+		return repman.Conf.GetStableEncryptedValue("git-acces-token", repman.Conf.GetDecryptedValue("git-acces-token"))
 	case "vault-token":
-		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("vault-token"))
+		return repman.Conf.GetStableEncryptedValue("vault-token", repman.Conf.GetDecryptedValue("vault-token"))
 	default:
 		return ""
 	}

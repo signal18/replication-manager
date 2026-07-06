@@ -9,6 +9,8 @@ package cluster
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -107,6 +109,11 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			DatabaseUsers:    snapshotDatabaseUsers(server),
 			ClusterContext:   buildClusterContext(cluster, server),
 			PluginDataDir:    cluster.Conf.ShareDir + "/plugins/data",
+		}
+		// Schema dictionary snapshot rides only on the master request to keep
+		// per-tick payloads flat across replicas.
+		if cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL {
+			src.Tables = cluster.getSchemaWireTables()
 		}
 		if !src.IsEnabled() {
 			// Plugin type is not known yet (Evaluate hasn't run), so we cannot
@@ -226,6 +233,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 
 			isSecurity := f.Severity == logplugin.SeveritySecurity
 			isWorkload := f.Severity == logplugin.SeverityWorkload
+			isSchema := f.Severity == logplugin.SeveritySchema
 
 			var sm *state.StateMachine
 			switch {
@@ -233,6 +241,8 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				sm = cluster.SecurityStateMachine
 			case isWorkload:
 				sm = cluster.WorkloadStateMachine
+			case isSchema:
+				sm = cluster.SchemaStateMachine
 			default:
 				sm = cluster.StateMachine
 			}
@@ -383,7 +393,184 @@ func snapshotSlowLog(sl *s18log.SlowLog) []logplugin.StdioSlowMsg {
 	return out
 }
 
+// RefreshSchemaWireTables rebuilds the wire v3 Tables snapshot handed to
+// schema plugins. Called when the schema monitor refreshes the master table
+// dictionary (daily cron by default, plus boot and on-demand runs).
+func (cluster *Cluster) RefreshSchemaWireTables() {
+	master := cluster.GetMaster()
+	if master == nil || master.DictTables == nil {
+		return
+	}
+	dict := master.DictTables.ToNewMap()
+	tables := make([]logplugin.StdioTable, 0, len(dict))
+	for _, t := range dict {
+		wt := logplugin.StdioTable{
+			Schema:     t.TableSchema,
+			Name:       t.TableName,
+			Engine:     t.Engine,
+			RowFormat:  t.RowFormat,
+			Rows:       t.TableRows,
+			DataLength: t.DataLength,
+		}
+		for _, c := range t.TableColumns {
+			col := logplugin.StdioTableColumn{Name: c.Name, Type: c.Type, Nullable: c.Nullable}
+			if c.Charset != nil {
+				col.Charset = *c.Charset
+			}
+			if c.Collation != nil {
+				col.Collation = *c.Collation
+			}
+			wt.Columns = append(wt.Columns, col)
+		}
+		tables = append(tables, wt)
+	}
+	cluster.schemaWireLock.Lock()
+	cluster.schemaWireTables = tables
+	cluster.schemaWireLock.Unlock()
+}
+
+func (cluster *Cluster) getSchemaWireTables() []logplugin.StdioTable {
+	cluster.schemaWireLock.RLock()
+	defer cluster.schemaWireLock.RUnlock()
+	return cluster.schemaWireTables
+}
+
+// assertDomainObservabilityStates keeps every domain state machine
+// self-documenting: when a domain cannot fully report, a standing INFO
+// explains why — not registered on Cloud18 (CINF0001), no plugin of the type
+// loaded (CINF0002), or a gating variable turned off (CINF0003). Asserted on
+// every tick so the states resolve as soon as the capability appears; an
+// empty badge then always means "monitored and healthy", never "blind".
+func (cluster *Cluster) assertDomainObservabilityStates() {
+	registered := cluster.Conf.Cloud18 && cluster.Conf.Cloud18GitUser != "" && cluster.Conf.GetDecryptedValue("git-acces-token") != ""
+
+	countPluginsOfType := func(domain string) int {
+		if cluster.pluginRegistry == nil {
+			return 0
+		}
+		n := 0
+		for _, p := range cluster.pluginRegistry.All() {
+			if strings.Contains(p.Name(), domain) {
+				n++
+			}
+		}
+		return n
+	}
+
+	domains := []struct {
+		name string
+		sm   *state.StateMachine
+		gate string // gating variable currently off; empty when enabled
+	}{
+		{"security", cluster.SecurityStateMachine, map[bool]string{true: "", false: "log-plugin"}[cluster.Conf.LogPlugin]},
+		{"workload", cluster.WorkloadStateMachine, map[bool]string{true: "", false: "log-plugin"}[cluster.Conf.LogPlugin]},
+		{"schema", cluster.SchemaStateMachine, map[bool]string{true: "", false: "log-plugin"}[cluster.Conf.LogPlugin]},
+		{"config", cluster.ConfigStateMachine, map[bool]string{true: "", false: "log-plugin"}[cluster.Conf.LogPlugin]},
+	}
+	for _, d := range domains {
+		if d.sm == nil {
+			continue
+		}
+		if !registered {
+			d.sm.AddState("CINF0001@"+d.name, state.State{ErrType: "INFO", ErrKey: "CINF0001", ErrDesc: fmt.Sprintf(clusterError["CINF0001"], d.name), ErrFrom: "PLUGIN"})
+		}
+		if n := countPluginsOfType(d.name); n == 0 {
+			d.sm.AddState("CINF0002@"+d.name, state.State{ErrType: "INFO", ErrKey: "CINF0002", ErrDesc: fmt.Sprintf(clusterError["CINF0002"], d.name), ErrFrom: "PLUGIN"})
+		} else {
+			d.sm.AddState("CINF0004@"+d.name, state.State{ErrType: "INFO", ErrKey: "CINF0004", ErrDesc: fmt.Sprintf(clusterError["CINF0004"], n, d.name), ErrFrom: "PLUGIN"})
+		}
+		if d.gate != "" {
+			d.sm.AddState("CINF0003@"+d.name, state.State{ErrType: "INFO", ErrKey: "CINF0003", ErrDesc: fmt.Sprintf(clusterError["CINF0003"], d.name, d.gate), ErrFrom: "PLUGIN"})
+		}
+	}
+	// Configurator disabled: config tracking/deployment to databases is off.
+	if !cluster.Conf.ProvDBConfig && cluster.ConfigStateMachine != nil {
+		cluster.ConfigStateMachine.AddState("CINF0003@config-configurator", state.State{ErrType: "INFO", ErrKey: "CINF0003", ErrDesc: fmt.Sprintf(clusterError["CINF0003"], "configurator", "prov-db-config"), ErrFrom: "CONFIG"})
+	}
+	// Configurator vs production drift. Per variable, the configurator output
+	// (dummy.cnf) is compared to the config running in production (current.cnf,
+	// shipped back from the node by dbjobs). Two distinct situations:
+	// WARN0180 — the node never reported a deployed config (dbjobs never ran
+	// or config was never applied); WARN0179 — a deployed config exists but
+	// differs (dbjobs has not applied the latest output, or out-of-band edit).
+	// States carry server names only — the full variable diff is rendered in
+	// the database configurator view and must never bloat a state description.
+	// The flags live on the ServerMonitor object, which is recreated on config
+	// reload / plan change and only meaningful after its first Refresh —
+	// preserve both states until every server has been monitored at least
+	// once so reloads (frequent on git-sync standbys) do not flap them.
+	if cluster.ConfigStateMachine != nil && cluster.Conf.ProvDBConfig {
+		ready := true
+		for _, srv := range cluster.Servers {
+			if srv != nil && srv.MonitorTime == 0 {
+				ready = false
+				break
+			}
+		}
+		if !ready {
+			cluster.ConfigStateMachine.PreserveState("WARN0179", "WARN0180")
+		} else {
+			var drift, undeployed []string
+			for _, srv := range cluster.Servers {
+				if srv == nil || srv.VariablesMap == nil || !srv.VariablesMap.HasConfigValues() {
+					continue
+				}
+				if !srv.VariablesMap.HasDeployedValues() {
+					undeployed = append(undeployed, srv.URL)
+				} else if srv.HasConfigDiff {
+					drift = append(drift, srv.URL)
+				}
+			}
+			if len(undeployed) > 0 {
+				cluster.ConfigStateMachine.AddState("WARN0180", state.State{ErrType: "WARNING", ErrKey: "WARN0180", ErrDesc: fmt.Sprintf(clusterError["WARN0180"], len(undeployed), strings.Join(undeployed, ", ")), ErrFrom: "CONFIG"})
+			}
+			if len(drift) > 0 {
+				cluster.ConfigStateMachine.AddState("WARN0179", state.State{ErrType: "WARNING", ErrKey: "WARN0179", ErrDesc: fmt.Sprintf(clusterError["WARN0179"], len(drift), strings.Join(drift, ", ")), ErrFrom: "CONFIG"})
+			}
+		}
+	}
+	// Config domain: databases with pending configuration changes (config
+	// cookie waiting to be applied, or restart required to activate it).
+	if cluster.ConfigStateMachine != nil {
+		var pending []string
+		for _, srv := range cluster.Servers {
+			if srv == nil {
+				continue
+			}
+			if srv.HasConfigCookie() || srv.HasRestartCookie() {
+				pending = append(pending, srv.URL)
+			}
+		}
+		if len(pending) > 0 {
+			sort.Strings(pending)
+			cluster.ConfigStateMachine.AddState("WARN0177", state.State{ErrType: "WARNING", ErrKey: "WARN0177", ErrDesc: fmt.Sprintf(clusterError["WARN0177"], len(pending), strings.Join(pending, ", ")), ErrFrom: "CONFIG"})
+		}
+	}
+	// Schema monitor lifecycle tags: next scheduled run and in-progress runs.
+	if cluster.SchemaStateMachine != nil {
+		if cluster.StateMachine != nil && cluster.StateMachine.IsInSchemaMonitor() {
+			cluster.SchemaStateMachine.AddState("CINF0006@schema", state.State{ErrType: "INFO", ErrKey: "CINF0006", ErrDesc: clusterError["CINF0006"], ErrFrom: "PLUGIN"})
+		}
+		if cluster.Conf.MonitorSchemaChange && cluster.Conf.MonitorSchemaScheduler {
+			if e := cluster.GetSchedule("monitorschema"); e != nil && e.Schedule != nil {
+				next := e.Schedule.Next(time.Now()).Format("2006-01-02 15:04:05")
+				cluster.SchemaStateMachine.AddState("CINF0005@schema", state.State{ErrType: "INFO", ErrKey: "CINF0005", ErrDesc: fmt.Sprintf(clusterError["CINF0005"], next), ErrFrom: "PLUGIN"})
+			}
+		}
+	}
+	// Schema plugins additionally need the schema monitor to feed the
+	// table dictionary snapshot.
+	if cluster.Conf.LogPlugin && !cluster.Conf.MonitorSchemaChange && cluster.SchemaStateMachine != nil {
+		cluster.SchemaStateMachine.AddState("CINF0003@schema-dictionary", state.State{ErrType: "INFO", ErrKey: "CINF0003", ErrDesc: fmt.Sprintf(clusterError["CINF0003"], "schema dictionary", "monitoring-schema-change"), ErrFrom: "PLUGIN"})
+	}
+	// Workload spike detection additionally needs graphite metrics.
+	if cluster.Conf.LogPlugin && !cluster.Conf.GraphiteMetrics && cluster.WorkloadStateMachine != nil {
+		cluster.WorkloadStateMachine.AddState("CINF0003@workload-spikes", state.State{ErrType: "INFO", ErrKey: "CINF0003", ErrDesc: fmt.Sprintf(clusterError["CINF0003"], "workload spike", "graphite-metrics"), ErrFrom: "PLUGIN"})
+	}
+}
+
 func (cluster *Cluster) CheckLogPlugins() {
+	cluster.assertDomainObservabilityStates()
 	if !cluster.Conf.LogPlugin {
 		// WARN0314 — plugins are present on disk but log-plugin is disabled.
 		// Raise an advisory with a direct API link so the operator can enable
@@ -414,6 +601,8 @@ func (cluster *Cluster) CheckLogPlugins() {
 		cluster.SecurityRemediations = cluster.GetRemediationPlan()
 		cluster.WorkloadStates = cluster.WorkloadStateMachine.GetOpenStates()
 		cluster.WorkloadRemediations = cluster.GetWorkloadRemediationPlan()
+		cluster.SchemaStates = cluster.SchemaStateMachine.GetOpenStates()
+		cluster.ConfigStates = cluster.ConfigStateMachine.GetOpenStates()
 		return
 	}
 	// Clear WARN0314 if log-plugin was just enabled.
@@ -527,6 +716,26 @@ func (cluster *Cluster) CheckLogPlugins() {
 		}
 		workload = append(workload, s)
 	}
+	cluster.ConfigStates = cluster.ConfigStateMachine.GetOpenStates()
+	slices.SortStableFunc(cluster.ConfigStates, func(a, b state.State) int {
+		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl
+		if ak < bk {
+			return -1
+		} else if ak > bk {
+			return 1
+		}
+		return 0
+	})
+	cluster.SchemaStates = cluster.SchemaStateMachine.GetOpenStates()
+	slices.SortStableFunc(cluster.SchemaStates, func(a, b state.State) int {
+		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl
+		if ak < bk {
+			return -1
+		} else if ak > bk {
+			return 1
+		}
+		return 0
+	})
 	cluster.WorkloadStates = workload
 	slices.SortStableFunc(cluster.WorkloadStates, func(a, b state.State) int {
 		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl
@@ -562,6 +771,33 @@ func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
 func (cluster *Cluster) ReloadLogPlugins() {
 	dir := logplugin.PluginDir(cluster.WorkingDir)
 
+	// Self-heal the per-cluster plugins symlink (<cluster>/plugins → ../plugins).
+	// It is normally created at startup or by the git pull sync, but the cluster
+	// working dir may not exist yet at that point, or may have been wiped by a
+	// config restore — in which case plugins silently stay unloaded (or worse,
+	// stale registry entries fork/exec dangling paths). Recreate it here so
+	// loading never depends on startup ordering.
+	if _, err := os.Lstat(dir); os.IsNotExist(err) {
+		sharedDir := filepath.Join(cluster.Conf.WorkingDir, logplugin.PluginDirName)
+		if fi, serr := os.Stat(sharedDir); serr == nil && fi.IsDir() {
+			rel, rerr := filepath.Rel(filepath.Dir(dir), sharedDir)
+			if rerr != nil {
+				rel = sharedDir
+			}
+			if merr := os.MkdirAll(filepath.Dir(dir), 0755); merr == nil {
+				if lerr := os.Symlink(rel, dir); lerr == nil {
+					cluster.LogModulePrintf(
+						cluster.Conf.Verbose,
+						config.ConstLogModPlugin,
+						config.LvlInfo,
+						"[logplugin] created missing plugin symlink %s → %s",
+						dir, rel,
+					)
+				}
+			}
+		}
+	}
+
 	opts := logplugin.LoadOptions{
 		PubKeyPath: cluster.Conf.PluginSigningPublicKey,
 		SigDir:     cluster.Conf.ShareDir + "/plugins",
@@ -580,25 +816,25 @@ func (cluster *Cluster) ReloadLogPlugins() {
 		)
 		return
 	}
+	// Store rejections for the state machine instead of re-logging them on
+	// every reload: CheckPluginRejectionStates asserts one WARN0206 state per
+	// plugin type each monitoring tick, so complaints surface once (OPENED)
+	// and resolve when the plugin loads cleanly.
+	rejected := make(map[string]string)
+	pubKeyMissing := ""
 	for _, msg := range rejections {
 		if strings.HasPrefix(msg, "pubKeyMissing:") {
-			cluster.LogModulePrintf(
-				cluster.Conf.Verbose,
-				config.ConstLogModPlugin,
-				config.LvlWarn,
-				"[logplugin] %s",
-				strings.TrimPrefix(msg, "pubKeyMissing: "),
-			)
+			pubKeyMissing = strings.TrimPrefix(msg, "pubKeyMissing: ")
+		} else if name, reason, ok := strings.Cut(msg, ": "); ok {
+			rejected[name] = reason
 		} else {
-			cluster.LogModulePrintf(
-				cluster.Conf.Verbose,
-				config.ConstLogModPlugin,
-				config.LvlErr,
-				"[logplugin] rejected plugin (bad signature): %s",
-				msg,
-			)
+			rejected[msg] = "rejected"
 		}
 	}
+	cluster.pluginStateLock.Lock()
+	cluster.pluginRejections = rejected
+	cluster.pluginPubKeyMissing = pubKeyMissing
+	cluster.pluginStateLock.Unlock()
 	for _, p := range cluster.pluginRegistry.All() {
 		cluster.LogModulePrintf(
 			cluster.Conf.Verbose,
@@ -624,6 +860,22 @@ func (cluster *Cluster) ReloadLogPlugins() {
 			"[logplugin] no external plugins found in %s",
 			dir,
 		)
+	}
+}
+
+// CheckPluginRejectionStates asserts one state per rejected external plugin on
+// every monitoring tick. Signature problems appear once in the state machine
+// (OPENED WARN0206@<plugin-type>) and resolve when the plugin loads cleanly.
+// These are HA warnings: monitoring is degraded but failover is not blocked.
+func (cluster *Cluster) CheckPluginRejectionStates() {
+	cluster.pluginStateLock.Lock()
+	defer cluster.pluginStateLock.Unlock()
+	if cluster.pluginPubKeyMissing != "" {
+		cluster.SetState("WARN0207", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0207"], cluster.pluginPubKeyMissing), ErrFrom: "PLUGIN"})
+	}
+	for name, reason := range cluster.pluginRejections {
+		pluginType := strings.TrimPrefix(name, "plugin-")
+		cluster.SetState("WARN0206@"+pluginType, state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0206"], name, reason), ErrFrom: "PLUGIN"})
 	}
 }
 

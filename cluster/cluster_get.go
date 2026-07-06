@@ -451,6 +451,9 @@ func (cluster *Cluster) GetServerByStateAndIndex(state string, idx int) (*Server
 func (cluster *Cluster) GetStandaloneServers() serverList {
 	var standaloneServers serverList
 	for _, server := range cluster.Servers {
+		if server == nil {
+			continue
+		}
 		if server.IsStandAlone() {
 			standaloneServers = append(standaloneServers, server)
 		}
@@ -461,6 +464,9 @@ func (cluster *Cluster) GetStandaloneServers() serverList {
 func (cluster *Cluster) GetStandaloneServerByIndex(idx int) (*ServerMonitor, error) {
 	counter := 0
 	for _, server := range cluster.Servers {
+		if server == nil {
+			continue
+		}
 		if server.IsStandAlone() {
 			if counter == idx {
 				return server, nil

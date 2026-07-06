@@ -1,17 +1,20 @@
-import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure } from '@chakra-ui/react'
-import React, { useState, useEffect} from 'react'
+import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure, Popover, PopoverTrigger, PopoverContent, PopoverArrow, PopoverBody } from '@chakra-ui/react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../redux/authSlice'
 import RefreshCounter from '../RefreshCounter'
 import { isAuthorized } from '../../utility/common'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { clearCluster } from '../../redux/clusterSlice'
-import AlertBadge from '../AlertBadge'
+import AlertBadge, { HealthAlertBadge, NetworkBadge } from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
 import SecurityScoreModal from '../Modals/SecurityScoreModal'
 import WorkloadModal from '../Modals/WorkloadModal'
+import SchemaModal from '../Modals/SchemaModal'
+import ConfigModal from '../Modals/ConfigModal'
 import { FaUserPlus, FaUserCircle } from 'react-icons/fa'
-import { MdSecurity, MdNotificationsOff } from 'react-icons/md'
+import { MdSecurity, MdNotificationsOff, MdSchema, MdSettings } from 'react-icons/md'
+import { HiRefresh } from 'react-icons/hi'
 import { RiSpeedFill } from 'react-icons/ri'
 import InterventionPanel from '../Modals/InterventionPanel'
 import UserInfoPanel from '../Modals/UserInfoPanel'
@@ -20,12 +23,14 @@ import { getApi } from '../../services/apiHelper'
 import styles from './styles.module.scss'
 import RMButton from '../RMButton'
 import RMIconButton from '../RMIconButton'
+import TagPill from '../TagPill'
 import { useTheme } from '../../ThemeProvider'
 import AddUserModal from '../Modals/AddUserModal'
 import MattermostIntegration from '../../Pages/Mattermost';
-import { getMeetInfo, logoutFromMeet } from '../../redux/meetSlice';
+import { getMeetInfo, logoutFromMeet, resetMeetError } from '../../redux/meetSlice';
 import { selectMeetUIState } from '../../redux/memoize'
 import { clearClusters, getMonitoredData } from '../../redux/globalClustersSlice'
+import { globalClustersService } from '../../services/globalClustersService'
 
 function Navbar({ username, user }) {
   const dispatch = useDispatch()
@@ -34,6 +39,8 @@ function Navbar({ username, user }) {
   const [globalAlertModalType, setGlobalAlertModalType] = useState('')
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false)
   const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false)
+  const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false)
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [isInterventionPanelOpen, setIsInterventionPanelOpen] = useState(false)
   const [isUserInfoPanelOpen, setIsUserInfoPanelOpen] = useState(false)
@@ -46,6 +53,12 @@ function Navbar({ username, user }) {
   const { isMobile, isDesktop } = useSelector((state) => state.common)
   const clusterAlerts = useSelector((state) => state?.cluster?.clusterAlerts)
   const clusterData = useSelector((state) => state?.cluster?.clusterData)
+  // Which header to show is derived from the ROUTE, never from leftover
+  // store state: clusterData can survive navigation (re-register flows,
+  // deep links, fetches racing clearCluster), and every such leak used to
+  // resurrect the per-cluster header on the cluster-list dashboard.
+  const { pathname } = useLocation()
+  const inClusterContext = /^\/clusters\/[^/]+/.test(pathname)
   const globalAlerts = useSelector((state) => state?.globalClusters?.globalAlerts)
   const isLogged = useSelector((state) => state?.auth?.isLogged)
   const baseURL = useSelector((state) => state?.auth?.baseURL)
@@ -55,6 +68,23 @@ function Navbar({ username, user }) {
   const userClusterGrants = clusterData?.name && user?.grants
     ? user.grants[clusterData.name]
     : null
+
+  // Monitor loop liveness: a frozen main loop cannot report itself through
+  // states, so we watch loopTick advance between polls. Stalled when it has
+  // not moved for ~5 monitoring ticks (min 15s).
+  const loopTick = monitor?.loopTick
+  const lastTickRef = useRef({ tick: undefined, at: Date.now() })
+  const [monitorStalled, setMonitorStalled] = useState(false)
+  useEffect(() => {
+    if (loopTick === undefined) return
+    const stallMs = Math.max((monitor?.config?.monitoringTicker || 2) * 5000, 15000)
+    if (loopTick !== lastTickRef.current.tick) {
+      lastTickRef.current = { tick: loopTick, at: Date.now() }
+      setMonitorStalled(false)
+    } else if (Date.now() - lastTickRef.current.at > stallMs) {
+      setMonitorStalled(true)
+    }
+  }, [monitor])
 
   useEffect(() => {
     if (isLogged){
@@ -81,6 +111,12 @@ function Navbar({ username, user }) {
 
   //to toggle chat and save state
   const toggleChat = () => {
+    if (!isChatOpen && meetError) {
+      // Un-latch a stale failure and retry: the chat may work even though a
+      // previous getMeetInfo failed (e.g. during a server restart).
+      dispatch(resetMeetError())
+      dispatch(getMeetInfo())
+    }
     setIsChatOpen(prevState => !prevState);
   };
   //
@@ -131,7 +167,15 @@ function Navbar({ username, user }) {
         className={`${styles.navbarContainer} ${theme === 'light' ? styles.lightBackground : styles.darkBackground} `}
         gap='2'
         align='center'>
-        <Link to='/'>
+        <Link
+          to='/'
+          onClick={() => {
+            // Leaving via the logo must also leave the cluster context,
+            // otherwise the navbar stays on the last visited cluster.
+            if (clusterData) {
+              dispatch(clearCluster({}))
+            }
+          }}>
           <HStack>
             {showImageLogo && <Image loading='lazy' height='50px' width={'fit-content'} className={`${styles.logo}`} objectFit='contain' src={`${theme === 'light' ? '/images/logo-no-text.png' : '/images/logo-no-text-dark.png'}`} onError={() => { setShowImageLogo(false) }} />}
             <TextLogo className={`${styles.logo} ${theme === 'light' ? styles.lightTextLogo : styles.darkTextLogo}`} text={logoText} />
@@ -139,7 +183,6 @@ function Navbar({ username, user }) {
         </Link>
         <Spacer />
 
-        {isAuthorized() && isDesktop && location.pathname !== '/slideshow' && <RefreshCounter clusterName={clusterData?.name} />}
 
 
         <Spacer />
@@ -147,46 +190,61 @@ function Navbar({ username, user }) {
           
 
 
-          {isAuthorized() && !clusterData && (
+          {isAuthorized() && !inClusterContext && (
             <Flex className={styles.alerts}>
-              <AlertBadge
-                isBlocking={true}
-                text='G-Blockers'
-                count={globalAlerts?.errors?.length || 0}
-                onClick={() => setGlobalAlertModalType('error')}
+              <Popover placement='bottom'>
+                <PopoverTrigger>
+                  <Box as='span'>
+                    <NetworkBadge
+                      tick={loopTick}
+                      stalled={monitorStalled}
+                      heartbeatFailed={!!(monitor?.config?.arbitrationExternal && monitor?.splitBrain)}
+                      showText={!isMobile}
+                    />
+                  </Box>
+                </PopoverTrigger>
+                <PopoverContent width='auto'>
+                  <PopoverArrow />
+                  <PopoverBody>
+                    <RefreshCounter clusterName={clusterData?.name} />
+                  </PopoverBody>
+                </PopoverContent>
+              </Popover>
+              <HealthAlertBadge
+                text='Monitor'
+                blockers={globalAlerts?.errors?.length || 0}
+                warnings={globalAlerts?.warnings?.length || 0}
+                onClick={() => setGlobalAlertModalType('health')}
                 showText={!isMobile}
-              />
-              <AlertBadge
-                text='G-Warnings'
-                count={globalAlerts?.warnings?.length || 0}
-                onClick={() => setGlobalAlertModalType('warning')}
-                showText={!isMobile}
-              />
-              <AlertBadge
-                colorScheme={monitor?.activeInterventionCount > 0 ? 'red' : monitor?.isGlobalInterventionPending ? 'orange' : 'teal'}
-                icon={MdNotificationsOff}
-                text={monitor?.activeInterventionCount > 0 ? 'Muted' : monitor?.isGlobalInterventionPending ? 'Scheduled' : 'Mute'}
-                count={monitor?.activeInterventionCount || ''}
-                onClick={() => setIsInterventionPanelOpen(true)}
-                showText={!isMobile}
-                blink={monitor?.activeInterventionCount > 0}
               />
             </Flex>
           )}
 
-          {isAuthorized() && clusterData && (
+          {isAuthorized() && inClusterContext && clusterData && (
             <Flex className={styles.alerts}>
-              <AlertBadge
-                isBlocking={true}
-                text='Blockers'
-                count={clusterAlerts?.errors?.length || 0}
-                onClick={() => openAlertModal('error')}
-                showText={!isMobile}
-              />
-              <AlertBadge
-                text='Warnings'
-                count={clusterAlerts?.warnings?.length || 0}
-                onClick={() => openAlertModal('warning')}
+              <Popover placement='bottom'>
+                <PopoverTrigger>
+                  <Box as='span'>
+                    <NetworkBadge
+                      tick={loopTick}
+                      stalled={monitorStalled}
+                      heartbeatFailed={!!(monitor?.config?.arbitrationExternal && monitor?.splitBrain)}
+                      showText={!isMobile}
+                    />
+                  </Box>
+                </PopoverTrigger>
+                <PopoverContent width='auto'>
+                  <PopoverArrow />
+                  <PopoverBody>
+                    <RefreshCounter clusterName={clusterData?.name} />
+                  </PopoverBody>
+                </PopoverContent>
+              </Popover>
+              <HealthAlertBadge
+                text='Cluster'
+                blockers={clusterAlerts?.errors?.length || 0}
+                warnings={clusterAlerts?.warnings?.length || 0}
+                onClick={() => openAlertModal('health')}
                 showText={!isMobile}
               />
               {clusterData?.securityScore?.grade && (
@@ -212,13 +270,40 @@ function Navbar({ username, user }) {
                 showText={!isMobile}
               />
               <AlertBadge
-                colorScheme={clusterData?.isIntervention ? 'red' : clusterData?.interventionPending ? 'orange' : 'teal'}
-                icon={MdNotificationsOff}
-                text={clusterData?.isIntervention ? 'Muted' : clusterData?.interventionPending ? 'Scheduled' : 'Mute'}
-                count={clusterData?.interventionSuppressedAlerts || ''}
-                onClick={() => setIsInterventionPanelOpen(true)}
+                colorScheme={
+                  (clusterData?.schemaStates || []).some((s) => s.ErrType === 'ERROR')
+                    ? 'red'
+                    : (clusterData?.schemaStates || []).length > 0
+                      ? 'cyan'
+                      : 'gray'
+                }
+                icon={MdSchema}
+                text='Schema'
+                count={(clusterData?.schemaStates || []).length}
+                bubbleStyle={{
+                  background: `var(--chakra-colors-${(clusterData?.schemaStates || []).length > 0 ? 'cyan' : 'gray'}-600)`,
+                  color: 'white',
+                }}
+                onClick={() => setIsSchemaModalOpen(true)}
                 showText={!isMobile}
-                blink={clusterData?.isIntervention}
+              />
+              <AlertBadge
+                colorScheme={
+                  (clusterData?.configStates || []).some((s) => s.ErrType === 'ERROR')
+                    ? 'red'
+                    : (clusterData?.configStates || []).length > 0
+                      ? 'yellow'
+                      : 'gray'
+                }
+                icon={MdSettings}
+                text='Config'
+                count={(clusterData?.configStates || []).length}
+                bubbleStyle={{
+                  background: `var(--chakra-colors-${(clusterData?.configStates || []).length > 0 ? 'yellow' : 'gray'}-600)`,
+                  color: 'white',
+                }}
+                onClick={() => setIsConfigModalOpen(true)}
+                showText={!isMobile}
               />
             </Flex>
           )}
@@ -230,30 +315,45 @@ function Navbar({ username, user }) {
                   <AlertBadge
                     isSupport={true}
                     isConnect={!meetError}
-                    text={meetError ? 'Support (disconnected)' : 'Support'}
+                    text='Support'
                     count={unreadMessagesCount || 0}
                     onClick={toggleChat}
                     showText={!isMobile}
                   />
                 </Flex>
               )}
-              {clusterData && monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0 && (
-                <RMIconButton
-                  icon={FaUserPlus}
-                  tooltip={'Add User'}
-                  px='2'
-                  variant='outline'
-                  onClick={openAddUserModal}
+              {/* Mute and user badges grouped tight — no counters on them */}
+              <Flex className={styles.alerts}>
+                {inClusterContext && clusterData ? (
+                  <AlertBadge
+                    colorScheme={clusterData?.isIntervention ? 'red' : clusterData?.interventionPending ? 'orange' : 'teal'}
+                    icon={MdNotificationsOff}
+                    text={clusterData?.isIntervention ? 'Muted' : clusterData?.interventionPending ? 'Scheduled' : 'Mute'}
+                    count={clusterData?.interventionSuppressedAlerts || ''}
+                    onClick={() => setIsInterventionPanelOpen(true)}
+                    showText={!isMobile}
+                    blink={clusterData?.isIntervention}
+                  />
+                ) : (
+                  <AlertBadge
+                    colorScheme={monitor?.activeInterventionCount > 0 ? 'red' : monitor?.isGlobalInterventionPending ? 'orange' : 'teal'}
+                    icon={MdNotificationsOff}
+                    text={monitor?.activeInterventionCount > 0 ? 'Muted' : monitor?.isGlobalInterventionPending ? 'Scheduled' : 'Mute'}
+                    count={monitor?.activeInterventionCount || ''}
+                    onClick={() => setIsInterventionPanelOpen(true)}
+                    showText={!isMobile}
+                    blink={monitor?.activeInterventionCount > 0}
+                  />
+                )}
+                <AlertBadge
+                  colorScheme='blue'
+                  icon={FaUserCircle}
+                  text={username ? (username.length > 5 ? username.substring(0, 5) + '..' : username) : ''}
+                  count=''
+                  onClick={() => setIsUserInfoPanelOpen(true)}
+                  showText={!isMobile}
                 />
-              )}
-              <AlertBadge
-                colorScheme='blue'
-                icon={FaUserCircle}
-                text={username ? (username.length > 5 ? username.substring(0, 5) + '..' : username) : ''}
-                count=''
-                onClick={() => setIsUserInfoPanelOpen(true)}
-                showText={!isMobile}
-              />
+              </Flex>
             </>
           )}
 
@@ -262,16 +362,11 @@ function Navbar({ username, user }) {
 
       <MattermostIntegration isOpen={isChatOpen} setIsChatOpen={setIsChatOpen} onClose={() => setIsChatOpen(false)} cloud18={monitor?.config?.cloud18} />
 
-      {isAuthorized() && !isDesktop && location.pathname !== '/slideshow' && (
-        <Box mx='auto' p='8px' marginTop='60px'>
-          <RefreshCounter clusterName={clusterData?.name} />
-        </Box>
-      )}
       {alertModalType && (
-        <AlertModal type={alertModalType} isOpen={alertModalType.length !== 0} closeModal={closeAlertModal} />
+        <AlertModal type={alertModalType} title='Cluster' isOpen={alertModalType.length !== 0} closeModal={closeAlertModal} />
       )}
       {globalAlertModalType && (
-        <AlertModal type={globalAlertModalType} isOpen={globalAlertModalType.length !== 0} closeModal={() => setGlobalAlertModalType('')} alerts={globalAlerts} />
+        <AlertModal type={globalAlertModalType} title='Monitor' isOpen={globalAlertModalType.length !== 0} closeModal={() => setGlobalAlertModalType('')} alerts={globalAlerts} />
       )}
       {isAddUserModalOpen && (
         <AddUserModal clusterName={clusterData?.name} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />
@@ -282,13 +377,19 @@ function Navbar({ username, user }) {
       {isWorkloadModalOpen && (
         <WorkloadModal isOpen={isWorkloadModalOpen} closeModal={() => setIsWorkloadModalOpen(false)} />
       )}
+      {isSchemaModalOpen && (
+        <SchemaModal isOpen={isSchemaModalOpen} closeModal={() => setIsSchemaModalOpen(false)} />
+      )}
+      {isConfigModalOpen && (
+        <ConfigModal isOpen={isConfigModalOpen} closeModal={() => setIsConfigModalOpen(false)} />
+      )}
       {isInterventionPanelOpen && (
         <InterventionPanel
           isOpen={isInterventionPanelOpen}
           closeModal={() => setIsInterventionPanelOpen(false)}
           isGlobal={!clusterData}
           canManage={!!userClusterGrants?.['db-maintenance'] || !clusterData}
-          isActive={clusterData ? (clusterData?.isIntervention || !!clusterData?.interventionPending) : (monitor?.activeInterventionCount > 0 || monitor?.isGlobalInterventionPending)}
+          isActive={inClusterContext && clusterData ? (clusterData?.isIntervention || !!clusterData?.interventionPending) : (monitor?.activeInterventionCount > 0 || monitor?.isGlobalInterventionPending)}
           current={clusterData ? (clusterData?.interventionCurrent || clusterData?.interventionPending) : monitor?.globalInterventionEntry}
           isPending={clusterData ? (!!clusterData?.interventionPending && !clusterData?.isIntervention) : (monitor?.isGlobalInterventionPending && !monitor?.isGlobalIntervention)}
           history={clusterData ? (clusterData?.interventionHistory || []) : []}
@@ -319,6 +420,11 @@ function Navbar({ username, user }) {
           isOpen={isUserInfoPanelOpen}
           closeModal={() => setIsUserInfoPanelOpen(false)}
           user={user}
+          canAddUser={!!(clusterData && monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0)}
+          onAddUser={() => {
+            setIsUserInfoPanelOpen(false)
+            openAddUserModal()
+          }}
           onLogout={() => {
             setIsUserInfoPanelOpen(false)
             handleLogout()

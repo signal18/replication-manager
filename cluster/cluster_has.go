@@ -95,6 +95,9 @@ func (cluster *Cluster) HasNoValidSlave() bool {
 }
 
 func (cluster *Cluster) IsProvisioned() bool {
+	cluster.Lock()
+	defer cluster.Unlock()
+
 	if cluster.GetOrchestrator() == config.ConstOrchestratorOnPremise {
 		return true
 	}
@@ -105,7 +108,7 @@ func (cluster *Cluster) IsProvisioned() bool {
 		if !db.HasProvisionCookie() {
 			if db.IsRunning() {
 				db.SetProvisionCookie()
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can DB Connect creating cookie state:%s", db.State)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can DB Connect creating cookie %s: %s", db.URL, db.State)
 			} else {
 				return false
 			}
@@ -115,7 +118,7 @@ func (cluster *Cluster) IsProvisioned() bool {
 		if !px.HasProvisionCookie() {
 			if px.IsRunning() {
 				px.SetProvisionCookie()
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can Proxy Connect creating cookie state:%s", px.GetState())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can Proxy Connect creating cookie %s: %s", px.GetURL(), px.GetState())
 			} else {
 				return false
 			}
@@ -135,8 +138,10 @@ func (cluster *Cluster) IsAppProvisioned() bool {
 				// App is running without a provision cookie — recover state from a restart.
 				// Skip entirely when the unprovision cookie is present: the app was explicitly
 				// unprovisioned and may just be in a brief shutdown transition.
-				app.SetProvisionCookie()
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can App Connect creating cookie state:%s", app.GetState())
+				if err := app.SetProvisionCookie(); err != nil {
+					cluster.SetState("APPERR006", state.State{ErrType: "WARNING", ErrDesc: clusterError["APPERR006"], ErrFrom: "TOPO", ServerUrl: app.GetURL()})
+				}
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can App Connect creating cookie %s: %s", app.GetURL(), app.GetState())
 				if app.AppConfig.ProvAppCreditUsed == 0 && app.AppConfig.ProvAppCreditPlanned > 0 {
 					app.AppConfig.ProvAppCreditUsed = app.AppConfig.ProvAppCreditPlanned
 					if _, err := cluster.SaveApp(app, ""); err != nil {

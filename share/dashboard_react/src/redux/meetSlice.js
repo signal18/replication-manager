@@ -275,6 +275,13 @@ const meetSlice = createSlice({
     channels: [],
   },
   reducers: {
+    // Clears the latched Meet failure (Redux + sessionStorage) so the next
+    // getMeetInfo may retry — a single transient failure otherwise marks
+    // Support disconnected for the whole browser session.
+    resetMeetError: (state) => {
+      state.meetError = false;
+      sessionStorage.removeItem(MEET_UNAVAILABLE_KEY);
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -395,7 +402,7 @@ const meetSlice = createSlice({
   },
 });
 
-export const { clearMeetInfo, clearMessages } = meetSlice.actions;
+export const { clearMeetInfo, clearMessages, resetMeetError } = meetSlice.actions;
 
 // this is for configureStore
 export default meetSlice.reducer;

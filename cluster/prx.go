@@ -445,6 +445,8 @@ func (cluster *Cluster) failoverProxies() {
 }
 
 func (cluster *Cluster) initProxies() {
+	cluster.Lock()
+	defer cluster.Unlock()
 	for _, pr := range cluster.Proxies {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "New proxy monitored: %s %s:%s", pr.GetType(), pr.GetHost(), pr.GetPort())
 		pr.Init()

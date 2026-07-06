@@ -7,6 +7,8 @@ import UserGrantModal from '../../components/Modals/UserGrantModal'
 import { acceptExternalRole, acceptSubscription, dropUser, endSubscription, refuseExternalRole, rejectSubscription, sendCredentials } from '../../redux/clusterSlice'
 import RMButton from '../../components/RMButton'
 import RMIconButton from '../../components/RMIconButton'
+import { FaUserPlus } from 'react-icons/fa'
+import AddUserModal from '../../components/Modals/AddUserModal'
 import { HiUserGroup } from 'react-icons/hi'
 import { TbDatabaseStar, TbDatabaseX, TbDeviceDesktopCancel, TbDeviceDesktopStar, TbDeviceDesktopX, TbDevicesStar, TbMail, TbMailCog, TbMailDollar, TbMailStar, TbTrash, TbUserCancel, TbUserStar } from 'react-icons/tb'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
@@ -15,6 +17,7 @@ import { HStack } from '@chakra-ui/react'
 import TextInputModal from '../../components/Modals/TextInputModal'
 
 function Users({ selectedCluster, user }) {
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [data, setData] = useState([])
   const [selectedUser, setSelectedUser] = useState(null)
   const [action, setAction] = useState({ type: '', title: '', payload: '' })
@@ -27,6 +30,7 @@ function Users({ selectedCluster, user }) {
   const {
     globalClusters: { monitor },
   } = useSelector((state) => state)
+  const canAddUser = !!(monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0)
 
   const showUser = (user, item) => {
     if (user.user === "admin") {
@@ -191,8 +195,27 @@ function Users({ selectedCluster, user }) {
         allowToggle={false}
         className={styles.accordion}
         panelSX={{ overflowX: 'auto', p: 0 }}
+        headerActions={
+          canAddUser ? (
+            <RMIconButton
+              icon={FaUserPlus}
+              tooltip={'Add User'}
+              px='2'
+              variant='outline'
+              onClick={() => setIsAddUserModalOpen(true)}
+            />
+          ) : undefined
+        }
         body={<DataTable key="users" data={data} columns={columns} className={styles.table} />}
       />
+      {isAddUserModalOpen && (
+        <AddUserModal
+          clusterName={selectedCluster?.name}
+          apiUsers={selectedCluster?.apiUsers}
+          isOpen={isAddUserModalOpen}
+          closeModal={() => setIsAddUserModalOpen(false)}
+        />
+      )}
       {isUserGrantModalOpen && <UserGrantModal clusterName={selectedCluster.name} selectedUser={selectedUser} isOpen={isUserGrantModalOpen} closeModal={closeUserGrantModal} />}
       {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
       {isTextModalOpen && <TextInputModal isOpen={isTextModalOpen} title={title} fieldname={'Reason'} onSave={handleConfirm} isRequired={true} closeModal={() => { setIsTextModalOpen(false);}} />}

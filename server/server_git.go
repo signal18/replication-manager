@@ -23,7 +23,6 @@ import (
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/meethelper"
 	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 )
 
 func (repman *ReplicationManager) GetIsGitPush() bool {
@@ -149,7 +148,7 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 			return err
 		}
 
-		tokenName := conf.Cloud18Domain + "-" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
+		tokenName := conf.GetInstancePATName()
 		personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, tokenName, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 		if personal_access_token == "" {
 			personal_access_token, err = githelper.CreatePersonalAccessTokenCSRF(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), tokenName)
@@ -217,6 +216,12 @@ func (repman *ReplicationManager) PushAllConfigsToGit() error {
 	repman.AddPluginDirToGitignore()
 	repman.AddDictTablesToGitignore()
 	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "*/variable-diff.json")
+	// Event log instance-local state and crash-safe temp files never travel.
+	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "event-log-state.json")
+	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "*.new")
+	// The .config isolated clone is replaced by the config event log
+	// (doc/implementation/config/CONFIG_EVENT_LOG.md); drop leftovers.
+	os.RemoveAll(filepath.Join(repman.Conf.WorkingDir, ".config"))
 
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Pushing All Configs To Git")
 
@@ -1148,6 +1153,23 @@ func (repman *ReplicationManager) PushConfigToGit() error {
 		}
 	}
 
+	// Add this instance's config event log: peers replicate config changes
+	// by replaying it (doc/implementation/config/CONFIG_EVENT_LOG.md) — an
+	// unstaged log means events never leave this node.
+	if entries, err := os.ReadDir(path); err == nil {
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasPrefix(e.Name(), "event-changed.") || !strings.HasSuffix(e.Name(), ".log") {
+				continue
+			}
+			if _, err := w.Add(e.Name()); err == nil {
+				changedFiles = append(changedFiles, e.Name())
+			} else {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+					"Git error: cannot add %s: %s", e.Name(), err)
+			}
+		}
+	}
+
 	// Skip commit if no files were changed
 	if len(changedFiles) == 0 {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg,
@@ -1238,146 +1260,3 @@ func (repman *ReplicationManager) ShallowClone() error {
 	return err
 }
 
-// PullActiveConfig pulls config from the push repo (GitUrl) when all clusters
-// are on standby. If changes were pulled, it reloads standby cluster configs.
-// It coordinates with ConfigManager's gitMutex to avoid racing with push operations.
-func (repman *ReplicationManager) PullActiveConfig() {
-	if repman.ConfigManager == nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-			"Standby: ConfigManager not initialized, skipping config pull")
-		return
-	}
-
-	repman.ConfigManager.WithGitLock(func() {
-		repman.pullActiveConfigLocked()
-	})
-}
-
-func (repman *ReplicationManager) pullActiveConfigLocked() {
-	path := repman.Conf.WorkingDir
-	tok := repman.Conf.GetDecryptedValue("git-acces-token")
-	user := repman.Conf.GitUsername
-	url := repman.Conf.GitUrl
-
-	auth := &git_https.BasicAuth{
-		Username: user,
-		Password: tok,
-	}
-
-	gitDir := filepath.Join(path, ".git")
-	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo,
-			"Standby: initializing git repo from %s for config sync", url)
-		tmpParent := filepath.Join(path, ".tmp")
-		if err := os.MkdirAll(tmpParent, 0755); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-				"Standby: cannot create .tmp directory: %s", err)
-			return
-		}
-		tmpDir, tmpErr := os.MkdirTemp(tmpParent, "repman-standby-clone-*")
-		if tmpErr != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-				"Standby: cannot create temp dir for clone: %s", tmpErr)
-			return
-		}
-		defer os.RemoveAll(tmpDir)
-
-		_, cloneErr := git.PlainClone(tmpDir, false, &git.CloneOptions{
-			URL:          url,
-			Auth:         auth,
-			Depth:        1,
-			SingleBranch: true,
-		})
-		if cloneErr != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-				"Standby: cannot clone config repo: %s", cloneErr)
-			return
-		}
-
-		if err := os.Rename(filepath.Join(tmpDir, ".git"), gitDir); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-				"Standby: cannot move .git metadata: %s", err)
-			return
-		}
-	}
-
-	r, err := git.PlainOpen(path)
-	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-			"Standby: cannot open git repo at %s: %s", path, err)
-		return
-	}
-
-	w, err := r.Worktree()
-	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-			"Standby: cannot get worktree: %s", err)
-		return
-	}
-
-	err = w.Pull(&git.PullOptions{
-		RemoteName:   "origin",
-		Auth:         auth,
-		SingleBranch: true,
-		Force:        true,
-	})
-
-	if err == git.NoErrAlreadyUpToDate {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg,
-			"Standby: config already up to date")
-		return
-	}
-	if err != nil && err != transport.ErrEmptyRemoteRepository {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
-			"Standby: git pull failed: %s", err)
-		return
-	}
-
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo,
-		"Standby: pulled config changes from active node, reloading")
-
-	repman.ReloadStandbyConfigsFromDisk()
-}
-
-// ReloadStandbyConfigsFromDisk re-reads config files from the working directory
-// for each standby cluster and reloads if the config changed.
-func (repman *ReplicationManager) ReloadStandbyConfigsFromDisk() {
-	for _, name := range repman.ClusterList {
-		cl := repman.getClusterByName(name)
-		if cl == nil || cl.IsActive() {
-			continue
-		}
-
-		configFile := filepath.Join(repman.Conf.WorkingDir, name, name+".toml")
-		if _, err := os.Stat(configFile); os.IsNotExist(err) {
-			continue
-		}
-
-		v := viper.New()
-		v.SetConfigType("toml")
-		v.SetConfigFile(configFile)
-		if err := v.ReadInConfig(); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
-				"Standby: cannot read saved config for %s: %s", name, err)
-			continue
-		}
-
-		sub := v.Sub("saved-" + name)
-		if sub == nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg,
-				"Standby: no saved section found in %s", configFile)
-			continue
-		}
-
-		newConf := *cl.Conf
-		if err := sub.Unmarshal(&newConf); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
-				"Standby: cannot unmarshal saved config for %s: %s", name, err)
-			continue
-		}
-
-		cl.ReloadConfig(newConf)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
-			"Standby: reloaded config for cluster %s from active node", name)
-	}
-}

@@ -400,7 +400,7 @@ const initialState = {
   templateGuideContent: '',
   templateGuideError: null,
   terms: ``,
-  globalAlerts: { errors: [], warnings: [] },
+  globalAlerts: { errors: [], warnings: [], infos: [] },
   globalMetrics: null,
   globalLogs: { general: { buffer: [], len: 0, line: 0 } }
 }
@@ -481,7 +481,8 @@ export const globalClustersSlice = createSlice({
       .addCase(getGlobalAlerts.fulfilled, (state, action) => {
         state.globalAlerts = {
           errors: action.payload.data?.errors ?? [],
-          warnings: action.payload.data?.warnings ?? []
+          warnings: action.payload.data?.warnings ?? [],
+          infos: action.payload.data?.infos ?? []
         }
       })
       .addCase(getGlobalAlerts.rejected, (state, action) => {

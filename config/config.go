@@ -160,8 +160,8 @@ type Config struct {
 	LogSST                                    bool                         `mapstructure:"log-sst" toml:"log-sst" json:"logSst"`                  // internal replication-manager sst
 	LogSSTLevel                               int                          `mapstructure:"log-level-sst" toml:"log-level-sst" json:"logSstLevel"` // internal replication-manager sst
 	SSTSendBuffer                             int                          `mapstructure:"sst-send-buffer" toml:"sst-send-buffer" json:"sstSendBuffer"`
-	LogHeartbeat                              bool                         `mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
-	LogHeartbeatLevel                         int                          `mapstructure:"log-level-heartbeat" toml:"log-level-heartbeat" json:"logHeartbeatLevel"`
+	LogHeartbeat                              bool                         `scope:"server" mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
+	LogHeartbeatLevel                         int                          `scope:"server" mapstructure:"log-level-heartbeat" toml:"log-level-heartbeat" json:"logHeartbeatLevel"`
 	LogSQLInMonitoring                        bool                         `mapstructure:"log-sql-in-monitoring"  toml:"log-sql-in-monitoring" json:"logSqlInMonitoring"`
 	LogSQLLevel                               int                          `mapstructure:"log-level-sql"  toml:"log-level-sql" json:"logSqlLevel"`
 	LogAppLevel                               int                          `mapstructure:"log-level-app"  toml:"log-level-app" json:"logAppLevel"`
@@ -195,6 +195,8 @@ type Config struct {
 	LogLevelDatabaseSlowquery                 int                          `mapstructure:"log-level-database-slowquery" toml:"log-level-database-slowquery" json:"logLevelDatabaseSlowquery"`
 	LogLevelDatabaseOptimize                  int                          `mapstructure:"log-level-database-optimize" toml:"log-level-database-optimize" json:"logLevelDatabaseOptimize"`
 	LogLevelDatabaseAudit                     int                          `mapstructure:"log-level-database-audit" toml:"log-level-database-audit" json:"logLevelDatabaseAudit"`
+	LogArbitration                            bool                         `mapstructure:"log-arbitration" toml:"log-arbitration" json:"logArbitration"`
+	LogArbitrationLevel                       int                          `mapstructure:"log-level-arbitration" toml:"log-level-arbitration" json:"logArbitrationLevel"`
 	LogPlugin                                 bool                         `mapstructure:"log-plugin" toml:"log-plugin" json:"logPlugin"`
 	MonitorBinlogEvents                       bool                         `mapstructure:"monitoring-binlog-events" toml:"monitoring-binlog-events" json:"monitoringBinlogEvents"`
 	MonitoringLogAPILogin                     bool                         `scope:"server" mapstructure:"monitoring-log-api-login" toml:"monitoring-log-api-login" json:"monitoringLogApiLogin"`
@@ -904,6 +906,7 @@ type Config struct {
 	GitUsername                            string                 `scope:"server" mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
 	GitAccesToken                          string                 `scope:"server" mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
 	GitMonitoringTicker                    int                    `scope:"server" mapstructure:"git-monitoring-ticker" toml:"git-monitoring-ticker" json:"gitMonitoringTicker"`
+	GitConfigSyncStandby                   bool                   `mapstructure:"git-config-sync-standby" toml:"git-config-sync-standby" json:"gitConfigSyncStandby"`
 	Cloud18                                bool                   `scope:"server" mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
 	Cloud18Domain                          string                 `scope:"server" mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain" groups:"apps"`
 	Cloud18SubDomain                       string                 `scope:"server" mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain" groups:"apps"`
@@ -1114,6 +1117,11 @@ type ConfigVariableType struct {
 type Secret struct {
 	OldValue string
 	Value    string
+	// Crypted caches the ciphertext for Value so periodic config saves reuse
+	// it instead of re-encrypting with a fresh random IV on every save (which
+	// made every saved file differ and churned git config sync). Invalidated
+	// naturally whenever the Secret is replaced on a runtime change.
+	Crypted string
 }
 
 type Partner struct {
@@ -1468,7 +1476,8 @@ const (
 	// ConstLogModMaintenance covers planned-operations modules (backup, SST,
 	// task execution, purge, orchestrator provisioning). Routed to maintenance.log
 	// when configured so operational noise does not pollute the HA main log.
-	ConstLogModMaintenance = 31
+	ConstLogModMaintenance  = 31
+	ConstLogModArbitration = 32
 )
 
 /*
@@ -1506,6 +1515,7 @@ const (
 	ConstLogNameDbAuditlog     string = "log-database-auditlog"
 	ConstLogNameDbSqlError     string = "log-database-sqlerrorlog"
 	ConstLogNamePlugin         string = "log-plugin" // generic log-tailer plugin module
+	ConstLogNameArbitration    string = "log-arbitration"
 )
 
 /*
@@ -1658,6 +1668,15 @@ const (
 	TopoActivePassive       string = "active-passive"
 )
 
+// GetInstancePATName returns the per-instance GitLab PAT name: the cloud18
+// domain triplet plus this instance's unique id. Peers share the GitLab
+// account, so a shared token name meant every boot (and daily rotation) of
+// either instance rotated — and invalidated — the other's token, breaking
+// its git access until its own next restart.
+func (conf *Config) GetInstancePATName() string {
+	return conf.Cloud18Domain + "-" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + "-" + strconv.Itoa(conf.ArbitrationSasUniqueId)
+}
+
 func (conf *Config) GetSecrets() map[string]Secret {
 	// to store the flags to encrypt in the git (in Save() function)
 	return conf.Secrets
@@ -1665,35 +1684,35 @@ func (conf *Config) GetSecrets() map[string]Secret {
 
 func (conf *Config) DecryptSecretsFromConfig() {
 	conf.Secrets = map[string]Secret{
-		"api-credentials":                       {"", ""},
-		"api-credentials-external":              {"", ""},
-		"db-servers-credential":                 {"", ""},
-		"monitoring-write-heartbeat-credential": {"", ""},
-		"onpremise-ssh-credential":              {"", ""},
-		"replication-credential":                {"", ""},
-		"shardproxy-credential":                 {"", ""},
-		"haproxy-password":                      {"", ""},
-		"maxscale-pass":                         {"", ""},
-		"myproxy-password":                      {"", ""},
-		"proxysql-password":                     {"", ""},
-		"proxyjanitor-password":                 {"", ""},
-		"vault-secret-id":                       {"", ""},
-		"opensvc-p12-secret":                    {"", ""},
-		"backup-restic-aws-access-secret":       {"", ""},
-		"backup-streaming-aws-access-secret":    {"", ""},
-		"backup-restic-password":                {"", ""},
-		"arbitration-external-secret":           {"", ""},
-		"alert-pushover-user-token":             {"", ""},
-		"alert-pushover-app-token":              {"", ""},
-		"git-acces-token":                       {"", ""},
-		"mail-smtp-password":                    {"", ""},
-		"cloud18-gitlab-password":               {"", ""},
-		"cloud18-dba-user-credentials":          {"", ""},
-		"cloud18-sponsor-user-credentials":      {"", ""},
-		"cloud18-domain-secret":                 {"", ""},
-		"vault-token":                           {"", ""},
-		"api-oauth-client-secret":               {"", ""},
-		"meet-token":                            {"", ""}}
+		"api-credentials":                       {},
+		"api-credentials-external":              {},
+		"db-servers-credential":                 {},
+		"monitoring-write-heartbeat-credential": {},
+		"onpremise-ssh-credential":              {},
+		"replication-credential":                {},
+		"shardproxy-credential":                 {},
+		"haproxy-password":                      {},
+		"maxscale-pass":                         {},
+		"myproxy-password":                      {},
+		"proxysql-password":                     {},
+		"proxyjanitor-password":                 {},
+		"vault-secret-id":                       {},
+		"opensvc-p12-secret":                    {},
+		"backup-restic-aws-access-secret":       {},
+		"backup-streaming-aws-access-secret":    {},
+		"backup-restic-password":                {},
+		"arbitration-external-secret":           {},
+		"alert-pushover-user-token":             {},
+		"alert-pushover-app-token":              {},
+		"git-acces-token":                       {},
+		"mail-smtp-password":                    {},
+		"cloud18-gitlab-password":               {},
+		"cloud18-dba-user-credentials":          {},
+		"cloud18-sponsor-user-credentials":      {},
+		"cloud18-domain-secret":                 {},
+		"vault-token":                           {},
+		"api-oauth-client-secret":               {},
+		"meet-token":                            {}}
 
 	for k := range conf.Secrets {
 
@@ -1713,6 +1732,11 @@ func (conf *Config) DecryptSecretsFromConfig() {
 			log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).Infof("DecryptSecretsFromConfig: %s", secret.Value)
 		}
 
+		// Seed the ciphertext cache from the loaded config value so the first
+		// save reuses it instead of re-encrypting with a fresh IV.
+		if strings.Contains(secret.Value, "hash_") {
+			secret.Crypted = secret.Value
+		}
 		secret.Value = conf.DecryptSecretValue(k, secret.Value)
 		//log.Printf("Decrypting secret variable %s=%s", k, secret.Value)
 		conf.Secrets[k] = secret
@@ -1739,6 +1763,64 @@ func (conf *Config) DecryptSecretValue(key string, value string) string {
 		}
 	}
 	return strings.Join(tab_cred, ",")
+}
+
+// EncryptSecretValue encrypts a secret payload while preserving composite
+// credential structure ("user:hash_..." and comma-separated lists), mirroring
+// DecryptSecretValue: only password parts are encrypted.
+func (conf *Config) EncryptSecretValue(value string) string {
+	var out []string
+	for _, cred := range strings.Split(value, ",") {
+		if strings.Contains(cred, ":") {
+			user, pass := misc.SplitPair(cred)
+			out = append(out, user+":"+conf.GetEncryptedString(pass))
+		} else if cred != "" {
+			out = append(out, conf.GetEncryptedString(cred))
+		} else {
+			out = append(out, cred)
+		}
+	}
+	return strings.Join(out, ",")
+}
+
+// GetStableEncryptedValue returns a ciphertext for secret <key> that is
+// STABLE across saves: the ciphertext loaded from the config file (or cached
+// from a previous save) is reused as long as it still decrypts to the given
+// plain value. A fresh encryption (fresh random IV) is produced only when the
+// value actually changed. Without this, every periodic SaveConfig rewrote all
+// secrets with new IVs, so saved files always differed, git config sync
+// pushed on every cycle, and peer/standby nodes reloaded on every pull.
+func (conf *Config) GetStableEncryptedValue(key string, value string) string {
+	if value == "" {
+		return ""
+	}
+	sec, ok := conf.Secrets[key]
+	if ok && sec.Crypted != "" && conf.DecryptSecretValue(key, sec.Crypted) == value {
+		return sec.Crypted
+	}
+	// Reuse the raw value the config was loaded with when it still encodes
+	// the current value.
+	for _, m := range []map[string]interface{}{conf.DynamicFlagMap, conf.ImmuableFlagMap} {
+		if m == nil {
+			continue
+		}
+		if raw, found := m[key]; found {
+			s := fmt.Sprintf("%v", raw)
+			if strings.Contains(s, "hash_") && conf.DecryptSecretValue(key, s) == value {
+				if ok {
+					sec.Crypted = s
+					conf.Secrets[key] = sec
+				}
+				return s
+			}
+		}
+	}
+	enc := conf.EncryptSecretValue(value)
+	if ok {
+		sec.Crypted = enc
+		conf.Secrets[key] = sec
+	}
+	return enc
 }
 
 func (conf *Config) GetVaultCredentials(client *vault.Client, path string, key string) (string, error) {
@@ -2037,6 +2119,66 @@ func (conf *Config) PrintSecret(value string) string {
 	return masker.String(masker.MAddress, value)
 }
 
+// gitNetworkTimeout bounds every go-git network operation: without it a hung
+// remote holds the git mutex forever and freezes config saves.
+const gitNetworkTimeout = 120 * time.Second
+
+// FetchRemoteRootFiles fetches origin on the git repo at dir (bounded by
+// gitNetworkTimeout) and returns the contents of repo-root files whose name
+// matches prefix+suffix, read directly from the fetched remote-tracking ref.
+// The working tree is never touched — no checkout, no merge, no conflicts —
+// which is what makes it safe to run on a repo whose working tree is also
+// written locally (config saves, event logs). Used to read peer
+// event-changed.<id>.log files (doc/implementation/config/CONFIG_EVENT_LOG.md).
+func (conf *Config) FetchRemoteRootFiles(dir string, user string, tok string, prefix string, suffix string) (map[string][]byte, error) {
+	r, err := git.PlainOpen(dir)
+	if err != nil {
+		return nil, err
+	}
+	auth := &git_https.BasicAuth{
+		Username: user,
+		Password: tok,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), gitNetworkTimeout)
+	defer cancel()
+	err = r.FetchContext(ctx, &git.FetchOptions{RemoteName: "origin", Auth: auth, Force: true})
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		return nil, err
+	}
+	head, err := r.Head()
+	if err != nil {
+		return nil, err
+	}
+	ref, err := r.Reference(plumbing.NewRemoteReferenceName("origin", head.Name().Short()), true)
+	if err != nil {
+		return nil, err
+	}
+	commit, err := r.CommitObject(ref.Hash())
+	if err != nil {
+		return nil, err
+	}
+	tree, err := commit.Tree()
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][]byte)
+	for _, e := range tree.Entries {
+		if !strings.HasPrefix(e.Name, prefix) || !strings.HasSuffix(e.Name, suffix) {
+			continue
+		}
+		f, ferr := tree.File(e.Name)
+		if ferr != nil {
+			continue
+		}
+		c, cerr := f.Contents()
+		if cerr != nil {
+			continue
+		}
+		out[e.Name] = []byte(c)
+	}
+	return out, nil
+}
+
 func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir string) error {
 	var err error
 	var r *git.Repository
@@ -2073,7 +2215,11 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 		}
 		// Pull the latest changes from the origin remote and merge into the current branch
 		//git_ex.Info("git pull origin")
-		err = w.Pull(&git.PullOptions{
+		// Bounded: go-git has no default network timeout and a hung pull
+		// holds the git mutex forever, freezing config saves and the main loop.
+		ctx, cancel := context.WithTimeout(context.Background(), gitNetworkTimeout)
+		defer cancel()
+		err = w.PullContext(ctx, &git.PullOptions{
 			RemoteName:   "origin",
 			Auth:         auth,
 			SingleBranch: true,
@@ -2094,7 +2240,9 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 		// Clone the given repository to the given directory
 		//git_ex.Info("git clone %s %s --recursive", url, path)
 
-		_, err = git.PlainClone(path, false, &git.CloneOptions{
+		ctx, cancel := context.WithTimeout(context.Background(), gitNetworkTimeout)
+		defer cancel()
+		_, err = git.PlainCloneContext(ctx, path, false, &git.CloneOptions{
 			URL:               url,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 			Auth:              auth,
@@ -2125,9 +2273,14 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 	}
 	path := dir
 
+	// Bounded like CloneConfigFromGit: go-git has no default network timeout
+	// and the push worker holds the git mutex — a hang here freezes saves.
+	ctx, cancel := context.WithTimeout(context.Background(), gitNetworkTimeout)
+	defer cancel()
+
 	var r *git.Repository
 	if _, err := os.Stat(path + "/.git"); os.IsNotExist(err) {
-		r, err = git.PlainClone(path, false, &git.CloneOptions{
+		r, err = git.PlainCloneContext(ctx, path, false, &git.CloneOptions{
 			URL:               url,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 			Auth:              auth,
@@ -2135,7 +2288,7 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 		if err != nil {
 			if err == transport.ErrRepositoryNotFound {
 				conf.CreateGitlabProjects()
-				r, err = git.PlainClone(path, false, &git.CloneOptions{
+				r, err = git.PlainCloneContext(ctx, path, false, &git.CloneOptions{
 					URL:               url,
 					RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 					Auth:              auth,
@@ -2207,6 +2360,24 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 		}
 	}
 
+	// Stage this instance's config event log: peers replicate config changes
+	// by replaying it (doc/implementation/config/CONFIG_EVENT_LOG.md) — an
+	// unstaged log means events never leave this node. This is the push
+	// implementation the ConfigManager queue actually uses; the legacy
+	// server-side PushConfigToGit stages it too.
+	if entries, rerr := os.ReadDir(conf.WorkingDir); rerr == nil {
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasPrefix(e.Name(), "event-changed.") || !strings.HasSuffix(e.Name(), ".log") {
+				continue
+			}
+			if _, aerr := w.Add(e.Name()); aerr != nil {
+				if conf.IsEligibleForPrinting(ConstLogModGit, LvlErr) {
+					log.Errorf("Git error : cannot Add %s : %s", e.Name(), aerr)
+				}
+			}
+		}
+	}
+
 	// cloud18.toml will be in pull repo
 	// if _, err := os.Stat(conf.WorkingDir + "/.pull/cloud18.toml"); !os.IsNotExist(err) {
 	// 	_, err = w.Add("cloud18.toml")
@@ -2241,7 +2412,7 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 		return err
 	}
 
-	err = w.Pull(&git.PullOptions{
+	err = w.PullContext(ctx, &git.PullOptions{
 		RemoteName: "origin",
 		Auth:       auth,
 		RemoteURL:  url,
@@ -2253,7 +2424,7 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 	}
 
 	// push using default options
-	err = r.Push(&git.PushOptions{Auth: auth, RemoteURL: url})
+	err = r.PushContext(ctx, &git.PushOptions{Auth: auth, RemoteURL: url})
 	if err != nil {
 		log.Errorf("Git error : cannot Push : %s", err)
 	}
@@ -2941,6 +3112,10 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			if conf.LogPlugin {
 				return conf.LogPluginLevel >= lvl
 			}
+		case module == ConstLogModArbitration:
+			if conf.LogArbitration {
+				return conf.LogArbitrationLevel >= lvl
+			}
 		case module == ConstLogModMaintenance:
 			return true // always eligible; routing is handled by MaintenanceLogrus
 		}
@@ -3126,6 +3301,8 @@ func GetTagsForLog(module int) string {
 		return "plugin"
 	case ConstLogModMaintenance:
 		return "maintenance"
+	case ConstLogModArbitration:
+		return "arbitration"
 	}
 	return ""
 }
@@ -3208,6 +3385,8 @@ func GetIndexFromModuleName(module string) int {
 		return ConstLogModDbAudit
 	case ConstLogNamePlugin:
 		return ConstLogModPlugin
+	case ConstLogNameArbitration:
+		return ConstLogModArbitration
 	}
 	return -1
 }

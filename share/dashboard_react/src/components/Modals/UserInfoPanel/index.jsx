@@ -4,6 +4,7 @@ import {
 } from '@chakra-ui/react'
 import React from 'react'
 import { HiMoon, HiSun } from 'react-icons/hi'
+import { FaUserPlus } from 'react-icons/fa'
 import RMButton from '../../RMButton'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
@@ -11,7 +12,7 @@ import parentStyles from '../styles.module.scss'
 // Static checkmark character for grant/role indicators
 const CHECK_MARK = '\u2713'
 
-function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
+function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false, onAddUser }) {
   const { theme, toggleTheme } = useTheme()
   const badgeVariant = theme === 'dark' ? 'solid' : 'subtle'
 
@@ -72,9 +73,19 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout }) {
                   <Text fontSize='sm'>{theme === 'light' ? 'Dark mode' : 'Light mode'}</Text>
                 </HStack>
               </RMButton>
-              <RMButton colorScheme='red' onClick={onLogout}>
-                Logout
-              </RMButton>
+              <HStack spacing={3}>
+                {canAddUser && (
+                  <RMButton onClick={onAddUser}>
+                    <HStack spacing={1}>
+                      <FaUserPlus />
+                      <Text fontSize='sm'>Add User</Text>
+                    </HStack>
+                  </RMButton>
+                )}
+                <RMButton colorScheme='red' onClick={onLogout}>
+                  Logout
+                </RMButton>
+              </HStack>
             </HStack>
 
             {clusterNames.length > 0 && roleList.length > 0 && (

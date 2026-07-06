@@ -16,6 +16,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
+	"github.com/signal18/replication-manager/utils/meethelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -28,7 +29,14 @@ const (
 	gitPullErrErrKey                            = "GERR003"
 	gitlabConnectWarnErrKey                     = "GWARN004"
 	crmConnectWarnErrKey                        = "GWARN005"
-	defaultMonitorGlobalHeartbeatStallThreshold = 5
+	meetConnectWarnErrKey                       = "GWARN012"
+	// Stall detection counts repman loop ticks (monitoring-ticker, 2s) with an
+	// unchanged cluster heartbeat — but a busy cluster tick can legitimately
+	// take 10s+ (slow DB connection attempts during an outage), so a tight
+	// threshold flaps STALLED/RESUME on every cluster tick. A truly stalled
+	// cluster loop stays stalled for minutes: 30 ticks (~60s) detects it fast
+	// without flapping. Tunable via monitor-global-heartbeat-stall-threshold.
+	defaultMonitorGlobalHeartbeatStallThreshold = 30
 	heartbeatCriticalThresholdMultiplier        = int64(3)
 
 	// cloud18ConnectivityProbeTimeout is the per-request deadline for the
@@ -358,6 +366,122 @@ func (repman *ReplicationManager) getClusterHeartbeatStallThresholdCycles() int6
 	return int64(defaultMonitorGlobalHeartbeatStallThreshold)
 }
 
+// ProduceClusterAggregateStates rolls per-cluster conditions up to the
+// monitor-level state machine so the global Monitor button reflects fleet
+// health: clusters with open blockers (GERR005, error), unprovisioned
+// clusters (GWARN009) and unmonitored clusters (GWARN010). States are
+// re-asserted every cycle and auto-resolve when the condition clears.
+func (repman *ReplicationManager) ProduceClusterAggregateStates() {
+	if repman == nil || repman.StateMachine == nil {
+		return
+	}
+
+	repman.Lock()
+	clusterSnapshot := make(map[string]*cluster.Cluster)
+	if repman.Clusters != nil {
+		for name, cl := range repman.Clusters {
+			clusterSnapshot[name] = cl
+		}
+	}
+	repman.Unlock()
+
+	var withBlockers, unprovisioned, unmonitored, pullConfig []string
+	for name, cl := range clusterSnapshot {
+		if cl == nil {
+			continue
+		}
+		// Unprovisioned or unmonitored clusters carry inherent error states
+		// (unreachable databases): they are surfaced as GINF002/GINF003 tags
+		// and must not pollute the fleet blocker count.
+		if sm := cl.GetStateMachine(); sm != nil && len(sm.GetOpenErrors()) > 0 && cl.IsProvision && !cl.Conf.MonitorPause {
+			withBlockers = append(withBlockers, name)
+		}
+		if !cl.IsProvision {
+			unprovisioned = append(unprovisioned, name)
+		}
+		if cl.Conf.MonitorPause {
+			unmonitored = append(unmonitored, name)
+		}
+		// Same condition as the standby config sync apply loop: this cluster's
+		// config is being pulled from the active peer.
+		if !cl.IsActive() && cl.Conf.GitConfigSyncStandby {
+			pullConfig = append(pullConfig, name)
+		}
+	}
+	sort.Strings(withBlockers)
+	sort.Strings(unprovisioned)
+	sort.Strings(unmonitored)
+	sort.Strings(pullConfig)
+
+	if len(withBlockers) > 0 {
+		repman.SetState("GERR005", state.State{
+			ErrType: "ERROR",
+			ErrKey:  "GERR005",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GERR005"], len(withBlockers), strings.Join(withBlockers, ", ")),
+			ErrFrom: "REPMAN",
+		})
+	}
+	if len(pullConfig) > 0 {
+		repman.SetState("GINF001", state.State{
+			ErrType: "INFO",
+			ErrKey:  "GINF001",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GINF001"], len(pullConfig), strings.Join(pullConfig, ", ")),
+			ErrFrom: "REPMAN",
+		})
+	}
+	// Monitor-mode tags: Cloud18 registration and active support chat.
+	// Registered means the GitLab SSO login of the instance actually
+	// succeeded — InitGitConfig acquired a personal access token (and turns
+	// Cloud18 off on auth failure) — not merely that credentials are present
+	// in the config. Not registered surfaces as a warning: community
+	// features (support chat, marketplace, arbitration, peers) may be
+	// disabled without registration.
+	registered := repman.Conf != nil && repman.Conf.Cloud18 && repman.Conf.Cloud18GitUser != "" && repman.Conf.GetDecryptedValue("git-acces-token") != ""
+	if registered {
+		repman.SetState("GINF004", state.State{
+			ErrType: "INFO",
+			ErrKey:  "GINF004",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GINF004"], repman.Conf.Cloud18GitUser, repman.Conf.Cloud18SubscriptionPlan),
+			ErrFrom: "REPMAN",
+		})
+	} else {
+		reason := "cloud18 disabled"
+		if repman.Conf != nil && repman.Conf.Cloud18 {
+			reason = "GitLab SSO login not completed"
+		}
+		repman.SetState("GWARN014", state.State{
+			ErrType: "WARNING",
+			ErrKey:  "GWARN014",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN014"], reason),
+			ErrFrom: "REPMAN",
+		})
+	}
+	if repman.MeetUserID != "" {
+		repman.SetState("GINF005", state.State{
+			ErrType: "INFO",
+			ErrKey:  "GINF005",
+			ErrDesc: config.GlobalError["GINF005"],
+			ErrFrom: "REPMAN",
+		})
+	}
+	if len(unprovisioned) > 0 {
+		repman.SetState("GINF002", state.State{
+			ErrType: "INFO",
+			ErrKey:  "GINF002",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GINF002"], len(unprovisioned), strings.Join(unprovisioned, ", ")),
+			ErrFrom: "REPMAN",
+		})
+	}
+	if len(unmonitored) > 0 {
+		repman.SetState("GINF003", state.State{
+			ErrType: "INFO",
+			ErrKey:  "GINF003",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GINF003"], len(unmonitored), strings.Join(unmonitored, ", ")),
+			ErrFrom: "REPMAN",
+		})
+	}
+}
+
 // ProduceCloud18ConnectivityStates probes the GitLab identity provider and the
 // CRM API for reachability and opens/closes GWARN004 / GWARN005 global alert
 // states accordingly.  It is a no-op when Cloud18 is not enabled.
@@ -409,6 +533,20 @@ func (repman *ReplicationManager) ProduceCloud18ConnectivityStates() {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 				"Cloud18 CRM API unreachable (%s): %s", crmProbeURL, crmErr)
 		}
+	}
+
+	// ── Meet / support service probe ────────────────────────────────────────
+	meetErr := probeHTTPReachability(client, meethelper.MeetURL)
+	if meetErr != nil {
+		desc := fmt.Sprintf(config.GlobalError[meetConnectWarnErrKey], meetErr.Error())
+		repman.SetState(meetConnectWarnErrKey, state.State{
+			ErrType: "WARNING",
+			ErrKey:  meetConnectWarnErrKey,
+			ErrDesc: desc,
+			ErrFrom: "REPMAN",
+		})
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"Meet support service unreachable (%s): %s", meethelper.MeetURL, meetErr)
 	}
 }
 

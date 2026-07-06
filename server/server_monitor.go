@@ -28,18 +28,30 @@ import (
 
 var defaultFlagMap map[string]interface{}
 
+// ensureRepMan constructs the RepMan singleton exactly once with ALL of its
+// runtime dependencies. Three files' init() used to race with bare
+// `if RepMan == nil { RepMan = new(ReplicationManager) }` guards; Go runs
+// file inits alphabetically, so server_decrypt.go won and the monitor init
+// was skipped — leaving MessageChan nil (send would block forever) and the
+// alert state machine nil, so every global SetState was silently dropped:
+// empty Monitor alerts, no OPENED/RESOLV lines, ever.
+func ensureRepMan() {
+	if RepMan != nil {
+		return
+	}
+	RepMan = new(ReplicationManager)
+	RepMan.MessageChan = make(chan sharedlog.Message, 1000)
+	RepMan.StartMessageChanListener()
+	RepMan.InitUser()
+	RepMan.InitAlertStateMachine()
+}
+
 func init() {
 
 	conf.ProvOrchestrator = "local"
 	var errLog = mysql.Logger(mysqllog.New(io.Discard, "", 0))
 	mysql.SetLogger(errLog)
-	if RepMan == nil {
-		RepMan = new(ReplicationManager)
-		RepMan.MessageChan = make(chan sharedlog.Message, 1000)
-		RepMan.StartMessageChanListener()
-		RepMan.InitUser()
-		RepMan.InitAlertStateMachine()
-	}
+	ensureRepMan()
 
 	RepMan.AddFlags(monitorCmd.Flags(), &conf, false)
 

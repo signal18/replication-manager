@@ -1102,7 +1102,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 			cluster.APIUsers[userInfo.Email] = apiuser
 
 			if cluster.Conf.Cloud18 {
-				tokenName := conf.Cloud18Domain + "-" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
+				tokenName := conf.GetInstancePATName()
 				new_token, user_id := githelper.GetGitLabTokenOAuth(oauth2Token.AccessToken, tokenName, cluster.Conf.LogGit)
 				//vault_aut_url := vaulthelper.GetVaultOIDCAuth()
 				//vaulthelper.GetVaultOIDCAuth()

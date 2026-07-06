@@ -22,6 +22,9 @@ import (
 
 const meetUrl string = "https://meet.signal18.io"
 
+// MeetURL exposes the Meet/support service base URL for health probing.
+const MeetURL = meetUrl
+
 var meetToken string = ""
 
 var meetClients []*MeetChatClient

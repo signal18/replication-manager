@@ -170,9 +170,20 @@ function LogsSettings({ selectedCluster, user }) {
       key: 'Core Monitoring',
       value: [
         {
-          key: 'Log HeartBeat',
-          help: h(lh('Log HeartBeat', 'log-level-heartbeat'), 'Log HeartBeat'),
-          value: sl('log-level-heartbeat', 'logHeartbeatLevel')
+          key: 'Log Arbitration',
+          value: (
+            <RMSwitch
+              confirmTitle={'Confirm switch settings for log-arbitration?'}
+              onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'log-arbitration' }))}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              isChecked={selectedCluster?.config?.logArbitration}
+            />
+          )
+        },
+        {
+          key: 'Log Arbitration Level',
+          help: h(lh('Log Arbitration Level', 'log-level-arbitration'), 'Log Arbitration Level'),
+          value: sl('log-level-arbitration', 'logArbitrationLevel')
         },
         {
           key: 'Log Config Load',

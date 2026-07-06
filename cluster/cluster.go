@@ -9,7 +9,6 @@ package cluster
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -23,6 +22,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -189,6 +189,11 @@ type Cluster struct {
 	StagingServer  *ServerMonitor             `json:"-" groups:"web"`
 	mxs            *maxscale.MaxScale         `json:"-"`
 	CheckSumConfig map[string]hash.Hash       `json:"-"`
+	// eventProv is the config event log provenance table: where the current
+	// value of each saved key came from (echo subtraction + LWW). See
+	// cluster_eventlog.go and doc/implementation/config/CONFIG_EVENT_LOG.md.
+	eventProv     map[string]EventProvenanceEntry `json:"-"`
+	eventProvLock sync.Mutex                      `json:"-"`
 	//dbUser                        string                      `json:"-"`
 	//oldDbUser string `json:"-"`
 	//dbPass                        string                      `json:"-"`
@@ -203,6 +208,13 @@ type Cluster struct {
 	// plugins (WORKLOAD severity). Kept separate from the HA StateMachine so performance
 	// noise does not obscure operational cluster health or trigger false failover gates.
 	WorkloadStateMachine *state.StateMachine `json:"workloadStateMachine" groups:"web"`
+	// SchemaStateMachine tracks schema advisory findings from schema plugins
+	// (wire v3 Tables snapshot): engine/row-format inventory tags (SCHTAG),
+	// row-size risks and future DDL/table-diff findings (SCH).
+	SchemaStateMachine *state.StateMachine `json:"schemaStateMachine" groups:"web"`
+	// ConfigStateMachine tracks configuration findings: deprecated variables
+	// (WARN0159/0160) and pending compliance modulesets (WARN0168).
+	ConfigStateMachine *state.StateMachine `json:"configStateMachine" groups:"web"`
 	// SecurityStates is a snapshot of all open security findings from the current monitoring
 	// tick, serialised into the cluster JSON for the dashboard (SecurityStateMachine.CurState
 	// has json:"-" so it cannot be read directly). Updated by CheckLogPlugins.
@@ -218,6 +230,8 @@ type Cluster struct {
 	// WorkloadStates is a snapshot of all open workload findings from the current monitoring
 	// tick. Updated by CheckLogPlugins after all servers have been evaluated.
 	WorkloadStates []state.State `json:"workloadStates" groups:"web"`
+	SchemaStates   []state.State `json:"schemaStates" groups:"web"`
+	ConfigStates   []state.State `json:"configStates" groups:"web"`
 	SecurityScore  SecurityScore `json:"securityScore" groups:"web"`
 	// Set by dbjob SSH scripts scanning my.cnf/.my.cnf on DB servers
 	SecurityClearPwdConfig bool `json:"securityClearPwdConfig"`
@@ -279,6 +293,7 @@ type Cluster struct {
 	Configurator                        configurator.Configurator   `json:"configurator" groups:"web"`
 	DiffVariables                       []VariableDiff              `json:"diffVariables" groups:"web"`
 	inInitNodes                         bool                        `json:"-"`
+	initConfigDone                      atomic.Bool                 `json:"-"`
 	inOptimizeTables                    bool                        `json:"inOptimizeTables" groups:"web"`
 	inAnalyzeTables                     bool                        `json:"inAnalyzeTables" groups:"web"`
 	inConnectVault                      bool                        `json:"-"`
@@ -348,6 +363,20 @@ type Cluster struct {
 	// Kept separate from GlobalRegistry so that one cluster's external plugins do
 	// not pollute the monitoring loop of other clusters.
 	pluginRegistry *logplugin.Registry `json:"-"`
+	// pluginRejections tracks external plugins rejected on the last reload
+	// (binary name -> reason) so CheckPluginRejectionStates can assert one
+	// WARN0206 state per plugin type on every monitoring tick.
+	pluginRejections    map[string]string `json:"-"`
+	pluginPubKeyMissing string            `json:"-"`
+	pluginStateLock     sync.Mutex        `json:"-"`
+	// variableDiffSignature is the identity of the last logged variable diff
+	// set so MonitorVariablesDiff only logs/persists on real changes.
+	variableDiffSignature string `json:"-"`
+	// schemaWireTables caches the wire v3 Tables snapshot for plugin requests,
+	// rebuilt when the schema monitor refreshes the table dictionary.
+	schemaWireTables []logplugin.StdioTable `json:"-"`
+	schemaWireLock   sync.RWMutex           `json:"-"`
+	initiated             bool
 }
 
 // PluginRegistry returns the per-cluster plugin registry, which contains both
@@ -381,6 +410,7 @@ type Agent struct {
 type Alerts struct {
 	Errors   []state.StateHttp `json:"errors"`
 	Warnings []state.StateHttp `json:"warnings"`
+	Infos    []state.StateHttp `json:"infos"`
 }
 
 type Diff struct {
@@ -440,6 +470,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 
 	cluster.InitFromConf()
 	cluster.NewClusterGraphite()
+	cluster.initiated = true
 	return nil
 }
 
@@ -522,6 +553,12 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.WorkloadStateMachine = new(state.StateMachine)
 	cluster.WorkloadStateMachine.Init()
 	cluster.WorkloadStateMachine.SetMasterUpAndSync(false, false, false)
+	cluster.SchemaStateMachine = new(state.StateMachine)
+	cluster.SchemaStateMachine.Init()
+	cluster.SchemaStateMachine.SetMasterUpAndSync(false, false, false)
+	cluster.ConfigStateMachine = new(state.StateMachine)
+	cluster.ConfigStateMachine.Init()
+	cluster.ConfigStateMachine.SetMasterUpAndSync(false, false, false)
 	// k, _ := cluster.Conf.LoadEncrytionKey()
 	// if k == nil {
 	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key")
@@ -619,7 +656,11 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogSlack.Activate("cloud18", true)
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "START", "Replication manager started with version: %s", cluster.Conf.Version)
+	startMsg := "Replication manager cluster started with version: %s"
+	if cluster.initiated {
+		startMsg = "Replication manager cluster config reloaded with version: %s"
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "START", startMsg, cluster.Conf.Version)
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
 		Filename:   cluster.WorkingDir + "/sql_error.log",
@@ -708,6 +749,11 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.RefreshToolVersions()
 	cluster.initResticLocalDir()
 	cluster.StartResticManager()
+	// Config persistence is unlocked only now: the save queue is async and a
+	// save executing mid-init captures a half-loaded config (missing external
+	// users, restic paths, ACLs), emitting transient config change events
+	// that then replay on peers.
+	cluster.initConfigDone.Store(true)
 	if persistRebasedAppCreditCap {
 		if _, saveErr := cluster.SaveConfigFile(); saveErr != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
@@ -741,7 +787,11 @@ func (cluster *Cluster) initOrchetratorNodes() {
 		log.Fatalln("prov-orchestrator not supported", cluster.Conf.ProvOrchestrator)
 	}
 
-	cluster.SetAgentsCpuCoreMem()
+	// Per-agent capacity (cpuCores/memBytes) is published through
+	// agents.json, which the config push already stages for the BO. The old
+	// SetAgentsCpuCoreMem min() into ImmuableFlagMap was write-only, flapped
+	// at boot (empty agent list) and persisted 0 when agents had not
+	// reported capacity — removed 2026-07-06.
 	cluster.SetAgentsMaxCpuFreq()
 	cluster.inInitNodes = false
 
@@ -784,14 +834,13 @@ var pstates30 = []string{
 	"WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
 	"WARN0153",             // Job related
 	"WARN0158",             // Job secrets mismatch
-	"WARN0159", "WARN0160", // Deprecated config keys
 	"CREDIT01", // Credit related
 }
 
 var pstates3600 = []string{
 	"WARN0094",             // Restic
 	"WARN0132", "WARN0137", // App templates
-	"WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121", "WARN0156", "WARN0157", "WARN0167", "WARN0168", // Tools versions + compliance
+	"WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121", "WARN0156", "WARN0157", "WARN0167", // Tools versions
 }
 
 func (cluster *Cluster) Run() {
@@ -857,40 +906,28 @@ func (cluster *Cluster) Run() {
 						}
 					}
 				}
+				// Phase 1: topology discovery must complete before anything reads Servers
 				wg := new(sync.WaitGroup)
 				wg.Add(1)
 				go cluster.TopologyDiscover(wg)
-				wg.Add(1)
-				go cluster.Heartbeat(wg)
 				wg.Wait()
-				// Check scheduled/auto-end interventions on every tick
+
 				cluster.CheckInterventionSchedule()
 
-				// Heartbeat switchover or failover controller runs only on active repman
-
 				if cluster.runOnceAfterTopology {
-					// Preserved server state in proxy during reload config
 					if !cluster.IsInFailover() {
 						cluster.initProxies()
 					}
 					go cluster.initOrchetratorNodes()
 					go cluster.ResticFetchRepo()
 					cluster.SetRollingJobsUpgradeState()
-					// Clean up any lingering restart cookies from previous runs
 					cluster.CleanupRestartCookies()
-					// Scan cluster.WorkingDir/plugins/ for subscription plugin binaries
 					cluster.ReloadLogPlugins()
-					// If master has no cached DictTables (no serverstate.json or old
-					// version without dictTables), trigger schema monitoring once so
-					// the table list is populated on startup.
 					if master := cluster.GetMaster(); master != nil {
 						cachedTables := master.DictTables.ToNewMap()
 						if len(cachedTables) == 0 {
 							go cluster.MonitorSchema()
 						} else {
-							// Recompute workload totals from cached DictTables so the
-							// dashboard gauges show table/index sizes before the first
-							// scheduled MonitorSchema run.
 							var tottablesize, totindexsize int64
 							for _, t := range cachedTables {
 								tottablesize += t.DataLength
@@ -903,54 +940,107 @@ func (cluster *Cluster) Run() {
 					cluster.runOnceAfterTopology = false
 				} else {
 
-					// Preserved server state in proxy during reload config
 					if !cluster.IsInFailover() {
-						wg.Add(2)
-						go cluster.refreshProxies(wg)
-						go cluster.refreshApps(wg)
-						cluster.CheckAppsCredit()
-						cluster.CheckWaitRunJobSSH()
-						cluster.CheckDummyConfigSendCookies()
-						cluster.CheckRestartContainerCookies()
+						goRun := func(fn func()) {
+							wg.Add(1)
+							go func() {
+								defer wg.Done()
+								fn()
+							}()
+						}
+						heartbeats := cluster.StateMachine.GetHeartbeats()
 
-						// Monitor schema when shardproxy is used else it will be trigger by scheduler
+						// Fire-and-forget: long-running, no synchronization needed
 						if cluster.Conf.MdbsProxyOn {
 							go cluster.MonitorSchema()
 						}
-
-						if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
-							cluster.InjectProxiesTraffic()
-						}
-
-						if cluster.StateMachine.GetHeartbeats()%10 == 0 {
-							cluster.CheckJobsVersion()
-							cluster.MonitorTableSchemaDiff()
-						} else {
-							cluster.StateMachine.PreserveState("WARN0147", "WARN0164")
-						}
-
-						if cluster.StateMachine.GetHeartbeats()%30 == 0 {
-							// Check if restic repo is available
-							cluster.ResticFetchRepo()
+						if heartbeats%30 == 0 {
 							go cluster.initOrchetratorNodes()
-							cluster.MonitorQueryRules()
-							cluster.MonitorVariablesDiff()
-							cluster.MonitorVariablesChange()
-							cluster.IsValidBackup = cluster.HasValidBackup()
 							go cluster.CheckCredentialRotation()
-							cluster.CheckCanSaveDynamicConfig()
-							cluster.CheckIsOverwrite()
-							cluster.CheckAllBackupEstimatedSize()
-							cluster.CheckAvailableCredit()
-							cluster.CheckOpenSVCTresholds()
-							cluster.JobsCheckSchedulerTable()
-							cluster.CheckOnPremiseSSHKey()
-							cluster.CheckConfiguratorPrerequisites()
-							cluster.CheckGlobalDeprecatedKeys()
-							cluster.CheckClusterDeprecatedKeys()
-							cluster.CheckClusterServiceAgents()
-						} else {
+						}
+						if heartbeats%3600 == 0 {
+							go cluster.RefreshAllAppTemplateMD5()
+						}
+						if cluster.Conf.BackupReconcileInterval > 0 && heartbeats%int64(cluster.Conf.BackupReconcileInterval) == 0 {
+							cluster.ReconcileSnapshotMetadataAsync()
+						}
+
+						// Phase 2: parallel reads of stable topology — Phase 3 depends on these
+						goRun(cluster.ArbitratorHandler)
+						wg.Add(2)
+						go cluster.refreshProxies(wg)
+						go cluster.refreshApps(wg)
+						if heartbeats%10 == 0 {
+							goRun(cluster.MonitorTableSchemaDiff)
+						}
+						if heartbeats%30 == 0 {
+							goRun(cluster.ResticFetchRepo)
+							goRun(cluster.MonitorVariablesDiff)
+							goRun(cluster.MonitorVariablesChange)
+						}
+						wg.Wait()
+
+						// Phase 3: parallel — depends on Phase 2, independent of each other
+						if heartbeats%30 == 0 {
+							goRun(cluster.MonitorQueryRules)
+						}
+						if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
+							goRun(cluster.InjectProxiesTraffic)
+						}
+						if heartbeats%3600 == 0 {
+							goRun(func() { cluster.ResticPurgeRepo(false) })
+							goRun(cluster.RefreshToolVersions)
+							goRun(cluster.CheckBackupToolVersions)
+							goRun(cluster.CheckComplianceUpdate)
+							goRun(cluster.ReloadDockerRepos)
+						}
+						goRun(cluster.CheckAppsCredit)
+						goRun(cluster.CheckWaitRunJobSSH)
+						goRun(cluster.CheckDummyConfigSendCookies)
+						goRun(cluster.CheckRestartContainerCookies)
+						goRun(cluster.PrintDelayStat)
+						if cluster.SlavesOldestMasterFile.Suffix == 0 {
+							goRun(cluster.CheckSlavesReplicationsPurge)
+						}
+						if heartbeats%10 == 0 {
+							goRun(cluster.CheckJobsVersion)
+						}
+						if heartbeats%30 == 0 {
+							goRun(func() { cluster.IsValidBackup = cluster.HasValidBackup() })
+							goRun(cluster.CheckCanSaveDynamicConfig)
+							goRun(cluster.CheckIsOverwrite)
+							goRun(cluster.CheckAllBackupEstimatedSize)
+							goRun(cluster.CheckAvailableCredit)
+							goRun(cluster.CheckOpenSVCTresholds)
+							goRun(cluster.JobsCheckSchedulerTable)
+							goRun(cluster.CheckOnPremiseSSHKey)
+							goRun(cluster.CheckOnPremiseSSHConnect)
+							goRun(cluster.CheckConfiguratorPrerequisites)
+							goRun(cluster.CheckGlobalDeprecatedKeys)
+							goRun(cluster.CheckClusterDeprecatedKeys)
+							goRun(cluster.CheckClusterServiceAgents)
+						}
+						if cluster.Conf.GraphiteMetrics && heartbeats%5 == 0 {
+							goRun(func() { cluster.SendGraphiteMetrics() })
+							goRun(cluster.CheckDisksUsage)
+						}
+						wg.Wait()
+
+						// PreserveState for non-running ticks (fast, no I/O)
+						if heartbeats%10 != 0 {
+							cluster.StateMachine.PreserveState("WARN0147")
+							cluster.SchemaStateMachine.PreserveState("WARN0164")
+						}
+						if heartbeats%30 != 0 {
 							cluster.StateMachine.PreserveState(pstates30...)
+							cluster.ConfigStateMachine.PreserveState("WARN0159", "WARN0160", "WARN0178")
+						}
+						if heartbeats%3600 != 0 {
+							cluster.StateMachine.PreserveState(pstates3600...)
+							cluster.ConfigStateMachine.PreserveState("WARN0168")
+						}
+						if !(cluster.Conf.GraphiteMetrics && heartbeats%5 == 0) {
+							cluster.StateMachine.PreserveState("WARN0139", "WARN0140")
 						}
 						if !cluster.CanInitNodes {
 							cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
@@ -958,38 +1048,9 @@ func (cluster *Cluster) Run() {
 						if !cluster.CanConnectVault {
 							cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], cluster.errorConnectVault), ErrFrom: "OPENSVC"})
 						}
-						if cluster.StateMachine.GetHeartbeats()%3600 == 0 {
-							// Set in parallel since it will wait for fetch to finish
-							go cluster.RefreshAllAppTemplateMD5()
-							cluster.ResticPurgeRepo(false)
-							cluster.RefreshToolVersions()
-							cluster.CheckBackupToolVersions()
-							cluster.CheckComplianceUpdate()
-							cluster.ReloadDockerRepos()
-						} else {
-							// Preserve tools if not installed or has problem
-							cluster.StateMachine.PreserveState(pstates3600...)
-						}
-						// Reconciliation: Check for drift between metadata and snapshots
-						if cluster.Conf.BackupReconcileInterval > 0 && cluster.StateMachine.GetHeartbeats()%int64(cluster.Conf.BackupReconcileInterval) == 0 {
-							cluster.ReconcileSnapshotMetadataAsync()
-						}
-						if cluster.SlavesOldestMasterFile.Suffix == 0 {
-							go cluster.CheckSlavesReplicationsPurge()
-						}
-						cluster.PrintDelayStat()
-
-						if cluster.Conf.GraphiteMetrics && cluster.StateMachine.GetHeartbeats()%5 == 0 {
-							cluster.SendGraphiteMetrics()
-							cluster.CheckDisksUsage()
-						} else {
-							cluster.StateMachine.PreserveState("WARN0139", "WARN0140")
-						}
 					} else {
 						cluster.StateMachine.PreserveState("ERR00100")
 					}
-
-					wg.Wait()
 				}
 
 				cluster.EmitAppErrors()
@@ -1016,6 +1077,7 @@ func (cluster *Cluster) Run() {
 				cluster.SetStatus()
 				cluster.CheckBackupStates()
 				cluster.CheckResticErrors()
+				cluster.CheckPluginRejectionStates()
 				cluster.StateProcessing()
 				cluster.CheckHasFailCertLoadP12()
 				go cluster.GetSlowLogTable() // prevent blocking cycle
@@ -1197,6 +1259,8 @@ func (cluster *Cluster) StateProcessing() {
 		cluster.StateMachine.ClearState()
 		cluster.WorkloadStateMachine.ClearState()
 		cluster.SecurityStateMachine.ClearState()
+		cluster.SchemaStateMachine.ClearState()
+		cluster.ConfigStateMachine.ClearState()
 		if cluster.StateMachine.GetHeartbeats()%60 == 0 && cluster.IsActive() {
 			cluster.ConfigManager.SaveConfig(cluster, false)
 		}
@@ -1493,6 +1557,10 @@ type ClusterSLAState struct {
 }
 
 func (cluster *Cluster) Save() error {
+	if !cluster.initConfigDone.Load() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Skipping config save: cluster init not complete")
+		return nil
+	}
 
 	_, file, no, ok := runtime.Caller(1)
 	if ok {
@@ -1651,20 +1719,11 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 	keys := t.Keys()
 	keys = misc.SortKeysAsc(keys)
 
-	// Write sorted values to file
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-	if err != nil {
-		if os.IsPermission(err) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error opening file: %s", err)
-		}
-		return false, err
-	}
-	defer file.Close()
-
-	// Write header
-	file.WriteString(header)
+	// Build the full content in memory: the save is written crash-safe
+	// (.new + rename) and key-diffed against the previous save to derive
+	// config change events (see cluster_eventlog.go).
+	var buf bytes.Buffer
+	buf.WriteString(header)
 
 	for _, key := range keys {
 		_, ok := cluster.Conf.ImmuableFlagMap[key]
@@ -1680,36 +1739,19 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 				s.Delete(key)
 				//to encrypt credentials before writting in the config file
 				encrypt_val := cluster.GetEncryptedValueFromMemory(key)
-				file.WriteString(key + " = \"" + encrypt_val + "\"\n")
+				buf.WriteString(key + " = \"" + encrypt_val + "\"\n")
 
 			}
 		}
 	}
 
-	s.WriteTo(file)
-	//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.Conf.ImmuableFlagMap)
-	//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.Conf.DynamicFlagMap)
-	new_h := md5.New()
-	if _, err := io.Copy(new_h, file); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
-	}
+	s.WriteTo(&buf)
 
-	h, ok := cluster.CheckSumConfig["saved"]
-	if !ok {
-		has_changed = true
-	}
-	if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
-		has_changed = true
-	}
-
-	cluster.CheckSumConfig["saved"] = new_h
-
-	return has_changed, nil
+	has_changed, err = cluster.saveConfigArtifact(filePath, buf.Bytes(), "saved-"+cluster.Name, true)
+	return has_changed, err
 }
 
 func (cluster *Cluster) SaveImmutableConfig() (bool, error) {
-	var has_changed bool
-
 	// Get Sorted Keys
 	keys := make([]string, 0)
 	for key := range cluster.Conf.ImmuableFlagMap {
@@ -1718,47 +1760,23 @@ func (cluster *Cluster) SaveImmutableConfig() (bool, error) {
 
 	keys = misc.SortKeysAsc(keys)
 
-	// Open file and
-	file2, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-	if err != nil {
-		if os.IsPermission(err) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml")
-		}
-		return false, err
-	}
-	defer file2.Close()
-
+	var buf bytes.Buffer
 	for _, key := range keys {
 		val := cluster.Conf.ImmuableFlagMap[key]
 		_, ok := cluster.Conf.Secrets[key]
 		if ok {
 			encrypt_val := cluster.GetEncryptedValueFromMemory(key)
-			file2.WriteString(key + " = \"" + encrypt_val + "\"\n")
+			buf.WriteString(key + " = \"" + encrypt_val + "\"\n")
 		} else {
 			if fmt.Sprintf("%T", val) == "string" {
-				file2.WriteString(key + " = \"" + fmt.Sprintf("%v", val) + "\"\n")
+				buf.WriteString(key + " = \"" + fmt.Sprintf("%v", val) + "\"\n")
 			} else {
-				file2.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
+				buf.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
 			}
 		}
 	}
 
-	new_h := md5.New()
-	if _, err := io.Copy(new_h, file2); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
-	}
-
-	h, ok := cluster.CheckSumConfig["immutable"]
-	if !ok {
-		has_changed = true
-	}
-	if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
-		has_changed = true
-	}
-
-	cluster.CheckSumConfig["immutable"] = new_h
-
-	return has_changed, nil
+	return cluster.saveConfigArtifact(cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml", buf.Bytes(), "", true)
 }
 
 func (cluster *Cluster) SaveCacheConfig() error {
@@ -1795,15 +1813,6 @@ func (cluster *Cluster) Overwrite() (bool, error) {
 	var has_changed bool
 
 	if cluster.Conf.ConfRewrite {
-		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-		if err != nil {
-			if os.IsPermission(err) {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml")
-			}
-			return false, err
-		}
-		defer file.Close()
-
 		readconf, _ := toml.Marshal(*cluster.Conf)
 		t, _ := toml.LoadBytes(readconf)
 		s := t
@@ -1831,23 +1840,15 @@ func (cluster *Cluster) Overwrite() (bool, error) {
 
 		}
 
-		file.WriteString("[overwrite-" + cluster.Name + "]\n")
-		s.WriteTo(file)
+		var buf bytes.Buffer
+		buf.WriteString("[overwrite-" + cluster.Name + "]\n")
+		s.WriteTo(&buf)
 
-		new_h := md5.New()
-		if _, err := io.Copy(new_h, file); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
+		var err error
+		has_changed, err = cluster.saveConfigArtifact(cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", buf.Bytes(), "overwrite-"+cluster.Name, true)
+		if err != nil {
+			return has_changed, err
 		}
-
-		h, ok := cluster.CheckSumConfig["overwrite"]
-		if !ok {
-			has_changed = true
-		}
-		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
-			has_changed = true
-		}
-
-		cluster.CheckSumConfig["overwrite"] = new_h
 
 	}
 
@@ -1856,89 +1857,79 @@ func (cluster *Cluster) Overwrite() (bool, error) {
 
 func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 	switch key {
-	case "api-credentials":
+	case "api-credentials", "api-credentials-external":
 		var tab_ApiUser []string
-		lst_Users := strings.Split(cluster.Conf.Secrets["api-credentials"].Value, ",")
+		lst_Users := strings.Split(cluster.Conf.Secrets[key].Value, ",")
 		for ind := range lst_Users {
 			user_pass := strings.Split(lst_Users[ind], ":")
 			if APIuser, ok := cluster.APIUsers[user_pass[0]]; ok {
-				tab_ApiUser = append(tab_ApiUser, APIuser.User+":"+cluster.Conf.GetEncryptedString(APIuser.Password))
+				tab_ApiUser = append(tab_ApiUser, APIuser.User+":"+APIuser.Password)
 			}
 		}
-		return strings.Join(tab_ApiUser, ",")
-	case "api-credentials-external":
-		var tab_ApiUser []string
-		lst_Users := strings.Split(cluster.Conf.Secrets["api-credentials-external"].Value, ",")
-		for ind := range lst_Users {
-			user_pass := strings.Split(lst_Users[ind], ":")
-			if APIuser, ok := cluster.APIUsers[user_pass[0]]; ok {
-				tab_ApiUser = append(tab_ApiUser, APIuser.User+":"+cluster.Conf.GetEncryptedString(APIuser.Password))
-			}
-		}
-		return strings.Join(tab_ApiUser, ",")
+		return cluster.Conf.GetStableEncryptedValue(key, strings.Join(tab_ApiUser, ","))
 	case "db-servers-credential":
 		if cluster.Conf.IsPath(cluster.Conf.User) && cluster.Conf.IsVaultUsed() {
 			return ""
 		}
-		return cluster.GetDbUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetDbPass())
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetDbUser()+":"+cluster.GetDbPass())
 	case "monitoring-write-heartbeat-credential":
-		return cluster.GetMonitorWriteHearbeatUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetMonitorWriteHeartbeatPass())
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetMonitorWriteHearbeatUser()+":"+cluster.GetMonitorWriteHeartbeatPass())
 	case "onpremise-ssh-credential":
-		return cluster.GetOnPremiseSSHUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetOnPremiseSSHPass())
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetOnPremiseSSHUser()+":"+cluster.GetOnPremiseSSHPass())
 
 	case "replication-credential":
 		if cluster.Conf.IsPath(cluster.Conf.RplUser) && cluster.Conf.IsVaultUsed() {
 			return ""
 		}
-		return cluster.GetRplUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetRplPass())
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetRplUser()+":"+cluster.GetRplPass())
 	case "shardproxy-credential":
 		if cluster.Conf.IsPath(cluster.Conf.MdbsProxyCredential) && cluster.Conf.IsVaultUsed() {
 			return ""
 		}
-		return cluster.GetShardUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetShardPass())
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetShardUser()+":"+cluster.GetShardPass())
 	case "backup-restic-password":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("backup-restic-password"))
+		return cluster.Conf.GetStableEncryptedValue("backup-restic-password", cluster.Conf.GetDecryptedValue("backup-restic-password"))
 	case "haproxy-password":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("haproxy-password"))
+		return cluster.Conf.GetStableEncryptedValue("haproxy-password", cluster.Conf.GetDecryptedValue("haproxy-password"))
 	case "maxscale-pass":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("maxscale-pass"))
+		return cluster.Conf.GetStableEncryptedValue("maxscale-pass", cluster.Conf.GetDecryptedValue("maxscale-pass"))
 	case "myproxy-password":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("proxysql-password"))
+		return cluster.Conf.GetStableEncryptedValue("proxysql-password", cluster.Conf.GetDecryptedValue("proxysql-password"))
 	case "proxysql-password":
 		if cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword) && cluster.Conf.IsVaultUsed() {
 			return ""
 		}
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("proxysql-password"))
+		return cluster.Conf.GetStableEncryptedValue("proxysql-password", cluster.Conf.GetDecryptedValue("proxysql-password"))
 	case "proxyjanitor-password":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("proxyjanitor-password"))
+		return cluster.Conf.GetStableEncryptedValue("proxyjanitor-password", cluster.Conf.GetDecryptedValue("proxyjanitor-password"))
 	case "vault-secret-id":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("vault-secret-id"))
+		return cluster.Conf.GetStableEncryptedValue("vault-secret-id", cluster.Conf.GetDecryptedValue("vault-secret-id"))
 	case "opensvc-p12-secret":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("opensvc-p12-secret"))
+		return cluster.Conf.GetStableEncryptedValue("opensvc-p12-secret", cluster.Conf.GetDecryptedValue("opensvc-p12-secret"))
 	case "backup-restic-aws-access-secret":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
+		return cluster.Conf.GetStableEncryptedValue("backup-restic-aws-access-secret", cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
 	case "backup-streaming-aws-access-secret":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("backup-streaming-aws-access-secret"))
+		return cluster.Conf.GetStableEncryptedValue("backup-streaming-aws-access-secret", cluster.Conf.GetDecryptedValue("backup-streaming-aws-access-secret"))
 	case "arbitration-external-secret":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("arbitration-external-secret"))
+		return cluster.Conf.GetStableEncryptedValue("arbitration-external-secret", cluster.Conf.GetDecryptedValue("arbitration-external-secret"))
 	case "alert-pushover-user-token":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("alert-pushover-user-token"))
+		return cluster.Conf.GetStableEncryptedValue("alert-pushover-user-token", cluster.Conf.GetDecryptedValue("alert-pushover-user-token"))
 	case "alert-pushover-app-token":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("alert-pushover-app-token"))
+		return cluster.Conf.GetStableEncryptedValue("alert-pushover-app-token", cluster.Conf.GetDecryptedValue("alert-pushover-app-token"))
 	case "mail-smtp-password":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("mail-smtp-password"))
+		return cluster.Conf.GetStableEncryptedValue("mail-smtp-password", cluster.Conf.GetDecryptedValue("mail-smtp-password"))
 	case "api-oauth-client-secret":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("api-oauth-client-secret"))
+		return cluster.Conf.GetStableEncryptedValue("api-oauth-client-secret", cluster.Conf.GetDecryptedValue("api-oauth-client-secret"))
 	case "cloud18-gitlab-password":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("cloud18-gitlab-password"))
+		return cluster.Conf.GetStableEncryptedValue("cloud18-gitlab-password", cluster.Conf.GetDecryptedValue("cloud18-gitlab-password"))
 	case "cloud18-dba-user-credentials":
-		return cluster.GetDbaUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetDbaPass())
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetDbaUser()+":"+cluster.GetDbaPass())
 	case "cloud18-sponsor-user-credentials":
-		return cluster.GetSponsorUser() + ":" + cluster.Conf.GetEncryptedString(cluster.GetSponsorPass())
+		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetSponsorUser()+":"+cluster.GetSponsorPass())
 	case "git-acces-token":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("git-acces-token"))
+		return cluster.Conf.GetStableEncryptedValue("git-acces-token", cluster.Conf.GetDecryptedValue("git-acces-token"))
 	case "vault-token":
-		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("vault-token"))
+		return cluster.Conf.GetStableEncryptedValue("vault-token", cluster.Conf.GetDecryptedValue("vault-token"))
 	default:
 		return ""
 	}
@@ -2347,16 +2338,28 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		}
 	}
 	if hasDiff {
+		// Deterministic order: alldiff is built from map iteration, which is
+		// random per run — sort so the signature, log order and state
+		// description are stable across checks.
+		sort.Slice(alldiff, func(i, j int) bool { return alldiff[i].VariableName < alldiff[j].VariableName })
+		sig := variableDiffSignature(alldiff)
+		changed := sig != cluster.variableDiffSignature
+		cluster.variableDiffSignature = sig
 		cluster.DiffVariables = alldiff
-		cluster.SaveVariableDiff(alldiff)
-		for _, d := range alldiff {
-			for _, dv := range d.DiffValues {
-				if dv.Role != "leader" {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-						"Variable %s differs on %s (%s): %s", d.VariableName, dv.Server, dv.Role, dv.VariableValue)
+		// Log details and persist the file only when the diff set actually
+		// changed — re-logging identical diffs on every check flooded the log.
+		if changed {
+			cluster.SaveVariableDiff(alldiff)
+			for _, d := range alldiff {
+				for _, dv := range d.DiffValues {
+					if dv.Role != "leader" {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+							"Variable %s differs on %s (%s): %s", d.VariableName, dv.Server, dv.Role, dv.VariableValue)
+					}
 				}
 			}
 		}
+		// Re-assert the state on every run so it stays open while the diff persists.
 		cluster.SetState("WARN0084", state.State{
 			ErrType:   "WARNING",
 			ErrDesc:   fmt.Sprintf(clusterError["WARN0084"], cluster.FormatVariableDiffTable(alldiff)),
@@ -2365,7 +2368,20 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		})
 	} else {
 		cluster.DiffVariables = nil
+		cluster.variableDiffSignature = ""
 	}
+}
+
+// variableDiffSignature returns a stable identity for a variable diff set so
+// MonitorVariablesDiff can detect real changes between runs.
+func variableDiffSignature(diffs []VariableDiff) string {
+	var b strings.Builder
+	for _, d := range diffs {
+		for _, dv := range d.DiffValues {
+			fmt.Fprintf(&b, "%s|%s|%s\n", d.VariableName, dv.Server, dv.VariableValue)
+		}
+	}
+	return b.String()
 }
 
 func (cluster *Cluster) FormatVariableDiffTable(diffs []VariableDiff) string {
@@ -2779,7 +2795,7 @@ func (cluster *Cluster) MonitorTableSchemaDiff() {
 
 		diffs, _ := cluster.CompareSchemaBetweenMasterAndSlave(sl)
 		if len(diffs) > 0 {
-			cluster.SetState("WARN0164", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0164"], sl.URL, strings.Join(diffs, "\n")), ErrFrom: "MON", ServerUrl: sl.URL})
+			cluster.SchemaStateMachine.AddState("WARN0164", state.State{ErrType: "WARNING", ErrKey: "WARN0164", ErrDesc: fmt.Sprintf(clusterError["WARN0164"], sl.URL, strings.Join(diffs, "\n")), ErrFrom: "MON", ServerUrl: sl.URL})
 		}
 	}
 }
@@ -2814,6 +2830,10 @@ func (cluster *Cluster) MonitorSchema() {
 	}()
 
 	err := cluster.MonitorMasterTableSchema()
+	if err == nil {
+		// Refresh the wire v3 Tables snapshot handed to schema plugins.
+		cluster.RefreshSchemaWireTables()
+	}
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error during schema monitoring: %s", err)
 	}
