@@ -1124,7 +1124,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
 	flags.StringVar(&conf.Cloud18SubscriptionPlan, "cloud18-subscription-plan", "free", "Cloud18 subscription plan code (validated by CRM)")
 	flags.StringVar(&conf.Cloud18CrmApiUrl, "cloud18-crm-api-url", "https://api.crm.ovh-fr-2.signal18.cloud18.io", "Cloud18 CRM API base URL used for cluster registration")
-	flags.IntVar(&conf.Cloud18ApplicationCredits, "cloud18-application-credits", 2, "Cloud18 application credits(1 core 4G Ram 8G Disk)")
+	flags.IntVar(&conf.Cloud18ApplicationCredits, "cloud18-application-credits", 2, "Cloud18 application credits(1 core 4G Ram 10G Disk)")
 	flags.IntVar(&conf.Cloud18ApplicationCreditsPrice, "cloud18-application-credits-price", 20, "Cloud18 application credits price in Eur")
 	flags.StringVar(&conf.Cloud18DomainAddScript, "cloud18-domain-add-script", "/usr/share/replication-manager/scripts/prov_domain_add_script.sh", "Script to add DNS CNAME entry to cloud18-gateway-domain-name")
 	flags.StringVar(&conf.Cloud18DomainDropScript, "cloud18-domain-drop-script", "", "Script to drop DNS CNAME entry to cloud18-gateway-domain-name")
