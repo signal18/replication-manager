@@ -2005,8 +2005,13 @@ func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, Immua
 
 		//fmt.Printf("%+v\n", cf2.AllSettings())
 		repman.DynamicFlagMaps[cluster] = clustDynamicMap
-		//if dynamic config, load modified parameter from the saved config
-		if cf2 != nil && clusterconf.ConfRewrite {
+		//if dynamic config, load modified parameter from the saved config.
+		// Deliberately NOT gated on cf2 (the static cluster section):
+		// dynamically-created clusters exist only through their
+		// saved-<name> section — gating on cf2 made them lose their entire
+		// persisted config at every restart (secrets regenerated, restic
+		// paths and ACLs rebuilt from defaults each boot).
+		if clusterconf.ConfRewrite {
 
 			cf3 := firstRead.Sub("saved-" + cluster)
 
