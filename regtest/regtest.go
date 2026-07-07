@@ -56,7 +56,7 @@ var tests = []string{
 	"testSlaReplAllSlavesStopNoSemiSync",
 	"testSlaReplAllSlavesDelayNoSemiSync",
 	"testMasterSuspect",
-	"testChaosIsolationArbitration",
+	"testSetMinority",
 	"testMasterNil",
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigCookiePushBasic",

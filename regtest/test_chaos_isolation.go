@@ -11,25 +11,21 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-// TestChaosIsolationArbitration — minority test.
+// TestSetMinority — a repman is in split brain because its infrastructure
+// lost connection to BOTH its peer AND the arbitrator (DC3, which never
+// fails): it is the minority node (1 of 3). The majority (peer + arbitrator)
+// holds the truth about who the master is, so the master this node sees is
+// NOT authoritative. A minority node must do nothing: never flip
+// active/passive, never fail over.
 //
-// A repman is in split brain because its infrastructure lost connection to
-// BOTH its peer AND the arbitrator: it is the minority node (1 of 3). The
-// majority (peer + arbitrator) holds the truth about who the master is, so
-// the master this node sees is NOT authoritative. A minority node must do
-// nothing: never flip active/passive, never fail over — whatever its local
-// master appears to be.
+// The virtual split brain is set at both levels at once — server: peer
+// heartbeat check failed (IsSplitBrain); cluster: cannot join the arbitrator
+// (arbitrator link cut). Two scenarios by where the master sits:
+//   - setMinorityWithMaster: master on the minority side, reachable.
+//   - setMinorityLostMaster: master on the majority side, unreachable.
 //
-// A virtual split brain is set up at both levels at once:
-//   - server level : the peer heartbeat check has failed (IsSplitBrain, as
-//     the server heartbeat would push down to the cluster).
-//   - cluster level: the cluster can no longer join the arbitrator (its
-//     arbitrator link is cut).
-//
-// The database link is cut in the second case (the local master appears
-// failed) — the node must still not act, because in the minority its view is
-// not the truth. Requires arbitration configured; otherwise skipped.
-func (regtest *RegTest) TestChaosIsolationArbitration(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+// Requires arbitration configured; otherwise skipped.
+func (regtest *RegTest) TestSetMinority(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
 	if !cl.Conf.Arbitration {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: arbitration not enabled on this cluster")
 		return true
@@ -38,29 +34,40 @@ func (regtest *RegTest) TestChaosIsolationArbitration(cl *cluster.Cluster, conf 
 	status0 := cl.Status
 	failoverCtr := cl.FailoverCtr
 
-	// Case 1 — local master appears OK.
-	if !chaosMinorityNoAction(cl, status0, failoverCtr, false, "case1 (local master ok)") {
+	if !minorityDoesNothing(cl, status0, failoverCtr, setMinorityWithMaster, "setMinorityWithMaster") {
 		return false
 	}
-	// Case 2 — local master appears FAILED (db link cut too).
-	if !chaosMinorityNoAction(cl, status0, failoverCtr, true, "case2 (local master failed)") {
+	if !minorityDoesNothing(cl, status0, failoverCtr, setMinorityLostMaster, "setMinorityLostMaster") {
 		return false
 	}
 
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Minority node never acted: status held, no failover, in both master states")
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Minority node never acted in either scenario: status held, no failover")
 	return true
 }
 
-// chaosMinorityNoAction puts the cluster in the minority condition — server
-// peer check failed (IsSplitBrain) and the cluster can't join the arbitrator
-// (arbitrator cut), optionally with the local master also unreachable — and
-// asserts it never moves active/passive and never fails over. Always restores.
-func chaosMinorityNoAction(cl *cluster.Cluster, status0 string, failoverCtr int, cutMaster bool, label string) bool {
-	cl.IsSplitBrain = true                   // server level: peer heartbeat check failed
-	cl.ChaosCutArbitrator(120 * time.Second) // cluster level: cannot join the arbitrator
-	if cutMaster {
-		cl.ChaosCutDB(120 * time.Second)
-	}
+const minorityHold = 120 * time.Second
+
+// setMinorityWithMaster puts the node in the minority with its master still
+// reachable (master on the minority side): peer heartbeat failed + arbitrator
+// unreachable, database left up.
+func setMinorityWithMaster(cl *cluster.Cluster) {
+	cl.IsSplitBrain = true
+	cl.ChaosCutArbitrator(minorityHold)
+}
+
+// setMinorityLostMaster puts the node in the minority with its master gone
+// (master on the majority side): peer heartbeat failed + arbitrator + master
+// all unreachable.
+func setMinorityLostMaster(cl *cluster.Cluster) {
+	cl.IsSplitBrain = true
+	cl.ChaosCutArbitrator(minorityHold)
+	cl.ChaosCutDB(minorityHold)
+}
+
+// minorityDoesNothing applies a minority setup, holds it, and asserts the
+// node never moves active/passive and never fails over. Always restores.
+func minorityDoesNothing(cl *cluster.Cluster, status0 string, failoverCtr int, setup func(*cluster.Cluster), label string) bool {
+	setup(cl)
 	defer func() {
 		cl.IsSplitBrain = false
 		cl.ChaosStop()
