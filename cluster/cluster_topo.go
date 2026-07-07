@@ -181,6 +181,27 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		return nil
 	}
 
+	if cluster.master == nil && cluster.HasConfigTopoActivePassive() {
+		prefMaster := cluster.getOnePreferedMaster()
+		if prefMaster != nil {
+			cluster.master = prefMaster
+		} else {
+			for _, sv := range cluster.Servers {
+				if sv == nil {
+					continue
+				}
+
+				if sv.IsRunning() {
+					cluster.master = sv
+				}
+			}
+		}
+
+		if cluster.master != nil {
+			cluster.master.SetMaster()
+		}
+	}
+
 	// Check topology Cluster is down
 	cluster.TopologyClusterDown()
 	cluster.CheckSameServerID()
