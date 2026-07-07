@@ -156,10 +156,10 @@ func TestRequestArbitration_Winner_MySQL_SQL(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND status='E' and uid<>?",
+		"SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND status='E' AND uid<>? AND date > DATE_SUB(NOW(), INTERVAL 10 SECOND) FOR UPDATE",
 	)).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ?",
+		"SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ? FOR UPDATE",
 	)).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectExec(regexp.QuoteMeta(
 		"REPLACE INTO replication_manager_schema.heartbeat (secret,uuid,uid,master,date,arbitration_date,cluster,hosts,failed,status) VALUES(?,?,?,?,NOW(),NOW(),?,?,?,'E')",
@@ -178,7 +178,7 @@ func TestWriteHeartbeat_MySQL_SQL(t *testing.T) {
 	db, mock := mockDB(t, "mysql")
 
 	mock.ExpectExec(regexp.QuoteMeta(
-		"REPLACE INTO replication_manager_schema.heartbeat (secret,uuid,uid,master,date,cluster,hosts,failed) VALUES(?,?,?,?,NOW(),?,?,?)",
+		"INSERT INTO replication_manager_schema.heartbeat (secret,uuid,uid,master,date,cluster,hosts,failed) VALUES(?,?,?,?,NOW(),?,?,?) ON DUPLICATE KEY UPDATE uuid=VALUES(uuid), master=VALUES(master), date=NOW(), hosts=VALUES(hosts), failed=VALUES(failed)",
 	)).WillReturnResult(sqlmock.NewResult(1, 1))
 
 	mock.ExpectQuery(regexp.QuoteMeta(

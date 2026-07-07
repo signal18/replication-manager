@@ -90,7 +90,20 @@ func SetHeartbeatTable(db *sqlx.DB) error {
 func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int, hosts int, failed int) error {
 
 	tbl := heartbeatTable(db)
-	stmt := upsertVerb(db) + " INTO " + tbl + " (secret,uuid,uid,master,date,cluster,hosts,failed) VALUES(?,?,?,?," + nowExpr(db) + ",?,?,?)"
+	now := nowExpr(db)
+	// True upsert preserving the status column — the original 2016 MySQL
+	// semantics (ON DUPLICATE KEY UPDATE). The 2017 SQLite conversion
+	// replaced it with INSERT OR REPLACE, which deletes and reinserts the
+	// row so status falls back to its default 'U': the winner then wiped
+	// its own Elected flag on its own next heartbeat.
+	var stmt string
+	if db.DriverName() == "mysql" {
+		stmt = "INSERT INTO " + tbl + " (secret,uuid,uid,master,date,cluster,hosts,failed) VALUES(?,?,?,?," + now + ",?,?,?)" +
+			" ON DUPLICATE KEY UPDATE uuid=VALUES(uuid), master=VALUES(master), date=" + now + ", hosts=VALUES(hosts), failed=VALUES(failed)"
+	} else {
+		stmt = "INSERT INTO " + tbl + " (secret,uuid,uid,master,date,cluster,hosts,failed) VALUES(?,?,?,?," + now + ",?,?,?)" +
+			" ON CONFLICT(secret,cluster,uid) DO UPDATE SET uuid=excluded.uuid, master=excluded.master, date=" + now + ", hosts=excluded.hosts, failed=excluded.failed"
+	}
 	_, err := db.Exec(stmt, secret, uuid, uid, master, cluster, hosts, failed)
 	if err != nil {
 		return err
@@ -102,10 +115,19 @@ func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, mas
 	if err != nil {
 		return err
 	}
-	// count==1 means both instances agree on the same master: split-brain is resolved,
-	// keep the elected status so the winner stays active.
-	// count>1 means masters diverge: true split-brain, reset election so a new one can run.
-	if count > 1 {
+	// count==1 means every fresh heartbeat reports the identical master: no
+	// split brain, so the arbitrator must not impose an authority — clear
+	// the election (the behavior since 2017). In peace time who is active
+	// is decided by the peer protocol, not by the arbitrator: an instance
+	// seeing its peer active with the same master sets itself passive,
+	// because an authority already exists. The Elected flag only takes over
+	// when the peers disagree on which server is the master (count>1 —
+	// two different masters after a partition, or one side seeing none and
+	// reporting ''), where it is preserved so the first winner holds for
+	// the whole partition. Inverting this to count>1 (2026-06-30) made the
+	// arbitrator keep a persistent winner in peace time, fighting the peer
+	// protocol — the instances flapped active/passive (ERR00022) forever.
+	if count == 1 {
 		stmt = "UPDATE " + tbl + " set status='U' WHERE status='E' AND cluster=? AND secret=?"
 		_, err = db.Exec(stmt, cluster, secret)
 		if err != nil {
