@@ -371,6 +371,10 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 }
 
 func (cluster *Cluster) SetProxyServerMaintenance(serverid uint64) {
+	if cluster.IsProxyRoutingFrozen() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "Active-passive topology: skip proxy maintenance notification")
+		return
+	}
 	// Found server from ServerId
 	server := cluster.GetServerFromId(serverid)
 	for _, pr := range cluster.Proxies {
@@ -381,6 +385,10 @@ func (cluster *Cluster) SetProxyServerMaintenance(serverid uint64) {
 
 // called  by server monitor if state change
 func (cluster *Cluster) backendStateChangeProxies() {
+	if cluster.IsProxyRoutingFrozen() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "Active-passive topology: skip proxy backend state change")
+		return
+	}
 	for _, pr := range cluster.Proxies {
 		//	pr.SetLock()
 		pr.BackendsStateChange()
@@ -437,6 +445,10 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 }
 
 func (cluster *Cluster) failoverProxies() {
+	if cluster.IsProxyRoutingFrozen() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "Active-passive topology: skip proxy failover notification")
+		return
+	}
 	for _, pr := range cluster.Proxies {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "Failover Proxy Type: %s Host: %s Port: %s", pr.GetType(), pr.GetHost(), pr.GetPort())
 		pr.Failover()

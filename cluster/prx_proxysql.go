@@ -296,6 +296,8 @@ func (proxy *ProxySQLProxy) Refresh() error {
 	if !cluster.Conf.ProxysqlOn {
 		return nil
 	}
+	// Active-passive topology: only collect backend status, never push routing changes.
+	frozen := cluster.IsProxyRoutingFrozen()
 
 	psql, err := proxy.Connect()
 	if err != nil {
@@ -362,7 +364,27 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			IsBackendReader = false
 		}
 
-		if cluster.Conf.TopologyStaging && proxy.IsStaging {
+		if frozen && cluster.Conf.ProxysqlBootstrap && cluster.IsDiscovered() && s.IsLeader() && len(proxy.BackendsWrite) == 0 {
+			// Active-passive: establish the initial writer once, even though the
+			// ongoing corrective routing changes below stay frozen. This only
+			// fires while no writer at all is configured yet (proxy.BackendsWrite
+			// is the previous refresh's snapshot), so it can't turn into a
+			// routing correction once a writer exists.
+			if psql.ExistAsWriterOrOffline(misc.Unbracket(s.Host), s.Port) {
+				err = psql.SetOnline(misc.Unbracket(s.Host), s.Port)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "Monitor ProxySQL setting online failed server %s: %s", s.URL, err.Error())
+				}
+			} else {
+				err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
+				if err != nil {
+					cluster.SetState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00071"], proxy.Name, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+				}
+			}
+			updated = true
+		}
+
+		if !frozen && cluster.Conf.TopologyStaging && proxy.IsStaging {
 			if cluster.IsDiscovered() {
 				if s == stagingsrv {
 					psql.SetMonitorIsAlsoWriter(true)
@@ -427,7 +449,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 					}
 				}
 			}
-		} else if cluster.Conf.ProxysqlBootstrap && cluster.IsDiscovered() { // nothing should be done if no bootstrap
+		} else if !frozen && cluster.Conf.ProxysqlBootstrap && cluster.IsDiscovered() { // nothing should be done if no bootstrap
 			// if ProxySQL and replication-manager states differ, resolve the conflict
 			if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave && !s.IsIgnored() {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL setting online as reader rejoining server %s", s.URL)

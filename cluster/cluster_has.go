@@ -34,6 +34,14 @@ func (cluster *Cluster) HasConfigTopoActivePassive() bool {
 	return cluster.Conf.ActivePassive || cluster.Conf.TopologyTarget == config.TopoActivePassive
 }
 
+// IsProxyRoutingFrozen returns true when the cluster runs an active-passive
+// topology, in which case proxies must only monitor backend state and must
+// never receive commands that change routing (master/reader assignment,
+// drain/ready, maintenance, backend state change or failover).
+func (cluster *Cluster) IsProxyRoutingFrozen() bool {
+	return cluster.GetTopology() == config.TopoActivePassive
+}
+
 func (cluster *Cluster) HasValidBackup() bool {
 	logical := false
 	physical := false
