@@ -2004,11 +2004,20 @@ func (repman *ReplicationManager) handlerMuxTimeout(w http.ResponseWriter, r *ht
 // @Failure 500 {object} map[string]string
 // @Router /api/heartbeat [get]
 func (repman *ReplicationManager) handlerMuxMonitorHeartbeat(w http.ResponseWriter, r *http.Request) {
-	// Chaos: peer heartbeat severed — go dark so the peer polling us
-	// registers the isolation (cluster_chaos.go). Server-level flag, no
-	// per-cluster scan.
+	// Chaos: peer heartbeat severed — simulate a real network loss, not a
+	// fast error. Hang past the caller's timeout (HeartbeatPeerSplitBrain
+	// waits MonitoringTicker*4s) so the peer polling us experiences a genuine
+	// network timeout, delay and all. Bounded so the goroutine can't hang
+	// forever. Arm the cut on both peers for a bidirectional partition.
 	if repman.IsChaosPeerCut() {
-		http.Error(w, "chaos: peer heartbeat severed (simulation)", http.StatusServiceUnavailable)
+		hang := time.Duration(repman.Conf.MonitoringTicker*6) * time.Second
+		if hang > 60*time.Second {
+			hang = 60 * time.Second
+		}
+		select {
+		case <-time.After(hang):
+		case <-r.Context().Done():
+		}
 		return
 	}
 	var send Heartbeat

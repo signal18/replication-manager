@@ -3168,12 +3168,11 @@ func (repman *ReplicationManager) RecomputeGatewayConflicts(changedClusterName, 
 }
 
 func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {
-	// Chaos: our link to the peer is cut — treat it as unreachable (split
-	// brain from our side), matching what the peer sees when our
-	// /api/heartbeat goes dark.
-	if repman.IsChaosPeerCut() {
-		return true
-	}
+	// Chaos peer cut is NOT short-circuited here on purpose: when both peers
+	// have the cut armed, each one's /api/heartbeat hangs past this timeout,
+	// so this real request times out on its own — exercising the genuine
+	// network-timeout path (client.Do error -> return true) rather than a
+	// synthetic instant answer.
 	timeout := time.Duration(time.Duration(repman.Conf.MonitoringTicker) * time.Second * 4)
 	/*	Host, _ := misc.SplitHostPort(peer)
 		ha, err := net.LookupHost(Host)
