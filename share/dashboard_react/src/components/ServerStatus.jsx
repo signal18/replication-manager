@@ -1,75 +1,40 @@
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import TagPill from './TagPill'
 
+function getStatus(state) {
+  switch (state) {
+    case 'SlaveErr':
+      return { stateValue: 'SLAVE_ERROR', colorScheme: 'orange' }
+    case 'SlaveLate':
+      return { stateValue: 'SLAVE_LATE', colorScheme: 'yellow' }
+    case 'RelayErr':
+      return { stateValue: 'RELAY_ERROR', colorScheme: 'orange' }
+    case 'RelayLate':
+      return { stateValue: 'RELAY_LATE', colorScheme: 'yellow' }
+    case 'StandAlone':
+      return { stateValue: 'STANDALONE', colorScheme: 'gray' }
+    case 'Master':
+      return { stateValue: state.toUpperCase(), colorScheme: 'blue' }
+    case 'Slave':
+      return { stateValue: state.toUpperCase(), colorScheme: 'gray' }
+    case 'Relay':
+      return { stateValue: state.toUpperCase(), colorScheme: 'gray' }
+    case 'Suspect':
+      return { stateValue: state.toUpperCase(), colorScheme: 'orange' }
+    case 'Failed':
+      return { stateValue: state.toUpperCase(), colorScheme: 'red' }
+    case 'AppRunning':
+      return { stateValue: state.toUpperCase(), colorScheme: 'blue' }
+    case 'AppWarning':
+      return { stateValue: state.toUpperCase(), colorScheme: 'orange' }
+    default:
+      return { stateValue: state.toUpperCase(), colorScheme: 'gray' }
+  }
+}
+
 function ServerStatus({ state, isVirtualMaster, isBlinking = false }) {
-  const [isVirtual, setIsVirtual] = useState('')
-  const [colorScheme, setColorScheme] = useState('gray')
-  const [stateValue, setStateValue] = useState(state ? state.toUpperCase() : '')
-
-  useEffect(() => {
-    if (state) {
-      setStateValue(state.toUpperCase())
-      switch (state) {
-        case 'SlaveErr':
-          setStateValue('SLAVE_ERROR')
-          setColorScheme('orange')
-          break
-        case 'SlaveLate':
-          setStateValue('SLAVE_LATE')
-          setColorScheme('yellow')
-          break
-        case 'RelayErr':
-          setStateValue('RELAY_ERROR')
-          setColorScheme('orange')
-          break
-        case 'RelayLate':
-          setStateValue('RELAY_LATE')
-          setColorScheme('yellow')
-          break
-        case 'StandAlone':
-          setStateValue('STANDALONE')
-          setColorScheme('gray')
-          break
-        case 'Master':
-          setColorScheme('blue')
-          break
-        case 'Slave':
-          setColorScheme('gray')
-          break
-        case 'Relay':
-          setColorScheme('gray')
-          break
-        case 'Suspect':
-          setColorScheme('orange')
-          break
-        case 'Failed':
-          setColorScheme('red')
-          break
-        case 'AppRunning':
-          setColorScheme('blue')
-          break
-        case 'AppWarning':
-          setColorScheme('orange')
-          break
-        default:
-          setStateValue(state.toUpperCase())
-          setColorScheme('gray')
-          break
-      }
-    }
-
-    if (isVirtualMaster) {
-      setIsVirtual('-VMaster')
-    } else {
-      setIsVirtual('')
-    }
-
-    return () => {
-      setColorScheme('gray')
-      setStateValue('')
-      setIsVirtual('')
-    }
-  }, [state, isVirtualMaster])
+  const { stateValue, colorScheme } = state ? getStatus(state) : { stateValue: '', colorScheme: 'gray' }
+  const isVirtual = isVirtualMaster ? '-VMaster' : ''
 
   return (
     <TagPill
