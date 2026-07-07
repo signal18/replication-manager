@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import Card from '../../../components/Card'
-import { Box, Flex, Text, Wrap } from '@chakra-ui/react'
+import { Box, Flex, Text, Tooltip, Wrap, Icon } from '@chakra-ui/react'
 import TagPill from '../../../components/TagPill'
+import { FaSnowflake } from 'react-icons/fa'
 import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../../components/TableType2'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
@@ -508,6 +509,13 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
               ) : selectedCluster?.activePassiveStatus === 'S' ? (
                 <TagPill colorScheme='orange' text={'Standby'} isBlinking={true} />
               ) : null}
+              {selectedCluster?.topology === 'active-passive' && (
+                <Tooltip label='Active-passive topology: proxies are only monitored, replication-manager will never send routing changes to them'>
+                  <span>
+                    <Icon as={FaSnowflake} color='cyan.400' boxSize={4} verticalAlign='middle' />
+                  </span>
+                </Tooltip>
+              )}
               {selectedCluster?.config?.arbitrationExternal && (
                 <TagPill
                   colorScheme={selectedCluster?.isFailedArbitrator ? 'red' : 'green'}

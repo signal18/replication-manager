@@ -3,7 +3,7 @@ import ClusterDetail from './components/ClusterDetail'
 import HADetail from './components/HADetail/index.jsx'
 import { useSelector } from 'react-redux'
 import ClusterWorkload from './components/ClusterWorkload'
-import { Flex, HStack, Tooltip, Box, Text } from '@chakra-ui/react'
+import { Flex, HStack, Tooltip, Box, Text, Icon } from '@chakra-ui/react'
 import AccordionComponent from '../../components/AccordionComponent/index.jsx'
 import { GeneralLogs, TaskLogs, SecurityLogs, WorkloadLogs, DDLLogs, VariableChangeLogs } from './components/Logs'
 import DBServers from './components/DBServers'
@@ -11,6 +11,25 @@ import Proxies from './components/Proxies'
 import Apps from './components/Apps/index.jsx'
 import RMIconButton from '../../components/RMIconButton'
 import { HiCog } from 'react-icons/hi'
+import { FaSnowflake } from 'react-icons/fa'
+// Accordion heading for Proxies with a snowflake badge when active-passive freezes routing changes
+function ProxiesHeading({ isRoutingFrozen }) {
+  return (
+    <HStack spacing={2}>
+      <Text as='span'>Proxies</Text>
+      {isRoutingFrozen && (
+        <Tooltip
+          label='Active-passive topology: proxies are only monitored, replication-manager will never send routing changes to them'
+          placement='right'
+          hasArrow>
+          <span>
+            <Icon as={FaSnowflake} color='cyan.400' boxSize={4} verticalAlign='middle' />
+          </span>
+        </Tooltip>
+      )}
+    </HStack>
+  )
+}
 // Accordion heading with a "?" tooltip explaining log content
 function LogHeading({ title, description }) {
   return (
@@ -74,7 +93,7 @@ function Dashboard({ selectedCluster, user, openSettings = {} }) {
 
       {selectedCluster && (
         <AccordionComponent
-          heading={'Proxies'}
+          heading={<ProxiesHeading isRoutingFrozen={selectedCluster?.topology === 'active-passive'} />}
           panelSX={{ overflowX: 'auto', p: 0 }}
           headerActions={gearButton(openSettings.proxies, 'Proxy Settings')}
           body={<Proxies selectedCluster={selectedCluster} user={user} />}
