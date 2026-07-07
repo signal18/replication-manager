@@ -3169,17 +3169,12 @@ func (repman *ReplicationManager) RecomputeGatewayConflicts(changedClusterName, 
 
 func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {
 	timeout := time.Duration(time.Duration(repman.Conf.MonitoringTicker) * time.Second * 4)
-	// Chaos: this node is isolated, so its OWN request to the peer also hangs
-	// and times out — not just the peer's request to it (/api/heartbeat).
-	// Sleeping the full timeout reproduces the real network-timeout delay
-	// before split brain is declared, from this side. Arming the cut on the
-	// single isolated node therefore reproduces both directions: our outbound
-	// times out here, and the peer's inbound times out on our sleeping
-	// /api/heartbeat — exactly what both sides see in a real partition.
-	if repman.IsChaosPeerCut() {
-		time.Sleep(timeout)
-		return true
-	}
+	// No chaos short-circuit here: the peer cut only sleeps THIS node's
+	// /api/heartbeat (the inbound direction). The outbound request below runs
+	// for real and times out on its own against the peer's sleeping
+	// /api/heartbeat — but only if the peer also has the cut armed. Each side
+	// is injected independently, exactly like a real partition where both
+	// servers fail to heartbeat each other.
 	/*	Host, _ := misc.SplitHostPort(peer)
 		ha, err := net.LookupHost(Host)
 		if err != nil {
