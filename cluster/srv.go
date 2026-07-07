@@ -230,7 +230,7 @@ type ServerMonitor struct {
 	IsRefreshingBinlog          bool
 	IsRefreshingBinlogMeta      bool
 	IsLoadingJobList            bool
-	jobsAPIHousekeepingDone     bool                        // true after schema ensured + jobs table dropped in API mode
+	jobsAPIHousekeepingDone     bool // true after schema ensured + jobs table dropped in API mode
 	NeedRefreshJobs             bool
 	lastJobsRefreshAttempt      time.Time
 	PointInTimeMeta             backupmgr.PointInTimeMeta
@@ -705,13 +705,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 			server.SetConfigRefreshCookie() // set cookie to refresh config
 
-			if cluster.Topology == config.TopoActivePassive {
-				if cluster.GetMaster() == nil {
-					server.SetMaster()
-				} else if cluster.GetMaster().Id != server.Id {
-					server.SetState(stateUnconn)
-				}
-			} else if cluster.GetTopology() != config.TopoMultiMasterWsrep || cluster.GetTopology() != config.TopoMultiMasterGrouprep {
+			if cluster.GetTopology() != config.TopoMultiMasterWsrep || cluster.GetTopology() != config.TopoMultiMasterGrouprep {
 				if server.IsGroupReplicationSlave {
 					server.SetState(stateSlave)
 				} else {
@@ -723,7 +717,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.SendAlert()
 
 			// if autorejoin is set
-			if cluster.Conf.Autorejoin && cluster.IsActive() {
+			if cluster.Conf.Autorejoin && cluster.IsActive() && cluster.GetTopology() != config.TopoActivePassive {
 				// rejoin if not staging server
 				if isStagingServer {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Preventing auto rejoin on staging server %s", server.URL)
@@ -765,7 +759,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		} else if server.GetCluster().GetTopology() == config.TopoActivePassive {
 			if server.PrevState == stateSuspect || (server.PrevState == stateMaintenance && !server.IsMaintenance) {
 				//if active-passive topo and no replication, put the state at standalone
-				if cluster.GetMaster() == nil || cluster.GetMaster().Id == server.Id {
+				if cluster.GetMaster() != nil && cluster.GetMaster().Id == server.Id {
 					server.SetState(stateMaster)
 				} else {
 					server.SetState(stateUnconn)

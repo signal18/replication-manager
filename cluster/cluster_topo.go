@@ -171,14 +171,12 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// Check topology Cluster all servers down
 	cluster.IsDown = cluster.AllServersFailed()
 
-	// if only one server
-	if len(cluster.Servers) == 1 || cluster.Conf.ActivePassive {
+	// if only one server auto set runtime topology to topology-active-passive
+	if len(cluster.Servers) == 1 {
 		cluster.Topology = config.TopoActivePassive
-
-		if len(cluster.Servers) == 1 {
-			for _, sv := range cluster.Servers {
-				cluster.master = sv
-			}
+		if cluster.master == nil && cluster.Servers[0] != nil {
+			cluster.master = cluster.Servers[0]
+			cluster.master.SetMaster()
 		}
 		return nil
 	}
@@ -344,7 +342,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 
 	// If no relay and master-slave is preferred
-	if !hasRelay && !hasCycling {
+	if !hasRelay && !hasCycling && !cluster.HasConfigTopoActivePassive() {
 		cluster.Topology = config.TopoMasterSlave
 	}
 
@@ -501,7 +499,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 
 	// Remove master or vmaster read only if not in maintenance
 	mst := cluster.GetMaster()
-	if cluster.IsDiscovered() && mst != nil && mst.IsReadOnly() && !mst.IsMaintenance && cluster.Topology != config.TopoMasterSlave {
+	if cluster.IsDiscovered() && mst != nil && mst.IsReadOnly() && !mst.IsMaintenance && cluster.Topology != config.TopoMasterSlave && !cluster.HasConfigTopoActivePassive() {
 		mst.SetReadWrite()
 	}
 

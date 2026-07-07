@@ -30,6 +30,10 @@ func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
 	return false
 }
 
+func (cluster *Cluster) HasConfigTopoActivePassive() bool {
+	return cluster.Conf.ActivePassive || cluster.Conf.TopologyTarget == config.TopoActivePassive
+}
+
 func (cluster *Cluster) HasValidBackup() bool {
 	logical := false
 	physical := false
