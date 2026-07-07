@@ -197,6 +197,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testMasterSuspect" {
 			res = regtest.TestMasterSuspect(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testChaosIsolationArbitration" {
+			res = regtest.TestChaosIsolationArbitration(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testMasterNil" {
 			res = regtest.TestMasterNil(cl, test.ConfigFile, &test)
 		}

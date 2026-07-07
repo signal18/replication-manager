@@ -368,6 +368,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterResetFailoverControl)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/chaos-isolate-start", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterChaosIsolateStart)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/chaos-isolate-stop", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterChaosIsolateStop)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/discover", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettingsDiscover)),
@@ -1928,6 +1936,63 @@ func (repman *ReplicationManager) handlerMuxClusterResetFailoverControl(w http.R
 
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 	}
+}
+
+// handlerMuxClusterChaosIsolateStart arms the per-cluster simulated
+// isolation (cluster_chaos.go): database connections and peer visibility are
+// cut on this instance only, so the split-brain protection path can be
+// exercised end to end. Optional ?duration=<seconds>, bounded, always
+// auto-restores. Requires the cluster-test grant.
+func (repman *ReplicationManager) handlerMuxClusterChaosIsolateStart(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if u, ok := mycluster.APIUsers[repman.GetUserFromRequest(r)]; !ok || !u.Grants[config.GrantClusterTest] {
+		http.Error(w, "No cluster-test grant", http.StatusForbidden)
+		return
+	}
+	var duration time.Duration
+	if d := r.URL.Query().Get("duration"); d != "" {
+		secs, err := strconv.Atoi(d)
+		if err != nil || secs <= 0 {
+			http.Error(w, "Invalid duration", http.StatusBadRequest)
+			return
+		}
+		duration = time.Duration(secs) * time.Second
+	}
+	applied := mycluster.ChaosIsolateStart(duration)
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"chaos":"armed","duration":%d}`, int(applied.Seconds()))
+}
+
+// handlerMuxClusterChaosIsolateStop disarms the simulated isolation.
+func (repman *ReplicationManager) handlerMuxClusterChaosIsolateStop(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if u, ok := mycluster.APIUsers[repman.GetUserFromRequest(r)]; !ok || !u.Grants[config.GrantClusterTest] {
+		http.Error(w, "No cluster-test grant", http.StatusForbidden)
+		return
+	}
+	mycluster.ChaosIsolateStop()
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprint(w, `{"chaos":"disarmed"}`)
 }
 
 // handlerMuxSwitchover handles the switchover process for a given cluster.

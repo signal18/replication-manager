@@ -189,6 +189,9 @@ type Cluster struct {
 	StagingServer  *ServerMonitor             `json:"-" groups:"web"`
 	mxs            *maxscale.MaxScale         `json:"-"`
 	CheckSumConfig map[string]hash.Hash       `json:"-"`
+	// chaosIsolatedUntil (unix seconds) arms the simulated isolation of this
+	// cluster on this instance — see cluster_chaos.go. Runtime state only.
+	chaosIsolatedUntil int64 `json:"-"`
 	// eventProv is the config event log provenance table: where the current
 	// value of each saved key came from (echo subtraction + LWW). See
 	// cluster_eventlog.go and doc/implementation/config/CONFIG_EVENT_LOG.md.

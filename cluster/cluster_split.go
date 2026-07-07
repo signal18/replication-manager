@@ -45,6 +45,14 @@ func (cl *Cluster) arbitratorURL(path string) string {
 // It reports cluster state and triggers elections. Runs after TopologyDiscover to avoid
 // data races on Servers.
 func (cluster *Cluster) ArbitratorHandler() {
+	if cluster.IsChaosIsolated() {
+		// Simulated isolation (cluster_chaos.go): peer visibility is cut on
+		// this instance for this cluster, so the split-brain machinery must
+		// engage and the arbitrator decides — the isolated side reports all
+		// databases failed and loses the election.
+		cluster.IsSplitBrain = true
+		cluster.SetState("WARN0181", state.State{ErrType: "WARNING", ErrKey: "WARN0181", ErrDesc: fmt.Sprintf(clusterError["WARN0181"], cluster.ChaosIsolatedRemaining()), ErrFrom: "TEST"})
+	}
 	if cluster.Conf.Arbitration {
 		if cluster.IsSplitBrain {
 			if !cluster.Conf.IsEligibleForArbitration() {

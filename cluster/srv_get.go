@@ -1155,6 +1155,11 @@ func (server *ServerMonitor) GetSlowLog() []dbhelper.PFSQuery {
 }
 
 func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
+	// Chaos isolation: simulate the data plane being unreachable so the
+	// health checks drive the servers to failed exactly like a real cut.
+	if server.ClusterGroup != nil && server.ClusterGroup.IsChaosIsolated() {
+		return nil, errors.New("chaos isolation active: simulated network cut")
+	}
 	// get topology is call to late
 	if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
 		return sqlx.Connect("postgres", server.DSN)
