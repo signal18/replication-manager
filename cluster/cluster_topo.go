@@ -181,7 +181,11 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		return nil
 	}
 
-	if cluster.GetMaster() == nil && cluster.HasConfigTopoActivePassive() {
+	// Wait for at least one full monitoring pass so every server's IsSlave
+	// reflects a real Refresh() rather than its zero-value default, otherwise
+	// a preferred master that is actually a slave but hasn't been refreshed
+	// yet can be mistakenly elected as vmaster on the very first tick.
+	if !cluster.runOnceAfterTopology && cluster.GetMaster() == nil && cluster.HasConfigTopoActivePassive() {
 		prefMaster := cluster.getOnePreferedMaster()
 		if prefMaster != nil && !prefMaster.IsSlave {
 			cluster.vmaster = prefMaster
