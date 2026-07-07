@@ -19,6 +19,52 @@ import (
 // not fail over; that it recovers when the cut is lifted; and finally that a
 // REAL master failure still fails over automatically and the old master
 // rejoins. Requires arbitration configured; otherwise skipped as passed.
+// chaosWaitStandbyNoFailover waits for the isolated node to fail-safe to
+// standby and asserts it did not fail over.
+func chaosWaitStandbyNoFailover(cl *cluster.Cluster, failoverCtr int, label string) bool {
+	for i := 0; i < 30; i++ {
+		time.Sleep(4 * time.Second)
+		if !cl.IsActive() {
+			break
+		}
+	}
+	if cl.IsActive() {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: isolated node never fail-safed to standby", label)
+		return false
+	}
+	if cl.FailoverCtr != failoverCtr {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: FAILOVER HAPPENED WHILE ISOLATED — protection failed", label)
+		return false
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: isolated node fail-safed to standby, no failover", label)
+	return true
+}
+
+// chaosWaitRecover waits for the cluster to converge back after the cut is
+// lifted: same master, no failover.
+func chaosWaitRecover(cl *cluster.Cluster, masterURL string, failoverCtr int, label string) bool {
+	for i := 0; i < 30; i++ {
+		time.Sleep(4 * time.Second)
+		if cl.GetMaster() != nil && cl.GetMaster().State != "Failed" {
+			break
+		}
+	}
+	if cl.GetMaster() == nil || cl.GetMaster().State == "Failed" {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: cluster did not recover after cut lifted", label)
+		return false
+	}
+	if cl.GetMaster().URL != masterURL {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: master changed across isolation: %s -> %s", label, masterURL, cl.GetMaster().URL)
+		return false
+	}
+	if cl.FailoverCtr != failoverCtr {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: failover counter moved across isolation", label)
+		return false
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: recovered — same master, no failover", label)
+	return true
+}
+
 func (regtest *RegTest) TestChaosIsolationArbitration(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	if !cluster.Conf.Arbitration {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping chaos isolation: arbitration not enabled on this cluster")
@@ -39,57 +85,31 @@ func (regtest *RegTest) TestChaosIsolationArbitration(cluster *cluster.Cluster, 
 	cluster.SetInteractive(false)
 	defer cluster.SetInteractive(prevInteractive)
 
-	// Scenario A: cut this node's arbitrator and peer links (master left
-	// reachable — co-located). The isolated node cannot confirm authority.
+	// Partition 1 — isolated active, MASTER OK: cut arbitrator + peer, leave
+	// the database reachable. The node has a live master but cannot confirm
+	// authority, so it must fail-safe (go standby, not keep acting) — the
+	// surviving peer takes over; this side must not stay a second master.
 	cluster.ChaosCutArbitrator(180 * time.Second)
-	defer cluster.ChaosStop()
-
-	// Phase 1: the isolated side cannot reach the arbitrator, so it must
-	// fail-safe to standby and must not fail over.
-	lost := false
-	for i := 0; i < 30; i++ {
-		time.Sleep(4 * time.Second)
-		if !cluster.IsActive() {
-			lost = true
-			break
-		}
-	}
-	if !lost {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Isolated instance never went standby (arbitrator link cut, active=%t)", cluster.IsActive())
+	if !chaosWaitStandbyNoFailover(cluster, failoverCtr, "P1 (master ok)") {
 		return false
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Isolated instance correctly fail-safed to standby with the arbitrator unreachable")
-
-	// The whole point: the isolated side must NOT have failed over.
-	if cluster.FailoverCtr != failoverCtr {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "FAILOVER HAPPENED DURING ISOLATION — protection failed")
-		return false
-	}
-
-	// Phase 2: lift the isolation, everything must converge back: databases
-	// reachable, split brain resolved, same master, still no failover.
 	cluster.ChaosStop()
-	recovered := false
-	for i := 0; i < 30; i++ {
-		time.Sleep(4 * time.Second)
-		if cluster.GetMaster() != nil && cluster.GetMaster().State != "Failed" {
-			recovered = true
-			break
-		}
-	}
-	if !recovered {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Cluster did not recover after isolation lifted")
+	if !chaosWaitRecover(cluster, masterURL, failoverCtr, "P1") {
 		return false
 	}
-	if cluster.GetMaster().URL != masterURL {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Master changed across isolation: %s -> %s", masterURL, cluster.GetMaster().URL)
+
+	// Partition 2 — isolated active, MASTER FAILED: also cut the database
+	// (db). The node wants to fail over but cannot reach the arbitrator, so
+	// it must NOT promote a new master.
+	cluster.ChaosCutArbitrator(180 * time.Second)
+	cluster.ChaosCutDB(180 * time.Second)
+	if !chaosWaitStandbyNoFailover(cluster, failoverCtr, "P2 (master failed)") {
 		return false
 	}
-	if cluster.FailoverCtr != failoverCtr {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Failover counter moved across isolation")
+	cluster.ChaosStop()
+	if !chaosWaitRecover(cluster, masterURL, failoverCtr, "P2") {
 		return false
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Recovery complete: same master, no failover, split brain resolved")
 
 	// Phase 3 — the hard part. Phases 1-2 pass whether or not failover is
 	// automatic, so alone they cannot prove arbitration is what blocked a

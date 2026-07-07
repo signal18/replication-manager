@@ -1970,17 +1970,31 @@ func (repman *ReplicationManager) handlerMuxClusterChaosIsolateStart(w http.Resp
 		secs = v
 	}
 	duration := time.Duration(secs) * time.Second
-	// Chaos always isolates this instance from the arbitrator and its peer —
-	// the constant across both split-brain scenarios (an isolated repman
-	// cannot reach the arbitrator, and its peer cannot reach it). The
-	// database link is only cut when explicitly requested (?cut=db): in the
-	// co-located-master scenarios the master stays reachable.
-	mycluster.ChaosCutArbitrator(duration)
-	repman.ChaosCutPeer(int64(secs))
-	applied := []string{"arbitrator", "peer"}
-	if strings.Contains(r.URL.Query().Get("cut"), "db") {
-		mycluster.ChaosCutDB(duration)
-		applied = append(applied, "db")
+	// Each link is cut independently. Default (no ?cut=) is arbitrator,peer =
+	// partition 1 (isolated active, master still ok). Adding db = partition 2
+	// (master also failed). db can also be armed alone on the peer via its
+	// own API to blind it to a master that lives in the other DC.
+	cut := r.URL.Query().Get("cut")
+	if cut == "" {
+		cut = "arbitrator,peer"
+	}
+	var applied []string
+	for _, c := range strings.Split(cut, ",") {
+		switch strings.TrimSpace(c) {
+		case "arbitrator":
+			mycluster.ChaosCutArbitrator(duration)
+			applied = append(applied, "arbitrator")
+		case "peer":
+			repman.ChaosCutPeer(int64(secs))
+			applied = append(applied, "peer")
+		case "db":
+			mycluster.ChaosCutDB(duration)
+			applied = append(applied, "db")
+		}
+	}
+	if len(applied) == 0 {
+		http.Error(w, "Invalid cut (expected any of db,arbitrator,peer)", http.StatusBadRequest)
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"chaos":"armed","cut":"%s","duration":%d}`, strings.Join(applied, ","), secs)
