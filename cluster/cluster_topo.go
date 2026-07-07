@@ -198,7 +198,8 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		}
 
 		if cluster.vmaster != nil {
-			cluster.vmaster.SetMaster()
+			cluster.master = cluster.vmaster
+			cluster.master.SetMaster()
 		}
 	}
 
