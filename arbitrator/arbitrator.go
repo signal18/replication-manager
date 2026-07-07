@@ -343,14 +343,31 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		return
 	}
-	res := dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
-	electedmaster := dbhelper.GetArbitrationMaster(db, h.Secret, h.Cluster)
+	// Read-mostly arbitration: the same endpoint serves both the peace-time
+	// status probe (isActiveArbitration, every few ticks on every peer) and
+	// the split-brain election. Running RequestArbitration on every probe
+	// minted transient Elected rows in peace time — the peer probing a
+	// second later read them and flapped passive (ERR00022 musical chairs).
+	// Order of decision:
+	//   1. A fresh Elected row exists: answer from it, write nothing.
+	//   2. No Elected row and nobody disagrees on the master: peace —
+	//      everyone is a winner, write nothing.
+	//   3. Masters diverge: real split brain, run the election.
+	var res bool
+	if uid, electedmaster, found := dbhelper.GetFreshElected(db, h.Secret, h.Cluster); found {
+		res = uid == h.UID
+		send.ElectedMaster = electedmaster
+	} else if dbhelper.IsMasterAgreed(db, h.Secret, h.Cluster, h.Master) {
+		res = true
+		send.ElectedMaster = h.Master
+	} else {
+		res = dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
+		send.ElectedMaster = dbhelper.GetArbitrationMaster(db, h.Secret, h.Cluster)
+	}
 	if res {
 		send.Arbitration = "winner"
-		send.ElectedMaster = electedmaster
 	} else {
 		send.Arbitration = "looser"
-		send.ElectedMaster = electedmaster
 	}
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusCreated)

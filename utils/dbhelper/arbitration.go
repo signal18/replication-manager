@@ -137,6 +137,35 @@ func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, mas
 	return nil
 }
 
+// GetFreshElected returns the uid and master of the currently elected
+// instance when a fresh Elected heartbeat row exists. Used by the status
+// probe to answer without running an election.
+func GetFreshElected(db *sqlx.DB, secret string, cluster string) (int, string, bool) {
+	tbl := heartbeatTable(db)
+	var uid int
+	var master string
+	stmt := "SELECT uid, master FROM " + tbl + " WHERE cluster=? AND secret=? AND status='E' AND date > " + tenSecondsAgoExpr(db) + " LIMIT 1"
+	err := db.QueryRowx(stmt, cluster, secret).Scan(&uid, &master)
+	if err != nil {
+		return 0, "", false
+	}
+	return uid, master, true
+}
+
+// IsMasterAgreed reports whether no fresh heartbeat disagrees with the
+// caller about who the master is — peace time. Zero fresh rows counts as
+// agreement (a lone voice cannot diverge).
+func IsMasterAgreed(db *sqlx.DB, secret string, cluster string, master string) bool {
+	tbl := heartbeatTable(db)
+	var diverging int
+	stmt := "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND master <> ? AND date > " + tenSecondsAgoExpr(db)
+	err := db.QueryRowx(stmt, cluster, secret, master).Scan(&diverging)
+	if err != nil {
+		return false
+	}
+	return diverging == 0
+}
+
 func ForgetArbitration(db *sqlx.DB, secret string) error {
 
 	stmt := "DELETE FROM " + heartbeatTable(db) + " WHERE secret=?"
