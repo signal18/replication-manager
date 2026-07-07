@@ -3167,6 +3167,7 @@ func (repman *ReplicationManager) RecomputeGatewayConflicts(changedClusterName, 
 	}
 }
 
+func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {
 	timeout := time.Duration(time.Duration(repman.Conf.MonitoringTicker) * time.Second * 4)
 	// Chaos: this node is isolated, so its OWN request to the peer also hangs
 	// and times out — not just the peer's request to it (/api/heartbeat).
