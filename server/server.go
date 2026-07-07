@@ -108,6 +108,10 @@ type ReplicationManager struct {
 	gitSyncBusy                  atomic.Bool                        `json:"-"`
 	cloud18PullBusy              atomic.Bool                        `json:"-"`
 	peerHealthBusy               atomic.Bool                        `json:"-"`
+	// chaosCutPeerUntil (unix seconds) severs the peer heartbeat both ways
+	// to simulate this node being isolated from its peer — the server-level
+	// leg of chaos isolation (cluster_chaos.go). Runtime state only.
+	chaosCutPeerUntil            atomic.Int64                       `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
@@ -3164,6 +3168,12 @@ func (repman *ReplicationManager) RecomputeGatewayConflicts(changedClusterName, 
 }
 
 func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {
+	// Chaos: our link to the peer is cut — treat it as unreachable (split
+	// brain from our side), matching what the peer sees when our
+	// /api/heartbeat goes dark.
+	if repman.IsChaosPeerCut() {
+		return true
+	}
 	timeout := time.Duration(time.Duration(repman.Conf.MonitoringTicker) * time.Second * 4)
 	/*	Host, _ := misc.SplitHostPort(peer)
 		ha, err := net.LookupHost(Host)
@@ -3221,6 +3231,30 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	}
 
 	return false
+}
+
+// ChaosCutPeer severs the peer heartbeat (both directions) for the given
+// duration to simulate this node being isolated from its peer.
+func (repman *ReplicationManager) ChaosCutPeer(seconds int64) {
+	if seconds <= 0 {
+		seconds = 120
+	}
+	if seconds > 900 {
+		seconds = 900
+	}
+	repman.chaosCutPeerUntil.Store(time.Now().Unix() + seconds)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlWarn, "CHAOS: peer heartbeat severed for %ds", seconds)
+}
+
+// ChaosRestorePeer restores the peer heartbeat immediately.
+func (repman *ReplicationManager) ChaosRestorePeer() {
+	repman.chaosCutPeerUntil.Store(0)
+}
+
+// IsChaosPeerCut reports whether the peer heartbeat is currently severed.
+func (repman *ReplicationManager) IsChaosPeerCut() bool {
+	until := repman.chaosCutPeerUntil.Load()
+	return until > 0 && time.Now().Unix() < until
 }
 
 func (repman *ReplicationManager) Heartbeat() {

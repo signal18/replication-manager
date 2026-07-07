@@ -1938,11 +1938,12 @@ func (repman *ReplicationManager) handlerMuxClusterResetFailoverControl(w http.R
 	}
 }
 
-// handlerMuxClusterChaosIsolateStart arms the per-cluster simulated
-// isolation (cluster_chaos.go): database connections and peer visibility are
-// cut on this instance only, so the split-brain protection path can be
-// exercised end to end. Optional ?duration=<seconds>, bounded, always
-// auto-restores. Requires the cluster-test grant.
+// handlerMuxClusterChaosIsolateStart severs individual communication links
+// on this instance to reproduce split-brain scenarios (cluster_chaos.go).
+// ?cut=<links> selects which to cut (comma-separated: db, arbitrator, peer;
+// default db,arbitrator,peer). db and arbitrator are per-cluster; peer is
+// server-level (this node's peer heartbeat both ways). ?duration=<seconds>
+// bounded, always auto-restores. Requires the cluster-test grant.
 func (repman *ReplicationManager) handlerMuxClusterChaosIsolateStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1959,21 +1960,34 @@ func (repman *ReplicationManager) handlerMuxClusterChaosIsolateStart(w http.Resp
 		http.Error(w, "No cluster-test grant", http.StatusForbidden)
 		return
 	}
-	var duration time.Duration
+	secs := 120
 	if d := r.URL.Query().Get("duration"); d != "" {
-		secs, err := strconv.Atoi(d)
-		if err != nil || secs <= 0 {
+		v, err := strconv.Atoi(d)
+		if err != nil || v <= 0 {
 			http.Error(w, "Invalid duration", http.StatusBadRequest)
 			return
 		}
-		duration = time.Duration(secs) * time.Second
+		secs = v
 	}
-	applied := mycluster.ChaosIsolateStart(duration)
+	duration := time.Duration(secs) * time.Second
+	// Chaos always isolates this instance from the arbitrator and its peer —
+	// the constant across both split-brain scenarios (an isolated repman
+	// cannot reach the arbitrator, and its peer cannot reach it). The
+	// database link is only cut when explicitly requested (?cut=db): in the
+	// co-located-master scenarios the master stays reachable.
+	mycluster.ChaosCutArbitrator(duration)
+	repman.ChaosCutPeer(int64(secs))
+	applied := []string{"arbitrator", "peer"}
+	if strings.Contains(r.URL.Query().Get("cut"), "db") {
+		mycluster.ChaosCutDB(duration)
+		applied = append(applied, "db")
+	}
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"chaos":"armed","duration":%d}`, int(applied.Seconds()))
+	fmt.Fprintf(w, `{"chaos":"armed","cut":"%s","duration":%d}`, strings.Join(applied, ","), secs)
 }
 
-// handlerMuxClusterChaosIsolateStop disarms the simulated isolation.
+// handlerMuxClusterChaosIsolateStop clears every chaos cut (cluster links and
+// the server-level peer heartbeat).
 func (repman *ReplicationManager) handlerMuxClusterChaosIsolateStop(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1990,7 +2004,8 @@ func (repman *ReplicationManager) handlerMuxClusterChaosIsolateStop(w http.Respo
 		http.Error(w, "No cluster-test grant", http.StatusForbidden)
 		return
 	}
-	mycluster.ChaosIsolateStop()
+	mycluster.ChaosStop()
+	repman.ChaosRestorePeer()
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(w, `{"chaos":"disarmed"}`)
 }

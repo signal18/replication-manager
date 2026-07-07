@@ -14,6 +14,7 @@ package cluster
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -45,14 +46,10 @@ func (cl *Cluster) arbitratorURL(path string) string {
 // It reports cluster state and triggers elections. Runs after TopologyDiscover to avoid
 // data races on Servers.
 func (cluster *Cluster) ArbitratorHandler() {
-	if cluster.IsChaosIsolated() {
-		// Simulated isolation (cluster_chaos.go): peer visibility is cut on
-		// this instance for this cluster, so the split-brain machinery must
-		// engage and the arbitrator decides — the isolated side reports all
-		// databases failed and loses the election.
-		cluster.IsSplitBrain = true
-		cluster.SetState("WARN0181", state.State{ErrType: "WARNING", ErrKey: "WARN0181", ErrDesc: fmt.Sprintf(clusterError["WARN0181"], cluster.ChaosIsolatedRemaining()), ErrFrom: "TEST"})
-	}
+	// Chaos (cluster_chaos.go) does NOT force split brain — it only severs
+	// links; split brain must emerge naturally so the real detection path is
+	// exercised. Keep the standing warning visible while any cut is live.
+	cluster.AssertChaosState()
 	if cluster.Conf.Arbitration {
 		if cluster.IsSplitBrain {
 			if !cluster.Conf.IsEligibleForArbitration() {
@@ -92,6 +89,13 @@ func (cl *Cluster) ArbitratorElection() error {
 }
 
 func (cl *Cluster) arbitratorElection() error {
+	// Chaos: simulate this node's arbitrator link being cut — it cannot
+	// confirm authority, so it must fail-safe (stay/go standby).
+	if cl.IsChaosArbitratorCut() {
+		cl.IsFailedArbitrator = true
+		cl.SetState("ERR00022", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00022"], ErrFrom: "CHECK"})
+		return errors.New("chaos: arbitrator link cut (simulation)")
+	}
 	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
 
 	url := cl.arbitratorURL("/arbitrator")

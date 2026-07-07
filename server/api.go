@@ -2004,6 +2004,13 @@ func (repman *ReplicationManager) handlerMuxTimeout(w http.ResponseWriter, r *ht
 // @Failure 500 {object} map[string]string
 // @Router /api/heartbeat [get]
 func (repman *ReplicationManager) handlerMuxMonitorHeartbeat(w http.ResponseWriter, r *http.Request) {
+	// Chaos: peer heartbeat severed — go dark so the peer polling us
+	// registers the isolation (cluster_chaos.go). Server-level flag, no
+	// per-cluster scan.
+	if repman.IsChaosPeerCut() {
+		http.Error(w, "chaos: peer heartbeat severed (simulation)", http.StatusServiceUnavailable)
+		return
+	}
 	var send Heartbeat
 	send.UUID = repman.UUID
 	send.UID = repman.Conf.ArbitrationSasUniqueId

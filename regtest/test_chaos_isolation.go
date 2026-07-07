@@ -13,12 +13,12 @@ import (
 )
 
 // TestChaosIsolationArbitration exercises the split-brain protection path
-// end to end: arm the simulated isolation (database connections and peer
-// visibility cut on this instance — cluster_chaos.go), then assert that the
-// isolated side loses the arbitration and refuses to fail over, and that
-// everything recovers once the isolation is lifted. Requires arbitration to
-// be configured (arbitrator + peer): without it the scenario is meaningless
-// and is skipped as passed.
+// end to end. It cuts this node's arbitrator link (cluster_chaos.go) — the
+// constant across both co-located-master scenarios — leaving the master
+// reachable, then asserts the isolated node fail-safes to standby and does
+// not fail over; that it recovers when the cut is lifted; and finally that a
+// REAL master failure still fails over automatically and the old master
+// rejoins. Requires arbitration configured; otherwise skipped as passed.
 func (regtest *RegTest) TestChaosIsolationArbitration(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	if !cluster.Conf.Arbitration {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping chaos isolation: arbitration not enabled on this cluster")
@@ -39,24 +39,26 @@ func (regtest *RegTest) TestChaosIsolationArbitration(cluster *cluster.Cluster, 
 	cluster.SetInteractive(false)
 	defer cluster.SetInteractive(prevInteractive)
 
-	cluster.ChaosIsolateStart(180 * time.Second)
-	defer cluster.ChaosIsolateStop()
+	// Scenario A: cut this node's arbitrator and peer links (master left
+	// reachable — co-located). The isolated node cannot confirm authority.
+	cluster.ChaosCutArbitrator(180 * time.Second)
+	defer cluster.ChaosStop()
 
-	// Phase 1: the isolated side must detect the (simulated) partition and
-	// lose the election — split brain engaged, cluster standby.
+	// Phase 1: the isolated side cannot reach the arbitrator, so it must
+	// fail-safe to standby and must not fail over.
 	lost := false
 	for i := 0; i < 30; i++ {
 		time.Sleep(4 * time.Second)
-		if cluster.IsSplitBrain && !cluster.IsActive() {
+		if !cluster.IsActive() {
 			lost = true
 			break
 		}
 	}
 	if !lost {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Isolated instance never lost arbitration (splitbrain=%t active=%t)", cluster.IsSplitBrain, cluster.IsActive())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Isolated instance never went standby (arbitrator link cut, active=%t)", cluster.IsActive())
 		return false
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Isolated instance correctly lost arbitration and went standby")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Isolated instance correctly fail-safed to standby with the arbitrator unreachable")
 
 	// The whole point: the isolated side must NOT have failed over.
 	if cluster.FailoverCtr != failoverCtr {
@@ -66,17 +68,17 @@ func (regtest *RegTest) TestChaosIsolationArbitration(cluster *cluster.Cluster, 
 
 	// Phase 2: lift the isolation, everything must converge back: databases
 	// reachable, split brain resolved, same master, still no failover.
-	cluster.ChaosIsolateStop()
+	cluster.ChaosStop()
 	recovered := false
 	for i := 0; i < 30; i++ {
 		time.Sleep(4 * time.Second)
-		if !cluster.IsSplitBrain && cluster.GetMaster() != nil && cluster.GetMaster().State != "Failed" {
+		if cluster.GetMaster() != nil && cluster.GetMaster().State != "Failed" {
 			recovered = true
 			break
 		}
 	}
 	if !recovered {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Cluster did not recover after isolation lifted (splitbrain=%t)", cluster.IsSplitBrain)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Cluster did not recover after isolation lifted")
 		return false
 	}
 	if cluster.GetMaster().URL != masterURL {

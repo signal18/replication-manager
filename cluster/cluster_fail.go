@@ -30,10 +30,14 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failover/Switchover not allowed in active-passive mode")
 		return false
 	}
-	if cluster.Conf.Arbitration && !cluster.IsActive() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failover/Switchover not allowed in standby mode")
-		return false
-	}
+	// Failover under arbitration is gated by the arbitrator's per-failover
+	// winner check (isActiveArbitration, in the CheckFailed false-positive
+	// chain) — the 3.0 model. It must NOT be gated on the active/standby
+	// status: that status is a continuous leader election used by config
+	// sync and the scheduler, and it cannot reliably latch, so requiring it
+	// here deadlocked failover (a healthy node whose peer is standby could
+	// never promote, so it could never fail over). The arbitrator, asked at
+	// the moment of failure, picks the single winner.
 
 	if cluster.GetTopology() == config.TopoMultiMasterRing || cluster.GetTopology() == config.TopoMultiMasterWsrep || cluster.GetTopology() == config.TopoMultiMasterGrouprep {
 		res := cluster.VMasterFailover(fail)

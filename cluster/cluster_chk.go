@@ -32,9 +32,12 @@ import (
 )
 
 func (cluster *Cluster) CheckFailed() {
-	if !cluster.IsActive() {
-		return
-	}
+	// The failover check runs on every node regardless of active/standby
+	// status — the 3.0 model. The arbitrator's per-failover winner check
+	// (ActiveArbitration in the false-positive chain below) ensures exactly
+	// one node fails over; gating the whole check on IsActive() made a
+	// standby-but-healthy node unable to fail over even when it was the
+	// legitimate authority.
 	// Don't trigger a failover if a switchover is happening
 	if cluster.StateMachine.IsInFailover() {
 		cluster.SetState("ERR00001", state.State{ErrType: "WARNING", ErrDesc: clusterError["ERR00001"], ErrFrom: "CHECK"})
@@ -383,6 +386,12 @@ func (cluster *Cluster) isActiveArbitration() bool {
 
 	if !cluster.Conf.Arbitration {
 		return true
+	}
+	// Chaos: arbitrator link cut — cannot confirm we are the winner, so the
+	// failover gate must fail (fail-safe: no promotion when isolated).
+	if cluster.IsChaosArbitratorCut() {
+		cluster.SetState("ERR00022", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00022"], ErrFrom: "CHECK"})
+		return false
 	}
 	url := cluster.arbitratorURL("/arbitrator")
 	var mst string
