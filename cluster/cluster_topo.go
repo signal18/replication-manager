@@ -191,7 +191,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					continue
 				}
 
-				if sv.IsRunning() {
+				if sv.IsRunning() && !sv.IsSlave {
 					cluster.vmaster = sv
 				}
 			}
