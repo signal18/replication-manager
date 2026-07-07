@@ -184,7 +184,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	if cluster.master == nil && cluster.HasConfigTopoActivePassive() {
 		prefMaster := cluster.getOnePreferedMaster()
 		if prefMaster != nil {
-			cluster.master = prefMaster
+			cluster.vmaster = prefMaster
 		} else {
 			for _, sv := range cluster.Servers {
 				if sv == nil {
@@ -192,13 +192,13 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				}
 
 				if sv.IsRunning() {
-					cluster.master = sv
+					cluster.vmaster = sv
 				}
 			}
 		}
 
-		if cluster.master != nil {
-			cluster.master.SetMaster()
+		if cluster.vmaster != nil {
+			cluster.vmaster.SetMaster()
 		}
 	}
 
