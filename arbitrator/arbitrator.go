@@ -59,7 +59,7 @@ func newRouter() *mux.Router {
 	router := mux.NewRouter().StrictSlash(true)
 	for _, r := range rs {
 		handler := r.HandlerFunc
-		if r.Pattern != "/health" && r.Pattern != "/status" && r.Pattern != "/stats" && RepMan.Confs["arbitrator"].ArbitratorURICheck {
+		if r.Pattern != "/health" && r.Pattern != "/status" && r.Pattern != "/stats" && r.Pattern != "/version" && RepMan.Confs["arbitrator"].ArbitratorURICheck {
 			handler = uriCheckMiddleware(handler)
 		}
 		router.
@@ -151,6 +151,12 @@ var rs = routes{
 		"GET",
 		"/stats",
 		handlerStats,
+	},
+	route{
+		"Version",
+		"GET",
+		"/version",
+		handlerVersion,
 	},
 	route{
 		"Heartbeat",
@@ -273,6 +279,14 @@ func getArbitratorDB() (*sqlx.DB, error) {
 		return nil, fmt.Errorf("arbitrator database is not initialized")
 	}
 	return arbitratorDB, nil
+}
+
+// handlerVersion reports the running build so operators can verify what is
+// deployed — election semantics changed across builds and an unversioned
+// arbitrator made that impossible to diagnose.
+func handlerVersion(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	json.NewEncoder(w).Encode(map[string]string{"version": Version, "fullVersion": FullVersion})
 }
 
 func handlerHealth(w http.ResponseWriter, r *http.Request) {
