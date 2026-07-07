@@ -174,14 +174,14 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// if only one server auto set runtime topology to topology-active-passive
 	if len(cluster.Servers) == 1 {
 		cluster.Topology = config.TopoActivePassive
-		if cluster.master == nil && cluster.Servers[0] != nil {
+		if cluster.GetMaster() == nil && cluster.Servers[0] != nil {
 			cluster.master = cluster.Servers[0]
 			cluster.master.SetMaster()
 		}
 		return nil
 	}
 
-	if cluster.master == nil && cluster.HasConfigTopoActivePassive() {
+	if cluster.GetMaster() == nil && cluster.HasConfigTopoActivePassive() {
 		prefMaster := cluster.getOnePreferedMaster()
 		if prefMaster != nil {
 			cluster.vmaster = prefMaster
