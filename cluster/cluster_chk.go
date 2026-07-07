@@ -32,15 +32,6 @@ import (
 )
 
 func (cluster *Cluster) CheckFailed() {
-	if cluster.Conf.Arbitration && !cluster.IsSplitBrain {
-		if cluster.StateMachine.GetHeartbeats()%5 == 0 {
-			cluster.isActiveArbitration()
-		} else {
-			// The arbitrator probe only runs every 5th tick; carry its state
-			// over the skipped ticks so ERR00022 does not flap open/resolved.
-			cluster.StateMachine.PreserveState("ERR00022")
-		}
-	}
 	if !cluster.IsActive() {
 		return
 	}
@@ -58,7 +49,14 @@ func (cluster *Cluster) CheckFailed() {
 	cluster.SetFalsePositiveCheck("NotHavingMySQLErrantTransaction", cluster.IsNotHavingMySQLErrantTransaction())
 	cluster.SetFalsePositiveCheck("SameWsrepUUID", cluster.IsSameWsrepUUID())
 	cluster.SetFalsePositiveCheck("MaxMasterFailedCountReached", cluster.isMaxMasterFailedCountReached())
-	cluster.SetFalsePositiveCheck("ActiveArbitration", cluster.isActiveArbitration())
+	// Ask the arbitrator only when the answer is decisive: the master has
+	// failed and a failover is being evaluated. The /arbitrator endpoint
+	// runs an election, so probing it in peace time (every tick here, plus
+	// a periodic status probe) minted transient Elected rows on the
+	// arbitrator — the peer probing seconds later read them and flapped
+	// active/passive (ERR00022 on every cluster). Old arbitrators keep that
+	// behavior forever, so an upgraded client must not probe them idly.
+	cluster.SetFalsePositiveCheck("ActiveArbitration", !cluster.isMasterFailed() || cluster.isActiveArbitration())
 	cluster.SetFalsePositiveCheck("MaxClusterFailoverCountNotReached", cluster.isMaxClusterFailoverCountNotReached())
 	cluster.SetFalsePositiveCheck("AutomaticFailover", cluster.isAutomaticFailover())
 	cluster.SetFalsePositiveCheck("MasterFailed", cluster.isMasterFailed())
