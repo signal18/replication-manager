@@ -102,7 +102,13 @@ func (server *ServerMonitor) SetFailed() {
 
 func (server *ServerMonitor) SetMaster() {
 	cluster := server.ClusterGroup
-	server.SetState(stateMaster)
+	// Split-brain simulator: topology discovery re-identifies this server as the
+	// master every tick and would re-mark it healthy (stateMaster), resetting
+	// FailCount and preventing failover. While its failure is simulated, keep it
+	// Failed so the death sticks and failover can fire.
+	if !(cluster.IsMasterFailureSimulated() && cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL) {
+		server.SetState(stateMaster)
+	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Server %s state transition from %s changed to: %s in SetMaster", server.URL, server.PrevState, stateMaster)
 	_, file, no, ok := runtime.Caller(1)
 	if ok {

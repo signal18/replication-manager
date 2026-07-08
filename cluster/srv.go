@@ -781,13 +781,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			if server.PrevState == stateSuspect || (server.PrevState == stateMaintenance && !server.IsMaintenance) {
 				//if active-passive topo and no replication, put the state at standalone
 				if cluster.GetMaster() == nil || cluster.GetMaster().Id == server.Id {
-					// Split-brain simulator: this topology-role heal ignores the
-					// connection and re-marks the master healthy from Suspect,
-					// resetting FailCount and preventing failover. Skip it while the
-					// master failure is simulated so the death actually sticks.
-					if !(cluster.IsMasterFailureSimulated() && cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL) {
-						server.SetState(stateMaster)
-					}
+					server.SetState(stateMaster)
 				} else {
 					server.SetState(stateUnconn)
 				}
