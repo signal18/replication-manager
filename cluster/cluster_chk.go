@@ -406,7 +406,10 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	// Bounded timeout: a cut arbitrator link (real split brain, or the
+	// split-brain simulator's blackhole) must make this probe FAIL, not hang —
+	// an unbounded client would freeze the monitor tick (and shutdown) forever.
+	client := &http.Client{Timeout: time.Duration(cluster.Conf.ArbitrationReadTimout) * time.Millisecond}
 	resp, err := client.Do(req)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err.Error())
