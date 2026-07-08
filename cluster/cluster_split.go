@@ -140,6 +140,9 @@ func (cl *Cluster) arbitratorElection() error {
 	}
 
 	cl.IsFailedArbitrator = false
+	// Per-tick RECEIVE trace: the arbitrator's verdict every tick (debug only),
+	// so a flapping winner/looser reply is visible without a status transition.
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlDbg, "arbitratorElection: reply arbitration=%s winner-master=%s (my status=%s)", r.Arbitration, r.Master, cl.Status)
 	// Elections repeat on every tick while split brain persists, so log the
 	// outcome only on an actual status transition — the state machine keeps
 	// WARN0083/ERR00068 visible in between.
