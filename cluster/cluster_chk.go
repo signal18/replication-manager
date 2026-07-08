@@ -226,6 +226,13 @@ func (cluster *Cluster) isBetweenFailoverTimeValid() bool {
 }
 
 func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
+	// Split-brain simulator: a simulated master death is a REAL death for the
+	// test. We only cut repman's view of the master, so db->db replication is
+	// still live and the slave keeps getting heartbeats — which would (wrongly)
+	// look like a false positive and veto failover forever. Treat it as dead.
+	if cluster.IsMasterFailureSimulated() || cluster.IsDatabaseFailureSimulated() {
+		return false
+	}
 	if !cluster.Conf.CheckFalsePositiveHeartbeat || !cluster.isMasterFailed() {
 		return false
 	}
@@ -442,6 +449,11 @@ func (cluster *Cluster) isActiveArbitration() bool {
 }
 
 func (cluster *Cluster) isExternalOk() bool {
+	// Split-brain simulator: during a simulated master/db death, an external
+	// probe that still reaches the live DB must not mask the failure.
+	if cluster.IsMasterFailureSimulated() || cluster.IsDatabaseFailureSimulated() {
+		return false
+	}
 	if !cluster.Conf.CheckFalsePositiveExternal {
 		return false
 	}
