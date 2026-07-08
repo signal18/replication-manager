@@ -159,6 +159,12 @@ var rs = routes{
 		handlerVersion,
 	},
 	route{
+		"Log",
+		"GET",
+		"/log",
+		handlerLog,
+	},
+	route{
 		"Heartbeat",
 		"POST",
 		"/heartbeat",
@@ -311,6 +317,35 @@ func handlerHealth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// arbLogBuf is a small in-memory ring buffer of recent arbitration decisions,
+// exposed at GET /log for debugging (safe to hide or remove later).
+var (
+	arbLogMu  sync.Mutex
+	arbLogBuf []string
+)
+
+func arbLogf(format string, args ...interface{}) {
+	arbLogMu.Lock()
+	defer arbLogMu.Unlock()
+	arbLogBuf = append(arbLogBuf, time.Now().Format("15:04:05")+" "+fmt.Sprintf(format, args...))
+	if len(arbLogBuf) > 2000 {
+		arbLogBuf = arbLogBuf[len(arbLogBuf)-2000:]
+	}
+}
+
+// handlerLog dumps the recent arbitration decision log. Optional ?cluster=NAME filter.
+func handlerLog(w http.ResponseWriter, r *http.Request) {
+	cl := r.URL.Query().Get("cluster")
+	arbLogMu.Lock()
+	defer arbLogMu.Unlock()
+	w.Header().Set("Content-Type", "text/plain; charset=UTF-8")
+	for _, line := range arbLogBuf {
+		if cl == "" || strings.Contains(line, "cluster="+cl+" ") {
+			fmt.Fprintln(w, line)
+		}
+	}
+}
+
 func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	var h server.Heartbeat
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1048576))
@@ -369,6 +404,8 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	} else {
 		send.Arbitration = "looser"
 	}
+	arbLogf("/arbitrator cluster=%s uid=%d status=%s hosts=%d failed=%d master=%s -> %s (elected=%s)",
+		h.Cluster, h.UID, h.Status, h.Hosts, h.Failed, h.Master, send.Arbitration, send.ElectedMaster)
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusCreated)
 
@@ -412,6 +449,7 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res := dbhelper.WriteHeartbeat(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
+	arbLogf("/heartbeat cluster=%s uid=%d status=%s hosts=%d failed=%d master=%s", h.Cluster, h.UID, h.Status, h.Hosts, h.Failed, h.Master)
 	if res == nil {
 		send = `{"heartbeat":"succed"}`
 	} else {
