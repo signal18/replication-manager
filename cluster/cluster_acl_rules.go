@@ -198,6 +198,9 @@ var clusterACLRules = []ACLRule{
 	// Testing and Benchmarking
 	{"/actions/sysbench", nil, []string{config.GrantClusterBench, config.GrantClusterTest}},
 	{"/tests/", nil, []string{config.GrantClusterTest}},
+	// Split-brain simulator endpoints (/test/split-brain-simulator/{simulate-*-failure,restore}).
+	// Note the singular "/test/" — the "/tests/" rule above does not cover these.
+	{"/test/split-brain-simulator/", nil, []string{config.GrantClusterTest}},
 
 	// Replication
 	{"/actions/replication/bootstrap", nil, []string{config.GrantClusterReplication}},
