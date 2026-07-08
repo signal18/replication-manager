@@ -30,6 +30,13 @@ func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
 	return false
 }
 
+// HasConfigTopoActivePassive reports whether the cluster is configured for
+// active-passive topology, either via the legacy boolean flag or an explicit
+// topology target.
+func (cluster *Cluster) HasConfigTopoActivePassive() bool {
+	return cluster.Conf.ActivePassive || cluster.Conf.TopologyTarget == config.TopoActivePassive
+}
+
 func (cluster *Cluster) HasValidBackup() bool {
 	logical := false
 	physical := false
