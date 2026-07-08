@@ -88,12 +88,42 @@ func (cl *Cluster) ArbitratorElection() error {
 	return cl.arbitratorElection()
 }
 
+// arbitratorMinorityFailSafe is invoked when this node is in split brain but
+// cannot reach the arbitrator to confirm authority — i.e. it is (or must assume
+// it is) the minority. Two guarantees:
+//
+//  1. DATA SAFETY: force the master read-only. When the partition heals, the
+//     majority will have elected a master and this node's old master must rejoin
+//     it as a slave — any write accepted here would diverge and block the rejoin.
+//     The existing SetReadWrite guard only refuses to *enable* writes; an
+//     already-writable master must be actively demoted to read-only.
+//  2. CONTROL: yield status to standby so this repman stops driving the cluster
+//     (in the 2-repman / 1-cluster arbitration setup, status decides who drives).
+//
+// Idempotent — the read-only set is a no-op once already read-only, and the
+// status change only logs/acts on an actual Active->Standby transition.
+func (cl *Cluster) arbitratorMinorityFailSafe(reason string) {
+	if m := cl.GetMaster(); m != nil && !m.IsReadOnly() {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Minority fail-safe: %s during split brain — setting master %s read-only so it can rejoin the majority", reason, m.URL)
+		if logs, err := m.SetReadOnly(); err != nil {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlErr, "Minority fail-safe: could not set master %s read-only: %s (%s)", m.URL, err, logs)
+		}
+	}
+	if cl.Status == ConstMonitorActif {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Minority fail-safe: yielding cluster %s to standby", cl.GetName())
+		cl.SetActiveStatus(ConstMonitorStandby)
+	}
+}
+
 func (cl *Cluster) arbitratorElection() error {
 	// Split-brain simulator: this node's arbitrator link is cut — it cannot
-	// confirm authority, so it must fail-safe (stay/go standby).
+	// confirm authority, so it must fail-safe to standby (yield), not freeze
+	// Active — freezing would leave it Active while the majority also promotes,
+	// i.e. dual-active. A minority that can't reach the arbitrator must step down.
 	if cl.IsArbitratorFailureSimulated() {
 		cl.IsFailedArbitrator = true
 		cl.SetState("ERR00022", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00022"], ErrFrom: "CHECK"})
+		cl.arbitratorMinorityFailSafe("simulated arbitrator link cut")
 		return errors.New("split-brain simulation: arbitrator link down")
 	}
 	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
@@ -122,6 +152,8 @@ func (cl *Cluster) arbitratorElection() error {
 	if err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlErr, "Could not receive http response from arbitration: %s", err)
 		cl.IsFailedArbitrator = true
+		// Real arbitrator loss during split brain: can't confirm authority → yield.
+		cl.arbitratorMinorityFailSafe("arbitrator unreachable")
 		return err
 	}
 	defer resp.Body.Close()
