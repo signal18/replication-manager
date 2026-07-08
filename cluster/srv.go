@@ -528,6 +528,21 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		}
 	}
 
+	// Split-brain simulator: force THIS health check to fail so the server is
+	// detected down through the real Ping path — the one that drives master-
+	// failure detection and majority failover. Hooking GetNewDBConn alone is
+	// not enough: with CheckType != "tcp" it is never called, and monitoring
+	// otherwise reuses the existing pooled connection, so the master keeps
+	// looking alive. Applies to the whole-cluster db cut and the master-only cut.
+	if cluster.IsDatabaseFailureSimulated() ||
+		(cluster.IsMasterFailureSimulated() && cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL) {
+		if conn != nil {
+			conn.Close()
+			conn = nil
+		}
+		err = errors.New("split-brain simulation: server link down")
+	}
+
 	// Make sure we always have the updated config path status
 	server.HasConfigPathChanged = server.HasConfigPathCookie()
 
