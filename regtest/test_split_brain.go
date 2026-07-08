@@ -190,18 +190,34 @@ func minorityDoesNothing(cl *cluster.Cluster, setup func(*cluster.Cluster), labe
 	}
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: network split brain detected", label)
 
-	// Then the minority must not move active/passive and must not fail over.
-	for i := 0; i < 20; i++ {
+	// The minority must FAIL-SAFE, not freeze. It must:
+	//   - never fail over (no promotion on a non-authoritative view), AND
+	//   - yield: drop its cluster status to standby (and, where it owns the
+	//     master, set it read-only so it can rejoin the majority's new master).
+	// Assert no failover for the whole window and that it reaches standby.
+	yielded := false
+	for i := 0; i < 25; i++ {
 		time.Sleep(3 * time.Second)
-		if cl.Status != status0 {
-			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: minority node FLIPPED active/passive %s -> %s", label, status0, cl.Status)
-			return false
-		}
 		if cl.FailoverCtr != failoverCtr {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: minority node FAILED OVER on a non-authoritative master view", label)
 			return false
 		}
+		if cl.Status == cluster.ConstMonitorStandby {
+			yielded = true
+		}
 	}
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: split brain detected, status held at %s, no failover — minority correctly did nothing", label, status0)
+	if !yielded {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: minority did NOT yield — still %s (started %s) — dual-active risk, master may keep writing", label, cl.Status, status0)
+		return false
+	}
+	ro := "n/a"
+	if m := cl.GetMaster(); m != nil {
+		if m.IsReadOnly() {
+			ro = "read-only"
+		} else {
+			ro = "READ-WRITE(!)"
+		}
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: minority failed safe — yielded %s->standby, master %s, no failover", label, status0, ro)
 	return true
 }
