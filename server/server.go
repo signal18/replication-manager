@@ -3374,10 +3374,12 @@ func (repman *ReplicationManager) Heartbeat() {
 		return
 	}
 
-	var peerList []string
-	// try to found an active peer replication-manager
+	// arbPeerList is the ARBITRATION peer list (from ArbitrationPeerHosts) — the
+	// other replication-manager this node heartbeats for split-brain detection.
+	// Distinct from the Cloud18 share/sale peers in PeerManager.
+	var arbPeerList []string
 	if repman.Conf.ArbitrationPeerHosts != "" {
-		peerList = strings.Split(repman.Conf.ArbitrationPeerHosts, ",")
+		arbPeerList = strings.Split(repman.Conf.ArbitrationPeerHosts, ",")
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Arbitration peer not specified. Disabling arbitration")
 		repman.Conf.Arbitration = false
@@ -3386,12 +3388,25 @@ func (repman *ReplicationManager) Heartbeat() {
 
 	bcksplitbrain := repman.SplitBrain
 
-	for _, peer := range peerList {
+	if repman.IsHeartbeatFailureSimulated() {
+		// SPLITBRAIN SIMULATION: this server's network is cut for the duration.
+		// A real cable cut means THIS node can no longer reach its peer, so we
+		// force the server-level split brain directly instead of relying on the
+		// outbound heartbeat. The block below then fires GWARN006 and pushes
+		// IsSplitBrain down to every cluster — the first observable step — with
+		// no dependency on the peer or any remote call.
 		repman.Lock()
-		repman.SplitBrain = repman.HeartbeatPeerSplitBrain(peer, bcksplitbrain)
+		repman.SplitBrain = true
 		repman.Unlock()
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "SplitBrain set to %t on peer %s", repman.SplitBrain, peer)
-	} //end check all peers
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "SPLITBRAIN SIMULATION: network split active (%ds left) — forcing server split-brain and pushing down to all clusters", repman.sbHeartbeatFailUntil.Load()-time.Now().Unix())
+	} else {
+		for _, arbPeer := range arbPeerList {
+			repman.Lock()
+			repman.SplitBrain = repman.HeartbeatPeerSplitBrain(arbPeer, bcksplitbrain)
+			repman.Unlock()
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "SplitBrain set to %t on arbitration peer %s", repman.SplitBrain, arbPeer)
+		} //end check all arbitration peers
+	}
 
 	if bcksplitbrain != repman.SplitBrain {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server split-brain state changed: %t -> %t", bcksplitbrain, repman.SplitBrain)
