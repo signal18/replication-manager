@@ -189,11 +189,12 @@ type Cluster struct {
 	StagingServer  *ServerMonitor             `json:"-" groups:"web"`
 	mxs            *maxscale.MaxScale         `json:"-"`
 	CheckSumConfig map[string]hash.Hash       `json:"-"`
-	// chaosCut*Until (unix seconds) sever this cluster's individual links on
-	// this instance for split-brain testing — see cluster_chaos.go. Runtime
+	// sb*FailUntil (unix seconds) sever this cluster's individual links on
+	// this instance for split-brain testing — see cluster_splitbrain_simulator.go. Runtime
 	// state only, never persisted.
-	chaosCutDBUntil         int64 `json:"-"`
-	chaosCutArbitratorUntil int64 `json:"-"`
+	sbDatabaseFailUntil         int64 `json:"-"`
+	sbArbitratorFailUntil int64 `json:"-"`
+	sbMasterFailUntil     int64 `json:"-"`
 	// eventProv is the config event log provenance table: where the current
 	// value of each saved key came from (echo subtraction + LWW). See
 	// cluster_eventlog.go and doc/implementation/config/CONFIG_EVENT_LOG.md.

@@ -1298,11 +1298,11 @@ func (cluster *Cluster) SetState(key string, s state.State) {
 func (cl *Cluster) SetArbitratorReport() error {
 	//	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
 
-	// Chaos: the arbitrator link is cut, so this node cannot report either —
+	// Split-brain simulator: the arbitrator link is cut, so this node cannot report either —
 	// a minority node must stop refreshing its arbitrator row so it goes
 	// stale (~10s) and the majority wins the next per-tick election.
-	if cl.IsChaosArbitratorCut() {
-		return errors.New("chaos: arbitrator link cut (simulation)")
+	if cl.IsArbitratorFailureSimulated() {
+		return errors.New("split-brain simulation: arbitrator link down")
 	}
 
 	cl.IsLostMajority = cl.LostMajority()

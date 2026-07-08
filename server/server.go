@@ -108,10 +108,10 @@ type ReplicationManager struct {
 	gitSyncBusy                  atomic.Bool                        `json:"-"`
 	cloud18PullBusy              atomic.Bool                        `json:"-"`
 	peerHealthBusy               atomic.Bool                        `json:"-"`
-	// chaosCutPeerUntil (unix seconds) severs the peer heartbeat both ways
+	// sbHeartbeatFailUntil (unix seconds) severs the peer heartbeat both ways
 	// to simulate this node being isolated from its peer — the server-level
-	// leg of chaos isolation (cluster_chaos.go). Runtime state only.
-	chaosCutPeerUntil            atomic.Int64                       `json:"-"`
+	// leg of the split-brain simulator (cluster_splitbrain_simulator.go). Runtime state only.
+	sbHeartbeatFailUntil            atomic.Int64                       `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
@@ -3169,7 +3169,7 @@ func (repman *ReplicationManager) RecomputeGatewayConflicts(changedClusterName, 
 
 func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {
 	timeout := time.Duration(time.Duration(repman.Conf.MonitoringTicker) * time.Second * 4)
-	// No chaos short-circuit here: the peer cut only sleeps THIS node's
+	// No simulator short-circuit here: the peer cut only sleeps THIS node's
 	// /api/heartbeat (the inbound direction). The outbound request below runs
 	// for real and times out on its own against the peer's sleeping
 	// /api/heartbeat — but only if the peer also has the cut armed. Each side
@@ -3233,27 +3233,138 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	return false
 }
 
-// ChaosCutPeer severs the peer heartbeat (both directions) for the given
+// SimulateHeartbeatFailure severs the peer heartbeat (both directions) for the given
 // duration to simulate this node being isolated from its peer.
-func (repman *ReplicationManager) ChaosCutPeer(seconds int64) {
+func (repman *ReplicationManager) SimulateHeartbeatFailure(seconds int64) {
 	if seconds <= 0 {
 		seconds = 120
 	}
 	if seconds > 900 {
 		seconds = 900
 	}
-	repman.chaosCutPeerUntil.Store(time.Now().Unix() + seconds)
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlWarn, "CHAOS: peer heartbeat severed for %ds", seconds)
+	repman.sbHeartbeatFailUntil.Store(time.Now().Unix() + seconds)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlWarn, "SPLITBRAIN SIMULATION: peer heartbeat severed for %ds", seconds)
 }
 
-// ChaosRestorePeer restores the peer heartbeat immediately.
-func (repman *ReplicationManager) ChaosRestorePeer() {
-	repman.chaosCutPeerUntil.Store(0)
+// RestoreHeartbeat restores the peer heartbeat immediately.
+func (repman *ReplicationManager) RestoreHeartbeat() {
+	repman.sbHeartbeatFailUntil.Store(0)
 }
 
-// IsChaosPeerCut reports whether the peer heartbeat is currently severed.
-func (repman *ReplicationManager) IsChaosPeerCut() bool {
-	until := repman.chaosCutPeerUntil.Load()
+// getClusterTestCredentials returns a local user (User/Password) that carries the
+// cluster-test grant for the given cluster. Both repman share the same admin
+// user/password, so these credentials authenticate on the peer as well.
+func (repman *ReplicationManager) getClusterTestCredentials(clusterName string) (string, string, bool) {
+	cl := repman.getClusterByName(clusterName)
+	if cl == nil {
+		return "", "", false
+	}
+	for _, u := range cl.APIUsers {
+		if u.Grants != nil && u.Grants[config.GrantClusterTest] && u.Password != "" {
+			return u.User, u.Password, true
+		}
+	}
+	return "", "", false
+}
+
+// peerSplitBrainLogin resolves the arbitration peer (ArbitrationPeerHosts),
+// logs in with the shared admin credentials for clusterName, and returns the
+// peer base URL and a bearer token.
+func (repman *ReplicationManager) peerSplitBrainLogin(clusterName string) (base string, token string, err error) {
+	if repman.Conf.ArbitrationPeerHosts == "" {
+		return "", "", errors.New("no arbitration-peer-hosts configured")
+	}
+	peerHost := strings.TrimSpace(strings.Split(repman.Conf.ArbitrationPeerHosts, ",")[0])
+	scheme := "http://"
+	if strings.HasPrefix(peerHost, "http://") || strings.HasPrefix(peerHost, "https://") {
+		scheme = ""
+	}
+	base = scheme + peerHost
+
+	user, pass, ok := repman.getClusterTestCredentials(clusterName)
+	if !ok {
+		return "", "", errors.New("no local user with cluster-test grant to authenticate to peer")
+	}
+	loginBody, _ := json.Marshal(userCredentials{Username: user, Password: pass})
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Post(base+"/api/login", "application/json", bytes.NewBuffer(loginBody))
+	if err != nil {
+		return "", "", fmt.Errorf("peer login failed: %w", err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("peer login rejected (%d): %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	var tok AuthTokenWithUpgrade
+	if err := json.Unmarshal(respBody, &tok); err != nil || tok.Token == "" {
+		return "", "", fmt.Errorf("peer login returned no token: %s", strings.TrimSpace(string(respBody)))
+	}
+	return base, tok.Token, nil
+}
+
+// peerSplitBrainPost issues an authenticated POST to a split-brain-simulator
+// endpoint on the peer. rawQuery may be empty (e.g. for restore).
+func (repman *ReplicationManager) peerSplitBrainPost(base, token, clusterName, action, rawQuery string) error {
+	url := fmt.Sprintf("%s/api/clusters/%s/test/split-brain-simulator/%s%s", base, clusterName, action, rawQuery)
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return fmt.Errorf("peer %s request build failed: %w", action, err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("peer %s call failed: %w", action, err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("peer %s rejected (%d): %s", action, resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// SimulatePeerSplitBrain is the REMOTE half of the minority-with-master
+// orchestration: it logs in to the arbitration peer with the shared admin
+// credentials and POSTs a split-brain-simulator endpoint for the given cluster.
+// repman1 uses it to arm two independent cuts on repman2 (its inbound heartbeat,
+// and its link to the master colocated on the minority side), so both nodes fail
+// to heartbeat each other exactly like a real cable cut. action is
+// "simulate-heartbeat-failure" or "simulate-master-failure". The cut is armed on
+// the peer's own bounded, self-expiring timer — a crash of this orchestrator
+// never strands the peer.
+func (repman *ReplicationManager) SimulatePeerSplitBrain(clusterName, action string, seconds int64) error {
+	base, token, err := repman.peerSplitBrainLogin(clusterName)
+	if err != nil {
+		return err
+	}
+	if err := repman.peerSplitBrainPost(base, token, clusterName, action, fmt.Sprintf("?duration=%d", seconds)); err != nil {
+		return err
+	}
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "SPLITBRAIN SIMULATION: armed %s on peer for cluster %s", action, clusterName)
+	return nil
+}
+
+// SimulatePeerRestore clears every simulated cut on the peer immediately (rather
+// than waiting for the peer's own bounded auto-restore), so the remote side is
+// cleaned up symmetrically with the local side on the happy path. This is only
+// an optimization: crash safety already comes from the peer's own timer.
+func (repman *ReplicationManager) SimulatePeerRestore(clusterName string) error {
+	base, token, err := repman.peerSplitBrainLogin(clusterName)
+	if err != nil {
+		return err
+	}
+	if err := repman.peerSplitBrainPost(base, token, clusterName, "restore", ""); err != nil {
+		return err
+	}
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "SPLITBRAIN SIMULATION: cleared all cuts on peer for cluster %s", clusterName)
+	return nil
+}
+
+// IsHeartbeatFailureSimulated reports whether the peer heartbeat is currently severed.
+func (repman *ReplicationManager) IsHeartbeatFailureSimulated() bool {
+	until := repman.sbHeartbeatFailUntil.Load()
 	return until > 0 && time.Now().Unix() < until
 }
 

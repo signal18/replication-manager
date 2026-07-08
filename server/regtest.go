@@ -37,6 +37,14 @@ import (
 // - Unprovision the cluster  if test suite
 
 func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp string, path string) []cluster.Test {
+	// Wire the server-level split-brain peer cut so cluster-scoped minority tests
+	// trigger a REAL network split brain (HeartbeatPeerSplitBrain timeout →
+	// repman.SplitBrain), rather than faking IsSplitBrain. Package ref here,
+	// before the local variable below shadows the name.
+	regtest.SimulateHeartbeatFailure = repman.SimulateHeartbeatFailure
+	regtest.RestoreHeartbeat = repman.RestoreHeartbeat
+	regtest.SimulatePeerFailure = repman.SimulatePeerSplitBrain
+	regtest.SimulatePeerRestore = repman.SimulatePeerRestore
 	regtest := new(regtest.RegTest)
 	var allTests map[string]cluster.Test
 	pathdefault := cl.GetShareDir() + "/tests/" + cl.GetOrchestrator() + "/config/masterslave/mariadb/without_traffic/10.5/x2/semisync"
@@ -200,8 +208,8 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testSetMinorityWithMaster" {
 			res = regtest.TestSetMinorityWithMaster(cl, test.ConfigFile, &test)
 		}
-		if test.Name == "testSetMinorityLostMaster" {
-			res = regtest.TestSetMinorityLostMaster(cl, test.ConfigFile, &test)
+		if test.Name == "testSetMinorityWithoutMaster" {
+			res = regtest.TestSetMinorityWithoutMaster(cl, test.ConfigFile, &test)
 		}
 		if test.Name == "testMasterNil" {
 			res = regtest.TestMasterNil(cl, test.ConfigFile, &test)

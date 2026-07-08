@@ -387,9 +387,9 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	if !cluster.Conf.Arbitration {
 		return true
 	}
-	// Chaos: arbitrator link cut — cannot confirm we are the winner, so the
+	// Split-brain simulator: arbitrator link cut — cannot confirm we are the winner, so the
 	// failover gate must fail (fail-safe: no promotion when isolated).
-	if cluster.IsChaosArbitratorCut() {
+	if cluster.IsArbitratorFailureSimulated() {
 		cluster.SetState("ERR00022", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00022"], ErrFrom: "CHECK"})
 		return false
 	}

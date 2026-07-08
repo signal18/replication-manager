@@ -1155,10 +1155,16 @@ func (server *ServerMonitor) GetSlowLog() []dbhelper.PFSQuery {
 }
 
 func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
-	// Chaos: simulate the database link being cut so the health checks drive
-	// the servers to failed exactly like a real network loss.
-	if server.ClusterGroup != nil && server.ClusterGroup.IsChaosDBCut() {
-		return nil, errors.New("chaos: database link cut (simulation)")
+	// Split-brain simulator: a cut database link (whole cluster, or just the
+	// master when the master is colocated on the isolated side) drives the
+	// health checks to failed exactly like a real network loss.
+	if server.ClusterGroup != nil {
+		if server.ClusterGroup.IsDatabaseFailureSimulated() {
+			return nil, errors.New("split-brain simulation: database link down")
+		}
+		if server.ClusterGroup.IsMasterFailureSimulated() && server.ClusterGroup.GetMaster() != nil && server.URL == server.ClusterGroup.GetMaster().URL {
+			return nil, errors.New("split-brain simulation: master link down")
+		}
 	}
 	// get topology is call to late
 	if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {

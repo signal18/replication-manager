@@ -46,10 +46,10 @@ func (cl *Cluster) arbitratorURL(path string) string {
 // It reports cluster state and triggers elections. Runs after TopologyDiscover to avoid
 // data races on Servers.
 func (cluster *Cluster) ArbitratorHandler() {
-	// Chaos (cluster_chaos.go) does NOT force split brain — it only severs
+	// The split-brain simulator (cluster_splitbrain_simulator.go) does NOT force split brain — it only severs
 	// links; split brain must emerge naturally so the real detection path is
 	// exercised. Keep the standing warning visible while any cut is live.
-	cluster.AssertChaosState()
+	cluster.AssertSplitBrainSimulationState()
 	if cluster.Conf.Arbitration {
 		if cluster.IsSplitBrain {
 			if !cluster.Conf.IsEligibleForArbitration() {
@@ -89,12 +89,12 @@ func (cl *Cluster) ArbitratorElection() error {
 }
 
 func (cl *Cluster) arbitratorElection() error {
-	// Chaos: simulate this node's arbitrator link being cut — it cannot
+	// Split-brain simulator: this node's arbitrator link is cut — it cannot
 	// confirm authority, so it must fail-safe (stay/go standby).
-	if cl.IsChaosArbitratorCut() {
+	if cl.IsArbitratorFailureSimulated() {
 		cl.IsFailedArbitrator = true
 		cl.SetState("ERR00022", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00022"], ErrFrom: "CHECK"})
-		return errors.New("chaos: arbitrator link cut (simulation)")
+		return errors.New("split-brain simulation: arbitrator link down")
 	}
 	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
 

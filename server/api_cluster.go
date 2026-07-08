@@ -368,13 +368,21 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterResetFailoverControl)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/chaos-isolate-start", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/test/split-brain-simulator/simulate-arbitrator-failure", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterChaosIsolateStart)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSimulateArbitratorFailure)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/chaos-isolate-stop", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/test/split-brain-simulator/simulate-heartbeat-failure", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterChaosIsolateStop)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSimulateHeartbeatFailure)),
+	))
+	router.Handle("/api/clusters/{clusterName}/test/split-brain-simulator/simulate-master-failure", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSimulateMasterFailure)),
+	))
+	router.Handle("/api/clusters/{clusterName}/test/split-brain-simulator/restore", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSimulateRestore)),
 	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/discover", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -1938,90 +1946,92 @@ func (repman *ReplicationManager) handlerMuxClusterResetFailoverControl(w http.R
 	}
 }
 
-// handlerMuxClusterChaosIsolateStart severs individual communication links
-// on this instance to reproduce split-brain scenarios (cluster_chaos.go).
-// ?cut=<links> selects which to cut (comma-separated: db, arbitrator, peer;
-// default db,arbitrator,peer). db and arbitrator are per-cluster; peer is
-// server-level (this node's peer heartbeat both ways). ?duration=<seconds>
-// bounded, always auto-restores. Requires the cluster-test grant.
-func (repman *ReplicationManager) handlerMuxClusterChaosIsolateStart(w http.ResponseWriter, r *http.Request) {
+// splitBrainSimGuard resolves the cluster, validates the ACL and the
+// cluster-test grant, and parses ?duration=<seconds> (default 120). It is the
+// common preamble to every split-brain-simulator endpoint. Returns the cluster
+// and duration; on any failure it writes the HTTP error and returns ok=false.
+func (repman *ReplicationManager) splitBrainSimGuard(w http.ResponseWriter, r *http.Request) (mycluster *cluster.Cluster, secs int, ok bool) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
+	mycluster = repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
-		return
+		return nil, 0, false
 	}
 	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 		http.Error(w, "No valid ACL", http.StatusForbidden)
-		return
+		return nil, 0, false
 	}
 	if u, ok := mycluster.APIUsers[repman.GetUserFromRequest(r)]; !ok || !u.Grants[config.GrantClusterTest] {
 		http.Error(w, "No cluster-test grant", http.StatusForbidden)
-		return
+		return nil, 0, false
 	}
-	secs := 120
+	secs = 120
 	if d := r.URL.Query().Get("duration"); d != "" {
 		v, err := strconv.Atoi(d)
 		if err != nil || v <= 0 {
 			http.Error(w, "Invalid duration", http.StatusBadRequest)
-			return
+			return nil, 0, false
 		}
 		secs = v
 	}
-	duration := time.Duration(secs) * time.Second
-	// Each link is cut independently. Default (no ?cut=) is arbitrator,peer =
-	// partition 1 (isolated active, master still ok). Adding db = partition 2
-	// (master also failed). db can also be armed alone on the peer via its
-	// own API to blind it to a master that lives in the other DC.
-	cut := r.URL.Query().Get("cut")
-	if cut == "" {
-		cut = "arbitrator,peer"
-	}
-	var applied []string
-	for _, c := range strings.Split(cut, ",") {
-		switch strings.TrimSpace(c) {
-		case "arbitrator":
-			mycluster.ChaosCutArbitrator(duration)
-			applied = append(applied, "arbitrator")
-		case "peer":
-			repman.ChaosCutPeer(int64(secs))
-			applied = append(applied, "peer")
-		case "db":
-			mycluster.ChaosCutDB(duration)
-			applied = append(applied, "db")
-		}
-	}
-	if len(applied) == 0 {
-		http.Error(w, "Invalid cut (expected any of db,arbitrator,peer)", http.StatusBadRequest)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"chaos":"armed","cut":"%s","duration":%d}`, strings.Join(applied, ","), secs)
+	return mycluster, secs, true
 }
 
-// handlerMuxClusterChaosIsolateStop clears every chaos cut (cluster links and
-// the server-level peer heartbeat).
-func (repman *ReplicationManager) handlerMuxClusterChaosIsolateStop(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster == nil {
-		http.Error(w, "No cluster", http.StatusInternalServerError)
+// handlerMuxSimulateArbitratorFailure cuts THIS repman's link to the arbitrator
+// (DC3): it stops reporting and bails out of the election so its arbitrator row
+// expires, exactly as if the DC3 link were physically severed. Per-cluster,
+// bounded by ?duration=<seconds>, auto-restores. Requires the cluster-test grant.
+func (repman *ReplicationManager) handlerMuxSimulateArbitratorFailure(w http.ResponseWriter, r *http.Request) {
+	mycluster, secs, ok := repman.splitBrainSimGuard(w, r)
+	if !ok {
 		return
 	}
-	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-		http.Error(w, "No valid ACL", http.StatusForbidden)
-		return
-	}
-	if u, ok := mycluster.APIUsers[repman.GetUserFromRequest(r)]; !ok || !u.Grants[config.GrantClusterTest] {
-		http.Error(w, "No cluster-test grant", http.StatusForbidden)
-		return
-	}
-	mycluster.ChaosStop()
-	repman.ChaosRestorePeer()
+	mycluster.SimulateArbitratorFailure(time.Duration(secs) * time.Second)
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprint(w, `{"chaos":"disarmed"}`)
+	fmt.Fprintf(w, `{"simulate":"arbitrator-failure","cluster":"%s","duration":%d}`, mycluster.Name, secs)
+}
+
+// handlerMuxSimulateHeartbeatFailure darkens THIS node's inbound /api/heartbeat
+// handler: the peer's outbound heartbeat request times out against a sleeping
+// handler, producing a real peer-unreachable detection (GWARN006). Server-level
+// and one-directional by design — each node darkens only itself, so cutting one
+// side never magically affects the other direction. Bounded, auto-restores.
+func (repman *ReplicationManager) handlerMuxSimulateHeartbeatFailure(w http.ResponseWriter, r *http.Request) {
+	mycluster, secs, ok := repman.splitBrainSimGuard(w, r)
+	if !ok {
+		return
+	}
+	repman.SimulateHeartbeatFailure(int64(secs))
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"simulate":"heartbeat-failure","cluster":"%s","duration":%d}`, mycluster.Name, secs)
+}
+
+// handlerMuxSimulateMasterFailure cuts THIS repman's DB link to the master only,
+// leaving the slaves reachable so the majority side can still promote. Per-server,
+// used when the master is colocated on the isolated (minority) side. Bounded by
+// ?duration=<seconds>, auto-restores. Requires the cluster-test grant.
+func (repman *ReplicationManager) handlerMuxSimulateMasterFailure(w http.ResponseWriter, r *http.Request) {
+	mycluster, secs, ok := repman.splitBrainSimGuard(w, r)
+	if !ok {
+		return
+	}
+	mycluster.SimulateMasterFailure(time.Duration(secs) * time.Second)
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"simulate":"master-failure","cluster":"%s","duration":%d}`, mycluster.Name, secs)
+}
+
+// handlerMuxSimulateRestore clears every simulated cut on this instance: the
+// per-cluster arbitrator/database/master cuts and the server-level heartbeat.
+func (repman *ReplicationManager) handlerMuxSimulateRestore(w http.ResponseWriter, r *http.Request) {
+	mycluster, _, ok := repman.splitBrainSimGuard(w, r)
+	if !ok {
+		return
+	}
+	mycluster.RestoreSplitBrainSimulation()
+	repman.RestoreHeartbeat()
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"simulate":"restored","cluster":"%s"}`, mycluster.Name)
 }
 
 // handlerMuxSwitchover handles the switchover process for a given cluster.

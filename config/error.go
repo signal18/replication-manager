@@ -266,7 +266,7 @@ var ClusterError = map[string]string{
 	"WARN0178":  "On-premise SSH unreachable on %d node(s): %s",
 	"WARN0179":  "%d database(s) differ from configurator generated config: %s",
 	"WARN0180":  "%d database(s) have no deployed config received from dbjobs: %s",
-	"WARN0181":  "CHAOS: simulated link cut active (%s) on this instance, auto-restore in %ds",
+	"WARN0181":  "SPLITBRAIN SIMULATION: simulated link cut active (%s) on this instance, auto-restore in %ds",
 	"WARN0206":  "Log plugin %s rejected: %s",
 	"WARN0207":  "Plugin signature verification skipped: %s",
 	// CINF: cluster observability statuses (INFO, state-as-tag) — each domain
