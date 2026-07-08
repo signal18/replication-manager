@@ -1004,6 +1004,19 @@ func (cluster *Cluster) GetAppServerIdList() []string {
 
 func (cluster *Cluster) GetTopologyFromConf() string {
 
+	// An explicitly declared topology-target is authoritative: trust it directly
+	// rather than re-deriving it from the legacy per-topology booleans below, so
+	// that a target set only via config/API (without also setting the matching
+	// legacy bool) is not silently overwritten on every InitFromConf() call.
+	// An unset or default "master-slave" target is ambiguous (could just be the
+	// flag default), so it still falls through to the legacy inference below.
+	if cluster.Conf.TopologyTarget != "" && cluster.Conf.TopologyTarget != config.TopoMasterSlave {
+		if cluster.Conf.TopologyTarget == config.TopoMasterSlavePgStream || cluster.Conf.TopologyTarget == config.TopoMasterSlavePgLog {
+			cluster.IsPostgres = true
+		}
+		return cluster.Conf.TopologyTarget
+	}
+
 	targetTopology := config.TopoMasterSlave
 	if cluster.Conf.MultiMaster {
 		targetTopology = config.TopoMultiMaster

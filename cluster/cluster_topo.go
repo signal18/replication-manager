@@ -177,6 +177,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		cluster.Topology = config.TopoActivePassive
 		if cluster.GetMaster() == nil && cluster.Servers[0] != nil {
 			cluster.master = cluster.Servers[0]
+			cluster.vmaster = cluster.Servers[0]
 			cluster.master.SetMaster()
 		}
 		return nil
@@ -198,6 +199,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 
 				if sv.IsRunning() && !sv.IsSlave {
 					cluster.vmaster = sv
+					break
 				}
 			}
 		}
