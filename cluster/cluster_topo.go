@@ -239,7 +239,13 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					//Extra master in master slave topology rejoin it after split brain
 					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00063"], ErrFrom: "TOPO"})
 					//	cluster.Servers[k].RejoinMaster() /* remove for rolling restart , wrongly rejoin server as master before just after swithover while the server is just stopping */
-				} else {
+				} else if !cluster.IsFailedArbitrator && !cluster.IsMasterFailureSimulated() {
+					// Minority fail-safe: a node that cannot confirm authority via the
+					// arbitrator (IsFailedArbitrator) must NOT rediscover / re-designate
+					// the master from its own untrusted view — it holds its last-known
+					// topology and does nothing. Only the trusted majority rediscovers.
+					// Also skip while the master failure is simulated, so a simulated-dead
+					// master isn't re-marked healthy from the still-live slave replication.
 					// Either no other master or multi-master topology
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s was set master as last non slave", sv.URL)
 					if len(cluster.Servers) == 1 {
@@ -478,7 +484,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			}
 		}
 		// State also check in failover_check false positive
-		if cluster.master.IsFailed() && cluster.slaves.HasAllSlavesRunning() {
+		// Suppress while the master failure is simulated: we deliberately declared
+		// the master dead, so "slaves still replicating" is not a false positive here.
+		if cluster.master.IsFailed() && cluster.slaves.HasAllSlavesRunning() && !cluster.IsMasterFailureSimulated() {
 			cluster.SetState("ERR00016", state.State{
 				ErrType:   "ERROR",
 				ErrDesc:   clusterError["ERR00016"],
