@@ -852,6 +852,14 @@ func (server *ServerMonitor) Refresh() error {
 		return errors.New("Connection is unsafe, server unreachable")
 	}
 	err = server.Conn.Ping()
+	// Split-brain simulator: the health is delegated to the Go driver's pooled
+	// connection, which auto-reconnects — so hooking only Ping() lets the server
+	// flap Suspect->Master and never reach MaxFail. Fail this recovery ping too
+	// while the cut is armed, so the server stays down consistently.
+	if cluster.IsDatabaseFailureSimulated() ||
+		(cluster.IsMasterFailureSimulated() && cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL) {
+		err = errors.New("split-brain simulation: server link down")
+	}
 	if err != nil {
 		return err
 	}
