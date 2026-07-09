@@ -29,7 +29,7 @@ import AddUserModal from '../Modals/AddUserModal'
 import MattermostIntegration from '../../Pages/Mattermost';
 import { getMeetInfo, logoutFromMeet, resetMeetError } from '../../redux/meetSlice';
 import { selectMeetUIState } from '../../redux/memoize'
-import { clearClusters, getMonitoredData } from '../../redux/globalClustersSlice'
+import { clearClusters, getMonitoredData, setServerActiveStatus } from '../../redux/globalClustersSlice'
 import { globalClustersService } from '../../services/globalClustersService'
 
 function Navbar({ username, user }) {
@@ -201,6 +201,17 @@ function Navbar({ username, user }) {
                   <PopoverArrow />
                   <PopoverBody>
                     <RefreshCounter clusterName={clusterData?.name} />
+                    <Button
+                      size='sm'
+                      variant='outline'
+                      mt={2}
+                      width='100%'
+                      isDisabled={!!monitor?.splitBrain}
+                      title={monitor?.splitBrain ? 'Disabled during split brain — arbitration is in control' : 'Move this server active/standby (calm period)'}
+                      onClick={() => dispatch(setServerActiveStatus())}
+                    >
+                      {monitor?.status === 'A' ? 'Yield to peer (go standby)' : 'Take over (go active)'}
+                    </Button>
                   </PopoverBody>
                 </PopoverContent>
               </Popover>
@@ -231,6 +242,17 @@ function Navbar({ username, user }) {
                   <PopoverArrow />
                   <PopoverBody>
                     <RefreshCounter clusterName={clusterData?.name} />
+                    <Button
+                      size='sm'
+                      variant='outline'
+                      mt={2}
+                      width='100%'
+                      isDisabled={!!monitor?.splitBrain}
+                      title={monitor?.splitBrain ? 'Disabled during split brain — arbitration is in control' : 'Move this server active/standby (calm period)'}
+                      onClick={() => dispatch(setServerActiveStatus())}
+                    >
+                      {monitor?.status === 'A' ? 'Yield to peer (go standby)' : 'Take over (go active)'}
+                    </Button>
                   </PopoverBody>
                 </PopoverContent>
               </Popover>

@@ -10066,6 +10066,17 @@ func (repman *ReplicationManager) handlerMuxInterventionEnd(w http.ResponseWrite
 	}
 }
 
+// @Summary Toggle server active/standby (calm-period switchover)
+// @Description Flips this replication-manager between Active and Standby and propagates the new status to all its clusters (yield to peer / take over). Calm-period only: refused with 409 during split brain, when the arbitration is in control.
+// @Tags ClusterActions
+// @Produce plain
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Server set to Active|Standby"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "cannot toggle active status during split brain"
+// @Failure 500 {string} string "Cluster Not Found"
+// @Router /api/clusters/{clusterName}/actions/set-active-status [get]
 func (repman *ReplicationManager) handlerMuxSetActiveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -10075,24 +10086,46 @@ func (repman *ReplicationManager) handlerMuxSetActiveStatus(w http.ResponseWrite
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		repman.toggleServerActiveStatus()
+		if err := repman.toggleServerActiveStatus(); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 		w.Write([]byte("Server set to " + repman.Status))
 	} else {
 		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 	}
 }
 
+// @Summary Toggle server active/standby (server-level, calm-period switchover)
+// @Description Flips this replication-manager between Active and Standby and propagates the new status to all its clusters (yield to peer / take over). Calm-period only: refused with 409 during split brain. Server-level counterpart of the per-cluster set-active-status endpoint.
+// @Tags Monitor
+// @Produce plain
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Success 200 {string} string "Server set to Active|Standby"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "cannot toggle active status during split brain"
+// @Router /api/actions/set-active-status [get]
 func (repman *ReplicationManager) handlerMuxSetServerActiveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if valid, _ := repman.IsValidClusterACL(r, repman.currentCluster); !valid {
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
-	repman.toggleServerActiveStatus()
+	if err := repman.toggleServerActiveStatus(); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
 	w.Write([]byte("Server set to " + repman.Status))
 }
 
-func (repman *ReplicationManager) toggleServerActiveStatus() {
+func (repman *ReplicationManager) toggleServerActiveStatus() error {
+	// Calm-period only: during a split brain the arbitration decides who is
+	// active. A manual toggle would fight it and can leave the pair dual-active,
+	// so refuse it while split brain is set — let the arbitration converge first.
+	if repman.SplitBrain {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlWarn, "Refusing manual active/standby toggle during split brain — arbitration is in control")
+		return errors.New("cannot toggle active status during split brain (arbitration is in control)")
+	}
 	var newStatus string
 	if repman.Status == cluster.ConstMonitorActif {
 		newStatus = cluster.ConstMonitorStandby
@@ -10109,4 +10142,5 @@ func (repman *ReplicationManager) toggleServerActiveStatus() {
 			}
 		}
 	}
+	return nil
 }

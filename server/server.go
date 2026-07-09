@@ -3362,6 +3362,40 @@ func (repman *ReplicationManager) SimulatePeerRestore(clusterName string) error 
 	return nil
 }
 
+// PeerIsActive reports whether the arbitration peer (repman2) is currently
+// Active for clusterName. It logs in to the peer with the shared cluster-test
+// credentials and reads the cluster's activePassiveStatus. The dual-active
+// regtest needs this because a node cannot observe a two-actives condition from
+// its own status alone.
+func (repman *ReplicationManager) PeerIsActive(clusterName string) (bool, error) {
+	base, token, err := repman.peerSplitBrainLogin(clusterName)
+	if err != nil {
+		return false, err
+	}
+	req, err := http.NewRequest("GET", base+"/api/clusters/"+clusterName, nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("peer cluster status (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var payload struct {
+		ActivePassiveStatus string `json:"activePassiveStatus"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return false, fmt.Errorf("peer cluster status parse: %w", err)
+	}
+	return payload.ActivePassiveStatus == "A", nil
+}
+
 // IsHeartbeatFailureSimulated reports whether the peer heartbeat is currently severed.
 func (repman *ReplicationManager) IsHeartbeatFailureSimulated() bool {
 	until := repman.sbHeartbeatFailUntil.Load()
