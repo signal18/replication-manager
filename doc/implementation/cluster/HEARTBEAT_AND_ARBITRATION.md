@@ -131,17 +131,26 @@ Called when a cluster reports via `/heartbeat`. Upserts the row and checks for s
 
 ### RequestArbitration
 
-Called when a cluster requests an election via `/arbitrator`. Uses a transaction with `FOR UPDATE` (MySQL) for row-level locking:
+Called when a cluster requests an election via `/arbitrator`. Every `/arbitrator` request runs the election — this is the original 3.0 semantics, restored after the 2026-06 "read-mostly" shortcut ("masters agree → everyone is a winner, write nothing") was found to answer `winner` to BOTH sides of a same-master partition (the dual-active bug). Since 3.1.31 the clients only call `/arbitrator` during a real split brain (`arbitratorElection`) or a master-failure evaluation (`isActiveArbitration`), never as an idle peace-time probe, so running the election cannot flap peace time.
 
-1. Checks if another instance has status `'E'` with `date > 10 seconds ago` (filters stale rows from dead instances)
+Uses a transaction with `FOR UPDATE` (MySQL) for row-level locking:
+
+1. Checks if another instance has status `'E'` with `date > 10 seconds ago` (filters stale rows from dead instances) — **first winner holds** for the whole incident
 2. If no other elected instance: checks if any other instance with status `'U'` has fewer failed nodes
-3. If this instance wins: upserts row with `status='E'`
+3. Then checks if any other **fresh** (`date > 10 seconds ago`) instance with status `'U'` has a **lower uid** and an equal-or-lower failed count
+4. If this instance wins: upserts row with `status='E'`
 
 The `date > 10 seconds ago` filter prevents stale rows from dead instances blocking elections indefinitely.
 
 ### Election Decision Logic
 
-The arbitrator decides the winner based on failed node count. The instance with **fewer failed nodes** wins. If both have the same failed count, the first to request wins (first-come-first-served within the transaction lock).
+Preference order:
+
+1. **Fewer failed nodes wins** (majority view first).
+2. **Lower uid wins** among fresh equal candidates: the main repman carries the lower `arbitration-external-unique-id` and is the URL users face; the DR is a backup that must only take over when the main stops reporting (its row goes stale after 10s). This decides the same-master split (triangle base cut: peer link down, both sides reach the arbitrator, both report the identical master) deterministically in favor of the main.
+3. **First winner holds**: once an instance holds a fresh `'E'` row, every other requester is told `looser` until the incident ends and the row goes stale.
+
+The loser of the election sets itself Standby during the split (`arbitratorElection`), so a dual-active never forms. Two Active peers that can see each other are deliberately NOT treated as split brain by the peer heartbeat (`HeartbeatPeerSplitBrain`) — an already-latched dual-active (pre-fix versions) is resolved manually via the calm-period active/standby toggle, and the normal aftermath of an incident (Active sitting on the DR) is relocated the same way.
 
 ## LostArbitration — Failover on Election Loss
 

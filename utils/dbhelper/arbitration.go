@@ -137,7 +137,7 @@ func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, mas
 		// table wrap is required so MySQL permits selecting from the table being
 		// updated (error 1093); it is also valid on SQLite.
 		stmt = "UPDATE " + tbl + " set status='U' WHERE status='E' AND cluster=? AND secret=? AND uid NOT IN (" +
-			"SELECT uid FROM (SELECT uid FROM " + tbl + " WHERE status='E' AND cluster=? AND secret=? AND date > " + tenSecondsAgoExpr(db) + " ORDER BY arbitration_date ASC LIMIT 1) t)"
+			"SELECT uid FROM (SELECT uid FROM " + tbl + " WHERE status='E' AND cluster=? AND secret=? AND date > " + tenSecondsAgoExpr(db) + " ORDER BY arbitration_date ASC, uid ASC LIMIT 1) t)"
 		_, err = db.Exec(stmt, cluster, secret, cluster, secret)
 		if err != nil {
 			return err
@@ -153,10 +153,11 @@ func GetFreshElected(db *sqlx.DB, secret string, cluster string) (int, string, b
 	tbl := heartbeatTable(db)
 	var uid int
 	var master string
-	// ORDER BY arbitration_date ASC: return the FIRST winner deterministically
-	// when more than one fresh Elected row exists, so the "first winner holds"
-	// rule is honoured instead of returning an arbitrary row.
-	stmt := "SELECT uid, master FROM " + tbl + " WHERE cluster=? AND secret=? AND status='E' AND date > " + tenSecondsAgoExpr(db) + " ORDER BY arbitration_date ASC LIMIT 1"
+	// ORDER BY arbitration_date ASC, uid ASC: return the FIRST winner
+	// deterministically when more than one fresh Elected row exists, so the
+	// "first winner holds" rule is honoured instead of returning an arbitrary
+	// row; on identical dates the lower uid (the main repman) is preferred.
+	stmt := "SELECT uid, master FROM " + tbl + " WHERE cluster=? AND secret=? AND status='E' AND date > " + tenSecondsAgoExpr(db) + " ORDER BY arbitration_date ASC, uid ASC LIMIT 1"
 	err := db.QueryRowx(stmt, cluster, secret).Scan(&uid, &master)
 	if err != nil {
 		return 0, "", false
@@ -209,6 +210,15 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 		stmt = "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ?" + lockSuffix
 		err = tx.QueryRowx(stmt, cluster, secret, uid, failed).Scan(&count)
 		if err == nil && count == 0 {
+			// Equal candidates: the LOWEST uid wins. The main repman carries the
+			// lower arbitration-external-unique-id and is the URL users face; the
+			// DR must only take over when the main stops reporting (its heartbeat
+			// row goes stale after 10s). Freshness is required here so a dead
+			// main cannot block the DR forever.
+			stmt = "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status = 'U' AND uid < ? AND failed <= ? AND date > " + tenSecondsAgoExpr(db) + lockSuffix
+			err = tx.QueryRowx(stmt, cluster, secret, uid, failed).Scan(&count)
+		}
+		if err == nil && count == 0 {
 			log.Info("Node won election")
 			// stmt = "INSERT INTO heartbeat(secret,uuid,uid,master,date,arbitration_date,cluster, hosts, failed ) VALUES('" + secret + "','" + uuid + "'," + uid + ",'" + master + "', DATETIME('now'), DATETIME('now'),'" + cluster + "'," + hosts + "," + failed + ") ON DUPLICATE KEY UPDATE arbitration_date=DATETIME('now'),date=DATETIME('now'),master='" + master + "',status='E', uuid='" + uuid + "',hosts=" + hosts + ",failed=" + failed
 			now := nowExpr(db)
@@ -237,7 +247,7 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 func GetArbitrationMaster(db *sqlx.DB, secret string, cluster string) string {
 	var master string
 	// count the number of replication manager Elected that is not me for this cluster
-	stmt := "SELECT master FROM " + heartbeatTable(db) + " WHERE cluster=? AND secret=?  AND status IN ('E') ORDER BY arbitration_date ASC LIMIT 1"
+	stmt := "SELECT master FROM " + heartbeatTable(db) + " WHERE cluster=? AND secret=?  AND status IN ('E') ORDER BY arbitration_date ASC, uid ASC LIMIT 1"
 	err := db.QueryRowx(stmt, cluster, secret).Scan(&master)
 	if err == nil {
 		return master

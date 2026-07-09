@@ -3227,15 +3227,14 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Both peers are standby, triggering arbitration election")
 			return true
 		}
-		// Symmetric to both-standby: two ACTIVE peers is a dual-active split brain.
-		// Keep split-brain hot so arbitratorElection keeps running and the arbitrator
-		// demotes one to standby. Without this, a dual-active that forms during a
-		// transient split LATCHES once the peer is reachable again (IsSplitBrain
-		// flips false, elections stop, and both stay Active forever).
-		if h.Status == ConstMonitorActif && repman.Status == ConstMonitorActif {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlWarn, "Both peers are ACTIVE (dual-active) — triggering arbitration election to demote one")
-			return true
-		}
+		// NOTE: two ACTIVE peers seeing each other (dual-active) is deliberately
+		// NOT treated as split brain here — peers that can talk are not split,
+		// and declaring split brain server-wide drags every cluster into
+		// elections. Dual-active must not FORM in the first place: the
+		// arbitrator crowns exactly one winner during the real split
+		// (dbhelper.RequestArbitration, lowest-uid preference). An already
+		// latched dual-active is resolved manually via the calm-period
+		// active/standby toggle.
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "No peer split brain, peer status is %s, my status is %s", h.Status, repman.Status)
 	}
 

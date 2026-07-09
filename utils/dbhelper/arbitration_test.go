@@ -101,6 +101,71 @@ func TestRequestArbitration_Winner_SQLite(t *testing.T) {
 	}
 }
 
+// TestRequestArbitration_LowestUIDWins_SQLite covers the same-master split
+// (triangle base cut): both repman report the identical master and equal
+// failed counts, both ask for arbitration. The LOWER uid (the main repman)
+// must win regardless of who asks first, and the winner must then hold the
+// Elected row for the whole incident.
+func TestRequestArbitration_LowestUIDWins_SQLite(t *testing.T) {
+	db := newSQLiteArbitrationDB(t)
+	// Both sides report fresh heartbeats, same master, failed=0.
+	if err := WriteHeartbeat(db, "uuid1", "secret1", "cluster1", "master1", 1, 2, 0); err != nil {
+		t.Fatalf("WriteHeartbeat uid1: %v", err)
+	}
+	if err := WriteHeartbeat(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 0); err != nil {
+		t.Fatalf("WriteHeartbeat uid2: %v", err)
+	}
+	// The DR (uid 2) asks first: it must LOSE to the fresh lower-uid reporter.
+	if RequestArbitration(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 0) {
+		t.Fatal("uid 2 must lose while a fresh uid 1 report exists")
+	}
+	// The main (uid 1) asks: it must win and mint the Elected row.
+	if !RequestArbitration(db, "uuid1", "secret1", "cluster1", "master1", 1, 2, 0) {
+		t.Fatal("uid 1 must win the same-master election")
+	}
+	// First winner holds: uid 2 keeps losing against the fresh Elected row.
+	if RequestArbitration(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 0) {
+		t.Fatal("uid 2 must keep losing while uid 1 holds the Elected row")
+	}
+	if uid, master, found := GetFreshElected(db, "secret1", "cluster1"); !found || uid != 1 || master != "master1" {
+		t.Fatalf("expected fresh Elected uid=1 master=master1, got uid=%d master=%q found=%t", uid, master, found)
+	}
+}
+
+// TestRequestArbitration_DeadMainDRWins_SQLite: the DR (higher uid) must win
+// when the main has stopped reporting — its heartbeat row is stale (>10s), so
+// it no longer outranks anyone.
+func TestRequestArbitration_DeadMainDRWins_SQLite(t *testing.T) {
+	db := newSQLiteArbitrationDB(t)
+	// Stale report from the main (uid 1), 60 seconds old.
+	if _, err := db.Exec("INSERT INTO heartbeat (secret,uuid,uid,master,date,cluster,hosts,failed,status) VALUES('secret1','uuid1',1,'master1',DATETIME('now','-60 seconds'),'cluster1',2,0,'U')"); err != nil {
+		t.Fatalf("seed stale row: %v", err)
+	}
+	if err := WriteHeartbeat(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 0); err != nil {
+		t.Fatalf("WriteHeartbeat uid2: %v", err)
+	}
+	if !RequestArbitration(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 0) {
+		t.Fatal("uid 2 must win when the uid 1 report is stale (main dead)")
+	}
+}
+
+// TestRequestArbitration_MajorityBeatsLowerUID_SQLite: the failed-count
+// preference stays primary — a fresh lower-uid reporter that sees MORE
+// failures than the candidate does not outrank it.
+func TestRequestArbitration_MajorityBeatsLowerUID_SQLite(t *testing.T) {
+	db := newSQLiteArbitrationDB(t)
+	if err := WriteHeartbeat(db, "uuid1", "secret1", "cluster1", "master1", 1, 2, 1); err != nil {
+		t.Fatalf("WriteHeartbeat uid1: %v", err)
+	}
+	if err := WriteHeartbeat(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 0); err != nil {
+		t.Fatalf("WriteHeartbeat uid2: %v", err)
+	}
+	// uid 2 sees fewer failures than uid 1: the lower uid must NOT outrank it.
+	if !RequestArbitration(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 0) {
+		t.Fatal("uid 2 (fewer failed) must win over fresh uid 1 seeing more failures")
+	}
+}
+
 func TestGetArbitrationMaster_SQLite(t *testing.T) {
 	db := newSQLiteArbitrationDB(t)
 	RequestArbitration(db, "uuid1", "secret1", "cluster1", "master1", 1, 2, 0)
@@ -161,6 +226,9 @@ func TestRequestArbitration_Winner_MySQL_SQL(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ? FOR UPDATE",
 	)).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND status = 'U' AND uid < ? AND failed <= ? AND date > DATE_SUB(NOW(), INTERVAL 10 SECOND) FOR UPDATE",
+	)).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectExec(regexp.QuoteMeta(
 		"REPLACE INTO replication_manager_schema.heartbeat (secret,uuid,uid,master,date,arbitration_date,cluster,hosts,failed,status) VALUES(?,?,?,?,NOW(),NOW(),?,?,?,'E')",
 	)).WillReturnResult(sqlmock.NewResult(1, 1))
@@ -186,7 +254,7 @@ func TestWriteHeartbeat_MySQL_SQL(t *testing.T) {
 	)).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
 	mock.ExpectExec(regexp.QuoteMeta(
-		"UPDATE replication_manager_schema.heartbeat set status='U' WHERE status='E' AND cluster=? AND secret=? AND uid NOT IN (SELECT uid FROM (SELECT uid FROM replication_manager_schema.heartbeat WHERE status='E' AND cluster=? AND secret=? AND date > DATE_SUB(NOW(), INTERVAL 10 SECOND) ORDER BY arbitration_date ASC LIMIT 1) t)",
+		"UPDATE replication_manager_schema.heartbeat set status='U' WHERE status='E' AND cluster=? AND secret=? AND uid NOT IN (SELECT uid FROM (SELECT uid FROM replication_manager_schema.heartbeat WHERE status='E' AND cluster=? AND secret=? AND date > DATE_SUB(NOW(), INTERVAL 10 SECOND) ORDER BY arbitration_date ASC, uid ASC LIMIT 1) t)",
 	)).WillReturnResult(sqlmock.NewResult(0, 0))
 
 	if err := WriteHeartbeat(db, "uuid1", "secret1", "cluster1", "master1", 1, 2, 0); err != nil {
