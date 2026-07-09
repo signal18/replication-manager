@@ -3227,6 +3227,15 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Both peers are standby, triggering arbitration election")
 			return true
 		}
+		// Symmetric to both-standby: two ACTIVE peers is a dual-active split brain.
+		// Keep split-brain hot so arbitratorElection keeps running and the arbitrator
+		// demotes one to standby. Without this, a dual-active that forms during a
+		// transient split LATCHES once the peer is reachable again (IsSplitBrain
+		// flips false, elections stop, and both stay Active forever).
+		if h.Status == ConstMonitorActif && repman.Status == ConstMonitorActif {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlWarn, "Both peers are ACTIVE (dual-active) — triggering arbitration election to demote one")
+			return true
+		}
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "No peer split brain, peer status is %s, my status is %s", h.Status, repman.Status)
 	}
 
@@ -3360,6 +3369,40 @@ func (repman *ReplicationManager) SimulatePeerRestore(clusterName string) error 
 	}
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "SPLITBRAIN SIMULATION: cleared all cuts on peer for cluster %s", clusterName)
 	return nil
+}
+
+// PeerIsActive reports whether the arbitration peer (repman2) is currently
+// Active for clusterName. It logs in to the peer with the shared cluster-test
+// credentials and reads the cluster's activePassiveStatus. The dual-active
+// regtest needs this because a node cannot observe a two-actives condition from
+// its own status alone.
+func (repman *ReplicationManager) PeerIsActive(clusterName string) (bool, error) {
+	base, token, err := repman.peerSplitBrainLogin(clusterName)
+	if err != nil {
+		return false, err
+	}
+	req, err := http.NewRequest("GET", base+"/api/clusters/"+clusterName, nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("peer cluster status (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var payload struct {
+		ActivePassiveStatus string `json:"activePassiveStatus"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return false, fmt.Errorf("peer cluster status parse: %w", err)
+	}
+	return payload.ActivePassiveStatus == "A", nil
 }
 
 // IsHeartbeatFailureSimulated reports whether the peer heartbeat is currently severed.

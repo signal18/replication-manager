@@ -45,6 +45,21 @@ export const getClusters = createGuardedAsyncThunk('globalClusters/getClusters',
   }
 });
 
+export const setServerActiveStatus = createGuardedAsyncThunk('globalClusters/setServerActiveStatus', async (_, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.setServerActiveStatus()
+    if (status === 200) {
+      showSuccessBanner(typeof data === 'string' ? data : 'Server active/standby switched', status, thunkAPI)
+      return { data, status }
+    } else {
+      throw new Error(data)
+    }
+  } catch (error) {
+    showErrorBanner('Switch active/standby failed', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+});
+
 export const addCluster = createGuardedAsyncThunk('globalClusters/addCluster', async ({ clusterName, formdata }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.addCluster(clusterName, formdata)

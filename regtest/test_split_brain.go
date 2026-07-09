@@ -29,6 +29,12 @@ var (
 	// SimulatePeerRestore clears the peer's cuts immediately on the happy path
 	// (the peer's own bounded timer already guarantees crash-safe recovery).
 	SimulatePeerRestore func(clusterName string) error
+	// GetPeerIsActive reports whether the ARBITRATION PEER (repman2) is currently
+	// Active for clusterName, via an authenticated API call. A node cannot see a
+	// dual-active on its own — it only knows its own status — so the dual-active
+	// reproduce needs the peer's status too. Wired by the server package; nil in
+	// plain unit tests.
+	GetPeerIsActive func(clusterName string) (bool, error)
 )
 
 // Minority tests. A repman is in split brain because its infrastructure lost
@@ -220,4 +226,108 @@ func minorityDoesNothing(cl *cluster.Cluster, setup func(*cluster.Cluster), labe
 	}
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: minority failed safe — yielded %s->standby, master %s, no failover", label, status0, ro)
 	return true
+}
+
+// TestSetDualActive reproduces (and guards against) a DUAL-ACTIVE split brain:
+// two repman both driving the same cluster. Unlike the minority tests, the
+// pass condition is that after a transient split the pair RECONVERGES to a
+// single active.
+func (regtest *RegTest) TestSetDualActive(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	if !cl.Conf.Arbitration {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: arbitration not enabled")
+		return true
+	}
+	return dualActiveMustResolve(cl, "testSetDualActive")
+}
+
+// setDualActive arms a DUAL-ACTIVE split brain. It cuts ONLY the peer heartbeat
+// (both directions) and leaves the master AND the arbitrator intact. So both
+// repman lose sight of each other (→ split brain) yet keep reporting the SAME
+// master — a same-master (count==1) partition. With the peace-path clear
+// (WriteHeartbeat: count==1 → wipe the Elected flag every tick), neither side's
+// win holds, so BOTH win the election in turn and go Active. This is the exact
+// shape a transient peer-heartbeat blip produces in the field.
+func setDualActive(cl *cluster.Cluster) {
+	secs := int64(minorityHold / time.Second)
+	// LOCAL: darken repman1's inbound heartbeat (repman2 -> repman1 times out).
+	if SimulateHeartbeatFailure != nil {
+		SimulateHeartbeatFailure(secs)
+	}
+	// REMOTE: darken repman2's inbound heartbeat (repman1 -> repman2 times out).
+	// Deliberately NO master cut and NO arbitrator cut: both keep the same master
+	// and both reach the arbitrator — that's what makes it same-master, not a
+	// minority scenario.
+	if SimulatePeerFailure != nil {
+		if err := SimulatePeerFailure(cl.Name, "simulate-heartbeat-failure", secs); err != nil {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "setDualActive: remote heartbeat cut failed: %s", err)
+		}
+	}
+}
+
+// dualActiveMustResolve arms a same-master split, waits for it to be detected,
+// RESTORES the heartbeat, then asserts the pair reconverges to EXACTLY ONE
+// active. On current code both stay Active (the count==1 peace-path clear lets
+// both win the election), so this FAILS until the single-winner fix lands.
+func dualActiveMustResolve(cl *cluster.Cluster, label string) bool {
+	setDualActive(cl)
+	defer func() {
+		if RestoreHeartbeat != nil {
+			RestoreHeartbeat()
+		}
+		cl.RestoreSplitBrainSimulation()
+		if SimulatePeerRestore != nil {
+			if err := SimulatePeerRestore(cl.Name); err != nil {
+				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: peer cleanup skipped (self-heals on its own timer): %s", label, err)
+			}
+		}
+	}()
+
+	// 1) the split must actually be DETECTED (peer heartbeat timed out).
+	detected := false
+	for i := 0; i < 20; i++ {
+		time.Sleep(2 * time.Second)
+		if cl.IsSplitBrain {
+			detected = true
+			break
+		}
+	}
+	if !detected {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: split brain never detected (peer heartbeat did not fail)", label)
+		return false
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: split brain detected — letting the (buggy) election form two-actives", label)
+
+	// 2) let the election churn while cut so the dual-active can form.
+	time.Sleep(20 * time.Second)
+
+	// 3) heal the split and let the pair reconverge.
+	if RestoreHeartbeat != nil {
+		RestoreHeartbeat()
+	}
+	if SimulatePeerRestore != nil {
+		if err := SimulatePeerRestore(cl.Name); err != nil {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: peer restore skipped: %s", label, err)
+		}
+	}
+
+	// 4) assert exactly one active after reconvergence. A node can't see a
+	// dual-active alone, so we need the peer's status.
+	if GetPeerIsActive == nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: no peer-status hook (single-node run) — cannot assert dual-active, skipping", label)
+		return true
+	}
+	for i := 0; i < 20; i++ {
+		time.Sleep(3 * time.Second)
+		peerActive, err := GetPeerIsActive(cl.Name)
+		if err != nil {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: peer status query failed (retrying): %s", label, err)
+			continue
+		}
+		if !(cl.IsActive() && peerActive) {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: reconverged to single active — local active=%t peer active=%t", label, cl.IsActive(), peerActive)
+			return true
+		}
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: DUAL-ACTIVE — both repman remained active after the split healed", label)
+	return false
 }

@@ -186,7 +186,7 @@ func TestWriteHeartbeat_MySQL_SQL(t *testing.T) {
 	)).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 
 	mock.ExpectExec(regexp.QuoteMeta(
-		"UPDATE replication_manager_schema.heartbeat set status='U' WHERE status='E' AND cluster=? AND secret=?",
+		"UPDATE replication_manager_schema.heartbeat set status='U' WHERE status='E' AND cluster=? AND secret=? AND uid NOT IN (SELECT uid FROM (SELECT uid FROM replication_manager_schema.heartbeat WHERE status='E' AND cluster=? AND secret=? AND date > DATE_SUB(NOW(), INTERVAL 10 SECOND) ORDER BY arbitration_date ASC LIMIT 1) t)",
 	)).WillReturnResult(sqlmock.NewResult(0, 0))
 
 	if err := WriteHeartbeat(db, "uuid1", "secret1", "cluster1", "master1", 1, 2, 0); err != nil {
