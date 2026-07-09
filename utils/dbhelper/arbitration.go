@@ -206,8 +206,14 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 	// If none i can consider myself the elected replication-manager
 	if err == nil && count == 0 {
 		log.Info("No elected managers found for this cluster")
-		// A non elected replication-manager may see more nodes than me than in this case lose the election
-		stmt = "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ?" + lockSuffix
+		// A non elected replication-manager may see more nodes than me than in this case lose the election.
+		// FRESH rows only: a partitioned peer cannot reach the arbitrator, so its
+		// row freezes — usually at failed=0 because it is blind to the failure it
+		// is cut from. Without the freshness filter that frozen row vetoes the
+		// majority's failover permission for the whole split (the "blind minority
+		// outvotes the majority" inversion): the minority must remove itself from
+		// the count by going stale (10s), exactly like the Elected-row check above.
+		stmt = "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ? AND date > " + tenSecondsAgoExpr(db) + lockSuffix
 		err = tx.QueryRowx(stmt, cluster, secret, uid, failed).Scan(&count)
 		if err == nil && count == 0 {
 			// Equal candidates: the LOWEST uid wins. The main repman carries the
