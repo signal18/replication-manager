@@ -146,6 +146,50 @@ func WriteHeartbeat(db *sqlx.DB, uuid string, secret string, cluster string, mas
 	return nil
 }
 
+// ClaimElected marks the reporter's own row Elected — the authority LEASE.
+// Called by the arbitrator when an instance reports status Active: the lease
+// mirrors declared authority (won elections and manual takeovers alike). A
+// concurrent double-claim resolves via WriteHeartbeat's keep-one rule
+// (oldest arbitration_date, lowest uid).
+func ClaimElected(db *sqlx.DB, secret string, cluster string, uid int) error {
+	tbl := heartbeatTable(db)
+	stmt := "UPDATE " + tbl + " SET status='E', arbitration_date=" + nowExpr(db) + " WHERE cluster=? AND secret=? AND uid=? AND status<>'E'"
+	_, err := db.Exec(stmt, cluster, secret, uid)
+	return err
+}
+
+// ReleaseElected clears the reporter's own Elected lease. Called by the
+// arbitrator when an instance reports status Standby: a holder that yields
+// releases its authority so a successor can claim or win it cleanly.
+func ReleaseElected(db *sqlx.DB, secret string, cluster string, uid int) error {
+	tbl := heartbeatTable(db)
+	stmt := "UPDATE " + tbl + " SET status='U' WHERE cluster=? AND secret=? AND uid=? AND status='E'"
+	_, err := db.Exec(stmt, cluster, secret, uid)
+	return err
+}
+
+// GetElectedAny returns the current lease holder regardless of row
+// freshness (the lease persists through the holder's peace-time silence),
+// plus whether the holder's row is FRESH (holder actively reporting).
+func GetElectedAny(db *sqlx.DB, secret string, cluster string) (uid int, fresh bool, found bool) {
+	tbl := heartbeatTable(db)
+	stmt := "SELECT uid, CASE WHEN date > " + tenSecondsAgoExpr(db) + " THEN 1 ELSE 0 END FROM " + tbl + " WHERE cluster=? AND secret=? AND status='E' ORDER BY arbitration_date ASC, uid ASC LIMIT 1"
+	var freshInt int
+	if err := db.QueryRowx(stmt, cluster, secret).Scan(&uid, &freshInt); err != nil {
+		return 0, false, false
+	}
+	return uid, freshInt == 1, true
+}
+
+// DemoteOtherElected clears every Elected row except the given winner's —
+// the lease transfer at the end of a won contest against a silent holder.
+func DemoteOtherElected(db *sqlx.DB, secret string, cluster string, winnerUID int) error {
+	tbl := heartbeatTable(db)
+	stmt := "UPDATE " + tbl + " SET status='U' WHERE cluster=? AND secret=? AND status='E' AND uid<>?"
+	_, err := db.Exec(stmt, cluster, secret, winnerUID)
+	return err
+}
+
 // GetFreshElected returns the uid and master of the currently elected
 // instance when a fresh Elected heartbeat row exists. Used by the status
 // probe to answer without running an election.

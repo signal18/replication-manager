@@ -275,6 +275,17 @@ func (cluster *Cluster) newProxyList() error {
 
 func (cluster *Cluster) InjectProxiesTraffic() {
 	var definer string
+	// AUTHORITY GATE: only the Active repman may inject the heartbeat/traffic
+	// write (a CREATE OR REPLACE VIEW — a DDL). A standby or a minority that
+	// yielded must stay silent in the databases: (1) its SUPER connection
+	// bypasses read_only, so these writes were the self-inflicted divergent
+	// tail on the old master during splits (GTID out-of-order at rejoin, and
+	// DDL — the one thing flashback can never reverse); (2) the write doubles
+	// as the peer LIVENESS signal (isPeerAliveViaDatabase): it must only ever
+	// advance under the pen of the instance that holds authority.
+	if cluster.Conf.Arbitration && !cluster.IsActive() {
+		return
+	}
 	// Found server from ServerId
 	if cluster.Conf.TopologyStaging && cluster.Conf.TestInjectTrafficStaging {
 		for _, pr := range cluster.Proxies {

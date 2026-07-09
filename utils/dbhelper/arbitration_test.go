@@ -202,6 +202,57 @@ func TestRequestArbitration_MajorityBeatsLowerUID_SQLite(t *testing.T) {
 	}
 }
 
+// TestLeaseLifecycle_SQLite covers the authority lease: claim on Active
+// report, block challengers while fresh, release on Standby report, survive
+// staleness (peace-time silence), and transfer via demote after a won contest.
+func TestLeaseLifecycle_SQLite(t *testing.T) {
+	db := newSQLiteArbitrationDB(t)
+	// uid1 reports Active: row + claim.
+	if err := WriteHeartbeat(db, "uuid1", "secret1", "cluster1", "master1", 1, 2, 0); err != nil {
+		t.Fatalf("WriteHeartbeat: %v", err)
+	}
+	if err := ClaimElected(db, "secret1", "cluster1", 1); err != nil {
+		t.Fatalf("ClaimElected: %v", err)
+	}
+	uid, fresh, found := GetElectedAny(db, "secret1", "cluster1")
+	if !found || uid != 1 || !fresh {
+		t.Fatalf("expected fresh lease held by uid 1, got uid=%d fresh=%t found=%t", uid, fresh, found)
+	}
+	// A fresh lease blocks a challenger's plain election.
+	if RequestArbitration(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 0) {
+		t.Fatal("challenger must lose against a fresh lease holder")
+	}
+	// Holder yields (reports Standby): lease released.
+	if err := ReleaseElected(db, "secret1", "cluster1", 1); err != nil {
+		t.Fatalf("ReleaseElected: %v", err)
+	}
+	if _, _, found := GetElectedAny(db, "secret1", "cluster1"); found {
+		t.Fatal("lease must be gone after release")
+	}
+	// Re-claim then simulate peace-time silence: lease persists, not fresh.
+	if err := ClaimElected(db, "secret1", "cluster1", 1); err != nil {
+		t.Fatalf("ClaimElected: %v", err)
+	}
+	if _, err := db.Exec("UPDATE heartbeat SET date=DATETIME('now','-60 seconds') WHERE uid=1"); err != nil {
+		t.Fatalf("age row: %v", err)
+	}
+	uid, fresh, found = GetElectedAny(db, "secret1", "cluster1")
+	if !found || uid != 1 || fresh {
+		t.Fatalf("expected STALE lease held by uid 1, got uid=%d fresh=%t found=%t", uid, fresh, found)
+	}
+	// Lease transfer after a won contest: winner elected, old holder demoted.
+	if !RequestArbitration(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 0) {
+		t.Fatal("challenger must win the election once the holder row is stale")
+	}
+	if err := DemoteOtherElected(db, "secret1", "cluster1", 2); err != nil {
+		t.Fatalf("DemoteOtherElected: %v", err)
+	}
+	uid, _, found = GetElectedAny(db, "secret1", "cluster1")
+	if !found || uid != 2 {
+		t.Fatalf("expected lease transferred to uid 2, got uid=%d found=%t", uid, found)
+	}
+}
+
 func TestGetArbitrationMaster_SQLite(t *testing.T) {
 	db := newSQLiteArbitrationDB(t)
 	RequestArbitration(db, "uuid1", "secret1", "cluster1", "master1", 1, 2, 0)
