@@ -212,6 +212,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testSetMinorityWithoutMaster" {
 			res = regtest.TestSetMinorityWithoutMaster(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testSetDualActive" {
+			res = regtest.TestSetDualActive(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testMasterNil" {
 			res = regtest.TestMasterNil(cl, test.ConfigFile, &test)
 		}
