@@ -346,6 +346,77 @@ func handlerLog(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// contestWindow is how long a challenger must keep asking against a SILENT
+// lease holder before the election runs and the lease can transfer. Matched
+// to the row-freshness window: a transient peer blip on the challenger's
+// side heals well within it, so coordination cannot be stolen by one lost
+// poll; a real incident sustains the challenge and transfers cleanly.
+const contestWindow = 10 * time.Second
+
+type contest struct {
+	since   time.Time
+	lastAsk time.Time
+}
+
+var (
+	contestMu sync.Mutex
+	contests  = make(map[string]contest)
+)
+
+// challengerPersisted records an ask from uid against the silent holder of
+// cluster's lease and reports whether the challenge has now persisted for a
+// full contest window. Abandoned contests (no ask for 60s) reset.
+func challengerPersisted(secret string, clusterName string, uid int) bool {
+	key := fmt.Sprintf("%s|%s|%d", secret, clusterName, uid)
+	now := time.Now()
+	contestMu.Lock()
+	defer contestMu.Unlock()
+	c, ok := contests[key]
+	if !ok || now.Sub(c.lastAsk) > 60*time.Second {
+		contests[key] = contest{since: now, lastAsk: now}
+		return false
+	}
+	c.lastAsk = now
+	contests[key] = c
+	return now.Sub(c.since) >= contestWindow
+}
+
+func clearContest(secret string, clusterName string, uid int) {
+	contestMu.Lock()
+	delete(contests, fmt.Sprintf("%s|%s|%d", secret, clusterName, uid))
+	contestMu.Unlock()
+}
+
+// decideArbitration applies the lease semantics documented at the call site.
+func decideArbitration(db *sqlx.DB, h *server.Heartbeat) bool {
+	holder, fresh, found := dbhelper.GetElectedAny(db, h.Secret, h.Cluster)
+	if found {
+		if holder == h.UID {
+			clearContest(h.Secret, h.Cluster, h.UID)
+			return true
+		}
+		if fresh {
+			return false
+		}
+		// Silent holder: the challenge must persist a full contest window.
+		if !challengerPersisted(h.Secret, h.Cluster, h.UID) {
+			arbLogf("/arbitrator cluster=%s uid=%d contesting silent lease holder %d (window %s)", h.Cluster, h.UID, holder, contestWindow)
+			return false
+		}
+		if dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed) {
+			if err := dbhelper.DemoteOtherElected(db, h.Secret, h.Cluster, h.UID); err != nil {
+				log.Error("Error demoting previous lease holder: ", err)
+			}
+			arbLogf("/arbitrator cluster=%s uid=%d WON contest against silent holder %d — lease transferred", h.Cluster, h.UID, holder)
+			clearContest(h.Secret, h.Cluster, h.UID)
+			return true
+		}
+		return false
+	}
+	// No lease at all: plain election, freshness-filtered rules.
+	return dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
+}
+
 func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	var h server.Heartbeat
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1048576))
@@ -378,17 +449,19 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		return
 	}
-	// /arbitrator IS the election — the original 3.0 semantics. Every request
-	// runs RequestArbitration: the first winner mints the Elected row and
-	// holds it for the whole incident; everyone else is told "looser" and
-	// stands down. Since 3.1.31 the clients only call here during a real
-	// split brain or a master-failure evaluation (never as an idle peace-time
-	// probe), so answering with a real election cannot flap peace time.
-	// The former read-mostly shortcut ("masters agree -> everyone is a
-	// winner, write nothing") answered "winner" to BOTH sides of a
-	// same-master partition — the dual-active bug — and only existed to
-	// shield pre-3.1.31 idle probes, which are dead code.
-	res := dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
+	// /arbitrator decides against the authority LEASE (the Elected row,
+	// persistent — maintained by transition reports on /heartbeat: claimed on
+	// Active, released on Standby, minted by won elections):
+	//   1. I hold the lease           -> winner (whatever my row's age).
+	//   2. Another holds it, FRESH    -> looser (the incumbent is actively
+	//      reporting: base-cut split — first holder keeps driving).
+	//   3. Another holds it, STALE    -> CONTEST: a challenger must persist
+	//      for a full contest window against the silent holder before the
+	//      election runs and the lease transfers. A transient peer blip on
+	//      the challenger's side heals long before the window closes — the
+	//      coordination cannot be stolen by one lost poll.
+	//   4. No lease at all           -> plain election (freshness-filtered).
+	res := decideArbitration(db, &h)
 	send.ElectedMaster = dbhelper.GetArbitrationMaster(db, h.Secret, h.Cluster)
 	if res {
 		send.Arbitration = "winner"
@@ -441,6 +514,21 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 	res := dbhelper.WriteHeartbeat(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
 	arbLogf("/heartbeat cluster=%s uid=%d status=%s hosts=%d failed=%d master=%s", h.Cluster, h.UID, h.Status, h.Hosts, h.Failed, h.Master)
+	// LEASE MAINTENANCE from the reported status: an instance declaring
+	// itself Active claims the Elected lease, one declaring Standby releases
+	// its own. Old clients that omit the status field change nothing.
+	if res == nil {
+		switch h.Status {
+		case "A":
+			if err := dbhelper.ClaimElected(db, h.Secret, h.Cluster, h.UID); err != nil {
+				log.Error("Error claiming lease: ", err)
+			}
+		case "S":
+			if err := dbhelper.ReleaseElected(db, h.Secret, h.Cluster, h.UID); err != nil {
+				log.Error("Error releasing lease: ", err)
+			}
+		}
+	}
 	if res == nil {
 		send = `{"heartbeat":"succed"}`
 	} else {

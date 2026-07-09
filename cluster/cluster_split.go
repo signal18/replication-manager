@@ -65,6 +65,15 @@ func (cluster *Cluster) ArbitratorHandler() {
 			if err != nil {
 				cluster.SetState("WARN0081", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0081"], err), ErrFrom: "ARB"})
 			}
+			// Anti-blip grace at split ENTRY, restored from 2.x/3.1.29 (the
+			// versions that never flapped; removed 2026-07-01 by 06f379b25):
+			// sleep once before the first election so a transient peer blip
+			// heals before any authority question is even asked. Redundant
+			// with the arbitrator's contest window on upgraded arbitrators,
+			// but protects mixed-version deployments at the cost of one line.
+			if cluster.IsSplitBrainBck != cluster.IsSplitBrain {
+				time.Sleep(5 * time.Second)
+			}
 			err = cluster.arbitratorElection()
 			if err != nil {
 				cluster.SetState("WARN0082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0082"], err), ErrFrom: "ARB"})

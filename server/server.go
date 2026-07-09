@@ -164,6 +164,8 @@ type ReplicationManager struct {
 	cApiLog                     *clog.Logger                   `json:"-"`
 	Logrus                      *log.Logger                    `json:"-"`
 	ApiLogAdapter               *ApiLogAdapter                 `json:"-"`
+	lastReportedStatus          string                         `json:"-"`
+	lastReportedSplitBrain     bool                            `json:"-"`
 	IsSavingConfig              bool                           `json:"isSavingConfig"`
 	HasSavingConfigQueue        bool                           `json:"hasSavingConfigQueue"`
 	IsGitPull                   bool                           `json:"isGitPull"`
@@ -3483,6 +3485,27 @@ func (repman *ReplicationManager) Heartbeat() {
 		repman.Status = ConstMonitorStandby
 	}
 
+	// EVENT-DRIVEN ARBITRATOR AWARENESS: the arbitrator hears nothing in
+	// steady peacetime, but every server-level TRANSITION (Active<->Standby,
+	// split brain enter/leave, boot) is reported once per arbitrated cluster.
+	// The report carries the cluster status: the arbitrator maintains its
+	// authority LEASE from it (claim on Active, release on Standby), so it
+	// always knows who legitimately drives — without any periodic traffic.
+	if repman.Conf.Arbitration && (repman.Status != repman.lastReportedStatus || repman.SplitBrain != repman.lastReportedSplitBrain) {
+		repman.lastReportedStatus = repman.Status
+		repman.lastReportedSplitBrain = repman.SplitBrain
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server transition (status=%s splitbrain=%t): reporting to arbitrator", repman.Status, repman.SplitBrain)
+		for _, cl := range repman.Clusters {
+			if !cl.Conf.Arbitration || !cl.Conf.IsEligibleForArbitration() {
+				continue
+			}
+			go func(c *cluster.Cluster) {
+				if err := c.SetArbitratorReport(); err != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Transition report to arbitrator failed for %s: %s", c.Name, err)
+				}
+			}(cl)
+		}
+	}
 }
 
 func (repman *ReplicationManager) resolveHostIp() string {

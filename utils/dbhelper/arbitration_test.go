@@ -149,6 +149,42 @@ func TestRequestArbitration_DeadMainDRWins_SQLite(t *testing.T) {
 	}
 }
 
+// TestRequestArbitration_StaleMinorityDoesNotVeto_SQLite covers the
+// minority-with-master failover permission (triangle corner cut): the cut
+// minority's row froze at failed=0 (blind to the failure) BEFORE going
+// stale; the majority reports failed=1. The stale frozen row must NOT veto
+// the majority — the minority removes itself from the count by expiring.
+func TestRequestArbitration_StaleMinorityDoesNotVeto_SQLite(t *testing.T) {
+	db := newSQLiteArbitrationDB(t)
+	// Minority (uid 1) last reported failed=0, 60 seconds ago, then was cut.
+	if _, err := db.Exec("INSERT INTO heartbeat (secret,uuid,uid,master,date,cluster,hosts,failed,status) VALUES('secret1','uuid1',1,'master1',DATETIME('now','-60 seconds'),'cluster1',2,0,'U')"); err != nil {
+		t.Fatalf("seed stale row: %v", err)
+	}
+	// Majority (uid 2) reports fresh with the failure it sees.
+	if err := WriteHeartbeat(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 1); err != nil {
+		t.Fatalf("WriteHeartbeat uid2: %v", err)
+	}
+	if !RequestArbitration(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 1) {
+		t.Fatal("majority (failed=1) must win when the blind minority row (failed=0) is stale")
+	}
+}
+
+// TestRequestArbitration_FreshFewerFailedStillWins_SQLite: the failed-count
+// preference stays primary among FRESH reporters — a fresh peer seeing fewer
+// failures still outranks the candidate.
+func TestRequestArbitration_FreshFewerFailedStillWins_SQLite(t *testing.T) {
+	db := newSQLiteArbitrationDB(t)
+	if err := WriteHeartbeat(db, "uuid1", "secret1", "cluster1", "master1", 1, 2, 0); err != nil {
+		t.Fatalf("WriteHeartbeat uid1: %v", err)
+	}
+	if err := WriteHeartbeat(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 1); err != nil {
+		t.Fatalf("WriteHeartbeat uid2: %v", err)
+	}
+	if RequestArbitration(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 1) {
+		t.Fatal("uid 2 (failed=1) must lose while a FRESH uid 1 row reports failed=0")
+	}
+}
+
 // TestRequestArbitration_MajorityBeatsLowerUID_SQLite: the failed-count
 // preference stays primary — a fresh lower-uid reporter that sees MORE
 // failures than the candidate does not outrank it.
@@ -163,6 +199,57 @@ func TestRequestArbitration_MajorityBeatsLowerUID_SQLite(t *testing.T) {
 	// uid 2 sees fewer failures than uid 1: the lower uid must NOT outrank it.
 	if !RequestArbitration(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 0) {
 		t.Fatal("uid 2 (fewer failed) must win over fresh uid 1 seeing more failures")
+	}
+}
+
+// TestLeaseLifecycle_SQLite covers the authority lease: claim on Active
+// report, block challengers while fresh, release on Standby report, survive
+// staleness (peace-time silence), and transfer via demote after a won contest.
+func TestLeaseLifecycle_SQLite(t *testing.T) {
+	db := newSQLiteArbitrationDB(t)
+	// uid1 reports Active: row + claim.
+	if err := WriteHeartbeat(db, "uuid1", "secret1", "cluster1", "master1", 1, 2, 0); err != nil {
+		t.Fatalf("WriteHeartbeat: %v", err)
+	}
+	if err := ClaimElected(db, "secret1", "cluster1", 1); err != nil {
+		t.Fatalf("ClaimElected: %v", err)
+	}
+	uid, fresh, found := GetElectedAny(db, "secret1", "cluster1")
+	if !found || uid != 1 || !fresh {
+		t.Fatalf("expected fresh lease held by uid 1, got uid=%d fresh=%t found=%t", uid, fresh, found)
+	}
+	// A fresh lease blocks a challenger's plain election.
+	if RequestArbitration(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 0) {
+		t.Fatal("challenger must lose against a fresh lease holder")
+	}
+	// Holder yields (reports Standby): lease released.
+	if err := ReleaseElected(db, "secret1", "cluster1", 1); err != nil {
+		t.Fatalf("ReleaseElected: %v", err)
+	}
+	if _, _, found := GetElectedAny(db, "secret1", "cluster1"); found {
+		t.Fatal("lease must be gone after release")
+	}
+	// Re-claim then simulate peace-time silence: lease persists, not fresh.
+	if err := ClaimElected(db, "secret1", "cluster1", 1); err != nil {
+		t.Fatalf("ClaimElected: %v", err)
+	}
+	if _, err := db.Exec("UPDATE heartbeat SET date=DATETIME('now','-60 seconds') WHERE uid=1"); err != nil {
+		t.Fatalf("age row: %v", err)
+	}
+	uid, fresh, found = GetElectedAny(db, "secret1", "cluster1")
+	if !found || uid != 1 || fresh {
+		t.Fatalf("expected STALE lease held by uid 1, got uid=%d fresh=%t found=%t", uid, fresh, found)
+	}
+	// Lease transfer after a won contest: winner elected, old holder demoted.
+	if !RequestArbitration(db, "uuid2", "secret1", "cluster1", "master1", 2, 2, 0) {
+		t.Fatal("challenger must win the election once the holder row is stale")
+	}
+	if err := DemoteOtherElected(db, "secret1", "cluster1", 2); err != nil {
+		t.Fatalf("DemoteOtherElected: %v", err)
+	}
+	uid, _, found = GetElectedAny(db, "secret1", "cluster1")
+	if !found || uid != 2 {
+		t.Fatalf("expected lease transferred to uid 2, got uid=%d found=%t", uid, found)
 	}
 }
 
@@ -224,7 +311,7 @@ func TestRequestArbitration_Winner_MySQL_SQL(t *testing.T) {
 		"SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND status='E' AND uid<>? AND date > DATE_SUB(NOW(), INTERVAL 10 SECOND) FOR UPDATE",
 	)).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ? FOR UPDATE",
+		"SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ? AND date > DATE_SUB(NOW(), INTERVAL 10 SECOND) FOR UPDATE",
 	)).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"SELECT count(*) FROM replication_manager_schema.heartbeat WHERE cluster=? AND secret=? AND status = 'U' AND uid < ? AND failed <= ? AND date > DATE_SUB(NOW(), INTERVAL 10 SECOND) FOR UPDATE",
