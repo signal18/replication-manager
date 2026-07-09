@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -672,24 +672,58 @@ func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bo
 	}
 }
 
-func (server *ServerMonitor) deletefiles(path string, f os.FileInfo, err error) (e error) {
-	cluster := server.ClusterGroup
-	// check each file if starts with the word "dumb_"
-	if strings.HasPrefix(f.Name(), cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-") {
-		os.Remove(path)
-	}
-	return
-}
-
 func (server *ServerMonitor) saveBinlog(crash *Crash) error {
 	cluster := server.ClusterGroup
 	t := time.Now()
 	backupdir := cluster.Conf.WorkingDir + "/" + cluster.Name + "/crash-bin-" + t.Format("20060102150405")
+	staging := cluster.Conf.WorkingDir + "/" + cluster.Name + "-server" + strconv.FormatUint(uint64(server.ServerID), 10) + "-" + crash.FailoverMasterLogFile
+	if _, err := os.Stat(staging); err != nil {
+		// Nothing was captured (backupBinlog failed or produced no file):
+		// do not create an empty archive directory that looks like a backup.
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Rejoin old Master %s: no captured binlog to archive (%s): %s", crash.URL, staging, err)
+		return err
+	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoin old Master %s , backing up lost event to %s", crash.URL, backupdir)
-	os.Mkdir(backupdir, 0777)
-	os.Rename(cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile, backupdir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
+	if err := os.MkdirAll(backupdir, 0777); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Could not create crash archive directory %s: %s", backupdir, err)
+		return err
+	}
+	if err := os.Rename(staging, backupdir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Could not archive captured lost events %s: %s", staging, err)
+		return err
+	}
+	server.purgeCrashBinArchives(3)
 	return nil
+}
 
+// purgeCrashBinArchives bounds the disk used by crash-bin archives: keep the
+// <keep> most recent crash-bin-* directories of this cluster, delete the rest
+// (the timestamped name sorts chronologically). Pruning is logged so the
+// retention is visible, unlike the former silent recursive wipe.
+func (server *ServerMonitor) purgeCrashBinArchives(keep int) {
+	cluster := server.ClusterGroup
+	clusterdir := cluster.Conf.WorkingDir + "/" + cluster.Name
+	entries, err := os.ReadDir(clusterdir)
+	if err != nil {
+		return
+	}
+	var archives []string
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "crash-bin-") {
+			archives = append(archives, e.Name())
+		}
+	}
+	if len(archives) <= keep {
+		return
+	}
+	sort.Strings(archives)
+	for _, name := range archives[:len(archives)-keep] {
+		if err := os.RemoveAll(clusterdir + "/" + name); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Could not prune crash archive %s: %s", name, err)
+			continue
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Pruned crash archive %s (keeping the %d most recent)", name, keep)
+	}
 }
 func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	cluster := server.ClusterGroup
@@ -703,7 +737,21 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	}
 	var cmdrun *exec.Cmd
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Backup ahead binlog events of previously failed server %s", server.URL)
-	filepath.Walk(cluster.Conf.WorkingDir+"/", server.deletefiles)
+	// Clean stale STAGING captures in the working-dir root only. A bootstrap /
+	// RESET MASTER restarts the binlog sequence, so an old-generation staging
+	// file carries the SAME name as the new capture and must never reach
+	// flashback (60a8516ee). The archived copies under <cluster>/crash-bin-*
+	// keep that same filename too, but are never replayed automatically — they
+	// must SURVIVE: the previous recursive filepath.Walk here silently
+	// destroyed every past crash archive on each new capture.
+	if entries, errDir := os.ReadDir(cluster.Conf.WorkingDir); errDir == nil {
+		prefix := cluster.Name + "-server" + strconv.FormatUint(uint64(server.ServerID), 10) + "-"
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasPrefix(e.Name(), prefix) {
+				os.Remove(cluster.Conf.WorkingDir + "/" + e.Name())
+			}
+		}
+	}
 
 	var params []string = make([]string, 0)
 	if server.DBVersion.IsMySQLOrPerconaGreater84() {
@@ -743,8 +791,23 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	if err := cmdrun.Wait(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed to backup binlogs of %s,%s", server.URL, err.Error())
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
+		cluster.SetState("WARN0182", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0182"], server.URL, err.Error()), ErrFrom: "REJOIN", ServerUrl: server.URL})
 		cluster.canFlashBack = false
 		return err
+	}
+	// Validate the artifact by content, not exit code: a capture holding no
+	// events past the headers (format description + Start_encryption) is
+	// ~300 bytes — it means the old master had nothing after the failover
+	// anchor (a legitimate empty delta), whereas a missing file is a failure.
+	staging := cluster.Conf.WorkingDir + "/" + cluster.Name + "-server" + strconv.FormatUint(uint64(server.ServerID), 10) + "-" + crash.FailoverMasterLogFile
+	const binlogHeadersMaxSize = 512
+	if st, errStat := os.Stat(staging); errStat != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Lost events capture produced no file %s: %s", staging, errStat)
+		cluster.SetState("WARN0182", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0182"], server.URL, errStat.Error()), ErrFrom: "REJOIN", ServerUrl: server.URL})
+		cluster.canFlashBack = false
+		return errStat
+	} else if st.Size() <= binlogHeadersMaxSize {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Lost events capture of %s is empty — no events after failover position %s:%s (nothing to flash back)", server.URL, crash.FailoverMasterLogFile, crash.FailoverMasterLogPos)
 	}
 	return nil
 }
