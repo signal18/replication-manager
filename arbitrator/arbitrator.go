@@ -378,27 +378,18 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		return
 	}
-	// Read-mostly arbitration: the same endpoint serves both the peace-time
-	// status probe (isActiveArbitration, every few ticks on every peer) and
-	// the split-brain election. Running RequestArbitration on every probe
-	// minted transient Elected rows in peace time — the peer probing a
-	// second later read them and flapped passive (ERR00022 musical chairs).
-	// Order of decision:
-	//   1. A fresh Elected row exists: answer from it, write nothing.
-	//   2. No Elected row and nobody disagrees on the master: peace —
-	//      everyone is a winner, write nothing.
-	//   3. Masters diverge: real split brain, run the election.
-	var res bool
-	if uid, electedmaster, found := dbhelper.GetFreshElected(db, h.Secret, h.Cluster); found {
-		res = uid == h.UID
-		send.ElectedMaster = electedmaster
-	} else if dbhelper.IsMasterAgreed(db, h.Secret, h.Cluster, h.Master) {
-		res = true
-		send.ElectedMaster = h.Master
-	} else {
-		res = dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
-		send.ElectedMaster = dbhelper.GetArbitrationMaster(db, h.Secret, h.Cluster)
-	}
+	// /arbitrator IS the election — the original 3.0 semantics. Every request
+	// runs RequestArbitration: the first winner mints the Elected row and
+	// holds it for the whole incident; everyone else is told "looser" and
+	// stands down. Since 3.1.31 the clients only call here during a real
+	// split brain or a master-failure evaluation (never as an idle peace-time
+	// probe), so answering with a real election cannot flap peace time.
+	// The former read-mostly shortcut ("masters agree -> everyone is a
+	// winner, write nothing") answered "winner" to BOTH sides of a
+	// same-master partition — the dual-active bug — and only existed to
+	// shield pre-3.1.31 idle probes, which are dead code.
+	res := dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
+	send.ElectedMaster = dbhelper.GetArbitrationMaster(db, h.Secret, h.Cluster)
 	if res {
 		send.Arbitration = "winner"
 	} else {

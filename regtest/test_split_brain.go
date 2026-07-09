@@ -265,9 +265,10 @@ func setDualActive(cl *cluster.Cluster) {
 }
 
 // dualActiveMustResolve arms a same-master split, waits for it to be detected,
-// RESTORES the heartbeat, then asserts the pair reconverges to EXACTLY ONE
-// active. On current code both stay Active (the count==1 peace-path clear lets
-// both win the election), so this FAILS until the single-winner fix lands.
+// RESTORES the heartbeat, then asserts the pair converges to EXACTLY ONE
+// active. With the arbitrator running a real election on every request
+// (first winner holds, lowest uid preferred), the losing side is demoted
+// DURING the split, so exactly one active must remain after the heal.
 func dualActiveMustResolve(cl *cluster.Cluster, label string) bool {
 	setDualActive(cl)
 	defer func() {
@@ -295,9 +296,10 @@ func dualActiveMustResolve(cl *cluster.Cluster, label string) bool {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: split brain never detected (peer heartbeat did not fail)", label)
 		return false
 	}
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: split brain detected — letting the (buggy) election form two-actives", label)
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: split brain detected — letting the election crown a single winner", label)
 
-	// 2) let the election churn while cut so the dual-active can form.
+	// 2) let the election run while cut: the arbitrator crowns one winner and
+	// the loser demotes to standby before the heal.
 	time.Sleep(20 * time.Second)
 
 	// 3) heal the split and let the pair reconverge.
