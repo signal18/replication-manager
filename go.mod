@@ -40,6 +40,7 @@ require (
 	github.com/facebookgo/grace v0.0.0-20170218225239-4afe952a37a4
 	github.com/facebookgo/pidfile v0.0.0-20150612191647-f242e2999868
 	github.com/go-sql-driver/mysql v1.9.3
+	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/gonum/matrix v0.0.0-20180124231301-a41cc49d4c29
 	github.com/google/go-containerregistry v0.20.3
@@ -97,7 +98,7 @@ require (
 	github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
 	github.com/xwb1989/sqlparser v0.0.0-20171128062118-da747e0c62c4
 	github.com/yoheimuta/protolint v0.32.0
-	golang.org/x/crypto v0.51.0
+	golang.org/x/crypto v0.52.0
 	golang.org/x/net v0.55.0
 	golang.org/x/sys v0.45.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20251202230838-ff82c1b0f217
@@ -172,7 +173,6 @@ require (
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/spec v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/godbus/dbus/v5 v5.0.4 // indirect
