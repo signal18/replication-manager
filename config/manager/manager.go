@@ -1530,6 +1530,22 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 			}
 		}
 
+		// Add apps/*.toml — app deployment configs live in the apps/
+		// subdirectory (SaveApp writes <cluster>/apps/<name>.toml), which the
+		// top-level scan above does not reach (os.ReadDir is not recursive), so
+		// app deployments never reached the git repo and never replicated to
+		// the peer. Stage them so a cluster's apps sync like its other config.
+		// (Proper fix — fold apps into the cluster config, issue #1573.)
+		if appFiles, err := os.ReadDir(filepath.Join(dirPath, "apps")); err == nil {
+			for _, file := range appFiles {
+				if filepath.Ext(file.Name()) == ".toml" {
+					fpath := filepath.Join(name, "apps", file.Name())
+					cwg.Add(1)
+					cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: fpath, W: w, WaitGroup: &cwg})
+				}
+			}
+		}
+
 		// Add agents.json and queryrules.json if they exist
 		for _, jsonFile := range []string{"agents.json", "queryrules.json", "clusterstate.json"} {
 			jsonPath := filepath.Join(name, jsonFile)
