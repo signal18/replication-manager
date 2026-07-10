@@ -84,6 +84,24 @@ func (cluster *Cluster) SimulateArbitratorFailure(duration time.Duration) {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "SPLITBRAIN SIMULATION: arbitrator link cut for cluster %s", cluster.Name)
 }
 
+// SimulateArbitratorFailureAll severs the arbitrator link on EVERY cluster this
+// instance drives, not just the receiver. A real partition isolates the whole DC
+// from the arbitrator (DC3) for ALL clusters at once; the per-cluster cut used by
+// SimulateArbitratorFailure produces the impossible "one cluster alone loses the
+// arbitrator" scenario, which is a test artifact, not a real failure mode. Minority
+// tests use this so every cluster goes minority TOGETHER, matching reality — a
+// uniform verdict, coherent server status, no per-cluster divergence.
+func (cluster *Cluster) SimulateArbitratorFailureAll(duration time.Duration) {
+	armed := 0
+	for _, c := range cluster.clusterList {
+		c.SimulateArbitratorFailure(duration)
+		armed++
+	}
+	if armed == 0 { // single-cluster / unit-test context: at least arm the receiver
+		cluster.SimulateArbitratorFailure(duration)
+	}
+}
+
 // SimulateMasterFailure severs only this cluster's connection to the MASTER on this
 // instance (slaves stay reachable). Used when the master is colocated on the
 // isolated/minority side: the majority instance loses the master but keeps

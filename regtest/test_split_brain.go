@@ -129,8 +129,8 @@ func setMinorityWithMaster(cl *cluster.Cluster) {
 	secs := int64(minorityHold / time.Second)
 
 	// op 1/4 LOCAL — repman1 loses the arbitrator (DC3).
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 1/4 LOCAL: cutting arbitrator link (repman1 -> arbitrator)")
-	cl.SimulateArbitratorFailure(minorityHold)
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 1/4 LOCAL: cutting arbitrator link on ALL clusters (repman1 -> arbitrator) — a real DC partition loses the arbitrator for every cluster at once, not just this one")
+	cl.SimulateArbitratorFailureAll(minorityHold)
 
 	// op 2/4 LOCAL — darken repman1's inbound /api/heartbeat so repman2's
 	// outbound heartbeat to repman1 times out (repman2 -> repman1 direction).
@@ -178,8 +178,8 @@ func setMinorityWithoutMaster(cl *cluster.Cluster) {
 	secs := int64(minorityHold / time.Second)
 
 	// op 1/4 LOCAL — repman1 loses the arbitrator (DC3).
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 1/4 LOCAL: cutting arbitrator link (repman1 -> arbitrator)")
-	cl.SimulateArbitratorFailure(minorityHold)
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 1/4 LOCAL: cutting arbitrator link on ALL clusters (repman1 -> arbitrator) — a real DC partition loses the arbitrator for every cluster at once, not just this one")
+	cl.SimulateArbitratorFailureAll(minorityHold)
 
 	// op 2/4 LOCAL — darken repman1's inbound /api/heartbeat so repman2's
 	// outbound heartbeat to repman1 times out (repman2 -> repman1 direction).
