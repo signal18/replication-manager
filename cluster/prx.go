@@ -280,27 +280,6 @@ func (cluster *Cluster) newProxyList() error {
 // REPLACE VIEW, is DDL and poisoned every flashback). ddl is kept for tests
 // exercising the reseed path and for non-GTID positional rejoin, whose
 // binlog search greps the UUID as plain text (a row image is not greppable).
-// ensureInjectTrafficTable creates the one-row dml marker table on EVERY
-// server directly, once, when traffic starts. It must exist on the slaves too
-// — the per-tick REPLACE is a ROW event, and a slave missing the table (e.g.
-// freshly bootstrapped after a RESET MASTER that dropped the CREATE from the
-// binlog) errors its SQL thread on the replicated row. CREATE TABLE IF NOT
-// EXISTS on each server's own connection makes it independent of binlog
-// history. The DDL runs once (injectTrafficTableReady), never per tick.
-func (cluster *Cluster) ensureInjectTrafficTable() {
-	for _, srv := range cluster.Servers {
-		if srv == nil || srv.Conn == nil || srv.IsDown() {
-			return // retry next tick until every server has it
-		}
-	}
-	for _, srv := range cluster.Servers {
-		srv.Conn.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
-		srv.Conn.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.pseudo_gtid_hist (id INT PRIMARY KEY, uuid VARCHAR(64), ts TIMESTAMP)")
-		srv.Conn.Exec("CREATE OR REPLACE VIEW replication_manager_schema.pseudo_gtid_v AS SELECT uuid FROM replication_manager_schema.pseudo_gtid_hist WHERE id=1")
-	}
-	cluster.injectTrafficTableReady = true
-}
-
 // injectTrafficUsesDDL reports whether the pseudo-GTID / traffic marker must
 // be the greppable DDL view rather than the flashback-able DML row. Forced by
 // OLD-STYLE POSITIONAL replication (force-slave-no-gtid-mode): its rejoin
@@ -314,15 +293,44 @@ func (cluster *Cluster) injectTrafficUsesDDL() bool {
 	return cluster.Conf.ForceSlaveNoGtid || cluster.Conf.InjectTrafficMode == "ddl"
 }
 
-func (cluster *Cluster) injectTrafficMarker(db *sqlx.DB, definer string) error {
+func (cluster *Cluster) injectTrafficMarker(db *sqlx.DB, definer string, readyKey string) error {
 	uuid := misc.GetUUID()
 	if cluster.injectTrafficUsesDDL() {
 		_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + uuid + "' from dual")
 		return err
 	}
-	// dml (default): advance the one-row marker with a ROW-logged REPLACE — the
-	// marker change is the flashback-able event. The table is created up front
-	// on all servers (ensureInjectTrafficTable), so this is just the write.
+	// dml: a single-row REPLACE — a ROW event flashback can reverse. The table
+	// and seed row are created ONCE, via THIS proxy connection (the same path
+	// the REPLACE takes), so the CREATE lands on the master, is binlogged, and
+	// flows to every slave in the SAME binlog stream BEFORE any REPLACE that
+	// follows it. Binlog ordering guarantees a slave applies the CREATE before
+	// the REPLACE (no 1032), and a reseeded node gets the table in its
+	// snapshot — so no presence-checking state is needed. IF NOT EXISTS makes
+	// the one-time setup idempotent across restarts.
+	if cluster.injectTrafficTableReady == nil {
+		cluster.injectTrafficTableReady = make(map[string]bool)
+	}
+	if !cluster.injectTrafficTableReady[readyKey] {
+		db.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
+		// Only latch on a CONFIRMED CREATE TABLE. If it fails (a restricted
+		// write-heartbeat credential without CREATE, a read-only master
+		// mid-switchover, a timeout), do NOT set the guard and do NOT fall
+		// through to the REPLACE — that would write to a table that may not
+		// exist and reintroduce the 1032 this fix removes. Return the error so
+		// the next tick retries. Keyed per proxy target so a staging target
+		// cannot flip the guard for the main production master.
+		if _, err := db.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.pseudo_gtid_hist (id INT PRIMARY KEY, uuid VARCHAR(64), ts TIMESTAMP)"); err != nil {
+			return err
+		}
+		if _, err := db.Exec("INSERT IGNORE INTO replication_manager_schema.pseudo_gtid_hist (id, uuid, ts) VALUES (1, '" + uuid + "', NOW())"); err != nil {
+			return err
+		}
+		db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v AS SELECT uuid FROM replication_manager_schema.pseudo_gtid_hist WHERE id=1")
+		cluster.injectTrafficTableReady[readyKey] = true
+		// The seed INSERT above already advanced the marker this tick — skip
+		// the otherwise-redundant REPLACE with the same uuid.
+		return nil
+	}
 	_, err := db.Exec("REPLACE INTO replication_manager_schema.pseudo_gtid_hist (id, uuid, ts) VALUES (1, '" + uuid + "', NOW())")
 	return err
 }
@@ -340,11 +348,6 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 	if cluster.Conf.Arbitration && !cluster.IsActive() {
 		return
 	}
-	// dml marker: make sure the one-row table exists on every server before
-	// the first REPLACE, so slaves never error on the replicated row event.
-	if !cluster.injectTrafficUsesDDL() && !cluster.injectTrafficTableReady {
-		cluster.ensureInjectTrafficTable()
-	}
 	// Found server from ServerId
 	if cluster.Conf.TopologyStaging && cluster.Conf.TestInjectTrafficStaging {
 		for _, pr := range cluster.Proxies {
@@ -361,7 +364,7 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 				} else {
 					definer = ""
 				}
-				if err := cluster.injectTrafficMarker(db, definer); err != nil {
+				if err := cluster.injectTrafficMarker(db, definer, pr.GetId()); err != nil {
 					cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
 				}
 				db.Close()
@@ -384,7 +387,7 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 				} else {
 					definer = ""
 				}
-				if err := cluster.injectTrafficMarker(db, definer); err != nil {
+				if err := cluster.injectTrafficMarker(db, definer, pr.GetId()); err != nil {
 					cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
 				}
 				db.Close()
