@@ -65,6 +65,9 @@ func (server *ServerMonitor) RejoinMaster() error {
 	// if cluster.Conf.LogLevel > 2 {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoining standalone server %s", server.URL)
 	// }
+	// Rejoin must write (change master, start slave, flashback): release any
+	// minority read-lock freeze still held on this server. Idempotent.
+	server.UnfreezeReadLock()
 	// Strange here add comment for why
 	cluster.canFlashBack = true
 

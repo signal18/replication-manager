@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/jmoiron/sqlx"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
@@ -159,6 +160,61 @@ func (server *ServerMonitor) SetReadOnly() (string, error) {
 		}
 	}
 	return logs, nil
+}
+
+// FreezeWithReadLock takes a global read lock on a DEDICATED single-session
+// connection and HOLDS it. Unlike read_only — which a SUPER connection
+// (repman itself) bypasses, and for which MariaDB has no super_read_only —
+// FLUSH TABLES WITH READ LOCK blocks every writer including SUPER, so it is
+// the only server-side way to truly stop a minority/old master from
+// diverging during a split. The lock lives exactly as long as freezeConn
+// stays open: UnfreezeReadLock (or the process dying) releases it, so a
+// crash can never leave a client master frozen forever. Idempotent.
+func (server *ServerMonitor) FreezeWithReadLock() error {
+	cluster := server.ClusterGroup
+	server.freezeMu.Lock()
+	defer server.freezeMu.Unlock()
+	if server.freezeConn != nil {
+		return nil
+	}
+	conn, err := sqlx.Open("mysql", server.DSN)
+	if err != nil {
+		return err
+	}
+	// One session only: the lock is session-scoped, so the pool must never
+	// hand out a second connection that isn't holding it.
+	conn.SetMaxOpenConns(1)
+	conn.SetMaxIdleConns(1)
+	conn.SetConnMaxLifetime(0)
+	if _, err := conn.Exec("FLUSH TABLES WITH READ LOCK"); err != nil {
+		conn.Close()
+		return err
+	}
+	server.freezeConn = conn
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Froze %s with FLUSH TABLES WITH READ LOCK (blocks even SUPER) — held until split resolves", server.URL)
+	return nil
+}
+
+// UnfreezeReadLock releases the held global read lock by closing the
+// dedicated connection. Called when the split resolves or before any
+// recovery that must write (rejoin, flashback, reseed). Idempotent.
+func (server *ServerMonitor) UnfreezeReadLock() {
+	server.freezeMu.Lock()
+	defer server.freezeMu.Unlock()
+	if server.freezeConn == nil {
+		return
+	}
+	server.freezeConn.Close()
+	server.freezeConn = nil
+	cluster := server.ClusterGroup
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Released read-lock freeze on %s", server.URL)
+}
+
+// IsFrozen reports whether this server is currently held under the read-lock freeze.
+func (server *ServerMonitor) IsFrozen() bool {
+	server.freezeMu.Lock()
+	defer server.freezeMu.Unlock()
+	return server.freezeConn != nil
 }
 
 func (server *ServerMonitor) SetLongQueryTime(queryTime string) (string, error) {

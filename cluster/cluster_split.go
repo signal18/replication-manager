@@ -78,6 +78,13 @@ func (cluster *Cluster) ArbitratorHandler() {
 			if err != nil {
 				cluster.SetState("WARN0082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0082"], err), ErrFrom: "ARB"})
 			}
+		} else if cluster.IsSplitBrainBck {
+			// Split just RESOLVED (was split, now not): release any read-lock
+			// freeze so the old master can accept the writes recovery needs
+			// (rejoin as slave, flashback, or reseed).
+			if m := cluster.GetMaster(); m != nil && m.IsFrozen() {
+				m.UnfreezeReadLock()
+			}
 		}
 		cluster.IsSplitBrainBck = cluster.IsSplitBrain
 	}
@@ -116,6 +123,18 @@ func (cl *Cluster) arbitratorMinorityFailSafe(reason string) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Minority fail-safe: %s during split brain — setting master %s read-only so it can rejoin the majority", reason, m.URL)
 		if logs, err := m.SetReadOnly(); err != nil {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlErr, "Minority fail-safe: could not set master %s read-only: %s (%s)", m.URL, err, logs)
+		}
+	}
+	// True freeze (opt-in): read_only does not bind repman's own SUPER
+	// connection and MariaDB has no super_read_only, so a global read lock is
+	// the only way to guarantee the minority master cannot diverge (not even
+	// from repman's heartbeat). Held on a dedicated connection, released when
+	// the split resolves (ArbitratorHandler) or before recovery writes.
+	if cl.Conf.ArbitrationMinorityFreeze {
+		if m := cl.GetMaster(); m != nil && !m.IsFrozen() {
+			if err := m.FreezeWithReadLock(); err != nil {
+				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlErr, "Minority fail-safe: could not freeze master %s: %s", m.URL, err)
+			}
 		}
 	}
 	if cl.Status == ConstMonitorActif {

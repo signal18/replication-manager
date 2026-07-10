@@ -820,6 +820,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ArbitrationSasHosts, "arbitration-external-hosts", "https://arbitrator.cloud18.io", "Arbitrator address")
 		flags.IntVar(&conf.ArbitrationSasUniqueId, "arbitration-external-unique-id", 0, "Unique replication-manager instance idententifier")
 		flags.StringVar(&conf.ArbitrationPeerHosts, "arbitration-peer-hosts", "127.0.0.1:10001", "Peer replication-manager hosts http port")
+		flags.BoolVar(&conf.ArbitrationMinorityFreeze, "arbitration-minority-freeze", false, "Hold FLUSH TABLES WITH READ LOCK on a minority master during split brain (blocks even SUPER writes; released when the split resolves) — true protection read_only cannot give on MariaDB")
 		flags.StringVar(&conf.DBServersLocality, "db-servers-locality", "127.0.0.1", "List database servers that are in same network locality")
 		flags.StringVar(&conf.ArbitrationFailedMasterScript, "arbitration-failed-master-script", "", "External script when a master lost arbitration during split brain")
 		flags.IntVar(&conf.ArbitrationReadTimout, "arbitration-read-timeout", 800, "Read timeout for arbotration response in millisec don't woveload monitoring ticker in second")

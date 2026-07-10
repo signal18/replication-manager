@@ -50,6 +50,8 @@ type ServerMonitor struct {
 	ServiceName                 string                      `json:"serviceName"`
 	SourceClusterName           string                      `json:"sourceClusterName" groups:"apps"` //Used to idenfied server added from other clusters linked with multi source
 	Conn                        *sqlx.DB                    `json:"-"`
+	freezeConn                  *sqlx.DB                    `json:"-"` // dedicated 1-session conn holding FLUSH TABLES WITH READ LOCK
+	freezeMu                    sync.Mutex                  `json:"-"`
 	User                        string                      `json:"user"`
 	Pass                        string                      `json:"-"`
 	URL                         string                      `json:"url" groups:"apps"`

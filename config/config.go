@@ -274,6 +274,7 @@ type Config struct {
 	FailoverSemiSyncState                     bool                         `mapstructure:"failover-semisync-state" toml:"failover-semisync-state" json:"failoverSemisyncState"`
 	FailoverDivergentData                     bool                         `mapstructure:"failover-divergent-data" toml:"failover-divergent-data" json:"failoverDivergentData"`
 	SuperReadOnly                             bool                         `mapstructure:"failover-superreadonly-state" toml:"failover-superreadonly-state" json:"failoverSuperReadOnlyState"`
+	ArbitrationMinorityFreeze                 bool                         `mapstructure:"arbitration-minority-freeze" toml:"arbitration-minority-freeze" json:"arbitrationMinorityFreeze"`
 	FailTime                                  int64                        `mapstructure:"failover-time-limit" toml:"failover-time-limit" json:"failoverTimeLimit"`
 	FailSync                                  bool                         `mapstructure:"failover-at-sync" toml:"failover-at-sync" json:"failoverAtSync"`
 	FailEventScheduler                        bool                         `mapstructure:"failover-event-scheduler" toml:"failover-event-scheduler" json:"failoverEventScheduler"`
