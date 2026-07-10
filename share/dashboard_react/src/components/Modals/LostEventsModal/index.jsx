@@ -20,6 +20,9 @@ const PAGE_BYTES = 262144
 function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
   const { theme } = useTheme()
   const isLight = theme === 'light'
+  // Global CSS forces --text-color !important on badge text: 'subtle' reads in
+  // light mode, 'solid' in dark. See CrashesModal for the same constraint.
+  const badgeVariant = isLight ? 'subtle' : 'solid'
 
   const [crash, setCrash] = useState(null)
   const [noCrash, setNoCrash] = useState(false)
@@ -143,17 +146,17 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
               <HStack mb={3} spacing={2} flexWrap='wrap'>
                 {crash.deltaAnalyzed ? (
                   crash.deltaFlashable ? (
-                    <Badge colorScheme='green'>Flashback-able</Badge>
+                    <Badge variant={badgeVariant} colorScheme='green'>Flashback-able</Badge>
                   ) : (
-                    <Badge colorScheme='red'>Not flashback-able</Badge>
+                    <Badge variant={badgeVariant} colorScheme='red'>Not flashback-able</Badge>
                   )
                 ) : (
-                  <Badge colorScheme='orange'>Not analyzed</Badge>
+                  <Badge variant={badgeVariant} colorScheme='orange'>Not analyzed</Badge>
                 )}
-                <Badge>{crash.deltaTransactions} transactions</Badge>
-                <Badge>{crash.deltaRowEvents} row events</Badge>
-                {crash.deltaDdl > 0 && <Badge colorScheme='red'>{crash.deltaDdl} DDL</Badge>}
-                {crash.deltaStatementDml > 0 && <Badge colorScheme='red'>{crash.deltaStatementDml} statement DML</Badge>}
+                <Badge variant={badgeVariant}>{crash.deltaTransactions} transactions</Badge>
+                <Badge variant={badgeVariant}>{crash.deltaRowEvents} row events</Badge>
+                {crash.deltaDdl > 0 && <Badge variant={badgeVariant} colorScheme='red'>{crash.deltaDdl} DDL</Badge>}
+                {crash.deltaStatementDml > 0 && <Badge variant={badgeVariant} colorScheme='red'>{crash.deltaStatementDml} statement DML</Badge>}
               </HStack>
               {crash.deltaAnalyzed && !crash.deltaFlashable && (
                 <Alert status='warning' borderRadius='md' mb={3}>
