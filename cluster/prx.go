@@ -293,7 +293,7 @@ func (cluster *Cluster) injectTrafficUsesDDL() bool {
 	return cluster.Conf.ForceSlaveNoGtid || cluster.Conf.InjectTrafficMode == "ddl"
 }
 
-func (cluster *Cluster) injectTrafficMarker(db *sqlx.DB, definer string) error {
+func (cluster *Cluster) injectTrafficMarker(db *sqlx.DB, definer string, readyKey string) error {
 	uuid := misc.GetUUID()
 	if cluster.injectTrafficUsesDDL() {
 		_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + uuid + "' from dual")
@@ -307,12 +307,29 @@ func (cluster *Cluster) injectTrafficMarker(db *sqlx.DB, definer string) error {
 	// the REPLACE (no 1032), and a reseeded node gets the table in its
 	// snapshot — so no presence-checking state is needed. IF NOT EXISTS makes
 	// the one-time setup idempotent across restarts.
-	if !cluster.injectTrafficTableReady {
+	if cluster.injectTrafficTableReady == nil {
+		cluster.injectTrafficTableReady = make(map[string]bool)
+	}
+	if !cluster.injectTrafficTableReady[readyKey] {
 		db.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
-		db.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.pseudo_gtid_hist (id INT PRIMARY KEY, uuid VARCHAR(64), ts TIMESTAMP)")
-		db.Exec("INSERT IGNORE INTO replication_manager_schema.pseudo_gtid_hist (id, uuid, ts) VALUES (1, '" + uuid + "', NOW())")
+		// Only latch on a CONFIRMED CREATE TABLE. If it fails (a restricted
+		// write-heartbeat credential without CREATE, a read-only master
+		// mid-switchover, a timeout), do NOT set the guard and do NOT fall
+		// through to the REPLACE — that would write to a table that may not
+		// exist and reintroduce the 1032 this fix removes. Return the error so
+		// the next tick retries. Keyed per proxy target so a staging target
+		// cannot flip the guard for the main production master.
+		if _, err := db.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.pseudo_gtid_hist (id INT PRIMARY KEY, uuid VARCHAR(64), ts TIMESTAMP)"); err != nil {
+			return err
+		}
+		if _, err := db.Exec("INSERT IGNORE INTO replication_manager_schema.pseudo_gtid_hist (id, uuid, ts) VALUES (1, '" + uuid + "', NOW())"); err != nil {
+			return err
+		}
 		db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v AS SELECT uuid FROM replication_manager_schema.pseudo_gtid_hist WHERE id=1")
-		cluster.injectTrafficTableReady = true
+		cluster.injectTrafficTableReady[readyKey] = true
+		// The seed INSERT above already advanced the marker this tick — skip
+		// the otherwise-redundant REPLACE with the same uuid.
+		return nil
 	}
 	_, err := db.Exec("REPLACE INTO replication_manager_schema.pseudo_gtid_hist (id, uuid, ts) VALUES (1, '" + uuid + "', NOW())")
 	return err
@@ -347,7 +364,7 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 				} else {
 					definer = ""
 				}
-				if err := cluster.injectTrafficMarker(db, definer); err != nil {
+				if err := cluster.injectTrafficMarker(db, definer, pr.GetId()); err != nil {
 					cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
 				}
 				db.Close()
@@ -370,7 +387,7 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 				} else {
 					definer = ""
 				}
-				if err := cluster.injectTrafficMarker(db, definer); err != nil {
+				if err := cluster.injectTrafficMarker(db, definer, pr.GetId()); err != nil {
 					cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
 				}
 				db.Close()
