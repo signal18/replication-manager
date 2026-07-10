@@ -2,6 +2,7 @@ import { useDispatch } from 'react-redux'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import AdvancedReseedModal from '../../../../components/Modals/AdvancedReseedModal'
+import LostEventsModal from '../../../../components/Modals/LostEventsModal'
 import {
   abortDatabase,
   clearDatabase,
@@ -109,6 +110,9 @@ function ServerMenu({
   const [isReseedModalOpen, setIsReseedModalOpen] = useState(false)
   const [reseedOperationType, setReseedOperationType] = useState('')
 
+  // State for LostEventsModal (last divergence viewer)
+  const [isLostEventsModalOpen, setIsLostEventsModalOpen] = useState(false)
+
   const serverName = row?.id ? `server ${row.host}:${row.port} (${row.id})` : ''
 
   const rawHref = useHref('/')
@@ -202,6 +206,10 @@ function ServerMenu({
               setConfirmTitle(`Confirm maintenance for ${serverName}?`)
               setConfirmHandler(() => () => dispatch(setMaintenanceMode({ clusterName, serverId: row.id })))
             }
+          },
+          {
+            name: 'Last Divergence',
+            onClick: () => setIsLostEventsModalOpen(true)
           },
           ...(showTerminal
             ? [
@@ -606,6 +614,15 @@ function ServerMenu({
             port: row.port
           }}
           backupType={reseedOperationType.includes('physical') ? backupPhysicalType : backupLogicalType}
+        />
+      )}
+
+      {isLostEventsModalOpen && (
+        <LostEventsModal
+          isOpen={isLostEventsModalOpen}
+          closeModal={() => setIsLostEventsModalOpen(false)}
+          clusterName={clusterName}
+          server={row}
         />
       )}
     </>

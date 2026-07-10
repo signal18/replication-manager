@@ -688,10 +688,15 @@ func (server *ServerMonitor) saveBinlog(crash *Crash) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Could not create crash archive directory %s: %s", backupdir, err)
 		return err
 	}
-	if err := os.Rename(staging, backupdir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile); err != nil {
+	archived := backupdir + "/" + cluster.Name + "-server" + strconv.FormatUint(uint64(server.ServerID), 10) + "-" + crash.FailoverMasterLogFile
+	if err := os.Rename(staging, archived); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Could not archive captured lost events %s: %s", staging, err)
 		return err
 	}
+	crash.DeltaArchive = archived
+	// Render the review material next to the archive: what happened and,
+	// when reversible, the exact undo (lost-events viewer serves both).
+	server.decodeLostEvents(crash, archived)
 	server.purgeCrashBinArchives(3)
 	return nil
 }
@@ -809,6 +814,9 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	} else if st.Size() <= binlogHeadersMaxSize {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Lost events capture of %s is empty — no events after failover position %s:%s (nothing to flash back)", server.URL, crash.FailoverMasterLogFile, crash.FailoverMasterLogPos)
 	}
+	// The verdict on the capture decides the recovery path (WARN0184/0185,
+	// flashback gate, viewer) — analyze while the staging file is at hand.
+	server.analyzeLostEvents(crash, staging)
 	return nil
 }
 
