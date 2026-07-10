@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton,
   Box, Text, Badge, Code, Button, Spinner,
@@ -7,6 +7,7 @@ import {
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
 import { clusterService } from '../../../services/clusterService'
+import { acquireAutoReloadPause, releaseAutoReloadPause } from '../../../utility/autoReloadPause'
 
 const PAGE_BYTES = 262144
 
@@ -26,6 +27,7 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
   const [loading, setLoading] = useState(false)
   const emptyPane = { lines: [], nextPos: 0, eof: false, size: 0, started: false }
   const [panes, setPanes] = useState({ forward: { ...emptyPane }, flashback: { ...emptyPane } })
+  const pauseRef = useRef(false)
 
   const loadPage = useCallback(
     (file, pos) => {
@@ -62,12 +64,26 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
   )
 
   useEffect(() => {
-    if (isOpen) {
+    // Freeze the global auto-refresh while the viewer is open so the record
+    // (and the modal built on it) cannot be swept out from under the operator
+    // on the next poll cycle.
+    if (isOpen && !pauseRef.current) {
+      acquireAutoReloadPause()
+      pauseRef.current = true
       setCrash(null)
       setNoCrash(false)
       setError('')
       setPanes({ forward: { ...emptyPane }, flashback: { ...emptyPane } })
       loadPage('forward', 0)
+    } else if (!isOpen && pauseRef.current) {
+      releaseAutoReloadPause()
+      pauseRef.current = false
+    }
+    return () => {
+      if (pauseRef.current) {
+        releaseAutoReloadPause()
+        pauseRef.current = false
+      }
     }
   }, [isOpen, loadPage])
 

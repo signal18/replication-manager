@@ -12,8 +12,9 @@ import SecurityScoreModal from '../Modals/SecurityScoreModal'
 import WorkloadModal from '../Modals/WorkloadModal'
 import SchemaModal from '../Modals/SchemaModal'
 import ConfigModal from '../Modals/ConfigModal'
+import CrashesModal from '../Modals/CrashesModal'
 import { FaUserPlus, FaUserCircle } from 'react-icons/fa'
-import { MdSecurity, MdNotificationsOff, MdSchema, MdSettings } from 'react-icons/md'
+import { MdSecurity, MdNotificationsOff, MdSchema, MdSettings, MdHistory } from 'react-icons/md'
 import { HiRefresh } from 'react-icons/hi'
 import { RiSpeedFill } from 'react-icons/ri'
 import InterventionPanel from '../Modals/InterventionPanel'
@@ -41,6 +42,7 @@ function Navbar({ username, user }) {
   const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false)
   const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false)
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false)
+  const [isCrashesModalOpen, setIsCrashesModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [isInterventionPanelOpen, setIsInterventionPanelOpen] = useState(false)
   const [isUserInfoPanelOpen, setIsUserInfoPanelOpen] = useState(false)
@@ -321,6 +323,20 @@ function Navbar({ username, user }) {
                 onClick={() => setIsConfigModalOpen(true)}
                 showText={!isMobile}
               />
+              {(clusterData?.dbServersCrashes || []).length > 0 && (
+                <AlertBadge
+                  colorScheme={(clusterData?.dbServersCrashes || []).some((c) => c.deltaAnalyzed && !c.deltaFlashable) ? 'red' : 'purple'}
+                  icon={MdHistory}
+                  text='Last Crash'
+                  count={(clusterData?.dbServersCrashes || []).length}
+                  bubbleStyle={{
+                    background: `var(--chakra-colors-${(clusterData?.dbServersCrashes || []).some((c) => c.deltaAnalyzed && !c.deltaFlashable) ? 'red' : 'purple'}-500)`,
+                    color: 'white',
+                  }}
+                  onClick={() => setIsCrashesModalOpen(true)}
+                  showText={!isMobile}
+                />
+              )}
             </Flex>
           )}
 
@@ -392,6 +408,14 @@ function Navbar({ username, user }) {
       )}
       {isWorkloadModalOpen && (
         <WorkloadModal isOpen={isWorkloadModalOpen} closeModal={() => setIsWorkloadModalOpen(false)} />
+      )}
+      {isCrashesModalOpen && (
+        <CrashesModal
+          isOpen={isCrashesModalOpen}
+          closeModal={() => setIsCrashesModalOpen(false)}
+          clusterName={clusterData?.name}
+          crashes={clusterData?.dbServersCrashes}
+        />
       )}
       {isSchemaModalOpen && (
         <SchemaModal isOpen={isSchemaModalOpen} closeModal={() => setIsSchemaModalOpen(false)} />
