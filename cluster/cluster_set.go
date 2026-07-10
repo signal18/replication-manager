@@ -1305,18 +1305,28 @@ func (cl *Cluster) SetArbitratorReport() error {
 		return errors.New("split-brain simulation: arbitrator link down")
 	}
 
+	// Read the topology inputs under the cluster lock so this report is safe to
+	// fire CONCURRENTLY from the server heartbeat every split-tick. cluster.Servers
+	// is REASSIGNED (make/append/delete) during TopologyDiscover and server-delete
+	// under this same lock; an unlocked read racing that reassignment can tear the
+	// slice header and panic. The hold is ONLY the quick reads (no I/O) — the
+	// network POST below runs UNLOCKED, so we never block TopologyDiscover on HTTP.
+	cl.Lock()
 	cl.IsLostMajority = cl.LostMajority()
-	// SplitBrain
+	var mst string
+	if m := cl.GetMaster(); m != nil {
+		mst = m.URL
+	}
+	srvs := cl.GetServers()
+	hosts := len(srvs)
+	failed := cl.CountFailed(srvs)
+	status := cl.Status
+	name := cl.Name
+	cl.Unlock()
 
 	url := cl.arbitratorURL("/heartbeat")
-	var mst string
-	if cl.GetMaster() != nil {
-		mst = cl.GetMaster().URL
-	}
-	hosts := len(cl.GetServers())
-	failed := cl.CountFailed(cl.GetServers())
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlDbg, "SetArbitratorReport: sending hosts=%d failed=%d cluster=%s", hosts, failed, cl.GetName())
-	var jsonStr = []byte(`{"uuid":"` + cl.runUUID + `","secret":"` + cl.Conf.ArbitrationSasSecret + `","cluster":"` + cl.GetName() + `","master":"` + mst + `","id":` + strconv.Itoa(cl.Conf.ArbitrationSasUniqueId) + `,"status":"` + cl.Status + `","hosts":` + strconv.Itoa(hosts) + `,"failed":` + strconv.Itoa(failed) + `}`)
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlDbg, "SetArbitratorReport: sending hosts=%d failed=%d cluster=%s", hosts, failed, name)
+	var jsonStr = []byte(`{"uuid":"` + cl.runUUID + `","secret":"` + cl.Conf.ArbitrationSasSecret + `","cluster":"` + name + `","master":"` + mst + `","id":` + strconv.Itoa(cl.Conf.ArbitrationSasUniqueId) + `,"status":"` + status + `","hosts":` + strconv.Itoa(hosts) + `,"failed":` + strconv.Itoa(failed) + `}`)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		if cl.Conf.LogHeartbeat {
