@@ -18,6 +18,7 @@ import {
   getShardSchema,
   getTopProcess,
   setCluster,
+  setClusterView,
   setRefreshInterval,
   pauseAutoReload,
   getBackupStats,
@@ -276,6 +277,7 @@ function Home() {
     setSelectedTab(tabIndex)
     if (tabIndex === 0) {
       isClusterOpenRef.current = false
+      dispatch(setClusterView(false)) // back to instance level — see GUI_THREE_LEVELS.md
       dispatch(setCluster({ data: null }))
       dispatch(setBaseURL({ baseURL: '' }))
       selectedClusterNameRef.current = ''
@@ -292,8 +294,9 @@ function Home() {
     selectedTabRef.current = 1
     isClusterOpenRef.current = true
     if (selectedClusterNameRef.current !== cluster.name) {
-      dispatch(clearCluster({}))
+      dispatch(clearCluster({})) // resets slice (incl. isClusterView) — set the view AFTER
     }
+    dispatch(setClusterView(true)) // entering cluster level — see GUI_THREE_LEVELS.md
     selectedClusterNameRef.current = cluster.name
     setSelectedTab(1)
   }

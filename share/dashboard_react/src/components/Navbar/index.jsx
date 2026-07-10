@@ -55,6 +55,13 @@ function Navbar({ username, user }) {
   const { isMobile, isDesktop } = useSelector((state) => state.common)
   const clusterAlerts = useSelector((state) => state?.cluster?.clusterAlerts)
   const clusterData = useSelector((state) => state?.cluster?.clusterData)
+  // Which header renders — instance (monitor) vs cluster — must follow the
+  // SAME signal as the tab bar (which is always correct): Home's cluster-open
+  // state, mirrored into redux as isClusterView. clusterData is NOT that
+  // signal — it lingers after leaving a cluster, leaking the previous
+  // cluster's header onto the instance-level list. The URL is not it either:
+  // opening a cluster from the list is pure state, the path stays "/".
+  const isClusterLevel = useSelector((state) => state?.cluster?.isClusterView)
   const globalAlerts = useSelector((state) => state?.globalClusters?.globalAlerts)
   const isLogged = useSelector((state) => state?.auth?.isLogged)
   const baseURL = useSelector((state) => state?.auth?.baseURL)
@@ -186,7 +193,7 @@ function Navbar({ username, user }) {
           
 
 
-          {isAuthorized() && !clusterData && (
+          {isAuthorized() && !isClusterLevel && (
             <Flex className={styles.alerts}>
               <Popover placement='bottom'>
                 <PopoverTrigger>
@@ -227,7 +234,7 @@ function Navbar({ username, user }) {
             </Flex>
           )}
 
-          {isAuthorized() && clusterData && (
+          {isAuthorized() && isClusterLevel && clusterData && (
             <Flex className={styles.alerts}>
               <Popover placement='bottom'>
                 <PopoverTrigger>

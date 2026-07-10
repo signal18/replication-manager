@@ -2649,6 +2649,12 @@ const initialState = {
   clusterApps: null,
   clusterAppStates: null,
   clusterData: null,
+  // isClusterView mirrors Home's cluster-open state (the always-correct tab
+  // signal) so the Navbar can pick instance vs cluster header from the same
+  // source as the tabs. NOT derived from clusterData (lingers → header leak)
+  // nor the URL (list-click doesn't navigate). See doc/implementation/
+  // ui-components/GUI_THREE_LEVELS.md.
+  isClusterView: false,
   clusterAlerts: null,
   clusterLogs: {
     general: null,
@@ -2727,6 +2733,12 @@ export const clusterSlice = createSlice({
     },
     setCluster: (state, action) => {
       state.clusterData = action.payload.data
+    },
+    // setClusterView is toggled by Home at the SAME two transitions that flip
+    // the tab bar between instance and cluster level, so the Navbar header
+    // stays in lockstep with the (always-correct) tabs.
+    setClusterView: (state, action) => {
+      state.isClusterView = action.payload
     },
     clearCluster: (state, action) => {
       Object.assign(state, initialState)
@@ -3107,7 +3119,7 @@ export const clusterSlice = createSlice({
   }
 })
 
-export const { setRefreshInterval, setCluster, clearCluster, pauseAutoReload } = clusterSlice.actions
+export const { setRefreshInterval, setCluster, setClusterView, clearCluster, pauseAutoReload } = clusterSlice.actions
 
 // Selector for cluster-level saved S3 providers (credentials already masked by backend).
 // Returns an empty array when cluster data is not yet loaded.
