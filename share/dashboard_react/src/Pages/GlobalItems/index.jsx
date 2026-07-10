@@ -4,6 +4,7 @@ import { Box, Flex, Text, Divider, Spinner, Button } from '@chakra-ui/react'
 import Card from '../../components/Card'
 import Gauge from '../../components/Gauge'
 import TagPill from '../../components/TagPill'
+import { useTheme } from '../../ThemeProvider'
 import styles from './styles.module.scss'
 import Logs from '../Dashboard/components/Logs'
 import AccordionComponent from '../../components/AccordionComponent'
@@ -242,6 +243,8 @@ export function GlobalLogs() {
 }
 
 function AlertSection({ title, items, colorScheme, onOpenModal }) {
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
   const previewItems = items.slice(0, 3)
   const remainingCount = Math.max(items.length - previewItems.length, 0)
 
@@ -261,7 +264,7 @@ function AlertSection({ title, items, colorScheme, onOpenModal }) {
             <>
               <Text fontSize='xs' opacity={0.7}>Showing latest {previewItems.length} of {items.length}.</Text>
               {previewItems.map((item, index) => (
-                <Box key={`${item?.number ?? 'alert'}-${index}`} p='8px' borderRadius='6px' bg='gray.50'>
+                <Box key={`${item?.number ?? 'alert'}-${index}`} p='8px' borderRadius='6px' bg={isLight ? 'gray.50' : 'whiteAlpha.100'}>
                   <Text fontSize='xs' opacity={0.7}>{item?.number ?? 'N/A'} • {item?.from ?? 'N/A'}</Text>
                   <Text fontSize='sm'>{item?.desc ?? 'N/A'}</Text>
                 </Box>

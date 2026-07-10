@@ -39,6 +39,10 @@ const GRADE_COLOR = { A: 'green', B: 'teal', C: 'yellow', D: 'orange', F: 'red' 
 
 function SecurityScoreModal({ isOpen, closeModal }) {
   const { theme } = useTheme()
+  // Global CSS forces --text-color !important on badge text, so a 'subtle'
+  // badge in dark mode renders white text on a pale tint (unreadable). Use
+  // 'subtle' in light, 'solid' in dark. See CrashesModal for the full note.
+  const badgeVariant = theme === 'light' ? 'subtle' : 'solid'
   const dispatch = useDispatch()
   const { isMobile, isTablet, isDesktop } = useSelector((state) => state.common)
   const clusterData = useSelector((state) => state.cluster.clusterData)
@@ -135,7 +139,7 @@ function SecurityScoreModal({ isOpen, closeModal }) {
                       isDisabled={!!fixing[`${errKey}:${fix.tag}`]}
                       onClick={() => handleFix(errKey, fix.tag)}>
                       {fix.tag}
-                      {fix.risk === 'disruptive' && <Badge ml={2} colorScheme='orange' fontSize='xs'>restart</Badge>}
+                      {fix.risk === 'disruptive' && <Badge ml={2} variant={badgeVariant} colorScheme='orange' fontSize='xs'>restart</Badge>}
                     </MenuItem>
                   ))}
                 </MenuList>
@@ -199,7 +203,7 @@ function SecurityScoreModal({ isOpen, closeModal }) {
             {checks.map(({ label, pass }) => (
               <GridItem key={label}>
                 <HStack spacing={2}>
-                  <Badge colorScheme={pass ? 'green' : 'red'} minW='40px' textAlign='center'>
+                  <Badge variant={badgeVariant} colorScheme={pass ? 'green' : 'red'} minW='40px' textAlign='center'>
                     {pass ? 'PASS' : 'FAIL'}
                   </Badge>
                   <Text fontSize='sm'>{label}</Text>
