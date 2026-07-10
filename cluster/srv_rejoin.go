@@ -103,7 +103,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 					}
 				} //crash info is available
 				if cluster.Conf.AutorejoinBackupBinlog {
-					server.backupBinlog(crash)
+					server.freezeThenCaptureLostEvents(crash)
 				}
 
 				err := server.rejoinMasterIncremental(crash)
@@ -733,6 +733,66 @@ func (server *ServerMonitor) purgeCrashBinArchives(keep int) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Pruned crash archive %s (keeping the %d most recent)", name, keep)
 	}
 }
+// freezeThenCaptureLostEvents captures the diverged old master's binlog tail
+// AFTER stopping it from growing. This is the fix for the empty-capture bug:
+// the previous code captured from crash.FailoverMasterLogPos while the old
+// master was STILL being written. During a split the proxy keeps routing
+// writes to whatever it thinks is master — it connects SUPER, so read_only
+// does not stop it, and the traffic marker fires every tick — so the divergent
+// tail kept growing PAST the one-shot snapshot and the capture came back empty
+// (proven on belair: anchor correct, moment ~35s too early). FLUSH TABLES WITH
+// READ LOCK is the only thing that blocks even SUPER; take it, confirm the
+// binlog position has stopped advancing, THEN capture the whole delta, then
+// release so rejoinMasterIncremental can write.
+func (server *ServerMonitor) freezeThenCaptureLostEvents(crash *Crash) error {
+	cluster := server.ClusterGroup
+	froze := false
+	if err := server.FreezeWithReadLock(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "WARNING", "Could not freeze %s before lost-events capture (%s) — capturing live, the divergent tail may still be growing", server.URL, err)
+	} else {
+		froze = true
+		server.waitBinlogSettle()
+	}
+	err := server.backupBinlog(crash)
+	if froze {
+		server.UnfreezeReadLock()
+	}
+	return err
+}
+
+// waitBinlogSettle blocks until the server's binlog position stops advancing
+// (two consecutive identical SHOW MASTER STATUS reads) or a short timeout. It
+// is called right after FreezeWithReadLock: FTWRL already waits for in-flight
+// writes and blocks new commits, so the position is expected to be stable
+// immediately — this poll just CONFIRMS it (and logs the settled anchor) before
+// the capture, honoring "confirm its GTID stops advancing, then capture".
+func (server *ServerMonitor) waitBinlogSettle() {
+	cluster := server.ClusterGroup
+	var lastFile string
+	var lastPos uint
+	stable := 0
+	for i := 0; i < 10; i++ {
+		ms, _, err := dbhelper.GetMasterStatus(server.Conn, server.DBVersion)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "WARNING", "Could not read master status of %s while waiting for binlog to settle: %s", server.URL, err)
+			return
+		}
+		if ms.File == lastFile && ms.Position == lastPos {
+			stable++
+			if stable >= 1 {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Binlog of %s settled at %s:%d under read-lock freeze — capturing lost events", server.URL, ms.File, ms.Position)
+				return
+			}
+		} else {
+			stable = 0
+			lastFile = ms.File
+			lastPos = ms.Position
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "WARNING", "Binlog of %s still advancing after freeze wait (last %s:%d) — capturing anyway", server.URL, lastFile, lastPos)
+}
+
 func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	cluster := server.ClusterGroup
 	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
