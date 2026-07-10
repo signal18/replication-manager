@@ -18,6 +18,7 @@ export const clusterService = {
   getJobs,
   getShardSchema,
   getQueryRules,
+  getServerLostEvents,
 
   // Restic management APIs
   getResticSnapshot,
@@ -268,6 +269,12 @@ function getResticSnapshot(clusterName, baseURL, filter) {
 
 function getResticStats(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/stats`)
+}
+
+function getServerLostEvents(clusterName, serverId, { file = 'forward', pos = 0, bytes = 262144 } = {}, baseURL) {
+  return getApi(baseURL).get(
+    `clusters/${clusterName}/servers/${serverId}/lost-events?file=${file}&pos=${pos}&bytes=${bytes}`
+  )
 }
 
 function getJobs(clusterName, baseURL) {
