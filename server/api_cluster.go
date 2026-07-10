@@ -10141,7 +10141,15 @@ func (repman *ReplicationManager) handlerMuxServerLostEvents(w http.ResponseWrit
 		http.Error(w, "Server Not Found", 500)
 		return
 	}
-	crash := mycluster.GetLatestCrashForServer(node.URL)
+	var crash *cluster.Crash
+	if tsStr := r.URL.Query().Get("ts"); tsStr != "" {
+		// Explorer addressing a specific historical divergence by its
+		// failover timestamp (from failoverHistory).
+		ts, _ := strconv.ParseInt(tsStr, 10, 64)
+		crash = mycluster.GetCrashForServerAt(node.URL, ts)
+	} else {
+		crash = mycluster.GetLatestCrashForServer(node.URL)
+	}
 	if crash == nil {
 		// Crash records are LOCAL to the instance that performed the failover.
 		// The divergence is real wherever the operator looks from (the server

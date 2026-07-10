@@ -39,8 +39,9 @@ function CrashesModal({ isOpen, closeModal, clusterName, crashes }) {
   const crashServer = (crash) => {
     const url = crash?.URL || ''
     const [host, port] = url.split(':')
-    // The lost-events API resolves host:port as well as server id.
-    return { id: url, host, port }
+    // The lost-events API resolves host:port as well as server id; ts pins the
+    // specific historical divergence.
+    return { id: url, host, port, ts: crash?.UnixTimestamp || 0 }
   }
 
   const verdict = (crash) => {

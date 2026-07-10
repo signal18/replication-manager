@@ -330,14 +330,14 @@ function Navbar({ username, user }) {
                 onClick={() => setIsConfigModalOpen(true)}
                 showText={!isMobile}
               />
-              {(clusterData?.dbServersCrashes || []).length > 0 && (
+              {(clusterData?.failoverHistory || []).length > 0 && (
                 <AlertBadge
-                  colorScheme={(clusterData?.dbServersCrashes || []).some((c) => c.deltaAnalyzed && !c.deltaFlashable) ? 'red' : 'purple'}
+                  colorScheme={(clusterData?.failoverHistory || []).some((c) => c.deltaAnalyzed && !c.deltaFlashable) ? 'red' : 'purple'}
                   icon={MdHistory}
-                  text='Last Crash'
-                  count={(clusterData?.dbServersCrashes || []).length}
+                  text='Crashes'
+                  count={(clusterData?.failoverHistory || []).length}
                   bubbleStyle={{
-                    background: `var(--chakra-colors-${(clusterData?.dbServersCrashes || []).some((c) => c.deltaAnalyzed && !c.deltaFlashable) ? 'red' : 'purple'}-500)`,
+                    background: `var(--chakra-colors-${(clusterData?.failoverHistory || []).some((c) => c.deltaAnalyzed && !c.deltaFlashable) ? 'red' : 'purple'}-500)`,
                     color: 'white',
                   }}
                   onClick={() => setIsCrashesModalOpen(true)}
@@ -421,7 +421,7 @@ function Navbar({ username, user }) {
           isOpen={isCrashesModalOpen}
           closeModal={() => setIsCrashesModalOpen(false)}
           clusterName={clusterData?.name}
-          crashes={clusterData?.dbServersCrashes}
+          crashes={clusterData?.failoverHistory}
         />
       )}
       {isSchemaModalOpen && (

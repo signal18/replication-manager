@@ -170,7 +170,35 @@ func (cluster *Cluster) GetLatestCrashForServer(url string) *Crash {
 			last = crash
 		}
 	}
+	if last != nil {
+		return last
+	}
+	// Fall back to the durable history (FailoverHistory / failover.*.json):
+	// the volatile Crashes above is purged when the cluster heals, but the
+	// explorer must still open a PAST crash's divergence.
+	for _, crash := range cluster.FailoverHistory {
+		if crash != nil && crash.URL == url {
+			last = crash
+		}
+	}
 	return last
+}
+
+// GetCrashForServerAt returns the crash for a server at a specific failover
+// timestamp — how the explorer addresses a single historical divergence.
+// Searches the durable history first, then the in-flight working set.
+func (cluster *Cluster) GetCrashForServerAt(url string, ts int64) *Crash {
+	for _, crash := range cluster.FailoverHistory {
+		if crash != nil && crash.URL == url && crash.UnixTimestamp == ts {
+			return crash
+		}
+	}
+	for _, crash := range cluster.Crashes {
+		if crash != nil && crash.URL == url && crash.UnixTimestamp == ts {
+			return crash
+		}
+	}
+	return nil
 }
 
 // LostEventsPage is one paginated chunk of a decoded lost-events file. The

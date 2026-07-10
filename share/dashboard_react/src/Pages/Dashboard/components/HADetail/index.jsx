@@ -20,7 +20,7 @@ function HADetail({ selectedCluster, user, readOnly = false, onOpenSettings }) {
   const dispatch = useDispatch()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isCrashesOpen, setIsCrashesOpen] = useState(false)
-  const crashes = selectedCluster?.dbServersCrashes || []
+  const crashes = selectedCluster?.failoverHistory || []
   const failOverData = useMemo(() => selectedCluster ? [
     { key: 'Checks', value: selectedCluster.monitorSpin },
     { key: 'Failed', value: `${selectedCluster.failoverCounter} / ${selectedCluster?.config?.failoverLimit}` },

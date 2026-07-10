@@ -271,9 +271,10 @@ function getResticStats(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/stats`)
 }
 
-function getServerLostEvents(clusterName, serverId, { file = 'forward', pos = 0, bytes = 262144 } = {}, baseURL) {
+function getServerLostEvents(clusterName, serverId, { file = 'forward', pos = 0, bytes = 262144, ts = 0 } = {}, baseURL) {
+  const tsParam = ts ? `&ts=${ts}` : ''
   return getApi(baseURL).get(
-    `clusters/${clusterName}/servers/${serverId}/lost-events?file=${file}&pos=${pos}&bytes=${bytes}`
+    `clusters/${clusterName}/servers/${serverId}/lost-events?file=${file}&pos=${pos}&bytes=${bytes}${tsParam}`
   )
 }
 

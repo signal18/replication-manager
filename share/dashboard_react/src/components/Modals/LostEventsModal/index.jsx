@@ -33,7 +33,7 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
     (file, pos) => {
       setLoading(true)
       clusterService
-        .getServerLostEvents(clusterName, server?.id, { file, pos, bytes: PAGE_BYTES })
+        .getServerLostEvents(clusterName, server?.id, { file, pos, bytes: PAGE_BYTES, ts: server?.ts || 0 })
         .then((res) => {
           const data = res.data
           setCrash(data.crash)
