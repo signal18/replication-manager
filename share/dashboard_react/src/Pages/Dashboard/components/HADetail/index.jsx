@@ -6,9 +6,11 @@ import { useDispatch, useSelector } from 'react-redux'
 import TableType1 from '../../../../components/TableType1'
 import { failOverCluster, switchOverCluster } from '../../../../redux/clusterSlice'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
+import CrashesModal from '../../../../components/Modals/CrashesModal'
 import styles from './styles.module.scss'
 import RMIconButton from '../../../../components/RMIconButton'
 import { HiCog } from 'react-icons/hi'
+import { MdHistory } from 'react-icons/md'
 
 function HADetail({ selectedCluster, user, readOnly = false, onOpenSettings }) {
   const clusterMaster = useSelector((state) => state.cluster.clusterMaster)
@@ -17,6 +19,8 @@ function HADetail({ selectedCluster, user, readOnly = false, onOpenSettings }) {
       
   const dispatch = useDispatch()
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isCrashesOpen, setIsCrashesOpen] = useState(false)
+  const crashes = selectedCluster?.dbServersCrashes || []
   const failOverData = useMemo(() => selectedCluster ? [
     { key: 'Checks', value: selectedCluster.monitorSpin },
     { key: 'Failed', value: `${selectedCluster.failoverCounter} / ${selectedCluster?.config?.failoverLimit}` },
@@ -85,7 +89,19 @@ function HADetail({ selectedCluster, user, readOnly = false, onOpenSettings }) {
               buttonText: clusterMaster.state === 'Failed' ? 'Failover' : 'Switchover'
             }
           : {})}
-        extraHeaderActions={onOpenSettings ? <RMIconButton icon={HiCog} tooltip='Failover Settings' onClick={onOpenSettings} size='xs' variant='ghost' /> : null}
+        extraHeaderActions={
+          <>
+            <RMIconButton
+              icon={MdHistory}
+              tooltip={crashes.length > 0 ? `Crashes / last divergence (${crashes.length})` : 'Crashes / last divergence'}
+              onClick={() => setIsCrashesOpen(true)}
+              size='xs'
+              variant='ghost'
+              colorScheme={crashes.some((c) => c.deltaAnalyzed && !c.deltaFlashable) ? 'red' : crashes.length > 0 ? 'purple' : 'gray'}
+            />
+            {onOpenSettings && <RMIconButton icon={HiCog} tooltip='Failover Settings' onClick={onOpenSettings} size='xs' variant='ghost' />}
+          </>
+        }
       />
       {isModalOpen && (
         <ConfirmModal
@@ -93,6 +109,14 @@ function HADetail({ selectedCluster, user, readOnly = false, onOpenSettings }) {
           closeModal={closeModal}
           isOpen={isModalOpen}
           onConfirmClick={handleConfirm}
+        />
+      )}
+      {isCrashesOpen && (
+        <CrashesModal
+          isOpen={isCrashesOpen}
+          closeModal={() => setIsCrashesOpen(false)}
+          clusterName={selectedCluster?.name}
+          crashes={crashes}
         />
       )}
     </>
