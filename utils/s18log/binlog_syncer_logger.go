@@ -6,9 +6,21 @@ package s18log
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
 )
+
+// isBenignCloseError matches go-mysql's close-time KILL failure: when a
+// syncer closes it tries to KILL its own dump thread, which the server has
+// often already reaped ("kill connection N error ... Unknown thread id" /
+// error 1094). It is harmless — the connection is going away regardless —
+// but replication-manager opens+closes a syncer per tick, so at Error level
+// it floods. Downgraded to DEBUG.
+func isBenignCloseError(msg string) bool {
+	return strings.Contains(msg, "kill connection") &&
+		(strings.Contains(msg, "Unknown thread id") || strings.Contains(msg, "1094"))
+}
 
 // ModulePrintf is the subset of the cluster's module-based logger that
 // BinlogSyncerLogger needs. *cluster.Cluster satisfies this via its existing
@@ -120,14 +132,21 @@ func (l *BinlogSyncerLogger) Warnln(args ...interface{}) {
 	l.log(false, config.LvlWarn, fmt.Sprintln(args...))
 }
 
+func (l *BinlogSyncerLogger) errorOrDebug(msg string) {
+	if isBenignCloseError(msg) {
+		l.log(false, config.LvlDbg, msg)
+		return
+	}
+	l.log(false, config.LvlErr, msg)
+}
 func (l *BinlogSyncerLogger) Error(args ...interface{}) {
-	l.log(false, config.LvlErr, fmt.Sprint(args...))
+	l.errorOrDebug(fmt.Sprint(args...))
 }
 func (l *BinlogSyncerLogger) Errorf(f string, args ...interface{}) {
-	l.log(false, config.LvlErr, fmt.Sprintf(f, args...))
+	l.errorOrDebug(fmt.Sprintf(f, args...))
 }
 func (l *BinlogSyncerLogger) Errorln(args ...interface{}) {
-	l.log(false, config.LvlErr, fmt.Sprintln(args...))
+	l.errorOrDebug(fmt.Sprintln(args...))
 }
 
 // FatalError is the panic value used by Fatal*/Fatalf/Fatalln in place of

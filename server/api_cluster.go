@@ -10081,6 +10081,38 @@ func (repman *ReplicationManager) handlerMuxInterventionEnd(w http.ResponseWrite
 // @Failure 409 {string} string "cannot toggle active status during split brain"
 // @Failure 500 {string} string "Cluster Not Found"
 // @Router /api/clusters/{clusterName}/actions/set-active-status [get]
+// proxyLostEventsFromPeer relays a lost-events request to the arbitration
+// peer (authenticated server-side with the cluster-test credentials, like the
+// split-brain simulator's peer calls). Returns true when the peer answered
+// with the record; false lets the caller fall back to its own 404.
+func (repman *ReplicationManager) proxyLostEventsFromPeer(w http.ResponseWriter, r *http.Request, clusterName string, serverName string) bool {
+	base, token, err := repman.peerSplitBrainLogin(clusterName)
+	if err != nil {
+		return false
+	}
+	q := r.URL.Query()
+	q.Set("local", "1")
+	url := base + "/api/clusters/" + clusterName + "/servers/" + serverName + "/lost-events?" + q.Encode()
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Repman-Lost-Events-Source", "peer")
+	io.Copy(w, resp.Body)
+	return true
+}
+
 // handlerMuxServerLostEvents serves the LOST-EVENTS VIEWER: the decoded
 // statements of the server's last divergence (what happened) and, when the
 // delta is flashback-able, the exact undo (--flashback rendering).
@@ -10102,12 +10134,26 @@ func (repman *ReplicationManager) handlerMuxServerLostEvents(w http.ResponseWrit
 	}
 	node := mycluster.GetServerFromName(vars["serverName"])
 	if node == nil {
+		// The crashes viewer addresses servers by URL (host:port) as well as id.
+		node = mycluster.GetServerFromURL(vars["serverName"])
+	}
+	if node == nil {
 		http.Error(w, "Server Not Found", 500)
 		return
 	}
 	crash := mycluster.GetLatestCrashForServer(node.URL)
 	if crash == nil {
-		http.Error(w, "No crash record for this server", 404)
+		// Crash records are LOCAL to the instance that performed the failover.
+		// The divergence is real wherever the operator looks from (the server
+		// sits in SlaveErr on both peers), so pull the record through from the
+		// arbitration peer instead of answering "nothing here". local=1 stops
+		// two record-less peers from ping-ponging.
+		if r.URL.Query().Get("local") == "" && mycluster.Conf.ArbitrationPeerHosts != "" {
+			if repman.proxyLostEventsFromPeer(w, r, vars["clusterName"], vars["serverName"]) {
+				return
+			}
+		}
+		http.Error(w, "No crash record for this server on either replication-manager", 404)
 		return
 	}
 	path := crash.DeltaDecoded

@@ -274,6 +274,7 @@ type Config struct {
 	FailoverSemiSyncState                     bool                         `mapstructure:"failover-semisync-state" toml:"failover-semisync-state" json:"failoverSemisyncState"`
 	FailoverDivergentData                     bool                         `mapstructure:"failover-divergent-data" toml:"failover-divergent-data" json:"failoverDivergentData"`
 	SuperReadOnly                             bool                         `mapstructure:"failover-superreadonly-state" toml:"failover-superreadonly-state" json:"failoverSuperReadOnlyState"`
+	ArbitrationMinorityFreeze                 bool                         `mapstructure:"arbitration-minority-freeze" toml:"arbitration-minority-freeze" json:"arbitrationMinorityFreeze"`
 	FailTime                                  int64                        `mapstructure:"failover-time-limit" toml:"failover-time-limit" json:"failoverTimeLimit"`
 	FailSync                                  bool                         `mapstructure:"failover-at-sync" toml:"failover-at-sync" json:"failoverAtSync"`
 	FailEventScheduler                        bool                         `mapstructure:"failover-event-scheduler" toml:"failover-event-scheduler" json:"failoverEventScheduler"`
@@ -535,6 +536,7 @@ type Config struct {
 	Test                                      bool                         `mapstructure:"test" toml:"test" json:"test"`
 	TestInjectTraffic                         bool                         `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`
 	TestInjectTrafficStaging                  bool                         `mapstructure:"test-inject-traffic-staging" toml:"test-inject-traffic-staging" json:"testInjectTrafficStaging"`
+	InjectTrafficMode                         string                       `mapstructure:"inject-traffic-mode" toml:"inject-traffic-mode" json:"injectTrafficMode"`
 	Enterprise                                bool                         `toml:"enterprise" json:"enterprise"` //used to talk to opensvc collector
 	KubeConfig                                string                       `mapstructure:"kube-config" toml:"kube-config" json:"kubeConfig"`
 	SlapOSConfig                              string                       `mapstructure:"slapos-config" toml:"slapos-config" json:"slaposConfig"`

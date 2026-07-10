@@ -57,6 +57,7 @@ var tests = []string{
 	"testSlaReplAllSlavesDelayNoSemiSync",
 	"testMasterSuspect",
 	"testSetMinorityWithMaster",
+	"testSetMinorityWithMasterSysbench",
 	"testSetMinorityWithoutMaster",
 	"testSetDualActive",
 	"testMasterNil",

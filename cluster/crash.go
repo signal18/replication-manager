@@ -29,7 +29,13 @@ type Crash struct {
 	NewMasterLogPos             string
 	FailoverSemiSyncSlaveStatus bool
 	FailoverIOGtid              *gtid.List
-	ElectedMasterURL            string
+	// FailoverIOGtidString is the election GTID in its usable text form
+	// ("domain-server-seq"), the anchor for logical recovery of the diverged
+	// old master: SET GLOBAL gtid_slave_pos = "<this>" then CHANGE MASTER …
+	// master_use_gtid=slave_pos. Backfilled from FailoverIOGtid on read so it
+	// survives clusterstate.json reloads.
+	FailoverIOGtidString string `json:"failoverIOGtidString"`
+	ElectedMasterURL     string
 	UnixTimestamp               int64
 	Switchover                  bool
 	// Lost-events delta: captured from the diverged old master at rejoin and
@@ -97,8 +103,14 @@ func (cluster *Cluster) getCrashFromMaster(URL string) *Crash {
 	return nil
 }
 
-// GetCrashes return crashes
+// GetCrashes return crashes, with the election GTID backfilled into its
+// usable text form so the logical recovery anchor is directly readable.
 func (cluster *Cluster) GetCrashes() crashList {
+	for _, cr := range cluster.Crashes {
+		if cr != nil && cr.FailoverIOGtidString == "" && cr.FailoverIOGtid != nil {
+			cr.FailoverIOGtidString = cr.FailoverIOGtid.Sprint()
+		}
+	}
 	return cluster.Crashes
 }
 

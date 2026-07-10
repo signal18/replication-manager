@@ -273,6 +273,34 @@ func (cluster *Cluster) newProxyList() error {
 	return nil
 }
 
+// injectTrafficMarker writes the pseudo-GTID / traffic marker in the
+// configured format. DEFAULT dml: a single-row REPLACE — a ROW event that
+// flashback CAN reverse, so repman's own traffic can never be the reason a
+// diverged master is unrecoverable (the pre-2026-07 default, a CREATE OR
+// REPLACE VIEW, is DDL and poisoned every flashback). ddl is kept for tests
+// exercising the reseed path and for non-GTID positional rejoin, whose
+// binlog search greps the UUID as plain text (a row image is not greppable).
+func (cluster *Cluster) injectTrafficMarker(db *sqlx.DB, definer string) error {
+	uuid := misc.GetUUID()
+	if cluster.Conf.InjectTrafficMode == "ddl" {
+		_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + uuid + "' from dual")
+		return err
+	}
+	// dml (default): keep pseudo_gtid_v readable (GetLastPseudoGTID selects
+	// from it) but source it from a one-row table, and advance that row with
+	// a ROW-logged REPLACE — the marker change is the flashback-able event.
+	_, err := db.Exec("REPLACE INTO replication_manager_schema.pseudo_gtid_hist (id, uuid, ts) VALUES (1, '" + uuid + "', NOW())")
+	if err != nil {
+		// First run / schema missing: create the marker table + the view that
+		// reads it, then retry. These DDLs run once, not every tick.
+		db.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
+		db.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.pseudo_gtid_hist (id INT PRIMARY KEY, uuid VARCHAR(64), ts TIMESTAMP)")
+		db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v AS SELECT uuid FROM replication_manager_schema.pseudo_gtid_hist WHERE id=1")
+		_, err = db.Exec("REPLACE INTO replication_manager_schema.pseudo_gtid_hist (id, uuid, ts) VALUES (1, '" + uuid + "', NOW())")
+	}
+	return err
+}
+
 func (cluster *Cluster) InjectProxiesTraffic() {
 	var definer string
 	// AUTHORITY GATE: only the Active repman may inject the heartbeat/traffic
@@ -302,12 +330,8 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 				} else {
 					definer = ""
 				}
-				_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + misc.GetUUID() + "' from dual")
-
-				if err != nil {
+				if err := cluster.injectTrafficMarker(db, definer); err != nil {
 					cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
-					db.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
-
 				}
 				db.Close()
 			}
@@ -329,12 +353,8 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 				} else {
 					definer = ""
 				}
-				_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + misc.GetUUID() + "' from dual")
-
-				if err != nil {
+				if err := cluster.injectTrafficMarker(db, definer); err != nil {
 					cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
-					db.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
-
 				}
 				db.Close()
 			}

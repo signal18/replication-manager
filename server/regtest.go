@@ -209,6 +209,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testSetMinorityWithMaster" {
 			res = regtest.TestSetMinorityWithMaster(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testSetMinorityWithMasterSysbench" {
+			res = regtest.TestSetMinorityWithMasterSysbench(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testSetMinorityWithoutMaster" {
 			res = regtest.TestSetMinorityWithoutMaster(cl, test.ConfigFile, &test)
 		}
