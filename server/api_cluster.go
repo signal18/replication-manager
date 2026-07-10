@@ -436,6 +436,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetActiveStatus)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/lost-events", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerLostEvents)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/replication/bootstrap/{topology}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxBootstrapReplication)),
@@ -10077,6 +10081,62 @@ func (repman *ReplicationManager) handlerMuxInterventionEnd(w http.ResponseWrite
 // @Failure 409 {string} string "cannot toggle active status during split brain"
 // @Failure 500 {string} string "Cluster Not Found"
 // @Router /api/clusters/{clusterName}/actions/set-active-status [get]
+// handlerMuxServerLostEvents serves the LOST-EVENTS VIEWER: the decoded
+// statements of the server's last divergence (what happened) and, when the
+// delta is flashback-able, the exact undo (--flashback rendering).
+// Paginated by BINARY POSITION in the decoded file — a divergence on a busy
+// master decodes to gigabytes, so the server seeks in O(1) to ?pos= and
+// returns one bounded, line-aligned chunk (?bytes=, default 256KB, max 4MB).
+// ?file=flashback selects the undo rendering (default: forward).
+// The first page (pos=0 or omitted) is where a client reads the crash
+// analysis verdict (deltaFlashable, counts) shipped in every response.
+// @Summary Lost events of the last divergence, paginated statement listing
+// @Router /api/clusters/{clusterName}/servers/{serverName}/lost-events [get]
+func (repman *ReplicationManager) handlerMuxServerLostEvents(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", 500)
+		return
+	}
+	crash := mycluster.GetLatestCrashForServer(node.URL)
+	if crash == nil {
+		http.Error(w, "No crash record for this server", 404)
+		return
+	}
+	path := crash.DeltaDecoded
+	if r.URL.Query().Get("file") == "flashback" {
+		path = crash.DeltaFlashbackDecoded
+	}
+	pos, _ := strconv.ParseInt(r.URL.Query().Get("pos"), 10, 64)
+	maxBytes, _ := strconv.ParseInt(r.URL.Query().Get("bytes"), 10, 64)
+	var page *cluster.LostEventsPage
+	if path != "" {
+		var err error
+		page, err = cluster.ReadLostEventsPage(path, pos, maxBytes)
+		if err != nil {
+			http.Error(w, "Could not read decoded lost events: "+err.Error(), 500)
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	if err := e.Encode(struct {
+		Crash *cluster.Crash          `json:"crash"`
+		File  string                  `json:"file"`
+		Page  *cluster.LostEventsPage `json:"page"`
+	}{crash, path, page}); err != nil {
+		http.Error(w, "Encoding error", 500)
+	}
+}
+
 func (repman *ReplicationManager) handlerMuxSetActiveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)

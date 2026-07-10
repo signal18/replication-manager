@@ -32,6 +32,17 @@ type Crash struct {
 	ElectedMasterURL            string
 	UnixTimestamp               int64
 	Switchover                  bool
+	// Lost-events delta: captured from the diverged old master at rejoin and
+	// analyzed (srv_lostevents.go). The verdict decides the recovery path.
+	DeltaArchive          string `json:"deltaArchive"`
+	DeltaDecoded          string `json:"deltaDecoded"`
+	DeltaFlashbackDecoded string `json:"deltaFlashbackDecoded"`
+	DeltaAnalyzed         bool   `json:"deltaAnalyzed"`
+	DeltaFlashable        bool   `json:"deltaFlashable"`
+	DeltaTransactions     int    `json:"deltaTransactions"`
+	DeltaRowEvents        int    `json:"deltaRowEvents"`
+	DeltaDDL              int    `json:"deltaDdl"`
+	DeltaStatementDML     int    `json:"deltaStatementDml"`
 }
 
 // Collection of Crash reports

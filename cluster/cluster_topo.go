@@ -142,7 +142,12 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 
 	if cluster.HasAllDbUp() {
-		if len(cluster.Crashes) > 0 && cluster.HasNoDbUnconnected() {
+		// A crash record whose server is still broken (diverged old master in
+		// SlaveErr) must SURVIVE: it carries the FailoverIOGtid recovery anchor
+		// and the lost-events verdict. A SlaveErr server is "up" (connected)
+		// for HasAllDbUp, so without this guard the record was purged exactly
+		// when the operator needed it.
+		if len(cluster.Crashes) > 0 && cluster.HasNoDbUnconnected() && !cluster.hasUnresolvedCrash() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Purging crashes, all databses nodes up")
 			cluster.Crashes = nil
 			if cluster.ConfigManager != nil && cluster.ConfigManager.CountTasksForCluster(cluster.Name) == 0 {
@@ -150,6 +155,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			}
 		}
 	}
+	cluster.assertLostEventsStates()
 	if cluster.Conf.Arbitration {
 		if !cluster.IsActive() {
 			cluster.SetState("ERR00105", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00105"], ErrFrom: "ARB"})
