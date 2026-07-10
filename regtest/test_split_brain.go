@@ -56,6 +56,54 @@ func (regtest *RegTest) TestSetMinorityWithMaster(cl *cluster.Cluster, conf stri
 	return minorityDoesNothing(cl, setMinorityWithMaster, "testSetMinorityWithMaster")
 }
 
+// TestSetMinorityWithMasterSysbench is testSetMinorityWithMaster with real
+// client DML driven into the split-brain window. Sysbench keeps writing to the
+// soon-to-be-minority master; whatever commits before the minority fail-safe
+// makes it read-only becomes a REAL, row-based (flashback-able) divergent tail
+// — unlike the self-inflicted heartbeat noise, this is honest material to
+// exercise the lost-events analyzer and the Last Divergence viewer against,
+// and it measures how much traffic can feed the detection window before
+// protection latches. Purpose is diagnostics: it keeps the same safety
+// assertions (detected, minority yields, no failover) and additionally reports
+// the master's GTID advance across the window (= the divergent tail size).
+func (regtest *RegTest) TestSetMinorityWithMasterSysbench(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	if !cl.Conf.Arbitration {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: arbitration not enabled")
+		return true
+	}
+	master := cl.GetMaster()
+	if master == nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "testSetMinorityWithMasterSysbench: no master, skipping")
+		return false
+	}
+	if err := cl.PrepareBench(); err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "testSetMinorityWithMasterSysbench: sysbench prepare failed: %s", err)
+		return false
+	}
+	gtidBefore := ""
+	if master.CurrentGtid != nil {
+		gtidBefore = master.CurrentGtid.Sprint()
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "testSetMinorityWithMasterSysbench: master %s at GTID %s — driving sysbench into the split window", master.URL, gtidBefore)
+	// Background load: its writes start failing the instant the minority
+	// fail-safe sets the master read-only, which is exactly the window edge
+	// we are measuring. RunBench (not RunSysbench — the latter cleans+re-preps,
+	// wiping the very rows we want to keep as the divergent tail).
+	go cl.RunBench()
+
+	ok := minorityDoesNothing(cl, setMinorityWithMaster, "testSetMinorityWithMasterSysbench")
+
+	// Report the OLD master's advance (master still points at it after the
+	// peer's failover; its CurrentGtid was refreshed by monitoring) — that is
+	// where the divergent tail sits.
+	gtidAfter := ""
+	if master.CurrentGtid != nil {
+		gtidAfter = master.CurrentGtid.Sprint()
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "testSetMinorityWithMasterSysbench: old master %s GTID %s -> %s across the split window (inspect the divergent tail via the Last Divergence viewer)", master.URL, gtidBefore, gtidAfter)
+	return ok
+}
+
 // TestSetMinorityWithoutMaster — master on the majority side, so this node holds
 // only a slave and its master looks failed. It enters the failover path but
 // as the minority must not promote.
