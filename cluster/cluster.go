@@ -96,6 +96,7 @@ type Cluster struct {
 	Status                        string                 `json:"activePassiveStatus" groups:"web"`
 	IsSplitBrain                  bool                   `json:"isSplitBrain" groups:"web"`
 	IsSplitBrainBck               bool                   `json:"-"`
+	injectTrafficTableReady       bool                   `json:"-"` // dml marker table ensured on all servers
 	IsFailedArbitrator            bool                   `json:"isFailedArbitrator" groups:"web"`
 	IsLostMajority                bool                   `json:"isLostMajority" groups:"web"`
 	IsDown                        bool                   `json:"isDown" groups:"web"`
