@@ -301,9 +301,22 @@ func (cluster *Cluster) ensureInjectTrafficTable() {
 	cluster.injectTrafficTableReady = true
 }
 
+// injectTrafficUsesDDL reports whether the pseudo-GTID / traffic marker must
+// be the greppable DDL view rather than the flashback-able DML row. Forced by
+// OLD-STYLE POSITIONAL replication (force-slave-no-gtid-mode): its rejoin
+// greps the binlog for the UUID as plain text (GetBinlogEventPseudoGTID) and a
+// row image is not greppable — so DML would break positional rejoin. Also
+// honoured when inject-traffic-mode=ddl is set explicitly (tests). GTID
+// clusters get the DML row, so repman's own traffic can never poison a
+// flashback recovery. This keeps the marker in sync with the replication
+// style instead of a blanket default that could break battle-tested topologies.
+func (cluster *Cluster) injectTrafficUsesDDL() bool {
+	return cluster.Conf.ForceSlaveNoGtid || cluster.Conf.InjectTrafficMode == "ddl"
+}
+
 func (cluster *Cluster) injectTrafficMarker(db *sqlx.DB, definer string) error {
 	uuid := misc.GetUUID()
-	if cluster.Conf.InjectTrafficMode == "ddl" {
+	if cluster.injectTrafficUsesDDL() {
 		_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + uuid + "' from dual")
 		return err
 	}
@@ -329,7 +342,7 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 	}
 	// dml marker: make sure the one-row table exists on every server before
 	// the first REPLACE, so slaves never error on the replicated row event.
-	if cluster.Conf.InjectTrafficMode != "ddl" && !cluster.injectTrafficTableReady {
+	if !cluster.injectTrafficUsesDDL() && !cluster.injectTrafficTableReady {
 		cluster.ensureInjectTrafficTable()
 	}
 	// Found server from ServerId

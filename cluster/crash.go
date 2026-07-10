@@ -13,6 +13,7 @@ package cluster
 import (
 	"encoding/json"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -134,6 +135,62 @@ func (crash *Crash) Save(path string) error {
 		return err
 	}
 	return nil
+}
+
+// GetLastFailoverFile returns the path of the most recent failover.<ts>.json
+// crash record in dir (filenames are timestamped, so the lexical max is the
+// newest), or "" if none. This is the durable crash history the GUI reads and
+// the file the rejoin path re-Saves the delta verdict into.
+func GetLastFailoverFile(dir string) string {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	last := ""
+	for _, file := range files {
+		n := file.Name()
+		if strings.HasPrefix(n, "failover") && strings.HasSuffix(n, ".json") && n > last {
+			last = n
+		}
+	}
+	if last == "" {
+		return ""
+	}
+	return dir + "/" + last
+}
+
+// LoadFailoverHistory populates FailoverHistory from the durable
+// failover.<ts>.json records on disk (oldest first). These are the real crash
+// HISTORY — unlike cluster.Crashes, which is the recovery working set purged
+// when the cluster heals. FailoverHistory is otherwise in-memory only and
+// empty after a restart; this makes the crash viewer show history across
+// restarts. Read-only: it never writes or touches replication.
+func (cluster *Cluster) LoadFailoverHistory() {
+	files, err := os.ReadDir(cluster.WorkingDir)
+	if err != nil {
+		return
+	}
+	var names []string
+	for _, file := range files {
+		n := file.Name()
+		if strings.HasPrefix(n, "failover") && strings.HasSuffix(n, ".json") {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names) // timestamped filenames sort chronologically
+	var history crashList
+	for _, n := range names {
+		data, err := os.ReadFile(cluster.WorkingDir + "/" + n)
+		if err != nil {
+			continue
+		}
+		crash := new(Crash)
+		if err := json.Unmarshal(data, crash); err != nil {
+			continue
+		}
+		history = append(history, crash)
+	}
+	cluster.FailoverHistory = history
 }
 
 func (crash *Crash) Purge(path string, keep int) error {

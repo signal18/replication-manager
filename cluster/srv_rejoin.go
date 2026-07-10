@@ -820,6 +820,13 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	// The verdict on the capture decides the recovery path (WARN0184/0185,
 	// flashback gate, viewer) — analyze while the staging file is at hand.
 	server.analyzeLostEvents(crash, staging)
+	// The delta verdict is computed HERE, at rejoin — after failover already
+	// wrote failover.<ts>.json without it. Save the crash back to that same
+	// durable record (the latest failover file) so the verdict survives the
+	// purge of the volatile cluster.Crashes copy.
+	if p := GetLastFailoverFile(cluster.WorkingDir); p != "" {
+		crash.Save(p)
+	}
 	return nil
 }
 

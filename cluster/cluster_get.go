@@ -353,6 +353,9 @@ func (cluster *Cluster) GetPersistentState() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json")
 	}
 	cluster.Crashes = clsave.Crashes
+	// Durable crash HISTORY (failover.*.json) survives restarts, unlike the
+	// working set above — load it so the crash viewer has history.
+	cluster.LoadFailoverHistory()
 
 	slaFile, err := os.ReadFile(cluster.WorkingDir + "/sla.json")
 	if err != nil {
