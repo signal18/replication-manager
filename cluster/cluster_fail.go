@@ -1035,6 +1035,18 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 	return -1
 }
 
+// elecSkipLevel keeps the per-slave electability "Skipping" reasons at WARN
+// only during a real failover attempt (forcingLog); routine every-tick polls
+// log them at DEBUG. Without this a persistently-broken slave (e.g. SlaveErr)
+// floods the log every tick — the state machine already carries the reason
+// (ERR00042 etc.) for observability.
+func elecSkipLevel(forcingLog bool) string {
+	if forcingLog {
+		return config.LvlWarn
+	}
+	return config.LvlDbg
+}
+
 func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) bool {
 	//Ignore if child cluster
 	if sl.SourceClusterName != cluster.Name {
@@ -1050,7 +1062,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	if ss.SlaveIORunning.String == "No" && cluster.Conf.RplChecks && !cluster.IsMasterFailed() {
 		cluster.SetState("ERR00087", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00087"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Unsafe failover condition. Slave %s IO Thread is stopped %s. Skipping", sl.URL, ss.LastIOError.String)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, elecSkipLevel(forcingLog), "Unsafe failover condition. Slave %s IO Thread is stopped %s. Skipping", sl.URL, ss.LastIOError.String)
 		// }
 		return false
 	}
@@ -1083,7 +1095,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	if ss.SlaveSQLRunning.String == "No" && cluster.Conf.RplChecks {
 		cluster.SetState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, elecSkipLevel(forcingLog), "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		// }
 		return false
 	}
@@ -1155,7 +1167,7 @@ func (cluster *Cluster) isSlaveValidReader(sl *ServerMonitor, forcingLog bool) b
 	if ss.SlaveSQLRunning.String == "No" {
 		cluster.SetState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, elecSkipLevel(forcingLog), "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		// }
 		return false
 	}
