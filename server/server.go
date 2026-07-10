@@ -3493,10 +3493,18 @@ func (repman *ReplicationManager) Heartbeat() {
 	// The report carries the cluster status: the arbitrator maintains its
 	// authority LEASE from it (claim on Active, release on Standby), so it
 	// always knows who legitimately drives — without any periodic traffic.
-	if repman.Conf.Arbitration && (repman.Status != repman.lastReportedStatus || repman.SplitBrain != repman.lastReportedSplitBrain) {
-		repman.lastReportedStatus = repman.Status
-		repman.lastReportedSplitBrain = repman.SplitBrain
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server transition (status=%s splitbrain=%t): reporting to arbitrator", repman.Status, repman.SplitBrain)
+	// During split brain, refresh EVERY tick (not only on transition) so all
+	// clusters' arbitrator leases stay fresh IN SYNC — none passes the freshness
+	// timeout and self-promotes to winner, which is the per-cluster divergence
+	// (stranded flacq). Reports fire concurrently; SetArbitratorReport reads its
+	// inputs under the cluster lock so that is race-safe.
+	arbTransition := repman.Status != repman.lastReportedStatus || repman.SplitBrain != repman.lastReportedSplitBrain
+	if repman.Conf.Arbitration && (arbTransition || repman.SplitBrain) {
+		if arbTransition {
+			repman.lastReportedStatus = repman.Status
+			repman.lastReportedSplitBrain = repman.SplitBrain
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server transition (status=%s splitbrain=%t): reporting to arbitrator", repman.Status, repman.SplitBrain)
+		}
 		for _, cl := range repman.Clusters {
 			if !cl.Conf.Arbitration || !cl.Conf.IsEligibleForArbitration() {
 				continue
