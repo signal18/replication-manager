@@ -535,6 +535,7 @@ type Config struct {
 	Test                                      bool                         `mapstructure:"test" toml:"test" json:"test"`
 	TestInjectTraffic                         bool                         `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`
 	TestInjectTrafficStaging                  bool                         `mapstructure:"test-inject-traffic-staging" toml:"test-inject-traffic-staging" json:"testInjectTrafficStaging"`
+	InjectTrafficMode                         string                       `mapstructure:"inject-traffic-mode" toml:"inject-traffic-mode" json:"injectTrafficMode"`
 	Enterprise                                bool                         `toml:"enterprise" json:"enterprise"` //used to talk to opensvc collector
 	KubeConfig                                string                       `mapstructure:"kube-config" toml:"kube-config" json:"kubeConfig"`
 	SlapOSConfig                              string                       `mapstructure:"slapos-config" toml:"slapos-config" json:"slaposConfig"`
