@@ -1044,7 +1044,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.Test, "test", false, "Enable non regression tests")
 	flags.BoolVar(&conf.TestInjectTraffic, "test-inject-traffic", false, "Inject some database traffic via proxy")
 	flags.BoolVar(&conf.TestInjectTrafficStaging, "test-inject-traffic-staging", false, "Inject some database traffic via proxy to staging")
-	flags.StringVar(&conf.InjectTrafficMode, "inject-traffic-mode", "dml", "Pseudo-GTID / traffic marker format: dml (row event, flashback-able — safe default) or ddl (CREATE OR REPLACE VIEW, greppable in any binlog format for non-GTID positional rejoin, but NOT flashback-able)")
+	flags.StringVar(&conf.InjectTrafficMode, "inject-traffic-mode", "ddl", "Pseudo-GTID / traffic marker format: ddl (CREATE OR REPLACE VIEW — self-contained, needs no table on new/reseeded nodes; battle-tested DEFAULT) or dml (single-row REPLACE, flashback-able — EXPERIMENTAL, proper master-via-proxy create is on a branch pending the topology matrix)")
 	flags.IntVar(&conf.SysbenchTime, "sysbench-time", 100, "Time to run benchmark")
 	flags.IntVar(&conf.SysbenchThreads, "sysbench-threads", 4, "Number of threads to run benchmark")
 	flags.StringVar(&conf.SysbenchTest, "sysbench-test", "oltp_read_write", "oltp_read_write|tpcc|oltp_read_only|oltp_update_index|oltp_update_non_index")
