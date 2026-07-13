@@ -19,13 +19,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-var appTemplateRepoLocks sync.Map
-
-func getAppTemplateRepoLock(key string) *sync.Mutex {
-	mu, _ := appTemplateRepoLocks.LoadOrStore(key, &sync.Mutex{})
-	return mu.(*sync.Mutex)
-}
-
 func (cluster *Cluster) NewAppConfig(apphost, port string) *config.AppConfig {
 	agents := cluster.GetAppAgents(nil)
 	appcnf := &config.AppConfig{
@@ -1421,12 +1414,14 @@ func (cluster *Cluster) loadTemplateFromRepo(template string, forceRefresh bool)
 	if err != nil {
 		return nil, err
 	}
-	lock := getAppTemplateRepoLock(repoDir)
-	lock.Lock()
-	defer lock.Unlock()
 
+	// Uses config's shared repo lock so a concurrent refresh can't rename the
+	// dir mid-read. Must not hold the read lock across SyncAppTemplateRepoCache
+	// below (it takes the write lock; RWMutex isn't reentrant).
+	unlockRead := config.LockAppTemplateRepoRead(repoDir)
 	_, readErrBeforeSync := cluster.readTemplateFromRepoCache(repoDir, template)
 	hasStaleCopy := readErrBeforeSync == nil
+	unlockRead()
 
 	if forceRefresh || !hasStaleCopy {
 		if _, syncErr := cluster.Conf.SyncAppTemplateRepoCache(forceRefresh); syncErr != nil {
@@ -1438,6 +1433,9 @@ func (cluster *Cluster) loadTemplateFromRepo(template string, forceRefresh bool)
 			}
 		}
 	}
+
+	unlockRead = config.LockAppTemplateRepoRead(repoDir)
+	defer unlockRead()
 
 	content, err := cluster.readTemplateFromRepoCache(repoDir, template)
 	if err != nil {
