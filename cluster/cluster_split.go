@@ -137,45 +137,9 @@ func (cl *Cluster) arbitratorMinorityFailSafe(reason string) {
 			}
 		}
 	}
-	// SUBTREE FENCE (deferred — intentionally NOT wired yet). At freeze time we
-	// should also demote the minority master's OWN slaves so the whole minority
-	// branch is fenced for the split and resolve-time recovery only has to walk
-	// them onto the winner. Left uncalled until the simple (lone-old-master) case
-	// is fixed AND per-server DC membership scopes it — see fenceMinoritySubtreeSlaves.
-	// cl.fenceMinoritySubtreeSlaves()
 	if cl.Status == ConstMonitorActif {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Minority fail-safe: yielding cluster %s to standby", cl.GetName())
 		cl.SetActiveStatus(ConstMonitorStandby)
-	}
-}
-
-// fenceMinoritySubtreeSlaves demotes read-only every visible slave under the
-// fenced minority master, so the whole minority subtree is safe for the split's
-// duration and resolve-time recovery only has to re-point them onto the winner
-// (never at recovery — too late; slaves could be read/promoted inconsistently
-// meanwhile). Master-slave only — in multi-master the "slaves" are peers.
-//
-// ⚠️ NOT SAFE TO CALL YET — DEFERRED. It must be DC/side-scoped first. Under the
-// app-level split SIMULATION every DB stays reachable, so cl.slaves also holds
-// the MAJORITY's slave (e.g. master+Slave1 in DC1 minority, Slave2 in DC2 that
-// the majority is about to promote). A plain loop would demote that promotable
-// slave. Wire it in — with a per-server DC-membership guard so only slaves whose
-// DC matches the master's DC are fenced — once the simple lone-old-master case
-// is validated. The caller in arbitratorMinorityFailSafe is intentionally
-// commented out until then.
-func (cl *Cluster) fenceMinoritySubtreeSlaves() {
-	if cl.GetTopology() != config.TopoMasterSlave {
-		return
-	}
-	for _, sl := range cl.slaves {
-		// TODO(subtree-fence): guard on sl's DC == master's DC before enabling,
-		// otherwise the simulation demotes the majority's promotable slave.
-		if sl != nil && !sl.IsReadOnly() {
-			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Minority fail-safe: demoting visible slave %s read-only (subtree fence)", sl.URL)
-			if logs, err := sl.SetReadOnly(); err != nil {
-				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlErr, "Minority fail-safe: could not set slave %s read-only: %s (%s)", sl.URL, err, logs)
-			}
-		}
 	}
 }
 
