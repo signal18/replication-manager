@@ -326,6 +326,34 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 						cluster.master.SetReadWrite()
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)
 					}
+				} else if cluster.Conf.Arbitration && cluster.GetTopology() == config.TopoMasterSlave {
+					// MINORITY (IsFailedArbitrator == true) AND arbitration enabled AND
+					// master-slave topology only
+					// (multi-master / ring / wsrep / group-replication have their own
+					// quorum and multiple masters — never fence/detach them here). This
+					// node cannot confirm authority via the arbitrator, so under the
+					// always-up arbitrator design it is the ISOLATED side. It must NOT
+					// keep presenting its old
+					// master as the cluster master. Fence it (read-only; opt-in FTWRL
+					// freeze binds even repman's own SUPER) and DETACH it as standalone
+					// with cluster.master = nil, so the proxy stops routing writes to it.
+					// Done here on the loop's own server handle (sv) — NOT via
+					// cluster.GetMaster() — and re-applied every discover tick, so nil-ing
+					// cluster.master never loses the fencing handle. Position is PRESERVED
+					// (no RESET MASTER); the rejoin turns it into a slave later.
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Minority: fencing %s read-only and detaching it standalone (master=nil) during split brain", sv.URL)
+					if !sv.IsReadOnly() {
+						if logs, err := sv.SetReadOnly(); err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Minority: could not set %s read-only: %s (%s)", sv.URL, err, logs)
+						}
+					}
+					if cluster.Conf.ArbitrationMinorityFreeze && !sv.IsFrozen() {
+						if err := sv.FreezeWithReadLock(); err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Minority: could not freeze %s: %s", sv.URL, err)
+						}
+					}
+					sv.SetState(stateUnconn)
+					cluster.master = nil
 				}
 			}
 
