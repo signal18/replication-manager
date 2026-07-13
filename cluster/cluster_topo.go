@@ -269,9 +269,27 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 
 				// If master-slave topology and server is not the master (split brain)
 				if cluster.IsActive() && master != nil && cluster.GetTopology() == config.TopoMasterSlave && cluster.Servers[k].URL != master.URL {
-					//Extra master in master slave topology rejoin it after split brain
-					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00063"], ErrFrom: "TOPO"})
-					//	cluster.Servers[k].RejoinMaster() /* remove for rolling restart , wrongly rejoin server as master before just after swithover while the server is just stopping */
+					if master.IsSlave {
+						// Our cluster.master pointer is STALE: it has itself become a
+						// slave (this node sat out a split-brain as the minority and froze
+						// its last-known master, while the real election ran on the
+						// majority). Servers[k] is a non-slave that others follow — the
+						// REAL master. Re-designate to reality instead of treating the
+						// live master as an "extra" to demote (which would enslave it).
+						// Only reached under TopoMasterSlave (guarded above) and only when
+						// this node is Active (trusted) — the minority never gets here.
+						// Multi-master keeps its multiple masters untouched.
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Stale master %s is now a slave — re-designating real master %s after split-brain", master.URL, cluster.Servers[k].URL)
+						cluster.master = cluster.Servers[k]
+						cluster.master.SetMaster()
+						if cluster.master.IsReadOnly() && !cluster.master.IsRelay {
+							cluster.master.SetReadWrite()
+						}
+					} else {
+						//Extra master in master slave topology rejoin it after split brain
+						cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00063"], ErrFrom: "TOPO"})
+						//	cluster.Servers[k].RejoinMaster() /* remove for rolling restart , wrongly rejoin server as master before just after swithover while the server is just stopping */
+					}
 				} else if !cluster.IsFailedArbitrator {
 					// Minority fail-safe: a node that cannot confirm authority via the
 					// arbitrator (IsFailedArbitrator) must NOT rediscover / re-designate
