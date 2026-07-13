@@ -52,6 +52,13 @@ func (cluster *Cluster) ArbitratorHandler() {
 	cluster.AssertSplitBrainSimulationState()
 	if cluster.Conf.Arbitration {
 		if cluster.IsSplitBrain {
+			if !cluster.IsSplitBrainBck {
+				// Remember when THIS split brain began (calm->split edge). Used to
+				// guard the resolve-time peer-crash fetch (accept only a crash from
+				// this split, not a stale failoverHistory entry) and a useful
+				// diagnostic on its own.
+				cluster.SplitBrainStartTs = time.Now().Unix()
+			}
 			if !cluster.Conf.IsEligibleForArbitration() {
 				cluster.SetState("ERR00104", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00104"], ErrFrom: "ARB"})
 				cluster.IsSplitBrainBck = cluster.IsSplitBrain
@@ -210,7 +217,11 @@ func (cl *Cluster) fetchMasterFromPeer() (string, error) {
 		return "", errors.New("peer login returned no token")
 	}
 
-	req, err := http.NewRequest("GET", peer+"/api/clusters/"+cl.Name+"/topology/crashes", nil)
+	// Read the peer's DURABLE failoverHistory, not the live crash list: the live
+	// cluster.Crashes/​topology/crashes is purged once the peer thinks the DBs are
+	// up, exactly when a record-less minority needs it, whereas failoverHistory
+	// (StoreLastN) keeps the record with all anchors.
+	req, err := http.NewRequest("GET", peer+"/api/clusters/"+cl.Name, nil)
 	if err != nil {
 		return "", err
 	}
@@ -222,24 +233,37 @@ func (cl *Cluster) fetchMasterFromPeer() (string, error) {
 	body2, _ := io.ReadAll(resp2.Body)
 	resp2.Body.Close()
 	if resp2.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("peer crashes (%d): %s", resp2.StatusCode, strings.TrimSpace(string(body2)))
+		return "", fmt.Errorf("peer cluster (%d): %s", resp2.StatusCode, strings.TrimSpace(string(body2)))
 	}
-	var crashes []struct {
-		ElectedMasterURL string `json:"ElectedMasterURL"`
-		UnixTimestamp    int64  `json:"UnixTimestamp"`
+	var payload struct {
+		FailoverHistory []Crash `json:"failoverHistory"`
 	}
-	if err := json.Unmarshal(body2, &crashes); err != nil {
-		return "", fmt.Errorf("peer crashes parse: %w", err)
+	if err := json.Unmarshal(body2, &payload); err != nil {
+		return "", fmt.Errorf("peer failoverHistory parse: %w", err)
 	}
-	var latest string
-	var latestTs int64
-	for _, c := range crashes {
-		if c.ElectedMasterURL != "" && c.UnixTimestamp >= latestTs {
-			latestTs = c.UnixTimestamp
-			latest = c.ElectedMasterURL
-		}
+	if len(payload.FailoverHistory) == 0 {
+		return "", nil // no crash on peer — caller falls back to local
 	}
-	return latest, nil
+	last := payload.FailoverHistory[len(payload.FailoverHistory)-1]
+	// GUARD: only accept a crash produced by THIS split brain, never a stale
+	// failoverHistory entry from a previous run.
+	if cl.SplitBrainStartTs > 0 && last.UnixTimestamp < cl.SplitBrainStartTs {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Peer last crash ts %d predates this split brain (started %d) — ignoring as stale", last.UnixTimestamp, cl.SplitBrainStartTs)
+		return "", nil
+	}
+	if last.ElectedMasterURL == "" {
+		return "", nil
+	}
+	// Materialize the peer's crash locally so getCrashFromJoiner returns it and
+	// the diverged old master's rejoin has the anchor. Drop the peer-local delta
+	// paths — this node captures its own delta from the old master.
+	if cl.getCrashFromJoiner(last.URL) == nil {
+		mat := last
+		mat.DeltaArchive, mat.DeltaDecoded, mat.DeltaFlashbackDecoded = "", "", ""
+		cl.Crashes = append(cl.Crashes, &mat)
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Materialized peer crash for %s (elected master %s) from peer failoverHistory", mat.URL, mat.ElectedMasterURL)
+	}
+	return last.ElectedMasterURL, nil
 }
 
 func (cl *Cluster) arbitratorElection() error {

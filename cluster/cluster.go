@@ -96,6 +96,8 @@ type Cluster struct {
 	Status                        string                 `json:"activePassiveStatus" groups:"web"`
 	IsSplitBrain                  bool                   `json:"isSplitBrain" groups:"web"`
 	IsSplitBrainBck               bool                   `json:"-"`
+	SplitBrainStartTs             int64                  `json:"splitBrainStartTs" groups:"web"` // unix ts when the current/last split brain began; used to filter a peer crash to THIS split
+
 	injectTrafficTableReady       map[string]bool        `json:"-"` // dml marker schema created once per proxy target
 	IsFailedArbitrator            bool                   `json:"isFailedArbitrator" groups:"web"`
 	IsLostMajority                bool                   `json:"isLostMajority" groups:"web"`
