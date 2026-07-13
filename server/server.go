@@ -3477,21 +3477,30 @@ func (repman *ReplicationManager) Heartbeat() {
 		}
 	}
 
-	// propagate SplitBrain state to clusters after peer negotiation
-	hasActive := false
+	// Propagate the split-brain flag to every cluster.
 	for _, cl := range repman.Clusters {
 		cl.IsSplitBrain = repman.SplitBrain
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
-		if cl.IsActive() {
-			hasActive = true
-		}
 	}
-	if hasActive && repman.Status == ConstMonitorStandby {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Cluster won arbitration, server status changing from standby to active")
-		repman.Status = ConstMonitorActif
-	} else if !hasActive && repman.Status == ConstMonitorActif && repman.Conf.Arbitration {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "No active cluster, server status changing from active to standby")
-		repman.Status = ConstMonitorStandby
+
+	// Authority direction depends on calm vs split-brain:
+	//   CALM        -> the SERVER level is authoritative: reinforce repman.Status
+	//                  onto every cluster. A cluster that diverged (e.g. left
+	//                  Standby by a prior split) is corrected to match. No
+	//                  cluster-activity rollup, so a split LOSER cannot
+	//                  auto-reclaim Active during calm (the bug that let a node
+	//                  climb back after losing, and orphaned crm/curepipe).
+	//   SPLIT-BRAIN -> the CLUSTER level is authoritative and each cluster
+	//                  decides for ITSELF via the arbitrator (and runs its own
+	//                  FTWRL/failover). NOTHING rolls up to the server; the
+	//                  server verdict is frozen and re-asserted only when calm
+	//                  returns.
+	if !repman.SplitBrain {
+		for _, cl := range repman.Clusters {
+			if cl.IsActive() != (repman.Status == ConstMonitorActif) {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Calm: reinforcing server status %s onto cluster %s", repman.Status, cl.Name)
+				cl.SetActiveStatus(repman.Status)
+			}
+		}
 	}
 
 	// EVENT-DRIVEN ARBITRATOR AWARENESS: the arbitrator hears nothing in
