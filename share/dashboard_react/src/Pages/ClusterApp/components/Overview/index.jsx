@@ -17,7 +17,8 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
     const dispatch = useDispatch();
     const deployment = useSelector((state) => state.cluster?.app?.deployment);
     const substitution = useSelector((state) => state.cluster?.app?.substitution);
-    const dockerTemplates = useSelector((state) => state.globalClusters.monitor?.serviceTemplates);
+    const dockerTemplatesRaw = useSelector((state) => state.globalClusters.appTemplatesByCluster[clusterName]?.names);
+    const dockerTemplates = useMemo(() => dockerTemplatesRaw || [], [dockerTemplatesRaw]);
     const opensvcPools = useSelector((state) => state.cluster?.opensvcPools || []);
     const isOpenSVCOrchestrator = useSelector(
         (state) => state.cluster?.clusterData?.config?.provOrchestrator === "opensvc"

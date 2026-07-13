@@ -15,7 +15,7 @@ import {
   ModalOverlay,
   Stack
 } from '@chakra-ui/react'
-import { useEffect, useReducer } from 'react'
+import { useEffect, useMemo, useReducer } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { addServer, connectDockerRegistry } from '../../redux/clusterSlice'
 import Dropdown from '../Dropdown'
@@ -181,7 +181,9 @@ const authTypes = [
 function NewServerModal({ clusterName, isOpen, closeModal }) {
   const dispatch = useDispatch()
   const { theme } = useTheme()
-  const { globalClusters: { monitor, clusters } } = useSelector((state) => state)
+  const { globalClusters: { monitor, clusters, appTemplatesByCluster } } = useSelector((state) => state)
+  const appTemplateNamesRaw = appTemplatesByCluster[clusterName]?.names
+  const appTemplateNames = useMemo(() => appTemplateNamesRaw || [], [appTemplateNamesRaw])
   const [formState, formDispatch] = useReducer(formReducer, initialState)
   const { formData, tagOptions, templateOptions, errors } = formState
   const { host, port, monitorType, dockerImage, tag, dockerRegistry } = formData
@@ -230,15 +232,17 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
   }, [monitor?.serviceRepos])
 
   useEffect(() => {
-    if (monitor?.serviceTemplates?.length > 0) {
-      const templates = monitor?.serviceTemplates.map(item => ({
-        name: item,
-        value: item
-      }))
+    const templates = (appTemplateNames || []).map(item => ({
+      name: item,
+      value: item
+    }))
 
-      formDispatch({ type: 'SET_TEMPLATE_OPTIONS', payload: [{ name: 'No Template', value: '' }, ...templates] })
+    formDispatch({ type: 'SET_TEMPLATE_OPTIONS', payload: [{ name: 'No Template', value: '' }, ...templates] })
+
+    if (template && !(appTemplateNames || []).includes(template)) {
+      formDispatch({ type: 'SET_DOCKER_TEMPLATE', payload: '' })
     }
-  }, [monitor?.serviceTemplates])
+  }, [appTemplateNames, template])
 
   const handleCreateNewServer = () => {
     const monitorTypeError = monitorType?.length > 0 ? '' : 'Monitor type is required'
@@ -322,14 +326,16 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
   }
 
   const handleRefreshAppTemplates = () => {
-    dispatch(refreshAppTemplateRepo({ clusterName }))
+    dispatch(refreshAppTemplateRepo({ clusterName, forceRefresh: true }))
   }
 
   useEffect(() => {
     if (!isOpen) {
       formDispatch({ type: 'RESET_FORM' })
+    } else if (clusterName) {
+      dispatch(refreshAppTemplateRepo({ clusterName, silent: true }))
     }
-  }, [isOpen])
+  }, [isOpen, clusterName, dispatch])
 
   return (
     <Modal isOpen={isOpen} onClose={closeModal}>

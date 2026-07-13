@@ -28,17 +28,18 @@ import { createLocalAppTemplateCopy, deleteAppTemplateContent, previewAppTemplat
 
 function Templates({ clusterName, appConfig, user }) {
   const dispatch = useDispatch()
-  const monitor = useSelector((state) => state.globalClusters.monitor)
-  const templateRepoError = useSelector((state) => state.globalClusters.templateRepoError)
+  const appTemplateNames = useSelector((state) => state.globalClusters.appTemplatesByCluster[clusterName]?.names)
+  const appTemplateMetadata = useSelector((state) => state.globalClusters.appTemplatesByCluster[clusterName]?.metadata)
+  const templateRepoError = useSelector((state) => state.globalClusters.appTemplatesByCluster[clusterName]?.error)
   const templateGuideError = useSelector((state) => state.globalClusters.templateGuideError)
   const templateMeta = useMemo(() => {
-    const meta = Array.isArray(monitor?.serviceTemplateMetadata) ? monitor.serviceTemplateMetadata : []
+    const meta = Array.isArray(appTemplateMetadata) ? appTemplateMetadata : []
     if (meta.length > 0) {
       return meta
     }
-    const names = Array.isArray(monitor?.serviceTemplates) ? monitor.serviceTemplates : []
+    const names = Array.isArray(appTemplateNames) ? appTemplateNames : []
     return names.map((name) => ({ name, origin: 'repo', scope: 'global', editable: false }))
-  }, [monitor?.serviceTemplateMetadata, monitor?.serviceTemplates])
+  }, [appTemplateMetadata, appTemplateNames])
 
   const [selectedTemplate, setSelectedTemplate] = useState(appConfig?.provAppTemplate || '')
   const [content, setContent] = useState('')
