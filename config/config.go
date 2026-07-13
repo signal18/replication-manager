@@ -3455,12 +3455,15 @@ func (conf *Config) SetLogGitLevel(value int) {
 	} else {
 		conf.LogGit = false
 	}
-
-	if value == 4 {
-		conf.GitMonitoringTicker = 30
-	} else {
-		conf.GitMonitoringTicker = 300
-	}
+	// Git push cadence lives in git-monitoring-ticker, INDEPENDENT of log
+	// verbosity. Previously value==4 secretly dropped the ticker to 30s (and any
+	// other value clobbered it to 300s), so enabling git debug logging silently
+	// 10x'd the push cadence against every client — invisible to operators.
+	// Real config changes push on-change via the ConfigManager queue, so the
+	// timer is only a safety net; leave its cadence to git-monitoring-ticker.
+	// A deliberate fast-git debug mode must be an explicit admin toggle that
+	// raises a standing state-machine warning (cf. WARN0181 split-brain sim),
+	// never a side effect of the log level.
 }
 
 func (conf *Config) SetLogSupportLevel(value int) {

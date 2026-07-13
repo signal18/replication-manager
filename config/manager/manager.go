@@ -268,17 +268,23 @@ type ConfigManager struct {
 	clusterMu   *sync.RWMutex              // Protects clusterData map access
 	clusterData map[string]*ClusterManager // Map of clusters and their respective managers
 	gitManager  *GitManager                // Pull Push manager
+
+	// agents.json churns every monitoring cycle (agent load/status) but BO only
+	// needs periodic cores/mem — throttle its git staging to bound .git growth.
+	agentsStagedMu sync.Mutex
+	agentsStagedAt map[string]time.Time // per-cluster last time agents.json was staged
 }
 
 // NewConfigManager initializes the manager
 func NewConfigManager(logger *config.LogrusWrapper) *ConfigManager {
 	newcm := &ConfigManager{
-		logger:      logger,
-		clusterData: make(map[string]*ClusterManager),
-		clusterMu:   &sync.RWMutex{},
-		gitMutex:    &sync.Mutex{},
-		configWg:    &sync.WaitGroup{},
-		gitManager:  NewGitManager(logger),
+		logger:         logger,
+		clusterData:    make(map[string]*ClusterManager),
+		clusterMu:      &sync.RWMutex{},
+		gitMutex:       &sync.Mutex{},
+		configWg:       &sync.WaitGroup{},
+		gitManager:     NewGitManager(logger),
+		agentsStagedAt: make(map[string]time.Time),
 	}
 
 	newcm.gitManager.cond = sync.NewCond(newcm.gitManager.mutex)
@@ -286,6 +292,24 @@ func NewConfigManager(logger *config.LogrusWrapper) *ConfigManager {
 	go newcm.processGitPush() // Start the persistent goroutine for the push manager
 
 	return newcm
+}
+
+// gitAgentsSyncInterval throttles how often agents.json is staged for commit.
+// agents.json is re-serialized every monitoring cycle (agent load/status), so
+// staging it on every git push previously dominated .git history (~288
+// commits/day). BO only needs periodic cores/mem, so once per hour is ample.
+const gitAgentsSyncInterval = time.Hour
+
+// shouldStageAgents reports whether this cluster's agents.json is due to be
+// staged again (and records the decision). Throttled per cluster.
+func (cm *ConfigManager) shouldStageAgents(cluster string) bool {
+	cm.agentsStagedMu.Lock()
+	defer cm.agentsStagedMu.Unlock()
+	if last, ok := cm.agentsStagedAt[cluster]; ok && time.Since(last) < gitAgentsSyncInterval {
+		return false
+	}
+	cm.agentsStagedAt[cluster] = time.Now()
+	return true
 }
 
 func (cm *ConfigManager) GetGitManager() *GitManager {
@@ -1518,6 +1542,15 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 
 		// Add .toml files
 		for _, file := range files {
+			// cache.toml is a LOCAL cache of encrypted-secret ciphertext
+			// (Cluster.SaveCacheConfig) — not config: nothing downstream reads
+			// it from git, and re-encryption can churn its bytes every save.
+			// Syncing it bloated .git and starved the monitoring loop (queries
+			// stuck in "Sending data"). Never commit it. The extension sweep
+			// below would otherwise grab it just for ending in ".toml".
+			if file.Name() == "cache.toml" {
+				continue
+			}
 			if filepath.Ext(file.Name()) == ".toml" {
 				fpath := filepath.Join(name, file.Name())
 				_, err := file.Info()
@@ -1546,12 +1579,25 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 			}
 		}
 
-		// Add agents.json and queryrules.json if they exist
-		for _, jsonFile := range []string{"agents.json", "queryrules.json", "clusterstate.json"} {
+		// queryrules.json and clusterstate.json move on config/human timescales
+		// (hours+), so stage them every cycle. agents.json is handled separately
+		// below — it churns every monitoring cycle and must be throttled.
+		for _, jsonFile := range []string{"queryrules.json", "clusterstate.json"} {
 			jsonPath := filepath.Join(name, jsonFile)
 			if _, err := os.Stat(filepath.Join(path, jsonPath)); !os.IsNotExist(err) {
 				cwg.Add(1)
 				cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: jsonPath, W: w, WaitGroup: &cwg})
+			}
+		}
+
+		// agents.json is re-serialized every monitoring cycle (agent load/status),
+		// so staging it on every git push dominated .git history (~288 commits/day).
+		// BO only needs periodic cores/mem — throttle to once per gitAgentsSyncInterval.
+		if cm.shouldStageAgents(name) {
+			agentsPath := filepath.Join(name, "agents.json")
+			if _, err := os.Stat(filepath.Join(path, agentsPath)); !os.IsNotExist(err) {
+				cwg.Add(1)
+				cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: agentsPath, W: w, WaitGroup: &cwg})
 			}
 		}
 

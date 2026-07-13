@@ -667,7 +667,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.GitUrl, "git-url", "", "GitHub URL repository to store config file")
 	flags.StringVar(&conf.GitUsername, "git-username", "", "GitHub username")
 	flags.StringVar(&conf.GitAccesToken, "git-acces-token", "", "GitHub personnal acces token")
-	flags.IntVar(&conf.GitMonitoringTicker, "git-monitoring-ticker", 300, "Git monitoring interval in seconds")
+	flags.IntVar(&conf.GitMonitoringTicker, "git-monitoring-ticker", 3600, "Git push safety-net interval in seconds. Real config changes push on-change via the ConfigManager queue; this timer only catches stragglers, so it can be slow (hourly).")
 	flags.BoolVar(&conf.GitConfigSyncStandby, "git-config-sync-standby", true, "Pull config from git when cluster is standby with arbitration")
 	// flags.IntVar(&conf.GitMinWorker, "git-min-worker", 1, "Minimum number of worker to add files for git commit")
 	// flags.IntVar(&conf.GitMaxWorker, "git-max-worker", 5, "Maximum number of worker to add files for git commit")
