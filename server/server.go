@@ -3227,24 +3227,21 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		return true
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer heartbeat response: %v", h)
-		if h.Status == ConstMonitorStandby && repman.Status == ConstMonitorStandby {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Both peers are standby, triggering arbitration election")
-			return true
-		}
-		// Server-level calm authority: peers that can talk are not split, so a
-		// dual-active is resolved HERE rather than left for a manual toggle. If the
-		// peer reports Active and we are also Active, THIS node yields to Standby —
-		// the peer keeps driving. If both yield (symmetric dual-active), the next
-		// tick sees both Standby and triggers the arbitrator election above, which
-		// crowns a single winner. Split-brain promotion stays solely with the
-		// arbitrator (arbitratorElection); this governs only the calm-time
-		// "don't double-drive" rule. Runs under the caller's repman.Lock().
+		// CALM authority: the peer answered, so we can talk and are NOT split.
+		// Resolve to the anti-peer status; the cluster reinforce loop in
+		// Heartbeat() then pushes repman.Status down onto the clusters.
+		//   - peer Active and we are Active  -> dual-active: yield to Standby
+		//     (the peer keeps driving; failback is never automatic).
+		//   - both Standby (e.g. a node just (re)joined after a restart) -> the
+		//     main (lowest arbitration uid) claims Active; the higher-uid peer,
+		//     seeing us Active next tick, stays Standby. This un-sticks the
+		//     both-Standby startup case WITHOUT declaring a split brain.
 		if h.Status == ConstMonitorActif && repman.Status == ConstMonitorActif {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Peer reports active while we are active — yielding to standby (server-level calm authority)")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Calm: peer is Active and so are we — yielding to Standby")
 			repman.Status = ConstMonitorStandby
-			for _, cl := range repman.Clusters {
-				cl.SetActiveStatus(ConstMonitorStandby)
-			}
+		} else if h.Status == ConstMonitorStandby && repman.Status == ConstMonitorStandby && repman.Conf.ArbitrationSasUniqueId < h.UID {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Calm: both Standby and we are the main (uid %d < peer %d) — claiming Active", repman.Conf.ArbitrationSasUniqueId, h.UID)
+			repman.Status = ConstMonitorActif
 		}
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "No peer split brain, peer status is %s, my status is %s", h.Status, repman.Status)
 	}
