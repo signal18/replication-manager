@@ -143,6 +143,91 @@ func (cl *Cluster) arbitratorMinorityFailSafe(reason string) {
 	}
 }
 
+// getClusterTestCredentials returns a local user holding the cluster-test grant,
+// used to authenticate to the arbitration peer. Cluster-scoped — reads this
+// cluster's own APIUsers.
+func (cl *Cluster) getClusterTestCredentials() (string, string, bool) {
+	for _, u := range cl.APIUsers {
+		if u.Grants != nil && u.Grants[config.GrantClusterTest] && u.Password != "" {
+			return u.User, u.Password, true
+		}
+	}
+	return "", "", false
+}
+
+// fetchMasterFromPeer asks the arbitration peer (the split-brain winner) who the
+// real elected master is, from the peer's crash record (crash.ElectedMasterURL).
+// CLUSTER-SCOPED and self-contained: it uses THIS cluster's own peer host
+// (cl.Conf.ArbitrationPeerHosts) and its own cluster-test credential — it never
+// goes through the server layer, so a single-repman / no-auto-failover cluster
+// simply has no peer and returns "" (the caller falls back to its own local
+// crash/topology). A node that sat out a split-brain as the minority can't trust
+// its own frozen topology nor the arbitrator (unreachable while isolated, stale
+// after) — but once the split resolves its peer link is back and the peer holds
+// the authoritative election result.
+func (cl *Cluster) fetchMasterFromPeer() (string, error) {
+	if cl.Conf.ArbitrationPeerHosts == "" {
+		return "", nil // no peer (single repman) — caller falls back to local
+	}
+	user, pass, ok := cl.getClusterTestCredentials()
+	if !ok {
+		return "", errors.New("no local cluster-test grant user to authenticate to peer")
+	}
+	peer := ensureScheme(strings.TrimSpace(strings.Split(cl.Conf.ArbitrationPeerHosts, ",")[0]))
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	loginBody, _ := json.Marshal(struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}{user, pass})
+	resp, err := client.Post(peer+"/api/login", "application/json", bytes.NewBuffer(loginBody))
+	if err != nil {
+		return "", err
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("peer login rejected (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var tok struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(body, &tok); err != nil || tok.Token == "" {
+		return "", errors.New("peer login returned no token")
+	}
+
+	req, err := http.NewRequest("GET", peer+"/api/clusters/"+cl.Name+"/topology/crashes", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok.Token)
+	resp2, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	body2, _ := io.ReadAll(resp2.Body)
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("peer crashes (%d): %s", resp2.StatusCode, strings.TrimSpace(string(body2)))
+	}
+	var crashes []struct {
+		ElectedMasterURL string `json:"ElectedMasterURL"`
+		UnixTimestamp    int64  `json:"UnixTimestamp"`
+	}
+	if err := json.Unmarshal(body2, &crashes); err != nil {
+		return "", fmt.Errorf("peer crashes parse: %w", err)
+	}
+	var latest string
+	var latestTs int64
+	for _, c := range crashes {
+		if c.ElectedMasterURL != "" && c.UnixTimestamp >= latestTs {
+			latestTs = c.UnixTimestamp
+			latest = c.ElectedMasterURL
+		}
+	}
+	return latest, nil
+}
+
 func (cl *Cluster) arbitratorElection() error {
 	// Split-brain simulator: this node's arbitrator link is cut — it cannot
 	// confirm authority, so it must fail-safe to standby (yield), not freeze

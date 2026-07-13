@@ -269,26 +269,39 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 
 				// If master-slave topology and server is not the master (split brain)
 				if cluster.IsActive() && master != nil && cluster.GetTopology() == config.TopoMasterSlave && cluster.Servers[k].URL != master.URL {
-					if master.IsSlave {
-						// Our cluster.master pointer is STALE: it has itself become a
-						// slave (this node sat out a split-brain as the minority and froze
-						// its last-known master, while the real election ran on the
-						// majority). Servers[k] is a non-slave that others follow — the
-						// REAL master. Re-designate to reality instead of treating the
-						// live master as an "extra" to demote (which would enslave it).
-						// Only reached under TopoMasterSlave (guarded above) and only when
-						// this node is Active (trusted) — the minority never gets here.
-						// Multi-master keeps its multiple masters untouched.
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Stale master %s is now a slave — re-designating real master %s after split-brain", master.URL, cluster.Servers[k].URL)
-						cluster.master = cluster.Servers[k]
+					// Extra master after a split brain (our cluster.master differs from a
+					// non-slave others follow). Who's the REAL master? Not our own
+					// pointer (this node may have sat out the split as the minority and
+					// frozen a stale master) and not local topology alone (ambiguous
+					// when slaves stayed on BOTH sides — two nodes then look like
+					// masters). Ask the arbitration PEER (the winner), which holds the
+					// authoritative election result in its crash. Cluster-scoped: a
+					// single-repman / no-peer cluster gets "" back and falls through to
+					// the local heuristic. Only reached under TopoMasterSlave + IsActive
+					// (guarded above); multi-master keeps its multiple masters untouched.
+					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00063"], ErrFrom: "TOPO"})
+					var real *ServerMonitor
+					if realURL, ferr := cluster.fetchMasterFromPeer(); ferr == nil && realURL != "" {
+						real = cluster.GetServerFromURL(realURL)
+						if real != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Peer designates real master %s after split-brain", real.URL)
+						}
+					} else if ferr != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Could not fetch real master from peer after split-brain (%s), falling back to local", ferr)
+					}
+					// Fallback (no peer / unreachable): if our own pointer is now a slave
+					// it is stale, so the local non-slave is the real master. Never demote
+					// the live master here.
+					if real == nil && master.IsSlave {
+						real = cluster.Servers[k]
+					}
+					if real != nil && real.URL != cluster.master.URL {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Re-designating real master %s after split-brain (was stale %s)", real.URL, cluster.master.URL)
+						cluster.master = real
 						cluster.master.SetMaster()
 						if cluster.master.IsReadOnly() && !cluster.master.IsRelay {
 							cluster.master.SetReadWrite()
 						}
-					} else {
-						//Extra master in master slave topology rejoin it after split brain
-						cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00063"], ErrFrom: "TOPO"})
-						//	cluster.Servers[k].RejoinMaster() /* remove for rolling restart , wrongly rejoin server as master before just after swithover while the server is just stopping */
 					}
 				} else if !cluster.IsFailedArbitrator {
 					// Minority fail-safe: a node that cannot confirm authority via the
