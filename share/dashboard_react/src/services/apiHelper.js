@@ -69,7 +69,7 @@ const handleResponse = async (response) => {
     data = await response.text();
   }
 
-  return { data, status: response.status };
+  return { data, status: response.status, headers: response.headers };
 };
 
 const performRequest = async (method, apiUrl, params, authValue, baseUrl = '') => {

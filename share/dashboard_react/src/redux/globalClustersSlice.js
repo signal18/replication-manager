@@ -4,7 +4,20 @@ import { globalClustersService } from '../services/globalClustersService'
 
 const getThunkTypePrefix = (actionType) => actionType.replace(/\/(pending|fulfilled|rejected)$/, '')
 
-const getPendingKey = (typePrefix) => typePrefix
+// A thunk can opt in via `pendingKeyFor` to dedupe by arg (e.g. clusterName)
+// instead of by type prefix alone, so unrelated targets don't block each other.
+const pendingKeyResolvers = {} // typePrefix -> (arg) => string | undefined
+
+const getPendingKey = (typePrefix, arg) => {
+  const resolver = pendingKeyResolvers[typePrefix]
+  if (resolver) {
+    const suffix = resolver(arg)
+    if (suffix) {
+      return `${typePrefix}:${suffix}`
+    }
+  }
+  return typePrefix
+}
 
 const shouldTrackThunk = (action) => {
   if (!action?.meta?.requestId) {
@@ -14,13 +27,19 @@ const shouldTrackThunk = (action) => {
 }
 
 const createGuardedAsyncThunk = (typePrefix, payloadCreator, options = {}) => {
-  const { condition, ...restOptions } = options
+  const { condition, pendingKeyFor, bypassPendingGuard, ...restOptions } = options
+  if (pendingKeyFor) {
+    pendingKeyResolvers[typePrefix] = pendingKeyFor
+  }
   return createAsyncThunk(typePrefix, payloadCreator, {
     ...restOptions,
     condition: (arg, api) => {
-      const pendingKey = getPendingKey(typePrefix)
-      if (api.getState()?.globalClusters?.pendingThunks?.[pendingKey]) {
-        return false
+      const skipGuard = bypassPendingGuard ? bypassPendingGuard(arg) : false
+      if (!skipGuard) {
+        const pendingKey = getPendingKey(typePrefix, arg)
+        if (api.getState()?.globalClusters?.pendingThunks?.[pendingKey]) {
+          return false
+        }
       }
       if (condition) {
         const result = condition(arg, api)
@@ -368,17 +387,25 @@ export const refreshAppTemplateRepo = createGuardedAsyncThunk(
   async ({ clusterName, silent = false, forceRefresh = false }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await globalClustersService.refreshAppTemplateRepo(clusterName, baseURL, forceRefresh)
+      const { data, status, headers } = await globalClustersService.refreshAppTemplateRepo(clusterName, baseURL, forceRefresh)
       if (status !== 200) {
         throw new Error(data)
       }
-      return { data, status }
+      const repoError = headers?.get?.('x-app-template-repo-error') || null
+      return { data, status, repoError }
     } catch (error) {
       if (!silent) {
         showErrorBanner('Error while refreshing app template repository', error, thunkAPI)
       }
       return handleError(error, thunkAPI)
     }
+  },
+  {
+    // Dedupe per cluster: an in-flight refresh for cluster A shouldn't block one for cluster B.
+    pendingKeyFor: (arg) => arg?.clusterName,
+    // An explicit forceRefresh must always reach the backend, even if a silent
+    // refresh for the same cluster is already in flight.
+    bypassPendingGuard: (arg) => Boolean(arg?.forceRefresh)
   }
 )
 
@@ -411,7 +438,10 @@ const initialState = {
   clusterPeers: null,
   clusterForSale: null,
   monitor: null,
-  templateRepoError: null,
+  appTemplatesByCluster: {},
+  // requestId of the latest dispatched refreshAppTemplateRepo per cluster, so
+  // an older in-flight request's response can't clobber a newer one's.
+  latestAppTemplateRequestByCluster: {},
   templateGuideContent: '',
   templateGuideError: null,
   terms: ``,
@@ -473,18 +503,45 @@ export const globalClustersSlice = createSlice({
       .addCase(getClusterForSale.rejected, (state, action) => {
         state.error = action.error
       })
+      .addCase(refreshAppTemplateRepo.pending, (state, action) => {
+        const clusterName = action.meta.arg?.clusterName
+        if (clusterName) {
+          state.latestAppTemplateRequestByCluster[clusterName] = action.meta.requestId
+        }
+      })
       .addCase(refreshAppTemplateRepo.fulfilled, (state, action) => {
+        const clusterName = action.meta.arg?.clusterName
+        if (!clusterName) {
+          return
+        }
+        // A newer request for this cluster has since been dispatched; discard this stale response.
+        if (state.latestAppTemplateRequestByCluster[clusterName] !== action.meta.requestId) {
+          return
+        }
         const templateRows = Array.isArray(action.payload.data) ? action.payload.data : []
         const templateNames = templateRows.map((row) => row?.name).filter(Boolean)
-        if (!state.monitor) {
-          state.monitor = {}
+        state.appTemplatesByCluster[clusterName] = {
+          names: templateNames,
+          metadata: templateRows,
+          error: action.payload.repoError || null
         }
-        state.monitor.serviceTemplates = templateNames
-        state.monitor.serviceTemplateMetadata = templateRows
-        state.templateRepoError = null
       })
       .addCase(refreshAppTemplateRepo.rejected, (state, action) => {
-        state.templateRepoError = action.error?.message || 'Failed to refresh app template repository'
+        const clusterName = action.meta.arg?.clusterName
+        if (!clusterName) {
+          return
+        }
+        if (state.latestAppTemplateRequestByCluster[clusterName] !== action.meta.requestId) {
+          return
+        }
+        const existing = state.appTemplatesByCluster[clusterName]
+        state.appTemplatesByCluster[clusterName] = {
+          names: existing?.names || [],
+          metadata: existing?.metadata || [],
+          // handleError() rejects via rejectWithValue, so the real message is
+          // in action.payload; action.error.message is just RTK's generic "Rejected".
+          error: action.payload?.errorMessage || action.error?.message || 'Failed to refresh app template repository'
+        }
       })
       .addCase(getAppTemplateStructureGuide.fulfilled, (state, action) => {
         state.templateGuideContent = action.payload?.data?.content || ''
@@ -516,12 +573,14 @@ export const globalClustersSlice = createSlice({
         state.error = action.error
       })
 
+    // Reference count, not a boolean: bypassPendingGuard can let two same-key
+    // requests run at once, and a boolean would go false when only one of them finishes.
     builder.addMatcher(
       (action) => action.type.endsWith('/pending') && shouldTrackThunk(action),
       (state, action) => {
         const typePrefix = getThunkTypePrefix(action.type)
-        const pendingKey = getPendingKey(typePrefix)
-        state.pendingThunks[pendingKey] = true
+        const pendingKey = getPendingKey(typePrefix, action.meta.arg)
+        state.pendingThunks[pendingKey] = (state.pendingThunks[pendingKey] || 0) + 1
       }
     )
 
@@ -530,8 +589,9 @@ export const globalClustersSlice = createSlice({
         (action.type.endsWith('/fulfilled') || action.type.endsWith('/rejected')) && shouldTrackThunk(action),
       (state, action) => {
         const typePrefix = getThunkTypePrefix(action.type)
-        const pendingKey = getPendingKey(typePrefix)
-        state.pendingThunks[pendingKey] = false
+        const pendingKey = getPendingKey(typePrefix, action.meta.arg)
+        const next = (state.pendingThunks[pendingKey] || 0) - 1
+        state.pendingThunks[pendingKey] = next > 0 ? next : 0
       }
     )
   }
