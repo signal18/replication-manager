@@ -145,12 +145,26 @@ func (cl *Cluster) arbitratorMinorityFailSafe(reason string) {
 
 // getClusterTestCredentials returns a local user holding the cluster-test grant,
 // used to authenticate to the arbitration peer. Cluster-scoped — reads this
-// cluster's own APIUsers.
+// cluster's own APIUsers. PREFERS "admin": cl.APIUsers is a map (random iteration
+// order), and service accounts like sysops-cloud18 (git-sync) also carry the
+// grant but lock out after failed auth — so a random pick flaps the peer login
+// between working (admin) and 401 (locked service account). Deterministic admin
+// preference removes the flap.
 func (cl *Cluster) getClusterTestCredentials() (string, string, bool) {
+	var fbUser, fbPass string
 	for _, u := range cl.APIUsers {
-		if u.Grants != nil && u.Grants[config.GrantClusterTest] && u.Password != "" {
+		if u.Grants == nil || !u.Grants[config.GrantClusterTest] || u.Password == "" {
+			continue
+		}
+		if u.User == "admin" {
 			return u.User, u.Password, true
 		}
+		if fbUser == "" {
+			fbUser, fbPass = u.User, u.Password
+		}
+	}
+	if fbUser != "" {
+		return fbUser, fbPass, true
 	}
 	return "", "", false
 }

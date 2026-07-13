@@ -3283,10 +3283,25 @@ func (repman *ReplicationManager) getClusterTestCredentials(clusterName string) 
 	if cl == nil {
 		return "", "", false
 	}
+	// PREFER "admin": cl.APIUsers is a map (random iteration order), and service
+	// accounts like sysops-cloud18 (git-sync) also hold the cluster-test grant but
+	// lock out after failed auth — so a random pick flaps the peer login between
+	// working (admin) and 401 (locked service account). Deterministic admin
+	// preference removes the flap.
+	var fbUser, fbPass string
 	for _, u := range cl.APIUsers {
-		if u.Grants != nil && u.Grants[config.GrantClusterTest] && u.Password != "" {
+		if u.Grants == nil || !u.Grants[config.GrantClusterTest] || u.Password == "" {
+			continue
+		}
+		if u.User == "admin" {
 			return u.User, u.Password, true
 		}
+		if fbUser == "" {
+			fbUser, fbPass = u.User, u.Password
+		}
+	}
+	if fbUser != "" {
+		return fbUser, fbPass, true
 	}
 	return "", "", false
 }
