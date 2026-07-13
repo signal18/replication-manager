@@ -348,22 +348,6 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 	if cluster.Conf.Arbitration && !cluster.IsActive() {
 		return
 	}
-	// (c) Do not advance the write-heartbeat marker while the topology is
-	// fenced or recovering. The marker is written through the PROXY connection,
-	// so even the Active repman can land it on the DEMOTED old master if the
-	// proxy still routes there during a split or before a rejoin completes — a
-	// SUPER write (read_only cannot stop it) that becomes the self-inflicted
-	// divergent tail: the out-of-order GTID that blocks the rejoin, and a DDL
-	// the flashback can never reverse. Stay silent until the topology settles:
-	// the arbitrator carries liveness during the split, IsSplitBrain covers the
-	// split itself, and hasUnresolvedCrash covers the split-resolve→rejoin gap
-	// (the exact window where the old master minted its colliding seq).
-	if cluster.IsSplitBrain || cluster.hasUnresolvedCrash() {
-		return
-	}
-	if m := cluster.GetMaster(); m != nil && m.IsFrozen() {
-		return
-	}
 	// Found server from ServerId
 	if cluster.Conf.TopologyStaging && cluster.Conf.TestInjectTrafficStaging {
 		for _, pr := range cluster.Proxies {
