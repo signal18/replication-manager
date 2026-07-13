@@ -2826,7 +2826,12 @@ func (repman *ReplicationManager) Run() error {
 			// pull used to freeze every state producer silently). When a task
 			// is still running at the next cycle, skip it and surface GWARN013
 			// so the hang shows in the Monitor button instead of killing it.
-			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
+			// Only the Active server pushes config to git — single writer, so
+			// every push is a fast-forward. The Standby only pulls/replays (below),
+			// never pushes; two pushers race the shallow clone into "object not
+			// found". Under server authority the Standby has no authoritative
+			// config changes to propagate anyway.
+			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" && repman.Status == ConstMonitorActif {
 				if repman.gitSyncBusy.CompareAndSwap(false, true) {
 					go func() {
 						defer repman.gitSyncBusy.Store(false)
@@ -3629,7 +3634,8 @@ func (repman *ReplicationManager) Stop() {
 				}
 			}
 
-			if isNeedPush {
+			// Single-writer: only the Active server pushes (see periodic push above).
+			if isNeedPush && repman.Status == ConstMonitorActif {
 				repman.IsNeedGitPush = false
 				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
 			}
