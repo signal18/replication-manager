@@ -90,6 +90,7 @@ type ReplicationManager struct {
 	Partner                      config.Partner                     `json:"partner"`
 	Agents                       []opensvc.Host                     `json:"agents"`
 	UUID                         string                             `json:"uuid"`
+	StartTime                    time.Time                          `json:"startTime"`
 	Hostname                     string                             `json:"hostname"`
 	Status                       string                             `json:"status"`
 	SplitBrain                   bool                               `json:"splitBrain"`
@@ -276,8 +277,9 @@ type HeartbeatResponse struct {
 }
 
 type Heartbeat struct {
-	UUID    string `json:"uuid"`
-	Secret  string `json:"secret"`
+	UUID      string    `json:"uuid"`
+	StartTime time.Time `json:"startTime"`
+	Secret    string    `json:"secret"`
 	Cluster string `json:"cluster"`
 	Master  string `json:"master"`
 	UID     int    `json:"id"`
@@ -2377,6 +2379,7 @@ func (repman *ReplicationManager) Run() error {
 
 	repman.Clusters = make(map[string]*cluster.Cluster)
 	repman.UUID = misc.GetUUID()
+	repman.StartTime = time.Now()
 	if repman.Conf.Arbitration {
 		repman.Status = ConstMonitorStandby
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server starting in standby mode (arbitration enabled)")

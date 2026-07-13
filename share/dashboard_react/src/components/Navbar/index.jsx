@@ -210,6 +210,11 @@ function Navbar({ username, user }) {
                   <PopoverArrow />
                   <PopoverBody>
                     <RefreshCounter clusterName={clusterData?.name} />
+                    {monitor?.startTime && new Date(monitor.startTime).getFullYear() > 2000 && (
+                      <Text fontSize='xs' color='gray.500' mt={2} textAlign='center'>
+                        Started {new Date(monitor.startTime).toLocaleString()}
+                      </Text>
+                    )}
                     <Button
                       size='sm'
                       variant='outline'
@@ -251,6 +256,11 @@ function Navbar({ username, user }) {
                   <PopoverArrow />
                   <PopoverBody>
                     <RefreshCounter clusterName={clusterData?.name} />
+                    {monitor?.startTime && new Date(monitor.startTime).getFullYear() > 2000 && (
+                      <Text fontSize='xs' color='gray.500' mt={2} textAlign='center'>
+                        Started {new Date(monitor.startTime).toLocaleString()}
+                      </Text>
+                    )}
                     <Button
                       size='sm'
                       variant='outline'

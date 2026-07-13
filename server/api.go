@@ -2022,6 +2022,7 @@ func (repman *ReplicationManager) handlerMuxMonitorHeartbeat(w http.ResponseWrit
 	}
 	var send Heartbeat
 	send.UUID = repman.UUID
+	send.StartTime = repman.StartTime
 	send.UID = repman.Conf.ArbitrationSasUniqueId
 	send.Secret = repman.Conf.ArbitrationSasSecret
 	send.Status = repman.Status
