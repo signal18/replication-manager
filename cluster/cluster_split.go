@@ -148,6 +148,35 @@ func (cl *Cluster) arbitratorMinorityFailSafe(reason string) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Minority fail-safe: yielding cluster %s to standby", cl.GetName())
 		cl.SetActiveStatus(ConstMonitorStandby)
 	}
+	// Track & re-evaluate (enforced every tick until resolve). GATED: only when we are
+	// genuinely the isolated minority of a split — IsSplitBrain (durable, set by
+	// ArbitratorHandler) AND we have already yielded to Standby AND master-slave target.
+	// Without this gate the API path (ForceArbitratorElection) could reach this failsafe
+	// on a HEALTHY cluster when the arbitrator is momentarily unreachable and wrongly
+	// reset it. The minority cannot trust its own view: keep the master it KNOWS marked
+	// as the frozen OLD master (StandAlone), enforce Suspect on every OTHER reachable
+	// node (it cannot confirm their real role while isolated), then nil the master
+	// pointer so the cluster REDISCOVERS the real topology at resolve (the peer-fetch
+	// relearns the winner). Suspect is a state srv.go already demotes (Suspect ->
+	// StandAlone once a master is re-established), so no state-machine change is needed.
+	// Idempotent: SetState is a no-op when already in the target state.
+	if cl.IsSplitBrain && cl.Status == ConstMonitorStandby && cl.GetTopologyFromConf() == config.TopoMasterSlave {
+		if master := cl.GetMaster(); master != nil {
+			if master.State != stateUnconn {
+				master.SetState(stateUnconn)
+			}
+			for _, sv := range cl.Servers {
+				if sv == nil || sv.URL == master.URL || sv.IsFailed() {
+					continue
+				}
+				if sv.State != stateSuspect {
+					cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Minority fail-safe: cannot confirm %s while isolated — holding it Suspect until split resolves", sv.URL)
+					sv.SetState(stateSuspect)
+				}
+			}
+			cl.master = nil
+		}
+	}
 }
 
 // getClusterTestCredentials returns a local user holding the cluster-test grant,

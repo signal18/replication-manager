@@ -326,34 +326,6 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 						cluster.master.SetReadWrite()
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)
 					}
-				} else if cluster.Conf.Arbitration && cluster.GetTopology() == config.TopoMasterSlave {
-					// MINORITY (IsFailedArbitrator == true) AND arbitration enabled AND
-					// master-slave topology only
-					// (multi-master / ring / wsrep / group-replication have their own
-					// quorum and multiple masters — never fence/detach them here). This
-					// node cannot confirm authority via the arbitrator, so under the
-					// always-up arbitrator design it is the ISOLATED side. It must NOT
-					// keep presenting its old
-					// master as the cluster master. Fence it (read-only; opt-in FTWRL
-					// freeze binds even repman's own SUPER) and DETACH it as standalone
-					// with cluster.master = nil, so the proxy stops routing writes to it.
-					// Done here on the loop's own server handle (sv) — NOT via
-					// cluster.GetMaster() — and re-applied every discover tick, so nil-ing
-					// cluster.master never loses the fencing handle. Position is PRESERVED
-					// (no RESET MASTER); the rejoin turns it into a slave later.
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Minority: fencing %s read-only and detaching it standalone (master=nil) during split brain", sv.URL)
-					if !sv.IsReadOnly() {
-						if logs, err := sv.SetReadOnly(); err != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Minority: could not set %s read-only: %s (%s)", sv.URL, err, logs)
-						}
-					}
-					if cluster.Conf.ArbitrationMinorityFreeze && !sv.IsFrozen() {
-						if err := sv.FreezeWithReadLock(); err != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Minority: could not freeze %s: %s", sv.URL, err)
-						}
-					}
-					sv.SetState(stateUnconn)
-					cluster.master = nil
 				}
 			}
 
@@ -371,7 +343,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			// fail-safe detached it), and the surviving slave may already have been re-pointed to the majority's
 			// promoted master over an app-level cut — inferring a master from that here re-promotes it on the
 			// minority (it has no authority to). Hold master=nil until it can confirm authority again.
-			if !cluster.runOnceAfterTopology && cluster.GetMaster() == nil && len(cluster.slaves) > 0 && cluster.Conf.TopologyTarget == config.TopoMasterSlave && !cluster.IsFailedArbitrator {
+			if !cluster.runOnceAfterTopology && cluster.GetMaster() == nil && len(cluster.slaves) > 0 && cluster.Conf.TopologyTarget == config.TopoMasterSlave && !cluster.IsSplitBrain {
 				numSlaves := 0
 				for _, sl := range cluster.slaves {
 					// if the slave is replicating from this server
@@ -495,16 +467,15 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 
 	if cluster.slaves != nil && !cluster.Conf.MultiMasterGrouprep {
-		// NOT on the isolated MINORITY: gate on !IsFailedArbitrator, NOT !IsSplitBrain —
-		// IsSplitBrain is true on BOTH sides so it would also block the MAJORITY's inference
-		// (which must still promote db2 during the split). IsFailedArbitrator is minority-only.
-		// On the minority, inferring the master from the slaves' reported master server_id
-		// (FindMasterByReplicationServerID) or a read-write server re-promotes the majority's
-		// elected master (the surviving slave was re-pointed to it over an app-level cut), and
-		// the minority has no authority to promote. Hold master=nil until it can confirm
-		// authority again; only the majority (via failover) sets the master. Covers all the
-		// master-autodetect SetMaster sites in this block.
-		if len(cluster.slaves) > 0 && !cluster.IsFailedArbitrator {
+		// NOT during a split brain (gate on !IsSplitBrain — the DURABLE flag, true on both
+		// sides): this "infer the master from the slaves' reported server_id / a read-write
+		// server" path (FindMasterByReplicationServerID etc.) is NOT how the majority promotes
+		// — the majority promotes db2 via the FAILOVER path (MasterFailover). So blocking it on
+		// both sides during the split does NOT stop the majority; it only stops the WRONG
+		// inference that re-promotes the majority's elected master (the surviving slave was
+		// re-pointed to it over an app-level cut). Hold until the split resolves. Covers all
+		// the master-autodetect SetMaster sites in this block.
+		if len(cluster.slaves) > 0 && !cluster.IsSplitBrain {
 			// Depending if we are doing a failover or a switchover, we will find the master in the list of
 			// failed hosts or unconnected hosts.
 			// First of all, get a server id from the cluster.slaves slice, they should be all the same
