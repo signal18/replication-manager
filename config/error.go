@@ -266,10 +266,16 @@ var ClusterError = map[string]string{
 	"WARN0178":  "On-premise SSH unreachable on %d node(s): %s",
 	"WARN0179":  "%d database(s) differ from configurator generated config: %s",
 	"WARN0180":  "%d database(s) have no deployed config received from dbjobs: %s",
-	"WARN0181":  "SPLITBRAIN SIMULATION: simulated link cut active (%s) on this instance, auto-restore in %ds",
 	"WARN0182":  "Failed to backup lost events of old master %s after failover — flashback rejoin impossible: %s",
 	"WARN0184":  "Diverged old master %s: captured lost events are flashback-able (row-DML only)",
 	"WARN0185":  "Diverged old master %s: captured lost events are NOT flashback-able (DDL, statement events or empty capture) — reseed or forward apply required",
+	// Split-brain simulator states (VSPLIT namespace, ErrType WARNING) — each axis of
+	// the simulated partition tracked open/close in the state timeline.
+	"VSPLIT0001": "Split-brain simulator running: simulated link cut active (%s), auto-restore in %ds",
+	"VSPLIT0002": "Split-brain simulator: peer heartbeat blocked (inbound /api/heartbeat darkened)",
+	"VSPLIT0003": "Split-brain simulator: this side (arbitrator uid %d) blocked from master %s — this partition fails over; the minority forms on the other partition and keeps the master",
+	"VSPLIT0004": "Split-brain simulator: arbitrator reporting blocked — this side is the minority, it cannot confirm authority and must yield to standby",
+	"VSPLIT0005": "Split-brain simulator: slave still reaches master (db replication live) — false-positive failover guard (ERR00028 'slave can still communicate with the master') disabled",
 	"WARN0206":  "Log plugin %s rejected: %s",
 	"WARN0207":  "Plugin signature verification skipped: %s",
 	// CINF: cluster observability statuses (INFO, state-as-tag) — each domain

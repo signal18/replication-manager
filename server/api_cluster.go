@@ -380,6 +380,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSimulateMasterFailure)),
 	))
+	router.Handle("/api/clusters/{clusterName}/test/split-brain-simulator/simulate-minority", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSimulateMinority)),
+	))
 	router.Handle("/api/clusters/{clusterName}/test/split-brain-simulator/restore", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSimulateRestore)),
@@ -2028,6 +2032,23 @@ func (repman *ReplicationManager) handlerMuxSimulateMasterFailure(w http.Respons
 	mycluster.ResetFailoverCtr()
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"simulate":"master-failure","cluster":"%s","duration":%d}`, mycluster.Name, secs)
+}
+
+// handlerMuxSimulateMinority marks THIS repman the minority side of the partition —
+// instance-wide, on every cluster it drives, like a real DC isolation. While armed
+// the arbitrator link reads as severed, so this side cannot confirm authority and
+// must step down through the real fail-safe path (master read-only, Active->Standby
+// yield, peers Suspect). Aimed at the ACTIVE instance: standby is the OUTCOME the
+// test observes, never an input. Bounded by ?duration=<seconds>, auto-restores.
+// Requires the cluster-test grant.
+func (repman *ReplicationManager) handlerMuxSimulateMinority(w http.ResponseWriter, r *http.Request) {
+	mycluster, secs, ok := repman.splitBrainSimGuard(w, r)
+	if !ok {
+		return
+	}
+	mycluster.SimulateMinority(time.Duration(secs) * time.Second)
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"simulate":"minority","cluster":"%s","duration":%d}`, mycluster.Name, secs)
 }
 
 // handlerMuxSimulateRestore clears every simulated cut on this instance: the

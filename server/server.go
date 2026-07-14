@@ -3436,9 +3436,30 @@ func (repman *ReplicationManager) PeerIsActive(clusterName string) (bool, error)
 }
 
 // IsHeartbeatFailureSimulated reports whether the peer heartbeat is currently severed.
+// The heartbeat resolves LAST: a real partition heals only when the whole outage is
+// over, so besides its own timer the heartbeat stays dark while ANY cluster on this
+// instance still has a live cut (db/arbitrator/master/minority) — the simulation as a
+// whole is one outage, and the peer link is the last thing to come back.
 func (repman *ReplicationManager) IsHeartbeatFailureSimulated() bool {
 	until := repman.sbHeartbeatFailUntil.Load()
-	return until > 0 && time.Now().Unix() < until
+	if until == 0 {
+		// Never armed (or explicitly restored): pure cluster-level simulations
+		// without a declared network split leave the peer link up.
+		return false
+	}
+	if time.Now().Unix() < until {
+		return true
+	}
+	// Own timer expired: the split still holds while any cluster cut is live.
+	for _, cl := range repman.Clusters {
+		if cl.IsSplitBrainSimulationActive() {
+			return true
+		}
+	}
+	// Whole simulation over: release the latch so a stale timestamp cannot
+	// resurrect the network split during a future cluster-only simulation.
+	repman.sbHeartbeatFailUntil.CompareAndSwap(until, 0)
+	return false
 }
 
 func (repman *ReplicationManager) Heartbeat() {
@@ -3471,7 +3492,16 @@ func (repman *ReplicationManager) Heartbeat() {
 		repman.Lock()
 		repman.SplitBrain = true
 		repman.Unlock()
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "SPLITBRAIN SIMULATION: network split active (%ds left) — forcing server split-brain and pushing down to all clusters", repman.sbHeartbeatFailUntil.Load()-time.Now().Unix())
+		left := repman.sbHeartbeatFailUntil.Load() - time.Now().Unix()
+		if left < 0 {
+			left = 0 // own timer expired: held open by live cluster cuts, resolves with them
+		}
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "SPLITBRAIN SIMULATION: network split active (%ds left) — forcing server split-brain and pushing down to all clusters", left)
+		// VSPLIT0002 — surface the darkened heartbeat in every cluster's state
+		// timeline, not just the server log, so the cut is impossible to forget.
+		for _, cl := range repman.Clusters {
+			cl.SetState("VSPLIT0002", state.State{ErrType: "WARNING", ErrKey: "VSPLIT0002", ErrDesc: config.ClusterError["VSPLIT0002"], ErrFrom: "TEST"})
+		}
 	} else {
 		for _, arbPeer := range arbPeerList {
 			repman.Lock()

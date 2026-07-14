@@ -229,8 +229,10 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 	// Split-brain simulator: a simulated master death is a REAL death for the
 	// test. We only cut repman's view of the master, so db->db replication is
 	// still live and the slave keeps getting heartbeats — which would (wrongly)
-	// look like a false positive and veto failover forever. Treat it as dead.
-	if cluster.IsMasterFailureSimulated() || cluster.IsDatabaseFailureSimulated() {
+	// raise ERR00028 ("slave can still communicate with the master") and veto
+	// failover forever. Disable this false-positive guard while that mode holds
+	// (tracked as VSPLIT0005 so the disable is visible in the state timeline).
+	if cluster.IsSplitBrainSimulatorEnabledSlaveCanReachMaster() {
 		return false
 	}
 	if !cluster.Conf.CheckFalsePositiveHeartbeat || !cluster.isMasterFailed() {
@@ -450,8 +452,9 @@ func (cluster *Cluster) isActiveArbitration() bool {
 
 func (cluster *Cluster) isExternalOk() bool {
 	// Split-brain simulator: during a simulated master/db death, an external
-	// probe that still reaches the live DB must not mask the failure.
-	if cluster.IsMasterFailureSimulated() || cluster.IsDatabaseFailureSimulated() {
+	// probe that still reaches the live DB must not mask the failure (same
+	// slave-can-reach-master mode as the ERR00028 guard, tracked as VSPLIT0005).
+	if cluster.IsSplitBrainSimulatorEnabledSlaveCanReachMaster() {
 		return false
 	}
 	if !cluster.Conf.CheckFalsePositiveExternal {

@@ -204,6 +204,12 @@ type Cluster struct {
 	// would release the isolated old master the instant a failover promotes a
 	// replica, letting the majority revert its own election).
 	sbMasterFailURL atomic.Value `json:"-"`
+	// sbMinorityUntil — SimulateMinority (a LOCAL call: simulator state lives in this
+	// process only and never replicates, so whichever instance ran it IS the minority)
+	// marks this side minority; it cuts its own arbitrator link and yields to standby.
+	// Timed like every other cut: a real outage resolves too, it is just a question of
+	// time — the simulation ends when all cuts time out (or on explicit restore).
+	sbMinorityUntil int64 `json:"-"`
 	// eventProv is the config event log provenance table: where the current
 	// value of each saved key came from (echo subtraction + LWW). See
 	// cluster_eventlog.go and doc/implementation/config/CONFIG_EVENT_LOG.md.
