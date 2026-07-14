@@ -735,7 +735,15 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 			// Auto-rejoin is skipped for active-passive because the master is
 			// designated by topology handling rather than elected from replication.
-			if cluster.Conf.Autorejoin && cluster.IsActive() && cluster.GetTopology() != config.TopoActivePassive {
+			// NOT during a split brain (gate on !IsSplitBrain — the DURABLE flag true on
+			// BOTH sides): the rejoin (freeze -> capture db1's lost events -> CHANGE MASTER
+			// db1->new master) must wait until the split RESOLVES. Running it mid-split
+			// captures a point-in-time snapshot from the failover position while db1 is
+			// still diverging (pseudo-GTID heartbeat) for the rest of the split, so the
+			// capture comes back empty and the reslave then collides with the later tail
+			// (SlaveErr). After resolve the active node (the former minority) rejoins with
+			// db1's FINAL tail — non-empty capture, clean reslave.
+			if cluster.Conf.Autorejoin && cluster.IsActive() && cluster.GetTopology() != config.TopoActivePassive && !cluster.IsSplitBrain {
 				// rejoin if not staging server
 				if isStagingServer {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Preventing auto rejoin on staging server %s", server.URL)
