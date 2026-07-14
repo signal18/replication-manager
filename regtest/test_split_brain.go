@@ -116,40 +116,66 @@ func (regtest *RegTest) TestSetMinorityWithoutMaster(cl *cluster.Cluster, conf s
 }
 
 // setMinorityWithMaster reproduces a real split brain for the case where the
-// master is colocated on the isolated (minority) side. It does exactly 5
-// operations — 3 LOCAL on this repman (repman1) and 2 REMOTE on the peer
+// master is colocated on the isolated (minority) side. It does exactly 6
+// operations — 4 LOCAL on this repman (repman1) and 2 REMOTE on the peer
 // (repman2) — so both nodes independently fail to heartbeat each other AND each
 // side loses the data plane across the partition, exactly like a cut cable:
 //
-//	op 1/5 LOCAL  : cut repman1 → arbitrator link
-//	op 2/5 LOCAL  : sever repman1's inbound heartbeat (repman2 → repman1 times out)
-//	op 3/5 REMOTE : sever repman2's inbound heartbeat (repman1 → repman2 times out)
-//	op 4/5 REMOTE : cut repman2 → master link (master lives on the minority side)
-//	op 5/5 LOCAL  : cut repman1 → every majority-side database (all non-master
-//	                servers). Without this the minority still sees the remote
-//	                slave healthy and can only hold it Suspect; with it the slave
+//	op 1/6 LOCAL  : cut repman1 → arbitrator link
+//	op 2/6 LOCAL  : sever repman1's inbound heartbeat (repman2 → repman1 times out)
+//	op 3/6 REMOTE : sever repman2's inbound heartbeat (repman1 → repman2 times out)
+//	op 4/6 REMOTE : cut repman2 → master link (master lives on the minority side)
+//	op 5/6 LOCAL  : stop io_thread on every majority-side slave — the replication
+//	                channel crosses the partition and must starve with it, or the
+//	                divergent tail never exists (capture always empty).
+//	op 6/6 LOCAL  : cut repman1 → every majority-side database. Without this the
+//	                minority still sees the remote slave healthy; with it the slave
 //	                goes genuinely Failed, so at resolve the real Failed->up
 //	                rejoin trigger fires on this node — matching a real partition.
 func setMinorityWithMaster(cl *cluster.Cluster) {
 	secs := int64(minorityHold / time.Second)
 
 	// op 1/5 LOCAL — repman1 loses the arbitrator (DC3).
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 1/5 LOCAL: cutting arbitrator link on ALL clusters (repman1 -> arbitrator) — a real DC partition loses the arbitrator for every cluster at once, not just this one")
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 1/6 LOCAL: cutting arbitrator link on ALL clusters (repman1 -> arbitrator) — a real DC partition loses the arbitrator for every cluster at once, not just this one")
 	cl.SimulateArbitratorFailureAll(minorityHold)
 
 	// op 2/5 LOCAL — darken repman1's inbound /api/heartbeat so repman2's
 	// outbound heartbeat to repman1 times out (repman2 -> repman1 direction).
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 2/5 LOCAL: severing my inbound heartbeat (repman2 -> repman1 will time out)")
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 2/6 LOCAL: severing my inbound heartbeat (repman2 -> repman1 will time out)")
 	if SimulateHeartbeatFailure != nil {
 		SimulateHeartbeatFailure(secs)
 	}
 
-	// op 5/5 LOCAL (armed before the remote ops so the whole local partition
-	// lands in one tick) — a real partition also cuts the DATA plane from the
-	// minority to the majority side: lose every non-master database (the master
-	// is the one colocated HERE).
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 5/5 LOCAL: cutting my -> majority-side database links (all non-master servers)")
+	// ops 5+6/6 LOCAL (armed before the remote ops so the whole local partition
+	// lands in one tick) — a real partition also cuts the DATA plane in both
+	// directions across it:
+	//
+	// op 5/6 — starve the REPLICATION channel that crosses the partition: stop
+	// the io_thread on every majority-side slave (they replicate from the master
+	// colocated HERE) while our connection still reaches them. Without this the
+	// app-level sim leaves db->db replication alive (the VSPLIT0005 situation),
+	// so every write committed on this side during the split reaches the other
+	// side before its promotion and the lost-events capture is ALWAYS empty —
+	// the divergent tail only exists if the channel breaks like the real cable.
+	// No restore needed on the happy path: the majority promotes that slave
+	// (RESET SLAVE ALL wipes the stopped channel) and the old master rejoins
+	// with a fresh one; a failed run is cleaned by the standard replication
+	// bootstrap.
+	//
+	// op 6/6 — lose our VIEW of every non-master database (SimulateServerFailure)
+	// so they go genuinely Failed on this side and the resolve fires the real
+	// Failed->up rejoin trigger here.
 	mst := cl.GetMaster()
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 5/6 LOCAL: severing cross-partition replication (stop io_thread on all majority-side slaves)")
+	for _, sv := range cl.Servers {
+		if sv == nil || (mst != nil && sv.URL == mst.URL) {
+			continue
+		}
+		if logs, err := sv.StopSlaveIOThread(); err != nil {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "op 5/6: could not stop io_thread on %s: %s (%s)", sv.URL, err, logs)
+		}
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 6/6 LOCAL: cutting my -> majority-side database links (all non-master servers)")
 	for _, sv := range cl.Servers {
 		if sv == nil || (mst != nil && sv.URL == mst.URL) {
 			continue
@@ -164,16 +190,16 @@ func setMinorityWithMaster(cl *cluster.Cluster) {
 
 	// op 3/5 REMOTE — darken repman2's inbound /api/heartbeat so repman1's
 	// outbound heartbeat to repman2 times out (repman1 -> repman2 direction).
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 3/5 REMOTE: severing peer inbound heartbeat on repman2 (repman1 -> repman2 will time out)")
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 3/6 REMOTE: severing peer inbound heartbeat on repman2 (repman1 -> repman2 will time out)")
 	if err := SimulatePeerFailure(cl.Name, "simulate-heartbeat-failure", secs); err != nil {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "op 3/5 REMOTE failed: %s", err)
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "op 3/6 REMOTE failed: %s", err)
 	}
 
 	// op 4/5 REMOTE — cut repman2's link to the master, which is colocated on
 	// the minority side, so the majority loses the master but keeps its slave.
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 4/5 REMOTE: cutting peer -> master link on repman2 (master colocated on minority)")
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 4/6 REMOTE: cutting peer -> master link on repman2 (master colocated on minority)")
 	if err := SimulatePeerFailure(cl.Name, "simulate-master-failure", secs); err != nil {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "op 4/5 REMOTE failed: %s", err)
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "op 4/6 REMOTE failed: %s", err)
 	}
 }
 
