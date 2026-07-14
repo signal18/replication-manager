@@ -176,15 +176,15 @@ func (cl *Cluster) arbitratorMinorityFailSafe(reason string) {
 			if master.State != stateUnconn {
 				master.SetState(stateUnconn)
 			}
-			for _, sv := range cl.Servers {
-				if sv == nil || sv.URL == master.URL || sv.IsFailed() {
-					continue
-				}
-				if sv.State != stateSuspect {
-					cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Minority fail-safe: cannot confirm %s while isolated — holding it Suspect until split resolves", sv.URL)
-					sv.SetState(stateSuspect)
-				}
-			}
+			// The SLAVES stay in the equation — do NOT hold them Suspect (2026-07-14
+			// evening fix, was added same morning by 7fdd97a29). Suspecting them
+			// emptied cluster.slaves, which killed the whole master-autodetect block
+			// (len(slaves)>0) INCLUDING FailedMasterDiscovery — the normal lifecycle
+			// that keeps a failed old master identified as "the master, Failed" via
+			// the slaves' master_host, so its Failed->up edge drives the rejoin. The
+			// minority is already prevented from inferring/promoting mid-split by the
+			// !IsFailedArbitrator gates on that block; the slaves' live states and
+			// replication config are needed intact for the reconciliation at resolve.
 			cl.master = nil
 		}
 	}
