@@ -44,9 +44,6 @@ function ClusterApp() {
       if (tabs.current[selectedTabRef.current] === 'Service OpenSVC') {
         dispatch(getAppService({ clusterName, serviceName: 'service-opensvc', appId }))
       }
-      if (tabs.current[selectedTabRef.current] === 'Templates') {
-        dispatch(refreshAppTemplateRepo({ clusterName, silent: true }))
-      }
     }
   }
 
@@ -83,6 +80,13 @@ function ClusterApp() {
       setSelectedApp(app)
     }
   }, [appId, clusterApps])
+
+  // Fetch once per cluster, not on every poll tick: Overview needs this
+  // before the user visits the Templates tab, but the list rarely changes.
+  useEffect(() => {
+    if (!clusterName) return
+    dispatch(refreshAppTemplateRepo({ clusterName, silent: true }))
+  }, [clusterName, dispatch])
 
   useEffect(() => {
     if (clusterData?.apiUsers && loggedUser) {

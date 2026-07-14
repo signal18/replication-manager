@@ -27,6 +27,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	masker "github.com/ggwhite/go-masker"
@@ -4127,17 +4128,28 @@ func (conf *Config) LoadAppTemplateList() ([]string, error) {
 
 func (conf *Config) LoadAppTemplateListWithRefresh(forceRefresh bool) ([]string, error) {
 	result := make([]string, 0)
-	repoDir, err := conf.SyncAppTemplateRepoCache(forceRefresh)
-	if err != nil {
-		return result, err
-	}
+	repoDir, syncErr := conf.SyncAppTemplateRepoCache(forceRefresh)
 	if repoDir == "" {
-		return result, nil
+		if errors.Is(syncErr, ErrAppTemplateRepoNotConfigured) {
+			return result, nil
+		}
+		return result, syncErr
 	}
 
-	err = filepath.WalkDir(repoDir, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	// Hold the read lock for the whole walk so a concurrent forced refresh
+	// can't rename/delete repoDir mid-walk.
+	unlock := LockAppTemplateRepoRead(repoDir)
+	defer unlock()
+
+	if _, statErr := os.Stat(repoDir); statErr != nil {
+		// Nothing to fall back on (e.g. the first-ever sync failed and cleaned
+		// up after itself).
+		return result, syncErr
+	}
+
+	walkErr := filepath.WalkDir(repoDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
 		if d.IsDir() {
 			if d.Name() == ".git" {
@@ -4159,16 +4171,24 @@ func (conf *Config) LoadAppTemplateListWithRefresh(forceRefresh bool) ([]string,
 		}
 		return nil
 	})
-	if err != nil {
-		return result, err
+	if walkErr != nil {
+		return result, walkErr
 	}
 
-	return result, nil
+	// syncErr may be non-nil here (e.g. a transient forced-refresh failure)
+	// while result still holds the last-known-good list; return both instead
+	// of discarding a still-usable list.
+	return result, syncErr
 }
+
+// ErrAppTemplateRepoNotConfigured means the cluster simply has no
+// prov-app-template-repo set — a valid state (local/shared templates only),
+// not a sync failure.
+var ErrAppTemplateRepoNotConfigured = errors.New("no git repo configured")
 
 func (conf *Config) ResolveAppTemplateRepoCacheDir() (string, error) {
 	if strings.TrimSpace(conf.ProvAppTemplateRepo) == "" {
-		return "", errors.New("no git repo configured")
+		return "", ErrAppTemplateRepoNotConfigured
 	}
 	branch := strings.TrimSpace(conf.ProvAppTemplateRepoBranch)
 	if branch == "" {
@@ -4179,11 +4199,44 @@ func (conf *Config) ResolveAppTemplateRepoCacheDir() (string, error) {
 	return filepath.Join(conf.WorkingDir, ".templates", "repos", "apps", key), nil
 }
 
+// appTemplateRepoCacheLocks is the single lock domain (keyed by repoDir) for
+// every reader and writer of an app-template repo cache directory. Must stay
+// the only lock guarding these directories — a second independent lock (as
+// cluster/cluster_app.go used to have) lets a writer rename/delete the dir
+// out from under a reader that isn't using this registry. Forced refreshes
+// are never debounced/skipped here: forceRefresh=true means fetch from
+// source now, full stop.
+var appTemplateRepoCacheLocks sync.Map // map[string]*sync.RWMutex
+
+func appTemplateRepoRWLock(repoDir string) *sync.RWMutex {
+	v, _ := appTemplateRepoCacheLocks.LoadOrStore(repoDir, &sync.RWMutex{})
+	return v.(*sync.RWMutex)
+}
+
+// LockAppTemplateRepoWrite exclusively locks repoDir for cloning/recloning.
+// Call the returned func to release.
+func LockAppTemplateRepoWrite(repoDir string) func() {
+	mu := appTemplateRepoRWLock(repoDir)
+	mu.Lock()
+	return mu.Unlock
+}
+
+// LockAppTemplateRepoRead takes a shared read lock on repoDir: many readers
+// at once, never alongside a writer. Call the returned func to release.
+func LockAppTemplateRepoRead(repoDir string) func() {
+	mu := appTemplateRepoRWLock(repoDir)
+	mu.RLock()
+	return mu.RUnlock
+}
+
 func (conf *Config) SyncAppTemplateRepoCache(forceRefresh bool) (string, error) {
 	repoDir, err := conf.ResolveAppTemplateRepoCacheDir()
 	if err != nil {
 		return "", err
 	}
+
+	unlock := LockAppTemplateRepoWrite(repoDir)
+	defer unlock()
 
 	branch := strings.TrimSpace(conf.ProvAppTemplateRepoBranch)
 	if branch == "" {
@@ -4225,11 +4278,21 @@ func (conf *Config) SyncAppTemplateRepoCache(forceRefresh bool) (string, error) 
 
 	if _, statErr := os.Stat(repoDir); os.IsNotExist(statErr) {
 		if err := cloneRepo(repoDir); err != nil {
+			// go-git creates the target dir before fetching, so a failed clone
+			// leaves an empty/partial one behind; clean it up or a later
+			// non-forced call would trust it forever and never retry.
+			_ = os.RemoveAll(repoDir)
 			return repoDir, err
 		}
 		return repoDir, nil
 	} else if statErr != nil {
 		return repoDir, statErr
+	} else if !isValidGitClone(repoDir) {
+		// Broken/partial cache (or a non-git file some other caller left at
+		// this path). Route through the forceRefresh tmp-clone-then-rename
+		// path instead of deleting in place, so a failed recovery doesn't
+		// destroy whatever was already there.
+		forceRefresh = true
 	}
 
 	if !forceRefresh {
@@ -4258,6 +4321,17 @@ func (conf *Config) SyncAppTemplateRepoCache(forceRefresh bool) (string, error) 
 	_ = os.RemoveAll(backupDir)
 
 	return repoDir, nil
+}
+
+// isValidGitClone reports whether dir holds a usable git clone (as opposed to
+// an empty/partial directory left behind by an interrupted or failed clone).
+func isValidGitClone(dir string) bool {
+	repo, err := git.PlainOpen(dir)
+	if err != nil {
+		return false
+	}
+	_, err = repo.Head()
+	return err == nil
 }
 
 func GetKeyAliasMap() map[string]string {

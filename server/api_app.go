@@ -3853,6 +3853,14 @@ func (repman *ReplicationManager) handlerMuxAppResolveTemplate(w http.ResponseWr
 	}
 }
 
+// setAppTemplateRepoErrorHeader exposes a repo sync failure to the client via
+// a response header while still returning 200 with the (possibly stale)
+// template list, so a failed refresh doesn't look identical to a successful one.
+func setAppTemplateRepoErrorHeader(w http.ResponseWriter, err error) {
+	w.Header().Set("Access-Control-Expose-Headers", "X-App-Template-Repo-Error")
+	w.Header().Set("X-App-Template-Repo-Error", strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\r", " "), "\n", " "))
+}
+
 // @Summary Refresh App Template from Repo
 // @Description Retrieves the tree structure of the application template repository for a specific cluster.
 // @Tags Apps
@@ -3876,7 +3884,12 @@ func (repman *ReplicationManager) handlerMuxAppRefreshTemplateFromRepo(w http.Re
 		}
 
 		templates, _ := repman.GetAppTemplatesFromLocal(mycluster.Name)
-		repolist, _ := mycluster.Conf.LoadAppTemplateListWithRefresh(true)
+		repolist, repoErr := mycluster.Conf.LoadAppTemplateListWithRefresh(true)
+		if repoErr != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Error refreshing app template repository for cluster %s: %v", mycluster.Name, repoErr)
+			setAppTemplateRepoErrorHeader(w, repoErr)
+		}
 		for _, name := range repolist {
 			if strings.TrimSpace(name) != "" {
 				templates = append(templates, name)
@@ -3936,7 +3949,12 @@ func (repman *ReplicationManager) handlerMuxAppTemplatesList(w http.ResponseWrit
 
 	forceRefresh := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("forceRefresh")), "true")
 	templates, _ := repman.GetAppTemplatesFromLocal(mycluster.Name)
-	repolist, _ := mycluster.Conf.LoadAppTemplateListWithRefresh(forceRefresh)
+	repolist, repoErr := mycluster.Conf.LoadAppTemplateListWithRefresh(forceRefresh)
+	if repoErr != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Error refreshing app template repository for cluster %s: %v", mycluster.Name, repoErr)
+		setAppTemplateRepoErrorHeader(w, repoErr)
+	}
 	templates = append(templates, "shared/dummy")
 	for _, name := range repolist {
 		if name != "" {
