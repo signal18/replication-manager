@@ -184,6 +184,11 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 						"Cloud18 connect failed: %s", err.Error())
 					repman.Conf.Cloud18 = false
+				} else {
+					// Best-effort: pick up the CRM's current plan for this URI so a
+					// node connecting to an already-subscribed URI doesn't stay on
+					// its local default. See syncSubscriptionPlanFromCRM.
+					repman.syncSubscriptionPlanFromCRM()
 				}
 				// Save final state (Cloud18 + any PAT/GitUrl set by InitGitConfig).
 				repman.ConfigManager.SaveConfig(repman, false)

@@ -408,6 +408,13 @@ func (repman *ReplicationManager) applyCloudConnect(
 			}
 		}
 	}
+
+	// Sync the CRM's current plan for this URI so a second node registering
+	// against an already-subscribed URI (or a node reconnecting after losing
+	// its local config) doesn't stay stuck on the local default. Best-effort:
+	// see syncSubscriptionPlanFromCRM.
+	repman.syncSubscriptionPlanFromCRM()
+
 	repman.RegStatus.set(RegStateOK, "Registration complete", json.RawMessage(respBody))
 }
 
@@ -953,6 +960,79 @@ func (repman *ReplicationManager) persistInstanceSubscriptionPlan(plan, uri stri
 	}
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"subscription: plan changed to %s for URI %s (persisted to config)", plan, uri)
+}
+
+// parseSubscriptionPlan extracts the "plan" field from a CRM
+// GET /api/subscription response body. Returns an error for malformed JSON
+// or a missing/empty plan — callers must treat that as "nothing to sync",
+// not as a plan.
+func parseSubscriptionPlan(body []byte) (string, error) {
+	var resp struct {
+		Plan string `json:"plan"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return "", fmt.Errorf("could not parse CRM subscription response: %w", err)
+	}
+	plan := strings.ToLower(strings.TrimSpace(resp.Plan))
+	if plan == "" {
+		return "", fmt.Errorf("CRM subscription response has no plan")
+	}
+	return plan, nil
+}
+
+// syncSubscriptionPlanFromCRMWithToken fetches the CRM's current subscription
+// plan for this instance URI and persists it locally if found. This is the
+// fix for the second-node/same-URI case: a node that registers against a
+// URI that already has a paid plan on CRM otherwise keeps its local default
+// ("free") forever, since the plan is normally only written on an explicit
+// change via handlerChangeSubscription.
+//
+// Best-effort by design: on any failure (CRM unreachable, non-200, unparseable
+// body, empty plan) this only logs a warning and leaves local config
+// untouched — it never resets the plan to a default and never blocks the
+// caller's registration/connect flow.
+func (repman *ReplicationManager) syncSubscriptionPlanFromCRMWithToken(gitlabToken string) {
+	uri := repman.registeredInstanceURI()
+	if uri == "" {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"subscription: plan sync skipped, instance URI not fully configured")
+		return
+	}
+
+	status, body, err := crmGetSubscription(repman.crmBase(), gitlabToken, uri)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"subscription: plan sync skipped, CRM unreachable: %s", err)
+		return
+	}
+	if status != http.StatusOK {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"subscription: plan sync skipped, CRM returned HTTP %d for uri %s", status, uri)
+		return
+	}
+
+	plan, err := parseSubscriptionPlan(body)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"subscription: %s", err)
+		return
+	}
+
+	repman.persistInstanceSubscriptionPlan(plan, uri)
+}
+
+// syncSubscriptionPlanFromCRM is the production entry point: it derives the
+// GitLab token from already-persisted Cloud18 credentials, then delegates to
+// syncSubscriptionPlanFromCRMWithToken. Split out so the CRM-fetch/parse/
+// persist logic can be unit tested without a live GitLab token exchange.
+func (repman *ReplicationManager) syncSubscriptionPlanFromCRM() {
+	tok, err := repman.gitlabTokenFromConfig()
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"subscription: plan sync skipped, could not obtain GitLab token: %s", err)
+		return
+	}
+	repman.syncSubscriptionPlanFromCRMWithToken(tok)
 }
 
 func writeOfflineSubscriptionQueued(w http.ResponseWriter, plan, uri, detail string) {
