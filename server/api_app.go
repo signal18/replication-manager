@@ -32,6 +32,26 @@ import (
 
 func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 	//PROTECTED ENDPOINTS FOR APPS
+
+	// Peer import: manual, opt-in, per-app import of app monitors from the
+	// arbitration peer. See doc/implementation/server/APP_MONITOR_PEER_IMPORT_PLAN.md.
+	router.Handle("/api/clusters/{clusterName}/apps/peer-import/inventory", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppPeerImportInventory)),
+	)).Methods("GET")
+	router.Handle("/api/clusters/{clusterName}/apps/peer-import/export", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppPeerImportExport)),
+	)).Methods("GET")
+	router.Handle("/api/clusters/{clusterName}/apps/peer-import/preview", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppPeerImportPreview)),
+	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/apps/peer-import/apply", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppPeerImportApply)),
+	)).Methods("POST")
+
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxApp)),

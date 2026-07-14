@@ -1043,6 +1043,68 @@ func TestIsURLPassACLORLogic(t *testing.T) {
 	}
 }
 
+// TestIsURLPassACLPeerImport guards against the peer-import endpoints being
+// unreachable: any URL containing "/api/clusters/{name}/apps" is routed to
+// IsURLPassAppsACL, which checks ONLY appACLRules with no fallback to
+// clusterACLRules. Without a matching entry there, matchACLRules denies
+// every user regardless of grants held, so /apps/peer-import/* would 403 for
+// everyone, including the shared cluster-test credentials
+// server.peerSplitBrainLogin uses to call inventory/export.
+func TestIsURLPassACLPeerImport(t *testing.T) {
+	cluster := setupACLTestCluster()
+
+	// Reuse the grant combinations already set up for the addserver OR-logic
+	// case above: test_user (GrantClusterTest), monitor_user
+	// (GrantClusterCreateMonitor), deploy_user (GrantAppDeployment).
+	cluster.APIUsers["test_user"] = APIUser{
+		User:   "test_user",
+		Grants: map[string]bool{config.GrantClusterTest: true},
+	}
+	cluster.APIUsers["monitor_user"] = APIUser{
+		User:   "monitor_user",
+		Grants: map[string]bool{config.GrantClusterCreateMonitor: true},
+	}
+	cluster.APIUsers["deploy_user"] = APIUser{
+		User:   "deploy_user",
+		Grants: map[string]bool{config.GrantAppDeployment: true},
+	}
+
+	base := "/api/clusters/test/apps/peer-import/"
+
+	tests := []struct {
+		name     string
+		user     string
+		url      string
+		expected bool
+	}{
+		{"cluster-test grant reaches inventory", "test_user", base + "inventory", true},
+		{"cluster-test grant reaches export", "test_user", base + "export", true},
+		{"no grants denied inventory", "user_no_grants", base + "inventory", false},
+		{"no grants denied export", "user_no_grants", base + "export", false},
+
+		{"create-monitor grant reaches preview", "monitor_user", base + "preview", true},
+		{"app-deployment grant reaches preview", "deploy_user", base + "preview", true},
+		{"create-monitor grant reaches apply", "monitor_user", base + "apply", true},
+		{"app-deployment grant reaches apply", "deploy_user", base + "apply", true},
+		{"no grants denied preview", "user_no_grants", base + "preview", false},
+		{"no grants denied apply", "user_no_grants", base + "apply", false},
+
+		// cluster-test alone must not grant preview/apply — inventory/export
+		// carry a different (peer-to-peer) trust level than operator actions.
+		{"cluster-test grant denied preview", "test_user", base + "preview", false},
+		{"cluster-test grant denied apply", "test_user", base + "apply", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := cluster.IsURLPassACL(tt.user, tt.url, false)
+			if result != tt.expected {
+				t.Errorf("User %s on URL %s: Expected %v, got %v", tt.user, tt.url, tt.expected, result)
+			}
+		})
+	}
+}
+
 // TestIsURLPassACLComprehensiveCoverage tests a wide range of cluster-level endpoints
 func TestIsURLPassACLComprehensiveCoverage(t *testing.T) {
 	cluster := setupACLTestCluster()
