@@ -56,6 +56,8 @@ export const clusterService = {
   addServer,
   dropServer,
   dropServerByName,
+  previewPeerAppImport,
+  applyPeerAppImport,
   provisionCluster,
   unProvisionCluster,
   setCredentials,
@@ -351,6 +353,14 @@ function dropServer(clusterName, host, port, type, baseURL) {
 
 function dropServerByName(clusterName, serverName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/dropserver/${serverName}`)
+}
+
+function previewPeerAppImport(clusterName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/peer-import/preview`)
+}
+
+function applyPeerAppImport(clusterName, apps, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/peer-import/apply`, { apps })
 }
 
 function dropApp(clusterName, host, port, baseURL) {
