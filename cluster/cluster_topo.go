@@ -494,7 +494,13 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 
 	if cluster.slaves != nil && !cluster.Conf.MultiMasterGrouprep {
-		if len(cluster.slaves) > 0 {
+		// NOT during a split brain: on the isolated minority, inferring the master from the
+		// slaves' reported master server_id (FindMasterByReplicationServerID) or from a
+		// read-write server re-promotes the majority's elected master — the surviving slave
+		// was re-pointed to it over an app-level cut, and the minority has no authority to
+		// promote. Hold master=nil until the split resolves; only the majority (via failover)
+		// sets the master. Covers all the master-autodetect SetMaster sites in this block.
+		if len(cluster.slaves) > 0 && !cluster.IsSplitBrain {
 			// Depending if we are doing a failover or a switchover, we will find the master in the list of
 			// failed hosts or unconnected hosts.
 			// First of all, get a server id from the cluster.slaves slice, they should be all the same
