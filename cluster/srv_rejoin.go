@@ -124,6 +124,9 @@ func (server *ServerMonitor) RejoinMaster() error {
 			cluster.backendStateChangeProxies()
 		}
 	} else {
+		if server.rejoinFromElection() {
+			return nil
+		}
 		//no master discovered rediscovering from last seen
 		if cluster.lastmaster != nil {
 			if cluster.lastmaster.ServerID == server.ServerID {
@@ -477,6 +480,46 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 		return errors.New("Flashback disabled")
 	}
 
+}
+
+// rejoinFromElection handles the no-master-discovered case using the
+// peer-materialized crash — the minority never knows who was elected on its own;
+// the crash is how it knows (URL = old master, ElectedMasterURL = winner). It is
+// normally prefetched at the split-resolve transition (ArbitratorHandler); fetched
+// inline here if this trigger won that race, because the Failed->up edge is
+// ONE-SHOT and must not run blind (2026-07-14 23:00 run: RejoinMaster entered with
+// master nil and no crash, did nothing, and the old master was left as a second
+// read-write master). If the RETURNING server is the peer-elected master it is
+// crowned, and the rejoin is driven onto the OLD master (crash.URL) — the
+// colocated server that never fails on this side and therefore never gets its own
+// Failed->up edge. Returns true when the case was handled.
+func (server *ServerMonitor) rejoinFromElection() bool {
+	cluster := server.ClusterGroup
+	if cluster.Conf.Arbitration && len(cluster.Crashes) == 0 {
+		if _, err := cluster.fetchMasterFromPeer(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Rejoin %s: no peer elected master to fetch: %s", server.URL, err)
+		}
+	}
+	for _, cr := range cluster.Crashes {
+		if cr.ElectedMasterURL != server.URL {
+			continue
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Returning server %s is the peer-elected master — crowning it and rejoining old master %s", server.URL, cr.URL)
+		cluster.master = server
+		server.SetMaster()
+		if server.IsReadOnly() && !server.IsRelay {
+			server.SetReadWrite()
+		}
+		cluster.lastmaster = nil
+		if old := cluster.GetServerFromURL(cr.URL); old != nil && old.URL != server.URL && !old.IsFailed() {
+			logs, err := old.SetReadOnly()
+			cluster.LogSQL(logs, err, old.URL, "Rejoin", config.LvlErr, "Failed to set old master %s read-only before rejoin: %s", old.URL, err)
+			old.RejoinMaster()
+		}
+		cluster.backendStateChangeProxies()
+		return true
+	}
+	return false
 }
 
 func (server *ServerMonitor) rejoinMasterAsSlave() error {

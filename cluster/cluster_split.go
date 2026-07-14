@@ -92,6 +92,17 @@ func (cluster *Cluster) ArbitratorHandler() {
 			if m := cluster.GetMaster(); m != nil && m.IsFrozen() {
 				m.UnfreezeReadLock()
 			}
+			// Prefetch the peer's election verdict NOW, before the first
+			// post-resolve tick processes any returning server: the Failed->up
+			// rejoin trigger fires within seconds of resolve and needs the
+			// materialized crash (URL = old master, ElectedMasterURL = winner)
+			// to act. In the 2026-07-14 23:00 run RejoinMaster entered with
+			// master nil and NO crash — topology's peer-designation fetched it
+			// 3s too late — so it did nothing and the old master was left as a
+			// second read-write master.
+			if _, err := cluster.fetchMasterFromPeer(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArbitration, config.LvlDbg, "No peer elected master to prefetch at split resolve: %s", err)
+			}
 		}
 		// Recovery / fleet-unlatch: IsFailedArbitrator (-> ERR00055 "Arbitrator
 		// unreachable", which also fails the ArbitratorAlive failover check and makes
