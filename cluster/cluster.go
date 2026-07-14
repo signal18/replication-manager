@@ -198,6 +198,12 @@ type Cluster struct {
 	sbDatabaseFailUntil         int64 `json:"-"`
 	sbArbitratorFailUntil int64 `json:"-"`
 	sbMasterFailUntil     int64 `json:"-"`
+	// sbMasterFailURL pins the sim master-cut to the server that was master when
+	// SimulateMasterFailure was called, so the cut stays on that physical box for
+	// the whole split instead of migrating to whoever GetMaster() is now (which
+	// would release the isolated old master the instant a failover promotes a
+	// replica, letting the majority revert its own election).
+	sbMasterFailURL atomic.Value `json:"-"`
 	// eventProv is the config event log provenance table: where the current
 	// value of each saved key came from (echo subtraction + LWW). See
 	// cluster_eventlog.go and doc/implementation/config/CONFIG_EVENT_LOG.md.

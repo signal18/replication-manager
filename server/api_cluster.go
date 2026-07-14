@@ -2021,6 +2021,11 @@ func (repman *ReplicationManager) handlerMuxSimulateMasterFailure(w http.Respons
 		return
 	}
 	mycluster.SimulateMasterFailure(time.Duration(secs) * time.Second)
+	// Clear the failover counters on THIS repman (the one whose master access we just
+	// cut = the side that will fail over) at test start, so a prior test cycle's
+	// FailoverCtr/FailoverTs cannot veto this failover (MaxClusterFailoverCount /
+	// between-failover-time). Same effect as POST .../actions/reset-failover-control.
+	mycluster.ResetFailoverCtr()
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"simulate":"master-failure","cluster":"%s","duration":%d}`, mycluster.Name, secs)
 }

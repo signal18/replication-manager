@@ -93,6 +93,17 @@ func (cluster *Cluster) ArbitratorHandler() {
 				m.UnfreezeReadLock()
 			}
 		}
+		// Recovery / fleet-unlatch: IsFailedArbitrator (-> ERR00055 "Arbitrator
+		// unreachable", which also fails the ArbitratorAlive failover check and makes
+		// TopologyDiscover treat the cluster as a permanent minority) is otherwise only
+		// cleared by a SUCCESSFUL election, which runs only while IsSplitBrain. A cluster
+		// whose arbitrator link was cut but that never entered split brain (e.g. the sim's
+		// fleet-wide SimulateArbitratorFailureAll on every cluster) would stay latched
+		// forever after the cut expires. Once we are NOT split and no arbitrator cut is
+		// simulated, clear the latch so the cluster recovers on its own.
+		if !cluster.IsSplitBrain && !cluster.IsArbitratorFailureSimulated() && cluster.IsFailedArbitrator {
+			cluster.IsFailedArbitrator = false
+		}
 		cluster.IsSplitBrainBck = cluster.IsSplitBrain
 	}
 }

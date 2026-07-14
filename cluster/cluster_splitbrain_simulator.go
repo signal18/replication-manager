@@ -107,12 +107,29 @@ func (cluster *Cluster) SimulateArbitratorFailureAll(duration time.Duration) {
 // isolated/minority side: the majority instance loses the master but keeps
 // its slave to promote.
 func (cluster *Cluster) SimulateMasterFailure(duration time.Duration) {
-	atomic.StoreInt64(&cluster.sbMasterFailUntil, sbBoundedUntil(duration))
 	mst := ""
 	if cluster.GetMaster() != nil {
 		mst = cluster.GetMaster().URL
 	}
+	// Pin the cut to THIS server before arming the flag: the cut must stay on the
+	// box that was master now, not follow GetMaster() (which a failover will move
+	// to the promoted replica — releasing the isolated old master mid-split).
+	cluster.sbMasterFailURL.Store(mst)
+	atomic.StoreInt64(&cluster.sbMasterFailUntil, sbBoundedUntil(duration))
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "SPLITBRAIN SIMULATION: master connection cut for cluster %s (master %s)", cluster.Name, mst)
+}
+
+// SimulatedOnFreezeDBAccess reports whether the split-brain sim should freeze DB
+// access to host. The frozen host is PINNED at SimulateMasterFailure time (the
+// master at that moment) and checked by URL, so it does NOT migrate with GetMaster():
+// a failover promoting a replica must not shift the cut onto the new master (that let
+// the majority see the isolated old master reappear and revert its own election).
+func (cluster *Cluster) SimulatedOnFreezeDBAccess(host string) bool {
+	if !cluster.IsMasterFailureSimulated() {
+		return false
+	}
+	pinned, _ := cluster.sbMasterFailURL.Load().(string)
+	return pinned != "" && host == pinned
 }
 
 // RestoreSplitBrainSimulation clears all simulated cuts on this cluster immediately.
@@ -123,6 +140,7 @@ func (cluster *Cluster) RestoreSplitBrainSimulation() {
 	atomic.StoreInt64(&cluster.sbDatabaseFailUntil, 0)
 	atomic.StoreInt64(&cluster.sbArbitratorFailUntil, 0)
 	atomic.StoreInt64(&cluster.sbMasterFailUntil, 0)
+	cluster.sbMasterFailURL.Store("")
 }
 
 func (cluster *Cluster) IsDatabaseFailureSimulated() bool {

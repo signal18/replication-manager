@@ -537,7 +537,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	// otherwise reuses the existing pooled connection, so the master keeps
 	// looking alive. Applies to the whole-cluster db cut and the master-only cut.
 	if cluster.IsDatabaseFailureSimulated() ||
-		(cluster.IsMasterFailureSimulated() && cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL) {
+		cluster.SimulatedOnFreezeDBAccess(server.URL) {
 		if conn != nil {
 			conn.Close()
 			conn = nil
@@ -863,7 +863,7 @@ func (server *ServerMonitor) Refresh() error {
 	// flap Suspect->Master and never reach MaxFail. Fail this recovery ping too
 	// while the cut is armed, so the server stays down consistently.
 	if cluster.IsDatabaseFailureSimulated() ||
-		(cluster.IsMasterFailureSimulated() && cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL) {
+		cluster.SimulatedOnFreezeDBAccess(server.URL) {
 		err = errors.New("split-brain simulation: server link down")
 	}
 	if err != nil {
