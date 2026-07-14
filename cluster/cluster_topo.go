@@ -343,7 +343,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			// fail-safe detached it), and the surviving slave may already have been re-pointed to the majority's
 			// promoted master over an app-level cut — inferring a master from that here re-promotes it on the
 			// minority (it has no authority to). Hold master=nil until it can confirm authority again.
-			if !cluster.runOnceAfterTopology && cluster.GetMaster() == nil && len(cluster.slaves) > 0 && cluster.Conf.TopologyTarget == config.TopoMasterSlave && !cluster.IsSplitBrain {
+			if !cluster.runOnceAfterTopology && cluster.GetMaster() == nil && len(cluster.slaves) > 0 && cluster.Conf.TopologyTarget == config.TopoMasterSlave && !cluster.IsFailedArbitrator {
 				numSlaves := 0
 				for _, sl := range cluster.slaves {
 					// if the slave is replicating from this server
@@ -467,15 +467,17 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 
 	if cluster.slaves != nil && !cluster.Conf.MultiMasterGrouprep {
-		// NOT during a split brain (gate on !IsSplitBrain — the DURABLE flag, true on both
-		// sides): this "infer the master from the slaves' reported server_id / a read-write
-		// server" path (FindMasterByReplicationServerID etc.) is NOT how the majority promotes
-		// — the majority promotes db2 via the FAILOVER path (MasterFailover). So blocking it on
-		// both sides during the split does NOT stop the majority; it only stops the WRONG
-		// inference that re-promotes the majority's elected master (the surviving slave was
-		// re-pointed to it over an app-level cut). Hold until the split resolves. Covers all
-		// the master-autodetect SetMaster sites in this block.
-		if len(cluster.slaves) > 0 && !cluster.IsSplitBrain {
+		// NOT on the isolated MINORITY — gate on !IsFailedArbitrator, NOT !IsSplitBrain.
+		// IsFailedArbitrator is minority-only; IsSplitBrain is true on BOTH sides, so
+		// !IsSplitBrain also blocks the MAJORITY's master inference during the split — which
+		// regressed the DR: right after the majority fails over to db2, db2 is still
+		// momentarily replicating (the app-level cut never stopped the wire), so without this
+		// inference re-establishing db2 the 271/306 reconciliation reverts the just-completed
+		// failover (db2 -> re-crown db1). The majority MUST keep re-inferring its master
+		// (FindMasterByReplicationServerID etc.) through the split to hold its election. Only
+		// the minority skips it — it has no authority to promote and cluster.master is nil
+		// there. Covers all the master-autodetect SetMaster sites in this block.
+		if len(cluster.slaves) > 0 && !cluster.IsFailedArbitrator {
 			// Depending if we are doing a failover or a switchover, we will find the master in the list of
 			// failed hosts or unconnected hosts.
 			// First of all, get a server id from the cluster.slaves slice, they should be all the same
