@@ -12,6 +12,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -96,6 +97,25 @@ type AppImportApplyResult struct {
 	Apps        []AppImportApplyItem `json:"apps"`
 }
 
+// getPeerAppCredentials returns a local user/password that can legitimately
+// perform the app-monitor import flow on the peer: the same grants that guard
+// preview/apply and the peer inventory/export endpoints.
+func (repman *ReplicationManager) getPeerAppCredentials(clusterName string) (string, string, bool) {
+	cl := repman.getClusterByName(clusterName)
+	if cl == nil {
+		return "", "", false
+	}
+	for _, u := range cl.APIUsers {
+		if u.Password == "" || u.Grants == nil {
+			continue
+		}
+		if u.Grants[config.GrantClusterCreateMonitor] || u.Grants[config.GrantAppDeployment] {
+			return u.User, u.Password, true
+		}
+	}
+	return "", "", false
+}
+
 // samePeerCluster verifies the arbitration peer is monitoring the exact same
 // cluster as this node: same cluster name AND same canonical instance URI
 // (server/api_register.go registeredInstanceURI). Fails closed — an empty
@@ -136,10 +156,46 @@ func (repman *ReplicationManager) peerAppInventory(base, token, clusterName stri
 	return inv, nil
 }
 
-// peerAppList logs into the arbitration peer (ArbitrationPeerHosts) with the
-// shared cluster-test credentials and fetches its app inventory for clusterName.
+// peerAppLogin logs into the arbitration peer (ArbitrationPeerHosts) with a
+// local user that already carries the same grants required by the peer-import
+// flow on both sides.
+func (repman *ReplicationManager) peerAppLogin(clusterName string) (base string, token string, err error) {
+	if repman.Conf.ArbitrationPeerHosts == "" {
+		return "", "", errors.New("no arbitration-peer-hosts configured")
+	}
+	peerHost := strings.TrimSpace(strings.Split(repman.Conf.ArbitrationPeerHosts, ",")[0])
+	scheme := "http://"
+	if strings.HasPrefix(peerHost, "http://") || strings.HasPrefix(peerHost, "https://") {
+		scheme = ""
+	}
+	base = scheme + peerHost
+
+	user, pass, ok := repman.getPeerAppCredentials(clusterName)
+	if !ok {
+		return "", "", errors.New("no local user with app-monitor import grants to authenticate to peer")
+	}
+	loginBody, _ := json.Marshal(userCredentials{Username: user, Password: pass})
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Post(base+"/api/login", "application/json", bytes.NewBuffer(loginBody))
+	if err != nil {
+		return "", "", fmt.Errorf("peer login failed: %w", err)
+	}
+	respBody, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", "", fmt.Errorf("peer login rejected (%d): %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	var tok AuthTokenWithUpgrade
+	if err := json.Unmarshal(respBody, &tok); err != nil || tok.Token == "" {
+		return "", "", fmt.Errorf("peer login returned no token: %s", strings.TrimSpace(string(respBody)))
+	}
+	return base, tok.Token, nil
+}
+
+// peerAppList logs into the arbitration peer (ArbitrationPeerHosts) and
+// fetches its app inventory for clusterName.
 func (repman *ReplicationManager) peerAppList(clusterName string) (PeerAppInventory, error) {
-	base, token, err := repman.peerSplitBrainLogin(clusterName)
+	base, token, err := repman.peerAppLogin(clusterName)
 	if err != nil {
 		return PeerAppInventory{}, err
 	}
@@ -241,7 +297,7 @@ func (repman *ReplicationManager) appImportApply(mycluster *cluster.Cluster, sel
 		return result, errors.New("no apps selected for import")
 	}
 
-	base, token, err := repman.peerSplitBrainLogin(mycluster.Name)
+	base, token, err := repman.peerAppLogin(mycluster.Name)
 	if err != nil {
 		return result, err
 	}

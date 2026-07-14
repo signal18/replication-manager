@@ -138,7 +138,7 @@ func TestSamePeerCluster_LocalURIIncomplete(t *testing.T) {
 }
 
 // newTestRepmanWithPeer wires a local ReplicationManager (one cluster,
-// with a cluster-test-grant user so peerSplitBrainLogin can authenticate)
+// with a create-monitor-grant user so peerAppLogin can authenticate)
 // pointed at peerHandler as its arbitration peer (ArbitrationPeerHosts).
 func newTestRepmanWithPeer(t *testing.T, clusterName string, peerHandler http.Handler) (*ReplicationManager, *cluster.Cluster) {
 	t.Helper()
@@ -152,7 +152,7 @@ func newTestRepmanWithPeer(t *testing.T, clusterName string, peerHandler http.Ha
 			"tester": {
 				User:     "tester",
 				Password: "testpass",
-				Grants:   map[string]bool{config.GrantClusterTest: true},
+				Grants:   map[string]bool{config.GrantClusterCreateMonitor: true},
 			},
 		},
 	}

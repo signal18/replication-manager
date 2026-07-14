@@ -147,14 +147,11 @@ var appACLRules = []ACLRule{
 	{"/content/actions/create-local-copy", nil, []string{config.GrantAppDeployment}},
 	{"/content", nil, []string{config.GrantAppDeployment}},
 
-	// Peer import (arbitration peer -> local, manual/per-app). inventory and
-	// export are peer-to-peer calls authenticated with the same shared
-	// cluster-test credentials as the split-brain-simulator endpoints
-	// (server.peerSplitBrainLogin / getClusterTestCredentials); preview and
-	// apply are operator-facing, gated like adding an app monitor
-	// (/actions/addserver in clusterACLRules).
-	{"/peer-import/inventory", nil, []string{config.GrantClusterTest}},
-	{"/peer-import/export", nil, []string{config.GrantClusterTest}},
+	// Peer import (arbitration peer -> local, manual/per-app). All peer-import
+	// endpoints are part of the app-monitor import flow, so they are gated with
+	// the same grants as adding/managing app monitors rather than cluster-test.
+	{"/peer-import/inventory", nil, []string{config.GrantClusterCreateMonitor, config.GrantAppDeployment}},
+	{"/peer-import/export", nil, []string{config.GrantClusterCreateMonitor, config.GrantAppDeployment}},
 	{"/peer-import/preview", nil, []string{config.GrantClusterCreateMonitor, config.GrantAppDeployment}},
 	{"/peer-import/apply", nil, []string{config.GrantClusterCreateMonitor, config.GrantAppDeployment}},
 }
