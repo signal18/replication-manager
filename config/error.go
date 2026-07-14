@@ -276,6 +276,7 @@ var ClusterError = map[string]string{
 	"VSPLIT0003": "Split-brain simulator: this side (arbitrator uid %d) blocked from master %s — this partition fails over; the minority forms on the other partition and keeps the master",
 	"VSPLIT0004": "Split-brain simulator: arbitrator reporting blocked — this side is the minority, it cannot confirm authority and must yield to standby",
 	"VSPLIT0005": "Split-brain simulator: slave still reaches master (db replication live) — false-positive failover guard (ERR00028 'slave can still communicate with the master') disabled",
+	"VSPLIT0006": "Split-brain simulator: this side blocked from server %s (data-plane cut across the partition)",
 	"WARN0206":  "Log plugin %s rejected: %s",
 	"WARN0207":  "Plugin signature verification skipped: %s",
 	// CINF: cluster observability statuses (INFO, state-as-tag) — each domain

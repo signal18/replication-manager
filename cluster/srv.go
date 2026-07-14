@@ -751,7 +751,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					server.RejoinMaster()
 				}
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Auto Rejoin is disabled")
+				// Name the ACTUAL failing gate: this used to always print "Auto Rejoin
+				// is disabled", which masked an IsSplitBrain race as a config problem.
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoin of %s not triggered (autorejoin=%t active=%t splitbrain=%t)", server.URL, cluster.Conf.Autorejoin, cluster.IsActive(), cluster.IsSplitBrain)
 			}
 
 		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State == stateUnconn {

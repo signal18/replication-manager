@@ -210,6 +210,12 @@ type Cluster struct {
 	// Timed like every other cut: a real outage resolves too, it is just a question of
 	// time — the simulation ends when all cuts time out (or on explicit restore).
 	sbMinorityUntil int64 `json:"-"`
+	// sbServerFailURLs — per-host DB cuts (SimulateServerFailure), url -> unix until:
+	// the data-plane counterpart of the master cut for NON-master hosts, so the minority
+	// scenario can also lose the majority-side databases (a real partition cuts the wire
+	// in both directions). Guarded by sbServerFailMu.
+	sbServerFailMu   sync.Mutex       `json:"-"`
+	sbServerFailURLs map[string]int64 `json:"-"`
 	// eventProv is the config event log provenance table: where the current
 	// value of each saved key came from (echo subtraction + LWW). See
 	// cluster_eventlog.go and doc/implementation/config/CONFIG_EVENT_LOG.md.
