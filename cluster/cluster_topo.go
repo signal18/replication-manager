@@ -365,8 +365,12 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		cluster.SetState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00010"], ErrFrom: "TOPO"})
 	} else {
 		for k, sv := range cluster.Servers {
-			// If there is no master, and all slaves are replicating from the same host, set this host as master
-			if !cluster.runOnceAfterTopology && cluster.GetMaster() == nil && len(cluster.slaves) > 0 && cluster.Conf.TopologyTarget == config.TopoMasterSlave {
+			// If there is no master, and all slaves are replicating from the same host, set this host as master.
+			// NOT during a split brain: on the isolated minority cluster.master is nil (the minority fail-safe
+			// detached it), and the surviving slave may already have been re-pointed to the majority's promoted
+			// master over an app-level cut — inferring a master from that here re-promotes it on the minority
+			// (it has no authority to). Hold master=nil until the split resolves.
+			if !cluster.runOnceAfterTopology && cluster.GetMaster() == nil && len(cluster.slaves) > 0 && cluster.Conf.TopologyTarget == config.TopoMasterSlave && !cluster.IsSplitBrain {
 				numSlaves := 0
 				for _, sl := range cluster.slaves {
 					// if the slave is replicating from this server
