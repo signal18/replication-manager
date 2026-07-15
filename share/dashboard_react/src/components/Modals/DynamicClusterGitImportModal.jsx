@@ -73,7 +73,7 @@ function DynamicClusterGitImportModal({ isOpen, closeModal }) {
         minHeight='200px'
         maxH='90%'
         overflow='hidden'>
-        <ModalHeader>Import Dynamic Clusters from Git</ModalHeader>
+        <ModalHeader>Import Missing Clusters from Git</ModalHeader>
         <ModalCloseButton isDisabled={loading} />
         <ModalBody overflowY='auto' pb={6}>
           {inlineError && (
@@ -153,7 +153,7 @@ function DynamicClusterGitImportModal({ isOpen, closeModal }) {
               onClick={handleImport}
               isLoading={loading}
               isDisabled={loading}>
-              Import from Git
+              Import Missing Clusters
             </RMButton>
           )}
         </ModalFooter>

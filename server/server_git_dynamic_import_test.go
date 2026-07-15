@@ -469,16 +469,11 @@ func makeAdminJWTForGitImport(t *testing.T) string {
 	return tokenStr
 }
 
-// TestHandlerMuxFetchDynamicClustersFromGit_EligibilityGate exercises the
-// paid-plan eligibility branch added alongside the admin check: an
-// authenticated admin on an ineligible Cloud18 plan must be rejected with
-// 403 before ever reaching FetchDynamicClustersFromGit, while an
-// authenticated admin on an eligible plan must pass the gate and reach it.
-// The "eligible" case asserts on the handler's status-code contract (403 =
-// rejected by a gate, 500 = reached FetchDynamicClustersFromGit and failed
-// there) rather than on FetchDynamicClustersFromGit's specific prerequisite
-// error text/order, so this test doesn't couple to internals already covered
-// by TestFetchDynamicClustersFromGit_RequiresGitURL/RequiresGitToken.
+// TestHandlerMuxFetchDynamicClustersFromGit_EligibilityGate covers the
+// paid-plan eligibility branch: ineligible admin -> 403, eligible admin ->
+// passes the gate. The eligible case checks the status code (500, from
+// FetchDynamicClustersFromGit) rather than its error text, so this test
+// doesn't couple to internals covered by TestFetchDynamicClustersFromGit_*.
 func TestHandlerMuxFetchDynamicClustersFromGit_EligibilityGate(t *testing.T) {
 	token := makeAdminJWTForGitImport(t)
 

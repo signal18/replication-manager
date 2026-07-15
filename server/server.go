@@ -1939,6 +1939,16 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	repman.ViperConfig = firstRead
 	repman.ConfigManager.UpdateLoggerConfig("default", repman.Conf)
 	repman.PeerManager.SetInterval(repman.Conf.Cloud18HealthRefreshInterval)
+
+	if init_git {
+		// Sync the CRM's current plan for this URI so a node booting with cloud18
+		// already set (e.g. a copied config, or a second node registering against
+		// an already-subscribed URI) doesn't stay stuck on a stale local plan.
+		// Must run after *repman.Conf = conf above, since it persists directly onto
+		// repman.Conf — any earlier and this assignment would clobber it back to
+		// the stale pre-sync value. Best-effort: see syncSubscriptionPlanFromCRM.
+		repman.syncSubscriptionPlanFromCRM()
+	}
 }
 
 func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, ImmuableMap map[string]interface{}, DynamicMap map[string]interface{}, cluster string, conf config.Config) config.Config {

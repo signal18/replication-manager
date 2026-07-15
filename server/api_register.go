@@ -407,13 +407,13 @@ func (repman *ReplicationManager) applyCloudConnect(
 				return
 			}
 		}
+	} else {
+		// Sync the CRM's current plan for this URI so a second node registering
+		// against an already-subscribed URI (or a node reconnecting after losing
+		// its local config) doesn't stay stuck on the local default. Best-effort:
+		// see syncSubscriptionPlanFromCRM.
+		repman.syncSubscriptionPlanFromCRM()
 	}
-
-	// Sync the CRM's current plan for this URI so a second node registering
-	// against an already-subscribed URI (or a node reconnecting after losing
-	// its local config) doesn't stay stuck on the local default. Best-effort:
-	// see syncSubscriptionPlanFromCRM.
-	repman.syncSubscriptionPlanFromCRM()
 
 	repman.RegStatus.set(RegStateOK, "Registration complete", json.RawMessage(respBody))
 }
@@ -978,6 +978,21 @@ func parseSubscriptionPlan(body []byte) (string, error) {
 		return "", fmt.Errorf("CRM subscription response has no plan")
 	}
 	return plan, nil
+}
+
+// applyCRMSubscriptionSelfHeal persists the CRM's plan whenever
+// handlerGetSubscription gets a valid 200 back. Split out from the handler
+// so it's testable without a live GitLab token exchange. Best-effort: a
+// non-200 status or an unparseable/empty plan is a no-op.
+func (repman *ReplicationManager) applyCRMSubscriptionSelfHeal(status int, body []byte, uri string) {
+	if status != http.StatusOK {
+		return
+	}
+	plan, err := parseSubscriptionPlan(body)
+	if err != nil {
+		return
+	}
+	repman.persistInstanceSubscriptionPlan(plan, uri)
 }
 
 // syncSubscriptionPlanFromCRMWithToken fetches the CRM's current subscription
@@ -1654,6 +1669,9 @@ func (repman *ReplicationManager) handlerGetSubscription(w http.ResponseWriter, 
 		http.Error(w, fmt.Sprintf(`{"error":"CRM unreachable: %s"}`, err), http.StatusBadGateway)
 		return
 	}
+
+	repman.applyCRMSubscriptionSelfHeal(status, body, uri)
+
 	w.WriteHeader(status)
 	w.Write(body)
 }

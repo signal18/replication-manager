@@ -5,7 +5,7 @@ import { setCluster } from '../../redux/clusterSlice'
 import { Box, Flex, HStack, Text, Wrap } from '@chakra-ui/react'
 import NotFound from '../../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
-import { HiCreditCard, HiExclamation, HiTable, HiViewGrid } from 'react-icons/hi'
+import { HiCloudDownload, HiCreditCard, HiExclamation, HiTable, HiViewGrid } from 'react-icons/hi'
 import Card from '../../components/Card'
 import TableType2 from '../../components/TableType2'
 import { DataTable } from '../../components/DataTable'
@@ -13,7 +13,7 @@ import { createColumnHelper } from '@tanstack/react-table'
 import styles from './styles.module.scss'
 import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
 import CustomIcon from '../../components/Icons/CustomIcon'
-import { FaGitAlt, FaUserPlus } from 'react-icons/fa'
+import { FaUserPlus } from 'react-icons/fa'
 import RMIconButton from '../../components/RMIconButton'
 import TagPill from '../../components/TagPill'
 import AddUserModal from '../../components/Modals/AddUserModal'
@@ -207,7 +207,7 @@ function ClusterList({ onClick }) {
               <RMIconButton icon={HiTable} tooltip='Show table view' onClick={() => setViewType('table')} />
             )}
             {canImportFromGit && (
-              <RMIconButton icon={FaGitAlt} tooltip='Import from Git' onClick={() => setIsGitImportModalOpen(true)} />
+              <RMIconButton icon={HiCloudDownload} tooltip='Import missing clusters from Git' onClick={() => setIsGitImportModalOpen(true)} />
             )}
           </HStack>
         }
