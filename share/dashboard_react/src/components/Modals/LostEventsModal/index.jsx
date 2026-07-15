@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton,
   Box, Text, Badge, Code, Button, Spinner,
@@ -7,6 +7,7 @@ import {
 import { keyframes } from '@emotion/react'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
+import RMButton from '../../RMButton'
 import { clusterService } from '../../../services/clusterService'
 import { acquireAutoReloadPause, releaseAutoReloadPause } from '../../../utility/autoReloadPause'
 
@@ -68,6 +69,10 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
   const [rejoinMsg, setRejoinMsg] = useState(null)
   const [methodStatus, setMethodStatus] = useState({}) // id -> {available, reason}
   const pauseRef = useRef(false)
+  // Preserve scroll across re-renders/refreshes (like the chat): the pane's DOM node
+  // and its last scrollTop per file, restored after each render.
+  const scrollNodes = useRef({})
+  const scrollTops = useRef({})
 
   const doRejoin = useCallback((m) => {
     if (m.danger && !window.confirm(`${m.label} on ${server?.host}:${server?.port}?\n\nThis is an UNSAFE rejoin — ${m.help}. It cannot be undone.`)) {
@@ -145,12 +150,23 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
     }
   }, [isOpen, loadPage])
 
+  // Restore each pane's scroll position after a render (Load more / refresh), so the
+  // operator isn't yanked back to the top — mirrors the chat's scroll preservation.
+  useLayoutEffect(() => {
+    for (const file of Object.keys(scrollNodes.current)) {
+      const el = scrollNodes.current[file]
+      if (el && scrollTops.current[file] != null) el.scrollTop = scrollTops.current[file]
+    }
+  }, [panes])
+
   const renderPane = (file) => {
     const pane = panes[file]
     return (
       <Box>
         <Code
           as='pre'
+          ref={(el) => { scrollNodes.current[file] = el }}
+          onScroll={(e) => { scrollTops.current[file] = e.currentTarget.scrollTop }}
           display='block'
           p={2}
           fontSize='xs'
@@ -158,7 +174,7 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
           whiteSpace='pre'
           overflowX='auto'
           height='55vh'
-          overflowY='scroll'
+          overflowY='auto'
           borderRadius='md'
           sx={{ overscrollBehavior: 'contain' }}
         >
@@ -263,18 +279,17 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
                         const st = methodStatus[m.id]
                         const unavailable = st && st.available === false
                         return (
-                          <Button
+                          <RMButton
                             key={m.id}
-                            size='xs'
-                            colorScheme={m.danger ? 'red' : 'blue'}
-                            variant={m.danger ? 'solid' : 'outline'}
+                            size='small'
+                            colorScheme={m.danger ? 'red' : undefined}
                             isLoading={rejoining === m.id}
                             isDisabled={rejoining !== '' || unavailable}
                             onClick={() => doRejoin(m)}
                             title={unavailable ? st.reason : m.help}
                           >
                             {m.label}
-                          </Button>
+                          </RMButton>
                         )
                       })}
                     </HStack>
