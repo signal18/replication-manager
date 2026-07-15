@@ -56,6 +56,14 @@ var databaseACLRules = []ACLRule{
 	{"actions/reset-master", nil, []string{config.GrantDBReplication}},
 	{"actions/reset-slave-all", nil, []string{config.GrantDBReplication}},
 
+	// Operator manual rejoin of a diverged old master. Base grant is
+	// cluster-failover (a recovery decision). The DESTRUCTIVE methods
+	// (ignore-delta-force) additionally require cluster-rejoin-unsafe, which is
+	// enforced per-method in handlerMuxClusterRejoin — a single URL rule cannot
+	// express it safely because matchACLRules falls back to looser patterns
+	// (e.g. reset-master-reslave also contains the "actions/reset-master" rule).
+	{"/actions/rejoin", nil, []string{config.GrantClusterFailover}},
+
 	// Backup actions
 	{"/actions/backup-logical", nil, []string{config.GrantDBBackup}},
 	{"/actions/backup-error-log", nil, []string{config.GrantDBBackup}},

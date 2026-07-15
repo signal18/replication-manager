@@ -10158,7 +10158,7 @@ func (repman *ReplicationManager) proxyLostEventsFromPeer(w http.ResponseWriter,
 // crash history and the elected master; RearmRejoin copies the history crash back
 // to the working set with the method, and the next monitor tick runs it (one-shot).
 // @Summary Rejoin a server with a chosen recovery method
-// @Description Explicitly (re-)arms the rejoin of a server from its crash history using the operator-chosen method. All methods are runnable on any crash — the delta verdict informs, it does not gate.
+// @Description Explicitly (re-)arms the rejoin of a server from its crash history using the operator-chosen method. All methods are runnable on any crash — the delta verdict informs, it does not gate. Requires the cluster-failover grant; destructive methods (ignore-delta-force) additionally require the cluster-rejoin-unsafe grant.
 // @Tags ClusterActions
 // @Accept json
 // @Produce json
@@ -10180,7 +10180,8 @@ func (repman *ReplicationManager) handlerMuxClusterRejoin(w http.ResponseWriter,
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+	valid, apiuser := repman.IsValidClusterACL(r, mycluster)
+	if !valid {
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
@@ -10188,6 +10189,18 @@ func (repman *ReplicationManager) handlerMuxClusterRejoin(w http.ResponseWriter,
 	if !cluster.IsValidRejoinMethod(method) {
 		http.Error(w, "Invalid rejoin method", http.StatusBadRequest)
 		return
+	}
+	// The destructive methods (ignore-delta-force discards the divergent tail)
+	// require the dedicated cluster-rejoin-unsafe grant in addition to the base
+	// cluster-failover grant already checked by the URL ACL rule. This per-method
+	// escalation lives here rather than in the ACL rule table because
+	// matchACLRules' hierarchical fallback cannot express a stricter rule for a
+	// single method without a looser sibling rule undermining it.
+	if cluster.IsUnsafeRejoinMethod(method) {
+		if u, ok := mycluster.APIUsers[apiuser]; !ok || !u.Grants[config.GrantClusterRejoinUnsafe] {
+			http.Error(w, "Rejoin method "+method+" requires the cluster-rejoin-unsafe grant", http.StatusForbidden)
+			return
+		}
 	}
 	node := mycluster.GetServerFromName(vars["serverName"])
 	if node == nil {

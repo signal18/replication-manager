@@ -333,6 +333,19 @@ func IsValidRejoinMethod(method string) bool {
 	return false
 }
 
+// IsUnsafeRejoinMethod reports whether a rejoin method destroys data instead of
+// reconciling it — the diverged tail is discarded rather than flashed back or
+// reseeded from a consistent source. These require the dedicated
+// cluster-rejoin-unsafe grant on top of the base cluster-failover grant
+// (enforced in handlerMuxClusterRejoin, not in the URL ACL rule).
+func IsUnsafeRejoinMethod(method string) bool {
+	switch method {
+	case RejoinMethodIgnoreForce:
+		return true
+	}
+	return false
+}
+
 // RearmRejoin is the exported entry (GUI/API) for an explicit operator rejoin of
 // url with a chosen method. See rearmRejoin.
 func (cluster *Cluster) RearmRejoin(url string, method string) bool {

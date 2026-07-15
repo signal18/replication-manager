@@ -83,6 +83,7 @@ const (
 	GrantClusterChecksumRepair     string = "cluster-checksum-repair"
 	GrantClusterSharding           string = "cluster-sharding"
 	GrantClusterReplication        string = "cluster-replication"
+	GrantClusterRejoinUnsafe       string = "cluster-rejoin-unsafe" // Force operator rejoin of a diverged old master (data loss for ignore-delta)
 	GrantClusterCertificatesRotate string = "cluster-certificates-rotate"
 	GrantClusterCertificatesReload string = "cluster-certificates-reload"
 	GrantClusterBench              string = "cluster-bench"
@@ -189,6 +190,7 @@ func GetGrantType() map[string]string {
 		GrantClusterSettings:           GrantClusterSettings,
 		GrantClusterGrant:              GrantClusterGrant,
 		GrantClusterReplication:        GrantClusterReplication,
+		GrantClusterRejoinUnsafe:       GrantClusterRejoinUnsafe,
 		GrantClusterAnalyze:            GrantClusterAnalyze,
 		GrantClusterChecksum:           GrantClusterChecksum,
 		GrantClusterChecksumRepair:     GrantClusterChecksumRepair,
@@ -305,6 +307,7 @@ func GetGrantCluster() []string {
 		GrantClusterSettings,
 		GrantClusterGrant,
 		GrantClusterReplication,
+		GrantClusterRejoinUnsafe,
 		GrantClusterAnalyze,
 		GrantClusterChecksum,
 		GrantClusterChecksumRepair,
