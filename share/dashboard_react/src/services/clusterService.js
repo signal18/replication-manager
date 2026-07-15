@@ -282,7 +282,7 @@ function getServerLostEvents(clusterName, serverId, { file = 'forward', pos = 0,
 // Destructive rejoin methods use the /actions/unsafe-rejoin verb (needs the
 // cluster-rejoin-unsafe grant); safe methods use /actions/rejoin. Keep in sync with
 // the backend crash.go IsUnsafeRejoinMethod.
-const UNSAFE_REJOIN_METHODS = ['ignore-delta-force', 'bootstrap-repli-ftwrl']
+const UNSAFE_REJOIN_METHODS = ['ignore-delta-force', 'bootstrap-repli-ftwrl', 'reset-master-reslave']
 
 // Explicit operator rejoin — a CLUSTER-level action. No server: the cluster resolves
 // the diverged master from its own crash history. Verb carries the grant tier.

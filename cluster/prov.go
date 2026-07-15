@@ -7,7 +7,6 @@
 package cluster
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -649,12 +648,16 @@ func (cluster *Cluster) BootstrapReplicationCleanup(ftwrl bool) error {
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reset Master on server %s ", server.URL)
 
-		// unsafe bootstrap-repli-ftwrl: freeze the master with FTWRL for a consistent
-		// cut before RESET MASTER, then UNLOCK — all on ONE pinned connection (only
-		// the master, only on request). See freezeResetMasterFTWRL.
+		// unsafe bootstrap-repli-ftwrl: freeze the master with the PROVEN dedicated-session
+		// FreezeWithReadLock (not a hand-rolled pinned connection) for a consistent cut
+		// before RESET MASTER, then release. Only the master, only on request.
 		if ftwrl && oldMaster != nil && server.URL == oldMaster.URL {
-			err = server.freezeResetMasterFTWRL()
-			cluster.LogSQL("FLUSH TABLES WITH READ LOCK; RESET MASTER; UNLOCK TABLES", err, server.URL, "BootstrapReplicationCleanup", config.LvlErr, "FTWRL reset master on %s %s", server.URL, err)
+			if ferr := server.FreezeWithReadLock(); ferr != nil {
+				cluster.LogSQL("FLUSH TABLES WITH READ LOCK", ferr, server.URL, "BootstrapReplicationCleanup", config.LvlErr, "FTWRL freeze before reset master on %s failed: %s", server.URL, ferr)
+			}
+			logs, err = dbhelper.ResetMaster(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
+			cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", config.LvlErr, "Reset Master (FTWRL) on server %s %s", server.URL, err)
+			server.UnfreezeReadLock()
 		} else {
 			logs, err = dbhelper.ResetMaster(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
 			cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", config.LvlErr, "Reset Master on server %s %s", server.URL, err)
@@ -688,40 +691,6 @@ func (cluster *Cluster) BootstrapReplicationCleanup(ftwrl bool) error {
 	cluster.slaves = nil
 	cluster.StateMachine.RemoveFailoverState()
 	return nil
-}
-
-// freezeResetMasterFTWRL runs FLUSH TABLES WITH READ LOCK, RESET MASTER and UNLOCK
-// TABLES on ONE pinned connection so the read lock actually guards the reset and is
-// released by UNLOCK on the SAME session (a pool would hand each statement a
-// different connection, leaving the lock stranded on an idle one).
-//
-// Safety: FTWRL is bound to the session, so if repman dies the dropped connection
-// releases the lock. As a belt-and-suspenders for a repman that hangs before UNLOCK,
-// a short session wait_timeout lets the server reap the idle connection and release
-// the lock on its own — SQL has no UNLOCK-TABLES timeout, the session lifetime is it.
-// The deferred Close() releases the lock too if any step below failed.
-func (server *ServerMonitor) freezeResetMasterFTWRL() error {
-	ctx := context.Background()
-	conn, err := server.Conn.Connx(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	// Best-effort self-release net if repman hangs while holding the lock.
-	conn.ExecContext(ctx, "SET SESSION wait_timeout=15")
-
-	if _, err := conn.ExecContext(ctx, "FLUSH NO_WRITE_TO_BINLOG TABLES WITH READ LOCK"); err != nil {
-		return err
-	}
-	resetStmt := "RESET MASTER"
-	if server.DBVersion != nil && server.DBVersion.IsMySQLOrPerconaGreater84() {
-		resetStmt = "RESET BINARY LOGS AND GTIDS"
-	}
-	_, resetErr := conn.ExecContext(ctx, resetStmt)
-	// UNLOCK on the SAME connection, even if RESET failed (Close() is the backstop).
-	conn.ExecContext(ctx, "UNLOCK TABLES")
-	return resetErr
 }
 
 func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {

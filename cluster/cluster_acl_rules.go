@@ -56,15 +56,6 @@ var databaseACLRules = []ACLRule{
 	{"actions/reset-master", nil, []string{config.GrantDBReplication}},
 	{"actions/reset-slave-all", nil, []string{config.GrantDBReplication}},
 
-	// Operator manual rejoin, keyed by verb. Safe methods (flashback, dumps, backup
-	// reseeds, reset-master-reslave, rejoin-script) → /actions/rejoin → cluster-failover.
-	// Destructive methods (ignore-delta-force, bootstrap-repli-ftwrl) → /actions/unsafe-rejoin
-	// → cluster-failover + cluster-rejoin-unsafe. The two verbs are non-overlapping
-	// anchors ("/actions/rejoin/" is not a substring of "/actions/unsafe-rejoin/"), so
-	// no hierarchical-fallback leak; the handler also enforces the method↔verb match.
-	{"/actions/rejoin/", nil, []string{config.GrantClusterFailover}},
-	{"/actions/unsafe-rejoin/", []string{config.GrantClusterFailover, config.GrantClusterRejoinUnsafe}, nil},
-
 	// Backup actions
 	{"/actions/backup-logical", nil, []string{config.GrantDBBackup}},
 	{"/actions/backup-error-log", nil, []string{config.GrantDBBackup}},
@@ -195,6 +186,10 @@ var clusterACLRules = []ACLRule{
 	// Cluster Actions
 	{"/actions/switchover", nil, []string{config.GrantClusterSwitchover}},
 	{"/actions/failover", nil, []string{config.GrantClusterFailover}},
+	// Operator manual rejoin (cluster action): safe verb needs cluster-failover; the unsafe
+	// verb needs cluster-failover AND cluster-rejoin-unsafe (RequiredGrants, like /actions/restart).
+	{"/actions/rejoin", nil, []string{config.GrantClusterFailover}},
+	{"/actions/unsafe-rejoin", []string{config.GrantClusterFailover, config.GrantClusterRejoinUnsafe}, nil},
 	{"/actions/send-email", nil, []string{config.GrantClusterAlert}},
 	{"/actions/send-alert", nil, []string{config.GrantClusterAlert}},
 	{"/actions/stop-traffic", nil, []string{config.GrantClusterTraffic}},

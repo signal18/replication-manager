@@ -104,11 +104,11 @@ const (
 // RejoinClass* constants), used by the GUI to group the operator methods.
 func RejoinMethodClass(method string) string {
 	switch method {
-	case RejoinMethodFlashback, RejoinMethodResetReslave, RejoinMethodScript:
+	case RejoinMethodFlashback, RejoinMethodScript:
 		return RejoinClassSafeShort
 	case RejoinMethodLogicalDump, RejoinMethodLogicalBkp, RejoinMethodPhysicalBkp:
 		return RejoinClassSafeLong
-	case RejoinMethodIgnoreForce, RejoinMethodBootstrapFTWRL:
+	case RejoinMethodIgnoreForce, RejoinMethodBootstrapFTWRL, RejoinMethodResetReslave:
 		return RejoinClassUnsafeShort
 	}
 	return ""
@@ -412,7 +412,7 @@ func IsValidRejoinMethod(method string) bool {
 // method must use.
 func IsUnsafeRejoinMethod(method string) bool {
 	switch method {
-	case RejoinMethodIgnoreForce, RejoinMethodBootstrapFTWRL:
+	case RejoinMethodIgnoreForce, RejoinMethodBootstrapFTWRL, RejoinMethodResetReslave:
 		return true
 	}
 	return false
