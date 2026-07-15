@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton,
   Box, Text, Badge, Code, Button, Spinner,
-  HStack, Alert, AlertIcon, Tabs, TabList, TabPanels, Tab, TabPanel, keyframes
+  HStack, Alert, AlertIcon, Tabs, TabList, TabPanels, Tab, TabPanel
 } from '@chakra-ui/react'
+import { keyframes } from '@emotion/react'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
 import { clusterService } from '../../../services/clusterService'
