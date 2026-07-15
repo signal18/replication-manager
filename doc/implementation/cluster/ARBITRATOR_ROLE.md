@@ -2,6 +2,29 @@
 
 Design note from Stephane, to be kept in mind for the arbitration work.
 
+## What the arbitration rework (this branch) changed — the balance sheet
+
+The `feature/arbitration-server-authoritative-heartbeat` work changed the
+arbitration. Recorded honestly, both sides:
+
+**Improvements it brought:**
+- **Log/status visibility via API** — the arbitrator now exposes its recent
+  per-tick arbitration decisions as a ring buffer (`GET /log`, optional
+  `?cluster=NAME`) and its build (`GET /version`, previously unversioned). This
+  makes split-brain decisions observable instead of a black box.
+- The authority LEASE was made a **persistent DB row** (`Elected`), and the
+  read-mostly election logic (`GetElectedAny` / contest) reduced the election
+  churn that used to flap peers.
+
+**Regressions it introduced — MUST be fixed (Stephane: "Claude broke this design"):**
+1. **Lost the "loser/loser" (equal-partition) power** — see below. The arbitrator
+   no longer forces BOTH sides to stand down in a symmetric split where both reach
+   it. Consequence: the equal-partition case is unhandled AND untestable (no
+   regtest — see SPLITBRAIN_TEST_COVERAGE.md).
+2. **Moved the contest state into process memory** — the lease-transfer contest
+   window is an in-memory Go map, not a DB row (see the ⛔ section). NOT
+   load-balancing compatible; it was DB-based before and must be reverted.
+
 ## ⛔ MUST REVERT: the in-memory contest latch is NOT load-balancing compatible
 
 **Decision (Stephane, 2026-07-15): the in-memory contest-window model in the
