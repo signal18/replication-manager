@@ -76,7 +76,7 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
     setRejoining(m.id)
     setRejoinMsg(null)
     clusterService
-      .rejoinServer(clusterName, server?.id || `${server?.host}:${server?.port}`, m.id)
+      .rejoinCluster(clusterName, m.id)
       .then(() => setRejoinMsg({ ok: true, text: `Rejoin armed via "${m.label}" — the next monitor tick runs it (one attempt). Watch the server state and this viewer for the outcome.` }))
       .catch((err) => setRejoinMsg({ ok: false, text: err?.response?.data || err?.message || 'Rejoin request failed' }))
       .finally(() => setRejoining(''))

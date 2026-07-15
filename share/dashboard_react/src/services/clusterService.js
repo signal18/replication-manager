@@ -19,7 +19,7 @@ export const clusterService = {
   getShardSchema,
   getQueryRules,
   getServerLostEvents,
-  rejoinServer,
+  rejoinCluster,
 
   // Restic management APIs
   getResticSnapshot,
@@ -284,13 +284,11 @@ function getServerLostEvents(clusterName, serverId, { file = 'forward', pos = 0,
 // the backend crash.go IsUnsafeRejoinMethod.
 const UNSAFE_REJOIN_METHODS = ['ignore-delta-force', 'bootstrap-repli-ftwrl']
 
-// Explicit operator rejoin of the diverged master with a chosen recovery method
-// (delta viewer). The cluster resolves the target from crash history; serverName is
-// passed as ?server= to pick a specific one.
-function rejoinServer(clusterName, serverName, method, baseURL) {
+// Explicit operator rejoin — a CLUSTER-level action. No server: the cluster resolves
+// the diverged master from its own crash history. Verb carries the grant tier.
+function rejoinCluster(clusterName, method, baseURL) {
   const verb = UNSAFE_REJOIN_METHODS.includes(method) ? 'unsafe-rejoin' : 'rejoin'
-  const query = serverName ? `?server=${encodeURIComponent(serverName)}` : ''
-  return getApi(baseURL).post(`clusters/${clusterName}/actions/${verb}/${method}${query}`)
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/${verb}/${method}`)
 }
 
 function getJobs(clusterName, baseURL) {

@@ -10172,7 +10172,6 @@ func (repman *ReplicationManager) proxyLostEventsFromPeer(w http.ResponseWriter,
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param method path string true "Rejoin method" Enums(flashback, logical-dump, logical-backup, physical-backup, reset-master-reslave, rejoin-script, ignore-delta-force, bootstrap-repli-ftwrl)
-// @Param server query string false "Target server (id or host:port); defaults to the latest divergence"
 // @Success 200 {string} string "Rejoin armed"
 // @Failure 400 {string} string "Invalid rejoin method / wrong verb"
 // @Failure 403 {string} string "No valid ACL / method needs the unsafe verb"
@@ -10213,25 +10212,11 @@ func (repman *ReplicationManager) handlerMuxClusterRejoin(w http.ResponseWriter,
 		}
 		return
 	}
-	// The cluster owns the crash history and knows the diverged old master, so the
-	// target is resolved from it — no server in the path. An optional ?server= picks
-	// a specific one; otherwise the most recent divergence is used.
-	target := r.URL.Query().Get("server")
-	if target != "" {
-		if node := mycluster.GetServerFromName(target); node != nil {
-			target = node.URL
-		} else if node := mycluster.GetServerFromURL(target); node != nil {
-			target = node.URL
-		}
-	} else {
-		target = mycluster.LatestCrashURL()
-	}
-	if target == "" {
+	// CLUSTER-level action: the backend owns the crash history and knows the diverged
+	// old master, so it resolves the target itself — the client never names a server.
+	target := mycluster.LatestCrashURL()
+	if target == "" || !mycluster.RearmRejoin(target, method) {
 		http.Error(w, "No crash history to rejoin", http.StatusNotFound)
-		return
-	}
-	if !mycluster.RearmRejoin(target, method) {
-		http.Error(w, "No crash history to rejoin for this server", http.StatusNotFound)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
