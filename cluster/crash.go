@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/gtid"
 )
 
@@ -84,6 +85,54 @@ func (cluster *Cluster) newCrash(*Crash) (*Crash, error) {
 	crash := new(Crash)
 	crash.UnixTimestamp = time.Now().Unix()
 	return crash, nil
+}
+
+// crashMaxVerdictAge bounds how long a crash may drive an AUTOMATIC rejoin: an
+// election verdict is only actionable around its own split window, never hours
+// later (2026-07-15 07:10: a 7h-old crash re-condemned db1 through every
+// transient non-slave classification during a replication bootstrap).
+const crashMaxVerdictAge = 900 // seconds, same scale as the simulator's sbMax
+
+// getFreshCrashForLoser returns the FRESHEST crash designating loserURL as the
+// defeated server and masterURL as the elected winner, provided it is recent
+// enough to act on automatically. Older verdicts stay visible (GUI, operator)
+// but never drive automation.
+func (cluster *Cluster) getFreshCrashForLoser(loserURL string, masterURL string) *Crash {
+	var best *Crash
+	now := time.Now().Unix()
+	for _, cr := range cluster.Crashes {
+		if cr.URL != loserURL || cr.ElectedMasterURL != masterURL || cr.Switchover {
+			continue
+		}
+		if now-cr.UnixTimestamp > crashMaxVerdictAge {
+			continue
+		}
+		if best == nil || cr.UnixTimestamp > best.UnixTimestamp {
+			best = cr
+		}
+	}
+	return best
+}
+
+// consumeServedCrashes drops every crash whose server is now observed as a
+// healthy slave of the very master the election designated: the verdict has
+// served its purpose and must never speak twice.
+func (cluster *Cluster) consumeServedCrashes() {
+	if len(cluster.Crashes) == 0 {
+		return
+	}
+	kept := make([]*Crash, 0, len(cluster.Crashes))
+	for _, cr := range cluster.Crashes {
+		sv := cluster.GetServerFromURL(cr.URL)
+		if sv != nil && sv.IsSlave && !sv.IsFailed() {
+			if m, _ := cluster.GetMasterFromReplication(sv); m != nil && m.URL == cr.ElectedMasterURL {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Crash verdict for %s consumed: rejoined as slave of elected master %s", cr.URL, cr.ElectedMasterURL)
+				continue
+			}
+		}
+		kept = append(kept, cr)
+	}
+	cluster.Crashes = kept
 }
 
 func (cluster *Cluster) getCrashFromJoiner(URL string) *Crash {

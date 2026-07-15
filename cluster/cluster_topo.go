@@ -155,6 +155,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			}
 		}
 	}
+	// Drop verdicts that served their purpose BEFORE asserting states or acting
+	// on them: a consumed election can never speak twice.
+	cluster.consumeServedCrashes()
 	cluster.assertLostEventsStates()
 	if cluster.Conf.Arbitration {
 		if !cluster.IsActive() {
@@ -316,14 +319,15 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					extra := cluster.Servers[k]
 					if m := cluster.GetMaster(); m != nil && extra.URL != m.URL && !extra.IsFailed() &&
 						!cluster.IsSplitBrain && !cluster.StateMachine.IsInFailover() && cluster.Conf.Autorejoin {
-						for _, cr := range cluster.Crashes {
-							if cr.URL == extra.URL && cr.ElectedMasterURL == m.URL && !cr.Switchover {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Election verdict: extra master %s lost to %s — rejoining it", extra.URL, m.URL)
-								logs, err := extra.SetReadOnly()
-								cluster.LogSQL(logs, err, extra.URL, "Rejoin", config.LvlErr, "Failed to set extra master %s read-only before rejoin: %s", extra.URL, err)
-								extra.RejoinMaster()
-								break
-							}
+						// Freshest matching verdict only, and only within its own split
+						// window (crashMaxVerdictAge): a stale crash re-condemned db1 for
+						// 7 hours' distance on 2026-07-15 07:10, out-shouting the fresh
+						// election and re-crowning yesterday's winner.
+						if cr := cluster.getFreshCrashForLoser(extra.URL, m.URL); cr != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Election verdict: extra master %s lost to %s — rejoining it", extra.URL, m.URL)
+							logs, err := extra.SetReadOnly()
+							cluster.LogSQL(logs, err, extra.URL, "Rejoin", config.LvlErr, "Failed to set extra master %s read-only before rejoin: %s", extra.URL, err)
+							extra.RejoinMaster()
 						}
 					}
 				} else if !cluster.IsFailedArbitrator {

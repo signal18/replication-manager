@@ -500,10 +500,19 @@ func (server *ServerMonitor) rejoinFromElection() bool {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Rejoin %s: no peer elected master to fetch: %s", server.URL, err)
 		}
 	}
-	for _, cr := range cluster.Crashes {
-		if cr.ElectedMasterURL != server.URL {
+	// Freshest matching verdict only, and only within its own split window —
+	// same staleness rules as the topology consumer (getFreshCrashForLoser).
+	var cr *Crash
+	now := time.Now().Unix()
+	for _, c := range cluster.Crashes {
+		if c.ElectedMasterURL != server.URL || c.Switchover || now-c.UnixTimestamp > crashMaxVerdictAge {
 			continue
 		}
+		if cr == nil || c.UnixTimestamp > cr.UnixTimestamp {
+			cr = c
+		}
+	}
+	if cr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Returning server %s is the peer-elected master — crowning it and rejoining old master %s", server.URL, cr.URL)
 		cluster.master = server
 		server.SetMaster()
