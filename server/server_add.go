@@ -20,7 +20,7 @@ func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead str
 	// Held across the whole register-then-start window (not just StartCluster)
 	// so this can't interleave with FetchDynamicClustersFromGit or
 	// PullCloud18Configs registering/starting the same cluster name at the
-	// same time — see doc/implementation/server/DYNAMIC_CLUSTER_GIT_IMPORT_PLAN.md.
+	// same time —
 	repman.runtimeClusterStartMu.Lock()
 	defer repman.runtimeClusterStartMu.Unlock()
 

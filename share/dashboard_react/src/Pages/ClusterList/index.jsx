@@ -13,15 +13,14 @@ import { createColumnHelper } from '@tanstack/react-table'
 import styles from './styles.module.scss'
 import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
 import CustomIcon from '../../components/Icons/CustomIcon'
-import { FaUserPlus } from 'react-icons/fa'
+import { FaGitAlt, FaUserPlus } from 'react-icons/fa'
 import RMIconButton from '../../components/RMIconButton'
 import TagPill from '../../components/TagPill'
 import AddUserModal from '../../components/Modals/AddUserModal'
 import DynamicClusterGitImportModal from '../../components/Modals/DynamicClusterGitImportModal'
-import RMButton from '../../components/RMButton'
 import SearchBox from '../../components/SearchBox'
 import AccordionComponent from '../../components/AccordionComponent'
-
+import { isCloud18PlanEligible } from '../../utils/cloud18'
 
 const columnHelper = createColumnHelper()
 
@@ -44,7 +43,7 @@ function ClusterList({ onClick }) {
 
   const canAddUser = monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0 && isAdmin
 
-  const canImportFromGit = isAdmin
+  const canImportFromGit = isAdmin && isCloud18PlanEligible(monitor?.config)
 
   useEffect(() => {
     dispatch(getClusters({}))
@@ -208,9 +207,7 @@ function ClusterList({ onClick }) {
               <RMIconButton icon={HiTable} tooltip='Show table view' onClick={() => setViewType('table')} />
             )}
             {canImportFromGit && (
-              <RMButton size='small' variant='outline' onClick={() => setIsGitImportModalOpen(true)}>
-                Import from Git
-              </RMButton>
+              <RMIconButton icon={FaGitAlt} tooltip='Import from Git' onClick={() => setIsGitImportModalOpen(true)} />
             )}
           </HStack>
         }

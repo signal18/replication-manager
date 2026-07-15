@@ -6,8 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
+	"time"
 
+	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
@@ -430,4 +433,88 @@ func TestFetchDynamicClustersFromGitRoute_MethodAndAuth(t *testing.T) {
 			}
 		})
 	}
+}
+
+// makeAdminJWTForGitImport signs a JWT whose claims resolve to an authenticated "admin"
+// user via GetJWTClaims's local-auth path (no "profile" key in
+// CustomUserInfo, so UserInfoMap["User"] is taken directly from Name).
+func makeAdminJWTForGitImport(t *testing.T) string {
+	t.Helper()
+
+	repman := &ReplicationManager{}
+	repman.initKeys()
+
+	signer := jwt.New(jwt.SigningMethodRS256)
+	claims := signer.Claims.(jwt.MapClaims)
+	claims["iss"] = "https://api.replication-manager.signal18.io"
+	claims["iat"] = time.Now().Unix()
+	claims["exp"] = time.Now().Add(time.Hour).Unix()
+	claims["jti"] = "1"
+	claims["CustomUserInfo"] = map[string]interface{}{
+		"Name":     "admin",
+		"Password": "encrypted",
+		"Role":     "Admin",
+	}
+
+	sk, err := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+	if err != nil {
+		t.Fatalf("makeAdminJWTForGitImport: parse private key: %v", err)
+	}
+
+	tokenStr, err := signer.SignedString(sk)
+	if err != nil {
+		t.Fatalf("makeAdminJWTForGitImport: sign token: %v", err)
+	}
+
+	return tokenStr
+}
+
+// TestHandlerMuxFetchDynamicClustersFromGit_EligibilityGate exercises the
+// paid-plan eligibility branch added alongside the admin check: an
+// authenticated admin on an ineligible Cloud18 plan must be rejected with
+// 403 before ever reaching FetchDynamicClustersFromGit, while an
+// authenticated admin on an eligible plan must pass the gate and reach it.
+// The "eligible" case asserts on the handler's status-code contract (403 =
+// rejected by a gate, 500 = reached FetchDynamicClustersFromGit and failed
+// there) rather than on FetchDynamicClustersFromGit's specific prerequisite
+// error text/order, so this test doesn't couple to internals already covered
+// by TestFetchDynamicClustersFromGit_RequiresGitURL/RequiresGitToken.
+func TestHandlerMuxFetchDynamicClustersFromGit_EligibilityGate(t *testing.T) {
+	token := makeAdminJWTForGitImport(t)
+
+	t.Run("ineligible plan is rejected with 403", func(t *testing.T) {
+		repman := &ReplicationManager{Conf: &config.Config{}}
+		req := httptest.NewRequest(http.MethodPost, "/api/clusters/actions/fetch-dynamic-from-git", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		repman.handlerMuxFetchDynamicClustersFromGit(w, req)
+
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 for ineligible plan, got %d: %s", w.Code, w.Body.String())
+		}
+		if !strings.Contains(w.Body.String(), "subscription plan") {
+			t.Errorf("expected eligibility error message, got %s", w.Body.String())
+		}
+	})
+
+	t.Run("eligible plan passes the gate", func(t *testing.T) {
+		repman := &ReplicationManager{Conf: &config.Config{
+			Cloud18GitUser:          "user@example.com",
+			Cloud18SubscriptionPlan: "support",
+		}}
+		req := httptest.NewRequest(http.MethodPost, "/api/clusters/actions/fetch-dynamic-from-git", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		repman.handlerMuxFetchDynamicClustersFromGit(w, req)
+
+		if w.Code == http.StatusForbidden {
+			t.Fatalf("eligible plan was rejected before reaching FetchDynamicClustersFromGit: %d %s", w.Code, w.Body.String())
+		}
+		// No git repo is configured in this test, so FetchDynamicClustersFromGit
+		// must fail with 500 — proving the request reached it rather than being
+		// rejected by the admin or eligibility gate.
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("expected request to pass the eligibility gate and reach FetchDynamicClustersFromGit (500), got %d: %s", w.Code, w.Body.String())
+		}
+	})
 }
