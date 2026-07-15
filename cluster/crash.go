@@ -429,24 +429,46 @@ func (cluster *Cluster) LoadFailoverHistory() {
 	if err != nil {
 		return
 	}
+	// Backward-compat: index the OLD failover.<ts>.json metadata by the crash-bin
+	// dir their DeltaArchive points into, so an archive that predates crash.json
+	// (its binlog + .sql are still on disk) is NOT lost — it is migrated in place.
+	metaByDir := make(map[string]*Crash)
 	var dirs []string
 	for _, e := range entries {
-		if e.IsDir() && strings.HasPrefix(e.Name(), "crash-bin-") {
-			dirs = append(dirs, e.Name())
+		n := e.Name()
+		if e.IsDir() && strings.HasPrefix(n, "crash-bin-") {
+			dirs = append(dirs, n)
+			continue
+		}
+		if !e.IsDir() && strings.HasPrefix(n, "failover") && strings.HasSuffix(n, ".json") {
+			if data, err := os.ReadFile(cluster.WorkingDir + "/" + n); err == nil {
+				cr := new(Crash)
+				if json.Unmarshal(data, cr) == nil && cr.DeltaArchive != "" {
+					metaByDir[filepath.Base(filepath.Dir(cr.DeltaArchive))] = cr
+				}
+			}
 		}
 	}
 	sort.Strings(dirs) // timestamped dir names sort chronologically
 	var history crashList
 	for _, d := range dirs {
-		data, err := os.ReadFile(cluster.WorkingDir + "/" + d + "/crash.json")
-		if err != nil {
-			continue // archive without metadata (older/partial) — skip
-		}
-		crash := new(Crash)
-		if err := json.Unmarshal(data, crash); err != nil {
+		dirPath := cluster.WorkingDir + "/" + d
+		if data, err := os.ReadFile(dirPath + "/crash.json"); err == nil {
+			crash := new(Crash)
+			if json.Unmarshal(data, crash) == nil {
+				history = append(history, crash)
+			}
 			continue
 		}
-		history = append(history, crash)
+		// No crash.json — migrate from the matching old failover.json if we have it.
+		if cr, ok := metaByDir[d]; ok {
+			cr.ArchiveDir = dirPath
+			if err := cr.Save(dirPath + "/crash.json"); err == nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Migrated legacy crash %s into %s/crash.json", cr.URL, dirPath)
+			}
+			history = append(history, cr)
+		}
+		// else: archive with no recoverable metadata — leave it on disk, skip.
 	}
 	cluster.FailoverHistory = history
 }
