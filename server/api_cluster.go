@@ -444,6 +444,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerLostEvents)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/rejoin/{serverName}/{method}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterRejoin)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/replication/bootstrap/{topology}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxBootstrapReplication)),
@@ -10149,6 +10153,43 @@ func (repman *ReplicationManager) proxyLostEventsFromPeer(w http.ResponseWriter,
 // The first page (pos=0 or omitted) is where a client reads the crash
 // analysis verdict (deltaFlashable, counts) shipped in every response.
 // @Summary Lost events of the last divergence, paginated statement listing
+// handlerMuxClusterRejoin — CLUSTER action: explicitly (re-)arm the rejoin of a
+// server with an operator-chosen method (GUI delta viewer). The cluster owns the
+// crash history and the elected master; RearmRejoin copies the history crash back
+// to the working set with the method, and the next monitor tick runs it (one-shot).
+func (repman *ReplicationManager) handlerMuxClusterRejoin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	method := vars["method"]
+	if !cluster.IsValidRejoinMethod(method) {
+		http.Error(w, "Invalid rejoin method", http.StatusBadRequest)
+		return
+	}
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		node = mycluster.GetServerFromURL(vars["serverName"])
+	}
+	if node == nil {
+		http.Error(w, "Server Not Found", http.StatusInternalServerError)
+		return
+	}
+	if !mycluster.RearmRejoin(node.URL, method) {
+		http.Error(w, "No crash history to rejoin for this server", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"rejoin":"armed","cluster":"%s","server":"%s","method":"%s"}`, mycluster.Name, node.URL, method)
+}
+
 // @Router /api/clusters/{clusterName}/servers/{serverName}/lost-events [get]
 func (repman *ReplicationManager) handlerMuxServerLostEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")

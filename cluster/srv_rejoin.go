@@ -165,20 +165,25 @@ func (server *ServerMonitor) RejoinMaster() error {
 						cluster.backendStateChangeProxies()
 						return nil
 					}
-					// No crash, no old-master anchor, no autoseed: re-slave on current
-					// GTID (no divergence to recover). If that too cannot proceed the
-					// outcome is recorded for the operator — never a silent retry.
-					err := server.rejoinMasterAsSlave()
-					if err != nil {
-						cluster.finishRejoin(server.URL, RejoinResultNoMethod)
-					} else {
-						cluster.finishRejoin(server.URL, RejoinResultNoDivergence)
-					}
+					// No crash, no old-master anchor, no autoseed: attach read-only
+					// under the elected master on current GTID (no divergence record to
+					// recover). Strict mode still protects if anything is out of order.
+					server.attachAsReadOnlySlave(cluster.master)
+					cluster.finishRejoin(server.URL, RejoinResultNoDivergence)
 					cluster.backendStateChangeProxies()
 					return nil
 				} //crash info is available
 				if cluster.Conf.AutorejoinBackupBinlog {
 					server.freezeThenCaptureLostEvents(crash)
+				}
+
+				// OPERATOR-CHOSEN METHOD (GUI delta viewer): if the re-armed crash
+				// carries a method it OVERRIDES the automatic flashback/SST cascade for
+				// this one attempt. All methods are runnable on any crash — the delta
+				// verdict informs, it does not gate.
+				if crash.RejoinMethod != "" {
+					server.rejoinWithMethod(crash)
+					return nil
 				}
 
 				err := server.rejoinMasterIncremental(crash)
@@ -187,7 +192,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 					sstErr := server.RejoinMasterSST()
 					if sstErr != nil {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "State transfer rejoin failed")
-						// Could not complete. Distinguish WHY for the operator:
+						// Could not clean the tail. Distinguish WHY for the operator:
 						//   diverged + not reversible -> not-flashback-able (manual)
 						//   otherwise (incl. empty)   -> no method / generic failure
 						// An EMPTY delta is never "not-flashback-able" — nothing diverged.
@@ -195,6 +200,18 @@ func (server *ServerMonitor) RejoinMaster() error {
 						if crash.DeltaAnalyzed && crash.Diverged() && !crash.DeltaFlashable {
 							result = RejoinResultNotFlashback
 						}
+						// Persist the captured delta archive (crash-bin dir) BEFORE
+						// finishing — the failure path must still leave the binlog delta
+						// for the viewer. The old code ran saveBinlog unconditionally; the
+						// early return here would otherwise skip it (regression 2026-07-15:
+						// 10 trx counted but no delta content in the viewer).
+						if cluster.Conf.AutorejoinBackupBinlog {
+							server.saveBinlog(crash)
+						}
+						// ALWAYS end attached read-only under the elected master: strict
+						// mode protects a divergent tail as SlaveErr — never a floating
+						// writable standalone.
+						server.attachAsReadOnlySlave(cluster.master)
 						cluster.finishRejoin(server.URL, result)
 						cluster.backendStateChangeProxies()
 						return nil
@@ -578,6 +595,66 @@ func rejoinResultOf(err error) string {
 		return RejoinResultNoMethod
 	}
 	return RejoinResultSuccess
+}
+
+// rejoinWithMethod runs the OPERATOR-CHOSEN recovery method for a re-armed crash,
+// persists the delta archive, ends attached read-only, and records the outcome via
+// finishRejoin (one-shot as always). Every method is runnable on any crash.
+func (server *ServerMonitor) rejoinWithMethod(crash *Crash) {
+	cluster := server.ClusterGroup
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Operator rejoin of %s via method %q", server.URL, crash.RejoinMethod)
+	var err error
+	switch crash.RejoinMethod {
+	case RejoinMethodFlashback:
+		err = server.rejoinMasterFlashBack(crash)
+	case RejoinMethodLogicalDump:
+		err = server.RejoinDirectDump()
+	case RejoinMethodLogicalBkp:
+		err = server.JobFlashbackLogicalBackup()
+	case RejoinMethodPhysicalBkp:
+		err = server.JobFlashbackPhysicalBackup()
+	case RejoinMethodIgnoreForce:
+		// Discard the divergent tail (operator accepts the data loss) and force a
+		// clean re-slave: RESET MASTER wipes this server's own GTID/binlog history,
+		// then attach on the elected master's current position.
+		logs, rmErr := server.ResetMaster()
+		cluster.LogSQL(logs, rmErr, server.URL, "Rejoin", config.LvlErr, "ignore-delta-force: RESET MASTER on %s failed: %s", server.URL, rmErr)
+		err = rmErr
+	default:
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Unknown rejoin method %q for %s", crash.RejoinMethod, server.URL)
+		err = errors.New("unknown rejoin method")
+	}
+	if cluster.Conf.AutorejoinBackupBinlog {
+		server.saveBinlog(crash)
+	}
+	// Always end attached read-only under the elected master (strict mode protects).
+	server.attachAsReadOnlySlave(cluster.master)
+	result := RejoinResultSuccess
+	if err != nil {
+		result = RejoinResultNoMethod
+	}
+	cluster.finishRejoin(server.URL, result)
+	cluster.backendStateChangeProxies()
+}
+
+// attachAsReadOnlySlave ends a rejoin by CHANGE MASTER to the elected master and
+// starting replication, read-only — ALWAYS, even for a diverged / not-flashback-able
+// tail. A rejoin must never leave a writable, unattached standalone. GTID strict
+// mode is the protection (Stephane): a divergent old master goes SlaveErr (the
+// out-of-order sequence is refused, no corruption) instead of drifting as a second
+// writable master; the operator then resolves the SlaveErr via the manual-repair
+// state (WARN0186) or an explicit re-arm with a chosen method.
+func (server *ServerMonitor) attachAsReadOnlySlave(master *ServerMonitor) {
+	cluster := server.ClusterGroup
+	if master == nil || master.URL == server.URL {
+		return
+	}
+	logs, err := server.SetReadOnly()
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to fence %s read-only before attach: %s", server.URL, err)
+	logs, err = server.SetReplicationGTIDCurrentPosFromServer(master)
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed CHANGE MASTER of %s to %s: %s", server.URL, master.URL, err)
+	logs, err = server.StartSlave()
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlInfo, "Started replication of %s under %s (strict mode protects a divergent tail as SlaveErr): %s", server.URL, master.URL, err)
 }
 
 func (server *ServerMonitor) rejoinMasterAsSlave() error {

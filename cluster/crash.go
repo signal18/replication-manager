@@ -57,7 +57,22 @@ type Crash struct {
 	// (an explicit copy history->working set re-arms exactly one more attempt).
 	RejoinResult   string `json:"rejoinResult"`
 	RejoinResultTs int64  `json:"rejoinResultTs"`
+	// RejoinMethod is the operator's CHOSEN recovery method for the next (re-armed)
+	// attempt, set from the GUI delta viewer via rearmRejoin. When non-empty it
+	// OVERRIDES the automatic flashback/SST cascade for that one attempt, then is
+	// cleared by finishRejoin. "" = automatic.
+	RejoinMethod string `json:"rejoinMethod"`
 }
+
+// Operator-chosen rejoin methods (Crash.RejoinMethod), from the GUI delta viewer.
+// All are runnable on ANY crash — the delta verdict informs, it does not gate.
+const (
+	RejoinMethodFlashback   = "flashback"          // rejoinMasterFlashBack
+	RejoinMethodLogicalDump = "logical-dump"       // RejoinDirectDump (mysqldump from master)
+	RejoinMethodLogicalBkp  = "logical-backup"     // JobFlashbackLogicalBackup
+	RejoinMethodPhysicalBkp = "physical-backup"    // JobFlashbackPhysicalBackup
+	RejoinMethodIgnoreForce = "ignore-delta-force" // discard the tail, force re-slave (data loss)
+)
 
 // Rejoin result codes (Crash.RejoinResult). "" = not yet attempted.
 const (
@@ -166,23 +181,47 @@ func (cluster *Cluster) rejoinAlreadyAttempted(url string) bool {
 	return false
 }
 
-// rearmRejoin is the EXPLICIT retry: copy the history crash for url back into the
-// working set with its result cleared, granting exactly ONE more attempt. This is
-// the only way a finished rejoin runs again — never automatic. Wired to an
-// operator API action; returns false if there is no history record to re-arm.
-func (cluster *Cluster) rearmRejoin(url string) bool {
+// rearmRejoin is the EXPLICIT retry: copy the newest history crash for url back
+// into the working set with its result cleared and the operator-chosen method set,
+// granting exactly ONE more attempt with that method. This is the only way a
+// finished rejoin runs again — never automatic. Wired to the GUI/API rejoin action.
+// method "" means automatic. Returns false if there is no history record to re-arm.
+func (cluster *Cluster) rearmRejoin(url string, method string) bool {
+	var newest *Crash
 	for _, cr := range cluster.FailoverHistory {
 		if cr == nil || cr.URL != url {
 			continue
 		}
-		mat := *cr
-		mat.RejoinResult = ""
-		mat.RejoinResultTs = 0
-		cluster.Crashes = append(cluster.Crashes, &mat)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin re-armed for %s (explicit): copied from history to working set for one more attempt", url)
+		if newest == nil || cr.UnixTimestamp >= newest.UnixTimestamp {
+			newest = cr
+		}
+	}
+	if newest == nil {
+		return false
+	}
+	mat := *newest
+	mat.RejoinResult = ""
+	mat.RejoinResultTs = 0
+	mat.RejoinMethod = method
+	cluster.Crashes = append(cluster.Crashes, &mat)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin re-armed for %s (explicit, method=%q): copied from history to working set for one more attempt", url, method)
+	return true
+}
+
+// IsValidRejoinMethod reports whether method is a known operator rejoin method
+// (or "" for automatic).
+func IsValidRejoinMethod(method string) bool {
+	switch method {
+	case "", RejoinMethodFlashback, RejoinMethodLogicalDump, RejoinMethodLogicalBkp, RejoinMethodPhysicalBkp, RejoinMethodIgnoreForce:
 		return true
 	}
 	return false
+}
+
+// RearmRejoin is the exported entry (GUI/API) for an explicit operator rejoin of
+// url with a chosen method. See rearmRejoin.
+func (cluster *Cluster) RearmRejoin(url string, method string) bool {
+	return cluster.rearmRejoin(url, method)
 }
 
 func (cluster *Cluster) getCrashFromJoiner(URL string) *Crash {
