@@ -16,6 +16,24 @@ import (
 func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead string) error {
 	var myconf = make(map[string]config.Config)
 	myconf[clusterName] = *repman.Conf
+
+	// Held across the whole register-then-start window (not just StartCluster)
+	// so this can't interleave with FetchDynamicClustersFromGit or
+	// PullCloud18Configs registering/starting the same cluster name at the
+	// same time — see doc/implementation/server/DYNAMIC_CLUSTER_GIT_IMPORT_PLAN.md.
+	repman.runtimeClusterStartMu.Lock()
+	defer repman.runtimeClusterStartMu.Unlock()
+
+	// The caller (e.g. handlerMuxClusterAdd) typically checked existence
+	// before calling AddCluster, but that check happened before this lock was
+	// acquired — a concurrent AddCluster/import/auto-discovery for the same
+	// name could have registered it while this call was waiting. Re-check now
+	// that the lock is actually held, so two racing callers can't both append
+	// the same cluster name and double-start it.
+	if repman.hasLocalCluster(clusterName) {
+		return fmt.Errorf("cluster %s already exists", clusterName)
+	}
+
 	repman.Lock()
 	repman.ClusterList = append(repman.ClusterList, clusterName)
 	repman.Confs[clusterName] = *repman.Conf
@@ -27,6 +45,7 @@ func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead str
 	repman.DynamicFlagMaps[clusterName] = repman.DynamicFlagMaps["default"]
 
 	repman.Unlock()
+
 	cluster, _ := repman.StartCluster(clusterName)
 
 	repman.refreshAllPeers()

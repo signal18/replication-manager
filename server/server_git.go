@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
@@ -19,11 +20,386 @@ import (
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/meethelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
+
+// gitImportNetworkTimeout bounds the staging clone the same way
+// config.gitNetworkTimeout bounds every other go-git network operation in
+// this codebase: without it a hung remote holds runtimeClusterStartMu forever.
+const gitImportNetworkTimeout = 120 * time.Second
+
+// DynamicClusterImportResult is the structured, always-200 result of
+// FetchDynamicClustersFromGit: some clusters may import while others fail
+// or are skipped, and the caller reports all of it in one payload.
+type DynamicClusterImportResult struct {
+	Imported        []string          `json:"imported"`
+	SkippedExisting []string          `json:"skipped_existing"`
+	Invalid         []string          `json:"invalid"`
+	Errors          map[string]string `json:"errors"`
+}
+
+// nonDynamicClusterDirs lists staged main-config-repo root directories that
+// are never dynamic cluster directories, even though they live at repo root
+// alongside real cluster directories.
+var nonDynamicClusterDirs = map[string]bool{
+	".git":     true,
+	".pull":    true,
+	".tmp":     true,
+	"plugins":  true,
+	"graphite": true,
+	"backups":  true,
+}
+
+// FetchDynamicClustersFromGit clones the main config git repo
+// (repman.Conf.GitUrl) into a temporary staging directory and imports, live
+// and without a restart, any dynamic cluster directory found there that is
+// not already known to this instance. Manual, admin-triggered, missing-only,
+// never overwrites an existing local cluster. See
+// doc/implementation/server/DYNAMIC_CLUSTER_GIT_IMPORT_PLAN.md.
+func (repman *ReplicationManager) FetchDynamicClustersFromGit() (*DynamicClusterImportResult, error) {
+	if repman.Conf.GitUrl == "" {
+		return nil, fmt.Errorf("git URL is not configured")
+	}
+	tok := repman.Conf.GetDecryptedValue("git-acces-token")
+	if tok == "" {
+		return nil, fmt.Errorf("git access token is not configured")
+	}
+
+	repman.runtimeClusterStartMu.Lock()
+	defer repman.runtimeClusterStartMu.Unlock()
+
+	stagedDir, err := repman.stageMainConfigRepoForImport(tok)
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(stagedDir)
+
+	return repman.importStagedDynamicClusters(stagedDir)
+}
+
+// importStagedDynamicClusters discovers and imports dynamic clusters from an
+// already-staged main config repo checkout. Split out from
+// FetchDynamicClustersFromGit purely so the import/rollback loop can be
+// exercised in tests against a plain local directory fixture, without a real
+// git remote. Callers must already hold runtimeClusterStartMu.
+func (repman *ReplicationManager) importStagedDynamicClusters(stagedDir string) (*DynamicClusterImportResult, error) {
+	importable, invalid, err := repman.discoverImportableDynamicClusterDirs(stagedDir)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &DynamicClusterImportResult{
+		Imported:        []string{},
+		SkippedExisting: []string{},
+		Invalid:         invalid,
+		Errors:          map[string]string{},
+	}
+
+	for _, name := range importable {
+		if repman.hasLocalCluster(name) {
+			result.SkippedExisting = append(result.SkippedExisting, name)
+			continue
+		}
+
+		if err := repman.importDynamicClusterDir(stagedDir, name); err != nil {
+			result.Errors[name] = err.Error()
+			continue
+		}
+
+		if err := repman.loadAndStartImportedCluster(stagedDir, name); err != nil {
+			if rbErr := repman.rollbackFailedImport(name); rbErr != nil {
+				result.Errors[name] = fmt.Sprintf("%v; %v", err, rbErr)
+			} else {
+				result.Errors[name] = err.Error()
+			}
+			continue
+		}
+
+		result.Imported = append(result.Imported, name)
+	}
+
+	return result, nil
+}
+
+// rollbackFailedImport undoes a partially-completed import so a retry is not
+// permanently blocked. Without this, a failure inside
+// loadAndStartImportedCluster (e.g. a malformed staged TOML file) would leave
+// the copied directory on disk; the next call's hasLocalCluster would
+// then see that directory and report the cluster as skipped_existing forever,
+// even though it never actually started. Only called after
+// importDynamicClusterDir has already copied files into the live working
+// directory.
+//
+// Returns an error if removing the directory itself fails (e.g. a
+// permission problem) — that case is still best-effort (nothing can force a
+// filesystem to allow deletion), but the caller must surface it rather than
+// silently swallow it: a leftover directory after a failed RemoveAll would
+// otherwise poison retries exactly the way this function exists to prevent,
+// except now with no error ever reported to the operator.
+func (repman *ReplicationManager) rollbackFailedImport(name string) error {
+	repman.Lock()
+	delete(repman.Clusters, name)
+	delete(repman.Confs, name)
+	delete(repman.VersionConfs, name)
+	delete(repman.ImmuableFlagMaps, name)
+	delete(repman.DynamicFlagMaps, name)
+	for i, n := range repman.ClusterList {
+		if n == name {
+			repman.ClusterList = append(repman.ClusterList[:i], repman.ClusterList[i+1:]...)
+			break
+		}
+	}
+	repman.Unlock()
+
+	dst := filepath.Join(repman.Conf.WorkingDir, name)
+	if err := os.RemoveAll(dst); err != nil {
+		return fmt.Errorf("in-memory registration rolled back, but cleanup of %s failed: %w — manual removal required before retry", dst, err)
+	}
+	return nil
+}
+
+// hasLocalCluster reports whether name is already running or already
+// has a persisted directory in the live working directory — either makes it
+// ineligible for import (see Skip policy in the import plan).
+func (repman *ReplicationManager) hasLocalCluster(name string) bool {
+	repman.Lock()
+	_, running := repman.Clusters[name]
+	repman.Unlock()
+	if running {
+		return true
+	}
+	_, err := os.Stat(filepath.Join(repman.Conf.WorkingDir, name))
+	return err == nil
+}
+
+// stageMainConfigRepoForImport clones the main config repo into a fresh temp
+// directory under working-dir/.tmp so it can be inspected without touching
+// the live working directory. The caller must remove the returned directory.
+func (repman *ReplicationManager) stageMainConfigRepoForImport(tok string) (string, error) {
+	tmpRoot := filepath.Join(repman.Conf.WorkingDir, ".tmp")
+	if err := os.MkdirAll(tmpRoot, 0755); err != nil {
+		return "", fmt.Errorf("cannot create staging root %s: %w", tmpRoot, err)
+	}
+
+	stagedDir, err := os.MkdirTemp(tmpRoot, "git-import-*")
+	if err != nil {
+		return "", fmt.Errorf("cannot create staging directory: %w", err)
+	}
+
+	cloneopt := &git.CloneOptions{
+		URL:               repman.Conf.GitUrl,
+		RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+		Auth: &git_https.BasicAuth{
+			Username: repman.Conf.GitUsername,
+			Password: tok,
+		},
+		Depth: 1,
+	}
+
+	// Stage from the branch this instance actually tracks, not necessarily
+	// the remote's default branch, so an instance running on a non-default
+	// branch imports from the same source it pushes to. Mirrors
+	// ConfigManager.RefreshGitMetadata's branch resolution (same fallback
+	// chain: current local branch -> master -> remote default on retry).
+	if refName, ok := manager.ResolveCurrentLocalBranch(repman.Conf.WorkingDir); ok {
+		cloneopt.ReferenceName = refName
+		cloneopt.SingleBranch = true
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Staging dynamic cluster import using current local branch reference %s", refName)
+	} else {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn, "Could not determine current local branch for dynamic cluster import; falling back to remote default branch")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), gitImportNetworkTimeout)
+	defer cancel()
+
+	if _, cloneErr := git.PlainCloneContext(ctx, stagedDir, false, cloneopt); cloneErr != nil {
+		if cloneopt.ReferenceName != "" && manager.IsReferenceNotFoundError(cloneErr) {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn, "Staging clone with reference %s failed (%v); retrying with remote default branch", cloneopt.ReferenceName, cloneErr)
+			if err := os.RemoveAll(stagedDir); err != nil {
+				return "", fmt.Errorf("cannot reset staging directory before retry: %w", err)
+			}
+			if err := os.MkdirAll(stagedDir, 0755); err != nil {
+				return "", fmt.Errorf("cannot recreate staging directory before retry: %w", err)
+			}
+			cloneopt.ReferenceName = ""
+			cloneopt.SingleBranch = false
+			if _, retryErr := git.PlainCloneContext(ctx, stagedDir, false, cloneopt); retryErr != nil {
+				os.RemoveAll(stagedDir)
+				return "", fmt.Errorf("cannot stage main config repo: %w", retryErr)
+			}
+		} else {
+			os.RemoveAll(stagedDir)
+			return "", fmt.Errorf("cannot stage main config repo: %w", cloneErr)
+		}
+	}
+
+	return stagedDir, nil
+}
+
+// discoverImportableDynamicClusterDirs inspects the staged repo root and
+// classifies each directory as importable (contains <name>/<name>.toml) or
+// invalid (anything else that is not a known non-cluster directory).
+func (repman *ReplicationManager) discoverImportableDynamicClusterDirs(stagedDir string) (importable []string, invalid []string, err error) {
+	entries, err := os.ReadDir(stagedDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("cannot read staged repo %s: %w", stagedDir, err)
+	}
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if nonDynamicClusterDirs[name] {
+			continue
+		}
+
+		tomlPath := filepath.Join(stagedDir, name, name+".toml")
+		if _, statErr := os.Stat(tomlPath); statErr == nil {
+			importable = append(importable, name)
+		} else {
+			invalid = append(invalid, name)
+		}
+	}
+
+	return importable, invalid, nil
+}
+
+// importDynamicClusterDir copies a staged cluster directory into the live
+// working directory. Callers must have already confirmed via
+// hasLocalCluster that the destination does not exist — this feature
+// never overwrites an existing local cluster.
+//
+// The existence check is repeated here (rather than trusting the caller)
+// because it draws the line that makes cleanup on failure safe: CopyDir only
+// starts writing into dst after confirming dst does not exist, so once that
+// is true here too, any later CopyDir failure necessarily means a partial
+// copy that this call itself created — never a pre-existing directory — and
+// is therefore always safe to remove. Without this, a failure partway
+// through the copy (disk full, permission error on one file) would leave a
+// half-written directory behind, and the next retry's hasLocalCluster
+// check would see it and skip the cluster as "existing" forever.
+func (repman *ReplicationManager) importDynamicClusterDir(stagedDir, name string) error {
+	src := filepath.Join(stagedDir, name)
+	dst := filepath.Join(repman.Conf.WorkingDir, name)
+
+	if _, err := os.Stat(dst); err == nil {
+		return fmt.Errorf("destination already exists: %s", dst)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("cannot stat destination %s: %w", dst, err)
+	}
+
+	if err := misc.CopyDir(src, dst); err != nil {
+		// CopyDir only starts writing into dst after confirming it does not
+		// exist (checked above), so dst here is necessarily a partial copy
+		// this call itself created and it is always safe to remove.
+		// RemoveAll itself failing (e.g. a permission problem) is best-effort
+		// — nothing can force a filesystem to allow deletion — but that
+		// failure must be surfaced rather than swallowed, or a leftover
+		// partial directory would poison hasLocalCluster on every retry with
+		// no error ever visible to the operator.
+		if rmErr := os.RemoveAll(dst); rmErr != nil {
+			return fmt.Errorf("copy failed (%v) and cleanup of partial directory also failed: %w — manual removal of %s required before retry", err, rmErr, dst)
+		}
+		return err
+	}
+
+	return nil
+}
+
+// reconstructImportedClusterConfig builds the config.Config for a newly
+// imported cluster from its now-live <name>/<name>.toml, using an isolated
+// Viper reader — never the shared repman.ViperConfig.
+//
+// Saved cluster files are delta overlays, not standalone configs, so the
+// staged repo's own default.toml (not this instance's) provides the
+// reconstruction context: that is the default baseline the exporting
+// instance computed its per-cluster delta against. Locally immutable keys
+// (CLI flags, /etc config, env) are still protected from being overwritten,
+// mirroring InitConfig's saved-default merge, so this instance's own
+// server-scoped settings remain authoritative.
+//
+// Split out from loadAndStartImportedCluster (pure, no repman mutation other
+// than the brief lock to read the default flag maps) so the reconstruction
+// logic itself — the part unique to this feature — can be tested directly
+// against a local directory fixture without going through StartCluster()'s
+// much heavier cluster.Init() machinery.
+func (repman *ReplicationManager) reconstructImportedClusterConfig(stagedDir, name string) (config.Config, error) {
+	isolated := viper.New()
+	isolated.SetConfigType("toml")
+
+	stagedDefaultToml := filepath.Join(stagedDir, "default.toml")
+	if _, err := os.Stat(stagedDefaultToml); err == nil {
+		isolated.SetConfigFile(stagedDefaultToml)
+		if err := isolated.MergeInConfig(); err != nil {
+			return config.Config{}, fmt.Errorf("cannot parse staged default.toml: %w", err)
+		}
+	}
+
+	clusterTomlPath := filepath.Join(repman.Conf.WorkingDir, name, name+".toml")
+	isolated.SetConfigName(name)
+	isolated.SetConfigFile(clusterTomlPath)
+	if err := isolated.MergeInConfig(); err != nil {
+		return config.Config{}, fmt.Errorf("cannot parse %s: %w", clusterTomlPath, err)
+	}
+
+	baseConf := *repman.Conf
+	if cf3 := isolated.Sub("saved-default"); cf3 != nil {
+		for _, f := range cf3.AllKeys() {
+			if v, ok := repman.Conf.ImmuableFlagMap[f]; ok {
+				cf3.Set(f, v)
+			}
+		}
+		repman.initAlias(cf3)
+		cf3.Unmarshal(&baseConf)
+	}
+
+	repman.Lock()
+	defaultImmuable := repman.ImmuableFlagMaps["default"]
+	defaultDynamic := repman.DynamicFlagMaps["default"]
+	repman.Unlock()
+
+	return repman.GetClusterConfig(isolated, defaultImmuable, defaultDynamic, name, baseConf), nil
+}
+
+// registerImportedCluster makes clusterConf visible to the rest of the
+// server — ClusterList, Confs, VersionConfs — the same bookkeeping every
+// StartCluster() caller performs beforehand (see AddCluster,
+// PullCloud18Configs). Split out so tests can verify this "runtime
+// visibility" step directly, independent of StartCluster()'s own
+// cluster.Init() machinery.
+func (repman *ReplicationManager) registerImportedCluster(name string, clusterConf config.Config) {
+	repman.Lock()
+	repman.ClusterList = append(repman.ClusterList, name)
+	repman.Confs[name] = clusterConf
+	repman.VersionConfs[name] = new(config.ConfVersion)
+	repman.VersionConfs[name].ConfInit = clusterConf
+	repman.Unlock()
+}
+
+// loadAndStartImportedCluster reconstructs the imported cluster's config,
+// registers it, and starts it.
+func (repman *ReplicationManager) loadAndStartImportedCluster(stagedDir, name string) error {
+	clusterConf, err := repman.reconstructImportedClusterConfig(stagedDir, name)
+	if err != nil {
+		return err
+	}
+
+	repman.registerImportedCluster(name, clusterConf)
+
+	if _, err := repman.StartCluster(name); err != nil {
+		return err
+	}
+
+	repman.refreshAllPeers()
+	return nil
+}
 
 func (repman *ReplicationManager) GetIsGitPush() bool {
 	repman.GitPushLock.Lock()
@@ -318,10 +694,11 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 		for _, f := range files {
 			new_cluster_discover := true
 			if f.IsDir() && f.Name() != "graphite" && f.Name() != "backups" && f.Name() != ".git" && f.Name() != "cloud18.toml" && !strings.Contains(f.Name(), ".json") && !strings.Contains(f.Name(), ".csv") && f.Name() != ".pull" && f.Name() != "plugins" {
-				for name := range repman.Clusters {
-					if name == f.Name() {
-						new_cluster_discover = false
-					}
+				repman.Lock()
+				_, alreadyKnown := repman.Clusters[f.Name()]
+				repman.Unlock()
+				if alreadyKnown {
+					new_cluster_discover = false
 				}
 			} else {
 				new_cluster_discover = false
@@ -332,6 +709,26 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 				//check if this there is a config file in the dir
 				if _, err := os.Stat(repman.Conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml"); !os.IsNotExist(err) {
 					//init config, start the cluster and add it to the cluster list
+
+					// Same runtime cluster-start lock as AddCluster() and
+					// FetchDynamicClustersFromGit(): this auto-discovery path is a
+					// third live StartCluster() entrypoint and must not race the
+					// other two over the same cluster name. See
+					// doc/implementation/server/DYNAMIC_CLUSTER_GIT_IMPORT_PLAN.md.
+					//
+					// new_cluster_discover above was only a fast, lock-protected
+					// pre-filter — re-check membership now that the lock is held,
+					// since another entrypoint may have registered this exact
+					// cluster name while this goroutine was waiting for the lock.
+					repman.runtimeClusterStartMu.Lock()
+					repman.Lock()
+					_, alreadyKnown := repman.Clusters[f.Name()]
+					repman.Unlock()
+					if alreadyKnown {
+						repman.runtimeClusterStartMu.Unlock()
+						continue
+					}
+
 					repman.ViperConfig.SetConfigName(f.Name())
 					repman.ViperConfig.SetConfigFile(repman.Conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml")
 					err := repman.ViperConfig.MergeInConfig()
@@ -346,6 +743,7 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 					}
 					repman.ClusterList = append(repman.ClusterList, f.Name())
 					repman.Unlock()
+					repman.runtimeClusterStartMu.Unlock()
 					repman.refreshAllPeers()
 				}
 			}

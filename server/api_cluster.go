@@ -665,6 +665,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterRename)),
 	))
 
+	router.Handle("/api/clusters/actions/fetch-dynamic-from-git", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxFetchDynamicClustersFromGit)),
+	)).Methods(http.MethodPost)
+
 	router.Handle("/api/clusters/{clusterName}/topology/servers", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServers)),
@@ -10230,6 +10235,47 @@ func (repman *ReplicationManager) handlerMuxSetServerActiveStatus(w http.Respons
 		return
 	}
 	w.Write([]byte("Server set to " + repman.Status))
+}
+
+// handlerMuxFetchDynamicClustersFromGit imports dynamic clusters that exist
+// in the main config git repo (repman.Conf.GitUrl) but are missing from this
+// instance's live working directory. Manual, admin-only, missing-only, no
+// overwrite. See doc/implementation/server/DYNAMIC_CLUSTER_GIT_IMPORT_PLAN.md.
+//
+// @Summary Import missing dynamic clusters from the main config git repo
+// @Description Clones the main config git repo and starts any dynamic cluster found there that is not already known locally. Existing clusters are never overwritten. Always returns 200 with a partial-success result unless the whole action cannot start.
+// @Tags Cluster
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Success 200 {object} DynamicClusterImportResult "Import result, possibly with per-cluster errors"
+// @Failure 403 {string} string "administrator access required"
+// @Failure 405 {string} string "method not allowed"
+// @Failure 500 {string} string "action could not start"
+// @Router /api/clusters/actions/fetch-dynamic-from-git [post]
+func (repman *ReplicationManager) handlerMuxFetchDynamicClustersFromGit(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	claims, err := repman.GetJWTClaims(r)
+	if err != nil || claims["User"] != "admin" {
+		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
+		return
+	}
+
+	result, err := repman.FetchDynamicClustersFromGit()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(result)
 }
 
 func (repman *ReplicationManager) toggleServerActiveStatus() error {

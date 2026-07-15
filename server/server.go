@@ -171,6 +171,12 @@ type ReplicationManager struct {
 	IsGitPull                   bool                           `json:"isGitPull"`
 	IsGitPush                   bool                           `json:"isGitPush"`
 	GitPushLock                 sync.Mutex                     `json:"-"`
+	// runtimeClusterStartMu serializes the runtime cluster-start paths that
+	// mutate shared server state (repman.currentCluster, repman.Clusters) —
+	// currently AddCluster(), FetchDynamicClustersFromGit(), and the
+	// auto-discovery start path inside PullCloud18Configs(). See
+	// doc/implementation/server/DYNAMIC_CLUSTER_GIT_IMPORT_PLAN.md.
+	runtimeClusterStartMu       sync.Mutex                     `json:"-"`
 	gatewayMu                   sync.Map                       `json:"-"`
 	IsNeedGitPush               bool                           `json:"-"`
 	CanConnectVault             bool                           `json:"canConnectVault"`
