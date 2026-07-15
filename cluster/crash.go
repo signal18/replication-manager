@@ -51,7 +51,23 @@ type Crash struct {
 	DeltaRowEvents        int    `json:"deltaRowEvents"`
 	DeltaDDL              int    `json:"deltaDdl"`
 	DeltaStatementDML     int    `json:"deltaStatementDml"`
+	// RejoinResult is stamped when the rejoin EXECUTION ends: it moves the crash
+	// out of the working set into history carrying WHY it ended. This is the loop
+	// terminator — a crash with a result is done and never re-drives automatically
+	// (an explicit copy history->working set re-arms exactly one more attempt).
+	RejoinResult   string `json:"rejoinResult"`
+	RejoinResultTs int64  `json:"rejoinResultTs"`
 }
+
+// Rejoin result codes (Crash.RejoinResult). "" = not yet attempted.
+const (
+	RejoinResultSuccess       = "success"            // re-slaved under the elected master
+	RejoinResultNoDivergence  = "no-divergence"      // no crash/no delta: re-slaved on current GTID
+	RejoinResultNotFlashback  = "not-flashback-able" // diverged tail is DDL/statement: manual repair
+	RejoinResultNoMethod      = "no-rejoin-method"   // not flashback-able and no SST method armed
+	RejoinResultPeerUnreached = "peer-unreachable"   // minority could not fetch the verdict (transient split)
+	RejoinResultFailed        = "failed"             // generic execution failure
+)
 
 // Collection of Crash reports
 // swagger:response crashList
@@ -87,52 +103,86 @@ func (cluster *Cluster) newCrash(*Crash) (*Crash, error) {
 	return crash, nil
 }
 
-// crashMaxVerdictAge bounds how long a crash may drive an AUTOMATIC rejoin: an
-// election verdict is only actionable around its own split window, never hours
-// later (2026-07-15 07:10: a 7h-old crash re-condemned db1 through every
-// transient non-slave classification during a replication bootstrap).
-const crashMaxVerdictAge = 900 // seconds, same scale as the simulator's sbMax
-
-// getFreshCrashForLoser returns the FRESHEST crash designating loserURL as the
-// defeated server and masterURL as the elected winner, provided it is recent
-// enough to act on automatically. Older verdicts stay visible (GUI, operator)
-// but never drive automation.
-func (cluster *Cluster) getFreshCrashForLoser(loserURL string, masterURL string) *Crash {
-	var best *Crash
-	now := time.Now().Unix()
-	for _, cr := range cluster.Crashes {
-		if cr.URL != loserURL || cr.ElectedMasterURL != masterURL || cr.Switchover {
-			continue
-		}
-		if now-cr.UnixTimestamp > crashMaxVerdictAge {
-			continue
-		}
-		if best == nil || cr.UnixTimestamp > best.UnixTimestamp {
-			best = cr
-		}
-	}
-	return best
-}
-
-// consumeServedCrashes drops every crash whose server is now observed as a
-// healthy slave of the very master the election designated: the verdict has
-// served its purpose and must never speak twice.
-func (cluster *Cluster) consumeServedCrashes() {
-	if len(cluster.Crashes) == 0 {
-		return
-	}
+// finishRejoin is the LOOP TERMINATOR: it ends a rejoin CYCLE for url. It finds
+// the working crash for url, stamps the rejoin RESULT, moves it OUT of the working
+// set (cluster.Crashes) into durable history (FailoverHistory + failover.<ts>.json),
+// and returns the moved record so the caller can raise the visible state. After
+// this the working set has no crash for url, so nothing re-drives automatically —
+// the only way to try again is rearmRejoin (an explicit copy back). If there is no
+// working crash for url (the no-crash / no-divergence outcome) it still records a
+// history marker carrying the result so the outcome is visible and one-shot.
+func (cluster *Cluster) finishRejoin(url string, result string) *Crash {
+	var moved *Crash
 	kept := make([]*Crash, 0, len(cluster.Crashes))
 	for _, cr := range cluster.Crashes {
-		sv := cluster.GetServerFromURL(cr.URL)
-		if sv != nil && sv.IsSlave && !sv.IsFailed() {
-			if m, _ := cluster.GetMasterFromReplication(sv); m != nil && m.URL == cr.ElectedMasterURL {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Crash verdict for %s consumed: rejoined as slave of elected master %s", cr.URL, cr.ElectedMasterURL)
-				continue
-			}
+		if cr != nil && cr.URL == url && moved == nil {
+			moved = cr
+			continue
 		}
 		kept = append(kept, cr)
 	}
+	now := time.Now()
+	if moved == nil {
+		// No working crash (e.g. no-divergence rejoin): synthesize a minimal
+		// history marker so the outcome is durable, visible and one-shot.
+		electedURL := ""
+		if m := cluster.GetMaster(); m != nil {
+			electedURL = m.URL
+		}
+		moved = &Crash{URL: url, UnixTimestamp: now.Unix(), ElectedMasterURL: electedURL}
+	}
+	moved.RejoinResult = result
+	moved.RejoinResultTs = now.Unix()
 	cluster.Crashes = kept
+	cluster.FailoverHistory.StoreLastN(moved, cluster.Conf.FailoverLogFileKeep)
+	if err := moved.Save(cluster.WorkingDir + "/failover." + now.Format("20060102150405") + ".json"); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not persist rejoin history for %s: %s", url, err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin of %s ended: %s — moved to crash history", url, result)
+	return moved
+}
+
+// rejoinAlreadyAttempted reports whether history already holds a rejoin OUTCOME
+// for url from THIS split window — the re-fetch / re-run guard that makes the
+// rejoin truly one-shot. A stale outcome from a previous split (older than
+// SplitBrainStartTs) does not count, so a genuinely new event still gets its
+// attempt. An explicit rearmRejoin clears the outcome to allow one more try.
+func (cluster *Cluster) rejoinAlreadyAttempted(url string) bool {
+	for _, cr := range cluster.FailoverHistory {
+		if cr == nil || cr.URL != url || cr.RejoinResult == "" {
+			continue
+		}
+		if cluster.SplitBrainStartTs > 0 && cr.RejoinResultTs < cluster.SplitBrainStartTs {
+			continue // outcome predates this split — a new event may retry
+		}
+		// peer-unreachable is RETRYABLE, not a terminal attempt: the verdict was
+		// never obtained, so the next tick must try the fetch again (transient
+		// split / peer momentarily down). All other results are terminal one-shot.
+		if cr.RejoinResult == RejoinResultPeerUnreached {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// rearmRejoin is the EXPLICIT retry: copy the history crash for url back into the
+// working set with its result cleared, granting exactly ONE more attempt. This is
+// the only way a finished rejoin runs again — never automatic. Wired to an
+// operator API action; returns false if there is no history record to re-arm.
+func (cluster *Cluster) rearmRejoin(url string) bool {
+	for _, cr := range cluster.FailoverHistory {
+		if cr == nil || cr.URL != url {
+			continue
+		}
+		mat := *cr
+		mat.RejoinResult = ""
+		mat.RejoinResultTs = 0
+		cluster.Crashes = append(cluster.Crashes, &mat)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin re-armed for %s (explicit): copied from history to working set for one more attempt", url)
+		return true
+	}
+	return false
 }
 
 func (cluster *Cluster) getCrashFromJoiner(URL string) *Crash {

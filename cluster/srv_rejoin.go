@@ -71,6 +71,56 @@ func (server *ServerMonitor) RejoinMaster() error {
 	// Strange here add comment for why
 	cluster.canFlashBack = true
 
+	// ONE-SHOT terminator: this event already ended with a recorded result (in
+	// crash history). Do nothing until an explicit re-arm (rearmRejoin) copies it
+	// back. Makes the Failed->up edge AND the per-tick topology extra-master call
+	// idempotent — this replaces the old age cap / re-fetch loop.
+	if cluster.rejoinAlreadyAttempted(server.URL) {
+		return nil
+	}
+
+	// CRASH SOURCE — the ONLY election-specific step. Local crash first; if none
+	// involves this server and arbitration is on, fetch the peer's verdict on
+	// demand (a single-repman cluster has no peer and just keeps its local crash).
+	var peerFetchErr error
+	peerFetchTried := false
+	if cluster.Conf.Arbitration && cluster.getCrashFromJoiner(server.URL) == nil && cluster.getCrashFromMaster(server.URL) == nil {
+		peerFetchTried = true
+		if _, peerFetchErr = cluster.fetchMasterFromPeer(); peerFetchErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Rejoin %s: peer verdict unavailable: %s", server.URL, peerFetchErr)
+		}
+	}
+
+	// ROLE: is this RETURNING server the elected WINNER (a crash names it as
+	// ElectedMasterURL and it is not itself a loser)? Then CROWN it, never slave
+	// it. The LOSER (that crash's URL) rejoins through its own RejoinMaster call
+	// (the topology extra-master path) — on the minority the colocated old master
+	// never gets a Failed->up edge of its own.
+	if cluster.getCrashFromJoiner(server.URL) == nil {
+		if win := cluster.getCrashFromMaster(server.URL); win != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Returning server %s is the peer-elected master — crowning it (loser %s rejoins separately)", server.URL, win.URL)
+			cluster.master = server
+			server.SetMaster()
+			if server.IsReadOnly() && !server.IsRelay {
+				server.SetReadWrite()
+			}
+			cluster.lastmaster = nil
+			cluster.backendStateChangeProxies()
+			return nil
+		}
+	}
+
+	// MASTER ADOPTION: the minority nil'd its master pointer; the crash names the
+	// winner, so adopt it here and converge with the master!=nil path below.
+	if cluster.master == nil {
+		if cr := cluster.getCrashFromJoiner(server.URL); cr != nil && cr.ElectedMasterURL != "" {
+			if m := cluster.GetServerFromURL(cr.ElectedMasterURL); m != nil {
+				cluster.master = m
+				m.SetMaster()
+			}
+		}
+	}
+
 	if cluster.master != nil {
 		if server.URL != cluster.master.URL {
 			cluster.SetState("WARN0022", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0022"], server.URL, cluster.master.URL), ErrFrom: "REJOIN"})
@@ -87,20 +137,45 @@ func (server *ServerMonitor) RejoinMaster() error {
 				}
 				crash := cluster.getCrashFromJoiner(server.URL)
 				if crash == nil {
+					// No divergence record for this server. Preserve the existing
+					// conservative behaviour (SST for a known old master, reseed if
+					// armed), but every exit now ENDS the cycle via finishRejoin so it
+					// is one-shot and its outcome is visible in history.
 					cluster.SetState("ERR00066", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00066"], server.URL, cluster.master.URL), ErrFrom: "REJOIN"})
-					if cluster.oldMaster != nil {
-						if cluster.oldMaster.URL == server.URL {
-							server.RejoinMasterSST()
-							return nil
-						}
+					if cluster.oldMaster != nil && cluster.oldMaster.URL == server.URL {
+						err := server.RejoinMasterSST()
+						cluster.finishRejoin(server.URL, rejoinResultOf(err))
+						return nil
 					}
 					if cluster.Conf.Autoseed {
-						server.ReseedMasterSST()
+						err := server.ReseedMasterSST()
+						cluster.finishRejoin(server.URL, rejoinResultOf(err))
 						return nil
-					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "No auto seeding %s", server.URL)
-						return errors.New("No Autoseed")
 					}
+					// PEER-UNREACHABLE (real-world transient split): arbitration is on and
+					// we TRIED to fetch the verdict but the peer did not answer. We must
+					// NOT blindly re-slave on current GTID — this server may hold a
+					// divergent tail we simply could not learn about. Fence it, record a
+					// RETRYABLE result (rejoinAlreadyAttempted ignores peer-unreachable),
+					// and try again next tick when the peer recovers.
+					if cluster.Conf.Arbitration && peerFetchTried && peerFetchErr != nil {
+						logs, roErr := server.SetReadOnly()
+						cluster.LogSQL(logs, roErr, server.URL, "Rejoin", config.LvlErr, "Failed to fence %s read-only while peer verdict unavailable: %s", server.URL, roErr)
+						cluster.finishRejoin(server.URL, RejoinResultPeerUnreached)
+						cluster.backendStateChangeProxies()
+						return nil
+					}
+					// No crash, no old-master anchor, no autoseed: re-slave on current
+					// GTID (no divergence to recover). If that too cannot proceed the
+					// outcome is recorded for the operator — never a silent retry.
+					err := server.rejoinMasterAsSlave()
+					if err != nil {
+						cluster.finishRejoin(server.URL, RejoinResultNoMethod)
+					} else {
+						cluster.finishRejoin(server.URL, RejoinResultNoDivergence)
+					}
+					cluster.backendStateChangeProxies()
+					return nil
 				} //crash info is available
 				if cluster.Conf.AutorejoinBackupBinlog {
 					server.freezeThenCaptureLostEvents(crash)
@@ -109,14 +184,32 @@ func (server *ServerMonitor) RejoinMaster() error {
 				err := server.rejoinMasterIncremental(crash)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed to autojoin incremental to master %s", server.URL)
-					err := server.RejoinMasterSST()
-					if err != nil {
+					sstErr := server.RejoinMasterSST()
+					if sstErr != nil {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "State transfer rejoin failed")
+						// Could not complete. Distinguish WHY for the operator:
+						//   diverged + not reversible -> not-flashback-able (manual)
+						//   otherwise (incl. empty)   -> no method / generic failure
+						// An EMPTY delta is never "not-flashback-able" — nothing diverged.
+						result := RejoinResultNoMethod
+						if crash.DeltaAnalyzed && crash.Diverged() && !crash.DeltaFlashable {
+							result = RejoinResultNotFlashback
+						}
+						cluster.finishRejoin(server.URL, result)
+						cluster.backendStateChangeProxies()
+						return nil
 					}
 				}
 				if cluster.Conf.AutorejoinBackupBinlog {
 					server.saveBinlog(crash)
 				}
+				// Success: no-divergence if the delta was empty (clean re-slave),
+				// otherwise a real recovery of a diverged tail.
+				result := RejoinResultSuccess
+				if crash.DeltaAnalyzed && !crash.Diverged() {
+					result = RejoinResultNoDivergence
+				}
+				cluster.finishRejoin(server.URL, result)
 
 			}
 
@@ -124,9 +217,6 @@ func (server *ServerMonitor) RejoinMaster() error {
 			cluster.backendStateChangeProxies()
 		}
 	} else {
-		if server.rejoinFromElection() {
-			return nil
-		}
 		//no master discovered rediscovering from last seen
 		if cluster.lastmaster != nil {
 			if cluster.lastmaster.ServerID == server.ServerID {
@@ -482,53 +572,12 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 
 }
 
-// rejoinFromElection handles the no-master-discovered case using the
-// peer-materialized crash — the minority never knows who was elected on its own;
-// the crash is how it knows (URL = old master, ElectedMasterURL = winner). It is
-// normally prefetched at the split-resolve transition (ArbitratorHandler); fetched
-// inline here if this trigger won that race, because the Failed->up edge is
-// ONE-SHOT and must not run blind (2026-07-14 23:00 run: RejoinMaster entered with
-// master nil and no crash, did nothing, and the old master was left as a second
-// read-write master). If the RETURNING server is the peer-elected master it is
-// crowned, and the rejoin is driven onto the OLD master (crash.URL) — the
-// colocated server that never fails on this side and therefore never gets its own
-// Failed->up edge. Returns true when the case was handled.
-func (server *ServerMonitor) rejoinFromElection() bool {
-	cluster := server.ClusterGroup
-	if cluster.Conf.Arbitration && len(cluster.Crashes) == 0 {
-		if _, err := cluster.fetchMasterFromPeer(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Rejoin %s: no peer elected master to fetch: %s", server.URL, err)
-		}
+// rejoinResultOf maps an SST/reseed error to a rejoin result code for finishRejoin.
+func rejoinResultOf(err error) string {
+	if err != nil {
+		return RejoinResultNoMethod
 	}
-	// Freshest matching verdict only, and only within its own split window —
-	// same staleness rules as the topology consumer (getFreshCrashForLoser).
-	var cr *Crash
-	now := time.Now().Unix()
-	for _, c := range cluster.Crashes {
-		if c.ElectedMasterURL != server.URL || c.Switchover || now-c.UnixTimestamp > crashMaxVerdictAge {
-			continue
-		}
-		if cr == nil || c.UnixTimestamp > cr.UnixTimestamp {
-			cr = c
-		}
-	}
-	if cr != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Returning server %s is the peer-elected master — crowning it and rejoining old master %s", server.URL, cr.URL)
-		cluster.master = server
-		server.SetMaster()
-		if server.IsReadOnly() && !server.IsRelay {
-			server.SetReadWrite()
-		}
-		cluster.lastmaster = nil
-		if old := cluster.GetServerFromURL(cr.URL); old != nil && old.URL != server.URL && !old.IsFailed() {
-			logs, err := old.SetReadOnly()
-			cluster.LogSQL(logs, err, old.URL, "Rejoin", config.LvlErr, "Failed to set old master %s read-only before rejoin: %s", old.URL, err)
-			old.RejoinMaster()
-		}
-		cluster.backendStateChangeProxies()
-		return true
-	}
-	return false
+	return RejoinResultSuccess
 }
 
 func (server *ServerMonitor) rejoinMasterAsSlave() error {

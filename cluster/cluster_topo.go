@@ -155,10 +155,8 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			}
 		}
 	}
-	// Drop verdicts that served their purpose BEFORE asserting states or acting
-	// on them: a consumed election can never speak twice.
-	cluster.consumeServedCrashes()
 	cluster.assertLostEventsStates()
+	cluster.assertRejoinResultStates()
 	if cluster.Conf.Arbitration {
 		if !cluster.IsActive() {
 			cluster.SetState("ERR00105", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00105"], ErrFrom: "ARB"})
@@ -306,29 +304,21 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 							cluster.master.SetReadWrite()
 						}
 					}
-					// Resurrected 3.0 dual-master fix (cluster_topo.go:233, commented out
-					// 2021-02 "remove for rolling restart": topology could not tell a
-					// split-brain LOSER from a server merely stopping around a
-					// switchover). The ELECTION VERDICT is that missing discriminator:
-					// rejoin the extra master only when the crash says THIS server lost
-					// (URL match) and the CURRENT master won (ElectedMasterURL match) —
-					// a rolling restart produces no election and a switchover records
-					// itself as Switchover, so the 2021 false-positive cannot happen.
-					// Runs every tick, so there is no one-shot edge to lose: a tick
-					// refused (mid-split, in-failover) simply retries on the next pass.
+					// Extra master after a split brain: raise ERR00063 and reach the ONE
+					// unified rejoin (RejoinMaster) — this is how the COLOCATED old master,
+					// which never gets a Failed->up edge on the minority (it stayed
+					// reachable), enters recovery. No verdict selection or age gate here:
+					// RejoinMaster owns the crash source (local, or fetched from the peer)
+					// and is ONE-SHOT via finishRejoin — after the first attempt the crash
+					// sits in history with a result, rejoinAlreadyAttempted returns true,
+					// and this per-tick call becomes a no-op until an explicit re-arm. That
+					// terminator (not an age cap) is what stops the 2021 rolling-restart
+					// false-positive AND the 2026-07 loop.
 					extra := cluster.Servers[k]
 					if m := cluster.GetMaster(); m != nil && extra.URL != m.URL && !extra.IsFailed() &&
 						!cluster.IsSplitBrain && !cluster.StateMachine.IsInFailover() && cluster.Conf.Autorejoin {
-						// Freshest matching verdict only, and only within its own split
-						// window (crashMaxVerdictAge): a stale crash re-condemned db1 for
-						// 7 hours' distance on 2026-07-15 07:10, out-shouting the fresh
-						// election and re-crowning yesterday's winner.
-						if cr := cluster.getFreshCrashForLoser(extra.URL, m.URL); cr != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Election verdict: extra master %s lost to %s — rejoining it", extra.URL, m.URL)
-							logs, err := extra.SetReadOnly()
-							cluster.LogSQL(logs, err, extra.URL, "Rejoin", config.LvlErr, "Failed to set extra master %s read-only before rejoin: %s", extra.URL, err)
-							extra.RejoinMaster()
-						}
+						cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00063"], ErrFrom: "TOPO"})
+						extra.RejoinMaster()
 					}
 				} else if !cluster.IsFailedArbitrator {
 					// Minority fail-safe: a node that cannot confirm authority via the

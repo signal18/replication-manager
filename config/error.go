@@ -268,7 +268,9 @@ var ClusterError = map[string]string{
 	"WARN0180":  "%d database(s) have no deployed config received from dbjobs: %s",
 	"WARN0182":  "Failed to backup lost events of old master %s after failover — flashback rejoin impossible: %s",
 	"WARN0184":  "Diverged old master %s: captured lost events are flashback-able (row-DML only)",
-	"WARN0185":  "Diverged old master %s: captured lost events are NOT flashback-able (DDL, statement events or empty capture) — reseed or forward apply required",
+	"WARN0185":  "Diverged old master %s: captured lost events are NOT flashback-able (DDL or statement events) — reseed or forward apply required",
+	"WARN0186":  "Rejoin of %s could not complete automatically (%s) — manual repair or explicit re-arm required",
+	"WARN0187":  "Rejoin of %s pending: peer election verdict unavailable (transient split / peer unreachable) — retrying",
 	// Split-brain simulator states (VSPLIT namespace, ErrType WARNING) — each axis of
 	// the simulated partition tracked open/close in the state timeline.
 	"VSPLIT0001": "Split-brain simulator running: simulated link cut active (%s), auto-restore in %ds",
