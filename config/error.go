@@ -271,7 +271,7 @@ var ClusterError = map[string]string{
 	"WARN0185":  "Diverged old master %s: captured lost events are NOT flashback-able (DDL or statement events) — reseed or forward apply required",
 	"WARN0186":  "Rejoin of %s could not complete automatically (%s) — manual repair or explicit re-arm required",
 	"WARN0187":  "Rejoin of %s pending: peer election verdict unavailable (transient split / peer unreachable) — retrying",
-	"WARN0188":  "Diverged old master %s: IO thread stopped with error 1236 (requested GTID not in master's binlog — executed extra transactions). reset-master-reslave cannot recover this (RESET MASTER leaves gtid_slave_pos); use flashback or reseed",
+	"WARN0188":  "Rejoin can not use unsafe method reset-master-reslave on %s because replication points to an invalid position on the new master",
 	// Split-brain simulator states (VSPLIT namespace, ErrType WARNING) — each axis of
 	// the simulated partition tracked open/close in the state timeline.
 	"VSPLIT0001": "Split-brain simulator running: simulated link cut active (%s), auto-restore in %ds",

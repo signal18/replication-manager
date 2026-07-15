@@ -614,20 +614,38 @@ func (server *ServerMonitor) rejoinWithMethod(crash *Crash) {
 	case RejoinMethodPhysicalBkp:
 		err = server.JobFlashbackPhysicalBackup()
 	case RejoinMethodIgnoreForce:
-		// Discard the divergent tail (operator accepts the data loss) and force a
-		// clean re-slave: RESET MASTER wipes this server's own GTID/binlog history,
-		// then attach on the elected master's current position.
-		logs, rmErr := server.ResetMaster()
-		cluster.LogSQL(logs, rmErr, server.URL, "Rejoin", config.LvlErr, "ignore-delta-force: RESET MASTER on %s failed: %s", server.URL, rmErr)
-		err = rmErr
+		// Discard the divergent tail (operator accepts the data loss): RESET MASTER wipes
+		// this server's own binlog/GTID history, then re-slave with the SAME full-config
+		// CHANGE MASTER the auto path / flashback use (SetReplicationGTIDSlavePosFromServer
+		// carries SSL, delay, channel) — RESET MASTER alone does not re-attach.
+		logs, e := server.ResetMaster()
+		cluster.LogSQL(logs, e, server.URL, "Rejoin", config.LvlErr, "ignore-delta-force: RESET MASTER on %s failed: %s", server.URL, e)
+		if e == nil {
+			logs, e = server.SetReplicationGTIDSlavePosFromServer(cluster.master)
+			cluster.LogSQL(logs, e, server.URL, "Rejoin", config.LvlErr, "ignore-delta-force: CHANGE MASTER on %s failed: %s", server.URL, e)
+		}
+		if e == nil {
+			logs, e = server.StartSlave()
+			cluster.LogSQL(logs, e, server.URL, "Rejoin", config.LvlInfo, "ignore-delta-force: START SLAVE on %s: %s", server.URL, e)
+		}
+		err = e
 	case RejoinMethodResetReslave:
-		// Manual repair (Stephane's): the server is a FAILED SLAVE stuck on a
-		// GTID/binlog position (e.g. strict-mode out-of-order SlaveErr). RESET
-		// MASTER clears its own binlog/GTID history so the re-slave below starts
-		// clean under the elected master — the reset-master + start-slave repair.
+		// EXACTLY the server-menu repair, combined: reset-master (node.ResetMaster) then
+		// start-slave (node.StartSlave). StartSlave RESUMES the replication already
+		// configured on this server, so multi-source / named channels / MASTER_DELAY are
+		// preserved. Do NOT re-CHANGE MASTER via attachAsReadOnlySlave below — that would
+		// flatten a complex topology to one default channel. End here like the menu.
 		logs, rmErr := server.ResetMaster()
 		cluster.LogSQL(logs, rmErr, server.URL, "Rejoin", config.LvlErr, "reset-master-reslave: RESET MASTER on %s failed: %s", server.URL, rmErr)
+		logs, ssErr := server.StartSlave()
+		cluster.LogSQL(logs, ssErr, server.URL, "Rejoin", config.LvlErr, "reset-master-reslave: START SLAVE on %s failed: %s", server.URL, ssErr)
 		err = rmErr
+		if err == nil {
+			err = ssErr
+		}
+		cluster.finishRejoin(server.URL, rejoinResultOf(err))
+		cluster.backendStateChangeProxies()
+		return
 	case RejoinMethodBootstrapFTWRL:
 		// Re-bootstrap the WHOLE master-slave topology (FTWRL on the master before
 		// RESET MASTER). Unlike the single-server methods, BootstrapReplication rebuilds
@@ -649,11 +667,21 @@ func (server *ServerMonitor) rejoinWithMethod(crash *Crash) {
 	if cluster.Conf.AutorejoinBackupBinlog {
 		server.saveBinlog(crash)
 	}
-	// Always end attached read-only under the elected master (strict mode protects).
-	server.attachAsReadOnlySlave(cluster.master)
+	// Mirror the auto-rejoin path exactly: on SUCCESS the method has already re-slaved
+	// this server itself (its own full-config CHANGE MASTER + START SLAVE), so add NO
+	// second attach — that was the duplicate. Only on FAILURE fall back to
+	// attachAsReadOnlySlave so a failed rejoin never leaves a floating writable
+	// standalone (strict mode then protects a divergent tail as SlaveErr).
 	result := RejoinResultSuccess
+	if crash.DeltaAnalyzed && !crash.Diverged() {
+		result = RejoinResultNoDivergence
+	}
 	if err != nil {
 		result = RejoinResultNoMethod
+		if crash.DeltaAnalyzed && crash.Diverged() && !crash.DeltaFlashable {
+			result = RejoinResultNotFlashback
+		}
+		server.attachAsReadOnlySlave(cluster.master)
 	}
 	cluster.finishRejoin(server.URL, result)
 	cluster.backendStateChangeProxies()
