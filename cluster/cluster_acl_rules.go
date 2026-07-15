@@ -146,6 +146,14 @@ var appACLRules = []ACLRule{
 	{"/content/actions/delete", nil, []string{config.GrantAppDeployment}},
 	{"/content/actions/create-local-copy", nil, []string{config.GrantAppDeployment}},
 	{"/content", nil, []string{config.GrantAppDeployment}},
+
+	// Peer import (arbitration peer -> local, manual/per-app). All peer-import
+	// endpoints are part of the app-monitor import flow, so they are gated with
+	// the same grants as adding/managing app monitors rather than cluster-test.
+	{"/peer-import/inventory", nil, []string{config.GrantClusterCreateMonitor, config.GrantAppDeployment}},
+	{"/peer-import/export", nil, []string{config.GrantClusterCreateMonitor, config.GrantAppDeployment}},
+	{"/peer-import/preview", nil, []string{config.GrantClusterCreateMonitor, config.GrantAppDeployment}},
+	{"/peer-import/apply", nil, []string{config.GrantClusterCreateMonitor, config.GrantAppDeployment}},
 }
 
 // clusterACLRules defines ACL rules for general cluster-level endpoints
@@ -163,12 +171,12 @@ var clusterACLRules = []ACLRule{
 	{"/plugins", nil, []string{config.GrantClusterSettings}},
 
 	// Backups — ordered longest-match-first so specific rules win
-	{"/backups/stats", nil, []string{config.GrantClusterShowBackups}}, // read-only stats
-	{"/backups/", nil, []string{config.GrantDBBackup}},                // write sub-paths: delete, reconcile
-	{"/backups", nil, []string{config.GrantClusterShowBackups}},       // list (bare path, no slash)
-	{"/restic/purge", nil, []string{config.GrantDBBackup}},                                        // delete a snapshot
-	{"/restic/wipe", nil, []string{config.GrantDBBackup}},                                         // destructive wipe
-	{"/restic/check-config", nil, []string{config.GrantClusterProcess, config.GrantDBBackup}},     // preview also required by wipe workflow
+	{"/backups/stats", nil, []string{config.GrantClusterShowBackups}},                         // read-only stats
+	{"/backups/", nil, []string{config.GrantDBBackup}},                                        // write sub-paths: delete, reconcile
+	{"/backups", nil, []string{config.GrantClusterShowBackups}},                               // list (bare path, no slash)
+	{"/restic/purge", nil, []string{config.GrantDBBackup}},                                    // delete a snapshot
+	{"/restic/wipe", nil, []string{config.GrantDBBackup}},                                     // destructive wipe
+	{"/restic/check-config", nil, []string{config.GrantClusterProcess, config.GrantDBBackup}}, // preview also required by wipe workflow
 	{"/restic/snapshots", nil, []string{config.GrantClusterShowBackups}},
 	{"/restic/stats", nil, []string{config.GrantClusterShowBackups}},
 

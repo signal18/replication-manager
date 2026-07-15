@@ -68,6 +68,17 @@ type App struct {
 type appList []*App
 
 func (cluster *Cluster) newAppList() error {
+	// Serialize whole rebuilds: NewApp()/addAppToList() mutate shared
+	// *config.AppConfig pointers in place, so two rebuilds racing corrupts them.
+	cluster.appListRebuildMu.Lock()
+	defer cluster.appListRebuildMu.Unlock()
+
+	// Snapshot Conf.Apps under cluster.Lock() — other mutators write it under the same lock.
+	cluster.Lock()
+	confApps := make([]*config.AppConfig, len(cluster.Conf.Apps))
+	copy(confApps, cluster.Conf.Apps)
+	cluster.Unlock()
+
 	// Build into a temporary slice first, then swap atomically so that
 	// concurrent readers never observe a partially-populated list.
 	type pendingApp struct {
@@ -75,10 +86,10 @@ func (cluster *Cluster) newAppList() error {
 		hostport string
 		s3Prov   bool
 	}
-	pending := make([]pendingApp, 0, len(cluster.Conf.Apps))
+	pending := make([]pendingApp, 0, len(confApps))
 	news3providers := make([]string, 0)
 
-	for k, appcnf := range cluster.Conf.Apps {
+	for k, appcnf := range confApps {
 		if appcnf.AppHost == "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
 				"Skipping app config at index %d: AppHost is empty (file may be incomplete)", k)

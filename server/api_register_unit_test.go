@@ -212,3 +212,109 @@ func TestSyncSubscriptionPlanFromCRM_NoCredentials(t *testing.T) {
 		t.Fatalf("expected plan to stay unchanged with no credentials, got %q", repman.Conf.Cloud18SubscriptionPlan)
 	}
 }
+
+// TestApplyCRMSubscriptionSelfHeal: a valid 200 persists the plan; anything
+// else (non-200, malformed body, empty plan) is a no-op.
+func TestApplyCRMSubscriptionSelfHeal(t *testing.T) {
+	t.Run("200 with valid plan persists it", func(t *testing.T) {
+		repman := newSyncTestRepman("")
+		repman.applyCRMSubscriptionSelfHeal(http.StatusOK, []byte(`{"plan":"partner","uri":"acme.dev.fr-1"}`), "acme.dev.fr-1")
+
+		if repman.Conf.Cloud18SubscriptionPlan != "partner" {
+			t.Fatalf("expected plan to be persisted, got %q", repman.Conf.Cloud18SubscriptionPlan)
+		}
+	})
+
+	t.Run("non-200 is a no-op", func(t *testing.T) {
+		repman := newSyncTestRepman("")
+		repman.applyCRMSubscriptionSelfHeal(http.StatusForbidden, []byte(`{"plan":"partner"}`), "acme.dev.fr-1")
+
+		if repman.Conf.Cloud18SubscriptionPlan != "free" {
+			t.Fatalf("expected plan to stay unchanged on non-200, got %q", repman.Conf.Cloud18SubscriptionPlan)
+		}
+	})
+
+	t.Run("malformed body is a no-op", func(t *testing.T) {
+		repman := newSyncTestRepman("")
+		repman.applyCRMSubscriptionSelfHeal(http.StatusOK, []byte(`not json`), "acme.dev.fr-1")
+
+		if repman.Conf.Cloud18SubscriptionPlan != "free" {
+			t.Fatalf("expected plan to stay unchanged on malformed body, got %q", repman.Conf.Cloud18SubscriptionPlan)
+		}
+	})
+
+	t.Run("empty plan is a no-op", func(t *testing.T) {
+		repman := newSyncTestRepman("")
+		repman.applyCRMSubscriptionSelfHeal(http.StatusOK, []byte(`{"plan":""}`), "acme.dev.fr-1")
+
+		if repman.Conf.Cloud18SubscriptionPlan != "free" {
+			t.Fatalf("expected plan to stay unchanged on empty plan, got %q", repman.Conf.Cloud18SubscriptionPlan)
+		}
+	})
+}
+
+// TestBootOrdering_SelfHealSurvivesConfigReassignment reproduces the exact
+// shape of server.go's InitConfig boot sequence: a local conf value gets
+// copied into repman.Conf, then copied in *again* later (InitConfig does
+// this both before and after the init_git block, to reconcile the local
+// working copy used for building per-cluster configs). Self-heal persists
+// directly onto repman.Conf, not onto the local conf value — so if it runs
+// while a later "*repman.Conf = conf" reassignment is still pending, that
+// reassignment silently reverts it back to the stale pre-boot plan. This
+// was the actual node-2-boot bug: the fetch succeeded, but a later,
+// unrelated reassignment clobbered it before boot finished.
+//
+// The fix moved the self-heal call in server.go to run after the last such
+// reassignment. This test pins that ordering requirement down so a future
+// refactor of InitConfig can't silently reintroduce the clobber.
+func TestBootOrdering_SelfHealSurvivesConfigReassignment(t *testing.T) {
+	crm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"plan":"partner","uri":"acme.dev.fr-1"}`))
+	}))
+	defer crm.Close()
+
+	t.Run("self-heal BEFORE the reassignment gets clobbered (the bug)", func(t *testing.T) {
+		conf := config.Config{
+			Cloud18CrmApiUrl:        crm.URL,
+			Cloud18Domain:           "acme",
+			Cloud18SubDomain:        "dev",
+			Cloud18SubDomainZone:    "fr-1",
+			Cloud18SubscriptionPlan: "free",
+		}
+		repman := &ReplicationManager{Conf: &config.Config{}}
+
+		*repman.Conf = conf // InitConfig's early sync (server.go:1903-equivalent)
+
+		repman.syncSubscriptionPlanFromCRMWithToken("token") // self-heal fetches "partner" onto repman.Conf
+		if repman.Conf.Cloud18SubscriptionPlan != "partner" {
+			t.Fatalf("expected self-heal to fetch partner, got %q", repman.Conf.Cloud18SubscriptionPlan)
+		}
+
+		*repman.Conf = conf // InitConfig's final sync (server.go:1938/1950-equivalent) — clobbers it
+
+		if repman.Conf.Cloud18SubscriptionPlan != "free" {
+			t.Fatalf("expected this ordering to reproduce the clobber bug (plan reverted to free), got %q — if this now passes, the bug's precondition changed and this test needs revisiting", repman.Conf.Cloud18SubscriptionPlan)
+		}
+	})
+
+	t.Run("self-heal AFTER the reassignment survives (the fix)", func(t *testing.T) {
+		conf := config.Config{
+			Cloud18CrmApiUrl:        crm.URL,
+			Cloud18Domain:           "acme",
+			Cloud18SubDomain:        "dev",
+			Cloud18SubDomainZone:    "fr-1",
+			Cloud18SubscriptionPlan: "free",
+		}
+		repman := &ReplicationManager{Conf: &config.Config{}}
+
+		*repman.Conf = conf // early sync
+		*repman.Conf = conf // final sync — nothing pending after this point
+
+		repman.syncSubscriptionPlanFromCRMWithToken("token") // self-heal runs last, as server.go now does
+
+		if repman.Conf.Cloud18SubscriptionPlan != "partner" {
+			t.Fatalf("expected self-heal to survive when run after the final reassignment, got %q", repman.Conf.Cloud18SubscriptionPlan)
+		}
+	})
+}

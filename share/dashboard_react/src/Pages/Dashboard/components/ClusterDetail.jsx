@@ -32,6 +32,7 @@ import {
   unProvisionCluster
 } from '../../../redux/clusterSlice'
 import NewServerModal from '../../../components/Modals/NewServerModal'
+import PeerAppImportModal from '../../../components/Modals/PeerAppImportModal'
 import parentStyles from '../styles.module.scss'
 import CopyTextModal from '../../../components/Modals/CopyTextModal'
 import SetCredentialsModal from '../../../components/Modals/SetCredentialsModal'
@@ -53,6 +54,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
 
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [isNewServerModalOpen, setIsNewServerModalOpen] = useState(false)
+  const [isPeerAppImportModalOpen, setIsPeerAppImportModalOpen] = useState(false)
   const [isNewClusterModalOpen, setIsNewClusterModalOpen] = useState(false)
   const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false)
   const [isClipboardModalOpen, setIsClipboardModalOpen] = useState(false)
@@ -161,6 +163,13 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
           isDisabled: !g['cluster-create-monitor'],
           onClick: () => {
             setIsNewServerModalOpen(true)
+          }
+        },
+        {
+          name: 'Import App Monitor',
+          isDisabled: !g['cluster-create-monitor'] && !g['app-deployment'],
+          onClick: () => {
+            setIsPeerAppImportModalOpen(true)
           }
         },
         {
@@ -568,6 +577,13 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
           clusterName={selectedCluster?.name}
           isOpen={isNewServerModalOpen}
           closeModal={() => setIsNewServerModalOpen(false)}
+        />
+      )}
+      {isPeerAppImportModalOpen && (
+        <PeerAppImportModal
+          clusterName={selectedCluster?.name}
+          isOpen={isPeerAppImportModalOpen}
+          closeModal={() => setIsPeerAppImportModalOpen(false)}
         />
       )}
       {isCredentialModalOpen && (

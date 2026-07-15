@@ -5,7 +5,7 @@ import { setCluster } from '../../redux/clusterSlice'
 import { Box, Flex, HStack, Text, Wrap } from '@chakra-ui/react'
 import NotFound from '../../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
-import { HiCreditCard, HiExclamation, HiTable, HiViewGrid } from 'react-icons/hi'
+import { HiCloudDownload, HiCreditCard, HiExclamation, HiTable, HiViewGrid } from 'react-icons/hi'
 import Card from '../../components/Card'
 import TableType2 from '../../components/TableType2'
 import { DataTable } from '../../components/DataTable'
@@ -17,14 +17,17 @@ import { FaUserPlus } from 'react-icons/fa'
 import RMIconButton from '../../components/RMIconButton'
 import TagPill from '../../components/TagPill'
 import AddUserModal from '../../components/Modals/AddUserModal'
+import DynamicClusterGitImportModal from '../../components/Modals/DynamicClusterGitImportModal'
 import SearchBox from '../../components/SearchBox'
 import AccordionComponent from '../../components/AccordionComponent'
+import { isCloud18PlanEligible } from '../../utils/cloud18'
 
 const columnHelper = createColumnHelper()
 
 function ClusterList({ onClick }) {
   const dispatch = useDispatch()
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
+  const [isGitImportModalOpen, setIsGitImportModalOpen] = useState(false)
   const [clusterName, setClusterName] = useState('')
   const [addUserApiUsers, setAddUserApiUsers] = useState(null)
   const [clusterList, setClusterList] = useState([])
@@ -39,6 +42,8 @@ function ClusterList({ onClick }) {
   const isAdmin = localStorage.getItem('username') === 'admin'
 
   const canAddUser = monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0 && isAdmin
+
+  const canImportFromGit = isAdmin && isCloud18PlanEligible(monitor?.config)
 
   useEffect(() => {
     dispatch(getClusters({}))
@@ -189,9 +194,7 @@ function ClusterList({ onClick }) {
     [hasArbitration, canAddUser, clusterList]
   )
 
-  return !loading && clusterList?.length === 0 ? (
-    <NotFound text={'No cluster found!'} />
-  ) : (
+  return (
     <>
       <AccordionComponent
         heading={'Clusters'}
@@ -203,9 +206,14 @@ function ClusterList({ onClick }) {
             ) : (
               <RMIconButton icon={HiTable} tooltip='Show table view' onClick={() => setViewType('table')} />
             )}
+            {canImportFromGit && (
+              <RMIconButton icon={HiCloudDownload} tooltip='Import missing clusters from Git' onClick={() => setIsGitImportModalOpen(true)} />
+            )}
           </HStack>
         }
-        body={viewType === 'table' ? (
+        body={!loading && clusterList?.length === 0 ? (
+          <NotFound text={'No cluster found!'} />
+        ) : viewType === 'table' ? (
           <DataTable data={clusterList} columns={columns} />
         ) : (
         <Flex className={styles.clusterList}>
@@ -311,6 +319,9 @@ function ClusterList({ onClick }) {
       />
       {isAddUserModalOpen && (
         <AddUserModal clusterName={clusterName} apiUsers={addUserApiUsers} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />
+      )}
+      {isGitImportModalOpen && (
+        <DynamicClusterGitImportModal isOpen={isGitImportModalOpen} closeModal={() => setIsGitImportModalOpen(false)} />
       )}
     </>
   )

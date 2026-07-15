@@ -1775,31 +1775,40 @@ func (cluster *Cluster) GetTerminalManager() tty.TerminalManager {
 }
 
 func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
-	for _, cnf := range cluster.Conf.Apps {
-		if cnf.AppHost == apphost && cnf.AppPort == port {
-			if cnf.Deployment.Variables == nil {
-				cnf.Deployment.Variables = make(config.VariableMaps, 0)
-			}
-			if cnf.Deployment.Routes == nil {
-				cnf.Deployment.Routes = make(config.Routes, 0)
-			}
-			if cnf.Deployment.Storages.GitClones == nil {
-				cnf.Deployment.Storages.GitClones = make(config.GitClones, 0)
-			}
-			if cnf.Deployment.Storages.S3Mounts == nil {
-				cnf.Deployment.Storages.S3Mounts = make(config.S3Mounts, 0)
-			}
-			if cnf.Deployment.Storages.Volumes == nil {
-				cnf.Deployment.Storages.Volumes = make(config.Volumes, 0)
-			}
-			if cnf.Deployment.Paths == nil {
-				cnf.Deployment.Paths = make(config.PathMaps, 0)
-			}
-			return cnf
+	// Conf.Apps is mutated under cluster.Lock() elsewhere; match that here.
+	cluster.Lock()
+	var cnf *config.AppConfig
+	for _, c := range cluster.Conf.Apps {
+		if c.AppHost == apphost && c.AppPort == port {
+			cnf = c
+			break
 		}
 	}
+	cluster.Unlock()
 
-	cnf := cluster.NewAppConfig(apphost, port)
+	if cnf != nil {
+		if cnf.Deployment.Variables == nil {
+			cnf.Deployment.Variables = make(config.VariableMaps, 0)
+		}
+		if cnf.Deployment.Routes == nil {
+			cnf.Deployment.Routes = make(config.Routes, 0)
+		}
+		if cnf.Deployment.Storages.GitClones == nil {
+			cnf.Deployment.Storages.GitClones = make(config.GitClones, 0)
+		}
+		if cnf.Deployment.Storages.S3Mounts == nil {
+			cnf.Deployment.Storages.S3Mounts = make(config.S3Mounts, 0)
+		}
+		if cnf.Deployment.Storages.Volumes == nil {
+			cnf.Deployment.Storages.Volumes = make(config.Volumes, 0)
+		}
+		if cnf.Deployment.Paths == nil {
+			cnf.Deployment.Paths = make(config.PathMaps, 0)
+		}
+		return cnf
+	}
+
+	cnf = cluster.NewAppConfig(apphost, port)
 	if cnf.Deployment.Variables == nil {
 		cnf.Deployment.Variables = make(config.VariableMaps, 0)
 	}

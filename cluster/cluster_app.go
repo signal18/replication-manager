@@ -19,6 +19,18 @@ import (
 	"github.com/spf13/viper"
 )
 
+// isSafeAppHostToken reports whether s is safe as an apps/<s>.toml path
+// component: non-empty, no path separators, not "." or "..".
+func isSafeAppHostToken(s string) bool {
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	if strings.ContainsAny(s, "/\\") {
+		return false
+	}
+	return filepath.Base(s) == s
+}
+
 func (cluster *Cluster) NewAppConfig(apphost, port string) *config.AppConfig {
 	agents := cluster.GetAppAgents(nil)
 	appcnf := &config.AppConfig{
@@ -581,12 +593,16 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 			"Canonicalized legacy app config template in %q", filename)
 	}
 
-	// If app-host was not set in the TOML file (or was left as an unresolved template),
-	// fall back to the file name so the app gets a valid, stable Name and ID.
+	// Fall back to the file name if app-host is unset, unresolved, or unsafe
+	// as a path component (it gets joined into a path by ImportAppConfig/SaveApp).
 	if appcnf.AppHost == "" || strings.Contains(appcnf.AppHost, "{{") {
 		appcnf.AppHost = appname
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
 			"App config %q had no resolved app-host; using filename as host: %s", filename, appname)
+	} else if !isSafeAppHostToken(appcnf.AppHost) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
+			"App config %q has unsafe app-host %q; using filename as host instead: %s", filename, appcnf.AppHost, appname)
+		appcnf.AppHost = appname
 	}
 	if appcnf.AppPort == "" {
 		appcnf.AppPort = "80"

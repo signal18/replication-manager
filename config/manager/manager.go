@@ -1153,7 +1153,12 @@ func copyFile(src, dst string, mode os.FileMode) error {
 	return out.Sync()
 }
 
-func resolveCurrentLocalBranch(workDir string) (plumbing.ReferenceName, bool) {
+// ResolveCurrentLocalBranch returns the current local branch reference for
+// the git repo at workDir (falling back to "master" if HEAD is detached), so
+// callers cloning elsewhere from the same remote can stage the branch this
+// instance actually tracks instead of silently defaulting to the remote's
+// default branch.
+func ResolveCurrentLocalBranch(workDir string) (plumbing.ReferenceName, bool) {
 	r, err := git.PlainOpen(workDir)
 	if err != nil {
 		return "", false
@@ -1171,7 +1176,9 @@ func resolveCurrentLocalBranch(workDir string) (plumbing.ReferenceName, bool) {
 	return "", false
 }
 
-func isReferenceNotFoundError(err error) bool {
+// IsReferenceNotFoundError reports whether err indicates that a requested git
+// reference (branch/tag) does not exist on the remote.
+func IsReferenceNotFoundError(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -1217,7 +1224,7 @@ func (cm *ConfigManager) RefreshGitMetadata(conf *config.Config) error {
 		SingleBranch:      true,
 	}
 
-	if refName, ok := resolveCurrentLocalBranch(path); ok {
+	if refName, ok := ResolveCurrentLocalBranch(path); ok {
 		cloneopt.ReferenceName = refName
 		cloneopt.SingleBranch = true
 		cm.logger.Infof("none", config.ConstLogModGit, "Refreshing git metadata using current local branch reference %s", refName)
@@ -1230,7 +1237,7 @@ func (cm *ConfigManager) RefreshGitMetadata(conf *config.Config) error {
 
 	cm.logger.Infof("none", config.ConstLogModGit, "Cloning fresh git metadata into temporary directory for in-place refresh")
 	if _, err := cm.cloneRepositoryWithBootstrap(tmpClonePath, conf, cloneopt); err != nil {
-		if cloneopt.ReferenceName != "" && isReferenceNotFoundError(err) {
+		if cloneopt.ReferenceName != "" && IsReferenceNotFoundError(err) {
 			cm.logger.Warnf("none", config.ConstLogModGit, "Refresh metadata clone with reference %s failed (%v). Retrying with remote default branch", cloneopt.ReferenceName, err)
 			if rmErr := os.RemoveAll(tmpClonePath); rmErr != nil {
 				return fmt.Errorf("cannot reset temporary clone dir before refresh retry: %w", rmErr)

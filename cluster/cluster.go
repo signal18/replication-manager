@@ -357,6 +357,8 @@ type Cluster struct {
 	preservedVarsMutex          sync.RWMutex               `json:"-"`
 	s3SyncApplyMu               sync.Mutex                 `json:"-"`
 	appListEpoch                uint64                     `json:"-"`
+	// appListRebuildMu serializes newAppList() (held internally, see app.go).
+	appListRebuildMu sync.Mutex `json:"-"`
 	secretVersionStoreMu        sync.Mutex                 `json:"-"`
 	secretVersionStoreDirty     bool                       `json:"-"`
 	// pluginSpikeCache holds the last DetectSpike result per server+plugin pair.

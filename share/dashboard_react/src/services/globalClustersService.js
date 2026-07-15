@@ -26,7 +26,8 @@ export const globalClustersService = {
   getSubscription,
   changeSubscription,
   getSubscriptionPlans,
-  setServerActiveStatus
+  setServerActiveStatus,
+  fetchDynamicClustersFromGit
 }
 
 function getClusters(baseURL) {
@@ -132,4 +133,8 @@ function getSubscriptionPlans() {
 
 function setServerActiveStatus(baseURL) {
   return getApi(baseURL).get('actions/set-active-status')
+}
+
+function fetchDynamicClustersFromGit() {
+  return getApi().post('clusters/actions/fetch-dynamic-from-git')
 }

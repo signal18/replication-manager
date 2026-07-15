@@ -172,6 +172,7 @@ Start create an account in https://gitlab.signal18.io
       if (state === 'complete') {
         stopPolling()
         setIsRegisterModalOpen(false)
+        dispatch(getMonitoredData({}))
       } else if (state === 'timeout' || state === 'error') {
         stopPolling()
       }
@@ -224,6 +225,7 @@ Start create an account in https://gitlab.signal18.io
     setIsConfirming(false)
     if (result?.payload?.status === 201) {
       setIsRegisterModalOpen(false)
+      await dispatch(getMonitoredData({}))
     }
   }
 
@@ -426,6 +428,7 @@ Start create an account in https://gitlab.signal18.io
     const status = result?.payload?.status
     if (status === 200 || status === 201) {
       setIsSubModalOpen(false)
+      await dispatch(getMonitoredData({}))
     }
   }
 
