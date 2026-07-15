@@ -19,6 +19,7 @@ export const clusterService = {
   getShardSchema,
   getQueryRules,
   getServerLostEvents,
+  rejoinServer,
 
   // Restic management APIs
   getResticSnapshot,
@@ -276,6 +277,13 @@ function getServerLostEvents(clusterName, serverId, { file = 'forward', pos = 0,
   return getApi(baseURL).get(
     `clusters/${clusterName}/servers/${serverId}/lost-events?file=${file}&pos=${pos}&bytes=${bytes}${tsParam}`
   )
+}
+
+// Explicit operator rejoin of a server with a chosen recovery method (delta viewer).
+// method: flashback | logical-dump | logical-backup | physical-backup |
+//         ignore-delta-force | reset-master-reslave
+function rejoinServer(clusterName, serverName, method, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/rejoin/${serverName}/${method}`)
 }
 
 function getJobs(clusterName, baseURL) {

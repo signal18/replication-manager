@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { login, logout, setUserData } from '../../redux/authSlice'
 import styles from './styles.module.scss'
-import { Box, Container, FormControl, FormLabel, FormErrorMessage, Heading, Input, Stack, Text } from '@chakra-ui/react'
+import { Box, Container, FormControl, FormLabel, FormErrorMessage, Heading, Input, Stack, Text, HStack, Link } from '@chakra-ui/react'
 import PageContainer from '../PageContainer'
 import { isAuthorized } from '../../utility/common'
 import PasswordControl from '../../components/PasswordControl'
@@ -201,6 +201,11 @@ function Login({ dashboard = false }) {
               </Stack>
             </Stack>
           </Box>
+          <HStack justify='center' spacing='6' pt='2' fontSize='sm'>
+            <Link href='https://www.signal18.io' isExternal color='teal.500'>signal18.io</Link>
+            <Link href='https://docs.signal18.io' isExternal color='teal.500'>Documentation</Link>
+            <Link href='/api-docs/index.html' isExternal color='teal.500'>API (Swagger)</Link>
+          </HStack>
         </Stack>
       </Container>
       {/* </Suspense> */}

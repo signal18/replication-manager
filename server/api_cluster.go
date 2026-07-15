@@ -10157,6 +10157,21 @@ func (repman *ReplicationManager) proxyLostEventsFromPeer(w http.ResponseWriter,
 // server with an operator-chosen method (GUI delta viewer). The cluster owns the
 // crash history and the elected master; RearmRejoin copies the history crash back
 // to the working set with the method, and the next monitor tick runs it (one-shot).
+// @Summary Rejoin a server with a chosen recovery method
+// @Description Explicitly (re-)arms the rejoin of a server from its crash history using the operator-chosen method. All methods are runnable on any crash — the delta verdict informs, it does not gate.
+// @Tags ClusterActions
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name (id or host:port)"
+// @Param method path string true "Rejoin method" Enums(flashback, logical-dump, logical-backup, physical-backup, ignore-delta-force, reset-master-reslave)
+// @Success 200 {string} string "Rejoin armed"
+// @Failure 400 {string} string "Invalid rejoin method"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "No crash history to rejoin for this server"
+// @Failure 500 {string} string "No cluster / Server Not Found"
+// @Router /api/clusters/{clusterName}/actions/rejoin/{serverName}/{method} [post]
 func (repman *ReplicationManager) handlerMuxClusterRejoin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)

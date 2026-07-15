@@ -11,6 +11,17 @@ import { acquireAutoReloadPause, releaseAutoReloadPause } from '../../../utility
 
 const PAGE_BYTES = 262144
 
+// Operator rejoin methods — mirror the backend (crash.go). ALL are always offered:
+// the delta verdict informs, it does not gate (testing must not be limited).
+const REJOIN_METHODS = [
+  { id: 'flashback', label: 'Flashback', help: 'Rewind the divergent row-DML tail and re-slave (reversible deltas only)' },
+  { id: 'logical-dump', label: 'Logical dump', help: 'mysqldump from the master, then re-slave' },
+  { id: 'logical-backup', label: 'Logical backup', help: 'Restore from the logical backup, then re-slave' },
+  { id: 'physical-backup', label: 'Physical backup', help: 'Restore from the physical backup, then re-slave' },
+  { id: 'reset-master-reslave', label: 'Reset master + re-slave', help: 'RESET MASTER on this server to clear a stuck GTID/binlog position, then re-slave clean' },
+  { id: 'ignore-delta-force', label: 'Ignore delta (force)', help: 'DISCARD the divergent tail (DATA LOSS) and force re-slave', danger: true }
+]
+
 // Viewer for the LOST EVENTS of a server's last divergence: what the old
 // master wrote past the failover election point (forward pane), and — when
 // the delta is flashback-able — the exact undo mysqlbinlog --flashback
@@ -30,7 +41,22 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
   const [loading, setLoading] = useState(false)
   const emptyPane = { lines: [], nextPos: 0, eof: false, size: 0, started: false }
   const [panes, setPanes] = useState({ forward: { ...emptyPane }, flashback: { ...emptyPane } })
+  const [rejoining, setRejoining] = useState('')
+  const [rejoinMsg, setRejoinMsg] = useState(null)
   const pauseRef = useRef(false)
+
+  const doRejoin = useCallback((m) => {
+    if (m.danger && !window.confirm(`Ignore delta on ${server?.host}:${server?.port}?\n\nThis DISCARDS the divergent tail (DATA LOSS) and force-rejoins the server. This cannot be undone.`)) {
+      return
+    }
+    setRejoining(m.id)
+    setRejoinMsg(null)
+    clusterService
+      .rejoinServer(clusterName, server?.id || `${server?.host}:${server?.port}`, m.id)
+      .then(() => setRejoinMsg({ ok: true, text: `Rejoin armed via "${m.label}" — the next monitor tick runs it (one attempt). Watch the server state and this viewer for the outcome.` }))
+      .catch((err) => setRejoinMsg({ ok: false, text: err?.response?.data || err?.message || 'Rejoin request failed' }))
+      .finally(() => setRejoining(''))
+  }, [clusterName, server?.id, server?.host, server?.port])
 
   const loadPage = useCallback(
     (file, pos) => {
@@ -183,8 +209,37 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
             </>
           ) : null}
         </ModalBody>
-        <ModalFooter>
-          <Button variant='ghost' onClick={closeModal}>Close</Button>
+        <ModalFooter flexDirection='column' alignItems='stretch' gap={2}>
+          {crash && (
+            <Box>
+              <Text fontSize='xs' mb={1} opacity={0.8}>Rejoin {server?.host}:{server?.port} — pick a method (all runnable; the verdict only informs):</Text>
+              <HStack spacing={2} flexWrap='wrap'>
+                {REJOIN_METHODS.map((m) => (
+                  <Button
+                    key={m.id}
+                    size='xs'
+                    colorScheme={m.danger ? 'red' : 'blue'}
+                    variant={m.danger ? 'solid' : 'outline'}
+                    isLoading={rejoining === m.id}
+                    isDisabled={rejoining !== ''}
+                    onClick={() => doRejoin(m)}
+                    title={m.help}
+                  >
+                    {m.label}
+                  </Button>
+                ))}
+              </HStack>
+              {rejoinMsg && (
+                <Alert status={rejoinMsg.ok ? 'success' : 'error'} borderRadius='md' mt={2} py={1}>
+                  <AlertIcon />
+                  <Text fontSize='sm'>{rejoinMsg.text}</Text>
+                </Alert>
+              )}
+            </Box>
+          )}
+          <HStack justify='flex-end'>
+            <Button variant='ghost' onClick={closeModal}>Close</Button>
+          </HStack>
         </ModalFooter>
       </ModalContent>
     </Modal>
