@@ -367,6 +367,15 @@ func (cluster *Cluster) RejoinMethodsStatus() []RejoinMethodStatus {
 	flashOK := cluster.Conf.AutorejoinFlashback && cluster.Conf.AutorejoinBackupBinlog
 	masterUp := master != nil && !master.IsDown()
 	hasScript := cluster.Conf.RejoinScript != ""
+	// Cluster-level rejoin blocker: the old master's IO thread stopped with 1236 (it
+	// diverged — executed extra transactions). reset-master-reslave cannot recover it.
+	diverged := false
+	for _, st := range cluster.StateMachine.GetOpenStates() {
+		if st.ErrKey == "WARN0188" {
+			diverged = true
+			break
+		}
+	}
 	mk := func(m string, ok bool, reason string) RejoinMethodStatus {
 		if ok {
 			reason = ""
@@ -378,7 +387,7 @@ func (cluster *Cluster) RejoinMethodsStatus() []RejoinMethodStatus {
 		mk(RejoinMethodLogicalDump, masterUp, "master unreachable"),
 		mk(RejoinMethodLogicalBkp, hasLogical, "cluster has no logical backup"),
 		mk(RejoinMethodPhysicalBkp, hasPhysical, "cluster has no physical backup"),
-		mk(RejoinMethodResetReslave, true, ""),
+		mk(RejoinMethodResetReslave, !diverged, "old master diverged (GTID not in master, err 1236) — reset-master-reslave cannot recover; use flashback or reseed"),
 		mk(RejoinMethodScript, hasScript, "no autorejoin-script configured"),
 		mk(RejoinMethodIgnoreForce, true, ""),
 		mk(RejoinMethodBootstrapFTWRL, masterUp, "master unreachable (FTWRL + RESET MASTER needs the master)"),
