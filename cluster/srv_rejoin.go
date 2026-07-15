@@ -629,10 +629,16 @@ func (server *ServerMonitor) rejoinWithMethod(crash *Crash) {
 		cluster.LogSQL(logs, rmErr, server.URL, "Rejoin", config.LvlErr, "reset-master-reslave: RESET MASTER on %s failed: %s", server.URL, rmErr)
 		err = rmErr
 	case RejoinMethodBootstrapFTWRL:
-		// Re-bootstrap the whole master-slave topology, taking a short FTWRL on the
-		// master before RESET MASTER (freezes writes for a consistent cut). UNSAFE:
-		// it briefly locks the master. The attach below then re-slaves this server.
+		// Re-bootstrap the WHOLE master-slave topology (FTWRL on the master before
+		// RESET MASTER). Unlike the single-server methods, BootstrapReplication rebuilds
+		// the entire topology and re-slaves THIS server itself — so it must NOT be
+		// followed by the single-server attachAsReadOnlySlave below (that second CHANGE
+		// MASTER fights the setup the bootstrap just built, which is why the menu path
+		// worked and this one did not). End here, like the menu action.
 		err = cluster.BootstrapReplication(true, true)
+		cluster.finishRejoin(server.URL, rejoinResultOf(err))
+		cluster.backendStateChangeProxies()
+		return
 	case RejoinMethodScript:
 		// Run the operator's custom autorejoin-script; behaviour is up to the script.
 		err = server.RejoinScript()

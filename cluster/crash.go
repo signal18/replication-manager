@@ -376,6 +376,7 @@ func (cluster *Cluster) RejoinMethodsStatus() []RejoinMethodStatus {
 			break
 		}
 	}
+	divergedReason := "old master diverged (GTID not in master, err 1236) — reset-master-reslave cannot recover (RESET MASTER leaves gtid_slave_pos); use flashback, reseed or bootstrap"
 	mk := func(m string, ok bool, reason string) RejoinMethodStatus {
 		if ok {
 			reason = ""
@@ -387,7 +388,7 @@ func (cluster *Cluster) RejoinMethodsStatus() []RejoinMethodStatus {
 		mk(RejoinMethodLogicalDump, masterUp, "master unreachable"),
 		mk(RejoinMethodLogicalBkp, hasLogical, "cluster has no logical backup"),
 		mk(RejoinMethodPhysicalBkp, hasPhysical, "cluster has no physical backup"),
-		mk(RejoinMethodResetReslave, !diverged, "old master diverged (GTID not in master, err 1236) — reset-master-reslave cannot recover; use flashback or reseed"),
+		mk(RejoinMethodResetReslave, !diverged, divergedReason),
 		mk(RejoinMethodScript, hasScript, "no autorejoin-script configured"),
 		mk(RejoinMethodIgnoreForce, true, ""),
 		mk(RejoinMethodBootstrapFTWRL, masterUp, "master unreachable (FTWRL + RESET MASTER needs the master)"),
