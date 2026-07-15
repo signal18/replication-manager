@@ -304,19 +304,19 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 	return nil
 }
 
-func (server *ServerMonitor) RejoinScript() {
+func (server *ServerMonitor) RejoinScript() error {
 	cluster := server.ClusterGroup
-	// Call pre-rejoin script
-	if server.GetCluster().Conf.RejoinScript != "" {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling rejoin script")
-		var out []byte
-		var err error
-		out, err = exec.Command(cluster.Conf.RejoinScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port).CombinedOutput()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin script complete:", string(out))
+	// Call the operator's custom rejoin script.
+	if server.GetCluster().Conf.RejoinScript == "" {
+		return errors.New("no autorejoin-script configured")
 	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling rejoin script")
+	out, err := exec.Command(cluster.Conf.RejoinScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port).CombinedOutput()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin script complete:", string(out))
+	return err
 }
 
 func (server *ServerMonitor) ReseedMasterSST() error {
@@ -628,6 +628,14 @@ func (server *ServerMonitor) rejoinWithMethod(crash *Crash) {
 		logs, rmErr := server.ResetMaster()
 		cluster.LogSQL(logs, rmErr, server.URL, "Rejoin", config.LvlErr, "reset-master-reslave: RESET MASTER on %s failed: %s", server.URL, rmErr)
 		err = rmErr
+	case RejoinMethodBootstrapFTWRL:
+		// Re-bootstrap the whole master-slave topology, taking a short FTWRL on the
+		// master before RESET MASTER (freezes writes for a consistent cut). UNSAFE:
+		// it briefly locks the master. The attach below then re-slaves this server.
+		err = cluster.BootstrapReplication(true, true)
+	case RejoinMethodScript:
+		// Run the operator's custom autorejoin-script; behaviour is up to the script.
+		err = server.RejoinScript()
 	default:
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Unknown rejoin method %q for %s", crash.RejoinMethod, server.URL)
 		err = errors.New("unknown rejoin method")

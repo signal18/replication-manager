@@ -56,13 +56,14 @@ var databaseACLRules = []ACLRule{
 	{"actions/reset-master", nil, []string{config.GrantDBReplication}},
 	{"actions/reset-slave-all", nil, []string{config.GrantDBReplication}},
 
-	// Operator manual rejoin of a diverged old master. Base grant is
-	// cluster-failover (a recovery decision). The DESTRUCTIVE methods
-	// (ignore-delta-force) additionally require cluster-rejoin-unsafe, which is
-	// enforced per-method in handlerMuxClusterRejoin — a single URL rule cannot
-	// express it safely because matchACLRules falls back to looser patterns
-	// (e.g. reset-master-reslave also contains the "actions/reset-master" rule).
-	{"/actions/rejoin", nil, []string{config.GrantClusterFailover}},
+	// Operator manual rejoin, keyed by verb. Safe methods (flashback, dumps, backup
+	// reseeds, reset-master-reslave, rejoin-script) → /actions/rejoin → cluster-failover.
+	// Destructive methods (ignore-delta-force, bootstrap-repli-ftwrl) → /actions/unsafe-rejoin
+	// → cluster-failover + cluster-rejoin-unsafe. The two verbs are non-overlapping
+	// anchors ("/actions/rejoin/" is not a substring of "/actions/unsafe-rejoin/"), so
+	// no hierarchical-fallback leak; the handler also enforces the method↔verb match.
+	{"/actions/rejoin/", nil, []string{config.GrantClusterFailover}},
+	{"/actions/unsafe-rejoin/", []string{config.GrantClusterFailover, config.GrantClusterRejoinUnsafe}, nil},
 
 	// Backup actions
 	{"/actions/backup-logical", nil, []string{config.GrantDBBackup}},

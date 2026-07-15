@@ -98,19 +98,7 @@ function HADetail({ selectedCluster, user, readOnly = false, onOpenSettings }) {
             }
           : {})}
         extraHeaderActions={
-          <>
-            <Box as='span' display='inline-block' animation={rejoinFailed ? `${blink} 1s ease-in-out infinite` : undefined}>
-              <RMIconButton
-                icon={MdHistory}
-                tooltip={rejoinFailed ? `Rejoin needs attention — ${crashes.length} crash(es)` : crashes.length > 0 ? `Crashes / last divergence (${crashes.length})` : 'Crashes / last divergence'}
-                onClick={() => setIsCrashesOpen(true)}
-                size='xs'
-                variant='ghost'
-                colorScheme={rejoinFailed || crashes.some((c) => c.deltaAnalyzed && !c.deltaFlashable) ? 'red' : crashes.length > 0 ? 'purple' : 'gray'}
-              />
-            </Box>
-            {onOpenSettings && <RMIconButton icon={HiCog} tooltip='Failover Settings' onClick={onOpenSettings} size='xs' variant='ghost' />}
-          </>
+          onOpenSettings && <RMIconButton icon={HiCog} tooltip='Failover Settings' onClick={onOpenSettings} size='xs' variant='ghost' />
         }
       />
       {isModalOpen && (

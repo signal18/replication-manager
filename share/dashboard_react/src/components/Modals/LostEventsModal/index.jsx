@@ -25,14 +25,24 @@ const REJOIN_LABEL = {
 }
 
 // Operator rejoin methods — mirror the backend (crash.go). ALL are always offered:
-// the delta verdict informs, it does not gate (testing must not be limited).
+// the delta verdict informs, it does not gate (testing must not be limited). class
+// mirrors RejoinMethodClass: safety × duration, used to group the buttons.
 const REJOIN_METHODS = [
-  { id: 'flashback', label: 'Flashback', help: 'Rewind the divergent row-DML tail and re-slave (reversible deltas only)' },
-  { id: 'logical-dump', label: 'Logical dump', help: 'mysqldump from the master, then re-slave' },
-  { id: 'logical-backup', label: 'Logical backup', help: 'Restore from the logical backup, then re-slave' },
-  { id: 'physical-backup', label: 'Physical backup', help: 'Restore from the physical backup, then re-slave' },
-  { id: 'reset-master-reslave', label: 'Reset master + re-slave', help: 'RESET MASTER on this server to clear a stuck GTID/binlog position, then re-slave clean' },
-  { id: 'ignore-delta-force', label: 'Ignore delta (force)', help: 'DISCARD the divergent tail (DATA LOSS) and force re-slave', danger: true }
+  { id: 'flashback', label: 'Flashback', class: 'safe-short', help: 'Rewind the divergent row-DML tail and re-slave (reversible deltas only)' },
+  { id: 'reset-master-reslave', label: 'Reset master + re-slave', class: 'safe-short', help: 'RESET MASTER on this server to clear a stuck GTID/binlog position, then re-slave clean' },
+  { id: 'rejoin-script', label: 'Custom rejoin script', class: 'safe-short', help: 'Run the operator autorejoin-script (behaviour is whatever the script does)' },
+  { id: 'logical-dump', label: 'Logical dump', class: 'safe-long', help: 'mysqldump from the master, then re-slave' },
+  { id: 'logical-backup', label: 'Logical backup', class: 'safe-long', help: 'Restore from the logical backup, then re-slave' },
+  { id: 'physical-backup', label: 'Physical backup', class: 'safe-long', help: 'Restore from the physical backup, then re-slave' },
+  { id: 'ignore-delta-force', label: 'Ignore delta (force)', class: 'unsafe-short', help: 'DISCARD the divergent tail (DATA LOSS) and force re-slave', danger: true },
+  { id: 'bootstrap-repli-ftwrl', label: 'Bootstrap + FTWRL', class: 'unsafe-short', help: 'Re-bootstrap replication with a short FTWRL on the master before RESET MASTER (briefly locks the master)', danger: true }
+]
+
+// Ordered groups for the rejoin buttons (label + which class they hold).
+const REJOIN_GROUPS = [
+  { class: 'safe-short', label: 'Safe · fast' },
+  { class: 'safe-long', label: 'Safe · full reseed' },
+  { class: 'unsafe-short', label: 'Unsafe · fast' }
 ]
 
 // Viewer for the LOST EVENTS of a server's last divergence: what the old
@@ -60,7 +70,7 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
   const pauseRef = useRef(false)
 
   const doRejoin = useCallback((m) => {
-    if (m.danger && !window.confirm(`Ignore delta on ${server?.host}:${server?.port}?\n\nThis DISCARDS the divergent tail (DATA LOSS) and force-rejoins the server. This cannot be undone.`)) {
+    if (m.danger && !window.confirm(`${m.label} on ${server?.host}:${server?.port}?\n\nThis is an UNSAFE rejoin — ${m.help}. It cannot be undone.`)) {
       return
     }
     setRejoining(m.id)
@@ -242,26 +252,35 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
           {crash && (
             <Box>
               <Text fontSize='xs' mb={1} opacity={0.8}>Rejoin {server?.host}:{server?.port} — pick a method (all runnable; the verdict only informs):</Text>
-              <HStack spacing={2} flexWrap='wrap'>
-                {REJOIN_METHODS.map((m) => {
-                  const st = methodStatus[m.id]
-                  const unavailable = st && st.available === false
-                  return (
-                    <Button
-                      key={m.id}
-                      size='xs'
-                      colorScheme={m.danger ? 'red' : 'blue'}
-                      variant={m.danger ? 'solid' : 'outline'}
-                      isLoading={rejoining === m.id}
-                      isDisabled={rejoining !== '' || unavailable}
-                      onClick={() => doRejoin(m)}
-                      title={unavailable ? st.reason : m.help}
-                    >
-                      {m.label}
-                    </Button>
-                  )
-                })}
-              </HStack>
+              {REJOIN_GROUPS.map((g) => {
+                const methods = REJOIN_METHODS.filter((m) => m.class === g.class)
+                if (methods.length === 0) return null
+                return (
+                  <Box key={g.class} mb={1.5}>
+                    <Text fontSize='2xs' textTransform='uppercase' letterSpacing='wide' opacity={0.6} mb={0.5}>{g.label}</Text>
+                    <HStack spacing={2} flexWrap='wrap'>
+                      {methods.map((m) => {
+                        const st = methodStatus[m.id]
+                        const unavailable = st && st.available === false
+                        return (
+                          <Button
+                            key={m.id}
+                            size='xs'
+                            colorScheme={m.danger ? 'red' : 'blue'}
+                            variant={m.danger ? 'solid' : 'outline'}
+                            isLoading={rejoining === m.id}
+                            isDisabled={rejoining !== '' || unavailable}
+                            onClick={() => doRejoin(m)}
+                            title={unavailable ? st.reason : m.help}
+                          >
+                            {m.label}
+                          </Button>
+                        )
+                      })}
+                    </HStack>
+                  </Box>
+                )
+              })}
               {rejoinMsg && (
                 <Alert status={rejoinMsg.ok ? 'success' : 'error'} borderRadius='md' mt={2} py={1}>
                   <AlertIcon />

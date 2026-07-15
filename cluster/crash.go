@@ -82,7 +82,37 @@ const (
 	RejoinMethodResetReslave = "reset-master-reslave" // RESET MASTER on the failed slave + re-slave: clears a
 	//                                                   stuck GTID/binlog position (e.g. strict-mode out-of-order
 	//                                                   SlaveErr) and restarts clean replication. The manual repair.
+	RejoinMethodBootstrapFTWRL = "bootstrap-repli-ftwrl" // re-bootstrap the master-slave topology, taking a short
+	//                                                      FTWRL on the master before RESET MASTER. UNSAFE: it
+	//                                                      briefly locks the master. Calls BootstrapReplication.
+	RejoinMethodScript = "rejoin-script" // run the operator's custom autorejoin-script (direct exec). The only
+	//                                      always-available custom method; behaviour is whatever the script does.
 )
+
+// Rejoin method classes for the GUI: two axes, data-safety × duration. "safe"
+// reconciles/rewinds without discarding good data; "unsafe" discards the diverged
+// tail or resets/locks the master. "short" is near-instant (rewind/reset/script);
+// "long" reseeds a full dataset from a dump or backup.
+const (
+	RejoinClassSafeShort   = "safe-short"
+	RejoinClassSafeLong    = "safe-long"
+	RejoinClassUnsafeShort = "unsafe-short"
+	RejoinClassUnsafeLong  = "unsafe-long"
+)
+
+// RejoinMethodClass returns the safety×duration class of a rejoin method (see the
+// RejoinClass* constants), used by the GUI to group the operator methods.
+func RejoinMethodClass(method string) string {
+	switch method {
+	case RejoinMethodFlashback, RejoinMethodResetReslave, RejoinMethodScript:
+		return RejoinClassSafeShort
+	case RejoinMethodLogicalDump, RejoinMethodLogicalBkp, RejoinMethodPhysicalBkp:
+		return RejoinClassSafeLong
+	case RejoinMethodIgnoreForce, RejoinMethodBootstrapFTWRL:
+		return RejoinClassUnsafeShort
+	}
+	return ""
+}
 
 // Rejoin result codes (Crash.RejoinResult). "" = not yet attempted.
 const (
@@ -287,6 +317,25 @@ func (cluster *Cluster) rearmRejoin(url string, method string) bool {
 	return true
 }
 
+// LatestCrashURL returns the diverged-server URL of the most recent crash in the
+// failover history, or "" if there is none. Resolves the default rejoin target when
+// the operator triggers a cluster rejoin without naming a server.
+func (cluster *Cluster) LatestCrashURL() string {
+	var newest *Crash
+	for _, cr := range cluster.FailoverHistory {
+		if cr == nil {
+			continue
+		}
+		if newest == nil || cr.UnixTimestamp >= newest.UnixTimestamp {
+			newest = cr
+		}
+	}
+	if newest == nil {
+		return ""
+	}
+	return newest.URL
+}
+
 // RejoinMethodStatus is the per-method availability for the GUI: whether the
 // method is POSSIBLE right now (config/resources), NOT whether it would succeed on
 // this delta. The delta verdict only informs — an unavailable method is disabled
@@ -295,6 +344,7 @@ type RejoinMethodStatus struct {
 	Method    string `json:"method"`
 	Available bool   `json:"available"`
 	Reason    string `json:"reason"`
+	Class     string `json:"class"` // safety×duration group for the GUI (RejoinMethodClass)
 }
 
 // RejoinMethodsStatus reports, for the GUI delta viewer, which operator rejoin
@@ -307,11 +357,12 @@ func (cluster *Cluster) RejoinMethodsStatus() []RejoinMethodStatus {
 	hasPhysical := master != nil && master.HasBackupPhysicalCookie()
 	flashOK := cluster.Conf.AutorejoinFlashback && cluster.Conf.AutorejoinBackupBinlog
 	masterUp := master != nil && !master.IsDown()
+	hasScript := cluster.Conf.RejoinScript != ""
 	mk := func(m string, ok bool, reason string) RejoinMethodStatus {
 		if ok {
 			reason = ""
 		}
-		return RejoinMethodStatus{Method: m, Available: ok, Reason: reason}
+		return RejoinMethodStatus{Method: m, Available: ok, Reason: reason, Class: RejoinMethodClass(m)}
 	}
 	return []RejoinMethodStatus{
 		mk(RejoinMethodFlashback, flashOK, "flashback not enabled (autorejoin-flashback + autorejoin-backup-binlog)"),
@@ -319,7 +370,9 @@ func (cluster *Cluster) RejoinMethodsStatus() []RejoinMethodStatus {
 		mk(RejoinMethodLogicalBkp, hasLogical, "cluster has no logical backup"),
 		mk(RejoinMethodPhysicalBkp, hasPhysical, "cluster has no physical backup"),
 		mk(RejoinMethodResetReslave, true, ""),
+		mk(RejoinMethodScript, hasScript, "no autorejoin-script configured"),
 		mk(RejoinMethodIgnoreForce, true, ""),
+		mk(RejoinMethodBootstrapFTWRL, masterUp, "master unreachable (FTWRL + RESET MASTER needs the master)"),
 	}
 }
 
@@ -327,20 +380,21 @@ func (cluster *Cluster) RejoinMethodsStatus() []RejoinMethodStatus {
 // (or "" for automatic).
 func IsValidRejoinMethod(method string) bool {
 	switch method {
-	case "", RejoinMethodFlashback, RejoinMethodLogicalDump, RejoinMethodLogicalBkp, RejoinMethodPhysicalBkp, RejoinMethodIgnoreForce, RejoinMethodResetReslave:
+	case "", RejoinMethodFlashback, RejoinMethodLogicalDump, RejoinMethodLogicalBkp, RejoinMethodPhysicalBkp, RejoinMethodIgnoreForce, RejoinMethodResetReslave, RejoinMethodBootstrapFTWRL, RejoinMethodScript:
 		return true
 	}
 	return false
 }
 
-// IsUnsafeRejoinMethod reports whether a rejoin method destroys data instead of
-// reconciling it — the diverged tail is discarded rather than flashed back or
-// reseeded from a consistent source. These require the dedicated
-// cluster-rejoin-unsafe grant on top of the base cluster-failover grant
-// (enforced in handlerMuxClusterRejoin, not in the URL ACL rule).
+// IsUnsafeRejoinMethod reports whether a rejoin method is destructive/disruptive to
+// the cluster — it either discards the diverged tail (ignore-delta-force: data loss)
+// or resets/locks the master (bootstrap-repli-ftwrl: brief FTWRL on the master). These
+// route through the /actions/unsafe-rejoin verb and require the cluster-rejoin-unsafe
+// grant on top of cluster-failover. It is the single source of truth for which verb a
+// method must use.
 func IsUnsafeRejoinMethod(method string) bool {
 	switch method {
-	case RejoinMethodIgnoreForce:
+	case RejoinMethodIgnoreForce, RejoinMethodBootstrapFTWRL:
 		return true
 	}
 	return false

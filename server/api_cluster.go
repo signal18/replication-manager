@@ -444,7 +444,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerLostEvents)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/rejoin/{serverName}/{method}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/rejoin/{method}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterRejoin)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/unsafe-rejoin/{method}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterRejoin)),
 	))
@@ -1736,7 +1740,7 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplicationCleanup(w http.R
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		err := mycluster.BootstrapReplicationCleanup()
+		err := mycluster.BootstrapReplicationCleanup(false)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error Cleanup Replication: %s", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1776,7 +1780,7 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplication(w http.Response
 			return
 		}
 
-		if err := mycluster.BootstrapReplication(true); err != nil {
+		if err := mycluster.BootstrapReplication(true, false); err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error bootstraping replication %s", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -10153,25 +10157,29 @@ func (repman *ReplicationManager) proxyLostEventsFromPeer(w http.ResponseWriter,
 // The first page (pos=0 or omitted) is where a client reads the crash
 // analysis verdict (deltaFlashable, counts) shipped in every response.
 // @Summary Lost events of the last divergence, paginated statement listing
-// handlerMuxClusterRejoin — CLUSTER action: explicitly (re-)arm the rejoin of a
-// server with an operator-chosen method (GUI delta viewer). The cluster owns the
-// crash history and the elected master; RearmRejoin copies the history crash back
-// to the working set with the method, and the next monitor tick runs it (one-shot).
-// @Summary Rejoin a server with a chosen recovery method
-// @Description Explicitly (re-)arms the rejoin of a server from its crash history using the operator-chosen method. All methods are runnable on any crash — the delta verdict informs, it does not gate. Requires the cluster-failover grant; destructive methods (ignore-delta-force) additionally require the cluster-rejoin-unsafe grant.
+// handlerMuxClusterRejoin — CLUSTER action: explicitly (re-)arm the rejoin of the
+// diverged old master with an operator-chosen method (GUI delta viewer). The cluster
+// owns the crash history and the elected master; RearmRejoin copies the history crash
+// back to the working set with the method, and the next monitor tick runs it (one-shot).
+// Two verbs: /actions/rejoin for safe methods (cluster-failover), /actions/unsafe-rejoin
+// for destructive ones (cluster-failover + cluster-rejoin-unsafe). The method must match
+// its verb. Target is the latest divergence, or ?server= to pick a specific one.
+// @Summary Rejoin the diverged master with a chosen recovery method
+// @Description Explicitly (re-)arms the rejoin using the operator-chosen method. Safe methods use /actions/rejoin (needs cluster-failover); destructive methods (ignore-delta-force, bootstrap-repli-ftwrl) use /actions/unsafe-rejoin (needs cluster-failover + cluster-rejoin-unsafe). The method must match its verb.
 // @Tags ClusterActions
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Param serverName path string true "Server Name (id or host:port)"
-// @Param method path string true "Rejoin method" Enums(flashback, logical-dump, logical-backup, physical-backup, ignore-delta-force, reset-master-reslave)
+// @Param method path string true "Rejoin method" Enums(flashback, logical-dump, logical-backup, physical-backup, reset-master-reslave, rejoin-script, ignore-delta-force, bootstrap-repli-ftwrl)
+// @Param server query string false "Target server (id or host:port); defaults to the latest divergence"
 // @Success 200 {string} string "Rejoin armed"
-// @Failure 400 {string} string "Invalid rejoin method"
-// @Failure 403 {string} string "No valid ACL"
-// @Failure 404 {string} string "No crash history to rejoin for this server"
-// @Failure 500 {string} string "No cluster / Server Not Found"
-// @Router /api/clusters/{clusterName}/actions/rejoin/{serverName}/{method} [post]
+// @Failure 400 {string} string "Invalid rejoin method / wrong verb"
+// @Failure 403 {string} string "No valid ACL / method needs the unsafe verb"
+// @Failure 404 {string} string "No crash history to rejoin"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/rejoin/{method} [post]
+// @Router /api/clusters/{clusterName}/actions/unsafe-rejoin/{method} [post]
 func (repman *ReplicationManager) handlerMuxClusterRejoin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -10180,42 +10188,54 @@ func (repman *ReplicationManager) handlerMuxClusterRejoin(w http.ResponseWriter,
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-	valid, apiuser := repman.IsValidClusterACL(r, mycluster)
-	if !valid {
+	// ACL: the URL verb carries the grant tier — /actions/rejoin needs
+	// cluster-failover; /actions/unsafe-rejoin needs cluster-failover +
+	// cluster-rejoin-unsafe (databaseACLRules). IsValidClusterACL enforces it.
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
 	method := vars["method"]
-	if !cluster.IsValidRejoinMethod(method) {
+	if !cluster.IsValidRejoinMethod(method) || method == "" {
 		http.Error(w, "Invalid rejoin method", http.StatusBadRequest)
 		return
 	}
-	// The destructive methods (ignore-delta-force discards the divergent tail)
-	// require the dedicated cluster-rejoin-unsafe grant in addition to the base
-	// cluster-failover grant already checked by the URL ACL rule. This per-method
-	// escalation lives here rather than in the ACL rule table because
-	// matchACLRules' hierarchical fallback cannot express a stricter rule for a
-	// single method without a looser sibling rule undermining it.
-	if cluster.IsUnsafeRejoinMethod(method) {
-		if u, ok := mycluster.APIUsers[apiuser]; !ok || !u.Grants[config.GrantClusterRejoinUnsafe] {
-			http.Error(w, "Rejoin method "+method+" requires the cluster-rejoin-unsafe grant", http.StatusForbidden)
-			return
+	// The method must match its verb: a destructive method can only be requested via
+	// /actions/unsafe-rejoin (so a caller with only cluster-failover cannot dodge the
+	// cluster-rejoin-unsafe grant by posting it to /actions/rejoin), and the unsafe
+	// verb is reserved for destructive methods.
+	unsafeRoute := strings.Contains(r.URL.Path, "/actions/unsafe-rejoin/")
+	if cluster.IsUnsafeRejoinMethod(method) != unsafeRoute {
+		if unsafeRoute {
+			http.Error(w, "unsafe-rejoin is only for destructive methods; use /actions/rejoin/"+method, http.StatusBadRequest)
+		} else {
+			http.Error(w, "rejoin method "+method+" is destructive; use /actions/unsafe-rejoin/"+method, http.StatusForbidden)
 		}
-	}
-	node := mycluster.GetServerFromName(vars["serverName"])
-	if node == nil {
-		node = mycluster.GetServerFromURL(vars["serverName"])
-	}
-	if node == nil {
-		http.Error(w, "Server Not Found", http.StatusInternalServerError)
 		return
 	}
-	if !mycluster.RearmRejoin(node.URL, method) {
+	// The cluster owns the crash history and knows the diverged old master, so the
+	// target is resolved from it — no server in the path. An optional ?server= picks
+	// a specific one; otherwise the most recent divergence is used.
+	target := r.URL.Query().Get("server")
+	if target != "" {
+		if node := mycluster.GetServerFromName(target); node != nil {
+			target = node.URL
+		} else if node := mycluster.GetServerFromURL(target); node != nil {
+			target = node.URL
+		}
+	} else {
+		target = mycluster.LatestCrashURL()
+	}
+	if target == "" {
+		http.Error(w, "No crash history to rejoin", http.StatusNotFound)
+		return
+	}
+	if !mycluster.RearmRejoin(target, method) {
 		http.Error(w, "No crash history to rejoin for this server", http.StatusNotFound)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"rejoin":"armed","cluster":"%s","server":"%s","method":"%s"}`, mycluster.Name, node.URL, method)
+	fmt.Fprintf(w, `{"rejoin":"armed","cluster":"%s","server":"%s","method":"%s"}`, mycluster.Name, target, method)
 }
 
 // @Router /api/clusters/{clusterName}/servers/{serverName}/lost-events [get]

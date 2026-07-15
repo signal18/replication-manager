@@ -279,11 +279,18 @@ function getServerLostEvents(clusterName, serverId, { file = 'forward', pos = 0,
   )
 }
 
-// Explicit operator rejoin of a server with a chosen recovery method (delta viewer).
-// method: flashback | logical-dump | logical-backup | physical-backup |
-//         ignore-delta-force | reset-master-reslave
+// Destructive rejoin methods use the /actions/unsafe-rejoin verb (needs the
+// cluster-rejoin-unsafe grant); safe methods use /actions/rejoin. Keep in sync with
+// the backend crash.go IsUnsafeRejoinMethod.
+const UNSAFE_REJOIN_METHODS = ['ignore-delta-force', 'bootstrap-repli-ftwrl']
+
+// Explicit operator rejoin of the diverged master with a chosen recovery method
+// (delta viewer). The cluster resolves the target from crash history; serverName is
+// passed as ?server= to pick a specific one.
 function rejoinServer(clusterName, serverName, method, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/actions/rejoin/${serverName}/${method}`)
+  const verb = UNSAFE_REJOIN_METHODS.includes(method) ? 'unsafe-rejoin' : 'rejoin'
+  const query = serverName ? `?server=${encodeURIComponent(serverName)}` : ''
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/${verb}/${method}${query}`)
 }
 
 function getJobs(clusterName, baseURL) {
