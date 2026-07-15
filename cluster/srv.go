@@ -754,18 +754,11 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				// Name the ACTUAL failing gate: this used to always print "Auto Rejoin
 				// is disabled", which masked an IsSplitBrain race as a config problem.
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoin of %s not triggered (autorejoin=%t active=%t splitbrain=%t)", server.URL, cluster.Conf.Autorejoin, cluster.IsActive(), cluster.IsSplitBrain)
-				// PENDING LATCH — an edge refused for a TRANSIENT reason must not be
-				// consumed: the Failed->up transition is one-shot, and when it lands
-				// inside the resolve race (standby about to flip Active, split flag a
-				// tick from clearing — run 2026-07-14 23:56: refused at :09, gates
-				// open at :13, rejoin never ran, dual master) the rejoin would be
-				// lost for good. Put the server back Failed so the edge re-fires
-				// next tick; the first tick with the gates open enters the rejoin
-				// (crash already prefetched at the split->calm transition). Permanent
-				// refusals (autorejoin off, active-passive topology) do consume.
-				if cluster.Conf.Autorejoin && cluster.GetTopology() != config.TopoActivePassive && (!cluster.IsActive() || cluster.IsSplitBrain) {
-					server.SetState(stateFailed)
-				}
+				// No latch on a refused edge: a missed one-shot no longer matters.
+				// The extra-master branch in TopologyDiscover re-evaluates EVERY tick
+				// and drives the verdict-guarded rejoin (resurrected 3.0 dual-master
+				// fix) — a refusal here just defers to the next topology pass. The
+				// standby behaves as 2.x/3.0 always did: fence read-only, never rejoin.
 			}
 
 		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State == stateUnconn {

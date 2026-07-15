@@ -303,6 +303,29 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 							cluster.master.SetReadWrite()
 						}
 					}
+					// Resurrected 3.0 dual-master fix (cluster_topo.go:233, commented out
+					// 2021-02 "remove for rolling restart": topology could not tell a
+					// split-brain LOSER from a server merely stopping around a
+					// switchover). The ELECTION VERDICT is that missing discriminator:
+					// rejoin the extra master only when the crash says THIS server lost
+					// (URL match) and the CURRENT master won (ElectedMasterURL match) —
+					// a rolling restart produces no election and a switchover records
+					// itself as Switchover, so the 2021 false-positive cannot happen.
+					// Runs every tick, so there is no one-shot edge to lose: a tick
+					// refused (mid-split, in-failover) simply retries on the next pass.
+					extra := cluster.Servers[k]
+					if m := cluster.GetMaster(); m != nil && extra.URL != m.URL && !extra.IsFailed() &&
+						!cluster.IsSplitBrain && !cluster.StateMachine.IsInFailover() && cluster.Conf.Autorejoin {
+						for _, cr := range cluster.Crashes {
+							if cr.URL == extra.URL && cr.ElectedMasterURL == m.URL && !cr.Switchover {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Election verdict: extra master %s lost to %s — rejoining it", extra.URL, m.URL)
+								logs, err := extra.SetReadOnly()
+								cluster.LogSQL(logs, err, extra.URL, "Rejoin", config.LvlErr, "Failed to set extra master %s read-only before rejoin: %s", extra.URL, err)
+								extra.RejoinMaster()
+								break
+							}
+						}
+					}
 				} else if !cluster.IsFailedArbitrator {
 					// Minority fail-safe: a node that cannot confirm authority via the
 					// arbitrator (IsFailedArbitrator) must NOT rediscover / re-designate
