@@ -1775,12 +1775,7 @@ func (cluster *Cluster) GetTerminalManager() tty.TerminalManager {
 }
 
 func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
-	// The scan itself must be lock-protected: cluster.Conf.Apps is mutated
-	// under cluster.Lock() elsewhere (appendConfAppIfAbsent, removeConfApp,
-	// RemoveAppMonitor, ImportAppConfig/LoadAppConfig), so reading the slice
-	// header here without the same lock races against any of them running
-	// concurrently (e.g. two concurrent app imports, one still appending
-	// while the other's newAppList() rebuild calls this).
+	// Conf.Apps is mutated under cluster.Lock() elsewhere; match that here.
 	cluster.Lock()
 	var cnf *config.AppConfig
 	for _, c := range cluster.Conf.Apps {

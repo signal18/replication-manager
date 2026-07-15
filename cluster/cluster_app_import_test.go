@@ -11,12 +11,8 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-// newTestAppWithRuntimeHostMismatch builds an App whose runtime host
-// (app.Host / app.GetHost()) differs from its persisted host
-// (app.AppConfig.AppHost) — the same divergence NewApp() produces when
-// ProvNetCNI rewrites app.Host with a cluster-svc suffix for routing while
-// AppConfig.AppHost (and app.Name, used by SaveApp() for the file name)
-// stays pinned to the original persisted host.
+// newTestAppWithRuntimeHostMismatch builds an App whose runtime host differs
+// from its persisted host, as ProvNetCNI produces via NewApp().
 func newTestAppWithRuntimeHostMismatch(persistedHost, runtimeHost, port string) *App {
 	return &App{
 		Name:  persistedHost,
@@ -35,17 +31,13 @@ func newTestClusterForAppImport(t *testing.T, name string) *Cluster {
 	t.Helper()
 	cl := newTestClusterForAddApp(t, name)
 	cl.WorkingDir = t.TempDir()
-	// Measurement-required fields (ProvAppMem/ProvAppDisk) fall back to these
-	// cluster defaults in NewAppConfig; LoadAppConfig's measurement parser
-	// rejects an app config missing both.
+	// LoadAppConfig's measurement parser requires these.
 	cl.Conf.ProvMem = "256"
 	cl.Conf.ProvDisk = "1"
 	return cl
 }
 
-// exportTOMLForImport mirrors what handlerMuxAppPeerImportExport produces on
-// the peer side: marshal a live AppConfig with the same toml package used by
-// SaveAppConfigFile.
+// exportTOMLForImport mirrors what handlerMuxAppPeerImportExport produces on the peer side.
 func exportTOMLForImport(t *testing.T, cl *Cluster, host, port string) string {
 	t.Helper()
 	appcnf := cl.NewAppConfig(host, port)
@@ -108,16 +100,11 @@ func TestImportAppConfig_RejectsSameHostDifferentPort(t *testing.T) {
 	}
 }
 
-// TestImportAppConfig_RollsBackOnLoadFailure exercises the LoadAppConfig
-// append-then-fail path: LoadAppConfig appends to cluster.Conf.Apps before
-// ParseConfigMeasurement can reject the config (missing prov-app-memory /
-// prov-app-disk-size). ImportAppConfig must undo the write and the in-memory
-// append on that failure — a rejected import must never leave the file on
-// disk (which would block any retry) or a stale entry in cluster.Conf.Apps.
+// TestImportAppConfig_RollsBackOnLoadFailure: LoadAppConfig appends before
+// ParseConfigMeasurement can reject a config missing required fields;
+// ImportAppConfig must undo both the file write and the append on failure.
 func TestImportAppConfig_RollsBackOnLoadFailure(t *testing.T) {
-	// Deliberately no ProvMem/ProvDisk on this fixture: NewAppConfig will
-	// produce an AppConfig with empty ProvAppMem/ProvAppDisk, which
-	// ParseConfigMeasurement rejects as required-but-missing.
+	// No ProvMem/ProvDisk here, so ParseConfigMeasurement rejects the config.
 	cl := newTestClusterForAddApp(t, "c1")
 	cl.WorkingDir = t.TempDir()
 
@@ -143,8 +130,7 @@ func TestImportAppConfig_RollsBackOnLoadFailure(t *testing.T) {
 		t.Fatalf("expected HasAppHost(badapp) to be false after rollback")
 	}
 
-	// A retry must fail for the same reason again, not be blocked by a
-	// leftover file from the failed attempt.
+	// Retry must fail again, not be blocked by a leftover file.
 	retryErr := cl.ImportAppConfig("badapp", "8080", content)
 	if retryErr == nil {
 		t.Fatalf("expected retry to fail again (still missing measurement fields)")
@@ -165,10 +151,7 @@ func TestImportAppConfig_RejectsMissingHostOrPort(t *testing.T) {
 	}
 }
 
-// TestImportAppConfig_RejectsPathTraversalHost guards the filePath :=
-// filepath.Join(dirname, host+".toml") write in ImportAppConfig: host comes
-// from a peer's inventory response over the network and must never be
-// trusted to build a filesystem path without validation.
+// TestImportAppConfig_RejectsPathTraversalHost guards the host+".toml" path join.
 func TestImportAppConfig_RejectsPathTraversalHost(t *testing.T) {
 	cl := newTestClusterForAppImport(t, "c1")
 
@@ -187,7 +170,6 @@ func TestImportAppConfig_RejectsPathTraversalHost(t *testing.T) {
 		}
 	}
 
-	// Confirm nothing escaped the apps directory.
 	entries, err := os.ReadDir(filepath.Join(cl.WorkingDir, "apps"))
 	if err == nil {
 		for _, e := range entries {
@@ -196,13 +178,8 @@ func TestImportAppConfig_RejectsPathTraversalHost(t *testing.T) {
 	}
 }
 
-// TestImportAppConfig_RejectsHostPortIdentityMismatch covers a peer-import
-// payload whose own app-host/app-port disagree with the request: since
-// LoadAppConfig only overwrites app-host when it's empty/templated/unsafe
-// (not merely different), a mismatched-but-safe value would otherwise be
-// trusted, leaving apps/<requested-host>.toml on disk describing a different
-// identity than its own file name — breaking the file-name-is-identity
-// invariant HasAppHost/SaveApp depend on.
+// TestImportAppConfig_RejectsHostPortIdentityMismatch covers content whose
+// own app-host/app-port disagree with the request.
 func TestImportAppConfig_RejectsHostPortIdentityMismatch(t *testing.T) {
 	cl := newTestClusterForAppImport(t, "c1")
 
@@ -231,12 +208,9 @@ func TestImportAppConfig_RejectsHostPortIdentityMismatch(t *testing.T) {
 	}
 }
 
-// TestImportAppConfig_RejectsDedupSkipOrphan covers the case where
-// tomlContent's declared identity already matches an app previously loaded
-// under a *different* file name: LoadAppConfig's own dedup-skip logic
-// returns nil without appending to Conf.Apps, which — before this check
-// existed — would silently leave apps/<host>.toml on disk as an orphaned
-// duplicate of an already-loaded app.
+// TestImportAppConfig_RejectsDedupSkipOrphan: content's identity already
+// matches an app loaded under a different file, so LoadAppConfig's own
+// dedup-skip appends nothing — must not leave an orphan file behind.
 func TestImportAppConfig_RejectsDedupSkipOrphan(t *testing.T) {
 	cl := newTestClusterForAppImport(t, "c1")
 	dirname := filepath.Join(cl.WorkingDir, "apps")
@@ -264,10 +238,8 @@ func TestImportAppConfig_RejectsDedupSkipOrphan(t *testing.T) {
 	}
 }
 
-// TestLoadAppConfig_UnsafeAppHostFallsBackToFilename covers the TOML-file
-// load path (not just peer import): a hand-edited or otherwise tampered
-// app-host value in an on-disk apps/*.toml must not be trusted verbatim,
-// since it flows back into ImportAppConfig/SaveApp path joins on re-export.
+// TestLoadAppConfig_UnsafeAppHostFallsBackToFilename covers a hand-edited
+// apps/*.toml with an unsafe app-host value.
 func TestLoadAppConfig_UnsafeAppHostFallsBackToFilename(t *testing.T) {
 	cl := newTestClusterForAppImport(t, "c1")
 	dirname := filepath.Join(cl.WorkingDir, "apps")
@@ -285,8 +257,7 @@ func TestLoadAppConfig_UnsafeAppHostFallsBackToFilename(t *testing.T) {
 		t.Fatalf("LoadAppConfig failed: %v", err)
 	}
 
-	// LoadAppConfig only appends to cluster.Conf.Apps (newAppList() is what
-	// later populates cluster.Apps/HasAppHost), so assert against Conf.Apps.
+	// LoadAppConfig only appends to Conf.Apps; newAppList() populates cluster.Apps.
 	var loaded *config.AppConfig
 	for _, a := range cl.Conf.Apps {
 		if a.AppPort == "8080" {
@@ -301,11 +272,8 @@ func TestLoadAppConfig_UnsafeAppHostFallsBackToFilename(t *testing.T) {
 	}
 }
 
-// TestHasAppHost_UsesPersistedHostNotRuntimeHost is the ProvNetCNI mismatch
-// case: when app.GetHost() (runtime, CNI-rewritten) differs from
-// app.AppConfig.AppHost (persisted), the collision guards must key off the
-// persisted identity — matching against the runtime host would silently
-// miss a real collision (or flag a false one).
+// TestHasAppHost_UsesPersistedHostNotRuntimeHost: collision guards must key
+// off the persisted host, not the ProvNetCNI-rewritten runtime host.
 func TestHasAppHost_UsesPersistedHostNotRuntimeHost(t *testing.T) {
 	cl := newTestClusterForAppImport(t, "c1")
 	app := newTestAppWithRuntimeHostMismatch("peerapp1", "peerapp1.c1.svc.k8s", "8080")
@@ -329,10 +297,8 @@ func TestHasAppHost_UsesPersistedHostNotRuntimeHost(t *testing.T) {
 	}
 }
 
-// TestImportThenSave_UsesPersistedHostForFileName imports under ProvNetCNI,
-// then runs a normal save cycle (SaveApp, as the monitoring loop would), and
-// verifies exactly one file exists — named after the persisted host, never a
-// second file named after the runtime-rewritten host.
+// TestImportThenSave_UsesPersistedHostForFileName: import under ProvNetCNI
+// then SaveApp must produce exactly one file, named after the persisted host.
 func TestImportThenSave_UsesPersistedHostForFileName(t *testing.T) {
 	cl := newTestClusterForAppImport(t, "c1")
 	cl.Conf.ProvNetCNI = true
@@ -372,13 +338,8 @@ func TestImportThenSave_UsesPersistedHostForFileName(t *testing.T) {
 	}
 }
 
-// TestImportAppConfig_RollbackUsesPersistedHostUnderProvNetCNI proves the
-// same-host collision guard still fires under ProvNetCNI: an existing local
-// app persisted under host "app1" (whose runtime host is rewritten to
-// "app1.c1.svc.k8s") must still block a peer import of persisted host
-// "app1" on a different port. If the guard mistakenly compared against the
-// runtime host instead, "app1" would never match "app1.c1.svc.k8s" and the
-// unsafe same-host/different-port import would be silently accepted.
+// TestImportAppConfig_RollbackUsesPersistedHostUnderProvNetCNI: the
+// same-host collision guard must still fire under ProvNetCNI's rewritten host.
 func TestImportAppConfig_RollbackUsesPersistedHostUnderProvNetCNI(t *testing.T) {
 	cl := newTestClusterForAppImport(t, "c1")
 	cl.Conf.ProvNetCNI = true
@@ -398,14 +359,9 @@ func TestImportAppConfig_RollbackUsesPersistedHostUnderProvNetCNI(t *testing.T) 
 }
 
 // TestImportAppConfig_ConcurrentImportsDoNotCorruptConfApps drives many
-// ImportAppConfig calls at once — some that succeed, some engineered to hit
-// the host/port identity-mismatch rollback path — and checks that
-// cluster.Conf.Apps ends up with exactly the successful entries and nothing
-// else. Before ImportAppConfig held cluster.Lock() across its whole
-// snapshot-load-verify sequence, a length-snapshot taken outside the lock
-// could be invalidated by a concurrent append/rollback happening in the
-// window between snapshot and verification, corrupting Conf.Apps (losing or
-// duplicating entries) under -race.
+// concurrent imports (some succeeding, some hitting the mismatch rollback)
+// and checks Conf.Apps ends up with exactly the successful entries. Run
+// with -race.
 func TestImportAppConfig_ConcurrentImportsDoNotCorruptConfApps(t *testing.T) {
 	cl := newTestClusterForAppImport(t, "c1")
 
@@ -418,12 +374,10 @@ func TestImportAppConfig_ConcurrentImportsDoNotCorruptConfApps(t *testing.T) {
 			defer wg.Done()
 			host := fmt.Sprintf("host%d", i)
 			if i%2 == 0 {
-				// Good import: content identity matches the request.
 				content := exportTOMLForImport(t, cl, host, "8080")
 				_ = cl.ImportAppConfig(host, "8080", content)
 			} else {
-				// Engineered mismatch: content declares a different host,
-				// forcing the rollback path on every call.
+				// Mismatched identity forces the rollback path.
 				content := exportTOMLForImport(t, cl, host+"-wrong", "8080")
 				_ = cl.ImportAppConfig(host, "8080", content)
 			}
@@ -447,8 +401,6 @@ func TestImportAppConfig_ConcurrentImportsDoNotCorruptConfApps(t *testing.T) {
 		if got != want {
 			t.Fatalf("host %s: expected present=%v, got present=%v (Conf.Apps=%v)", host, want, got, seen)
 		}
-		// A rejected mismatched import must never leave its declared
-		// (wrong-host) identity behind either.
 		if seen[host+"-wrong:8080"] {
 			t.Fatalf("mismatched identity %s-wrong:8080 leaked into Conf.Apps", host)
 		}

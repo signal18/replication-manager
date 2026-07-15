@@ -19,13 +19,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-// isSafeAppHostToken reports whether s is safe to use as a filesystem path
-// component (an apps/<s>.toml file name): non-empty, contains no path
-// separators, and is not a "." or ".." traversal segment. AppHost values are
-// persisted to and loaded from TOML files that may originate from another
-// node (peer import) or be hand-edited, so this must be checked before any
-// such value is joined into a path — never trust it just because it round-
-// tripped through config.AppConfig.
+// isSafeAppHostToken reports whether s is safe as an apps/<s>.toml path
+// component: non-empty, no path separators, not "." or "..".
 func isSafeAppHostToken(s string) bool {
 	if s == "" || s == "." || s == ".." {
 		return false
@@ -598,13 +593,8 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 			"Canonicalized legacy app config template in %q", filename)
 	}
 
-	// If app-host was not set in the TOML file (or was left as an unresolved
-	// template), fall back to the file name so the app gets a valid, stable
-	// Name and ID. Also fall back — and warn loudly — if app-host resolved to
-	// something that isn't a safe single path component: this value gets
-	// joined into a filesystem path by ImportAppConfig/SaveApp, so a
-	// traversal sequence here (e.g. from a hand-edited or peer-imported TOML)
-	// must never be trusted verbatim.
+	// Fall back to the file name if app-host is unset, unresolved, or unsafe
+	// as a path component (it gets joined into a path by ImportAppConfig/SaveApp).
 	if appcnf.AppHost == "" || strings.Contains(appcnf.AppHost, "{{") {
 		appcnf.AppHost = appname
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,

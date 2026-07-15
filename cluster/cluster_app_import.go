@@ -12,14 +12,13 @@ import (
 	"path/filepath"
 )
 
-// HasAppHost reports whether any app currently monitored in this cluster is
-// persisted under the given host, regardless of port. Compares against
-// app.AppConfig.AppHost — the identity SaveApp()/LoadAppConfig() use for the
-// file name and dedupe key — not app.GetHost(), which ProvNetCNI rewrites
-// with a "."+cluster+".svc."+orchestrator suffix for runtime routing. Peer
-// import must key off the persisted identity so it agrees with what gets
-// written to disk.
+// HasAppHost reports whether any app is persisted under host (any port).
+// Compares app.AppConfig.AppHost — the SaveApp()/LoadAppConfig() file-name
+// identity — not app.GetHost(), which ProvNetCNI rewrites for routing.
 func (cluster *Cluster) HasAppHost(host string) bool {
+	// cluster.Apps is written under cluster.Lock() by newAppList()/RemoveAppMonitor.
+	cluster.Lock()
+	defer cluster.Unlock()
 	for _, app := range cluster.Apps {
 		if app != nil && app.AppConfig != nil && app.AppConfig.AppHost == host {
 			return true
@@ -28,10 +27,10 @@ func (cluster *Cluster) HasAppHost(host string) bool {
 	return false
 }
 
-// HasAppHostPort reports whether an app persisted under the given host+port
-// (app.AppConfig.AppHost/AppPort) is already monitored in this cluster. See
-// HasAppHost for why this does not use GetAppByHostPort/app.GetHost().
+// HasAppHostPort is HasAppHost narrowed to an exact host+port match.
 func (cluster *Cluster) HasAppHostPort(host, port string) bool {
+	cluster.Lock()
+	defer cluster.Unlock()
 	for _, app := range cluster.Apps {
 		if app != nil && app.AppConfig != nil && app.AppConfig.AppHost == host && app.AppConfig.AppPort == port {
 			return true
@@ -40,16 +39,10 @@ func (cluster *Cluster) HasAppHostPort(host, port string) bool {
 	return false
 }
 
-// ImportAppConfig writes tomlContent as a new local app config for host and
-// loads it through the existing local app-config lifecycle (LoadAppConfig +
-// newAppList) — the same path used for any app config already saved under
-// apps/. host/port must be the persisted identity (AppConfig.AppHost/AppPort,
-// i.e. what SaveApp() names the file after), not a runtime-rewritten host —
-// see HasAppHost. It refuses to import onto a host that already has a
-// monitored app, whatever the port: app.SetID() and SaveApp() both key off
-// this persisted host, so a same-host/different-port import cannot be
-// applied safely with the current storage layout (see
-// APP_MONITOR_PEER_IMPORT_PLAN.md).
+// ImportAppConfig writes tomlContent as a new app config for host and loads
+// it via LoadAppConfig + newAppList. host/port must be the persisted identity
+// (AppConfig.AppHost/AppPort), not a runtime-rewritten host — see HasAppHost.
+// Same-host/different-port imports are rejected: SaveApp() keys off host alone.
 func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 	if host == "" || port == "" {
 		return fmt.Errorf("host and port are required")
@@ -75,17 +68,8 @@ func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 		return err
 	}
 
-	// LoadAppConfig mutates cluster.Conf.Apps (dedup-check then append, see
-	// cluster_app.go) without any locking of its own — every other Conf.Apps
-	// mutator (appendConfAppIfAbsent, removeConfApp, RemoveAppMonitor) holds
-	// cluster.Lock() for its own read-then-write, so this call must too, and
-	// the lock must stay held across both the length snapshot and the
-	// post-call verification below: releasing it in between would let a
-	// concurrent import or addserver/app-delete call append or remove an
-	// entry in the gap, making an unrelated append look like this one (or
-	// making a rollback truncate an entry that isn't ours). Truncating
-	// back to the snapshotted length is only safe because nothing else can
-	// touch Conf.Apps while this lock is held.
+	// Hold cluster.Lock() across the snapshot, LoadAppConfig's append, and the
+	// verification below so no concurrent Conf.Apps mutator can interleave.
 	cluster.Lock()
 	before := len(cluster.Conf.Apps)
 
@@ -97,17 +81,10 @@ func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 		return loadErr
 	}
 
-	// tomlContent's declared identity is trusted by LoadAppConfig as long as
-	// it's a safe path token (see isSafeAppHostToken in cluster_app.go) —
-	// it does not have to equal the requested host/port. Enforce that
-	// equality here: filePath was chosen from the request, so a mismatch
-	// means the file name and the loaded app identity permanently disagree
-	// (breaking HasAppHost/SaveApp's file-name-is-identity invariant), or —
-	// if nothing was appended at all — that this content's identity was
-	// already loaded from a different file (dedup-skip), leaving apps/host.toml
-	// an orphaned duplicate on disk. Both cases must be rejected, not merely
-	// logged, since either one lets the imported file diverge from what the
-	// caller and the peer-import collision checks believe was imported.
+	// tomlContent's own app-host/app-port can differ from the request (only
+	// unsafe/empty values get overwritten by LoadAppConfig) — reject that
+	// mismatch, and reject a dedup-skip (nothing appended), which would
+	// otherwise leave apps/host.toml an orphaned duplicate on disk.
 	if len(cluster.Conf.Apps) != before+1 {
 		cluster.Conf.Apps = cluster.Conf.Apps[:before]
 		cluster.Unlock()
@@ -125,16 +102,19 @@ func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 	}
 	cluster.Unlock()
 
-	// newAppList() takes cluster.Lock() itself (to swap cluster.Apps), so it
-	// must run outside the section above. If it fails, remove exactly the
-	// entry we just verified — by pointer/host+port identity via
-	// removeConfApp, not by re-truncating to `before`, since Conf.Apps may
-	// have been mutated by a concurrent caller in the time since we released
-	// the lock above.
+	// newAppList() locks internally, so run it outside the section above. On
+	// failure, remove our entry by identity (not by truncating), since
+	// Conf.Apps may have changed since we unlocked.
 	if err := cluster.newAppList(); err != nil {
 		cluster.removeConfApp(loaded, host, port)
 		os.Remove(filePath)
 		return err
+	}
+
+	// A concurrent RemoveAppMonitor could have dropped this entry before the
+	// rebuild picked it up; don't report success if it's gone.
+	if !cluster.HasAppHostPort(host, port) {
+		return fmt.Errorf("app host %q port %q was concurrently removed during import", host, port)
 	}
 
 	return nil

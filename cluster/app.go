@@ -68,20 +68,12 @@ type App struct {
 type appList []*App
 
 func (cluster *Cluster) newAppList() error {
-	// appListRebuildMu: two concurrent rebuilds (e.g. two concurrent
-	// ImportAppConfig/AddSeededApp calls) don't just race on the
-	// cluster.Conf.Apps read below — NewApp()/addAppToList() below mutate
-	// shared *config.AppConfig pointers in place (GetAppConfig,
-	// SetDefaultRoute, ...), so any two rebuilds running at once corrupt
-	// that shared state even if the Conf.Apps read itself were race-free.
+	// Serialize whole rebuilds: NewApp()/addAppToList() mutate shared
+	// *config.AppConfig pointers in place, so two rebuilds racing corrupts them.
 	cluster.appListRebuildMu.Lock()
 	defer cluster.appListRebuildMu.Unlock()
 
-	// Snapshot cluster.Conf.Apps under the general cluster lock: every other
-	// mutator of this slice (appendConfAppIfAbsent, removeConfApp,
-	// RemoveAppMonitor, ImportAppConfig) holds cluster.Lock() around its own
-	// read-then-write, so reading it here without the same lock would race
-	// against any of them running concurrently with this rebuild.
+	// Snapshot Conf.Apps under cluster.Lock() — other mutators write it under the same lock.
 	cluster.Lock()
 	confApps := make([]*config.AppConfig, len(cluster.Conf.Apps))
 	copy(confApps, cluster.Conf.Apps)
