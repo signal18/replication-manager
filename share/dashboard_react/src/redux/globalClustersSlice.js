@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
-import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
+import { handleError, showErrorBanner, showSuccessBanner, showWarningBanner } from '../utility/common'
 import { globalClustersService } from '../services/globalClustersService'
 
 const getThunkTypePrefix = (actionType) => actionType.replace(/\/(pending|fulfilled|rejected)$/, '')
@@ -120,6 +120,33 @@ export const renameCluster = createGuardedAsyncThunk('globalClusters/renameClust
     }
   } catch (error) {
     showErrorBanner("Rename cluster '" + clusterName + "' is failed!", error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const fetchDynamicClustersFromGit = createGuardedAsyncThunk('globalClusters/fetchDynamicClustersFromGit', async (_, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.fetchDynamicClustersFromGit()
+    if (status === 200) {
+      const importedCount = data?.imported?.length || 0
+      const errorCount = Object.keys(data?.errors || {}).length
+      let message = importedCount > 0
+        ? `Dynamic cluster import completed: ${importedCount} imported`
+        : 'Dynamic cluster import completed: no new clusters imported'
+      if (errorCount > 0) {
+        message += ` (${errorCount} error${errorCount === 1 ? '' : 's'})`
+      }
+      if (importedCount === 0 && errorCount > 0) {
+        showWarningBanner(message, status, thunkAPI)
+      } else {
+        showSuccessBanner(message, status, thunkAPI)
+      }
+      return { data, status }
+    } else {
+      throw new Error(typeof data === 'string' ? data : data?.error || 'Dynamic cluster import failed')
+    }
+  } catch (error) {
+    showErrorBanner('Dynamic cluster import failed', error, thunkAPI)
     return handleError(error, thunkAPI)
   }
 })

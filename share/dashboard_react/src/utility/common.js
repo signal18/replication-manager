@@ -1,4 +1,4 @@
-import { resetToast, showErrorToast, showLoadingToast, showSuccessToast } from '../redux/toastSlice'
+import { resetToast, showErrorToast, showLoadingToast, showSuccessToast, showWarningToast } from '../redux/toastSlice'
 
 export const isAuthorized = () => {
   return localStorage.getItem('user_token') !== null
@@ -24,6 +24,14 @@ export const showSuccessBanner = (message, responseStatus, thunkAPI) => {
   thunkAPI.dispatch(
     showSuccessToast({
       status: 'success',
+      title: message
+    })
+  )
+}
+export const showWarningBanner = (message, responseStatus, thunkAPI) => {
+  thunkAPI.dispatch(
+    showWarningToast({
+      status: 'warning',
       title: message
     })
   )
