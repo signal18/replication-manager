@@ -54,6 +54,9 @@ func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 	if host == "" || port == "" {
 		return fmt.Errorf("host and port are required")
 	}
+	if !isSafeAppHostToken(host) {
+		return fmt.Errorf("invalid app host %q", host)
+	}
 	if cluster.HasAppHost(host) {
 		return fmt.Errorf("app host %q already monitored in cluster %s", host, cluster.Name)
 	}
@@ -72,31 +75,65 @@ func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 		return err
 	}
 
-	// LoadAppConfig can append to cluster.Conf.Apps and only fail afterwards
-	// (measurement validation runs after the append). The HasAppHost check
-	// above guarantees no entry for this host exists yet, so on any failure
-	// below, undo exactly what this call may have done: drop the file and
-	// any Conf.Apps entry for this host, so a rejected import never leaves
-	// the cluster in a partially-mutated state and a retry is not blocked by
-	// a stale file.
-	rollback := func() {
+	// LoadAppConfig mutates cluster.Conf.Apps (dedup-check then append, see
+	// cluster_app.go) without any locking of its own — every other Conf.Apps
+	// mutator (appendConfAppIfAbsent, removeConfApp, RemoveAppMonitor) holds
+	// cluster.Lock() for its own read-then-write, so this call must too, and
+	// the lock must stay held across both the length snapshot and the
+	// post-call verification below: releasing it in between would let a
+	// concurrent import or addserver/app-delete call append or remove an
+	// entry in the gap, making an unrelated append look like this one (or
+	// making a rollback truncate an entry that isn't ours). Truncating
+	// back to the snapshotted length is only safe because nothing else can
+	// touch Conf.Apps while this lock is held.
+	cluster.Lock()
+	before := len(cluster.Conf.Apps)
+
+	loadErr := cluster.LoadAppConfig(dirname, host)
+	if loadErr != nil {
+		cluster.Conf.Apps = cluster.Conf.Apps[:before]
+		cluster.Unlock()
 		os.Remove(filePath)
-		kept := cluster.Conf.Apps[:0]
-		for _, a := range cluster.Conf.Apps {
-			if a.AppHost != host {
-				kept = append(kept, a)
-			}
-		}
-		cluster.Conf.Apps = kept
+		return loadErr
 	}
 
-	if err := cluster.LoadAppConfig(dirname, host); err != nil {
-		rollback()
-		return err
+	// tomlContent's declared identity is trusted by LoadAppConfig as long as
+	// it's a safe path token (see isSafeAppHostToken in cluster_app.go) —
+	// it does not have to equal the requested host/port. Enforce that
+	// equality here: filePath was chosen from the request, so a mismatch
+	// means the file name and the loaded app identity permanently disagree
+	// (breaking HasAppHost/SaveApp's file-name-is-identity invariant), or —
+	// if nothing was appended at all — that this content's identity was
+	// already loaded from a different file (dedup-skip), leaving apps/host.toml
+	// an orphaned duplicate on disk. Both cases must be rejected, not merely
+	// logged, since either one lets the imported file diverge from what the
+	// caller and the peer-import collision checks believe was imported.
+	if len(cluster.Conf.Apps) != before+1 {
+		cluster.Conf.Apps = cluster.Conf.Apps[:before]
+		cluster.Unlock()
+		os.Remove(filePath)
+		return fmt.Errorf("app config content for host %q port %q was not loaded as a new app (already loaded under a different identity?)", host, port)
 	}
+	loaded := cluster.Conf.Apps[len(cluster.Conf.Apps)-1]
+	if loaded.AppHost != host || loaded.AppPort != port {
+		mismatchHost, mismatchPort := loaded.AppHost, loaded.AppPort
+		cluster.Conf.Apps = cluster.Conf.Apps[:before]
+		cluster.Unlock()
+		os.Remove(filePath)
+		return fmt.Errorf("app config content declares host %q port %q, which does not match requested host %q port %q",
+			mismatchHost, mismatchPort, host, port)
+	}
+	cluster.Unlock()
 
+	// newAppList() takes cluster.Lock() itself (to swap cluster.Apps), so it
+	// must run outside the section above. If it fails, remove exactly the
+	// entry we just verified — by pointer/host+port identity via
+	// removeConfApp, not by re-truncating to `before`, since Conf.Apps may
+	// have been mutated by a concurrent caller in the time since we released
+	// the lock above.
 	if err := cluster.newAppList(); err != nil {
-		rollback()
+		cluster.removeConfApp(loaded, host, port)
+		os.Remove(filePath)
 		return err
 	}
 

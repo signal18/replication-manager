@@ -357,6 +357,14 @@ type Cluster struct {
 	preservedVarsMutex          sync.RWMutex               `json:"-"`
 	s3SyncApplyMu               sync.Mutex                 `json:"-"`
 	appListEpoch                uint64                     `json:"-"`
+	// appListRebuildMu is held internally by newAppList() for its whole
+	// duration (see app.go). newAppList() reads cluster.Conf.Apps and
+	// mutates shared *config.AppConfig pointers in place (via GetAppConfig,
+	// SetDefaultRoute, ...), with no locking of its own beyond the final
+	// cluster.Apps swap — two rebuilds racing each other (e.g. two
+	// concurrent ImportAppConfig/AddSeededApp calls) corrupt that shared
+	// state. Callers do not need to take this themselves.
+	appListRebuildMu sync.Mutex `json:"-"`
 	secretVersionStoreMu        sync.Mutex                 `json:"-"`
 	secretVersionStoreDirty     bool                       `json:"-"`
 	// pluginSpikeCache holds the last DetectSpike result per server+plugin pair.

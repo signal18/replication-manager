@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -164,6 +165,142 @@ func TestImportAppConfig_RejectsMissingHostOrPort(t *testing.T) {
 	}
 }
 
+// TestImportAppConfig_RejectsPathTraversalHost guards the filePath :=
+// filepath.Join(dirname, host+".toml") write in ImportAppConfig: host comes
+// from a peer's inventory response over the network and must never be
+// trusted to build a filesystem path without validation.
+func TestImportAppConfig_RejectsPathTraversalHost(t *testing.T) {
+	cl := newTestClusterForAppImport(t, "c1")
+
+	unsafeHosts := []string{
+		"../../../etc/cron.d/evil",
+		"..",
+		".",
+		"a/b",
+		"a\\b",
+		"",
+	}
+	for _, host := range unsafeHosts {
+		content := exportTOMLForImport(t, cl, host, "8080")
+		if err := cl.ImportAppConfig(host, "8080", content); err == nil {
+			t.Fatalf("expected ImportAppConfig to reject unsafe host %q", host)
+		}
+	}
+
+	// Confirm nothing escaped the apps directory.
+	entries, err := os.ReadDir(filepath.Join(cl.WorkingDir, "apps"))
+	if err == nil {
+		for _, e := range entries {
+			t.Fatalf("expected apps dir to stay empty, found %q", e.Name())
+		}
+	}
+}
+
+// TestImportAppConfig_RejectsHostPortIdentityMismatch covers a peer-import
+// payload whose own app-host/app-port disagree with the request: since
+// LoadAppConfig only overwrites app-host when it's empty/templated/unsafe
+// (not merely different), a mismatched-but-safe value would otherwise be
+// trusted, leaving apps/<requested-host>.toml on disk describing a different
+// identity than its own file name — breaking the file-name-is-identity
+// invariant HasAppHost/SaveApp depend on.
+func TestImportAppConfig_RejectsHostPortIdentityMismatch(t *testing.T) {
+	cl := newTestClusterForAppImport(t, "c1")
+
+	// TOML declares "other-host" but the caller requested "requested-host".
+	mismatchedHostContent := exportTOMLForImport(t, cl, "other-host", "8080")
+	if err := cl.ImportAppConfig("requested-host", "8080", mismatchedHostContent); err == nil {
+		t.Fatalf("expected ImportAppConfig to reject a host mismatch between request and content")
+	}
+	if cl.HasAppHost("requested-host") || cl.HasAppHost("other-host") {
+		t.Fatalf("expected no app to be registered after a host-mismatch rejection")
+	}
+	if _, statErr := os.Stat(filepath.Join(cl.WorkingDir, "apps", "requested-host.toml")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected rejected import to leave no file on disk, stat err=%v", statErr)
+	}
+
+	// TOML declares the right host but a different port than requested.
+	mismatchedPortContent := exportTOMLForImport(t, cl, "portmismatch", "9999")
+	if err := cl.ImportAppConfig("portmismatch", "8080", mismatchedPortContent); err == nil {
+		t.Fatalf("expected ImportAppConfig to reject a port mismatch between request and content")
+	}
+	if cl.HasAppHost("portmismatch") {
+		t.Fatalf("expected no app to be registered after a port-mismatch rejection")
+	}
+	if _, statErr := os.Stat(filepath.Join(cl.WorkingDir, "apps", "portmismatch.toml")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected rejected import to leave no file on disk, stat err=%v", statErr)
+	}
+}
+
+// TestImportAppConfig_RejectsDedupSkipOrphan covers the case where
+// tomlContent's declared identity already matches an app previously loaded
+// under a *different* file name: LoadAppConfig's own dedup-skip logic
+// returns nil without appending to Conf.Apps, which — before this check
+// existed — would silently leave apps/<host>.toml on disk as an orphaned
+// duplicate of an already-loaded app.
+func TestImportAppConfig_RejectsDedupSkipOrphan(t *testing.T) {
+	cl := newTestClusterForAppImport(t, "c1")
+	dirname := filepath.Join(cl.WorkingDir, "apps")
+	if err := os.MkdirAll(dirname, 0750); err != nil {
+		t.Fatalf("failed to create apps dir: %v", err)
+	}
+
+	// Pre-load "existing-app" under its own file, the normal way.
+	preloadContent := exportTOMLForImport(t, cl, "existing-app", "8080")
+	if err := os.WriteFile(filepath.Join(dirname, "existing-app.toml"), []byte(preloadContent), 0640); err != nil {
+		t.Fatalf("failed to write preload app config: %v", err)
+	}
+	if err := cl.LoadAppConfig(dirname, "existing-app"); err != nil {
+		t.Fatalf("failed to preload existing-app: %v", err)
+	}
+
+	// Now "import" a second file, requested under a different host, whose
+	// content declares the same host:port as the one already loaded.
+	dupContent := exportTOMLForImport(t, cl, "existing-app", "8080")
+	if err := cl.ImportAppConfig("second-host", "8080", dupContent); err == nil {
+		t.Fatalf("expected ImportAppConfig to reject content that dedups against an already-loaded app")
+	}
+	if _, statErr := os.Stat(filepath.Join(dirname, "second-host.toml")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected rejected import to leave no orphan file on disk, stat err=%v", statErr)
+	}
+}
+
+// TestLoadAppConfig_UnsafeAppHostFallsBackToFilename covers the TOML-file
+// load path (not just peer import): a hand-edited or otherwise tampered
+// app-host value in an on-disk apps/*.toml must not be trusted verbatim,
+// since it flows back into ImportAppConfig/SaveApp path joins on re-export.
+func TestLoadAppConfig_UnsafeAppHostFallsBackToFilename(t *testing.T) {
+	cl := newTestClusterForAppImport(t, "c1")
+	dirname := filepath.Join(cl.WorkingDir, "apps")
+	if err := os.MkdirAll(dirname, 0750); err != nil {
+		t.Fatalf("failed to create apps dir: %v", err)
+	}
+
+	tomlContent := "app-host = \"../../../etc/cron.d/evil\"\napp-port = \"8080\"\nprov-app-memory = \"256\"\nprov-app-disk-size = \"1\"\n"
+	filename := filepath.Join(dirname, "safehost.toml")
+	if err := os.WriteFile(filename, []byte(tomlContent), 0640); err != nil {
+		t.Fatalf("failed to write app config: %v", err)
+	}
+
+	if err := cl.LoadAppConfig(dirname, "safehost"); err != nil {
+		t.Fatalf("LoadAppConfig failed: %v", err)
+	}
+
+	// LoadAppConfig only appends to cluster.Conf.Apps (newAppList() is what
+	// later populates cluster.Apps/HasAppHost), so assert against Conf.Apps.
+	var loaded *config.AppConfig
+	for _, a := range cl.Conf.Apps {
+		if a.AppPort == "8080" {
+			loaded = a
+		}
+	}
+	if loaded == nil {
+		t.Fatalf("expected app config to be loaded into cluster.Conf.Apps")
+	}
+	if loaded.AppHost != "safehost" {
+		t.Fatalf("expected app-host to fall back to the safe filename \"safehost\", got %q", loaded.AppHost)
+	}
+}
+
 // TestHasAppHost_UsesPersistedHostNotRuntimeHost is the ProvNetCNI mismatch
 // case: when app.GetHost() (runtime, CNI-rewritten) differs from
 // app.AppConfig.AppHost (persisted), the collision guards must key off the
@@ -257,5 +394,63 @@ func TestImportAppConfig_RollbackUsesPersistedHostUnderProvNetCNI(t *testing.T) 
 
 	if _, statErr := os.Stat(filepath.Join(cl.WorkingDir, "apps", "app1.toml")); statErr == nil {
 		t.Fatalf("expected no file written for a rejected same-persisted-host import")
+	}
+}
+
+// TestImportAppConfig_ConcurrentImportsDoNotCorruptConfApps drives many
+// ImportAppConfig calls at once — some that succeed, some engineered to hit
+// the host/port identity-mismatch rollback path — and checks that
+// cluster.Conf.Apps ends up with exactly the successful entries and nothing
+// else. Before ImportAppConfig held cluster.Lock() across its whole
+// snapshot-load-verify sequence, a length-snapshot taken outside the lock
+// could be invalidated by a concurrent append/rollback happening in the
+// window between snapshot and verification, corrupting Conf.Apps (losing or
+// duplicating entries) under -race.
+func TestImportAppConfig_ConcurrentImportsDoNotCorruptConfApps(t *testing.T) {
+	cl := newTestClusterForAppImport(t, "c1")
+
+	const n = 20
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			host := fmt.Sprintf("host%d", i)
+			if i%2 == 0 {
+				// Good import: content identity matches the request.
+				content := exportTOMLForImport(t, cl, host, "8080")
+				_ = cl.ImportAppConfig(host, "8080", content)
+			} else {
+				// Engineered mismatch: content declares a different host,
+				// forcing the rollback path on every call.
+				content := exportTOMLForImport(t, cl, host+"-wrong", "8080")
+				_ = cl.ImportAppConfig(host, "8080", content)
+			}
+		}()
+	}
+	wg.Wait()
+
+	seen := make(map[string]bool)
+	for _, a := range cl.Conf.Apps {
+		key := a.AppHost + ":" + a.AppPort
+		if seen[key] {
+			t.Fatalf("duplicate entry in Conf.Apps for %s", key)
+		}
+		seen[key] = true
+	}
+
+	for i := 0; i < n; i++ {
+		host := fmt.Sprintf("host%d", i)
+		want := i%2 == 0
+		got := seen[host+":8080"]
+		if got != want {
+			t.Fatalf("host %s: expected present=%v, got present=%v (Conf.Apps=%v)", host, want, got, seen)
+		}
+		// A rejected mismatched import must never leave its declared
+		// (wrong-host) identity behind either.
+		if seen[host+"-wrong:8080"] {
+			t.Fatalf("mismatched identity %s-wrong:8080 leaked into Conf.Apps", host)
+		}
 	}
 }
