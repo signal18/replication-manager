@@ -211,6 +211,42 @@ func (cluster *Cluster) rearmRejoin(url string, method string) bool {
 	return true
 }
 
+// RejoinMethodStatus is the per-method availability for the GUI: whether the
+// method is POSSIBLE right now (config/resources), NOT whether it would succeed on
+// this delta. The delta verdict only informs — an unavailable method is disabled
+// with a reason; every method carries a state.
+type RejoinMethodStatus struct {
+	Method    string `json:"method"`
+	Available bool   `json:"available"`
+	Reason    string `json:"reason"`
+}
+
+// RejoinMethodsStatus reports, for the GUI delta viewer, which operator rejoin
+// methods are possible right now and why not. Gated on config/resources only —
+// flashback on config, logical/physical on an existing backup, dump on a reachable
+// master; reset/ignore are always possible.
+func (cluster *Cluster) RejoinMethodsStatus() []RejoinMethodStatus {
+	master := cluster.GetMaster()
+	hasLogical := master != nil && master.HasBackupLogicalCookie()
+	hasPhysical := master != nil && master.HasBackupPhysicalCookie()
+	flashOK := cluster.Conf.AutorejoinFlashback && cluster.Conf.AutorejoinBackupBinlog
+	masterUp := master != nil && !master.IsDown()
+	mk := func(m string, ok bool, reason string) RejoinMethodStatus {
+		if ok {
+			reason = ""
+		}
+		return RejoinMethodStatus{Method: m, Available: ok, Reason: reason}
+	}
+	return []RejoinMethodStatus{
+		mk(RejoinMethodFlashback, flashOK, "flashback not enabled (autorejoin-flashback + autorejoin-backup-binlog)"),
+		mk(RejoinMethodLogicalDump, masterUp, "master unreachable"),
+		mk(RejoinMethodLogicalBkp, hasLogical, "cluster has no logical backup"),
+		mk(RejoinMethodPhysicalBkp, hasPhysical, "cluster has no physical backup"),
+		mk(RejoinMethodResetReslave, true, ""),
+		mk(RejoinMethodIgnoreForce, true, ""),
+	}
+}
+
 // IsValidRejoinMethod reports whether method is a known operator rejoin method
 // (or "" for automatic).
 func IsValidRejoinMethod(method string) bool {

@@ -10265,10 +10265,11 @@ func (repman *ReplicationManager) handlerMuxServerLostEvents(w http.ResponseWrit
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
 	if err := e.Encode(struct {
-		Crash *cluster.Crash          `json:"crash"`
-		File  string                  `json:"file"`
-		Page  *cluster.LostEventsPage `json:"page"`
-	}{crash, path, page}); err != nil {
+		Crash         *cluster.Crash               `json:"crash"`
+		File          string                       `json:"file"`
+		Page          *cluster.LostEventsPage      `json:"page"`
+		RejoinMethods []cluster.RejoinMethodStatus `json:"rejoinMethods"`
+	}{crash, path, page, mycluster.RejoinMethodsStatus()}); err != nil {
 		http.Error(w, "Encoding error", 500)
 	}
 }

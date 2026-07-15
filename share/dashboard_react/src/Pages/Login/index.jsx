@@ -204,7 +204,6 @@ function Login({ dashboard = false }) {
           <HStack justify='center' spacing='6' pt='2' fontSize='sm'>
             <Link href='https://www.signal18.io' isExternal color='teal.500'>signal18.io</Link>
             <Link href='https://docs.signal18.io' isExternal color='teal.500'>Documentation</Link>
-            <Link href='/api-docs/index.html' isExternal color='teal.500'>API (Swagger)</Link>
           </HStack>
         </Stack>
       </Container>

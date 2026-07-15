@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton,
   Box, Text, Badge, Code, Button, Spinner,
-  HStack, Alert, AlertIcon, Tabs, TabList, TabPanels, Tab, TabPanel
+  HStack, Alert, AlertIcon, Tabs, TabList, TabPanels, Tab, TabPanel, keyframes
 } from '@chakra-ui/react'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
@@ -10,6 +10,18 @@ import { clusterService } from '../../../services/clusterService'
 import { acquireAutoReloadPause, releaseAutoReloadPause } from '../../../utility/autoReloadPause'
 
 const PAGE_BYTES = 262144
+
+// Blink for a FAILED rejoin outcome (draws the eye to a crash needing action).
+const blink = keyframes`0%, 100% { opacity: 1 } 50% { opacity: 0.2 }`
+const REJOIN_FAILED = ['not-flashback-able', 'no-rejoin-method', 'failed', 'peer-unreachable']
+const REJOIN_LABEL = {
+  'success': 'Rejoined',
+  'no-divergence': 'Rejoined (no divergence)',
+  'not-flashback-able': 'Rejoin failed: not flashback-able',
+  'no-rejoin-method': 'Rejoin failed: no method',
+  'failed': 'Rejoin failed',
+  'peer-unreachable': 'Rejoin pending: peer unreachable'
+}
 
 // Operator rejoin methods — mirror the backend (crash.go). ALL are always offered:
 // the delta verdict informs, it does not gate (testing must not be limited).
@@ -43,6 +55,7 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
   const [panes, setPanes] = useState({ forward: { ...emptyPane }, flashback: { ...emptyPane } })
   const [rejoining, setRejoining] = useState('')
   const [rejoinMsg, setRejoinMsg] = useState(null)
+  const [methodStatus, setMethodStatus] = useState({}) // id -> {available, reason}
   const pauseRef = useRef(false)
 
   const doRejoin = useCallback((m) => {
@@ -67,6 +80,11 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
           const data = res.data
           setCrash(data.crash)
           setNoCrash(false)
+          if (Array.isArray(data.rejoinMethods)) {
+            const map = {}
+            data.rejoinMethods.forEach((m) => { map[m.method] = { available: m.available, reason: m.reason } })
+            setMethodStatus(map)
+          }
           if (data.page) {
             setPanes((prev) => ({
               ...prev,
@@ -128,9 +146,10 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
           bg={isLight ? 'gray.50' : 'blackAlpha.400'}
           whiteSpace='pre'
           overflowX='auto'
-          maxH='50vh'
-          overflowY='auto'
+          height='55vh'
+          overflowY='scroll'
           borderRadius='md'
+          sx={{ overscrollBehavior: 'contain' }}
         >
           {pane.lines.join('\n') || (pane.started && pane.eof ? '-- empty --' : '')}
         </Code>
@@ -179,6 +198,15 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
                 ) : (
                   <Badge variant={badgeVariant} colorScheme='orange'>Not analyzed</Badge>
                 )}
+                {crash.rejoinResult && (
+                  <Badge
+                    variant={badgeVariant}
+                    colorScheme={REJOIN_FAILED.includes(crash.rejoinResult) ? 'red' : 'green'}
+                    animation={REJOIN_FAILED.includes(crash.rejoinResult) ? `${blink} 1s ease-in-out infinite` : undefined}
+                  >
+                    {REJOIN_LABEL[crash.rejoinResult] || crash.rejoinResult}
+                  </Badge>
+                )}
                 <Badge variant={badgeVariant}>{crash.deltaTransactions} transactions</Badge>
                 <Badge variant={badgeVariant}>{crash.deltaRowEvents} row events</Badge>
                 {crash.deltaDdl > 0 && <Badge variant={badgeVariant} colorScheme='red'>{crash.deltaDdl} DDL</Badge>}
@@ -214,20 +242,24 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
             <Box>
               <Text fontSize='xs' mb={1} opacity={0.8}>Rejoin {server?.host}:{server?.port} — pick a method (all runnable; the verdict only informs):</Text>
               <HStack spacing={2} flexWrap='wrap'>
-                {REJOIN_METHODS.map((m) => (
-                  <Button
-                    key={m.id}
-                    size='xs'
-                    colorScheme={m.danger ? 'red' : 'blue'}
-                    variant={m.danger ? 'solid' : 'outline'}
-                    isLoading={rejoining === m.id}
-                    isDisabled={rejoining !== ''}
-                    onClick={() => doRejoin(m)}
-                    title={m.help}
-                  >
-                    {m.label}
-                  </Button>
-                ))}
+                {REJOIN_METHODS.map((m) => {
+                  const st = methodStatus[m.id]
+                  const unavailable = st && st.available === false
+                  return (
+                    <Button
+                      key={m.id}
+                      size='xs'
+                      colorScheme={m.danger ? 'red' : 'blue'}
+                      variant={m.danger ? 'solid' : 'outline'}
+                      isLoading={rejoining === m.id}
+                      isDisabled={rejoining !== '' || unavailable}
+                      onClick={() => doRejoin(m)}
+                      title={unavailable ? st.reason : m.help}
+                    >
+                      {m.label}
+                    </Button>
+                  )
+                })}
               </HStack>
               {rejoinMsg && (
                 <Alert status={rejoinMsg.ok ? 'success' : 'error'} borderRadius='md' mt={2} py={1}>
