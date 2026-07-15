@@ -67,11 +67,14 @@ type Crash struct {
 // Operator-chosen rejoin methods (Crash.RejoinMethod), from the GUI delta viewer.
 // All are runnable on ANY crash — the delta verdict informs, it does not gate.
 const (
-	RejoinMethodFlashback   = "flashback"          // rejoinMasterFlashBack
-	RejoinMethodLogicalDump = "logical-dump"       // RejoinDirectDump (mysqldump from master)
-	RejoinMethodLogicalBkp  = "logical-backup"     // JobFlashbackLogicalBackup
-	RejoinMethodPhysicalBkp = "physical-backup"    // JobFlashbackPhysicalBackup
-	RejoinMethodIgnoreForce = "ignore-delta-force" // discard the tail, force re-slave (data loss)
+	RejoinMethodFlashback    = "flashback"          // rejoinMasterFlashBack
+	RejoinMethodLogicalDump  = "logical-dump"        // RejoinDirectDump (mysqldump from master)
+	RejoinMethodLogicalBkp   = "logical-backup"      // JobFlashbackLogicalBackup
+	RejoinMethodPhysicalBkp  = "physical-backup"     // JobFlashbackPhysicalBackup
+	RejoinMethodIgnoreForce  = "ignore-delta-force"  // discard a divergent tail, force re-slave (data loss)
+	RejoinMethodResetReslave = "reset-master-reslave" // RESET MASTER on the failed slave + re-slave: clears a
+	//                                                   stuck GTID/binlog position (e.g. strict-mode out-of-order
+	//                                                   SlaveErr) and restarts clean replication. The manual repair.
 )
 
 // Rejoin result codes (Crash.RejoinResult). "" = not yet attempted.
@@ -212,7 +215,7 @@ func (cluster *Cluster) rearmRejoin(url string, method string) bool {
 // (or "" for automatic).
 func IsValidRejoinMethod(method string) bool {
 	switch method {
-	case "", RejoinMethodFlashback, RejoinMethodLogicalDump, RejoinMethodLogicalBkp, RejoinMethodPhysicalBkp, RejoinMethodIgnoreForce:
+	case "", RejoinMethodFlashback, RejoinMethodLogicalDump, RejoinMethodLogicalBkp, RejoinMethodPhysicalBkp, RejoinMethodIgnoreForce, RejoinMethodResetReslave:
 		return true
 	}
 	return false

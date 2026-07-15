@@ -206,8 +206,11 @@ Choices -> existing functions (no new recovery code, just routing):
 - `logical-backup`   -> `JobFlashbackLogicalBackup()`     (Conf.AutorejoinLogicalBackup path)
 - `physical-backup`  -> `JobFlashbackPhysicalBackup()`    (Conf.AutorejoinPhysicalBackup path)
 - `logical-dump`     -> `RejoinDirectDump()`              (mysqldump from master; AutorejoinMysqldump path)
-- `ignore-delta-force` -> force re-slave on current GTID, DISCARDING the delta
-     (operator accepts the data loss; skip capture/flashback). ~ rejoinMasterAsSlave forced.
+- `ignore-delta-force` -> force re-slave on current GTID, DISCARDING a divergent delta
+     (operator accepts the data loss; RESET MASTER + attach). ~ rejoinMasterAsSlave forced.
+- `reset-master-reslave` -> RESET MASTER on the failed slave + re-slave: clears a stuck
+     GTID/binlog position (e.g. strict-mode out-of-order SlaveErr) and restarts clean
+     replication. The manual repair Stephane does by hand today.
 
 Mechanism:
 1. `Crash.RejoinMethod` (string): the operator's chosen method for the next attempt,

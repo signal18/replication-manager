@@ -620,6 +620,14 @@ func (server *ServerMonitor) rejoinWithMethod(crash *Crash) {
 		logs, rmErr := server.ResetMaster()
 		cluster.LogSQL(logs, rmErr, server.URL, "Rejoin", config.LvlErr, "ignore-delta-force: RESET MASTER on %s failed: %s", server.URL, rmErr)
 		err = rmErr
+	case RejoinMethodResetReslave:
+		// Manual repair (Stephane's): the server is a FAILED SLAVE stuck on a
+		// GTID/binlog position (e.g. strict-mode out-of-order SlaveErr). RESET
+		// MASTER clears its own binlog/GTID history so the re-slave below starts
+		// clean under the elected master — the reset-master + start-slave repair.
+		logs, rmErr := server.ResetMaster()
+		cluster.LogSQL(logs, rmErr, server.URL, "Rejoin", config.LvlErr, "reset-master-reslave: RESET MASTER on %s failed: %s", server.URL, rmErr)
+		err = rmErr
 	default:
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Unknown rejoin method %q for %s", crash.RejoinMethod, server.URL)
 		err = errors.New("unknown rejoin method")
