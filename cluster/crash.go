@@ -13,6 +13,7 @@ package cluster
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -57,6 +58,12 @@ type Crash struct {
 	// (an explicit copy history->working set re-arms exactly one more attempt).
 	RejoinResult   string `json:"rejoinResult"`
 	RejoinResultTs int64  `json:"rejoinResultTs"`
+	// ArchiveDir is THIS crash's own crash-bin-<ts> directory — the single on-disk
+	// home for the event (crash.json metadata + binlog delta once captured). Set
+	// the moment the crash is known (failover on the majority, or peer-materialize
+	// on the minority) so the local disk reflects the crash immediately; saveBinlog
+	// fills the binlog INTO this same dir and finishRejoin stamps the result here.
+	ArchiveDir string `json:"archiveDir"`
 	// RejoinMethod is the operator's CHOSEN recovery method for the next (re-armed)
 	// attempt, set from the GUI delta viewer via rearmRejoin. When non-empty it
 	// OVERRIDES the automatic flashback/SST cascade for that one attempt, then is
@@ -121,6 +128,64 @@ func (cluster *Cluster) newCrash(*Crash) (*Crash, error) {
 	return crash, nil
 }
 
+// ensureCrashArchive creates THIS crash's own crash-bin-<ts> dir (if it does not
+// have one yet) and writes its crash.json metadata — so a crash is on local disk
+// the moment it is known (option B), synchronized before any rejoin. Idempotent:
+// if the crash already has an ArchiveDir it just rewrites crash.json there.
+// Returns the dir. Uses the crash's UnixTimestamp for the name so the same event
+// maps to the same dir on any node.
+func (cluster *Cluster) ensureCrashArchive(crash *Crash) string {
+	if crash == nil {
+		return ""
+	}
+	if crash.ArchiveDir == "" {
+		ts := crash.UnixTimestamp
+		if ts == 0 {
+			ts = time.Now().Unix()
+		}
+		crash.ArchiveDir = cluster.WorkingDir + "/crash-bin-" + time.Unix(ts, 0).Format("20060102150405")
+	}
+	if err := os.MkdirAll(crash.ArchiveDir, 0777); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not create crash archive dir %s: %s", crash.ArchiveDir, err)
+		return crash.ArchiveDir
+	}
+	if err := crash.Save(crash.ArchiveDir + "/crash.json"); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not write crash metadata %s/crash.json: %s", crash.ArchiveDir, err)
+	}
+	cluster.pruneCrashArchives(cluster.Conf.FailoverLogFileKeep)
+	return crash.ArchiveDir
+}
+
+// pruneCrashArchives bounds crash-bin dirs to the <keep> most recent (dir name is
+// timestamped, sorts chronologically) — the archive AND its crash.json go as a
+// unit, keeping history synchronized with disk.
+func (cluster *Cluster) pruneCrashArchives(keep int) {
+	if keep <= 0 {
+		keep = 3
+	}
+	entries, err := os.ReadDir(cluster.WorkingDir)
+	if err != nil {
+		return
+	}
+	var archives []string
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "crash-bin-") {
+			archives = append(archives, e.Name())
+		}
+	}
+	if len(archives) <= keep {
+		return
+	}
+	sort.Strings(archives)
+	for _, name := range archives[:len(archives)-keep] {
+		if err := os.RemoveAll(cluster.WorkingDir + "/" + name); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not prune crash archive %s: %s", name, err)
+			continue
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Pruned crash archive %s (keeping the %d most recent)", name, keep)
+	}
+}
+
 // finishRejoin is the LOOP TERMINATOR: it ends a rejoin CYCLE for url. It finds
 // the working crash for url, stamps the rejoin RESULT, moves it OUT of the working
 // set (cluster.Crashes) into durable history (FailoverHistory + failover.<ts>.json),
@@ -152,11 +217,22 @@ func (cluster *Cluster) finishRejoin(url string, result string) *Crash {
 	moved.RejoinResult = result
 	moved.RejoinResultTs = now.Unix()
 	cluster.Crashes = kept
-	cluster.FailoverHistory.StoreLastN(moved, cluster.Conf.FailoverLogFileKeep)
-	if err := moved.Save(cluster.WorkingDir + "/failover." + now.Format("20060102150405") + ".json"); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not persist rejoin history for %s: %s", url, err)
+	// Stamp the outcome INTO the crash's own archive dir (crash-bin/crash.json) —
+	// the single record for this real crash. No separate failover.<ts>.json, no
+	// append: that was what printed the same crash X times. The dir already exists
+	// (created when the crash became known); ensureCrashArchive rewrites crash.json
+	// with the result. A crash with NO archive at all (pure no-divergence, never
+	// materialized) leaves no disk record — it is not a crash.
+	if moved.ArchiveDir == "" && moved.DeltaArchive != "" {
+		moved.ArchiveDir = filepath.Dir(moved.DeltaArchive)
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin of %s ended: %s — moved to crash history", url, result)
+	if moved.ArchiveDir != "" {
+		cluster.ensureCrashArchive(moved)
+	}
+	// Rebuild history from disk so it reflects the real archived crashes (deduped,
+	// one per dir) rather than an accumulating in-memory list.
+	cluster.LoadFailoverHistory()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin of %s ended: %s", url, result)
 	return moved
 }
 
@@ -342,24 +418,29 @@ func GetLastFailoverFile(dir string) string {
 // when the cluster heals. FailoverHistory is otherwise in-memory only and
 // empty after a restart; this makes the crash viewer show history across
 // restarts. Read-only: it never writes or touches replication.
+// LoadFailoverHistory rebuilds the crash history by scanning the crash-bin-<ts>
+// archive dirs on disk and reading each dir's crash.json — so history is a pure
+// reflection of the real crashes archived on disk: SYNCHRONIZED by construction,
+// deduplicated (one per dir), surviving restart, pruned as a unit with its binlog.
+// (Replaced the old scan of accumulating failover.<ts>.json, which drifted out of
+// sync with the pruned archives — 10 json vs 3 archives, duplicates, dead links.)
 func (cluster *Cluster) LoadFailoverHistory() {
-	files, err := os.ReadDir(cluster.WorkingDir)
+	entries, err := os.ReadDir(cluster.WorkingDir)
 	if err != nil {
 		return
 	}
-	var names []string
-	for _, file := range files {
-		n := file.Name()
-		if strings.HasPrefix(n, "failover") && strings.HasSuffix(n, ".json") {
-			names = append(names, n)
+	var dirs []string
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "crash-bin-") {
+			dirs = append(dirs, e.Name())
 		}
 	}
-	sort.Strings(names) // timestamped filenames sort chronologically
+	sort.Strings(dirs) // timestamped dir names sort chronologically
 	var history crashList
-	for _, n := range names {
-		data, err := os.ReadFile(cluster.WorkingDir + "/" + n)
+	for _, d := range dirs {
+		data, err := os.ReadFile(cluster.WorkingDir + "/" + d + "/crash.json")
 		if err != nil {
-			continue
+			continue // archive without metadata (older/partial) — skip
 		}
 		crash := new(Crash)
 		if err := json.Unmarshal(data, crash); err != nil {

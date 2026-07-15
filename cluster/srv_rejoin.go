@@ -863,8 +863,14 @@ func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bo
 
 func (server *ServerMonitor) saveBinlog(crash *Crash) error {
 	cluster := server.ClusterGroup
-	t := time.Now()
-	backupdir := cluster.Conf.WorkingDir + "/" + cluster.Name + "/crash-bin-" + t.Format("20060102150405")
+	// Reuse the crash's OWN archive dir (created when the crash became known —
+	// option B) so the binlog lands in the same dir as its crash.json; only mint a
+	// new one for a crash that has none yet (legacy path).
+	backupdir := crash.ArchiveDir
+	if backupdir == "" {
+		backupdir = cluster.Conf.WorkingDir + "/" + cluster.Name + "/crash-bin-" + time.Now().Format("20060102150405")
+		crash.ArchiveDir = backupdir
+	}
 	staging := cluster.Conf.WorkingDir + "/" + cluster.Name + "-server" + strconv.FormatUint(uint64(server.ServerID), 10) + "-" + crash.FailoverMasterLogFile
 	if _, err := os.Stat(staging); err != nil {
 		// Nothing was captured (backupBinlog failed or produced no file):
@@ -886,6 +892,14 @@ func (server *ServerMonitor) saveBinlog(crash *Crash) error {
 	// Render the review material next to the archive: what happened and,
 	// when reversible, the exact undo (lost-events viewer serves both).
 	server.decodeLostEvents(crash, archived)
+	// Write the FULL crash metadata INTO the archive dir: the crash-bin dir is the
+	// single source of truth for a real crash (event + delta + rejoin outcome).
+	// The history is derived by scanning these dirs (LoadFailoverHistory), so one
+	// archive = one record — no duplicate failover.<ts>.json, survives restart,
+	// pruned as a unit with its binlog.
+	if err := crash.Save(backupdir + "/crash.json"); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Could not write crash metadata %s/crash.json: %s", backupdir, err)
+	}
 	server.purgeCrashBinArchives(3)
 	return nil
 }

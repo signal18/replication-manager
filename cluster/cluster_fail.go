@@ -251,10 +251,12 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 	}
 	cluster.Crashes = append(cluster.Crashes, crash)
-	cluster.FailoverHistory.StoreLastN(crash, cluster.Conf.FailoverLogFileKeep)
-	t := time.Now()
-	crash.Save(cluster.WorkingDir + "/failover." + t.Format("20060102150405") + ".json")
-	crash.Purge(cluster.WorkingDir, cluster.Conf.FailoverLogFileKeep)
+	// Write this failover's crash to its OWN crash-bin dir + crash.json the moment
+	// it happens (option B) so the majority's disk reflects the crash immediately
+	// and its history (scanned from crash-bin dirs) stays synchronized. The old
+	// master's binlog delta is filled in later at rejoin (saveBinlog, same dir).
+	cluster.ensureCrashArchive(crash)
+	cluster.LoadFailoverHistory()
 	cluster.ConfigManager.SaveConfig(cluster, true)
 
 	if !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterGrouprep {
@@ -1336,11 +1338,11 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 		crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 		cluster.Crashes = append(cluster.Crashes, crash)
-		cluster.FailoverHistory.StoreLastN(crash, cluster.Conf.FailoverLogFileKeep)
+		// Same as the failover path: write the crash to its own crash-bin dir now
+		// (option B) so disk + history stay synchronized; delta filled at rejoin.
+		cluster.ensureCrashArchive(crash)
+		cluster.LoadFailoverHistory()
 		cluster.ConfigManager.SaveConfig(cluster, true)
-		t := time.Now()
-		crash.Save(cluster.WorkingDir + "/failover." + t.Format("20060102150405") + ".json")
-		crash.Purge(cluster.WorkingDir, cluster.Conf.FailoverLogFileKeep)
 	}
 
 	// Phase 3: Prepare new master

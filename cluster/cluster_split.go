@@ -307,12 +307,20 @@ func (cl *Cluster) fetchMasterFromPeer() (string, error) {
 	}
 	// Materialize the peer's crash locally so getCrashFromJoiner returns it and
 	// the diverged old master's rejoin has the anchor. Drop the peer-local delta
-	// paths — this node captures its own delta from the old master.
+	// paths and dir — THIS node captures its own delta and owns its own archive.
 	if cl.getCrashFromJoiner(last.URL) == nil {
 		mat := last
-		mat.DeltaArchive, mat.DeltaDecoded, mat.DeltaFlashbackDecoded = "", "", ""
+		mat.DeltaArchive, mat.DeltaDecoded, mat.DeltaFlashbackDecoded, mat.ArchiveDir = "", "", "", ""
+		mat.RejoinResult, mat.RejoinResultTs = "", 0
 		cl.Crashes = append(cl.Crashes, &mat)
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Materialized peer crash for %s (elected master %s) from peer failoverHistory", mat.URL, mat.ElectedMasterURL)
+		// Option B: write the crash to LOCAL disk the moment it is known — a
+		// crash-bin dir + crash.json (metadata, no binlog yet) — so the minority's
+		// disk reflects the crash immediately, synchronized before the rejoin.
+		// saveBinlog later fills the binlog INTO this same dir; finishRejoin stamps
+		// the result. LoadFailoverHistory then shows it on this node.
+		cl.ensureCrashArchive(&mat)
+		cl.LoadFailoverHistory()
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Materialized peer crash for %s (elected master %s) — wrote local archive %s", mat.URL, mat.ElectedMasterURL, mat.ArchiveDir)
 	}
 	return last.ElectedMasterURL, nil
 }
