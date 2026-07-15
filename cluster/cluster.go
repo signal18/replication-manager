@@ -1100,6 +1100,10 @@ func (cluster *Cluster) Run() {
 				cluster.CheckLogPlugins()
 				// CheckFailed trigger failover code if passing all false positiv and constraints
 				cluster.CheckFailed()
+				// Run any operator-armed rejoin (GUI delta viewer) — independent of
+				// Conf.Autorejoin and the Failed->up edge, so a manual rejoin actually
+				// executes even with auto-rejoin off.
+				cluster.ProcessArmedRejoins()
 				cluster.IsConfigPathChange = cluster.HasConfigPathChanged()
 				cluster.SetStatus()
 				cluster.CheckBackupStates()

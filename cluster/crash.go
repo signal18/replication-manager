@@ -272,6 +272,15 @@ func (cluster *Cluster) finishRejoin(url string, result string) *Crash {
 // SplitBrainStartTs) does not count, so a genuinely new event still gets its
 // attempt. An explicit rearmRejoin clears the outcome to allow one more try.
 func (cluster *Cluster) rejoinAlreadyAttempted(url string) bool {
+	// An explicitly re-armed crash in the working set (a chosen method, no result
+	// yet) OVERRIDES the one-shot: the operator asked for one more attempt. This is
+	// what makes the manual rejoin runnable after an automatic attempt already
+	// finished — without it, the history result below would block forever.
+	for _, cr := range cluster.Crashes {
+		if cr != nil && cr.URL == url && cr.RejoinMethod != "" && cr.RejoinResult == "" {
+			return false
+		}
+	}
 	for _, cr := range cluster.FailoverHistory {
 		if cr == nil || cr.URL != url || cr.RejoinResult == "" {
 			continue
@@ -404,6 +413,28 @@ func IsUnsafeRejoinMethod(method string) bool {
 // url with a chosen method. See rearmRejoin.
 func (cluster *Cluster) RearmRejoin(url string, method string) bool {
 	return cluster.rearmRejoin(url, method)
+}
+
+// ProcessArmedRejoins runs any operator-armed rejoin — a working-set crash carrying a
+// chosen method with no result yet — via the unified RejoinMaster path. Called every
+// tick and, crucially, NOT gated on Conf.Autorejoin or a Failed->up edge: the operator
+// explicitly asked for it, so it must run even with auto-rejoin off and the server a
+// healthy attached slave (the case where nothing else calls RejoinMaster). One-shot:
+// finishRejoin records the result, after which this is a no-op until the next re-arm.
+func (cluster *Cluster) ProcessArmedRejoins() {
+	if !cluster.IsActive() || cluster.IsSplitBrain || cluster.StateMachine.IsInFailover() {
+		return
+	}
+	for _, server := range cluster.Servers {
+		if server == nil {
+			continue
+		}
+		cr := cluster.getCrashFromJoiner(server.URL)
+		if cr != nil && cr.RejoinMethod != "" && cr.RejoinResult == "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Operator-armed rejoin of %s via %q — running", server.URL, cr.RejoinMethod)
+			server.RejoinMaster()
+		}
+	}
 }
 
 func (cluster *Cluster) getCrashFromJoiner(URL string) *Crash {
