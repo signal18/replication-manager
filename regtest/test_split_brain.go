@@ -425,3 +425,87 @@ func dualActiveMustResolve(cl *cluster.Cluster, label string) bool {
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: DUAL-ACTIVE — both repman remained active after the split healed", label)
 	return false
 }
+
+// TestSplitBrainNoWinner — a peer-heartbeat-only split where both repman lose
+// sight of each other but keep the SAME master AND both STILL REACH the arbitrator
+// (heartbeat cut, arbitrator NOT cut — an equal / symmetric partition). Because
+// both reach it, the arbitrator is the ONE component that can and MUST decide the
+// outcome: keep a single lease holder, or make both stand down ("loser/loser").
+// Two repman Active at once — even transiently — must NEVER happen; preventing it
+// is the arbitrator's whole reason to exist.
+//
+// Unlike testSetDualActive (which tolerates a transient dual-active and only
+// asserts reconvergence AFTER healing), this asserts the invariant DURING the
+// split, with NO heal: at no moment are both Active, and neither fails over.
+//
+// It currently FAILS by design — the count==1 peace-path wipes the Elected flag
+// every tick so both sides win the election in turn and go Active (see
+// setDualActive). That is exactly the regression the arbitrator must fix (restore
+// the single-lease / loser-loser decision for the reach-both case; the contest
+// state must also move back to the shared DB). Keep this test RED until then.
+func (regtest *RegTest) TestSplitBrainNoWinner(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	if !cl.Conf.Arbitration {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: arbitration not enabled")
+		return true
+	}
+	return splitBrainNoWinner(cl, "testSplitBrainNoWinner")
+}
+
+func splitBrainNoWinner(cl *cluster.Cluster, label string) bool {
+	failoverCtr := cl.FailoverCtr
+	// Same cuts as the dual-active scenario: peer heartbeat severed both ways,
+	// master AND arbitrator left intact (both sides keep reaching the arbitrator).
+	setDualActive(cl)
+	defer func() {
+		if RestoreHeartbeat != nil {
+			RestoreHeartbeat()
+		}
+		cl.RestoreSplitBrainSimulation()
+		if SimulatePeerRestore != nil {
+			if err := SimulatePeerRestore(cl.Name); err != nil {
+				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: peer cleanup skipped (self-heals on its own timer): %s", label, err)
+			}
+		}
+	}()
+
+	// 1) the split must be DETECTED (peer heartbeat timed out).
+	detected := false
+	for i := 0; i < 20; i++ {
+		time.Sleep(2 * time.Second)
+		if cl.IsSplitBrain {
+			detected = true
+			break
+		}
+	}
+	if !detected {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: split brain never detected (peer heartbeat did not fail)", label)
+		return false
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: split brain detected — both reach the arbitrator, it MUST keep a single decision (no dual-active)", label)
+
+	if GetPeerIsActive == nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: no peer-status hook (single-node run) — cannot assert dual-active, skipping", label)
+		return true
+	}
+
+	// 2) DURING the split (no heal): the arbitrator must NEVER let BOTH be Active,
+	// and no side may fail over. Poll the whole window — a single dual-active
+	// sighting fails the test.
+	for i := 0; i < 25; i++ {
+		time.Sleep(3 * time.Second)
+		if cl.FailoverCtr != failoverCtr {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: a side FAILED OVER during a same-master split", label)
+			return false
+		}
+		peerActive, err := GetPeerIsActive(cl.Name)
+		if err != nil {
+			continue
+		}
+		if cl.IsActive() && peerActive {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: DUAL-ACTIVE during the split — both repman Active; the arbitrator did not decide (regression to fix)", label)
+			return false
+		}
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: no dual-active for the whole split window — arbitrator held a single decision", label)
+	return true
+}

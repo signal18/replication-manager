@@ -60,6 +60,7 @@ var tests = []string{
 	"testSetMinorityWithMasterSysbench",
 	"testSetMinorityWithoutMaster",
 	"testSetDualActive",
+	"testSplitBrainNoWinner",
 	"testMasterNil",
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigCookiePushBasic",
