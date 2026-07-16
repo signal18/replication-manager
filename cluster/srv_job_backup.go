@@ -1406,7 +1406,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		// whenever the elected master had never been backed up. In a rejoin any
 		// consistent backup works — replication catches up the delta — so the source
 		// node does not matter. Local-only for now (remote/restic fetch is not wired).
-		sel := cluster.getAutorejoinBackupSelector()
+		sel := cluster.getAutorejoinBackupSelector("logical")
 		sel.Tool = []string{backtype} // restore dispatch is backtype-based → force the tool for consistency
 		pick := ResolveRestore(cluster.buildBackupCatalog(), sel,
 			ResolveContext{MasterURL: master.URL, TargetURL: server.URL})
@@ -1503,10 +1503,16 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 			}
 		} else {
-			// Restart slave if needed
+			// Restart slave if needed. Symmetric with StopAllSlaves above: restart
+			// every connection by its real ConnectionName so a multi-source server
+			// does not leave its extra source connections stopped.
 			if server.IsSlave {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", server.URL)
-				server.StartSlave()
+				for _, rep := range server.Replications {
+					if logs, e := server.StartSlaveChannel(rep.ConnectionName.String); e != nil {
+						cluster.LogSQL(logs, e, server.URL, "Rejoin", config.LvlErr, "Failed start slave channel '%s' after flashback on %s: %s", rep.ConnectionName.String, server.URL, e)
+					}
+				}
 			}
 
 			if e2 := server.JobsUpdateState(task, "Flashback completed", 3, 1); e2 != nil {
@@ -1537,7 +1543,13 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 				}
 
 				if err == nil {
-					server.StartSlave()
+					// Symmetric with StopAllSlaves above (multi-source safe):
+					// restart every connection by its real ConnectionName.
+					for _, rep := range server.Replications {
+						if logs, e := server.StartSlaveChannel(rep.ConnectionName.String); e != nil {
+							cluster.LogSQL(logs, e, server.URL, "Rejoin", config.LvlErr, "Failed start slave channel '%s' after flashback on %s: %s", rep.ConnectionName.String, server.URL, e)
+						}
+					}
 				}
 			}
 
@@ -3218,7 +3230,15 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	defer dest.SetInReseedBackup("")
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rejoining from direct mysqldump from %s", source.URL)
 
-	dest.StopSlave()
+	// Stop ALL replication connections before the RESET MASTER below. StopSlave()
+	// only stops cluster.Conf.MasterConn (empty by default → the unnamed default
+	// connection), so a dest replicating on a NAMED connection (e.g. 'curepipe')
+	// keeps running and RESET MASTER fails with ERROR 1198 "run STOP SLAVE
+	// '<name>' first". StopAllSlaves iterates dest.Replications and stops each by
+	// its real ConnectionName.
+	if logs, err := dest.StopAllSlaves(); err != nil {
+		cluster.LogSQL(logs, err, dest.URL, "Rejoin", config.LvlErr, "Failed stop all slaves before direct dump reseed on %s: %s", dest.URL, err)
+	}
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(source, dest.JobGetDumpGtidParameter())...)
 	stderrIn, _ := dumpCmd.StderrPipe()
 
@@ -3232,6 +3252,18 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 
 	iodumpreader, _ := dumpCmd.StdoutPipe()
 
+	// RESET MASTER (RESET BINARY LOGS AND GTIDS on MySQL/Percona 8.4+) wipes the
+	// dest's binary logs and GTID state before the restore. This is required
+	// because a "fresh" instance is not actually empty: on a Debian MariaDB
+	// bootstrap the packaging writes to the binlog (creating debian-sys-maint,
+	// its grants, and the debian-start upgrade/check work), which advances
+	// gtid_binlog_pos. Left in place, that pre-existing GTID state conflicts with
+	// the source position the dump carries (--gtid → SET GLOBAL gtid_slave_pos),
+	// so the reseeded slave will not line up. RESET MASTER clears that residue so
+	// the source's position applies onto a genuinely clean slate.
+	// SET sql_log_bin=0 keeps the restore stream itself out of the binlog.
+	// NOTE: RESET MASTER requires all slaves stopped — stop every (incl. named)
+	// replication connection before reaching here, or it fails with ERROR 1198.
 	cmdstring := "RESET MASTER;SET sql_log_bin=0;SET long_query_time=10;"
 	if dest.DBVersion.IsMySQLOrPerconaGreater84() {
 		cmdstring = "RESET BINARY LOGS AND GTIDS;SET sql_log_bin=0;SET long_query_time=10;"
@@ -3271,8 +3303,16 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 		return err
 	}
 
+	// Symmetric with StopAllSlaves above: restart every replication connection by
+	// its real ConnectionName. StartSlave() alone would restart only the default
+	// MasterConn channel, leaving a multi-source dest's other source connections
+	// stopped after they were stopped for the RESET MASTER.
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", dest.URL)
-	dest.StartSlave()
+	for _, rep := range dest.Replications {
+		if logs, err := dest.StartSlaveChannel(rep.ConnectionName.String); err != nil {
+			cluster.LogSQL(logs, err, dest.URL, "Rejoin", config.LvlErr, "Failed start slave channel '%s' after direct dump reseed on %s: %s", rep.ConnectionName.String, dest.URL, err)
+		}
+	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed slave from %s to %s finished", source.URL, dest.URL)
 	return nil

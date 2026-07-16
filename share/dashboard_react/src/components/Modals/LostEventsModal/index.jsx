@@ -32,7 +32,7 @@ const REJOIN_METHODS = [
   { id: 'flashback', label: 'Flashback', class: 'safe-short', help: 'Rewind the divergent row-DML tail and re-slave (reversible deltas only)' },
   { id: 'reset-master-reslave', label: 'Reset master + re-slave', class: 'unsafe-short', help: 'RESET MASTER on this server to clear a stuck GTID/binlog position, then re-slave — only valid when the SQL thread was blocked by strict mode (unapplied); unsafe on a diverged old master', danger: true },
   { id: 'rejoin-script', label: 'Custom rejoin script', class: 'safe-short', help: 'Run the operator autorejoin-script (behaviour is whatever the script does)' },
-  { id: 'logical-dump', label: 'Logical dump', class: 'safe-long', help: 'mysqldump from the master, then re-slave' },
+  { id: 'logical-dump', label: 'Direct master dump', class: 'safe-long', help: 'mysqldump directly from the master, then re-slave' },
   { id: 'logical-backup', label: 'Logical backup', class: 'safe-long', help: 'Restore from the logical backup, then re-slave' },
   { id: 'physical-backup', label: 'Physical backup', class: 'safe-long', help: 'Restore from the physical backup, then re-slave' },
   { id: 'ignore-delta-force', label: 'Ignore delta (force)', class: 'unsafe-short', help: 'DISCARD the divergent tail (DATA LOSS) and force re-slave', danger: true },

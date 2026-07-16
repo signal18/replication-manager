@@ -192,8 +192,8 @@ var ClusterError = map[string]string{
 	"WARN0108":  "Default users still use default password. Please change the credentials for users: (%s)",
 	"WARN0109":  "Error while checking master log file for purging in slave [%s] (%s) : %s\n",
 	"WARN0110":  "Pending %s backup using %s for [%s] due to another job. Waiting...",
-	"WARN0111":  "Cluster does not have logical backup",
-	"WARN0112":  "Cluster does not have physical backup",
+	"WARN0111":  "Cluster does not have logical backup for current master",
+	"WARN0112":  "Cluster does not have physical backup for current master",
 	"WARN0113":  "Failed to reseed physical backup on server %s, please check %s.out",
 	"WARN0114":  "Unable to process job on slave %s due to SUPER READ ONLY",
 	"WARN0115":  "Failed to create physical backup on server %s",
@@ -273,6 +273,8 @@ var ClusterError = map[string]string{
 	"WARN0187":  "Rejoin of %s pending: peer election verdict unavailable (transient split / peer unreachable) — retrying",
 	"WARN0188":  "Rejoin can not use unsafe method reset-master-reslave on %s because replication points to an invalid position on the new master",
 	"WARN0189":  "Restore in progress on %s: %s — restoring backup %s",
+	"WARN0190":  "No logical backup available for rejoin in the catalog (any node/repo/location)",
+	"WARN0191":  "No physical backup available for rejoin in the catalog (any node/repo/location)",
 	// Split-brain simulator states (VSPLIT namespace, ErrType WARNING) — each axis of
 	// the simulated partition tracked open/close in the state timeline.
 	"VSPLIT0001": "Split-brain simulator running: simulated link cut active (%s), auto-restore in %ds",

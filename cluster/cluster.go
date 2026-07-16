@@ -119,6 +119,8 @@ type Cluster struct {
 	IsNeedAppsReprov              bool                   `json:"isNeedAppsReprov" groups:"web"`
 	IsGettingSlowLog              bool                   `json:"isGettingSlowLog" groups:"web"`
 	IsValidBackup                 bool                   `json:"isValidBackup" groups:"web"`
+	IsValidRejoinBackupLogical    bool                   `json:"isValidRejoinBackupLogical" groups:"web"`
+	IsValidRejoinBackupPhysical   bool                   `json:"isValidRejoinBackupPhysical" groups:"web"`
 	IsNotMonitoring               bool                   `json:"isNotMonitoring" groups:"web"`
 	HaveSSHKeyChecked             bool                   `json:"-"`
 	IsCapturing                   bool                   `json:"isCapturing" groups:"web"`
@@ -1043,6 +1045,7 @@ func (cluster *Cluster) Run() {
 						}
 						if heartbeats%30 == 0 {
 							goRun(func() { cluster.IsValidBackup = cluster.HasValidBackup() })
+							goRun(func() { cluster.HasCatalogBackupForRejoin() })
 							goRun(cluster.CheckCanSaveDynamicConfig)
 							goRun(cluster.CheckIsOverwrite)
 							goRun(cluster.CheckAllBackupEstimatedSize)

@@ -362,8 +362,14 @@ type RejoinMethodStatus struct {
 // master; reset/ignore are always possible.
 func (cluster *Cluster) RejoinMethodsStatus() []RejoinMethodStatus {
 	master := cluster.GetMaster()
-	hasLogical := master != nil && master.HasBackupLogicalCookie()
-	hasPhysical := master != nil && master.HasBackupPhysicalCookie()
+	// Rejoin-from-backup availability is CATALOG-scoped (any node/repo/location),
+	// NOT the master's cookie: after a failover the freshly-promoted master has no
+	// backup yet, but the old master (or restic/S3) still does, so the rejoin is
+	// possible. The master-cookie check (HasValidBackup/WARN0111) stays for the
+	// external orchestrator contract; this is our rejoin decision. See
+	// HasCatalogBackupForRejoin (updated every ~30 heartbeats).
+	hasLogical := cluster.IsValidRejoinBackupLogical
+	hasPhysical := cluster.IsValidRejoinBackupPhysical
 	flashOK := cluster.Conf.AutorejoinFlashback && cluster.Conf.AutorejoinBackupBinlog
 	masterUp := master != nil && !master.IsDown()
 	hasScript := cluster.Conf.RejoinScript != ""
@@ -385,8 +391,8 @@ func (cluster *Cluster) RejoinMethodsStatus() []RejoinMethodStatus {
 	return []RejoinMethodStatus{
 		mk(RejoinMethodFlashback, flashOK, "flashback not enabled (autorejoin-flashback + autorejoin-backup-binlog)"),
 		mk(RejoinMethodLogicalDump, masterUp, "master unreachable"),
-		mk(RejoinMethodLogicalBkp, hasLogical, "cluster has no logical backup"),
-		mk(RejoinMethodPhysicalBkp, hasPhysical, "cluster has no physical backup"),
+		mk(RejoinMethodLogicalBkp, hasLogical, "no logical backup in the catalog (any node/repo/location)"),
+		mk(RejoinMethodPhysicalBkp, hasPhysical, "no physical backup in the catalog (any node/repo/location)"),
 		mk(RejoinMethodResetReslave, !diverged, "replication would point to an invalid position on the new master (old master diverged, err 1236) — use flashback or reseed"),
 		mk(RejoinMethodScript, hasScript, "no autorejoin-script configured"),
 		mk(RejoinMethodIgnoreForce, true, ""),

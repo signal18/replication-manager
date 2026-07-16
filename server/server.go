@@ -605,7 +605,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.AutorejoinMysqldump, "autorejoin-mysqldump", false, "Automatic rejoin ahead failed leader via direct current master dump")
 	flags.BoolVar(&conf.AutorejoinPhysicalBackup, "autorejoin-physical-backup", false, "Automatic rejoin ahead failed leader via reseed previous phyiscal backup")
 	flags.BoolVar(&conf.AutorejoinLogicalBackup, "autorejoin-logical-backup", false, "Automatic rejoin ahead failed leader via reseed previous logical backup")
-	flags.StringVar(&conf.AutorejoinBackupSelector, "autorejoin-backup-selector", "", "JSON RestoreSelector choosing WHICH backup an automatic rejoin restores from (empty = newest local logical). Build and validate it with a manual rejoin, then set it here to promote that choice to automatic.")
+	flags.StringVar(&conf.AutorejoinBackupSelectorLogical, "autorejoin-backup-selector-logical", "", "JSON RestoreSelector choosing WHICH logical backup an automatic rejoin restores from (empty = newest, any origin/repo/location). Build and validate it with a manual rejoin, then set it here to promote that choice to automatic.")
+	flags.StringVar(&conf.AutorejoinBackupSelectorPhysical, "autorejoin-backup-selector-physical", "", "JSON RestoreSelector choosing WHICH physical backup an automatic rejoin restores from (empty = newest, any origin/repo/location). Build and validate it with a manual rejoin, then set it here to promote that choice to automatic.")
 	flags.BoolVar(&conf.AutorejoinSlavePositionalHeartbeat, "autorejoin-slave-positional-heartbeat", false, "Automatic rejoin extra slaves via pseudo gtid heartbeat for positional replication")
 	flags.BoolVar(&conf.AutorejoinForceRestore, "autorejoin-force-restore", false, "Automatic rejoin ahead force full new leader backup restore")
 

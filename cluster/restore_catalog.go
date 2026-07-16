@@ -12,19 +12,33 @@ import (
 	"github.com/signal18/replication-manager/utils/backupmgr"
 )
 
-// getAutorejoinBackupSelector parses the operator's autorejoin-backup-selector
-// JSON into a RestoreSelector — the human-validated choice promoted to automatic
-// rejoin — falling back to the default (newest local logical) when unset/invalid.
-// This is the loop: pick+validate a restore manually, then set that selector here.
-func (cluster *Cluster) getAutorejoinBackupSelector() RestoreSelector {
-	def := RestoreSelector{Type: []string{"logical"}, Order: []string{"last", "local"}}
-	raw := strings.TrimSpace(cluster.Conf.AutorejoinBackupSelector)
+// getAutorejoinBackupSelector parses the operator's per-method
+// autorejoin-backup-selector-{logical,physical} JSON into a RestoreSelector —
+// the human-validated choice promoted to automatic rejoin — falling back to the
+// method default when unset/invalid. This is the loop: pick+validate a restore
+// manually, then set that selector here.
+//
+// The default digs ANY origin/repo/location: after a failover the backup is
+// usually on the OLD master (or in restic/S3), never the freshly-promoted one,
+// so gating on the master or on local storage would wrongly report "no backup".
+// Order prefers newest then local as a tie-break, but never gates on location.
+func (cluster *Cluster) getAutorejoinBackupSelector(method string) RestoreSelector {
+	var def RestoreSelector
+	var raw string
+	switch method {
+	case "physical":
+		def = RestoreSelector{Type: []string{"physical"}, Origin: OriginAny, Repo: RepoAny, Order: []string{"last", "local"}}
+		raw = strings.TrimSpace(cluster.Conf.AutorejoinBackupSelectorPhysical)
+	default: // logical
+		def = RestoreSelector{Type: []string{"logical"}, Origin: OriginAny, Repo: RepoAny, Order: []string{"last", "local"}}
+		raw = strings.TrimSpace(cluster.Conf.AutorejoinBackupSelectorLogical)
+	}
 	if raw == "" {
 		return def
 	}
 	var sel RestoreSelector
 	if err := json.Unmarshal([]byte(raw), &sel); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "autorejoin-backup-selector invalid JSON (%s) — using default", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "autorejoin-backup-selector-%s invalid JSON (%s) — using default", method, err)
 		return def
 	}
 	return sel
