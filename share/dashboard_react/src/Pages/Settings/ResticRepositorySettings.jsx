@@ -1446,7 +1446,13 @@ function ResticRepositorySettings({
                   </RMButton>
                 </HStack>
                 {checkResult && checkResult.status !== 'initialization_required' && (
-                  <Alert status={checkResult.status === 'ok' ? 'success' : 'error'} size='sm' borderRadius='md'>
+                  <Alert
+                    status={checkResult.status === 'ok' ? 'success' : 'error'}
+                    size='sm'
+                    borderRadius='md'
+                    bg={isLight ? undefined : checkResult.status === 'ok' ? 'rgba(72,187,120,0.15)' : 'rgba(245,101,101,0.15)'}
+                    color='var(--text-color)'
+                  >
                     <AlertIcon />
                     <Text fontSize='sm'>{checkResult.message}</Text>
                   </Alert>
@@ -1484,7 +1490,13 @@ function ResticRepositorySettings({
                 </RMButton>
               </Box>
               {wipeResult && (
-                <Alert status={wipeResult.status === 'ok' ? 'warning' : 'error'} size='sm' borderRadius='md'>
+                <Alert
+                  status={wipeResult.status === 'ok' ? 'warning' : 'error'}
+                  size='sm'
+                  borderRadius='md'
+                  bg={isLight ? undefined : wipeResult.status === 'ok' ? 'rgba(237,137,54,0.18)' : 'rgba(245,101,101,0.15)'}
+                  color='var(--text-color)'
+                >
                   <AlertIcon />
                   <Text fontSize='sm'>{wipeResult.message}</Text>
                 </Alert>
