@@ -1,6 +1,6 @@
-import { Box, Flex, FormControl, FormLabel, Grid, GridItem, HStack, Icon, Input, Select, Stack, Text, VStack, Checkbox, Alert, AlertIcon, Divider, useDisclosure } from '@chakra-ui/react'
+import { Box, Badge, Flex, FormControl, FormLabel, Grid, GridItem, HStack, Icon, Input, Select, Stack, Tab, TabList, TabPanel, TabPanels, Tabs, Text, VStack, Checkbox, Alert, AlertIcon, Divider, useDisclosure } from '@chakra-ui/react'
 import React, { useState, useEffect, useRef } from 'react'
-import { HiChevronDown, HiChevronUp, HiQuestionMarkCircle, HiRefresh, HiCheckCircle, HiDatabase, HiArrowCircleRight, HiShieldExclamation, HiTrash, HiLockClosed } from 'react-icons/hi'
+import { HiChevronDown, HiChevronUp, HiQuestionMarkCircle, HiCheckCircle, HiDatabase, HiArrowCircleRight, HiShieldExclamation, HiTrash, HiLockClosed } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 import RMButton from '../../components/RMButton'
 import RMSwitch from '../../components/RMSwitch'
@@ -217,6 +217,33 @@ const RESTIC_REPOSITORY_TYPE_OPTIONS = [
   { value: 'restic-sftp', name: 'SFTP' }
 ]
 
+const REPO_TYPE_LABELS = {
+  none: 'None',
+  'restic-local': 'Local filesystem',
+  'restic-aws': 'S3 / Object storage',
+  'restic-sftp': 'SFTP'
+}
+
+const ARCHIVE_MODE_TO_TAB = {
+  'restic-local': 'local',
+  'restic-aws': 's3',
+  'restic-sftp': 'sftp'
+}
+
+const TAB_TO_ARCHIVE_MODE = {
+  local: 'restic-local',
+  s3: 'restic-aws',
+  sftp: 'restic-sftp'
+}
+
+const TAB_LABELS = {
+  local: 'Local filesystem',
+  s3: 'S3 / Object storage',
+  sftp: 'SFTP'
+}
+
+const TAB_ORDER = ['local', 's3', 'sftp']
+
 function ResticRepositorySettings({
   clusterName,
   config,
@@ -299,13 +326,56 @@ function ResticRepositorySettings({
   const isAwsPrefixEmpty = isAws && awsBucket && !awsPrefix
   const isForceInitBlocked = initForce && ((isAwsPrefixEmpty && !confirmEmptyPrefix) || isSftp)
 
+  // The selected Storage tab is an editing surface only - it must never drive
+  // runtime behavior. It defaults to the active repository tab (or S3 when no
+  // repository type is active) but does not resync when archiveMode changes,
+  // so users can keep editing an inactive tab without being redirected.
+  const [selectedTab, setSelectedTab] = useState(() => ARCHIVE_MODE_TO_TAB[archiveMode] || 's3')
+  const activeRepositoryLabel = REPO_TYPE_LABELS[archiveMode] || 'None'
+  const selectedTabIndex = TAB_ORDER.indexOf(selectedTab)
+  // Tab panels vary a lot in height (e.g. S3 vs Local), so switching tabs
+  // changes document height below the tab list. That reflow (or the browser's
+  // own scroll-anchoring correcting for it) can nudge window.scrollY, which
+  // reads as an unwanted small jump since the tab list itself never actually
+  // moves in document coordinates. Cancel that out precisely: since the tab
+  // list's document position is stable, any change in its viewport-relative
+  // top before vs. after the swap is entirely due to scrollY drift - so
+  // scrolling by exactly that delta restores the pre-click view with zero
+  // visible movement.
+  const repoTabListRef = useRef(null)
+  const handleTabChange = (index) => {
+    const anchor = repoTabListRef.current
+    const beforeTop = anchor ? anchor.getBoundingClientRect().top : null
+    setSelectedTab(TAB_ORDER[index])
+    if (anchor && beforeTop !== null) {
+      requestAnimationFrame(() => {
+        const afterTop = anchor.getBoundingClientRect().top
+        const delta = afterTop - beforeTop
+        if (delta !== 0) {
+          window.scrollBy({ top: delta, left: 0, behavior: 'auto' })
+        }
+      })
+    }
+  }
+  // Signature of the fields that determine what the *active* repository actions
+  // (Check / Initialize / Wipe) target - used to invalidate stale action feedback.
+  const activeTargetSignature =
+    archiveMode === 'restic-aws'
+      ? awsRepoPath
+      : archiveMode === 'restic-local' || archiveMode === 'restic-sftp'
+      ? config?.backupResticLocalRepository || ''
+      : 'none'
+
   useEffect(() => {
     setIsLegacyOpen(!awsBucket)
   }, [awsBucket])
 
+  // Reset action feedback whenever the active repository context changes, so a
+  // stale checkResult/wipeResult is never shown for the wrong repository.
   useEffect(() => {
     setCheckResult(null)
-  }, [archiveMode])
+    setWipeResult(null)
+  }, [archiveMode, selectedTab, activeTargetSignature])
 
   const handleSettingChange = (setting, value, encodeValue = false) =>
     dispatch(
@@ -643,6 +713,56 @@ function ResticRepositorySettings({
     </Box>
   )
 
+  const renderTabBanner = (tabKey) => {
+    const isActiveTab = archiveMode === TAB_TO_ARCHIVE_MODE[tabKey]
+    const tabLabel = TAB_LABELS[tabKey]
+
+    if (isActiveTab) {
+      return (
+        <Alert status='info' borderRadius='md' className={styles.tabBanner}>
+          <AlertIcon boxSize={3.5} />
+          <Stack spacing={0}>
+            <Text fontSize='xs'>Editing the active repository configuration (<strong>{activeRepositoryLabel}</strong>).</Text>
+            <Text fontSize='xs'>Changes here apply to subsequent Restic operations.</Text>
+          </Stack>
+        </Alert>
+      )
+    }
+
+    if (tabKey === 'local' || tabKey === 'sftp') {
+      return (
+        <Alert status='warning' borderRadius='md' className={styles.tabBanner}>
+          <AlertIcon boxSize={3.5} />
+          <Stack spacing={0}>
+            <Text fontSize='xs'>
+              {tabKey === 'local'
+                ? 'This tab edits the saved repository path used for Local filesystem mode.'
+                : 'This tab edits the same saved repository path using SFTP repository syntax.'}{' '}
+              Active repository: <strong>{activeRepositoryLabel}</strong>.
+            </Text>
+            <Text fontSize='xs'>
+              To use {tabLabel}, change <strong>Restic repository type</strong> above.
+            </Text>
+          </Stack>
+        </Alert>
+      )
+    }
+
+    return (
+      <Alert status='warning' borderRadius='md' className={styles.tabBanner}>
+        <AlertIcon boxSize={3.5} />
+        <Stack spacing={0}>
+          <Text fontSize='xs'>
+            Editing saved {tabLabel} settings. Active repository: <strong>{activeRepositoryLabel}</strong>.
+          </Text>
+          <Text fontSize='xs'>
+            To use {tabLabel}, change <strong>Restic repository type</strong> above.
+          </Text>
+        </Stack>
+      </Alert>
+    )
+  }
+
   return (
     <VStack
       as='form'
@@ -687,6 +807,33 @@ function ResticRepositorySettings({
             </Box>
           </HStack>
         </Flex>
+
+        <Box className={styles.summaryPanel} w='full'>
+          <HStack spacing={2} align='center' flexWrap='wrap'>
+            <Text className={styles.summaryLabel}>Current active repository:</Text>
+            <Text className={styles.summaryValue}>{activeRepositoryLabel}</Text>
+            {archiveMode !== 'none' && <Badge colorScheme='green'>Active</Badge>}
+          </HStack>
+          {archiveMode === 'none' ? (
+            <Stack spacing={0}>
+              <Text className={styles.helperText}>No repository type is currently active.</Text>
+              <Text className={styles.helperText}>
+                You can still edit repository settings below. To use one, change Restic repository type
+                above.
+              </Text>
+            </Stack>
+          ) : (
+            <Stack spacing={0}>
+              <Text className={styles.helperText}>
+                You can edit repository settings here without changing the active repository type.
+              </Text>
+              <Text className={styles.helperText}>
+                To change the active repository, use Restic repository type above.
+              </Text>
+            </Stack>
+          )}
+        </Box>
+
         {renderSectionPanel({
           sectionKey: 'connection-credentials',
           title: 'Connection & credentials',
@@ -717,9 +864,15 @@ function ResticRepositorySettings({
                       selectedValue={archiveMode}
                       isDisabled={user?.grants['cluster-settings'] == false}
                       confirmTitle={'Confirm backup-archive-mode to'}
+                      confirmBody={'This activates the saved configuration below and changes which repository subsequent Restic operations use. Change repository type to: '}
                       onChange={(value) => handleArchiveModeChange(value)}
                     />
                   </Flex>
+                  <Text className={styles.helperText}>
+                    This control selects which saved repository configuration Restic uses right now. The
+                    tabs below (Storage) let you edit repository settings for each repository type.
+                    Operational actions continue to use the current active repository, not the selected tab.
+                  </Text>
                 </GridItem>
               </Grid>
 
@@ -770,6 +923,31 @@ function ResticRepositorySettings({
                   />
                 </GridItem>
               </Grid>
+
+              <Grid
+                className={styles.resticMountGrid}
+                templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                columnGap={3}
+                rowGap={1}
+                w='full'
+              >
+                <GridItem className={styles.rowLabel}>
+                  <HStack spacing={1} justify='space-between' width='full'>
+                    <Text>Backup restic additional env</Text>
+                    {h(ResticAdditionalEnvHelp, 'Backup Restic Additional Env')}
+                  </HStack>
+                </GridItem>
+                <GridItem className={styles.valueCell}>
+                  <TextForm
+                    value={config?.backupResticAdditionalEnv}
+                    confirmTitle={`Confirm backup-restic-additional-env to `}
+                    className={styles.textbox}
+                    size='sm'
+                    placeholder='AWS_SESSION_TOKEN, NO_PROXY="host1,host2"'
+                    onSave={(value) => handleSettingChange('backup-restic-additional-env', value)}
+                  />
+                </GridItem>
+              </Grid>
             </Stack>
           )
         })}
@@ -783,31 +961,73 @@ function ResticRepositorySettings({
           controlsId: 'restic-repo-storage',
           content: (
             <Stack spacing={{ base: 2, md: 3 }}>
-              {archiveMode === 'none' && (
-                <Text className={styles.helperText}>
-                  Restic backups are disabled (backup-archive-mode is set to none). Pick Local, S3, or SFTP in
-                  &quot;Restic repository type&quot; (Connection &amp; credentials) to configure storage.
-                </Text>
-              )}
+              <Grid
+                className={styles.resticMountGrid}
+                templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                columnGap={3}
+                rowGap={1}
+                w='full'
+              >
+                <GridItem className={styles.rowLabel}>
+                  <HStack spacing={1} justify='space-between' width='full'>
+                    <Text>Backup restic repo append cluster</Text>
+                    {h(ResticRepoAppendClusterHelp, 'Restic Repo Append Cluster')}
+                  </HStack>
+                </GridItem>
+                <GridItem className={styles.valueCell}>
+                  <HStack spacing={2} align='center'>
+                    <RMSwitch
+                      isChecked={config?.backupResticRepoAppendCluster}
+                      isDisabled={user?.grants['cluster-settings'] == false}
+                      confirmTitle={'Confirm switch settings for backup-restic-repo-append-cluster?'}
+                      onChange={() => handleSwitchChange('backup-restic-repo-append-cluster')}
+                    />
+                  </HStack>
+                  <Text className={styles.helperText}>
+                    Shared behavior affecting Local and S3 path construction - not isolated to a single tab.
+                  </Text>
+                </GridItem>
+              </Grid>
 
-              {archiveMode === 'restic-local' && (
-                <Stack spacing={{ base: 1, md: 2 }}>
-                  <Grid
-                    className={styles.resticMountGrid}
-                    templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                    columnGap={3}
-                    rowGap={1}
-                    w='full'
-                  >
-                    <GridItem className={styles.rowLabel}>
-                      <HStack spacing={1} justify='space-between' width='full'>
-                        <Text>Backup restic local repository</Text>
-                        {h(ResticLocalRepositoryHelp, 'Backup Restic Local Repository')}
+              <Tabs
+                className={styles.repoTabs}
+                index={selectedTabIndex}
+                onChange={handleTabChange}
+                variant='enclosed'
+                isLazy
+              >
+                <TabList ref={repoTabListRef} className={styles.repoTabList}>
+                  {TAB_ORDER.map((tabKey) => (
+                    <Tab key={tabKey} className={styles.repoTab}>
+                      <HStack spacing={2}>
+                        <Text>{TAB_LABELS[tabKey]}</Text>
+                        {archiveMode === TAB_TO_ARCHIVE_MODE[tabKey] && <Badge colorScheme='green'>Active</Badge>}
                       </HStack>
-                    </GridItem>
-                    <GridItem className={styles.valueCell}>
-                      <Stack spacing={1} width='100%'>
-                        <HStack width='100%' spacing={2}>
+                    </Tab>
+                  ))}
+                </TabList>
+                <TabPanels>
+                  <TabPanel px='0' pt='3'>
+                    <Stack spacing={{ base: 2, md: 3 }}>
+                      {renderTabBanner('local')}
+                      <Text className={styles.helperText}>
+                        Shared settings such as Restic binary path, Restic password, and additional environment
+                        variables are configured above.
+                      </Text>
+                      <Grid
+                        className={styles.resticMountGrid}
+                        templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                        columnGap={3}
+                        rowGap={1}
+                        w='full'
+                      >
+                        <GridItem className={styles.rowLabel}>
+                          <HStack spacing={1} justify='space-between' width='full'>
+                            <Text>Backup restic local repository</Text>
+                            {h(ResticLocalRepositoryHelp, 'Backup Restic Local Repository')}
+                          </HStack>
+                        </GridItem>
+                        <GridItem className={styles.valueCell}>
                           <TextForm
                             value={config?.backupResticLocalRepository}
                             confirmTitle={`Confirm backup-restic-local-repository to `}
@@ -816,449 +1036,23 @@ function ResticRepositorySettings({
                             placeholder='/var/lib/repman/backups/archive'
                             onSave={(value) => handleSettingChange('backup-restic-local-repository', value, true)}
                           />
-                          <RMButton
-                            size='sm'
-                            colorScheme='green'
-                            onClick={handleCheckRepo}
-                            isLoading={isCheckLoading}
-                            isDisabled={user?.grants['cluster-settings'] === false}
-                            title="Check local repository"
-                          >
-                            Check
-                          </RMButton>
-                          <RMButton
-                            size='sm'
-                            colorScheme='blue'
-                            onClick={handleResticInit}
-                            isDisabled={user?.grants['cluster-settings'] === false}
-                            title="Re-initialize local repository"
-                          >
-                            <HiRefresh />
-                          </RMButton>
-                          {h(
-                            'Re-initialize the local Restic repository. This creates a new repository configuration at the specified path. Use with caution - only needed if the repository is corrupted or being set up for the first time.',
-                            'Re-initialize Local Repository'
-                          )}
-                        </HStack>
-                        <HStack>
-                          <RMButton
-                            size='sm'
-                            colorScheme='orange'
-                            onClick={onOpenCopyModal}
-                            isDisabled={user?.grants['cluster-process'] === false}
-                            title='Migrate/copy snapshots from another repository into this one'
-                          >
-                            Migrate/copy snapshots
-                          </RMButton>
-                        </HStack>
-                        {checkResult && checkResult.status !== 'initialization_required' && (
-                          <Alert status={checkResult.status === 'ok' ? 'success' : 'error'} size='sm' borderRadius='md'>
-                            <AlertIcon />
-                            <Text fontSize='sm'>{checkResult.message}</Text>
-                          </Alert>
-                        )}
-                      </Stack>
-                    </GridItem>
-                  </Grid>
-                </Stack>
-              )}
-
-              {archiveMode === 'restic-sftp' && (
-                <Stack spacing={{ base: 1, md: 2 }}>
-                  <Grid
-                    className={styles.resticMountGrid}
-                    templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                    columnGap={3}
-                    rowGap={1}
-                    w='full'
-                  >
-                    <GridItem className={styles.rowLabel}>
-                      <HStack spacing={1} justify='space-between' width='full'>
-                        <Text>SFTP repository path</Text>
-                        {h(ResticSftpHelp, 'SFTP Repository')}
-                      </HStack>
-                    </GridItem>
-                    <GridItem className={styles.valueCell}>
-                      <Stack spacing={1} width='100%'>
-                        <HStack width='100%' spacing={2}>
-                          <TextForm
-                            value={config?.backupResticLocalRepository}
-                            confirmTitle={`Confirm backup-restic-local-repository to `}
-                            className={styles.textbox}
-                            size='sm'
-                            placeholder='sftp:user@host:/path/to/repo'
-                            onSave={(value) => handleSettingChange('backup-restic-local-repository', value, true)}
-                          />
-                          <RMButton
-                            size='sm'
-                            colorScheme='green'
-                            onClick={handleCheckRepo}
-                            isLoading={isCheckLoading}
-                            isDisabled={user?.grants['cluster-settings'] === false}
-                            title="Check SFTP repository"
-                          >
-                            Check
-                          </RMButton>
-                          <RMButton
-                            size='sm'
-                            colorScheme='blue'
-                            onClick={handleResticInit}
-                            isDisabled={user?.grants['cluster-settings'] === false}
-                            title="Re-initialize SFTP repository"
-                          >
-                            <HiRefresh />
-                          </RMButton>
-                          {h(
-                            'Re-initialize the SFTP Restic repository. This creates a new repository configuration at the configured sftp:user@host:/path. Force re-initialization is not supported for SFTP repositories - remove the remote repository path manually over SSH before re-initializing.',
-                            'Re-initialize SFTP Repository'
-                          )}
-                        </HStack>
-                        <HStack>
-                          <RMButton
-                            size='sm'
-                            colorScheme='orange'
-                            onClick={onOpenCopyModal}
-                            isDisabled={user?.grants['cluster-process'] === false}
-                            title='Migrate/copy snapshots from another repository into this one'
-                          >
-                            Migrate/copy snapshots
-                          </RMButton>
-                        </HStack>
-                        {checkResult && checkResult.status !== 'initialization_required' && (
-                          <Alert status={checkResult.status === 'ok' ? 'success' : 'error'} size='sm' borderRadius='md'>
-                            <AlertIcon />
-                            <Text fontSize='sm'>{checkResult.message}</Text>
-                          </Alert>
-                        )}
-                      </Stack>
-                    </GridItem>
-                  </Grid>
-                </Stack>
-              )}
-
-              {archiveMode === 'restic-aws' && (
-                <Stack spacing={{ base: 2, md: 3 }}>
-                  {/* 0. S3 mode selector */}
-                  <Stack spacing={{ base: 1, md: 2 }}>
-                    <Grid
-                      className={styles.resticMountGrid}
-                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                      columnGap={3}
-                      rowGap={1}
-                      w='full'
-                    >
-                      <GridItem className={styles.rowLabel}>
-                        <HStack spacing={1} justify='space-between' width='full'>
-                          <Text>S3 source-of-truth mode</Text>
-                          {h(ResticS3ModeHelp, 'S3 Source-of-Truth Mode')}
-                        </HStack>
-                      </GridItem>
-                      <GridItem className={styles.valueCell}>
-                        <Select
-                          size='sm'
-                          value={s3Mode}
-                          isDisabled={user?.grants['cluster-settings'] === false}
-                          onChange={(e) => handleSettingChange('backup-restic-s3-mode', e.target.value)}
-                        >
-                          <option value='auto'>Auto (probe new then legacy at startup; persist winner)</option>
-                          <option value='new'>New (bucket / prefix / endpoint fields only)</option>
-                          <option value='legacy'>Legacy (backup-restic-repository URL only)</option>
-                        </Select>
-                      </GridItem>
-                    </Grid>
-                  </Stack>
-
-                  {/* 1. Provider connection */}
-                  <Box className={styles.subsectionHeader}>
-                    <Text className={styles.subsectionTitle}>Provider connection</Text>
-                  </Box>
-                  <Stack spacing={{ base: 1, md: 2 }}>
-                    <Grid
-                      className={styles.resticMountGrid}
-                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                      columnGap={3}
-                      rowGap={1}
-                      w='full'
-                    >
-                      <GridItem className={styles.rowLabel}>
-                        <HStack spacing={1} justify='space-between' width='full'>
-                          <Text>Backup restic aws endpoint</Text>
-                          {h(ResticAwsEndpointHelp, 'Backup Restic AWS Endpoint')}
-                        </HStack>
-                      </GridItem>
-                      <GridItem className={styles.valueCell}>
-                        <TextForm
-                          value={config?.backupResticAwsEndpoint}
-                          confirmTitle={`Confirm backup-restic-aws-endpoint to `}
-                          className={styles.textbox}
-                          size='sm'
-                          placeholder='https://s3.amazonaws.com or https://minio.example.com'
-                          regexPattern='^https?://[A-Za-z0-9.-]+(?::\\d+)?(?:/.*)?$'
-                          onSave={(value) => handleSettingChange('backup-restic-aws-endpoint', value, true)}
-                        />
-                      </GridItem>
-                    </Grid>
-
-                    <Grid
-                      className={styles.resticMountGrid}
-                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                      columnGap={3}
-                      rowGap={1}
-                      w='full'
-                    >
-                      <GridItem className={styles.rowLabel}>
-                        <HStack spacing={1} justify='space-between' width='full'>
-                          <Text>Backup restic aws region</Text>
-                          {h(ResticAwsRegionHelp, 'Backup Restic AWS Region')}
-                        </HStack>
-                      </GridItem>
-                      <GridItem className={styles.valueCell}>
-                        <TextForm
-                          value={config?.backupResticAwsRegion}
-                          confirmTitle={`Confirm backup-restic-aws-region to `}
-                          className={styles.textbox}
-                          size='sm'
-                          placeholder='us-east-1, eu-west-1, etc.'
-                          onSave={(value) => handleSettingChange('backup-restic-aws-region', value)}
-                        />
-                      </GridItem>
-                    </Grid>
-                  </Stack>
-
-                  {/* 2. Credentials */}
-                  <Box className={styles.subsectionHeader}>
-                    <Text className={styles.subsectionTitle}>Credentials</Text>
-                  </Box>
-                  <Stack spacing={{ base: 1, md: 2 }}>
-                    <Grid
-                      className={styles.resticMountGrid}
-                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                      columnGap={3}
-                      rowGap={1}
-                      w='full'
-                    >
-                      <GridItem className={styles.rowLabel}>
-                        <HStack spacing={1} justify='space-between' width='full'>
-                          <Text>Backup restic aws access key id</Text>
-                          {h(ResticAwsAccessKeyIdHelp, 'Backup Restic AWS Access Key ID')}
-                        </HStack>
-                      </GridItem>
-                      <GridItem className={styles.valueCell}>
-                        <TextForm
-                          value={config?.backupResticAwsAccessKeyId}
-                          confirmTitle={`Confirm backup-restic-aws-access-key-id to `}
-                          className={styles.textbox}
-                          size='sm'
-                          onSave={(value) => handleSettingChange('backup-restic-aws-access-key-id', value)}
-                        />
-                      </GridItem>
-                    </Grid>
-
-                    <Grid
-                      className={styles.resticMountGrid}
-                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                      columnGap={3}
-                      rowGap={1}
-                      w='full'
-                    >
-                      <GridItem className={styles.rowLabel}>
-                        <HStack spacing={1} justify='space-between' width='full'>
-                          <Text>Backup restic aws access secret</Text>
-                          {h(ResticAwsAccessSecretHelp, 'Backup Restic AWS Access Secret')}
-                        </HStack>
-                      </GridItem>
-                      <GridItem className={styles.valueCell}>
-                        <TextForm
-                          value={config?.backupResticAwsAccessSecret}
-                          confirmTitle={`Confirm backup-restic-aws-access-secret to `}
-                          className={styles.textbox}
-                          size='sm'
-                          onSave={(value) => handleSettingChange('backup-restic-aws-access-secret', value, true)}
-                        />
-                      </GridItem>
-                    </Grid>
-                  </Stack>
-
-                  {/* 3. Repository target */}
-                  <Box className={styles.subsectionHeader}>
-                    <Text className={styles.subsectionTitle}>Repository target</Text>
-                  </Box>
-                  <Stack spacing={{ base: 1, md: 2 }}>
-                    <Grid
-                      className={styles.resticMountGrid}
-                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                      columnGap={3}
-                      rowGap={1}
-                      w='full'
-                    >
-                      <GridItem className={styles.rowLabel}>
-                        <HStack spacing={1} justify='space-between' width='full'>
-                          <Text>Backup restic aws bucket</Text>
-                          {h(ResticAwsBucketHelp, 'Backup Restic AWS Bucket')}
-                        </HStack>
-                      </GridItem>
-                      <GridItem className={styles.valueCell}>
-                        <TextForm
-                          value={config?.backupResticAwsBucket}
-                          confirmTitle={`Confirm backup-restic-aws-bucket to `}
-                          className={styles.textbox}
-                          size='sm'
-                          placeholder='bucket-name'
-                          regexPattern='^[^/\\\\]*$'
-                          onSave={(value) => handleSettingChange('backup-restic-aws-bucket', value)}
-                        />
-                        <Text className={styles.helperText}>Bucket name must not contain &apos;/&apos; or &apos;\\&apos;.</Text>
-                      </GridItem>
-                    </Grid>
-
-                    <Grid
-                      className={styles.resticMountGrid}
-                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                      columnGap={3}
-                      rowGap={1}
-                      w='full'
-                    >
-                      <GridItem className={styles.rowLabel}>
-                        <HStack spacing={1} justify='space-between' width='full'>
-                          <Text>Backup restic aws prefix</Text>
-                          {h(ResticAwsPrefixHelp, 'Backup Restic AWS Prefix')}
-                        </HStack>
-                      </GridItem>
-                      <GridItem className={styles.valueCell}>
-                        <TextForm
-                          value={config?.backupResticAwsPrefix}
-                          confirmTitle={`Confirm backup-restic-aws-prefix to `}
-                          className={styles.textbox}
-                          size='sm'
-                          placeholder='optional/prefix/path'
-                          onSave={(value) => handleSettingChange('backup-restic-aws-prefix', value, true)}
-                        />
-                        <Text className={styles.helperText}>Optional bucket prefix/path (no leading slash).</Text>
-                      </GridItem>
-                    </Grid>
-
-                    <Grid
-                      className={styles.resticMountGrid}
-                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                      columnGap={3}
-                      rowGap={1}
-                      w='full'
-                    >
-                      <GridItem className={styles.rowLabel}>
-                        <HStack spacing={1} justify='space-between' width='full'>
-                          <Text>Backup restic repo append cluster</Text>
-                          {h(ResticRepoAppendClusterHelp, 'Restic Repo Append Cluster')}
-                        </HStack>
-                      </GridItem>
-                      <GridItem className={styles.valueCell}>
-                        <HStack spacing={2} align='center'>
-                          <RMSwitch
-                            isChecked={config?.backupResticRepoAppendCluster}
-                            isDisabled={user?.grants['cluster-settings'] == false}
-                            confirmTitle={'Confirm switch settings for backup-restic-repo-append-cluster?'}
-                            onChange={() => handleSwitchChange('backup-restic-repo-append-cluster')}
-                          />
-                        </HStack>
-                      </GridItem>
-                    </Grid>
-
-                    <Grid
-                      className={styles.resticMountGrid}
-                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                      columnGap={3}
-                      rowGap={1}
-                      w='full'
-                    >
-                      <GridItem className={styles.rowLabel}>
-                        <HStack spacing={1} justify='space-between' width='full'>
-                          <Text>
-                            Effective S3 repository
-                            {s3Mode === 'auto' && (
-                              <Text as='span' fontSize='xs' color='orange.500' ml={1}>(approximate — auto mode)</Text>
-                            )}
-                          </Text>
-                          {h(ResticEffectiveS3RepoHelp, 'Effective S3 Repository')}
-                        </HStack>
-                      </GridItem>
-                      <GridItem className={styles.valueCell}>
-                        <Text
-                          fontWeight='bold'
-                          fontSize='sm'
-                          fontFamily='monospace'
-                          bg='gray.100'
-                          p={2}
-                          borderRadius='md'
-                          wordBreak='break-all'
-                        >
-                          {awsRepoPath || 's3:<bucket>/<prefix>'}
-                        </Text>
-                      </GridItem>
-                    </Grid>
-                  </Stack>
-
-                  {/* 4. Repository actions */}
-                  <Box className={styles.subsectionHeader}>
-                    <Text className={styles.subsectionTitle}>Repository initialization</Text>
-                  </Box>
-                  <Box className={styles.repositoryActionsBox}>
-                    <Stack spacing={3}>
+                        </GridItem>
+                      </Grid>
                       <Text className={styles.helperText}>
-                        Verify or initialize the effective repository shown in <strong>Repository target</strong> above. Use <em>Migrate/copy</em> to move snapshots to a new destination.
+                        Local filesystem and SFTP currently share the same saved repository path setting.
                       </Text>
-                      <HStack spacing={2} flexWrap='wrap'>
-                        <RMButton
-                          size='sm'
-                          colorScheme='green'
-                          leftIcon={<HiCheckCircle />}
-                          onClick={handleCheckRepo}
-                          isLoading={isCheckLoading}
-                          isDisabled={user?.grants['cluster-settings'] === false}
-                        >
-                          Check repository
-                        </RMButton>
-                        <RMButton
-                          size='sm'
-                          colorScheme='blue'
-                          leftIcon={<HiDatabase />}
-                          onClick={handleResticInit}
-                          isDisabled={user?.grants['cluster-settings'] === false}
-                        >
-                          Initialize repository
-                        </RMButton>
-                        <RMButton
-                          size='sm'
-                          colorScheme='orange'
-                          leftIcon={<HiArrowCircleRight />}
-                          onClick={onOpenCopyModal}
-                          isDisabled={user?.grants['cluster-process'] === false}
-                        >
-                          Migrate/copy snapshots
-                        </RMButton>
-                      </HStack>
-                      {checkResult && checkResult.status !== 'initialization_required' && (
-                        <Alert status={checkResult.status === 'ok' ? 'success' : 'error'} size='sm' borderRadius='md'>
-                          <AlertIcon />
-                          <Text fontSize='sm'>{checkResult.message}</Text>
-                        </Alert>
-                      )}
                     </Stack>
-                  </Box>
+                  </TabPanel>
 
-                  {/* 5. Advanced compatibility fallback */}
-                  <HStack
-                    as='button'
-                    type='button'
-                    spacing={2}
-                    onClick={() => setIsLegacyOpen((prev) => !prev)}
-                    aria-expanded={isLegacyOpen}
-                    aria-controls='restic-repo-legacy-fallback'
-                    className={styles.subsectionAdvancedHeader}
-                  >
-                    <Text className={styles.subsectionAdvancedTitle}>Advanced compatibility fallback</Text>
-                    <Box className={styles.panelChevron}>{isLegacyOpen ? <HiChevronUp /> : <HiChevronDown />}</Box>
-                  </HStack>
-                  {isLegacyOpen && (
-                    <Box id='restic-repo-legacy-fallback' className={styles.subsectionAdvancedBody}>
+                  <TabPanel px='0' pt='3'>
+                    <Stack spacing={{ base: 2, md: 3 }}>
+                      {renderTabBanner('s3')}
+                      <Text className={styles.helperText}>
+                        Shared settings such as Restic binary path, Restic password, and additional environment
+                        variables are configured above.
+                      </Text>
+
+                      {/* 0. S3 mode selector */}
                       <Stack spacing={{ base: 1, md: 2 }}>
                         <Grid
                           className={styles.resticMountGrid}
@@ -1269,122 +1063,407 @@ function ResticRepositorySettings({
                         >
                           <GridItem className={styles.rowLabel}>
                             <HStack spacing={1} justify='space-between' width='full'>
-                              <Text>Legacy repository URL (fallback)</Text>
-                              {h(ResticLegacyRepoUrlHelp, 'Legacy Repository URL (fallback)')}
+                              <Text>S3 source-of-truth mode</Text>
+                              {h(ResticS3ModeHelp, 'S3 Source-of-Truth Mode')}
+                            </HStack>
+                          </GridItem>
+                          <GridItem className={styles.valueCell}>
+                            <Select
+                              size='sm'
+                              value={s3Mode}
+                              isDisabled={user?.grants['cluster-settings'] === false}
+                              onChange={(e) => handleSettingChange('backup-restic-s3-mode', e.target.value)}
+                            >
+                              <option value='auto'>Auto (probe new then legacy at startup; persist winner)</option>
+                              <option value='new'>New (bucket / prefix / endpoint fields only)</option>
+                              <option value='legacy'>Legacy (backup-restic-repository URL only)</option>
+                            </Select>
+                          </GridItem>
+                        </Grid>
+                      </Stack>
+
+                      {/* 1. Provider connection */}
+                      <Box className={styles.subsectionHeader}>
+                        <Text className={styles.subsectionTitle}>Connection</Text>
+                      </Box>
+                      <Stack spacing={{ base: 1, md: 2 }}>
+                        <Grid
+                          className={styles.resticMountGrid}
+                          templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                          columnGap={3}
+                          rowGap={1}
+                          w='full'
+                        >
+                          <GridItem className={styles.rowLabel}>
+                            <HStack spacing={1} justify='space-between' width='full'>
+                              <Text>Backup restic aws endpoint</Text>
+                              {h(ResticAwsEndpointHelp, 'Backup Restic AWS Endpoint')}
                             </HStack>
                           </GridItem>
                           <GridItem className={styles.valueCell}>
                             <TextForm
-                              value={config?.backupResticRepository}
-                              confirmTitle={`Confirm backup-restic-repository to `}
+                              value={config?.backupResticAwsEndpoint}
+                              confirmTitle={`Confirm backup-restic-aws-endpoint to `}
                               className={styles.textbox}
                               size='sm'
-                              onSave={(value) => handleSettingChange('backup-restic-repository', value, true)}
+                              placeholder='https://s3.amazonaws.com or https://minio.example.com'
+                              regexPattern='^https?://[A-Za-z0-9.-]+(?::\\d+)?(?:/.*)?$'
+                              onSave={(value) => handleSettingChange('backup-restic-aws-endpoint', value, true)}
+                            />
+                          </GridItem>
+                        </Grid>
+
+                        <Grid
+                          className={styles.resticMountGrid}
+                          templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                          columnGap={3}
+                          rowGap={1}
+                          w='full'
+                        >
+                          <GridItem className={styles.rowLabel}>
+                            <HStack spacing={1} justify='space-between' width='full'>
+                              <Text>Backup restic aws region</Text>
+                              {h(ResticAwsRegionHelp, 'Backup Restic AWS Region')}
+                            </HStack>
+                          </GridItem>
+                          <GridItem className={styles.valueCell}>
+                            <TextForm
+                              value={config?.backupResticAwsRegion}
+                              confirmTitle={`Confirm backup-restic-aws-region to `}
+                              className={styles.textbox}
+                              size='sm'
+                              placeholder='us-east-1, eu-west-1, etc.'
+                              onSave={(value) => handleSettingChange('backup-restic-aws-region', value)}
                             />
                           </GridItem>
                         </Grid>
                       </Stack>
-                    </Box>
-                  )}
-                </Stack>
-              )}
 
-              {archiveMode !== 'none' && (
-                <Stack spacing={{ base: 1, md: 2 }}>
-                  {archiveMode !== 'restic-aws' && (
-                    <Grid
-                      className={styles.resticMountGrid}
-                      templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                      columnGap={3}
-                      rowGap={1}
-                      w='full'
-                    >
-                      <GridItem className={styles.rowLabel}>
-                        <HStack spacing={1} justify='space-between' width='full'>
-                          <Text>Backup restic repo append cluster</Text>
-                          {h(ResticRepoAppendClusterHelp, 'Restic Repo Append Cluster')}
-                        </HStack>
-                      </GridItem>
-                      <GridItem className={styles.valueCell}>
-                        <HStack spacing={2} align='center'>
-                          <RMSwitch
-                            isChecked={config?.backupResticRepoAppendCluster}
-                            isDisabled={user?.grants['cluster-settings'] == false}
-                            confirmTitle={'Confirm switch settings for backup-restic-repo-append-cluster?'}
-                            onChange={() => handleSwitchChange('backup-restic-repo-append-cluster')}
-                          />
-                        </HStack>
-                      </GridItem>
-                    </Grid>
-                  )}
-
-                  <Grid
-                    className={styles.resticMountGrid}
-                    templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                    columnGap={3}
-                    rowGap={1}
-                    w='full'
-                  >
-                    <GridItem className={styles.rowLabel}>
-                      <HStack spacing={1} justify='space-between' width='full'>
-                        <Text>Backup restic additional env</Text>
-                        {h(ResticAdditionalEnvHelp, 'Backup Restic Additional Env')}
-                      </HStack>
-                    </GridItem>
-                    <GridItem className={styles.valueCell}>
-                      <TextForm
-                        value={config?.backupResticAdditionalEnv}
-                        confirmTitle={`Confirm backup-restic-additional-env to `}
-                        className={styles.textbox}
-                        size='sm'
-                        placeholder='AWS_SESSION_TOKEN, NO_PROXY="host1,host2"'
-                        onSave={(value) => handleSettingChange('backup-restic-additional-env', value)}
-                      />
-                    </GridItem>
-                  </Grid>
-
-                  <Box
-                    borderWidth='1px'
-                    borderColor='red.300'
-                    borderRadius='md'
-                    bg='red.50'
-                    p={3}
-                    _dark={{ bg: 'red.900', borderColor: 'red.600' }}
-                  >
-                    <Stack spacing={2}>
-                      <HStack spacing={2}>
-                        <Icon as={HiShieldExclamation} color='red.500' boxSize={4} />
-                        <Text fontSize='xs' fontWeight='700' textTransform='uppercase' letterSpacing='wide' color='red.600' _dark={{ color: 'red.300' }}>
-                          Danger zone
-                        </Text>
-                      </HStack>
-                      <Text fontSize='sm' color='gray.700' _dark={{ color: 'gray.200' }}>
-                        Permanently deletes all repository contents and leaves it uninitialized. This cannot be undone.
-                      </Text>
-                      <Box>
-                        <RMButton
-                          size='sm'
-                          colorScheme='red'
-                          leftIcon={<HiTrash />}
-                          onClick={handleOpenWipeModal}
-                          isDisabled={user?.grants['db-backup'] === false}
-                        >
-                          Wipe repository
-                        </RMButton>
+                      {/* 2. Credentials */}
+                      <Box className={styles.subsectionHeader}>
+                        <Text className={styles.subsectionTitle}>Credentials</Text>
                       </Box>
-                      {wipeResult && (
-                        <Alert status={wipeResult.status === 'ok' ? 'warning' : 'error'} size='sm' borderRadius='md'>
-                          <AlertIcon />
-                          <Text fontSize='sm'>{wipeResult.message}</Text>
-                        </Alert>
+                      <Stack spacing={{ base: 1, md: 2 }}>
+                        <Grid
+                          className={styles.resticMountGrid}
+                          templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                          columnGap={3}
+                          rowGap={1}
+                          w='full'
+                        >
+                          <GridItem className={styles.rowLabel}>
+                            <HStack spacing={1} justify='space-between' width='full'>
+                              <Text>Backup restic aws access key id</Text>
+                              {h(ResticAwsAccessKeyIdHelp, 'Backup Restic AWS Access Key ID')}
+                            </HStack>
+                          </GridItem>
+                          <GridItem className={styles.valueCell}>
+                            <TextForm
+                              value={config?.backupResticAwsAccessKeyId}
+                              confirmTitle={`Confirm backup-restic-aws-access-key-id to `}
+                              className={styles.textbox}
+                              size='sm'
+                              onSave={(value) => handleSettingChange('backup-restic-aws-access-key-id', value)}
+                            />
+                          </GridItem>
+                        </Grid>
+
+                        <Grid
+                          className={styles.resticMountGrid}
+                          templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                          columnGap={3}
+                          rowGap={1}
+                          w='full'
+                        >
+                          <GridItem className={styles.rowLabel}>
+                            <HStack spacing={1} justify='space-between' width='full'>
+                              <Text>Backup restic aws access secret</Text>
+                              {h(ResticAwsAccessSecretHelp, 'Backup Restic AWS Access Secret')}
+                            </HStack>
+                          </GridItem>
+                          <GridItem className={styles.valueCell}>
+                            <TextForm
+                              value={config?.backupResticAwsAccessSecret}
+                              confirmTitle={`Confirm backup-restic-aws-access-secret to `}
+                              className={styles.textbox}
+                              size='sm'
+                              onSave={(value) => handleSettingChange('backup-restic-aws-access-secret', value, true)}
+                            />
+                          </GridItem>
+                        </Grid>
+                      </Stack>
+
+                      {/* 3. Repository target */}
+                      <Box className={styles.subsectionHeader}>
+                        <Text className={styles.subsectionTitle}>Repository target</Text>
+                      </Box>
+                      <Stack spacing={{ base: 1, md: 2 }}>
+                        <Grid
+                          className={styles.resticMountGrid}
+                          templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                          columnGap={3}
+                          rowGap={1}
+                          w='full'
+                        >
+                          <GridItem className={styles.rowLabel}>
+                            <HStack spacing={1} justify='space-between' width='full'>
+                              <Text>Backup restic aws bucket</Text>
+                              {h(ResticAwsBucketHelp, 'Backup Restic AWS Bucket')}
+                            </HStack>
+                          </GridItem>
+                          <GridItem className={styles.valueCell}>
+                            <TextForm
+                              value={config?.backupResticAwsBucket}
+                              confirmTitle={`Confirm backup-restic-aws-bucket to `}
+                              className={styles.textbox}
+                              size='sm'
+                              placeholder='bucket-name'
+                              regexPattern='^[^/\\\\]*$'
+                              onSave={(value) => handleSettingChange('backup-restic-aws-bucket', value)}
+                            />
+                            <Text className={styles.helperText}>Bucket name must not contain &apos;/&apos; or &apos;\\&apos;.</Text>
+                          </GridItem>
+                        </Grid>
+
+                        <Grid
+                          className={styles.resticMountGrid}
+                          templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                          columnGap={3}
+                          rowGap={1}
+                          w='full'
+                        >
+                          <GridItem className={styles.rowLabel}>
+                            <HStack spacing={1} justify='space-between' width='full'>
+                              <Text>Backup restic aws prefix</Text>
+                              {h(ResticAwsPrefixHelp, 'Backup Restic AWS Prefix')}
+                            </HStack>
+                          </GridItem>
+                          <GridItem className={styles.valueCell}>
+                            <TextForm
+                              value={config?.backupResticAwsPrefix}
+                              confirmTitle={`Confirm backup-restic-aws-prefix to `}
+                              className={styles.textbox}
+                              size='sm'
+                              placeholder='optional/prefix/path'
+                              onSave={(value) => handleSettingChange('backup-restic-aws-prefix', value, true)}
+                            />
+                            <Text className={styles.helperText}>Optional bucket prefix/path (no leading slash).</Text>
+                          </GridItem>
+                        </Grid>
+
+                        <Grid
+                          className={styles.resticMountGrid}
+                          templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                          columnGap={3}
+                          rowGap={1}
+                          w='full'
+                        >
+                          <GridItem className={styles.rowLabel}>
+                            <HStack spacing={1} justify='space-between' width='full'>
+                              <Text>
+                                Effective S3 repository
+                                {s3Mode === 'auto' && (
+                                  <Text as='span' fontSize='xs' color='orange.500' ml={1}>(approximate — auto mode)</Text>
+                                )}
+                              </Text>
+                              {h(ResticEffectiveS3RepoHelp, 'Effective S3 Repository')}
+                            </HStack>
+                          </GridItem>
+                          <GridItem className={styles.valueCell}>
+                            <Text
+                              fontWeight='bold'
+                              fontSize='sm'
+                              fontFamily='monospace'
+                              bg='gray.100'
+                              p={2}
+                              borderRadius='md'
+                              wordBreak='break-all'
+                            >
+                              {awsRepoPath || 's3:<bucket>/<prefix>'}
+                            </Text>
+                          </GridItem>
+                        </Grid>
+                      </Stack>
+
+                      {/* 4. Advanced compatibility fallback */}
+                      <HStack
+                        as='button'
+                        type='button'
+                        spacing={2}
+                        onClick={() => setIsLegacyOpen((prev) => !prev)}
+                        aria-expanded={isLegacyOpen}
+                        aria-controls='restic-repo-legacy-fallback'
+                        className={styles.subsectionAdvancedHeader}
+                      >
+                        <Text className={styles.subsectionAdvancedTitle}>Advanced compatibility fallback</Text>
+                        <Box className={styles.panelChevron}>{isLegacyOpen ? <HiChevronUp /> : <HiChevronDown />}</Box>
+                      </HStack>
+                      {isLegacyOpen && (
+                        <Box id='restic-repo-legacy-fallback' className={styles.subsectionAdvancedBody}>
+                          <Stack spacing={{ base: 1, md: 2 }}>
+                            <Grid
+                              className={styles.resticMountGrid}
+                              templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                              columnGap={3}
+                              rowGap={1}
+                              w='full'
+                            >
+                              <GridItem className={styles.rowLabel}>
+                                <HStack spacing={1} justify='space-between' width='full'>
+                                  <Text>Legacy repository URL (fallback)</Text>
+                                  {h(ResticLegacyRepoUrlHelp, 'Legacy Repository URL (fallback)')}
+                                </HStack>
+                              </GridItem>
+                              <GridItem className={styles.valueCell}>
+                                <TextForm
+                                  value={config?.backupResticRepository}
+                                  confirmTitle={`Confirm backup-restic-repository to `}
+                                  className={styles.textbox}
+                                  size='sm'
+                                  onSave={(value) => handleSettingChange('backup-restic-repository', value, true)}
+                                />
+                              </GridItem>
+                            </Grid>
+                          </Stack>
+                        </Box>
                       )}
                     </Stack>
-                  </Box>
-                </Stack>
-              )}
+                  </TabPanel>
+
+                  <TabPanel px='0' pt='3'>
+                    <Stack spacing={{ base: 2, md: 3 }}>
+                      {renderTabBanner('sftp')}
+                      <Text className={styles.helperText}>
+                        Shared settings such as Restic binary path, Restic password, and additional environment
+                        variables are configured above.
+                      </Text>
+                      <Grid
+                        className={styles.resticMountGrid}
+                        templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+                        columnGap={3}
+                        rowGap={1}
+                        w='full'
+                      >
+                        <GridItem className={styles.rowLabel}>
+                          <HStack spacing={1} justify='space-between' width='full'>
+                            <Text>SFTP repository path</Text>
+                            {h(ResticSftpHelp, 'SFTP Repository')}
+                          </HStack>
+                        </GridItem>
+                        <GridItem className={styles.valueCell}>
+                          <TextForm
+                            value={config?.backupResticLocalRepository}
+                            confirmTitle={`Confirm backup-restic-local-repository to `}
+                            className={styles.textbox}
+                            size='sm'
+                            placeholder='sftp:user@host:/path/to/repo'
+                            onSave={(value) => handleSettingChange('backup-restic-local-repository', value, true)}
+                          />
+                        </GridItem>
+                      </Grid>
+                      <Text className={styles.helperText}>
+                        Local filesystem and SFTP currently share the same saved repository path setting.
+                      </Text>
+                    </Stack>
+                  </TabPanel>
+                </TabPanels>
+              </Tabs>
             </Stack>
           )
         })}
+
+        <Box className={styles.activeActionsBox} w='full'>
+          <Stack spacing={2}>
+            <Text className={styles.subsectionTitle}>Active repository actions</Text>
+            {archiveMode === 'none' ? (
+              <Text className={styles.helperText}>
+                No repository type is currently active. Choose a repository type above to enable these actions.
+              </Text>
+            ) : (
+              <Stack spacing={2}>
+                <Text className={styles.helperText}>
+                  These actions use the current active repository: {activeRepositoryLabel}.
+                </Text>
+                <Text className={styles.helperText}>
+                  Editing another repository tab does not change which target these actions use.
+                </Text>
+                <HStack spacing={2} flexWrap='wrap'>
+                  <RMButton
+                    size='sm'
+                    colorScheme='green'
+                    leftIcon={<HiCheckCircle />}
+                    onClick={handleCheckRepo}
+                    isLoading={isCheckLoading}
+                    isDisabled={user?.grants['cluster-settings'] === false}
+                  >
+                    Check repository
+                  </RMButton>
+                  <RMButton
+                    size='sm'
+                    colorScheme='blue'
+                    leftIcon={<HiDatabase />}
+                    onClick={handleResticInit}
+                    isDisabled={user?.grants['cluster-settings'] === false}
+                  >
+                    Initialize repository
+                  </RMButton>
+                  <RMButton
+                    size='sm'
+                    colorScheme='orange'
+                    leftIcon={<HiArrowCircleRight />}
+                    onClick={onOpenCopyModal}
+                    isDisabled={user?.grants['cluster-process'] === false}
+                  >
+                    Migrate/copy snapshots
+                  </RMButton>
+                </HStack>
+                {checkResult && checkResult.status !== 'initialization_required' && (
+                  <Alert status={checkResult.status === 'ok' ? 'success' : 'error'} size='sm' borderRadius='md'>
+                    <AlertIcon />
+                    <Text fontSize='sm'>{checkResult.message}</Text>
+                  </Alert>
+                )}
+              </Stack>
+            )}
+          </Stack>
+        </Box>
+
+        {archiveMode !== 'none' && (
+          <Box className={styles.dangerZoneBox} w='full'>
+            <Stack spacing={2}>
+              <HStack spacing={2}>
+                <Icon as={HiShieldExclamation} color='red.500' boxSize={4} />
+                <Text fontSize='xs' fontWeight='700' textTransform='uppercase' letterSpacing='wide' color='red.600' _dark={{ color: 'red.300' }}>
+                  Danger zone
+                </Text>
+              </HStack>
+              <Text fontSize='sm' color='gray.700' _dark={{ color: 'gray.200' }}>
+                This will affect the current active repository: {activeRepositoryLabel}.
+              </Text>
+              <Text fontSize='sm' color='gray.700' _dark={{ color: 'gray.200' }}>
+                Use this only when you intend to permanently remove the active repository contents. This
+                cannot be undone.
+              </Text>
+              <Box>
+                <RMButton
+                  size='sm'
+                  colorScheme='red'
+                  leftIcon={<HiTrash />}
+                  onClick={handleOpenWipeModal}
+                  isDisabled={user?.grants['db-backup'] === false}
+                >
+                  Wipe repository
+                </RMButton>
+              </Box>
+              {wipeResult && (
+                <Alert status={wipeResult.status === 'ok' ? 'warning' : 'error'} size='sm' borderRadius='md'>
+                  <AlertIcon />
+                  <Text fontSize='sm'>{wipeResult.message}</Text>
+                </Alert>
+              )}
+            </Stack>
+          </Box>
+        )}
 
         {renderSectionPanel({
           sectionKey: 'tagging',

@@ -411,3 +411,79 @@ div.settingsContainer {
   border-radius: rem(6);
   background-color: var(--quaternary-color);
 }
+
+.summaryPanel {
+  display: flex;
+  flex-direction: column;
+  gap: rem(4);
+  padding: rem(10) rem(12);
+  border: 1px solid var(--tertiary-color);
+  border-radius: rem(8);
+  background-color: var(--quaternary-color);
+}
+
+.summaryLabel {
+  font-size: rem(13);
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.summaryValue {
+  font-size: rem(13);
+  font-weight: 700;
+  color: var(--secondary-color);
+}
+
+.repoTabs {
+  width: 100%;
+}
+
+.repoTabList {
+  flex-wrap: wrap;
+  gap: rem(4);
+}
+
+.repoTab {
+  font-size: rem(13);
+  // Chakra's default Tab transition (~200ms on background/color/border-color)
+  // is barely noticeable against its default blue, but reads as a sluggish
+  // fade against a bigger color jump - make selection feedback instant.
+  transition: none !important;
+  border: 1px solid var(--tertiary-color) !important;
+  border-radius: rem(6) rem(6) 0 0 !important;
+  color: var(--darkgray-color);
+
+  // Match the quaternary/tertiary card language already used by panelHeader
+  // and rowLabel elsewhere on this page, instead of a solid saturated fill.
+  &[aria-selected='true'] {
+    background-color: var(--quaternary-color) !important;
+    border-color: var(--tertiary-color) !important;
+    border-bottom-color: var(--quaternary-color) !important;
+    color: var(--secondary-color) !important;
+    font-weight: 700;
+  }
+}
+
+.tabBanner {
+  align-items: center;
+  padding: rem(6) rem(10);
+  gap: rem(6);
+
+  svg {
+    margin-right: 0;
+  }
+}
+
+.activeActionsBox {
+  padding: rem(10) rem(12);
+  border: 1px solid var(--gray-color);
+  border-radius: rem(8);
+  background-color: var(--secondary-gray-color);
+}
+
+.dangerZoneBox {
+  padding: rem(10) rem(12);
+  border: 1px solid var(--tertiary-color);
+  border-radius: rem(8);
+  background-color: var(--secondary-gray-color);
+}
