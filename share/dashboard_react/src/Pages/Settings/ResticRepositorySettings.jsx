@@ -7,6 +7,7 @@ import RMSwitch from '../../components/RMSwitch'
 import TextForm from '../../components/TextForm'
 import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
+import { useTheme } from '../../ThemeProvider'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import { resticInitRepo, resticCheckConfig, resticCopyRepo, resticWipeRepo, getResticCurrentTask } from '../../redux/clusterSlice'
 import styles from './styles.module.scss'
@@ -251,6 +252,12 @@ function ResticRepositorySettings({
   dispatch,
   onOpenInfoModal
 }) {
+  // ChakraProvider isn't wired to this app's own light/dark ThemeProvider, so
+  // Chakra's Alert always renders its light-mode colors. Override bg/color
+  // explicitly, matching the pattern already used in PreservedVariablesEditor.
+  const { theme } = useTheme()
+  const isLight = theme === 'light'
+
   const h = (content, title) => (
     <RMIconButton
       icon={HiQuestionMarkCircle}
@@ -719,7 +726,13 @@ function ResticRepositorySettings({
 
     if (isActiveTab) {
       return (
-        <Alert status='info' borderRadius='md' className={styles.tabBanner}>
+        <Alert
+          status='info'
+          borderRadius='md'
+          className={styles.tabBanner}
+          bg={isLight ? 'blue.50' : 'rgba(66,153,225,0.15)'}
+          color='var(--text-color)'
+        >
           <AlertIcon boxSize={3.5} />
           <Stack spacing={0}>
             <Text fontSize='xs'>Editing the active repository configuration (<strong>{activeRepositoryLabel}</strong>).</Text>
@@ -731,7 +744,13 @@ function ResticRepositorySettings({
 
     if (tabKey === 'local' || tabKey === 'sftp') {
       return (
-        <Alert status='warning' borderRadius='md' className={styles.tabBanner}>
+        <Alert
+          status='warning'
+          borderRadius='md'
+          className={styles.tabBanner}
+          bg={isLight ? 'orange.50' : 'rgba(237,137,54,0.18)'}
+          color='var(--text-color)'
+        >
           <AlertIcon boxSize={3.5} />
           <Stack spacing={0}>
             <Text fontSize='xs'>
@@ -749,7 +768,13 @@ function ResticRepositorySettings({
     }
 
     return (
-      <Alert status='warning' borderRadius='md' className={styles.tabBanner}>
+      <Alert
+        status='warning'
+        borderRadius='md'
+        className={styles.tabBanner}
+        bg={isLight ? 'orange.50' : 'rgba(237,137,54,0.18)'}
+        color='var(--text-color)'
+      >
         <AlertIcon boxSize={3.5} />
         <Stack spacing={0}>
           <Text fontSize='xs'>
