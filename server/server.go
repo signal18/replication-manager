@@ -668,7 +668,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.GitUrl, "git-url", "", "GitHub URL repository to store config file")
 	flags.StringVar(&conf.GitUsername, "git-username", "", "GitHub username")
 	flags.StringVar(&conf.GitAccesToken, "git-acces-token", "", "GitHub personnal acces token")
-	flags.IntVar(&conf.GitMonitoringTicker, "git-monitoring-ticker", 3600, "Git push safety-net interval in seconds. Real config changes push on-change via the ConfigManager queue; this timer only catches stragglers, so it can be slow (hourly).")
+	flags.IntVar(&conf.GitMonitoringTicker, "git-monitoring-ticker", 3600, "Git push periodic interval in seconds. Real config changes push on-change (dirty-gated, ~60s) independent of this timer; this interval is the safety-net full push AND the cadence on which the throttled agents.json runtime feed is staged for the BO. Lower it for fresher agent capacity, not for config latency.")
 	flags.BoolVar(&conf.GitConfigSyncStandby, "git-config-sync-standby", true, "Pull config from git when cluster is standby with arbitration")
 	// flags.IntVar(&conf.GitMinWorker, "git-min-worker", 1, "Minimum number of worker to add files for git commit")
 	// flags.IntVar(&conf.GitMaxWorker, "git-max-worker", 5, "Maximum number of worker to add files for git commit")
@@ -2835,8 +2835,32 @@ func (repman *ReplicationManager) Run() error {
 			// never pushes; two pushers race the shallow clone into "object not
 			// found". Under server authority the Standby has no authoritative
 			// config changes to propagate anyway.
-			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" && repman.Status == ConstMonitorActif {
+			//
+			// Two decoupled triggers, one push path (see
+			// doc/implementation/config/CONFIG_SYNC.md):
+			//   - configDirty: a real config change (cluster.Save set IsNeedGitPush,
+			//     and the same Save appended the peer event log) — push within ~60s
+			//     so DR/peers converge promptly, independent of the agents feed.
+			//   - safetyDue (GitMonitoringTicker): the periodic feed + safety net;
+			//     also the cadence on which the throttled agents.json is staged for
+			//     the BO. Config no longer waits on this timer.
+			configDirty := repman.IsNeedGitPush
+			for _, cl := range repman.Clusters {
+				if cl.IsNeedGitPush {
+					configDirty = true
+					break
+				}
+			}
+			safetyDue := counter%int64(repman.Conf.GitMonitoringTicker) == 0
+			if (configDirty || safetyDue) && repman.Conf.GitUrl != "" && repman.Status == ConstMonitorActif {
 				if repman.gitSyncBusy.CompareAndSwap(false, true) {
+					// Clear the dirty flags on dispatch: this push carries the
+					// changes. A failed push is recovered by the safetyDue timer,
+					// and any change arriving after this point re-sets the flag.
+					repman.IsNeedGitPush = false
+					for _, cl := range repman.Clusters {
+						cl.IsNeedGitPush = false
+					}
 					go func() {
 						defer repman.gitSyncBusy.Store(false)
 						// Peer-symmetric config sync: replay peer config change

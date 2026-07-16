@@ -1,98 +1,97 @@
-# Config Sync — server-level, detached from the cluster loop
+# Config Sync — config-only git, runtime state off the critical path
 
-## Problem
+## What I assumed vs what the code actually does
 
-Config **save + git push** currently ride the per-cluster monitor tick (`SaveConfig` /
-`SaveConfigFile` called from `cluster.go` inside the loop). That churns/stalls the tick and
-pins the active repman ("Sending data" stalls). The `git-monitoring-ticker → 3600` hack only
-traded *fast DR sync* for *low churn* — wrong axis. Fix: move save + push to a **server-level
-worker**, decoupled from every cluster loop.
+The first draft of this spec assumed save rode the monitor loop and needed a big
+`Save()`/`UnscheduledSave()` rename. Reading the code, most of that is already built:
 
-## Current flow
+- **Save is already off the monitor loop.** Both loops call `ConfigManager.SaveConfig(_, false)`
+  — a non-blocking *enqueue* (`cluster.go:1303`, `server.go:2826`). The heavy `cluster.Save()`
+  runs on the ConfigManager's per-cluster worker under `gitMutex` (`manager.go:588`), never on the tick.
+- **Push is already server-level, detached, active-only, CAS-guarded** (`server.go:2838`,
+  `gitSyncBusy` + `GWARN013`).
+- **The push is already a whitelist, not `git add -A`** (`manager.go:1535–1631`): it stages a
+  fixed list of files, and already excludes `cache.toml` and throttles `agents.json`.
 
-- **Save is in the cluster loop** — `cluster.go:1304 SaveConfig(false)`, `1334 SaveConfig(true)`,
-  `SaveConfigFile()` at 793/1587/1668.
-- A dirty flag already exists: `IsNeedGitPush` (cluster.go:128, set at 1731) — not yet the driver.
-- **`ConfigManager` is already server-level** (config/manager/manager.go): `SaveConfig`, `GitPush`,
-  `WithGitLock` (git mutex), a task queue (`CountTasksForCluster`).
-- **Git PULL is already detached** — server-level ticker (`server.go:2726`) + push counter
-  (`server.go:2838`), gated on `Status == Active && GitUrl != ""`.
+So the rename plan solved a problem that no longer exists. The **real** problem is different.
 
-So *pull* is already server-level; only **save + push** still ride the tick. That's what moves.
+## The real problem: runtime state is versioned in the config repo
 
-## Target
+`PushConfigToGit` stages, per cluster: `<cluster>.toml`, `apps/*.toml`, `queryrules.json`,
+`clusterstate.json`, `agents.json` (throttled), `restic.config.bak`, plus top-level
+`default.toml` and `event-changed.*.log`.
 
-- **Cluster loop:** only **mark dirty** (`IsNeedGitPush`) and **nudge** the worker. No save/push in the tick.
-- **One server-level worker (detached goroutine):** on nudge, collect all dirty clusters, save +
-  (batched) git push via `ConfigManager` (which already owns the git lock). Independent of cluster loops.
+Of these, **`agents.json`, `clusterstate.json`, `queryrules.json`, `sla.json` are runtime
+state, not config.** `agents.json` is re-serialized *every monitoring cycle* (agent
+cpu/mem/load/status). The only reason it is in the config git at all is so the **BO** can read
+agent capacity (`cluster.go:824` comment).
 
-## Decisions
+Consequences:
 
-1. **Trigger — event-driven + timer safety net.** ✓
-   Cluster sets dirty and nudges a channel → the worker wakes, processes all dirty clusters. A timer
-   (safety net, ~60s) only catches anything that missed the nudge. Fast DR sync when config changes,
-   zero churn when it doesn't — the opposite trade-off from the 3600 hack.
+1. Runtime state generates **git commits even when no config changed**.
+2. Commit volume hits `manager.go:894` → `commits >= 10 → RefreshGitMetadata` → a full reclone.
+   That reclone is what pins the active repman ("Sending data" stalls).
+3. No push-cadence trick fixes this. Throttling `agents.json` (`shouldStageAgents` /
+   `gitAgentsSyncInterval` — the `1ac3fa9f5` hack) only slows the bleed.
 
-2. **API — `Save()` is the event, `UnscheduledSave()` is the work.** ✓
-   - `Save()` — **safe default**: mark dirty (`IsNeedGitPush`) + nudge the server worker. Non-blocking,
-     never touches disk/git. Every current in-loop caller (`cluster.go` save sites) becomes this.
-   - `UnscheduledSave()` — the **real** save: local toml write + git push (via `ConfigManager`). Called by
-     the **server worker**, and by the few sites that deliberately need it now (shutdown, explicit API "save config").
-   - Safety by construction: you can't accidentally block the monitor loop — the heavy path is only reachable
-     by explicitly typing `UnscheduledSave`. Resolves #3 (both save + push move out, into `UnscheduledSave`).
+`IsNeedGitPush` is *already* set only by real config change (`cluster.go:1730`, driven by
+`SaveConfigFile`/immutable/secret/appconfigs — **not** the json writes). But the periodic push
+at `server.go:2838` ignores the flag and pushes **unconditionally on the timer**, which is why
+the timer had to be slowed to hourly.
 
-3. **Orchestration — server fans out per-cluster `UnscheduledSave`, WaitGroup barrier.** ✓
-   Not one batched commit. Each cluster saves ITSELF (`UnscheduledSave`); the server launches one
-   goroutine per dirty cluster and waits for all:
-   ```go
-   var wg sync.WaitGroup
-   for _, cl := range repman.Clusters {
-       if !cl.IsNeedGitPush { continue }
-       wg.Add(1)
-       go func(c *Cluster) { defer wg.Done(); c.UnscheduledSave() }(cl)
-   }
-   wg.Wait()
-   ```
-   Detaches the save from each cluster's monitor loop into a server-level parallel fan-out. The
-   `wg.Wait()` is on the server worker goroutine (never the monitor loop), so blocking there is fine
-   and prevents overlapping cycles.
+## Hard constraint: the BO has no channel but git
 
-4. **Active-only gate — inside `UnscheduledSave`.** ✓ Local toml write **always**; git **push only when
-   `Status == Active`** (git is shared). The standby stays current locally via the existing detached pull.
+The BO reads agent capacity **only** from `agents.json` in the config git. There is no REST
+read-path today, and building one is a separate cross-repo project. So `agents.json` (and the
+other runtime json the BO consumes) **must keep flowing through git.** We cannot remove it.
 
-5. **ConfigManager reuse.** ✓ The worker drives the existing `ConfigManager` (`SaveConfig` / `GitPush` /
-   `WithGitLock` / task queue). We move *who calls it and when* — no rewrite.
+The bug is therefore *not* "runtime state is in git" — it's that **config sync is chained to
+the same slow timer as the agents feed.** Both are gated by one `GitMonitoringTicker` trigger
+(`server.go:2838`), so slowing agents to hourly (the `1ac3fa9f5` hack) also slowed config to
+hourly. The fix is to **decouple the two cadences**, not to remove either.
 
-6. **Whitelist = single-writer invariant + audit list.** ✓
-   The point of the whitelist isn't (only) "what git syncs" — it's to **track which code may modify these
-   files**. A whitelisted config file is written **only** by `UnscheduledSave`; every change must enter via
-   `Save()` (the event). This lets us find and eliminate **direct writers** — any `os.WriteFile`/toml-write
-   to a whitelisted path *outside* `UnscheduledSave` is a leak (change invisible to the event → lost, or
-   out-of-band git churn, or the two repman diverge). Git-sync falls out for free: `git add <whitelist>`,
-   default-deny, ephemeral files (`cache.toml`, `agents.json`, restic cache, logs) can't leak in.
+## The real solution — two independent triggers, one push path
 
-   - **Whitelist (save-managed, single-writer):** `<cluster>.toml`, `config.toml`, cluster.d configs, credentials.
-   - **Audit task:** grep for writes to whitelisted paths outside `UnscheduledSave` → route them through `Save()`.
+### 1. Config push = event-driven (dirty-gated), fast
+At `server.go:2838`, add `IsNeedGitPush` (any cluster dirty) as a **fast** trigger, at the
+existing 60s granularity, CAS-guarded by `gitSyncBusy`. `IsNeedGitPush` is already set only by
+real config change (`cluster.go:1730`). Clear the per-cluster flags when the push is dispatched
+so a static config stops re-pushing.
 
-## Full flow (specced)
+→ Real config change ⇒ DR syncs within ~60s, independent of the agents cadence.
 
-```
-anywhere:  cluster.Save()            → IsNeedGitPush = true; nudge(server worker)      [non-blocking event]
-worker:    on nudge / timer(~60s)    → wg{ for dirty clusters: go cl.UnscheduledSave() }; wg.Wait()
-save:      UnscheduledSave()          → local toml write (always) + git push (active only)   [the work]
-```
+### 2. Agents/runtime feed = its own throttle, unchanged as BO's channel
+Keep `agents.json` staged, keep `shouldStageAgents`/`gitAgentsSyncInterval`. It is **not** a
+hack to delete — it is the BO feed's legitimate rate limit and its only transport. It rides the
+periodic timer (`GitMonitoringTicker`), which now also serves as the config **safety net**.
+Because config no longer waits on this timer, the agents interval can be tuned purely for BO
+freshness (e.g. 300s) without ever starving config sync.
 
-**Decisions:** (1) event-driven + timer safety net · (2) `Save()`=event, `UnscheduledSave()`=work ·
-(3) server fan-out per-cluster + WaitGroup · (4) active-gate in `UnscheduledSave` · (5) reuse `ConfigManager`.
+→ BO keeps getting fed on its own cadence; commits are now dominated by (throttled agents) +
+(rare real config changes), so the `commits >= 10 → RefreshGitMetadata` reclone fires on a
+days timescale instead of every ~50 min. The repman pin is gone without removing anything the
+BO needs.
 
-## Implementation checklist (when we build)
+## Whitelist = single-writer invariant (decision #6, refined)
+The staging list in `PushConfigToGit` *is* the whitelist. Keep it explicit — config `.toml` +
+the runtime json the BO actually consumes + the event log — and nothing else (`cache.toml`
+already excluded, `sla.json` never staged). Anything not on the list is never committed, so
+other runtime churn has zero git impact. The list is the authoritative statement of what the
+config repo is allowed to contain.
 
-- [ ] Rename current heavy save (`SaveConfigFile` / `ConfigManager.SaveConfig` path) → `UnscheduledSave()`.
-- [ ] New `cluster.Save()` = set `IsNeedGitPush` + nudge the server worker (buffered channel, non-blocking).
-- [ ] Server config-sync worker goroutine: select on nudge-channel or `time.After(~60s)`; fan-out + `wg.Wait()`.
-- [ ] `UnscheduledSave`: local write always; `if Status==Active { ConfigManager.GitPush(...) }`; clear `IsNeedGitPush`.
-- [ ] Remove the in-loop save calls (`cluster.go:1304/1334/793/1587/1668`) → replace with `Save()` event.
-- [ ] Retire the `git-monitoring-ticker→3600` hack; keep the ticker only as the worker's safety-net interval.
-- [ ] Define the whitelist of save-managed config paths (`<cluster>.toml`, `config.toml`, cluster.d, credentials).
-- [ ] `ConfigManager.GitPush` stages **only** the whitelist (`git add <whitelist>`, not `git add -A`).
-- [ ] Audit: grep writes to whitelisted paths outside `UnscheduledSave` → route them through `Save()` (single-writer).
+## Migration / safety
+- Nothing is removed from git — the BO contract is untouched. `agents.json` keeps flowing on
+  its throttle; only the *config* trigger is added alongside.
+- crm is **production**: this only *adds* a fast config trigger and *lowers* the agents timer's
+  role to a feed/safety cadence — strictly a scheduling change, no new file removed from sync.
+- The agents interval and the config safety-net interval become **separate knobs**; today they
+  are the same `GitMonitoringTicker` value.
+
+## Implementation checklist
+- [ ] `server.go:2838`: fire the push when `IsNeedGitPush` (any cluster dirty) **or** the
+      periodic timer elapses; keep the `gitSyncBusy` CAS guard and active-only gate.
+- [ ] Clear each cluster's `IsNeedGitPush` when the push is dispatched (else static config re-pushes every 60s).
+- [ ] Keep `agents.json` staging + `shouldStageAgents`/`gitAgentsSyncInterval` — it is the BO's only channel.
+- [ ] Split the cadence: let the agents/runtime feed interval be tuned for BO freshness
+      independently of config (which is now dirty-driven). `GitMonitoringTicker` = agents feed + config safety net.
+- [ ] Verify a config-only change (no agent movement) triggers exactly one prompt push and then goes quiet.
