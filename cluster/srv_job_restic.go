@@ -1956,25 +1956,31 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	cluster.ResticManager.RequestUnmountWhenIdle()
 	refOwned := true
 
-	// Release mount reference immediately only for logical reseed (physical job continues async)
-	if normalizedMethod != "physical" {
-		defer func() {
-			if refOwned {
-				if err := cluster.ResticManager.ReleaseMountRef(userID); err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose,
-						config.ConstLogModRestic,
-						config.LvlWarn,
-						"Failed to release mount reference for userID %s: %s", userID, err)
-				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose,
-						config.ConstLogModRestic,
-						config.LvlDbg,
-						"Released mount reference for userID: %s", userID)
-				}
-				refOwned = false
+	// Always register a guarded release. The physical path hands the ref to the
+	// async cleanup on success (registerResticReseedCleanup) and sets refOwned=false
+	// there, so this defer skips it then — but on ANY early return before that
+	// hand-off (ctx.Done, no candidates, no source paths, invalid/escaping path,
+	// verification failure) the ref MUST still be released. Previously the defer was
+	// registered only for non-physical, so those physical early-returns leaked the
+	// ref, and UnmountRepo then waited 5 min for a phantom user → the slow stop.
+	// The refOwned guard makes this safe alongside the existing manual releases
+	// (no double-release).
+	defer func() {
+		if refOwned {
+			if err := cluster.ResticManager.ReleaseMountRef(userID); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlWarn,
+					"Failed to release mount reference for userID %s: %s", userID, err)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose,
+					config.ConstLogModRestic,
+					config.LvlDbg,
+					"Released mount reference for userID: %s", userID)
 			}
-		}()
-	}
+			refOwned = false
+		}
+	}()
 
 	select {
 	case <-ctx.Done():
