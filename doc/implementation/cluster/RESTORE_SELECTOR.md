@@ -167,6 +167,22 @@ simpler, dependency-free, and faster than standing up an index. If we later want
 query-DSL feel to the selector, add a small grammar over the structured fields — still no
 search engine.
 
+## Config & the manual → auto loop
+
+`autorejoin-backup-selector` (config, JSON `RestoreSelector`) declares WHICH backup an
+**automatic** rejoin restores from. Empty = default (`{Type:["logical"], Order:["last","local"]}`).
+Parsed by `getAutorejoinBackupSelector()`; the restore dispatch forces `Tool = [backtype]`.
+
+The loop this closes:
+1. Operator picks/validates a restore **manually** via the selector (tries origin/type/order/safety).
+2. When it works, they save that selector JSON into `autorejoin-backup-selector`.
+3. The **automatic** rejoin now uses the human-validated choice — manual is how the auto path *earns trust*.
+
+**Future — `valid_selector.json`:** a **per-client** list of restore methods/selectors that have been
+**tested and confirmed working at that client**. A successful manual restore is recorded here; the
+operator (and the auto path) picks from this validated set — so a client only ever auto-rejoins with a
+method already **proven on their own setup**.
+
 ## Open questions (decide before building the resolver)
 
 1. ~~**Catalog** — what source of truth?~~ **RESOLVED: a unified backup catalog**
