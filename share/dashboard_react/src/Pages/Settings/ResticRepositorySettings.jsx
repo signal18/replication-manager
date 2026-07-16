@@ -840,7 +840,11 @@ function ResticRepositorySettings({
           <HStack spacing={2} align='center' flexWrap='wrap'>
             <Text className={styles.summaryLabel}>Current active repository:</Text>
             <Text className={styles.summaryValue}>{activeRepositoryLabel}</Text>
-            {archiveMode !== 'none' && <Badge colorScheme='green'>Active</Badge>}
+            {archiveMode !== 'none' && (
+              <Badge colorScheme='green' bg={isLight ? undefined : 'rgba(72,187,120,0.25)'} color={isLight ? undefined : 'var(--text-color)'}>
+                Active
+              </Badge>
+            )}
           </HStack>
           {archiveMode === 'none' ? (
             <Stack spacing={0}>
@@ -1029,7 +1033,11 @@ function ResticRepositorySettings({
                     <Tab key={tabKey} className={styles.repoTab}>
                       <HStack spacing={2}>
                         <Text>{TAB_LABELS[tabKey]}</Text>
-                        {archiveMode === TAB_TO_ARCHIVE_MODE[tabKey] && <Badge colorScheme='green'>Active</Badge>}
+                        {archiveMode === TAB_TO_ARCHIVE_MODE[tabKey] && (
+                          <Badge colorScheme='green' bg={isLight ? undefined : 'rgba(72,187,120,0.25)'} color={isLight ? undefined : 'var(--text-color)'}>
+                            Active
+                          </Badge>
+                        )}
                       </HStack>
                     </Tab>
                   ))}
@@ -1402,16 +1410,23 @@ function ResticRepositorySettings({
 
         <Box className={styles.activeActionsBox} w='full'>
           <Stack spacing={2}>
-            <Text className={styles.subsectionTitle}>Active repository actions</Text>
+            <HStack spacing={2} justify='space-between' flexWrap='wrap'>
+              <Text className={styles.subsectionTitle}>Active repository actions</Text>
+              {archiveMode !== 'none' && (
+                <HStack spacing={1.5}>
+                  <Text fontSize='xs' color='var(--darkgray-color)'>Target:</Text>
+                  <Badge colorScheme='green' bg={isLight ? undefined : 'rgba(72,187,120,0.25)'} color={isLight ? undefined : 'var(--text-color)'}>
+                    {activeRepositoryLabel}
+                  </Badge>
+                </HStack>
+              )}
+            </HStack>
             {archiveMode === 'none' ? (
               <Text className={styles.helperText}>
                 No repository type is currently active. Choose a repository type above to enable these actions.
               </Text>
             ) : (
               <Stack spacing={2}>
-                <Text className={styles.helperText}>
-                  These actions use the current active repository: {activeRepositoryLabel}.
-                </Text>
                 <Text className={styles.helperText}>
                   Editing another repository tab does not change which target these actions use.
                 </Text>
@@ -1465,18 +1480,23 @@ function ResticRepositorySettings({
         {archiveMode !== 'none' && (
           <Box className={styles.dangerZoneBox} w='full'>
             <Stack spacing={2}>
-              <HStack spacing={2}>
-                <Icon as={HiShieldExclamation} color='red.500' boxSize={4} />
-                <Text fontSize='xs' fontWeight='700' textTransform='uppercase' letterSpacing='wide' color='red.600' _dark={{ color: 'red.300' }}>
-                  Danger zone
-                </Text>
+              <HStack spacing={2} justify='space-between' flexWrap='wrap'>
+                <HStack spacing={2}>
+                  <Icon as={HiShieldExclamation} color='red.500' boxSize={4} />
+                  <Text fontSize='xs' fontWeight='700' textTransform='uppercase' letterSpacing='wide' color='red.600' _dark={{ color: 'red.300' }}>
+                    Danger zone
+                  </Text>
+                </HStack>
+                <HStack spacing={1.5}>
+                  <Text fontSize='xs' color='var(--darkgray-color)'>Target:</Text>
+                  <Badge colorScheme='red' bg={isLight ? undefined : 'rgba(245,101,101,0.25)'} color={isLight ? undefined : 'var(--text-color)'}>
+                    {activeRepositoryLabel}
+                  </Badge>
+                </HStack>
               </HStack>
               <Text fontSize='sm' color='gray.700' _dark={{ color: 'gray.200' }}>
-                This will affect the current active repository: {activeRepositoryLabel}.
-              </Text>
-              <Text fontSize='sm' color='gray.700' _dark={{ color: 'gray.200' }}>
-                Use this only when you intend to permanently remove the active repository contents. This
-                cannot be undone.
+                Use this only when you intend to permanently remove the contents of{' '}
+                <strong>{activeRepositoryLabel}</strong>. This cannot be undone.
               </Text>
               <Box>
                 <RMButton
