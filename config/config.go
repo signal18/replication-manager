@@ -2266,6 +2266,10 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 	return err
 }
 
+// DEAD CODE — no callers. Superseded by ConfigManager.PushConfigToGit
+// (config/manager/manager.go), the only live push path (queue-driven, git-locked,
+// with the shouldStageAgents throttle). This copy stages agents.json unthrottled
+// and must not be reintroduced. Kept for reference only; safe to delete.
 func (conf *Config) PushConfigToGit(url string, tok string, user string, dir string, clusterList []string) error {
 
 	if conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg) {
