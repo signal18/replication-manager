@@ -142,6 +142,12 @@ func (server *ServerMonitor) checkStoppedReplication(ss *dbhelper.SlaveStatus) s
 		} else if server.IsRelay {
 			server.SetState(stateRelayErr)
 		}
+		// IO error 1236 = requested GTID not in master's binlog: this server executed
+		// extra transactions and diverged. Cluster-level rejoin blocker (WARN0188):
+		// reset-master-reslave cannot recover it — RejoinMethodsStatus disables it.
+		if ss.LastIOErrno.String == "1236" {
+			server.ClusterGroup.SetState("WARN0188", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0188"], server.URL), ErrFrom: "REJOIN", ServerUrl: server.URL})
+		}
 		return fmt.Sprintf("NOT OK, IO Stopped (%s)", ss.LastIOErrno.String)
 	} else if ss.SlaveSQLRunning.String == "No" && ss.SlaveIORunning.String == "Yes" {
 		if !server.IsRelay && !server.IsMaxscale {

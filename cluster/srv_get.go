@@ -1162,7 +1162,7 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 		if server.ClusterGroup.IsDatabaseFailureSimulated() {
 			return nil, errors.New("split-brain simulation: database link down")
 		}
-		if server.ClusterGroup.IsMasterFailureSimulated() && server.ClusterGroup.GetMaster() != nil && server.URL == server.ClusterGroup.GetMaster().URL {
+		if server.ClusterGroup.SimulatedOnFreezeDBAccess(server.URL) {
 			return nil, errors.New("split-brain simulation: master link down")
 		}
 	}

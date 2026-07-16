@@ -309,6 +309,8 @@ type Config struct {
 	AutorejoinZFSFlashback                    bool                         `mapstructure:"autorejoin-zfs-flashback" toml:"autorejoin-zfs-flashback" json:"autorejoinZfsFlashback"`
 	AutorejoinPhysicalBackup                  bool                         `mapstructure:"autorejoin-physical-backup" toml:"autorejoin-physical-backup" json:"autorejoinPhysicalBackup"`
 	AutorejoinLogicalBackup                   bool                         `mapstructure:"autorejoin-logical-backup" toml:"autorejoin-logical-backup" json:"autorejoinLogicalBackup"`
+	AutorejoinBackupSelectorLogical           string                       `mapstructure:"autorejoin-backup-selector-logical" toml:"autorejoin-backup-selector-logical" json:"autorejoinBackupSelectorLogical"`
+	AutorejoinBackupSelectorPhysical          string                       `mapstructure:"autorejoin-backup-selector-physical" toml:"autorejoin-backup-selector-physical" json:"autorejoinBackupSelectorPhysical"`
 	RejoinScript                              string                       `mapstructure:"autorejoin-script" toml:"autorejoin-script" json:"autorejoinScript"`
 	AutorejoinBackupBinlog                    bool                         `mapstructure:"autorejoin-backup-binlog" toml:"autorejoin-backup-binlog" json:"autorejoinBackupBinlog"`
 	AutorejoinSemisync                        bool                         `mapstructure:"autorejoin-flashback-on-sync" toml:"autorejoin-flashback-on-sync" json:"autorejoinFlashbackOnSync"`
@@ -2265,6 +2267,10 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 	return err
 }
 
+// DEAD CODE — no callers. Superseded by ConfigManager.PushConfigToGit
+// (config/manager/manager.go), the only live push path (queue-driven, git-locked,
+// with the shouldStageAgents throttle). This copy stages agents.json unthrottled
+// and must not be reintroduced. Kept for reference only; safe to delete.
 func (conf *Config) PushConfigToGit(url string, tok string, user string, dir string, clusterList []string) error {
 
 	if conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg) {
@@ -3455,12 +3461,15 @@ func (conf *Config) SetLogGitLevel(value int) {
 	} else {
 		conf.LogGit = false
 	}
-
-	if value == 4 {
-		conf.GitMonitoringTicker = 30
-	} else {
-		conf.GitMonitoringTicker = 300
-	}
+	// Git push cadence lives in git-monitoring-ticker, INDEPENDENT of log
+	// verbosity. Previously value==4 secretly dropped the ticker to 30s (and any
+	// other value clobbered it to 300s), so enabling git debug logging silently
+	// 10x'd the push cadence against every client — invisible to operators.
+	// Real config changes push on-change via the ConfigManager queue, so the
+	// timer is only a safety net; leave its cadence to git-monitoring-ticker.
+	// A deliberate fast-git debug mode must be an explicit admin toggle that
+	// raises a standing state-machine warning (cf. WARN0181 split-brain sim),
+	// never a side effect of the log level.
 }
 
 func (conf *Config) SetLogSupportLevel(value int) {

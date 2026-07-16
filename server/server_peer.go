@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/klauspost/pgzip"
@@ -37,7 +38,7 @@ func (repman *ReplicationManager) PeerLogin(parsedPeerURL *url.URL, user userCre
 	req.Close = true
 
 	// Send the request to GoApp 2
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return http.StatusBadGateway, []byte("Error forwarding request: " + err.Error())
@@ -63,7 +64,7 @@ func (repman *ReplicationManager) PeerRequestForwarder(parsedPeerURL *url.URL, r
 	req.Close = true
 
 	// Send the request to GoApp 2
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return http.StatusBadGateway, []byte("Error forwarding request: " + err.Error())

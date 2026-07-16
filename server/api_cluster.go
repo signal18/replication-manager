@@ -385,6 +385,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSimulateMasterFailure)),
 	))
+	router.Handle("/api/clusters/{clusterName}/test/split-brain-simulator/simulate-minority", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSimulateMinority)),
+	))
 	router.Handle("/api/clusters/{clusterName}/test/split-brain-simulator/restore", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSimulateRestore)),
@@ -444,6 +448,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/lost-events", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerLostEvents)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/rejoin/{method}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterRejoin)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/unsafe-rejoin/{method}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterRejoin)),
 	))
 	router.Handle("/api/clusters/{clusterName}/actions/replication/bootstrap/{topology}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -1738,7 +1750,7 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplicationCleanup(w http.R
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		err := mycluster.BootstrapReplicationCleanup()
+		err := mycluster.BootstrapReplicationCleanup(false)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error Cleanup Replication: %s", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1778,7 +1790,7 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplication(w http.Response
 			return
 		}
 
-		if err := mycluster.BootstrapReplication(true); err != nil {
+		if err := mycluster.BootstrapReplication(true, false); err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error bootstraping replication %s", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -2031,8 +2043,30 @@ func (repman *ReplicationManager) handlerMuxSimulateMasterFailure(w http.Respons
 		return
 	}
 	mycluster.SimulateMasterFailure(time.Duration(secs) * time.Second)
+	// Clear the failover counters on THIS repman (the one whose master access we just
+	// cut = the side that will fail over) at test start, so a prior test cycle's
+	// FailoverCtr/FailoverTs cannot veto this failover (MaxClusterFailoverCount /
+	// between-failover-time). Same effect as POST .../actions/reset-failover-control.
+	mycluster.ResetFailoverCtr()
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"simulate":"master-failure","cluster":"%s","duration":%d}`, mycluster.Name, secs)
+}
+
+// handlerMuxSimulateMinority marks THIS repman the minority side of the partition —
+// instance-wide, on every cluster it drives, like a real DC isolation. While armed
+// the arbitrator link reads as severed, so this side cannot confirm authority and
+// must step down through the real fail-safe path (master read-only, Active->Standby
+// yield, peers Suspect). Aimed at the ACTIVE instance: standby is the OUTCOME the
+// test observes, never an input. Bounded by ?duration=<seconds>, auto-restores.
+// Requires the cluster-test grant.
+func (repman *ReplicationManager) handlerMuxSimulateMinority(w http.ResponseWriter, r *http.Request) {
+	mycluster, secs, ok := repman.splitBrainSimGuard(w, r)
+	if !ok {
+		return
+	}
+	mycluster.SimulateMinority(time.Duration(secs) * time.Second)
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"simulate":"minority","cluster":"%s","duration":%d}`, mycluster.Name, secs)
 }
 
 // handlerMuxSimulateRestore clears every simulated cut on this instance: the
@@ -10182,6 +10216,87 @@ func (repman *ReplicationManager) proxyLostEventsFromPeer(w http.ResponseWriter,
 // The first page (pos=0 or omitted) is where a client reads the crash
 // analysis verdict (deltaFlashable, counts) shipped in every response.
 // @Summary Lost events of the last divergence, paginated statement listing
+// handlerMuxClusterRejoin — CLUSTER action: explicitly (re-)arm the rejoin of the
+// diverged old master with an operator-chosen method (GUI delta viewer). The cluster
+// owns the crash history and the elected master; RearmRejoin copies the history crash
+// back to the working set with the method, and the next monitor tick runs it (one-shot).
+// Two verbs: /actions/rejoin for safe methods (cluster-failover), /actions/unsafe-rejoin
+// for destructive ones (cluster-failover + cluster-rejoin-unsafe). The method must match
+// its verb. Target is the latest divergence, or ?server= to pick a specific one.
+// @Summary Rejoin the diverged master with a chosen recovery method
+// @Description Explicitly (re-)arms the rejoin using the operator-chosen method. Safe methods use /actions/rejoin (needs cluster-failover); destructive methods (ignore-delta-force, bootstrap-repli-ftwrl) use /actions/unsafe-rejoin (needs cluster-failover + cluster-rejoin-unsafe). The method must match its verb.
+// @Tags ClusterActions
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param method path string true "Rejoin method" Enums(flashback, logical-dump, logical-backup, physical-backup, reset-master-reslave, rejoin-script, ignore-delta-force, bootstrap-repli-ftwrl)
+// @Success 200 {string} string "Rejoin armed"
+// @Failure 400 {string} string "Invalid rejoin method / wrong verb"
+// @Failure 403 {string} string "No valid ACL / method needs the unsafe verb"
+// @Failure 404 {string} string "No crash history to rejoin"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/rejoin/{method} [post]
+// @Router /api/clusters/{clusterName}/actions/unsafe-rejoin/{method} [post]
+func (repman *ReplicationManager) handlerMuxClusterRejoin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	// ACL: the URL verb carries the grant tier — /actions/rejoin needs
+	// cluster-failover; /actions/unsafe-rejoin needs cluster-failover +
+	// cluster-rejoin-unsafe (databaseACLRules). IsValidClusterACL enforces it.
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	method := vars["method"]
+	if !cluster.IsValidRejoinMethod(method) || method == "" {
+		http.Error(w, "Invalid rejoin method", http.StatusBadRequest)
+		return
+	}
+	// The method must match its verb: a destructive method can only be requested via
+	// /actions/unsafe-rejoin (so a caller with only cluster-failover cannot dodge the
+	// cluster-rejoin-unsafe grant by posting it to /actions/rejoin), and the unsafe
+	// verb is reserved for destructive methods.
+	unsafeRoute := strings.Contains(r.URL.Path, "/actions/unsafe-rejoin/")
+	if cluster.IsUnsafeRejoinMethod(method) != unsafeRoute {
+		if unsafeRoute {
+			http.Error(w, "unsafe-rejoin is only for destructive methods; use /actions/rejoin/"+method, http.StatusBadRequest)
+		} else {
+			http.Error(w, "rejoin method "+method+" is destructive; use /actions/unsafe-rejoin/"+method, http.StatusForbidden)
+		}
+		return
+	}
+	// CLUSTER-level action: the backend owns the crash history and knows the diverged
+	// old master, so it resolves the target itself — the client never names a server.
+	target := mycluster.LatestCrashURL()
+	if target == "" || !mycluster.RearmRejoin(target, method) {
+		http.Error(w, "No crash history to rejoin", http.StatusNotFound)
+		return
+	}
+	// Run it NOW instead of only arming it and waiting for ProcessArmedRejoins to
+	// pick it up on a later tick. The operator already chose the target and method,
+	// so there is nothing to defer — and the deferred pickup was racing the crash
+	// purge (cluster.Crashes gets cleared once the DBs look up), which silently
+	// dropped the armed rejoin so it never ran. Execute directly (same call
+	// ProcessArmedRejoins makes), guarded on IsActive as it is there; the arm remains
+	// as a backstop. Goroutine so the HTTP response returns promptly — the rejoin can
+	// be a multi-minute mysqldump reseed.
+	status := "armed"
+	if mycluster.IsActive() {
+		if srv := mycluster.GetServerFromURL(target); srv != nil {
+			go srv.RejoinMaster()
+			status = "running"
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"rejoin":"%s","cluster":"%s","server":"%s","method":"%s"}`, status, mycluster.Name, target, method)
+}
+
 // @Router /api/clusters/{clusterName}/servers/{serverName}/lost-events [get]
 func (repman *ReplicationManager) handlerMuxServerLostEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -10242,10 +10357,11 @@ func (repman *ReplicationManager) handlerMuxServerLostEvents(w http.ResponseWrit
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
 	if err := e.Encode(struct {
-		Crash *cluster.Crash          `json:"crash"`
-		File  string                  `json:"file"`
-		Page  *cluster.LostEventsPage `json:"page"`
-	}{crash, path, page}); err != nil {
+		Crash         *cluster.Crash               `json:"crash"`
+		File          string                       `json:"file"`
+		Page          *cluster.LostEventsPage      `json:"page"`
+		RejoinMethods []cluster.RejoinMethodStatus `json:"rejoinMethods"`
+	}{crash, path, page, mycluster.RejoinMethodsStatus()}); err != nil {
 		http.Error(w, "Encoding error", 500)
 	}
 }

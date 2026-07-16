@@ -570,6 +570,10 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 	return nil
 }
 
+// DEAD CODE — no callers. Superseded by ConfigManager.PushAllConfigsToGit
+// (config/manager/manager.go), the only live push path. Kept for reference only;
+// safe to delete. Do not wire back in: it calls the dead repman.PushConfigToGit
+// below, which stages agents.json unthrottled and bypasses the ConfigManager queue.
 func (repman *ReplicationManager) PushAllConfigsToGit() error {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1428,6 +1432,10 @@ func (repman *ReplicationManager) RestoreConfigsFromTmpDir(path string) error {
 	return nil
 }
 
+// DEAD CODE — only caller is the dead repman.PushAllConfigsToGit above.
+// Superseded by ConfigManager.PushConfigToGit (config/manager/manager.go), the
+// only live push path (with the shouldStageAgents throttle). This copy stages
+// agents.json unthrottled; kept for reference only, safe to delete.
 func (repman *ReplicationManager) PushConfigToGit() error {
 	url := repman.Conf.GitUrl
 	tok := repman.Conf.GetDecryptedValue("git-acces-token")

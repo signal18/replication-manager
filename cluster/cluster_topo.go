@@ -150,12 +150,12 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		if len(cluster.Crashes) > 0 && cluster.HasNoDbUnconnected() && !cluster.hasUnresolvedCrash() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Purging crashes, all databses nodes up")
 			cluster.Crashes = nil
-			if cluster.ConfigManager != nil && cluster.ConfigManager.CountTasksForCluster(cluster.Name) == 0 {
-				cluster.ConfigManager.SaveConfig(cluster, false)
-			}
+			cluster.Save()
 		}
 	}
 	cluster.assertLostEventsStates()
+	cluster.assertRejoinResultStates()
+	cluster.assertReseedProgressStates()
 	if cluster.Conf.Arbitration {
 		if !cluster.IsActive() {
 			cluster.SetState("ERR00105", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00105"], ErrFrom: "ARB"})
@@ -269,9 +269,56 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 
 				// If master-slave topology and server is not the master (split brain)
 				if cluster.IsActive() && master != nil && cluster.GetTopology() == config.TopoMasterSlave && cluster.Servers[k].URL != master.URL {
-					//Extra master in master slave topology rejoin it after split brain
+					// Extra master after a split brain (our cluster.master differs from a
+					// non-slave others follow). Who's the REAL master? Not our own
+					// pointer (this node may have sat out the split as the minority and
+					// frozen a stale master) and not local topology alone (ambiguous
+					// when slaves stayed on BOTH sides — two nodes then look like
+					// masters). Ask the arbitration PEER (the winner), which holds the
+					// authoritative election result in its crash. Cluster-scoped: a
+					// single-repman / no-peer cluster gets "" back and falls through to
+					// the local heuristic. Only reached under TopoMasterSlave + IsActive
+					// (guarded above); multi-master keeps its multiple masters untouched.
 					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00063"], ErrFrom: "TOPO"})
-					//	cluster.Servers[k].RejoinMaster() /* remove for rolling restart , wrongly rejoin server as master before just after swithover while the server is just stopping */
+					var real *ServerMonitor
+					if realURL, ferr := cluster.fetchMasterFromPeer(); ferr == nil && realURL != "" {
+						real = cluster.GetServerFromURL(realURL)
+						if real != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Peer designates real master %s after split-brain", real.URL)
+						}
+					} else if ferr != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Could not fetch real master from peer after split-brain (%s), falling back to local", ferr)
+					}
+					// Fallback (no peer / unreachable): if our own pointer is now a slave
+					// it is stale, so the local non-slave is the real master. Never demote
+					// the live master here.
+					if real == nil && master.IsSlave {
+						real = cluster.Servers[k]
+					}
+					if real != nil && real.URL != cluster.master.URL {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Re-designating real master %s after split-brain (was stale %s)", real.URL, cluster.master.URL)
+						cluster.master = real
+						cluster.master.SetMaster()
+						if cluster.master.IsReadOnly() && !cluster.master.IsRelay {
+							cluster.master.SetReadWrite()
+						}
+					}
+					// Extra master after a split brain: raise ERR00063 and reach the ONE
+					// unified rejoin (RejoinMaster) — this is how the COLOCATED old master,
+					// which never gets a Failed->up edge on the minority (it stayed
+					// reachable), enters recovery. No verdict selection or age gate here:
+					// RejoinMaster owns the crash source (local, or fetched from the peer)
+					// and is ONE-SHOT via finishRejoin — after the first attempt the crash
+					// sits in history with a result, rejoinAlreadyAttempted returns true,
+					// and this per-tick call becomes a no-op until an explicit re-arm. That
+					// terminator (not an age cap) is what stops the 2021 rolling-restart
+					// false-positive AND the 2026-07 loop.
+					extra := cluster.Servers[k]
+					if m := cluster.GetMaster(); m != nil && extra.URL != m.URL && !extra.IsFailed() &&
+						!cluster.IsSplitBrain && !cluster.StateMachine.IsInFailover() && cluster.Conf.Autorejoin {
+						cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00063"], ErrFrom: "TOPO"})
+						extra.RejoinMaster()
+					}
 				} else if !cluster.IsFailedArbitrator {
 					// Minority fail-safe: a node that cannot confirm authority via the
 					// arbitrator (IsFailedArbitrator) must NOT rediscover / re-designate
@@ -306,8 +353,13 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		cluster.SetState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00010"], ErrFrom: "TOPO"})
 	} else {
 		for k, sv := range cluster.Servers {
-			// If there is no master, and all slaves are replicating from the same host, set this host as master
-			if !cluster.runOnceAfterTopology && cluster.GetMaster() == nil && len(cluster.slaves) > 0 && cluster.Conf.TopologyTarget == config.TopoMasterSlave {
+			// If there is no master, and all slaves are replicating from the same host, set this host as master.
+			// NOT on the isolated MINORITY (gate on !IsFailedArbitrator, NOT !IsSplitBrain which is true on both
+			// sides and would block the majority too): on the minority cluster.master is nil (the minority
+			// fail-safe detached it), and the surviving slave may already have been re-pointed to the majority's
+			// promoted master over an app-level cut — inferring a master from that here re-promotes it on the
+			// minority (it has no authority to). Hold master=nil until it can confirm authority again.
+			if !cluster.runOnceAfterTopology && cluster.GetMaster() == nil && len(cluster.slaves) > 0 && cluster.Conf.TopologyTarget == config.TopoMasterSlave && !cluster.IsFailedArbitrator {
 				numSlaves := 0
 				for _, sl := range cluster.slaves {
 					// if the slave is replicating from this server
@@ -431,7 +483,17 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 
 	if cluster.slaves != nil && !cluster.Conf.MultiMasterGrouprep {
-		if len(cluster.slaves) > 0 {
+		// NOT on the isolated MINORITY — gate on !IsFailedArbitrator, NOT !IsSplitBrain.
+		// IsFailedArbitrator is minority-only; IsSplitBrain is true on BOTH sides, so
+		// !IsSplitBrain also blocks the MAJORITY's master inference during the split — which
+		// regressed the DR: right after the majority fails over to db2, db2 is still
+		// momentarily replicating (the app-level cut never stopped the wire), so without this
+		// inference re-establishing db2 the 271/306 reconciliation reverts the just-completed
+		// failover (db2 -> re-crown db1). The majority MUST keep re-inferring its master
+		// (FindMasterByReplicationServerID etc.) through the split to hold its election. Only
+		// the minority skips it — it has no authority to promote and cluster.master is nil
+		// there. Covers all the master-autodetect SetMaster sites in this block.
+		if len(cluster.slaves) > 0 && !cluster.IsFailedArbitrator {
 			// Depending if we are doing a failover or a switchover, we will find the master in the list of
 			// failed hosts or unconnected hosts.
 			// First of all, get a server id from the cluster.slaves slice, they should be all the same

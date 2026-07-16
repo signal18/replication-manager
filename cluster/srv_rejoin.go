@@ -44,6 +44,14 @@ func (server *ServerMonitor) RejoinLoop() error {
 // RejoinMaster a server that just show up without slave status
 func (server *ServerMonitor) RejoinMaster() error {
 	cluster := server.ClusterGroup
+	// Re-entrancy guard so this can be spawned async from EVERY call site (operator,
+	// armed, and the auto Failed->up edge) and never block the monitor loop — a
+	// logical/physical reseed can run for hours or days. If a rejoin for this server
+	// is already running, return immediately rather than starting a duplicate.
+	if !server.rejoinInProgress.CompareAndSwap(false, true) {
+		return nil
+	}
+	defer server.rejoinInProgress.Store(false)
 	// Check if master exists in topology before rejoining.
 	defer func() {
 		cluster.rejoinCond.Send <- true
@@ -71,6 +79,56 @@ func (server *ServerMonitor) RejoinMaster() error {
 	// Strange here add comment for why
 	cluster.canFlashBack = true
 
+	// ONE-SHOT terminator: this event already ended with a recorded result (in
+	// crash history). Do nothing until an explicit re-arm (rearmRejoin) copies it
+	// back. Makes the Failed->up edge AND the per-tick topology extra-master call
+	// idempotent — this replaces the old age cap / re-fetch loop.
+	if cluster.rejoinAlreadyAttempted(server.URL) {
+		return nil
+	}
+
+	// CRASH SOURCE — the ONLY election-specific step. Local crash first; if none
+	// involves this server and arbitration is on, fetch the peer's verdict on
+	// demand (a single-repman cluster has no peer and just keeps its local crash).
+	var peerFetchErr error
+	peerFetchTried := false
+	if cluster.Conf.Arbitration && cluster.getCrashFromJoiner(server.URL) == nil && cluster.getCrashFromMaster(server.URL) == nil {
+		peerFetchTried = true
+		if _, peerFetchErr = cluster.fetchMasterFromPeer(); peerFetchErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Rejoin %s: peer verdict unavailable: %s", server.URL, peerFetchErr)
+		}
+	}
+
+	// ROLE: is this RETURNING server the elected WINNER (a crash names it as
+	// ElectedMasterURL and it is not itself a loser)? Then CROWN it, never slave
+	// it. The LOSER (that crash's URL) rejoins through its own RejoinMaster call
+	// (the topology extra-master path) — on the minority the colocated old master
+	// never gets a Failed->up edge of its own.
+	if cluster.getCrashFromJoiner(server.URL) == nil {
+		if win := cluster.getCrashFromMaster(server.URL); win != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Returning server %s is the peer-elected master — crowning it (loser %s rejoins separately)", server.URL, win.URL)
+			cluster.master = server
+			server.SetMaster()
+			if server.IsReadOnly() && !server.IsRelay {
+				server.SetReadWrite()
+			}
+			cluster.lastmaster = nil
+			cluster.backendStateChangeProxies()
+			return nil
+		}
+	}
+
+	// MASTER ADOPTION: the minority nil'd its master pointer; the crash names the
+	// winner, so adopt it here and converge with the master!=nil path below.
+	if cluster.master == nil {
+		if cr := cluster.getCrashFromJoiner(server.URL); cr != nil && cr.ElectedMasterURL != "" {
+			if m := cluster.GetServerFromURL(cr.ElectedMasterURL); m != nil {
+				cluster.master = m
+				m.SetMaster()
+			}
+		}
+	}
+
 	if cluster.master != nil {
 		if server.URL != cluster.master.URL {
 			cluster.SetState("WARN0022", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0022"], server.URL, cluster.master.URL), ErrFrom: "REJOIN"})
@@ -87,36 +145,96 @@ func (server *ServerMonitor) RejoinMaster() error {
 				}
 				crash := cluster.getCrashFromJoiner(server.URL)
 				if crash == nil {
+					// No divergence record for this server. Preserve the existing
+					// conservative behaviour (SST for a known old master, reseed if
+					// armed), but every exit now ENDS the cycle via finishRejoin so it
+					// is one-shot and its outcome is visible in history.
 					cluster.SetState("ERR00066", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00066"], server.URL, cluster.master.URL), ErrFrom: "REJOIN"})
-					if cluster.oldMaster != nil {
-						if cluster.oldMaster.URL == server.URL {
-							server.RejoinMasterSST()
-							return nil
-						}
+					if cluster.oldMaster != nil && cluster.oldMaster.URL == server.URL {
+						err := server.RejoinMasterSST()
+						cluster.finishRejoin(server.URL, rejoinResultOf(err))
+						return nil
 					}
 					if cluster.Conf.Autoseed {
-						server.ReseedMasterSST()
+						err := server.ReseedMasterSST()
+						cluster.finishRejoin(server.URL, rejoinResultOf(err))
 						return nil
-					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "No auto seeding %s", server.URL)
-						return errors.New("No Autoseed")
 					}
+					// PEER-UNREACHABLE (real-world transient split): arbitration is on and
+					// we TRIED to fetch the verdict but the peer did not answer. We must
+					// NOT blindly re-slave on current GTID — this server may hold a
+					// divergent tail we simply could not learn about. Fence it, record a
+					// RETRYABLE result (rejoinAlreadyAttempted ignores peer-unreachable),
+					// and try again next tick when the peer recovers.
+					if cluster.Conf.Arbitration && peerFetchTried && peerFetchErr != nil {
+						logs, roErr := server.SetReadOnly()
+						cluster.LogSQL(logs, roErr, server.URL, "Rejoin", config.LvlErr, "Failed to fence %s read-only while peer verdict unavailable: %s", server.URL, roErr)
+						cluster.finishRejoin(server.URL, RejoinResultPeerUnreached)
+						cluster.backendStateChangeProxies()
+						return nil
+					}
+					// No crash, no old-master anchor, no autoseed: attach read-only
+					// under the elected master on current GTID (no divergence record to
+					// recover). Strict mode still protects if anything is out of order.
+					server.attachAsReadOnlySlave(cluster.master)
+					cluster.finishRejoin(server.URL, RejoinResultNoDivergence)
+					cluster.backendStateChangeProxies()
+					return nil
 				} //crash info is available
 				if cluster.Conf.AutorejoinBackupBinlog {
 					server.freezeThenCaptureLostEvents(crash)
 				}
 
+				// OPERATOR-CHOSEN METHOD (GUI delta viewer): if the re-armed crash
+				// carries a method it OVERRIDES the automatic flashback/SST cascade for
+				// this one attempt. All methods are runnable on any crash — the delta
+				// verdict informs, it does not gate.
+				if crash.RejoinMethod != "" {
+					server.rejoinWithMethod(crash)
+					return nil
+				}
+
 				err := server.rejoinMasterIncremental(crash)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed to autojoin incremental to master %s", server.URL)
-					err := server.RejoinMasterSST()
-					if err != nil {
+					sstErr := server.RejoinMasterSST()
+					if sstErr != nil {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "State transfer rejoin failed")
+						// Could not clean the tail. Distinguish WHY for the operator:
+						//   diverged + not reversible -> not-flashback-able (manual)
+						//   otherwise (incl. empty)   -> no method / generic failure
+						// An EMPTY delta is never "not-flashback-able" — nothing diverged.
+						result := RejoinResultNoMethod
+						if crash.DeltaAnalyzed && crash.Diverged() && !crash.DeltaFlashable {
+							result = RejoinResultNotFlashback
+						}
+						// Persist the captured delta archive (crash-bin dir) BEFORE
+						// finishing — the failure path must still leave the binlog delta
+						// for the viewer. The old code ran saveBinlog unconditionally; the
+						// early return here would otherwise skip it (regression 2026-07-15:
+						// 10 trx counted but no delta content in the viewer).
+						if cluster.Conf.AutorejoinBackupBinlog {
+							server.saveBinlog(crash)
+						}
+						// ALWAYS end attached read-only under the elected master: strict
+						// mode protects a divergent tail as SlaveErr — never a floating
+						// writable standalone.
+						server.attachAsReadOnlySlave(cluster.master)
+						cluster.finishRejoin(server.URL, result)
+						cluster.backendStateChangeProxies()
+						return nil
 					}
 				}
 				if cluster.Conf.AutorejoinBackupBinlog {
 					server.saveBinlog(crash)
 				}
+				// Success: no-divergence if the delta was empty (clean re-slave),
+				// otherwise a real recovery of a diverged tail.
+				result := RejoinResultSuccess
+				if crash.DeltaAnalyzed && !crash.Diverged() {
+					result = RejoinResultNoDivergence
+				}
+				cluster.finishRejoin(server.URL, result)
 
 			}
 
@@ -194,19 +312,19 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 	return nil
 }
 
-func (server *ServerMonitor) RejoinScript() {
+func (server *ServerMonitor) RejoinScript() error {
 	cluster := server.ClusterGroup
-	// Call pre-rejoin script
-	if server.GetCluster().Conf.RejoinScript != "" {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling rejoin script")
-		var out []byte
-		var err error
-		out, err = exec.Command(cluster.Conf.RejoinScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port).CombinedOutput()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin script complete:", string(out))
+	// Call the operator's custom rejoin script.
+	if server.GetCluster().Conf.RejoinScript == "" {
+		return errors.New("no autorejoin-script configured")
 	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling rejoin script")
+	out, err := exec.Command(cluster.Conf.RejoinScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port).CombinedOutput()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin script complete:", string(out))
+	return err
 }
 
 func (server *ServerMonitor) ReseedMasterSST() error {
@@ -479,6 +597,124 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 
 }
 
+// rejoinResultOf maps an SST/reseed error to a rejoin result code for finishRejoin.
+func rejoinResultOf(err error) string {
+	if err != nil {
+		return RejoinResultNoMethod
+	}
+	return RejoinResultSuccess
+}
+
+// rejoinWithMethod runs the OPERATOR-CHOSEN recovery method for a re-armed crash,
+// persists the delta archive, ends attached read-only, and records the outcome via
+// finishRejoin (one-shot as always). Every method is runnable on any crash.
+func (server *ServerMonitor) rejoinWithMethod(crash *Crash) {
+	cluster := server.ClusterGroup
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Operator rejoin of %s via method %q", server.URL, crash.RejoinMethod)
+	var err error
+	switch crash.RejoinMethod {
+	case RejoinMethodFlashback:
+		err = server.rejoinMasterFlashBack(crash)
+	case RejoinMethodLogicalDump:
+		err = server.RejoinDirectDump()
+	case RejoinMethodLogicalBkp:
+		err = server.JobFlashbackLogicalBackup()
+	case RejoinMethodPhysicalBkp:
+		err = server.JobFlashbackPhysicalBackup()
+	case RejoinMethodIgnoreForce:
+		// Discard the divergent tail (operator accepts the data loss): RESET MASTER wipes
+		// this server's own binlog/GTID history, then re-slave with the SAME full-config
+		// CHANGE MASTER the auto path / flashback use (SetReplicationGTIDSlavePosFromServer
+		// carries SSL, delay, channel) — RESET MASTER alone does not re-attach.
+		logs, e := server.ResetMaster()
+		cluster.LogSQL(logs, e, server.URL, "Rejoin", config.LvlErr, "ignore-delta-force: RESET MASTER on %s failed: %s", server.URL, e)
+		if e == nil {
+			logs, e = server.SetReplicationGTIDSlavePosFromServer(cluster.master)
+			cluster.LogSQL(logs, e, server.URL, "Rejoin", config.LvlErr, "ignore-delta-force: CHANGE MASTER on %s failed: %s", server.URL, e)
+		}
+		if e == nil {
+			logs, e = server.StartSlave()
+			cluster.LogSQL(logs, e, server.URL, "Rejoin", config.LvlInfo, "ignore-delta-force: START SLAVE on %s: %s", server.URL, e)
+		}
+		err = e
+	case RejoinMethodResetReslave:
+		// EXACTLY the server-menu repair, combined: reset-master (node.ResetMaster) then
+		// start-slave (node.StartSlave). StartSlave RESUMES the replication already
+		// configured on this server, so multi-source / named channels / MASTER_DELAY are
+		// preserved. Do NOT re-CHANGE MASTER via attachAsReadOnlySlave below — that would
+		// flatten a complex topology to one default channel. End here like the menu.
+		logs, rmErr := server.ResetMaster()
+		cluster.LogSQL(logs, rmErr, server.URL, "Rejoin", config.LvlErr, "reset-master-reslave: RESET MASTER on %s failed: %s", server.URL, rmErr)
+		logs, ssErr := server.StartSlave()
+		cluster.LogSQL(logs, ssErr, server.URL, "Rejoin", config.LvlErr, "reset-master-reslave: START SLAVE on %s failed: %s", server.URL, ssErr)
+		err = rmErr
+		if err == nil {
+			err = ssErr
+		}
+		cluster.finishRejoin(server.URL, rejoinResultOf(err))
+		cluster.backendStateChangeProxies()
+		return
+	case RejoinMethodBootstrapFTWRL:
+		// Re-bootstrap the WHOLE master-slave topology (FTWRL on the master before
+		// RESET MASTER). Unlike the single-server methods, BootstrapReplication rebuilds
+		// the entire topology and re-slaves THIS server itself — so it must NOT be
+		// followed by the single-server attachAsReadOnlySlave below (that second CHANGE
+		// MASTER fights the setup the bootstrap just built, which is why the menu path
+		// worked and this one did not). End here, like the menu action.
+		err = cluster.BootstrapReplication(true, true)
+		cluster.finishRejoin(server.URL, rejoinResultOf(err))
+		cluster.backendStateChangeProxies()
+		return
+	case RejoinMethodScript:
+		// Run the operator's custom autorejoin-script; behaviour is up to the script.
+		err = server.RejoinScript()
+	default:
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Unknown rejoin method %q for %s", crash.RejoinMethod, server.URL)
+		err = errors.New("unknown rejoin method")
+	}
+	if cluster.Conf.AutorejoinBackupBinlog {
+		server.saveBinlog(crash)
+	}
+	// Mirror the auto-rejoin path exactly: on SUCCESS the method has already re-slaved
+	// this server itself (its own full-config CHANGE MASTER + START SLAVE), so add NO
+	// second attach — that was the duplicate. Only on FAILURE fall back to
+	// attachAsReadOnlySlave so a failed rejoin never leaves a floating writable
+	// standalone (strict mode then protects a divergent tail as SlaveErr).
+	result := RejoinResultSuccess
+	if crash.DeltaAnalyzed && !crash.Diverged() {
+		result = RejoinResultNoDivergence
+	}
+	if err != nil {
+		result = RejoinResultNoMethod
+		if crash.DeltaAnalyzed && crash.Diverged() && !crash.DeltaFlashable {
+			result = RejoinResultNotFlashback
+		}
+		server.attachAsReadOnlySlave(cluster.master)
+	}
+	cluster.finishRejoin(server.URL, result)
+	cluster.backendStateChangeProxies()
+}
+
+// attachAsReadOnlySlave ends a rejoin by CHANGE MASTER to the elected master and
+// starting replication, read-only — ALWAYS, even for a diverged / not-flashback-able
+// tail. A rejoin must never leave a writable, unattached standalone. GTID strict
+// mode is the protection (Stephane): a divergent old master goes SlaveErr (the
+// out-of-order sequence is refused, no corruption) instead of drifting as a second
+// writable master; the operator then resolves the SlaveErr via the manual-repair
+// state (WARN0186) or an explicit re-arm with a chosen method.
+func (server *ServerMonitor) attachAsReadOnlySlave(master *ServerMonitor) {
+	cluster := server.ClusterGroup
+	if master == nil || master.URL == server.URL {
+		return
+	}
+	logs, err := server.SetReadOnly()
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to fence %s read-only before attach: %s", server.URL, err)
+	logs, err = server.SetReplicationGTIDCurrentPosFromServer(master)
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed CHANGE MASTER of %s to %s: %s", server.URL, master.URL, err)
+	logs, err = server.StartSlave()
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlInfo, "Started replication of %s under %s (strict mode protects a divergent tail as SlaveErr): %s", server.URL, master.URL, err)
+}
+
 func (server *ServerMonitor) rejoinMasterAsSlave() error {
 	cluster := server.ClusterGroup
 	realmaster := cluster.lastmaster
@@ -677,8 +913,14 @@ func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bo
 
 func (server *ServerMonitor) saveBinlog(crash *Crash) error {
 	cluster := server.ClusterGroup
-	t := time.Now()
-	backupdir := cluster.Conf.WorkingDir + "/" + cluster.Name + "/crash-bin-" + t.Format("20060102150405")
+	// Reuse the crash's OWN archive dir (created when the crash became known —
+	// option B) so the binlog lands in the same dir as its crash.json; only mint a
+	// new one for a crash that has none yet (legacy path).
+	backupdir := crash.ArchiveDir
+	if backupdir == "" {
+		backupdir = cluster.Conf.WorkingDir + "/" + cluster.Name + "/crash-bin-" + time.Now().Format("20060102150405")
+		crash.ArchiveDir = backupdir
+	}
 	staging := cluster.Conf.WorkingDir + "/" + cluster.Name + "-server" + strconv.FormatUint(uint64(server.ServerID), 10) + "-" + crash.FailoverMasterLogFile
 	if _, err := os.Stat(staging); err != nil {
 		// Nothing was captured (backupBinlog failed or produced no file):
@@ -700,6 +942,14 @@ func (server *ServerMonitor) saveBinlog(crash *Crash) error {
 	// Render the review material next to the archive: what happened and,
 	// when reversible, the exact undo (lost-events viewer serves both).
 	server.decodeLostEvents(crash, archived)
+	// Write the FULL crash metadata INTO the archive dir: the crash-bin dir is the
+	// single source of truth for a real crash (event + delta + rejoin outcome).
+	// The history is derived by scanning these dirs (LoadFailoverHistory), so one
+	// archive = one record — no duplicate failover.<ts>.json, survives restart,
+	// pruned as a unit with its binlog.
+	if err := crash.Save(backupdir + "/crash.json"); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Could not write crash metadata %s/crash.json: %s", backupdir, err)
+	}
 	server.purgeCrashBinArchives(3)
 	return nil
 }

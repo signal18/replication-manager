@@ -90,6 +90,7 @@ type ReplicationManager struct {
 	Partner                      config.Partner                     `json:"partner"`
 	Agents                       []opensvc.Host                     `json:"agents"`
 	UUID                         string                             `json:"uuid"`
+	StartTime                    time.Time                          `json:"startTime"`
 	Hostname                     string                             `json:"hostname"`
 	Status                       string                             `json:"status"`
 	SplitBrain                   bool                               `json:"splitBrain"`
@@ -179,6 +180,7 @@ type ReplicationManager struct {
 	runtimeClusterStartMu       sync.Mutex                     `json:"-"`
 	gatewayMu                   sync.Map                       `json:"-"`
 	IsNeedGitPush               bool                           `json:"-"`
+	IsNeedConfigSave            bool                           `json:"-"` // event flag: Save() sets it, the config-sync gate consumes it and runs SaveCallBack
 	CanConnectVault             bool                           `json:"canConnectVault"`
 	IsExportPush                bool                           `json:"-"`
 	globalScheduler             *cron.Cron                     `json:"-"`
@@ -282,8 +284,9 @@ type HeartbeatResponse struct {
 }
 
 type Heartbeat struct {
-	UUID    string `json:"uuid"`
-	Secret  string `json:"secret"`
+	UUID      string    `json:"uuid"`
+	StartTime time.Time `json:"startTime"`
+	Secret    string    `json:"secret"`
 	Cluster string `json:"cluster"`
 	Master  string `json:"master"`
 	UID     int    `json:"id"`
@@ -608,6 +611,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.AutorejoinMysqldump, "autorejoin-mysqldump", false, "Automatic rejoin ahead failed leader via direct current master dump")
 	flags.BoolVar(&conf.AutorejoinPhysicalBackup, "autorejoin-physical-backup", false, "Automatic rejoin ahead failed leader via reseed previous phyiscal backup")
 	flags.BoolVar(&conf.AutorejoinLogicalBackup, "autorejoin-logical-backup", false, "Automatic rejoin ahead failed leader via reseed previous logical backup")
+	flags.StringVar(&conf.AutorejoinBackupSelectorLogical, "autorejoin-backup-selector-logical", "", "JSON RestoreSelector choosing WHICH logical backup an automatic rejoin restores from (empty = newest, any origin/repo/location). Build and validate it with a manual rejoin, then set it here to promote that choice to automatic.")
+	flags.StringVar(&conf.AutorejoinBackupSelectorPhysical, "autorejoin-backup-selector-physical", "", "JSON RestoreSelector choosing WHICH physical backup an automatic rejoin restores from (empty = newest, any origin/repo/location). Build and validate it with a manual rejoin, then set it here to promote that choice to automatic.")
 	flags.BoolVar(&conf.AutorejoinSlavePositionalHeartbeat, "autorejoin-slave-positional-heartbeat", false, "Automatic rejoin extra slaves via pseudo gtid heartbeat for positional replication")
 	flags.BoolVar(&conf.AutorejoinForceRestore, "autorejoin-force-restore", false, "Automatic rejoin ahead force full new leader backup restore")
 
@@ -671,7 +676,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.GitUrl, "git-url", "", "GitHub URL repository to store config file")
 	flags.StringVar(&conf.GitUsername, "git-username", "", "GitHub username")
 	flags.StringVar(&conf.GitAccesToken, "git-acces-token", "", "GitHub personnal acces token")
-	flags.IntVar(&conf.GitMonitoringTicker, "git-monitoring-ticker", 300, "Git monitoring interval in seconds")
+	flags.IntVar(&conf.GitMonitoringTicker, "git-monitoring-ticker", 3600, "Git push periodic interval in seconds. Real config changes push on-change (dirty-gated, ~60s) independent of this timer; this interval is the safety-net full push AND the cadence on which the throttled agents.json runtime feed is staged for the BO. Lower it for fresher agent capacity, not for config latency.")
 	flags.BoolVar(&conf.GitConfigSyncStandby, "git-config-sync-standby", true, "Pull config from git when cluster is standby with arbitration")
 	// flags.IntVar(&conf.GitMinWorker, "git-min-worker", 1, "Minimum number of worker to add files for git commit")
 	// flags.IntVar(&conf.GitMaxWorker, "git-max-worker", 5, "Maximum number of worker to add files for git commit")
@@ -2393,6 +2398,7 @@ func (repman *ReplicationManager) Run() error {
 
 	repman.Clusters = make(map[string]*cluster.Cluster)
 	repman.UUID = misc.GetUUID()
+	repman.StartTime = time.Now()
 	if repman.Conf.Arbitration {
 		repman.Status = ConstMonitorStandby
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Server starting in standby mode (arbitration enabled)")
@@ -2796,26 +2802,30 @@ func (repman *ReplicationManager) Run() error {
 		// processClusterQueue is blocked waiting for gitMutex — compounding the delay.
 		repman.exit.Store(true)
 
+		shutStart := time.Now()
 		repman.Logrus.Info("Shutdown: unmounting S3")
+		s3t := time.Now()
 		repman.UnMountS3()
+		repman.Logrus.Infof("Shutdown: S3 unmount took %s", time.Since(s3t))
 
 		repman.Logrus.Info("Shutdown: stopping ticker goroutines")
 		close(quit_GitPull)
 		close(quit_PAT)
 
 		repman.Logrus.Infof("Shutdown: stopping %d clusters", len(repman.Clusters))
+		clStart := time.Now()
 		stopwg := sync.WaitGroup{}
 		for _, cl := range repman.Clusters {
 			stopwg.Add(1)
 			go func(c *cluster.Cluster) {
 				defer stopwg.Done()
-				repman.Logrus.Infof("Shutdown: stopping cluster %s", c.Name)
+				t := time.Now()
 				c.Stop()
-				repman.Logrus.Infof("Shutdown: cluster %s stopped", c.Name)
+				repman.Logrus.Infof("Shutdown: cluster %s stopped in %s", c.Name, time.Since(t))
 			}(cl)
 		}
 		stopwg.Wait()
-		repman.Logrus.Info("Shutdown: all clusters stopped")
+		repman.Logrus.Infof("Shutdown: all clusters stopped in %s (total since signal %s)", time.Since(clStart), time.Since(shutStart))
 		close(clustersDone)
 	}()
 
@@ -2832,24 +2842,94 @@ func (repman *ReplicationManager) Run() error {
 		time.Sleep(time.Second * time.Duration(repman.Conf.MonitoringTicker))
 
 		if counter%60 == 0 {
-			// Never wait on the manager queue from the main loop: if the git
-			// worker is wedged behind a hung network call, wait=true freezes
-			// every state producer (observed on dbaas-fr-2/-dr).
-			repman.ConfigManager.SaveConfig(repman, false)
-
-			// Network tasks run detached and guarded: the main loop must never
-			// block on git or HTTP I/O (go-git has no timeout — a single hung
-			// pull used to freeze every state producer silently). When a task
-			// is still running at the next cycle, skip it and surface GWARN013
-			// so the hang shows in the Monitor button instead of killing it.
-			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
+			// The config-sync gate: one guarded goroutine, off the main loop, is
+			// the single writer of config. It replaces the per-cluster save queue
+			// AND the cluster-loop save (doc/implementation/config/CONFIG_SYNC.md).
+			// The main loop must never block on git/disk I/O (go-git has no
+			// timeout — a hung pull used to freeze every state producer), so the
+			// whole cycle runs in the goroutine; if a prior cycle is still busy we
+			// skip and surface GWARN013 instead of killing it.
+			//
+			// Only the Active server runs the gate: it is the single git writer
+			// (two pushers race the shallow clone into "object not found"), and the
+			// Standby has no authoritative config to persist — it converges by
+			// pull/replay (below). Save is active-gated to match the standby's
+			// no-local-save behavior (commit a3ad4855d).
+			//
+			// Inside the gate, in order (single writer, so no locks needed):
+			//   1. SAVE: each active cluster's SaveCallBack (config .toml + runtime
+			//      json incl. agents.json for the BO + peer event log), then the
+			//      global config. Runs every cycle so the agents feed stays fresh.
+			//   2. PUSH: dirty-gated — a real config change (IsNeedGitPush, set by
+			//      SaveCallBack in step 1) or safetyDue (GitMonitoringTicker, the
+			//      periodic feed/safety cadence). Config no longer waits on the
+			//      timer; the agents.json staging throttle is unchanged.
+			if repman.Conf.GitUrl != "" && repman.Status == ConstMonitorActif {
+				safetyDue := counter%int64(repman.Conf.GitMonitoringTicker) == 0
 				if repman.gitSyncBusy.CompareAndSwap(false, true) {
 					go func() {
 						defer repman.gitSyncBusy.Store(false)
+
+						// 1. SAVE phase. The active/standby authority for config-sync is
+						// the server (repman.Status, gated above), not the per-cluster
+						// cl.IsActive(): config persistence is a server-level concern (one
+						// repman, one git repo, one pusher). A cluster in split-brain
+						// standby on an active repman still has its config persisted —
+						// orthogonal to its orchestration state.
+						//
+						// Fan out per cluster: each SaveCallBack writes only its own
+						// cluster's files (no shared state), plus the global config, so
+						// they run concurrently. wg.Wait() before the push keeps the
+						// save-before-push ordering that makes the single-writer push safe
+						// without locks (doc/implementation/config/CONFIG_SYNC.md #3).
+						var savewg sync.WaitGroup
+						for _, cl := range repman.Clusters {
+							if cl == nil {
+								continue
+							}
+							cl.IsNeedConfigSave = false
+							savewg.Add(1)
+							go func(c *cluster.Cluster) {
+								defer savewg.Done()
+								if err := c.SaveCallBack(); err != nil {
+									repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Config save failed for %s: %s", c.Name, err)
+								}
+							}(cl)
+						}
+						repman.IsNeedConfigSave = false
+						savewg.Add(1)
+						go func() {
+							defer savewg.Done()
+							if err := repman.SaveGlobalConfigs(); err != nil {
+								repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Global config save failed: %s", err)
+							}
+						}()
+						savewg.Wait()
+
+						// 2. PUSH phase (dirty-gated). IsNeedGitPush was just set by
+						// SaveCallBack above when config actually changed.
+						configDirty := repman.IsNeedGitPush
+						for _, cl := range repman.Clusters {
+							if cl != nil && cl.IsNeedGitPush {
+								configDirty = true
+								break
+							}
+						}
+						if !configDirty && !safetyDue {
+							return
+						}
+						// Clear the dirty flags: this push carries the changes. A
+						// failed push is recovered by the next safetyDue cycle.
+						repman.IsNeedGitPush = false
+						for _, cl := range repman.Clusters {
+							if cl != nil {
+								cl.IsNeedGitPush = false
+							}
+						}
 						// Peer-symmetric config sync: replay peer config change
 						// events (event-changed.<id>.log, fetched from the remote
 						// without touching the working tree) before the push so
-						// replayed changes land in this same save cycle. See
+						// replayed changes land in this same cycle. See
 						// doc/implementation/config/CONFIG_EVENT_LOG.md.
 						repman.ReplayPeerConfigEvents()
 						repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
@@ -3243,18 +3323,22 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		return true
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer heartbeat response: %v", h)
-		if h.Status == ConstMonitorStandby && repman.Status == ConstMonitorStandby {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Both peers are standby, triggering arbitration election")
-			return true
+		// CALM authority: the peer answered, so we can talk and are NOT split.
+		// Resolve to the anti-peer status; the cluster reinforce loop in
+		// Heartbeat() then pushes repman.Status down onto the clusters.
+		//   - peer Active and we are Active  -> dual-active: yield to Standby
+		//     (the peer keeps driving; failback is never automatic).
+		//   - both Standby (e.g. a node just (re)joined after a restart) -> the
+		//     main (lowest arbitration uid) claims Active; the higher-uid peer,
+		//     seeing us Active next tick, stays Standby. This un-sticks the
+		//     both-Standby startup case WITHOUT declaring a split brain.
+		if h.Status == ConstMonitorActif && repman.Status == ConstMonitorActif {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Calm: peer is Active and so are we — yielding to Standby")
+			repman.Status = ConstMonitorStandby
+		} else if h.Status == ConstMonitorStandby && repman.Status == ConstMonitorStandby && repman.Conf.ArbitrationSasUniqueId < h.UID {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Calm: both Standby and we are the main (uid %d < peer %d) — claiming Active", repman.Conf.ArbitrationSasUniqueId, h.UID)
+			repman.Status = ConstMonitorActif
 		}
-		// NOTE: two ACTIVE peers seeing each other (dual-active) is deliberately
-		// NOT treated as split brain here — peers that can talk are not split,
-		// and declaring split brain server-wide drags every cluster into
-		// elections. Dual-active must not FORM in the first place: the
-		// arbitrator crowns exactly one winner during the real split
-		// (dbhelper.RequestArbitration, lowest-uid preference). An already
-		// latched dual-active is resolved manually via the calm-period
-		// active/standby toggle.
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "No peer split brain, peer status is %s, my status is %s", h.Status, repman.Status)
 	}
 
@@ -3287,10 +3371,25 @@ func (repman *ReplicationManager) getClusterTestCredentials(clusterName string) 
 	if cl == nil {
 		return "", "", false
 	}
+	// PREFER "admin": cl.APIUsers is a map (random iteration order), and service
+	// accounts like sysops-cloud18 (git-sync) also hold the cluster-test grant but
+	// lock out after failed auth — so a random pick flaps the peer login between
+	// working (admin) and 401 (locked service account). Deterministic admin
+	// preference removes the flap.
+	var fbUser, fbPass string
 	for _, u := range cl.APIUsers {
-		if u.Grants != nil && u.Grants[config.GrantClusterTest] && u.Password != "" {
+		if u.Grants == nil || !u.Grants[config.GrantClusterTest] || u.Password == "" {
+			continue
+		}
+		if u.User == "admin" {
 			return u.User, u.Password, true
 		}
+		if fbUser == "" {
+			fbUser, fbPass = u.User, u.Password
+		}
+	}
+	if fbUser != "" {
+		return fbUser, fbPass, true
 	}
 	return "", "", false
 }
@@ -3425,9 +3524,30 @@ func (repman *ReplicationManager) PeerIsActive(clusterName string) (bool, error)
 }
 
 // IsHeartbeatFailureSimulated reports whether the peer heartbeat is currently severed.
+// The heartbeat resolves LAST: a real partition heals only when the whole outage is
+// over, so besides its own timer the heartbeat stays dark while ANY cluster on this
+// instance still has a live cut (db/arbitrator/master/minority) — the simulation as a
+// whole is one outage, and the peer link is the last thing to come back.
 func (repman *ReplicationManager) IsHeartbeatFailureSimulated() bool {
 	until := repman.sbHeartbeatFailUntil.Load()
-	return until > 0 && time.Now().Unix() < until
+	if until == 0 {
+		// Never armed (or explicitly restored): pure cluster-level simulations
+		// without a declared network split leave the peer link up.
+		return false
+	}
+	if time.Now().Unix() < until {
+		return true
+	}
+	// Own timer expired: the split still holds while any cluster cut is live.
+	for _, cl := range repman.Clusters {
+		if cl.IsSplitBrainSimulationActive() {
+			return true
+		}
+	}
+	// Whole simulation over: release the latch so a stale timestamp cannot
+	// resurrect the network split during a future cluster-only simulation.
+	repman.sbHeartbeatFailUntil.CompareAndSwap(until, 0)
+	return false
 }
 
 func (repman *ReplicationManager) Heartbeat() {
@@ -3460,7 +3580,16 @@ func (repman *ReplicationManager) Heartbeat() {
 		repman.Lock()
 		repman.SplitBrain = true
 		repman.Unlock()
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "SPLITBRAIN SIMULATION: network split active (%ds left) — forcing server split-brain and pushing down to all clusters", repman.sbHeartbeatFailUntil.Load()-time.Now().Unix())
+		left := repman.sbHeartbeatFailUntil.Load() - time.Now().Unix()
+		if left < 0 {
+			left = 0 // own timer expired: held open by live cluster cuts, resolves with them
+		}
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "SPLITBRAIN SIMULATION: network split active (%ds left) — forcing server split-brain and pushing down to all clusters", left)
+		// VSPLIT0002 — surface the darkened heartbeat in every cluster's state
+		// timeline, not just the server log, so the cut is impossible to forget.
+		for _, cl := range repman.Clusters {
+			cl.SetState("VSPLIT0002", state.State{ErrType: "WARNING", ErrKey: "VSPLIT0002", ErrDesc: config.ClusterError["VSPLIT0002"], ErrFrom: "TEST"})
+		}
 	} else {
 		for _, arbPeer := range arbPeerList {
 			repman.Lock()
@@ -3486,21 +3615,30 @@ func (repman *ReplicationManager) Heartbeat() {
 		}
 	}
 
-	// propagate SplitBrain state to clusters after peer negotiation
-	hasActive := false
+	// Propagate the split-brain flag to every cluster.
 	for _, cl := range repman.Clusters {
 		cl.IsSplitBrain = repman.SplitBrain
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
-		if cl.IsActive() {
-			hasActive = true
-		}
 	}
-	if hasActive && repman.Status == ConstMonitorStandby {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Cluster won arbitration, server status changing from standby to active")
-		repman.Status = ConstMonitorActif
-	} else if !hasActive && repman.Status == ConstMonitorActif && repman.Conf.Arbitration {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "No active cluster, server status changing from active to standby")
-		repman.Status = ConstMonitorStandby
+
+	// Authority direction depends on calm vs split-brain:
+	//   CALM        -> the SERVER level is authoritative: reinforce repman.Status
+	//                  onto every cluster. A cluster that diverged (e.g. left
+	//                  Standby by a prior split) is corrected to match. No
+	//                  cluster-activity rollup, so a split LOSER cannot
+	//                  auto-reclaim Active during calm (the bug that let a node
+	//                  climb back after losing, and orphaned crm/curepipe).
+	//   SPLIT-BRAIN -> the CLUSTER level is authoritative and each cluster
+	//                  decides for ITSELF via the arbitrator (and runs its own
+	//                  FTWRL/failover). NOTHING rolls up to the server; the
+	//                  server verdict is frozen and re-asserted only when calm
+	//                  returns.
+	if !repman.SplitBrain {
+		for _, cl := range repman.Clusters {
+			if cl.IsActive() != (repman.Status == ConstMonitorActif) {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Calm: reinforcing server status %s onto cluster %s", repman.Status, cl.Name)
+				cl.SetActiveStatus(repman.Status)
+			}
+		}
 	}
 
 	// EVENT-DRIVEN ARBITRATOR AWARENESS: the arbitrator hears nothing in
@@ -3615,12 +3753,18 @@ func (repman *ReplicationManager) Stop() {
 	}
 
 	// Wait for previous save since this is the last save
+	wt := time.Now()
 	for repman.IsSavingConfig {
 		time.Sleep(time.Second)
 	}
+	if d := time.Since(wt); d > time.Second {
+		repman.Logrus.Infof("Shutdown: waited %s for in-flight save", d)
+	}
 
 	if repman.HasActiveCluster() {
+		st := time.Now()
 		repman.ConfigManager.SaveConfig(repman, true)
+		repman.Logrus.Infof("Shutdown: global save took %s", time.Since(st))
 
 		if repman.Conf.GitUrl != "" {
 			isNeedPush := repman.IsNeedGitPush
@@ -3632,17 +3776,34 @@ func (repman *ReplicationManager) Stop() {
 				}
 			}
 
-			if isNeedPush {
+			// Single-writer: only the Active server pushes (see periodic push above).
+			if isNeedPush && repman.Status == ConstMonitorActif {
 				repman.IsNeedGitPush = false
-				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+				gt := time.Now()
+				// Shutdown fast-fail: the periodic dirty-gated push keeps config
+				// already synced, so the final push is usually a no-op. Bound it to
+				// 5s so a slow/hung remote can't drag the whole stop; if it exceeds,
+				// abandon it (the process is exiting anyway) rather than block.
+				pushed := make(chan struct{})
+				go func() { repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true); close(pushed) }()
+				select {
+				case <-pushed:
+					repman.Logrus.Infof("Shutdown: final git push took %s", time.Since(gt))
+				case <-time.After(5 * time.Second):
+					repman.Logrus.Warnf("Shutdown: final git push exceeded 5s — abandoning (config already synced by the periodic push)")
+				}
 			}
 		}
 	}
 
+	cmt := time.Now()
 	repman.ConfigManager.Stop()
+	repman.Logrus.Infof("Shutdown: ConfigManager.Stop took %s", time.Since(cmt))
 
 	if !repman.IsExportPush && repman.HasActiveCluster() {
+		bt := time.Now()
 		repman.PushConfigToBackupDir()
+		repman.Logrus.Infof("Shutdown: PushConfigToBackupDir took %s", time.Since(bt))
 	}
 }
 
@@ -4121,7 +4282,21 @@ func (repman *ReplicationManager) SetIsSavingConfig(val bool) {
 	repman.IsSavingConfig = val
 }
 
-func (repman *ReplicationManager) Save() error {
+// Save is the event: mark the global/[Default] config needs-save. The repman
+// config-sync gate (serve loop) consumes it and runs SaveCallBack. No I/O.
+func (repman *ReplicationManager) Save() {
+	repman.IsNeedConfigSave = true
+}
+
+// SaveCallBack persists the global/[Default] config; invoked by the config-sync
+// gate and by synchronous callers (SaveConfig(repman, true)).
+func (repman *ReplicationManager) SaveCallBack() error {
+	return repman.SaveGlobalConfigs()
+}
+
+// SaveGlobalConfigs persists the global/[Default] server config (dynamic,
+// immutable, overwrite). It is the former body of Save().
+func (repman *ReplicationManager) SaveGlobalConfigs() error {
 	var err error
 
 	_, file, no, ok := runtime.Caller(1)

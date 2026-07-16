@@ -274,6 +274,9 @@ func CreateMeetClient(meetToken string) *MeetChatClient {
 	//to recreate the client if undefined or if the user session is expired
 	if meetToken != "" {
 		client := model.NewAPIv4Client(meetUrl)
+		// Bound the Mattermost API client: NewAPIv4Client defaults its HTTPClient
+		// to no timeout, so a slow/hung meet server blocks the caller indefinitely.
+		client.HTTPClient.Timeout = 30 * time.Second
 		client.SetOAuthToken(meetToken)
 		meetClient := &MeetChatClient{
 			Client: client,
@@ -291,7 +294,7 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) (
 
 	//cookie jar
 	jar, _ := cookiejar.New(nil)
-	client := &http.Client{Jar: jar}
+	client := &http.Client{Jar: jar, Timeout: 30 * time.Second}
 
 	// 1. Login gitlab
 	// 1.1 get the csrf from login page

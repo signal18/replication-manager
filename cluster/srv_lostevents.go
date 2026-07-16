@@ -78,9 +78,12 @@ func (server *ServerMonitor) analyzeLostEvents(crash *Crash, archive string) {
 		return
 	}
 	crash.DeltaAnalyzed = true
-	// Flashback reverses row events ONLY: any DDL or statement-format DML in
-	// the delta makes the whole delta non-reversible; an empty capture has
-	// nothing to reverse.
+	// Flashback reverses row events ONLY: any DDL or statement-format DML makes
+	// the delta non-reversible. NOTE this is REVERSIBILITY, not "good vs bad": an
+	// EMPTY delta is NOT flashback-able either (nothing to reverse) but it is the
+	// CLEANEST case — nothing diverged, so the rejoin is a plain re-slave on
+	// current GTID. Do not read !DeltaFlashable as "manual repair"; gate that on
+	// crash.Diverged() (content present). An empty delta => not diverged => clean.
 	crash.DeltaFlashable = crash.DeltaRowEvents > 0 && crash.DeltaDDL == 0 && crash.DeltaStatementDML == 0
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO",
 		"Lost events of %s analyzed: %d transactions, %d row events, %d DDL, %d statement-DML — flashback-able: %t",
@@ -133,6 +136,15 @@ func (cluster *Cluster) hasUnresolvedCrash() bool {
 		if crash == nil {
 			continue
 		}
+		// An operator-armed rejoin (a method was chosen, no result yet) is
+		// unresolved by definition: it is a queued action, not a settled one.
+		// Without this the DBs-up purge (cluster_topo.go) deletes the armed crash
+		// before ProcessArmedRejoins can execute it, so the manual rejoin silently
+		// never runs even though the API returned "armed" — the server need not be
+		// SlaveErr/Failed (a StandAlone old master is a valid rejoin target).
+		if crash.RejoinMethod != "" && crash.RejoinResult == "" {
+			return true
+		}
 		srv := cluster.GetServerFromURL(crash.URL)
 		if srv != nil && (srv.State == stateSlaveErr || srv.IsFailed()) {
 			return true
@@ -141,12 +153,20 @@ func (cluster *Cluster) hasUnresolvedCrash() bool {
 	return false
 }
 
+// Diverged reports whether the captured delta actually contains lost content.
+// An EMPTY delta is NOT diverged — nothing was lost, the rejoin is a clean
+// re-slave. Only a diverged delta raises the flashback-ability question.
+func (crash *Crash) Diverged() bool {
+	return crash.DeltaRowEvents > 0 || crash.DeltaDDL > 0 || crash.DeltaStatementDML > 0
+}
+
 // assertLostEventsStates keeps the divergence verdict visible per tick while
 // the diverged server exists: the operator learns in one glance whether the
-// last divergence is flashback-able.
+// last divergence is flashback-able. An EMPTY (non-diverged) delta raises
+// nothing — there is nothing lost to warn about.
 func (cluster *Cluster) assertLostEventsStates() {
 	for _, crash := range cluster.Crashes {
-		if crash == nil || !crash.DeltaAnalyzed {
+		if crash == nil || !crash.DeltaAnalyzed || !crash.Diverged() {
 			continue
 		}
 		srv := cluster.GetServerFromURL(crash.URL)
@@ -157,6 +177,36 @@ func (cluster *Cluster) assertLostEventsStates() {
 			cluster.SetState("WARN0184", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0184"], crash.URL), ErrFrom: "REJOIN", ServerUrl: crash.URL})
 		} else {
 			cluster.SetState("WARN0185", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0185"], crash.URL), ErrFrom: "REJOIN", ServerUrl: crash.URL})
+		}
+	}
+}
+
+// assertRejoinResultStates makes a FINISHED rejoin outcome visible per tick,
+// read from durable history (finishRejoin moved the crash there). Only outcomes
+// that need the operator are raised, and only while the server is not yet a
+// healthy slave of its elected master (a later success / re-arm clears them).
+func (cluster *Cluster) assertRejoinResultStates() {
+	latest := map[string]*Crash{}
+	for _, cr := range cluster.FailoverHistory {
+		if cr == nil || cr.RejoinResult == "" {
+			continue
+		}
+		if e, ok := latest[cr.URL]; !ok || cr.RejoinResultTs > e.RejoinResultTs {
+			latest[cr.URL] = cr
+		}
+	}
+	for url, cr := range latest {
+		srv := cluster.GetServerFromURL(url)
+		if srv != nil && srv.IsSlave && !srv.IsFailed() {
+			if m, _ := cluster.GetMasterFromReplication(srv); m != nil && m.URL == cr.ElectedMasterURL {
+				continue // resolved: rejoined as slave of the elected master
+			}
+		}
+		switch cr.RejoinResult {
+		case RejoinResultNotFlashback, RejoinResultNoMethod, RejoinResultFailed:
+			cluster.SetState("WARN0186", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0186"], url, cr.RejoinResult), ErrFrom: "REJOIN", ServerUrl: url})
+		case RejoinResultPeerUnreached:
+			cluster.SetState("WARN0187", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0187"], url), ErrFrom: "REJOIN", ServerUrl: url})
 		}
 	}
 }

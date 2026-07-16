@@ -28,13 +28,8 @@ import (
 
 type ClusterConfig interface {
 	GetName() string
-	Save() error
-}
-
-// ConfigSaveTask holds the parameters for saving a config and additional waiting functionality
-type ConfigSaveTask struct {
-	Cluster   ClusterConfig
-	WaitGroup *sync.WaitGroup // Pointer to sync.WaitGroup for additional waiting
+	Save()               // event: marks needs-save, no I/O
+	SaveCallBack() error // the actual persist, run by the config-sync gate
 }
 
 type ConfigGitTask struct {
@@ -51,14 +46,6 @@ type GitAddTask struct {
 	WaitGroup *sync.WaitGroup
 }
 
-// ClusterManager holds the necessary fields for each cluster
-type ClusterManager struct {
-	tasks      []*ConfigSaveTask // Slice of tasks for the cluster
-	mutex      *sync.Mutex       // Mutex for safe access to tasks
-	cond       *sync.Cond        // Condition variable for waiting and notifying tasks
-	stopCh     chan struct{}     // Stop channel to signal the goroutine to stop
-	isStopping bool              // Flag to indicate if the cluster manager is stopping
-}
 
 // Push Manager
 type GitManager struct {
@@ -265,20 +252,22 @@ type ConfigManager struct {
 	gitStatus   GitHealthSnapshot          // Latest git health snapshot
 	stopOnce    sync.Once                  // Ensures Stop() runs only once
 	isStopping  atomic.Bool                // Prevents new saves after stopping
-	clusterMu   *sync.RWMutex              // Protects clusterData map access
-	clusterData map[string]*ClusterManager // Map of clusters and their respective managers
 	gitManager  *GitManager                // Pull Push manager
+
+	// agents.json churns every monitoring cycle (agent load/status) but BO only
+	// needs periodic cores/mem — throttle its git staging to bound .git growth.
+	agentsStagedMu sync.Mutex
+	agentsStagedAt map[string]time.Time // per-cluster last time agents.json was staged
 }
 
 // NewConfigManager initializes the manager
 func NewConfigManager(logger *config.LogrusWrapper) *ConfigManager {
 	newcm := &ConfigManager{
-		logger:      logger,
-		clusterData: make(map[string]*ClusterManager),
-		clusterMu:   &sync.RWMutex{},
-		gitMutex:    &sync.Mutex{},
-		configWg:    &sync.WaitGroup{},
-		gitManager:  NewGitManager(logger),
+		logger:         logger,
+		gitMutex:       &sync.Mutex{},
+		configWg:       &sync.WaitGroup{},
+		gitManager:     NewGitManager(logger),
+		agentsStagedAt: make(map[string]time.Time),
 	}
 
 	newcm.gitManager.cond = sync.NewCond(newcm.gitManager.mutex)
@@ -286,6 +275,24 @@ func NewConfigManager(logger *config.LogrusWrapper) *ConfigManager {
 	go newcm.processGitPush() // Start the persistent goroutine for the push manager
 
 	return newcm
+}
+
+// gitAgentsSyncInterval throttles how often agents.json is staged for commit.
+// agents.json is re-serialized every monitoring cycle (agent load/status), so
+// staging it on every git push previously dominated .git history (~288
+// commits/day). BO only needs periodic cores/mem, so once per hour is ample.
+const gitAgentsSyncInterval = time.Hour
+
+// shouldStageAgents reports whether this cluster's agents.json is due to be
+// staged again (and records the decision). Throttled per cluster.
+func (cm *ConfigManager) shouldStageAgents(cluster string) bool {
+	cm.agentsStagedMu.Lock()
+	defer cm.agentsStagedMu.Unlock()
+	if last, ok := cm.agentsStagedAt[cluster]; ok && time.Since(last) < gitAgentsSyncInterval {
+		return false
+	}
+	cm.agentsStagedAt[cluster] = time.Now()
+	return true
 }
 
 func (cm *ConfigManager) GetGitManager() *GitManager {
@@ -364,216 +371,26 @@ func (cm *ConfigManager) UpdateLoggerConfig(clustername string, conf *config.Con
 	cm.logger.UpdateConfig(clustername, conf)
 }
 
-func (cm *ConfigManager) CountTasksForCluster(cluster string) int {
-	clusterManager, exists := cm.getClusterManager(cluster)
-	if exists {
-		clusterManager.mutex.Lock()
-		defer clusterManager.mutex.Unlock()
-		return len(clusterManager.tasks)
-	}
-	return 0
-}
-
-func (cm *ConfigManager) getClusterManager(cluster string) (*ClusterManager, bool) {
-	cm.clusterMu.RLock()
-	clusterManager, exists := cm.clusterData[cluster]
-	cm.clusterMu.RUnlock()
-	return clusterManager, exists
-}
-
-func (cm *ConfigManager) getOrCreateClusterManager(cluster string) (*ClusterManager, bool) {
-	cm.clusterMu.Lock()
-	if cm.isStopping.Load() {
-		cm.clusterMu.Unlock()
-		return nil, false
-	}
-
-	clusterManager, exists := cm.clusterData[cluster]
-	if !exists {
-		clusterManager = &ClusterManager{
-			tasks:  []*ConfigSaveTask{},
-			mutex:  &sync.Mutex{},
-			stopCh: make(chan struct{}),
-		}
-		clusterManager.cond = sync.NewCond(clusterManager.mutex)
-		cm.clusterData[cluster] = clusterManager
-	}
-	cm.clusterMu.Unlock()
-
-	if !exists {
-		go cm.processClusterQueue(cluster, clusterManager)
-	}
-
-	return clusterManager, true
-}
-
-// SaveConfig allows concurrent saves but respects stopping
+// SaveConfig is a queue-less dispatcher. The per-cluster save workers are gone;
+// the repman config-sync gate (server.go serve loop) is the single writer.
+//   - wait=false → the event: mark needs-save (cluster.Save), the gate persists
+//     on its next cycle. Non-blocking, no I/O.
+//   - wait=true  → run the persist synchronously (SaveCallBack) for callers that
+//     must block (shutdown, register).
+// See doc/implementation/config/CONFIG_SYNC.md.
 func (cm *ConfigManager) SaveConfig(cluster ClusterConfig, wait bool) {
 	clustername := cluster.GetName()
-
 	if cm.isStopping.Load() {
-		cm.logger.Debugf(clustername, config.ConstLogModGeneral, "[%s] Save blocked: system is stopping.\n", cluster)
+		cm.logger.Debugf(clustername, config.ConstLogModGeneral, "[%s] Save blocked: system is stopping.\n", clustername)
 		return
 	}
-
-	clusterManager, ok := cm.getOrCreateClusterManager(clustername)
-	if !ok {
-		cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Save blocked while creating queue: system is stopping.\n", cluster)
-		return
-	}
-	configSaveTask := &ConfigSaveTask{Cluster: cluster}
-
-	// Lock the cluster's mutex to safely add to the task slice
-	clusterManager.mutex.Lock()
-	if cm.isStopping.Load() {
-		clusterManager.mutex.Unlock()
-		cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Save blocked while queueing: system is stopping.\n", configSaveTask.Cluster)
-		return
-	}
-	select {
-	case <-clusterManager.stopCh:
-		clusterManager.mutex.Unlock()
-		cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Save blocked: cluster manager is stopping.\n", configSaveTask.Cluster)
-		return
-	default:
-	}
-
 	if wait {
-		wg := &sync.WaitGroup{}
-		wg.Add(1)
-		configSaveTask.WaitGroup = wg
-		cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Save with wait requested.\n", configSaveTask.Cluster)
-	}
-
-	cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Appending to save queue.\n", clustername)
-
-	clusterManager.tasks = append(clusterManager.tasks, configSaveTask)
-	// Signal the goroutine that a new task is available
-	clusterManager.cond.Signal()
-	clusterManager.mutex.Unlock()
-
-	// If a WaitGroup pointer is provided, add to the wait group
-	if configSaveTask.WaitGroup != nil {
-		cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Save request waiting.\n", configSaveTask.Cluster)
-		configSaveTask.WaitGroup.Wait()
-		cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Save request wait over.\n", configSaveTask.Cluster)
-	}
-
-	cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Save request completed.\n", configSaveTask.Cluster)
-}
-
-// processClusterQueue processes the tasks in the slice for a given cluster
-func (cm *ConfigManager) processClusterQueue(cluster string, clusterManager *ClusterManager) {
-	defer LogPanic(cm.logger, fmt.Sprintf("ConfigManager.processClusterQueue[%s]", cluster), cluster, config.ConstLogModConfigLoad)
-
-	for {
-		// Lock the cluster's mutex to safely check for tasks
-		clusterManager.mutex.Lock()
-
-		// Wait until there is at least one task in the queue
-		for len(clusterManager.tasks) == 0 {
-			select {
-			case <-clusterManager.stopCh: // Stop signal for the goroutine
-				cm.logger.Infof(cluster, config.ConstLogModGeneral, "[%s] Stopping goroutine.\n", cluster)
-				clusterManager.mutex.Unlock()
-				return
-			default:
-			}
-
-			clusterManager.cond.Wait()
+		if err := cluster.SaveCallBack(); err != nil {
+			cm.logger.Errorf(clustername, config.ConstLogModConfigLoad, "Error during save: %v", err)
 		}
-
-		cm.logger.Debugf(cluster, config.ConstLogModConfigLoad, "[%s] Waking up goroutine.\n", cluster)
-
-		// Check for the stop signal before processing
-		select {
-		case <-clusterManager.stopCh: // Stop signal for the goroutine
-			clusterManager.isStopping = true
-			drained := 0
-			for _, task := range clusterManager.tasks {
-				if task.WaitGroup != nil {
-					task.WaitGroup.Done()
-				}
-				drained++
-			}
-			clusterManager.tasks = make([]*ConfigSaveTask, 0)
-			cm.logger.Infof(cluster, config.ConstLogModGeneral, "[%s] Stop observed, drained %d queued save task(s).", cluster, drained)
-			clusterManager.mutex.Unlock()
-			return
-		default:
-			// Process the first task in the queue
-			configSaveTask := clusterManager.tasks[0]
-			skippedTasks := clusterManager.tasks[1:]
-			clusterManager.tasks = make([]*ConfigSaveTask, 0) // remove the current batch since they doing the same thing
-			clusterManager.mutex.Unlock()
-
-			cm.gitMutex.Lock() // Prevent Git push conflict
-			if cm.isStopping.Load() {
-				cm.gitMutex.Unlock()
-				if configSaveTask.WaitGroup != nil {
-					configSaveTask.WaitGroup.Done()
-				}
-				for _, task := range skippedTasks {
-					if task.WaitGroup != nil {
-						task.WaitGroup.Done()
-					}
-				}
-				cm.logger.Infof(cluster, config.ConstLogModConfigLoad, "[%s] Save aborted: system is stopping.", cluster)
-				return
-			}
-			select {
-			case <-clusterManager.stopCh:
-				cm.gitMutex.Unlock()
-				if configSaveTask.WaitGroup != nil {
-					configSaveTask.WaitGroup.Done()
-				}
-				for _, task := range skippedTasks {
-					if task.WaitGroup != nil {
-						task.WaitGroup.Done()
-					}
-				}
-				cm.logger.Infof(cluster, config.ConstLogModConfigLoad, "[%s] Save aborted: cluster manager is stopping.", cluster)
-				return
-			default:
-			}
-			cm.configWg.Add(1)
-			cm.gitMutex.Unlock()
-
-			func() {
-				defer cm.configWg.Done()
-				defer func() {
-					if r := recover(); r != nil {
-						cm.logger.Errorf(cluster, config.ConstLogModConfigLoad, "Panic during save: %v", r)
-					}
-				}()
-				defer func() {
-					if configSaveTask.WaitGroup != nil {
-						configSaveTask.WaitGroup.Done()
-						cm.logger.Debugf(cluster, config.ConstLogModConfigLoad, "[%s] Save completed.\n", configSaveTask.Cluster)
-					}
-
-					for _, task := range skippedTasks {
-						if task.WaitGroup != nil {
-							task.WaitGroup.Done()
-							cm.logger.Debugf(cluster, config.ConstLogModConfigLoad, "[%s] Skipped save completed.\n", task.Cluster)
-						}
-					}
-				}()
-
-				// Execute the save function and handle potential errors
-				if err := configSaveTask.Cluster.Save(); err != nil {
-					cm.logger.Errorf(cluster, config.ConstLogModConfigLoad, "Error during save: %v", err)
-				} else {
-					cm.logger.Infof(cluster, config.ConstLogModConfigLoad, "Config saved successfully.")
-				}
-			}()
-
-			if clusterManager.isStopping {
-				cm.logger.Infof(cluster, config.ConstLogModGeneral, "[%s] Cluster manager is stopping, exiting goroutine.", cluster)
-				return
-			}
-		}
+		return
 	}
+	cluster.Save()
 }
 
 // GitPush waits for active saves, blocks new ones, and pushes changes
@@ -798,25 +615,8 @@ func (cm *ConfigManager) Stop() {
 		cm.gitMutex.Lock()
 		defer cm.gitMutex.Unlock()
 
-		cm.clusterMu.RLock()
-		clusterManagers := make([]*ClusterManager, 0, len(cm.clusterData))
-		for _, clmgr := range cm.clusterData {
-			clusterManagers = append(clusterManagers, clmgr)
-		}
-		cm.clusterMu.RUnlock()
-
-		// Send stop signal to all cluster goroutines
-		for _, clmgr := range clusterManagers {
-			select {
-			case <-clmgr.stopCh:
-				// already closed
-			default:
-				close(clmgr.stopCh)
-			}
-			clmgr.cond.Signal() // Wake up the cluster goroutine
-		}
-
-		cm.logger.Infof("none", config.ConstLogModGeneral, "[Shutdown] Waiting for active saves to finish...")
+		// The per-cluster save workers are gone (saves run synchronously on the
+		// repman config-sync gate now), so there is nothing to drain here.
 		cm.configWg.Wait()
 
 		cm.gitManager.CommitManager.Stop()
@@ -1525,6 +1325,15 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 
 		// Add .toml files
 		for _, file := range files {
+			// cache.toml is a LOCAL cache of encrypted-secret ciphertext
+			// (Cluster.SaveCacheConfig) — not config: nothing downstream reads
+			// it from git, and re-encryption can churn its bytes every save.
+			// Syncing it bloated .git and starved the monitoring loop (queries
+			// stuck in "Sending data"). Never commit it. The extension sweep
+			// below would otherwise grab it just for ending in ".toml".
+			if file.Name() == "cache.toml" {
+				continue
+			}
 			if filepath.Ext(file.Name()) == ".toml" {
 				fpath := filepath.Join(name, file.Name())
 				_, err := file.Info()
@@ -1553,12 +1362,25 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 			}
 		}
 
-		// Add agents.json and queryrules.json if they exist
-		for _, jsonFile := range []string{"agents.json", "queryrules.json", "clusterstate.json"} {
+		// queryrules.json and clusterstate.json move on config/human timescales
+		// (hours+), so stage them every cycle. agents.json is handled separately
+		// below — it churns every monitoring cycle and must be throttled.
+		for _, jsonFile := range []string{"queryrules.json", "clusterstate.json"} {
 			jsonPath := filepath.Join(name, jsonFile)
 			if _, err := os.Stat(filepath.Join(path, jsonPath)); !os.IsNotExist(err) {
 				cwg.Add(1)
 				cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: jsonPath, W: w, WaitGroup: &cwg})
+			}
+		}
+
+		// agents.json is re-serialized every monitoring cycle (agent load/status),
+		// so staging it on every git push dominated .git history (~288 commits/day).
+		// BO only needs periodic cores/mem — throttle to once per gitAgentsSyncInterval.
+		if cm.shouldStageAgents(name) {
+			agentsPath := filepath.Join(name, "agents.json")
+			if _, err := os.Stat(filepath.Join(path, agentsPath)); !os.IsNotExist(err) {
+				cwg.Add(1)
+				cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: agentsPath, W: w, WaitGroup: &cwg})
 			}
 		}
 
@@ -1615,9 +1437,13 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		return err
 	}
 
-	// Push changes
+	// Push changes. Context-bounded (mirrors the FetchContext above) so a hung
+	// network push cannot block forever — an unbounded Push was a shutdown/hang
+	// risk (the final push on SIGINT could stall the whole stop).
 	pushStart := time.Now()
-	err = r.Push(&git.PushOptions{Auth: auth})
+	pushCtx, pushCancel := context.WithTimeout(context.Background(), 120*time.Second)
+	err = r.PushContext(pushCtx, &git.PushOptions{Auth: auth})
+	pushCancel()
 	cm.logger.Debugf("none", config.ConstLogModGit,
 		"Push took: %s", time.Since(pushStart))
 

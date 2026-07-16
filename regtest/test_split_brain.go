@@ -116,27 +116,74 @@ func (regtest *RegTest) TestSetMinorityWithoutMaster(cl *cluster.Cluster, conf s
 }
 
 // setMinorityWithMaster reproduces a real split brain for the case where the
-// master is colocated on the isolated (minority) side. It does exactly 4
-// operations — 2 LOCAL on this repman (repman1) and 2 REMOTE on the peer
-// (repman2) — so both nodes independently fail to heartbeat each other, exactly
-// like a cut cable where neither end can reach the other:
+// master is colocated on the isolated (minority) side. It does exactly 6
+// operations — 4 LOCAL on this repman (repman1) and 2 REMOTE on the peer
+// (repman2) — so both nodes independently fail to heartbeat each other AND each
+// side loses the data plane across the partition, exactly like a cut cable:
 //
-//	op 1/4 LOCAL  : cut repman1 → arbitrator link
-//	op 2/4 LOCAL  : sever repman1's inbound heartbeat (repman2 → repman1 times out)
-//	op 3/4 REMOTE : sever repman2's inbound heartbeat (repman1 → repman2 times out)
-//	op 4/4 REMOTE : cut repman2 → master link (master lives on the minority side)
+//	op 1/6 LOCAL  : cut repman1 → arbitrator link
+//	op 2/6 LOCAL  : sever repman1's inbound heartbeat (repman2 → repman1 times out)
+//	op 3/6 REMOTE : sever repman2's inbound heartbeat (repman1 → repman2 times out)
+//	op 4/6 REMOTE : cut repman2 → master link (master lives on the minority side)
+//	op 5/6 LOCAL  : stop io_thread on every majority-side slave — the replication
+//	                channel crosses the partition and must starve with it, or the
+//	                divergent tail never exists (capture always empty).
+//	op 6/6 LOCAL  : cut repman1 → every majority-side database. Without this the
+//	                minority still sees the remote slave healthy; with it the slave
+//	                goes genuinely Failed, so at resolve the real Failed->up
+//	                rejoin trigger fires on this node — matching a real partition.
 func setMinorityWithMaster(cl *cluster.Cluster) {
 	secs := int64(minorityHold / time.Second)
 
-	// op 1/4 LOCAL — repman1 loses the arbitrator (DC3).
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 1/4 LOCAL: cutting arbitrator link on ALL clusters (repman1 -> arbitrator) — a real DC partition loses the arbitrator for every cluster at once, not just this one")
+	// op 1/5 LOCAL — repman1 loses the arbitrator (DC3).
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 1/6 LOCAL: cutting arbitrator link on ALL clusters (repman1 -> arbitrator) — a real DC partition loses the arbitrator for every cluster at once, not just this one")
 	cl.SimulateArbitratorFailureAll(minorityHold)
 
-	// op 2/4 LOCAL — darken repman1's inbound /api/heartbeat so repman2's
+	// op 2/5 LOCAL — darken repman1's inbound /api/heartbeat so repman2's
 	// outbound heartbeat to repman1 times out (repman2 -> repman1 direction).
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 2/4 LOCAL: severing my inbound heartbeat (repman2 -> repman1 will time out)")
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 2/6 LOCAL: severing my inbound heartbeat (repman2 -> repman1 will time out)")
 	if SimulateHeartbeatFailure != nil {
 		SimulateHeartbeatFailure(secs)
+	}
+
+	// ops 5+6/6 LOCAL (armed before the remote ops so the whole local partition
+	// lands in one tick) — a real partition also cuts the DATA plane in both
+	// directions across it:
+	//
+	// op 5/6 — starve the REPLICATION channel that crosses the partition: stop
+	// the io_thread on every majority-side slave (they replicate from the master
+	// colocated HERE) while our connection still reaches them. Without this the
+	// app-level sim leaves db->db replication alive (the VSPLIT0005 situation),
+	// so every write committed on this side during the split reaches the other
+	// side before its promotion and the lost-events capture is ALWAYS empty —
+	// the divergent tail only exists if the channel breaks like the real cable.
+	// No restore needed on the happy path: the majority promotes that slave
+	// (RESET SLAVE ALL wipes the stopped channel) and the old master rejoins
+	// with a fresh one; a failed run is cleaned by the standard replication
+	// bootstrap.
+	//
+	// op 6/6 — lose our VIEW of every non-master database (SimulateServerFailure)
+	// so they go genuinely Failed on this side and the resolve fires the real
+	// Failed->up rejoin trigger here.
+	mst := cl.GetMaster()
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 5/6 LOCAL: severing cross-partition replication (stop io_thread on all majority-side slaves)")
+	for _, sv := range cl.Servers {
+		if sv == nil || (mst != nil && sv.URL == mst.URL) {
+			continue
+		}
+		// Route the REAL stop through the simulator so it is tracked: the io_thread is
+		// genuinely stopped (STOP SLAVE IO_THREAD — the divergent tail needs a real break),
+		// but tracking lets it auto-restart (START SLAVE) on timer-expiry / cleanup and be
+		// surfaced as simulation-induced (VSPLIT0007). A raw stop here stranded the slave in
+		// SlaveErr with nothing knowing to restart it.
+		cl.SimulateSlaveIOThreadStop(sv, minorityHold)
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 6/6 LOCAL: cutting my -> majority-side database links (all non-master servers)")
+	for _, sv := range cl.Servers {
+		if sv == nil || (mst != nil && sv.URL == mst.URL) {
+			continue
+		}
+		cl.SimulateServerFailure(sv.URL, minorityHold)
 	}
 
 	if SimulatePeerFailure == nil {
@@ -144,18 +191,18 @@ func setMinorityWithMaster(cl *cluster.Cluster) {
 		return
 	}
 
-	// op 3/4 REMOTE — darken repman2's inbound /api/heartbeat so repman1's
+	// op 3/5 REMOTE — darken repman2's inbound /api/heartbeat so repman1's
 	// outbound heartbeat to repman2 times out (repman1 -> repman2 direction).
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 3/4 REMOTE: severing peer inbound heartbeat on repman2 (repman1 -> repman2 will time out)")
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 3/6 REMOTE: severing peer inbound heartbeat on repman2 (repman1 -> repman2 will time out)")
 	if err := SimulatePeerFailure(cl.Name, "simulate-heartbeat-failure", secs); err != nil {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "op 3/4 REMOTE failed: %s", err)
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "op 3/6 REMOTE failed: %s", err)
 	}
 
-	// op 4/4 REMOTE — cut repman2's link to the master, which is colocated on
+	// op 4/5 REMOTE — cut repman2's link to the master, which is colocated on
 	// the minority side, so the majority loses the master but keeps its slave.
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 4/4 REMOTE: cutting peer -> master link on repman2 (master colocated on minority)")
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 4/6 REMOTE: cutting peer -> master link on repman2 (master colocated on minority)")
 	if err := SimulatePeerFailure(cl.Name, "simulate-master-failure", secs); err != nil {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "op 4/4 REMOTE failed: %s", err)
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "op 4/6 REMOTE failed: %s", err)
 	}
 }
 
@@ -380,4 +427,88 @@ func dualActiveMustResolve(cl *cluster.Cluster, label string) bool {
 	}
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: DUAL-ACTIVE — both repman remained active after the split healed", label)
 	return false
+}
+
+// TestSplitBrainNoWinner — a peer-heartbeat-only split where both repman lose
+// sight of each other but keep the SAME master AND both STILL REACH the arbitrator
+// (heartbeat cut, arbitrator NOT cut — an equal / symmetric partition). Because
+// both reach it, the arbitrator is the ONE component that can and MUST decide the
+// outcome: keep a single lease holder, or make both stand down ("loser/loser").
+// Two repman Active at once — even transiently — must NEVER happen; preventing it
+// is the arbitrator's whole reason to exist.
+//
+// Unlike testSetDualActive (which tolerates a transient dual-active and only
+// asserts reconvergence AFTER healing), this asserts the invariant DURING the
+// split, with NO heal: at no moment are both Active, and neither fails over.
+//
+// It currently FAILS by design — the count==1 peace-path wipes the Elected flag
+// every tick so both sides win the election in turn and go Active (see
+// setDualActive). That is exactly the regression the arbitrator must fix (restore
+// the single-lease / loser-loser decision for the reach-both case; the contest
+// state must also move back to the shared DB). Keep this test RED until then.
+func (regtest *RegTest) TestSplitBrainNoWinner(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	if !cl.Conf.Arbitration {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: arbitration not enabled")
+		return true
+	}
+	return splitBrainNoWinner(cl, "testSplitBrainNoWinner")
+}
+
+func splitBrainNoWinner(cl *cluster.Cluster, label string) bool {
+	failoverCtr := cl.FailoverCtr
+	// Same cuts as the dual-active scenario: peer heartbeat severed both ways,
+	// master AND arbitrator left intact (both sides keep reaching the arbitrator).
+	setDualActive(cl)
+	defer func() {
+		if RestoreHeartbeat != nil {
+			RestoreHeartbeat()
+		}
+		cl.RestoreSplitBrainSimulation()
+		if SimulatePeerRestore != nil {
+			if err := SimulatePeerRestore(cl.Name); err != nil {
+				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: peer cleanup skipped (self-heals on its own timer): %s", label, err)
+			}
+		}
+	}()
+
+	// 1) the split must be DETECTED (peer heartbeat timed out).
+	detected := false
+	for i := 0; i < 20; i++ {
+		time.Sleep(2 * time.Second)
+		if cl.IsSplitBrain {
+			detected = true
+			break
+		}
+	}
+	if !detected {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: split brain never detected (peer heartbeat did not fail)", label)
+		return false
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: split brain detected — both reach the arbitrator, it MUST keep a single decision (no dual-active)", label)
+
+	if GetPeerIsActive == nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: no peer-status hook (single-node run) — cannot assert dual-active, skipping", label)
+		return true
+	}
+
+	// 2) DURING the split (no heal): the arbitrator must NEVER let BOTH be Active,
+	// and no side may fail over. Poll the whole window — a single dual-active
+	// sighting fails the test.
+	for i := 0; i < 25; i++ {
+		time.Sleep(3 * time.Second)
+		if cl.FailoverCtr != failoverCtr {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: a side FAILED OVER during a same-master split", label)
+			return false
+		}
+		peerActive, err := GetPeerIsActive(cl.Name)
+		if err != nil {
+			continue
+		}
+		if cl.IsActive() && peerActive {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: DUAL-ACTIVE during the split — both repman Active; the arbitrator did not decide (regression to fix)", label)
+			return false
+		}
+	}
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s: no dual-active for the whole split window — arbitrator held a single decision", label)
+	return true
 }

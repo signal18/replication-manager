@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -248,7 +249,12 @@ type ServerMonitor struct {
 	RestartRid                  string     // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
 	jobMutex                    sync.Mutex // protects IsRunningJobs flag
 	configGenMutex              sync.Mutex // protects config generation operations
-	backupMetaMutex             sync.Mutex // protects LastBackupMeta from concurrent Restic callback updates
+	backupMetaMutex             sync.Mutex  // protects LastBackupMeta from concurrent Restic callback updates
+	rejoinInProgress            atomic.Bool  // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
+	reseedInfo                  atomic.Value // *ReseedProgress: the in-flight restore's backup (nil when idle) — for the progress state
+	reseedBytes                 atomic.Int64 // raw bytes streamed so far (compressed input; no decompression accounting yet)
+	reseedTotal                 atomic.Int64 // total compressed backup file size (0 = unknown)
+	reseedStart                 atomic.Int64 // unix-nanos the current restore started (for MB/s)
 	// Lock ordering (to prevent deadlocks):
 	// 1. Cluster.stateMutex (highest)
 	// 2. ServerMonitor.stateMutex
@@ -537,7 +543,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	// otherwise reuses the existing pooled connection, so the master keeps
 	// looking alive. Applies to the whole-cluster db cut and the master-only cut.
 	if cluster.IsDatabaseFailureSimulated() ||
-		(cluster.IsMasterFailureSimulated() && cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL) {
+		cluster.SimulatedOnFreezeDBAccess(server.URL) {
 		if conn != nil {
 			conn.Close()
 			conn = nil
@@ -735,15 +741,32 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 			// Auto-rejoin is skipped for active-passive because the master is
 			// designated by topology handling rather than elected from replication.
-			if cluster.Conf.Autorejoin && cluster.IsActive() && cluster.GetTopology() != config.TopoActivePassive {
+			// NOT during a split brain (gate on !IsSplitBrain — the DURABLE flag true on
+			// BOTH sides): the rejoin (freeze -> capture db1's lost events -> CHANGE MASTER
+			// db1->new master) must wait until the split RESOLVES. Running it mid-split
+			// captures a point-in-time snapshot from the failover position while db1 is
+			// still diverging (pseudo-GTID heartbeat) for the rest of the split, so the
+			// capture comes back empty and the reslave then collides with the later tail
+			// (SlaveErr). After resolve the active node (the former minority) rejoins with
+			// db1's FINAL tail — non-empty capture, clean reslave.
+			if cluster.Conf.Autorejoin && cluster.IsActive() && cluster.GetTopology() != config.TopoActivePassive && !cluster.IsSplitBrain {
 				// rejoin if not staging server
 				if isStagingServer {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Preventing auto rejoin on staging server %s", server.URL)
 				} else {
-					server.RejoinMaster()
+					// async: a reseed can run for hours/days; never block the monitor
+					// loop. RejoinMaster's rejoinInProgress guard makes the spawn safe.
+					go server.RejoinMaster()
 				}
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Auto Rejoin is disabled")
+				// Name the ACTUAL failing gate: this used to always print "Auto Rejoin
+				// is disabled", which masked an IsSplitBrain race as a config problem.
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoin of %s not triggered (autorejoin=%t active=%t splitbrain=%t)", server.URL, cluster.Conf.Autorejoin, cluster.IsActive(), cluster.IsSplitBrain)
+				// No latch on a refused edge: a missed one-shot no longer matters.
+				// The extra-master branch in TopologyDiscover re-evaluates EVERY tick
+				// and drives the verdict-guarded rejoin (resurrected 3.0 dual-master
+				// fix) — a refusal here just defers to the next topology pass. The
+				// standby behaves as 2.x/3.0 always did: fence read-only, never rejoin.
 			}
 
 		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State == stateUnconn {
@@ -855,7 +878,7 @@ func (server *ServerMonitor) Refresh() error {
 	// flap Suspect->Master and never reach MaxFail. Fail this recovery ping too
 	// while the cut is armed, so the server stays down consistently.
 	if cluster.IsDatabaseFailureSimulated() ||
-		(cluster.IsMasterFailureSimulated() && cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL) {
+		cluster.SimulatedOnFreezeDBAccess(server.URL) {
 		err = errors.New("split-brain simulation: server link down")
 	}
 	if err != nil {

@@ -96,6 +96,8 @@ type Cluster struct {
 	Status                        string                 `json:"activePassiveStatus" groups:"web"`
 	IsSplitBrain                  bool                   `json:"isSplitBrain" groups:"web"`
 	IsSplitBrainBck               bool                   `json:"-"`
+	SplitBrainStartTs             int64                  `json:"splitBrainStartTs" groups:"web"` // unix ts when the current/last split brain began; used to filter a peer crash to THIS split
+
 	injectTrafficTableReady       map[string]bool        `json:"-"` // dml marker schema created once per proxy target
 	IsFailedArbitrator            bool                   `json:"isFailedArbitrator" groups:"web"`
 	IsLostMajority                bool                   `json:"isLostMajority" groups:"web"`
@@ -117,6 +119,8 @@ type Cluster struct {
 	IsNeedAppsReprov              bool                   `json:"isNeedAppsReprov" groups:"web"`
 	IsGettingSlowLog              bool                   `json:"isGettingSlowLog" groups:"web"`
 	IsValidBackup                 bool                   `json:"isValidBackup" groups:"web"`
+	IsValidRejoinBackupLogical    bool                   `json:"isValidRejoinBackupLogical" groups:"web"`
+	IsValidRejoinBackupPhysical   bool                   `json:"isValidRejoinBackupPhysical" groups:"web"`
 	IsNotMonitoring               bool                   `json:"isNotMonitoring" groups:"web"`
 	HaveSSHKeyChecked             bool                   `json:"-"`
 	IsCapturing                   bool                   `json:"isCapturing" groups:"web"`
@@ -124,6 +128,7 @@ type Cluster struct {
 	IsGitPush                     bool                   `json:"isGitPush" groups:"web"`
 	IsSavingConfig                bool                   `json:"-"`
 	IsNeedGitPush                 bool                   `json:"-"`
+	IsNeedConfigSave              bool                   `json:"-"` // event flag: Save() sets it, the repman config-sync gate consumes it and runs SaveCallBack
 	IsExportPush                  bool                   `json:"isExportPush" groups:"web"`
 	IsAlertDisable                bool                   `json:"isAlertDisable" groups:"web"`
 	IsIntervention                bool                   `json:"isIntervention" groups:"web"`
@@ -196,6 +201,32 @@ type Cluster struct {
 	sbDatabaseFailUntil         int64 `json:"-"`
 	sbArbitratorFailUntil int64 `json:"-"`
 	sbMasterFailUntil     int64 `json:"-"`
+	// sbMasterFailURL pins the sim master-cut to the server that was master when
+	// SimulateMasterFailure was called, so the cut stays on that physical box for
+	// the whole split instead of migrating to whoever GetMaster() is now (which
+	// would release the isolated old master the instant a failover promotes a
+	// replica, letting the majority revert its own election).
+	sbMasterFailURL atomic.Value `json:"-"`
+	// sbMinorityUntil — SimulateMinority (a LOCAL call: simulator state lives in this
+	// process only and never replicates, so whichever instance ran it IS the minority)
+	// marks this side minority; it cuts its own arbitrator link and yields to standby.
+	// Timed like every other cut: a real outage resolves too, it is just a question of
+	// time — the simulation ends when all cuts time out (or on explicit restore).
+	sbMinorityUntil int64 `json:"-"`
+	// sbServerFailURLs — per-host DB cuts (SimulateServerFailure), url -> unix until:
+	// the data-plane counterpart of the master cut for NON-master hosts, so the minority
+	// scenario can also lose the majority-side databases (a real partition cuts the wire
+	// in both directions). Guarded by sbServerFailMu.
+	sbServerFailMu   sync.Mutex       `json:"-"`
+	sbServerFailURLs map[string]int64 `json:"-"`
+	// sbSlaveIOStoppedURLs — io_threads the sim REALLY stopped (op 5/6 STOP SLAVE
+	// IO_THREAD), url -> unix until. Unlike every other cut, which only fakes a view
+	// via a flag and needs no undo, this is a real DB side effect: it must be tracked
+	// so it can be (a) auto-restored with START SLAVE when the timer expires or the sim
+	// is cleared and (b) surfaced (VSPLIT0007) as simulation-induced, so an operator and
+	// repman's own monitoring never mistake it for a genuine SlaveErr. Guarded by
+	// sbServerFailMu (shares the lock with sbServerFailURLs — same lifecycle).
+	sbSlaveIOStoppedURLs map[string]int64 `json:"-"`
 	// eventProv is the config event log provenance table: where the current
 	// value of each saved key came from (echo subtraction + LWW). See
 	// cluster_eventlog.go and doc/implementation/config/CONFIG_EVENT_LOG.md.
@@ -1016,6 +1047,7 @@ func (cluster *Cluster) Run() {
 						}
 						if heartbeats%30 == 0 {
 							goRun(func() { cluster.IsValidBackup = cluster.HasValidBackup() })
+							goRun(func() { cluster.HasCatalogBackupForRejoin() })
 							goRun(cluster.CheckCanSaveDynamicConfig)
 							goRun(cluster.CheckIsOverwrite)
 							goRun(cluster.CheckAllBackupEstimatedSize)
@@ -1082,6 +1114,10 @@ func (cluster *Cluster) Run() {
 				cluster.CheckLogPlugins()
 				// CheckFailed trigger failover code if passing all false positiv and constraints
 				cluster.CheckFailed()
+				// Run any operator-armed rejoin (GUI delta viewer) — independent of
+				// Conf.Autorejoin and the Failed->up edge, so a manual rejoin actually
+				// executes even with auto-rejoin off.
+				cluster.ProcessArmedRejoins()
 				cluster.IsConfigPathChange = cluster.HasConfigPathChanged()
 				cluster.SetStatus()
 				cluster.CheckBackupStates()
@@ -1270,9 +1306,10 @@ func (cluster *Cluster) StateProcessing() {
 		cluster.SecurityStateMachine.ClearState()
 		cluster.SchemaStateMachine.ClearState()
 		cluster.ConfigStateMachine.ClearState()
-		if cluster.StateMachine.GetHeartbeats()%60 == 0 && cluster.IsActive() {
-			cluster.ConfigManager.SaveConfig(cluster, false)
-		}
+		// Periodic config save is no longer driven from the cluster monitor loop.
+		// The server-level loop fans out per-cluster saves (server.go serve loop);
+		// see doc/implementation/config/CONFIG_SYNC.md decision #3. Event-driven
+		// saves (API setters, failover, etc.) still call SaveConfig directly.
 	}
 
 	cluster.CheckSendMail()
@@ -1280,29 +1317,43 @@ func (cluster *Cluster) StateProcessing() {
 
 func (cluster *Cluster) Stop() {
 	cluster.stopOnce.Do(func() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: signaling exit")
+		// Instrumented shutdown: time every phase so a slow stop pinpoints itself
+		// in the log (e.g. "Stop[curepipe] resticUnmount took 8s") instead of
+		// leaving us guessing where the seconds go. Clusters stop concurrently, so
+		// the overall stop time is the slowest cluster's slowest phase.
+		stopStart := time.Now()
+		phase := func(name string, fn func()) {
+			t := time.Now()
+			fn()
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop[%s] %s took %s", cluster.Name, name, time.Since(t))
+		}
+
 		cluster.exit.Store(true)
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: stopping scheduler")
-		if cluster.scheduler != nil {
-			cluster.scheduler.Stop()
-		}
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: closing template MD5 worker")
-		cluster.CloseRefreshTemplateMD5Worker()
-
-		if cluster.ResticManager != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: unmounting restic repo")
-			if err := cluster.ResticManager.UnmountRepo(); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Restic unmount on shutdown failed: %s", err)
+		phase("scheduler", func() {
+			if cluster.scheduler != nil {
+				cluster.scheduler.Stop()
 			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: shutting down restic worker")
-			cluster.ResticManager.ShutdownWorker()
+		})
+		phase("templateMD5Worker", func() {
+			cluster.CloseRefreshTemplateMD5Worker()
+		})
+		if cluster.ResticManager != nil {
+			phase("resticUnmount", func() {
+				// Shutdown uses ForceUnmountRepo (lazy detach, no 5-min wait for
+				// active mount users) — UnmountRepo's user-wait was the 40-68s stall.
+				if err := cluster.ResticManager.ForceUnmountRepo(); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Restic force unmount on shutdown failed: %s", err)
+				}
+			})
+			phase("resticWorkerShutdown", func() {
+				cluster.ResticManager.ShutdownWorker()
+			})
 		}
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: saving config")
-		cluster.ConfigManager.SaveConfig(cluster, true)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: done")
+		phase("saveConfig", func() {
+			cluster.ConfigManager.SaveConfig(cluster, true)
+		})
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop[%s] done, total %s", cluster.Name, time.Since(stopStart))
 	})
 }
 
@@ -1565,7 +1616,18 @@ type ClusterSLAState struct {
 	SLAHistory []state.Sla `json:"slaHistory"`
 }
 
-func (cluster *Cluster) Save() error {
+// Save is the event: it does no I/O, it only records that this cluster wants
+// saving. The single repman config-sync gate (server.go serve loop) consumes
+// the flag and runs SaveCallBack — so the heavy save never rides a caller's
+// goroutine or the cluster tick. See doc/implementation/config/CONFIG_SYNC.md.
+func (cluster *Cluster) Save() {
+	cluster.IsNeedConfigSave = true
+}
+
+// SaveCallBack performs the actual config persist (former Save body): the
+// cluster .toml, runtime json (agents/clusterstate/sla/queryrules), and the
+// peer event log. Invoked only by the repman config-sync gate.
+func (cluster *Cluster) SaveCallBack() error {
 	if !cluster.initConfigDone.Load() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Skipping config save: cluster init not complete")
 		return nil

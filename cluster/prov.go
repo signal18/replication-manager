@@ -50,7 +50,7 @@ func (cluster *Cluster) Bootstrap() error {
 		return err
 	}
 
-	err = cluster.BootstrapReplication(true)
+	err = cluster.BootstrapReplication(true, false)
 	if err != nil {
 		return err
 	}
@@ -618,10 +618,15 @@ func (cluster *Cluster) StartAllNodes() error {
 	return nil
 }
 
-func (cluster *Cluster) BootstrapReplicationCleanup() error {
+// BootstrapReplicationCleanup resets replication on every server (RESET MASTER,
+// stop slaves, clear GTID). ftwrl, when true, takes a short FLUSH TABLES WITH READ
+// LOCK on the current master to freeze writes for a consistent cut before its RESET
+// MASTER, then UNLOCKs — the unsafe bootstrap-repli-ftwrl rejoin path.
+func (cluster *Cluster) BootstrapReplicationCleanup(ftwrl bool) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cleaning up replication on existing servers")
 	cluster.StateMachine.SetFailoverState()
+	oldMaster := cluster.GetMaster()
 	for _, server := range cluster.Servers {
 		err := server.Refresh()
 		if err != nil {
@@ -643,8 +648,20 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reset Master on server %s ", server.URL)
 
-		logs, err = dbhelper.ResetMaster(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
-		cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", config.LvlErr, "Reset Master on server %s %s", server.URL, err)
+		// unsafe bootstrap-repli-ftwrl: freeze the master with the PROVEN dedicated-session
+		// FreezeWithReadLock (not a hand-rolled pinned connection) for a consistent cut
+		// before RESET MASTER, then release. Only the master, only on request.
+		if ftwrl && oldMaster != nil && server.URL == oldMaster.URL {
+			if ferr := server.FreezeWithReadLock(); ferr != nil {
+				cluster.LogSQL("FLUSH TABLES WITH READ LOCK", ferr, server.URL, "BootstrapReplicationCleanup", config.LvlErr, "FTWRL freeze before reset master on %s failed: %s", server.URL, ferr)
+			}
+			logs, err = dbhelper.ResetMaster(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
+			cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", config.LvlErr, "Reset Master (FTWRL) on server %s %s", server.URL, err)
+			server.UnfreezeReadLock()
+		} else {
+			logs, err = dbhelper.ResetMaster(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
+			cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", config.LvlErr, "Reset Master on server %s %s", server.URL, err)
+		}
 		if cluster.Conf.Verbose {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop all slaves or stop slave %s ", server.URL)
 		}
@@ -676,7 +693,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 	return nil
 }
 
-func (cluster *Cluster) BootstrapReplication(clean bool) error {
+func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 
 	// default to master slave
 	var err error
@@ -687,7 +704,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 		return nil
 	}
 	if clean {
-		err := cluster.BootstrapReplicationCleanup()
+		err := cluster.BootstrapReplicationCleanup(ftwrl)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cleanup error %s", err)
 		}

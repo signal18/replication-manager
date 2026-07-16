@@ -33,6 +33,10 @@ import { selectMeetUIState } from '../../redux/memoize'
 import { clearClusters, getMonitoredData, setServerActiveStatus } from '../../redux/globalClustersSlice'
 import { globalClustersService } from '../../services/globalClustersService'
 
+// Rejoin outcomes that still need the operator — the header crash badge blinks
+// red while any crash carries one (mirrors backend crash.go RejoinResult codes).
+const REJOIN_FAILED = ['not-flashback-able', 'no-rejoin-method', 'failed', 'peer-unreachable']
+
 function Navbar({ username, user }) {
   const dispatch = useDispatch()
   const { theme } = useTheme()
@@ -210,6 +214,11 @@ function Navbar({ username, user }) {
                   <PopoverArrow />
                   <PopoverBody>
                     <RefreshCounter clusterName={clusterData?.name} />
+                    {monitor?.startTime && new Date(monitor.startTime).getFullYear() > 2000 && (
+                      <Text fontSize='xs' color='gray.500' mt={2} textAlign='center'>
+                        Started {new Date(monitor.startTime).toLocaleString()}
+                      </Text>
+                    )}
                     <Button
                       size='sm'
                       variant='outline'
@@ -251,6 +260,11 @@ function Navbar({ username, user }) {
                   <PopoverArrow />
                   <PopoverBody>
                     <RefreshCounter clusterName={clusterData?.name} />
+                    {monitor?.startTime && new Date(monitor.startTime).getFullYear() > 2000 && (
+                      <Text fontSize='xs' color='gray.500' mt={2} textAlign='center'>
+                        Started {new Date(monitor.startTime).toLocaleString()}
+                      </Text>
+                    )}
                     <Button
                       size='sm'
                       variant='outline'
@@ -330,20 +344,26 @@ function Navbar({ username, user }) {
                 onClick={() => setIsConfigModalOpen(true)}
                 showText={!isMobile}
               />
-              {(clusterData?.failoverHistory || []).length > 0 && (
-                <AlertBadge
-                  colorScheme={(clusterData?.failoverHistory || []).some((c) => c.deltaAnalyzed && !c.deltaFlashable) ? 'red' : 'purple'}
-                  icon={MdHistory}
-                  text='Crashes'
-                  count={(clusterData?.failoverHistory || []).length}
-                  bubbleStyle={{
-                    background: `var(--chakra-colors-${(clusterData?.failoverHistory || []).some((c) => c.deltaAnalyzed && !c.deltaFlashable) ? 'red' : 'purple'}-500)`,
-                    color: 'white',
-                  }}
-                  onClick={() => setIsCrashesModalOpen(true)}
-                  showText={!isMobile}
-                />
-              )}
+              {(clusterData?.failoverHistory || []).length > 0 && (() => {
+                const history = clusterData?.failoverHistory || []
+                const rejoinFailed = history.some((c) => REJOIN_FAILED.includes(c.rejoinResult))
+                const isRed = rejoinFailed || history.some((c) => c.deltaAnalyzed && !c.deltaFlashable)
+                return (
+                  <AlertBadge
+                    colorScheme={isRed ? 'red' : 'purple'}
+                    icon={MdHistory}
+                    text='Crashes'
+                    count={history.length}
+                    blink={rejoinFailed}
+                    bubbleStyle={{
+                      background: `var(--chakra-colors-${isRed ? 'red' : 'purple'}-500)`,
+                      color: 'white',
+                    }}
+                    onClick={() => setIsCrashesModalOpen(true)}
+                    showText={!isMobile}
+                  />
+                )
+              })()}
             </Flex>
           )}
 

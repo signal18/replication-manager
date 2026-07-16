@@ -584,7 +584,7 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 			return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "Topology", v3.ClusterAction_RT_UNSPECIFIED.String()).Err()
 		}
 		mycluster.BootstrapTopology(in.Topology.Legacy())
-		err = mycluster.BootstrapReplication(true)
+		err = mycluster.BootstrapReplication(true, false)
 	case v3.ClusterAction_CANCEL_ROLLING_REPROV:
 		err = mycluster.CancelRollingReprov()
 	case v3.ClusterAction_CANCEL_ROLLING_RESTART:
@@ -627,7 +627,7 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	case v3.ClusterAction_WAITDATABASES:
 		err = mycluster.WaitDatabaseCanConn()
 	case v3.ClusterAction_REPLICATION_CLEANUP:
-		err = mycluster.BootstrapReplicationCleanup()
+		err = mycluster.BootstrapReplicationCleanup(false)
 	}
 
 	if err != nil {

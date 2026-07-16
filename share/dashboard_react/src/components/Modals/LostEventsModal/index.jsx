@@ -1,15 +1,50 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton,
   Box, Text, Badge, Code, Button, Spinner,
   HStack, Alert, AlertIcon, Tabs, TabList, TabPanels, Tab, TabPanel
 } from '@chakra-ui/react'
+import { keyframes } from '@emotion/react'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
+import RMButton from '../../RMButton'
 import { clusterService } from '../../../services/clusterService'
 import { acquireAutoReloadPause, releaseAutoReloadPause } from '../../../utility/autoReloadPause'
 
 const PAGE_BYTES = 262144
+
+// Blink for a FAILED rejoin outcome (draws the eye to a crash needing action).
+const blink = keyframes`0%, 100% { opacity: 1 } 50% { opacity: 0.2 }`
+const REJOIN_FAILED = ['not-flashback-able', 'no-rejoin-method', 'failed', 'peer-unreachable']
+const REJOIN_LABEL = {
+  'success': 'Rejoined',
+  'no-divergence': 'Rejoined (no divergence)',
+  'not-flashback-able': 'Rejoin failed: not flashback-able',
+  'no-rejoin-method': 'Rejoin failed: no method',
+  'failed': 'Rejoin failed',
+  'peer-unreachable': 'Rejoin pending: peer unreachable'
+}
+
+// Operator rejoin methods — mirror the backend (crash.go). ALL are always offered:
+// the delta verdict informs, it does not gate (testing must not be limited). class
+// mirrors RejoinMethodClass: safety × duration, used to group the buttons.
+const REJOIN_METHODS = [
+  { id: 'flashback', label: 'Flashback', class: 'safe-short', help: 'Rewind the divergent row-DML tail and re-slave (reversible deltas only)' },
+  { id: 'reset-master-reslave', label: 'Reset master + re-slave', class: 'unsafe-short', help: 'RESET MASTER on this server to clear a stuck GTID/binlog position, then re-slave — only valid when the SQL thread was blocked by strict mode (unapplied); unsafe on a diverged old master', danger: true },
+  { id: 'rejoin-script', label: 'Custom rejoin script', class: 'safe-short', help: 'Run the operator autorejoin-script (behaviour is whatever the script does)' },
+  { id: 'logical-dump', label: 'Direct master dump', class: 'safe-long', help: 'mysqldump directly from the master, then re-slave' },
+  { id: 'logical-backup', label: 'Logical backup', class: 'safe-long', help: 'Restore from the logical backup, then re-slave' },
+  { id: 'physical-backup', label: 'Physical backup', class: 'safe-long', help: 'Restore from the physical backup, then re-slave' },
+  { id: 'ignore-delta-force', label: 'Ignore delta (force)', class: 'unsafe-short', help: 'DISCARD the divergent tail (DATA LOSS) and force re-slave', danger: true },
+  { id: 'bootstrap-repli-ftwrl', label: 'Bootstrap + FTWRL', class: 'unsafe-short', help: 'Re-bootstrap replication with a short FTWRL on the master before RESET MASTER (briefly locks the master)', danger: true }
+]
+
+// Ordered groups for the rejoin buttons (label + which class they hold).
+const REJOIN_GROUPS = [
+  { class: 'safe-short', label: 'Safe · fast' },
+  { class: 'safe-long', label: 'Safe · full reseed' },
+  { class: 'unsafe-short', label: 'Unsafe · fast' }
+]
 
 // Viewer for the LOST EVENTS of a server's last divergence: what the old
 // master wrote past the failover election point (forward pane), and — when
@@ -30,7 +65,27 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
   const [loading, setLoading] = useState(false)
   const emptyPane = { lines: [], nextPos: 0, eof: false, size: 0, started: false }
   const [panes, setPanes] = useState({ forward: { ...emptyPane }, flashback: { ...emptyPane } })
+  const [rejoining, setRejoining] = useState('')
+  const [rejoinMsg, setRejoinMsg] = useState(null)
+  const [methodStatus, setMethodStatus] = useState({}) // id -> {available, reason}
   const pauseRef = useRef(false)
+  // Preserve scroll across re-renders/refreshes (like the chat): the pane's DOM node
+  // and its last scrollTop per file, restored after each render.
+  const scrollNodes = useRef({})
+  const scrollTops = useRef({})
+
+  const doRejoin = useCallback((m) => {
+    if (m.danger && !window.confirm(`${m.label} on ${server?.host}:${server?.port}?\n\nThis is an UNSAFE rejoin — ${m.help}. It cannot be undone.`)) {
+      return
+    }
+    setRejoining(m.id)
+    setRejoinMsg(null)
+    clusterService
+      .rejoinCluster(clusterName, m.id)
+      .then(() => setRejoinMsg({ ok: true, text: `Rejoin armed via "${m.label}" — the next monitor tick runs it (one attempt). Watch the server state and this viewer for the outcome.` }))
+      .catch((err) => setRejoinMsg({ ok: false, text: err?.response?.data || err?.message || 'Rejoin request failed' }))
+      .finally(() => setRejoining(''))
+  }, [clusterName, server?.id, server?.host, server?.port])
 
   const loadPage = useCallback(
     (file, pos) => {
@@ -41,6 +96,11 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
           const data = res.data
           setCrash(data.crash)
           setNoCrash(false)
+          if (Array.isArray(data.rejoinMethods)) {
+            const map = {}
+            data.rejoinMethods.forEach((m) => { map[m.method] = { available: m.available, reason: m.reason } })
+            setMethodStatus(map)
+          }
           if (data.page) {
             setPanes((prev) => ({
               ...prev,
@@ -90,21 +150,33 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
     }
   }, [isOpen, loadPage])
 
+  // Restore each pane's scroll position after a render (Load more / refresh), so the
+  // operator isn't yanked back to the top — mirrors the chat's scroll preservation.
+  useLayoutEffect(() => {
+    for (const file of Object.keys(scrollNodes.current)) {
+      const el = scrollNodes.current[file]
+      if (el && scrollTops.current[file] != null) el.scrollTop = scrollTops.current[file]
+    }
+  }, [panes])
+
   const renderPane = (file) => {
     const pane = panes[file]
     return (
       <Box>
         <Code
           as='pre'
+          ref={(el) => { scrollNodes.current[file] = el }}
+          onScroll={(e) => { scrollTops.current[file] = e.currentTarget.scrollTop }}
           display='block'
           p={2}
           fontSize='xs'
           bg={isLight ? 'gray.50' : 'blackAlpha.400'}
           whiteSpace='pre'
           overflowX='auto'
-          maxH='50vh'
+          height='55vh'
           overflowY='auto'
           borderRadius='md'
+          sx={{ overscrollBehavior: 'contain' }}
         >
           {pane.lines.join('\n') || (pane.started && pane.eof ? '-- empty --' : '')}
         </Code>
@@ -153,6 +225,15 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
                 ) : (
                   <Badge variant={badgeVariant} colorScheme='orange'>Not analyzed</Badge>
                 )}
+                {crash.rejoinResult && (
+                  <Badge
+                    variant={badgeVariant}
+                    colorScheme={REJOIN_FAILED.includes(crash.rejoinResult) ? 'red' : 'green'}
+                    animation={REJOIN_FAILED.includes(crash.rejoinResult) ? `${blink} 1s ease-in-out infinite` : undefined}
+                  >
+                    {REJOIN_LABEL[crash.rejoinResult] || crash.rejoinResult}
+                  </Badge>
+                )}
                 <Badge variant={badgeVariant}>{crash.deltaTransactions} transactions</Badge>
                 <Badge variant={badgeVariant}>{crash.deltaRowEvents} row events</Badge>
                 {crash.deltaDdl > 0 && <Badge variant={badgeVariant} colorScheme='red'>{crash.deltaDdl} DDL</Badge>}
@@ -183,8 +264,49 @@ function LostEventsModal({ isOpen, closeModal, clusterName, server }) {
             </>
           ) : null}
         </ModalBody>
-        <ModalFooter>
-          <Button variant='ghost' onClick={closeModal}>Close</Button>
+        <ModalFooter flexDirection='column' alignItems='stretch' gap={2}>
+          {crash && (
+            <Box>
+              <Text fontSize='xs' mb={1} opacity={0.8}>Rejoin {server?.host}:{server?.port} — pick a method (all runnable; the verdict only informs):</Text>
+              {REJOIN_GROUPS.map((g) => {
+                const methods = REJOIN_METHODS.filter((m) => m.class === g.class)
+                if (methods.length === 0) return null
+                return (
+                  <Box key={g.class} mb={1.5}>
+                    <Text fontSize='2xs' textTransform='uppercase' letterSpacing='wide' opacity={0.6} mb={0.5}>{g.label}</Text>
+                    <HStack spacing={2} flexWrap='wrap'>
+                      {methods.map((m) => {
+                        const st = methodStatus[m.id]
+                        const unavailable = st && st.available === false
+                        return (
+                          <RMButton
+                            key={m.id}
+                            size='small'
+                            colorScheme={m.danger ? 'red' : undefined}
+                            isLoading={rejoining === m.id}
+                            isDisabled={rejoining !== '' || unavailable}
+                            onClick={() => doRejoin(m)}
+                            title={unavailable ? st.reason : m.help}
+                          >
+                            {m.label}
+                          </RMButton>
+                        )
+                      })}
+                    </HStack>
+                  </Box>
+                )
+              })}
+              {rejoinMsg && (
+                <Alert status={rejoinMsg.ok ? 'success' : 'error'} borderRadius='md' mt={2} py={1}>
+                  <AlertIcon />
+                  <Text fontSize='sm'>{rejoinMsg.text}</Text>
+                </Alert>
+              )}
+            </Box>
+          )}
+          <HStack justify='flex-end'>
+            <Button variant='ghost' onClick={closeModal}>Close</Button>
+          </HStack>
         </ModalFooter>
       </ModalContent>
     </Modal>

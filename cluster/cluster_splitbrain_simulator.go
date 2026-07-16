@@ -6,6 +6,7 @@ package cluster
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -102,17 +103,166 @@ func (cluster *Cluster) SimulateArbitratorFailureAll(duration time.Duration) {
 	}
 }
 
+// SimulateMinority marks THIS instance the minority side of the partition, on every
+// cluster it drives (a real partition isolates the whole DC at once, like
+// SimulateArbitratorFailureAll). While armed the arbitrator link reads as severed
+// (IsArbitratorFailureSimulated), so the minority cannot confirm authority and yields to
+// standby while the majority side fails over. Timed like every other cut — a real outage
+// resolves too, it is just a question of time: the simulation ends when all cuts time
+// out, or earlier on explicit restore.
+func (cluster *Cluster) SimulateMinority(duration time.Duration) {
+	until := sbBoundedUntil(duration)
+	armed := 0
+	for _, c := range cluster.clusterList {
+		atomic.StoreInt64(&c.sbMinorityUntil, until)
+		armed++
+	}
+	if armed == 0 { // single-cluster / unit-test context: at least arm the receiver
+		atomic.StoreInt64(&cluster.sbMinorityUntil, until)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "SPLITBRAIN SIMULATION: this instance marked minority side, auto-restore in %ds", sbRemaining(until))
+}
+
 // SimulateMasterFailure severs only this cluster's connection to the MASTER on this
 // instance (slaves stay reachable). Used when the master is colocated on the
 // isolated/minority side: the majority instance loses the master but keeps
 // its slave to promote.
 func (cluster *Cluster) SimulateMasterFailure(duration time.Duration) {
-	atomic.StoreInt64(&cluster.sbMasterFailUntil, sbBoundedUntil(duration))
 	mst := ""
 	if cluster.GetMaster() != nil {
 		mst = cluster.GetMaster().URL
 	}
+	// Pin the frozen host ONCE, on the first arm. Re-arms (the freeze API re-fires
+	// per tick during the split) only extend the timer — so the cut can NOT migrate
+	// to the promoted replica when a failover moves GetMaster().
+	if !cluster.IsMasterFailureSimulated() {
+		cluster.sbMasterFailURL.Store(mst)
+	}
+	atomic.StoreInt64(&cluster.sbMasterFailUntil, sbBoundedUntil(duration))
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "SPLITBRAIN SIMULATION: master connection cut for cluster %s (master %s)", cluster.Name, mst)
+}
+
+// SimulateServerFailure severs this instance's DB link to ONE server, pinned by URL —
+// the data-plane counterpart of SimulateMasterFailure for NON-master hosts. The minority
+// scenario uses it (op 5/5) to also lose the MAJORITY-side databases: a real partition
+// cuts the wire in both directions, so the minority must see the remote slave genuinely
+// Failed (firing the real Failed->up rejoin trigger at resolve), not merely untrusted.
+// Timed like every other cut.
+func (cluster *Cluster) SimulateServerFailure(url string, duration time.Duration) {
+	cluster.sbServerFailMu.Lock()
+	if cluster.sbServerFailURLs == nil {
+		cluster.sbServerFailURLs = make(map[string]int64)
+	}
+	cluster.sbServerFailURLs[url] = sbBoundedUntil(duration)
+	cluster.sbServerFailMu.Unlock()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "SPLITBRAIN SIMULATION: server connection cut for cluster %s (server %s)", cluster.Name, url)
+}
+
+func (cluster *Cluster) isServerFailureSimulated(host string) bool {
+	cluster.sbServerFailMu.Lock()
+	defer cluster.sbServerFailMu.Unlock()
+	return sbActive(cluster.sbServerFailURLs[host])
+}
+
+// simulatedServerFailures returns the URLs of the per-host cuts currently live.
+func (cluster *Cluster) simulatedServerFailures() []string {
+	cluster.sbServerFailMu.Lock()
+	defer cluster.sbServerFailMu.Unlock()
+	var urls []string
+	for url, until := range cluster.sbServerFailURLs {
+		if sbActive(until) {
+			urls = append(urls, url)
+		}
+	}
+	sort.Strings(urls)
+	return urls
+}
+
+// SimulateSlaveIOThreadStop is the ONLY sim op with a real DB side effect: it issues a
+// genuine STOP SLAVE IO_THREAD on a majority-side slave (op 5/6) so the cross-partition
+// replication channel truly starves and a real divergent tail can form — a flag could not
+// produce that. Because it is real, it is TRACKED (unlike the flag-only cuts, which just go
+// inert): a stopped io_thread never restarts itself, so without this record the slave would
+// be stranded in SlaveErr with nothing knowing it was simulation-induced. The record drives
+// auto-restore (RestoreSimulatedSlaveIOThreads) and the VSPLIT0007 marker.
+func (cluster *Cluster) SimulateSlaveIOThreadStop(server *ServerMonitor, duration time.Duration) {
+	if server == nil {
+		return
+	}
+	if logs, err := server.StopSlaveIOThread(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "SPLITBRAIN SIMULATION: could not stop io_thread on %s: %s (%s)", server.URL, err, logs)
+		return
+	}
+	until := sbBoundedUntil(duration)
+	cluster.sbServerFailMu.Lock()
+	if cluster.sbSlaveIOStoppedURLs == nil {
+		cluster.sbSlaveIOStoppedURLs = make(map[string]int64)
+	}
+	cluster.sbSlaveIOStoppedURLs[server.URL] = until
+	cluster.sbServerFailMu.Unlock()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "SPLITBRAIN SIMULATION: io_thread stopped on %s for cluster %s (auto-restore in %ds)", server.URL, cluster.Name, sbRemaining(until))
+}
+
+// simulatedSlaveIOStops returns the URLs whose io_thread the sim stopped and still holds.
+func (cluster *Cluster) simulatedSlaveIOStops() []string {
+	cluster.sbServerFailMu.Lock()
+	defer cluster.sbServerFailMu.Unlock()
+	var urls []string
+	for url, until := range cluster.sbSlaveIOStoppedURLs {
+		if sbActive(until) {
+			urls = append(urls, url)
+		}
+	}
+	sort.Strings(urls)
+	return urls
+}
+
+// RestoreSimulatedSlaveIOThreads restarts (START SLAVE) every io_thread the sim stopped and
+// forgets it — those whose bounded timer has EXPIRED, or ALL when forceAll is set (explicit
+// restore / test cleanup). Called per tick with forceAll=false so a real stopped io_thread
+// auto-heals on its own timer exactly like the flag-only cuts, with no operator action and no
+// lingering SlaveErr. The DB restart runs OUTSIDE the lock; entries are removed under the lock
+// first so a concurrent tick cannot double-restart the same host.
+func (cluster *Cluster) RestoreSimulatedSlaveIOThreads(forceAll bool) {
+	cluster.sbServerFailMu.Lock()
+	var due []string
+	for url, until := range cluster.sbSlaveIOStoppedURLs {
+		if forceAll || !sbActive(until) {
+			due = append(due, url)
+		}
+	}
+	for _, url := range due {
+		delete(cluster.sbSlaveIOStoppedURLs, url)
+	}
+	cluster.sbServerFailMu.Unlock()
+	for _, url := range due {
+		sv := cluster.GetServerFromURL(url)
+		if sv == nil {
+			continue
+		}
+		if logs, err := sv.StartSlave(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "SPLITBRAIN SIMULATION: could not restart io_thread on %s: %s (%s)", url, err, logs)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "SPLITBRAIN SIMULATION: io_thread restarted on %s (simulated cut resolved)", url)
+		}
+	}
+}
+
+// SimulatedOnFreezeDBAccess reports whether the split-brain sim should freeze DB
+// access to host. The frozen host is PINNED at SimulateMasterFailure /
+// SimulateServerFailure time and checked by URL, so it does NOT migrate with
+// GetMaster(): a failover promoting a replica must not shift the cut onto the new
+// master (that let the majority see the isolated old master reappear and revert its
+// own election).
+func (cluster *Cluster) SimulatedOnFreezeDBAccess(host string) bool {
+	if cluster.isServerFailureSimulated(host) {
+		return true
+	}
+	if !cluster.IsMasterFailureSimulated() {
+		return false
+	}
+	pinned, _ := cluster.sbMasterFailURL.Load().(string)
+	return pinned != "" && host == pinned
 }
 
 // RestoreSplitBrainSimulation clears all simulated cuts on this cluster immediately.
@@ -123,6 +273,14 @@ func (cluster *Cluster) RestoreSplitBrainSimulation() {
 	atomic.StoreInt64(&cluster.sbDatabaseFailUntil, 0)
 	atomic.StoreInt64(&cluster.sbArbitratorFailUntil, 0)
 	atomic.StoreInt64(&cluster.sbMasterFailUntil, 0)
+	cluster.sbMasterFailURL.Store("")
+	atomic.StoreInt64(&cluster.sbMinorityUntil, 0)
+	cluster.sbServerFailMu.Lock()
+	cluster.sbServerFailURLs = nil
+	cluster.sbServerFailMu.Unlock()
+	// The io_thread stops are a REAL DB change, so clearing a flag is not enough — actively
+	// restart every one (START SLAVE) before forgetting them, or the slaves stay in SlaveErr.
+	cluster.RestoreSimulatedSlaveIOThreads(true)
 }
 
 func (cluster *Cluster) IsDatabaseFailureSimulated() bool {
@@ -130,7 +288,9 @@ func (cluster *Cluster) IsDatabaseFailureSimulated() bool {
 }
 
 func (cluster *Cluster) IsArbitratorFailureSimulated() bool {
-	return sbActive(atomic.LoadInt64(&cluster.sbArbitratorFailUntil))
+	// The minority marker implies a severed arbitrator link: the minority cannot
+	// confirm authority for as long as the simulated outage holds.
+	return sbActive(atomic.LoadInt64(&cluster.sbArbitratorFailUntil)) || cluster.IsSplitBrainSimulatorMinoritySide()
 }
 
 func (cluster *Cluster) IsMasterFailureSimulated() bool {
@@ -139,7 +299,40 @@ func (cluster *Cluster) IsMasterFailureSimulated() bool {
 
 // IsSplitBrainSimulationActive reports whether any simulated cut is live on this cluster.
 func (cluster *Cluster) IsSplitBrainSimulationActive() bool {
-	return cluster.IsDatabaseFailureSimulated() || cluster.IsArbitratorFailureSimulated() || cluster.IsMasterFailureSimulated()
+	return cluster.IsDatabaseFailureSimulated() || cluster.IsArbitratorFailureSimulated() || cluster.IsMasterFailureSimulated() || len(cluster.simulatedServerFailures()) > 0 || len(cluster.simulatedSlaveIOStops()) > 0
+}
+
+// IsSplitBrainSimulatorRunning reports whether any simulated cut is live.
+func (cluster *Cluster) IsSplitBrainSimulatorRunning() bool {
+	return cluster.IsSplitBrainSimulationActive()
+}
+
+// IsSplitBrainSimulatorActiveSide reports whether THIS repman is the side the sim chose
+// to block from the master (the active/majority side that will fail over). No identity
+// check is needed: simulator state is process-local and never replicates, so the master
+// cut being armed here means this instance is the one that received the freeze API. The
+// minority forms on the OTHER partition, which keeps the master.
+func (cluster *Cluster) IsSplitBrainSimulatorActiveSide() bool {
+	return cluster.IsMasterFailureSimulated()
+}
+
+// IsSplitBrainSimulatorMinoritySide reports whether the test (SimulateMinority) marked
+// THIS repman minority — a local call is all it takes to pick the side, since simulator
+// state never replicates. Consequence: it cuts its own arbitrator link and yields to
+// standby, while the majority (master-frozen side) fails over.
+func (cluster *Cluster) IsSplitBrainSimulatorMinoritySide() bool {
+	return sbActive(atomic.LoadInt64(&cluster.sbMinorityUntil))
+}
+
+// IsSplitBrainSimulatorEnabledSlaveCanReachMaster reports whether a master/db cut is
+// simulated in the mode where the slave->master DB wire stays LIVE (this app-level sim
+// only darkens repman's VIEW of the master). While true, the slave keeps replicating
+// and receiving heartbeats — which would otherwise look like a false positive and veto
+// the failover forever — so the false-positive detection MUST be disabled while it
+// holds. It is surfaced as VSPLIT0005 (AssertSplitBrainSimulationState) so the disable is
+// visible opening/closing in the state timeline.
+func (cluster *Cluster) IsSplitBrainSimulatorEnabledSlaveCanReachMaster() bool {
+	return cluster.IsMasterFailureSimulated() || cluster.IsDatabaseFailureSimulated()
 }
 
 // SplitBrainSimulationRemaining returns the seconds left before the cluster's cuts auto-restore.
@@ -151,6 +344,21 @@ func (cluster *Cluster) SplitBrainSimulationRemaining() int64 {
 	if m := sbRemaining(atomic.LoadInt64(&cluster.sbMasterFailUntil)); m > d {
 		d = m
 	}
+	if n := sbRemaining(atomic.LoadInt64(&cluster.sbMinorityUntil)); n > d {
+		d = n
+	}
+	cluster.sbServerFailMu.Lock()
+	for _, until := range cluster.sbServerFailURLs {
+		if s := sbRemaining(until); s > d {
+			d = s
+		}
+	}
+	for _, until := range cluster.sbSlaveIOStoppedURLs {
+		if s := sbRemaining(until); s > d {
+			d = s
+		}
+	}
+	cluster.sbServerFailMu.Unlock()
 	return d
 }
 
@@ -166,13 +374,56 @@ func (cluster *Cluster) SplitBrainSimulationDescription() string {
 	if cluster.IsMasterFailureSimulated() {
 		cuts = append(cuts, "master")
 	}
+	if cluster.IsSplitBrainSimulatorMinoritySide() {
+		cuts = append(cuts, "minority")
+	}
+	for _, url := range cluster.simulatedServerFailures() {
+		cuts = append(cuts, "server:"+url)
+	}
+	for _, url := range cluster.simulatedSlaveIOStops() {
+		cuts = append(cuts, "io-stop:"+url)
+	}
 	return strings.Join(cuts, ",")
 }
 
 // AssertSplitBrainSimulationState raises the standing split-brain warning while any cut is live so
 // the simulation is impossible to forget. Called per tick.
 func (cluster *Cluster) AssertSplitBrainSimulationState() {
-	if cluster.IsSplitBrainSimulationActive() {
-		cluster.SetState("WARN0181", state.State{ErrType: "WARNING", ErrKey: "WARN0181", ErrDesc: fmt.Sprintf(clusterError["WARN0181"], cluster.SplitBrainSimulationDescription(), cluster.SplitBrainSimulationRemaining()), ErrFrom: "TEST"})
+	if cluster.IsSplitBrainSimulatorRunning() {
+		cluster.SetState("VSPLIT0001", state.State{ErrType: "WARNING", ErrKey: "VSPLIT0001", ErrDesc: fmt.Sprintf(clusterError["VSPLIT0001"], cluster.SplitBrainSimulationDescription(), cluster.SplitBrainSimulationRemaining()), ErrFrom: "TEST"})
+	}
+	// VSPLIT0003 — the DB-host-blocked state prints on the side the sim chose to block
+	// (the active/majority side), one per frozen host, so the timeline shows exactly
+	// which host is cut and from which side.
+	if cluster.IsSplitBrainSimulatorActiveSide() {
+		for _, sv := range cluster.Servers {
+			if sv != nil && cluster.SimulatedOnFreezeDBAccess(sv.URL) {
+				cluster.SetState("VSPLIT0003", state.State{ErrType: "WARNING", ErrKey: "VSPLIT0003", ErrDesc: fmt.Sprintf(clusterError["VSPLIT0003"], cluster.Conf.ArbitrationSasUniqueId, sv.URL), ErrFrom: "TEST", ServerUrl: sv.URL})
+			}
+		}
+	}
+	// VSPLIT0006 — per-host data-plane cut (op 5/5): this side is blocked from a
+	// majority-side database, one state per frozen host.
+	for _, url := range cluster.simulatedServerFailures() {
+		cluster.SetState("VSPLIT0006", state.State{ErrType: "WARNING", ErrKey: "VSPLIT0006", ErrDesc: fmt.Sprintf(clusterError["VSPLIT0006"], url), ErrFrom: "TEST", ServerUrl: url})
+	}
+	// Auto-heal first: restart any sim-stopped io_thread whose bounded timer expired, so a
+	// real STOP SLAVE IO_THREAD (op 5/6) self-resolves on its timer like the flag-only cuts.
+	cluster.RestoreSimulatedSlaveIOThreads(false)
+	// VSPLIT0007 — the io_thread the sim REALLY stopped (op 5/6), one state per host that is
+	// still cut, so a simulation-induced SlaveErr is never mistaken for a genuine failure.
+	for _, url := range cluster.simulatedSlaveIOStops() {
+		cluster.SetState("VSPLIT0007", state.State{ErrType: "WARNING", ErrKey: "VSPLIT0007", ErrDesc: fmt.Sprintf(clusterError["VSPLIT0007"], url), ErrFrom: "TEST", ServerUrl: url})
+	}
+	// VSPLIT0004 — the arbitrator link reads as severed on this side (timed cut or
+	// latched minority): it cannot confirm authority and yields to standby while the
+	// other partition fails over.
+	if cluster.IsArbitratorFailureSimulated() {
+		cluster.SetState("VSPLIT0004", state.State{ErrType: "WARNING", ErrKey: "VSPLIT0004", ErrDesc: clusterError["VSPLIT0004"], ErrFrom: "TEST"})
+	}
+	// VSPLIT0005 — slave still reaches master, so the ERR00028 false-positive guard is
+	// disabled; track it open/close so the suppression is visible.
+	if cluster.IsSplitBrainSimulatorEnabledSlaveCanReachMaster() {
+		cluster.SetState("VSPLIT0005", state.State{ErrType: "WARNING", ErrKey: "VSPLIT0005", ErrDesc: clusterError["VSPLIT0005"], ErrFrom: "TEST"})
 	}
 }

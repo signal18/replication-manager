@@ -19,6 +19,7 @@ export const clusterService = {
   getShardSchema,
   getQueryRules,
   getServerLostEvents,
+  rejoinCluster,
 
   // Restic management APIs
   getResticSnapshot,
@@ -279,6 +280,18 @@ function getServerLostEvents(clusterName, serverId, { file = 'forward', pos = 0,
   return getApi(baseURL).get(
     `clusters/${clusterName}/servers/${serverId}/lost-events?file=${file}&pos=${pos}&bytes=${bytes}${tsParam}`
   )
+}
+
+// Destructive rejoin methods use the /actions/unsafe-rejoin verb (needs the
+// cluster-rejoin-unsafe grant); safe methods use /actions/rejoin. Keep in sync with
+// the backend crash.go IsUnsafeRejoinMethod.
+const UNSAFE_REJOIN_METHODS = ['ignore-delta-force', 'bootstrap-repli-ftwrl', 'reset-master-reslave']
+
+// Explicit operator rejoin — a CLUSTER-level action. No server: the cluster resolves
+// the diverged master from its own crash history. Verb carries the grant tier.
+function rejoinCluster(clusterName, method, baseURL) {
+  const verb = UNSAFE_REJOIN_METHODS.includes(method) ? 'unsafe-rejoin' : 'rejoin'
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/${verb}/${method}`)
 }
 
 function getJobs(clusterName, baseURL) {

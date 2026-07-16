@@ -78,6 +78,45 @@ func (cluster *Cluster) HasValidBackup() bool {
 	return logical || physical
 }
 
+// HasCatalogBackupForRejoin reports, per method, whether a backup usable for a
+// REJOIN exists ANYWHERE — any node, any repo, any location — by running the
+// per-method autorejoin selector (autorejoin-backup-selector-{logical,physical})
+// against the full backup catalog. It is the rejoin-scoped counterpart to
+// HasValidBackup: HasValidBackup is master-scoped (cookie on the current master)
+// and drives the WARN0111/0112 orchestrator contract, while this is catalog-
+// scoped and drives what a rejoin is allowed to do. After a failover the freshly
+// promoted master has no backup, but the OLD master (or restic/S3) still does —
+// so this stays true and justifies allowing the rejoin. Sets
+// IsValidRejoinBackup{Logical,Physical} and asserts WARN0190/WARN0191 (ErrFrom
+// "JOIN" — rejoin-scoped, vs HasValidBackup's TOPO) when the catalog has nothing.
+func (cluster *Cluster) HasCatalogBackupForRejoin() (bool, bool) {
+	catalog := cluster.buildBackupCatalog()
+	ctx := ResolveContext{}
+	if m := cluster.GetMaster(); m != nil {
+		ctx.MasterURL = m.URL
+	}
+
+	logical := ResolveRestore(catalog, cluster.getAutorejoinBackupSelector("logical"), ctx) != nil
+	physical := ResolveRestore(catalog, cluster.getAutorejoinBackupSelector("physical"), ctx) != nil
+
+	cluster.IsValidRejoinBackupLogical = logical
+	cluster.IsValidRejoinBackupPhysical = physical
+
+	if logical {
+		cluster.StateMachine.DeleteState("WARN0190")
+	} else {
+		cluster.SetState("WARN0190", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0190"], ErrFrom: "JOIN"})
+	}
+
+	if physical {
+		cluster.StateMachine.DeleteState("WARN0191")
+	} else {
+		cluster.SetState("WARN0191", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0191"], ErrFrom: "JOIN"})
+	}
+
+	return logical, physical
+}
+
 func (cluster *Cluster) HasSchedulerEntry(myname string) bool {
 	if _, ok := cluster.Schedule[myname]; ok {
 		return true

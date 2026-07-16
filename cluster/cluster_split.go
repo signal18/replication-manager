@@ -52,6 +52,13 @@ func (cluster *Cluster) ArbitratorHandler() {
 	cluster.AssertSplitBrainSimulationState()
 	if cluster.Conf.Arbitration {
 		if cluster.IsSplitBrain {
+			if !cluster.IsSplitBrainBck {
+				// Remember when THIS split brain began (calm->split edge). Used to
+				// guard the resolve-time peer-crash fetch (accept only a crash from
+				// this split, not a stale failoverHistory entry) and a useful
+				// diagnostic on its own.
+				cluster.SplitBrainStartTs = time.Now().Unix()
+			}
 			if !cluster.Conf.IsEligibleForArbitration() {
 				cluster.SetState("ERR00104", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00104"], ErrFrom: "ARB"})
 				cluster.IsSplitBrainBck = cluster.IsSplitBrain
@@ -85,6 +92,28 @@ func (cluster *Cluster) ArbitratorHandler() {
 			if m := cluster.GetMaster(); m != nil && m.IsFrozen() {
 				m.UnfreezeReadLock()
 			}
+			// Prefetch the peer's election verdict NOW, before the first
+			// post-resolve tick processes any returning server: the Failed->up
+			// rejoin trigger fires within seconds of resolve and needs the
+			// materialized crash (URL = old master, ElectedMasterURL = winner)
+			// to act. In the 2026-07-14 23:00 run RejoinMaster entered with
+			// master nil and NO crash — topology's peer-designation fetched it
+			// 3s too late — so it did nothing and the old master was left as a
+			// second read-write master.
+			if _, err := cluster.fetchMasterFromPeer(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArbitration, config.LvlDbg, "No peer elected master to prefetch at split resolve: %s", err)
+			}
+		}
+		// Recovery / fleet-unlatch: IsFailedArbitrator (-> ERR00055 "Arbitrator
+		// unreachable", which also fails the ArbitratorAlive failover check and makes
+		// TopologyDiscover treat the cluster as a permanent minority) is otherwise only
+		// cleared by a SUCCESSFUL election, which runs only while IsSplitBrain. A cluster
+		// whose arbitrator link was cut but that never entered split brain (e.g. the sim's
+		// fleet-wide SimulateArbitratorFailureAll on every cluster) would stay latched
+		// forever after the cut expires. Once we are NOT split and no arbitrator cut is
+		// simulated, clear the latch so the cluster recovers on its own.
+		if !cluster.IsSplitBrain && !cluster.IsArbitratorFailureSimulated() && cluster.IsFailedArbitrator {
+			cluster.IsFailedArbitrator = false
 		}
 		cluster.IsSplitBrainBck = cluster.IsSplitBrain
 	}
@@ -141,6 +170,171 @@ func (cl *Cluster) arbitratorMinorityFailSafe(reason string) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Minority fail-safe: yielding cluster %s to standby", cl.GetName())
 		cl.SetActiveStatus(ConstMonitorStandby)
 	}
+	// Track & re-evaluate (enforced every tick until resolve). GATED: only when we are
+	// genuinely the isolated minority of a split — IsSplitBrain (durable, set by
+	// ArbitratorHandler) AND we have already yielded to Standby AND master-slave target.
+	// Without this gate the API path (ForceArbitratorElection) could reach this failsafe
+	// on a HEALTHY cluster when the arbitrator is momentarily unreachable and wrongly
+	// reset it. The minority cannot trust its own view: keep the master it KNOWS marked
+	// as the frozen OLD master (StandAlone), enforce Suspect on every OTHER reachable
+	// node (it cannot confirm their real role while isolated), then nil the master
+	// pointer so the cluster REDISCOVERS the real topology at resolve (the peer-fetch
+	// relearns the winner). Suspect is a state srv.go already demotes (Suspect ->
+	// StandAlone once a master is re-established), so no state-machine change is needed.
+	// Idempotent: SetState is a no-op when already in the target state.
+	if cl.IsSplitBrain && cl.Status == ConstMonitorStandby && cl.GetTopologyFromConf() == config.TopoMasterSlave {
+		if master := cl.GetMaster(); master != nil {
+			if master.State != stateUnconn {
+				master.SetState(stateUnconn)
+			}
+			// The SLAVES stay in the equation — do NOT hold them Suspect (2026-07-14
+			// evening fix, was added same morning by 7fdd97a29). Suspecting them
+			// emptied cluster.slaves, which killed the whole master-autodetect block
+			// (len(slaves)>0) INCLUDING FailedMasterDiscovery — the normal lifecycle
+			// that keeps a failed old master identified as "the master, Failed" via
+			// the slaves' master_host, so its Failed->up edge drives the rejoin. The
+			// minority is already prevented from inferring/promoting mid-split by the
+			// !IsFailedArbitrator gates on that block; the slaves' live states and
+			// replication config are needed intact for the reconciliation at resolve.
+			cl.master = nil
+		}
+	}
+}
+
+// getClusterTestCredentials returns a local user holding the cluster-test grant,
+// used to authenticate to the arbitration peer. Cluster-scoped — reads this
+// cluster's own APIUsers. PREFERS "admin": cl.APIUsers is a map (random iteration
+// order), and service accounts like sysops-cloud18 (git-sync) also carry the
+// grant but lock out after failed auth — so a random pick flaps the peer login
+// between working (admin) and 401 (locked service account). Deterministic admin
+// preference removes the flap.
+func (cl *Cluster) getClusterTestCredentials() (string, string, bool) {
+	var fbUser, fbPass string
+	for _, u := range cl.APIUsers {
+		if u.Grants == nil || !u.Grants[config.GrantClusterTest] || u.Password == "" {
+			continue
+		}
+		if u.User == "admin" {
+			return u.User, u.Password, true
+		}
+		if fbUser == "" {
+			fbUser, fbPass = u.User, u.Password
+		}
+	}
+	if fbUser != "" {
+		return fbUser, fbPass, true
+	}
+	return "", "", false
+}
+
+// fetchMasterFromPeer asks the arbitration peer (the split-brain winner) who the
+// real elected master is, from the peer's crash record (crash.ElectedMasterURL).
+// CLUSTER-SCOPED and self-contained: it uses THIS cluster's own peer host
+// (cl.Conf.ArbitrationPeerHosts) and its own cluster-test credential — it never
+// goes through the server layer, so a single-repman / no-auto-failover cluster
+// simply has no peer and returns "" (the caller falls back to its own local
+// crash/topology). A node that sat out a split-brain as the minority can't trust
+// its own frozen topology nor the arbitrator (unreachable while isolated, stale
+// after) — but once the split resolves its peer link is back and the peer holds
+// the authoritative election result.
+func (cl *Cluster) fetchMasterFromPeer() (string, error) {
+	if cl.Conf.ArbitrationPeerHosts == "" {
+		return "", nil // no peer (single repman) — caller falls back to local
+	}
+	user, pass, ok := cl.getClusterTestCredentials()
+	if !ok {
+		return "", errors.New("no local cluster-test grant user to authenticate to peer")
+	}
+	peer := ensureScheme(strings.TrimSpace(strings.Split(cl.Conf.ArbitrationPeerHosts, ",")[0]))
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	loginBody, _ := json.Marshal(struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}{user, pass})
+	resp, err := client.Post(peer+"/api/login", "application/json", bytes.NewBuffer(loginBody))
+	if err != nil {
+		return "", err
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("peer login rejected (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var tok struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(body, &tok); err != nil || tok.Token == "" {
+		return "", errors.New("peer login returned no token")
+	}
+
+	// Read the peer's DURABLE failoverHistory, not the live crash list: the live
+	// cluster.Crashes/​topology/crashes is purged once the peer thinks the DBs are
+	// up, exactly when a record-less minority needs it, whereas failoverHistory
+	// (StoreLastN) keeps the record with all anchors.
+	req, err := http.NewRequest("GET", peer+"/api/clusters/"+cl.Name, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok.Token)
+	resp2, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	body2, _ := io.ReadAll(resp2.Body)
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("peer cluster (%d): %s", resp2.StatusCode, strings.TrimSpace(string(body2)))
+	}
+	var payload struct {
+		FailoverHistory []Crash `json:"failoverHistory"`
+	}
+	if err := json.Unmarshal(body2, &payload); err != nil {
+		return "", fmt.Errorf("peer failoverHistory parse: %w", err)
+	}
+	if len(payload.FailoverHistory) == 0 {
+		return "", nil // no crash on peer — caller falls back to local
+	}
+	last := payload.FailoverHistory[len(payload.FailoverHistory)-1]
+	// GUARD: only accept a crash produced by THIS split brain, never a stale
+	// failoverHistory entry from a previous run.
+	if cl.SplitBrainStartTs > 0 && last.UnixTimestamp < cl.SplitBrainStartTs {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Peer last crash ts %d predates this split brain (started %d) — ignoring as stale", last.UnixTimestamp, cl.SplitBrainStartTs)
+		return "", nil
+	}
+	if last.ElectedMasterURL == "" {
+		return "", nil
+	}
+	// Materialize the peer's crash locally so getCrashFromJoiner returns it and
+	// the diverged old master's rejoin has the anchor. Drop the peer-local delta
+	// paths and dir — THIS node captures its own delta and owns its own archive.
+	if cl.getCrashFromJoiner(last.URL) == nil {
+		mat := last
+		mat.DeltaArchive, mat.DeltaDecoded, mat.DeltaFlashbackDecoded, mat.ArchiveDir = "", "", "", ""
+		mat.RejoinResult, mat.RejoinResultTs = "", 0
+		cl.Crashes = append(cl.Crashes, &mat)
+		// Option B: write the crash to LOCAL disk the moment it is known — a
+		// crash-bin dir + crash.json (metadata, no binlog yet) — so the minority's
+		// disk reflects the crash immediately, synchronized before the rejoin.
+		// saveBinlog later fills the binlog INTO this same dir; finishRejoin stamps
+		// the result. LoadFailoverHistory then shows it on this node.
+		cl.ensureCrashArchive(&mat)
+		cl.LoadFailoverHistory()
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Materialized peer crash for %s (elected master %s) — wrote local archive %s", mat.URL, mat.ElectedMasterURL, mat.ArchiveDir)
+		// Pin the crashed old master to Failed the moment we materialize its crash.
+		// This fetch only runs on the ACTIVE node, so the node that will drive the
+		// rejoin is guaranteed to hold the Failed->up edge — closing the active-handoff
+		// race where the winner that witnessed the failure yielded active (calm-yield)
+		// before the edge landed and the new active never saw the failure. The server
+		// is reachable (parked StandAlone), so it recovers next tick with PrevState=
+		// Failed, which triggers RejoinMaster. Guarded on !IsMaster so the elected new
+		// master is never demoted.
+		if srv := cl.GetServerFromURL(mat.URL); srv != nil && !srv.IsMaster() {
+			srv.SetState(stateFailed)
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Pinned %s to Failed on crash materialization so its rejoin edge fires on this (active) node", mat.URL)
+		}
+	}
+	return last.ElectedMasterURL, nil
 }
 
 func (cl *Cluster) arbitratorElection() error {

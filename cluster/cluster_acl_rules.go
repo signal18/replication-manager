@@ -195,6 +195,10 @@ var clusterACLRules = []ACLRule{
 	// Cluster Actions
 	{"/actions/switchover", nil, []string{config.GrantClusterSwitchover}},
 	{"/actions/failover", nil, []string{config.GrantClusterFailover}},
+	// Operator manual rejoin (cluster action): safe verb needs cluster-failover; the unsafe
+	// verb needs cluster-failover AND cluster-rejoin-unsafe (RequiredGrants, like /actions/restart).
+	{"/actions/rejoin", nil, []string{config.GrantClusterFailover}},
+	{"/actions/unsafe-rejoin", []string{config.GrantClusterFailover, config.GrantClusterRejoinUnsafe}, nil},
 	{"/actions/send-email", nil, []string{config.GrantClusterAlert}},
 	{"/actions/send-alert", nil, []string{config.GrantClusterAlert}},
 	{"/actions/stop-traffic", nil, []string{config.GrantClusterTraffic}},
