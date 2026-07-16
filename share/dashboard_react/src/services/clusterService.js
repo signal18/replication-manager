@@ -38,6 +38,7 @@ export const clusterService = {
   resticCheckConfig,
   resticCopyRepo,
   resticWipeRepo,
+  resticCreateBucket,
 
   // Security / workload remediation APIs
   fixSecState,
@@ -975,6 +976,10 @@ function resticCopyRepo(clusterName, payload, baseURL) {
 
 function resticWipeRepo(clusterName, payload, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/restic/wipe`, payload)
+}
+
+function resticCreateBucket(clusterName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/restic/create-bucket`)
 }
 
 function fixSecState(clusterName, errKey, baseURL, tag) {

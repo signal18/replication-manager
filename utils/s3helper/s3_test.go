@@ -191,3 +191,162 @@ func TestEnsurePrefixMarkerCreatesWhenEmpty(t *testing.T) {
 		t.Fatalf("expected marker to be created")
 	}
 }
+
+// fakeBucketClient implements bucketAPI for EnsureBucket tests.
+type fakeBucketClient struct {
+	// headErrs is consumed in order across successive HeadBucket calls; the
+	// last entry is reused once exhausted. A nil entry means success.
+	headErrs      []error
+	headCalls     int
+	createErr     error
+	createCalls   int
+	createdConfig *types.CreateBucketConfiguration
+}
+
+func (f *fakeBucketClient) HeadBucket(ctx context.Context, params *s3.HeadBucketInput, optFns ...func(*s3.Options)) (*s3.HeadBucketOutput, error) {
+	idx := f.headCalls
+	if idx >= len(f.headErrs) {
+		idx = len(f.headErrs) - 1
+	}
+	f.headCalls++
+	if idx >= 0 && f.headErrs[idx] != nil {
+		return nil, f.headErrs[idx]
+	}
+	return &s3.HeadBucketOutput{}, nil
+}
+
+func (f *fakeBucketClient) CreateBucket(ctx context.Context, params *s3.CreateBucketInput, optFns ...func(*s3.Options)) (*s3.CreateBucketOutput, error) {
+	f.createCalls++
+	f.createdConfig = params.CreateBucketConfiguration
+	if f.createErr != nil {
+		return nil, f.createErr
+	}
+	return &s3.CreateBucketOutput{}, nil
+}
+
+func TestEnsureBucketEmptyName(t *testing.T) {
+	client := &fakeBucketClient{}
+	if _, err := ensureBucket(client, "  ", ""); err == nil {
+		t.Fatal("expected error for empty bucket name")
+	}
+	if client.headCalls != 0 || client.createCalls != 0 {
+		t.Fatalf("expected no S3 calls for empty bucket name, got head=%d create=%d", client.headCalls, client.createCalls)
+	}
+}
+
+func TestEnsureBucketExistingAccessible(t *testing.T) {
+	client := &fakeBucketClient{headErrs: []error{nil}}
+	created, err := ensureBucket(client, "mybucket", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if created {
+		t.Fatal("expected created=false for already-accessible bucket")
+	}
+	if client.createCalls != 0 {
+		t.Fatalf("expected no CreateBucket call, got %d", client.createCalls)
+	}
+}
+
+func TestEnsureBucketMissingCreates(t *testing.T) {
+	client := &fakeBucketClient{headErrs: []error{&smithy.GenericAPIError{Code: "NotFound"}}}
+	created, err := ensureBucket(client, "mybucket", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !created {
+		t.Fatal("expected created=true for missing bucket")
+	}
+	if client.createCalls != 1 {
+		t.Fatalf("expected one CreateBucket call, got %d", client.createCalls)
+	}
+}
+
+func TestEnsureBucketAccessDenied(t *testing.T) {
+	client := &fakeBucketClient{headErrs: []error{&smithy.GenericAPIError{Code: "Forbidden"}}}
+	if _, err := ensureBucket(client, "mybucket", ""); err == nil {
+		t.Fatal("expected access-denied error")
+	}
+	if client.createCalls != 0 {
+		t.Fatalf("expected no CreateBucket call on access denied, got %d", client.createCalls)
+	}
+}
+
+func TestEnsureBucketCreateBucketAlreadyOwnedByYou(t *testing.T) {
+	client := &fakeBucketClient{
+		headErrs:  []error{&smithy.GenericAPIError{Code: "NotFound"}},
+		createErr: &smithy.GenericAPIError{Code: "BucketAlreadyOwnedByYou"},
+	}
+	created, err := ensureBucket(client, "mybucket", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if created {
+		t.Fatal("expected created=false when BucketAlreadyOwnedByYou")
+	}
+}
+
+func TestEnsureBucketCreateBucketAlreadyExistsButAccessible(t *testing.T) {
+	// First HeadBucket (pre-create probe) reports missing; the race-recovery
+	// probe after BucketAlreadyExists reports accessible.
+	client := &fakeBucketClient{
+		headErrs:  []error{&smithy.GenericAPIError{Code: "NotFound"}, nil},
+		createErr: &smithy.GenericAPIError{Code: "BucketAlreadyExists"},
+	}
+	created, err := ensureBucket(client, "mybucket", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if created {
+		t.Fatal("expected created=false when bucket already exists and is accessible")
+	}
+}
+
+func TestEnsureBucketCreateBucketAlreadyExistsNotAccessible(t *testing.T) {
+	client := &fakeBucketClient{
+		headErrs:  []error{&smithy.GenericAPIError{Code: "NotFound"}, &smithy.GenericAPIError{Code: "Forbidden"}},
+		createErr: &smithy.GenericAPIError{Code: "BucketAlreadyExists"},
+	}
+	if _, err := ensureBucket(client, "mybucket", ""); err == nil {
+		t.Fatal("expected error when bucket already exists and is not accessible")
+	}
+}
+
+func TestEnsureBucketCreateBucketGenericError(t *testing.T) {
+	client := &fakeBucketClient{
+		headErrs:  []error{&smithy.GenericAPIError{Code: "NotFound"}},
+		createErr: &smithy.GenericAPIError{Code: "InternalError"},
+	}
+	if _, err := ensureBucket(client, "mybucket", ""); err == nil {
+		t.Fatal("expected error for generic CreateBucket failure")
+	}
+}
+
+func TestBucketLocationConfigurationUsEast1(t *testing.T) {
+	if cfg := bucketLocationConfiguration("us-east-1"); cfg != nil {
+		t.Fatalf("expected nil LocationConstraint for us-east-1, got %+v", cfg)
+	}
+	if cfg := bucketLocationConfiguration(""); cfg != nil {
+		t.Fatalf("expected nil LocationConstraint for empty region, got %+v", cfg)
+	}
+}
+
+func TestBucketLocationConfigurationOtherRegion(t *testing.T) {
+	cfg := bucketLocationConfiguration("eu-west-1")
+	if cfg == nil {
+		t.Fatal("expected non-nil LocationConstraint for eu-west-1")
+	}
+	if cfg.LocationConstraint != types.BucketLocationConstraint("eu-west-1") {
+		t.Fatalf("unexpected LocationConstraint: %v", cfg.LocationConstraint)
+	}
+}
+
+func TestEnsureBucketPassesRegionToCreateBucketConfiguration(t *testing.T) {
+	client := &fakeBucketClient{headErrs: []error{&smithy.GenericAPIError{Code: "NotFound"}}}
+	if _, err := ensureBucket(client, "mybucket", "eu-west-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if client.createdConfig == nil || client.createdConfig.LocationConstraint != types.BucketLocationConstraint("eu-west-1") {
+		t.Fatalf("expected region-specific CreateBucketConfiguration, got %+v", client.createdConfig)
+	}
+}

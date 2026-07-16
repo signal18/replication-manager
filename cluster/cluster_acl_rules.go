@@ -176,6 +176,7 @@ var clusterACLRules = []ACLRule{
 	{"/backups", nil, []string{config.GrantClusterShowBackups}},                               // list (bare path, no slash)
 	{"/restic/purge", nil, []string{config.GrantDBBackup}},                                    // delete a snapshot
 	{"/restic/wipe", nil, []string{config.GrantDBBackup}},                                     // destructive wipe
+	{"/restic/create-bucket", nil, []string{config.GrantDBBackup}},                            // remote storage mutation
 	{"/restic/check-config", nil, []string{config.GrantClusterProcess, config.GrantDBBackup}}, // preview also required by wipe workflow
 	{"/restic/snapshots", nil, []string{config.GrantClusterShowBackups}},
 	{"/restic/stats", nil, []string{config.GrantClusterShowBackups}},

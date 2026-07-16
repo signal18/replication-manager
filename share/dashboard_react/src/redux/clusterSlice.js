@@ -527,6 +527,25 @@ export const resticWipeRepo = (clusterName, payload) => async (dispatch, getStat
   }
 }
 
+export const resticCreateBucket = createGuardedAsyncThunk(
+  'cluster/resticCreateBucket',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.resticCreateBucket(clusterName, baseURL)
+      if (!status || status < 200 || status >= 300) {
+        const msg = (data && typeof data === 'object' && (data.error || data.message))
+          ? (data.error || data.message)
+          : (typeof data === 'string' && data) ? data : 'Create bucket request failed'
+        return thunkAPI.rejectWithValue({ errorMessage: msg, errorStatus: status || 500 })
+      }
+      return { data, status }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const getJobs = createGuardedAsyncThunk('cluster/getJobs', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
