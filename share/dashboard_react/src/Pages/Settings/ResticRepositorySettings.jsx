@@ -379,10 +379,13 @@ function ResticRepositorySettings({
 
   // Reset action feedback whenever the active repository context changes, so a
   // stale checkResult/wipeResult is never shown for the wrong repository.
+  // selectedTab is excluded: Active repository actions/Danger zone are
+  // rendered once, outside the tabs, and driven only by archiveMode - the
+  // selected tab is an editing surface only and must not affect this feedback.
   useEffect(() => {
     setCheckResult(null)
     setWipeResult(null)
-  }, [archiveMode, selectedTab, activeTargetSignature])
+  }, [archiveMode, activeTargetSignature])
 
   const handleSettingChange = (setting, value, encodeValue = false) =>
     dispatch(
