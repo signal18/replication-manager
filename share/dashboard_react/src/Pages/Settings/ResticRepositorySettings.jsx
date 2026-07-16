@@ -1310,7 +1310,7 @@ function ResticRepositorySettings({
                               fontWeight='bold'
                               fontSize='sm'
                               fontFamily='monospace'
-                              bg='gray.100'
+                              bg={isLight ? 'gray.100' : 'var(--tertiary-color)'}
                               p={2}
                               borderRadius='md'
                               wordBreak='break-all'
@@ -1605,7 +1605,7 @@ function ResticRepositorySettings({
               fontWeight='bold'
               fontSize='sm'
               fontFamily='monospace'
-              bg='gray.100'
+              bg={isLight ? 'gray.100' : 'var(--tertiary-color)'}
               p={2}
               borderRadius='md'
               wordBreak='break-all'
@@ -1644,12 +1644,12 @@ function ResticRepositorySettings({
             <Text>
               Re-initialize the {isAws ? 'S3/MinIO' : isSftp ? 'SFTP' : 'local'} Restic repository:
             </Text>
-            <Text 
-              fontWeight='bold' 
-              fontSize='sm' 
+            <Text
+              fontWeight='bold'
+              fontSize='sm'
               fontFamily='monospace'
-              bg='gray.100' 
-              p={2} 
+              bg={isLight ? 'gray.100' : 'var(--tertiary-color)'}
+              p={2}
               borderRadius='md'
               wordBreak='break-all'
             >
@@ -1951,8 +1951,8 @@ function ResticRepositorySettings({
               </Text>
             </Alert>
 
-            <Box w='full' borderWidth='1px' borderColor='gray.200' borderRadius='md' overflow='hidden' _dark={{ borderColor: 'gray.600' }}>
-              <Box px={3} py={1} bg='gray.100' borderBottomWidth='1px' borderColor='gray.200' _dark={{ bg: 'gray.700', borderColor: 'gray.600' }}>
+            <Box w='full' borderWidth='1px' borderColor={isLight ? 'gray.200' : 'var(--gray-color)'} borderRadius='md' overflow='hidden'>
+              <Box px={3} py={1} bg={isLight ? 'gray.100' : 'var(--tertiary-color)'} borderBottomWidth='1px' borderColor={isLight ? 'gray.200' : 'var(--gray-color)'}>
                 <HStack spacing={2} justify='space-between'>
                   <Text fontSize='xs' fontWeight='600' textTransform='uppercase' letterSpacing='wide' color='gray.500'>
                     Target
