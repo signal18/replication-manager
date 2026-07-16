@@ -1078,9 +1078,22 @@ func (cluster *Cluster) promoteResticS3ModeOnBootSuccess() {
 	}
 }
 
+// ResticInitRepoWithOptions initializes the cluster's restic repository. For
+// S3 repositories, it first attempts to pre-create the bucket via
+// ResticEnsureS3Bucket so that init isn't blocked by a missing bucket that the
+// user simply hasn't provisioned yet. That pre-check is best-effort: a failure
+// is logged, not returned, so restic's own init still runs and surfaces its
+// own (more specific) error if the bucket genuinely isn't usable.
 func (cluster *Cluster) ResticInitRepoWithOptions(options backupmgr.ResticInitOption) error {
 	if !cluster.Conf.BackupRestic {
 		return nil
+	}
+
+	if cluster.Conf.BackupResticAws {
+		if _, err := cluster.ResticEnsureS3Bucket(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+				"Restic S3 bucket pre-check before init failed (continuing; init will report its own error if the bucket is unusable): %s", err)
+		}
 	}
 
 	if cluster.ResticManager == nil {

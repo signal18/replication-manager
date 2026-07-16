@@ -2316,3 +2316,68 @@ func TestResticEnsureS3Bucket_UsesSessionTokenFromAdditionalEnv(t *testing.T) {
 		t.Errorf("expected X-Amz-Security-Token=my-session-token to reach S3, got %q", gotToken)
 	}
 }
+
+// TestResticInitRepoWithOptions_PreCreatesS3Bucket verifies that init
+// pre-creates a missing S3 bucket via ResticEnsureS3Bucket before attempting
+// the actual restic init, so the "Create bucket" button's stated behavior -
+// that init/backup no longer needs the bucket pre-provisioned by hand - is
+// actually true rather than aspirational UI copy.
+func TestResticInitRepoWithOptions_PreCreatesS3Bucket(t *testing.T) {
+	srv := newFakeS3BucketServer(t) // no bucket exists yet
+	cluster := newS3ModeCluster(&config.Config{
+		BackupRestic:               true,
+		BackupResticAws:            true,
+		BackupResticS3Mode:         config.ConstResticS3ModeNew,
+		BackupResticAwsBucket:      "init-precreate-bucket",
+		BackupResticAwsEndpoint:    srv.URL,
+		BackupResticAwsAccessKeyId: "AKIAFAKE",
+		BackupResticAwsRegion:      "us-east-1",
+	})
+	sm := new(state.StateMachine)
+	sm.Init()
+	cluster.StateMachine = sm
+
+	// The restic init step itself will fail in this test environment (no real
+	// restic binary/repository) - only the bucket pre-check side effect is
+	// under test here, so the returned error is intentionally ignored.
+	_ = cluster.ResticInitRepoWithOptions(backupmgr.ResticInitOption{})
+
+	result, err := cluster.ResticEnsureS3Bucket()
+	if err != nil {
+		t.Fatalf("unexpected error re-checking bucket: %v", err)
+	}
+	if result.Created {
+		t.Fatal("expected bucket to already exist (created during init pre-check), but it did not")
+	}
+}
+
+// TestResticInitRepoWithOptions_ProceedsWhenBucketPreCheckFails verifies that
+// a failing bucket pre-check (e.g. access denied) does not block init from
+// still being attempted - the pre-check is best-effort only, and restic's own
+// init error is what should surface for a genuinely unusable bucket.
+func TestResticInitRepoWithOptions_ProceedsWhenBucketPreCheckFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	t.Cleanup(srv.Close)
+
+	cluster := newS3ModeCluster(&config.Config{
+		BackupRestic:               true,
+		BackupResticAws:            true,
+		BackupResticS3Mode:         config.ConstResticS3ModeNew,
+		BackupResticAwsBucket:      "denied-bucket",
+		BackupResticAwsEndpoint:    srv.URL,
+		BackupResticAwsAccessKeyId: "AKIAFAKE",
+		BackupResticAwsRegion:      "us-east-1",
+	})
+	sm := new(state.StateMachine)
+	sm.Init()
+	cluster.StateMachine = sm
+
+	// Must not panic and must reach (and fail in) the real init step rather
+	// than returning early because the bucket pre-check errored.
+	err := cluster.ResticInitRepoWithOptions(backupmgr.ResticInitOption{})
+	if err == nil {
+		t.Fatal("expected init to still attempt and fail (no real restic binary here), not return nil early")
+	}
+}

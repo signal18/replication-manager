@@ -1,6 +1,6 @@
 import { Box, Badge, Flex, FormControl, FormLabel, Grid, GridItem, HStack, Icon, Input, Select, Stack, Tab, TabList, TabPanel, TabPanels, Tabs, Text, VStack, Checkbox, Alert, AlertIcon, Divider, useDisclosure } from '@chakra-ui/react'
 import React, { useState, useEffect, useRef } from 'react'
-import { HiChevronDown, HiChevronUp, HiQuestionMarkCircle, HiCheckCircle, HiDatabase, HiArrowCircleRight, HiShieldExclamation, HiTrash, HiLockClosed } from 'react-icons/hi'
+import { HiChevronDown, HiChevronUp, HiQuestionMarkCircle, HiCheckCircle, HiDatabase, HiArrowCircleRight, HiShieldExclamation, HiTrash, HiLockClosed, HiPlusCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 import RMButton from '../../components/RMButton'
 import RMSwitch from '../../components/RMSwitch'
@@ -1325,15 +1325,53 @@ function ResticRepositorySettings({
                             </HStack>
                           </GridItem>
                           <GridItem className={styles.valueCell}>
-                            <TextForm
-                              value={config?.backupResticAwsBucket}
-                              confirmTitle={`Confirm backup-restic-aws-bucket to `}
-                              className={styles.textbox}
-                              size='sm'
-                              placeholder='bucket-name'
-                              regexPattern='^[^/\\\\]*$'
-                              onSave={(value) => handleSettingChange('backup-restic-aws-bucket', value)}
-                            />
+                            <HStack spacing={2} align='flex-start' justify='flex-start'>
+                              <TextForm
+                                value={config?.backupResticAwsBucket}
+                                confirmTitle={`Confirm backup-restic-aws-bucket to `}
+                                className={styles.textbox}
+                                size='sm'
+                                placeholder='bucket-name'
+                                regexPattern='^[^/\\\\]*$'
+                                onSave={(value) => handleSettingChange('backup-restic-aws-bucket', value)}
+                              />
+                              <RMIconButton
+                                icon={HiPlusCircle}
+                                size='sm'
+                                variant='outline'
+                                colorScheme='blue'
+                                tooltip='Create bucket'
+                                aria-label='Create bucket'
+                                onClick={handleCreateBucket}
+                                isLoading={createBucketLoading}
+                                isDisabled={user?.grants['db-backup'] === false || !hasResolvableS3Target}
+                                confirm
+                                confirmTitle='Create bucket?'
+                                confirmBody={
+                                  <Stack spacing={2} align='flex-start'>
+                                    <Text fontSize='sm'>
+                                      Optional pre-setup — init/backup already auto-create the bucket if missing.
+                                      Existing buckets are left unchanged.
+                                    </Text>
+                                    <Box
+                                      fontSize='sm'
+                                      fontFamily='monospace'
+                                      bg={isLight ? 'gray.100' : 'var(--tertiary-color)'}
+                                      p={2}
+                                      borderRadius='md'
+                                      wordBreak='break-all'
+                                      w='full'
+                                    >
+                                      {createBucketTargetEndpoint && (
+                                        <Text>endpoint: <strong>{createBucketTargetEndpoint}</strong></Text>
+                                      )}
+                                      <Text>bucket: <strong>{createBucketTargetBucket || '(unresolved)'}</strong></Text>
+                                    </Box>
+                                  </Stack>
+                                }
+                                confirmButtonText='Create bucket'
+                              />
+                            </HStack>
                             <Text className={styles.helperText}>Bucket name must not contain &apos;/&apos; or &apos;\\&apos;.</Text>
                           </GridItem>
                         </Grid>
@@ -1397,45 +1435,27 @@ function ResticRepositorySettings({
                           </GridItem>
                         </Grid>
 
-                        <Stack spacing={1} pt={1}>
-                          {resolvedS3Mode === 'legacy' && createBucketTargetBucket && (
-                            <Text className={styles.helperText}>
-                              Legacy mode target — bucket: <strong>{createBucketTargetBucket}</strong>
-                              {createBucketTargetEndpoint && (
-                                <> · endpoint: <strong>{createBucketTargetEndpoint}</strong></>
-                              )}
-                            </Text>
-                          )}
-                          <Box>
-                            <RMButton
-                              size='sm'
-                              colorScheme='blue'
-                              leftIcon={<HiDatabase />}
-                              onClick={handleCreateBucket}
-                              isLoading={createBucketLoading}
-                              isDisabled={user?.grants['db-backup'] === false || !hasResolvableS3Target}
-                            >
-                              Create bucket if missing
-                            </RMButton>
-                          </Box>
-                          {!hasResolvableS3Target && (
-                            <Text className={styles.helperText}>
-                              Complete the bucket / mode / legacy URL configuration above before creating the bucket.
-                            </Text>
-                          )}
-                          {createBucketResult && (
-                            <Alert
-                              status={createBucketResult.status === 'ok' ? 'success' : 'error'}
-                              size='sm'
-                              borderRadius='md'
-                              bg={isLight ? undefined : createBucketResult.status === 'ok' ? 'rgba(72,187,120,0.15)' : 'rgba(245,101,101,0.15)'}
-                              color='var(--text-color)'
-                            >
-                              <AlertIcon />
-                              <Text fontSize='sm'>{createBucketResult.message}</Text>
-                            </Alert>
-                          )}
-                        </Stack>
+                        {(hasResolvableS3Target === false || createBucketResult) && (
+                          <Stack spacing={1} pt={1}>
+                            {!hasResolvableS3Target && (
+                              <Text className={styles.helperText}>
+                                &quot;Create bucket&quot; is disabled: complete the bucket / mode / legacy URL configuration above first.
+                              </Text>
+                            )}
+                            {createBucketResult && (
+                              <Alert
+                                status={createBucketResult.status === 'ok' ? 'success' : 'error'}
+                                size='sm'
+                                borderRadius='md'
+                                bg={isLight ? undefined : createBucketResult.status === 'ok' ? 'rgba(72,187,120,0.15)' : 'rgba(245,101,101,0.15)'}
+                                color='var(--text-color)'
+                              >
+                                <AlertIcon />
+                                <Text fontSize='sm'>{createBucketResult.message}</Text>
+                              </Alert>
+                            )}
+                          </Stack>
+                        )}
                       </Stack>
 
                       {/* 4. Advanced compatibility fallback */}
