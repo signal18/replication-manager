@@ -126,6 +126,7 @@ type Cluster struct {
 	IsGitPush                     bool                   `json:"isGitPush" groups:"web"`
 	IsSavingConfig                bool                   `json:"-"`
 	IsNeedGitPush                 bool                   `json:"-"`
+	IsNeedConfigSave              bool                   `json:"-"` // event flag: Save() sets it, the repman config-sync gate consumes it and runs SaveCallBack
 	IsExportPush                  bool                   `json:"isExportPush" groups:"web"`
 	IsAlertDisable                bool                   `json:"isAlertDisable" groups:"web"`
 	IsIntervention                bool                   `json:"isIntervention" groups:"web"`
@@ -1300,9 +1301,10 @@ func (cluster *Cluster) StateProcessing() {
 		cluster.SecurityStateMachine.ClearState()
 		cluster.SchemaStateMachine.ClearState()
 		cluster.ConfigStateMachine.ClearState()
-		if cluster.StateMachine.GetHeartbeats()%60 == 0 && cluster.IsActive() {
-			cluster.ConfigManager.SaveConfig(cluster, false)
-		}
+		// Periodic config save is no longer driven from the cluster monitor loop.
+		// The server-level loop fans out per-cluster saves (server.go serve loop);
+		// see doc/implementation/config/CONFIG_SYNC.md decision #3. Event-driven
+		// saves (API setters, failover, etc.) still call SaveConfig directly.
 	}
 
 	cluster.CheckSendMail()
@@ -1595,7 +1597,18 @@ type ClusterSLAState struct {
 	SLAHistory []state.Sla `json:"slaHistory"`
 }
 
-func (cluster *Cluster) Save() error {
+// Save is the event: it does no I/O, it only records that this cluster wants
+// saving. The single repman config-sync gate (server.go serve loop) consumes
+// the flag and runs SaveCallBack — so the heavy save never rides a caller's
+// goroutine or the cluster tick. See doc/implementation/config/CONFIG_SYNC.md.
+func (cluster *Cluster) Save() {
+	cluster.IsNeedConfigSave = true
+}
+
+// SaveCallBack performs the actual config persist (former Save body): the
+// cluster .toml, runtime json (agents/clusterstate/sla/queryrules), and the
+// peer event log. Invoked only by the repman config-sync gate.
+func (cluster *Cluster) SaveCallBack() error {
 	if !cluster.initConfigDone.Load() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Skipping config save: cluster init not complete")
 		return nil

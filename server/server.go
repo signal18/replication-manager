@@ -174,6 +174,7 @@ type ReplicationManager struct {
 	GitPushLock                 sync.Mutex                     `json:"-"`
 	gatewayMu                   sync.Map                       `json:"-"`
 	IsNeedGitPush               bool                           `json:"-"`
+	IsNeedConfigSave            bool                           `json:"-"` // event flag: Save() sets it, the config-sync gate consumes it and runs SaveCallBack
 	CanConnectVault             bool                           `json:"canConnectVault"`
 	IsExportPush                bool                           `json:"-"`
 	globalScheduler             *cron.Cron                     `json:"-"`
@@ -2820,53 +2821,79 @@ func (repman *ReplicationManager) Run() error {
 		time.Sleep(time.Second * time.Duration(repman.Conf.MonitoringTicker))
 
 		if counter%60 == 0 {
-			// Never wait on the manager queue from the main loop: if the git
-			// worker is wedged behind a hung network call, wait=true freezes
-			// every state producer (observed on dbaas-fr-2/-dr).
-			repman.ConfigManager.SaveConfig(repman, false)
-
-			// Network tasks run detached and guarded: the main loop must never
-			// block on git or HTTP I/O (go-git has no timeout — a single hung
-			// pull used to freeze every state producer silently). When a task
-			// is still running at the next cycle, skip it and surface GWARN013
-			// so the hang shows in the Monitor button instead of killing it.
-			// Only the Active server pushes config to git — single writer, so
-			// every push is a fast-forward. The Standby only pulls/replays (below),
-			// never pushes; two pushers race the shallow clone into "object not
-			// found". Under server authority the Standby has no authoritative
-			// config changes to propagate anyway.
+			// The config-sync gate: one guarded goroutine, off the main loop, is
+			// the single writer of config. It replaces the per-cluster save queue
+			// AND the cluster-loop save (doc/implementation/config/CONFIG_SYNC.md).
+			// The main loop must never block on git/disk I/O (go-git has no
+			// timeout — a hung pull used to freeze every state producer), so the
+			// whole cycle runs in the goroutine; if a prior cycle is still busy we
+			// skip and surface GWARN013 instead of killing it.
 			//
-			// Two decoupled triggers, one push path (see
-			// doc/implementation/config/CONFIG_SYNC.md):
-			//   - configDirty: a real config change (cluster.Save set IsNeedGitPush,
-			//     and the same Save appended the peer event log) — push within ~60s
-			//     so DR/peers converge promptly, independent of the agents feed.
-			//   - safetyDue (GitMonitoringTicker): the periodic feed + safety net;
-			//     also the cadence on which the throttled agents.json is staged for
-			//     the BO. Config no longer waits on this timer.
-			configDirty := repman.IsNeedGitPush
-			for _, cl := range repman.Clusters {
-				if cl.IsNeedGitPush {
-					configDirty = true
-					break
-				}
-			}
-			safetyDue := counter%int64(repman.Conf.GitMonitoringTicker) == 0
-			if (configDirty || safetyDue) && repman.Conf.GitUrl != "" && repman.Status == ConstMonitorActif {
+			// Only the Active server runs the gate: it is the single git writer
+			// (two pushers race the shallow clone into "object not found"), and the
+			// Standby has no authoritative config to persist — it converges by
+			// pull/replay (below). Save is active-gated to match the standby's
+			// no-local-save behavior (commit a3ad4855d).
+			//
+			// Inside the gate, in order (single writer, so no locks needed):
+			//   1. SAVE: each active cluster's SaveCallBack (config .toml + runtime
+			//      json incl. agents.json for the BO + peer event log), then the
+			//      global config. Runs every cycle so the agents feed stays fresh.
+			//   2. PUSH: dirty-gated — a real config change (IsNeedGitPush, set by
+			//      SaveCallBack in step 1) or safetyDue (GitMonitoringTicker, the
+			//      periodic feed/safety cadence). Config no longer waits on the
+			//      timer; the agents.json staging throttle is unchanged.
+			if repman.Conf.GitUrl != "" && repman.Status == ConstMonitorActif {
+				safetyDue := counter%int64(repman.Conf.GitMonitoringTicker) == 0
 				if repman.gitSyncBusy.CompareAndSwap(false, true) {
-					// Clear the dirty flags on dispatch: this push carries the
-					// changes. A failed push is recovered by the safetyDue timer,
-					// and any change arriving after this point re-sets the flag.
-					repman.IsNeedGitPush = false
-					for _, cl := range repman.Clusters {
-						cl.IsNeedGitPush = false
-					}
 					go func() {
 						defer repman.gitSyncBusy.Store(false)
+
+						// 1. SAVE phase (single writer). The active/standby authority
+						// for config-sync is the server (repman.Status, gated above),
+						// not the per-cluster cl.IsActive(): config persistence is a
+						// server-level concern (one repman, one git repo, one pusher).
+						// A cluster in split-brain standby on an active repman still
+						// has its config persisted — that is orthogonal to its
+						// orchestration state. (Was cl.IsActive() as a stand-in for
+						// "repman is active" before the server-level gate existed.)
+						for _, cl := range repman.Clusters {
+							if cl != nil {
+								cl.IsNeedConfigSave = false
+								if err := cl.SaveCallBack(); err != nil {
+									repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Config save failed for %s: %s", cl.Name, err)
+								}
+							}
+						}
+						repman.IsNeedConfigSave = false
+						if err := repman.SaveGlobalConfigs(); err != nil {
+							repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Global config save failed: %s", err)
+						}
+
+						// 2. PUSH phase (dirty-gated). IsNeedGitPush was just set by
+						// SaveCallBack above when config actually changed.
+						configDirty := repman.IsNeedGitPush
+						for _, cl := range repman.Clusters {
+							if cl != nil && cl.IsNeedGitPush {
+								configDirty = true
+								break
+							}
+						}
+						if !configDirty && !safetyDue {
+							return
+						}
+						// Clear the dirty flags: this push carries the changes. A
+						// failed push is recovered by the next safetyDue cycle.
+						repman.IsNeedGitPush = false
+						for _, cl := range repman.Clusters {
+							if cl != nil {
+								cl.IsNeedGitPush = false
+							}
+						}
 						// Peer-symmetric config sync: replay peer config change
 						// events (event-changed.<id>.log, fetched from the remote
 						// without touching the working tree) before the push so
-						// replayed changes land in this same save cycle. See
+						// replayed changes land in this same cycle. See
 						// doc/implementation/config/CONFIG_EVENT_LOG.md.
 						repman.ReplayPeerConfigEvents()
 						repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
@@ -4197,7 +4224,21 @@ func (repman *ReplicationManager) SetIsSavingConfig(val bool) {
 	repman.IsSavingConfig = val
 }
 
-func (repman *ReplicationManager) Save() error {
+// Save is the event: mark the global/[Default] config needs-save. The repman
+// config-sync gate (serve loop) consumes it and runs SaveCallBack. No I/O.
+func (repman *ReplicationManager) Save() {
+	repman.IsNeedConfigSave = true
+}
+
+// SaveCallBack persists the global/[Default] config; invoked by the config-sync
+// gate and by synchronous callers (SaveConfig(repman, true)).
+func (repman *ReplicationManager) SaveCallBack() error {
+	return repman.SaveGlobalConfigs()
+}
+
+// SaveGlobalConfigs persists the global/[Default] server config (dynamic,
+// immutable, overwrite). It is the former body of Save().
+func (repman *ReplicationManager) SaveGlobalConfigs() error {
 	var err error
 
 	_, file, no, ok := runtime.Caller(1)
