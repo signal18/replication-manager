@@ -2850,26 +2850,41 @@ func (repman *ReplicationManager) Run() error {
 					go func() {
 						defer repman.gitSyncBusy.Store(false)
 
-						// 1. SAVE phase (single writer). The active/standby authority
-						// for config-sync is the server (repman.Status, gated above),
-						// not the per-cluster cl.IsActive(): config persistence is a
-						// server-level concern (one repman, one git repo, one pusher).
-						// A cluster in split-brain standby on an active repman still
-						// has its config persisted — that is orthogonal to its
-						// orchestration state. (Was cl.IsActive() as a stand-in for
-						// "repman is active" before the server-level gate existed.)
+						// 1. SAVE phase. The active/standby authority for config-sync is
+						// the server (repman.Status, gated above), not the per-cluster
+						// cl.IsActive(): config persistence is a server-level concern (one
+						// repman, one git repo, one pusher). A cluster in split-brain
+						// standby on an active repman still has its config persisted —
+						// orthogonal to its orchestration state.
+						//
+						// Fan out per cluster: each SaveCallBack writes only its own
+						// cluster's files (no shared state), plus the global config, so
+						// they run concurrently. wg.Wait() before the push keeps the
+						// save-before-push ordering that makes the single-writer push safe
+						// without locks (doc/implementation/config/CONFIG_SYNC.md #3).
+						var savewg sync.WaitGroup
 						for _, cl := range repman.Clusters {
-							if cl != nil {
-								cl.IsNeedConfigSave = false
-								if err := cl.SaveCallBack(); err != nil {
-									repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Config save failed for %s: %s", cl.Name, err)
-								}
+							if cl == nil {
+								continue
 							}
+							cl.IsNeedConfigSave = false
+							savewg.Add(1)
+							go func(c *cluster.Cluster) {
+								defer savewg.Done()
+								if err := c.SaveCallBack(); err != nil {
+									repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Config save failed for %s: %s", c.Name, err)
+								}
+							}(cl)
 						}
 						repman.IsNeedConfigSave = false
-						if err := repman.SaveGlobalConfigs(); err != nil {
-							repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Global config save failed: %s", err)
-						}
+						savewg.Add(1)
+						go func() {
+							defer savewg.Done()
+							if err := repman.SaveGlobalConfigs(); err != nil {
+								repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Global config save failed: %s", err)
+							}
+						}()
+						savewg.Wait()
 
 						// 2. PUSH phase (dirty-gated). IsNeedGitPush was just set by
 						// SaveCallBack above when config actually changed.
