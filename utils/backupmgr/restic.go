@@ -2594,6 +2594,87 @@ func (repo *ResticManager) UnmountRepo() error {
 	return nil
 }
 
+// ForceUnmountRepo unmounts immediately WITHOUT waiting for active mount users.
+// UnmountRepo waits up to 5 minutes for CanUnmount() (all refs released) — correct
+// in normal operation, but on SHUTDOWN it holds the whole stop hostage to a
+// lingering mount reference (observed: 40–68s stops). Here we SIGTERM the mount
+// process, lazy-unmount the path (fusermount -uz / umount -l detaches a busy mount
+// immediately), give it a short grace then SIGKILL, and clear the state.
+func (repo *ResticManager) ForceUnmountRepo() error {
+	snapshot := repo.mountSnapshot()
+	cmd := snapshot.cmd
+	mountPath := snapshot.path
+	pid := snapshot.pid
+	if mountPath == "" {
+		repo.RecoverMountState()
+		snapshot = repo.mountSnapshot()
+		cmd = snapshot.cmd
+		mountPath = snapshot.path
+		pid = snapshot.pid
+	}
+	if mountPath == "" {
+		return nil // nothing mounted
+	}
+
+	repo.mountRefMutex.Lock()
+	repo.unmountRequested = true
+	repo.mountRefMutex.Unlock()
+
+	// Ask the mount process to stop (do NOT wait for active users).
+	if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Signal(syscall.SIGTERM)
+	} else if pid > 0 {
+		_ = syscall.Kill(pid, syscall.SIGTERM)
+	}
+
+	// Lazy-unmount so a busy mount detaches now instead of blocking the shutdown.
+	_ = lazyUnmountResticPath(mountPath)
+
+	// Short grace for the process to exit, then SIGKILL.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && isMountReady(mountPath) {
+		time.Sleep(200 * time.Millisecond)
+	}
+	if pid > 0 && isResticMountProcess(pid, mountPath) {
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+	} else if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+
+	repo.clearMountState()
+	repo.mountRefMutex.Lock()
+	repo.mountPath = ""
+	repo.mountPid = 0
+	repo.mountRefMutex.Unlock()
+	repo.Printf(logrus.InfoLevel, "Restic mount force-unmounted at %s", mountPath)
+	return nil
+}
+
+// lazyUnmountResticPath detaches the mount immediately even if busy
+// (fusermount -uz / umount -l), so shutdown never blocks on an in-use mount.
+func lazyUnmountResticPath(targetDir string) error {
+	path := strings.TrimSpace(targetDir)
+	if path == "" {
+		return fmt.Errorf("mount path is empty")
+	}
+	if bin, err := exec.LookPath("fusermount3"); err == nil {
+		if err := exec.Command(bin, "-uz", path).Run(); err == nil {
+			return nil
+		}
+	}
+	if bin, err := exec.LookPath("fusermount"); err == nil {
+		if err := exec.Command(bin, "-uz", path).Run(); err == nil {
+			return nil
+		}
+	}
+	if bin, err := exec.LookPath("umount"); err == nil {
+		if err := exec.Command(bin, "-l", path).Run(); err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("lazy unmount failed for %s", path)
+}
+
 func (repo *ResticManager) acquireMountRefUnsafe(userID string) (int, error) {
 	if repo.mountUsers == nil {
 		repo.mountUsers = make(map[string]struct{})

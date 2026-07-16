@@ -1338,8 +1338,10 @@ func (cluster *Cluster) Stop() {
 		})
 		if cluster.ResticManager != nil {
 			phase("resticUnmount", func() {
-				if err := cluster.ResticManager.UnmountRepo(); err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Restic unmount on shutdown failed: %s", err)
+				// Shutdown uses ForceUnmountRepo (lazy detach, no 5-min wait for
+				// active mount users) — UnmountRepo's user-wait was the 40-68s stall.
+				if err := cluster.ResticManager.ForceUnmountRepo(); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Restic force unmount on shutdown failed: %s", err)
 				}
 			})
 			phase("resticWorkerShutdown", func() {
