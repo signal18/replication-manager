@@ -441,7 +441,9 @@ func (cluster *Cluster) ProcessArmedRejoins() {
 		cr := cluster.getCrashFromJoiner(server.URL)
 		if cr != nil && cr.RejoinMethod != "" && cr.RejoinResult == "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Operator-armed rejoin of %s via %q — running", server.URL, cr.RejoinMethod)
-			server.RejoinMaster()
+			// async: a reseed can run for hours/days; never block the monitor loop.
+			// RejoinMaster's rejoinInProgress guard makes the per-tick spawn safe.
+			go server.RejoinMaster()
 		}
 	}
 }

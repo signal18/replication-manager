@@ -1400,30 +1400,45 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 	// Skip file lookup if using custom script
 	if backtype != "script" {
-		// Construct backup path on master
-		backupfile, _ = findExistingBackupPath(master, destCandidates)
-		if backupfile == "" {
-			backupfile = master.GetMyBackupDirectory() + dest
-		}
-
-		// If a backup server has a valid backup for this type, use it instead
-		bckserver := cluster.GetBackupServer()
-		if bckserver != nil && bckserver.HasBackupTypeCookie(backtype) {
-			if resolved, ok := findExistingBackupPath(bckserver, destCandidates); ok {
-				backupfile = resolved
-				useMaster = false
-				source = bckserver
-			} else {
-				// Remove invalid cookie if file does not exist
-				bckserver.DelBackupTypeCookie(backtype)
+		// Pick a logical backup of the configured tool from ANY node via the generic
+		// restore selector (see doc/implementation/cluster/RESTORE_SELECTOR.md). Was:
+		// a master-only lookup that aborted with "No backup file found on master"
+		// whenever the elected master had never been backed up. In a rejoin any
+		// consistent backup works — replication catches up the delta — so the source
+		// node does not matter. Local-only for now (remote/restic fetch is not wired).
+		sel := cluster.getAutorejoinBackupSelector()
+		sel.Tool = []string{backtype} // restore dispatch is backtype-based → force the tool for consistency
+		pick := ResolveRestore(cluster.buildBackupCatalog(), sel,
+			ResolveContext{MasterURL: master.URL, TargetURL: server.URL})
+		if pick != nil && pick.isLocal() {
+			backupfile = pick.Path
+			if s := cluster.GetServerFromURL(pick.Server); s != nil {
+				source = s
 			}
-		}
-
-		// If no valid backup found, abort
-		if useMaster {
-			if _, err := os.Stat(backupfile); err != nil {
-				master.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
-				return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", backtype)
+			useMaster = source == master
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "flashback %s: selector picked %s backup %s", backtype, source.URL, backupfile)
+		} else {
+			// Fallback (no catalogued local backup — metadata not populated): legacy
+			// on-disk lookup on master then backup server.
+			backupfile, _ = findExistingBackupPath(master, destCandidates)
+			if backupfile == "" {
+				backupfile = master.GetMyBackupDirectory() + dest
+			}
+			bckserver := cluster.GetBackupServer()
+			if bckserver != nil && bckserver.HasBackupTypeCookie(backtype) {
+				if resolved, ok := findExistingBackupPath(bckserver, destCandidates); ok {
+					backupfile = resolved
+					useMaster = false
+					source = bckserver
+				} else {
+					bckserver.DelBackupTypeCookie(backtype)
+				}
+			}
+			if useMaster {
+				if _, err := os.Stat(backupfile); err != nil {
+					master.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+					return fmt.Errorf("Cancelling reseed. No logical %s backup found on any node", backtype)
+				}
 			}
 		}
 	}
@@ -1619,11 +1634,21 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 		return fmt.Errorf("[%s] Failed opening backup file in backup server for reseed:  %s ", server.URL, err)
 	}
 
+	// Progress: count compressed bytes streamed out of the file size so the per-tick
+	// reseed state reports "<streamed> streamed out of <total> compressed backup at
+	// <rate>/s". Rate is rolling (per tick) since it varies a lot by table.
+	var total int64
+	if fi, e := gzfile.Stat(); e == nil {
+		total = fi.Size()
+	}
+	counted := server.startReseedProgress(&ReseedProgress{Backup: backupfile}, gzfile, total)
+	defer server.stopReseedProgress()
+
 	// Use configurable parallel blocks for better performance
 	// For restore operations, use higher default (16) for speed, matching original behavior
 	parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
 	bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModTask)
-	fz, err := gzip.NewReaderN(gzfile, bufferSize, parallelBlocks)
+	fz, err := gzip.NewReaderN(counted, bufferSize, parallelBlocks)
 	if err != nil {
 		return fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
 	}

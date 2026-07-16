@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -248,7 +249,12 @@ type ServerMonitor struct {
 	RestartRid                  string     // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
 	jobMutex                    sync.Mutex // protects IsRunningJobs flag
 	configGenMutex              sync.Mutex // protects config generation operations
-	backupMetaMutex             sync.Mutex // protects LastBackupMeta from concurrent Restic callback updates
+	backupMetaMutex             sync.Mutex  // protects LastBackupMeta from concurrent Restic callback updates
+	rejoinInProgress            atomic.Bool  // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
+	reseedInfo                  atomic.Value // *ReseedProgress: the in-flight restore's backup (nil when idle) — for the progress state
+	reseedBytes                 atomic.Int64 // raw bytes streamed so far (compressed input; no decompression accounting yet)
+	reseedTotal                 atomic.Int64 // total compressed backup file size (0 = unknown)
+	reseedStart                 atomic.Int64 // unix-nanos the current restore started (for MB/s)
 	// Lock ordering (to prevent deadlocks):
 	// 1. Cluster.stateMutex (highest)
 	// 2. ServerMonitor.stateMutex
@@ -748,7 +754,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				if isStagingServer {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Preventing auto rejoin on staging server %s", server.URL)
 				} else {
-					server.RejoinMaster()
+					// async: a reseed can run for hours/days; never block the monitor
+					// loop. RejoinMaster's rejoinInProgress guard makes the spawn safe.
+					go server.RejoinMaster()
 				}
 			} else {
 				// Name the ACTUAL failing gate: this used to always print "Auto Rejoin

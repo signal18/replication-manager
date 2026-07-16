@@ -44,6 +44,14 @@ func (server *ServerMonitor) RejoinLoop() error {
 // RejoinMaster a server that just show up without slave status
 func (server *ServerMonitor) RejoinMaster() error {
 	cluster := server.ClusterGroup
+	// Re-entrancy guard so this can be spawned async from EVERY call site (operator,
+	// armed, and the auto Failed->up edge) and never block the monitor loop — a
+	// logical/physical reseed can run for hours or days. If a rejoin for this server
+	// is already running, return immediately rather than starting a duplicate.
+	if !server.rejoinInProgress.CompareAndSwap(false, true) {
+		return nil
+	}
+	defer server.rejoinInProgress.Store(false)
 	// Check if master exists in topology before rejoining.
 	defer func() {
 		cluster.rejoinCond.Send <- true

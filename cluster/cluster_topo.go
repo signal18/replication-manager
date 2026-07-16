@@ -157,6 +157,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 	cluster.assertLostEventsStates()
 	cluster.assertRejoinResultStates()
+	cluster.assertReseedProgressStates()
 	if cluster.Conf.Arbitration {
 		if !cluster.IsActive() {
 			cluster.SetState("ERR00105", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00105"], ErrFrom: "ARB"})

@@ -272,6 +272,7 @@ var ClusterError = map[string]string{
 	"WARN0186":  "Rejoin of %s could not complete automatically (%s) — manual repair or explicit re-arm required",
 	"WARN0187":  "Rejoin of %s pending: peer election verdict unavailable (transient split / peer unreachable) — retrying",
 	"WARN0188":  "Rejoin can not use unsafe method reset-master-reslave on %s because replication points to an invalid position on the new master",
+	"WARN0189":  "Restore in progress on %s: %s — restoring backup %s",
 	// Split-brain simulator states (VSPLIT namespace, ErrType WARNING) — each axis of
 	// the simulated partition tracked open/close in the state timeline.
 	"VSPLIT0001": "Split-brain simulator running: simulated link cut active (%s), auto-restore in %ds",

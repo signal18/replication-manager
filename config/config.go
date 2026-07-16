@@ -309,6 +309,7 @@ type Config struct {
 	AutorejoinZFSFlashback                    bool                         `mapstructure:"autorejoin-zfs-flashback" toml:"autorejoin-zfs-flashback" json:"autorejoinZfsFlashback"`
 	AutorejoinPhysicalBackup                  bool                         `mapstructure:"autorejoin-physical-backup" toml:"autorejoin-physical-backup" json:"autorejoinPhysicalBackup"`
 	AutorejoinLogicalBackup                   bool                         `mapstructure:"autorejoin-logical-backup" toml:"autorejoin-logical-backup" json:"autorejoinLogicalBackup"`
+	AutorejoinBackupSelector                  string                       `mapstructure:"autorejoin-backup-selector" toml:"autorejoin-backup-selector" json:"autorejoinBackupSelector"`
 	RejoinScript                              string                       `mapstructure:"autorejoin-script" toml:"autorejoin-script" json:"autorejoinScript"`
 	AutorejoinBackupBinlog                    bool                         `mapstructure:"autorejoin-backup-binlog" toml:"autorejoin-backup-binlog" json:"autorejoinBackupBinlog"`
 	AutorejoinSemisync                        bool                         `mapstructure:"autorejoin-flashback-on-sync" toml:"autorejoin-flashback-on-sync" json:"autorejoinFlashbackOnSync"`
