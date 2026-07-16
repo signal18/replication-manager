@@ -23,6 +23,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/s3helper"
 	"github.com/signal18/replication-manager/utils/splitdump"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
@@ -73,7 +74,7 @@ func parseLegacyS3ResticRepo(rawURL string) (endpoint, bucket, prefix string, er
 			return "", "", "", fmt.Errorf("S3 repository URL %q has a scheme and host but no bucket", rawURL)
 		}
 		endpoint = rest[:schemeSep+3+slashIdx] // "scheme://host"
-		rest = afterScheme[slashIdx+1:]         // "bucket[/prefix]"
+		rest = afterScheme[slashIdx+1:]        // "bucket[/prefix]"
 	} else {
 		// No scheme: first path segment is either a bare hostname (contains "." or ":")
 		// or the bucket name. This mirrors how restic itself distinguishes the two forms:
@@ -270,6 +271,65 @@ func (cluster *Cluster) ResticS3EffectivePrefixForInit() (string, bool) {
 	return res.Prefix, true
 }
 
+// ResticEnsureBucketResult is the response returned by ResticEnsureS3Bucket.
+type ResticEnsureBucketResult struct {
+	Bucket   string `json:"bucket"`
+	Endpoint string `json:"endpoint,omitempty"`
+	Created  bool   `json:"created"`
+	Message  string `json:"message"`
+}
+
+// ResticEnsureS3Bucket creates the bucket for the cluster's saved Restic S3
+// configuration if it does not already exist, and is a no-op success when it
+// already exists and is accessible.
+//
+// The effective S3 target is resolved from the cluster/config layer via
+// resolveResticS3, not from ResticManager runtime state, so this works even
+// when S3 is not the currently active repository type (e.g. local or sftp is
+// active) and even when backup-restic itself is not yet enabled — allowing
+// the bucket to be pre-provisioned before turning Restic on.
+//
+// The cluster argument to resolveResticS3 is deliberately nil: passing the
+// live cluster would let auto mode resolve through cluster.resolvedS3Mode,
+// the mode cached from the startup S3 probe. That cache is runtime state, not
+// config, and it actively works against this endpoint's own purpose — it
+// prefers "new" but falls back to "legacy" precisely when the new bucket
+// isn't reachable yet (e.g. it doesn't exist), which is the exact moment a
+// user clicks this button. Resolving without the cluster keeps this endpoint
+// on the same presence-based heuristic the dashboard uses to decide what to
+// display/enable, so both sides always agree on the target bucket.
+func (cluster *Cluster) ResticEnsureS3Bucket() (ResticEnsureBucketResult, error) {
+	res, err := resolveResticS3(cluster.Conf, cluster.Name, nil)
+	if err != nil {
+		return ResticEnsureBucketResult{}, err
+	}
+	if res.Bucket == "" {
+		return ResticEnsureBucketResult{}, fmt.Errorf("no S3 bucket resolved from the saved restic configuration")
+	}
+
+	sessionToken := resticAdditionalEnvSessionToken(cluster.Conf.BackupResticAdditionalEnv, os.Environ())
+	client, err := s3helper.NewClient(res.AccessKeyID, res.AccessSecret, sessionToken, res.Region, res.Endpoint)
+	if err != nil {
+		return ResticEnsureBucketResult{}, err
+	}
+
+	created, err := s3helper.EnsureBucket(client, res.Bucket)
+	if err != nil {
+		return ResticEnsureBucketResult{}, err
+	}
+
+	message := "Bucket already exists."
+	if created {
+		message = "Bucket created."
+	}
+	return ResticEnsureBucketResult{
+		Bucket:   res.Bucket,
+		Endpoint: res.Endpoint,
+		Created:  created,
+		Message:  message,
+	}, nil
+}
+
 func isWithinParentPath(parent, child string) bool {
 	parent = filepath.Clean(parent)
 	child = filepath.Clean(child)
@@ -430,6 +490,35 @@ func parseResticAdditionalEnvOverrides(raw string) (map[string]string, map[strin
 	}
 
 	return overrides, allowlist, nil
+}
+
+// resticAdditionalEnvSessionToken extracts an optional AWS_SESSION_TOKEN for
+// STS/temporary credentials from the same backup-restic-additional-env
+// allowlist mechanism filterResticEnv uses for the restic subprocess env, so
+// direct S3 API calls (e.g. ResticEnsureS3Bucket) honor the same
+// session-token configuration as actual restic invocations. baseEnv mirrors
+// filterResticEnv's source of truth (os.Environ()) for the case where the
+// token is allowlisted by bare key and expected to come from the server's own
+// process environment rather than an inline override value.
+func resticAdditionalEnvSessionToken(additionalEnv string, baseEnv []string) string {
+	const key = "AWS_SESSION_TOKEN"
+	overrides, allowlist, err := parseResticAdditionalEnvOverrides(additionalEnv)
+	if err != nil {
+		return ""
+	}
+	if _, ok := allowlist[key]; !ok {
+		return ""
+	}
+	if value, ok := overrides[key]; ok {
+		return value
+	}
+	for _, env := range baseEnv {
+		envKey, value, hasValue := strings.Cut(env, "=")
+		if hasValue && envKey == key {
+			return value
+		}
+	}
+	return ""
 }
 
 func ValidateResticAdditionalEnvOverrides(raw string) error {

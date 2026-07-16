@@ -255,6 +255,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticWipeRepo)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/restic/create-bucket", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticCreateBucket)),
+	)).Methods("POST")
+
 	router.Handle("/api/clusters/{clusterName}/certificates", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCertificates)),
@@ -8220,6 +8225,55 @@ func (repman *ReplicationManager) handlerMuxResticWipeRepo(w http.ResponseWriter
 
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"message": "Repository wiped successfully."})
+	})
+}
+
+// handlerMuxResticCreateBucket handles the HTTP request to create the S3 bucket
+// backing the cluster's saved Restic S3 configuration, if it does not already
+// exist.
+//
+// This action is scoped to Restic-managed S3 repositories: it resolves the
+// saved S3 target via cluster/config logic (not active ResticManager runtime
+// state), so it also works when S3 is not the active repository type, or when
+// backup-restic is not yet enabled (pre-provisioning). It is not intended as a
+// general S3 administration API.
+//
+// The handler enforces GrantDBBackup directly so that a generic /restic grant
+// alone cannot authorize this remote storage mutation — URL-based ACL
+// fallback is intentionally bypassed, matching handlerMuxResticWipeRepo.
+// @Summary Create Restic S3 Bucket
+// @Description Idempotently creates the S3 bucket for the cluster's saved Restic S3 configuration if missing. Returns created=false when the bucket already exists and is accessible.
+// @Tags ClusterRestic
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} cluster.ResticEnsureBucketResult "Bucket created or already exists"
+// @Failure 400 {object} map[string]string "Invalid request or non-S3 configuration"
+// @Failure 403 {string} string "No valid ACL or insufficient grant (db-backup required)"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/restic/create-bucket [post]
+func (repman *ReplicationManager) handlerMuxResticCreateBucket(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
+		// Enforce GrantDBBackup explicitly: URL-based ACL matching falls back to the
+		// generic /restic rule (GrantClusterProcess) via hierarchical pattern matching,
+		// which would allow users without backup permissions to mutate remote storage.
+		username := repman.GetUserFromRequest(r)
+		if u, ok := mycluster.APIUsers[username]; !ok || !u.Grants[config.GrantDBBackup] {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		result, err := mycluster.ResticEnsureS3Bucket()
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(result)
 	})
 }
 

@@ -9,7 +9,7 @@ import Dropdown from '../../components/Dropdown'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { useTheme } from '../../ThemeProvider'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
-import { resticInitRepo, resticCheckConfig, resticCopyRepo, resticWipeRepo, getResticCurrentTask } from '../../redux/clusterSlice'
+import { resticInitRepo, resticCheckConfig, resticCopyRepo, resticWipeRepo, resticCreateBucket, getResticCurrentTask } from '../../redux/clusterSlice'
 import styles from './styles.module.scss'
 import tableStyles from '../../components/TableType2/styles.module.scss'
 
@@ -245,6 +245,37 @@ const TAB_LABELS = {
 
 const TAB_ORDER = ['local', 's3', 'sftp']
 
+// Mirrors parseLegacyS3ResticRepo in cluster/cluster_bck.go, for client-side
+// display of the effective bucket/endpoint target only. The server remains
+// the source of truth: it re-resolves and validates the real target itself.
+function parseLegacyS3Repo(rawURL) {
+  if (!rawURL || !rawURL.startsWith('s3:')) return null
+  let rest = rawURL.slice(3).trim()
+  if (!rest) return null
+  let endpoint = ''
+  if (rest.startsWith('https://') || rest.startsWith('http://')) {
+    const schemeSep = rest.indexOf('://')
+    const afterScheme = rest.slice(schemeSep + 3)
+    const slashIdx = afterScheme.indexOf('/')
+    if (slashIdx < 0) return null
+    endpoint = rest.slice(0, schemeSep + 3 + slashIdx)
+    rest = afterScheme.slice(slashIdx + 1)
+  } else {
+    const slashIdx = rest.indexOf('/')
+    if (slashIdx >= 0) {
+      const first = rest.slice(0, slashIdx)
+      if (/[.:]/.test(first)) {
+        endpoint = first
+        rest = rest.slice(slashIdx + 1)
+      }
+    }
+  }
+  const slashIdx = rest.indexOf('/')
+  const bucket = (slashIdx < 0 ? rest : rest.slice(0, slashIdx)).trim()
+  if (!bucket) return null
+  return { bucket, endpoint }
+}
+
 function ResticRepositorySettings({
   clusterName,
   config,
@@ -469,6 +500,52 @@ function ResticRepositorySettings({
   // savedS3Available: structured bucket config OR a legacy backup-restic-repository S3 URL
   const savedS3LegacyAvailable = !awsBucket && legacyRepoPath.startsWith('s3:')
   const savedS3Available = Boolean(awsBucket) || savedS3LegacyAvailable
+
+  // Create-bucket action targets the saved S3 config, even when S3 is not the
+  // active repository type - so its target is derived independently of archiveMode.
+  const legacyParsedS3 = parseLegacyS3Repo(config?.backupResticRepository || '')
+  const createBucketTargetBucket = resolvedS3Mode === 'new' ? awsBucket : (legacyParsedS3?.bucket || '')
+  const createBucketTargetEndpoint = resolvedS3Mode === 'new' ? trimmedEndpoint : (legacyParsedS3?.endpoint || '')
+  // Deliberately NOT savedS3Available: that flag means "some S3 config exists
+  // anywhere" (fine for the copy-source dropdown, which can use either saved
+  // config regardless of mode). This button acts on the currently selected
+  // s3Mode specifically, so it must gate on that mode's own resolved target -
+  // otherwise e.g. explicit mode=new with an empty bucket but a valid legacy
+  // URL would show enabled here while the server rejects it with a 400.
+  const hasResolvableS3Target = Boolean(createBucketTargetBucket)
+  const [createBucketLoading, setCreateBucketLoading] = useState(false)
+  const [createBucketResult, setCreateBucketResult] = useState(null)
+  // Signature of the fields that determine the saved S3 bucket-create target -
+  // used to invalidate stale createBucketResult feedback.
+  const s3BucketTargetSignature = [
+    s3Mode,
+    awsBucket,
+    awsPrefix,
+    awsEndpoint,
+    config?.backupResticRepository || '',
+    appendCluster
+  ].join('|')
+
+  useEffect(() => {
+    setCreateBucketResult(null)
+  }, [s3BucketTargetSignature])
+
+  const handleCreateBucket = async () => {
+    setCreateBucketLoading(true)
+    setCreateBucketResult(null)
+    try {
+      const result = await dispatch(resticCreateBucket({ clusterName })).unwrap()
+      const data = result?.data
+      setCreateBucketResult({
+        status: 'ok',
+        message: data?.message || (data?.created ? 'Bucket created.' : 'Bucket already exists.')
+      })
+    } catch (error) {
+      setCreateBucketResult({ status: 'error', message: error?.errorMessage || error?.message || String(error) })
+    } finally {
+      setCreateBucketLoading(false)
+    }
+  }
 
   const handleCheckRepo = async () => {
     setIsCheckLoading(true)
@@ -1319,6 +1396,46 @@ function ResticRepositorySettings({
                             </Text>
                           </GridItem>
                         </Grid>
+
+                        <Stack spacing={1} pt={1}>
+                          {resolvedS3Mode === 'legacy' && createBucketTargetBucket && (
+                            <Text className={styles.helperText}>
+                              Legacy mode target — bucket: <strong>{createBucketTargetBucket}</strong>
+                              {createBucketTargetEndpoint && (
+                                <> · endpoint: <strong>{createBucketTargetEndpoint}</strong></>
+                              )}
+                            </Text>
+                          )}
+                          <Box>
+                            <RMButton
+                              size='sm'
+                              colorScheme='blue'
+                              leftIcon={<HiDatabase />}
+                              onClick={handleCreateBucket}
+                              isLoading={createBucketLoading}
+                              isDisabled={user?.grants['db-backup'] === false || !hasResolvableS3Target}
+                            >
+                              Create bucket if missing
+                            </RMButton>
+                          </Box>
+                          {!hasResolvableS3Target && (
+                            <Text className={styles.helperText}>
+                              Complete the bucket / mode / legacy URL configuration above before creating the bucket.
+                            </Text>
+                          )}
+                          {createBucketResult && (
+                            <Alert
+                              status={createBucketResult.status === 'ok' ? 'success' : 'error'}
+                              size='sm'
+                              borderRadius='md'
+                              bg={isLight ? undefined : createBucketResult.status === 'ok' ? 'rgba(72,187,120,0.15)' : 'rgba(245,101,101,0.15)'}
+                              color='var(--text-color)'
+                            >
+                              <AlertIcon />
+                              <Text fontSize='sm'>{createBucketResult.message}</Text>
+                            </Alert>
+                          )}
+                        </Stack>
                       </Stack>
 
                       {/* 4. Advanced compatibility fallback */}

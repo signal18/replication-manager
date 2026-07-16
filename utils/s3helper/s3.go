@@ -68,6 +68,84 @@ func CheckObjectExists(client *s3.Client, bucket, key string) (bool, error) {
 	return true, nil
 }
 
+// bucketAPI is the subset of the S3 client used by EnsureBucket, factored out
+// for testability with a fake implementation.
+type bucketAPI interface {
+	HeadBucket(ctx context.Context, params *s3.HeadBucketInput, optFns ...func(*s3.Options)) (*s3.HeadBucketOutput, error)
+	CreateBucket(ctx context.Context, params *s3.CreateBucketInput, optFns ...func(*s3.Options)) (*s3.CreateBucketOutput, error)
+}
+
+// EnsureBucket makes the given bucket exist and be accessible with the
+// client's configured credentials, creating it if missing. It is idempotent:
+// an existing, accessible bucket is treated as success with created=false.
+func EnsureBucket(client *s3.Client, bucket string) (created bool, err error) {
+	return ensureBucket(client, bucket, client.Options().Region)
+}
+
+func ensureBucket(client bucketAPI, bucket, region string) (bool, error) {
+	bucket = strings.TrimSpace(bucket)
+	if bucket == "" {
+		return false, fmt.Errorf("S3 bucket name is required")
+	}
+
+	if err := probeBucketAccess(client, bucket); err == nil {
+		return false, nil
+	} else if !isS3ErrorCode(err, "NotFound", "NoSuchBucket") {
+		return false, err
+	}
+
+	_, createErr := client.CreateBucket(context.Background(), &s3.CreateBucketInput{
+		Bucket:                    aws.String(bucket),
+		CreateBucketConfiguration: bucketLocationConfiguration(region),
+	})
+	if createErr == nil {
+		return true, nil
+	}
+
+	if isS3ErrorCode(createErr, "BucketAlreadyOwnedByYou") {
+		return false, nil
+	}
+	if isS3ErrorCode(createErr, "BucketAlreadyExists") {
+		// Owned by another account, or eventual-consistency race with our own
+		// probe above. Re-check access before treating it as an error.
+		if probeErr := probeBucketAccess(client, bucket); probeErr == nil {
+			return false, nil
+		}
+		return false, fmt.Errorf("S3 bucket %s already exists and is not accessible with configured credentials", bucket)
+	}
+
+	return false, fmt.Errorf("S3 CreateBucket failed: %w", createErr)
+}
+
+func probeBucketAccess(client bucketAPI, bucket string) error {
+	_, err := client.HeadBucket(context.Background(), &s3.HeadBucketInput{Bucket: aws.String(bucket)})
+	if err == nil {
+		return nil
+	}
+	if isS3ErrorCode(err, "NotFound", "NoSuchBucket") {
+		return err
+	}
+	if isS3ErrorCode(err, "Forbidden", "AccessDenied") {
+		return fmt.Errorf("access denied to S3 bucket %s (check credentials/permissions)", bucket)
+	}
+	return fmt.Errorf("S3 HeadBucket failed: %w", err)
+}
+
+// bucketLocationConfiguration returns the CreateBucketConfiguration required
+// for region-specific bucket creation. AWS rejects an explicit
+// LocationConstraint for us-east-1 (its implicit default region), and
+// S3-compatible providers with no configured region expect no constraint at
+// all, so both cases return nil.
+func bucketLocationConfiguration(region string) *types.CreateBucketConfiguration {
+	region = strings.TrimSpace(region)
+	if region == "" || strings.EqualFold(region, "us-east-1") {
+		return nil
+	}
+	return &types.CreateBucketConfiguration{
+		LocationConstraint: types.BucketLocationConstraint(region),
+	}
+}
+
 type DeletePrefixOptions struct {
 	DryRun                bool
 	MaxObjects            int

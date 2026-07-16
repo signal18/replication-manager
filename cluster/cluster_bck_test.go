@@ -3,6 +3,8 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1457,14 +1459,14 @@ func newSavedSourceCluster(t *testing.T, conf *config.Config, password, awsSecre
 // appendCluster=true when BackupResticAws was false, corrupting the saved S3 prefix.
 func TestSavedS3SourceAppendClusterFalseNonAwsDest(t *testing.T) {
 	cluster := newSavedSourceCluster(t, &config.Config{
-		BackupRestic:                true,
-		BackupResticAws:             false, // current destination is local, not S3
+		BackupRestic:                  true,
+		BackupResticAws:               false, // current destination is local, not S3
 		BackupResticRepoAppendCluster: false,
-		BackupResticAwsBucket:       "mybucket",
-		BackupResticAwsPrefix:       "myprefix",
-		BackupResticAwsEndpoint:     "https://s3.example.com",
-		BackupResticAwsRegion:       "us-east-1",
-		BackupResticAwsAccessKeyId:  "AKID",
+		BackupResticAwsBucket:         "mybucket",
+		BackupResticAwsPrefix:         "myprefix",
+		BackupResticAwsEndpoint:       "https://s3.example.com",
+		BackupResticAwsRegion:         "us-east-1",
+		BackupResticAwsAccessKeyId:    "AKID",
 	}, "resticpass", "secretkey")
 
 	resolved, err := cluster.resticResolveSavedCopySource(config.ConstBackupArchiveModeResticAws, "")
@@ -1492,14 +1494,14 @@ func TestSavedS3SourceAppendClusterFalseNonAwsDest(t *testing.T) {
 // the saved S3 resolution appends it exactly once.
 func TestSavedS3SourceAppendClusterTrueAddsClusterName(t *testing.T) {
 	cluster := newSavedSourceCluster(t, &config.Config{
-		BackupRestic:                true,
-		BackupResticAws:             false, // current destination is local — should not affect S3 source
+		BackupRestic:                  true,
+		BackupResticAws:               false, // current destination is local — should not affect S3 source
 		BackupResticRepoAppendCluster: true,
-		BackupResticAwsBucket:       "mybucket",
-		BackupResticAwsPrefix:       "backup",
-		BackupResticAwsEndpoint:     "",
-		BackupResticAwsRegion:       "eu-west-1",
-		BackupResticAwsAccessKeyId:  "AKID",
+		BackupResticAwsBucket:         "mybucket",
+		BackupResticAwsPrefix:         "backup",
+		BackupResticAwsEndpoint:       "",
+		BackupResticAwsRegion:         "eu-west-1",
+		BackupResticAwsAccessKeyId:    "AKID",
 	}, "pass", "secret")
 
 	resolved, err := cluster.resticResolveSavedCopySource(config.ConstBackupArchiveModeResticAws, "")
@@ -1517,13 +1519,13 @@ func TestSavedS3SourceAppendClusterTrueAddsClusterName(t *testing.T) {
 // change the copy option already stored in the queue.
 func TestSavedS3SourceFreezeOnQueueTime(t *testing.T) {
 	conf := &config.Config{
-		BackupRestic:                true,
-		BackupResticAws:             false,
+		BackupRestic:                  true,
+		BackupResticAws:               false,
 		BackupResticRepoAppendCluster: true,
-		BackupResticAwsBucket:       "original-bucket",
-		BackupResticAwsPrefix:       "pfx",
-		BackupResticAwsRegion:       "us-east-1",
-		BackupResticAwsAccessKeyId:  "AKID",
+		BackupResticAwsBucket:         "original-bucket",
+		BackupResticAwsPrefix:         "pfx",
+		BackupResticAwsRegion:         "us-east-1",
+		BackupResticAwsAccessKeyId:    "AKID",
 	}
 	cluster := newSavedSourceCluster(t, conf, "original-pass", "original-secret")
 
@@ -1595,9 +1597,9 @@ func TestSavedS3SourceRejectsHybridPayload(t *testing.T) {
 // backup-restic-repository (S3 URL) are absent or unusable.
 func TestSavedS3SourceRejectsWhenNeitherStructuredNorLegacy(t *testing.T) {
 	cluster := newSavedSourceCluster(t, &config.Config{
-		BackupRestic:            true,
-		BackupResticAwsBucket:   "",            // no structured bucket
-		BackupResticRepository:  "/local/path", // not an S3 URL
+		BackupRestic:           true,
+		BackupResticAwsBucket:  "",            // no structured bucket
+		BackupResticRepository: "/local/path", // not an S3 URL
 	}, "pass", "secret")
 
 	opt := backupmgr.ResticCopyOption{
@@ -1977,7 +1979,7 @@ func TestPromoteResticS3Mode_HookClearsItself(t *testing.T) {
 	// Call twice to verify the hook clears itself after the first invocation.
 	cluster.promoteResticS3ModeOnBootSuccess()
 	cluster.Conf.BackupResticS3Mode = config.ConstResticS3ModeAuto // reset manually
-	cluster.promoteResticS3ModeOnBootSuccess()                      // second call should be no-op (hook already nil)
+	cluster.promoteResticS3ModeOnBootSuccess()                     // second call should be no-op (hook already nil)
 	// The hook should have been cleared on the first call; the second should be a no-op.
 	if rm.OnBootFetchSuccess != nil {
 		t.Error("expected OnBootFetchSuccess to be nil after first invocation")
@@ -2059,5 +2061,258 @@ func TestSavedS3SourceObeysS3ModeLegacy(t *testing.T) {
 	}
 	if strings.Contains(resolved.AWS.Bucket, "new") {
 		t.Errorf("new bucket leaked into resolved config: %q", resolved.AWS.Bucket)
+	}
+}
+
+// ── ResticEnsureS3Bucket tests ────────────────────────────────────────────────
+
+// newFakeS3BucketServer starts a minimal path-style S3 stub answering
+// HeadBucket/CreateBucket for ResticEnsureS3Bucket tests. It does not validate
+// SigV4 signatures - these tests exercise the resolve-then-call-S3 wiring, not
+// AWS request authentication.
+func newFakeS3BucketServer(t *testing.T, existingBuckets ...string) *httptest.Server {
+	t.Helper()
+	buckets := map[string]bool{}
+	for _, b := range existingBuckets {
+		buckets[b] = true
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bucket := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/"), "/", 2)[0]
+		switch r.Method {
+		case http.MethodHead:
+			if buckets[bucket] {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		case http.MethodPut:
+			buckets[bucket] = true
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotImplemented)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestResticEnsureS3Bucket_CreatesMissingBucket(t *testing.T) {
+	srv := newFakeS3BucketServer(t)
+	cluster := newS3ModeCluster(&config.Config{
+		BackupResticS3Mode:         config.ConstResticS3ModeNew,
+		BackupResticAwsBucket:      "missing-bucket",
+		BackupResticAwsEndpoint:    srv.URL,
+		BackupResticAwsAccessKeyId: "AKIAFAKE",
+		BackupResticAwsRegion:      "us-east-1",
+	})
+
+	result, err := cluster.ResticEnsureS3Bucket()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.Created {
+		t.Fatal("expected created=true for missing bucket")
+	}
+	if result.Bucket != "missing-bucket" {
+		t.Errorf("expected bucket=missing-bucket, got %q", result.Bucket)
+	}
+}
+
+func TestResticEnsureS3Bucket_ExistingBucketIsNoOp(t *testing.T) {
+	srv := newFakeS3BucketServer(t, "existing-bucket")
+	cluster := newS3ModeCluster(&config.Config{
+		BackupResticS3Mode:         config.ConstResticS3ModeNew,
+		BackupResticAwsBucket:      "existing-bucket",
+		BackupResticAwsEndpoint:    srv.URL,
+		BackupResticAwsAccessKeyId: "AKIAFAKE",
+		BackupResticAwsRegion:      "us-east-1",
+	})
+
+	result, err := cluster.ResticEnsureS3Bucket()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Created {
+		t.Fatal("expected created=false for already-existing bucket")
+	}
+}
+
+func TestResticEnsureS3Bucket_LegacyURLMode(t *testing.T) {
+	srv := newFakeS3BucketServer(t)
+	cluster := newS3ModeCluster(&config.Config{
+		BackupResticS3Mode:         config.ConstResticS3ModeLegacy,
+		BackupResticRepository:     "s3:" + srv.URL + "/legacy-bucket",
+		BackupResticAwsAccessKeyId: "AKIAFAKE",
+		BackupResticAwsRegion:      "us-east-1",
+	})
+
+	result, err := cluster.ResticEnsureS3Bucket()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.Created {
+		t.Fatal("expected created=true for missing legacy-mode bucket")
+	}
+	if result.Bucket != "legacy-bucket" {
+		t.Errorf("expected bucket=legacy-bucket, got %q", result.Bucket)
+	}
+}
+
+// TestResticEnsureS3Bucket_WorksWhenResticDisabled verifies bucket
+// pre-provisioning works even before backup-restic is turned on: the cluster
+// method itself performs no BackupRestic gating (the HTTP handler is the layer
+// that intentionally skips the "must be enabled" check for this endpoint).
+func TestResticEnsureS3Bucket_WorksWhenResticDisabled(t *testing.T) {
+	srv := newFakeS3BucketServer(t)
+	cluster := newS3ModeCluster(&config.Config{
+		BackupRestic:               false,
+		BackupResticS3Mode:         config.ConstResticS3ModeNew,
+		BackupResticAwsBucket:      "preprovision-bucket",
+		BackupResticAwsEndpoint:    srv.URL,
+		BackupResticAwsAccessKeyId: "AKIAFAKE",
+		BackupResticAwsRegion:      "us-east-1",
+	})
+
+	result, err := cluster.ResticEnsureS3Bucket()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.Created {
+		t.Fatal("expected created=true")
+	}
+}
+
+// TestResticEnsureS3Bucket_WorksWhenS3NotActiveRepositoryType verifies the
+// saved S3 target is used even when a different repository type (local) is
+// the currently active one.
+func TestResticEnsureS3Bucket_WorksWhenS3NotActiveRepositoryType(t *testing.T) {
+	srv := newFakeS3BucketServer(t)
+	cluster := newS3ModeCluster(&config.Config{
+		BackupArchiveMode:           config.ConstBackupArchiveModeResticLocal,
+		BackupResticLocalRepository: "/var/lib/repman/backup/archive",
+		BackupResticS3Mode:          config.ConstResticS3ModeNew,
+		BackupResticAwsBucket:       "inactive-type-bucket",
+		BackupResticAwsEndpoint:     srv.URL,
+		BackupResticAwsAccessKeyId:  "AKIAFAKE",
+		BackupResticAwsRegion:       "us-east-1",
+	})
+
+	result, err := cluster.ResticEnsureS3Bucket()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.Created {
+		t.Fatal("expected created=true")
+	}
+}
+
+func TestResticEnsureS3Bucket_UnresolvableAutoModeRejected(t *testing.T) {
+	cluster := newS3ModeCluster(&config.Config{
+		BackupResticS3Mode:     config.ConstResticS3ModeAuto,
+		BackupResticAwsBucket:  "",
+		BackupResticRepository: "", // not an S3 URL either
+	})
+
+	if _, err := cluster.ResticEnsureS3Bucket(); err == nil {
+		t.Fatal("expected error for unresolvable auto mode")
+	}
+}
+
+// TestResticEnsureS3Bucket_IgnoresRuntimeProbeCache is a regression test: auto
+// mode must resolve from field presence only, never from cluster.resolvedS3Mode
+// (the mode cached by the startup S3 probe). That cache prefers "new" but
+// falls back to "legacy" specifically when the new bucket isn't reachable yet
+// - i.e. exactly the situation a user is in when clicking "create bucket if
+// missing". If this method honored the cache, it would silently target (or
+// no-op against) the legacy bucket instead of creating the new one the user
+// actually asked for, with no way for the dashboard to know since it has no
+// visibility into resolvedS3Mode.
+func TestResticEnsureS3Bucket_IgnoresRuntimeProbeCache(t *testing.T) {
+	srv := newFakeS3BucketServer(t, "legacy-bucket") // legacy exists; new does not
+	cluster := newS3ModeCluster(&config.Config{
+		BackupResticS3Mode:         config.ConstResticS3ModeAuto,
+		BackupResticAwsBucket:      "new-bucket",
+		BackupResticAwsEndpoint:    srv.URL,
+		BackupResticAwsAccessKeyId: "AKIAFAKE",
+		BackupResticAwsRegion:      "us-east-1",
+		BackupResticRepository:     "s3:" + srv.URL + "/legacy-bucket",
+	})
+	// Simulate a startup auto-probe that fell back to legacy because the new
+	// bucket wasn't reachable at boot time.
+	cluster.resolvedS3Mode = config.ConstResticS3ModeLegacy
+
+	result, err := cluster.ResticEnsureS3Bucket()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Bucket != "new-bucket" {
+		t.Errorf("expected target bucket=new-bucket (presence-based resolution), got %q; resolvedS3Mode cache leaked into result", result.Bucket)
+	}
+	if !result.Created {
+		t.Error("expected created=true for the missing new-bucket")
+	}
+}
+
+func TestResticAdditionalEnvSessionTokenNotAllowlisted(t *testing.T) {
+	if token := resticAdditionalEnvSessionToken("", nil); token != "" {
+		t.Errorf("expected empty token when not allowlisted, got %q", token)
+	}
+	if token := resticAdditionalEnvSessionToken("AWS_REGION", nil); token != "" {
+		t.Errorf("expected empty token for unrelated allowlist entry, got %q", token)
+	}
+}
+
+func TestResticAdditionalEnvSessionTokenInlineOverride(t *testing.T) {
+	token := resticAdditionalEnvSessionToken("AWS_SESSION_TOKEN=inline-token-value", nil)
+	if token != "inline-token-value" {
+		t.Errorf("expected inline override value, got %q", token)
+	}
+}
+
+func TestResticAdditionalEnvSessionTokenFromBaseEnv(t *testing.T) {
+	baseEnv := []string{"PATH=/usr/bin", "AWS_SESSION_TOKEN=from-process-env"}
+	token := resticAdditionalEnvSessionToken("AWS_SESSION_TOKEN", baseEnv)
+	if token != "from-process-env" {
+		t.Errorf("expected token sourced from baseEnv, got %q", token)
+	}
+}
+
+func TestResticAdditionalEnvSessionTokenInvalidSyntax(t *testing.T) {
+	if token := resticAdditionalEnvSessionToken(`AWS_SESSION_TOKEN="unterminated`, nil); token != "" {
+		t.Errorf("expected empty token on parse error, got %q", token)
+	}
+}
+
+// TestResticEnsureS3Bucket_UsesSessionTokenFromAdditionalEnv is an end-to-end
+// regression test: an allowlisted AWS_SESSION_TOKEN must reach the S3 client
+// used for bucket creation, mirroring how it already reaches the restic
+// subprocess via filterResticEnv/ResticGetEnv.
+func TestResticEnsureS3Bucket_UsesSessionTokenFromAdditionalEnv(t *testing.T) {
+	var gotToken string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotToken = r.Header.Get("X-Amz-Security-Token")
+		switch r.Method {
+		case http.MethodHead:
+			w.WriteHeader(http.StatusNotFound)
+		case http.MethodPut:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	cluster := newS3ModeCluster(&config.Config{
+		BackupResticS3Mode:         config.ConstResticS3ModeNew,
+		BackupResticAwsBucket:      "sts-bucket",
+		BackupResticAwsEndpoint:    srv.URL,
+		BackupResticAwsAccessKeyId: "AKIAFAKE",
+		BackupResticAwsRegion:      "us-east-1",
+		BackupResticAdditionalEnv:  "AWS_SESSION_TOKEN=my-session-token",
+	})
+
+	if _, err := cluster.ResticEnsureS3Bucket(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotToken != "my-session-token" {
+		t.Errorf("expected X-Amz-Security-Token=my-session-token to reach S3, got %q", gotToken)
 	}
 }
