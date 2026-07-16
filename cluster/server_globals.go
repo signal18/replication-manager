@@ -28,13 +28,22 @@ func (sg *ServerGlobals) AcquireBackupSlot() {
 	sg.BackupSemaphore <- struct{}{}
 }
 
-// ReleaseBackupSlot frees a backup slot.
+// ReleaseBackupSlot frees a backup slot. Non-blocking: a semaphore release must
+// NEVER block the caller. Release is receive-from-channel, which blocks forever on
+// an empty channel — and release is driven by state resolution (WARN0073/WARN0175 in
+// StateProcessing), which is not guaranteed to be paired with a held slot. A blocking
+// receive there deadlocked the whole monitor loop (Cluster.Run -> StateProcessing) for
+// hours: no CheckFailed, no failover, frozen workLoad. The select/default makes
+// releasing an unheld slot a harmless no-op instead of a permanent hang.
 // Safe to call even if no semaphore is configured.
 func (sg *ServerGlobals) ReleaseBackupSlot() {
 	if sg == nil || sg.BackupSemaphore == nil {
 		return
 	}
-	<-sg.BackupSemaphore
+	select {
+	case <-sg.BackupSemaphore:
+	default: // no slot held — nothing to release, never block the monitor loop
+	}
 }
 
 // waitForBackupSlot opens a WARN0174 state while waiting for a global backup
