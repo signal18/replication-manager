@@ -3764,8 +3764,18 @@ func (repman *ReplicationManager) Stop() {
 			if isNeedPush && repman.Status == ConstMonitorActif {
 				repman.IsNeedGitPush = false
 				gt := time.Now()
-				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
-				repman.Logrus.Infof("Shutdown: final git push took %s", time.Since(gt))
+				// Shutdown fast-fail: the periodic dirty-gated push keeps config
+				// already synced, so the final push is usually a no-op. Bound it to
+				// 5s so a slow/hung remote can't drag the whole stop; if it exceeds,
+				// abandon it (the process is exiting anyway) rather than block.
+				pushed := make(chan struct{})
+				go func() { repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true); close(pushed) }()
+				select {
+				case <-pushed:
+					repman.Logrus.Infof("Shutdown: final git push took %s", time.Since(gt))
+				case <-time.After(5 * time.Second):
+					repman.Logrus.Warnf("Shutdown: final git push exceeded 5s — abandoning (config already synced by the periodic push)")
+				}
 			}
 		}
 	}
