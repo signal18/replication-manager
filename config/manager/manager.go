@@ -1430,9 +1430,13 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		return err
 	}
 
-	// Push changes
+	// Push changes. Context-bounded (mirrors the FetchContext above) so a hung
+	// network push cannot block forever — an unbounded Push was a shutdown/hang
+	// risk (the final push on SIGINT could stall the whole stop).
 	pushStart := time.Now()
-	err = r.Push(&git.PushOptions{Auth: auth})
+	pushCtx, pushCancel := context.WithTimeout(context.Background(), 120*time.Second)
+	err = r.PushContext(pushCtx, &git.PushOptions{Auth: auth})
+	pushCancel()
 	cm.logger.Debugf("none", config.ConstLogModGit,
 		"Push took: %s", time.Since(pushStart))
 
