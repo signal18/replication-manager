@@ -216,6 +216,14 @@ type Cluster struct {
 	// in both directions). Guarded by sbServerFailMu.
 	sbServerFailMu   sync.Mutex       `json:"-"`
 	sbServerFailURLs map[string]int64 `json:"-"`
+	// sbSlaveIOStoppedURLs — io_threads the sim REALLY stopped (op 5/6 STOP SLAVE
+	// IO_THREAD), url -> unix until. Unlike every other cut, which only fakes a view
+	// via a flag and needs no undo, this is a real DB side effect: it must be tracked
+	// so it can be (a) auto-restored with START SLAVE when the timer expires or the sim
+	// is cleared and (b) surfaced (VSPLIT0007) as simulation-induced, so an operator and
+	// repman's own monitoring never mistake it for a genuine SlaveErr. Guarded by
+	// sbServerFailMu (shares the lock with sbServerFailURLs — same lifecycle).
+	sbSlaveIOStoppedURLs map[string]int64 `json:"-"`
 	// eventProv is the config event log provenance table: where the current
 	// value of each saved key came from (echo subtraction + LWW). See
 	// cluster_eventlog.go and doc/implementation/config/CONFIG_EVENT_LOG.md.

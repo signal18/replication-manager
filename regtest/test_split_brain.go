@@ -171,9 +171,12 @@ func setMinorityWithMaster(cl *cluster.Cluster) {
 		if sv == nil || (mst != nil && sv.URL == mst.URL) {
 			continue
 		}
-		if logs, err := sv.StopSlaveIOThread(); err != nil {
-			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "op 5/6: could not stop io_thread on %s: %s (%s)", sv.URL, err, logs)
-		}
+		// Route the REAL stop through the simulator so it is tracked: the io_thread is
+		// genuinely stopped (STOP SLAVE IO_THREAD — the divergent tail needs a real break),
+		// but tracking lets it auto-restart (START SLAVE) on timer-expiry / cleanup and be
+		// surfaced as simulation-induced (VSPLIT0007). A raw stop here stranded the slave in
+		// SlaveErr with nothing knowing to restart it.
+		cl.SimulateSlaveIOThreadStop(sv, minorityHold)
 	}
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "op 6/6 LOCAL: cutting my -> majority-side database links (all non-master servers)")
 	for _, sv := range cl.Servers {
