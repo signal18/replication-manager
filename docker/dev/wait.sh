@@ -13,8 +13,12 @@ echo "Monitoring process: '$AppName' until it disappears..."
 
 # Loop to monitor the process
 while true; do
-    # Use ps aux and grep to search for the process, exclude the grep command itself
-    PROCESS_COUNT=$(ps aux | grep "$AppName" | grep -v grep | grep -v "wait.sh" | wc -l)
+    # Match the actual monitor process only. Without the 'monitor' qualifier this
+    # grep counts any line containing "$AppName" — a concurrent run.sh/wait.sh, the
+    # start command line, etc. — so it spun for minutes on a phantom while repman
+    # was already gone from ps (the fake "long graceful stop"). stop.sh matches the
+    # same way (grep replication | grep monitor).
+    PROCESS_COUNT=$(ps aux | grep "$AppName" | grep monitor | grep -v grep | grep -v "wait.sh" | wc -l)
     echo "$PROCESS_COUNT"
     # If process count is zero, exit the loop
     if [ "$PROCESS_COUNT" -eq 0 ]; then
