@@ -2786,26 +2786,30 @@ func (repman *ReplicationManager) Run() error {
 		// processClusterQueue is blocked waiting for gitMutex — compounding the delay.
 		repman.exit.Store(true)
 
+		shutStart := time.Now()
 		repman.Logrus.Info("Shutdown: unmounting S3")
+		s3t := time.Now()
 		repman.UnMountS3()
+		repman.Logrus.Infof("Shutdown: S3 unmount took %s", time.Since(s3t))
 
 		repman.Logrus.Info("Shutdown: stopping ticker goroutines")
 		close(quit_GitPull)
 		close(quit_PAT)
 
 		repman.Logrus.Infof("Shutdown: stopping %d clusters", len(repman.Clusters))
+		clStart := time.Now()
 		stopwg := sync.WaitGroup{}
 		for _, cl := range repman.Clusters {
 			stopwg.Add(1)
 			go func(c *cluster.Cluster) {
 				defer stopwg.Done()
-				repman.Logrus.Infof("Shutdown: stopping cluster %s", c.Name)
+				t := time.Now()
 				c.Stop()
-				repman.Logrus.Infof("Shutdown: cluster %s stopped", c.Name)
+				repman.Logrus.Infof("Shutdown: cluster %s stopped in %s", c.Name, time.Since(t))
 			}(cl)
 		}
 		stopwg.Wait()
-		repman.Logrus.Info("Shutdown: all clusters stopped")
+		repman.Logrus.Infof("Shutdown: all clusters stopped in %s (total since signal %s)", time.Since(clStart), time.Since(shutStart))
 		close(clustersDone)
 	}()
 
@@ -3733,12 +3737,18 @@ func (repman *ReplicationManager) Stop() {
 	}
 
 	// Wait for previous save since this is the last save
+	wt := time.Now()
 	for repman.IsSavingConfig {
 		time.Sleep(time.Second)
 	}
+	if d := time.Since(wt); d > time.Second {
+		repman.Logrus.Infof("Shutdown: waited %s for in-flight save", d)
+	}
 
 	if repman.HasActiveCluster() {
+		st := time.Now()
 		repman.ConfigManager.SaveConfig(repman, true)
+		repman.Logrus.Infof("Shutdown: global save took %s", time.Since(st))
 
 		if repman.Conf.GitUrl != "" {
 			isNeedPush := repman.IsNeedGitPush
@@ -3753,15 +3763,21 @@ func (repman *ReplicationManager) Stop() {
 			// Single-writer: only the Active server pushes (see periodic push above).
 			if isNeedPush && repman.Status == ConstMonitorActif {
 				repman.IsNeedGitPush = false
+				gt := time.Now()
 				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+				repman.Logrus.Infof("Shutdown: final git push took %s", time.Since(gt))
 			}
 		}
 	}
 
+	cmt := time.Now()
 	repman.ConfigManager.Stop()
+	repman.Logrus.Infof("Shutdown: ConfigManager.Stop took %s", time.Since(cmt))
 
 	if !repman.IsExportPush && repman.HasActiveCluster() {
+		bt := time.Now()
 		repman.PushConfigToBackupDir()
+		repman.Logrus.Infof("Shutdown: PushConfigToBackupDir took %s", time.Since(bt))
 	}
 }
 

@@ -1315,29 +1315,41 @@ func (cluster *Cluster) StateProcessing() {
 
 func (cluster *Cluster) Stop() {
 	cluster.stopOnce.Do(func() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: signaling exit")
+		// Instrumented shutdown: time every phase so a slow stop pinpoints itself
+		// in the log (e.g. "Stop[curepipe] resticUnmount took 8s") instead of
+		// leaving us guessing where the seconds go. Clusters stop concurrently, so
+		// the overall stop time is the slowest cluster's slowest phase.
+		stopStart := time.Now()
+		phase := func(name string, fn func()) {
+			t := time.Now()
+			fn()
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop[%s] %s took %s", cluster.Name, name, time.Since(t))
+		}
+
 		cluster.exit.Store(true)
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: stopping scheduler")
-		if cluster.scheduler != nil {
-			cluster.scheduler.Stop()
-		}
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: closing template MD5 worker")
-		cluster.CloseRefreshTemplateMD5Worker()
-
-		if cluster.ResticManager != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: unmounting restic repo")
-			if err := cluster.ResticManager.UnmountRepo(); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Restic unmount on shutdown failed: %s", err)
+		phase("scheduler", func() {
+			if cluster.scheduler != nil {
+				cluster.scheduler.Stop()
 			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: shutting down restic worker")
-			cluster.ResticManager.ShutdownWorker()
+		})
+		phase("templateMD5Worker", func() {
+			cluster.CloseRefreshTemplateMD5Worker()
+		})
+		if cluster.ResticManager != nil {
+			phase("resticUnmount", func() {
+				if err := cluster.ResticManager.UnmountRepo(); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Restic unmount on shutdown failed: %s", err)
+				}
+			})
+			phase("resticWorkerShutdown", func() {
+				cluster.ResticManager.ShutdownWorker()
+			})
 		}
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: saving config")
-		cluster.ConfigManager.SaveConfig(cluster, true)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop: done")
+		phase("saveConfig", func() {
+			cluster.ConfigManager.SaveConfig(cluster, true)
+		})
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stop[%s] done, total %s", cluster.Name, time.Since(stopStart))
 	})
 }
 
