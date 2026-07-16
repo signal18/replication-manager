@@ -1451,10 +1451,16 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		}
 	}()
 
-	// Attempt to stop slave replication on the server
-	logs, err := server.StopSlave()
+	// Stop ALL replication connections before the reseed. StopSlave() only stops
+	// the cluster.Conf.MasterConn channel (empty by default → the unnamed default
+	// connection), so a server replicating on a NAMED connection (e.g. 'curepipe')
+	// stays running and the dump's embedded position statement fails with
+	// ERROR 1198 "you have a running slave ... run STOP SLAVE '<name>' first".
+	// StopAllSlaves iterates server.Replications and stops each by its real
+	// ConnectionName, so every named channel is stopped.
+	logs, err := server.StopAllSlaves()
 	if err != nil {
-		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop all slaves on server: %s %s", server.URL, err)
 	}
 
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {
