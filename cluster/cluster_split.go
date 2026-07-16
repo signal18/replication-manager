@@ -321,6 +321,18 @@ func (cl *Cluster) fetchMasterFromPeer() (string, error) {
 		cl.ensureCrashArchive(&mat)
 		cl.LoadFailoverHistory()
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Materialized peer crash for %s (elected master %s) — wrote local archive %s", mat.URL, mat.ElectedMasterURL, mat.ArchiveDir)
+		// Pin the crashed old master to Failed the moment we materialize its crash.
+		// This fetch only runs on the ACTIVE node, so the node that will drive the
+		// rejoin is guaranteed to hold the Failed->up edge — closing the active-handoff
+		// race where the winner that witnessed the failure yielded active (calm-yield)
+		// before the edge landed and the new active never saw the failure. The server
+		// is reachable (parked StandAlone), so it recovers next tick with PrevState=
+		// Failed, which triggers RejoinMaster. Guarded on !IsMaster so the elected new
+		// master is never demoted.
+		if srv := cl.GetServerFromURL(mat.URL); srv != nil && !srv.IsMaster() {
+			srv.SetState(stateFailed)
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Pinned %s to Failed on crash materialization so its rejoin edge fires on this (active) node", mat.URL)
+		}
 	}
 	return last.ElectedMasterURL, nil
 }
