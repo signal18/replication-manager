@@ -136,6 +136,15 @@ func (cluster *Cluster) hasUnresolvedCrash() bool {
 		if crash == nil {
 			continue
 		}
+		// An operator-armed rejoin (a method was chosen, no result yet) is
+		// unresolved by definition: it is a queued action, not a settled one.
+		// Without this the DBs-up purge (cluster_topo.go) deletes the armed crash
+		// before ProcessArmedRejoins can execute it, so the manual rejoin silently
+		// never runs even though the API returned "armed" — the server need not be
+		// SlaveErr/Failed (a StandAlone old master is a valid rejoin target).
+		if crash.RejoinMethod != "" && crash.RejoinResult == "" {
+			return true
+		}
 		srv := cluster.GetServerFromURL(crash.URL)
 		if srv != nil && (srv.State == stateSlaveErr || srv.IsFailed()) {
 			return true
