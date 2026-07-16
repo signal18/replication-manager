@@ -22,3 +22,13 @@
     }
   }
 }
+
+// --secondary-color is a dark navy in the dark theme, close to (or matching)
+// several of the panel backgrounds it's drawn on, so the edit icon can
+// disappear depending on nesting. Force a color guaranteed to contrast
+// against every dark panel background instead of tuning per-background.
+:global(.dark) {
+  .btnEdit svg {
+    fill: var(--text-color);
+  }
+}

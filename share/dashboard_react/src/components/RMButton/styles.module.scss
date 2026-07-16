@@ -19,6 +19,11 @@ button.button {
     }
   }
 
+  &.xs {
+    font-size: rem(12);
+    height: rem(24);
+    padding: rem(4) rem(8);
+  }
   &.small {
     font-size: rem(14);
     height: rem(32);
