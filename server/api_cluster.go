@@ -10219,8 +10219,23 @@ func (repman *ReplicationManager) handlerMuxClusterRejoin(w http.ResponseWriter,
 		http.Error(w, "No crash history to rejoin", http.StatusNotFound)
 		return
 	}
+	// Run it NOW instead of only arming it and waiting for ProcessArmedRejoins to
+	// pick it up on a later tick. The operator already chose the target and method,
+	// so there is nothing to defer — and the deferred pickup was racing the crash
+	// purge (cluster.Crashes gets cleared once the DBs look up), which silently
+	// dropped the armed rejoin so it never ran. Execute directly (same call
+	// ProcessArmedRejoins makes), guarded on IsActive as it is there; the arm remains
+	// as a backstop. Goroutine so the HTTP response returns promptly — the rejoin can
+	// be a multi-minute mysqldump reseed.
+	status := "armed"
+	if mycluster.IsActive() {
+		if srv := mycluster.GetServerFromURL(target); srv != nil {
+			go srv.RejoinMaster()
+			status = "running"
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"rejoin":"armed","cluster":"%s","server":"%s","method":"%s"}`, mycluster.Name, target, method)
+	fmt.Fprintf(w, `{"rejoin":"%s","cluster":"%s","server":"%s","method":"%s"}`, status, mycluster.Name, target, method)
 }
 
 // @Router /api/clusters/{clusterName}/servers/{serverName}/lost-events [get]
