@@ -112,7 +112,7 @@ type ReplicationManager struct {
 	// sbHeartbeatFailUntil (unix seconds) severs the peer heartbeat both ways
 	// to simulate this node being isolated from its peer — the server-level
 	// leg of the split-brain simulator (cluster_splitbrain_simulator.go). Runtime state only.
-	sbHeartbeatFailUntil            atomic.Int64                       `json:"-"`
+	sbHeartbeatFailUntil atomic.Int64 `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
@@ -166,7 +166,7 @@ type ReplicationManager struct {
 	Logrus                      *log.Logger                    `json:"-"`
 	ApiLogAdapter               *ApiLogAdapter                 `json:"-"`
 	lastReportedStatus          string                         `json:"-"`
-	lastReportedSplitBrain     bool                            `json:"-"`
+	lastReportedSplitBrain      bool                           `json:"-"`
 	IsSavingConfig              bool                           `json:"isSavingConfig"`
 	HasSavingConfigQueue        bool                           `json:"hasSavingConfigQueue"`
 	IsGitPull                   bool                           `json:"isGitPull"`
@@ -177,30 +177,30 @@ type ReplicationManager struct {
 	// currently AddCluster(), FetchDynamicClustersFromGit(), and the
 	// auto-discovery start path inside PullCloud18Configs(). See
 	// doc/implementation/server/DYNAMIC_CLUSTER_GIT_IMPORT_PLAN.md.
-	runtimeClusterStartMu       sync.Mutex                     `json:"-"`
-	gatewayMu                   sync.Map                       `json:"-"`
-	IsNeedGitPush               bool                           `json:"-"`
-	IsNeedConfigSave            bool                           `json:"-"` // event flag: Save() sets it, the config-sync gate consumes it and runs SaveCallBack
-	CanConnectVault             bool                           `json:"canConnectVault"`
-	IsExportPush                bool                           `json:"-"`
-	globalScheduler             *cron.Cron                     `json:"-"`
-	CheckSumConfig              map[string]hash.Hash           `json:"-"`
-	Mailer                      *mailer.Mailer                 `json:"-"`
-	IsHttpListenerReady         bool                           `json:"-"`
-	IsApiListenerReady          bool                           `json:"-"`
-	Terms                       []byte                         `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
-	TermsDT                     time.Time                      `json:"termsDT"`
-	ModTimes                    map[string]time.Time           `json:"-"`
-	SessionManager              *tty.SessionManager            `json:"-"`
-	ConfigManager               *manager.ConfigManager         `json:"-"`
-	MeetUserID                  string                         `json:"-"`
-	LoginUpgradeStore           *LoginUpgradeStore             `json:"-"`
-	LoginUpgradeInitOnce        sync.Once                      `json:"-"`
-	DiskStatManager             *misc.DiskStatManager          `json:"-"`
-	OpenSVCStats                atomic.Value                   `json:"-"`
-	inFetchOpenSVCStats         bool                           `json:"-"`
-	MessageChan                 chan sharedlog.Message         `json:"-"`
-	fileHook                    log.Hook
+	runtimeClusterStartMu sync.Mutex             `json:"-"`
+	gatewayMu             sync.Map               `json:"-"`
+	IsNeedGitPush         bool                   `json:"-"`
+	IsNeedConfigSave      bool                   `json:"-"` // event flag: Save() sets it, the config-sync gate consumes it and runs SaveCallBack
+	CanConnectVault       bool                   `json:"canConnectVault"`
+	IsExportPush          bool                   `json:"-"`
+	globalScheduler       *cron.Cron             `json:"-"`
+	CheckSumConfig        map[string]hash.Hash   `json:"-"`
+	Mailer                *mailer.Mailer         `json:"-"`
+	IsHttpListenerReady   bool                   `json:"-"`
+	IsApiListenerReady    bool                   `json:"-"`
+	Terms                 []byte                 `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
+	TermsDT               time.Time              `json:"termsDT"`
+	ModTimes              map[string]time.Time   `json:"-"`
+	SessionManager        *tty.SessionManager    `json:"-"`
+	ConfigManager         *manager.ConfigManager `json:"-"`
+	MeetUserID            string                 `json:"-"`
+	LoginUpgradeStore     *LoginUpgradeStore     `json:"-"`
+	LoginUpgradeInitOnce  sync.Once              `json:"-"`
+	DiskStatManager       *misc.DiskStatManager  `json:"-"`
+	OpenSVCStats          atomic.Value           `json:"-"`
+	inFetchOpenSVCStats   bool                   `json:"-"`
+	MessageChan           chan sharedlog.Message `json:"-"`
+	fileHook              log.Hook
 	// SecurityLogrus is a dedicated logger that writes security events to
 	// security.log (path derived from log-file by inserting "-security" before
 	// the extension). Nil when log-file is not configured.
@@ -287,12 +287,12 @@ type Heartbeat struct {
 	UUID      string    `json:"uuid"`
 	StartTime time.Time `json:"startTime"`
 	Secret    string    `json:"secret"`
-	Cluster string `json:"cluster"`
-	Master  string `json:"master"`
-	UID     int    `json:"id"`
-	Status  string `json:"status"`
-	Hosts   int    `json:"hosts"`
-	Failed  int    `json:"failed"`
+	Cluster   string    `json:"cluster"`
+	Master    string    `json:"master"`
+	UID       int       `json:"id"`
+	Status    string    `json:"status"`
+	Hosts     int       `json:"hosts"`
+	Failed    int       `json:"failed"`
 }
 
 var confs = make(map[string]config.Config)
@@ -1944,16 +1944,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	repman.ViperConfig = firstRead
 	repman.ConfigManager.UpdateLoggerConfig("default", repman.Conf)
 	repman.PeerManager.SetInterval(repman.Conf.Cloud18HealthRefreshInterval)
-
-	if init_git {
-		// Sync the CRM's current plan for this URI so a node booting with cloud18
-		// already set (e.g. a copied config, or a second node registering against
-		// an already-subscribed URI) doesn't stay stuck on a stale local plan.
-		// Must run after *repman.Conf = conf above, since it persists directly onto
-		// repman.Conf — any earlier and this assignment would clobber it back to
-		// the stale pre-sync value. Best-effort: see syncSubscriptionPlanFromCRM.
-		repman.syncSubscriptionPlanFromCRM()
-	}
 }
 
 func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, ImmuableMap map[string]interface{}, DynamicMap map[string]interface{}, cluster string, conf config.Config) config.Config {
