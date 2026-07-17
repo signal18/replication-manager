@@ -303,7 +303,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				}
 			}
 			sm.AddState(compositeKey, st)
-			if !isSecurity && !isWorkload {
+			if !isSecurity && !isWorkload && !isSchema {
 				cluster.SetState(f.ErrKey, st)
 			}
 		}
@@ -405,15 +405,22 @@ func (cluster *Cluster) RefreshSchemaWireTables() {
 	tables := make([]logplugin.StdioTable, 0, len(dict))
 	for _, t := range dict {
 		wt := logplugin.StdioTable{
-			Schema:     t.TableSchema,
-			Name:       t.TableName,
-			Engine:     t.Engine,
-			RowFormat:  t.RowFormat,
-			Rows:       t.TableRows,
-			DataLength: t.DataLength,
+			Schema:       t.TableSchema,
+			Name:         t.TableName,
+			Engine:       t.Engine,
+			RowFormat:    t.RowFormat,
+			Rows:         t.TableRows,
+			DataLength:   t.DataLength,
+			AvgRowLength: t.AvgRowLength,
 		}
 		for _, c := range t.TableColumns {
-			col := logplugin.StdioTableColumn{Name: c.Name, Type: c.Type, Nullable: c.Nullable}
+			col := logplugin.StdioTableColumn{
+				Name:          c.Name,
+				Type:          c.Type,
+				Nullable:      c.Nullable,
+				Compressed:    c.Compressed,
+				AvgByteLength: c.AvgByteLength,
+			}
 			if c.Charset != nil {
 				col.Charset = *c.Charset
 			}
@@ -1081,6 +1088,7 @@ func buildMonitoringFlags(cluster *Cluster, server *ServerMonitor) map[string]bo
 		"monitoring-performance-schema":         cluster.Conf.MonitorPFS,
 		"monitoring-performance-schema-queries": cluster.Conf.MonitorPFSQueries,
 		"monitoring-processlist":                cluster.Conf.MonitorProcessList,
+		"monitoring-schema-columns":             cluster.Conf.MonitorSchemaColumns,
 
 		// Auto-detected per-server capability: true only when the MySQL
 		// METADATA_LOCK_INFO plugin is installed and active on this server.

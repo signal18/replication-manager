@@ -50,6 +50,12 @@ type TableColumn struct {
 	Nullable  bool   `json:"nullable"`
 	Charset   string `json:"charset,omitempty"`
 	Collation string `json:"collation,omitempty"`
+	// Compressed is true when the column declares MariaDB per-column
+	// COMPRESSED storage (BLOB/TEXT candidate columns only, MariaDB only).
+	Compressed bool `json:"compressed,omitempty"`
+	// AvgByteLength is a bounded-sample observed average byte length
+	// (BLOB/TEXT candidate columns only). Zero means not sampled.
+	AvgByteLength int64 `json:"avg_byte_length,omitempty"`
 }
 
 // Table is one table of the schema dictionary snapshot (wire v3).
@@ -57,13 +63,14 @@ type TableColumn struct {
 // plus boot and on-demand runs) and is populated ONLY on the master server's
 // request to keep per-tick payloads flat.
 type Table struct {
-	Schema     string        `json:"schema"`
-	Name       string        `json:"name"`
-	Engine     string        `json:"engine"`
-	RowFormat  string        `json:"row_format"`
-	Rows       int64         `json:"rows,omitempty"`
-	DataLength int64         `json:"data_length,omitempty"`
-	Columns    []TableColumn `json:"columns,omitempty"`
+	Schema       string        `json:"schema"`
+	Name         string        `json:"name"`
+	Engine       string        `json:"engine"`
+	RowFormat    string        `json:"row_format"`
+	Rows         int64         `json:"rows,omitempty"`
+	DataLength   int64         `json:"data_length,omitempty"`
+	AvgRowLength int64         `json:"avg_row_length,omitempty"` // observed average row length (information_schema.tables), corroborating signal only
+	Columns      []TableColumn `json:"columns,omitempty"`
 }
 
 // Request is written to the plugin's stdin as a single JSON object.

@@ -2708,6 +2708,17 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 
 	cluster.WorkLoad.DBIndexSize = totindexsize
 	cluster.WorkLoad.DBTableSize = tottablesize
+
+	// Enrich BLOB/TEXT candidate columns with MariaDB compression detection and
+	// a bounded-sample observed average byte length, consumed by the
+	// plugin-schema-lob-compression schema advisor plugin. No-op on non-MariaDB
+	// and for tables under the minimum candidate size; every query is bounded
+	// and failures are skipped silently — see dbhelper.EnrichLobColumns.
+	if cluster.Conf.MonitorSchemaColumns {
+		lobLogs := dbhelper.EnrichLobColumns(cmaster.Conn, cmaster.DBVersion, tables)
+		cluster.LogSQL(lobLogs, nil, cmaster.URL, "Monitor", config.LvlDbg, "LOB column enrichment on %s", cmaster.URL)
+	}
+
 	cmaster.DictTables = dbhelper.FromNormalTablesMap(cmaster.DictTables, tables)
 
 	return nil
