@@ -4299,6 +4299,14 @@ func (repman *ReplicationManager) SaveCallBack() error {
 func (repman *ReplicationManager) SaveGlobalConfigs() error {
 	var err error
 
+	// CheckSumConfig is created later in the startup sequence, but a config save can
+	// be triggered earlier — e.g. syncSubscriptionPlanFromCRM at the tail of InitConfig
+	// persists the subscription plan synchronously. Writing to a nil map panics, so make
+	// it on demand: any caller reaching a save must find the map ready.
+	if repman.CheckSumConfig == nil {
+		repman.CheckSumConfig = make(map[string]hash.Hash)
+	}
+
 	_, file, no, ok := runtime.Caller(1)
 	if ok {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
