@@ -10224,13 +10224,13 @@ func (repman *ReplicationManager) proxyLostEventsFromPeer(w http.ResponseWriter,
 // for destructive ones (cluster-failover + cluster-rejoin-unsafe). The method must match
 // its verb. Target is the latest divergence, or ?server= to pick a specific one.
 // @Summary Rejoin the diverged master with a chosen recovery method
-// @Description Explicitly (re-)arms the rejoin using the operator-chosen method. Safe methods use /actions/rejoin (needs cluster-failover); destructive methods (ignore-delta-force, bootstrap-repli-ftwrl) use /actions/unsafe-rejoin (needs cluster-failover + cluster-rejoin-unsafe). The method must match its verb.
+// @Description Explicitly (re-)arms the rejoin using the operator-chosen method. Safe methods use /actions/rejoin (needs cluster-failover); destructive methods (ignore-delta-force, bootstrap-repli-ftwrl, reset-master-reslave) use /actions/unsafe-rejoin (needs cluster-failover + cluster-rejoin-unsafe). The method must match its verb.
 // @Tags ClusterActions
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Param method path string true "Rejoin method" Enums(flashback, logical-dump, logical-backup, physical-backup, reset-master-reslave, rejoin-script, ignore-delta-force, bootstrap-repli-ftwrl)
+// @Param method path string true "Rejoin method. Safe (via /actions/rejoin): flashback, logical-dump (direct master dump), logical-backup, physical-backup, rejoin-script. Destructive (via /actions/unsafe-rejoin): ignore-delta-force, bootstrap-repli-ftwrl, reset-master-reslave" Enums(flashback, logical-dump, logical-backup, physical-backup, rejoin-script, ignore-delta-force, bootstrap-repli-ftwrl, reset-master-reslave)
 // @Success 200 {string} string "Rejoin armed"
 // @Failure 400 {string} string "Invalid rejoin method / wrong verb"
 // @Failure 403 {string} string "No valid ACL / method needs the unsafe verb"
