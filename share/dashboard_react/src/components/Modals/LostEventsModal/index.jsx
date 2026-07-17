@@ -22,7 +22,8 @@ const REJOIN_LABEL = {
   'not-flashback-able': 'Rejoin failed: not flashback-able',
   'no-rejoin-method': 'Rejoin failed: no method',
   'failed': 'Rejoin failed',
-  'peer-unreachable': 'Rejoin pending: peer unreachable'
+  'peer-unreachable': 'Rejoin pending: peer unreachable',
+  'recovered': 'Recovered (healthy slave)'
 }
 
 // Operator rejoin methods — mirror the backend (crash.go). ALL are always offered:

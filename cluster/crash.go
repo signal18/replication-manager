@@ -232,15 +232,14 @@ func (crash *Crash) backfillDeltaFromArchiveDir() {
 				crash.DeltaFlashbackDecoded = full
 			}
 		case strings.HasSuffix(name, ".sql"):
-			// The forward decode is <archivedBinlog>.sql. When several segments were
-			// captured, prefer the one for this crash's master log file; else take the
-			// first decode found (DeltaDecoded still empty).
-			binlog := strings.TrimSuffix(name, ".sql")
-			if crash.DeltaDecoded == "" || (crash.FailoverMasterLogFile != "" && strings.HasSuffix(binlog, crash.FailoverMasterLogFile)) {
+			// The forward decode is <archivedBinlog>.sql. A crash-bin dir holds exactly
+			// one binlog/.sql/.flashback.sql triple — saveBinlog names it from the
+			// crash's FailoverMasterLogFile, which is fixed for the life of a Crash — so
+			// the first forward .sql is the one. DeltaArchive is kept in lockstep with
+			// the decode it was rendered from.
+			if crash.DeltaDecoded == "" {
 				crash.DeltaDecoded = full
-				if crash.DeltaArchive == "" {
-					crash.DeltaArchive = crash.ArchiveDir + "/" + binlog
-				}
+				crash.DeltaArchive = strings.TrimSuffix(full, ".sql")
 			}
 		}
 	}
