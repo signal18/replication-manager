@@ -179,11 +179,59 @@ func (cluster *Cluster) ensureCrashArchive(crash *Crash) string {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not create crash archive dir %s: %s", crash.ArchiveDir, err)
 		return crash.ArchiveDir
 	}
+	// Never persist an EMPTY delta over files already captured in this dir. A
+	// re-materialized crash object (disk-truth reload, peer fetch) can reach here
+	// without the delta metadata even though saveBinlog/decodeLostEvents already
+	// wrote the binlog + .sql beside crash.json — the save would then clobber the
+	// on-disk paths with "" and the lost-events viewer shows an empty delta after
+	// restart. Recover the paths from the dir first so a save can't drop them.
+	crash.backfillDeltaFromArchiveDir()
 	if err := crash.Save(crash.ArchiveDir + "/crash.json"); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not write crash metadata %s/crash.json: %s", crash.ArchiveDir, err)
 	}
 	cluster.pruneCrashArchives(cluster.Conf.FailoverLogFileKeep)
 	return crash.ArchiveDir
+}
+
+// backfillDeltaFromArchiveDir re-links the decoded lost-events paths from the crash's
+// own archive dir when the in-memory record lost them. saveBinlog/decodeLostEvents write
+// the captured binlog and its <binlog>.sql (and, when reversible, <binlog>.flashback.sql)
+// into ArchiveDir, but a later save from a re-materialized crash object — or a reload from
+// a crash.json written before the decode — can leave DeltaDecoded empty while the files sit
+// on disk, so the viewer renders an empty delta. This resolves them from the dir. No-op when
+// DeltaDecoded is already set or no decode has been written yet.
+func (crash *Crash) backfillDeltaFromArchiveDir() {
+	if crash == nil || crash.ArchiveDir == "" || crash.DeltaDecoded != "" {
+		return
+	}
+	entries, err := os.ReadDir(crash.ArchiveDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		full := crash.ArchiveDir + "/" + name
+		switch {
+		case strings.HasSuffix(name, ".flashback.sql"):
+			if crash.DeltaFlashbackDecoded == "" {
+				crash.DeltaFlashbackDecoded = full
+			}
+		case strings.HasSuffix(name, ".sql"):
+			// The forward decode is <archivedBinlog>.sql. When several segments were
+			// captured, prefer the one for this crash's master log file; else take the
+			// first decode found (DeltaDecoded still empty).
+			binlog := strings.TrimSuffix(name, ".sql")
+			if crash.DeltaDecoded == "" || (crash.FailoverMasterLogFile != "" && strings.HasSuffix(binlog, crash.FailoverMasterLogFile)) {
+				crash.DeltaDecoded = full
+				if crash.DeltaArchive == "" {
+					crash.DeltaArchive = crash.ArchiveDir + "/" + binlog
+				}
+			}
+		}
+	}
 }
 
 // pruneCrashArchives bounds crash-bin dirs to the <keep> most recent (dir name is
@@ -571,6 +619,12 @@ func (cluster *Cluster) LoadFailoverHistory() {
 		if data, err := os.ReadFile(dirPath + "/crash.json"); err == nil {
 			crash := new(Crash)
 			if json.Unmarshal(data, crash) == nil {
+				// The dir is authoritative for its own location; a crash.json written
+				// before the decode (or by a re-materialized object) can carry empty
+				// delta paths while the binlog + .sql sit right here. Re-link them so a
+				// restart does not lose the lost-events delta.
+				crash.ArchiveDir = dirPath
+				crash.backfillDeltaFromArchiveDir()
 				history = append(history, crash)
 			}
 			continue
