@@ -166,31 +166,36 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 		// SeveritySecurity findings but carry no ScoreChecks.
 		isSecurityPlugin := len(result.ScoreChecks) > 0
 		isWorkloadPlugin := false
+		isSchemaPlugin := false
 		for _, f := range result.Findings {
 			switch f.Severity {
 			case logplugin.SeveritySecurity:
 				isSecurityPlugin = true
 			case logplugin.SeverityWorkload:
 				isWorkloadPlugin = true
+			case logplugin.SeveritySchema:
+				isSchemaPlugin = true
 			}
 		}
 		// When the plugin is compliant (zero findings, no ScoreChecks), fall back
 		// to its declared default severity so debug messages still route to the
 		// correct dedicated log rather than the main cluster log.
-		if !isSecurityPlugin && !isWorkloadPlugin {
+		if !isSecurityPlugin && !isWorkloadPlugin && !isSchemaPlugin {
 			if ps, ok := p.(logplugin.LogPluginWithDefaultSeverity); ok {
 				switch ps.DefaultSeverity() {
 				case logplugin.SeveritySecurity:
 					isSecurityPlugin = true
 				case logplugin.SeverityWorkload:
 					isWorkloadPlugin = true
+				case logplugin.SeveritySchema:
+					isSchemaPlugin = true
 				}
 			}
 		}
 
-		// DBVersion debug: routed to the dedicated security/workload log only.
-		// Never falls back to the main cluster log — debug plugin diagnostics
-		// must not mix with HA operational logs.
+		// DBVersion debug: routed to the dedicated security/workload/schema log
+		// only. Never falls back to the main cluster log — debug plugin
+		// diagnostics must not mix with HA operational logs.
 		sv := src.ServerVersion
 		dbvMsg := fmt.Sprintf("[logplugin:%s] server=%s DBVersion flavor=%q major=%d minor=%d release=%d variables=%d",
 			p.Name(), server.URL, sv.Flavor, sv.Major, sv.Minor, sv.Release, len(src.ServerVariables))
@@ -198,6 +203,8 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			cluster.logPluginDebugSec(p.Name(), dbvMsg)
 		} else if isWorkloadPlugin {
 			cluster.logPluginDebugWork(p.Name(), dbvMsg)
+		} else if isSchemaPlugin {
+			cluster.logPluginDebugSchema(p.Name(), dbvMsg)
 		}
 
 		// Send synthetic graphite metric if the plugin produced one.
@@ -215,6 +222,8 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				cluster.logPluginDebugSec(p.Name(), gMsg)
 			} else if isWorkloadPlugin {
 				cluster.logPluginDebugWork(p.Name(), gMsg)
+			} else if isSchemaPlugin {
+				cluster.logPluginDebugSchema(p.Name(), gMsg)
 			}
 			// HA/operational plugins with graphite metrics keep their debug in the main log.
 		}
