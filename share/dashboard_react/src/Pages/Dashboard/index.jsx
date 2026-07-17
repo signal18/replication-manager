@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux'
 import ClusterWorkload from './components/ClusterWorkload'
 import { Flex, HStack, Tooltip, Box, Text } from '@chakra-ui/react'
 import AccordionComponent from '../../components/AccordionComponent/index.jsx'
-import { GeneralLogs, TaskLogs, SecurityLogs, WorkloadLogs, DDLLogs, VariableChangeLogs } from './components/Logs'
+import { GeneralLogs, TaskLogs, SecurityLogs, WorkloadLogs, DDLLogs, SchemaLogs, VariableChangeLogs } from './components/Logs'
 import DBServers from './components/DBServers'
 import Proxies from './components/Proxies'
 import Apps from './components/Apps/index.jsx'
@@ -118,6 +118,16 @@ function Dashboard({ selectedCluster, user, openSettings = {} }) {
         }
         headerActions={gearButton(openSettings.monitoring, 'Monitoring Settings')}
         body={<DDLLogs />}
+      />
+      <AccordionComponent
+        heading={
+          <LogHeading
+            title='Schema Logs'
+            description='Schema advisory findings from schema plugins (SCH0xxx): row-size risks, LOB compression, engine/row-format tags. Does not appear in the main Cluster Logs.'
+          />
+        }
+        headerActions={gearButton(openSettings.plugins, 'Plugin Settings')}
+        body={<SchemaLogs />}
       />
       <AccordionComponent
         heading={

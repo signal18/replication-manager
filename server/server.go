@@ -209,6 +209,10 @@ type ReplicationManager struct {
 	// events to workload.log (path derived from log-file by inserting "-workload"
 	// before the extension). Nil when log-file is not configured.
 	WorkloadLogrus *log.Logger `json:"-"`
+	// SchemaLogrus is a dedicated logger that writes schema advisory events to
+	// schema.log (path derived from log-file by inserting "-schema" before
+	// the extension). Nil when log-file is not configured.
+	SchemaLogrus *log.Logger `json:"-"`
 	// MaintenanceLogrus is a dedicated logger that writes planned-operations events
 	// (backup, SST, task execution, purge, orchestrator) to maintenance.log.
 	// Nil when log-file is not configured.
@@ -2512,6 +2516,31 @@ func (repman *ReplicationManager) Run() error {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Workload log to file: %s", wrkLogFile)
 		}
 
+		// Schema log — same rotation settings, separate file for schema advisory events.
+		schLogFile := schemaLogPath(repman.Conf.LogFile)
+		schLogger := log.New()
+		schLogger.SetLevel(log.InfoLevel)
+		schLogger.SetFormatter(&log.TextFormatter{DisableColors: true})
+		schHook, schErr := s18log.NewRotateFileHook(s18log.RotateFileConfig{
+			Filename:   schLogFile,
+			MaxSize:    repman.Conf.LogRotateMaxSize,
+			MaxBackups: repman.Conf.LogRotateMaxBackup,
+			MaxAge:     repman.Conf.LogRotateMaxAge,
+			Level:      log.InfoLevel,
+			Formatter: &log.TextFormatter{
+				DisableColors:   true,
+				TimestampFormat: "2006-01-02 15:04:05",
+				FullTimestamp:   true,
+			},
+		})
+		if schErr != nil {
+			repman.Logrus.WithError(schErr).Warn("Can't init schema log file, schema events will only appear in main log")
+		} else {
+			schLogger.AddHook(schHook)
+			repman.SchemaLogrus = schLogger
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schema log to file: %s", schLogFile)
+		}
+
 		// Maintenance log — backup, SST, task execution, purge, orchestrator events.
 		mntLogFile := maintenanceLogPath(repman.Conf.LogFile)
 		mntLogger := log.New()
@@ -3043,6 +3072,7 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	repman.currentCluster.Logrus = repman.Logrus
 	repman.currentCluster.SecurityLogrus = repman.SecurityLogrus
 	repman.currentCluster.WorkloadLogrus = repman.WorkloadLogrus
+	repman.currentCluster.SchemaLogrus = repman.SchemaLogrus
 	repman.currentCluster.MaintenanceLogrus = repman.MaintenanceLogrus
 	repman.currentCluster.Partner = &repman.Partner
 	repman.currentCluster.ServerGlobals = repman.serverGlobals
@@ -4019,6 +4049,14 @@ func workloadLogPath(logFile string) string {
 	ext := filepath.Ext(logFile)
 	base := strings.TrimSuffix(logFile, ext)
 	return base + "-workload" + ext
+}
+
+// schemaLogPath derives the schema log file path from the main log file path
+// by inserting "-schema" before the file extension.
+func schemaLogPath(logFile string) string {
+	ext := filepath.Ext(logFile)
+	base := strings.TrimSuffix(logFile, ext)
+	return base + "-schema" + ext
 }
 
 // maintenanceLogPath derives the maintenance log file path from the main log file path

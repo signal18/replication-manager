@@ -280,7 +280,7 @@ type Response struct {
 
 type Finding struct {
     ErrKey       string        `json:"err_key"`
-    Severity     string        `json:"severity"`    // "WARNING", "ERROR", "SECURITY", or "WORKLOAD"
+    Severity     string        `json:"severity"`    // "WARNING", "ERROR", "SECURITY", "WORKLOAD", or "SCHEMA"
     Description  string        `json:"description"`
     Count        int64         `json:"count,omitempty"`   // wire v2 — occurrence count
     Total        int64         `json:"total,omitempty"`   // wire v2 — total for ratio computation
@@ -709,12 +709,29 @@ Wire version 3 adds two things:
    offending table/column into its description, rather than one finding per
    object (which would silently drop all but the first).
 
+   **Log routing.** Like `SECURITY`/`WORKLOAD`, `SCHEMA` findings go exclusively
+   to `cluster.LogSchema` (a rotating HTTP buffer, GUI "Schema Logs") and
+   `schema.log` on disk when configured — never the main cluster log. Same for
+   the existing core DDL/table-diff tracking (`cluster.LogDDL`, "DDL Change
+   Logs"): both live under the Schema section of the dashboard, separate from
+   the general/HA log.
+
 ### Shipped schema-advisory plugins
 
 | Plugin | Key | What it flags |
 |--------|-----|---------------|
-| `plugin-schema-row-size` | SCH0001 | InnoDB tables whose short (`< 256` byte, always-inline) VARCHAR columns sum past the InnoDB inline row budget (`page_size/2 − 66` ≈ 8126B for 16K, with a discount for `ROW_FORMAT=COMPRESSED`), risking "Row size too large" / forced off-page storage. Pure function over the snapshot — no extra query. Config: `inline-varchar-max-bytes` (default 256). |
-| `plugin-schema-lob-compression` | SCH0002 | MariaDB `BLOB`/`TEXT` columns whose sampled `avg_byte_length` exceeds a threshold and that are **not** `COMPRESSED`. MariaDB-only; requires `monitoring-schema-columns`. Config: `avg-length-threshold-bytes` (default 8192). |
+| `plugin-schema-row-size` | SCH0001 | InnoDB tables whose short (`< 256` byte, always-inline) VARCHAR columns sum past the InnoDB inline row budget (`page_size/2 − 66` ≈ 8126B for 16K, with a discount for `ROW_FORMAT=COMPRESSED`), risking "Row size too large" / forced off-page storage. Pure function over the snapshot — no extra query. Config: `inline-varchar-max-bytes` (default 256), `mask-identifiers` (default false). |
+| `plugin-schema-lob-compression` | SCH0002 | MariaDB `BLOB`/`TEXT` columns whose sampled `avg_byte_length` exceeds a threshold and that are **not** `COMPRESSED`. MariaDB-only; requires `monitoring-schema-columns`. Config: `avg-length-threshold-bytes` (default 8192), `mask-identifiers` (default false). |
+
+Both plugins support `mask-identifiers`: when true, schema/table/column names
+in the finding description are partially masked (`wire.MaskIdentifier`, e.g.
+`"window"` → `"wi???ow"`, with a fixed-length mask so the real length isn't
+inferable either; names of 4 chars or fewer mask to `"????"`). The
+lob-compression plugin also drops its suggested `ALTER TABLE` statement in
+this mode, since it would otherwise leak the exact names back into the log.
+Intended for PCI-DSS-style deployments where the findings log is readable by
+more people/systems than the database schema itself — an attacker who only
+gets log access shouldn't get a free schema map out of it.
 
 ---
 

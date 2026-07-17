@@ -1971,6 +1971,8 @@ func (cluster *Cluster) GetWebLogsByType(logtype string) any {
 		return &cluster.LogWorkload
 	case "ddl":
 		return &cluster.LogDDL
+	case "schema":
+		return &cluster.LogSchema
 	case "variable-change":
 		return &cluster.LogVariableChange
 	case "sysbench":
@@ -1987,6 +1989,7 @@ func (cluster *Cluster) GetAllWebLogs() map[string]any {
 	logs["security"] = &cluster.LogSecurity
 	logs["workload"] = &cluster.LogWorkload
 	logs["ddl"] = &cluster.LogDDL
+	logs["schema"] = &cluster.LogSchema
 	logs["variable-change"] = &cluster.LogVariableChange
 	logs["sysbench"] = &cluster.SysbenchHistory
 	return logs
