@@ -55,15 +55,28 @@ func (regtest *RegTest) TestSchemaPlugin(cl *cluster.Cluster, conf string, test 
 	}
 	defer master.Conn.Exec("DROP DATABASE IF EXISTS " + testSchema)
 
-	// SCH0001 fixture: 40 VARCHAR(63) utf8mb4 columns. 63*4=252 declared bytes
+	// SCH0001 fixture: 30 VARCHAR(63) utf8mb4 columns. 63*4=252 declared bytes
 	// (under the 256-byte inline threshold) + 1-byte length prefix = 253 each.
-	// 40*253 = 10120 bytes, past the ~8126-byte 16K-page InnoDB budget.
-	cols := make([]string, 0, 40)
-	for i := 0; i < 40; i++ {
+	// 30*253 = 7590 bytes.
+	//
+	// This must land in the narrow gap between the plugin's ROW_FORMAT=COMPRESSED
+	// budget (page_size/2 - 66, discounted 10% for the unknown KEY_BLOCK_SIZE:
+	// ~7313 bytes for a 16K page) and MariaDB's own hard DDL-time rejection
+	// (page_size/2 - 66 = 8126 bytes exactly — "Row size too large (> 8126)").
+	// A wider fixture (e.g. 40 columns / 10120 bytes) exceeds MariaDB's own hard
+	// limit and CREATE TABLE is rejected outright before the plugin ever runs —
+	// the plugin's uncompressed budget was deliberately built to match MariaDB's
+	// real enforcement, so it can never observe a table wider than that via a
+	// fresh CREATE TABLE. ROW_FORMAT=COMPRESSED is the one place the plugin's
+	// estimate is intentionally more conservative than MariaDB's own check
+	// (KEY_BLOCK_SIZE isn't in the schema snapshot), which is what creates a
+	// legitimate window: MariaDB accepts the table, the plugin still flags it.
+	cols := make([]string, 0, 30)
+	for i := 0; i < 30; i++ {
 		cols = append(cols, fmt.Sprintf("c%d VARCHAR(63)", i))
 	}
 	createWide := fmt.Sprintf(
-		"CREATE TABLE %s.%s (id INT PRIMARY KEY, %s) ENGINE=InnoDB ROW_FORMAT=DYNAMIC DEFAULT CHARSET=utf8mb4",
+		"CREATE TABLE %s.%s (id INT PRIMARY KEY, %s) ENGINE=InnoDB ROW_FORMAT=COMPRESSED DEFAULT CHARSET=utf8mb4",
 		testSchema, wideTable, strings.Join(cols, ", "),
 	)
 	if _, err := master.Conn.Exec(createWide); err != nil {
