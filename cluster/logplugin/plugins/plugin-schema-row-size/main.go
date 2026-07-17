@@ -1,3 +1,8 @@
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
+// Author: Ahmad Faruk <ahmad@signal18.io>
+// This source code is licensed under the GNU General Public License, version 3.
+
 // plugin-schema-row-size flags InnoDB tables whose short, always-inline-stored
 // VARCHAR columns already sum past InnoDB's per-row storage budget.
 //

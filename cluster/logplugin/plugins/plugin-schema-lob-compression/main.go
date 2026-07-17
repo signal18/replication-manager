@@ -1,3 +1,8 @@
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
+// Author: Ahmad Faruk <ahmad@signal18.io>
+// This source code is licensed under the GNU General Public License, version 3.
+
 // plugin-schema-lob-compression flags MariaDB BLOB/TEXT columns with a large
 // observed average size that are not using MariaDB's per-column COMPRESSED
 // storage attribute.
