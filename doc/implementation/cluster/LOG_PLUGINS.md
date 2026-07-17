@@ -734,7 +734,7 @@ replication-manager-plugin-signer/
 ├── plugin-signing.pub          (public key deployed to repman servers)
 └── plugins/
     └── linux-amd64/
-        └── wire-v2/
+        └── wire-v3/
             ├── plugin-connection-storm
             ├── plugin-connection-storm.sig
             └── ...
@@ -744,7 +744,7 @@ The wire version is read directly from source:
 
 ```go
 // cluster/logplugin/plugins/wire/wire.go
-WireVersion = 2
+WireVersion = 3
 ```
 
 Makefile targets:
