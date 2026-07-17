@@ -122,7 +122,19 @@ const (
 	RejoinResultNoMethod      = "no-rejoin-method"   // not flashback-able and no SST method armed
 	RejoinResultPeerUnreached = "peer-unreachable"   // minority could not fetch the verdict (transient split)
 	RejoinResultFailed        = "failed"             // generic execution failure
+	RejoinResultRecovered     = "recovered"          // a FAILED rejoin whose node later became a healthy slave by other means (manual start-slave, save+start, attach) — reconciled so history stops reporting a stale failure
 )
+
+// isRejoinFailedResult reports whether a finished rejoin outcome is a FAILURE that
+// the GUI blinks on and that assertRejoinResultStates raises a WARNING for. Kept in
+// sync with the frontend REJOIN_FAILED set (Navbar / LostEventsModal / HADetail).
+func isRejoinFailedResult(result string) bool {
+	switch result {
+	case RejoinResultNotFlashback, RejoinResultNoMethod, RejoinResultFailed, RejoinResultPeerUnreached:
+		return true
+	}
+	return false
+}
 
 // Collection of Crash reports
 // swagger:response crashList
