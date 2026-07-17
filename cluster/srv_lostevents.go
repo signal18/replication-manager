@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/go-mysql-org/go-mysql/replication"
 	"github.com/signal18/replication-manager/config"
@@ -195,10 +196,25 @@ func (cluster *Cluster) assertRejoinResultStates() {
 			latest[cr.URL] = cr
 		}
 	}
+	reconciled := false
 	for url, cr := range latest {
 		srv := cluster.GetServerFromURL(url)
 		if srv != nil && srv.IsSlave && !srv.IsFailed() {
 			if m, _ := cluster.GetMasterFromReplication(srv); m != nil && m.URL == cr.ElectedMasterURL {
+				// Resolved: the node is a healthy slave of the elected master. If the
+				// durable record still carries a FAILED verdict, the node recovered by
+				// other means — manual start-slave, save+start, or a later attach the
+				// one-shot guard blocked from re-stamping. Rewrite it to "recovered" so
+				// history is truthful and the GUI stops blinking a stale failure.
+				if isRejoinFailedResult(cr.RejoinResult) {
+					cr.RejoinResult = RejoinResultRecovered
+					cr.RejoinResultTs = time.Now().Unix()
+					if cr.ArchiveDir != "" {
+						cluster.ensureCrashArchive(cr)
+					}
+					reconciled = true
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin of %s reconciled to recovered: node is a healthy slave of the elected master", url)
+				}
 				continue // resolved: rejoined as slave of the elected master
 			}
 		}
@@ -208,6 +224,11 @@ func (cluster *Cluster) assertRejoinResultStates() {
 		case RejoinResultPeerUnreached:
 			cluster.SetState("WARN0187", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0187"], url), ErrFrom: "REJOIN", ServerUrl: url})
 		}
+	}
+	if reconciled {
+		// Rebuild history from disk so the reconciled "recovered" outcome is the one
+		// served to the API/GUI (and re-deduped), mirroring finishRejoin.
+		cluster.LoadFailoverHistory()
 	}
 }
 
