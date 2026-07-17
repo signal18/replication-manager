@@ -45,15 +45,18 @@ func (regtest *RegTest) TestSchemaPlugin(cl *cluster.Cluster, conf string, test 
 		return false
 	}
 
-	const testSchema = "test_schema_plugin"
-	const wideTable = "wide_row"
-	const lobTable = "lob_uncompressed"
+	// Use repman's own existing operational schema (already created for
+	// checksums/slow-log/jobs tracking) instead of standing up a throwaway
+	// database — creating/dropping a whole database on a cluster a client may
+	// be actively using is unnecessarily invasive, and this schema is
+	// guaranteed to already exist. Only the two test tables are created and
+	// dropped, nothing schema-level.
+	const testSchema = "replication_manager_schema"
+	const wideTable = "test_schema_plugin_wide_row"
+	const lobTable = "test_schema_plugin_lob_uncompressed"
 
-	if _, err := master.Conn.Exec("CREATE DATABASE IF NOT EXISTS " + testSchema); err != nil {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "TEST : SchemaPlugin: create database: %s", err)
-		return false
-	}
-	defer master.Conn.Exec("DROP DATABASE IF EXISTS " + testSchema)
+	defer master.Conn.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s.%s", testSchema, wideTable))
+	defer master.Conn.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s.%s", testSchema, lobTable))
 
 	// SCH0001 fixture: 30 VARCHAR(63) utf8mb4 columns. 63*4=252 declared bytes
 	// (under the 256-byte inline threshold) + 1-byte length prefix = 253 each.
@@ -98,9 +101,15 @@ func (regtest *RegTest) TestSchemaPlugin(cl *cluster.Cluster, conf string, test 
 			return false
 		}
 
+		// dbhelper.EnrichLobColumns (the step that populates AvgByteLength)
+		// only samples tables whose DataLength is at least 1MB
+		// (lobCandidateMinDataBytes) — a deliberate guard against wasting
+		// enrichment effort on trivially small tables. 150 rows * 9000 bytes
+		// ~= 1.35MB of payload alone clears that gate with margin, comfortably
+		// under the LIMIT 1024 sample cap so every row gets sampled.
 		payload := strings.Repeat("x", 9000)
 		insertLob := fmt.Sprintf("INSERT INTO %s.%s (id, payload) VALUES (?, ?)", testSchema, lobTable)
-		for i := 0; i < 5; i++ {
+		for i := 0; i < 150; i++ {
 			if _, err := master.Conn.Exec(insertLob, i, payload); err != nil {
 				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "TEST : SchemaPlugin: insert lob rows: %s", err)
 				return false
@@ -119,13 +128,17 @@ func (regtest *RegTest) TestSchemaPlugin(cl *cluster.Cluster, conf string, test 
 	cl.RefreshSchemaWireTables()
 	cl.CheckLogPlugins()
 
+	// state.StateMachine.AddState overwrites State.ErrKey with the full
+	// composite key ("ErrKey@ServerUrl") it uses internally to dedup open
+	// states — the bare ErrKey the plugin emitted is not preserved as-is, so
+	// match by prefix rather than exact equality.
 	foundSCH0001 := false
 	foundSCH0002 := false
 	for _, s := range cl.SchemaStates {
-		switch s.ErrKey {
-		case "SCH0001":
+		if strings.HasPrefix(s.ErrKey, "SCH0001@") {
 			foundSCH0001 = true
-		case "SCH0002":
+		}
+		if strings.HasPrefix(s.ErrKey, "SCH0002@") {
 			foundSCH0002 = true
 		}
 	}
