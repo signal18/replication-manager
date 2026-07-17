@@ -6,6 +6,7 @@ import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import RMSlider from '../../components/Sliders/RMSlider'
+import Dropdown from '../../components/Dropdown'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
@@ -37,6 +38,8 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
   const hReadsNoSlave = `**Proxies Reads on Writer When No Slave**\n\nFallback: automatically routes reads to the writer when no healthy replica is available.\n\nConfig: \`proxy-servers-read-on-master-no-slave\``
   const hMaxConn = `**Proxies Max Backend Connections**\n\nMaximum connections ProxySQL will open to each backend server.\nTune according to the \`max_connections\` setting on your MySQL servers.\n\nConfig: \`proxy-servers-backend-max-connections\``
   const hMaxLag = `**Proxies Max Backend Replication Lag for Reads**\n\nMaximum replication lag (in seconds) a replica may have before ProxySQL stops routing reads to it.\n\nConfig: \`proxy-servers-backend-max-replication-lag\``
+  const hInjectTraffic = `**Inject Test Traffic**\n\nInjects a small stream of database traffic through the proxy (test / demo). Combined with the marker below, this seeds a write stream that repman can rewind.\n\nConfig: \`test-inject-traffic\``
+  const hInjectMode = `**Inject Traffic Mode**\n\nFormat of the pseudo-GTID / traffic marker repman injects through the proxy:\n\n- **ddl** (default): \`CREATE OR REPLACE VIEW\` — self-contained, idempotent DDL, greppable for positional rejoin. Battle-tested, but a divergence is **NOT flashback-able** (flashback cannot reverse DDL).\n- **dml** (EXPERIMENTAL): single-row \`REPLACE\` — **flashback-able**; the marker table is created once through the proxy. Choose this to enable / demonstrate flashback rejoin.\n\nConfig: \`inject-traffic-mode\``
 
   const dataObject = [
     { key: 'ProxySQL Monitor', help: h(hMonitor, 'ProxySQL Monitor'), value: sw('proxysql', 'proxysql') },
@@ -50,6 +53,8 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
     { key: 'Proxies Reads on Writer When No Slave', help: h(hReadsNoSlave, 'Proxies Reads on Writer When No Slave'), value: sw('proxy-servers-read-on-master-no-slave', 'proxyServersReadOnMasterNoSlave') },
     { key: 'Proxies Max Backend Connections', help: h(hMaxConn, 'Proxies Max Backend Connections'), value: (<RMSlider value={selectedCluster?.config?.proxyServersBackendMaxConnections} min={100} max={10000} step={100} showMarkAtInterval={2000} selectedMarkLabelCSS={styles.maxConnectMarkLabel} confirmTitle='Confirm change backends max connections : ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'proxy-servers-backend-max-connections', value: val }))} />) },
     { key: 'Proxies Max Backend Replication Lag for Reads', help: h(hMaxLag, 'Proxies Max Backend Replication Lag for Reads'), value: (<RMSlider value={selectedCluster?.config?.proxyServersBackendMaxReplicationLag} min={10} max={5000} step={1} showMarkAtInterval={1000} selectedMarkLabelCSS={styles.maxConnectMarkLabel} confirmTitle='Confirm change delay : ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'proxy-servers-backend-max-replication-lag', value: val }))} />) },
+    { key: 'Inject Test Traffic', help: h(hInjectTraffic, 'Inject Test Traffic'), value: sw('test-inject-traffic', 'testInjectTraffic') },
+    { key: 'Inject Traffic Mode', help: h(hInjectMode, 'Inject Traffic Mode'), value: (<Dropdown options={[{ name: 'ddl — DDL marker (default, not flashback-able)', value: 'ddl' }, { name: 'dml — DML marker (flashback-able, experimental)', value: 'dml' }]} selectedValue={selectedCluster?.config?.injectTrafficMode} confirmTitle={'Confirm inject-traffic-mode to'} isDisabled={user?.grants['cluster-settings'] == false} onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'inject-traffic-mode', value: val }))} />) },
   ]
 
   return (
