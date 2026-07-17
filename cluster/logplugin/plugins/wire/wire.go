@@ -50,6 +50,12 @@ type TableColumn struct {
 	Nullable  bool   `json:"nullable"`
 	Charset   string `json:"charset,omitempty"`
 	Collation string `json:"collation,omitempty"`
+	// Compressed is true when the column declares MariaDB per-column
+	// COMPRESSED storage (BLOB/TEXT candidate columns only, MariaDB only).
+	Compressed bool `json:"compressed,omitempty"`
+	// AvgByteLength is a bounded-sample observed average byte length
+	// (BLOB/TEXT candidate columns only). Zero means not sampled.
+	AvgByteLength int64 `json:"avg_byte_length,omitempty"`
 }
 
 // Table is one table of the schema dictionary snapshot (wire v3).
@@ -57,13 +63,14 @@ type TableColumn struct {
 // plus boot and on-demand runs) and is populated ONLY on the master server's
 // request to keep per-tick payloads flat.
 type Table struct {
-	Schema     string        `json:"schema"`
-	Name       string        `json:"name"`
-	Engine     string        `json:"engine"`
-	RowFormat  string        `json:"row_format"`
-	Rows       int64         `json:"rows,omitempty"`
-	DataLength int64         `json:"data_length,omitempty"`
-	Columns    []TableColumn `json:"columns,omitempty"`
+	Schema       string        `json:"schema"`
+	Name         string        `json:"name"`
+	Engine       string        `json:"engine"`
+	RowFormat    string        `json:"row_format"`
+	Rows         int64         `json:"rows,omitempty"`
+	DataLength   int64         `json:"data_length,omitempty"`
+	AvgRowLength int64         `json:"avg_row_length,omitempty"` // observed average row length (information_schema.tables), corroborating signal only
+	Columns      []TableColumn `json:"columns,omitempty"`
 }
 
 // Request is written to the plugin's stdin as a single JSON object.
@@ -296,4 +303,32 @@ func EnvStr(envKey, def string) string {
 		return v
 	}
 	return def
+}
+
+// MaskIdentifier partially obscures a table/column/schema name for compliance
+// logging (PCI-DSS §10.5.5 and similar: findings logs must not leak enough of
+// the schema to be useful to someone who only has log access). The masked
+// span is a fixed number of '?' rather than one that mirrors the real length,
+// so the identifier's length can't be inferred from the mask either — e.g.
+// "window" -> "wi???ow". Names of 4 chars or fewer are masked in full since
+// there is nothing safe left to reveal (and short names are often the most
+// sensitive: "ssn", "cc", "dob").
+func MaskIdentifier(s string) string {
+	if len(s) <= 4 {
+		return "????"
+	}
+	return s[:2] + "???" + s[len(s)-2:]
+}
+
+// MaskQualified masks every non-empty part of a dotted identifier path
+// (e.g. schema, table, column) and joins them back with ".".
+func MaskQualified(parts ...string) string {
+	masked := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		masked = append(masked, MaskIdentifier(p))
+	}
+	return strings.Join(masked, ".")
 }

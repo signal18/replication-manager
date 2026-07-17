@@ -166,31 +166,36 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 		// SeveritySecurity findings but carry no ScoreChecks.
 		isSecurityPlugin := len(result.ScoreChecks) > 0
 		isWorkloadPlugin := false
+		isSchemaPlugin := false
 		for _, f := range result.Findings {
 			switch f.Severity {
 			case logplugin.SeveritySecurity:
 				isSecurityPlugin = true
 			case logplugin.SeverityWorkload:
 				isWorkloadPlugin = true
+			case logplugin.SeveritySchema:
+				isSchemaPlugin = true
 			}
 		}
 		// When the plugin is compliant (zero findings, no ScoreChecks), fall back
 		// to its declared default severity so debug messages still route to the
 		// correct dedicated log rather than the main cluster log.
-		if !isSecurityPlugin && !isWorkloadPlugin {
+		if !isSecurityPlugin && !isWorkloadPlugin && !isSchemaPlugin {
 			if ps, ok := p.(logplugin.LogPluginWithDefaultSeverity); ok {
 				switch ps.DefaultSeverity() {
 				case logplugin.SeveritySecurity:
 					isSecurityPlugin = true
 				case logplugin.SeverityWorkload:
 					isWorkloadPlugin = true
+				case logplugin.SeveritySchema:
+					isSchemaPlugin = true
 				}
 			}
 		}
 
-		// DBVersion debug: routed to the dedicated security/workload log only.
-		// Never falls back to the main cluster log — debug plugin diagnostics
-		// must not mix with HA operational logs.
+		// DBVersion debug: routed to the dedicated security/workload/schema log
+		// only. Never falls back to the main cluster log — debug plugin
+		// diagnostics must not mix with HA operational logs.
 		sv := src.ServerVersion
 		dbvMsg := fmt.Sprintf("[logplugin:%s] server=%s DBVersion flavor=%q major=%d minor=%d release=%d variables=%d",
 			p.Name(), server.URL, sv.Flavor, sv.Major, sv.Minor, sv.Release, len(src.ServerVariables))
@@ -198,6 +203,8 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			cluster.logPluginDebugSec(p.Name(), dbvMsg)
 		} else if isWorkloadPlugin {
 			cluster.logPluginDebugWork(p.Name(), dbvMsg)
+		} else if isSchemaPlugin {
+			cluster.logPluginDebugSchema(p.Name(), dbvMsg)
 		}
 
 		// Send synthetic graphite metric if the plugin produced one.
@@ -215,6 +222,8 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				cluster.logPluginDebugSec(p.Name(), gMsg)
 			} else if isWorkloadPlugin {
 				cluster.logPluginDebugWork(p.Name(), gMsg)
+			} else if isSchemaPlugin {
+				cluster.logPluginDebugSchema(p.Name(), gMsg)
 			}
 			// HA/operational plugins with graphite metrics keep their debug in the main log.
 		}
@@ -286,6 +295,21 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 							config.LvlWarn, "[workload:%s] %s on server %s: %s",
 							p.Name(), f.ErrKey, server.URL, f.Description)
 					}
+				case isSchema:
+					// Schema advisory findings go exclusively to schema.log + LogSchema HTTP buffer.
+					cluster.LogSchema.Add(s18log.HttpMessage{
+						Group:     cluster.Name,
+						Level:     "WARN",
+						Timestamp: time.Now().Format("2006/01/02 15:04:05"),
+						Text:      fmt.Sprintf("[%s] %s %s: %s", p.Name(), f.ErrKey, server.URL, f.Description),
+					})
+					if cluster.SchemaLogrus != nil {
+						cluster.SchemaLogrus.WithFields(fields).Warn(f.Description)
+					} else {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin,
+							config.LvlInfo, "[schema:%s] %s on server %s: %s",
+							p.Name(), f.ErrKey, server.URL, f.Description)
+					}
 				default:
 					// HA/operational findings stay in the main log.
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin,
@@ -298,12 +322,14 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 					cluster.logPluginDebugSec(p.Name(), stillMsg)
 				} else if isWorkload {
 					cluster.logPluginDebugWork(p.Name(), stillMsg)
+				} else if isSchema {
+					cluster.logPluginDebugSchema(p.Name(), stillMsg)
 				} else {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg, "%s", stillMsg)
 				}
 			}
 			sm.AddState(compositeKey, st)
-			if !isSecurity && !isWorkload {
+			if !isSecurity && !isWorkload && !isSchema {
 				cluster.SetState(f.ErrKey, st)
 			}
 		}
@@ -405,15 +431,22 @@ func (cluster *Cluster) RefreshSchemaWireTables() {
 	tables := make([]logplugin.StdioTable, 0, len(dict))
 	for _, t := range dict {
 		wt := logplugin.StdioTable{
-			Schema:     t.TableSchema,
-			Name:       t.TableName,
-			Engine:     t.Engine,
-			RowFormat:  t.RowFormat,
-			Rows:       t.TableRows,
-			DataLength: t.DataLength,
+			Schema:       t.TableSchema,
+			Name:         t.TableName,
+			Engine:       t.Engine,
+			RowFormat:    t.RowFormat,
+			Rows:         t.TableRows,
+			DataLength:   t.DataLength,
+			AvgRowLength: t.AvgRowLength,
 		}
 		for _, c := range t.TableColumns {
-			col := logplugin.StdioTableColumn{Name: c.Name, Type: c.Type, Nullable: c.Nullable}
+			col := logplugin.StdioTableColumn{
+				Name:          c.Name,
+				Type:          c.Type,
+				Nullable:      c.Nullable,
+				Compressed:    c.Compressed,
+				AvgByteLength: c.AvgByteLength,
+			}
 			if c.Charset != nil {
 				col.Charset = *c.Charset
 			}
@@ -1081,6 +1114,7 @@ func buildMonitoringFlags(cluster *Cluster, server *ServerMonitor) map[string]bo
 		"monitoring-performance-schema":         cluster.Conf.MonitorPFS,
 		"monitoring-performance-schema-queries": cluster.Conf.MonitorPFSQueries,
 		"monitoring-processlist":                cluster.Conf.MonitorProcessList,
+		"monitoring-schema-columns":             cluster.Conf.MonitorSchemaColumns,
 
 		// Auto-detected per-server capability: true only when the MySQL
 		// METADATA_LOCK_INFO plugin is installed and active on this server.
@@ -1181,6 +1215,12 @@ func (cluster *Cluster) logPluginDebugSec(pluginName, msg string) {
 func (cluster *Cluster) logPluginDebugWork(pluginName, msg string) {
 	if cluster.WorkloadLogrus != nil {
 		cluster.WorkloadLogrus.WithField("plugin", pluginName).Debug(msg)
+	}
+}
+
+func (cluster *Cluster) logPluginDebugSchema(pluginName, msg string) {
+	if cluster.SchemaLogrus != nil {
+		cluster.SchemaLogrus.WithField("plugin", pluginName).Debug(msg)
 	}
 }
 

@@ -1,0 +1,28 @@
+{
+  "description": "Wide Variable Rows — SCH0001\n\nFlags InnoDB tables whose short, always-inline-stored VARCHAR columns (declared byte width under the inline threshold) already sum past the estimated InnoDB inline row budget. Rows past this budget either fail to insert with \"Row size too large\" or force additional columns off-page, hurting scan performance. Advisory and conservative — not a byte-exact replica of InnoDB's internal record format. All offending tables on a server are reported in a single SCH0001 finding (one finding per plugin run), not one finding per table.",
+  "prerequisites": [
+    {
+      "config_key": "monitoring-schema-columns",
+      "description": "Schema column metadata (types, charset) must be monitored (monitoring-schema-columns=true) — without it this check silently sees no columns and reports no findings"
+    }
+  ],
+  "config_keys": [
+    {
+      "key": "inline-varchar-max-bytes",
+      "label": "Inline VARCHAR byte threshold",
+      "type": "int",
+      "default": "256",
+      "min": 1,
+      "max": 8000,
+      "step": 1,
+      "help": "VARCHAR columns whose declared byte width (declared length × charset max-bytes-per-char) is under this value are treated as always inline-stored and summed against the InnoDB row budget."
+    },
+    {
+      "key": "mask-identifiers",
+      "label": "Mask table/column names",
+      "type": "bool",
+      "default": "false",
+      "help": "Partially obscure schema, table, and column names in the finding description (e.g. \"window\" -> \"wi???ow\") so the log entry is not directly useful to someone who only has log access. For PCI-DSS/compliance deployments where the findings log is more widely readable than the database schema itself."
+    }
+  ]
+}

@@ -297,15 +297,21 @@ func manifestToPrerequisites(m *PluginManifest) []Prerequisite {
 
 // DefaultSeverity implements LogPluginWithDefaultSeverity.
 // Used by RunLogPlugins to route debug messages to the correct dedicated log
-// when Evaluate returns zero findings (compliant server — no issue detected).
+// when Evaluate returns zero findings (compliant server — no issue detected),
+// and to route WARN0312 (missing monitoring prerequisite) to the right state
+// machine before Evaluate has even run.
 //
 // Naming conventions used for inference:
+//   plugin-schema-*                        → SeveritySchema   (schema advisory)
 //   plugin-security-* and plugin-score-*  → SeveritySecurity (security/compliance audit)
 //   plugin-binlog-*                        → SeveritySecurity (binlog audit for cleartext creds / PII)
 //   plugin-*privilege* or plugin-*off-hours* → SeveritySecurity (access-control auditing)
 //   everything else                        → SeverityWorkload  (performance / spike detection)
 func (p *ExternalLogPlugin) DefaultSeverity() Severity {
 	n := p.name
+	if strings.HasPrefix(n, "plugin-schema-") {
+		return SeveritySchema
+	}
 	if strings.HasPrefix(n, "plugin-security-") ||
 		strings.HasPrefix(n, "plugin-score-") ||
 		strings.HasPrefix(n, "plugin-binlog-") ||
@@ -389,7 +395,7 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	findings := make([]Finding, 0, len(resp.Findings))
 	for _, sf := range resp.Findings {
 		sev := Severity(strings.ToUpper(sf.Severity))
-		if sev != SeverityWarning && sev != SeverityError && sev != SeveritySecurity && sev != SeverityWorkload {
+		if sev != SeverityWarning && sev != SeverityError && sev != SeveritySecurity && sev != SeverityWorkload && sev != SeveritySchema {
 			sev = SeverityWarning
 		}
 		remeds := make([]Remediation, 0, len(sf.Remediations))

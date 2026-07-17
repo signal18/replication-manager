@@ -1,0 +1,28 @@
+{
+  "description": "Large Uncompressed BLOB/TEXT (MariaDB) — SCH0002\n\nFlags MariaDB BLOB/TEXT columns with a large observed average size (bounded-sampled during schema monitoring, never a full-table scan) that are not using MariaDB's per-column COMPRESSED storage attribute. Large uncompressed LOB columns waste storage and I/O; per-column compression is a cheap win for exactly this case. MariaDB-only. All offending columns on a server are reported in a single SCH0002 finding (one finding per plugin run), not one finding per column.",
+  "prerequisites": [
+    {
+      "config_key": "monitoring-schema-columns",
+      "description": "Schema column metadata (types, LOB compression/avg-length enrichment) must be monitored (monitoring-schema-columns=true) — without it this check silently sees no columns and reports no findings"
+    }
+  ],
+  "config_keys": [
+    {
+      "key": "avg-length-threshold-bytes",
+      "label": "Average size threshold (bytes)",
+      "type": "int",
+      "default": "8192",
+      "min": 1,
+      "max": 1073741824,
+      "step": 1,
+      "help": "BLOB/TEXT columns whose sampled observed average byte length exceeds this value, and that are not COMPRESSED, are flagged."
+    },
+    {
+      "key": "mask-identifiers",
+      "label": "Mask table/column names",
+      "type": "bool",
+      "default": "false",
+      "help": "Partially obscure schema, table, and column names in the finding description (e.g. \"window\" -> \"wi???ow\") and drop the suggested ALTER TABLE statement, so the log entry is not directly useful to someone who only has log access. For PCI-DSS/compliance deployments where the findings log is more widely readable than the database schema itself."
+    }
+  ]
+}

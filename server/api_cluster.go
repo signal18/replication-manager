@@ -5192,12 +5192,12 @@ func (repman *ReplicationManager) handlerMuxLog(w http.ResponseWriter, r *http.R
 
 // handlerMuxWebLog handles the retrieval of cluster logs by type.
 // @Summary Retrieve cluster logs by type
-// @Description Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, variable-change, sysbench. Without logType returns all logs.
+// @Description Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, schema, variable-change, sysbench. Without logType returns all logs.
 // @Tags ClusterTopology
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Param logType path string false "Log type: general, task, security, workload, ddl, variable-change, sysbench"
+// @Param logType path string false "Log type: general, task, security, workload, ddl, schema, variable-change, sysbench"
 // @Success 200 {object} map[string]interface{} "Log data"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found"

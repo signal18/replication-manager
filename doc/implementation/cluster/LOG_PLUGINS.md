@@ -280,7 +280,7 @@ type Response struct {
 
 type Finding struct {
     ErrKey       string        `json:"err_key"`
-    Severity     string        `json:"severity"`    // "WARNING", "ERROR", "SECURITY", or "WORKLOAD"
+    Severity     string        `json:"severity"`    // "WARNING", "ERROR", "SECURITY", "WORKLOAD", or "SCHEMA"
     Description  string        `json:"description"`
     Count        int64         `json:"count,omitempty"`   // wire v2 — occurrence count
     Total        int64         `json:"total,omitempty"`   // wire v2 — total for ratio computation
@@ -667,7 +667,9 @@ Error keys follow the pattern `WARN<NNNN>` or a severity-specific prefix. The ra
 | WTAG0100–WTAG0199 | Workload optimizer path detection |
 | WTAG0200–WTAG0299 | PFS digest workload findings |
 
-| SCH0001+ | Schema advisories (errors/warnings, e.g. row-size risk) |
+| SCH0001 | Schema advisory: InnoDB wide-row risk — `plugin-schema-row-size` |
+| SCH0002 | Schema advisory: uncompressed large BLOB/TEXT (MariaDB) — `plugin-schema-lob-compression` |
+| SCH0003+ | Further schema advisories |
 | SCHTAG0001+ | Schema inventory tags (engine/row-format counts) |
 
 Choose a key in the WARN0400+ range for custom plugins to avoid collisions.
@@ -677,20 +679,59 @@ Choose a key in the WARN0400+ range for custom plugins to avoid collisions.
 Wire version 3 adds two things:
 
 1. **`tables` request field** — the schema dictionary snapshot: one entry per
-   table with `schema`, `name`, `engine`, `row_format`, `rows`, `data_length`
-   and `columns` (name, full type string, nullable, charset, collation).
-   Derive byte widths in the plugin from the type string and charset
-   (`varchar(255)` × utf8mb4 = 1020 bytes). The snapshot refreshes with the
-   schema monitor (daily cron `monitoring-schema-scheduler-cron` by default,
+   table with `schema`, `name`, `engine`, `row_format`, `rows`, `data_length`,
+   `avg_row_length`, and `columns` (name, full type string, nullable, charset,
+   collation). Derive VARCHAR byte widths in the plugin from the type string and
+   charset (`varchar(255)` × utf8mb4 = 1020 bytes). The snapshot refreshes with
+   the schema monitor (daily cron `monitoring-schema-scheduler-cron` by default,
    plus boot and on-demand runs) and is populated ONLY on the master server's
    request so per-tick payloads stay flat across replicas.
+
+   **Per-column enrichment (`monitoring-schema-columns`).** When
+   `monitoring-schema-columns` is enabled, BLOB/TEXT candidate columns also carry
+   `compressed` (MariaDB per-column `COMPRESSED` attribute, parsed from `SHOW
+   CREATE TABLE` — not exposed by `information_schema`) and `avg_byte_length` (a
+   **bounded** observed average: `LIMIT 1024` non-NULL rows, no `ORDER BY`, never
+   a full-table scan). The data source is `utils/dbhelper/schema_lob.go`; the
+   fields live on `wire.TableColumn` / `dbhelper.Column`. A schema plugin that
+   needs them declares `monitoring-schema-columns` as a manifest prerequisite so
+   the feed-off case routes an INFO state instead of silently seeing no columns.
 2. **`SCHEMA` finding severity** — findings with this severity are routed to
    the cluster `SchemaStateMachine` (exposed as `schemaStates` in the cluster
-   API payload). Use `SCHTAG0xxx` keys with `count` for inventory tags and
-   `SCH0xxx` for advisories. Planned first plugins: `plugin-schema-tags`
-   (engine/row-format inventory) and `plugin-schema-row-size` (InnoDB
-   Compact/Redundant tables whose short-varchar byte sum exceeds 8126B —
-   half a 16K page — risking "Row size too large" on DML).
+   API payload) and, unlike operational findings, are NOT mirrored into the main
+   HA `StateMachine`. Use `SCHTAG0xxx` keys with `count` for inventory tags and
+   `SCH0xxx` for advisories. `plugin-schema-*` binaries are inferred as
+   `SeveritySchema` by name (`external.go`).
+
+   **Aggregation note.** The state machine keys open states as `ErrKey@server`
+   and only the first state written for a key survives a cycle — so a schema
+   plugin emits **one** finding per run (fixed `ErrKey`) that aggregates every
+   offending table/column into its description, rather than one finding per
+   object (which would silently drop all but the first).
+
+   **Log routing.** Like `SECURITY`/`WORKLOAD`, `SCHEMA` findings go exclusively
+   to `cluster.LogSchema` (a rotating HTTP buffer, GUI "Schema Logs") and
+   `schema.log` on disk when configured — never the main cluster log. Same for
+   the existing core DDL/table-diff tracking (`cluster.LogDDL`, "DDL Change
+   Logs"): both live under the Schema section of the dashboard, separate from
+   the general/HA log.
+
+### Shipped schema-advisory plugins
+
+| Plugin | Key | What it flags |
+|--------|-----|---------------|
+| `plugin-schema-row-size` | SCH0001 | InnoDB tables whose short (`< 256` byte, always-inline) VARCHAR columns sum past the InnoDB inline row budget (`page_size/2 − 66` ≈ 8126B for 16K, with a discount for `ROW_FORMAT=COMPRESSED`), risking "Row size too large" / forced off-page storage. Pure function over the snapshot — no extra query. Config: `inline-varchar-max-bytes` (default 256), `mask-identifiers` (default false). |
+| `plugin-schema-lob-compression` | SCH0002 | MariaDB `BLOB`/`TEXT` columns whose sampled `avg_byte_length` exceeds a threshold and that are **not** `COMPRESSED`. MariaDB-only; requires `monitoring-schema-columns`. Config: `avg-length-threshold-bytes` (default 8192), `mask-identifiers` (default false). |
+
+Both plugins support `mask-identifiers`: when true, schema/table/column names
+in the finding description are partially masked (`wire.MaskIdentifier`, e.g.
+`"window"` → `"wi???ow"`, with a fixed-length mask so the real length isn't
+inferable either; names of 4 chars or fewer mask to `"????"`). The
+lob-compression plugin also drops its suggested `ALTER TABLE` statement in
+this mode, since it would otherwise leak the exact names back into the log.
+Intended for PCI-DSS-style deployments where the findings log is readable by
+more people/systems than the database schema itself — an attacker who only
+gets log access shouldn't get a free schema map out of it.
 
 ---
 
@@ -710,7 +751,7 @@ replication-manager-plugin-signer/
 ├── plugin-signing.pub          (public key deployed to repman servers)
 └── plugins/
     └── linux-amd64/
-        └── wire-v2/
+        └── wire-v3/
             ├── plugin-connection-storm
             ├── plugin-connection-storm.sig
             └── ...
@@ -720,7 +761,7 @@ The wire version is read directly from source:
 
 ```go
 // cluster/logplugin/plugins/wire/wire.go
-WireVersion = 2
+WireVersion = 3
 ```
 
 Makefile targets:

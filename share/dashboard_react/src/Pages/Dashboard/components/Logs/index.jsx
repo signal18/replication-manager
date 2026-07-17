@@ -107,4 +107,9 @@ export const VariableChangeLogs = ({ className }) => {
   return <Logs key={"variable-change"} logs={varChangeLogs?.buffer} className={className} searchable={true} />
 }
 
+export const SchemaLogs = ({ className }) => {
+  const schemaLogs = useSelector((state) => state.cluster.clusterLogs.schema)
+  return <Logs key={"schema"} logs={schemaLogs?.buffer} className={className} searchable={true} />
+}
+
 export default Logs

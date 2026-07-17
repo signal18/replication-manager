@@ -263,6 +263,26 @@ func TestExternalPlugin_InvalidJSONReturnsWARN0203(t *testing.T) {
 	}
 }
 
+func TestExternalPlugin_SchemaSeverityPreserved(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script plugins not tested on Windows")
+	}
+	dir := t.TempDir()
+	resp := stdioResponse{Findings: []stdioFinding{
+		{ErrKey: "SCH0001", Severity: "SCHEMA", Description: "wide row"},
+	}}
+	binPath := writeFakePlugin(t, dir, "schema-row-size", resp)
+
+	p := NewExternalLogPlugin("schema-row-size", binPath, 5*time.Second)
+	findings := p.Evaluate(LogSource{ServerURL: "127.0.0.1:3306"}).Findings
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Severity != SeveritySchema {
+		t.Errorf("expected SeveritySchema preserved, got %s", findings[0].Severity)
+	}
+}
+
 func TestExternalPlugin_UnknownSeverityDefaultsToWarning(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script plugins not tested on Windows")

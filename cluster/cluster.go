@@ -161,6 +161,8 @@ type Cluster struct {
 	LogWorkload                   s18log.HttpLog         `json:"-" groups:"web"`
 	LogDDL                        s18log.HttpLog         `json:"-" groups:"web"`
 	LogVariableChange             s18log.HttpLog         `json:"-" groups:"web"`
+	// LogSchema is a dedicated rotating buffer for schema advisory findings, mirrors LogSecurity/LogWorkload.
+	LogSchema s18log.HttpLog `json:"-" groups:"web"`
 	LogSlack                      *slackman.SlackManager `json:"-"`
 	JobResults                    *config.TasksMap       `json:"jobResults" groups:"web"`
 	FalsePositiveChecks           map[string]bool        `json:"falsePositiveChecks" groups:"web"`
@@ -281,6 +283,8 @@ type Cluster struct {
 	// WorkloadLogrus is a dedicated logrus.Logger that writes to workload.log.
 	// Set by the server on cluster init. Nil when no log-file is configured.
 	WorkloadLogrus *log.Logger `json:"-"`
+	// SchemaLogrus is a dedicated logrus.Logger that writes to schema.log.
+	SchemaLogrus *log.Logger `json:"-"`
 	// MaintenanceLogrus is a dedicated logrus.Logger that writes to maintenance.log.
 	// Receives ConstLogModMaintenance events: backup, SST, task execution, purge, etc.
 	// Set by the server on cluster init. Nil when no log-file is configured.
@@ -559,6 +563,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.LogWorkload = s18log.NewHttpLog(200)
 	cluster.LogDDL = s18log.NewHttpLog(200)
 	cluster.LogVariableChange = s18log.NewHttpLog(200)
+	cluster.LogSchema = s18log.NewHttpLog(200)
 
 	cluster.MonitorType = config.GetMonitorType()
 	cluster.TopologyType = config.GetTopologyType()
@@ -2708,6 +2713,17 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 
 	cluster.WorkLoad.DBIndexSize = totindexsize
 	cluster.WorkLoad.DBTableSize = tottablesize
+
+	// Enrich BLOB/TEXT candidate columns with MariaDB compression detection and
+	// a bounded-sample observed average byte length, consumed by the
+	// plugin-schema-lob-compression schema advisor plugin. No-op on non-MariaDB
+	// and for tables under the minimum candidate size; every query is bounded
+	// and failures are skipped silently — see dbhelper.EnrichLobColumns.
+	if cluster.Conf.MonitorSchemaColumns {
+		lobLogs := dbhelper.EnrichLobColumns(cmaster.Conn, cmaster.DBVersion, tables)
+		cluster.LogSQL(lobLogs, nil, cmaster.URL, "Monitor", config.LvlDbg, "LOB column enrichment on %s", cmaster.URL)
+	}
+
 	cmaster.DictTables = dbhelper.FromNormalTablesMap(cmaster.DictTables, tables)
 
 	return nil

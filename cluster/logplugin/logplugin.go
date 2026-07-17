@@ -269,17 +269,24 @@ type StdioTableColumn struct {
 	Nullable  bool   `json:"nullable"`
 	Charset   string `json:"charset,omitempty"`
 	Collation string `json:"collation,omitempty"`
+	// Compressed is true when the column declares MariaDB per-column
+	// COMPRESSED storage. Only populated for BLOB/TEXT candidate columns.
+	Compressed bool `json:"compressed,omitempty"`
+	// AvgByteLength is a bounded-sample observed average byte length
+	// (BLOB/TEXT candidate columns only). Zero means not sampled.
+	AvgByteLength int64 `json:"avg_byte_length,omitempty"`
 }
 
 // StdioTable mirrors wire.Table.
 type StdioTable struct {
-	Schema     string             `json:"schema"`
-	Name       string             `json:"name"`
-	Engine     string             `json:"engine"`
-	RowFormat  string             `json:"row_format"`
-	Rows       int64              `json:"rows,omitempty"`
-	DataLength int64              `json:"data_length,omitempty"`
-	Columns    []StdioTableColumn `json:"columns,omitempty"`
+	Schema       string             `json:"schema"`
+	Name         string             `json:"name"`
+	Engine       string             `json:"engine"`
+	RowFormat    string             `json:"row_format"`
+	Rows         int64              `json:"rows,omitempty"`
+	DataLength   int64              `json:"data_length,omitempty"`
+	AvgRowLength int64              `json:"avg_row_length,omitempty"`
+	Columns      []StdioTableColumn `json:"columns,omitempty"`
 }
 
 // ClusterContext carries cluster-level facts passed to every plugin.

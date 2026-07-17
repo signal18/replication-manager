@@ -99,6 +99,16 @@ type Column struct {
 	Charset   *string `json:"charset,omitempty"`
 	Collation *string `json:"collation,omitempty"`
 	Crc64     uint64  `json:"crc64,omitempty"`
+	// Compressed is true when the column declares MariaDB per-column
+	// COMPRESSED storage. Detected via SHOW CREATE TABLE parsing (MariaDB
+	// only; not exposed by information_schema). Only populated for BLOB/TEXT
+	// candidate columns during schema monitoring.
+	Compressed bool `json:"compressed,omitempty"`
+	// AvgByteLength is a bounded-sample observed average byte length for
+	// BLOB/TEXT candidate columns (LIMIT 1024 non-NULL rows, no ORDER BY).
+	// Zero means not sampled (non-candidate column, sampling skipped/failed,
+	// or already known to be COMPRESSED).
+	AvgByteLength int64 `json:"avg_byte_length,omitempty"`
 }
 
 // IndexColumn represents a column in an index
