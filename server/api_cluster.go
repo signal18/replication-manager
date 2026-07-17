@@ -996,7 +996,7 @@ func (repman *ReplicationManager) handlerMuxServersCount(w http.ResponseWriter, 
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param state path string true "Server State"
-// @Success 200 {array} cluster.ServerMonitor "server by state"
+// @Success 200 {array} map[string]interface{} "server by state"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/clusters/{clusterName}/topology/state/{state} [get]
 func (repman *ReplicationManager) handlerMuxGetServersByState(w http.ResponseWriter, r *http.Request) {
@@ -1083,7 +1083,7 @@ func (repman *ReplicationManager) handlerMuxGetServersByStateCount(w http.Respon
 // @Param clusterName path string true "Cluster Name"
 // @Param state path string true "Server State"
 // @Param index path string true "Index"
-// @Success 200 {object} cluster.ServerMonitor "server by state"
+// @Success 200 {object} map[string]interface{} "server by state"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/clusters/{clusterName}/topology/state/{state}/index/{index} [get]
 func (repman *ReplicationManager) handlerMuxGetServerByStateAndIndex(w http.ResponseWriter, r *http.Request) {
@@ -1130,7 +1130,7 @@ func (repman *ReplicationManager) handlerMuxGetServerByStateAndIndex(w http.Resp
 // @Param state path string true "Server State"
 // @Param index path string true "Index"
 // @Param attrName path string true "Attribute Name with dot notation"
-// @Success 200 {object} cluster.ServerMonitor "Server (partial based on attrName)"
+// @Success 200 {object} map[string]interface{} "Server (partial based on attrName)"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/clusters/{clusterName}/topology/state/{state}/index/{index}/attr/{attrName} [get]
 func (repman *ReplicationManager) handlerMuxGetServerAttributeByStateAndIndex(w http.ResponseWriter, r *http.Request) {
@@ -1254,7 +1254,7 @@ func (repman *ReplicationManager) handlerMuxSlavesCount(w http.ResponseWriter, r
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param slaveIndex path string true "Slave Index (start from 0)"
-// @Success 200 {object} cluster.ServerMonitor "Slave Data"
+// @Success 200 {object} map[string]interface{} "Slave Data"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/clusters/{clusterName}/topology/slaves/index/{slaveIndex} [get]
 func (repman *ReplicationManager) handlerMuxSlaveIndex(w http.ResponseWriter, r *http.Request) {
@@ -1319,7 +1319,7 @@ func (repman *ReplicationManager) handlerMuxSlaveIndex(w http.ResponseWriter, r 
 // @Param clusterName path string true "Cluster Name"
 // @Param slaveIndex path string true "Slave Index (start from 0)"
 // @Param attrName path string true "Attribute Name (using json path notation split by dot)"
-// @Success 200 {object} cluster.ServerMonitor "Slave Attribute (partial based on attrName)"
+// @Success 200 {object} map[string]interface{} "Slave Attribute (partial based on attrName)"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/clusters/{clusterName}/topology/slaves/index/{slaveIndex}/attr/{attrName} [get]
 func (repman *ReplicationManager) handlerMuxSlaveAttributeByIndex(w http.ResponseWriter, r *http.Request) {
@@ -2136,7 +2136,7 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {object} cluster.ServerMonitor "Master server"
+// @Success 200 {object} map[string]interface{} "Master server"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/clusters/{clusterName}/topology/master [get]
 func (repman *ReplicationManager) handlerMuxMaster(w http.ResponseWriter, r *http.Request) {
@@ -5969,7 +5969,7 @@ func (repman *ReplicationManager) handlerMuxClusterWaitDatabases(w http.Response
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {object} cluster.Cluster "Cluster details"
+// @Success 200 {object} map[string]interface{} "Cluster runtime state (dynamic)"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName} [get]
@@ -6044,7 +6044,7 @@ func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *ht
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {object} config.Config "Cluster settings"
+// @Success 200 {object} map[string]interface{} "Cluster settings (dynamic)"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/settings [get]
@@ -8541,7 +8541,7 @@ func (repman *ReplicationManager) handlerMuxResetResticTaskQueue(w http.Response
 }
 
 type MeetAlertMessage struct {
-	Fields  log.Fields `json:"fields"`
+	Fields  log.Fields `json:"fields" swaggerignore:"true"`
 	Message string     `json:"message"`
 }
 
@@ -10224,13 +10224,13 @@ func (repman *ReplicationManager) proxyLostEventsFromPeer(w http.ResponseWriter,
 // for destructive ones (cluster-failover + cluster-rejoin-unsafe). The method must match
 // its verb. Target is the latest divergence, or ?server= to pick a specific one.
 // @Summary Rejoin the diverged master with a chosen recovery method
-// @Description Explicitly (re-)arms the rejoin using the operator-chosen method. Safe methods use /actions/rejoin (needs cluster-failover); destructive methods (ignore-delta-force, bootstrap-repli-ftwrl) use /actions/unsafe-rejoin (needs cluster-failover + cluster-rejoin-unsafe). The method must match its verb.
+// @Description Explicitly (re-)arms the rejoin using the operator-chosen method. Safe methods use /actions/rejoin (needs cluster-failover); destructive methods (ignore-delta-force, bootstrap-repli-ftwrl, reset-master-reslave) use /actions/unsafe-rejoin (needs cluster-failover + cluster-rejoin-unsafe). The method must match its verb.
 // @Tags ClusterActions
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Param method path string true "Rejoin method" Enums(flashback, logical-dump, logical-backup, physical-backup, reset-master-reslave, rejoin-script, ignore-delta-force, bootstrap-repli-ftwrl)
+// @Param method path string true "Rejoin method. Safe (via /actions/rejoin): flashback, logical-dump (direct master dump), logical-backup, physical-backup, rejoin-script. Destructive (via /actions/unsafe-rejoin): ignore-delta-force, bootstrap-repli-ftwrl, reset-master-reslave" Enums(flashback, logical-dump, logical-backup, physical-backup, rejoin-script, ignore-delta-force, bootstrap-repli-ftwrl, reset-master-reslave)
 // @Success 200 {string} string "Rejoin armed"
 // @Failure 400 {string} string "Invalid rejoin method / wrong verb"
 // @Failure 403 {string} string "No valid ACL / method needs the unsafe verb"

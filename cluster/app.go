@@ -54,7 +54,7 @@ type App struct {
 	AppErrConsecutiveMap map[string]int         `json:"-"`
 	ErrState             map[string]state.State `json:"-"`
 	ClusterGroup         *Cluster               `json:"-"`
-	Process              *os.Process            `json:"process"`
+	Process              *os.Process            `json:"process" swaggerignore:"true"`
 	RouteStatus          []config.RouteStatus   `json:"routeStatus"`
 	Variables            map[string]string      `json:"-"`
 	AppConfig            *config.AppConfig      `json:"config" groups:"apps"`

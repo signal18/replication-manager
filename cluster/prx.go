@@ -61,7 +61,7 @@ type Proxy struct {
 	PrevState       string               `json:"prevState"`
 	FailCount       int                  `json:"failCount"`
 	SlapOSDatadir   string               `json:"slaposDatadir"`
-	Process         *os.Process          `json:"process"`
+	Process         *os.Process          `json:"process" swaggerignore:"true"`
 	Variables       map[string]string    `json:"-"`
 	ServiceName     string               `json:"serviceName"`
 	Agent           string               `json:"agent"`

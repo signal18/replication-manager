@@ -84,7 +84,7 @@ type ServerMonitor struct {
 	FailoverMasterLogFile       string                      `json:"failoverMasterLogFile"`
 	FailoverMasterLogPos        string                      `json:"failoverMasterLogPos"`
 	FailoverSemiSyncSlaveStatus bool                        `json:"failoverSemiSyncSlaveStatus"`
-	Process                     *os.Process                 `json:"process"`
+	Process                     *os.Process                 `json:"process" swaggerignore:"true"`
 	SemiSyncMasterStatus        bool                        `json:"semiSyncMasterStatus"`
 	SemiSyncSlaveStatus         bool                        `json:"semiSyncSlaveStatus"`
 	HaveSSHError                bool                        `json:"HaveSshError"`
@@ -280,7 +280,7 @@ type PFSExplainRecord struct {
 	DigestText  string             `json:"digestText"`  // normalised template  e.g. SELECT * FROM t WHERE id = ?
 	SampleQuery string             `json:"sampleQuery"` // concrete SQL instance used for EXPLAIN
 	SchemaName  string             `json:"schemaName"`
-	Plan        []dbhelper.Explain `json:"plan"` // rows returned by EXPLAIN
+	Plan        []dbhelper.Explain `json:"plan" swaggerignore:"true"` // rows returned by EXPLAIN
 }
 
 type ServerBackupMeta struct {

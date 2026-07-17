@@ -74,7 +74,7 @@ func (repman *ReplicationManager) apiProxyProtectedHandler(router *mux.Router) {
 // @Tags Proxies
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {object} cluster.Proxy "Server details retrieved successfully"
+// @Success 200 {object} map[string]interface{} "Proxy runtime state (dynamic)"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/clusters/{clusterName}/proxies/{proxyName} [get]
 func (repman *ReplicationManager) handlerMuxProxy(w http.ResponseWriter, r *http.Request) {

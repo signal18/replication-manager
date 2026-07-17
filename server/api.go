@@ -1183,7 +1183,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 // @Accept  json
 // @Produce  json
 // @Param Authorization header string false "Insert your access token" default(Bearer <Add access token here>)
-// @Success 200 {object} ReplicationManager "Successful response with replication manager details"
+// @Success 200 {object} map[string]interface{} "Replication manager runtime state (dynamic)"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/monitor [get]
 func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
@@ -1475,7 +1475,7 @@ func (repman *ReplicationManager) handlerMuxDropClusterUser(w http.ResponseWrite
 // @Tags Cluster
 // @Produce application/json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Success 200 {array} cluster.Cluster "List of clusters"
+// @Success 200 {array} map[string]interface{} "List of clusters"
 // @Failure 401 {string} string "Unauthenticated resource"
 // @Failure 500 {string} string "Internal server error"
 // @Router /api/clusters [get]
@@ -1798,7 +1798,7 @@ func (repman *ReplicationManager) jsonResponse(apiresponse interface{}, w http.R
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param cluster body cluster.ClusterForm true "Cluster Form"
-// @Success 200 {object} cluster.Cluster "Cluster added successfully"
+// @Success 200 {object} map[string]interface{} "Cluster added successfully"
 // @Failure 400 {string} string "Error in request or Cluster already exists"
 // @Failure 500 {string} string "User is not valid"
 // @Router /api/clusters/actions/add/{clusterName} [post]
