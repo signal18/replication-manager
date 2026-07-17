@@ -16,6 +16,13 @@
       "max": 8000,
       "step": 1,
       "help": "VARCHAR columns whose declared byte width (declared length × charset max-bytes-per-char) is under this value are treated as always inline-stored and summed against the InnoDB row budget."
+    },
+    {
+      "key": "mask-identifiers",
+      "label": "Mask table/column names",
+      "type": "bool",
+      "default": "false",
+      "help": "Partially obscure schema, table, and column names in the finding description (e.g. \"window\" -> \"wi???ow\") so the log entry is not directly useful to someone who only has log access. For PCI-DSS/compliance deployments where the findings log is more widely readable than the database schema itself."
     }
   ]
 }

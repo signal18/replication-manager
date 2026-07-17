@@ -54,6 +54,7 @@ func evaluateTables(req wire.Request) []wire.Finding {
 	}
 
 	threshold := wire.CfgInt(req.Config, "avg-length-threshold-bytes", wire.EnvInt("REPMAN_SCHEMA_LOB_COMPRESSION_THRESHOLD_BYTES", 8192))
+	maskIdentifiers := wire.CfgBool(req.Config, "mask-identifiers", false)
 
 	var offenses []string
 	for _, t := range req.Tables {
@@ -68,6 +69,13 @@ func evaluateTables(req wire.Request) []wire.Finding {
 				continue
 			}
 
+			if maskIdentifiers {
+				offenses = append(offenses, fmt.Sprintf(
+					"%s (%s, avg=%dB)",
+					wire.MaskQualified(t.Schema, t.Name, c.Name), c.Type, c.AvgByteLength,
+				))
+				continue
+			}
 			offenses = append(offenses, fmt.Sprintf(
 				"%s.%s.%s (%s, avg=%dB, suggest: ALTER TABLE %s.%s MODIFY %s %s COMPRESSED;)",
 				t.Schema, t.Name, c.Name, c.Type, c.AvgByteLength, t.Schema, t.Name, c.Name, c.Type,

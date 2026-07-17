@@ -118,6 +118,7 @@ type tableOffense struct {
 // plugin-security-hardening's SEC0107/SEC0108.
 func evaluateTables(req wire.Request) []wire.Finding {
 	inlineMaxBytes := wire.CfgInt(req.Config, "inline-varchar-max-bytes", wire.EnvInt("REPMAN_SCHEMA_ROW_SIZE_INLINE_MAX_BYTES", 256))
+	maskIdentifiers := wire.CfgBool(req.Config, "mask-identifiers", false)
 
 	var offenses []tableOffense
 	for _, t := range req.Tables {
@@ -158,12 +159,20 @@ func evaluateTables(req wire.Request) []wire.Finding {
 				colDesc = append(colDesc, fmt.Sprintf("(+%d more)", len(contributions)-maxColumnsPerTableInDescription))
 				break
 			}
-			colDesc = append(colDesc, fmt.Sprintf("%s(%dB)", c.name, c.bytes))
+			name := c.name
+			if maskIdentifiers {
+				name = wire.MaskIdentifier(name)
+			}
+			colDesc = append(colDesc, fmt.Sprintf("%s(%dB)", name, c.bytes))
 		}
 
+		schema, name := t.Schema, t.Name
+		if maskIdentifiers {
+			schema, name = wire.MaskIdentifier(schema), wire.MaskIdentifier(name)
+		}
 		offenses = append(offenses, tableOffense{
-			schema:       t.Schema,
-			name:         t.Name,
+			schema:       schema,
+			name:         name,
 			rowFormat:    orDefault(t.RowFormat, "(default)"),
 			pageSize:     orDefault(req.ServerVariables["innodb_page_size"], "16384"),
 			sum:          int64(sum),

@@ -304,3 +304,31 @@ func EnvStr(envKey, def string) string {
 	}
 	return def
 }
+
+// MaskIdentifier partially obscures a table/column/schema name for compliance
+// logging (PCI-DSS §10.5.5 and similar: findings logs must not leak enough of
+// the schema to be useful to someone who only has log access). The masked
+// span is a fixed number of '?' rather than one that mirrors the real length,
+// so the identifier's length can't be inferred from the mask either — e.g.
+// "window" -> "wi???ow". Names of 4 chars or fewer are masked in full since
+// there is nothing safe left to reveal (and short names are often the most
+// sensitive: "ssn", "cc", "dob").
+func MaskIdentifier(s string) string {
+	if len(s) <= 4 {
+		return "????"
+	}
+	return s[:2] + "???" + s[len(s)-2:]
+}
+
+// MaskQualified masks every non-empty part of a dotted identifier path
+// (e.g. schema, table, column) and joins them back with ".".
+func MaskQualified(parts ...string) string {
+	masked := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		masked = append(masked, MaskIdentifier(p))
+	}
+	return strings.Join(masked, ".")
+}

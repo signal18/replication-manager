@@ -286,6 +286,21 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 							config.LvlWarn, "[workload:%s] %s on server %s: %s",
 							p.Name(), f.ErrKey, server.URL, f.Description)
 					}
+				case isSchema:
+					// Schema advisory findings go exclusively to schema.log + LogSchema HTTP buffer.
+					cluster.LogSchema.Add(s18log.HttpMessage{
+						Group:     cluster.Name,
+						Level:     "WARN",
+						Timestamp: time.Now().Format("2006/01/02 15:04:05"),
+						Text:      fmt.Sprintf("[%s] %s %s: %s", p.Name(), f.ErrKey, server.URL, f.Description),
+					})
+					if cluster.SchemaLogrus != nil {
+						cluster.SchemaLogrus.WithFields(fields).Warn(f.Description)
+					} else {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin,
+							config.LvlInfo, "[schema:%s] %s on server %s: %s",
+							p.Name(), f.ErrKey, server.URL, f.Description)
+					}
 				default:
 					// HA/operational findings stay in the main log.
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin,
@@ -298,6 +313,8 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 					cluster.logPluginDebugSec(p.Name(), stillMsg)
 				} else if isWorkload {
 					cluster.logPluginDebugWork(p.Name(), stillMsg)
+				} else if isSchema {
+					cluster.logPluginDebugSchema(p.Name(), stillMsg)
 				} else {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg, "%s", stillMsg)
 				}
@@ -1189,6 +1206,12 @@ func (cluster *Cluster) logPluginDebugSec(pluginName, msg string) {
 func (cluster *Cluster) logPluginDebugWork(pluginName, msg string) {
 	if cluster.WorkloadLogrus != nil {
 		cluster.WorkloadLogrus.WithField("plugin", pluginName).Debug(msg)
+	}
+}
+
+func (cluster *Cluster) logPluginDebugSchema(pluginName, msg string) {
+	if cluster.SchemaLogrus != nil {
+		cluster.SchemaLogrus.WithField("plugin", pluginName).Debug(msg)
 	}
 }
 

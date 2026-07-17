@@ -16,6 +16,13 @@
       "max": 1073741824,
       "step": 1,
       "help": "BLOB/TEXT columns whose sampled observed average byte length exceeds this value, and that are not COMPRESSED, are flagged."
+    },
+    {
+      "key": "mask-identifiers",
+      "label": "Mask table/column names",
+      "type": "bool",
+      "default": "false",
+      "help": "Partially obscure schema, table, and column names in the finding description (e.g. \"window\" -> \"wi???ow\") and drop the suggested ALTER TABLE statement, so the log entry is not directly useful to someone who only has log access. For PCI-DSS/compliance deployments where the findings log is more widely readable than the database schema itself."
     }
   ]
 }

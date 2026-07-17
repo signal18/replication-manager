@@ -190,3 +190,31 @@ func TestEvaluateTables_MultipleOffendingTablesAggregateIntoOneFinding(t *testin
 		t.Errorf("expected offense count in description, got: %s", findings[0].Description)
 	}
 }
+
+// TestEvaluateTables_MaskIdentifiers guards the PCI-DSS-style compliance
+// option: with mask-identifiers=true, the aggregated description must not
+// contain the real table or column names, only their masked form.
+func TestEvaluateTables_MaskIdentifiers(t *testing.T) {
+	cols := make([]wire.TableColumn, 0, 40)
+	for i := 0; i < 40; i++ {
+		cols = append(cols, wire.TableColumn{Name: "credit_card_number", Type: "varchar(63)", Charset: "utf8mb4"})
+	}
+	req := wire.Request{
+		ServerVariables: map[string]string{"innodb_page_size": "16384"},
+		Config:          map[string]string{"mask-identifiers": "true"},
+		Tables: []wire.Table{
+			{Schema: "payments", Name: "credit_cards", Engine: "InnoDB", RowFormat: "Dynamic", Columns: cols},
+		},
+	}
+	findings := evaluateTables(req)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	desc := findings[0].Description
+	if strings.Contains(desc, "credit_cards") || strings.Contains(desc, "credit_card_number") || strings.Contains(desc, "payments") {
+		t.Errorf("expected real identifiers masked out of description, got: %s", desc)
+	}
+	if !strings.Contains(desc, wire.MaskIdentifier("credit_cards")) {
+		t.Errorf("expected masked table name in description, got: %s", desc)
+	}
+}

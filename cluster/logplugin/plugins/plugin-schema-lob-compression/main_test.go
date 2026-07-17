@@ -154,3 +154,29 @@ func TestEvaluateTables_MultipleOffendingColumnsAggregateIntoOneFinding(t *testi
 		t.Errorf("expected offense count in description, got: %s", findings[0].Description)
 	}
 }
+
+// TestEvaluateTables_MaskIdentifiers guards the PCI-DSS-style compliance
+// option: with mask-identifiers=true, neither the real names nor the
+// suggested ALTER TABLE statement (which would leak them) may appear.
+func TestEvaluateTables_MaskIdentifiers(t *testing.T) {
+	req := mariaDBRequest([]wire.Table{
+		{Schema: "payments", Name: "credit_cards", Columns: []wire.TableColumn{
+			{Name: "card_number", Type: "text", Compressed: false, AvgByteLength: 9000},
+		}},
+	})
+	req.Config = map[string]string{"mask-identifiers": "true"}
+	findings := evaluateTables(req)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	desc := findings[0].Description
+	if strings.Contains(desc, "credit_cards") || strings.Contains(desc, "card_number") || strings.Contains(desc, "payments") {
+		t.Errorf("expected real identifiers masked out of description, got: %s", desc)
+	}
+	if strings.Contains(desc, "ALTER TABLE") {
+		t.Errorf("expected suggested ALTER TABLE (would leak real names) to be dropped when masking, got: %s", desc)
+	}
+	if !strings.Contains(desc, wire.MaskIdentifier("credit_cards")) {
+		t.Errorf("expected masked table name in description, got: %s", desc)
+	}
+}
