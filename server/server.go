@@ -308,6 +308,15 @@ func (repman *ReplicationManager) SetDefaultFlags(v *viper.Viper) {
 		//	fmt.Printf("%s %v \n", f, v.Get(f))
 	}
 
+	// CheckSumConfig is written by every config-save path (SaveDynamic, SaveImmutable,
+	// Overwrite, ReloadTerms). Allocate it here — at the earliest startup init, before
+	// InitConfig and therefore before any save, however early (e.g. the subscription-plan
+	// sync at the tail of InitConfig) — so no writer can ever hit a nil map. Guarded so
+	// the repeated SetDefaultFlags calls (secret-store setup) don't reset live checksums.
+	if repman.CheckSumConfig == nil {
+		repman.CheckSumConfig = make(map[string]hash.Hash)
+	}
+
 	/*flags.VisitAll(func(f *pflag.Flag) {
 		fmt.Printf("%s,%v", f.Name, f.Value)
 		repman.DefaultFlagMapBis[f.Name] = f.Value
@@ -2371,7 +2380,13 @@ func (repman *ReplicationManager) Run() error {
 	repman.CpuProfile = cpuprofile
 	repman.cApiLog = clog.New()
 	repman.clog = clog.New()
-	repman.CheckSumConfig = make(map[string]hash.Hash)
+	// Guarded: SetDefaultFlags already allocates this map before InitConfig runs, and
+	// InitConfig's subscription-plan sync may have already populated it with real
+	// checksums. Overwriting unconditionally here would discard that work and force
+	// the next SaveGlobalConfigs call to see a spurious checksum miss.
+	if repman.CheckSumConfig == nil {
+		repman.CheckSumConfig = make(map[string]hash.Hash)
+	}
 	repman.ApiLogAdapter = NewApiLogAdapter(repman.Conf.APIErrorSuppress, repman.Conf.APIErrorLimit, repman.Conf.APIErrorLimitDuration, repman.Conf.APIErrorDisregardPort)
 	repman.InitWebTTY()
 	repman.DiskStatManager = misc.NewDiskStatManager()
@@ -4299,10 +4314,10 @@ func (repman *ReplicationManager) SaveCallBack() error {
 func (repman *ReplicationManager) SaveGlobalConfigs() error {
 	var err error
 
-	// CheckSumConfig is created later in the startup sequence, but a config save can
-	// be triggered earlier — e.g. syncSubscriptionPlanFromCRM at the tail of InitConfig
-	// persists the subscription plan synchronously. Writing to a nil map panics, so make
-	// it on demand: any caller reaching a save must find the map ready.
+	// CheckSumConfig is allocated at startup in SetDefaultFlags, before any save can run.
+	// This guard is defensive insurance for callers that construct a ReplicationManager
+	// without that path (e.g. tests): writing to a nil map panics, so never let a save
+	// reach the writes below with the map unset.
 	if repman.CheckSumConfig == nil {
 		repman.CheckSumConfig = make(map[string]hash.Hash)
 	}
