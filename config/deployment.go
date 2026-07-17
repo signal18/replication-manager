@@ -20,7 +20,7 @@ type Deployment struct {
 	Variables    VariableMaps   `mapstructure:"variables"  toml:"variables" json:"variables" groups:"apps"`
 
 	// Use sync.RWMutex to protect concurrent access to Volumes and VolumeMappings
-	Mutex sync.RWMutex
+	Mutex sync.RWMutex `swaggerignore:"true"`
 }
 
 func NewDeploymentConfig() *Deployment {

@@ -576,7 +576,7 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
-// @Success 200 {object} cluster.ServerMonitor "Server details retrieved successfully"
+// @Success 200 {object} map[string]interface{} "Server details retrieved successfully"
 // @Failure 500 {string} string "No cluster" or "Server Not Found" or "Encoding error"
 // @Router /api/clusters/{clusterName}/servers/{serverName} [get]
 func (repman *ReplicationManager) handlerMuxServer(w http.ResponseWriter, r *http.Request) {
@@ -640,7 +640,7 @@ func (repman *ReplicationManager) handlerMuxServer(w http.ResponseWriter, r *htt
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
 // @Param attrName path string true "Attribute Name (using json path notation split by dot)"
-// @Success 200 {object} cluster.ServerMonitor "Server Attribute (partial based on attrName)"
+// @Success 200 {object} map[string]interface{} "Server Attribute (partial based on attrName)"
 // @Failure 500 {string} string "No cluster" or "Server Not Found" or "Attribute not found"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/attr/{attrName} [get]
 func (repman *ReplicationManager) handlerMuxServerAttribute(w http.ResponseWriter, r *http.Request) {

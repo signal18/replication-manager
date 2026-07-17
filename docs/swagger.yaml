@@ -1,6 +1,4 @@
 definitions:
-  backupmgr.BackupMetaMap:
-    type: object
   backupmgr.BackupMetadata:
     properties:
       backupLine:
@@ -78,23 +76,38 @@ definitions:
       total_size:
         type: integer
     type: object
-  backupmgr.PointInTimeMeta:
+  backupmgr.ManualCheckResult:
     properties:
-      backup:
-        format: int64
-        type: integer
-      isInPITR:
-        type: boolean
-      resticMode:
+      backend:
+        description: Wipe preview fields populated by ResticCheckConfigManual
         type: string
-      restoreTime:
-        format: int64
-        type: integer
-      useBinlog:
+      can_init:
         type: boolean
-      useRestic:
+      can_wipe:
         type: boolean
+      fetch_queued:
+        type: boolean
+      is_s3_empty_prefix:
+        type: boolean
+      message:
+        type: string
+      repo_path:
+        type: string
+      status:
+        $ref: '#/definitions/backupmgr.ManualCheckStatus'
+      wipe_message:
+        type: string
     type: object
+  backupmgr.ManualCheckStatus:
+    enum:
+    - ok
+    - initialization_required
+    - error
+    type: string
+    x-enum-varnames:
+    - ManualCheckStatusOK
+    - ManualCheckStatusInitRequired
+    - ManualCheckStatusError
   backupmgr.ResticBackupOption:
     properties:
       dir_path:
@@ -166,6 +179,61 @@ definitions:
         type: string
       with_cache:
         description: 'Use cache (default: false for check)'
+        type: boolean
+    type: object
+  backupmgr.ResticCopyOption:
+    properties:
+      copy_chunker_params:
+        type: boolean
+      host:
+        items:
+          type: string
+        type: array
+      init_destination:
+        type: boolean
+      path:
+        items:
+          type: string
+        type: array
+      snapshot_ids:
+        items:
+          type: string
+        type: array
+      source:
+        $ref: '#/definitions/backupmgr.ResticCopySourceOption'
+      tag:
+        items:
+          type: string
+        type: array
+    type: object
+  backupmgr.ResticCopySourceAWSOption:
+    properties:
+      access_key_id:
+        type: string
+      access_secret:
+        type: string
+      bucket:
+        type: string
+      endpoint:
+        type: string
+      prefix:
+        type: string
+      region:
+        type: string
+    type: object
+  backupmgr.ResticCopySourceOption:
+    properties:
+      aws:
+        $ref: '#/definitions/backupmgr.ResticCopySourceAWSOption'
+      key_hint:
+        type: string
+      mode:
+        type: string
+      password:
+        type: string
+      repository:
+        type: string
+      use_saved_config:
         type: boolean
     type: object
   backupmgr.ResticFetchOption:
@@ -453,6 +521,9 @@ definitions:
         type: integer
       completed_at:
         type: string
+      completed_snapshots:
+        description: snapshots completed during copy
+        type: integer
       data_added:
         type: integer
       data_blobs:
@@ -475,8 +546,14 @@ definitions:
         type: integer
       last_update:
         type: string
+      packs_done:
+        description: packs copied (copy task only)
+        type: integer
       percent_done:
         type: number
+      phase:
+        description: init_destination or copy
+        type: string
       seconds_elapsed:
         type: integer
       snapshot_id:
@@ -500,6 +577,12 @@ definitions:
         type: integer
       total_files_processed:
         type: integer
+      total_packs:
+        description: total packs to copy (copy task only)
+        type: integer
+      total_snapshots:
+        description: total snapshots to copy
+        type: integer
       tree_blobs:
         type: integer
     type: object
@@ -508,6 +591,15 @@ definitions:
       remove_all:
         description: Remove all locks, including from other hosts
         type: boolean
+    type: object
+  backupmgr.ResticWipeOption:
+    properties:
+      allow_empty_prefix:
+        type: boolean
+      confirm:
+        type: boolean
+      typed_target_confirm:
+        type: string
     type: object
   backupmgr.TaskType:
     enum:
@@ -519,6 +611,7 @@ definitions:
     - 5
     - 6
     - 7
+    - 8
     type: integer
     x-enum-varnames:
     - InitTask
@@ -529,47 +622,14 @@ definitions:
     - ChangePassTask
     - RestoreTask
     - CheckTask
-  cluster.APIUser:
-    properties:
-      grants:
-        additionalProperties:
-          type: boolean
-        type: object
-      isExternal:
-        type: boolean
-      roles:
-        additionalProperties:
-          type: boolean
-        type: object
-      user:
-        type: string
-    type: object
-  cluster.Agent:
-    properties:
-      cpuCores:
-        type: integer
-      cpuFreq:
-        type: integer
-      hostName:
-        type: string
-      id:
-        type: string
-      memBytes:
-        type: integer
-      memFreeBytes:
-        type: integer
-      osKernel:
-        type: string
-      osName:
-        type: string
-      status:
-        type: string
-      version:
-        type: string
-    type: object
+    - CopyTask
   cluster.Alerts:
     properties:
       errors:
+        items:
+          $ref: '#/definitions/state.StateHttp'
+        type: array
+      infos:
         items:
           $ref: '#/definitions/state.StateHttp'
         type: array
@@ -604,8 +664,6 @@ definitions:
         type: string
       prevState:
         type: string
-      process:
-        $ref: '#/definitions/os.Process'
       routeStatus:
         items:
           $ref: '#/definitions/config.RouteStatus'
@@ -627,354 +685,6 @@ definitions:
       weight:
         type: string
     type: object
-  cluster.Backend:
-    properties:
-      host:
-        type: string
-      port:
-        type: string
-      prxByteIn:
-        type: string
-      prxByteOut:
-        type: string
-      prxConnections:
-        type: string
-      prxHostgroup:
-        type: string
-      prxLatency:
-        type: string
-      prxMaintenance:
-        type: boolean
-      prxName:
-        type: string
-      prxStatus:
-        type: string
-      status:
-        type: string
-      svname:
-        type: string
-    type: object
-  cluster.Cluster:
-    properties:
-      activePassiveStatus:
-        type: string
-      agents:
-        items:
-          $ref: '#/definitions/cluster.Agent'
-        type: array
-      apiUsers:
-        additionalProperties:
-          $ref: '#/definitions/cluster.APIUser'
-        type: object
-      appS3Providers:
-        items:
-          type: string
-        type: array
-      appServers:
-        items:
-          type: string
-        type: array
-      apps:
-        items:
-          $ref: '#/definitions/cluster.App'
-        type: array
-      backupList:
-        $ref: '#/definitions/backupmgr.BackupMetaMap'
-      blacklist:
-        items:
-          $ref: '#/definitions/regexp.Regexp'
-        type: array
-      canConnectVault:
-        type: boolean
-      canInitNodes:
-        type: boolean
-      cleanReplication:
-        description: used in testing
-        type: boolean
-      config:
-        $ref: '#/definitions/github_com_signal18_replication-manager_config.Config'
-      configurator:
-        $ref: '#/definitions/configurator.Configurator'
-      dbServers:
-        items:
-          type: string
-        type: array
-      dbServersCrashes:
-        description: This will be purged on all db node up
-        items:
-          $ref: '#/definitions/cluster.Crash'
-        type: array
-      diffVariables:
-        items:
-          $ref: '#/definitions/cluster.VariableDiff'
-        type: array
-      diskStat:
-        $ref: '#/definitions/misc.DiskStatManager'
-      diskType:
-        additionalProperties:
-          type: string
-        type: object
-      failoverCounter:
-        type: integer
-      failoverHistory:
-        description: This will be used for PITR
-        items:
-          $ref: '#/definitions/cluster.Crash'
-        type: array
-      failoverLastTime:
-        type: integer
-      falsePositiveChecks:
-        additionalProperties:
-          type: boolean
-        type: object
-      fsType:
-        additionalProperties:
-          type: boolean
-        type: object
-      haveAutoTLS:
-        description: set when any server auto-detected require_secure_transport=ON
-          via error 3159
-        type: boolean
-      haveDBTLSCert:
-        type: boolean
-      haveDBTLSOldCert:
-        type: boolean
-      inBinlogBackup:
-        type: boolean
-      inLogicalBackup:
-        type: boolean
-      inPhysicalBackup:
-        type: boolean
-      inResticBackup:
-        type: boolean
-      inResticLogicalBackup:
-        type: boolean
-      inResticPhysicalBackup:
-        type: boolean
-      inRollingRestart:
-        type: boolean
-      interventionCurrent:
-        $ref: '#/definitions/cluster.InterventionEntry'
-      interventionHistory:
-        items:
-          $ref: '#/definitions/cluster.InterventionEntry'
-        type: array
-      interventionPending:
-        $ref: '#/definitions/cluster.InterventionEntry'
-      interventionSuppressedAlerts:
-        type: integer
-      isAlertDisable:
-        type: boolean
-      isAllDbUp:
-        type: boolean
-      isCapturing:
-        type: boolean
-      isClusterDown:
-        type: boolean
-      isConfigPathChange:
-        type: boolean
-      isDown:
-        type: boolean
-      isExportPush:
-        type: boolean
-      isFailable:
-        type: boolean
-      isFailedArbitrator:
-        type: boolean
-      isGettingSlowLog:
-        type: boolean
-      isGitPull:
-        type: boolean
-      isGitPush:
-        type: boolean
-      isIntervention:
-        type: boolean
-      isLostMajority:
-        type: boolean
-      isMasterDown:
-        type: boolean
-      isNeedAppsReprov:
-        type: boolean
-      isNeedDatabasesConfigChange:
-        type: boolean
-      isNeedDatabasesReprov:
-        type: boolean
-      isNeedDatabasesRestart:
-        type: boolean
-      isNeedDatabasesRollingReprov:
-        type: boolean
-      isNeedDatabasesRollingRestart:
-        type: boolean
-      isNeedProxiesConfigChange:
-        type: boolean
-      isNeedProxiesReprov:
-        type: boolean
-      isNeedProxiesRestart:
-        type: boolean
-      isNeedStagingChange:
-        type: boolean
-      isNotMonitoring:
-        type: boolean
-      isPostgres:
-        type: boolean
-      isProvision:
-        type: boolean
-      isRefreshStaging:
-        type: boolean
-      isResticQueuePaused:
-        type: boolean
-      isSplitBrain:
-        type: boolean
-      isValidBackup:
-        type: boolean
-      jobResults:
-        $ref: '#/definitions/config.TasksMap'
-      lastDelayStatPrint:
-        type: string
-      logSlaveServers:
-        description: To store slave with log-slave-updates
-        items:
-          type: string
-        type: array
-      monitorSpin:
-        type: string
-      monitorType:
-        additionalProperties:
-          type: string
-        type: object
-      name:
-        type: string
-      partner:
-        $ref: '#/definitions/config.Partner'
-      proxies:
-        items: {}
-        type: array
-      proxyServers:
-        items:
-          type: string
-        type: array
-      securityClearPwdConfig:
-        description: Set by dbjob SSH scripts scanning my.cnf/.my.cnf on DB servers
-        type: boolean
-      securityClearPwdHistory:
-        description: Set by dbjob SSH scripts scanning .bash_history/.mysql_history
-          on DB servers
-        type: boolean
-      securityRemediations:
-        allOf:
-        - $ref: '#/definitions/cluster.RemediationPlan'
-        description: |-
-          SecurityRemediations is the current remediation plan for all open security findings.
-          Populated alongside SecurityStates in CheckLogPlugins so the dashboard gets
-          AutoFixable flags, fix tags, and risk levels without a separate API call.
-          This is the authoritative source — the UI must not duplicate autoFixable logic.
-      securityScore:
-        $ref: '#/definitions/cluster.SecurityScore'
-      securityStateMachine:
-        $ref: '#/definitions/state.StateMachine'
-      securityStates:
-        description: |-
-          SecurityStates is a snapshot of all open security findings from the current monitoring
-          tick, serialised into the cluster JSON for the dashboard (SecurityStateMachine.CurState
-          has json:"-" so it cannot be read directly). Updated by CheckLogPlugins.
-        items:
-          $ref: '#/definitions/github_com_signal18_replication-manager_utils_state.State'
-        type: array
-      servers:
-        items:
-          $ref: '#/definitions/cluster.ServerMonitor'
-        type: array
-      slaHistory:
-        items:
-          $ref: '#/definitions/state.Sla'
-        type: array
-      slavesConnected:
-        type: integer
-      slavesOldestMasterFile:
-        $ref: '#/definitions/cluster.SlavesOldestMasterFile'
-      sqlErrorLog:
-        $ref: '#/definitions/s18log.HttpLog'
-      sqlGeneralLog:
-        $ref: '#/definitions/s18log.HttpLog'
-      sstAvailablePorts:
-        additionalProperties:
-          type: string
-        type: object
-      stateMachine:
-        allOf:
-        - $ref: '#/definitions/state.StateMachine'
-        description: |-
-          dbUser                        string                      `json:"-"`
-          oldDbUser string `json:"-"`
-          dbPass                        string                      `json:"-"`
-          oldDbPass string `json:"-"`
-          rplUser                   string                      `json:"-"`
-          rplPass                   string                      `json:"-"`
-          proxysqlUser              string                      `json:"-"`
-          proxysqlPass              string                      `json:"-"`
-      sysBenchTpcMResults:
-        items:
-          $ref: '#/definitions/cluster.SysBenchTpcResultPerMinute'
-        type: array
-      tenant:
-        type: string
-      topology:
-        type: string
-      topologyType:
-        additionalProperties:
-          type: string
-        type: object
-      uptime:
-        type: string
-      uptimeFailable:
-        type: string
-      uptimeSemisync:
-        type: string
-      useBlacklist:
-        type: boolean
-      useWhitelist:
-        type: boolean
-      versionsMap:
-        $ref: '#/definitions/config.VersionsMap'
-      vmType:
-        additionalProperties:
-          type: boolean
-        type: object
-      waitingFailover:
-        type: integer
-      waitingRejoin:
-        type: integer
-      waitingSwitchover:
-        type: integer
-      whitelist:
-        items:
-          $ref: '#/definitions/regexp.Regexp'
-        type: array
-      workLoad:
-        $ref: '#/definitions/config.WorkLoad'
-      workingDir:
-        type: string
-      workloadRemediations:
-        allOf:
-        - $ref: '#/definitions/cluster.RemediationPlan'
-        description: |-
-          WorkloadRemediations is the current remediation plan for actionable workload advisories.
-          Populated alongside WorkloadStates in CheckLogPlugins.
-      workloadStateMachine:
-        allOf:
-        - $ref: '#/definitions/state.StateMachine'
-        description: |-
-          WorkloadStateMachine tracks workload/performance findings from Graphite spike-detection
-          plugins (WORKLOAD severity). Kept separate from the HA StateMachine so performance
-          noise does not obscure operational cluster health or trigger false failover gates.
-      workloadStates:
-        description: |-
-          WorkloadStates is a snapshot of all open workload findings from the current monitoring
-          tick. Updated by CheckLogPlugins after all servers have been evaluated.
-        items:
-          $ref: '#/definitions/github_com_signal18_replication-manager_utils_state.State'
-        type: array
-    type: object
   cluster.ClusterForm:
     properties:
       clusterName:
@@ -984,56 +694,10 @@ definitions:
       plan:
         type: string
     type: object
-  cluster.Crash:
-    properties:
-      electedMasterURL:
-        type: string
-      failoverIOGtid:
-        items:
-          $ref: '#/definitions/gtid.Gtid'
-        type: array
-      failoverMasterLogFile:
-        type: string
-      failoverMasterLogPos:
-        type: string
-      failoverSemiSyncSlaveStatus:
-        type: boolean
-      newMasterLogFile:
-        type: string
-      newMasterLogPos:
-        type: string
-      switchover:
-        type: boolean
-      unixTimestamp:
-        format: int64
-        type: integer
-      url:
-        type: string
-    type: object
-  cluster.DelayStat:
-    properties:
-      counter:
-        description: Increment
-        type: integer
-      delay:
-        description: Average Seconds of Delay
-        type: number
-      delayCount:
-        description: Number of Delay Occurred
-        type: integer
-      slaveErrCount:
-        description: Number of Slave Err Occurred
-        type: integer
-    type: object
-  cluster.DelayStatHistory:
-    properties:
-      delayDT:
-        type: string
-      delayStat:
-        $ref: '#/definitions/cluster.DelayStat'
-    type: object
   cluster.Diff:
     properties:
+      role:
+        type: string
       serverName:
         type: string
       variableValue:
@@ -1044,28 +708,6 @@ definitions:
       blacklist:
         type: string
       whitelist:
-        type: string
-    type: object
-  cluster.InterventionEntry:
-    properties:
-      autoEndAt:
-        description: auto-unmute time (zero = manual)
-        type: string
-      endedAt:
-        type: string
-      reason:
-        type: string
-      scheduledAt:
-        description: future start time (zero = immediate)
-        type: string
-      scope:
-        description: '"cluster" or "global"'
-        type: string
-      startedAt:
-        type: string
-      suppressedAlerts:
-        type: integer
-      user:
         type: string
     type: object
   cluster.PFSExplainRecord:
@@ -1079,94 +721,11 @@ definitions:
       digestText:
         description: normalised template  e.g. SELECT * FROM t WHERE id = ?
         type: string
-      plan:
-        description: rows returned by EXPLAIN
-        items:
-          $ref: '#/definitions/dbhelper.Explain'
-        type: array
       sampleQuery:
         description: concrete SQL instance used for EXPLAIN
         type: string
       schemaName:
         type: string
-    type: object
-  cluster.Proxy:
-    properties:
-      DatabaseProxy: {}
-      agent:
-        type: string
-      backendsRead:
-        items:
-          $ref: '#/definitions/cluster.Backend'
-        type: array
-      backendsWrite:
-        items:
-          $ref: '#/definitions/cluster.Backend'
-        type: array
-      datadir:
-        type: string
-      failCount:
-        type: integer
-      host:
-        type: string
-      hostIPV6:
-        type: string
-      id:
-        type: string
-      internalProxy:
-        $ref: '#/definitions/myproxy.Server'
-      isStaging:
-        type: boolean
-      lock:
-        $ref: '#/definitions/sync.Mutex'
-      name:
-        type: string
-      port:
-        type: string
-      prevState:
-        type: string
-      process:
-        $ref: '#/definitions/os.Process'
-      queryRules:
-        items:
-          $ref: '#/definitions/proxysql.QueryRule'
-        type: array
-      readPort:
-        type: integer
-      readWritePort:
-        type: integer
-      readerHostGroup:
-        type: integer
-      serviceName:
-        type: string
-      shardProxy:
-        $ref: '#/definitions/cluster.ServerMonitor'
-      slaposDatadir:
-        type: string
-      state:
-        type: string
-      templateMD5:
-        type: string
-      templateMD5Prov:
-        type: string
-      tunnel:
-        type: boolean
-      tunnelPort:
-        type: integer
-      tunnelWritePort:
-        type: integer
-      type:
-        type: string
-      version:
-        type: string
-      weight:
-        type: string
-      workingAgent:
-        type: string
-      writePort:
-        type: integer
-      writerHostGroup:
-        type: integer
     type: object
   cluster.ReconciliationReport:
     properties:
@@ -1236,456 +795,16 @@ definitions:
           $ref: '#/definitions/cluster.RemediationEntry'
         type: array
     type: object
-  cluster.SecurityScore:
+  cluster.ResticEnsureBucketResult:
     properties:
-      grade:
-        description: A/B/C/D/F
+      bucket:
         type: string
-      hasAuditPlugins:
+      created:
         type: boolean
-      hasBackupEncryption:
-        type: boolean
-      hasBinlogEncryption:
-        type: boolean
-      hasLastLTS:
-        type: boolean
-      hasParsecPlugins:
-        type: boolean
-      hasPasswordRotation:
-        type: boolean
-      hasPrepareStatement:
-        type: boolean
-      hasProxies:
-        type: boolean
-      hasSSL:
-        type: boolean
-      hasStrongPwd:
-        type: boolean
-      hasTableEncryption:
-        type: boolean
-      hasTmpEncryption:
-        type: boolean
-      hasZeroSSL:
-        type: boolean
-      noClearPwdBinlogs:
-        type: boolean
-      noClearPwdConfigs:
-        type: boolean
-      noClearPwdHistory:
-        type: boolean
-      noEmptyPassword:
-        type: boolean
-      noHostnameGrants:
-        type: boolean
-      noWeakAuthPlugin:
-        type: boolean
-      score:
-        description: 0-100
-        type: integer
-    type: object
-  cluster.ServerBackupMeta:
-    properties:
-      logical:
-        $ref: '#/definitions/backupmgr.BackupMetadata'
-      physical:
-        $ref: '#/definitions/backupmgr.BackupMetadata'
-    type: object
-  cluster.ServerDelayStat:
-    properties:
-      current:
-        $ref: '#/definitions/cluster.DelayStat'
-      currentDT:
+      endpoint:
         type: string
-      delayHistory:
-        items:
-          $ref: '#/definitions/cluster.DelayStatHistory'
-        type: array
-      rotated:
-        $ref: '#/definitions/cluster.DelayStat'
-      total:
-        allOf:
-        - $ref: '#/definitions/cluster.DelayStat'
-        description: Total Delay Average since SRM started
-    type: object
-  cluster.ServerMonitor:
-    properties:
-      HaveBinlogSlaveUpdates:
-        type: boolean
-      HaveHealthyReplica:
-        type: boolean
-      HaveSshError:
-        type: boolean
-      agent:
-        description: used to provision service in orchestrator
+      message:
         type: string
-      binaryLogDir:
-        type: string
-      binaryLogFile:
-        type: string
-      binaryLogFileOldest:
-        type: string
-      binaryLogFilePrevious:
-        type: string
-      binaryLogFiles:
-        $ref: '#/definitions/dbhelper.BinaryLogMetaMap'
-      binaryLogFilesCount:
-        type: integer
-      binaryLogName:
-        type: string
-      binaryLogOldestTimestamp:
-        type: integer
-      binaryLogPos:
-        type: string
-      binaryLogPurgeBefore:
-        type: integer
-      binlogDumpThreads:
-        type: integer
-      currentGtid:
-        items:
-          $ref: '#/definitions/gtid.Gtid'
-        type: array
-      datadir:
-        type: string
-      dbVersion:
-        $ref: '#/definitions/github_com_signal18_replication-manager_utils_version.Version'
-      dbdataDir:
-        type: string
-      delayStat:
-        $ref: '#/definitions/cluster.ServerDelayStat'
-      domain:
-        description: Use to store orchestrator CNI domain .<cluster_name>.svc.<cluster_name>
-        type: string
-      domainId:
-        type: integer
-      engineInnodb:
-        $ref: '#/definitions/config.StringsMap'
-      eventScheduler:
-        type: boolean
-      eventStatus:
-        items:
-          $ref: '#/definitions/dbhelper.Event'
-        type: array
-      failCount:
-        type: integer
-      failSuspectHeartbeat:
-        type: integer
-      failoverIoGtid:
-        items:
-          $ref: '#/definitions/gtid.Gtid'
-        type: array
-      failoverMasterLogFile:
-        type: string
-      failoverMasterLogPos:
-        type: string
-      failoverSemiSyncSlaveStatus:
-        type: boolean
-      forceTLSSkipVerify:
-        description: auto-detected when server returns error 3159 (require_secure_transport=ON)
-        type: boolean
-      gtidBinlogPos:
-        items:
-          $ref: '#/definitions/gtid.Gtid'
-        type: array
-      gtidExecuted:
-        type: string
-      hasConfigDiff:
-        description: Indicates if there are differences between deployed and generated
-          config
-        type: boolean
-      hasConfigPathChanged:
-        type: boolean
-      hashUUID:
-        type: integer
-      haveBinLogSync:
-        type: boolean
-      haveBinlog:
-        type: boolean
-      haveBinlogAnnotate:
-        type: boolean
-      haveBinlogCompress:
-        type: boolean
-      haveBinlogMixed:
-        type: boolean
-      haveBinlogRow:
-        type: boolean
-      haveBinlogSlowqueries:
-        type: boolean
-      haveBinlogStatement:
-        type: boolean
-      haveDiskMonitor:
-        type: boolean
-      haveGtidStrictMode:
-        type: boolean
-      haveInnodbChecksum:
-        type: boolean
-      haveInnodbTrxCommit:
-        type: boolean
-      haveLogGeneral:
-        type: boolean
-      haveMariadbGtid:
-        type: boolean
-      haveMetaDataLocksLog:
-        type: boolean
-      haveMysqlGtid:
-        type: boolean
-      haveNoMasterOnStart:
-        type: boolean
-      havePFS:
-        type: boolean
-      havePFSSlowQueryLog:
-        type: boolean
-      haveQueryResponseTimeLog:
-        type: boolean
-      haveReadOnly:
-        type: boolean
-      haveSQLErrorLog:
-        type: boolean
-      haveSemiSync:
-        type: boolean
-      haveSlaveAggressive:
-        type: boolean
-      haveSlaveConservative:
-        type: boolean
-      haveSlaveIdempotent:
-        type: boolean
-      haveSlaveMinimal:
-        type: boolean
-      haveSlaveOptimistic:
-        type: boolean
-      haveSlaveSerialized:
-        type: boolean
-      haveSlowQueryLog:
-        type: boolean
-      haveWsrep:
-        type: boolean
-      host:
-        type: string
-      id:
-        description: Unique name given by cluster & crc64(URL) used by test to provision
-        type: string
-      ignored:
-        type: boolean
-      ignoredRO:
-        type: boolean
-      inCaptureMode:
-        type: boolean
-      inPurgingBinaryLog:
-        type: boolean
-      ioGtid:
-        items:
-          $ref: '#/definitions/gtid.Gtid'
-        type: array
-      ip:
-        type: string
-      isBackingUpBinaryLog:
-        type: boolean
-      isCompute:
-        description: Used to idenfied spider compute nide
-        type: boolean
-      isConfigGen:
-        type: boolean
-      isDataDiverge:
-        type: boolean
-      isDelayed:
-        type: boolean
-      isFull:
-        type: boolean
-      isGroupReplicationMaster:
-        type: boolean
-      isGroupReplicationSlave:
-        type: boolean
-      isInPFSQueryCapture:
-        type: boolean
-      isInSlowQueryCapture:
-        type: boolean
-      isLoadingJobList:
-        type: boolean
-      isMaintenance:
-        type: boolean
-      isMaxscale:
-        type: boolean
-      isNeedPathCheck:
-        type: boolean
-      isRefreshingBinlog:
-        type: boolean
-      isRefreshingBinlogMeta:
-        type: boolean
-      isRelay:
-        type: boolean
-      isReseeding:
-        type: string
-      isRunningJobs:
-        type: boolean
-      isSlave:
-        type: boolean
-      isVirtualMaster:
-        type: boolean
-      isWsrepDonor:
-        type: boolean
-      isWsrepPrimary:
-        type: boolean
-      isWsrepSync:
-        type: boolean
-      jobResults:
-        $ref: '#/definitions/config.TasksMap'
-      lastBackupMeta:
-        $ref: '#/definitions/cluster.ServerBackupMeta'
-      lastConfigUpdate:
-        $ref: '#/definitions/config.LastConfigUpdate'
-      lastSeenReplications:
-        items:
-          $ref: '#/definitions/dbhelper.SlaveStatus'
-        type: array
-      lastTLSConfig:
-        description: used to track last working TLS config
-        type: string
-      logOutput:
-        type: string
-      longQueryTime:
-        type: string
-      longQueryTimeSaved:
-        type: string
-      masterStatus:
-        $ref: '#/definitions/dbhelper.MasterStatus'
-      maxSlowQueryTimestamp:
-        type: integer
-      maxscaleHaveGtid:
-        type: boolean
-      maxscaleServerName:
-        description: Unique server Name in maxscale conf
-        type: string
-      maxscaleServerStatus:
-        type: string
-      maxscaleVersion:
-        type: integer
-      name:
-        type: string
-      needRefreshJobs:
-        type: boolean
-      pfsInstruments:
-        $ref: '#/definitions/config.StringsMap'
-      pfsexplainCache:
-        additionalProperties:
-          $ref: '#/definitions/cluster.PFSExplainRecord'
-        description: digest → cached explain plan, keyed by digest hash
-        type: object
-      pfsexplainCacheMu:
-        allOf:
-        - $ref: '#/definitions/sync.Mutex'
-        description: protects PFSExplainCache against goroutine/monitor-loop races
-      pfslastExplainPurge:
-        description: timestamp of last explain cache purge run
-        type: string
-      pfslastSnapshot:
-        description: timestamp of last periodic PFS digest snapshot flush
-        type: string
-      pointInTimeMeta:
-        $ref: '#/definitions/backupmgr.PointInTimeMeta'
-      port:
-        type: string
-      postgressDB:
-        type: string
-      prefered:
-        type: boolean
-      preferedBackup:
-        type: boolean
-      prevState:
-        type: string
-      process:
-        $ref: '#/definitions/os.Process'
-      proxysqlHostgroup:
-        type: string
-      qps:
-        type: integer
-      readOnly:
-        type: string
-      relayLogSize:
-        type: integer
-      replicationHealth:
-        type: string
-      replicationSourceName:
-        type: string
-      replicationTags:
-        type: string
-      replications:
-        items:
-          $ref: '#/definitions/dbhelper.SlaveStatus'
-        type: array
-      restartNode:
-        description: RestartNode stores node parameter for restart container cookie
-          (owned by cookie mechanism, single writer assumption)
-        type: string
-      restartRid:
-        description: RestartRid stores rid parameter for restart container cookie
-          (owned by cookie mechanism, single writer assumption)
-        type: string
-      semiSyncMasterStatus:
-        type: boolean
-      semiSyncSlaveStatus:
-        type: boolean
-      serverId:
-        type: integer
-      serviceName:
-        type: string
-      slaposDatadir:
-        type: string
-      slaveGtid:
-        items:
-          $ref: '#/definitions/gtid.Gtid'
-        type: array
-      slaveVariables:
-        $ref: '#/definitions/cluster.SlaveVariables'
-      slowQueryCapture:
-        type: boolean
-      slowQueryLog:
-        type: string
-      sourceClusterName:
-        description: Used to idenfied server added from other clusters linked with
-          multi source
-        type: string
-      sstPort:
-        description: used to send data to dbjobs
-        type: string
-      state:
-        type: string
-      strict:
-        type: string
-      tlsConfigUsed:
-        description: used to track TLS config during key rotation
-        type: string
-      tunnelPort:
-        type: string
-      url:
-        type: string
-      user:
-        type: string
-      workLoad:
-        $ref: '#/definitions/config.WorkLoadsMap'
-      workingAgent:
-        description: used to track on which agent the server is running
-        type: string
-    type: object
-  cluster.SlaveVariables:
-    properties:
-      slaveParallelMaxQueued:
-        type: integer
-      slaveParallelMode:
-        type: string
-      slaveParallelThreads:
-        type: integer
-      slaveParallelWorkers:
-        type: integer
-      slaveTypeConversions:
-        type: string
-    type: object
-  cluster.SlavesOldestMasterFile:
-    properties:
-      oldestTimestamp:
-        type: string
-      prefix:
-        type: string
-      suffix:
-        type: integer
     type: object
   cluster.SnapshotMetadataSummary:
     properties:
@@ -1710,26 +829,14 @@ definitions:
       startTime:
         type: string
     type: object
-  cluster.SysBenchTpcResultPerMinute:
-    properties:
-      errors:
-        format: int32
-        type: integer
-      threads:
-        format: int32
-        type: integer
-      tpc:
-        format: int32
-        type: integer
-    type: object
   cluster.Test:
     properties:
       config-file:
         type: string
       config-init:
-        $ref: '#/definitions/github_com_signal18_replication-manager_config.Config'
+        $ref: '#/definitions/config.Config'
       config-test:
-        $ref: '#/definitions/github_com_signal18_replication-manager_config.Config'
+        $ref: '#/definitions/config.Config'
       name:
         type: string
       result:
@@ -1764,6 +871,13 @@ definitions:
     type: object
   config.AppConfig:
     properties:
+      appConfigVersion:
+        description: |-
+          AppConfigVersion is the explicit persisted migration marker stamped by
+          cluster.CanonicalizeAppContent. 0/missing means unflagged legacy (V1)
+          content; AppConfigVersionV2 means content already matches the V1 -> V2
+          migration baseline and does not need re-canonicalizing for shape alone.
+        type: integer
       appDbPass:
         type: string
       appDbSchema:
@@ -1790,6 +904,8 @@ definitions:
         type: integer
       provAppCreditUsed:
         type: integer
+      provAppDiskIops:
+        type: string
       provAppDiskSize:
         type: string
       provAppDiskType:
@@ -1810,589 +926,12 @@ definitions:
         type: string
       provAppServiceType:
         type: string
+      provAppSizingMode:
+        type: string
       provAppTemplate:
         type: string
     type: object
-  config.ConfigVariableType:
-    properties:
-      available:
-        type: boolean
-      id:
-        type: integer
-      label:
-        type: string
-      name:
-        type: string
-    type: object
-  config.Deployment:
-    properties:
-      mutex:
-        allOf:
-        - $ref: '#/definitions/sync.RWMutex'
-        description: Use sync.RWMutex to protect concurrent access to Volumes and
-          VolumeMappings
-      paths:
-        items:
-          $ref: '#/definitions/config.PathMapping'
-        type: array
-      primaryRoute:
-        $ref: '#/definitions/config.Route'
-      routes:
-        items:
-          $ref: '#/definitions/config.Route'
-        type: array
-      storages:
-        $ref: '#/definitions/config.StorageMapping'
-      variables:
-        items:
-          $ref: '#/definitions/config.VariableMapping'
-        type: array
-    type: object
-  config.DockerRepo:
-    properties:
-      image:
-        type: string
-      name:
-        type: string
-      tags:
-        $ref: '#/definitions/config.DockerTag'
-    type: object
-  config.DockerTag:
-    properties:
-      results:
-        items:
-          $ref: '#/definitions/config.TagResult'
-        type: array
-    type: object
-  config.GitClone:
-    properties:
-      branch:
-        type: string
-      name:
-        type: string
-      pass:
-        type: string
-      repo:
-        type: string
-      timeout:
-        type: integer
-      user:
-        type: string
-      volumedir:
-        type: string
-      volumename:
-        type: string
-    type: object
-  config.Grant:
-    properties:
-      enable:
-        type: boolean
-      grant:
-        type: string
-    type: object
-  config.LastConfigUpdate:
-    properties:
-      config:
-        type: string
-      deployed:
-        type: string
-    type: object
-  config.Partner:
-    properties:
-      dbopsEmail:
-        type: string
-      id:
-        type: integer
-      isDbops:
-        type: integer
-      isSysops:
-        type: integer
-      name:
-        type: string
-      stars:
-        type: integer
-      sysopsEmail:
-        type: string
-    type: object
-  config.PathMapping:
-    properties:
-      dockerpath:
-        type: string
-      level:
-        type: integer
-      name:
-        type: string
-      parentname:
-        type: string
-      srcname:
-        type: string
-      srcpath:
-        type: string
-      srctype:
-        $ref: '#/definitions/config.SourceType'
-      volumename:
-        type: string
-    type: object
-  config.Role:
-    properties:
-      enable:
-        type: boolean
-      role:
-        type: string
-    type: object
-  config.Route:
-    properties:
-      cname:
-        description: Existing host-route fields kept for backward compatibility.
-        type: string
-      destPort:
-        type: string
-      mode:
-        description: Explicit source/destination fields.
-        type: string
-      name:
-        type: string
-      port:
-        type: string
-      primary:
-        type: boolean
-      protocol:
-        type: string
-      sourcePort:
-        type: string
-    type: object
-  config.RouteStatus:
-    properties:
-      cname:
-        description: Existing host-route fields kept for backward compatibility.
-        type: string
-      destPort:
-        type: string
-      mode:
-        description: Explicit source/destination fields.
-        type: string
-      name:
-        type: string
-      port:
-        type: string
-      primary:
-        type: boolean
-      protocol:
-        type: string
-      sourcePort:
-        type: string
-      status:
-        type: string
-    type: object
-  config.S3Mount:
-    properties:
-      accesskey:
-        type: string
-      bucket:
-        type: string
-      endpoint:
-        type: string
-      mountdir:
-        type: string
-      name:
-        type: string
-      providerName:
-        type: string
-      region:
-        type: string
-      secretkey:
-        type: string
-      volumedir:
-        type: string
-      volumename:
-        type: string
-    type: object
-  config.ServerTaskList:
-    properties:
-      serverUrl:
-        type: string
-      tasks:
-        items:
-          $ref: '#/definitions/config.Task'
-        type: array
-    type: object
-  config.ServicePlan:
-    properties:
-      bp:
-        example: "0"
-        type: string
-      certs:
-        type: string
-      cpu:
-        type: string
-      dbacost:
-        example: "0"
-        type: string
-      dbcores:
-        example: "0"
-        type: string
-      dbcpufreq:
-        type: string
-      dbdatasize:
-        example: "0"
-        type: string
-      dbiops:
-        example: "0"
-        type: string
-      dbmemory:
-        example: "0"
-        type: string
-      dbsystemsize:
-        example: "0"
-        type: string
-      dc:
-        type: string
-      devise:
-        type: string
-      extdbops:
-        type: string
-      extsysops:
-        type: string
-      gti:
-        example: "0"
-        type: string
-      gtr:
-        example: "0"
-        type: string
-      id:
-        example: "0"
-        type: string
-      infra:
-        type: string
-      infracost:
-        example: "0"
-        type: string
-      licencecost:
-        example: "0"
-        type: string
-      plan:
-        type: string
-      promo:
-        example: "0"
-        type: string
-      provtime:
-        example: "0"
-        type: string
-      prxcores:
-        example: "0"
-        type: string
-      prxdatasize:
-        example: "0"
-        type: string
-      syscost:
-        example: "0"
-        type: string
-      zone:
-        type: string
-    type: object
-  config.SourceType:
-    enum:
-    - volume
-    - git
-    - s3
-    type: string
-    x-enum-varnames:
-    - SourceVolume
-    - SourceGit
-    - SourceS3
-  config.StorageMapping:
-    properties:
-      gitClones:
-        items:
-          $ref: '#/definitions/config.GitClone'
-        type: array
-      s3Mounts:
-        items:
-          $ref: '#/definitions/config.S3Mount'
-        type: array
-      volumes:
-        items:
-          $ref: '#/definitions/config.Volume'
-        type: array
-    type: object
-  config.StringsMap:
-    type: object
-  config.TagResult:
-    properties:
-      name:
-        type: string
-    type: object
-  config.Tarball:
-    properties:
-      OS:
-        type: string
-      checksum:
-        type: string
-      date_added:
-        type: string
-      flavor:
-        type: string
-      minimal:
-        type: boolean
-      name:
-        type: string
-      notes:
-        type: string
-      short_version:
-        type: string
-      size:
-        type: integer
-      updated_by:
-        type: string
-      url:
-        type: string
-      version:
-        type: string
-    type: object
-  config.Task:
-    properties:
-      done:
-        type: integer
-      end:
-        type: integer
-      id:
-        type: integer
-      payload:
-        type: string
-      port:
-        type: integer
-      result:
-        type: string
-      server:
-        type: string
-      start:
-        type: integer
-      state:
-        type: integer
-      task:
-        type: string
-    type: object
-  config.TasksMap:
-    type: object
-  config.VariableMapping:
-    properties:
-      conditional:
-        description: This is used to set the variable value only if the agent matches
-        items:
-          $ref: '#/definitions/config.AgentVariable'
-        type: array
-      locked:
-        type: boolean
-      name:
-        type: string
-      type:
-        type: string
-      value:
-        type: string
-    type: object
-  config.VersionsMap:
-    type: object
-  config.Volume:
-    properties:
-      name:
-        type: string
-      poolname:
-        type: string
-      volumedir:
-        type: string
-    type: object
-  config.WorkLoad:
-    properties:
-      busyTime:
-        type: string
-      connections:
-        type: integer
-      cpuThreadPool:
-        type: number
-      cpuUserStats:
-        type: number
-      dbIndexSize:
-        type: integer
-      dbTableSize:
-        type: integer
-      qps:
-        type: integer
-    type: object
-  config.WorkLoadsMap:
-    type: object
-  configurator.Configurator:
-    properties:
-      configPrxTags:
-        description: from module
-        items:
-          $ref: '#/definitions/repmanv3.Tag'
-        type: array
-      configTags:
-        description: from module
-        items:
-          $ref: '#/definitions/repmanv3.Tag'
-        type: array
-      dbServersTags:
-        description: from conf
-        items:
-          type: string
-        type: array
-      dbServersTagsDiscover:
-        description: from conf
-        items:
-          type: string
-        type: array
-      pendingDBCRC:
-        description: |-
-          PendingDBCRC and PendingPrxCRC are CRC32 checksums of new compliance
-          files found in PluginDataDir or embedded. Non-zero when an update is pending.
-        type: integer
-      pendingPrxCRC:
-        type: integer
-      proxyServersTags:
-        items:
-          type: string
-        type: array
-      proxyServersTagsDiscover:
-        items:
-          type: string
-        type: array
-    type: object
-  dbhelper.BinaryLogMetaMap:
-    type: object
-  dbhelper.Event:
-    properties:
-      db:
-        type: string
-      definer:
-        type: string
-      name:
-        type: string
-      status:
-        type: integer
-    type: object
-  dbhelper.Explain:
-    properties:
-      extra:
-        $ref: '#/definitions/sql.NullString'
-      id:
-        type: integer
-      key:
-        $ref: '#/definitions/sql.NullString'
-      keyLen:
-        $ref: '#/definitions/sql.NullString'
-      possibleKeys:
-        $ref: '#/definitions/sql.NullString'
-      ref:
-        $ref: '#/definitions/sql.NullString'
-      rows:
-        $ref: '#/definitions/sql.NullString'
-      selectType:
-        $ref: '#/definitions/sql.NullString'
-      table:
-        $ref: '#/definitions/sql.NullString'
-      type:
-        $ref: '#/definitions/sql.NullString'
-    type: object
-  dbhelper.MasterStatus:
-    properties:
-      binlogDoDB:
-        type: string
-      binlogIgnoreDB:
-        type: string
-      executedGtidSet:
-        type: string
-      file:
-        type: string
-      position:
-        type: integer
-    type: object
-  dbhelper.SlaveStatus:
-    properties:
-      autoPosition:
-        type: integer
-      channelName:
-        $ref: '#/definitions/sql.NullString'
-      connectionName:
-        $ref: '#/definitions/sql.NullString'
-      execMasterLogPos:
-        $ref: '#/definitions/sql.NullString'
-      executedGtidSet:
-        $ref: '#/definitions/sql.NullString'
-      gtidIoPos:
-        $ref: '#/definitions/sql.NullString'
-      gtidSlavePos:
-        $ref: '#/definitions/sql.NullString'
-      lastIoErrno:
-        $ref: '#/definitions/sql.NullString'
-      lastIoError:
-        $ref: '#/definitions/sql.NullString'
-      lastSqlErrno:
-        $ref: '#/definitions/sql.NullString'
-      lastSqlError:
-        $ref: '#/definitions/sql.NullString'
-      masterHost:
-        $ref: '#/definitions/sql.NullString'
-      masterLastEventTime:
-        $ref: '#/definitions/sql.NullString'
-      masterLogFile:
-        $ref: '#/definitions/sql.NullString'
-      masterPort:
-        $ref: '#/definitions/sql.NullString'
-      masterRetryCount:
-        $ref: '#/definitions/sql.NullInt64'
-      masterServerId:
-        type: integer
-      masterSlaveTimeDiff:
-        $ref: '#/definitions/sql.NullInt64'
-      masterUser:
-        $ref: '#/definitions/sql.NullString'
-      postgresExternalId:
-        $ref: '#/definitions/sql.NullString'
-      readMasterLogPos:
-        $ref: '#/definitions/sql.NullString'
-      relayMasterLogFile:
-        $ref: '#/definitions/sql.NullString'
-      replicateDoDb:
-        $ref: '#/definitions/sql.NullString'
-      replicateDoDomainIds:
-        $ref: '#/definitions/sql.NullString'
-      replicateDoTable:
-        $ref: '#/definitions/sql.NullString'
-      replicateIgnoreDb:
-        $ref: '#/definitions/sql.NullString'
-      replicateIgnoreDomainIds:
-        $ref: '#/definitions/sql.NullString'
-      replicateIgnoreServerIds:
-        $ref: '#/definitions/sql.NullString'
-      replicateIgnoreTable:
-        $ref: '#/definitions/sql.NullString'
-      replicateWildDoTable:
-        $ref: '#/definitions/sql.NullString'
-      replicateWildIgnoreTable:
-        $ref: '#/definitions/sql.NullString'
-      retrievedGtidSet:
-        $ref: '#/definitions/sql.NullString'
-      secondsBehindMaster:
-        $ref: '#/definitions/sql.NullInt64'
-      slaveHeartbeatPeriod:
-        type: number
-      slaveIoRunning:
-        $ref: '#/definitions/sql.NullString'
-      slaveLastEventTime:
-        $ref: '#/definitions/sql.NullString'
-      slaveSQLRunningState:
-        $ref: '#/definitions/sql.NullString'
-      slaveSqlRunning:
-        $ref: '#/definitions/sql.NullString'
-      sqlDelay:
-        $ref: '#/definitions/sql.NullInt64'
-      sqlRemainingDelay:
-        $ref: '#/definitions/sql.NullInt64'
-      usingGtid:
-        $ref: '#/definitions/sql.NullString'
-    type: object
-  github_com_signal18_replication-manager_config.Config:
+  config.Config:
     properties:
       ExternalScript:
         type: boolean
@@ -2490,6 +1029,8 @@ definitions:
         type: integer
       arbitrationFailedMasterScript:
         type: string
+      arbitrationMinorityFreeze:
+        type: boolean
       arbitrationPeerHosts:
         type: string
       arbitrationReadTimout:
@@ -2498,10 +1039,18 @@ definitions:
         type: string
       arbitratorDriver:
         type: string
+      arbitratorUriCheck:
+        type: boolean
+      arbitratorUriCheckUrl:
+        type: string
       autorejoin:
         type: boolean
       autorejoinBackupBinlog:
         type: boolean
+      autorejoinBackupSelectorLogical:
+        type: string
+      autorejoinBackupSelectorPhysical:
+        type: string
       autorejoinFlashback:
         type: boolean
       autorejoinFlashbackOnSync:
@@ -2526,12 +1075,16 @@ definitions:
         type: boolean
       backup:
         type: boolean
+      backupArchiveMode:
+        type: string
       backupBinlogs:
         type: boolean
       backupBinlogsKeep:
         type: integer
       backupCheckFreeSpace:
         type: boolean
+      backupConcurrentSlots:
+        type: integer
       backupDiskTresholdCrit:
         type: integer
       backupDiskTresholdWarn:
@@ -2629,6 +1182,8 @@ definitions:
       backupResticAdditionalEnv:
         type: string
       backupResticAllowUnsafeMount:
+        type: boolean
+      backupResticAutoInit:
         type: boolean
       backupResticAws:
         type: boolean
@@ -2730,6 +1285,8 @@ definitions:
         type: string
       backupResticReseedTimeout:
         type: integer
+      backupResticS3Mode:
+        type: string
       backupResticTags:
         type: string
       backupResticTimeout:
@@ -2791,6 +1348,8 @@ definitions:
       cloud18AlertSlackUser:
         type: string
       cloud18ApplicationCredits:
+        type: integer
+      cloud18ApplicationCreditsPlanned:
         type: integer
       cloud18ApplicationCreditsPrice:
         type: integer
@@ -3079,6 +1638,8 @@ definitions:
         type: boolean
       fullVersion:
         type: string
+      gitConfigSyncStandby:
+        type: boolean
       gitMonitoringTicker:
         type: integer
       gitUrl:
@@ -3177,6 +1738,8 @@ definitions:
         type: boolean
       httpSessionLifetime:
         type: integer
+      injectTrafficMode:
+        type: string
       interactive:
         type: boolean
       jobLogBatchSize:
@@ -3184,6 +1747,10 @@ definitions:
       kubeConfig:
         type: string
       logAppLevel:
+        type: integer
+      logArbitration:
+        type: boolean
+      logArbitrationLevel:
         type: integer
       logBackupStream:
         type: boolean
@@ -3620,6 +2187,8 @@ definitions:
       provAppHaTopology:
         type: string
       provAppMemory:
+        type: string
+      provAppSizingMode:
         type: string
       provAppTemplateRepo:
         type: string
@@ -4213,47 +2782,238 @@ definitions:
       withTarball:
         type: string
     type: object
-  github_com_signal18_replication-manager_utils_state.State:
+  config.Deployment:
     properties:
-      errDesc:
+      paths:
+        items:
+          $ref: '#/definitions/config.PathMapping'
+        type: array
+      primaryRoute:
+        $ref: '#/definitions/config.Route'
+      routes:
+        items:
+          $ref: '#/definitions/config.Route'
+        type: array
+      storages:
+        $ref: '#/definitions/config.StorageMapping'
+      variables:
+        items:
+          $ref: '#/definitions/config.VariableMapping'
+        type: array
+    type: object
+  config.GitClone:
+    properties:
+      branch:
         type: string
-      errFrom:
+      name:
         type: string
-      errKey:
+      pass:
         type: string
-      errType:
+      repo:
         type: string
-      serverUrl:
+      timeout:
+        type: integer
+      user:
+        type: string
+      volumedir:
+        type: string
+      volumename:
         type: string
     type: object
-  github_com_signal18_replication-manager_utils_version.Version:
+  config.PathMapping:
     properties:
-      dist:
-        $ref: '#/definitions/github_com_signal18_replication-manager_utils_version.Version'
-      flavor:
+      dockerpath:
         type: string
-      major:
+      level:
         type: integer
-      minor:
-        type: integer
+      name:
+        type: string
+      parentname:
+        type: string
+      srcname:
+        type: string
+      srcpath:
+        type: string
+      srctype:
+        $ref: '#/definitions/config.SourceType'
+      volumename:
+        type: string
+    type: object
+  config.Route:
+    properties:
+      cname:
+        description: Existing host-route fields kept for backward compatibility.
+        type: string
+      destPort:
+        type: string
+      mode:
+        description: Explicit source/destination fields.
+        type: string
+      monitor:
+        allOf:
+        - $ref: '#/definitions/config.RouteMonitor'
+        description: |-
+          Optional per-route monitoring customization.  Nil means no monitor block
+          was configured; legacy routes keep nil so no defaults are injected.
+      name:
+        type: string
+      port:
+        type: string
+      primary:
+        type: boolean
+      protocol:
+        type: string
+      sourcePort:
+        type: string
+    type: object
+  config.RouteMonitor:
+    properties:
+      authSecretVar:
+        type: string
+      authType:
+        type: string
+      authUser:
+        type: string
+      expectStatus:
+        type: string
       path:
         type: string
-      release:
-        type: integer
-      suffix:
+    type: object
+  config.RouteStatus:
+    properties:
+      cname:
+        description: Existing host-route fields kept for backward compatibility.
+        type: string
+      destPort:
+        type: string
+      mode:
+        description: Explicit source/destination fields.
+        type: string
+      monitor:
+        allOf:
+        - $ref: '#/definitions/config.RouteMonitor'
+        description: |-
+          Optional per-route monitoring customization.  Nil means no monitor block
+          was configured; legacy routes keep nil so no defaults are injected.
+      name:
+        type: string
+      port:
+        type: string
+      primary:
+        type: boolean
+      protocol:
+        type: string
+      sourcePort:
+        type: string
+      status:
         type: string
     type: object
-  gtid.Gtid:
+  config.S3Mount:
     properties:
-      domainId:
-        type: integer
-      seqNo:
-        type: integer
-      serverId:
-        type: integer
+      accesskey:
+        type: string
+      bucket:
+        type: string
+      endpoint:
+        type: string
+      mountdir:
+        type: string
+      name:
+        type: string
+      providerName:
+        type: string
+      region:
+        type: string
+      secretkey:
+        type: string
+      volumedir:
+        type: string
+      volumename:
+        type: string
     type: object
-  logrus.Fields:
-    additionalProperties: true
+  config.ServerTaskList:
+    properties:
+      serverUrl:
+        type: string
+      tasks:
+        items:
+          $ref: '#/definitions/config.Task'
+        type: array
+    type: object
+  config.SourceType:
+    enum:
+    - volume
+    - git
+    - s3
+    type: string
+    x-enum-varnames:
+    - SourceVolume
+    - SourceGit
+    - SourceS3
+  config.StorageMapping:
+    properties:
+      gitClones:
+        items:
+          $ref: '#/definitions/config.GitClone'
+        type: array
+      s3Mounts:
+        items:
+          $ref: '#/definitions/config.S3Mount'
+        type: array
+      volumes:
+        items:
+          $ref: '#/definitions/config.Volume'
+        type: array
+    type: object
+  config.Task:
+    properties:
+      done:
+        type: integer
+      end:
+        type: integer
+      id:
+        type: integer
+      payload:
+        type: string
+      port:
+        type: integer
+      result:
+        type: string
+      server:
+        type: string
+      start:
+        type: integer
+      state:
+        type: integer
+      task:
+        type: string
+    type: object
+  config.VariableMapping:
+    properties:
+      conditional:
+        description: This is used to set the variable value only if the agent matches
+        items:
+          $ref: '#/definitions/config.AgentVariable'
+        type: array
+      locked:
+        type: boolean
+      name:
+        type: string
+      type:
+        type: string
+      value:
+        type: string
+    type: object
+  config.Volume:
+    properties:
+      name:
+        type: string
+      poolname:
+        type: string
+      size:
+        type: string
+      volumedir:
+        type: string
     type: object
   mailer.Email:
     properties:
@@ -4369,61 +3129,6 @@ definitions:
       text:
         type: string
     type: object
-  misc.DiskStatManager:
-    properties:
-      stats:
-        $ref: '#/definitions/misc.DiskUsageStatMap'
-    type: object
-  misc.DiskUsageStat:
-    properties:
-      free:
-        type: integer
-      fstype:
-        type: string
-      inodesFree:
-        type: integer
-      inodesTotal:
-        type: integer
-      inodesUsed:
-        type: integer
-      inodesUsedPercent:
-        type: number
-      last_update:
-        type: string
-      path:
-        type: string
-      total:
-        type: integer
-      used:
-        type: integer
-      usedPercent:
-        type: number
-    type: object
-  misc.DiskUsageStatMap:
-    additionalProperties:
-      $ref: '#/definitions/misc.DiskUsageStat'
-    type: object
-  myproxy.Server:
-    type: object
-  opensvc.Addr:
-    properties:
-      addr:
-        type: string
-      addr_type:
-        type: string
-      intf:
-        type: string
-      mask:
-        type: string
-      net_broadcast:
-        type: string
-      net_gateway:
-        type: string
-      net_name:
-        type: string
-      net_network:
-        type: string
-    type: object
   opensvc.DaemonNodeStats:
     properties:
       cores:
@@ -4436,33 +3141,6 @@ definitions:
         type: string
       stats:
         $ref: '#/definitions/opensvc.NodeStats'
-    type: object
-  opensvc.Host:
-    properties:
-      cpu_cores:
-        type: integer
-      cpu_freq:
-        type: integer
-      id:
-        type: integer
-      ips:
-        items:
-          $ref: '#/definitions/opensvc.Addr'
-        type: array
-      mem_bytes:
-        type: integer
-      node_id:
-        type: string
-      nodename:
-        type: string
-      os_kernel:
-        type: string
-      os_name:
-        type: string
-      svc:
-        items:
-          $ref: '#/definitions/opensvc.Service'
-        type: array
     type: object
   opensvc.NodeStats:
     properties:
@@ -4477,24 +3155,6 @@ definitions:
       swap_avail:
         type: integer
       swap_total:
-        type: integer
-    type: object
-  opensvc.Service:
-    properties:
-      id:
-        type: integer
-      svc_id:
-        type: string
-      svc_status:
-        type: string
-      svcname:
-        type: string
-      updated:
-        type: string
-    type: object
-  os.Process:
-    properties:
-      pid:
         type: integer
     type: object
   peer.PeerCluster:
@@ -4628,53 +3288,6 @@ definitions:
       lastUpdate:
         type: string
     type: object
-  proxysql.QueryRule:
-    properties:
-      active:
-        type: integer
-      apply:
-        type: integer
-      destinationHostgroup:
-        $ref: '#/definitions/sql.NullInt64'
-      digest:
-        $ref: '#/definitions/sql.NullString'
-      matchDigest:
-        $ref: '#/definitions/sql.NullString'
-      matchPattern:
-        $ref: '#/definitions/sql.NullString'
-      mirrorHostgroup:
-        $ref: '#/definitions/sql.NullInt64'
-      multiplex:
-        $ref: '#/definitions/sql.NullInt64'
-      ruleId:
-        type: integer
-      schemaName:
-        $ref: '#/definitions/sql.NullString'
-      userName:
-        $ref: '#/definitions/sql.NullString'
-    type: object
-  regexp.Regexp:
-    type: object
-  repmanv3.Tag:
-    properties:
-      category:
-        type: string
-      id:
-        type: integer
-      name:
-        type: string
-    type: object
-  s18log.HttpLog:
-    properties:
-      buffer:
-        items:
-          $ref: '#/definitions/s18log.HttpMessage'
-        type: array
-      len:
-        type: integer
-      line:
-        type: integer
-    type: object
   s18log.HttpMessage:
     properties:
       group:
@@ -4750,6 +3363,25 @@ definitions:
       username:
         type: string
     type: object
+  server.DynamicClusterImportResult:
+    properties:
+      errors:
+        additionalProperties:
+          type: string
+        type: object
+      imported:
+        items:
+          type: string
+        type: array
+      invalid:
+        items:
+          type: string
+        type: array
+      skipped_existing:
+        items:
+          type: string
+        type: array
+    type: object
   server.Heartbeat:
     properties:
       cluster:
@@ -4764,6 +3396,8 @@ definitions:
         type: string
       secret:
         type: string
+      startTime:
+        type: string
       status:
         type: string
       uuid:
@@ -4771,8 +3405,6 @@ definitions:
     type: object
   server.MeetAlertMessage:
     properties:
-      fields:
-        $ref: '#/definitions/logrus.Fields'
       message:
         type: string
     type: object
@@ -4794,153 +3426,6 @@ definitions:
     properties:
       download:
         type: boolean
-    type: object
-  server.ReplicationManager:
-    properties:
-      activeInterventionCount:
-        type: integer
-      agents:
-        items:
-          $ref: '#/definitions/opensvc.Host'
-        type: array
-      arch:
-        type: string
-      backupBinlogList:
-        additionalProperties:
-          type: boolean
-        type: object
-      backupLogicalList:
-        additionalProperties:
-          type: boolean
-        type: object
-      backupPhysicalList:
-        additionalProperties:
-          type: boolean
-        type: object
-      binlogParseList:
-        additionalProperties:
-          type: boolean
-        type: object
-      canConnectVault:
-        type: boolean
-      clusters:
-        items:
-          type: string
-        type: array
-      config:
-        $ref: '#/definitions/github_com_signal18_replication-manager_config.Config'
-      confs:
-        additionalProperties:
-          $ref: '#/definitions/github_com_signal18_replication-manager_config.Config'
-        type: object
-      cpuprofile:
-        type: string
-      fullVersion:
-        type: string
-      globalInterventionEntry:
-        $ref: '#/definitions/cluster.InterventionEntry'
-      graphiteTemplateList:
-        additionalProperties:
-          type: boolean
-        type: object
-      hasSavingConfigQueue:
-        type: boolean
-      hostname:
-        type: string
-      isGitPull:
-        type: boolean
-      isGitPush:
-        type: boolean
-      isGlobalIntervention:
-        type: boolean
-      isGlobalInterventionPending:
-        type: boolean
-      isSavingConfig:
-        type: boolean
-      logs:
-        $ref: '#/definitions/s18log.HttpLog'
-      memprofile:
-        type: string
-      monitorType:
-        additionalProperties:
-          type: string
-        type: object
-      os:
-        type: string
-      osUser:
-        $ref: '#/definitions/user.User'
-      partner:
-        $ref: '#/definitions/config.Partner'
-      partners:
-        items:
-          $ref: '#/definitions/config.Partner'
-        type: array
-      serviceAcl:
-        items:
-          $ref: '#/definitions/config.Grant'
-        type: array
-      serviceDisk:
-        additionalProperties:
-          type: string
-        type: object
-      serviceFS:
-        additionalProperties:
-          type: boolean
-        type: object
-      serviceOrchestrators:
-        items:
-          $ref: '#/definitions/config.ConfigVariableType'
-        type: array
-      servicePlans:
-        items:
-          $ref: '#/definitions/config.ServicePlan'
-        type: array
-      servicePool:
-        additionalProperties:
-          type: boolean
-        type: object
-      serviceRepos:
-        items:
-          $ref: '#/definitions/config.DockerRepo'
-        type: array
-      serviceRoles:
-        items:
-          $ref: '#/definitions/config.Role'
-        type: array
-      serviceSslMode:
-        additionalProperties:
-          type: boolean
-        type: object
-      serviceTarballs:
-        items:
-          $ref: '#/definitions/config.Tarball'
-        type: array
-      serviceTemplates:
-        items:
-          type: string
-        type: array
-      serviceVM:
-        additionalProperties:
-          type: boolean
-        type: object
-      splitBrain:
-        type: boolean
-      stateMachine:
-        $ref: '#/definitions/state.StateMachine'
-      status:
-        type: string
-      termsDT:
-        additionalProperties:
-          type: string
-        type: object
-      tests:
-        items:
-          type: string
-        type: array
-      uuid:
-        type: string
-      version:
-        type: string
     type: object
   server.ResticCurrentTaskResponse:
     properties:
@@ -5050,6 +3535,10 @@ definitions:
   server.globalAlertsResponse:
     properties:
       errors:
+        items:
+          $ref: '#/definitions/state.StateHttp'
+        type: array
+      infos:
         items:
           $ref: '#/definitions/state.StateHttp'
         type: array
@@ -5202,36 +3691,6 @@ definitions:
       username:
         type: string
     type: object
-  sql.NullInt64:
-    properties:
-      int64:
-        format: int64
-        type: integer
-      valid:
-        description: Valid is true if Int64 is not NULL
-        type: boolean
-    type: object
-  sql.NullString:
-    properties:
-      string:
-        type: string
-      valid:
-        description: Valid is true if String is not NULL
-        type: boolean
-    type: object
-  state.Sla:
-    properties:
-      firsttime:
-        type: integer
-      lasttime:
-        type: integer
-      uptime:
-        type: integer
-      uptimeFailable:
-        type: integer
-      uptimeSemisync:
-        type: integer
-    type: object
   state.StateHttp:
     properties:
       desc:
@@ -5240,19 +3699,6 @@ definitions:
         type: string
       number:
         type: string
-    type: object
-  state.StateMachine:
-    properties:
-      discovered:
-        type: boolean
-      inFailover:
-        type: boolean
-      inSchemaMonitor:
-        type: boolean
-    type: object
-  sync.Mutex:
-    type: object
-  sync.RWMutex:
     type: object
   treehelper.FileEntry:
     properties:
@@ -5289,42 +3735,69 @@ definitions:
         description: true when file count exceeded the limit
         type: boolean
     type: object
-  user.User:
-    properties:
-      gid:
-        description: |-
-          Gid is the primary group ID.
-          On POSIX systems, this is a decimal number representing the gid.
-          On Windows, this is a SID in a string format.
-          On Plan 9, this is the contents of /dev/user.
-        type: string
-      homeDir:
-        description: HomeDir is the path to the user's home directory (if they have
-          one).
-        type: string
-      name:
-        description: |-
-          Name is the user's real or display name.
-          It might be blank.
-          On POSIX systems, this is the first (or only) entry in the GECOS field
-          list.
-          On Windows, this is the user's display name.
-          On Plan 9, this is the contents of /dev/user.
-        type: string
-      uid:
-        description: |-
-          Uid is the user ID.
-          On POSIX systems, this is a decimal number representing the uid.
-          On Windows, this is a security identifier (SID) in a string format.
-          On Plan 9, this is the contents of /dev/user.
-        type: string
-      username:
-        description: Username is the login name.
-        type: string
-    type: object
 info:
   contact: {}
 paths:
+  /api/actions/forget-arbitration:
+    post:
+      description: Deletes all heartbeat rows from the arbitrator for the configured
+        secret.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Reset arbitration data
+      tags:
+      - Global
+  /api/actions/set-active-status:
+    get:
+      description: 'Flips this replication-manager between Active and Standby and
+        propagates the new status to all its clusters (yield to peer / take over).
+        Calm-period only: refused with 409 during split brain. Server-level counterpart
+        of the per-cluster set-active-status endpoint.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Server set to Active|Standby
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: cannot toggle active status during split brain
+          schema:
+            type: string
+      summary: Toggle server active/standby (server-level, calm-period switchover)
+      tags:
+      - Monitor
   /api/clusters:
     get:
       description: Fetches the list of clusters that the user has access to based
@@ -5343,7 +3816,8 @@ paths:
           description: List of clusters
           schema:
             items:
-              $ref: '#/definitions/cluster.Cluster'
+              additionalProperties: true
+              type: object
             type: array
         "401":
           description: Unauthenticated resource
@@ -5376,9 +3850,10 @@ paths:
       - application/json
       responses:
         "200":
-          description: Cluster details
+          description: Cluster runtime state (dynamic)
           schema:
-            $ref: '#/definitions/cluster.Cluster'
+            additionalProperties: true
+            type: object
         "403":
           description: No valid ACL
           schema:
@@ -6110,6 +4585,70 @@ paths:
       summary: Refresh App Template from Repo
       tags:
       - Apps
+  /api/clusters/{clusterName}/actions/rejoin/{method}:
+    post:
+      consumes:
+      - application/json
+      description: Explicitly (re-)arms the rejoin using the operator-chosen method.
+        Safe methods use /actions/rejoin (needs cluster-failover); destructive methods
+        (ignore-delta-force, bootstrap-repli-ftwrl, reset-master-reslave) use /actions/unsafe-rejoin
+        (needs cluster-failover + cluster-rejoin-unsafe). The method must match its
+        verb.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: 'Rejoin method. Safe (via /actions/rejoin): flashback, logical-dump
+          (direct master dump), logical-backup, physical-backup, rejoin-script. Destructive
+          (via /actions/unsafe-rejoin): ignore-delta-force, bootstrap-repli-ftwrl,
+          reset-master-reslave'
+        enum:
+        - flashback
+        - logical-dump
+        - logical-backup
+        - physical-backup
+        - rejoin-script
+        - ignore-delta-force
+        - bootstrap-repli-ftwrl
+        - reset-master-reslave
+        in: path
+        name: method
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Rejoin armed
+          schema:
+            type: string
+        "400":
+          description: Invalid rejoin method / wrong verb
+          schema:
+            type: string
+        "403":
+          description: No valid ACL / method needs the unsafe verb
+          schema:
+            type: string
+        "404":
+          description: No crash history to rejoin
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Rejoin the diverged master with a chosen recovery method
+      tags:
+      - ClusterActions
   /api/clusters/{clusterName}/actions/replication/bootstrap/{topology}:
     post:
       consumes:
@@ -6483,6 +5022,46 @@ paths:
       summary: Send Email
       tags:
       - AlertMailer
+  /api/clusters/{clusterName}/actions/set-active-status:
+    get:
+      description: 'Flips this replication-manager between Active and Standby and
+        propagates the new status to all its clusters (yield to peer / take over).
+        Calm-period only: refused with 409 during split brain, when the arbitration
+        is in control.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Server set to Active|Standby
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: cannot toggle active status during split brain
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Toggle server active/standby (calm-period switchover)
+      tags:
+      - ClusterActions
   /api/clusters/{clusterName}/actions/staging-refresh:
     post:
       description: Refreshes the staging cluster specified by the cluster name in
@@ -6806,6 +5385,70 @@ paths:
       summary: Run sysbench for a specific cluster
       tags:
       - ClusterTest
+  /api/clusters/{clusterName}/actions/unsafe-rejoin/{method}:
+    post:
+      consumes:
+      - application/json
+      description: Explicitly (re-)arms the rejoin using the operator-chosen method.
+        Safe methods use /actions/rejoin (needs cluster-failover); destructive methods
+        (ignore-delta-force, bootstrap-repli-ftwrl, reset-master-reslave) use /actions/unsafe-rejoin
+        (needs cluster-failover + cluster-rejoin-unsafe). The method must match its
+        verb.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: 'Rejoin method. Safe (via /actions/rejoin): flashback, logical-dump
+          (direct master dump), logical-backup, physical-backup, rejoin-script. Destructive
+          (via /actions/unsafe-rejoin): ignore-delta-force, bootstrap-repli-ftwrl,
+          reset-master-reslave'
+        enum:
+        - flashback
+        - logical-dump
+        - logical-backup
+        - physical-backup
+        - rejoin-script
+        - ignore-delta-force
+        - bootstrap-repli-ftwrl
+        - reset-master-reslave
+        in: path
+        name: method
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Rejoin armed
+          schema:
+            type: string
+        "400":
+          description: Invalid rejoin method / wrong verb
+          schema:
+            type: string
+        "403":
+          description: No valid ACL / method needs the unsafe verb
+          schema:
+            type: string
+        "404":
+          description: No crash history to rejoin
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Rejoin the diverged master with a chosen recovery method
+      tags:
+      - ClusterActions
   /api/clusters/{clusterName}/actions/waitdatabases:
     post:
       consumes:
@@ -7606,6 +6249,51 @@ paths:
           schema:
             type: string
       summary: Unprovision App Service
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/actions/update-opensvc-config:
+    post:
+      consumes:
+      - application/json
+      description: Upserts the latest OpenSVC app config and secret variable maps
+        to the live OpenSVC objects
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App config/secret maps updated
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: App Not Found
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Push OpenSVC config/secret maps for an app
       tags:
       - Apps
   /api/clusters/{clusterName}/apps/{appName}/actions/update-routes:
@@ -9265,9 +7953,10 @@ paths:
         type: string
       responses:
         "200":
-          description: Server details retrieved successfully
+          description: Proxy runtime state (dynamic)
           schema:
-            $ref: '#/definitions/cluster.Proxy'
+            additionalProperties: true
+            type: object
         "500":
           description: Internal Server Error
           schema:
@@ -9610,6 +8299,127 @@ paths:
       summary: Retrieve query rules for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/restic/check-config:
+    post:
+      description: Validates the current restic repository configuration read-only.
+        Returns ok, initialization_required, or error.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Repository check result
+          schema:
+            $ref: '#/definitions/backupmgr.ManualCheckResult'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Check Restic Repository Config
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/copy:
+    post:
+      consumes:
+      - application/json
+      description: Copies snapshots from a source repository into the cluster's configured
+        Restic repository.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Copy options
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/backupmgr.ResticCopyOption'
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Restic repository copy queued
+          schema:
+            type: string
+        "400":
+          description: Invalid payload or guardrail rejection
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Copy Restic Repository
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/create-bucket:
+    post:
+      description: Idempotently creates the S3 bucket for the cluster's saved Restic
+        S3 configuration if missing. Returns created=false when the bucket already
+        exists and is accessible.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Bucket created or already exists
+          schema:
+            $ref: '#/definitions/cluster.ResticEnsureBucketResult'
+        "400":
+          description: Invalid request or non-S3 configuration
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: No valid ACL or insufficient grant (db-backup required)
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Create Restic S3 Bucket
+      tags:
+      - ClusterRestic
   /api/clusters/{clusterName}/restic/fetch:
     post:
       description: Fetches the restic backup for the specified cluster.
@@ -10197,6 +9007,57 @@ paths:
           schema:
             type: string
       summary: Unlock Restic Repository
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/wipe:
+    post:
+      consumes:
+      - application/json
+      description: Execute-only destructive repository wipe. Requires confirm=true
+        and typed_target_confirm matching the server-computed repo_path. Use POST
+        /restic/check-config to obtain the preview/target before calling this endpoint.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Wipe payload (confirm=true, typed_target_confirm, allow_empty_prefix)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/backupmgr.ResticWipeOption'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Repository wiped successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid payload, missing confirmation, or guardrail rejection
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: No valid ACL or insufficient grant (db-backup required)
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Wipe Restic Repository
       tags:
       - ClusterRestic
   /api/clusters/{clusterName}/sales/accept-subscription:
@@ -10941,7 +9802,8 @@ paths:
         "200":
           description: Server details retrieved successfully
           schema:
-            $ref: '#/definitions/cluster.ServerMonitor'
+            additionalProperties: true
+            type: object
         "500":
           description: No cluster" or "Server Not Found" or "Encoding error
           schema:
@@ -14118,7 +12980,8 @@ paths:
         "200":
           description: Server Attribute (partial based on attrName)
           schema:
-            $ref: '#/definitions/cluster.ServerMonitor'
+            additionalProperties: true
+            type: object
         "500":
           description: No cluster" or "Server Not Found" or "Attribute not found
           schema:
@@ -14802,6 +13665,9 @@ paths:
       summary: Get job entries for a server
       tags:
       - DatabaseTasks
+  /api/clusters/{clusterName}/servers/{serverName}/lost-events:
+    get:
+      responses: {}
   /api/clusters/{clusterName}/servers/{serverName}/master-status:
     get:
       description: Retrieves the master status of a specified server within a cluster.
@@ -16095,9 +14961,10 @@ paths:
       - application/json
       responses:
         "200":
-          description: Cluster settings
+          description: Cluster settings (dynamic)
           schema:
-            $ref: '#/definitions/github_com_signal18_replication-manager_config.Config'
+            additionalProperties: true
+            type: object
         "403":
           description: No valid ACL
           schema:
@@ -17543,7 +16410,10 @@ paths:
       - Cluster
   /api/clusters/{clusterName}/topology/http-logs:
     get:
-      description: This endpoint retrieves the web logs.
+      deprecated: true
+      description: 'Returns cluster logs for the specified type. Available types:
+        general, task, security, workload, ddl, variable-change, sysbench. Without
+        logType returns all logs.'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -17551,25 +16421,36 @@ paths:
         name: Authorization
         required: true
         type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
       produces:
       - application/json
       responses:
         "200":
-          description: List of web logs
+          description: Log data
           schema:
-            items:
-              type: string
-            type: array
-        "500":
-          description: Internal Server Error
+            additionalProperties: true
+            type: object
+        "403":
+          description: No valid ACL
           schema:
             type: string
-      summary: Retrieve web logs
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Retrieve cluster logs by type
       tags:
       - ClusterTopology
   /api/clusters/{clusterName}/topology/http-logs/{logType}:
     get:
-      description: This endpoint retrieves the web logs.
+      deprecated: true
+      description: 'Returns cluster logs for the specified type. Available types:
+        general, task, security, workload, ddl, variable-change, sysbench. Without
+        logType returns all logs.'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -17577,20 +16458,33 @@ paths:
         name: Authorization
         required: true
         type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: 'Log type: general, task, security, workload, ddl, variable-change,
+          sysbench'
+        in: path
+        name: logType
+        type: string
       produces:
       - application/json
       responses:
         "200":
-          description: List of web logs
+          description: Log data
           schema:
-            items:
-              type: string
-            type: array
-        "500":
-          description: Internal Server Error
+            additionalProperties: true
+            type: object
+        "403":
+          description: No valid ACL
           schema:
             type: string
-      summary: Retrieve web logs
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Retrieve cluster logs by type
       tags:
       - ClusterTopology
   /api/clusters/{clusterName}/topology/logs:
@@ -17624,6 +16518,48 @@ paths:
       summary: Retrieve logs for a specific cluster
       tags:
       - ClusterTopology
+  /api/clusters/{clusterName}/topology/logs/{logType}:
+    get:
+      deprecated: true
+      description: 'Returns cluster logs for the specified type. Available types:
+        general, task, security, workload, ddl, variable-change, sysbench. Without
+        logType returns all logs.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: 'Log type: general, task, security, workload, ddl, variable-change,
+          sysbench'
+        in: path
+        name: logType
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Log data
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Retrieve cluster logs by type
+      tags:
+      - ClusterTopology
   /api/clusters/{clusterName}/topology/master:
     get:
       description: This endpoint retrieves the master of a specified cluster and returns
@@ -17646,7 +16582,8 @@ paths:
         "200":
           description: Master server
           schema:
-            $ref: '#/definitions/cluster.ServerMonitor'
+            additionalProperties: true
+            type: object
         "500":
           description: Internal Server Error
           schema:
@@ -17824,7 +16761,8 @@ paths:
         "200":
           description: Slave Data
           schema:
-            $ref: '#/definitions/cluster.ServerMonitor'
+            additionalProperties: true
+            type: object
         "500":
           description: Internal Server Error
           schema:
@@ -17861,7 +16799,8 @@ paths:
         "200":
           description: Slave Attribute (partial based on attrName)
           schema:
-            $ref: '#/definitions/cluster.ServerMonitor'
+            additionalProperties: true
+            type: object
         "500":
           description: Internal Server Error
           schema:
@@ -17896,7 +16835,8 @@ paths:
           description: server by state
           schema:
             items:
-              $ref: '#/definitions/cluster.ServerMonitor'
+              additionalProperties: true
+              type: object
             type: array
         "500":
           description: Internal Server Error
@@ -17968,7 +16908,8 @@ paths:
         "200":
           description: server by state
           schema:
-            $ref: '#/definitions/cluster.ServerMonitor'
+            additionalProperties: true
+            type: object
         "500":
           description: Internal Server Error
           schema:
@@ -18012,7 +16953,8 @@ paths:
         "200":
           description: Server (partial based on attrName)
           schema:
-            $ref: '#/definitions/cluster.ServerMonitor'
+            additionalProperties: true
+            type: object
         "500":
           description: Internal Server Error
           schema:
@@ -18227,7 +17169,8 @@ paths:
         "200":
           description: Cluster added successfully
           schema:
-            $ref: '#/definitions/cluster.Cluster'
+            additionalProperties: true
+            type: object
         "400":
           description: Error in request or Cluster already exists
           schema:
@@ -18266,6 +17209,42 @@ paths:
           schema:
             type: string
       summary: Delete a cluster
+      tags:
+      - Cluster
+  /api/clusters/actions/fetch-dynamic-from-git:
+    post:
+      description: Clones the main config git repo and starts any dynamic cluster
+        found there that is not already known locally. Existing clusters are never
+        overwritten. Always returns 200 with a partial-success result unless the whole
+        action cannot start.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Import result, possibly with per-cluster errors
+          schema:
+            $ref: '#/definitions/server.DynamicClusterImportResult'
+        "403":
+          description: administrator access required, or instance not eligible (requires
+            a registered Cloud18 account on a paid plan)
+          schema:
+            type: string
+        "405":
+          description: method not allowed
+          schema:
+            type: string
+        "500":
+          description: action could not start
+          schema:
+            type: string
+      summary: Import missing dynamic clusters from the main config git repo
       tags:
       - Cluster
   /api/clusters/actions/rename/{clusterName}/{newClusterName}:
@@ -18768,9 +17747,10 @@ paths:
       - application/json
       responses:
         "200":
-          description: Successful response with replication manager details
+          description: Replication manager runtime state (dynamic)
           schema:
-            $ref: '#/definitions/server.ReplicationManager'
+            additionalProperties: true
+            type: object
         "500":
           description: Internal Server Error
           schema:

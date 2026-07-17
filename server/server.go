@@ -80,7 +80,7 @@ type ReplicationManager struct {
 	Version                      string                             `json:"version"`
 	Fullversion                  string                             `json:"fullVersion"`
 	Os                           string                             `json:"os"`
-	OsUser                       *user.User                         `json:"osUser"`
+	OsUser                       *user.User                         `json:"osUser" swaggerignore:"true"`
 	Arch                         string                             `json:"arch"`
 	MemProfile                   string                             `json:"memprofile"`
 	CpuProfile                   string                             `json:"cpuprofile"`
