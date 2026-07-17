@@ -2380,7 +2380,13 @@ func (repman *ReplicationManager) Run() error {
 	repman.CpuProfile = cpuprofile
 	repman.cApiLog = clog.New()
 	repman.clog = clog.New()
-	repman.CheckSumConfig = make(map[string]hash.Hash)
+	// Guarded: SetDefaultFlags already allocates this map before InitConfig runs, and
+	// InitConfig's subscription-plan sync may have already populated it with real
+	// checksums. Overwriting unconditionally here would discard that work and force
+	// the next SaveGlobalConfigs call to see a spurious checksum miss.
+	if repman.CheckSumConfig == nil {
+		repman.CheckSumConfig = make(map[string]hash.Hash)
+	}
 	repman.ApiLogAdapter = NewApiLogAdapter(repman.Conf.APIErrorSuppress, repman.Conf.APIErrorLimit, repman.Conf.APIErrorLimitDuration, repman.Conf.APIErrorDisregardPort)
 	repman.InitWebTTY()
 	repman.DiskStatManager = misc.NewDiskStatManager()
