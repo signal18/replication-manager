@@ -77,22 +77,9 @@
   }
 }
 
-.btnHeading {
-  width: 100%;
-  padding: 10px;
-  //transition: background-color 0.2s ease;
-  border-bottom: none;
-  /*&:hover {
-    background-color: rgba(0, 0, 0, 0.05);
-  }*/
-}
-
-.cardHeaderText {
-  font-weight: bold;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+// (Removed the top-level .btnHeading and .cardHeaderText overrides — local
+// (ClusterList) has neither; the .card-nested .btnHeading is the only one, so the
+// peer cards now match local exactly.)
 
 // Filter component styles
 .dropdownButton {
