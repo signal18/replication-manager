@@ -1159,7 +1159,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18AlertSlackURL, "cloud18-alert-slack-url", "https://meet.signal18.io/hooks/1wuk8e5sttd89epqoaff3y9t6y", "Slack webhook URL for cloud18")
 	flags.StringVar(&conf.Cloud18AlertSlackUser, "cloud18-alert-slack-user", "repman", "Slack user for cloud18")
 	flags.IntVar(&conf.Cloud18HealthRefreshInterval, "cloud18-health-refresh-interval", 30, "Health refresh interval in seconds")
-	flags.StringVar(&conf.Cloud18PeerHealthMode, "cloud18-peer-health-mode", "smart", "Peer health mode: peering (poll all), smart (own fleet + active users), pulling (BO via peer.json)")
+	flags.StringVar(&conf.Cloud18PeerHealthMode, "cloud18-peer-health-mode", "pulling", "Peer health source. DEFAULT pulling: read shared-cluster health from the BO-aggregated peer.json (git-pull cadence) — no per-peer HTTP polling; correct for regular/client instances. The direct-polling modes fan out to every shared cluster on each peer.json reload (O(N^2), and a dark peer strands connections) — reserve them for partner fleets: smart (own fleet + active-session users), peering (poll all).")
 	flags.BoolVar(&conf.Cloud18DisablePeers, "cloud18-disable-peers", false, "Hide peer clusters from dashboard")
 	flags.BoolVar(&conf.Cloud18DisableForSale, "cloud18-disable-for-sale", false, "Hide clusters for sale from marketplace (paid plans only)")
 	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
@@ -1559,6 +1559,14 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		repman.DeprecatedKeys = make(map[string]map[string]bool)
 	}
 
+	// Partner-plan instances run their own fleet and benefit from direct
+	// cross-repman polling, so promote the "pulling" default to "smart" for them.
+	// Every other plan stays on the BO-aggregated "pulling" default so hundreds of
+	// registered clients never fan out (O(N^2) polling of shared clusters). An
+	// explicit non-default mode is always respected.
+	if repman.Conf.Cloud18PeerHealthMode == "pulling" && repman.Conf.Cloud18SubscriptionPlan == "partner" {
+		repman.Conf.Cloud18PeerHealthMode = "smart"
+	}
 	repman.PeerManager = peer.NewPeerManager(repman.Conf.Cloud18HealthRefreshInterval)
 	repman.PeerManager.HealthMode = repman.Conf.Cloud18PeerHealthMode
 	conf.ParseJobsExecOverrides()
