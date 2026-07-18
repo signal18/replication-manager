@@ -20,6 +20,7 @@ import { showErrorToast } from '../../redux/toastSlice'
 import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
 import SearchBox from '../../components/SearchBox'
 import Dropdown from '../../components/Dropdown'
+import { getApi, getTokenByBaseURL } from '../../services/apiHelper'
 
 const columnHelper = createColumnHelper()
 
@@ -139,6 +140,10 @@ function PeerClusterList({ onLogin, mode }) {
   // appear in both as the transparency anchor.
   const [contentType, setContentType] = useState('monitor') // 'monitor' (operational) | 'sale' (offer)
   const [displayMode, setDisplayMode] = useState('table')    // 'table' | 'grid' (cards)
+  // Option (a): full cluster data pulled directly from each reachable peer's
+  // /api/clusters (using the per-peer SSO token the login-upgrade stored), keyed
+  // baseURL -> { clusterName -> full cluster }. Overwrites the thin peer.json catalog.
+  const [peerDetails, setPeerDetails] = useState({})
   // Keep the search/filter panel retracted by default so the URI/Active columns
   // lead; the operator can expand it manually.
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
@@ -166,6 +171,28 @@ function PeerClusterList({ onLogin, mode }) {
     dispatch(getClusterPeerNodes({}))
     dispatch(getTermsData({}))
   }, [])
+
+  // Option (a): for each reachable peer, pull its real /api/clusters directly (with
+  // the per-peer SSO token from the login-upgrade). This is what "Enter" does, applied
+  // to the whole list — the full local-cluster data overwrites the thin peer.json
+  // catalog for peers we can actually reach/authenticate to. Unreachable or
+  // unauthenticated peers just 401/fail and stay on the catalog ("—").
+  useEffect(() => {
+    const all = [...(clusterPeers || []), ...(clusterForSale || [])]
+    if (all.length === 0) return
+    const ownUrl = monitor?.config?.apiPublicUrl
+    const urls = [...new Set(all.map((c) => c['api-public-url']).filter((u) => u && u !== ownUrl))]
+    let cancelled = false
+    urls.forEach((baseURL) => {
+      getApi(baseURL).get('clusters').then((resp) => {
+        if (cancelled || resp?.status !== 200 || !Array.isArray(resp.data)) return
+        const byName = {}
+        resp.data.forEach((fc) => { if (fc?.name) byName[fc.name] = fc })
+        setPeerDetails((prev) => ({ ...prev, [baseURL]: byName }))
+      }).catch(() => { /* unreachable / unauthorized -> keep peer.json catalog */ })
+    })
+    return () => { cancelled = true }
+  }, [clusterPeers, clusterForSale, monitor])
 
   useEffect(() => {
     let filteredClusters = []
@@ -576,6 +603,27 @@ function PeerClusterList({ onLogin, mode }) {
     uriCol,
   ], [peerNodes, mode])
 
+  // Merge the direct /api/clusters data (peerDetails) over the peer.json catalog rows.
+  // Where we have the peer's real cluster, its fields overwrite the catalog defaults
+  // (topology, db/proxy counts, uptime/SLA, monitoring, arbitration, live health).
+  const enrichedClusters = useMemo(() => (clusters || []).map((item) => {
+    const fc = peerDetails[item['api-public-url']]?.[item['cluster-name']]
+    if (!fc) return item
+    return {
+      ...item,
+      topology: fc.topology,
+      dbServers: fc.dbServers,
+      proxyServers: fc.proxyServers,
+      uptime: fc.uptime,
+      monitoringPause: fc.config?.monitoringPause,
+      activePassiveStatus: fc.activePassiveStatus,
+      isDown: fc.isDown,
+      isMasterDown: fc.isMasterDown,
+      isFailable: fc.isFailable,
+      isProvisioned: fc.isProvision,
+    }
+  }), [clusters, peerDetails])
+
   // Colors for the filter panel based on color mode
   const filterPanelBg = useColorModeValue('gray.50', 'gray.800')
   const filterPanelBorder = useColorModeValue('gray.200', 'gray.700')
@@ -752,7 +800,7 @@ function PeerClusterList({ onLogin, mode }) {
 
             {displayMode === 'grid' ? (
             <Flex className={styles.clusterList}>
-              {clusters?.map((clusterItem) => {
+              {enrichedClusters?.map((clusterItem) => {
                 const headerText = `${clusterItem['cluster-name']}`
                 const domain = `${clusterItem['cloud18-domain']}`
                 const subDomain = `${clusterItem['cloud18-sub-domain']}`
@@ -869,7 +917,7 @@ function PeerClusterList({ onLogin, mode }) {
               })}
             </Flex>
             ) : (
-              <DataTable data={clusters} columns={contentType === 'sale' ? offerColumns : operationalColumns} />
+              <DataTable data={enrichedClusters} columns={contentType === 'sale' ? offerColumns : operationalColumns} />
             )}
           </>
         )}
