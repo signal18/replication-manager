@@ -481,10 +481,12 @@ func (pm *PeerManager) pollPeerHealth(url string) {
 	// also read by GetPeerNodesJSON (status API), so its fields are written under the
 	// lock via setNodeError, not raw.
 	if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
-		if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
-			pm.setNodeError(nodestat, fmt.Sprintf("failed to login: %s", err))
-			return
-		}
+		// Best-effort login: /api/health is PUBLIC (curl of any dbaas-*.signal18.io
+		// /api/health returns 200 with no auth). A login failure — the SSO user not
+		// being provisioned on the peer, a wrong password, etc. — must NOT block the
+		// health/connectivity check, which needs no token. Login only matters for
+		// richer authenticated calls (e.g. /api/clusters).
+		_ = pclient.PeerLogin(pm.PeerUser, pm.PeerPassword)
 	}
 	if err := pm.GetHealthStatus(pclient); err != nil {
 		pm.setNodeError(nodestat, fmt.Sprintf("failed to get health status: %s", err))
