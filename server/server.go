@@ -3004,10 +3004,13 @@ func (repman *ReplicationManager) Run() error {
 			}
 
 			if repman.Conf.Cloud18 && !repman.Conf.Cloud18DisablePeers {
-				// dispatchPeerHealthPoll self-guards (single-flight) and runs the
-				// poll + UpdateLocalPeer in its own goroutine; it returns false if a
-				// poll was already in flight.
-				if !repman.dispatchPeerHealthPoll() {
+				if repman.peerHealthBusy.CompareAndSwap(false, true) {
+					go func() {
+						defer repman.peerHealthBusy.Store(false)
+						repman.dispatchPeerHealthPoll()
+						repman.UpdateLocalPeer()
+					}()
+				} else {
 					repman.SetState("GWARN013@peerhealth", state.State{ErrType: "WARNING", ErrKey: "GWARN013", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN013"], "peer health poll"), ErrFrom: "REPMAN"})
 				}
 			}

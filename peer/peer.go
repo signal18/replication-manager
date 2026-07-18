@@ -346,6 +346,10 @@ func (pm *PeerManager) GetHealthStatus(pclient *PeerClient) error {
 			return fmt.Errorf("failed to parse health status: %s", err)
 		}
 
+		// Lock the map mutation: this runs off-lock (called from pollPeerHealth
+		// after the network I/O) and BatchUpdateClusters writes PeerClusters under
+		// the same lock.
+		pm.mu.Lock()
 		for clustername, status := range healths {
 			hashID := GetHashID(pclient.baseURL, clustername)
 			if pc, exists := pm.PeerClusters[hashID]; exists {
@@ -356,6 +360,7 @@ func (pm *PeerManager) GetHealthStatus(pclient *PeerClient) error {
 				pc.LastUpdate = update
 			}
 		}
+		pm.mu.Unlock()
 	}
 
 	return nil
@@ -418,87 +423,70 @@ func (pm *PeerManager) GetHealthStatusForActiveUsers(registeredUser string, acti
 	}
 
 	for url := range relevantURLs {
-		nodestat, ok := pm.PeerURL[url]
-		if !ok {
-			continue
-		}
-
-		// Rate-limit ALL work for this peer (login + health) to once per Interval,
-		// and advance LastUpdate up-front — success OR failure. Previously a failed
-		// login/health left LastUpdate untouched, so the gate stayed open and a
-		// dark peer was re-hit on every dispatch, stranding connections. Advancing
-		// here bounds a dead peer to one attempt per Interval.
-		// See doc/implementation/peer/MARKETPLACE.md §6.
-		if time.Since(nodestat.LastUpdate) <= time.Duration(pm.Interval)*time.Second {
-			continue
-		}
-		nodestat.LastUpdate = time.Now()
-
-		if !misc.IsValidPublicURL(url) {
-			nodestat.Error = "not a valid public URL"
-			continue
-		}
-
-		pclient, ok := pm.Clients[url]
-		if !ok {
-			pclient = pm.NewClient(url)
-			pm.Clients[url] = pclient
-		}
-
-		if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
-			if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
-				nodestat.Error = fmt.Sprintf("failed to login: %s", err)
-				continue
-			}
-		}
-
-		if err := pm.GetHealthStatus(pclient); err != nil {
-			nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
-			continue
-		}
-		nodestat.Error = ""
+		pm.pollPeerHealth(url)
 	}
 }
 
+// pollPeerHealth checks one peer's /api/health, but only if it has not been polled
+// within Interval. It "claims" the peer atomically under the lock — FIRST IN WINS:
+// the first dispatch to reach a peer advances LastUpdate and does the call, while
+// any overlapping dispatch sees a fresh timestamp and skips it. So each peer is
+// called at most once per Interval regardless of how many dispatches overlap, and a
+// failed attempt is rate-limited exactly like a success (LastUpdate is advanced
+// up-front, before the call). All shared-map access (PeerURL / Clients) happens
+// under the lock; the network I/O runs AFTER the lock is released, so a slow peer
+// never blocks other peers or the BatchUpdateClusters mutator, and there is no
+// concurrent-map race. This makes whole-poll serialization (single-flight)
+// unnecessary: different peers can still be polled in parallel — only the SAME peer
+// is deduplicated. See doc/implementation/peer/MARKETPLACE.md §6.
+func (pm *PeerManager) pollPeerHealth(url string) {
+	pm.mu.Lock()
+	nodestat, ok := pm.PeerURL[url]
+	if !ok || url == pm.ApiURL || time.Since(nodestat.LastUpdate) <= time.Duration(pm.Interval)*time.Second {
+		pm.mu.Unlock()
+		return
+	}
+	if !misc.IsValidPublicURL(url) {
+		nodestat.Error = "not a valid public URL"
+		pm.mu.Unlock()
+		return
+	}
+	nodestat.LastUpdate = time.Now() // claim: no other dispatch polls this peer this Interval
+	pclient, ok := pm.Clients[url]
+	if !ok {
+		pclient = pm.NewClient(url)
+	}
+	pm.mu.Unlock()
+
+	// Network I/O outside the lock. Only this goroutine owns nodestat this Interval.
+	if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
+		if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
+			nodestat.Error = fmt.Sprintf("failed to login: %s", err)
+			return
+		}
+	}
+	if err := pm.GetHealthStatus(pclient); err != nil {
+		nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
+		return
+	}
+	nodestat.Error = ""
+}
+
 func (pm *PeerManager) GetAllHealthStatus() {
-	for url, nodestat := range pm.PeerURL {
-		if url == pm.ApiURL {
-			continue
+	// Snapshot the URL set under the lock, then poll each through the atomic-claim
+	// helper (network I/O off-lock). Never iterate pm.PeerURL directly during the
+	// calls — BatchUpdateClusters mutates it under the same lock.
+	pm.mu.RLock()
+	urls := make([]string, 0, len(pm.PeerURL))
+	for url := range pm.PeerURL {
+		if url != pm.ApiURL {
+			urls = append(urls, url)
 		}
+	}
+	pm.mu.RUnlock()
 
-		// Rate-limit to once per Interval and advance LastUpdate up-front (success
-		// OR failure) so a dark peer cannot be re-hit every dispatch. See the
-		// matching note in GetHealthStatusForActiveUsers and MARKETPLACE.md §6.
-		if time.Since(nodestat.LastUpdate) <= time.Duration(pm.Interval)*time.Second {
-			continue
-		}
-		nodestat.LastUpdate = time.Now()
-
-		// Skip if the URL is not valid.
-		if !misc.IsValidPublicURL(url) {
-			nodestat.Error = fmt.Sprintf("not a valid public URL")
-			continue
-		}
-
-		pclient, ok := pm.Clients[url]
-		if !ok {
-			pclient = pm.NewClient(url)
-			pm.Clients[url] = pclient
-		}
-
-		// Login if no token is set in the client.
-		if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
-			if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
-				nodestat.Error = fmt.Sprintf("failed to login: %s", err)
-				continue
-			}
-		}
-
-		if err := pm.GetHealthStatus(pclient); err != nil {
-			nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
-			continue
-		}
-		nodestat.Error = ""
+	for _, url := range urls {
+		pm.pollPeerHealth(url)
 	}
 }
 

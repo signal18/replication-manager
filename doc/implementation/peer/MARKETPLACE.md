@@ -326,15 +326,22 @@ that traffic — a single dark peer in your own fleet must not accumulate connec
    plus `DialContext` (5s), `TLSHandshakeTimeout` (5s) and `ResponseHeaderTimeout`
    deadlines so a peer that accepts TCP but never answers is bounded. (`req.Close =
    true` and the 10s client `Timeout` were already present.)
-2. **Rate-limit + advance `LastUpdate` on failure** (`peer.go`, both pollers) — each
-   peer's whole attempt (login *and* health) is gated to once per `Interval`, and
-   `LastUpdate` is advanced **up-front** so a failed attempt is rate-limited the same
-   as a success. Previously a failure left `LastUpdate` untouched and login wasn't
-   even gated, so a dark peer was re-hit every dispatch.
-3. **Effective single-flight** (`server_peer.go`) — `dispatchPeerHealthPoll` now
-   self-guards on `peerHealthBusy` and holds it across the whole poll goroutine, so
-   the timer and the reload path can never run overlapping polls that race the shared
-   per-node `LastUpdate`.
+2. **First-in-wins atomic claim** (`peer.go`, `pollPeerHealth`) — both pollers route
+   each peer through one helper that, **under the lock**, checks `LastUpdate` and
+   advances it in the same critical section before releasing the lock and doing the
+   network call. The first dispatch to reach a peer claims the interval; any
+   overlapping dispatch sees a fresh timestamp and skips. This gives **exactly one
+   call per peer per `Interval`**, and rate-limits a failed attempt identically to a
+   success (the claim is advanced up-front, before the call). Previously a failure
+   left `LastUpdate` untouched and login wasn't even gated, so a dark peer was re-hit
+   every dispatch.
+3. **Correct map locking, no single-flight** (`peer.go`) — because the claim, the
+   `PeerURL`/`Clients` access, and `GetHealthStatus`'s `PeerClusters` update all hold
+   `pm.mu` (released before network I/O), overlapping timer + reload dispatches can no
+   longer race the maps (`BatchUpdateClusters` mutates them under the same lock). So
+   no whole-poll serialization is needed: **different** peers still poll in parallel;
+   only the **same** peer is deduplicated. The earlier `peerHealthBusy` single-flight
+   guard was dropped in favour of this finer-grained, correct-by-construction claim.
 
 **Timing (why Fix 1 costs no delay):** periodic backstop dispatch every ~2 min
 (`counter%60` × `monitoring-ticker` 2s); per-node staleness gate
