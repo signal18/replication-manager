@@ -66,7 +66,8 @@
 
 .card {
   height: 100%;
-  border: none;
+  // keep the Card component's rounded 1px border (do not set `border: none`) so
+  // these cards match every other card in the app
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
 }
 

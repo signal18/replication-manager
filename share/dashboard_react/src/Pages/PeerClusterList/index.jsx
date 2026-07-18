@@ -12,7 +12,7 @@ import { createColumnHelper } from '@tanstack/react-table'
 import styles from './styles.module.scss'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import TagPill from '../../components/TagPill'
-import { HiCreditCard, HiExclamation, HiQuestionMarkCircle, HiTag, HiSortAscending, HiSortDescending, HiSearch, HiChevronLeft, HiChevronRight } from 'react-icons/hi'
+import { HiCreditCard, HiExclamation, HiQuestionMarkCircle, HiTag, HiSortAscending, HiSortDescending, HiSearch, HiChevronLeft, HiChevronRight, HiViewGrid, HiTable } from 'react-icons/hi'
 import { peerLogin, setBaseURL } from '../../redux/authSlice'
 import { getClusterData, clusterSubscribe } from '../../redux/clusterSlice'
 import TermsModal from '../../components/Modals/TermsModal'
@@ -137,7 +137,8 @@ function PeerClusterList({ onLogin, mode }) {
   // Two table views, one visible via toggle: 'operational' (local-like) and
   // 'offer' (infra + commercial — what you get for the price). URI + Active columns
   // appear in both as the transparency anchor.
-  const [viewType, setViewType] = useState('operational')
+  const [contentType, setContentType] = useState('monitor') // 'monitor' (operational) | 'sale' (offer)
+  const [displayMode, setDisplayMode] = useState('table')    // 'table' | 'grid' (cards)
   // Keep the search/filter panel retracted by default so the URI/Active columns
   // lead; the operator can expand it manually.
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
@@ -473,12 +474,18 @@ function PeerClusterList({ onLogin, mode }) {
   // Connectivity cloud: green = we have a working direct connection to the peer,
   // red = none / can't reach it (health then comes from the peer.json catalog).
   const connCloud = (uri) => {
+    if (!uri) return { color: 'gray', tooltip: 'No peer URL' }
+    // Our own instance is always reachable — it's us.
+    if (monitor?.config?.apiPublicUrl && uri === monitor.config.apiPublicUrl) {
+      return { color: 'green', tooltip: 'This is your own instance' }
+    }
     const node = peerNodes?.[uri]
     const last = node?.LastUpdate
-    const ok = last && last !== '0001-01-01T00:00:00Z' && !node?.Error
-    return ok
-      ? { color: 'green', tooltip: `Direct connection OK — last ${new Date(last).toLocaleString()}` }
-      : { color: 'red', tooltip: node?.Error ? `Cannot reach peer directly: ${node.Error}` : 'No direct connection — health comes from the peer.json catalog' }
+    const connected = last && last !== '0001-01-01T00:00:00Z'
+    if (node?.Error) return { color: 'red', tooltip: `Direct connection failed: ${node.Error}` }
+    if (connected) return { color: 'green', tooltip: `Direct connection OK — last ${new Date(last).toLocaleString()}` }
+    // Not polled directly (catalog only) — unknown, not a failure. Grey, not red.
+    return { color: 'gray', tooltip: 'No direct connection attempted — health from the peer.json catalog (click the cluster to connect on demand)' }
   }
   const uriCol = columnHelper.accessor((row) => row['api-public-url'], {
     id: 'uri', header: 'Peer', enableSorting: false,
@@ -717,14 +724,23 @@ function PeerClusterList({ onLogin, mode }) {
               </Text>
 
               <HStack spacing="2">
+                {/* Content: Monitor (operational) vs Sale (offer) */}
                 <ButtonGroup size='sm' isAttached variant='outline'>
-                  <Button variant={viewType === 'operational' ? 'solid' : 'outline'} colorScheme={viewType === 'operational' ? 'blue' : 'gray'} onClick={() => setViewType('operational')}>Operational</Button>
-                  <Button variant={viewType === 'offer' ? 'solid' : 'outline'} colorScheme={viewType === 'offer' ? 'blue' : 'gray'} onClick={() => setViewType('offer')}>Offer</Button>
-                  <Button variant={viewType === 'cards' ? 'solid' : 'outline'} colorScheme={viewType === 'cards' ? 'blue' : 'gray'} onClick={() => setViewType('cards')}>Cards</Button>
+                  <Button variant={contentType === 'monitor' ? 'solid' : 'outline'} colorScheme={contentType === 'monitor' ? 'blue' : 'gray'} onClick={() => setContentType('monitor')}>Monitor</Button>
+                  <Button variant={contentType === 'sale' ? 'solid' : 'outline'} colorScheme={contentType === 'sale' ? 'blue' : 'gray'} onClick={() => setContentType('sale')}>Sale</Button>
                 </ButtonGroup>
+                {/* Display: table vs grid (cards) — like the local cluster list */}
+                <IconButton
+                  size='sm'
+                  aria-label={displayMode === 'table' ? 'Show grid view' : 'Show table view'}
+                  title={displayMode === 'table' ? 'Grid view' : 'Table view'}
+                  icon={displayMode === 'table' ? <HiViewGrid /> : <HiTable />}
+                  onClick={() => setDisplayMode(displayMode === 'table' ? 'grid' : 'table')}
+                />
                 {/* Only show this on mobile views when panel is collapsed */}
                 {!isFilterPanelOpen && (
                   <IconButton
+                    size='sm'
                     display={{ base: 'flex', lg: 'none' }}
                     aria-label="Open filters"
                     icon={<HiSearch />}
@@ -734,7 +750,7 @@ function PeerClusterList({ onLogin, mode }) {
               </HStack>
             </Flex>
 
-            {viewType === 'cards' ? (
+            {displayMode === 'grid' ? (
             <Flex className={styles.clusterList}>
               {clusters?.map((clusterItem) => {
                 const headerText = `${clusterItem['cluster-name']}`
@@ -853,7 +869,7 @@ function PeerClusterList({ onLogin, mode }) {
               })}
             </Flex>
             ) : (
-              <DataTable data={clusters} columns={viewType === 'offer' ? offerColumns : operationalColumns} />
+              <DataTable data={clusters} columns={contentType === 'sale' ? offerColumns : operationalColumns} />
             )}
           </>
         )}
