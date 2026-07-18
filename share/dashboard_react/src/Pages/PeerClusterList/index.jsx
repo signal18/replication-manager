@@ -463,11 +463,23 @@ function PeerClusterList({ onLogin, mode }) {
       return (<Tooltip label={uri} placement='top'><Text isTruncated maxW='300px' fontFamily='mono' fontSize='sm'>{uri}</Text></Tooltip>)
     }
   })
-  const activeCol = columnHelper.accessor((row) => row['api-public-url'], {
-    id: 'active', header: 'Active', enableSorting: false,
+  // The two data paths, side by side:
+  //  - peerJsonCol: health the BO catalog reports (peer.json, async / git-pull cadence)
+  //  - directCol:   what the local repman got by actually connecting to the peer
+  //                 (/api/peers PeerNodeStatus — connected + last-seen, or never/error)
+  const peerJsonCol = columnHelper.accessor((row) => row, {
+    id: 'peerjson', header: 'peer.json', enableSorting: false,
+    cell: (info) => (
+      <Tooltip label='Health as reported by the BO catalog (peer.json — async, git-pull cadence)' placement='top'>
+        <Box display='inline-block'>{healthCell(info.row.original)}</Box>
+      </Tooltip>
+    )
+  })
+  const directCol = columnHelper.accessor((row) => row['api-public-url'], {
+    id: 'direct', header: 'Direct', enableSorting: false,
     cell: (info) => {
       const cs = getConnState(info.getValue())
-      return (<Tooltip label={cs.tooltip} placement='top'><Badge colorScheme={cs.colorScheme}>{cs.label}</Badge></Tooltip>)
+      return (<Tooltip label={`Direct connection to the peer — ${cs.tooltip}`} placement='top'><Badge colorScheme={cs.colorScheme}>{cs.label}</Badge></Tooltip>)
     }
   })
   const actionCol = columnHelper.display({
@@ -482,9 +494,8 @@ function PeerClusterList({ onLogin, mode }) {
   // Operational view — mirrors the local cluster table (as far as catalog data
   // allows); everything degrades to "—" for an out-of-cloud18 shared cluster.
   const operationalColumns = useMemo(() => [
-    clusterCol, uriCol, activeCol,
+    clusterCol, uriCol, peerJsonCol, directCol,
     columnHelper.accessor((row) => row['prov-orchestrator'], { id: 'orchestrator', header: 'Orchestrator', cell: (info) => info.getValue() || '—' }),
-    columnHelper.accessor((row) => row, { id: 'healthy', header: 'Healthy', enableSorting: false, cell: (info) => healthCell(info.row.original) }),
     columnHelper.accessor((row) => row, { id: 'provisioned', header: 'Provisioned', enableSorting: false, cell: (info) => isUnknown(info.row.original) ? <Text>—</Text> : <CheckOrCrossIcon isValid={!!info.row.original.isProvisioned} /> }),
     actionCol,
   ], [peerNodes, mode])
@@ -516,7 +527,7 @@ function PeerClusterList({ onLogin, mode }) {
 
   // Offer view — infra + commercial together: what you get for the price.
   const offerColumns = useMemo(() => [
-    clusterCol, uriCol, activeCol,
+    clusterCol, uriCol, directCol,
     columnHelper.accessor((row) => row['prov-service-plan'], { id: 'plan', header: 'Plan', cell: (info) => info.getValue() || '—' }),
     columnHelper.accessor((row) => row, { id: 'price', header: 'Price', enableSorting: false, cell: (info) => priceCell(info.row.original) }),
     columnHelper.accessor((row) => infraSummary(row).join(' · '), {
