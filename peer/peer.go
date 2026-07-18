@@ -180,14 +180,14 @@ func (pm *PeerManager) BatchUpdateClusters(clusterUpdates []*PeerCluster, remove
 		}
 	}
 
-	// Update health status based on configured mode.
-	if len(pm.PeerURL) > 0 {
-		if pm.HealthMode == "pulling" {
-			go pm.GetHealthStatusForUnknownVersions()
-		} else {
-			go pm.GetAllHealthStatus()
-		}
-	}
+	// NOTE: health polling is intentionally NOT started here. This runs inside
+	// the peer package with no session-user context, so it can only poll the
+	// flat, unscoped PeerURL list — which includes for-sale clusters this
+	// instance has no relationship to (O(N^2) fan-out, dark-peer connection
+	// leak). The caller (server_git.go, after this returns) invokes the
+	// server-driven, session-scoped dispatchPeerHealthPoll instead, so live
+	// polling is always restricted to PeerUserClusters for connected users.
+	// See doc/implementation/peer/MARKETPLACE.md §6.
 }
 
 // removeCluster (internal function, assumes lock is held).
@@ -423,6 +423,17 @@ func (pm *PeerManager) GetHealthStatusForActiveUsers(registeredUser string, acti
 			continue
 		}
 
+		// Rate-limit ALL work for this peer (login + health) to once per Interval,
+		// and advance LastUpdate up-front — success OR failure. Previously a failed
+		// login/health left LastUpdate untouched, so the gate stayed open and a
+		// dark peer was re-hit on every dispatch, stranding connections. Advancing
+		// here bounds a dead peer to one attempt per Interval.
+		// See doc/implementation/peer/MARKETPLACE.md §6.
+		if time.Since(nodestat.LastUpdate) <= time.Duration(pm.Interval)*time.Second {
+			continue
+		}
+		nodestat.LastUpdate = time.Now()
+
 		if !misc.IsValidPublicURL(url) {
 			nodestat.Error = "not a valid public URL"
 			continue
@@ -441,14 +452,11 @@ func (pm *PeerManager) GetHealthStatusForActiveUsers(registeredUser string, acti
 			}
 		}
 
-		if time.Since(nodestat.LastUpdate) > time.Duration(pm.Interval)*time.Second {
-			if err := pm.GetHealthStatus(pclient); err != nil {
-				nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
-				continue
-			}
-			nodestat.Error = ""
-			nodestat.LastUpdate = time.Now()
+		if err := pm.GetHealthStatus(pclient); err != nil {
+			nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
+			continue
 		}
+		nodestat.Error = ""
 	}
 }
 
@@ -457,6 +465,14 @@ func (pm *PeerManager) GetAllHealthStatus() {
 		if url == pm.ApiURL {
 			continue
 		}
+
+		// Rate-limit to once per Interval and advance LastUpdate up-front (success
+		// OR failure) so a dark peer cannot be re-hit every dispatch. See the
+		// matching note in GetHealthStatusForActiveUsers and MARKETPLACE.md §6.
+		if time.Since(nodestat.LastUpdate) <= time.Duration(pm.Interval)*time.Second {
+			continue
+		}
+		nodestat.LastUpdate = time.Now()
 
 		// Skip if the URL is not valid.
 		if !misc.IsValidPublicURL(url) {
@@ -478,78 +494,22 @@ func (pm *PeerManager) GetAllHealthStatus() {
 			}
 		}
 
-		if time.Since(nodestat.LastUpdate) > time.Duration(pm.Interval)*time.Second {
-			if err := pm.GetHealthStatus(pclient); err != nil {
-				nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
-				continue
-			}
-			nodestat.Error = ""
-			nodestat.LastUpdate = time.Now()
+		if err := pm.GetHealthStatus(pclient); err != nil {
+			nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
+			continue
 		}
+		nodestat.Error = ""
 	}
 }
 
-// GetHealthStatusForUnknownVersions polls only peers whose RepmgrVersion is
-// empty — meaning they are running an old repman that doesn't push health
-// fields to clusterstate.json. Peers with a known version get their health
-// from peer.json (populated by the BO from clusters_state) and don't need
-// direct HTTP polling.
-func (pm *PeerManager) GetHealthStatusForUnknownVersions() {
-	pm.mu.RLock()
-	// Collect URLs of peers with unknown version
-	var unknownURLs []string
-	for _, pc := range pm.PeerClusters {
-		if pc.RepmgrVersion == "" && pc.ApiPublicUrl != "" && pc.ApiPublicUrl != pm.ApiURL {
-			unknownURLs = append(unknownURLs, pc.ApiPublicUrl)
-		}
-	}
-	pm.mu.RUnlock()
-
-	if len(unknownURLs) == 0 {
-		return
-	}
-
-	// Deduplicate URLs (multiple clusters on same instance)
-	seen := make(map[string]bool)
-	for _, url := range unknownURLs {
-		if seen[url] {
-			continue
-		}
-		seen[url] = true
-
-		nodestat, ok := pm.PeerURL[url]
-		if !ok {
-			continue
-		}
-
-		if !misc.IsValidPublicURL(url) {
-			nodestat.Error = "not a valid public URL"
-			continue
-		}
-
-		pclient, ok := pm.Clients[url]
-		if !ok {
-			pclient = pm.NewClient(url)
-			pm.Clients[url] = pclient
-		}
-
-		if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
-			if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
-				nodestat.Error = fmt.Sprintf("failed to login: %s", err)
-				continue
-			}
-		}
-
-		if time.Since(nodestat.LastUpdate) > time.Duration(pm.Interval)*time.Second {
-			if err := pm.GetHealthStatus(pclient); err != nil {
-				nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
-				continue
-			}
-			nodestat.Error = ""
-			nodestat.LastUpdate = time.Now()
-		}
-	}
-}
+// GetHealthStatusForUnknownVersions was removed: it polled every peer with an
+// empty RepmgrVersion across the whole catalog (for-sale clusters included),
+// with no ownership/relationship scope — an unscoped fan-out that broke the
+// marketplace invariant. All live polling now goes through
+// GetHealthStatusForActiveUsers (scoped to PeerUserClusters for connected
+// users). Version back-fill for peers you have a relationship to happens there;
+// for-sale catalog versions come from peer.json (BO), not direct polling.
+// See doc/implementation/peer/MARKETPLACE.md §6.
 
 func GetPeerHashID(pc *PeerCluster) string {
 	md5Hash := md5.New()

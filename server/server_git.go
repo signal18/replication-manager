@@ -1127,6 +1127,13 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 		repman.PeerManager.BatchUpdateClusters(PeerList, true)
 	}
 
+	// peer.json content changed: refresh health immediately, but through the
+	// server-driven, session-scoped dispatch (same call the two unchanged
+	// branches above make). This keeps instant-on-pull refresh while ensuring
+	// only PeerUserClusters for connected users are polled — never the for-sale
+	// catalog. See doc/implementation/peer/MARKETPLACE.md §6.
+	repman.dispatchPeerHealthPoll()
+
 	// Update state
 	repman.CheckSumConfig["peer"] = newHash
 

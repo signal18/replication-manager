@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -31,6 +32,27 @@ func NewPeerClient(baseURL string, timeout time.Duration) *PeerClient {
 	return &PeerClient{
 		client: &http.Client{
 			Timeout: timeout,
+			// Bounded transport so a single unresponsive peer can never
+			// accumulate connections. The marketplace fan-out once stranded
+			// ~6900 sockets against one dark peer; MaxConnsPerHost is the hard
+			// ceiling that makes that impossible regardless of how many polls
+			// fire. DialContext/handshake/response deadlines bound a peer that
+			// accepts TCP (e.g. behind HAProxy) but never answers.
+			// See doc/implementation/peer/MARKETPLACE.md §6.
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+				DialContext: (&net.Dialer{
+					Timeout:   5 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+				MaxConnsPerHost:       2,
+				MaxIdleConns:          10,
+				MaxIdleConnsPerHost:   1,
+				IdleConnTimeout:       30 * time.Second,
+				TLSHandshakeTimeout:   5 * time.Second,
+				ResponseHeaderTimeout: timeout,
+				ExpectContinueTimeout: 1 * time.Second,
+			},
 		},
 		baseURL: urlparse.String(),
 		headers: make(map[string]string),
