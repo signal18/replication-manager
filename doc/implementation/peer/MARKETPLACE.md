@@ -335,13 +335,21 @@ that traffic — a single dark peer in your own fleet must not accumulate connec
    success (the claim is advanced up-front, before the call). Previously a failure
    left `LastUpdate` untouched and login wasn't even gated, so a dark peer was re-hit
    every dispatch.
-3. **Correct map locking, no single-flight** (`peer.go`) — because the claim, the
-   `PeerURL`/`Clients` access, and `GetHealthStatus`'s `PeerClusters` update all hold
-   `pm.mu` (released before network I/O), overlapping timer + reload dispatches can no
-   longer race the maps (`BatchUpdateClusters` mutates them under the same lock). So
-   no whole-poll serialization is needed: **different** peers still poll in parallel;
-   only the **same** peer is deduplicated. The earlier `peerHealthBusy` single-flight
-   guard was dropped in favour of this finer-grained, correct-by-construction claim.
+3. **Correct locking** (`peer.go`) — the claim, the `PeerURL`/`Clients` access, and
+   `GetHealthStatus`'s `PeerClusters` update all hold `pm.mu` (released before network
+   I/O), so a poll goroutine never races `BatchUpdateClusters` (which mutates the same
+   maps under the same lock). `pollPeerHealth` also writes `nodestat.Error` under the
+   lock (via `setNodeError`) because the status API (`GetPeerNodesJSON`) reads those
+   fields — and `GetPeerNodesJSON` now marshals a value-copy **snapshot** taken under
+   the lock, never the live pointers. Dedup is per-peer (different peers still poll in
+   parallel; only the **same** peer is skipped), so no whole-poll serialization is
+   needed for correctness.
+4. **Coarse busy signal, kept for operators** (`server_peer.go`) —
+   `dispatchPeerHealthPoll` still self-guards on `peerHealthBusy` and holds it for the
+   whole poll, purely so the flag reflects "a poll is running." The timer raises
+   `GWARN013@peerhealth` when it finds a poll that hasn't finished within a cycle (a
+   slow/stuck poll — the signal that would have surfaced the original incident). This
+   is complementary to, not a replacement for, the per-peer claim.
 
 **Timing (why Fix 1 costs no delay):** periodic backstop dispatch every ~2 min
 (`counter%60` × `monitoring-ticker` 2s); per-node staleness gate

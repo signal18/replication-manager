@@ -260,10 +260,19 @@ func (pm *PeerManager) GetPeerNodeStatus() map[string]*PeerNodeStatus {
 	return pm.PeerURL
 }
 
-// GetUserClustersJSON returns a JSON string of all clusters assigned to a user.
+// GetPeerNodesJSON returns the peer node statuses as JSON. It marshals a value-copy
+// snapshot taken under the lock — never the live *PeerNodeStatus pointers — because
+// pollPeerHealth mutates Error/LastUpdate concurrently off the status-API path.
 func (pm *PeerManager) GetPeerNodesJSON() ([]byte, error) {
-	nodes := pm.GetPeerNodeStatus()
-	return json.MarshalIndent(nodes, "", "\t")
+	pm.mu.RLock()
+	snapshot := make(map[string]PeerNodeStatus, len(pm.PeerURL))
+	for url, ns := range pm.PeerURL {
+		if ns != nil {
+			snapshot[url] = *ns
+		}
+	}
+	pm.mu.RUnlock()
+	return json.MarshalIndent(snapshot, "", "\t")
 }
 
 // GetUserClustersJSON returns a JSON string of all clusters assigned to a user.
@@ -468,18 +477,28 @@ func (pm *PeerManager) pollPeerHealth(url string) {
 	}
 	pm.mu.Unlock()
 
-	// Network I/O outside the lock. Only this goroutine owns nodestat this Interval.
+	// Network I/O outside the lock. This goroutine owns the claim, but nodestat is
+	// also read by GetPeerNodesJSON (status API), so its fields are written under the
+	// lock via setNodeError, not raw.
 	if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
 		if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
-			nodestat.Error = fmt.Sprintf("failed to login: %s", err)
+			pm.setNodeError(nodestat, fmt.Sprintf("failed to login: %s", err))
 			return
 		}
 	}
 	if err := pm.GetHealthStatus(pclient); err != nil {
-		nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
+		pm.setNodeError(nodestat, fmt.Sprintf("failed to get health status: %s", err))
 		return
 	}
-	nodestat.Error = ""
+	pm.setNodeError(nodestat, "")
+}
+
+// setNodeError writes ns.Error under the lock. PeerNodeStatus pointers are read by
+// the status API (GetPeerNodesJSON), so field writes must be synchronized.
+func (pm *PeerManager) setNodeError(ns *PeerNodeStatus, errMsg string) {
+	pm.mu.Lock()
+	ns.Error = errMsg
+	pm.mu.Unlock()
 }
 
 func (pm *PeerManager) GetAllHealthStatus() {

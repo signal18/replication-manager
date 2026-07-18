@@ -3004,13 +3004,11 @@ func (repman *ReplicationManager) Run() error {
 			}
 
 			if repman.Conf.Cloud18 && !repman.Conf.Cloud18DisablePeers {
-				if repman.peerHealthBusy.CompareAndSwap(false, true) {
-					go func() {
-						defer repman.peerHealthBusy.Store(false)
-						repman.dispatchPeerHealthPoll()
-						repman.UpdateLocalPeer()
-					}()
-				} else {
+				// dispatchPeerHealthPoll self-guards on peerHealthBusy and runs the
+				// poll + UpdateLocalPeer in its own goroutine, holding the flag for the
+				// whole poll. A false return means a prior poll is still running (didn't
+				// finish within this cycle) — surface the slow/stuck-poll warning.
+				if !repman.dispatchPeerHealthPoll() {
 					repman.SetState("GWARN013@peerhealth", state.State{ErrType: "WARNING", ErrKey: "GWARN013", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN013"], "peer health poll"), ErrFrom: "REPMAN"})
 				}
 			}
