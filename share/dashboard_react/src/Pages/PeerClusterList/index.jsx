@@ -476,10 +476,10 @@ function PeerClusterList({ onLogin, mode }) {
     const amount = promo > 0 ? (cost * (100 - promo)) / 100 : cost
     if (promo > 0) {
       return (
-        <HStack spacing='1'>
-          <Text as='span' textColor='red.500' textDecoration='line-through'>{cost.toFixed(2)}</Text>
+        <VStack align='start' spacing='0'>
+          <Text as='span' textColor='red.500' textDecoration='line-through' fontSize='sm'>{cost.toFixed(2)} {currency}/mo</Text>
           <Text as='span' fontWeight='bold'>{amount.toFixed(2)} {currency}/mo</Text>
-        </HStack>
+        </VStack>
       )
     }
     return <Text>{cost.toFixed(2)} {currency}/mo</Text>
@@ -585,9 +585,19 @@ function PeerClusterList({ onLogin, mode }) {
     ].filter(Boolean).join(' ')
     if (disk) lines.push(disk)
     if (has(row['cloud18-infra-public-bandwidth'])) lines.push(`${row['cloud18-infra-public-bandwidth'] / 1024}Gbps public`)
-    const loc = [row['cloud18-infra-data-centers'], row['cloud18-infra-geo-localizations']].filter(Boolean).join(' · ')
-    if (loc) lines.push(loc)
+    // Data center(s); geo-localization ("FR") lives in the Zone column, not here.
+    if (row['cloud18-infra-data-centers']) lines.push(row['cloud18-infra-data-centers'])
+    // Infrastructure: orchestrator + platform (e.g. "opensvc <platform>").
+    const infra = [row['prov-orchestrator'], row['cloud18-platform-description']].filter(Boolean).join(' ')
+    if (infra) lines.push(infra)
     return lines
+  }
+  // A for-sale offer is "qualified" when it carries what a buyer needs to decide: a
+  // price and the core hardware spec (cores + memory + disk). Offers missing those are
+  // still shown, but grouped into a separate "Unqualified" card below the catalog.
+  const isQualified = (row) => {
+    const cost = (row['cloud18-monthly-infra-cost'] * 1) + (row['cloud18-monthly-license-cost'] * 1) + (row['cloud18-monthly-sysops-cost'] * 1) + (row['cloud18-monthly-dbops-cost'] * 1)
+    return cost > 0 && has(row['prov-db-cpu-cores']) && has(row['prov-db-memory']) && has(row['prov-db-disk-size'])
   }
   // Service-level commitments (hours), one per line.
   const serviceLines = (row) => {
@@ -616,7 +626,7 @@ function PeerClusterList({ onLogin, mode }) {
     columnHelper.accessor((row) => row['prov-service-plan'], { id: 'plan', header: 'Plan', cell: (info) => info.getValue() || '—' }),
     columnHelper.accessor((row) => row, { id: 'price', header: 'Price', enableSorting: false, cell: (info) => priceCell(info.row.original) }),
     columnHelper.accessor((row) => partnerOf(row), { id: 'partner', header: 'Partner', cell: (info) => info.getValue() || '—' }),
-    columnHelper.accessor((row) => row['cloud18-sub-domain-zone'], { id: 'zone', header: 'Zone', cell: (info) => info.getValue() || '—' }),
+    columnHelper.accessor((row) => row['cloud18-infra-geo-localizations'], { id: 'zone', header: 'Zone', cell: (info) => info.getValue() || '—' }),
     columnHelper.accessor((row) => infraLines(row).join(' · '), { id: 'infra', header: 'Infra', enableSorting: false, cell: (info) => multiLineCell(infraLines(info.row.original)) }),
     columnHelper.accessor((row) => serviceLines(row).join(' · '), { id: 'service', header: 'Service', enableSorting: false, cell: (info) => multiLineCell(serviceLines(info.row.original)) }),
     healthyCol,
@@ -643,6 +653,19 @@ function PeerClusterList({ onLogin, mode }) {
       isProvisioned: fc.isProvision,
     }
   }), [clusters, peerDetails])
+
+  // In the Sale view, split the catalog into qualified offers (a buyer can act on)
+  // and unqualified ones (missing price or hardware spec) — the latter go on a
+  // separate card so they don't pollute the marketplace. Monitor view is not split.
+  const qualifiedClusters = contentType === 'sale' ? (enrichedClusters || []).filter(isQualified) : enrichedClusters
+  const unqualifiedClusters = contentType === 'sale' ? (enrichedClusters || []).filter((c) => !isQualified(c)) : []
+  const primaryHeading = `${mode === 'shared' ? 'Clusters For Sale' : 'Clusters Peer'} — ${qualifiedClusters?.length || 0} cluster${(qualifiedClusters?.length || 0) !== 1 ? 's' : ''}`
+  const saleSections = [
+    { key: 'primary', heading: primaryHeading, list: qualifiedClusters },
+    ...(unqualifiedClusters.length > 0
+      ? [{ key: 'unqualified', heading: `Unqualified — ${unqualifiedClusters.length} cluster${unqualifiedClusters.length !== 1 ? 's' : ''} (missing price or hardware spec)`, list: unqualifiedClusters }]
+      : []),
+  ]
 
   // Colors for the filter panel based on color mode
   const filterPanelBg = useColorModeValue('gray.50', 'gray.800')
@@ -785,9 +808,11 @@ function PeerClusterList({ onLogin, mode }) {
         {!loading && clusters?.length === 0 ? (
           <NotFound text={mode === 'shared' ? 'No shared peer cluster found!' : 'No peer cluster found!'} />
         ) : (
+          saleSections.map((section, si) => (
           <AccordionComponent
-            heading={`${mode === 'shared' ? 'Clusters For Sale' : 'Clusters Peer'} — ${clusters.length} cluster${clusters.length !== 1 ? 's' : ''}`}
-            headerActions={
+            key={section.key}
+            heading={section.heading}
+            headerActions={si !== 0 ? null : (
               <HStack spacing="2">
                 {/* Content: Monitor (operational) vs Sale (offer) */}
                 <ButtonGroup size='sm' isAttached variant='outline'>
@@ -813,11 +838,11 @@ function PeerClusterList({ onLogin, mode }) {
                   />
                 )}
               </HStack>
-            }
+            )}
             body={
             displayMode === 'grid' ? (
             <Flex className={styles.clusterList}>
-              {enrichedClusters?.map((clusterItem) => {
+              {section.list?.map((clusterItem) => {
                 const headerText = `${clusterItem['cluster-name']}`
                 const domain = `${clusterItem['cloud18-domain']}`
                 const subDomain = `${clusterItem['cloud18-sub-domain']}`
@@ -932,10 +957,11 @@ function PeerClusterList({ onLogin, mode }) {
               })}
             </Flex>
             ) : (
-              <DataTable data={enrichedClusters} columns={contentType === 'sale' ? offerColumns : operationalColumns} cellValueAlign={contentType === 'sale' ? 'left' : 'center'} />
+              <DataTable data={section.list} columns={contentType === 'sale' ? offerColumns : operationalColumns} cellValueAlign={contentType === 'sale' ? 'left' : 'center'} />
             )
             }
           />
+          ))
         )}
       </Box>
       {isTermsModalOpen && <TermsModal cluster={item} terms={finalTerms} isOpen={isTermsModalOpen} closeModal={closeTermsModal} onAgreeTerms={handleSubscribeModal} />}
