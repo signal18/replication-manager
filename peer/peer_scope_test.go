@@ -1,6 +1,9 @@
 package peer
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // The marketplace invariant (MARKETPLACE.md §6): live polling is scoped to
 // PeerUserClusters for the registering user + active-session users. A for-sale
@@ -131,5 +134,39 @@ func TestReloadUsersPendingSaleWorkflowBecomesPollable(t *testing.T) {
 	// ...and into my pollable set (I'm watching it become mine).
 	if urls := pm.relevantPeerURLs("me@sig", nil); !urls["https://seller.example.com"] {
 		t.Fatalf("a cluster I have a pending role on must be pollable, got %v", urls)
+	}
+}
+
+// Own/local clusters (hosted by THIS instance: api-public-url == ours) already
+// appear in the LOCAL cluster list, so they must be filtered out of BOTH the peer
+// (GetUserClusters) and the for-sale (GetSaleClustersJSON) views to avoid duplicates.
+// URL comparison is normalized (scheme/case/trailing-slash insensitive).
+func TestPeerViewsExcludeOwnClusters(t *testing.T) {
+	pm := NewPeerManager(30)
+	pm.SetApiPublicURL("https://me.example.com")
+
+	// Mine: same public URL as this instance (note trailing slash + scheme differ).
+	mine := &PeerCluster{ApiPublicUrl: "http://ME.example.com/", ClusterName: "cl-local"}
+	// A partner's cluster delegated to me.
+	partner := &PeerCluster{ApiPublicUrl: "https://partner.example.com", ClusterName: "cl-deleg"}
+	pm.PeerUserClusters["me@sig"] = map[string]*PeerCluster{
+		"h-mine":    mine,
+		"h-partner": partner,
+	}
+
+	got := pm.GetUserClusters("me@sig")
+	if len(got) != 1 || got[0].ClusterName != "cl-deleg" {
+		t.Fatalf("peer view must exclude own cluster, keep partner's; got %+v", got)
+	}
+
+	// For-sale: my own shared cluster must not be listed to myself.
+	pm.PeerForSale["h-mine"] = mine
+	pm.PeerForSale["h-sale"] = &PeerCluster{ApiPublicUrl: "https://seller.example.com", ClusterName: "cl-sale"}
+	saleJSON, err := pm.GetSaleClustersJSON()
+	if err != nil {
+		t.Fatalf("GetSaleClustersJSON: %v", err)
+	}
+	if s := string(saleJSON); strings.Contains(s, "cl-local") || !strings.Contains(s, "cl-sale") {
+		t.Fatalf("for-sale view must exclude own cluster, keep seller's; got %s", s)
 	}
 }

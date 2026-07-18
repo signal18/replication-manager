@@ -238,7 +238,26 @@ func (pm *PeerManager) GetCluster(hashID string) (*PeerCluster, bool) {
 	return cluster, exists
 }
 
-// GetUserClusters retrieves all clusters a user has access to.
+// normPublicURL normalizes an api-public-url for identity comparison: lowercased,
+// scheme-stripped, no trailing slash. So "https://Host/" and "host" compare equal.
+func normPublicURL(u string) string {
+	u = strings.TrimSpace(strings.ToLower(u))
+	u = strings.TrimPrefix(u, "https://")
+	u = strings.TrimPrefix(u, "http://")
+	return strings.TrimRight(u, "/")
+}
+
+// isOwnCluster reports whether a peer cluster is hosted by THIS repman instance
+// (its api-public-url matches ours). Own clusters already appear in the LOCAL
+// cluster list, so they must be excluded from the peer / for-sale views — otherwise
+// they show up twice. Assumes the caller holds pm.mu (read or write); pm.ApiURL is
+// set once at startup and never mutated afterwards.
+func (pm *PeerManager) isOwnCluster(pc *PeerCluster) bool {
+	return pc != nil && pm.ApiURL != "" && normPublicURL(pc.ApiPublicUrl) == normPublicURL(pm.ApiURL)
+}
+
+// GetUserClusters retrieves all clusters a user has access to, excluding clusters
+// this instance hosts itself (they are already in the local cluster list).
 func (pm *PeerManager) GetUserClusters(username string) []*PeerCluster {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
@@ -246,6 +265,9 @@ func (pm *PeerManager) GetUserClusters(username string) []*PeerCluster {
 	clusters := []*PeerCluster{}
 	if pcs, ok := pm.PeerUserClusters[username]; ok {
 		for _, pc := range pcs {
+			if pm.isOwnCluster(pc) {
+				continue
+			}
 			clusters = append(clusters, pc)
 		}
 	}
@@ -288,6 +310,9 @@ func (pm *PeerManager) GetSaleClustersJSON() ([]byte, error) {
 
 	clusters := make([]*PeerCluster, 0, len(pm.PeerForSale))
 	for _, pc := range pm.PeerForSale {
+		if pm.isOwnCluster(pc) {
+			continue
+		}
 		clusters = append(clusters, pc)
 	}
 
