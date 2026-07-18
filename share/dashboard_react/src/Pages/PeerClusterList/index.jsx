@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { getClusterPeers, getClusterForSale, getClusterPeerNodes, getTermsData } from '../../redux/globalClustersSlice'
-import { Badge, Box, Flex, HStack, Link, Text, Wrap, IconButton, useColorModeValue, Collapse, Divider, Tooltip, ButtonGroup, Button } from '@chakra-ui/react'
+import { Badge, Box, Flex, HStack, VStack, Link, Text, Wrap, IconButton, useColorModeValue, Collapse, Divider, Tooltip, ButtonGroup, Button } from '@chakra-ui/react'
 import { FaCloud } from 'react-icons/fa'
 import NotFound from '../../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
@@ -139,7 +139,9 @@ function PeerClusterList({ onLogin, mode }) {
   // Two table views, one visible via toggle: 'operational' (local-like) and
   // 'offer' (infra + commercial — what you get for the price). URI + Active columns
   // appear in both as the transparency anchor.
-  const [contentType, setContentType] = useState('monitor') // 'monitor' (operational) | 'sale' (offer)
+  // Default to the Sale view: this page is primarily a marketplace — buyers come to
+  // see what hardware they can acquire, not to monitor. Monitor is one toggle away.
+  const [contentType, setContentType] = useState('sale') // 'sale' (offer) | 'monitor' (operational)
   const [displayMode, setDisplayMode] = useState('table')    // 'table' | 'grid' (cards)
   // Option (a): full cluster data pulled directly from each reachable peer's
   // /api/clusters (using the per-peer SSO token the login-upgrade stored), keyed
@@ -562,45 +564,62 @@ function PeerClusterList({ onLogin, mode }) {
     uriCol,
   ], [peerNodes, mode])
 
-  // Compact infra: a short inline summary, full spec sheet on hover — keeps the
-  // Offer table narrow instead of a dozen spec columns.
-  const infraSummary = (row) => {
-    const parts = []
-    if (row['prov-db-cpu-cores']) parts.push(`${row['prov-db-cpu-cores']} core${row['prov-db-cpu-cores'] * 1 === 1 ? '' : 's'}`)
-    if (row['prov-db-memory']) parts.push(`${row['prov-db-memory'] / 1024}GB`)
-    if (row['prov-db-disk-size']) parts.push(`${row['prov-db-disk-size']}GB disk`)
-    if (row['cloud18-infra-cpu-model']) parts.push(row['cloud18-infra-cpu-model'])
-    return parts
+  // has(): a peer.json numeric/string field is present and meaningful (not undefined,
+  // empty, or "0"). The BO encodes these as strings, so guard both.
+  const has = (v) => v !== undefined && v !== null && v !== '' && v * 1 !== 0
+  // Infra spec packed into ONE column, one spec per line, so a buyer reads exactly
+  // what the hardware is: "16 cores AMD EPYC 7702 3.4GHz / 128GB RAM / 600GB disk
+  // 330 iops / 10Gbps public / <data centers, geo>". Left-aligned (see cellValueAlign).
+  const infraLines = (row) => {
+    const lines = []
+    const cpu = [
+      has(row['prov-db-cpu-cores']) ? `${row['prov-db-cpu-cores']} core${row['prov-db-cpu-cores'] * 1 === 1 ? '' : 's'}` : '',
+      row['cloud18-infra-cpu-model'],
+      row['cloud18-infra-cpu-freq'],
+    ].filter(Boolean).join(' ')
+    if (cpu) lines.push(cpu)
+    if (has(row['prov-db-memory'])) lines.push(`${row['prov-db-memory'] / 1024}GB RAM`)
+    const disk = [
+      has(row['prov-db-disk-size']) ? `${row['prov-db-disk-size']}GB disk` : '',
+      has(row['prov-db-disk-iops']) ? `${row['prov-db-disk-iops']} iops` : '',
+    ].filter(Boolean).join(' ')
+    if (disk) lines.push(disk)
+    if (has(row['cloud18-infra-public-bandwidth'])) lines.push(`${row['cloud18-infra-public-bandwidth'] / 1024}Gbps public`)
+    const loc = [row['cloud18-infra-data-centers'], row['cloud18-infra-geo-localizations']].filter(Boolean).join(' · ')
+    if (loc) lines.push(loc)
+    return lines
   }
-  const infraDetail = (row) => (
-    [
-      ['CPU cores', row['prov-db-cpu-cores']],
-      ['Memory', row['prov-db-memory'] ? `${row['prov-db-memory'] / 1024}GB` : ''],
-      ['Disk', row['prov-db-disk-size'] ? `${row['prov-db-disk-size']}GB` : ''],
-      ['Disk IOPS', row['prov-db-disk-iops']],
-      ['CPU model', row['cloud18-infra-cpu-model']],
-      ['CPU freq', row['cloud18-infra-cpu-freq']],
-      ['Data centers', row['cloud18-infra-data-centers']],
-      ['Geo', row['cloud18-infra-geo-localizations']],
-      ['Bandwidth', row['cloud18-infra-public-bandwidth'] ? `${row['cloud18-infra-public-bandwidth'] / 1024}Gbps` : ''],
-      ['Certifications', row['cloud18-infra-certifications']],
-    ].filter(([, v]) => v !== undefined && v !== '' && v !== null).map(([k, v]) => `${k}: ${v}`).join('\n')
-  )
+  // Service-level commitments (hours), one per line.
+  const serviceLines = (row) => {
+    const lines = []
+    if (has(row['cloud18-sla-response-time'])) lines.push(`Response ${row['cloud18-sla-response-time']}h`)
+    if (has(row['cloud18-sla-repair-time'])) lines.push(`Repair ${row['cloud18-sla-repair-time']}h`)
+    if (has(row['cloud18-sla-provision-time'])) lines.push(`Provision ${row['cloud18-sla-provision-time']}h`)
+    return lines
+  }
+  const multiLineCell = (lines) => {
+    if (!lines || lines.length === 0) return <Text>—</Text>
+    return (
+      <VStack align='start' spacing='0.5'>
+        {lines.map((l, i) => <Text key={i} fontSize='sm'>{l}</Text>)}
+      </VStack>
+    )
+  }
+  // Partner = the selling org (cloud18 domain / sub-domain hierarchy).
+  const partnerOf = (row) => [row['cloud18-domain'], row['cloud18-sub-domain']].filter(Boolean).join(' / ')
 
-  // Offer view — infra + commercial together: what you get for the price.
+  // Offer view — a buyer's spec sheet: what you acquire and what it costs. Order:
+  // Cluster · Plan · Price · Partner · Zone · Infra (multi-line) · Service (multi-line)
+  // · Healthy (de-emphasised — an unprovisioned offer is still buyable) · Peer.
   const offerColumns = useMemo(() => [
-    clusterCol, healthyCol,
+    clusterCol,
     columnHelper.accessor((row) => row['prov-service-plan'], { id: 'plan', header: 'Plan', cell: (info) => info.getValue() || '—' }),
     columnHelper.accessor((row) => row, { id: 'price', header: 'Price', enableSorting: false, cell: (info) => priceCell(info.row.original) }),
-    columnHelper.accessor((row) => infraSummary(row).join(' · '), {
-      id: 'infra', header: 'Infra',
-      cell: (info) => {
-        const row = info.row.original
-        const parts = infraSummary(row)
-        if (parts.length === 0) return <Text>—</Text>
-        return (<Tooltip label={infraDetail(row)} placement='top' whiteSpace='pre-line'><Text fontSize='sm'>{parts.join(' · ')}</Text></Tooltip>)
-      }
-    }),
+    columnHelper.accessor((row) => partnerOf(row), { id: 'partner', header: 'Partner', cell: (info) => info.getValue() || '—' }),
+    columnHelper.accessor((row) => row['cloud18-sub-domain-zone'], { id: 'zone', header: 'Zone', cell: (info) => info.getValue() || '—' }),
+    columnHelper.accessor((row) => infraLines(row).join(' · '), { id: 'infra', header: 'Infra', enableSorting: false, cell: (info) => multiLineCell(infraLines(info.row.original)) }),
+    columnHelper.accessor((row) => serviceLines(row).join(' · '), { id: 'service', header: 'Service', enableSorting: false, cell: (info) => multiLineCell(serviceLines(info.row.original)) }),
+    healthyCol,
     uriCol,
   ], [peerNodes, mode])
 
@@ -913,7 +932,7 @@ function PeerClusterList({ onLogin, mode }) {
               })}
             </Flex>
             ) : (
-              <DataTable data={enrichedClusters} columns={contentType === 'sale' ? offerColumns : operationalColumns} />
+              <DataTable data={enrichedClusters} columns={contentType === 'sale' ? offerColumns : operationalColumns} cellValueAlign={contentType === 'sale' ? 'left' : 'center'} />
             )
             }
           />
