@@ -21,6 +21,7 @@ import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
 import SearchBox from '../../components/SearchBox'
 import Dropdown from '../../components/Dropdown'
 import { getApi, getTokenByBaseURL } from '../../services/apiHelper'
+import AccordionComponent from '../../components/AccordionComponent'
 
 const columnHelper = createColumnHelper()
 
@@ -765,12 +766,9 @@ function PeerClusterList({ onLogin, mode }) {
         {!loading && clusters?.length === 0 ? (
           <NotFound text={mode === 'shared' ? 'No shared peer cluster found!' : 'No peer cluster found!'} />
         ) : (
-          <>
-            <Flex justifyContent="space-between" alignItems="center" mb={4}>
-              <Text fontSize="lg" fontWeight="bold">
-                Showing {clusters.length} cluster{clusters.length !== 1 ? 's' : ''}
-              </Text>
-
+          <AccordionComponent
+            heading={`${mode === 'shared' ? 'Clusters For Sale' : 'Clusters Peer'} — ${clusters.length} cluster${clusters.length !== 1 ? 's' : ''}`}
+            headerActions={
               <HStack spacing="2">
                 {/* Content: Monitor (operational) vs Sale (offer) */}
                 <ButtonGroup size='sm' isAttached variant='outline'>
@@ -796,9 +794,9 @@ function PeerClusterList({ onLogin, mode }) {
                   />
                 )}
               </HStack>
-            </Flex>
-
-            {displayMode === 'grid' ? (
+            }
+            body={
+            displayMode === 'grid' ? (
             <Flex className={styles.clusterList}>
               {enrichedClusters?.map((clusterItem) => {
                 const headerText = `${clusterItem['cluster-name']}`
@@ -916,8 +914,9 @@ function PeerClusterList({ onLogin, mode }) {
             </Flex>
             ) : (
               <DataTable data={enrichedClusters} columns={contentType === 'sale' ? offerColumns : operationalColumns} />
-            )}
-          </>
+            )
+            }
+          />
         )}
       </Box>
       {isTermsModalOpen && <TermsModal cluster={item} terms={finalTerms} isOpen={isTermsModalOpen} closeModal={closeTermsModal} onAgreeTerms={handleSubscribeModal} />}
