@@ -329,40 +329,24 @@ function PeerClusterList({ onLogin, mode }) {
     })
   };
 
-  // Function to get status icon and tooltip text
+  // Status icon for the card header. Health-first: a cluster is green when it's up
+  // and failable, regardless of isProvisioned (the BO peer.json often reports
+  // isProvisioned=false for shared clusters even when they're running). Only
+  // "unknown" when the peer carries no health fields at all. Mirrors healthCell.
   const getStatusIcon = (clusterItem) => {
-    const isUnknown = clusterItem?.lastUpdate === "0001-01-01T00:00:00Z"
-    const isHealthy = !clusterItem?.isDown && !clusterItem?.isMasterDown && clusterItem?.isFailable
-    const isProvisioned = clusterItem?.isProvisioned
-
-    if (isUnknown) {
-      return {
-        icon: HiQuestionMarkCircle,
-        color: 'gray.400',
-        tooltip: 'Unknown - Status cannot be determined'
-      }
+    if (isUnknown(clusterItem)) {
+      return { icon: HiQuestionMarkCircle, color: 'gray.400', tooltip: 'Unknown — no health reported by peer' }
     }
-
-    if (!isProvisioned || !isHealthy) {
-      return {
-        icon: 'circle',
-        color: 'red.500',
-        tooltip: `${!isProvisioned ? 'Not Provisioned' : ''}${!isProvisioned && !isHealthy ? ' & ' : ''}${!isHealthy ? 'Not Healthy' : ''}`
-      }
+    if (clusterItem?.isDown || clusterItem?.isMasterDown) {
+      return { icon: 'circle', color: 'red.500', tooltip: clusterItem?.isMasterDown ? 'Master down' : 'Down' }
     }
-
-    if (isProvisioned && !isHealthy) {
-      return {
-        icon: 'circle',
-        color: 'orange.500',
-        tooltip: 'Provisioned but Not Healthy'
-      }
+    if (!clusterItem?.isFailable) {
+      return { icon: 'circle', color: 'orange.500', tooltip: 'Not failable (blocker)' }
     }
-
     return {
       icon: 'circle',
       color: 'green.500',
-      tooltip: 'Healthy & Provisioned'
+      tooltip: clusterItem?.isProvisioned ? 'Healthy & provisioned' : 'Healthy (provisioning not reported by peer)'
     }
   }
 
@@ -417,10 +401,14 @@ function PeerClusterList({ onLogin, mode }) {
       : { label: 'Idle', colorScheme: 'orange', tooltip: `Last connection: ${lastStr}` }
   }
 
-  // Status/hardware fields are only present when advertised (for-sale listing) or
-  // once we've actually polled a delegated peer — a plain shared cluster may carry
-  // none of them, so every cell degrades to "—".
-  const isUnknown = (row) => !row?.lastUpdate || row?.lastUpdate === '0001-01-01T00:00:00Z'
+  // Health is "unknown" only when the peer carries NO health fields at all (e.g. an
+  // out-of-cloud18 shared cluster with no metadata). Do NOT gate on lastUpdate: the
+  // BO peer.json reports isDown/isMasterDown/isFailable/isProvisioned but NOT
+  // lastUpdate, so gating on it wrongly blanks every peer to "—". lastUpdate is only
+  // set by a direct poll; the live "Active" column uses /api/peers for that instead.
+  const isUnknown = (row) =>
+    row?.isFailable === undefined && row?.isDown === undefined &&
+    row?.isMasterDown === undefined && row?.isProvisioned === undefined
 
   const healthCell = (row) => {
     if (isUnknown(row)) return <Text>—</Text>
