@@ -810,8 +810,8 @@ function PeerClusterList({ onLogin, mode }) {
           <NotFound text={mode === 'shared' ? 'No shared peer cluster found!' : 'No peer cluster found!'} />
         ) : (
           saleSections.map((section, si) => (
+          <Box key={section.key} mt={si === 0 ? 0 : 8}>
           <AccordionComponent
-            key={section.key}
             heading={section.heading}
             headerActions={si !== 0 ? null : (
               <HStack spacing="2">
@@ -962,6 +962,7 @@ function PeerClusterList({ onLogin, mode }) {
             )
             }
           />
+          </Box>
           ))
         )}
       </Box>
