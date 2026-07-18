@@ -238,34 +238,27 @@ func (pm *PeerManager) GetCluster(hashID string) (*PeerCluster, bool) {
 	return cluster, exists
 }
 
-// normPublicURL normalizes an api-public-url for identity comparison: lowercased,
-// scheme-stripped, no trailing slash. So "https://Host/" and "host" compare equal.
-func normPublicURL(u string) string {
-	u = strings.TrimSpace(strings.ToLower(u))
-	u = strings.TrimPrefix(u, "https://")
-	u = strings.TrimPrefix(u, "http://")
-	return strings.TrimRight(u, "/")
-}
-
-// isOwnCluster reports whether a peer cluster is hosted by THIS repman instance
-// (its api-public-url matches ours). Own clusters already appear in the LOCAL
-// cluster list, so they must be excluded from the peer / for-sale views — otherwise
-// they show up twice. Assumes the caller holds pm.mu (read or write); pm.ApiURL is
-// set once at startup and never mutated afterwards.
-func (pm *PeerManager) isOwnCluster(pc *PeerCluster) bool {
-	return pc != nil && pm.ApiURL != "" && normPublicURL(pc.ApiPublicUrl) == normPublicURL(pm.ApiURL)
+// isOwnCluster reports whether a peer cluster is one THIS instance manages locally —
+// its name is in localNames, the live local cluster list. Such clusters already appear
+// in the LOCAL cluster view, so they are excluded from the peer / for-sale views to
+// avoid showing them twice. Keying on the local cluster NAME (not api-public-url) is
+// deliberate: a DR standby shares its primary's api-public-url but runs a different
+// (often empty) local cluster set, so a url match would wrongly hide the primary's
+// clusters from the DR. An empty/nil localNames set excludes nothing.
+func isOwnCluster(pc *PeerCluster, localNames map[string]bool) bool {
+	return pc != nil && localNames[pc.ClusterName]
 }
 
 // GetUserClusters retrieves all clusters a user has access to, excluding clusters
-// this instance hosts itself (they are already in the local cluster list).
-func (pm *PeerManager) GetUserClusters(username string) []*PeerCluster {
+// this instance manages locally (localNames) — they are already in the local list.
+func (pm *PeerManager) GetUserClusters(username string, localNames map[string]bool) []*PeerCluster {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
 	clusters := []*PeerCluster{}
 	if pcs, ok := pm.PeerUserClusters[username]; ok {
 		for _, pc := range pcs {
-			if pm.isOwnCluster(pc) {
+			if isOwnCluster(pc, localNames) {
 				continue
 			}
 			clusters = append(clusters, pc)
@@ -297,22 +290,22 @@ func (pm *PeerManager) GetPeerNodesJSON() ([]byte, error) {
 	return json.MarshalIndent(snapshot, "", "\t")
 }
 
-// GetUserClustersJSON returns a JSON string of all clusters assigned to a user.
-func (pm *PeerManager) GetUserClustersJSON(username string) ([]byte, error) {
-	clusters := pm.GetUserClusters(username)
+// GetUserClustersJSON returns a JSON string of all clusters assigned to a user,
+// excluding this instance's own local clusters (localNames).
+func (pm *PeerManager) GetUserClustersJSON(username string, localNames map[string]bool) ([]byte, error) {
+	clusters := pm.GetUserClusters(username, localNames)
 	return json.MarshalIndent(clusters, "", "\t")
 }
 
-// GetSaleClustersJSON returns a JSON string of all clusters available for sale.
+// GetSaleClustersJSON returns a JSON string of all clusters available for sale. Unlike
+// the peer view, the for-sale marketplace is NOT filtered by local ownership — a seller
+// browses the full catalog, including any of their own offers.
 func (pm *PeerManager) GetSaleClustersJSON() ([]byte, error) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
 	clusters := make([]*PeerCluster, 0, len(pm.PeerForSale))
 	for _, pc := range pm.PeerForSale {
-		if pm.isOwnCluster(pc) {
-			continue
-		}
 		clusters = append(clusters, pc)
 	}
 

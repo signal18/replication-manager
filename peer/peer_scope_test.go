@@ -137,36 +137,61 @@ func TestReloadUsersPendingSaleWorkflowBecomesPollable(t *testing.T) {
 	}
 }
 
-// Own/local clusters (hosted by THIS instance: api-public-url == ours) already
-// appear in the LOCAL cluster list, so they must be filtered out of BOTH the peer
-// (GetUserClusters) and the for-sale (GetSaleClustersJSON) views to avoid duplicates.
-// URL comparison is normalized (scheme/case/trailing-slash insensitive).
-func TestPeerViewsExcludeOwnClusters(t *testing.T) {
+// Local clusters — those THIS instance manages locally (name in localNames) — are
+// excluded from the PEER view for the admin, who already sees them in the local
+// dashboard. Exclusion keys on the local cluster NAME, not api-public-url. The
+// for-sale view is NEVER filtered this way. A nil/empty localNames excludes nothing.
+func TestPeerViewExcludesLocalForAdmin(t *testing.T) {
 	pm := NewPeerManager(30)
 	pm.SetApiPublicURL("https://me.example.com")
 
-	// Mine: same public URL as this instance (note trailing slash + scheme differ).
-	mine := &PeerCluster{ApiPublicUrl: "http://ME.example.com/", ClusterName: "cl-local"}
-	// A partner's cluster delegated to me.
+	// cl-local is one I run locally; cl-deleg is a partner's cluster delegated to me.
+	mine := &PeerCluster{ApiPublicUrl: "https://me.example.com", ClusterName: "cl-local"}
 	partner := &PeerCluster{ApiPublicUrl: "https://partner.example.com", ClusterName: "cl-deleg"}
 	pm.PeerUserClusters["me@sig"] = map[string]*PeerCluster{
 		"h-mine":    mine,
 		"h-partner": partner,
 	}
+	local := map[string]bool{"cl-local": true}
 
-	got := pm.GetUserClusters("me@sig")
+	// Admin: local clusters are excluded (localNames set).
+	got := pm.GetUserClusters("me@sig", local)
 	if len(got) != 1 || got[0].ClusterName != "cl-deleg" {
-		t.Fatalf("peer view must exclude own cluster, keep partner's; got %+v", got)
+		t.Fatalf("admin peer view must exclude own local cluster, keep partner's; got %+v", got)
 	}
 
-	// For-sale: my own shared cluster must not be listed to myself.
+	// Non-admin SSO user: no exclusion (nil set) — a shared local cluster stays visible.
+	got = pm.GetUserClusters("me@sig", nil)
+	if len(got) != 2 {
+		t.Fatalf("non-admin peer view must exclude nothing; got %+v", got)
+	}
+
+	// For-sale is never ownership-filtered — every offer is listed.
 	pm.PeerForSale["h-mine"] = mine
 	pm.PeerForSale["h-sale"] = &PeerCluster{ApiPublicUrl: "https://seller.example.com", ClusterName: "cl-sale"}
 	saleJSON, err := pm.GetSaleClustersJSON()
 	if err != nil {
 		t.Fatalf("GetSaleClustersJSON: %v", err)
 	}
-	if s := string(saleJSON); strings.Contains(s, "cl-local") || !strings.Contains(s, "cl-sale") {
-		t.Fatalf("for-sale view must exclude own cluster, keep seller's; got %s", s)
+	if s := string(saleJSON); !strings.Contains(s, "cl-local") || !strings.Contains(s, "cl-sale") {
+		t.Fatalf("for-sale view must list ALL offers incl. own; got %s", s)
+	}
+}
+
+// A DR standby shares its primary's api-public-url but runs a different (often empty)
+// local cluster set. Exclusion keys on the local NAME set — with no local clusters,
+// a cluster carrying our api-public-url must STILL be visible in the admin peer view
+// (regression: the down clusters vanished on the DR because they shared its api-url).
+func TestDRSharedApiUrlDoesNotHideClusters(t *testing.T) {
+	pm := NewPeerManager(30)
+	pm.SetApiPublicURL("https://dbaas-fr-2.signal18.io") // DR configured with primary's url
+
+	// Published by the primary, same api-public-url as the DR, but NOT run locally here.
+	down := &PeerCluster{ApiPublicUrl: "https://dbaas-fr-2.signal18.io", ClusterName: "goodlands", IsDown: true}
+	pm.PeerUserClusters["me@sig"] = map[string]*PeerCluster{"h1": down}
+
+	got := pm.GetUserClusters("me@sig", map[string]bool{}) // DR has no live local clusters
+	if len(got) != 1 || got[0].ClusterName != "goodlands" {
+		t.Fatalf("a cluster sharing the DR api-url but not run locally must stay visible; got %+v", got)
 	}
 }

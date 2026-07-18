@@ -1555,6 +1555,22 @@ func (repman *ReplicationManager) handlerMuxPeerNodes(w http.ResponseWriter, r *
 	w.Write(cl)
 }
 
+// localClusterNames returns the set of cluster names this instance manages locally
+// (its live ClusterList). Used to exclude own clusters from the peer / for-sale views
+// so they are not listed twice (they already appear in the local cluster list). On a
+// DR standby with no active local clusters this is empty, so nothing is excluded —
+// which is correct: a DR shares its primary's api-public-url but does not run its
+// clusters, so those must still be visible as peers.
+func (repman *ReplicationManager) localClusterNames() map[string]bool {
+	names := make(map[string]bool, len(repman.ClusterList))
+	for _, n := range repman.ClusterList {
+		if n != "" {
+			names[n] = true
+		}
+	}
+	return names
+}
+
 // handlerMuxPeerClusters handles the request to retrieve peer clusters for a user.
 // @Summary Retrieve peer clusters for a user
 // @Description This endpoint retrieves the peer clusters that a user has access to.
@@ -1584,12 +1600,22 @@ func (repman *ReplicationManager) handlerMuxPeerClusters(w http.ResponseWriter, 
 		return
 	}
 
-	peerUser := uinfo["User"]
+	requester := uinfo["User"]
+	peerUser := requester
 	if peerUser == "admin" {
 		peerUser = repman.Conf.Cloud18GitUser
 	}
 
-	cl, err := repman.PeerManager.GetUserClustersJSON(peerUser)
+	// Exclude this instance's own local clusters ONLY for the admin / registering user,
+	// who already sees them in the local cluster dashboard (so they'd be duplicated).
+	// Any other SSO user has no local dashboard, so a local cluster the admin shared
+	// with them must stay visible here — pass a nil set (excludes nothing).
+	var localNames map[string]bool
+	if requester == "admin" || requester == repman.Conf.Cloud18GitUser {
+		localNames = repman.localClusterNames()
+	}
+
+	cl, err := repman.PeerManager.GetUserClustersJSON(peerUser, localNames)
 	if err != nil {
 		http.Error(w, "Error Marshal", http.StatusInternalServerError)
 		return

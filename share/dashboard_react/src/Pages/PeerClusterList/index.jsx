@@ -139,9 +139,10 @@ function PeerClusterList({ onLogin, mode }) {
   // Two table views, one visible via toggle: 'operational' (local-like) and
   // 'offer' (infra + commercial — what you get for the price). URI + Active columns
   // appear in both as the transparency anchor.
-  // Default to the Sale view: this page is primarily a marketplace — buyers come to
-  // see what hardware they can acquire, not to monitor. Monitor is one toggle away.
-  const [contentType, setContentType] = useState('sale') // 'sale' (offer) | 'monitor' (operational)
+  // Default tab depends on the page: the For-Sale marketplace (mode 'shared') opens on
+  // the Sale spec-sheet — buyers come to see what they can acquire. The Peer page opens
+  // on Monitor (operational) — peers are watched, not bought. Either toggle is one click.
+  const [contentType, setContentType] = useState(mode === 'shared' ? 'sale' : 'monitor') // 'sale' | 'monitor'
   const [displayMode, setDisplayMode] = useState('table')    // 'table' | 'grid' (cards)
   // Option (a): full cluster data pulled directly from each reachable peer's
   // /api/clusters (using the per-peer SSO token the login-upgrade stored), keyed
