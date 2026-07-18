@@ -119,6 +119,15 @@ func (pm *PeerManager) SetApiPublicURL(apiURL string) {
 	pm.ApiURL = apiURL
 }
 
+// SetHealthMode safely updates HealthMode. It can be changed at runtime from HTTP
+// handlers (registration, global settings) while BatchUpdateClusters reads it under
+// pm.mu, so the write must take the same lock to avoid a data race.
+func (pm *PeerManager) SetHealthMode(mode string) {
+	pm.mu.Lock()
+	pm.HealthMode = mode
+	pm.mu.Unlock()
+}
+
 func (pm *PeerManager) NewClient(baseURL string) *PeerClient {
 	pclient := NewPeerClient(baseURL, 10*time.Second)
 	pm.Clients[baseURL] = pclient
@@ -383,46 +392,47 @@ func (pm *PeerManager) UpdateHealthStatus(healths map[string]PeerHealth) {
 	}
 }
 
+// relevantPeerURLs returns the set of peer API URLs this instance may live-poll:
+// the registering user's peers (own fleet — always) plus each active-session user's
+// peers. These come only from PeerUserClusters (own fleet + delegated + sale
+// workflows via ReloadUsers' pending/sponsor demotion), so a for-sale catalog
+// cluster nobody here is related to — keyed under the seller's user, in PeerForSale —
+// never appears. A fresh/browsing instance returns an empty set. Own ApiURL is
+// excluded. See doc/implementation/peer/MARKETPLACE.md §6.
+func (pm *PeerManager) relevantPeerURLs(registeredUser string, activeUsers []string) map[string]bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	urls := make(map[string]bool)
+	addUserPeers := func(user string) {
+		clusters, ok := pm.PeerUserClusters[user]
+		if !ok {
+			return
+		}
+		for _, pc := range clusters {
+			if pc.ApiPublicUrl != "" && pc.ApiPublicUrl != pm.ApiURL {
+				urls[pc.ApiPublicUrl] = true
+			}
+		}
+	}
+
+	if registeredUser != "" {
+		addUserPeers(registeredUser)
+	}
+	for _, user := range activeUsers {
+		if user != registeredUser {
+			addUserPeers(user)
+		}
+	}
+	return urls
+}
+
 // GetHealthStatusForActiveUsers polls only the peer URLs that the registered
 // user or active session users can access. The registeredUser (cloud18-gitlab-user)
 // is always included — own fleet peers are always polled. Other users' peers
 // are only polled when they have an active session (non-empty GitToken).
 func (pm *PeerManager) GetHealthStatusForActiveUsers(registeredUser string, activeUsers []string) {
-	// Collect unique peer URLs: registered user always + active session users.
-	pm.mu.RLock()
-	relevantURLs := make(map[string]bool)
-
-	// Always include registered user's peers (own fleet)
-	if registeredUser != "" {
-		if clusters, ok := pm.PeerUserClusters[registeredUser]; ok {
-			for _, pc := range clusters {
-				if pc.ApiPublicUrl != "" && pc.ApiPublicUrl != pm.ApiURL {
-					relevantURLs[pc.ApiPublicUrl] = true
-				}
-			}
-		}
-	}
-
-	// Add active session users' peers
-	for _, user := range activeUsers {
-		if user == registeredUser {
-			continue
-		}
-		if clusters, ok := pm.PeerUserClusters[user]; ok {
-			for _, pc := range clusters {
-				if pc.ApiPublicUrl != "" && pc.ApiPublicUrl != pm.ApiURL {
-					relevantURLs[pc.ApiPublicUrl] = true
-				}
-			}
-		}
-	}
-	pm.mu.RUnlock()
-
-	if len(relevantURLs) == 0 {
-		return
-	}
-
-	for url := range relevantURLs {
+	for url := range pm.relevantPeerURLs(registeredUser, activeUsers) {
 		pm.pollPeerHealth(url)
 	}
 }

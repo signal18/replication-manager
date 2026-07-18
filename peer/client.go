@@ -140,7 +140,7 @@ func (pc *PeerClient) PeerLogin(username, password string) error {
 	}
 
 	if status != http.StatusOK {
-		return err
+		return fmt.Errorf("peer login failed with status %d: %s", status, string(body))
 	}
 
 	var AuthToken struct {

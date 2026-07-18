@@ -949,7 +949,7 @@ func (repman *ReplicationManager) persistInstanceSubscriptionPlan(plan, uri stri
 	if plan == "partner" && repman.Conf.Cloud18PeerHealthMode == "pulling" {
 		repman.Conf.Cloud18PeerHealthMode = "smart"
 		if repman.PeerManager != nil {
-			repman.PeerManager.HealthMode = "smart"
+			repman.PeerManager.SetHealthMode("smart")
 		}
 	}
 	if repman.ConfigManager != nil {

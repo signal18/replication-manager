@@ -1159,7 +1159,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18AlertSlackURL, "cloud18-alert-slack-url", "https://meet.signal18.io/hooks/1wuk8e5sttd89epqoaff3y9t6y", "Slack webhook URL for cloud18")
 	flags.StringVar(&conf.Cloud18AlertSlackUser, "cloud18-alert-slack-user", "repman", "Slack user for cloud18")
 	flags.IntVar(&conf.Cloud18HealthRefreshInterval, "cloud18-health-refresh-interval", 30, "Health refresh interval in seconds")
-	flags.StringVar(&conf.Cloud18PeerHealthMode, "cloud18-peer-health-mode", "pulling", "Peer health source. DEFAULT pulling: read shared-cluster health from the BO-aggregated peer.json (git-pull cadence) — no per-peer HTTP polling; correct for regular/client instances. The direct-polling modes fan out to every shared cluster on each peer.json reload (O(N^2), and a dark peer strands connections) — reserve them for partner fleets: smart (own fleet + active-session users), peering (poll all).")
+	flags.StringVar(&conf.Cloud18PeerHealthMode, "cloud18-peer-health-mode", "pulling", "Peer health polling scope. pulling (DEFAULT) and smart both serve the for-sale catalog from the BO-aggregated peer.json and live-poll ONLY clusters this instance has a relationship to — own fleet (registering user) + delegated + active-session users' clusters + sale workflows. An instance with no such relationship (a fresh/browsing client) opens no peer connections. peering is a legacy full-mesh that live-polls EVERY peer incl. the for-sale catalog (O(N^2); opt-in only, never for clients). partner plan auto-promotes pulling->smart.")
 	flags.BoolVar(&conf.Cloud18DisablePeers, "cloud18-disable-peers", false, "Hide peer clusters from dashboard")
 	flags.BoolVar(&conf.Cloud18DisableForSale, "cloud18-disable-for-sale", false, "Hide clusters for sale from marketplace (paid plans only)")
 	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
@@ -1568,7 +1568,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		repman.Conf.Cloud18PeerHealthMode = "smart"
 	}
 	repman.PeerManager = peer.NewPeerManager(repman.Conf.Cloud18HealthRefreshInterval)
-	repman.PeerManager.HealthMode = repman.Conf.Cloud18PeerHealthMode
+	repman.PeerManager.SetHealthMode(repman.Conf.Cloud18PeerHealthMode)
 	conf.ParseJobsExecOverrides()
 	repman.ModTimes = make(map[string]time.Time)
 	repman.ServerScopeList = make(map[string]bool)
