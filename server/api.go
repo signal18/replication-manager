@@ -807,8 +807,13 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	// ── Cloud18 ───────────────────────────────────────────────────────────────
 
-	// Admin users always authenticate via local credentials only; no SSO.
-	if repman.isAdminUser(user.Username) {
+	// Admin users always authenticate via local credentials only; no SSO. EXCEPTION:
+	// the registering SSO user (Cloud18GitUser) is granted global-admin-show (it's the
+	// owner), but its credential is a GitLab/SSO password, NOT a local one — so forcing
+	// it down the local-only path makes it fail local auth and 401, breaking SSO login
+	// for the registering user (and every peer connection that uses it). Let it fall
+	// through to the SSO path below.
+	if repman.isAdminUser(user.Username) && user.Username != repman.Conf.Cloud18GitUser {
 		userInfo, ok := tryLocalAuth()
 		if !ok {
 			authFail()
