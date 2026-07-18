@@ -621,7 +621,8 @@ function PeerClusterList({ onLogin, mode }) {
 
   // Offer view — a buyer's spec sheet: what you acquire and what it costs. Order:
   // Cluster · Plan · Price · Partner · Zone · Infra (multi-line) · Service (multi-line)
-  // · Healthy (de-emphasised — an unprovisioned offer is still buyable) · Peer.
+  // · Healthy (de-emphasised — an unprovisioned offer is still buyable). No Peer/URL
+  // column: a sales listing shouldn't expose the peer instance's connectivity.
   const offerColumns = useMemo(() => [
     clusterCol,
     columnHelper.accessor((row) => row['prov-service-plan'], { id: 'plan', header: 'Plan', cell: (info) => info.getValue() || '—' }),
@@ -631,7 +632,6 @@ function PeerClusterList({ onLogin, mode }) {
     columnHelper.accessor((row) => infraLines(row).join(' · '), { id: 'infra', header: 'Infra', enableSorting: false, cell: (info) => multiLineCell(infraLines(info.row.original)) }),
     columnHelper.accessor((row) => serviceLines(row).join(' · '), { id: 'service', header: 'Service', enableSorting: false, cell: (info) => multiLineCell(serviceLines(info.row.original)) }),
     healthyCol,
-    uriCol,
   ], [peerNodes, mode])
 
   // Merge the direct /api/clusters data (peerDetails) over the peer.json catalog rows.
