@@ -169,6 +169,15 @@ export const getClusterForSale = createGuardedAsyncThunk('globalClusters/getClus
   }
 });
 
+export const getClusterPeerNodes = createGuardedAsyncThunk('globalClusters/getClusterPeerNodes', async ({ }, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.getClusterPeerNodes()
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+});
+
 export const getMonitoredData = createGuardedAsyncThunk('globalClusters/getMonitoredData', async ({ }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getMonitoredData()
@@ -464,6 +473,7 @@ const initialState = {
   isFailableList: {},
   clusterPeers: null,
   clusterForSale: null,
+  peerNodes: null,
   monitor: null,
   appTemplatesByCluster: {},
   // requestId of the latest dispatched refreshAppTemplateRepo per cluster, so
@@ -528,6 +538,12 @@ export const globalClustersSlice = createSlice({
         state.clusterForSale = action.payload.data
       })
       .addCase(getClusterForSale.rejected, (state, action) => {
+        state.error = action.error
+      })
+      .addCase(getClusterPeerNodes.fulfilled, (state, action) => {
+        state.peerNodes = action.payload.data
+      })
+      .addCase(getClusterPeerNodes.rejected, (state, action) => {
         state.error = action.error
       })
       .addCase(refreshAppTemplateRepo.pending, (state, action) => {

@@ -1,11 +1,13 @@
-import React, { useCallback, useEffect, useReducer, useState, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useReducer, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { getClusterPeers, getClusterForSale, getTermsData } from '../../redux/globalClustersSlice'
-import { Box, Flex, HStack, Text, Wrap, IconButton, useColorModeValue, Collapse, Divider, Tooltip, ButtonGroup, Button } from '@chakra-ui/react'
+import { getClusterPeers, getClusterForSale, getClusterPeerNodes, getTermsData } from '../../redux/globalClustersSlice'
+import { Badge, Box, Flex, HStack, Text, Wrap, IconButton, useColorModeValue, Collapse, Divider, Tooltip, ButtonGroup, Button } from '@chakra-ui/react'
 import NotFound from '../../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
 import Card from '../../components/Card'
 import TableType2 from '../../components/TableType2'
+import { DataTable } from '../../components/DataTable'
+import { createColumnHelper } from '@tanstack/react-table'
 import styles from './styles.module.scss'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import TagPill from '../../components/TagPill'
@@ -17,6 +19,8 @@ import { showErrorToast } from '../../redux/toastSlice'
 import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
 import SearchBox from '../../components/SearchBox'
 import Dropdown from '../../components/Dropdown'
+
+const columnHelper = createColumnHelper()
 
 const defaultFilter = {
   domain: "",
@@ -129,7 +133,13 @@ function PeerClusterList({ onLogin, mode }) {
   const [finalTerms, setFinalTerms] = useState(``)
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false)
   const [item, setItem] = useState({})
-  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(true)
+  // Two table views, one visible via toggle: 'operational' (local-like) and
+  // 'offer' (infra + commercial — what you get for the price). URI + Active columns
+  // appear in both as the transparency anchor.
+  const [viewType, setViewType] = useState('operational')
+  // Keep the search/filter panel retracted by default so the URI/Active columns
+  // lead; the operator can expand it manually.
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
   const mainContentRef = useRef(null)
 
   // Auto-close filter panel when mouse moves to cluster list
@@ -142,7 +152,7 @@ function PeerClusterList({ onLogin, mode }) {
   const { domain, subdomain, zone, plan, search, domainOptions, subdomainOptions, zoneOptions, planOptions, sortBy, sortOrder } = filter
 
   const {
-    globalClusters: { loading, clusterPeers, clusterForSale, monitor, terms },
+    globalClusters: { loading, clusterPeers, clusterForSale, peerNodes, monitor, terms },
     auth: {
       user
     },
@@ -151,6 +161,7 @@ function PeerClusterList({ onLogin, mode }) {
   useEffect(() => {
     dispatch(getClusterPeers({}))
     dispatch(getClusterForSale({}))
+    dispatch(getClusterPeerNodes({}))
     dispatch(getTermsData({}))
   }, [])
 
@@ -381,6 +392,157 @@ function PeerClusterList({ onLogin, mode }) {
     />
   )
 
+  // getConnState reflects the GROUND TRUTH of whether this instance has actually
+  // opened an HTTPS connection to a peer URI, from /api/peers (PeerNodeStatus:
+  // LastUpdate is advanced only when we really poll). A for-sale catalog entry we
+  // never call has a zero LastUpdate -> "None": a beta tester can match their
+  // firewall log against the "Active" rows and confirm the "None" rows generate no
+  // outbound traffic. See doc/implementation/peer/MARKETPLACE.md.
+  const getConnState = (uri) => {
+    const node = peerNodes?.[uri]
+    const last = node?.LastUpdate
+    const never = !last || last === '0001-01-01T00:00:00Z'
+    if (never) {
+      return { label: 'None', colorScheme: 'gray', tooltip: 'Never connected — catalog listing only, no HTTPS call made from this instance' }
+    }
+    const lastDate = new Date(last)
+    const lastStr = lastDate.toLocaleString()
+    if (node?.Error) {
+      return { label: 'Error', colorScheme: 'red', tooltip: `Last connection: ${lastStr} — ${node.Error}` }
+    }
+    // Health dispatch cadence is ~2 min; treat a connection within 5 min as active.
+    const isRecent = Date.now() - lastDate.getTime() < 5 * 60 * 1000
+    return isRecent
+      ? { label: 'Active', colorScheme: 'green', tooltip: `Last connection: ${lastStr}` }
+      : { label: 'Idle', colorScheme: 'orange', tooltip: `Last connection: ${lastStr}` }
+  }
+
+  // Status/hardware fields are only present when advertised (for-sale listing) or
+  // once we've actually polled a delegated peer — a plain shared cluster may carry
+  // none of them, so every cell degrades to "—".
+  const isUnknown = (row) => !row?.lastUpdate || row?.lastUpdate === '0001-01-01T00:00:00Z'
+
+  const healthCell = (row) => {
+    if (isUnknown(row)) return <Text>—</Text>
+    if (row.isDown || row.isMasterDown) {
+      return <HStack spacing='2'><CheckOrCrossIcon isValid={false} /><Text>No</Text></HStack>
+    }
+    if (!row.isFailable) {
+      return <HStack spacing='2'><CustomIcon icon={HiExclamation} color='red' /><Text>Blocker</Text></HStack>
+    }
+    return <HStack spacing='2'><CheckOrCrossIcon isValid={true} /><Text>Yes</Text></HStack>
+  }
+
+  const num = (v) => (v === undefined || v === null || v === '' ? '—' : v)
+
+  const priceCell = (row) => {
+    const cost = (row['cloud18-monthly-infra-cost'] * 1) + (row['cloud18-monthly-license-cost'] * 1) + (row['cloud18-monthly-sysops-cost'] * 1) + (row['cloud18-monthly-dbops-cost'] * 1)
+    if (!cost) return <Text>—</Text>
+    const promo = row['cloud18-promotion-pct'] * 1
+    const currency = row['cloud18-cost-currency'] || ''
+    const amount = promo > 0 ? (cost * (100 - promo)) / 100 : cost
+    if (promo > 0) {
+      return (
+        <HStack spacing='1'>
+          <Text as='span' textColor='red.500' textDecoration='line-through'>{cost.toFixed(2)}</Text>
+          <Text as='span' fontWeight='bold'>{amount.toFixed(2)} {currency}/mo</Text>
+        </HStack>
+      )
+    }
+    return <Text>{cost.toFixed(2)} {currency}/mo</Text>
+  }
+
+  // Columns common to both views — the transparency anchor (name + URI + live
+  // connection state) is present whatever metadata a peer carries.
+  const clusterCol = columnHelper.accessor((row) => row['cluster-name'], {
+    id: 'cluster', header: 'Cluster',
+    cell: (info) => {
+      const row = info.row.original
+      const isPending = row?.['api-credentials-acl-allow']?.includes('pending')
+      const isSponsor = row?.['api-credentials-acl-allow']?.includes('sponsor')
+      return (
+        <HStack cursor='pointer' onClick={() => handlePeerCluster(row)}>
+          <CustomIcon icon={isSponsor || isPending ? HiCreditCard : AiOutlineCluster} fill={isSponsor ? 'green' : isPending ? 'orange' : 'gray'} />
+          <Text fontWeight='semibold'>{info.getValue()}</Text>
+        </HStack>
+      )
+    }
+  })
+  const uriCol = columnHelper.accessor((row) => row['api-public-url'], {
+    id: 'uri', header: 'URI',
+    cell: (info) => {
+      const uri = info.getValue() || '—'
+      return (<Tooltip label={uri} placement='top'><Text isTruncated maxW='300px' fontFamily='mono' fontSize='sm'>{uri}</Text></Tooltip>)
+    }
+  })
+  const activeCol = columnHelper.accessor((row) => row['api-public-url'], {
+    id: 'active', header: 'Active', enableSorting: false,
+    cell: (info) => {
+      const cs = getConnState(info.getValue())
+      return (<Tooltip label={cs.tooltip} placement='top'><Badge colorScheme={cs.colorScheme}>{cs.label}</Badge></Tooltip>)
+    }
+  })
+  const actionCol = columnHelper.display({
+    id: 'action', header: '',
+    cell: (info) => (
+      <Button size='xs' colorScheme='blue' variant='outline' onClick={() => handlePeerCluster(info.row.original)}>
+        {mode === 'shared' ? 'Subscribe' : 'Enter'}
+      </Button>
+    )
+  })
+
+  // Operational view — mirrors the local cluster table (as far as catalog data
+  // allows); everything degrades to "—" for an out-of-cloud18 shared cluster.
+  const operationalColumns = useMemo(() => [
+    clusterCol, uriCol, activeCol,
+    columnHelper.accessor((row) => row['prov-orchestrator'], { id: 'orchestrator', header: 'Orchestrator', cell: (info) => info.getValue() || '—' }),
+    columnHelper.accessor((row) => row, { id: 'healthy', header: 'Healthy', enableSorting: false, cell: (info) => healthCell(info.row.original) }),
+    columnHelper.accessor((row) => row, { id: 'provisioned', header: 'Provisioned', enableSorting: false, cell: (info) => isUnknown(info.row.original) ? <Text>—</Text> : <CheckOrCrossIcon isValid={!!info.row.original.isProvisioned} /> }),
+    actionCol,
+  ], [peerNodes, mode])
+
+  // Compact infra: a short inline summary, full spec sheet on hover — keeps the
+  // Offer table narrow instead of a dozen spec columns.
+  const infraSummary = (row) => {
+    const parts = []
+    if (row['prov-db-cpu-cores']) parts.push(`${row['prov-db-cpu-cores']} core${row['prov-db-cpu-cores'] * 1 === 1 ? '' : 's'}`)
+    if (row['prov-db-memory']) parts.push(`${row['prov-db-memory'] / 1024}GB`)
+    if (row['prov-db-disk-size']) parts.push(`${row['prov-db-disk-size']}GB disk`)
+    if (row['cloud18-infra-cpu-model']) parts.push(row['cloud18-infra-cpu-model'])
+    return parts
+  }
+  const infraDetail = (row) => (
+    [
+      ['CPU cores', row['prov-db-cpu-cores']],
+      ['Memory', row['prov-db-memory'] ? `${row['prov-db-memory'] / 1024}GB` : ''],
+      ['Disk', row['prov-db-disk-size'] ? `${row['prov-db-disk-size']}GB` : ''],
+      ['Disk IOPS', row['prov-db-disk-iops']],
+      ['CPU model', row['cloud18-infra-cpu-model']],
+      ['CPU freq', row['cloud18-infra-cpu-freq']],
+      ['Data centers', row['cloud18-infra-data-centers']],
+      ['Geo', row['cloud18-infra-geo-localizations']],
+      ['Bandwidth', row['cloud18-infra-public-bandwidth'] ? `${row['cloud18-infra-public-bandwidth'] / 1024}Gbps` : ''],
+      ['Certifications', row['cloud18-infra-certifications']],
+    ].filter(([, v]) => v !== undefined && v !== '' && v !== null).map(([k, v]) => `${k}: ${v}`).join('\n')
+  )
+
+  // Offer view — infra + commercial together: what you get for the price.
+  const offerColumns = useMemo(() => [
+    clusterCol, uriCol, activeCol,
+    columnHelper.accessor((row) => row['prov-service-plan'], { id: 'plan', header: 'Plan', cell: (info) => info.getValue() || '—' }),
+    columnHelper.accessor((row) => row, { id: 'price', header: 'Price', enableSorting: false, cell: (info) => priceCell(info.row.original) }),
+    columnHelper.accessor((row) => infraSummary(row).join(' · '), {
+      id: 'infra', header: 'Infra',
+      cell: (info) => {
+        const row = info.row.original
+        const parts = infraSummary(row)
+        if (parts.length === 0) return <Text>—</Text>
+        return (<Tooltip label={infraDetail(row)} placement='top' whiteSpace='pre-line'><Text fontSize='sm'>{parts.join(' · ')}</Text></Tooltip>)
+      }
+    }),
+    actionCol,
+  ], [peerNodes, mode])
+
   // Colors for the filter panel based on color mode
   const filterPanelBg = useColorModeValue('gray.50', 'gray.800')
   const filterPanelBorder = useColorModeValue('gray.200', 'gray.700')
@@ -528,17 +690,25 @@ function PeerClusterList({ onLogin, mode }) {
                 Showing {clusters.length} cluster{clusters.length !== 1 ? 's' : ''}
               </Text>
 
-              {/* Only show this on mobile views when panel is collapsed */}
-              {!isFilterPanelOpen && (
-                <IconButton
-                  display={{ base: 'flex', lg: 'none' }}
-                  aria-label="Open filters"
-                  icon={<HiSearch />}
-                  onClick={() => setIsFilterPanelOpen(true)}
-                />
-              )}
+              <HStack spacing="2">
+                <ButtonGroup size='sm' isAttached variant='outline'>
+                  <Button variant={viewType === 'operational' ? 'solid' : 'outline'} colorScheme={viewType === 'operational' ? 'blue' : 'gray'} onClick={() => setViewType('operational')}>Operational</Button>
+                  <Button variant={viewType === 'offer' ? 'solid' : 'outline'} colorScheme={viewType === 'offer' ? 'blue' : 'gray'} onClick={() => setViewType('offer')}>Offer</Button>
+                  <Button variant={viewType === 'cards' ? 'solid' : 'outline'} colorScheme={viewType === 'cards' ? 'blue' : 'gray'} onClick={() => setViewType('cards')}>Cards</Button>
+                </ButtonGroup>
+                {/* Only show this on mobile views when panel is collapsed */}
+                {!isFilterPanelOpen && (
+                  <IconButton
+                    display={{ base: 'flex', lg: 'none' }}
+                    aria-label="Open filters"
+                    icon={<HiSearch />}
+                    onClick={() => setIsFilterPanelOpen(true)}
+                  />
+                )}
+              </HStack>
             </Flex>
 
+            {viewType === 'cards' ? (
             <Flex className={styles.clusterList}>
               {clusters?.map((clusterItem) => {
                 const headerText = `${clusterItem['cluster-name']}`
@@ -656,6 +826,9 @@ function PeerClusterList({ onLogin, mode }) {
                 )
               })}
             </Flex>
+            ) : (
+              <DataTable data={clusters} columns={viewType === 'offer' ? offerColumns : operationalColumns} />
+            )}
           </>
         )}
       </Box>

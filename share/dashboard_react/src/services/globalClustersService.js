@@ -62,6 +62,10 @@ function getClusterForSale() {
   return getApi().get('clusters/for-sale')
 }
 
+function getClusterPeerNodes() {
+  return getApi().get('peers')
+}
+
 function switchGlobalSetting(setting) {
   return getApi().get(`clusters/settings/actions/switch/${setting}`)
 }
