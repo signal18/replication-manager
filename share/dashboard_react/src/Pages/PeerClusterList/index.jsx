@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { getClusterPeers, getClusterForSale, getClusterPeerNodes, getTermsData } from '../../redux/globalClustersSlice'
-import { Badge, Box, Flex, HStack, Text, Wrap, IconButton, useColorModeValue, Collapse, Divider, Tooltip, ButtonGroup, Button } from '@chakra-ui/react'
+import { Badge, Box, Flex, HStack, Link, Text, Wrap, IconButton, useColorModeValue, Collapse, Divider, Tooltip, ButtonGroup, Button } from '@chakra-ui/react'
+import { FaCloud } from 'react-icons/fa'
 import NotFound from '../../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
 import Card from '../../components/Card'
@@ -387,8 +388,8 @@ function PeerClusterList({ onLogin, mode }) {
     const last = node?.LastUpdate
     const never = !last || last === '0001-01-01T00:00:00Z'
     if (never) {
-      // No direct connection -> the health shown is the peer.json catalog default.
-      return { label: 'Catalog', colorScheme: 'gray', tooltip: 'Not directly connected — health is the peer.json catalog default (async, git-pull cadence). No HTTPS call is made from this instance.' }
+      // No direct connection -> the health shown comes from peer.json (the BO catalog).
+      return { label: 'peer.json', colorScheme: 'gray', tooltip: 'No direct connection — health comes from peer.json (the BO catalog: async, git-pull cadence). No HTTPS call is made from this instance.' }
     }
     const lastDate = new Date(last)
     const lastStr = lastDate.toLocaleString()
@@ -425,6 +426,15 @@ function PeerClusterList({ onLogin, mode }) {
     return <HStack spacing='2'><CheckOrCrossIcon isValid={true} /><Text>Yes</Text></HStack>
   }
 
+  // Local-cluster-parity cells; "—" until the BO adds these to peer.json.
+  const arbCell = (row) => {
+    if (row.activePassiveStatus === 'A') return <TagPill colorScheme='green' text='Active' />
+    if (row.activePassiveStatus === 'S') return <TagPill colorScheme='orange' text='Standby' />
+    return <Text>—</Text>
+  }
+  const monCell = (row) => (row.monitoringPause === undefined ? <Text>—</Text> : <CheckOrCrossIcon isValid={!row.monitoringPause} />)
+  const countOf = (v) => (Array.isArray(v) ? v.length : v)
+
   const num = (v) => (v === undefined || v === null || v === '' ? '—' : v)
 
   const priceCell = (row) => {
@@ -460,11 +470,29 @@ function PeerClusterList({ onLogin, mode }) {
       )
     }
   })
+  // Connectivity cloud: green = we have a working direct connection to the peer,
+  // red = none / can't reach it (health then comes from the peer.json catalog).
+  const connCloud = (uri) => {
+    const node = peerNodes?.[uri]
+    const last = node?.LastUpdate
+    const ok = last && last !== '0001-01-01T00:00:00Z' && !node?.Error
+    return ok
+      ? { color: 'green', tooltip: `Direct connection OK — last ${new Date(last).toLocaleString()}` }
+      : { color: 'red', tooltip: node?.Error ? `Cannot reach peer directly: ${node.Error}` : 'No direct connection — health comes from the peer.json catalog' }
+  }
   const uriCol = columnHelper.accessor((row) => row['api-public-url'], {
-    id: 'uri', header: 'URI',
+    id: 'uri', header: 'Peer', enableSorting: false,
     cell: (info) => {
-      const uri = info.getValue() || '—'
-      return (<Tooltip label={uri} placement='top'><Text isTruncated maxW='300px' fontFamily='mono' fontSize='sm'>{uri}</Text></Tooltip>)
+      const uri = info.getValue()
+      if (!uri) return <Text>—</Text>
+      const host = uri.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+      const cc = connCloud(uri)
+      return (
+        <HStack spacing='2'>
+          <Tooltip label={cc.tooltip} placement='top'><Box as='span' display='inline-flex'><CustomIcon icon={FaCloud} color={cc.color} /></Box></Tooltip>
+          <Link href={uri} isExternal fontFamily='mono' fontSize='sm'>{host}</Link>
+        </HStack>
+      )
     }
   })
   // Effective health + its source (the "peer.json default, overwritten by a direct
@@ -473,34 +501,30 @@ function PeerClusterList({ onLogin, mode }) {
   const healthyCol = columnHelper.accessor((row) => row, {
     id: 'healthy', header: 'Healthy', enableSorting: false,
     cell: (info) => (
-      <Tooltip label='Effective health: peer.json catalog default, overwritten by a direct connection for clusters in your fleet (see the Direct column for the source).' placement='top'>
+      <Tooltip label='Effective health: peer.json catalog default, overwritten by a direct connection for reachable fleet clusters (the cloud icon on the Peer column shows whether a direct connection is up).' placement='top'>
         <Box display='inline-block'>{healthCell(info.row.original)}</Box>
       </Tooltip>
     )
   })
-  const directCol = columnHelper.accessor((row) => row['api-public-url'], {
-    id: 'direct', header: 'Direct', enableSorting: false,
-    cell: (info) => {
-      const cs = getConnState(info.getValue())
-      return (<Tooltip label={cs.tooltip} placement='top'><Badge colorScheme={cs.colorScheme}>{cs.label}</Badge></Tooltip>)
-    }
-  })
-  const actionCol = columnHelper.display({
-    id: 'action', header: '',
-    cell: (info) => (
-      <Button size='xs' colorScheme='blue' variant='outline' onClick={() => handlePeerCluster(info.row.original)}>
-        {mode === 'shared' ? 'Subscribe' : 'Enter'}
-      </Button>
-    )
-  })
+  // No action column — clicking the cluster name enters/subscribes (the Enter button
+  // was redundant).
 
-  // Operational view — mirrors the local cluster table (as far as catalog data
-  // allows); everything degrades to "—" for an out-of-cloud18 shared cluster.
+  // Operational view — same columns and SAME ORDER as the local cluster table
+  // (ClusterList), so the two views are consistent. Fields the BO peer.json doesn't
+  // carry yet render "—" and fill in once enriched. The Peer column (last) shows the
+  // hostname as a link + a green/red cloud for direct connectivity.
   const operationalColumns = useMemo(() => [
-    clusterCol, uriCol, healthyCol, directCol,
+    clusterCol,
+    columnHelper.accessor((row) => row.activePassiveStatus, { id: 'arbitration', header: 'Arbitration', enableSorting: false, cell: (info) => arbCell(info.row.original) }),
+    columnHelper.accessor((row) => row.monitoringPause, { id: 'monitoring', header: 'Monitoring', enableSorting: false, cell: (info) => monCell(info.row.original) }),
+    columnHelper.accessor((row) => row.topology, { id: 'topology', header: 'Topology', cell: (info) => info.getValue() || '—' }),
     columnHelper.accessor((row) => row['prov-orchestrator'], { id: 'orchestrator', header: 'Orchestrator', cell: (info) => info.getValue() || '—' }),
+    columnHelper.accessor((row) => countOf(row.dbServers), { id: 'databases', header: 'Databases', cell: (info) => num(info.getValue()) }),
+    columnHelper.accessor((row) => countOf(row.proxyServers), { id: 'proxies', header: 'Proxies', cell: (info) => num(info.getValue()) }),
+    healthyCol,
     columnHelper.accessor((row) => row, { id: 'provisioned', header: 'Provisioned', enableSorting: false, cell: (info) => isUnknown(info.row.original) ? <Text>—</Text> : <CheckOrCrossIcon isValid={!!info.row.original.isProvisioned} /> }),
-    actionCol,
+    columnHelper.accessor((row) => row.uptime, { id: 'sla', header: 'SLA', cell: (info) => info.getValue() || '—' }),
+    uriCol,
   ], [peerNodes, mode])
 
   // Compact infra: a short inline summary, full spec sheet on hover — keeps the
@@ -530,7 +554,7 @@ function PeerClusterList({ onLogin, mode }) {
 
   // Offer view — infra + commercial together: what you get for the price.
   const offerColumns = useMemo(() => [
-    clusterCol, uriCol, healthyCol, directCol,
+    clusterCol, healthyCol,
     columnHelper.accessor((row) => row['prov-service-plan'], { id: 'plan', header: 'Plan', cell: (info) => info.getValue() || '—' }),
     columnHelper.accessor((row) => row, { id: 'price', header: 'Price', enableSorting: false, cell: (info) => priceCell(info.row.original) }),
     columnHelper.accessor((row) => infraSummary(row).join(' · '), {
@@ -542,7 +566,7 @@ function PeerClusterList({ onLogin, mode }) {
         return (<Tooltip label={infraDetail(row)} placement='top' whiteSpace='pre-line'><Text fontSize='sm'>{parts.join(' · ')}</Text></Tooltip>)
       }
     }),
-    actionCol,
+    uriCol,
   ], [peerNodes, mode])
 
   // Colors for the filter panel based on color mode
