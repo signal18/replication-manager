@@ -393,7 +393,10 @@ function PeerClusterList({ onLogin, mode }) {
     const lastDate = new Date(last)
     const lastStr = lastDate.toLocaleString()
     if (node?.Error) {
-      return { label: 'Error', colorScheme: 'red', tooltip: `Direct connection failed — last try ${lastStr}: ${node.Error}` }
+      // We can't reach the peer directly (firewall / IPv4-vs-IPv6 / NAT / network) —
+      // this is NOT a cluster failure. Health falls back to the peer.json catalog
+      // value (the BO can reach peers this instance can't). Orange, not red.
+      return { label: 'Unreachable', colorScheme: 'orange', tooltip: `This instance can't reach the peer directly (firewall / IPv4-IPv6 / network) — showing the peer.json catalog value. Last try ${lastStr}: ${node.Error}` }
     }
     // Health dispatch cadence is ~2 min; treat a connection within 5 min as fresh.
     const isRecent = Date.now() - lastDate.getTime() < 5 * 60 * 1000
