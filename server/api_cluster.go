@@ -4884,12 +4884,24 @@ func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r
 			if shouldDownload {
 				repman.InitServicePlans()
 			}
+			applied, skipped := 0, 0
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"reload-clusters-plans triggered by user %q (download=%v) over %d clusters", apiuser, shouldDownload, len(repman.Clusters))
 			for _, cl := range repman.Clusters {
 				//Don't print error with no valid ACL
 				if cl.IsURLPassACL(apiuser, r.URL.Path, false) {
 					cl.SetServicePlan(cl.Conf.ProvServicePlan)
+					applied++
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+						"reload-clusters-plans APPLIED plan %q on cluster %q", cl.Conf.ProvServicePlan, cl.Name)
+				} else {
+					skipped++
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+						"reload-clusters-plans SKIPPED cluster %q: user %q lacks 'global' ACL grant (plan %q not applied)", cl.Name, apiuser, cl.Conf.ProvServicePlan)
 				}
 			}
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"reload-clusters-plans done for user %q: %d applied, %d skipped", apiuser, applied, skipped)
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("Successfully reloaded plans"))
 		} else {
@@ -4929,12 +4941,26 @@ func (repman *ReplicationManager) handlerMuxReloadPlansInfo(w http.ResponseWrite
 			if shouldDownload {
 				repman.InitServicePlans()
 			}
+			applied, skipped := 0, 0
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"reload-clusters-plan-info triggered by user %q (download=%v) over %d clusters", apiuser, shouldDownload, len(repman.Clusters))
 			for _, cl := range repman.Clusters {
 				//Don't print error with no valid ACL
 				if cl.IsURLPassACL(apiuser, r.URL.Path, false) {
-					cl.SetServicePlanInfos(cl.Conf.ProvServicePlan)
+					err := cl.SetServicePlanInfos(cl.Conf.ProvServicePlan)
+					applied++
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+						"reload-clusters-plan-info APPLIED plan %q on cluster %q -> infra=%g license=%g sysops=%g dbops=%g %s (err=%v)",
+						cl.Conf.ProvServicePlan, cl.Name,
+						cl.Conf.Cloud18MonthlyInfraCost, cl.Conf.Cloud18MonthlyLicenseCost, cl.Conf.Cloud18MonthlySysopsCost, cl.Conf.Cloud18MonthlyDbopsCost, cl.Conf.Cloud18CostCurrency, err)
+				} else {
+					skipped++
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+						"reload-clusters-plan-info SKIPPED cluster %q: user %q lacks 'global' ACL grant (plan %q price not applied)", cl.Name, apiuser, cl.Conf.ProvServicePlan)
 				}
 			}
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"reload-clusters-plan-info done for user %q: %d applied, %d skipped", apiuser, applied, skipped)
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("Successfully reloaded plan information"))
 		} else {
