@@ -4890,10 +4890,20 @@ func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r
 			for _, cl := range repman.Clusters {
 				//Don't print error with no valid ACL
 				if cl.IsURLPassACL(apiuser, r.URL.Path, false) {
-					cl.SetServicePlan(cl.Conf.ProvServicePlan)
+					hosts := 0
+					if cl.Conf.Hosts != "" {
+						hosts = len(strings.Split(cl.Conf.Hosts, ","))
+					}
+					err := cl.SetServicePlan(cl.Conf.ProvServicePlan)
 					applied++
-					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-						"reload-clusters-plans APPLIED plan %q on cluster %q", cl.Conf.ProvServicePlan, cl.Name)
+					if err != nil {
+						repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+							"reload-clusters-plans plan %q on cluster %q returned %q (monitored hosts=%d) -> price (SetServicePlanInfos) NOT applied on this path; use reload-clusters-plan-info", cl.Conf.ProvServicePlan, cl.Name, err.Error(), hosts)
+					} else {
+						repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+							"reload-clusters-plans APPLIED plan %q on cluster %q (monitored hosts=%d) infra=%g license=%g sysops=%g dbops=%g %s", cl.Conf.ProvServicePlan, cl.Name, hosts,
+							cl.Conf.Cloud18MonthlyInfraCost, cl.Conf.Cloud18MonthlyLicenseCost, cl.Conf.Cloud18MonthlySysopsCost, cl.Conf.Cloud18MonthlyDbopsCost, cl.Conf.Cloud18CostCurrency)
+					}
 				} else {
 					skipped++
 					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
