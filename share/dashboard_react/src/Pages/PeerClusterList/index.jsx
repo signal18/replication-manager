@@ -1,22 +1,30 @@
-import React, { useCallback, useEffect, useReducer, useState, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useReducer, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { getClusterPeers, getClusterForSale, getTermsData } from '../../redux/globalClustersSlice'
-import { Box, Flex, HStack, Text, Wrap, IconButton, useColorModeValue, Collapse, Divider, Tooltip, ButtonGroup, Button } from '@chakra-ui/react'
+import { getClusterPeers, getClusterForSale, getClusterPeerNodes, getTermsData } from '../../redux/globalClustersSlice'
+import { Badge, Box, Flex, HStack, VStack, Link, Text, Wrap, IconButton, useColorModeValue, Collapse, Divider, Tooltip, ButtonGroup, Button } from '@chakra-ui/react'
+import { FaCloud } from 'react-icons/fa'
 import NotFound from '../../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
 import Card from '../../components/Card'
 import TableType2 from '../../components/TableType2'
+import { DataTable } from '../../components/DataTable'
+import { createColumnHelper } from '@tanstack/react-table'
 import styles from './styles.module.scss'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import TagPill from '../../components/TagPill'
-import { HiCreditCard, HiExclamation, HiQuestionMarkCircle, HiTag, HiSortAscending, HiSortDescending, HiSearch, HiChevronLeft, HiChevronRight } from 'react-icons/hi'
+import { HiCreditCard, HiExclamation, HiQuestionMarkCircle, HiTag, HiSortAscending, HiSortDescending, HiSearch, HiChevronLeft, HiChevronRight, HiViewGrid, HiTable } from 'react-icons/hi'
 import { peerLogin, setBaseURL } from '../../redux/authSlice'
 import { getClusterData, clusterSubscribe } from '../../redux/clusterSlice'
 import TermsModal from '../../components/Modals/TermsModal'
 import { showErrorToast } from '../../redux/toastSlice'
 import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
+import RMIconButton from '../../components/RMIconButton'
 import SearchBox from '../../components/SearchBox'
 import Dropdown from '../../components/Dropdown'
+import { getApi, getTokenByBaseURL } from '../../services/apiHelper'
+import AccordionComponent from '../../components/AccordionComponent'
+
+const columnHelper = createColumnHelper()
 
 const defaultFilter = {
   domain: "",
@@ -129,7 +137,21 @@ function PeerClusterList({ onLogin, mode }) {
   const [finalTerms, setFinalTerms] = useState(``)
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false)
   const [item, setItem] = useState({})
-  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(true)
+  // Two table views, one visible via toggle: 'operational' (local-like) and
+  // 'offer' (infra + commercial — what you get for the price). URI + Active columns
+  // appear in both as the transparency anchor.
+  // Default tab depends on the page: the For-Sale marketplace (mode 'shared') opens on
+  // the Sale spec-sheet — buyers come to see what they can acquire. The Peer page opens
+  // on Monitor (operational) — peers are watched, not bought. Either toggle is one click.
+  const [contentType, setContentType] = useState(mode === 'shared' ? 'sale' : 'monitor') // 'sale' | 'monitor'
+  const [displayMode, setDisplayMode] = useState('table')    // 'table' | 'grid' (cards)
+  // Option (a): full cluster data pulled directly from each reachable peer's
+  // /api/clusters (using the per-peer SSO token the login-upgrade stored), keyed
+  // baseURL -> { clusterName -> full cluster }. Overwrites the thin peer.json catalog.
+  const [peerDetails, setPeerDetails] = useState({})
+  // Keep the search/filter panel retracted by default so the URI/Active columns
+  // lead; the operator can expand it manually.
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
   const mainContentRef = useRef(null)
 
   // Auto-close filter panel when mouse moves to cluster list
@@ -142,7 +164,7 @@ function PeerClusterList({ onLogin, mode }) {
   const { domain, subdomain, zone, plan, search, domainOptions, subdomainOptions, zoneOptions, planOptions, sortBy, sortOrder } = filter
 
   const {
-    globalClusters: { loading, clusterPeers, clusterForSale, monitor, terms },
+    globalClusters: { loading, clusterPeers, clusterForSale, peerNodes, monitor, terms },
     auth: {
       user
     },
@@ -151,8 +173,31 @@ function PeerClusterList({ onLogin, mode }) {
   useEffect(() => {
     dispatch(getClusterPeers({}))
     dispatch(getClusterForSale({}))
+    dispatch(getClusterPeerNodes({}))
     dispatch(getTermsData({}))
   }, [])
+
+  // Option (a): for each reachable peer, pull its real /api/clusters directly (with
+  // the per-peer SSO token from the login-upgrade). This is what "Enter" does, applied
+  // to the whole list — the full local-cluster data overwrites the thin peer.json
+  // catalog for peers we can actually reach/authenticate to. Unreachable or
+  // unauthenticated peers just 401/fail and stay on the catalog ("—").
+  useEffect(() => {
+    const all = [...(clusterPeers || []), ...(clusterForSale || [])]
+    if (all.length === 0) return
+    const ownUrl = monitor?.config?.apiPublicUrl
+    const urls = [...new Set(all.map((c) => c['api-public-url']).filter((u) => u && u !== ownUrl))]
+    let cancelled = false
+    urls.forEach((baseURL) => {
+      getApi(baseURL).get('clusters').then((resp) => {
+        if (cancelled || resp?.status !== 200 || !Array.isArray(resp.data)) return
+        const byName = {}
+        resp.data.forEach((fc) => { if (fc?.name) byName[fc.name] = fc })
+        setPeerDetails((prev) => ({ ...prev, [baseURL]: byName }))
+      }).catch(() => { /* unreachable / unauthorized -> keep peer.json catalog */ })
+    })
+    return () => { cancelled = true }
+  }, [clusterPeers, clusterForSale, monitor])
 
   useEffect(() => {
     let filteredClusters = []
@@ -318,40 +363,24 @@ function PeerClusterList({ onLogin, mode }) {
     })
   };
 
-  // Function to get status icon and tooltip text
+  // Status icon for the card header. Health-first: a cluster is green when it's up
+  // and failable, regardless of isProvisioned (the BO peer.json often reports
+  // isProvisioned=false for shared clusters even when they're running). Only
+  // "unknown" when the peer carries no health fields at all. Mirrors healthCell.
   const getStatusIcon = (clusterItem) => {
-    const isUnknown = clusterItem?.lastUpdate === "0001-01-01T00:00:00Z"
-    const isHealthy = !clusterItem?.isDown && !clusterItem?.isMasterDown && clusterItem?.isFailable
-    const isProvisioned = clusterItem?.isProvisioned
-
-    if (isUnknown) {
-      return {
-        icon: HiQuestionMarkCircle,
-        color: 'gray.400',
-        tooltip: 'Unknown - Status cannot be determined'
-      }
+    if (isUnknown(clusterItem)) {
+      return { icon: HiQuestionMarkCircle, color: 'gray.400', tooltip: 'Unknown — no health reported by peer' }
     }
-
-    if (!isProvisioned || !isHealthy) {
-      return {
-        icon: 'circle',
-        color: 'red.500',
-        tooltip: `${!isProvisioned ? 'Not Provisioned' : ''}${!isProvisioned && !isHealthy ? ' & ' : ''}${!isHealthy ? 'Not Healthy' : ''}`
-      }
+    if (clusterItem?.isDown || clusterItem?.isMasterDown) {
+      return { icon: 'circle', color: 'red.500', tooltip: clusterItem?.isMasterDown ? 'Master down' : 'Down' }
     }
-
-    if (isProvisioned && !isHealthy) {
-      return {
-        icon: 'circle',
-        color: 'orange.500',
-        tooltip: 'Provisioned but Not Healthy'
-      }
+    if (!clusterItem?.isFailable) {
+      return { icon: 'circle', color: 'orange.500', tooltip: 'Not failable (blocker)' }
     }
-
     return {
       icon: 'circle',
       color: 'green.500',
-      tooltip: 'Healthy & Provisioned'
+      tooltip: clusterItem?.isProvisioned ? 'Healthy & provisioned' : 'Healthy (provisioning not reported by peer)'
     }
   }
 
@@ -380,6 +409,270 @@ function PeerClusterList({ onLogin, mode }) {
       display="inline-block"
     />
   )
+
+  // getConnState reflects the GROUND TRUTH of whether this instance has actually
+  // opened an HTTPS connection to a peer URI, from /api/peers (PeerNodeStatus:
+  // LastUpdate is advanced only when we really poll). A for-sale catalog entry we
+  // never call has a zero LastUpdate -> "None": a beta tester can match their
+  // firewall log against the "Active" rows and confirm the "None" rows generate no
+  // outbound traffic. See doc/implementation/peer/MARKETPLACE.md.
+  const getConnState = (uri) => {
+    const node = peerNodes?.[uri]
+    const last = node?.LastUpdate
+    const never = !last || last === '0001-01-01T00:00:00Z'
+    if (never) {
+      // No direct connection -> the health shown comes from peer.json (the BO catalog).
+      return { label: 'peer.json', colorScheme: 'gray', tooltip: 'No direct connection — health comes from peer.json (the BO catalog: async, git-pull cadence). No HTTPS call is made from this instance.' }
+    }
+    const lastDate = new Date(last)
+    const lastStr = lastDate.toLocaleString()
+    if (node?.Error) {
+      // We can't reach the peer directly (firewall / IPv4-vs-IPv6 / NAT / network) —
+      // this is NOT a cluster failure. Health falls back to the peer.json catalog
+      // value (the BO can reach peers this instance can't). Orange, not red.
+      return { label: 'Unreachable', colorScheme: 'orange', tooltip: `This instance can't reach the peer directly (firewall / IPv4-IPv6 / network) — showing the peer.json catalog value. Last try ${lastStr}: ${node.Error}` }
+    }
+    // Health dispatch cadence is ~2 min; treat a connection within 5 min as fresh.
+    const isRecent = Date.now() - lastDate.getTime() < 5 * 60 * 1000
+    return isRecent
+      ? { label: 'Live', colorScheme: 'green', tooltip: `Direct connection — health is live-verified (last ${lastStr})` }
+      : { label: 'Stale', colorScheme: 'orange', tooltip: `Direct connection went stale — last ${lastStr}` }
+  }
+
+  // Health is "unknown" only when the peer carries NO health fields at all (e.g. an
+  // out-of-cloud18 shared cluster with no metadata). Do NOT gate on lastUpdate: the
+  // BO peer.json reports isDown/isMasterDown/isFailable/isProvisioned but NOT
+  // lastUpdate, so gating on it wrongly blanks every peer to "—". lastUpdate is only
+  // set by a direct poll; the live "Active" column uses /api/peers for that instead.
+  const isUnknown = (row) =>
+    row?.isFailable === undefined && row?.isDown === undefined &&
+    row?.isMasterDown === undefined && row?.isProvisioned === undefined
+
+  const healthCell = (row) => {
+    if (isUnknown(row)) return <Text>—</Text>
+    if (row.isDown || row.isMasterDown) {
+      return <HStack spacing='2'><CheckOrCrossIcon isValid={false} /><Text>No</Text></HStack>
+    }
+    if (!row.isFailable) {
+      return <HStack spacing='2'><CustomIcon icon={HiExclamation} color='red' /><Text>Blocker</Text></HStack>
+    }
+    return <HStack spacing='2'><CheckOrCrossIcon isValid={true} /><Text>Yes</Text></HStack>
+  }
+
+  // Local-cluster-parity cells; "—" until the BO adds these to peer.json.
+  const arbCell = (row) => {
+    if (row.activePassiveStatus === 'A') return <TagPill colorScheme='green' text='Active' />
+    if (row.activePassiveStatus === 'S') return <TagPill colorScheme='orange' text='Standby' />
+    return <Text>—</Text>
+  }
+  const monCell = (row) => (row.monitoringPause === undefined ? <Text>—</Text> : <CheckOrCrossIcon isValid={!row.monitoringPause} />)
+  const countOf = (v) => (Array.isArray(v) ? v.length : v)
+
+  const num = (v) => (v === undefined || v === null || v === '' ? '—' : v)
+
+  const priceCell = (row) => {
+    const cost = (row['cloud18-monthly-infra-cost'] * 1) + (row['cloud18-monthly-license-cost'] * 1) + (row['cloud18-monthly-sysops-cost'] * 1) + (row['cloud18-monthly-dbops-cost'] * 1)
+    if (!cost) return <Text>—</Text>
+    const promo = row['cloud18-promotion-pct'] * 1
+    const currency = row['cloud18-cost-currency'] || ''
+    const amount = promo > 0 ? (cost * (100 - promo)) / 100 : cost
+    if (promo > 0) {
+      return (
+        <VStack align='start' spacing='0'>
+          <Text as='span' textColor='red.500' textDecoration='line-through' fontSize='sm'>{cost.toFixed(2)} {currency}/mo</Text>
+          <Text as='span' fontWeight='bold'>{amount.toFixed(2)} {currency}/mo</Text>
+        </VStack>
+      )
+    }
+    return <Text>{cost.toFixed(2)} {currency}/mo</Text>
+  }
+
+  // Columns common to both views — the transparency anchor (name + URI + live
+  // connection state) is present whatever metadata a peer carries.
+  const clusterCol = columnHelper.accessor((row) => row['cluster-name'], {
+    id: 'cluster', header: 'Cluster',
+    cell: (info) => {
+      const row = info.row.original
+      const isPending = row?.['api-credentials-acl-allow']?.includes('pending')
+      const isSponsor = row?.['api-credentials-acl-allow']?.includes('sponsor')
+      return (
+        <HStack cursor='pointer' onClick={() => handlePeerCluster(row)}>
+          <CustomIcon icon={isSponsor || isPending ? HiCreditCard : AiOutlineCluster} fill={isSponsor ? 'green' : isPending ? 'orange' : 'gray'} />
+          <Text fontWeight='semibold'>{info.getValue()}</Text>
+        </HStack>
+      )
+    }
+  })
+  // Connectivity cloud: green = we have a working direct connection to the peer,
+  // red = none / can't reach it (health then comes from the peer.json catalog).
+  const connCloud = (uri) => {
+    if (!uri) return { color: 'gray', tooltip: 'No peer URL' }
+    // Our own instance is always reachable — it's us.
+    if (monitor?.config?.apiPublicUrl && uri === monitor.config.apiPublicUrl) {
+      return { color: 'green', tooltip: 'This is your own instance' }
+    }
+    const node = peerNodes?.[uri]
+    const last = node?.LastUpdate
+    const connected = last && last !== '0001-01-01T00:00:00Z'
+    if (node?.Error) return { color: 'red', tooltip: `Direct connection failed: ${node.Error}` }
+    if (connected) return { color: 'green', tooltip: `Direct connection OK — last ${new Date(last).toLocaleString()}` }
+    // Not polled directly (catalog only) — unknown, not a failure. Grey, not red.
+    return { color: 'gray', tooltip: 'No direct connection attempted — health from the peer.json catalog (click the cluster to connect on demand)' }
+  }
+  const uriCol = columnHelper.accessor((row) => row['api-public-url'], {
+    id: 'uri', header: 'Peer', enableSorting: false,
+    cell: (info) => {
+      const uri = info.getValue()
+      if (!uri) return <Text>—</Text>
+      const host = uri.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+      const cc = connCloud(uri)
+      return (
+        <HStack spacing='2'>
+          <Tooltip label={cc.tooltip} placement='top'><Box as='span' display='inline-flex'><CustomIcon icon={FaCloud} color={cc.color} /></Box></Tooltip>
+          <Link href={uri} isExternal fontFamily='mono' fontSize='sm'>{host}</Link>
+        </HStack>
+      )
+    }
+  })
+  // Effective health + its source (the "peer.json default, overwritten by a direct
+  // connection" model). healthyCol shows the effective value; directCol shows whether
+  // that value is Live (direct-verified) or Catalog (peer.json default).
+  const healthyCol = columnHelper.accessor((row) => row, {
+    id: 'healthy', header: 'Healthy', enableSorting: false,
+    cell: (info) => (
+      <Tooltip label='Effective health: peer.json catalog default, overwritten by a direct connection for reachable fleet clusters (the cloud icon on the Peer column shows whether a direct connection is up).' placement='top'>
+        <Box display='inline-block'>{healthCell(info.row.original)}</Box>
+      </Tooltip>
+    )
+  })
+  // No action column — clicking the cluster name enters/subscribes (the Enter button
+  // was redundant).
+
+  // Operational view — same columns and SAME ORDER as the local cluster table
+  // (ClusterList), so the two views are consistent. Fields the BO peer.json doesn't
+  // carry yet render "—" and fill in once enriched. The Peer column (last) shows the
+  // hostname as a link + a green/red cloud for direct connectivity.
+  const operationalColumns = useMemo(() => [
+    clusterCol,
+    columnHelper.accessor((row) => row.activePassiveStatus, { id: 'arbitration', header: 'Arbitration', enableSorting: false, cell: (info) => arbCell(info.row.original) }),
+    columnHelper.accessor((row) => row.monitoringPause, { id: 'monitoring', header: 'Monitoring', enableSorting: false, cell: (info) => monCell(info.row.original) }),
+    columnHelper.accessor((row) => row.topology, { id: 'topology', header: 'Topology', cell: (info) => info.getValue() || '—' }),
+    columnHelper.accessor((row) => row['prov-orchestrator'], { id: 'orchestrator', header: 'Orchestrator', cell: (info) => info.getValue() || '—' }),
+    columnHelper.accessor((row) => countOf(row.dbServers), { id: 'databases', header: 'Databases', cell: (info) => num(info.getValue()) }),
+    columnHelper.accessor((row) => countOf(row.proxyServers), { id: 'proxies', header: 'Proxies', cell: (info) => num(info.getValue()) }),
+    healthyCol,
+    columnHelper.accessor((row) => row, { id: 'provisioned', header: 'Provisioned', enableSorting: false, cell: (info) => isUnknown(info.row.original) ? <Text>—</Text> : <CheckOrCrossIcon isValid={!!info.row.original.isProvisioned} /> }),
+    columnHelper.accessor((row) => row.uptime, { id: 'sla', header: 'SLA', cell: (info) => info.getValue() || '—' }),
+    uriCol,
+  ], [peerNodes, mode])
+
+  // has(): a peer.json numeric/string field is present and meaningful (not undefined,
+  // empty, or "0"). The BO encodes these as strings, so guard both.
+  const has = (v) => v !== undefined && v !== null && v !== '' && v * 1 !== 0
+  // Infra spec packed into ONE column, one spec per line, so a buyer reads exactly
+  // what the hardware is: "16 cores AMD EPYC 7702 3.4GHz / 128GB RAM / 600GB disk
+  // 330 iops / 10Gbps public / <data centers, geo>". Left-aligned (see cellValueAlign).
+  const infraLines = (row) => {
+    const lines = []
+    const cpu = [
+      has(row['prov-db-cpu-cores']) ? `${row['prov-db-cpu-cores']} core${row['prov-db-cpu-cores'] * 1 === 1 ? '' : 's'}` : '',
+      row['cloud18-infra-cpu-model'],
+      row['cloud18-infra-cpu-freq'],
+    ].filter(Boolean).join(' ')
+    if (cpu) lines.push(cpu)
+    if (has(row['prov-db-memory'])) lines.push(`${row['prov-db-memory'] / 1024}GB RAM`)
+    const disk = [
+      has(row['prov-db-disk-size']) ? `${row['prov-db-disk-size']}GB disk` : '',
+      has(row['prov-db-disk-iops']) ? `${row['prov-db-disk-iops']} iops` : '',
+    ].filter(Boolean).join(' ')
+    if (disk) lines.push(disk)
+    if (has(row['cloud18-infra-public-bandwidth'])) lines.push(`${row['cloud18-infra-public-bandwidth'] / 1024}Gbps public`)
+    // Data center(s); geo-localization ("FR") lives in the Zone column, not here.
+    if (row['cloud18-infra-data-centers']) lines.push(row['cloud18-infra-data-centers'])
+    // Infrastructure: orchestrator + platform (e.g. "opensvc <platform>").
+    const infra = [row['prov-orchestrator'], row['cloud18-platform-description']].filter(Boolean).join(' ')
+    if (infra) lines.push(infra)
+    return lines
+  }
+  // A for-sale offer is "qualified" when it carries what a buyer needs to decide: a
+  // price and the core hardware spec (cores + memory + disk). Offers missing those are
+  // still shown, but grouped into a separate "Unqualified" card below the catalog.
+  const isQualified = (row) => {
+    const cost = (row['cloud18-monthly-infra-cost'] * 1) + (row['cloud18-monthly-license-cost'] * 1) + (row['cloud18-monthly-sysops-cost'] * 1) + (row['cloud18-monthly-dbops-cost'] * 1)
+    return cost > 0 && has(row['prov-db-cpu-cores']) && has(row['prov-db-memory']) && has(row['prov-db-disk-size'])
+  }
+  // Service-level commitments (hours), one per line.
+  const serviceLines = (row) => {
+    const lines = []
+    if (has(row['cloud18-sla-response-time'])) lines.push(`Response ${row['cloud18-sla-response-time']}h`)
+    if (has(row['cloud18-sla-repair-time'])) lines.push(`Repair ${row['cloud18-sla-repair-time']}h`)
+    if (has(row['cloud18-sla-provision-time'])) lines.push(`Provision ${row['cloud18-sla-provision-time']}h`)
+    return lines
+  }
+  const multiLineCell = (lines) => {
+    if (!lines || lines.length === 0) return <Text>—</Text>
+    return (
+      <VStack align='start' spacing='0.5'>
+        {lines.map((l, i) => <Text key={i} fontSize='sm'>{l}</Text>)}
+      </VStack>
+    )
+  }
+  // Partner = the selling org (cloud18 domain / sub-domain hierarchy).
+  const partnerOf = (row) => [row['cloud18-domain'], row['cloud18-sub-domain']].filter(Boolean).join(' / ')
+
+  // Offer view — a buyer's spec sheet: what you acquire and what it costs. Order:
+  // Cluster · Plan · Price · Partner · Zone · Infra (multi-line) · Service (multi-line)
+  // · Pre Provision (is the offer already provisioned? — an unprovisioned one is still
+  // buyable, the buyer provisions it). No Peer/URL column: a sales listing shouldn't
+  // expose the peer instance's connectivity. Health is not shown here — a for-sale
+  // offer's health is irrelevant to the buyer; only its provisioning state matters.
+  const offerColumns = useMemo(() => [
+    clusterCol,
+    columnHelper.accessor((row) => row['prov-service-plan'], { id: 'plan', header: 'Plan', cell: (info) => info.getValue() || '—' }),
+    columnHelper.accessor((row) => row, { id: 'price', header: 'Price', enableSorting: false, cell: (info) => priceCell(info.row.original) }),
+    columnHelper.accessor((row) => partnerOf(row), { id: 'partner', header: 'Partner', cell: (info) => info.getValue() || '—' }),
+    columnHelper.accessor((row) => row['cloud18-infra-geo-localizations'], { id: 'zone', header: 'Zone', cell: (info) => info.getValue() || '—' }),
+    columnHelper.accessor((row) => infraLines(row).join(' · '), { id: 'infra', header: 'Infra', enableSorting: false, cell: (info) => multiLineCell(infraLines(info.row.original)) }),
+    columnHelper.accessor((row) => serviceLines(row).join(' · '), { id: 'service', header: 'Service', enableSorting: false, cell: (info) => multiLineCell(serviceLines(info.row.original)) }),
+    columnHelper.accessor((row) => row.isProvisioned, {
+      id: 'preprovision', header: 'Pre Provision', enableSorting: false,
+      cell: (info) => isUnknown(info.row.original) ? <Text>—</Text> : <CheckOrCrossIcon isValid={!!info.row.original.isProvisioned} />
+    }),
+  ], [peerNodes, mode])
+
+  // Merge the direct /api/clusters data (peerDetails) over the peer.json catalog rows.
+  // Where we have the peer's real cluster, its fields overwrite the catalog defaults
+  // (topology, db/proxy counts, uptime/SLA, monitoring, arbitration, live health).
+  const enrichedClusters = useMemo(() => (clusters || []).map((item) => {
+    const fc = peerDetails[item['api-public-url']]?.[item['cluster-name']]
+    if (!fc) return item
+    return {
+      ...item,
+      topology: fc.topology,
+      dbServers: fc.dbServers,
+      proxyServers: fc.proxyServers,
+      uptime: fc.uptime,
+      monitoringPause: fc.config?.monitoringPause,
+      activePassiveStatus: fc.activePassiveStatus,
+      isDown: fc.isDown,
+      isMasterDown: fc.isMasterDown,
+      isFailable: fc.isFailable,
+      isProvisioned: fc.isProvision,
+    }
+  }), [clusters, peerDetails])
+
+  // In the Sale view, split the catalog into qualified offers (a buyer can act on)
+  // and unqualified ones (missing price or hardware spec) — the latter go on a
+  // separate card so they don't pollute the marketplace. Monitor view is not split.
+  const qualifiedClusters = contentType === 'sale' ? (enrichedClusters || []).filter(isQualified) : enrichedClusters
+  const unqualifiedClusters = contentType === 'sale' ? (enrichedClusters || []).filter((c) => !isQualified(c)) : []
+  const primaryHeading = `${mode === 'shared' ? 'Clusters For Sale' : 'Clusters Peer'} — ${qualifiedClusters?.length || 0} cluster${(qualifiedClusters?.length || 0) !== 1 ? 's' : ''}`
+  const saleSections = [
+    { key: 'primary', heading: primaryHeading, list: qualifiedClusters },
+    ...(unqualifiedClusters.length > 0
+      ? [{ key: 'unqualified', heading: `Unqualified — ${unqualifiedClusters.length} cluster${unqualifiedClusters.length !== 1 ? 's' : ''} (missing price or hardware spec)`, list: unqualifiedClusters }]
+      : []),
+  ]
 
   // Colors for the filter panel based on color mode
   const filterPanelBg = useColorModeValue('gray.50', 'gray.800')
@@ -522,25 +815,39 @@ function PeerClusterList({ onLogin, mode }) {
         {!loading && clusters?.length === 0 ? (
           <NotFound text={mode === 'shared' ? 'No shared peer cluster found!' : 'No peer cluster found!'} />
         ) : (
-          <>
-            <Flex justifyContent="space-between" alignItems="center" mb={4}>
-              <Text fontSize="lg" fontWeight="bold">
-                Showing {clusters.length} cluster{clusters.length !== 1 ? 's' : ''}
-              </Text>
-
-              {/* Only show this on mobile views when panel is collapsed */}
-              {!isFilterPanelOpen && (
-                <IconButton
-                  display={{ base: 'flex', lg: 'none' }}
-                  aria-label="Open filters"
-                  icon={<HiSearch />}
-                  onClick={() => setIsFilterPanelOpen(true)}
-                />
-              )}
-            </Flex>
-
+          saleSections.map((section, si) => (
+          <Box key={section.key} mt={si === 0 ? 0 : 8}>
+          <AccordionComponent
+            heading={section.heading}
+            headerActions={si !== 0 ? null : (
+              <HStack spacing="2">
+                {/* Content: Monitor (operational) vs Sale (offer) */}
+                <ButtonGroup size='sm' isAttached variant='outline'>
+                  <Button variant={contentType === 'monitor' ? 'solid' : 'outline'} colorScheme={contentType === 'monitor' ? 'blue' : 'gray'} onClick={() => setContentType('monitor')}>Monitor</Button>
+                  <Button variant={contentType === 'sale' ? 'solid' : 'outline'} colorScheme={contentType === 'sale' ? 'blue' : 'gray'} onClick={() => setContentType('sale')}>Sale</Button>
+                </ButtonGroup>
+                {/* Display: table vs grid (cards) — same RMIconButton as the local list */}
+                {displayMode === 'table' ? (
+                  <RMIconButton icon={HiViewGrid} tooltip='Show grid view' onClick={() => setDisplayMode('grid')} />
+                ) : (
+                  <RMIconButton icon={HiTable} tooltip='Show table view' onClick={() => setDisplayMode('table')} />
+                )}
+                {/* Only show this on mobile views when panel is collapsed */}
+                {!isFilterPanelOpen && (
+                  <IconButton
+                    size='sm'
+                    display={{ base: 'flex', lg: 'none' }}
+                    aria-label="Open filters"
+                    icon={<HiSearch />}
+                    onClick={() => setIsFilterPanelOpen(true)}
+                  />
+                )}
+              </HStack>
+            )}
+            body={
+            displayMode === 'grid' ? (
             <Flex className={styles.clusterList}>
-              {clusters?.map((clusterItem) => {
+              {section.list?.map((clusterItem) => {
                 const headerText = `${clusterItem['cluster-name']}`
                 const domain = `${clusterItem['cloud18-domain']}`
                 const subDomain = `${clusterItem['cloud18-sub-domain']}`
@@ -627,13 +934,11 @@ function PeerClusterList({ onLogin, mode }) {
                       className={styles.card}
                       width={'400px'}
                       header={
-                        <HStack as="div" className={styles.btnHeading} cursor={'pointer'} onClick={() => { handlePeerCluster(clusterItem) }} justifyContent="space-between">
-                          <HStack>
-                            <CustomIcon icon={isSponsor || isPending ? (HiCreditCard) : (AiOutlineCluster)} fill={isSponsor ? "green" : isPending ? "orange" : "gray"} />
-                            <span className={styles.cardHeaderText}>{headerText}</span>
-                          </HStack>
+                        <HStack as="div" cursor={'pointer'} className={styles.btnHeading} onClick={() => { handlePeerCluster(clusterItem) }}>
+                          <CustomIcon icon={isSponsor || isPending ? (HiCreditCard) : (AiOutlineCluster)} fill={isSponsor ? "green" : isPending ? "orange" : "gray"} />
+                          <span className={styles.cardHeaderText}>{headerText}</span>
                           <Tooltip label={statusInfo.tooltip} placement="top">
-                            <Box>
+                            <Box marginLeft="auto">
                               {statusInfo.icon === HiQuestionMarkCircle ? (
                                 <CustomIcon icon={HiQuestionMarkCircle} color={statusInfo.color} />
                               ) : (
@@ -656,7 +961,13 @@ function PeerClusterList({ onLogin, mode }) {
                 )
               })}
             </Flex>
-          </>
+            ) : (
+              <DataTable data={section.list} columns={contentType === 'sale' ? offerColumns : operationalColumns} cellValueAlign={contentType === 'sale' ? 'left' : 'center'} />
+            )
+            }
+          />
+          </Box>
+          ))
         )}
       </Box>
       {isTermsModalOpen && <TermsModal cluster={item} terms={finalTerms} isOpen={isTermsModalOpen} closeModal={closeTermsModal} onAgreeTerms={handleSubscribeModal} />}

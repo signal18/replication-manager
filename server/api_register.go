@@ -943,6 +943,15 @@ func isAllowedOfflineInstancePlan(plan string) bool {
 
 func (repman *ReplicationManager) persistInstanceSubscriptionPlan(plan, uri string) {
 	repman.Conf.Cloud18SubscriptionPlan = plan
+	// Keep peer-health mode aligned with the plan when the CRM validates it at
+	// runtime: partner fleets poll (smart), everyone else pulls the BO aggregate.
+	// Only the "pulling" default is promoted, so an explicit operator choice stays.
+	if plan == "partner" && repman.Conf.Cloud18PeerHealthMode == "pulling" {
+		repman.Conf.Cloud18PeerHealthMode = "smart"
+		if repman.PeerManager != nil {
+			repman.PeerManager.SetHealthMode("smart")
+		}
+	}
 	if repman.ConfigManager != nil {
 		repman.ConfigManager.SaveConfig(repman, true)
 	} else {

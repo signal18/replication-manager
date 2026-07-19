@@ -487,7 +487,9 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "cloud18-peer-health-mode":
 		if value == "peering" || value == "smart" || value == "pulling" {
 			repman.Conf.Cloud18PeerHealthMode = value
-			repman.PeerManager.HealthMode = value
+			if repman.PeerManager != nil {
+				repman.PeerManager.SetHealthMode(value)
+			}
 		}
 	case "mail-max-pool":
 		v, _ = strconv.Atoi(value)

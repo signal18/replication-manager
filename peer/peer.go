@@ -119,6 +119,15 @@ func (pm *PeerManager) SetApiPublicURL(apiURL string) {
 	pm.ApiURL = apiURL
 }
 
+// SetHealthMode safely updates HealthMode. It can be changed at runtime from HTTP
+// handlers (registration, global settings) while BatchUpdateClusters reads it under
+// pm.mu, so the write must take the same lock to avoid a data race.
+func (pm *PeerManager) SetHealthMode(mode string) {
+	pm.mu.Lock()
+	pm.HealthMode = mode
+	pm.mu.Unlock()
+}
+
 func (pm *PeerManager) NewClient(baseURL string) *PeerClient {
 	pclient := NewPeerClient(baseURL, 10*time.Second)
 	pm.Clients[baseURL] = pclient
@@ -180,14 +189,14 @@ func (pm *PeerManager) BatchUpdateClusters(clusterUpdates []*PeerCluster, remove
 		}
 	}
 
-	// Update health status based on configured mode.
-	if len(pm.PeerURL) > 0 {
-		if pm.HealthMode == "pulling" {
-			go pm.GetHealthStatusForUnknownVersions()
-		} else {
-			go pm.GetAllHealthStatus()
-		}
-	}
+	// NOTE: health polling is intentionally NOT started here. This runs inside
+	// the peer package with no session-user context, so it can only poll the
+	// flat, unscoped PeerURL list — which includes for-sale clusters this
+	// instance has no relationship to (O(N^2) fan-out, dark-peer connection
+	// leak). The caller (server_git.go, after this returns) invokes the
+	// server-driven, session-scoped dispatchPeerHealthPoll instead, so live
+	// polling is always restricted to PeerUserClusters for connected users.
+	// See doc/implementation/peer/MARKETPLACE.md §6.
 }
 
 // removeCluster (internal function, assumes lock is held).
@@ -229,14 +238,29 @@ func (pm *PeerManager) GetCluster(hashID string) (*PeerCluster, bool) {
 	return cluster, exists
 }
 
-// GetUserClusters retrieves all clusters a user has access to.
-func (pm *PeerManager) GetUserClusters(username string) []*PeerCluster {
+// isOwnCluster reports whether a peer cluster is one THIS instance manages locally —
+// its name is in localNames, the live local cluster list. Such clusters already appear
+// in the LOCAL cluster view, so they are excluded from the peer / for-sale views to
+// avoid showing them twice. Keying on the local cluster NAME (not api-public-url) is
+// deliberate: a DR standby shares its primary's api-public-url but runs a different
+// (often empty) local cluster set, so a url match would wrongly hide the primary's
+// clusters from the DR. An empty/nil localNames set excludes nothing.
+func isOwnCluster(pc *PeerCluster, localNames map[string]bool) bool {
+	return pc != nil && localNames[pc.ClusterName]
+}
+
+// GetUserClusters retrieves all clusters a user has access to, excluding clusters
+// this instance manages locally (localNames) — they are already in the local list.
+func (pm *PeerManager) GetUserClusters(username string, localNames map[string]bool) []*PeerCluster {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
 	clusters := []*PeerCluster{}
 	if pcs, ok := pm.PeerUserClusters[username]; ok {
 		for _, pc := range pcs {
+			if isOwnCluster(pc, localNames) {
+				continue
+			}
 			clusters = append(clusters, pc)
 		}
 	}
@@ -251,19 +275,31 @@ func (pm *PeerManager) GetPeerNodeStatus() map[string]*PeerNodeStatus {
 	return pm.PeerURL
 }
 
-// GetUserClustersJSON returns a JSON string of all clusters assigned to a user.
+// GetPeerNodesJSON returns the peer node statuses as JSON. It marshals a value-copy
+// snapshot taken under the lock — never the live *PeerNodeStatus pointers — because
+// pollPeerHealth mutates Error/LastUpdate concurrently off the status-API path.
 func (pm *PeerManager) GetPeerNodesJSON() ([]byte, error) {
-	nodes := pm.GetPeerNodeStatus()
-	return json.MarshalIndent(nodes, "", "\t")
+	pm.mu.RLock()
+	snapshot := make(map[string]PeerNodeStatus, len(pm.PeerURL))
+	for url, ns := range pm.PeerURL {
+		if ns != nil {
+			snapshot[url] = *ns
+		}
+	}
+	pm.mu.RUnlock()
+	return json.MarshalIndent(snapshot, "", "\t")
 }
 
-// GetUserClustersJSON returns a JSON string of all clusters assigned to a user.
-func (pm *PeerManager) GetUserClustersJSON(username string) ([]byte, error) {
-	clusters := pm.GetUserClusters(username)
+// GetUserClustersJSON returns a JSON string of all clusters assigned to a user,
+// excluding this instance's own local clusters (localNames).
+func (pm *PeerManager) GetUserClustersJSON(username string, localNames map[string]bool) ([]byte, error) {
+	clusters := pm.GetUserClusters(username, localNames)
 	return json.MarshalIndent(clusters, "", "\t")
 }
 
-// GetSaleClustersJSON returns a JSON string of all clusters available for sale.
+// GetSaleClustersJSON returns a JSON string of all clusters available for sale. Unlike
+// the peer view, the for-sale marketplace is NOT filtered by local ownership — a seller
+// browses the full catalog, including any of their own offers.
 func (pm *PeerManager) GetSaleClustersJSON() ([]byte, error) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
@@ -346,6 +382,10 @@ func (pm *PeerManager) GetHealthStatus(pclient *PeerClient) error {
 			return fmt.Errorf("failed to parse health status: %s", err)
 		}
 
+		// Lock the map mutation: this runs off-lock (called from pollPeerHealth
+		// after the network I/O) and BatchUpdateClusters writes PeerClusters under
+		// the same lock.
+		pm.mu.Lock()
 		for clustername, status := range healths {
 			hashID := GetHashID(pclient.baseURL, clustername)
 			if pc, exists := pm.PeerClusters[hashID]; exists {
@@ -356,6 +396,7 @@ func (pm *PeerManager) GetHealthStatus(pclient *PeerClient) error {
 				pc.LastUpdate = update
 			}
 		}
+		pm.mu.Unlock()
 	}
 
 	return nil
@@ -378,178 +419,134 @@ func (pm *PeerManager) UpdateHealthStatus(healths map[string]PeerHealth) {
 	}
 }
 
+// relevantPeerURLs returns the set of peer API URLs this instance may live-poll:
+// the registering user's peers (own fleet — always) plus each active-session user's
+// peers. These come only from PeerUserClusters (own fleet + delegated + sale
+// workflows via ReloadUsers' pending/sponsor demotion), so a for-sale catalog
+// cluster nobody here is related to — keyed under the seller's user, in PeerForSale —
+// never appears. A fresh/browsing instance returns an empty set. Own ApiURL is
+// excluded. See doc/implementation/peer/MARKETPLACE.md §6.
+func (pm *PeerManager) relevantPeerURLs(registeredUser string, activeUsers []string) map[string]bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	urls := make(map[string]bool)
+	addUserPeers := func(user string) {
+		clusters, ok := pm.PeerUserClusters[user]
+		if !ok {
+			return
+		}
+		for _, pc := range clusters {
+			if pc.ApiPublicUrl != "" && pc.ApiPublicUrl != pm.ApiURL {
+				urls[pc.ApiPublicUrl] = true
+			}
+		}
+	}
+
+	if registeredUser != "" {
+		addUserPeers(registeredUser)
+	}
+	for _, user := range activeUsers {
+		if user != registeredUser {
+			addUserPeers(user)
+		}
+	}
+	return urls
+}
+
 // GetHealthStatusForActiveUsers polls only the peer URLs that the registered
 // user or active session users can access. The registeredUser (cloud18-gitlab-user)
 // is always included — own fleet peers are always polled. Other users' peers
 // are only polled when they have an active session (non-empty GitToken).
 func (pm *PeerManager) GetHealthStatusForActiveUsers(registeredUser string, activeUsers []string) {
-	// Collect unique peer URLs: registered user always + active session users.
-	pm.mu.RLock()
-	relevantURLs := make(map[string]bool)
-
-	// Always include registered user's peers (own fleet)
-	if registeredUser != "" {
-		if clusters, ok := pm.PeerUserClusters[registeredUser]; ok {
-			for _, pc := range clusters {
-				if pc.ApiPublicUrl != "" && pc.ApiPublicUrl != pm.ApiURL {
-					relevantURLs[pc.ApiPublicUrl] = true
-				}
-			}
-		}
+	for url := range pm.relevantPeerURLs(registeredUser, activeUsers) {
+		pm.pollPeerHealth(url)
 	}
+}
 
-	// Add active session users' peers
-	for _, user := range activeUsers {
-		if user == registeredUser {
-			continue
-		}
-		if clusters, ok := pm.PeerUserClusters[user]; ok {
-			for _, pc := range clusters {
-				if pc.ApiPublicUrl != "" && pc.ApiPublicUrl != pm.ApiURL {
-					relevantURLs[pc.ApiPublicUrl] = true
-				}
-			}
-		}
-	}
-	pm.mu.RUnlock()
-
-	if len(relevantURLs) == 0 {
+// pollPeerHealth checks one peer's /api/health, but only if it has not been polled
+// within Interval. It "claims" the peer atomically under the lock — FIRST IN WINS:
+// the first dispatch to reach a peer advances LastUpdate and does the call, while
+// any overlapping dispatch sees a fresh timestamp and skips it. So each peer is
+// called at most once per Interval regardless of how many dispatches overlap, and a
+// failed attempt is rate-limited exactly like a success (LastUpdate is advanced
+// up-front, before the call). All shared-map access (PeerURL / Clients) happens
+// under the lock; the network I/O runs AFTER the lock is released, so a slow peer
+// never blocks other peers or the BatchUpdateClusters mutator, and there is no
+// concurrent-map race. This makes whole-poll serialization (single-flight)
+// unnecessary: different peers can still be polled in parallel — only the SAME peer
+// is deduplicated. See doc/implementation/peer/MARKETPLACE.md §6.
+func (pm *PeerManager) pollPeerHealth(url string) {
+	pm.mu.Lock()
+	nodestat, ok := pm.PeerURL[url]
+	if !ok || url == pm.ApiURL || time.Since(nodestat.LastUpdate) <= time.Duration(pm.Interval)*time.Second {
+		pm.mu.Unlock()
 		return
 	}
-
-	for url := range relevantURLs {
-		nodestat, ok := pm.PeerURL[url]
-		if !ok {
-			continue
-		}
-
-		if !misc.IsValidPublicURL(url) {
-			nodestat.Error = "not a valid public URL"
-			continue
-		}
-
-		pclient, ok := pm.Clients[url]
-		if !ok {
-			pclient = pm.NewClient(url)
-			pm.Clients[url] = pclient
-		}
-
-		if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
-			if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
-				nodestat.Error = fmt.Sprintf("failed to login: %s", err)
-				continue
-			}
-		}
-
-		if time.Since(nodestat.LastUpdate) > time.Duration(pm.Interval)*time.Second {
-			if err := pm.GetHealthStatus(pclient); err != nil {
-				nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
-				continue
-			}
-			nodestat.Error = ""
-			nodestat.LastUpdate = time.Now()
-		}
+	if !misc.IsValidPublicURL(url) {
+		nodestat.Error = "not a valid public URL"
+		pm.mu.Unlock()
+		return
 	}
+	nodestat.LastUpdate = time.Now() // claim: no other dispatch polls this peer this Interval
+	pclient, ok := pm.Clients[url]
+	if !ok {
+		pclient = pm.NewClient(url)
+	}
+	pm.mu.Unlock()
+
+	// Network I/O outside the lock. This goroutine owns the claim, but nodestat is
+	// also read by GetPeerNodesJSON (status API), so its fields are written under the
+	// lock via setNodeError, not raw.
+	if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
+		// Best-effort login: /api/health is PUBLIC (curl of any dbaas-*.signal18.io
+		// /api/health returns 200 with no auth). A login failure — the SSO user not
+		// being provisioned on the peer, a wrong password, etc. — must NOT block the
+		// health/connectivity check, which needs no token. Login only matters for
+		// richer authenticated calls (e.g. /api/clusters).
+		_ = pclient.PeerLogin(pm.PeerUser, pm.PeerPassword)
+	}
+	if err := pm.GetHealthStatus(pclient); err != nil {
+		pm.setNodeError(nodestat, fmt.Sprintf("failed to get health status: %s", err))
+		return
+	}
+	pm.setNodeError(nodestat, "")
+}
+
+// setNodeError writes ns.Error under the lock. PeerNodeStatus pointers are read by
+// the status API (GetPeerNodesJSON), so field writes must be synchronized.
+func (pm *PeerManager) setNodeError(ns *PeerNodeStatus, errMsg string) {
+	pm.mu.Lock()
+	ns.Error = errMsg
+	pm.mu.Unlock()
 }
 
 func (pm *PeerManager) GetAllHealthStatus() {
-	for url, nodestat := range pm.PeerURL {
-		if url == pm.ApiURL {
-			continue
-		}
-
-		// Skip if the URL is not valid.
-		if !misc.IsValidPublicURL(url) {
-			nodestat.Error = fmt.Sprintf("not a valid public URL")
-			continue
-		}
-
-		pclient, ok := pm.Clients[url]
-		if !ok {
-			pclient = pm.NewClient(url)
-			pm.Clients[url] = pclient
-		}
-
-		// Login if no token is set in the client.
-		if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
-			if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
-				nodestat.Error = fmt.Sprintf("failed to login: %s", err)
-				continue
-			}
-		}
-
-		if time.Since(nodestat.LastUpdate) > time.Duration(pm.Interval)*time.Second {
-			if err := pm.GetHealthStatus(pclient); err != nil {
-				nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
-				continue
-			}
-			nodestat.Error = ""
-			nodestat.LastUpdate = time.Now()
-		}
-	}
-}
-
-// GetHealthStatusForUnknownVersions polls only peers whose RepmgrVersion is
-// empty — meaning they are running an old repman that doesn't push health
-// fields to clusterstate.json. Peers with a known version get their health
-// from peer.json (populated by the BO from clusters_state) and don't need
-// direct HTTP polling.
-func (pm *PeerManager) GetHealthStatusForUnknownVersions() {
+	// Snapshot the URL set under the lock, then poll each through the atomic-claim
+	// helper (network I/O off-lock). Never iterate pm.PeerURL directly during the
+	// calls — BatchUpdateClusters mutates it under the same lock.
 	pm.mu.RLock()
-	// Collect URLs of peers with unknown version
-	var unknownURLs []string
-	for _, pc := range pm.PeerClusters {
-		if pc.RepmgrVersion == "" && pc.ApiPublicUrl != "" && pc.ApiPublicUrl != pm.ApiURL {
-			unknownURLs = append(unknownURLs, pc.ApiPublicUrl)
+	urls := make([]string, 0, len(pm.PeerURL))
+	for url := range pm.PeerURL {
+		if url != pm.ApiURL {
+			urls = append(urls, url)
 		}
 	}
 	pm.mu.RUnlock()
 
-	if len(unknownURLs) == 0 {
-		return
-	}
-
-	// Deduplicate URLs (multiple clusters on same instance)
-	seen := make(map[string]bool)
-	for _, url := range unknownURLs {
-		if seen[url] {
-			continue
-		}
-		seen[url] = true
-
-		nodestat, ok := pm.PeerURL[url]
-		if !ok {
-			continue
-		}
-
-		if !misc.IsValidPublicURL(url) {
-			nodestat.Error = "not a valid public URL"
-			continue
-		}
-
-		pclient, ok := pm.Clients[url]
-		if !ok {
-			pclient = pm.NewClient(url)
-			pm.Clients[url] = pclient
-		}
-
-		if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
-			if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
-				nodestat.Error = fmt.Sprintf("failed to login: %s", err)
-				continue
-			}
-		}
-
-		if time.Since(nodestat.LastUpdate) > time.Duration(pm.Interval)*time.Second {
-			if err := pm.GetHealthStatus(pclient); err != nil {
-				nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
-				continue
-			}
-			nodestat.Error = ""
-			nodestat.LastUpdate = time.Now()
-		}
+	for _, url := range urls {
+		pm.pollPeerHealth(url)
 	}
 }
+
+// GetHealthStatusForUnknownVersions was removed: it polled every peer with an
+// empty RepmgrVersion across the whole catalog (for-sale clusters included),
+// with no ownership/relationship scope — an unscoped fan-out that broke the
+// marketplace invariant. All live polling now goes through
+// GetHealthStatusForActiveUsers (scoped to PeerUserClusters for connected
+// users). Version back-fill for peers you have a relationship to happens there;
+// for-sale catalog versions come from peer.json (BO), not direct polling.
+// See doc/implementation/peer/MARKETPLACE.md §6.
 
 func GetPeerHashID(pc *PeerCluster) string {
 	md5Hash := md5.New()

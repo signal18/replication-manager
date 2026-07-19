@@ -130,17 +130,41 @@ func (repman *ReplicationManager) UpdateLocalPeer() {
 	repman.PeerManager.UpdateHealthStatus(repman.GetLocalHealth())
 }
 
-// dispatchPeerHealthPoll runs the appropriate health poll based on the configured mode.
-func (repman *ReplicationManager) dispatchPeerHealthPoll() {
-	switch repman.Conf.Cloud18PeerHealthMode {
-	case "peering":
-		go repman.PeerManager.GetAllHealthStatus()
-	case "smart":
-		activeUsers := repman.getActiveSessionUsers()
-		go repman.PeerManager.GetHealthStatusForActiveUsers(repman.Conf.Cloud18GitUser, activeUsers)
-	case "pulling":
-		go repman.PeerManager.GetHealthStatusForUnknownVersions()
+// dispatchPeerHealthPoll runs a scoped health poll in a goroutine (callers — the
+// reload path included — never block) and returns false if one was already in
+// flight. It holds peerHealthBusy for the WHOLE poll, so the flag genuinely reflects
+// "a poll is running": the timer raises GWARN013@peerhealth when it finds a poll
+// that hasn't finished within a cycle (a slow/stuck poll — the operator signal that
+// would have flagged the original incident). This coarse guard is complementary to
+// pollPeerHealth's per-peer first-in-wins claim, which handles fine-grained dedup and
+// map safety against BatchUpdateClusters. See MARKETPLACE.md §6.
+//
+// pulling (default) and smart both scope live polling to the connected-users set
+// (own registering identity + active-session users) via GetHealthStatusForActiveUsers.
+// This is the invariant: a for-sale cluster is polled only once a user here has a
+// relationship to it (delegation, or a pending/sponsor sale workflow) — never while
+// merely browsing the catalog. A fresh instance with no such relationship polls zero
+// sellers.
+//
+// peering is the only unscoped mode: a deliberate full-mesh that polls every peer
+// URL, for-sale included. It ignores the invariant on purpose and must stay opt-in
+// (never the default), reserved for legacy/debug full-mesh fleets.
+func (repman *ReplicationManager) dispatchPeerHealthPoll() bool {
+	if !repman.peerHealthBusy.CompareAndSwap(false, true) {
+		return false
 	}
+	go func() {
+		defer repman.peerHealthBusy.Store(false)
+		switch repman.Conf.Cloud18PeerHealthMode {
+		case "peering":
+			repman.PeerManager.GetAllHealthStatus()
+		case "smart", "pulling":
+			activeUsers := repman.getActiveSessionUsers()
+			repman.PeerManager.GetHealthStatusForActiveUsers(repman.Conf.Cloud18GitUser, activeUsers)
+		}
+		repman.UpdateLocalPeer()
+	}()
+	return true
 }
 
 // getActiveSessionUsers returns usernames of users with an active session
