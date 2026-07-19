@@ -621,8 +621,10 @@ function PeerClusterList({ onLogin, mode }) {
 
   // Offer view — a buyer's spec sheet: what you acquire and what it costs. Order:
   // Cluster · Plan · Price · Partner · Zone · Infra (multi-line) · Service (multi-line)
-  // · Healthy (de-emphasised — an unprovisioned offer is still buyable). No Peer/URL
-  // column: a sales listing shouldn't expose the peer instance's connectivity.
+  // · Pre Provision (is the offer already provisioned? — an unprovisioned one is still
+  // buyable, the buyer provisions it). No Peer/URL column: a sales listing shouldn't
+  // expose the peer instance's connectivity. Health is not shown here — a for-sale
+  // offer's health is irrelevant to the buyer; only its provisioning state matters.
   const offerColumns = useMemo(() => [
     clusterCol,
     columnHelper.accessor((row) => row['prov-service-plan'], { id: 'plan', header: 'Plan', cell: (info) => info.getValue() || '—' }),
@@ -631,7 +633,10 @@ function PeerClusterList({ onLogin, mode }) {
     columnHelper.accessor((row) => row['cloud18-infra-geo-localizations'], { id: 'zone', header: 'Zone', cell: (info) => info.getValue() || '—' }),
     columnHelper.accessor((row) => infraLines(row).join(' · '), { id: 'infra', header: 'Infra', enableSorting: false, cell: (info) => multiLineCell(infraLines(info.row.original)) }),
     columnHelper.accessor((row) => serviceLines(row).join(' · '), { id: 'service', header: 'Service', enableSorting: false, cell: (info) => multiLineCell(serviceLines(info.row.original)) }),
-    healthyCol,
+    columnHelper.accessor((row) => row.isProvisioned, {
+      id: 'preprovision', header: 'Pre Provision', enableSorting: false,
+      cell: (info) => isUnknown(info.row.original) ? <Text>—</Text> : <CheckOrCrossIcon isValid={!!info.row.original.isProvisioned} />
+    }),
   ], [peerNodes, mode])
 
   // Merge the direct /api/clusters data (peerDetails) over the peer.json catalog rows.
