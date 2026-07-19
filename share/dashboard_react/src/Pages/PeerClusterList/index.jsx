@@ -18,6 +18,7 @@ import { getClusterData, clusterSubscribe } from '../../redux/clusterSlice'
 import TermsModal from '../../components/Modals/TermsModal'
 import { showErrorToast } from '../../redux/toastSlice'
 import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
+import RMIconButton from '../../components/RMIconButton'
 import SearchBox from '../../components/SearchBox'
 import Dropdown from '../../components/Dropdown'
 import { getApi, getTokenByBaseURL } from '../../services/apiHelper'
@@ -825,14 +826,12 @@ function PeerClusterList({ onLogin, mode }) {
                   <Button variant={contentType === 'monitor' ? 'solid' : 'outline'} colorScheme={contentType === 'monitor' ? 'blue' : 'gray'} onClick={() => setContentType('monitor')}>Monitor</Button>
                   <Button variant={contentType === 'sale' ? 'solid' : 'outline'} colorScheme={contentType === 'sale' ? 'blue' : 'gray'} onClick={() => setContentType('sale')}>Sale</Button>
                 </ButtonGroup>
-                {/* Display: table vs grid (cards) — like the local cluster list */}
-                <IconButton
-                  size='sm'
-                  aria-label={displayMode === 'table' ? 'Show grid view' : 'Show table view'}
-                  title={displayMode === 'table' ? 'Grid view' : 'Table view'}
-                  icon={displayMode === 'table' ? <HiViewGrid /> : <HiTable />}
-                  onClick={() => setDisplayMode(displayMode === 'table' ? 'grid' : 'table')}
-                />
+                {/* Display: table vs grid (cards) — same RMIconButton as the local list */}
+                {displayMode === 'table' ? (
+                  <RMIconButton icon={HiViewGrid} tooltip='Show grid view' onClick={() => setDisplayMode('grid')} />
+                ) : (
+                  <RMIconButton icon={HiTable} tooltip='Show table view' onClick={() => setDisplayMode('table')} />
+                )}
                 {/* Only show this on mobile views when panel is collapsed */}
                 {!isFilterPanelOpen && (
                   <IconButton
