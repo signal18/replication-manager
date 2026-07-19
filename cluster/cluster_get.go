@@ -1956,6 +1956,19 @@ func (cluster *Cluster) GetCompactJson() ([]byte, error) {
 		return nil, fmt.Errorf("set clusterS3Providers snapshot: %w", err)
 	}
 
+	// Slim the cluster-LIST payload. These subtrees are single-cluster DETAIL — the
+	// dashboard reads them ONLY from the per-cluster /api/clusters/{name} fetch
+	// (clusterData), never from the list (verified via a dashboard-wide read audit).
+	// The full cluster object is ~77 KB/row; dropping these cuts ~48% for EVERY user's
+	// cluster page on every refresh. config + apiUsers still stay (the list does read
+	// those) and are handled in a follow-up. See project_api_clusters_bloat.
+	for _, field := range []string{
+		"configurator", "securityStates", "securityScore", "securityRemediations",
+		"Whitelist", "diskStat", "workloadStates", "schemaStates",
+	} {
+		result, _ = sjson.DeleteBytes(result, field)
+	}
+
 	return result, nil
 }
 
