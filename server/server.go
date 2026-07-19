@@ -151,7 +151,12 @@ type ReplicationManager struct {
 	exitMsg                     string
 	exit                        atomic.Bool
 	isStarted                   bool
-	Confs                       map[string]config.Config
+	// Confs holds every cluster's full config, used only INTERNALLY (config build,
+	// reload, delete). It is never read from the wire — the dashboard and CLI don't
+	// reference it — yet json.Marshal(repman) shipped it in /api/monitor at 312 KB (66%
+	// of a 463 KB payload), unredacted secrets and all. json:"-" keeps it internal (like
+	// VersionConfs). Per-cluster config still comes from /api/clusters/{name}.
+	Confs                       map[string]config.Config       `json:"-"`
 	// Peer-network freshness, surfaced in the Clusters Peer view:
 	LastConfigGitPush           time.Time                      `json:"lastConfigGitPush"` // last cloud18 config push to the BO git
 	LastPeerLookup              time.Time                      `json:"lastPeerLookup"`    // last remote peer-cluster catalog refresh (peer.json pull)

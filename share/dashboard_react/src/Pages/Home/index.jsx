@@ -228,7 +228,12 @@ function Home() {
         globalTabsRef.current[selectedTabRef.current] === 'Settings'
       ) {
         if (!isPaused) {
-          dispatch(getMonitoredData({}))
+          // monitor = global/near-static options (config, service catalogs, plans) +
+          // slow-moving status. It doesn't need the per-tick cadence the live cluster
+          // list does — poll it 10x less often (same gate used inside a cluster below).
+          if (intervalTickerRef.current % 10 === 0) {
+            dispatch(getMonitoredData({}))
+          }
           dispatch(getClusters({}))
           dispatch(getGlobalLogs({}))
           dispatch(getGlobalAlerts({}))
