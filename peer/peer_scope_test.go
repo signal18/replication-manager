@@ -3,6 +3,7 @@ package peer
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // The marketplace invariant (MARKETPLACE.md §6): live polling is scoped to
@@ -193,5 +194,52 @@ func TestDRSharedApiUrlDoesNotHideClusters(t *testing.T) {
 	got := pm.GetUserClusters("me@sig", map[string]bool{}) // DR has no live local clusters
 	if len(got) != 1 || got[0].ClusterName != "goodlands" {
 		t.Fatalf("a cluster sharing the DR api-url but not run locally must stay visible; got %+v", got)
+	}
+}
+
+// TestReloadPreservesLiveEnrichmentInViews locks the fix: after a peer.json RELOAD
+// (a second BatchUpdateClusters over an existing cluster), the peer view
+// (PeerUserClusters) and the marketplace (PeerForSale) must share the SAME object
+// that the live /api/clusters poll enriches (PeerClusters[hashID]). Before the fix,
+// ReloadUsers was wired to the transient catalog object, so a post-reload live poll
+// updated PeerClusters but the views showed a stale sibling → for-sale clusters
+// stayed gray/not-provisioned even when the peer reported them live.
+func TestReloadPreservesLiveEnrichmentInViews(t *testing.T) {
+	pm := NewPeerManager(30)
+	mk := func() *PeerCluster {
+		return &PeerCluster{
+			ApiPublicUrl:                   "https://seller.example.com",
+			ClusterName:                    "cl-sale",
+			Cloud18Shared:                  true,
+			ApiCredentialsAclAllowExternal: "me@sig:x:cl-sale",
+		}
+	}
+	pm.BatchUpdateClusters([]*PeerCluster{mk()}, false) // initial catalog load
+	pm.BatchUpdateClusters([]*PeerCluster{mk()}, false) // reload -> existing-cluster path
+
+	hashID := GetHashID("https://seller.example.com", "cl-sale")
+	stored, ok := pm.PeerClusters[hashID]
+	if !ok {
+		t.Fatalf("cluster missing from PeerClusters under %s", hashID)
+	}
+
+	// Simulate the live /api/clusters enrichment (GetClusterDetails writes here).
+	stored.DirectUpdate = time.Now()
+	stored.IsProvisioned = true
+
+	uv, ok := pm.PeerUserClusters["me@sig"][hashID]
+	if !ok {
+		t.Fatalf("cluster missing from PeerUserClusters[me@sig]")
+	}
+	if uv.DirectUpdate.IsZero() || !uv.IsProvisioned {
+		t.Errorf("peer view did NOT reflect live enrichment after reload: directUpdate=%v isProvisioned=%v (view points at a stale sibling object)", uv.DirectUpdate, uv.IsProvisioned)
+	}
+
+	fs, ok := pm.PeerForSale[hashID]
+	if !ok {
+		t.Fatalf("cluster missing from PeerForSale")
+	}
+	if fs.DirectUpdate.IsZero() || !fs.IsProvisioned {
+		t.Errorf("for-sale view did NOT reflect live enrichment after reload")
 	}
 }
