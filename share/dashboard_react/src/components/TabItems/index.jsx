@@ -2,16 +2,21 @@ import React from 'react'
 import { Tabs, TabList, Tab, TabPanels, TabPanel } from '@chakra-ui/react'
 import styles from './styles.module.scss'
 
-function TabItems({ variant = 'enclosed', options, tabContents, tabIndex, onChange, className, tabPrefix = [], tabSuffix = [] }) {
+function TabItems({ variant = 'enclosed', options, tabContents, tabIndex, onChange, className, tabPrefix = [], tabSuffix = [], blinkLabels = [] }) {
   return (
     <Tabs variant={variant} className={className} size='lg' index={tabIndex} onChange={onChange}>
       <TabList className={styles.tabList}>
         {...tabPrefix}
-        {options.map((option, index) => (
-          <Tab key={index} className={styles.tab}>
-            {option}
-          </Tab>
-        ))}
+        {options.map((option, index) => {
+          // A string option whose label is in blinkLabels gets the red blink (e.g. the
+          // Settings tab on a Standby node, to flag that changes there won't persist).
+          const shouldBlink = typeof option === 'string' && blinkLabels.includes(option)
+          return (
+            <Tab key={index} className={`${styles.tab} ${shouldBlink ? styles.blink : ''}`}>
+              {option}
+            </Tab>
+          )
+        })}
         {...tabSuffix}
       </TabList>
       <TabPanels>

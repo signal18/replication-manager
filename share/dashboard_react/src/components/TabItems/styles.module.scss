@@ -28,3 +28,23 @@
 .tabPanel {
   overflow: auto;
 }
+
+// Red blink for a tab that needs urgent attention (e.g. Settings on a Standby node,
+// where changes don't persist). Uses !important to beat the enclosed-tab base styles.
+.blink {
+  animation: tabBlinkRed 1.1s steps(1, end) infinite;
+}
+@keyframes tabBlinkRed {
+  50% {
+    color: #fff !important;
+    background-color: #e53e3e !important;
+    border-color: #e53e3e !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .blink {
+    animation: none;
+    color: #e53e3e !important;
+    border-color: #e53e3e !important;
+  }
+}

@@ -37,6 +37,9 @@ import { globalClustersService } from '../../services/globalClustersService'
 // red while any crash carries one (mirrors backend crash.go RejoinResult codes).
 const REJOIN_FAILED = ['not-flashback-able', 'no-rejoin-method', 'failed', 'peer-unreachable']
 
+// Go zero-time serialises as 0001-01-01 → render as "—".
+const fmtTs = (t) => (!t || String(t).startsWith('0001-01-01')) ? '—' : new Date(t).toLocaleString()
+
 function Navbar({ username, user }) {
   const dispatch = useDispatch()
   const { theme } = useTheme()
@@ -217,6 +220,17 @@ function Navbar({ username, user }) {
                     {monitor?.startTime && new Date(monitor.startTime).getFullYear() > 2000 && (
                       <Text fontSize='xs' color='gray.500' mt={2} textAlign='center'>
                         Started {new Date(monitor.startTime).toLocaleString()}
+                      </Text>
+                    )}
+                    {/* Peer-network freshness — only when this instance actually
+                        participates: it has declared a public interface (api-public-url,
+                        else peers can't reach it and the feature has no value) AND is
+                        registered (cloud18 git identity set). Global level only. Not plan. */}
+                    {(monitor?.config?.apiPublicUrl && monitor?.config?.cloud18GitUser && monitor?.config?.cloud18Domain && monitor?.config?.cloud18SubDomain && monitor?.config?.cloud18SubDomainZone) && (
+                      <Text fontSize='xs' color='gray.500' mt={1} textAlign='center'>
+                        Config saved {fmtTs(monitor?.lastConfigGitPush)}
+                        <br />
+                        Peers looked up {fmtTs(monitor?.lastPeerLookup)}
                       </Text>
                     )}
                     <Button

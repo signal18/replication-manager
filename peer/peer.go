@@ -60,6 +60,17 @@ type PeerCluster struct {
 	IsFailable                             bool      `json:"isFailable"`
 	IsProvisioned                          bool      `json:"isProvisioned"`
 	LastUpdate                             time.Time `json:"lastUpdate"`
+	// Live monitoring fields — populated by the direct /api/clusters fetch from the
+	// peer (auto-connect to fleet), NOT present in the BO peer.json catalog. They stay
+	// empty until a successful direct connection enriches the row, and are preserved
+	// across peer.json BatchUpdateClusters (which would otherwise reset them).
+	Topology            string    `json:"topology"`
+	DBServers           int       `json:"dbServers"`
+	ProxyServers        int       `json:"proxyServers"`
+	Uptime              string    `json:"uptime"`
+	ActivePassiveStatus string    `json:"activePassiveStatus"`
+	MonitoringPause     bool      `json:"monitoringPause"`
+	DirectUpdate        time.Time `json:"directUpdate"` // last successful direct /api/clusters enrichment
 }
 
 type PeerHealth struct {
@@ -154,7 +165,25 @@ func (pm *PeerManager) BatchUpdateClusters(clusterUpdates []*PeerCluster, remove
 		hashID := GetPeerHashID(pc)
 
 		if cl, exists := pm.PeerClusters[hashID]; exists {
-			if pm.HealthMode == "pulling" && pc.RepmgrVersion != "" {
+			// Preserve the direct-connection enrichment (auto-connect to fleet) — these
+			// fields are never in the peer.json catalog, so a catalog refresh must not
+			// wipe what the live /api/clusters fetch set. The poll refreshes them.
+			pc.Topology = cl.Topology
+			pc.DBServers = cl.DBServers
+			pc.ProxyServers = cl.ProxyServers
+			pc.Uptime = cl.Uptime
+			pc.ActivePassiveStatus = cl.ActivePassiveStatus
+			pc.MonitoringPause = cl.MonitoringPause
+			pc.DirectUpdate = cl.DirectUpdate
+
+			if !cl.DirectUpdate.IsZero() {
+				// A live connection is authoritative over the catalog: keep its health.
+				pc.IsDown = cl.IsDown
+				pc.IsMasterDown = cl.IsMasterDown
+				pc.IsFailable = cl.IsFailable
+				pc.IsProvisioned = cl.IsProvisioned
+				pc.LastUpdate = cl.LastUpdate
+			} else if pm.HealthMode == "pulling" && pc.RepmgrVersion != "" {
 				// Pulling mode with known version: use health from peer.json (BO).
 				pc.LastUpdate = time.Now()
 			} else {
@@ -402,6 +431,72 @@ func (pm *PeerManager) GetHealthStatus(pclient *PeerClient) error {
 	return nil
 }
 
+// peerClusterDetail is a LEAN view of a peer's /api/clusters row — only the live
+// monitoring fields we merge. The peer package can't import cluster (cluster imports
+// peer), so we parse just these keys. /api/clusters is the backward-compatible contract
+// present in every repman version; fields missing on an older peer simply stay zero.
+type peerClusterDetail struct {
+	Name         string   `json:"name"`
+	Topology     string   `json:"topology"`
+	IsDown       bool     `json:"isDown"`
+	IsMasterDown bool     `json:"isMasterDown"`
+	IsFailable   bool     `json:"isFailable"`
+	IsProvision  bool     `json:"isProvision"`
+	Uptime       string   `json:"uptime"`
+	Status       string   `json:"activePassiveStatus"`
+	DBServers    []string `json:"dbServers"`
+	ProxyServers []string `json:"proxyServers"`
+	Config       struct {
+		MonitoringPause bool `json:"monitoringPause"`
+	} `json:"config"`
+}
+
+// GetClusterDetails is the auto-connect-to-fleet enrichment: it pulls the peer's
+// authenticated /api/clusters and merges the live monitoring fields into the matching
+// local PeerCluster rows (by GetHashID(url, name)), so /api/clusters/peers serves
+// enriched data and the Peer view lights up without a manual "Enter". Mirrors
+// GetHealthStatus. Requires an authenticated session (unlike public /api/health) — the
+// caller only invokes it when a token is present; a 401 (peer without the SSO auth fix)
+// returns an error and the row stays on the peer.json catalog. Runs only inside the
+// poll, which is gated on !Cloud18DisablePeers.
+func (pm *PeerManager) GetClusterDetails(pclient *PeerClient) error {
+	status, body, err := pclient.Get("/api/clusters")
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("clusters fetch failed with status %d", status)
+	}
+
+	var details []peerClusterDetail
+	if err := json.Unmarshal(body, &details); err != nil {
+		return fmt.Errorf("failed to parse clusters: %s", err)
+	}
+
+	update := time.Now()
+	pm.mu.Lock()
+	for _, d := range details {
+		hashID := GetHashID(pclient.baseURL, d.Name)
+		if pc, exists := pm.PeerClusters[hashID]; exists {
+			pc.Topology = d.Topology
+			pc.Uptime = d.Uptime
+			pc.ActivePassiveStatus = d.Status
+			pc.DBServers = len(d.DBServers)
+			pc.ProxyServers = len(d.ProxyServers)
+			pc.MonitoringPause = d.Config.MonitoringPause
+			// Direct connection overwrites the peer.json catalog health with live data.
+			pc.IsDown = d.IsDown
+			pc.IsMasterDown = d.IsMasterDown
+			pc.IsFailable = d.IsFailable
+			pc.IsProvisioned = d.IsProvision
+			pc.DirectUpdate = update
+			pc.LastUpdate = update
+		}
+	}
+	pm.mu.Unlock()
+	return nil
+}
+
 func (pm *PeerManager) UpdateHealthStatus(healths map[string]PeerHealth) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -511,6 +606,15 @@ func (pm *PeerManager) pollPeerHealth(url string) {
 		return
 	}
 	pm.setNodeError(nodestat, "")
+
+	// Auto-connect to fleet: if we hold an authenticated session to the peer, pull its
+	// /api/clusters and merge the live monitoring fields into our rows. Best-effort — an
+	// unauthenticated peer (login failed / no SSO fix) just skips it and stays on the
+	// peer.json catalog. This is the outbound live-connect; it runs only here, inside the
+	// poll, which the server dispatches solely when !Cloud18DisablePeers.
+	if token, ok := pclient.headers["Authorization"]; ok && token != "" {
+		_ = pm.GetClusterDetails(pclient)
+	}
 }
 
 // setNodeError writes ns.Error under the lock. PeerNodeStatus pointers are read by

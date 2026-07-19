@@ -193,7 +193,13 @@ export const switchGlobalSetting = createGuardedAsyncThunk(
     try {
       const { data, status } = await globalClustersService.switchGlobalSetting(setting)
       if (status === 200) {
-        showSuccessBanner('Global setting switch is successful!', status, thunkAPI)
+        // Standby (DR) nodes apply the change in memory but never persist it — the
+        // backend returns {warning} instead of staying silent. Surface it as a warning.
+        if (data && data.warning) {
+          showWarningBanner(data.warning, status, thunkAPI)
+        } else {
+          showSuccessBanner('Global setting switch is successful!', status, thunkAPI)
+        }
         return { data, status }
       } else {
         throw new Error(data)
@@ -216,7 +222,11 @@ export const setGlobalSetting = createGuardedAsyncThunk(
     try {
       const { data, status } = value !== "" ? await globalClustersService.setGlobalSetting(setting, value) : await globalClustersService.clearGlobalSetting(setting)
       if (status === 200) {
-        showSuccessBanner('Global setting is successfully changed!', status, thunkAPI)
+        if (data && data.warning) {
+          showWarningBanner(data.warning, status, thunkAPI)
+        } else {
+          showSuccessBanner('Global setting is successfully changed!', status, thunkAPI)
+        }
         return { data, status }
       } else {
         throw new Error(data)

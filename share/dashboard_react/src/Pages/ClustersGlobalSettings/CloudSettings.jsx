@@ -13,7 +13,8 @@ import RMSwitch from '../../components/RMSwitch'
 import Dropdown from '../../components/Dropdown'
 import RMIconButton from '../../components/RMIconButton'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
-import { HiEye, HiEyeOff } from 'react-icons/hi'
+import { HiEye, HiEyeOff, HiPencilAlt, HiCheck, HiX } from 'react-icons/hi'
+import { showWarningToast } from '../../redux/toastSlice'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import TagPill from '../../components/TagPill'
 import RMButton from '../../components/RMButton'
@@ -54,6 +55,36 @@ function CloudSettings({ config }) {
   // disconnect alone is not enough because the CRM still holds the old URI record.
   // Reset automatically when a connection is re-established.
   const [uriUnlocked, setUriUnlocked] = useState(false)
+
+  // Single group-edit for the 3-part URI (domain / sub-domain / zone), styled like a
+  // credit-card field: read-only pills + one pencil. The pencil "cries" (warns) if the
+  // instance is already registered — editing the URI then requires Unregister first.
+  const [uriEditing, setUriEditing] = useState(false)
+  const [uriDraft, setUriDraft] = useState({ domain: '', subdomain: '', zone: '' })
+
+  const handleUriEditClick = () => {
+    if (uriLocked) {
+      dispatch(showWarningToast({
+        title: 'URI is locked',
+        description: 'This instance is registered on Cloud18. Unregister first (Connect row) to change the domain / sub-domain / zone.'
+      }))
+      return
+    }
+    setUriDraft({
+      domain: config?.cloud18Domain || '',
+      subdomain: config?.cloud18SubDomain || '',
+      zone: config?.cloud18SubDomainZone || ''
+    })
+    setUriEditing(true)
+  }
+
+  const handleUriSave = () => {
+    const d = uriDraft.domain.trim(), s = uriDraft.subdomain.trim(), z = uriDraft.zone.trim()
+    if (d !== (config?.cloud18Domain || '')) dispatch(setGlobalSetting({ setting: 'cloud18-domain', value: d }))
+    if (s !== (config?.cloud18SubDomain || '')) dispatch(setGlobalSetting({ setting: 'cloud18-sub-domain', value: s }))
+    if (z !== (config?.cloud18SubDomainZone || '')) dispatch(setGlobalSetting({ setting: 'cloud18-sub-domain-zone', value: z }))
+    setUriEditing(false)
+  }
 
   const handleUnregister = async () => {
     setIsUnregistering(true)
@@ -481,15 +512,32 @@ Start create an account in https://gitlab.signal18.io
     { key: 'GitLab Password',help: h(hGitPass,   'GitLab Password'),   value: isConnected
         ? <Text fontSize='sm'>••••••••</Text>
         : <TextForm value={config?.cloud18GitlabPassword} type='password' confirmTitle='Confirm GitLab password to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-password', value: btoa(v) }))} /> },
-    { key: 'Domain',         help: h(hDomain,    'Domain'),            value: uriLocked
-        ? <Text fontSize='sm'>{config?.cloud18Domain}</Text>
-        : <TextForm value={config?.cloud18Domain}         confirmTitle='Confirm domain to '         onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-domain', value: v }))} /> },
-    { key: 'Subdomain',      help: h(hSubdomain, 'Subdomain'),         value: uriLocked
-        ? <Text fontSize='sm'>{config?.cloud18SubDomain}</Text>
-        : <TextForm value={config?.cloud18SubDomain}      confirmTitle='Confirm subdomain to '      onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-sub-domain', value: v }))} /> },
-    { key: 'Subdomain Zone', help: h(hZone,      'Subdomain Zone'),    value: uriLocked
-        ? <Text fontSize='sm'>{config?.cloud18SubDomainZone}</Text>
-        : <TextForm value={config?.cloud18SubDomainZone}  confirmTitle='Confirm subdomain zone to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-sub-domain-zone', value: v }))} /> },
+    { key: 'URI', help: h(`**URI**\n\nThis instance's Cloud18 identity — **domain / sub-domain / zone**. It forms the GitLab repos it syncs config and the peer catalog through.\n\nExamples: \`mycompany.headquarter.us1\`, \`signal18.ovh.fr-2\`.\n\nConfig: \`cloud18-domain\`, \`cloud18-sub-domain\`, \`cloud18-sub-domain-zone\``, 'URI'),
+      // Credit-card style: the 3 URI parts as distinct fields on one line, with a SINGLE
+      // edit pencil for the group. When locked (registered) the pencil warns instead of
+      // opening — the URI can only change after Unregister.
+      value: uriEditing
+        ? (
+          <HStack spacing={1} align='center' wrap='wrap'>
+            <Input size='sm' w='9rem' placeholder='domain'     value={uriDraft.domain}    onChange={(e) => setUriDraft(d => ({ ...d, domain: e.target.value.toLowerCase() }))} />
+            <Text fontSize='sm' color='gray.400'>.</Text>
+            <Input size='sm' w='9rem' placeholder='sub-domain' value={uriDraft.subdomain} onChange={(e) => setUriDraft(d => ({ ...d, subdomain: e.target.value.toLowerCase() }))} />
+            <Text fontSize='sm' color='gray.400'>.</Text>
+            <Input size='sm' w='7rem' placeholder='zone'       value={uriDraft.zone}      onChange={(e) => setUriDraft(d => ({ ...d, zone: e.target.value.toLowerCase() }))} />
+            <RMIconButton icon={HiX}     colorScheme='red'   tooltip='Cancel' onClick={() => setUriEditing(false)} />
+            <RMIconButton icon={HiCheck} colorScheme='green' tooltip='Save'   onClick={handleUriSave} />
+          </HStack>
+        )
+        : (
+          <HStack spacing={1} align='center' wrap='wrap'>
+            <Text fontSize='sm' px={2} py={0.5} borderWidth='1px' borderRadius='md' minW='4rem' textAlign='center'>{config?.cloud18Domain || '—'}</Text>
+            <Text fontSize='sm' color='gray.400'>.</Text>
+            <Text fontSize='sm' px={2} py={0.5} borderWidth='1px' borderRadius='md' minW='4rem' textAlign='center'>{config?.cloud18SubDomain || '—'}</Text>
+            <Text fontSize='sm' color='gray.400'>.</Text>
+            <Text fontSize='sm' px={2} py={0.5} borderWidth='1px' borderRadius='md' minW='4rem' textAlign='center'>{config?.cloud18SubDomainZone || '—'}</Text>
+            <RMIconButton icon={HiPencilAlt} tooltip={uriLocked ? 'URI locked — Unregister to change' : 'Edit URI'} onClick={handleUriEditClick} />
+          </HStack>
+        ) },
     {
       key: 'Connect',
       help: h(hConnect, 'Connect / Disconnect'),
@@ -553,7 +601,26 @@ Start create an account in https://gitlab.signal18.io
         </HStack>
       )
     }] : []),
-    ...(isConnected ? [{
+  ]
+
+  // Peering section (rendered after Registration): this instance's declared public
+  // interface + fleet peering. api-public-url lives here — peer aggregation
+  // (sharing/combining fleet clusters across instances) has no value unless peers can
+  // reach this instance. Marketplace is a SEPARATE section below.
+  const hApiPublicUrl = `**API Public URL**\n\nPublic URL this replication-manager advertises so peers can reach it — required for peer aggregation (sharing/combining fleet clusters across instances).\n\nConfig: \`api-public-url\``
+  const peeringData = isConnected ? [
+    {
+      key: 'API Public URL',
+      help: h(hApiPublicUrl, 'API Public URL'),
+      value: (
+        <TextForm
+          value={config?.apiPublicUrl}
+          confirmTitle={`Confirm API Public URL to `}
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'api-public-url', value }))}
+        />
+      )
+    },
+    {
       key: 'Peer Health Mode',
       help: h(`**Peer Health Mode**\n\nHow peer cluster health status is determined:\n\n- **peering**: Direct HTTP polling of all peer instances — gives real-time reachability but scales O(N²)\n- **smart** (default): Always polls your own fleet (same registered GitLab user). Shared/marketplace peers are only polled when a user viewing them is connected\n- **pulling**: Health comes from peer.json via the back office — lowest overhead, scales O(N), but with a few minutes delay\n\nConfig: \`cloud18-peer-health-mode\``, 'Peer Health Mode'),
       value: (
@@ -580,9 +647,14 @@ Start create an account in https://gitlab.signal18.io
         />
       )
     },
-    ...((config?.cloud18SubscriptionPlan && config?.cloud18SubscriptionPlan !== 'free') ? [{
-      key: 'Disable Marketplace',
-      help: h(`**Disable Marketplace**\n\nWhen enabled, clusters for sale are hidden from the marketplace view.\n\nThis option is only available on paid plans. Free plan users always see the marketplace.\n\nConfig: \`cloud18-disable-for-sale\``, 'Disable Marketplace'),
+  ] : []
+
+  // Marketplace section — a SEPARATE concern from peering (buying/selling clusters;
+  // works even without a public interface). Free plans cannot disable it.
+  const marketplaceData = (isConnected && config?.cloud18SubscriptionPlan && config?.cloud18SubscriptionPlan !== 'free') ? [
+    {
+      key: 'Disable Clusters For Sale',
+      help: h(`**Disable Clusters For Sale**\n\nWhen enabled, clusters for sale are hidden from the marketplace view.\n\nThis option is only available on paid plans. Free plan users always see clusters for sale.\n\nConfig: \`cloud18-disable-for-sale\``, 'Disable Clusters For Sale'),
       value: (
         <RMSwitch
           confirmTitle='Confirm switch settings for cloud18-disable-for-sale?'
@@ -590,14 +662,30 @@ Start create an account in https://gitlab.signal18.io
           isChecked={config?.cloud18DisableForSale}
         />
       )
-    }] : [])] : []),
-  ]
+    },
+  ] : []
 
   return (
     <>
       <Flex justify='space-between' gap='0'>
         <TableType2 dataArray={registrationData} className={styles.tableWithHelp} helpColumn />
       </Flex>
+      {peeringData.length > 0 && (
+        <>
+          <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Peering</Box>
+          <Flex justify='space-between' gap='0'>
+            <TableType2 dataArray={peeringData} className={styles.tableWithHelp} helpColumn />
+          </Flex>
+        </>
+      )}
+      {marketplaceData.length > 0 && (
+        <>
+          <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Marketplace</Box>
+          <Flex justify='space-between' gap='0'>
+            <TableType2 dataArray={marketplaceData} className={styles.tableWithHelp} helpColumn />
+          </Flex>
+        </>
+      )}
       <CommonModal
         isOpen={isCommonModalOpen}
         size='xl'

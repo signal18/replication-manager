@@ -18,6 +18,7 @@ import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
+import AccordionComponent from '../../components/AccordionComponent'
 
 function GlobalSettings({ config }) {
   const dispatch = useDispatch()
@@ -40,7 +41,6 @@ function GlobalSettings({ config }) {
   const hBackupSlots = `**Concurrent Backup Slots**\n\nMaximum number of backups allowed to run at the same time across all clusters. Additional backup requests queue until a slot frees up.\n\nConfig: \`backup-concurrent-slots\``
   const hIntervention = `**Global Intervention**\n\nMutes alerting on every cluster while a maintenance intervention is in progress. Suppressed alerts are counted on the Mute pill and released when the intervention ends.`
   const hTokenTimeout = `**API Token Timeout**\n\nLifetime in hours of API session tokens (JWT). Users must log in again after expiry.\n\nConfig: \`api-token-timeout\``
-  const hPublicUrl = `**API Public URL**\n\nPublic URL of this replication-manager instance, used in generated links (alerts, peer lists, marketplace).\n\nConfig: \`api-public-url\``
   const hMailFrom = `**Mail From**\n\nSender address used in alert emails.\nExample: \`replication-manager@company.com\`\n\nConfig: \`mail-from\``
   const hMailTo = `**Mail To**\n\nComma-separated list of recipient addresses for alert emails.\n\nConfig: \`mail-to\``
   const hMailSmtp = `**Mail SMTP Address**\n\nSMTP server in \`host:port\` format.\nExample: \`smtp.company.com:587\`\n\nConfig: \`mail-smtp-addr\``
@@ -76,7 +76,7 @@ function GlobalSettings({ config }) {
       .catch((err) => console.error('Failed to end global intervention:', err))
   }
 
-  const dataObject = [
+  const generalData = [
     {
       key: 'Concurrent Backup Slots',
       help: h(hBackupSlots, 'Concurrent Backup Slots'),
@@ -124,19 +124,9 @@ function GlobalSettings({ config }) {
         />
       )
     },
-    {
-      key: 'API Public URL',
-      help: h(hPublicUrl, 'API Public URL'),
-      value: (
-        <TextForm
-          value={config?.apiPublicUrl}
-          confirmTitle={`Confirm API Public URL to `}
-          onSave={(value) => {
-            dispatch(setGlobalSetting({ setting: 'api-public-url', value }))
-          }}
-        />
-      )
-    },
+  ]
+
+  const alertsData = [
     {
       key: 'Mail From',
       help: h(hMailFrom, 'Mail From'),
@@ -241,6 +231,9 @@ function GlobalSettings({ config }) {
         />
       )
     },
+  ]
+
+  const logsData = [
     {
       key: 'Log File Level',
       help: h(hLogFile, 'Log File Level'),
@@ -393,11 +386,24 @@ function GlobalSettings({ config }) {
     },
   ]
 
+  const settingsCard = (heading, data) => (
+    <AccordionComponent
+      heading={heading}
+      headerClassName={styles.accordionHeader}
+      panelClassName={styles.accordionPanel}
+      body={
+        <Flex justify='space-between' gap='0'>
+          <TableType2 dataArray={data} className={styles.tableWithHelp} helpColumn={true} />
+        </Flex>
+      }
+    />
+  )
+
   return (
     <>
-      <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={dataObject} className={styles.table} helpColumn={true} />
-      </Flex>
+      {settingsCard('Global Settings', generalData)}
+      {settingsCard('Alerts', alertsData)}
+      {settingsCard('Logs', logsData)}
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
       {isInterventionModalOpen && (
         <InterventionModal

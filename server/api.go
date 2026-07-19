@@ -2200,13 +2200,21 @@ func (repman *ReplicationManager) DynamicPeerHandler(w http.ResponseWriter, r *h
 			return
 		}
 
-		if _, ok := uinfomap["profile"]; !ok {
+		if _, ok := uinfomap["profile"]; ok {
+			// SSO/GitLab session: use the session user's decrypted password.
+			user.Password = repman.Conf.GetDecryptedPassword("peer-login", uinfomap["Password"])
+		} else if repman.isAdminUser(uinfomap["User"]) && repman.Conf.Cloud18GitUser != "" {
+			// Local admin on a registered instance: peers don't know our local 'admin'
+			// identity, so authenticate AS the registered user (Cloud18GitUser) with the
+			// git credentials the server already holds. (Fixes: admin Enter refused with
+			// "not logged in via Gitlab".)
+			user.Username = repman.Conf.Cloud18GitUser
+			user.Password = repman.Conf.GetDecryptedPassword("git-password", repman.Conf.Secrets["cloud18-gitlab-password"].Value)
+		} else {
 			w.WriteHeader(http.StatusForbidden)
 			fmt.Fprintf(w, "Current user is not logged in via Gitlab!")
 			return
 		}
-
-		user.Password = repman.Conf.GetDecryptedPassword("peer-login", uinfomap["Password"])
 
 		status, body = repman.PeerLogin(parsedPeerURL, user)
 

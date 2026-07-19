@@ -1091,6 +1091,10 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 
 	modTime := fstat.ModTime()
 
+	// Record every successful lookup of the remote peer catalog (surfaced in the peer
+	// view), whether or not the content changed since last time.
+	repman.LastPeerLookup = time.Now()
+
 	if oldModTime, ok := repman.ModTimes["peer"]; ok && oldModTime.Equal(modTime) {
 		repman.dispatchPeerHealthPoll()
 		return nil // No changes in the file modification time
@@ -1619,6 +1623,9 @@ func (repman *ReplicationManager) PushConfigToGit() error {
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
 			"Git error: cannot push: %s", err)
+	} else {
+		// Surface the last successful cloud18 config save (git push) in the peer view.
+		repman.LastConfigGitPush = time.Now()
 	}
 
 	return err

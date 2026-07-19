@@ -38,6 +38,22 @@ import (
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/settings/actions/switch/{settingName} [post]
 // @Router /api/clusters/settings/actions/switch/{settingName}/{state} [post]
+// writeStandbyPersistenceWarning emits a JSON warning when a scope:server setting is
+// changed on a Standby ("S") node. The config-save gate (server.go) is active-gated, so
+// a standby NEVER writes default.toml — the change lives in memory only, is lost on
+// restart, and is overwritten when the standby converges to the active's config by
+// pull/replay. Returning this to the UI stops the silent "successful" lie. Returns true
+// when a warning body was written (so callers leave the response as-is).
+func (repman *ReplicationManager) writeStandbyPersistenceWarning(w http.ResponseWriter) bool {
+	if repman.Status == ConstMonitorActif {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"warning":"This instance is a standby (DR): the change was applied in memory only and will NOT persist across restart — it may be overwritten when the standby syncs from the active instance. Change server settings on the active instance to make them stick."}`))
+	return true
+}
+
 func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.ResponseWriter, r *http.Request) {
 	var value string
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -78,6 +94,7 @@ func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.Response
 				http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), http.StatusBadRequest)
 				return
 			}
+			repman.writeStandbyPersistenceWarning(w)
 		} else {
 			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", setting), http.StatusForbidden)
 			return
@@ -141,6 +158,7 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 				http.Error(w, err.Error(), http.StatusNotImplemented)
 				return
 			}
+			repman.writeStandbyPersistenceWarning(w)
 		} else {
 			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s. path: %s", setting, r.URL.Path), http.StatusForbidden)
 			return
@@ -254,6 +272,9 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "api-port":
 		repman.Conf.APIPort = value
 	case "api-public-url":
+		// scope:"server" — persisted to default.toml by SaveDynamic (value != default).
+		// Do NOT put it in ImmuableFlagMap: that file (immutable.toml) is never read at
+		// startup, and immutable keys are deleted from default.toml, so it reverts on restart.
 		repman.Conf.APIPublicURL = value
 	case "arbitration-external-hosts":
 		repman.Conf.ArbitrationSasHosts = value
@@ -486,6 +507,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.MonitoringLogAPILoginSilentUsers = value
 	case "cloud18-peer-health-mode":
 		if value == "peering" || value == "smart" || value == "pulling" {
+			// scope:"server" — persisted to default.toml by SaveDynamic (value != default).
 			repman.Conf.Cloud18PeerHealthMode = value
 			if repman.PeerManager != nil {
 				repman.PeerManager.SetHealthMode(value)
@@ -557,10 +579,13 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 	case "monitoring-log-api-login":
 		repman.Conf.MonitoringLogAPILogin = !repman.Conf.MonitoringLogAPILogin
 	case "cloud18-disable-peers":
+		// scope:"server" — persisted to default.toml by SaveDynamic (value != default),
+		// which is merged back at startup. NOT ImmuableFlagMap (immutable.toml is never read).
 		repman.Conf.Cloud18DisablePeers = !repman.Conf.Cloud18DisablePeers
 	case "cloud18-disable-for-sale":
 		// Free plans cannot disable marketplace
 		if repman.Conf.Cloud18SubscriptionPlan != "" && repman.Conf.Cloud18SubscriptionPlan != "free" {
+			// scope:"server" — persisted to default.toml by SaveDynamic (value != default).
 			repman.Conf.Cloud18DisableForSale = !repman.Conf.Cloud18DisableForSale
 		}
 	default:

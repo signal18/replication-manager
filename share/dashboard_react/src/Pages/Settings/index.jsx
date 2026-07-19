@@ -5,6 +5,7 @@ import GeneralSettings from './GeneralSettings'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import MonitoringSettings from './MonitoringSettings'
 import AccordionComponent from '../../components/AccordionComponent'
+import StandbyBanner from '../../components/StandbyBanner'
 import LogsSettings from './LogsSettings'
 import PluginsSettings from './PluginsSettings'
 import RejoinSettings from './RejoinSettings'
@@ -146,6 +147,7 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   }
   return (
     <Flex className={styles.settingsContainer}>
+      <StandbyBanner />
       {sectionFilter && (
         <Button size='sm' variant='outline' mb={2} onClick={clearFilter}>
           Show all settings

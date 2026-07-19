@@ -90,11 +90,22 @@ function Home() {
 
   useEffect(() => {
     if (monitor?.config?.cloud18) {
-      globalTabsRef.current = ['Clusters Local', 'Clusters Peer', 'Clusters For Sale']
+      // Hide the fleet tabs when disabled, so clients who don't use peering / the
+      // marketplace aren't bothered by them at all. Peers: hidden when
+      // cloud18-disable-peers. For-sale: respects the plan gate — a free plan cannot
+      // disable the marketplace, so its tab stays even if the flag is set.
+      const plan = monitor?.config?.cloud18SubscriptionPlan
+      const forSaleDisabled = monitor?.config?.cloud18DisableForSale && plan && plan !== 'free'
+      globalTabsRef.current = ['Clusters Local']
+      if (!monitor?.config?.cloud18DisablePeers) {
+        globalTabsRef.current.push('Clusters Peer')
+      }
+      if (!forSaleDisabled) {
+        globalTabsRef.current.push('Clusters For Sale')
+      }
       if (isSSOUser) {
         globalTabsRef.current.push('Billing')
       }
-
     } else {
       globalTabsRef.current = ['Clusters Local']
     }
@@ -102,7 +113,7 @@ function Home() {
       globalTabsRef.current.push('Settings')
     }
     globalTabsRef.current.push('Dashboard')
-  }, [monitor?.config?.cloud18, loggedUser?.User, isSSOUser])
+  }, [monitor?.config?.cloud18, monitor?.config?.cloud18DisablePeers, monitor?.config?.cloud18DisableForSale, monitor?.config?.cloud18SubscriptionPlan, loggedUser?.User, isSSOUser])
 
   // For SSO users: if local clusters are empty after loading, advance to Peer,
   // then to For Sale if Peer is also empty.
@@ -369,6 +380,8 @@ function Home() {
         <TabItems
           tabIndex={selectedTab}
           onChange={handleTabChange}
+          // On a Standby ("S") node, blink the Settings tab red — changes there won't persist.
+          blinkLabels={monitor?.status === 'S' ? ['Settings'] : []}
           options={
             isClusterOpenRef.current
               ? [renderClusterListTabWithArrow(), ...dashboardTabsRef.current]
@@ -404,7 +417,10 @@ function Home() {
               ]
               : [
                   ...(globalTabsRef.current.includes('Clusters Peer')
-                    ? [<PeerClusterList onLogin={setDashboardTab} />, <PeerClusterList mode='shared' />]
+                    ? [<PeerClusterList onLogin={setDashboardTab} />]
+                    : []),
+                  ...(globalTabsRef.current.includes('Clusters For Sale')
+                    ? [<PeerClusterList mode='shared' />]
                     : []),
                   ...(globalTabsRef.current.includes('Billing')
                     ? [<Billing />]

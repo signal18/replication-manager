@@ -12,6 +12,7 @@ import GlobalSettings from './GlobalSettings'
 import ArbitrationSettings from './ArbitrationSettings'
 import { setGlobalSetting } from '../../redux/globalClustersSlice'
 import AppTemplateRepoSection from '../Settings/components/AppTemplateRepoSection'
+import StandbyBanner from '../../components/StandbyBanner'
 
 function ClustersGlobalSettings({ user }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -37,18 +38,15 @@ function ClustersGlobalSettings({ user }) {
   }
   return (
     <Flex className={styles.settingsContainer}>
+      <StandbyBanner />
       <AccordionComponent
         heading={'Registration'}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<CloudSettings config={monitor?.config} openConfirmModal={openConfirmModal} />}
       />
-      <AccordionComponent
-        heading={'Global Settings'}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<GlobalSettings config={monitor?.config} openConfirmModal={openConfirmModal} />}
-      />
+      {/* GlobalSettings renders its own Global Settings / Alerts / Logs cards */}
+      <GlobalSettings config={monitor?.config} openConfirmModal={openConfirmModal} />
       <AccordionComponent
         heading={'Arbitration'}
         headerClassName={styles.accordionHeader}
