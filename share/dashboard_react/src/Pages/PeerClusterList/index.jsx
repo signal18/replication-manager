@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { getClusterPeers, getClusterForSale, getClusterPeerNodes, getTermsData } from '../../redux/globalClustersSlice'
+import { getClusterPeers, getClusterForSale, getClusterPeerNodes, getTermsData, switchGlobalSetting, getMonitoredData } from '../../redux/globalClustersSlice'
 import { Badge, Box, Flex, HStack, VStack, Link, Text, Wrap, IconButton, useColorModeValue, Collapse, Divider, Tooltip, ButtonGroup, Button } from '@chakra-ui/react'
 import { FaCloud } from 'react-icons/fa'
 import NotFound from '../../components/NotFound'
@@ -12,7 +12,7 @@ import { createColumnHelper } from '@tanstack/react-table'
 import styles from './styles.module.scss'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import TagPill from '../../components/TagPill'
-import { HiCreditCard, HiExclamation, HiQuestionMarkCircle, HiTag, HiSortAscending, HiSortDescending, HiSearch, HiChevronLeft, HiChevronRight, HiViewGrid, HiTable } from 'react-icons/hi'
+import { HiCreditCard, HiExclamation, HiQuestionMarkCircle, HiTag, HiSortAscending, HiSortDescending, HiSearch, HiChevronLeft, HiChevronRight, HiViewGrid, HiTable, HiEye, HiEyeOff } from 'react-icons/hi'
 import { peerLogin, setBaseURL } from '../../redux/authSlice'
 import { getClusterData, clusterSubscribe } from '../../redux/clusterSlice'
 import TermsModal from '../../components/Modals/TermsModal'
@@ -505,11 +505,17 @@ function PeerClusterList({ onLogin, mode }) {
   })
   // Connectivity cloud: green = we have a working direct connection to the peer,
   // red = none / can't reach it (health then comes from the peer.json catalog).
-  const connCloud = (uri) => {
+  const connCloud = (uri, directUpdate) => {
     if (!uri) return { color: 'gray', tooltip: 'No peer URL' }
     // Our own instance is always reachable — it's us.
     if (monitor?.config?.apiPublicUrl && uri === monitor.config.apiPublicUrl) {
       return { color: 'green', tooltip: 'This is your own instance' }
+    }
+    // Strongest signal: the server captured this peer's /api/clusters (auto-connect
+    // enrichment). If directUpdate is set we ARE connected, even if the health-poll
+    // nodestat below hasn't gone green yet.
+    if (directUpdate && directUpdate !== '0001-01-01T00:00:00Z') {
+      return { color: 'green', tooltip: `Live — /api/clusters captured ${new Date(directUpdate).toLocaleString()}` }
     }
     const node = peerNodes?.[uri]
     const last = node?.LastUpdate
@@ -525,7 +531,7 @@ function PeerClusterList({ onLogin, mode }) {
       const uri = info.getValue()
       if (!uri) return <Text>—</Text>
       const host = uri.replace(/^https?:\/\//, '').replace(/\/+$/, '')
-      const cc = connCloud(uri)
+      const cc = connCloud(uri, info.row.original?.directUpdate)
       return (
         <HStack spacing='2'>
           <Tooltip label={cc.tooltip} placement='top'><Box as='span' display='inline-flex'><CustomIcon icon={FaCloud} color={cc.color} /></Box></Tooltip>
@@ -832,6 +838,58 @@ function PeerClusterList({ onLogin, mode }) {
                 ) : (
                   <RMIconButton icon={HiTable} tooltip='Show table view' onClick={() => setDisplayMode('table')} />
                 )}
+                {/* Toggle the global 'Disable Peer' setting (cloud18-disable-peers): when
+                    on, peers are hidden AND the server does no outbound live-connect to
+                    the fleet. Admin only, and only on the Peer tab (in context). */}
+                {user?.User === 'admin' && mode !== 'shared' && (
+                  <RMIconButton
+                    icon={monitor?.config?.cloud18DisablePeers ? HiEyeOff : HiEye}
+                    colorScheme={monitor?.config?.cloud18DisablePeers ? 'gray' : 'green'}
+                    tooltip={monitor?.config?.cloud18DisablePeers
+                      ? 'Peers disabled (no live connect) — click to enable'
+                      : 'Peers enabled (live connect to fleet) — click to disable'}
+                    // Warn on DISABLE only (not on re-enable): it's a consequential action.
+                    confirm={!monitor?.config?.cloud18DisablePeers}
+                    confirmTitle='Disable peer clusters?'
+                    confirmBody={'This removes the ability to access clusters other SSO users share with you, and to combine clusters from multiple replication-managers that share the same registration into one aggregated view.\n\nYou can re-enable it any time in Settings → Cloud Settings.'}
+                    confirmButtonText='Disable peers'
+                    onClick={() => dispatch(switchGlobalSetting({ setting: 'cloud18-disable-peers' }))
+                      .then(() => dispatch(getMonitoredData({})))}
+                  />
+                )}
+                {/* Toggle the global 'Disable Marketplace' setting (cloud18-disable-for-sale).
+                    FREE plans CANNOT disable the marketplace (visibility is the free-tier
+                    trade-off) — the button is disabled with a clear label. Admin only, and
+                    only on the For-Sale tab (in context). */}
+                {user?.User === 'admin' && mode === 'shared' && (() => {
+                  const plan = monitor?.config?.cloud18SubscriptionPlan
+                  const isFree = !plan || plan === 'free'
+                  const hidden = monitor?.config?.cloud18DisableForSale
+                  return (
+                    <RMIconButton
+                      icon={HiTag}
+                      colorScheme={isFree ? 'gray' : (hidden ? 'gray' : 'green')}
+                      // Not isDisabled: a truly-disabled Chakra button swallows the
+                      // tooltip, and we NEED the "Free plan cannot..." label to show.
+                      // Instead look/act disabled (dimmed, not-allowed, no-op onClick).
+                      opacity={isFree ? 0.4 : 1}
+                      cursor={isFree ? 'not-allowed' : 'pointer'}
+                      tooltip={isFree
+                        ? 'Free plan cannot disable clusters for sale'
+                        : (hidden ? 'Clusters For Sale hidden — click to show' : 'Clusters For Sale shown — click to hide')}
+                      // Warn on HIDE only (not on re-show), and never on free (it's a no-op there).
+                      confirm={!isFree && !hidden}
+                      confirmTitle='Hide clusters for sale?'
+                      confirmBody={'This removes your for-sale clusters from the marketplace catalog other SSO users browse, so no new buyers can discover or subscribe to them.\n\nYou can re-enable it any time in Settings → Cloud Settings.'}
+                      confirmButtonText='Hide for sale'
+                      onClick={() => {
+                        if (isFree) return
+                        dispatch(switchGlobalSetting({ setting: 'cloud18-disable-for-sale' }))
+                          .then(() => dispatch(getMonitoredData({})))
+                      }}
+                    />
+                  )
+                })()}
                 {/* Only show this on mobile views when panel is collapsed */}
                 {!isFilterPanelOpen && (
                   <IconButton

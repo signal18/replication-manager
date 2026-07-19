@@ -152,6 +152,9 @@ type ReplicationManager struct {
 	exit                        atomic.Bool
 	isStarted                   bool
 	Confs                       map[string]config.Config
+	// Peer-network freshness, surfaced in the Clusters Peer view:
+	LastConfigGitPush           time.Time                      `json:"lastConfigGitPush"` // last cloud18 config push to the BO git
+	LastPeerLookup              time.Time                      `json:"lastPeerLookup"`    // last remote peer-cluster catalog refresh (peer.json pull)
 	VersionConfs                map[string]*config.ConfVersion `json:"-"`
 	grpcServer                  *grpc.Server                   `json:"-"`
 	grpcWrapped                 *grpcweb.WrappedGrpcServer     `json:"-"`
