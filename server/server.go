@@ -157,8 +157,11 @@ type ReplicationManager struct {
 	// of a 463 KB payload), unredacted secrets and all. json:"-" keeps it internal (like
 	// VersionConfs). Per-cluster config still comes from /api/clusters/{name}.
 	Confs                       map[string]config.Config       `json:"-"`
-	// Peer-network freshness, surfaced in the Clusters Peer view:
-	LastConfigGitPush           time.Time                      `json:"lastConfigGitPush"` // last cloud18 config push to the BO git
+	// Peer-network freshness, surfaced in the Clusters Peer view. Push/Pull are stamped
+	// by the ConfigManager worker (the real sync path) via SetSyncStampHook — NOT by any
+	// server-side helper, which would sit on a dead path.
+	LastConfigGitPush           time.Time                      `json:"lastConfigGitPush"` // last successful config push to the BO git
+	LastConfigGitPull           time.Time                      `json:"lastConfigGitPull"` // last successful config pull from the BO git
 	LastPeerLookup              time.Time                      `json:"lastPeerLookup"`    // last remote peer-cluster catalog refresh (peer.json pull)
 	VersionConfs                map[string]*config.ConfVersion `json:"-"`
 	grpcServer                  *grpc.Server                   `json:"-"`
@@ -1561,6 +1564,15 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	}
 	if repman.ConfigManager == nil {
 		repman.ConfigManager = manager.NewConfigManager(config.NewLogrusWrapper(repman.Conf, repman.Logrus))
+		// Stamp last-sync freshness from where the sync actually happens (the worker),
+		// not from the dead repman.PushConfigToGit helper.
+		repman.ConfigManager.SetSyncStampHook(func(op string, at time.Time) {
+			if op == "push" {
+				repman.LastConfigGitPush = at
+			} else {
+				repman.LastConfigGitPull = at
+			}
+		})
 	}
 
 	if repman.DeprecatedKeys == nil {

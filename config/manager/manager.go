@@ -93,6 +93,21 @@ func NewGitManager(logger *config.LogrusWrapper) *GitManager {
 	}
 }
 
+// SetSyncStampHook registers a callback fired after each SUCCESSFUL git push/pull
+// (op = "push"|"pull") with the completion time, so the server can surface last-sync
+// freshness (the "Config pulled ← / Config saved →" pill) from where the sync really
+// happens. Set once before pushes begin.
+func (cm *ConfigManager) SetSyncStampHook(fn func(op string, at time.Time)) {
+	cm.syncStampHook = fn
+}
+
+// fireSyncStamp invokes the sync-stamp hook (if registered) for a successful op.
+func (cm *ConfigManager) fireSyncStamp(op string) {
+	if cm.syncStampHook != nil {
+		cm.syncStampHook(op, time.Now())
+	}
+}
+
 func (gm *GitManager) SetPullResult(err error) {
 	gm.pullResultMu.Lock()
 	defer gm.pullResultMu.Unlock()
@@ -258,6 +273,14 @@ type ConfigManager struct {
 	// needs periodic cores/mem — throttle its git staging to bound .git growth.
 	agentsStagedMu sync.Mutex
 	agentsStagedAt map[string]time.Time // per-cluster last time agents.json was staged
+
+	// syncStampHook, if set, is invoked after a git push/pull task completes
+	// SUCCESSFULLY (op = "push"|"pull") with the completion time. The real push/pull
+	// run here in the worker — not in the server package — so the last-sync stamp has
+	// to originate here; a server-side helper would sit on a dead path (see the
+	// repman.PushConfigToGit note). Set once at init; only ever called from the single
+	// processGitPush goroutine, so it needs no extra lock.
+	syncStampHook func(op string, at time.Time)
 }
 
 // NewConfigManager initializes the manager
@@ -568,6 +591,7 @@ func (cm *ConfigManager) processGitPush() {
 					}
 				} else {
 					cm.UpdateGitOperationStatus(gitOperationPull, nil)
+					cm.fireSyncStamp(gitOperationPull)
 					cm.logger.Infof("none", config.ConstLogModGit, "[Git] Git pull completed successfully.")
 				}
 
@@ -582,6 +606,7 @@ func (cm *ConfigManager) processGitPush() {
 					}
 				} else {
 					cm.UpdateGitOperationStatus(gitOperationPush, nil)
+					cm.fireSyncStamp(gitOperationPush)
 					cm.logger.Infof("none", config.ConstLogModGit, "[Git] Git push completed successfully.")
 				}
 			}

@@ -228,7 +228,9 @@ function Navbar({ username, user }) {
                         registered (cloud18 git identity set). Global level only. Not plan. */}
                     {(monitor?.config?.apiPublicUrl && monitor?.config?.cloud18GitUser && monitor?.config?.cloud18Domain && monitor?.config?.cloud18SubDomain && monitor?.config?.cloud18SubDomainZone) && (
                       <Text fontSize='xs' color='gray.500' mt={1} textAlign='center'>
-                        Config saved {fmtTs(monitor?.lastConfigGitPush)}
+                        Config pulled ← {fmtTs(monitor?.lastConfigGitPull)}
+                        <br />
+                        Config saved → {fmtTs(monitor?.lastConfigGitPush)}
                         <br />
                         Peers looked up {fmtTs(monitor?.lastPeerLookup)}
                       </Text>

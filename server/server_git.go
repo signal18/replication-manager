@@ -1623,10 +1623,11 @@ func (repman *ReplicationManager) PushConfigToGit() error {
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
 			"Git error: cannot push: %s", err)
-	} else {
-		// Surface the last successful cloud18 config save (git push) in the peer view.
-		repman.LastConfigGitPush = time.Now()
 	}
+	// NOTE: do NOT stamp LastConfigGitPush here — this function is dead in the live loop
+	// (see the "do not wire back in" note above). The real push runs in the ConfigManager
+	// worker, which stamps it via SetSyncStampHook. Stamping here only produced a value on
+	// a path that never runs, so the indicator showed "—" despite pushes succeeding.
 
 	return err
 }
