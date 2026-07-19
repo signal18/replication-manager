@@ -35,6 +35,7 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/tty"
 	"github.com/signal18/replication-manager/utils/version"
+	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
@@ -1968,6 +1969,27 @@ func (cluster *Cluster) GetCompactJson() ([]byte, error) {
 	} {
 		result, _ = sjson.DeleteBytes(result, field)
 	}
+
+	// Slim `config`: the ~500-field config struct is 36% of the row (~31 KB), but the
+	// LIST reads only a handful of keys (the columns it renders + NewServerModal's
+	// default-port lookup). Replace it with just those keys — GUI `row.config?.x` reads
+	// still resolve, AND this drops EVERY config value (incl. secrets) that the list
+	// never needed. ACLs are enforced server-side (IsValidClusterACL on the request
+	// path), so this changes payload weight, not access control. Audit-derived key set;
+	// full config still comes from /api/clusters/{name} on drill-in. project_api_clusters_bloat.
+	leanCfg := []byte("{}")
+	for _, k := range []string{
+		"arbitrationExternal", "monitoringPause", "provOrchestrator",
+		"backupRestic", "backupPhysicalType", "backupLogicalType", "schedulerEnabled",
+		"dbServersHosts", "proxysqlPort", "maxscalePort", "haproxyWritePort",
+		"haproxyReadPort", "shardproxyServers", "sphinxSqlPort", "sphinxPort",
+		"provProxyRoutePort",
+	} {
+		if v := gjson.GetBytes(result, "config."+k); v.Exists() {
+			leanCfg, _ = sjson.SetRawBytes(leanCfg, k, []byte(v.Raw))
+		}
+	}
+	result, _ = sjson.SetRawBytes(result, "config", leanCfg)
 
 	return result, nil
 }
