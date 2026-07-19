@@ -164,6 +164,13 @@ func (pm *PeerManager) BatchUpdateClusters(clusterUpdates []*PeerCluster, remove
 	for _, pc := range clusterUpdates {
 		hashID := GetPeerHashID(pc)
 
+		// stored is the canonical object kept in PeerClusters — the one the live
+		// /api/clusters poll (GetClusterDetails) enriches. We wire the user/for-sale maps
+		// to THIS object below (not the transient catalog pc), so the post-reload poll's
+		// live data prevails in the peer/for-sale views; catalog data remains only when
+		// the live fetch can't reach the peer. Before this, ReloadUsers(pc) pointed the
+		// views at a sibling object the poll never wrote to, so live info never showed.
+		var stored *PeerCluster
 		if cl, exists := pm.PeerClusters[hashID]; exists {
 			// Preserve the direct-connection enrichment (auto-connect to fleet) — these
 			// fields are never in the peer.json catalog, so a catalog refresh must not
@@ -195,14 +202,16 @@ func (pm *PeerManager) BatchUpdateClusters(clusterUpdates []*PeerCluster, remove
 				pc.LastUpdate = cl.LastUpdate
 			}
 			*cl = *pc
+			stored = cl
 		} else {
 			if pm.HealthMode == "pulling" && pc.RepmgrVersion != "" {
 				pc.LastUpdate = time.Now()
 			}
 			pm.PeerClusters[hashID] = pc
+			stored = pc
 		}
 
-		pm.ReloadUsers(pc)
+		pm.ReloadUsers(stored)
 		updatedNames[hashID] = true
 
 		if _, exists := pm.PeerURL[pc.ApiPublicUrl]; !exists {
