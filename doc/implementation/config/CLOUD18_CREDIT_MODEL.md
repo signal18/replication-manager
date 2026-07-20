@@ -458,3 +458,34 @@ These build on the unit model above; not scoped yet, captured so the design poin
      percentage band** around the plan baseline (§9.2): a cluster flexes with load but never runs
      away from its committed contract. Outside the band → no automatic change (needs a
      plan/contract change). This is the guardrail that keeps the delta (§9.2) predictable.
+
+## 10. Long-horizon goal (roadmap): live partner-to-partner migration
+
+The furthest-out vision. When a cluster's **average consumption** (§9.2) outgrows its current
+partner — or a different partner is a better fit (capacity, cost, geo) — repman orchestrates a
+**live partner-to-partner migration** of the whole cluster **and its apps**, with no downtime,
+cut over by DNS. This composes almost entirely of building blocks that already exist.
+
+The flow:
+
+1. **Trigger — consumption-driven.** Sustained average consumption (or a capacity/cost/geo
+   signal) indicates the cluster should move partners.
+2. **Capacity discovery across peers.** Every peer is queried against its **free credit pool**
+   (the §9.3 free pool, surfaced at marketplace level): who has room to host this cluster?
+3. **Candidate list.** Build the list of partners **available to hold** the cluster — enough free
+   pool, plus policy/eligibility.
+4. **Migration request.** Because backups already live on **remote storage (S3 / SFTP)**, a
+   migration request is sent to the **user** and the **target partner** for consent.
+5. **Live build on the new partner.** On the chosen partner's repman:
+   - **provision** a fresh cluster,
+   - **restore** the remote backup (S3 / SFTP),
+   - **replay the binlog on the fly** so the new cluster catches up and **both clusters live
+     together** — cross-partner replication keeping them in sync.
+6. **Cutover on "go".** When the go is fired, the cluster **and its apps** are moved by a **DNS
+   change** (`Cloud18DatabaseReadWriteSrvRecord` / `...ReadSrvRecord` / `...ReadWriteSplitSrvRecord`
+   + the app records) — traffic swings to the new partner and the old cluster is retired.
+
+**Building blocks that already exist** (so §10 is orchestration, not greenfield): remote backups
+(`backup-restic`, S3/SFTP), provision + restore, binlog capture/replay across instances, the DNS
+SRV records above, and the peer catalogue + free-pool (§9.3). §10 wires them into one
+orchestrated, consumption-driven migration.
