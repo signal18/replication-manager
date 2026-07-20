@@ -3574,6 +3574,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetClusterMonitorCredentialsFromConfig()
 		// mycluster.SetDbServersMonitoringCredential(value)
 	case "prov-service-plan":
+		if repman.Conf.Cloud18MarketplacePricingMode == config.ConstMarketplacePricingModeGlobalUnitPricing {
+			return errors.New("cluster service plan is disabled while marketplace pricing mode is global-unit-pricing")
+		}
 		mycluster.SetServicePlan(value)
 	case "prov-net-cni-cluster":
 		mycluster.SetProvNetCniCluster(value)
@@ -4868,6 +4871,10 @@ func shouldDownloadFromRequest(r *http.Request) bool {
 // @Router /api/clusters/settings/actions/reload-clusters-plans [post]
 func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if repman.Conf.Cloud18MarketplacePricingMode == config.ConstMarketplacePricingModeGlobalUnitPricing {
+		http.Error(w, "cluster service plans are disabled while marketplace pricing mode is global-unit-pricing", http.StatusConflict)
+		return
+	}
 	shouldDownload := shouldDownloadFromRequest(r)
 
 	var mycluster *cluster.Cluster
@@ -4935,6 +4942,10 @@ func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r
 // @Router /api/clusters/settings/actions/reload-clusters-plan-info [post]
 func (repman *ReplicationManager) handlerMuxReloadPlansInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if repman.Conf.Cloud18MarketplacePricingMode == config.ConstMarketplacePricingModeGlobalUnitPricing {
+		http.Error(w, "cluster service plans are disabled while marketplace pricing mode is global-unit-pricing", http.StatusConflict)
+		return
+	}
 	shouldDownload := shouldDownloadFromRequest(r)
 
 	var mycluster *cluster.Cluster
@@ -4997,6 +5008,10 @@ func (repman *ReplicationManager) handlerMuxReloadPlansInfo(w http.ResponseWrite
 // @Router /api/clusters/{clusterName}/settings/actions/reload-plan-info [post]
 func (repman *ReplicationManager) handlerMuxReloadPlanInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if repman.Conf.Cloud18MarketplacePricingMode == config.ConstMarketplacePricingModeGlobalUnitPricing {
+		http.Error(w, "cluster service plans are disabled while marketplace pricing mode is global-unit-pricing", http.StatusConflict)
+		return
+	}
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
