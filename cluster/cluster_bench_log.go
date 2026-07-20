@@ -113,6 +113,25 @@ func (cluster *Cluster) LogSysbenchStep(step string, startedAt time.Time, scaleG
 	cluster.SaveSysbenchLog()
 }
 
+// ComputeDBUPerNode returns the Database Unit size of a single db node from its
+// provisioning config: 1 DBU = 1 core / 4GB RAM / 40GB disk / 1000 IOPS, taking
+// the max of the four ratios. Shared by sysbench logging and marketplace unit pricing.
+func (cluster *Cluster) ComputeDBUPerNode() float64 {
+	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+	memMBi, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+	memMB := float64(memMBi)
+	diskGBi, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
+	diskGB := float64(diskGBi)
+	iops, _ := strconv.ParseFloat(cluster.Conf.ProvIops, 64)
+	return math.Max(cores, math.Max(memMB/4096, math.Max(diskGB/40, iops/1000)))
+}
+
+// ComputeDatabaseUnits returns the cluster-wide Database Unit total: per-node DBU
+// times the number of monitored db nodes (master + replicas).
+func (cluster *Cluster) ComputeDatabaseUnits() float64 {
+	return cluster.ComputeDBUPerNode() * float64(len(cluster.Servers))
+}
+
 // LogSysbenchRun captures the context and results of a sysbench run and appends it to history.
 // rawOutput is the full sysbench output for summary parsing when per-second records are empty.
 func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads int, tableSize int, duration int, startedAt time.Time, records []SysbenchRecord, rawOutput string, scaleGroup ...time.Time) {
@@ -136,14 +155,7 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 		Records:     records,
 	}
 
-	// Compute DBU: 1 unit = 1 core / 4GB RAM / 40GB NVMe / 1000 IOPS
-	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
-	memMBi, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
-	memMB := float64(memMBi)
-	diskGBi, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
-	diskGB := float64(diskGBi)
-	iops, _ := strconv.ParseFloat(cluster.Conf.ProvIops, 64)
-	entry.DBU = math.Max(cores, math.Max(memMB/4096, math.Max(diskGB/40, iops/1000)))
+	entry.DBU = cluster.ComputeDBUPerNode()
 	entry.ClusterDBU = entry.DBU * float64(dbNodes)
 
 	// DB flavor + version from master

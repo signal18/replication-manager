@@ -23,6 +23,7 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1553,6 +1554,10 @@ type ClusterState struct {
 	IsMasterDown  bool `json:"isMasterDown"`
 	IsFailable    bool `json:"isFailable"`
 	IsProvisioned bool `json:"isProvisioned"`
+	// Marketplace global-unit-pricing fields — consumed by the BO to price this
+	// cluster from cloud18-marketplace-dbu-price / cloud18-marketplace-app-unit-price.
+	DatabaseUnits    float64 `json:"databaseUnits"`
+	ApplicationUnits float64 `json:"applicationUnits"`
 }
 
 // recomputeAppCredits recomputes Cloud18ApplicationCreditsUsed and
@@ -1569,6 +1574,20 @@ func (cluster *Cluster) recomputeAppCredits() {
 	cluster.Unlock()
 	cluster.Conf.Cloud18ApplicationCreditsUsed = used
 	cluster.Conf.Cloud18ApplicationCreditsPlanned = planned
+}
+
+// ComputeApplicationUnits returns the cluster's Application Unit total for
+// marketplace global-unit-pricing: used application credits plus each live
+// proxy's contribution at prov-proxy-cpu-cores.
+func (cluster *Cluster) ComputeApplicationUnits() float64 {
+	proxyCores, _ := strconv.ParseFloat(cluster.Conf.ProvProxCores, 64)
+	liveProxyCount := 0
+	for _, prx := range cluster.Proxies {
+		if !prx.IsDown() {
+			liveProxyCount++
+		}
+	}
+	return float64(cluster.Conf.Cloud18ApplicationCreditsUsed) + float64(liveProxyCount)*proxyCores
 }
 
 // rebaseAppCreditCap raises Cloud18ApplicationCredits to the current used total
@@ -1654,6 +1673,8 @@ func (cluster *Cluster) SaveCallBack() error {
 	clsave.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().State == "Failed"
 	clsave.IsFailable = !cluster.IsNotMonitoring && cluster.StateMachine.GetHeartbeats() > 0
 	clsave.IsProvisioned = cluster.IsAllDbUp
+	clsave.DatabaseUnits = cluster.ComputeDatabaseUnits()
+	clsave.ApplicationUnits = cluster.ComputeApplicationUnits()
 
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
 	err := os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)
