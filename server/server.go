@@ -3089,6 +3089,92 @@ func (repman *ReplicationManager) Run() error {
 
 }
 
+// ReconstructLiveClusterConfig rebuilds clusterName's config for a single
+// already-running cluster, scoped to that cluster only. It deliberately does
+// NOT go through InitConfig: InitConfig rediscovers the whole cluster list,
+// rebuilds repman.ClusterList/ImmutableClusterList/ImmuableFlagMaps/
+// DynamicFlagMaps for every cluster, and -- critically -- recomputes
+// WorkingDir from scratch. Its non-root fallback (hasExplicitWorkingDir,
+// see ~line 1897) silently relocates WorkingDir to
+// ~/.local/replication-manager/data the moment it can't re-derive the
+// original startup context, which on a live reload quietly moved an
+// already-running cluster's data directory out from under it (HAProxy,
+// restic and the job-script deployer all went looking in the new, empty
+// directory and treated it as first boot -- see logs/reload-config.log).
+//
+// Anchoring baseConf on the live *repman.Conf (as reconstructImportedClusterConfig
+// does for freshly-imported clusters) sidesteps that entirely: WorkingDir,
+// ShareDir, BaseDir etc. keep whatever value startup already resolved unless
+// the cluster's own TOML section explicitly overrides them.
+func (repman *ReplicationManager) ReconstructLiveClusterConfig(clusterName string) (config.Config, error) {
+	isolated := viper.New()
+	isolated.SetConfigType("toml")
+
+	if repman.Conf.ConfigFile != "" {
+		if _, err := os.Stat(repman.Conf.ConfigFile); err == nil {
+			isolated.SetConfigFile(repman.Conf.ConfigFile)
+			if err := isolated.ReadInConfig(); err != nil {
+				return config.Config{}, fmt.Errorf("cannot parse %s: %w", repman.Conf.ConfigFile, err)
+			}
+		}
+	}
+
+	// Saved cluster overlay (dynamic settings persisted since the last
+	// restart) -- mirrors InitConfig's per-cluster "Parsing saved config
+	// from working directory" merge, but only for this one cluster.
+	clusterTomlPath := filepath.Join(repman.Conf.WorkingDir, clusterName, clusterName+".toml")
+	if _, err := os.Stat(clusterTomlPath); err == nil {
+		isolated.SetConfigName(clusterName)
+		isolated.SetConfigFile(clusterTomlPath)
+		if err := isolated.MergeInConfig(); err != nil {
+			return config.Config{}, fmt.Errorf("cannot parse %s: %w", clusterTomlPath, err)
+		}
+	}
+
+	repman.Lock()
+	defaultImmuable := repman.ImmuableFlagMaps["default"]
+	defaultDynamic := repman.DynamicFlagMaps["default"]
+	repman.Unlock()
+
+	baseConf := *repman.Conf
+	return repman.GetClusterConfig(isolated, defaultImmuable, defaultDynamic, clusterName, baseConf), nil
+}
+
+// ReloadLiveClusterConfig reconstructs clusterName's config in isolation (see
+// ReconstructLiveClusterConfig) and applies it to the running mycluster.
+// Callers driving a single-cluster settings reload should use this instead of
+// InitConfig+ReloadClusterConfig, which mutates global server state as a side
+// effect of reloading one cluster.
+func (repman *ReplicationManager) ReloadLiveClusterConfig(mycluster *cluster.Cluster, clusterName string) error {
+	conf, err := repman.ReconstructLiveClusterConfig(clusterName)
+	if err != nil {
+		return err
+	}
+	repman.Lock()
+	repman.Confs[clusterName] = conf
+	repman.Unlock()
+	repman.ReloadClusterConfig(mycluster, clusterName)
+	return nil
+}
+
+// deriveClusterConfFields applies the runtime-computed fields that never come
+// from TOML/env/flags (Interactive has toml:"-" and is derived purely from
+// FailMode) or need resolving against the running host (localhost
+// MonitorAddress, BaseDir-relative ShareDir/WorkingDir). initCluster applies
+// these at startup; ReloadClusterConfig must reapply them on every reload or
+// they silently reset to their zero values -- e.g. Interactive resets to
+// false, forcing automatic failover even when fail-mode=manual.
+func (repman *ReplicationManager) deriveClusterConfFields(conf *config.Config) {
+	if conf.MonitorAddress == "localhost" {
+		conf.MonitorAddress = repman.resolveHostIp()
+	}
+	conf.Interactive = conf.FailMode == "manual"
+	if conf.BaseDir != "system" {
+		conf.ShareDir = conf.BaseDir + "/share"
+		conf.WorkingDir = conf.BaseDir + "/data"
+	}
+}
+
 // ReloadClusterConfig applies clusterName's config after repman.InitConfig,
 // re-pointing ImmuableFlagMap/DynamicFlagMap/DefaultFlagMap at the per-cluster
 // maps the way initCluster does at startup -- InitConfig itself leaves them on
@@ -3099,6 +3185,7 @@ func (repman *ReplicationManager) ReloadClusterConfig(mycluster *cluster.Cluster
 	conf.ImmuableFlagMap = repman.ImmuableFlagMaps[clusterName]
 	conf.DynamicFlagMap = repman.DynamicFlagMaps[clusterName]
 	conf.DefaultFlagMap = repman.DefaultFlagMap
+	repman.deriveClusterConfFields(&conf)
 	repman.Confs[clusterName] = conf
 	mycluster.ReloadConfig(conf)
 }
@@ -3122,18 +3209,7 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	go repman.currentCluster.InitiateRefreshTemplateMD5Worker()
 
 	myClusterConf := repman.Confs[clusterName]
-	if myClusterConf.MonitorAddress == "localhost" {
-		myClusterConf.MonitorAddress = repman.resolveHostIp()
-	}
-	if myClusterConf.FailMode == "manual" {
-		myClusterConf.Interactive = true
-	} else {
-		myClusterConf.Interactive = false
-	}
-	if myClusterConf.BaseDir != "system" {
-		myClusterConf.ShareDir = myClusterConf.BaseDir + "/share"
-		myClusterConf.WorkingDir = myClusterConf.BaseDir + "/data"
-	}
+	repman.deriveClusterConfFields(&myClusterConf)
 
 	myClusterConf.ImmuableFlagMap = repman.ImmuableFlagMaps[clusterName]
 	myClusterConf.DynamicFlagMap = repman.DynamicFlagMaps[clusterName]

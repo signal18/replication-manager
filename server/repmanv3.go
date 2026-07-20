@@ -461,9 +461,10 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 		if err = user.Granted(config.GrantClusterSettings); err != nil {
 			return nil, err
 		}
-		s.InitConfig(*s.Conf, true)
 		prevGW := mycluster.Conf.Cloud18GatewayService
-		s.ReloadClusterConfig(mycluster, in.Cluster.Name)
+		if err := s.ReloadLiveClusterConfig(mycluster, in.Cluster.Name); err != nil {
+			return nil, err
+		}
 		s.RecomputeGatewayConflicts(in.Cluster.Name, prevGW)
 
 	case v3.ClusterSetting_ADD_PROXY_TAG:
