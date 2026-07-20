@@ -32,10 +32,7 @@ import { getMeetInfo, logoutFromMeet, resetMeetError } from '../../redux/meetSli
 import { selectMeetUIState } from '../../redux/memoize'
 import { clearClusters, getMonitoredData, setServerActiveStatus } from '../../redux/globalClustersSlice'
 import { globalClustersService } from '../../services/globalClustersService'
-
-// Rejoin outcomes that still need the operator — the header crash badge blinks
-// red while any crash carries one (mirrors backend crash.go RejoinResult codes).
-const REJOIN_FAILED = ['not-flashback-able', 'no-rejoin-method', 'failed', 'peer-unreachable']
+import { crashRejoinNeedsAttention } from '../../utility/crashPill'
 
 // Go zero-time serialises as 0001-01-01 → render as "—".
 const fmtTs = (t) => (!t || String(t).startsWith('0001-01-01')) ? '—' : new Date(t).toLocaleString()
@@ -362,15 +359,19 @@ function Navbar({ username, user }) {
               />
               {(clusterData?.failoverHistory || []).length > 0 && (() => {
                 const history = clusterData?.failoverHistory || []
-                const rejoinFailed = history.some((c) => REJOIN_FAILED.includes(c.rejoinResult))
-                const isRed = rejoinFailed || history.some((c) => c.deltaAnalyzed && !c.deltaFlashable)
+                // Blink/red on the cluster's LIVE rejoin health (open REJOIN state
+                // in clusterAlerts), not on the durable crash archive: a cluster
+                // that crashed and recovered has a cleared state and must not keep
+                // alarming. The badge COUNT still reflects the archive length.
+                const rejoinNeedsAttention = crashRejoinNeedsAttention(clusterAlerts)
+                const isRed = rejoinNeedsAttention
                 return (
                   <AlertBadge
                     colorScheme={isRed ? 'red' : 'purple'}
                     icon={MdHistory}
                     text='Crashes'
                     count={history.length}
-                    blink={rejoinFailed}
+                    blink={rejoinNeedsAttention}
                     bubbleStyle={{
                       background: `var(--chakra-colors-${isRed ? 'red' : 'purple'}-500)`,
                       color: 'white',
