@@ -269,6 +269,19 @@ export const reloadClustersPlanInfo = createGuardedAsyncThunk('globalClusters/re
 }
 )
 
+export const recalculateMarketplaceUnits = createGuardedAsyncThunk('globalClusters/recalculateMarketplaceUnits', async (_, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.recalculateMarketplaceUnits()
+    showSuccessBanner('Marketplace units recalculated!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    console.log('error::', error)
+    showErrorBanner('Failed to recalculate marketplace units!', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+}
+)
+
 export const registerInstance = createGuardedAsyncThunk(
   'globalClusters/registerInstance',
   async ({ email, password, uri }, thunkAPI) => {

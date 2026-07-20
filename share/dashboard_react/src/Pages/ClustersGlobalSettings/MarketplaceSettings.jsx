@@ -3,11 +3,11 @@ import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
-import { setGlobalSetting, reloadClustersPlan, reloadClustersPlanInfo } from '../../redux/globalClustersSlice'
+import { setGlobalSetting, reloadClustersPlan, reloadClustersPlanInfo, recalculateMarketplaceUnits } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
 import Dropdown from '../../components/Dropdown'
 import RMIconButton from '../../components/RMIconButton'
-import { HiOutlineInformationCircle, HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
+import { HiCalculator, HiOutlineInformationCircle, HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
 import RMButton from '../../components/RMButton'
 import Markdown from 'react-markdown'
 import CommonModal from '../../components/Modals/CommonModal'
@@ -49,7 +49,7 @@ function MarketplaceSettings({ config }) {
   const hDomainUser = `**Domain User**\n\nUsername for the domain management API (DNS provider, load balancer, etc.) called by the add/drop scripts to automate tenant routing.\n\nConfig: \`cloud18-domain-user\``
   const hDomainSecret = `**Domain Secret**\n\nAPI key or password for domain management authentication.\nStored encrypted in the replication-manager configuration.\n\nConfig: \`cloud18-domain-secret\``
   const hReloadPlans = `**Reload Plans**\n\nDownload and reapply marketplace service plans from the Cloud18 GitLab repository.\nPlans define available database topologies, resource profiles, and OpenSVC provisioning templates.\nUse the info button to reload plan metadata only without reprovisioning.`
-  const hPricingMode = `**Marketplace Pricing Mode**\n\nHow clusters are priced in the Cloud18 marketplace:\n\n- **csv-service-plan** (default): each cluster is priced from a per-cluster service plan downloaded as CSV.\n- **global-unit-pricing**: all clusters are priced from a single global EUR price per Database Unit and per Application Unit — no per-cluster plan.\n\nConfig: \`cloud18-marketplace-pricing-mode\``
+  const hPricingMode = `**Marketplace Pricing Mode**\n\nHow clusters are priced in the Cloud18 marketplace:\n\n- **csv-service-plan** (default): each cluster is priced from a per-cluster service plan downloaded as CSV.\n- **global-unit-pricing**: all clusters are priced from a single global EUR price per Database Unit and per Application Unit — no per-cluster plan.\n\nThe calculator button recomputes and persists each cluster's Database Units and Application Units immediately, instead of waiting for the next periodic save cycle — useful right after switching mode or changing a cluster's sizing.\n\nConfig: \`cloud18-marketplace-pricing-mode\``
   const hDbuPrice = `**Database Unit Price**\n\nPrice in EUR per Database Unit (1 core / 4GB RAM / 40GB disk / 1000 IOPS).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-dbu-price\``
   const hAppUnitPrice = `**Application Unit Price**\n\nPrice in EUR per Application Unit (application credits used, plus proxy CPU contribution).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-app-unit-price\``
 
@@ -58,15 +58,23 @@ function MarketplaceSettings({ config }) {
       key: 'Marketplace Pricing Mode',
       help: h(hPricingMode, 'Marketplace Pricing Mode'),
       value: (
-        <Dropdown
-          options={[
-            { value: 'csv-service-plan', label: 'CSV Service Plan (per-cluster)' },
-            { value: 'global-unit-pricing', label: 'Global Unit Pricing (EUR / DBU + App Unit)' }
-          ]}
-          selectedValue={pricingMode}
-          confirmTitle='Confirm marketplace pricing mode: '
-          onChange={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-pricing-mode', value }))}
-        />
+        <Flex align='center' gap={2}>
+          <Dropdown
+            options={[
+              { value: 'csv-service-plan', label: 'CSV Service Plan (per-cluster)' },
+              { value: 'global-unit-pricing', label: 'Global Unit Pricing (EUR / DBU + App Unit)' }
+            ]}
+            selectedValue={pricingMode}
+            confirmTitle='Confirm marketplace pricing mode: '
+            onChange={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-pricing-mode', value }))}
+          />
+          <RMIconButton
+            icon={HiCalculator}
+            tooltip='Recalculate marketplace units now'
+            aria-label='Recalculate marketplace units'
+            onClick={() => dispatch(recalculateMarketplaceUnits())}
+          />
+        </Flex>
       )
     },
     ...(isUnitPricing ? [
@@ -173,7 +181,7 @@ function MarketplaceSettings({ config }) {
         />
       )
     },
-    ...(!isUnitPricing ? [{
+    {
       key: 'Reload Plans',
       help: h(hReloadPlans, 'Reload Plans'),
       value: (
@@ -200,7 +208,7 @@ function MarketplaceSettings({ config }) {
           />
         </Flex>
       )
-    }] : []),
+    },
   ]
 
   return (

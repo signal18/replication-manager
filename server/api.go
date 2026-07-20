@@ -1886,7 +1886,7 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 		}
 
 		// Cluster will auto set service when plan is not empty
-		if cForm.Plan != "" && repman.Conf.Cloud18MarketplacePricingMode != config.ConstMarketplacePricingModeGlobalUnitPricing {
+		if cForm.Plan != "" {
 			cl.SetServicePlan(cForm.Plan)
 		}
 

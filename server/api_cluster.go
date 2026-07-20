@@ -337,6 +337,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReloadPlansInfo)),
 	))
+	router.Handle("/api/clusters/settings/actions/recalculate-marketplace-units", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRecalculateMarketplaceUnits)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/set-cron/{settingName}/{settingValue:.*}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetCron)),
@@ -3574,9 +3578,6 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetClusterMonitorCredentialsFromConfig()
 		// mycluster.SetDbServersMonitoringCredential(value)
 	case "prov-service-plan":
-		if repman.Conf.Cloud18MarketplacePricingMode == config.ConstMarketplacePricingModeGlobalUnitPricing {
-			return errors.New("cluster service plan is disabled while marketplace pricing mode is global-unit-pricing")
-		}
 		mycluster.SetServicePlan(value)
 	case "prov-net-cni-cluster":
 		mycluster.SetProvNetCniCluster(value)
@@ -4871,10 +4872,6 @@ func shouldDownloadFromRequest(r *http.Request) bool {
 // @Router /api/clusters/settings/actions/reload-clusters-plans [post]
 func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if repman.Conf.Cloud18MarketplacePricingMode == config.ConstMarketplacePricingModeGlobalUnitPricing {
-		http.Error(w, "cluster service plans are disabled while marketplace pricing mode is global-unit-pricing", http.StatusConflict)
-		return
-	}
 	shouldDownload := shouldDownloadFromRequest(r)
 
 	var mycluster *cluster.Cluster
@@ -4942,10 +4939,6 @@ func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r
 // @Router /api/clusters/settings/actions/reload-clusters-plan-info [post]
 func (repman *ReplicationManager) handlerMuxReloadPlansInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if repman.Conf.Cloud18MarketplacePricingMode == config.ConstMarketplacePricingModeGlobalUnitPricing {
-		http.Error(w, "cluster service plans are disabled while marketplace pricing mode is global-unit-pricing", http.StatusConflict)
-		return
-	}
 	shouldDownload := shouldDownloadFromRequest(r)
 
 	var mycluster *cluster.Cluster
@@ -5008,10 +5001,6 @@ func (repman *ReplicationManager) handlerMuxReloadPlansInfo(w http.ResponseWrite
 // @Router /api/clusters/{clusterName}/settings/actions/reload-plan-info [post]
 func (repman *ReplicationManager) handlerMuxReloadPlanInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if repman.Conf.Cloud18MarketplacePricingMode == config.ConstMarketplacePricingModeGlobalUnitPricing {
-		http.Error(w, "cluster service plans are disabled while marketplace pricing mode is global-unit-pricing", http.StatusConflict)
-		return
-	}
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
@@ -5027,6 +5016,69 @@ func (repman *ReplicationManager) handlerMuxReloadPlanInfo(w http.ResponseWriter
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
+}
+
+// handlerMuxRecalculateMarketplaceUnits forces an immediate recompute and persist
+// of each cluster's databaseUnits/applicationUnits (clusterstate.json), on demand.
+// SaveCallBack normally only runs from the periodic config-sync gate (server.go),
+// which is itself gated behind cloud18-git-url being configured and can lag by
+// minutes — this gives operators a manual, immediate refresh, e.g. right after
+// switching cloud18-marketplace-pricing-mode or adjusting a cluster's sizing.
+// @Summary Recalculate marketplace unit totals for all clusters
+// @Description This endpoint recomputes and persists databaseUnits/applicationUnits for every cluster immediately.
+// @Tags ClusterActions
+// @Success 200 {string} string "Successfully recalculated marketplace units"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/settings/actions/recalculate-marketplace-units [post]
+func (repman *ReplicationManager) handlerMuxRecalculateMarketplaceUnits(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	var mycluster *cluster.Cluster
+	for _, v := range repman.Clusters {
+		if v != nil {
+			mycluster = v
+			break
+		}
+	}
+
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	valid, apiuser := repman.IsValidClusterACL(r, mycluster)
+	if !valid {
+		http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", r.URL.Path), http.StatusForbidden)
+		return
+	}
+
+	applied, skipped, failed := 0, 0, 0
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"recalculate-marketplace-units triggered by user %q over %d clusters", apiuser, len(repman.Clusters))
+	for _, cl := range repman.Clusters {
+		//Don't print error with no valid ACL
+		if cl.IsURLPassACL(apiuser, r.URL.Path, false) {
+			if err := cl.SaveCallBack(); err != nil {
+				failed++
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+					"recalculate-marketplace-units FAILED on cluster %q: %s", cl.Name, err.Error())
+			} else {
+				applied++
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+					"recalculate-marketplace-units APPLIED on cluster %q: databaseUnits=%g applicationUnits=%g",
+					cl.Name, cl.ComputeDatabaseUnits(), cl.ComputeApplicationUnits())
+			}
+		} else {
+			skipped++
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+				"recalculate-marketplace-units SKIPPED cluster %q: user %q lacks 'global' ACL grant", cl.Name, apiuser)
+		}
+	}
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"recalculate-marketplace-units done for user %q: %d applied, %d skipped, %d failed", apiuser, applied, skipped, failed)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("Successfully recalculated marketplace units"))
 }
 
 // handlerMuxAddTag handles the addition of a tag to a given cluster.

@@ -32,8 +32,6 @@ function CloudSettings({ selectedCluster, user }) {
     auth: { baseURL }
   } = useSelector((state) => state)
 
-  const isUnitPricing = monitor?.config?.cloud18MarketplacePricingMode === 'global-unit-pricing'
-
   const [action, setAction] = useState({ type: '', title: '', roles: '', payload: '' })
   const [planOptions, setPlanOptions] = useState([])
   const [dbopsOptions, setDbopsOptions] = useState([])
@@ -150,7 +148,7 @@ function CloudSettings({ selectedCluster, user }) {
         help: h(hForSale, 'For Sale'),
         value: (<RMSwitch confirmTitle={'Confirm switch settings for cloud18-shared?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-shared' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.cloud18Shared} />)
       },
-      ...(isUnitPricing ? [] : [{
+      {
         key: 'Cluster Plan',
         help: h(hPlan, 'Cluster Plan'),
         value: (
@@ -160,7 +158,7 @@ function CloudSettings({ selectedCluster, user }) {
             <RMIconButton icon={HiRefresh} tooltip='Reload plan info' aria-label='Reload plan info' onClick={() => setIsReloadPlanInfoModalOpen(true)} isDisabled={isReloadPlanInfoLoading || user?.grants['cluster-settings'] == false || !selectedCluster?.config?.provServicePlan} isLoading={isReloadPlanInfoLoading} />
           </HStack>
         )
-      }]),
+      },
       { key: 'Cloud18 Database Read-Write-Split SRV Record', help: h(hRWSplit, 'Cloud18 Database Read-Write-Split SRV Record'), value: (<TextForm value={selectedCluster?.config?.cloud18DatabaseReadWriteSplitSrvRecord} confirmTitle={`Confirm cloud18-database-read-write-split-srv-record to `} maxLength={1024} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-database-read-write-split-srv-record', value }))} />) },
       { key: 'Cloud18 Database Read-Write SRV Record', help: h(hRW, 'Cloud18 Database Read-Write SRV Record'), value: (<TextForm value={selectedCluster?.config?.cloud18DatabaseReadWriteSrvRecord} confirmTitle={`Confirm cloud18-database-read-write-srv-record to `} maxLength={1024} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-database-read-write-srv-record', value }))} />) },
       { key: 'Cloud18 Database Read SRV Record', help: h(hRead, 'Cloud18 Database Read SRV Record'), value: (<TextForm value={selectedCluster?.config?.cloud18DatabaseReadSrvRecord} confirmTitle={`Confirm cloud18-database-read-srv-record to `} maxLength={1024} className={styles.textbox} onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-database-read-srv-record', value }))} />) },

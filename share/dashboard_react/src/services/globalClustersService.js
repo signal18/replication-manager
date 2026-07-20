@@ -17,6 +17,7 @@ export const globalClustersService = {
   renameCluster,
   reloadClustersPlan,
   reloadClustersPlanInfo,
+  recalculateMarketplaceUnits,
   refreshAppTemplateRepo,
   getAppTemplateStructureGuide,
   register,
@@ -96,6 +97,10 @@ function reloadClustersPlan(download = true) {
 
 function reloadClustersPlanInfo(download = true) {
   return getApi().post(`clusters/settings/actions/reload-clusters-plan-info`, { download })
+}
+
+function recalculateMarketplaceUnits() {
+  return getApi().post(`clusters/settings/actions/recalculate-marketplace-units`)
 }
 
 function refreshAppTemplateRepo(clusterName, baseURL, forceRefresh = false) {
