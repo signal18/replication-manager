@@ -267,6 +267,29 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		new_secret.Value = repman.Conf.Cloud18DomainSecret
 		new_secret.OldValue = repman.Conf.GetDecryptedValue("cloud18-domain-secret")
 		repman.Conf.Secrets["cloud18-domain-secret"] = new_secret
+	case "cloud18-marketplace-pricing-mode":
+		if value != config.ConstMarketplacePricingModeCsvServicePlan && value != config.ConstMarketplacePricingModeGlobalUnitPricing {
+			return fmt.Errorf("invalid marketplace pricing mode %q, expected %q or %q", value, config.ConstMarketplacePricingModeCsvServicePlan, config.ConstMarketplacePricingModeGlobalUnitPricing)
+		}
+		repman.Conf.Cloud18MarketplacePricingMode = value
+	case "cloud18-marketplace-dbu-price":
+		price, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid Eur price for %s: %w", name, err)
+		}
+		if price < 0 {
+			return fmt.Errorf("invalid Eur price for %s: must not be negative", name)
+		}
+		repman.Conf.Cloud18MarketplaceDBUPrice = price
+	case "cloud18-marketplace-app-unit-price":
+		price, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid Eur price for %s: %w", name, err)
+		}
+		if price < 0 {
+			return fmt.Errorf("invalid Eur price for %s: must not be negative", name)
+		}
+		repman.Conf.Cloud18MarketplaceAppUnitPrice = price
 	case "api-bind":
 		repman.Conf.APIBind = value
 	case "api-port":
