@@ -69,6 +69,12 @@ jobs:
         env:
           PLUGIN_SIGNER_USER: ${{ secrets.PLUGIN_SIGNER_USER }}
           PLUGIN_SIGNER_TOKEN: ${{ secrets.PLUGIN_SIGNER_TOKEN }}
+          # SINGLE PUBLISHER of the signed plugin set. This tag-triggered package
+          # build already compiles every arch (amd64 then arm64) sequentially in one
+          # job, so it covers all arches with no concurrent push / no ref race. All
+          # other builds (docker/nightly/dev/osc/slim) leave PLUGIN_PUSH unset -> skip
+          # (opt-in gate in the Makefile 'plugins' target).
+          PLUGIN_PUSH: "ON"
         run: |
           echo "::add-mask::${PLUGIN_SIGNER_USER}:${PLUGIN_SIGNER_TOKEN}"
           branch="${GITHUB_REF_NAME}"
@@ -80,6 +86,12 @@ jobs:
         env:
           PLUGIN_SIGNER_USER: ${{ secrets.PLUGIN_SIGNER_USER }}
           PLUGIN_SIGNER_TOKEN: ${{ secrets.PLUGIN_SIGNER_TOKEN }}
+          # SINGLE PUBLISHER of the signed plugin set. This tag-triggered package
+          # build already compiles every arch (amd64 then arm64) sequentially in one
+          # job, so it covers all arches with no concurrent push / no ref race. All
+          # other builds (docker/nightly/dev/osc/slim) leave PLUGIN_PUSH unset -> skip
+          # (opt-in gate in the Makefile 'plugins' target).
+          PLUGIN_PUSH: "ON"
         run: |
           echo "::add-mask::${PLUGIN_SIGNER_USER}:${PLUGIN_SIGNER_TOKEN}"
           branch="${GITHUB_REF_NAME}"

@@ -160,33 +160,9 @@ plugins: $(PLUGIN_SIGNER_BIN)
 	$(MAKE) plugin-sigs
 	@if [ "$(PLUGIN_PUSH)" = "ON" ]; then \
 		$(MAKE) plugin-push || echo "WARNING: plugin-push failed (non-fatal)"; \
-	elif [ "$(PLUGIN_PUSH)" = "OFF" ]; then \
-		echo "PLUGIN_PUSH=OFF — skipping push"; \
-	elif [ -n "$(PLUGIN_SIGNER_USER)" ] && [ -n "$(PLUGIN_SIGNER_TOKEN)" ] && [ -d "$(PLUGIN_SIGNER_CLONE)/.git" ]; then \
-		WIREDIR="$(PLUGIN_SIGNER_CLONE)/plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)"; \
-		if [ ! -d "$$WIREDIR" ]; then \
-			echo "New wire version detected (wire-v$(WIRE_VERSION)) — pushing to signer repo"; \
-			$(MAKE) plugin-push || echo "WARNING: plugin-push failed (non-fatal)"; \
-		else \
-			CHANGED=0; \
-			for name in $(PLUGIN_NAMES); do \
-				LOCAL="$(PLUGIN_BINDIR)/$$name"; \
-				REMOTE="$$WIREDIR/$$name"; \
-				if [ -f "$$LOCAL" ] && [ -f "$$REMOTE" ]; then \
-					L=$$(sha256sum "$$LOCAL" | awk '{print $$1}'); \
-					R=$$(sha256sum "$$REMOTE" | awk '{print $$1}'); \
-					if [ "$$L" != "$$R" ]; then CHANGED=1; break; fi; \
-				elif [ -f "$$LOCAL" ]; then \
-					CHANGED=1; break; \
-				fi; \
-			done; \
-			if [ "$$CHANGED" = "1" ]; then \
-				echo "Plugin binaries changed — pushing to signer repo"; \
-				$(MAKE) plugin-push || echo "WARNING: plugin-push failed (non-fatal)"; \
-			else \
-				echo "Plugin binaries unchanged — skipping push"; \
-			fi; \
-		fi; \
+	else \
+		echo "PLUGIN_PUSH not ON -- skipping publish. Publishing is opt-in and single-owner:"; \
+		echo "  only the tagged release build sets PLUGIN_PUSH=ON. All other builds skip."; \
 	fi
 
 $(PLUGIN_SIGNER_BIN):
