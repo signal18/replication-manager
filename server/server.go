@@ -3089,6 +3089,20 @@ func (repman *ReplicationManager) Run() error {
 
 }
 
+// ReloadClusterConfig applies clusterName's config after repman.InitConfig,
+// re-pointing ImmuableFlagMap/DynamicFlagMap/DefaultFlagMap at the per-cluster
+// maps the way initCluster does at startup -- InitConfig itself leaves them on
+// the global-default maps, which breaks secret decryption. Callers should use
+// this instead of cluster.ReloadConfig directly.
+func (repman *ReplicationManager) ReloadClusterConfig(mycluster *cluster.Cluster, clusterName string) {
+	conf := repman.Confs[clusterName]
+	conf.ImmuableFlagMap = repman.ImmuableFlagMaps[clusterName]
+	conf.DynamicFlagMap = repman.DynamicFlagMaps[clusterName]
+	conf.DefaultFlagMap = repman.DefaultFlagMap
+	repman.Confs[clusterName] = conf
+	mycluster.ReloadConfig(conf)
+}
+
 // initCluster initialises a cluster and registers it in repman.Clusters but
 // does NOT start its monitoring goroutine.  Call go cl.Run() (or StartCluster)
 // separately.  The startup sequence uses initCluster so cross-cluster gateway

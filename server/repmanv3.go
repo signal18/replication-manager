@@ -463,7 +463,7 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 		}
 		s.InitConfig(*s.Conf, true)
 		prevGW := mycluster.Conf.Cloud18GatewayService
-		mycluster.ReloadConfig(s.Confs[in.Cluster.Name])
+		s.ReloadClusterConfig(mycluster, in.Cluster.Name)
 		s.RecomputeGatewayConflicts(in.Cluster.Name, prevGW)
 
 	case v3.ClusterSetting_ADD_PROXY_TAG:
