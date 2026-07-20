@@ -269,6 +269,24 @@ Two points to pin:
   Database credit — so either the first backup is "included" (extra ones count) or every backup
   counts and the published text is updated.
 
+### 4.1 App lifecycle — running vs stopped changes what it consumes
+
+Application (Compute) workloads come in two kinds, and consumption follows their **state**:
+
+- **Always-on** — persistent services (a proxy, a web server) that run continuously and consume
+  their full **Application/Compute units** (cpu/mem) plus their storage.
+- **Stoppable** — apps that can be turned off when idle. A **stopped** app should consume
+  **only storage** (its disk footprint → **Storage units**), **not** compute — *provided the
+  platform auto-downsizes its cgroup* (cpu/mem → ~0) on stop. Without auto-downsize it would keep
+  holding reserved compute while idle and be billed for nothing.
+
+The branch already encodes the running-only half for proxies: `ComputeApplicationUnits` counts
+**live** proxies only (a down proxy adds no cores). Generalising this to apps needs the **live
+cgroup auto-downsize** capability (§9.1): on stop, bind the cgroup down so Compute units drop to
+zero and only the storage footprint remains billable. This is a concrete driver for the
+**Storage unit** (§4.2) — idle/stopped app data is priced as storage, not compute — and it feeds
+the delta reconciliation (§9.2): a stopped app naturally falls *below* its plan baseline → refund.
+
 ## 5. Pricing: today vs the credit model
 
 | | Today (code) | Website / target |
@@ -380,3 +398,27 @@ unit mode; tests + Marketplace GUI.
    `csv-service-plan` as a legacy-only mode.
 5. Legacy silent-price failures (§7.7) are moot in unit mode but live while `csv-service-plan`
    remains.
+
+## 9. Future goals (roadmap)
+
+These build on the unit model above; not scoped yet, captured so the design points that way.
+
+1. **Live OpenSVC cgroup-binding integration.** Bind unit accounting to OpenSVC's live cgroup
+   resource control API (the "linux kernel virtualization using CGROUP" the infra already uses),
+   so a cluster's **actual** cpu/mem/disk/iops is *measured and enforced at the kernel*, not
+   merely inferred from `ProvCores/ProvMem/...`. This turns `UnitUsage` from a static
+   provisioning figure into a **live consumption signal**, and makes the ratio-lock (§2)
+   enforceable in the kernel rather than by policy alone. The configurator's derived sizing
+   (§3.3) becomes the cgroup binding target.
+
+2. **Fixed-plan baseline + delta reconciliation (refund / overage).** Treat a **fixed plan as
+   the base contract** — the committed baseline the customer pays for up front (predictable).
+   Then, using the live measurement from #1, compute the **delta = real consumption − plan
+   baseline** and settle it under a **commercial contract**:
+   - consumed **below** the plan → **credit refund** (return the unused units);
+   - consumed **above** the plan → bill the **delta** (metered overage).
+
+   This gives the best of both: a predictable committed price (the plan / CSV enforcement of
+   §2.1) *and* fair pay-for-what-you-use adjustment (the delta), with the commercial contract
+   defining the refund/overage terms per partner–customer. The fixed plan stays the anchor; the
+   delta is the only metered part.
