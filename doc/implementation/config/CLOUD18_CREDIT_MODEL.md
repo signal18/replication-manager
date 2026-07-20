@@ -442,3 +442,19 @@ These build on the unit model above; not scoped yet, captured so the design poin
    workload into a BO-side consumption signal. So the raw signal exists; only its BO reporting
    remains to be built. §9.1's cgroup binding then adds *enforcement* on top of this
    *measurement*.
+
+3. **Autoscaling control loop — how the cgroup change actually happens.** The live resize is not
+   free-form; it is a bounded, unit-granular loop that repman drives:
+   - **Unit-granular steps.** Change is applied **+1 unit / −1 unit** at a time — never arbitrary
+     fractions — so the ratio-lock (§2) stays intact at every step.
+   - **Backed by a repman-maintained free pool.** repman keeps a **free pool** of unallocated
+     host capacity (cores/mem/disk/iops), sourced from the per-agent load it already tracks
+     (e.g. `agents.json`). A `+1` **draws from** the pool; a `−1` **returns to** it; a `+1` only
+     fires if the pool can satisfy it. The pool stays under repman's maintenance, not the
+     workload's.
+   - **Frequent free-pool recomputation.** The pool must be recomputed **often** so decisions use
+     fresh capacity — a stale free-pool figure would over- or under-commit the host.
+   - **Capped to a min/max % delta on the plan.** Auto-resize may drift only within a **min/max
+     percentage band** around the plan baseline (§9.2): a cluster flexes with load but never runs
+     away from its committed contract. Outside the band → no automatic change (needs a
+     plan/contract change). This is the guardrail that keeps the delta (§9.2) predictable.
