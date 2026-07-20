@@ -78,27 +78,43 @@ on the right dimension.
 Signal18‑RapidSpace ~10 · Sagacita‑Rdem ~29 · Signal18‑Ovh & Sagacita‑Ovh ~36. Real prices are
 per-partner runtime settings (`cloud18-marketplace-dbu-price`, `-app-unit-price`), not these.
 
-### 2.1 Plans vs units — why both exist (units are the primitive, plans are shortcuts)
+### 2.1 Plans vs units — two roles, and the GOAL of per-unit pricing
 
-The named `ServicePlan`s (`x2.middle`, `x3.small`, …) **predate** the unit model. Historically
-`replication-manager` needed a **quick way to deploy a full database cluster**, so a plan is a
-**shortcut / preset**: a named bundle of a *sizing* (cores/mem/disk/iops) + a *topology* (the
-`xN` node count) that provisions a whole cluster in one action. It is convenience, not a
-separate pricing axis.
+A "plan" plays **two separate roles** — keep them distinct:
 
-Units are the **primitive**; a plan is **sugar on top** — a pre-named point in the unit space:
+1. **Deployment shortcut.** The `xN.size` preset (a *sizing* cores/mem/disk/iops + a *topology*
+   node count) that provisions a whole cluster in one action. Historical, convenient, and it
+   **stays regardless of how pricing works**.
+2. **Pricing via a CSV list.** The `csv-service-plan` mode: the partner maintains the registry
+   sheet with an explicit price per plan (database + proxy). This **enforces exact prices** —
+   the partner dictates the number — but requires the partner to **curate the whole CSV**.
 
-```
-plan        = preset(sizing, node_count)
-UnitUsage   = unitsFor(sizing, DatabaseUnit) [ + Compute/Storage ]   // §4
-price(plan) = UnitUsage × (partner €/unit)                           // DERIVED, not hand-entered
-```
+> **⭐ GOAL — relax the partner's need to maintain a CSV price list.** In `global-unit-pricing`
+> mode the partner sets just a few numbers — €/Database-unit, €/Application-unit — and every
+> price is **derived** (`UnitUsage × €/unit`, §4). No per-plan sheet to curate; add a new size
+> and it is priced automatically. That convenience is the whole point of the unit model.
 
-**Consequence:** plans do not compete with units — every plan simply *resolves to* a unit
-count. This is the intended fix for §7.6: a plan's monthly cost should be **derived** from its
-unit usage × the partner's €/unit, instead of being maintained as four independent absolute-€
-columns in the registry sheet. New workloads that don't fit a preset are still expressible
-directly in units; the plans just remain the fast path for "give me a standard cluster now."
+**So CSV-plan pricing and per-unit pricing are two coexisting *pricing modes*, not
+replacements** (`Cloud18MarketplacePricingMode`, §3.4):
+
+| Mode | Price source | Partner effort | When |
+|---|---|---|---|
+| `csv-service-plan` | absolute € per plan, from the sheet | **maintains the CSV** | wants to **enforce exact** prices |
+| `global-unit-pricing` | derived `UnitUsage × €/unit` | sets a few €/unit values | wants **no list to maintain** (the goal) |
+
+The **deployment shortcut** (role 1) works under *either* mode: a plan still gives one-click
+sizing; only *where its price comes from* changes.
+
+**Why keep the CSV plan at all once per-unit exists?** Two enforcement jobs per-unit can't do:
+1. **Enforce promotions** — the plan's `PromotionPct` (registry `promo` column) applies a
+   discount the derived price wouldn't.
+2. **Lock an exact price on the database + proxy part** — when a partner wants to *dictate* that
+   number rather than let `UnitUsage × €/unit` compute it.
+
+So the CSV plan survives as the **enforcement / override** lane for promos and the db+proxy
+price, while per-unit removes the day-to-day list upkeep for everything else. *Open detail:*
+whether the CSV fully replaces per-unit for a cluster (a hard mode switch — Ahmad's current
+model) or only **overrides those specific parts** (promo, db+proxy) on top of a per-unit base.
 
 ## 3. What already exists in code
 
@@ -330,13 +346,13 @@ These are the things to resolve — the model as published + implemented does no
 5. **Storage unit is undefined.** The code has only Database + Application units; "storage" is
    a technical decision not yet made (ratio TBD), so bulk-disk/backup pricing has no home yet.
 
-6. **Absolute-€ plans vs per-unit pricing are not unified.** The legacy path prices a plan with
-   four absolute € fields from the sheet; the unit model (§3.4) prices per unit per partner.
-   Because a plan
-   is just a shortcut that resolves to a unit count (§2.1), the fix is to make a plan's price
-   **derived** (`UnitUsage × €/unit`) and retire the hand-entered € columns — instead of
-   maintaining two sources of truth where "the price" means different things depending on
-   where you look.
+6. **Two pricing sources — coexisting *by design*.** `csv-service-plan` = enforced exact prices
+   from the sheet (partner maintains it), kept specifically to **enforce promos and lock the
+   db+proxy price** (§2.1); `global-unit-pricing` = derived `UnitUsage × €/unit`, no list to
+   maintain (the goal). Not a bug, not a reason to retire the CSV. *Open:* whether the CSV fully
+   replaces per-unit for a cluster (mode switch — current impl) or only **overrides** the promo /
+   db+proxy parts on a per-unit base. Either way the price source must be unambiguous per cluster
+   (`Cloud18MarketplacePricingMode` authoritative) so the cluster and the catalogue agree.
 
 7. **Silent price failures (already documented in the plan-apply path).**
    - Count-gate mismatch → `SetServicePlan` returns *"Plan not possible for that cluster"*
