@@ -5421,11 +5421,14 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	repman.InitConfig(*repman.Conf, true)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		prevGW := mycluster.Conf.Cloud18GatewayService
-		mycluster.ReloadConfig(repman.Confs[vars["clusterName"]])
+		if err := repman.ReloadLiveClusterConfig(mycluster, vars["clusterName"]); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Reload error: %v", err)
+			http.Error(w, "Reload error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 		repman.RecomputeGatewayConflicts(vars["clusterName"], prevGW)
 	} else {
 		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
