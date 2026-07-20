@@ -3089,6 +3089,45 @@ func (repman *ReplicationManager) Run() error {
 
 }
 
+// loadMainConfigInto reads the server's main config.toml into v, using the
+// same resolution rules InitConfig applies at startup (~line 1622): an
+// explicit --config file if set, otherwise search /etc/replication-manager/
+// (or ConfDirExtra when embedded), ".", and the tarball path. Kept minimal
+// and side-effect-free (no cluster discovery, no repman mutation) so callers
+// like ReconstructLiveClusterConfig can reuse it without pulling in
+// InitConfig's global-rebuild behavior. If ConfigFile is unset, this must
+// still find the file -- omitting the fallback search here is exactly what
+// left dev2 without its [dev2] section on reload (isolated.Sub("dev2") came
+// back nil, "Could not parse configuration group", "No hosts list specified").
+func (repman *ReplicationManager) loadMainConfigInto(v *viper.Viper) error {
+	if repman.Conf.ConfigFile != "" {
+		if _, err := os.Stat(repman.Conf.ConfigFile); err != nil {
+			return fmt.Errorf("no config file %s: %w", repman.Conf.ConfigFile, err)
+		}
+		v.SetConfigFile(repman.Conf.ConfigFile)
+	} else {
+		v.SetConfigName("config")
+		if repman.Conf.WithEmbed == "OFF" {
+			v.AddConfigPath("/etc/replication-manager/")
+		} else {
+			v.AddConfigPath(repman.Conf.ConfDirExtra)
+		}
+		v.AddConfigPath(".")
+		if repman.Conf.WithTarball == "ON" {
+			v.AddConfigPath("/usr/local/replication-manager/etc")
+		}
+	}
+
+	if err := v.ReadInConfig(); err != nil {
+		var configNotFound viper.ConfigFileNotFoundError
+		if errors.As(err, &configNotFound) {
+			return nil
+		}
+		return fmt.Errorf("cannot parse config file: %w", err)
+	}
+	return nil
+}
+
 // ReconstructLiveClusterConfig rebuilds clusterName's config for a single
 // already-running cluster, scoped to that cluster only. It deliberately does
 // NOT go through InitConfig: InitConfig rediscovers the whole cluster list,
@@ -3110,11 +3149,45 @@ func (repman *ReplicationManager) ReconstructLiveClusterConfig(clusterName strin
 	isolated := viper.New()
 	isolated.SetConfigType("toml")
 
-	if repman.Conf.ConfigFile != "" {
-		if _, err := os.Stat(repman.Conf.ConfigFile); err == nil {
-			isolated.SetConfigFile(repman.Conf.ConfigFile)
-			if err := isolated.ReadInConfig(); err != nil {
-				return config.Config{}, fmt.Errorf("cannot parse %s: %w", repman.Conf.ConfigFile, err)
+	if err := repman.loadMainConfigInto(isolated); err != nil {
+		return config.Config{}, err
+	}
+
+	// Global saved-default overlay (dynamic [DEFAULT]-scope settings changed
+	// since the last restart, persisted to WorkingDir/default.toml) -- feeds
+	// the [saved-default] layering below, same as InitConfig's
+	// monitoringSaveConfig block (~line 1800).
+	defaultTomlPath := filepath.Join(repman.Conf.WorkingDir, "default.toml")
+	if _, err := os.Stat(defaultTomlPath); err == nil {
+		isolated.SetConfigFile(defaultTomlPath)
+		if err := isolated.MergeInConfig(); err != nil {
+			return config.Config{}, fmt.Errorf("cannot parse %s: %w", defaultTomlPath, err)
+		}
+	}
+
+	// Optional include directory (default.include), same as InitConfig: a
+	// cluster's static section can live there instead of the main file.
+	// A missing include dir is expected (InitConfig treats it the same way,
+	// just at Debug level) but any other read failure -- permissions, an
+	// unmounted path -- must be visible: silently continuing here would
+	// reload the cluster with its static section quietly dropped, exactly
+	// the "No hosts list specified" failure this function exists to avoid.
+	if includeDir := isolated.GetString("default.include"); includeDir != "" {
+		files, err := os.ReadDir(includeDir)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				repman.Logrus.WithError(err).Warnf("ReconstructLiveClusterConfig(%s): cannot read include dir %s", clusterName, includeDir)
+			}
+		} else {
+			for _, f := range files {
+				if f.IsDir() || !strings.HasSuffix(f.Name(), ".toml") {
+					continue
+				}
+				isolated.SetConfigName(f.Name())
+				isolated.SetConfigFile(filepath.Join(includeDir, f.Name()))
+				if err := isolated.MergeInConfig(); err != nil {
+					return config.Config{}, fmt.Errorf("cannot parse include file %s: %w", f.Name(), err)
+				}
 			}
 		}
 	}
@@ -3136,7 +3209,26 @@ func (repman *ReplicationManager) ReconstructLiveClusterConfig(clusterName strin
 	defaultDynamic := repman.DynamicFlagMaps["default"]
 	repman.Unlock()
 
+	// Re-layer [DEFAULT]/[saved-default] from disk on top of the live
+	// baseline: a reload should reflect default-section edits made since
+	// startup (matching InitConfig's own default-then-cluster layering, see
+	// ~line 1875), not just re-apply the cluster's own section. Unmarshal
+	// only overwrites fields actually present in the TOML, so anything not
+	// explicitly set on disk -- WorkingDir, ShareDir, Interactive (toml:"-")
+	// -- still falls through to the live baseConf value untouched.
 	baseConf := *repman.Conf
+	if cf1 := isolated.Sub("default"); cf1 != nil {
+		cf1.Unmarshal(&baseConf)
+	}
+	if cf3 := isolated.Sub("saved-default"); cf3 != nil {
+		for _, f := range cf3.AllKeys() {
+			if v, ok := repman.Conf.ImmuableFlagMap[f]; ok {
+				cf3.Set(f, v)
+			}
+		}
+		cf3.Unmarshal(&baseConf)
+	}
+
 	return repman.GetClusterConfig(isolated, defaultImmuable, defaultDynamic, clusterName, baseConf), nil
 }
 
