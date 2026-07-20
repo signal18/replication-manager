@@ -250,3 +250,64 @@ func TestReconstructLiveClusterConfig_IncludeDirReadFailureIsLogged(t *testing.T
 		t.Errorf("expected a warning mentioning the unreadable include dir %q, got log output: %s", notADir, logOutput.String())
 	}
 }
+
+// TestReconstructLiveClusterConfig_AppliesDefaultSectionAlias proves a
+// deprecated key in [DEFAULT] (e.g. "logfile", aliased to "log-file" in
+// config.GetKeyAliasMap) still resolves on live reload, matching startup's
+// InitConfig, which calls repman.initAlias(cf1) before unmarshaling
+// [default] (~line 1882). Without that call here, deployments still using a
+// deprecated top-level key would see it silently stop working on reload
+// despite still working across a full restart.
+func TestReconstructLiveClusterConfig_AppliesDefaultSectionAlias(t *testing.T) {
+	mainConfigPath := filepath.Join(t.TempDir(), "config.toml")
+	mainConfigContent := "[DEFAULT]\nlogfile = \"/var/log/deprecated-alias.log\"\n\n[dev2]\ndb-servers-hosts = \"db1\"\n"
+	if err := os.WriteFile(mainConfigPath, []byte(mainConfigContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repman := newReloadTestRepman(&config.Config{
+		ConfigFile: mainConfigPath,
+		WorkingDir: t.TempDir(),
+	})
+
+	conf, err := repman.ReconstructLiveClusterConfig("dev2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if conf.LogFile != "/var/log/deprecated-alias.log" {
+		t.Errorf("LogFile = %q, want %q (deprecated [DEFAULT] key \"logfile\" was not aliased to \"log-file\")", conf.LogFile, "/var/log/deprecated-alias.log")
+	}
+}
+
+// TestReconstructLiveClusterConfig_AppliesSavedDefaultSectionAlias is the
+// same proof for the [saved-default] overlay (WorkingDir/default.toml),
+// matching InitConfig's repman.initAlias(cf3) call (~line 1923).
+func TestReconstructLiveClusterConfig_AppliesSavedDefaultSectionAlias(t *testing.T) {
+	workingDir := t.TempDir()
+
+	mainConfigPath := filepath.Join(t.TempDir(), "config.toml")
+	mainConfigContent := "[dev2]\ndb-servers-hosts = \"db1\"\n"
+	if err := os.WriteFile(mainConfigPath, []byte(mainConfigContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(workingDir, "default.toml"),
+		[]byte("[saved-default]\nlogfile = \"/var/log/saved-deprecated-alias.log\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repman := newReloadTestRepman(&config.Config{
+		ConfigFile: mainConfigPath,
+		WorkingDir: workingDir,
+	})
+
+	conf, err := repman.ReconstructLiveClusterConfig("dev2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if conf.LogFile != "/var/log/saved-deprecated-alias.log" {
+		t.Errorf("LogFile = %q, want %q (deprecated [saved-default] key \"logfile\" was not aliased to \"log-file\")", conf.LogFile, "/var/log/saved-deprecated-alias.log")
+	}
+}

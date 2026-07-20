@@ -112,7 +112,7 @@ type ReplicationManager struct {
 	// sbHeartbeatFailUntil (unix seconds) severs the peer heartbeat both ways
 	// to simulate this node being isolated from its peer — the server-level
 	// leg of the split-brain simulator (cluster_splitbrain_simulator.go). Runtime state only.
-	sbHeartbeatFailUntil            atomic.Int64                       `json:"-"`
+	sbHeartbeatFailUntil atomic.Int64 `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
@@ -156,62 +156,62 @@ type ReplicationManager struct {
 	// reference it — yet json.Marshal(repman) shipped it in /api/monitor at 312 KB (66%
 	// of a 463 KB payload), unredacted secrets and all. json:"-" keeps it internal (like
 	// VersionConfs). Per-cluster config still comes from /api/clusters/{name}.
-	Confs                       map[string]config.Config       `json:"-"`
+	Confs map[string]config.Config `json:"-"`
 	// Peer-network freshness, surfaced in the Clusters Peer view. Push/Pull are stamped
 	// by the ConfigManager worker (the real sync path) via SetSyncStampHook — NOT by any
 	// server-side helper, which would sit on a dead path.
-	LastConfigGitPush           time.Time                      `json:"lastConfigGitPush"` // last successful config push to the BO git
-	LastConfigGitPull           time.Time                      `json:"lastConfigGitPull"` // last successful config pull from the BO git
-	LastPeerLookup              time.Time                      `json:"lastPeerLookup"`    // last remote peer-cluster catalog refresh (peer.json pull)
-	VersionConfs                map[string]*config.ConfVersion `json:"-"`
-	grpcServer                  *grpc.Server                   `json:"-"`
-	grpcWrapped                 *grpcweb.WrappedGrpcServer     `json:"-"`
-	httpServer                  *http.Server                   `json:"-"`
-	apiServer                   *http.Server                   `json:"-"`
-	V3Up                        chan bool                      `json:"-"`
-	v3Config                    Repmanv3Config                 `json:"-"`
-	cloud18CheckSum             hash.Hash                      `json:"-"`
-	RegStatus                   RegistrationStatus             `json:"-"`
-	clog                        *clog.Logger                   `json:"-"`
-	cApiLog                     *clog.Logger                   `json:"-"`
-	Logrus                      *log.Logger                    `json:"-"`
-	ApiLogAdapter               *ApiLogAdapter                 `json:"-"`
-	lastReportedStatus          string                         `json:"-"`
-	lastReportedSplitBrain     bool                            `json:"-"`
-	IsSavingConfig              bool                           `json:"isSavingConfig"`
-	HasSavingConfigQueue        bool                           `json:"hasSavingConfigQueue"`
-	IsGitPull                   bool                           `json:"isGitPull"`
-	IsGitPush                   bool                           `json:"isGitPush"`
-	GitPushLock                 sync.Mutex                     `json:"-"`
+	LastConfigGitPush      time.Time                      `json:"lastConfigGitPush"` // last successful config push to the BO git
+	LastConfigGitPull      time.Time                      `json:"lastConfigGitPull"` // last successful config pull from the BO git
+	LastPeerLookup         time.Time                      `json:"lastPeerLookup"`    // last remote peer-cluster catalog refresh (peer.json pull)
+	VersionConfs           map[string]*config.ConfVersion `json:"-"`
+	grpcServer             *grpc.Server                   `json:"-"`
+	grpcWrapped            *grpcweb.WrappedGrpcServer     `json:"-"`
+	httpServer             *http.Server                   `json:"-"`
+	apiServer              *http.Server                   `json:"-"`
+	V3Up                   chan bool                      `json:"-"`
+	v3Config               Repmanv3Config                 `json:"-"`
+	cloud18CheckSum        hash.Hash                      `json:"-"`
+	RegStatus              RegistrationStatus             `json:"-"`
+	clog                   *clog.Logger                   `json:"-"`
+	cApiLog                *clog.Logger                   `json:"-"`
+	Logrus                 *log.Logger                    `json:"-"`
+	ApiLogAdapter          *ApiLogAdapter                 `json:"-"`
+	lastReportedStatus     string                         `json:"-"`
+	lastReportedSplitBrain bool                           `json:"-"`
+	IsSavingConfig         bool                           `json:"isSavingConfig"`
+	HasSavingConfigQueue   bool                           `json:"hasSavingConfigQueue"`
+	IsGitPull              bool                           `json:"isGitPull"`
+	IsGitPush              bool                           `json:"isGitPush"`
+	GitPushLock            sync.Mutex                     `json:"-"`
 	// runtimeClusterStartMu serializes the runtime cluster-start paths that
 	// mutate shared server state (repman.currentCluster, repman.Clusters) —
 	// currently AddCluster(), FetchDynamicClustersFromGit(), and the
 	// auto-discovery start path inside PullCloud18Configs(). See
 	// doc/implementation/server/DYNAMIC_CLUSTER_GIT_IMPORT_PLAN.md.
-	runtimeClusterStartMu       sync.Mutex                     `json:"-"`
-	gatewayMu                   sync.Map                       `json:"-"`
-	IsNeedGitPush               bool                           `json:"-"`
-	IsNeedConfigSave            bool                           `json:"-"` // event flag: Save() sets it, the config-sync gate consumes it and runs SaveCallBack
-	CanConnectVault             bool                           `json:"canConnectVault"`
-	IsExportPush                bool                           `json:"-"`
-	globalScheduler             *cron.Cron                     `json:"-"`
-	CheckSumConfig              map[string]hash.Hash           `json:"-"`
-	Mailer                      *mailer.Mailer                 `json:"-"`
-	IsHttpListenerReady         bool                           `json:"-"`
-	IsApiListenerReady          bool                           `json:"-"`
-	Terms                       []byte                         `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
-	TermsDT                     time.Time                      `json:"termsDT"`
-	ModTimes                    map[string]time.Time           `json:"-"`
-	SessionManager              *tty.SessionManager            `json:"-"`
-	ConfigManager               *manager.ConfigManager         `json:"-"`
-	MeetUserID                  string                         `json:"-"`
-	LoginUpgradeStore           *LoginUpgradeStore             `json:"-"`
-	LoginUpgradeInitOnce        sync.Once                      `json:"-"`
-	DiskStatManager             *misc.DiskStatManager          `json:"-"`
-	OpenSVCStats                atomic.Value                   `json:"-"`
-	inFetchOpenSVCStats         bool                           `json:"-"`
-	MessageChan                 chan sharedlog.Message         `json:"-"`
-	fileHook                    log.Hook
+	runtimeClusterStartMu sync.Mutex             `json:"-"`
+	gatewayMu             sync.Map               `json:"-"`
+	IsNeedGitPush         bool                   `json:"-"`
+	IsNeedConfigSave      bool                   `json:"-"` // event flag: Save() sets it, the config-sync gate consumes it and runs SaveCallBack
+	CanConnectVault       bool                   `json:"canConnectVault"`
+	IsExportPush          bool                   `json:"-"`
+	globalScheduler       *cron.Cron             `json:"-"`
+	CheckSumConfig        map[string]hash.Hash   `json:"-"`
+	Mailer                *mailer.Mailer         `json:"-"`
+	IsHttpListenerReady   bool                   `json:"-"`
+	IsApiListenerReady    bool                   `json:"-"`
+	Terms                 []byte                 `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
+	TermsDT               time.Time              `json:"termsDT"`
+	ModTimes              map[string]time.Time   `json:"-"`
+	SessionManager        *tty.SessionManager    `json:"-"`
+	ConfigManager         *manager.ConfigManager `json:"-"`
+	MeetUserID            string                 `json:"-"`
+	LoginUpgradeStore     *LoginUpgradeStore     `json:"-"`
+	LoginUpgradeInitOnce  sync.Once              `json:"-"`
+	DiskStatManager       *misc.DiskStatManager  `json:"-"`
+	OpenSVCStats          atomic.Value           `json:"-"`
+	inFetchOpenSVCStats   bool                   `json:"-"`
+	MessageChan           chan sharedlog.Message `json:"-"`
+	fileHook              log.Hook
 	// SecurityLogrus is a dedicated logger that writes security events to
 	// security.log (path derived from log-file by inserting "-security" before
 	// the extension). Nil when log-file is not configured.
@@ -302,12 +302,12 @@ type Heartbeat struct {
 	UUID      string    `json:"uuid"`
 	StartTime time.Time `json:"startTime"`
 	Secret    string    `json:"secret"`
-	Cluster string `json:"cluster"`
-	Master  string `json:"master"`
-	UID     int    `json:"id"`
-	Status  string `json:"status"`
-	Hosts   int    `json:"hosts"`
-	Failed  int    `json:"failed"`
+	Cluster   string    `json:"cluster"`
+	Master    string    `json:"master"`
+	UID       int       `json:"id"`
+	Status    string    `json:"status"`
+	Hosts     int       `json:"hosts"`
+	Failed    int       `json:"failed"`
 }
 
 var confs = make(map[string]config.Config)
@@ -2065,15 +2065,10 @@ func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, Immua
 
 		//clusterconf.PrintConf()
 
-		//save the immuable map for the cluster
-		//fmt.Printf("Immuatable map : %s\n", ImmuableMap)
-		repman.ImmuableFlagMaps[cluster] = clustImmuableMap
-
 		//store default cluster config in immutable config (all parameter set in default and cluster section, default value and command line)
 		confs.ConfImmuable = clusterconf
 
 		//fmt.Printf("%+v\n", cf2.AllSettings())
-		repman.DynamicFlagMaps[cluster] = clustDynamicMap
 		//if dynamic config, load modified parameter from the saved config.
 		// Deliberately NOT gated on cf2 (the static cluster section):
 		// dynamically-created clusters exist only through their
@@ -2115,13 +2110,26 @@ func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, Immua
 			confs.ConfDynamic = clusterconf
 
 		}
-		repman.DynamicFlagMaps[cluster] = clustDynamicMap
 
 		confs.ConfInit = clusterconf
 		//fmt.Printf("init conf : ")
 		//clusterconf.PrintConf()
 
+		// Publish all three maps together, once, under repman's lock: this
+		// function is reachable concurrently from live cluster reload
+		// (ReconstructLiveClusterConfig) as well as startup/import paths, and
+		// clustImmuableMap/clustDynamicMap are plain maps -- an unguarded
+		// write here races with any concurrent reader of
+		// ImmuableFlagMaps/DynamicFlagMaps/VersionConfs (e.g. a different
+		// cluster's reload, or ReloadClusterConfig reading this one).
+		// Publishing once, after all mutation above is done, also avoids
+		// exposing a partially-populated clustDynamicMap the way the old
+		// early assignment (before the saved-config loop above) did.
+		repman.Lock()
+		repman.ImmuableFlagMaps[cluster] = clustImmuableMap
+		repman.DynamicFlagMaps[cluster] = clustDynamicMap
 		repman.VersionConfs[cluster] = confs
+		repman.Unlock()
 	}
 	return clusterconf
 }
@@ -3218,6 +3226,7 @@ func (repman *ReplicationManager) ReconstructLiveClusterConfig(clusterName strin
 	// -- still falls through to the live baseConf value untouched.
 	baseConf := *repman.Conf
 	if cf1 := isolated.Sub("default"); cf1 != nil {
+		repman.initAlias(cf1)
 		cf1.Unmarshal(&baseConf)
 	}
 	if cf3 := isolated.Sub("saved-default"); cf3 != nil {
@@ -3226,6 +3235,7 @@ func (repman *ReplicationManager) ReconstructLiveClusterConfig(clusterName strin
 				cf3.Set(f, v)
 			}
 		}
+		repman.initAlias(cf3)
 		cf3.Unmarshal(&baseConf)
 	}
 
@@ -3273,12 +3283,21 @@ func (repman *ReplicationManager) deriveClusterConfFields(conf *config.Config) {
 // the global-default maps, which breaks secret decryption. Callers should use
 // this instead of cluster.ReloadConfig directly.
 func (repman *ReplicationManager) ReloadClusterConfig(mycluster *cluster.Cluster, clusterName string) {
+	// repman.Confs/ImmuableFlagMaps/DynamicFlagMaps are plain maps read and
+	// written from concurrent HTTP/gRPC reload requests (possibly for
+	// different clusters at once) -- lock around every access to them here,
+	// but release before the potentially slow mycluster.ReloadConfig(conf)
+	// call below so a single cluster's reload doesn't hold the server-wide
+	// lock for the duration of its topology discovery.
+	repman.Lock()
 	conf := repman.Confs[clusterName]
 	conf.ImmuableFlagMap = repman.ImmuableFlagMaps[clusterName]
 	conf.DynamicFlagMap = repman.DynamicFlagMaps[clusterName]
 	conf.DefaultFlagMap = repman.DefaultFlagMap
 	repman.deriveClusterConfFields(&conf)
 	repman.Confs[clusterName] = conf
+	repman.Unlock()
+
 	mycluster.ReloadConfig(conf)
 }
 
