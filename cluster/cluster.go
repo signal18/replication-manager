@@ -78,107 +78,107 @@ type ClusterResponse struct {
 }
 
 type Cluster struct {
-	OsUser                        *user.User             `json:"-"`
-	Name                          string                 `json:"name" groups:"apps,web"`
-	Tenant                        string                 `json:"tenant" groups:"web"`
-	WorkingDir                    string                 `json:"workingDir" groups:"web"`
-	Servers                       serverList             `json:"servers" groups:"apps"`
-	LogSlaveServers               []string               `json:"logSlaveServers" groups:"web" ` //To store slave with log-slave-updates
-	ServerIdList                  []string               `json:"dbServers" groups:"web"`
-	Crashes                       crashList              `json:"dbServersCrashes" groups:"web"` //This will be purged on all db node up
-	FailoverHistory               crashList              `json:"failoverHistory" groups:"web"`  //This will be used for PITR
-	Apps                          appList                `json:"apps" groups:"apps" `
-	AppIdList                     []string               `json:"appServers" groups:"web"`
-	Proxies                       proxyList              `json:"proxies" groups:"apps"`
-	ProxyIdList                   []string               `json:"proxyServers" groups:"web"`
-	FailoverCtr                   int                    `json:"failoverCounter" groups:"web"`
-	FailoverTs                    int64                  `json:"failoverLastTime" groups:"web"`
-	Status                        string                 `json:"activePassiveStatus" groups:"web"`
-	IsSplitBrain                  bool                   `json:"isSplitBrain" groups:"web"`
-	IsSplitBrainBck               bool                   `json:"-"`
-	SplitBrainStartTs             int64                  `json:"splitBrainStartTs" groups:"web"` // unix ts when the current/last split brain began; used to filter a peer crash to THIS split
+	OsUser            *user.User `json:"-"`
+	Name              string     `json:"name" groups:"apps,web"`
+	Tenant            string     `json:"tenant" groups:"web"`
+	WorkingDir        string     `json:"workingDir" groups:"web"`
+	Servers           serverList `json:"servers" groups:"apps"`
+	LogSlaveServers   []string   `json:"logSlaveServers" groups:"web" ` //To store slave with log-slave-updates
+	ServerIdList      []string   `json:"dbServers" groups:"web"`
+	Crashes           crashList  `json:"dbServersCrashes" groups:"web"` //This will be purged on all db node up
+	FailoverHistory   crashList  `json:"failoverHistory" groups:"web"`  //This will be used for PITR
+	Apps              appList    `json:"apps" groups:"apps" `
+	AppIdList         []string   `json:"appServers" groups:"web"`
+	Proxies           proxyList  `json:"proxies" groups:"apps"`
+	ProxyIdList       []string   `json:"proxyServers" groups:"web"`
+	FailoverCtr       int        `json:"failoverCounter" groups:"web"`
+	FailoverTs        int64      `json:"failoverLastTime" groups:"web"`
+	Status            string     `json:"activePassiveStatus" groups:"web"`
+	IsSplitBrain      bool       `json:"isSplitBrain" groups:"web"`
+	IsSplitBrainBck   bool       `json:"-"`
+	SplitBrainStartTs int64      `json:"splitBrainStartTs" groups:"web"` // unix ts when the current/last split brain began; used to filter a peer crash to THIS split
 
-	injectTrafficTableReady       map[string]bool        `json:"-"` // dml marker schema created once per proxy target
-	IsFailedArbitrator            bool                   `json:"isFailedArbitrator" groups:"web"`
-	IsLostMajority                bool                   `json:"isLostMajority" groups:"web"`
-	IsDown                        bool                   `json:"isDown" groups:"web"`
-	IsClusterDown                 bool                   `json:"isClusterDown" groups:"web"`
-	IsMasterDown                  bool                   `json:"isMasterDown" groups:"web"`
-	IsAllDbUp                     bool                   `json:"isAllDbUp" groups:"web"`
-	IsFailable                    bool                   `json:"isFailable" groups:"web"`
-	IsPostgres                    bool                   `json:"isPostgres" groups:"web"`
-	IsProvision                   bool                   `json:"isProvision" groups:"web"`
-	IsNeedProxiesRestart          bool                   `json:"isNeedProxiesRestart" groups:"web"`
-	IsNeedProxiesReprov           bool                   `json:"isNeedProxiesReprov" groups:"web"`
-	IsNeedProxiesConfigChange     bool                   `json:"isNeedProxiesConfigChange" groups:"web"`
-	IsNeedDatabasesRestart        bool                   `json:"isNeedDatabasesRestart" groups:"web"`
-	IsNeedDatabasesRollingRestart bool                   `json:"isNeedDatabasesRollingRestart" groups:"web"`
-	IsNeedDatabasesRollingReprov  bool                   `json:"isNeedDatabasesRollingReprov" groups:"web"`
-	IsNeedDatabasesReprov         bool                   `json:"isNeedDatabasesReprov" groups:"web"`
-	IsNeedDatabasesConfigChange   bool                   `json:"isNeedDatabasesConfigChange" groups:"web"`
-	IsNeedAppsReprov              bool                   `json:"isNeedAppsReprov" groups:"web"`
-	IsGettingSlowLog              bool                   `json:"isGettingSlowLog" groups:"web"`
-	IsValidBackup                 bool                   `json:"isValidBackup" groups:"web"`
-	IsValidRejoinBackupLogical    bool                   `json:"isValidRejoinBackupLogical" groups:"web"`
-	IsValidRejoinBackupPhysical   bool                   `json:"isValidRejoinBackupPhysical" groups:"web"`
-	IsNotMonitoring               bool                   `json:"isNotMonitoring" groups:"web"`
-	HaveSSHKeyChecked             bool                   `json:"-"`
-	IsCapturing                   bool                   `json:"isCapturing" groups:"web"`
-	IsGitPull                     bool                   `json:"isGitPull" groups:"web"`
-	IsGitPush                     bool                   `json:"isGitPush" groups:"web"`
-	IsSavingConfig                bool                   `json:"-"`
-	IsNeedGitPush                 bool                   `json:"-"`
-	IsNeedConfigSave              bool                   `json:"-"` // event flag: Save() sets it, the repman config-sync gate consumes it and runs SaveCallBack
-	IsExportPush                  bool                   `json:"isExportPush" groups:"web"`
-	IsAlertDisable                bool                   `json:"isAlertDisable" groups:"web"`
-	IsIntervention                bool                   `json:"isIntervention" groups:"web"`
-	InterventionCurrent           *InterventionEntry     `json:"interventionCurrent,omitempty" groups:"web"`
-	InterventionHistory           []InterventionEntry    `json:"interventionHistory" groups:"web"`
-	InterventionSuppressedAlerts  int                    `json:"interventionSuppressedAlerts" groups:"web"`
-	InterventionPending           *InterventionEntry     `json:"interventionPending,omitempty" groups:"web"`
-	IsRefreshStaging              bool                   `json:"isRefreshStaging" groups:"web"`
-	IsNeedStagingChange           bool                   `json:"isNeedStagingChange" groups:"web"`
-	IsConfigPathChange            bool                   `json:"isConfigPathChange" groups:"web"`
-	IsResticQueuePaused           bool                   `json:"isResticQueuePaused" groups:"web"`
-	BackupSlotsInUse              int                    `json:"backupSlotsInUse" groups:"web"`
-	BackupSlotsTotal              int                    `json:"backupSlotsTotal" groups:"web"`
-	SchemaMonitorRequested        int32                  `json:"-"`
-	Conf                          *config.Config         `json:"config" groups:"apps"`
-	Confs                         *config.ConfVersion    `json:"-"`
-	CleanAll                      bool                   `json:"cleanReplication" groups:"web"` //used in testing
-	Topology                      string                 `json:"topology" groups:"web"`
-	Uptime                        string                 `json:"uptime" groups:"web"`
-	UptimeFailable                string                 `json:"uptimeFailable" groups:"web"`
-	UptimeSemiSync                string                 `json:"uptimeSemisync" groups:"web"`
-	MonitorSpin                   string                 `json:"monitorSpin" groups:"web"`
-	WorkLoad                      config.WorkLoad        `json:"workLoad" groups:"web"`
-	DockerRepos                   []config.DockerRepo    `json:"-"`
-	Logrus                        *log.Logger            `json:"-"`
-	LogPushover                   *log.Logger            `json:"-"`
-	Log                           s18log.HttpLog         `json:"-" groups:"web"`
-	LogTask                       s18log.HttpLog         `json:"-" groups:"web"`
-	LogSecurity                   s18log.HttpLog         `json:"-" groups:"web"`
-	LogWorkload                   s18log.HttpLog         `json:"-" groups:"web"`
-	LogDDL                        s18log.HttpLog         `json:"-" groups:"web"`
-	LogVariableChange             s18log.HttpLog         `json:"-" groups:"web"`
+	injectTrafficTableReady       map[string]bool     `json:"-"` // dml marker schema created once per proxy target
+	IsFailedArbitrator            bool                `json:"isFailedArbitrator" groups:"web"`
+	IsLostMajority                bool                `json:"isLostMajority" groups:"web"`
+	IsDown                        bool                `json:"isDown" groups:"web"`
+	IsClusterDown                 bool                `json:"isClusterDown" groups:"web"`
+	IsMasterDown                  bool                `json:"isMasterDown" groups:"web"`
+	IsAllDbUp                     bool                `json:"isAllDbUp" groups:"web"`
+	IsFailable                    bool                `json:"isFailable" groups:"web"`
+	IsPostgres                    bool                `json:"isPostgres" groups:"web"`
+	IsProvision                   bool                `json:"isProvision" groups:"web"`
+	IsNeedProxiesRestart          bool                `json:"isNeedProxiesRestart" groups:"web"`
+	IsNeedProxiesReprov           bool                `json:"isNeedProxiesReprov" groups:"web"`
+	IsNeedProxiesConfigChange     bool                `json:"isNeedProxiesConfigChange" groups:"web"`
+	IsNeedDatabasesRestart        bool                `json:"isNeedDatabasesRestart" groups:"web"`
+	IsNeedDatabasesRollingRestart bool                `json:"isNeedDatabasesRollingRestart" groups:"web"`
+	IsNeedDatabasesRollingReprov  bool                `json:"isNeedDatabasesRollingReprov" groups:"web"`
+	IsNeedDatabasesReprov         bool                `json:"isNeedDatabasesReprov" groups:"web"`
+	IsNeedDatabasesConfigChange   bool                `json:"isNeedDatabasesConfigChange" groups:"web"`
+	IsNeedAppsReprov              bool                `json:"isNeedAppsReprov" groups:"web"`
+	IsGettingSlowLog              bool                `json:"isGettingSlowLog" groups:"web"`
+	IsValidBackup                 bool                `json:"isValidBackup" groups:"web"`
+	IsValidRejoinBackupLogical    bool                `json:"isValidRejoinBackupLogical" groups:"web"`
+	IsValidRejoinBackupPhysical   bool                `json:"isValidRejoinBackupPhysical" groups:"web"`
+	IsNotMonitoring               bool                `json:"isNotMonitoring" groups:"web"`
+	HaveSSHKeyChecked             bool                `json:"-"`
+	IsCapturing                   bool                `json:"isCapturing" groups:"web"`
+	IsGitPull                     bool                `json:"isGitPull" groups:"web"`
+	IsGitPush                     bool                `json:"isGitPush" groups:"web"`
+	IsSavingConfig                bool                `json:"-"`
+	IsNeedGitPush                 bool                `json:"-"`
+	IsNeedConfigSave              bool                `json:"-"` // event flag: Save() sets it, the repman config-sync gate consumes it and runs SaveCallBack
+	IsExportPush                  bool                `json:"isExportPush" groups:"web"`
+	IsAlertDisable                bool                `json:"isAlertDisable" groups:"web"`
+	IsIntervention                bool                `json:"isIntervention" groups:"web"`
+	InterventionCurrent           *InterventionEntry  `json:"interventionCurrent,omitempty" groups:"web"`
+	InterventionHistory           []InterventionEntry `json:"interventionHistory" groups:"web"`
+	InterventionSuppressedAlerts  int                 `json:"interventionSuppressedAlerts" groups:"web"`
+	InterventionPending           *InterventionEntry  `json:"interventionPending,omitempty" groups:"web"`
+	IsRefreshStaging              bool                `json:"isRefreshStaging" groups:"web"`
+	IsNeedStagingChange           bool                `json:"isNeedStagingChange" groups:"web"`
+	IsConfigPathChange            bool                `json:"isConfigPathChange" groups:"web"`
+	IsResticQueuePaused           bool                `json:"isResticQueuePaused" groups:"web"`
+	BackupSlotsInUse              int                 `json:"backupSlotsInUse" groups:"web"`
+	BackupSlotsTotal              int                 `json:"backupSlotsTotal" groups:"web"`
+	SchemaMonitorRequested        int32               `json:"-"`
+	Conf                          *config.Config      `json:"config" groups:"apps"`
+	Confs                         *config.ConfVersion `json:"-"`
+	CleanAll                      bool                `json:"cleanReplication" groups:"web"` //used in testing
+	Topology                      string              `json:"topology" groups:"web"`
+	Uptime                        string              `json:"uptime" groups:"web"`
+	UptimeFailable                string              `json:"uptimeFailable" groups:"web"`
+	UptimeSemiSync                string              `json:"uptimeSemisync" groups:"web"`
+	MonitorSpin                   string              `json:"monitorSpin" groups:"web"`
+	WorkLoad                      config.WorkLoad     `json:"workLoad" groups:"web"`
+	DockerRepos                   []config.DockerRepo `json:"-"`
+	Logrus                        *log.Logger         `json:"-"`
+	LogPushover                   *log.Logger         `json:"-"`
+	Log                           s18log.HttpLog      `json:"-" groups:"web"`
+	LogTask                       s18log.HttpLog      `json:"-" groups:"web"`
+	LogSecurity                   s18log.HttpLog      `json:"-" groups:"web"`
+	LogWorkload                   s18log.HttpLog      `json:"-" groups:"web"`
+	LogDDL                        s18log.HttpLog      `json:"-" groups:"web"`
+	LogVariableChange             s18log.HttpLog      `json:"-" groups:"web"`
 	// LogSchema is a dedicated rotating buffer for schema advisory findings, mirrors LogSecurity/LogWorkload.
-	LogSchema s18log.HttpLog `json:"-" groups:"web"`
-	LogSlack                      *slackman.SlackManager `json:"-"`
-	JobResults                    *config.TasksMap       `json:"jobResults" groups:"web"`
-	FalsePositiveChecks           map[string]bool        `json:"falsePositiveChecks" groups:"web"`
-	Grants                        map[string]string      `json:"-"`
-	Roles                         map[string]string      `json:"-"`
-	tlog                          *s18log.TermLog        `json:"-"`
-	htlog                         *s18log.HttpLog        `json:"-"`
-	SQLGeneralLog                 s18log.HttpLog         `json:"sqlGeneralLog" groups:"web"`
-	SQLErrorLog                   s18log.HttpLog         `json:"sqlErrorLog" groups:"web"`
-	MonitorType                   map[string]string      `json:"monitorType" groups:"web"`
-	TopologyType                  map[string]string      `json:"topologyType" groups:"web"`
-	FSType                        map[string]bool        `json:"fsType" groups:"web"`
-	DiskType                      map[string]string      `json:"diskType" groups:"web"`
-	VMType                        map[string]bool        `json:"vmType" groups:"web"`
-	AppS3Providers                []string               `json:"appS3Providers" groups:"web"`
-	GatewayConflicts              map[string]string      `json:"gatewayConflicts" groups:"web"`
+	LogSchema           s18log.HttpLog         `json:"-" groups:"web"`
+	LogSlack            *slackman.SlackManager `json:"-"`
+	JobResults          *config.TasksMap       `json:"jobResults" groups:"web"`
+	FalsePositiveChecks map[string]bool        `json:"falsePositiveChecks" groups:"web"`
+	Grants              map[string]string      `json:"-"`
+	Roles               map[string]string      `json:"-"`
+	tlog                *s18log.TermLog        `json:"-"`
+	htlog               *s18log.HttpLog        `json:"-"`
+	SQLGeneralLog       s18log.HttpLog         `json:"sqlGeneralLog" groups:"web"`
+	SQLErrorLog         s18log.HttpLog         `json:"sqlErrorLog" groups:"web"`
+	MonitorType         map[string]string      `json:"monitorType" groups:"web"`
+	TopologyType        map[string]string      `json:"topologyType" groups:"web"`
+	FSType              map[string]bool        `json:"fsType" groups:"web"`
+	DiskType            map[string]string      `json:"diskType" groups:"web"`
+	VMType              map[string]bool        `json:"vmType" groups:"web"`
+	AppS3Providers      []string               `json:"appS3Providers" groups:"web"`
+	GatewayConflicts    map[string]string      `json:"gatewayConflicts" groups:"web"`
 	// s3Providers groups S3 provider state and locking primitives in one place.
 	// Use the accessor methods (Add/Remove/Update/GetS3ProvidersSnapshot) and
 	// CRUD transaction lock helpers instead of direct field mutation.
@@ -200,7 +200,7 @@ type Cluster struct {
 	// sb*FailUntil (unix seconds) sever this cluster's individual links on
 	// this instance for split-brain testing — see cluster_splitbrain_simulator.go. Runtime
 	// state only, never persisted.
-	sbDatabaseFailUntil         int64 `json:"-"`
+	sbDatabaseFailUntil   int64 `json:"-"`
 	sbArbitratorFailUntil int64 `json:"-"`
 	sbMasterFailUntil     int64 `json:"-"`
 	// sbMasterFailURL pins the sim master-cut to the server that was master when
@@ -393,9 +393,26 @@ type Cluster struct {
 	s3SyncApplyMu               sync.Mutex                 `json:"-"`
 	appListEpoch                uint64                     `json:"-"`
 	// appListRebuildMu serializes newAppList() (held internally, see app.go).
-	appListRebuildMu sync.Mutex `json:"-"`
-	secretVersionStoreMu        sync.Mutex                 `json:"-"`
-	secretVersionStoreDirty     bool                       `json:"-"`
+	appListRebuildMu        sync.Mutex `json:"-"`
+	secretVersionStoreMu    sync.Mutex `json:"-"`
+	secretVersionStoreDirty bool       `json:"-"`
+	// reloadMu serializes Run()'s per-tick synchronous work (topology
+	// discovery, the wg-joined Phase 1/2/3 monitoring work) against
+	// ReloadConfig() rebuilding Conf/state machines/Servers out from under
+	// it. It is a dedicated mutex, not the embedded sync.Mutex Lock()/
+	// Unlock() used throughout this file for short field accesses -- those
+	// are called from within a tick's own work, so reusing the embedded
+	// mutex here (held for a whole tick) would self-deadlock on the first
+	// nested Lock() call. Held only in Run() and ReloadConfig(); do not
+	// acquire it anywhere else.
+	reloadMu sync.Mutex `json:"-"`
+	// tickWG tracks tickBody's genuinely fire-and-forget goroutines (spawned
+	// via trackTickGoroutine) -- the handful not already joined by a local
+	// wg.Wait() within the same tick. ReloadConfig() waits on it (while
+	// holding reloadMu, so no new tick can add to it concurrently) so a
+	// reload never rebuilds Conf/Servers/state machines while one of these
+	// is still reading/writing them.
+	tickWG sync.WaitGroup `json:"-"`
 	// pluginSpikeCache holds the last DetectSpike result per server+plugin pair.
 	// Keyed as "serverURL:pluginName". Prevents graphite HTTP on every tick.
 	pluginSpikeCache map[string]*logplugin.SpikeCache `json:"-"`
@@ -420,7 +437,7 @@ type Cluster struct {
 	// rebuilt when the schema monitor refreshes the table dictionary.
 	schemaWireTables []logplugin.StdioTable `json:"-"`
 	schemaWireLock   sync.RWMutex           `json:"-"`
-	initiated             bool
+	initiated        bool
 }
 
 // PluginRegistry returns the per-cluster plugin registry, which contains both
@@ -877,8 +894,8 @@ var pstates30 = []string{
 	"WARN0093", "WARN0134", "WARN0145", // Restic related
 	"WARN0101", "WARN0111", "WARN0112", // Backup related
 	"WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
-	"WARN0153",             // Job related
-	"WARN0158",             // Job secrets mismatch
+	"WARN0153", // Job related
+	"WARN0158", // Job secrets mismatch
 	"CREDIT01", // Credit related
 }
 
@@ -905,233 +922,15 @@ func (cluster *Cluster) Run() {
 
 	for !cluster.exit.Load() {
 		if !cluster.Conf.MonitorPause {
-			cluster.ReconcileSecretVersionStore()
-			cluster.ServerIdList = cluster.GetDBServerIdList()
-			cluster.ProxyIdList = cluster.GetProxyServerIdList()
-			cluster.AppIdList = cluster.GetAppServerIdList()
-			if cluster.ResticManager != nil {
-				cluster.IsResticQueuePaused = cluster.ResticManager.IsPaused()
-			}
-			if cluster.ServerGlobals != nil && cluster.ServerGlobals.BackupSemaphore != nil {
-				cluster.BackupSlotsInUse = len(cluster.ServerGlobals.BackupSemaphore)
-				cluster.BackupSlotsTotal = cap(cluster.ServerGlobals.BackupSemaphore)
-			}
-			go cluster.CheckDefaultUser(false)
-
-			if cluster.HasBadConfigMeasurement() {
-				cluster.SetState("WARN0135", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0135"], cluster.ErrorConfigs), ErrFrom: "CONFIG"})
-			}
-
-			select {
-			case sig := <-cluster.switchoverChan:
-				if sig {
-					if cluster.Status == "A" {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Signaling Switchover...")
-						cluster.MasterFailover(false)
-						cluster.switchoverCond.Send <- true
-					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Not in active mode, cancel switchover %s", cluster.Status)
-					}
-				}
-
-			default:
-				if cluster.Conf.LogLevel > 2 {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Monitoring server loop")
-					if len(cluster.Servers) > 0 {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Servers not nil : %v\n", cluster.Servers)
-						for k, v := range cluster.Servers {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Servers loops k : %d, url : %s, state : %s, prevstate %s", k, v.URL, v.State, v.PrevState)
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
-						}
-						if m := cluster.GetMaster(); m != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", m.URL, m.State, m.PrevState)
-							for k, v := range cluster.slaves {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
-							}
-						}
-					}
-				}
-				// Phase 1: topology discovery must complete before anything reads Servers
-				wg := new(sync.WaitGroup)
-				wg.Add(1)
-				go cluster.TopologyDiscover(wg)
-				wg.Wait()
-
-				cluster.CheckInterventionSchedule()
-
-				if cluster.runOnceAfterTopology {
-					if !cluster.IsInFailover() {
-						cluster.initProxies()
-					}
-					go cluster.initOrchetratorNodes()
-					go cluster.ResticFetchRepo()
-					cluster.SetRollingJobsUpgradeState()
-					cluster.CleanupRestartCookies()
-					cluster.ReloadLogPlugins()
-					if master := cluster.GetMaster(); master != nil {
-						cachedTables := master.DictTables.ToNewMap()
-						if len(cachedTables) == 0 {
-							go cluster.MonitorSchema()
-						} else {
-							var tottablesize, totindexsize int64
-							for _, t := range cachedTables {
-								tottablesize += t.DataLength
-								totindexsize += t.IndexLength
-							}
-							cluster.WorkLoad.DBTableSize = tottablesize
-							cluster.WorkLoad.DBIndexSize = totindexsize
-						}
-					}
-					cluster.runOnceAfterTopology = false
-				} else {
-
-					if !cluster.IsInFailover() {
-						goRun := func(fn func()) {
-							wg.Add(1)
-							go func() {
-								defer wg.Done()
-								fn()
-							}()
-						}
-						heartbeats := cluster.StateMachine.GetHeartbeats()
-
-						// Fire-and-forget: long-running, no synchronization needed
-						if cluster.Conf.MdbsProxyOn {
-							go cluster.MonitorSchema()
-						}
-						if heartbeats%30 == 0 {
-							go cluster.initOrchetratorNodes()
-							go cluster.CheckCredentialRotation()
-						}
-						if heartbeats%3600 == 0 {
-							go cluster.RefreshAllAppTemplateMD5()
-						}
-						if cluster.Conf.BackupReconcileInterval > 0 && heartbeats%int64(cluster.Conf.BackupReconcileInterval) == 0 {
-							cluster.ReconcileSnapshotMetadataAsync()
-						}
-
-						// Phase 2: parallel reads of stable topology — Phase 3 depends on these
-						goRun(cluster.ArbitratorHandler)
-						wg.Add(2)
-						go cluster.refreshProxies(wg)
-						go cluster.refreshApps(wg)
-						if heartbeats%10 == 0 {
-							goRun(cluster.MonitorTableSchemaDiff)
-						}
-						if heartbeats%30 == 0 {
-							goRun(cluster.ResticFetchRepo)
-							goRun(cluster.MonitorVariablesDiff)
-							goRun(cluster.MonitorVariablesChange)
-						}
-						wg.Wait()
-
-						// Phase 3: parallel — depends on Phase 2, independent of each other
-						if heartbeats%30 == 0 {
-							goRun(cluster.MonitorQueryRules)
-						}
-						if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
-							goRun(cluster.InjectProxiesTraffic)
-						}
-						if heartbeats%3600 == 0 {
-							goRun(func() { cluster.ResticPurgeRepo(false) })
-							goRun(cluster.RefreshToolVersions)
-							goRun(cluster.CheckBackupToolVersions)
-							goRun(cluster.CheckComplianceUpdate)
-							goRun(cluster.ReloadDockerRepos)
-						}
-						goRun(cluster.CheckAppsCredit)
-						goRun(cluster.CheckWaitRunJobSSH)
-						goRun(cluster.CheckDummyConfigSendCookies)
-						goRun(cluster.CheckRestartContainerCookies)
-						goRun(cluster.PrintDelayStat)
-						if cluster.SlavesOldestMasterFile.Suffix == 0 {
-							goRun(cluster.CheckSlavesReplicationsPurge)
-						}
-						if heartbeats%10 == 0 {
-							goRun(cluster.CheckJobsVersion)
-						}
-						if heartbeats%30 == 0 {
-							goRun(func() { cluster.IsValidBackup = cluster.HasValidBackup() })
-							goRun(func() { cluster.HasCatalogBackupForRejoin() })
-							goRun(cluster.CheckCanSaveDynamicConfig)
-							goRun(cluster.CheckIsOverwrite)
-							goRun(cluster.CheckAllBackupEstimatedSize)
-							goRun(cluster.CheckAvailableCredit)
-							goRun(cluster.CheckOpenSVCTresholds)
-							goRun(cluster.JobsCheckSchedulerTable)
-							goRun(cluster.CheckOnPremiseSSHKey)
-							goRun(cluster.CheckOnPremiseSSHConnect)
-							goRun(cluster.CheckConfiguratorPrerequisites)
-							goRun(cluster.CheckGlobalDeprecatedKeys)
-							goRun(cluster.CheckClusterDeprecatedKeys)
-							goRun(cluster.CheckClusterServiceAgents)
-						}
-						if cluster.Conf.GraphiteMetrics && heartbeats%5 == 0 {
-							goRun(func() { cluster.SendGraphiteMetrics() })
-							goRun(cluster.CheckDisksUsage)
-						}
-						wg.Wait()
-
-						// PreserveState for non-running ticks (fast, no I/O)
-						if heartbeats%10 != 0 {
-							cluster.StateMachine.PreserveState("WARN0147")
-							cluster.SchemaStateMachine.PreserveState("WARN0164")
-						}
-						if heartbeats%30 != 0 {
-							cluster.StateMachine.PreserveState(pstates30...)
-							cluster.ConfigStateMachine.PreserveState("WARN0159", "WARN0160", "WARN0178")
-						}
-						if heartbeats%3600 != 0 {
-							cluster.StateMachine.PreserveState(pstates3600...)
-							cluster.ConfigStateMachine.PreserveState("WARN0168")
-						}
-						if !(cluster.Conf.GraphiteMetrics && heartbeats%5 == 0) {
-							cluster.StateMachine.PreserveState("WARN0139", "WARN0140")
-						}
-						if !cluster.CanInitNodes {
-							cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
-						}
-						if !cluster.CanConnectVault {
-							cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], cluster.errorConnectVault), ErrFrom: "OPENSVC"})
-						}
-					} else {
-						cluster.StateMachine.PreserveState("ERR00100")
-					}
-				}
-
-				cluster.EmitAppErrors()
-
-				if cluster.HasDiscoverTopologyMismatchTarget() {
-					cluster.SetState("ERR00092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00092"], cluster.Name, cluster.Topology, cluster.Conf.TopologyTarget), ErrFrom: "TOPO"})
-				}
-
-				// AddChildServers can't be done before TopologyDiscover but need a refresh aquiring more fresh gtid vs current cluster so election win but server is ignored see electFailoverCandidate
-				err := cluster.AddChildServers()
-
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Fail of AddChildServers %s", err)
-				}
-
-				cluster.IsFailable = cluster.GetStatus()
-				cluster.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().IsFailed()
-				cluster.CheckDBCredentials()
-				// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
-				cluster.CheckLogPlugins()
-				// CheckFailed trigger failover code if passing all false positiv and constraints
-				cluster.CheckFailed()
-				// Run any operator-armed rejoin (GUI delta viewer) — independent of
-				// Conf.Autorejoin and the Failed->up edge, so a manual rejoin actually
-				// executes even with auto-rejoin off.
-				cluster.ProcessArmedRejoins()
-				cluster.IsConfigPathChange = cluster.HasConfigPathChanged()
-				cluster.SetStatus()
-				cluster.CheckBackupStates()
-				cluster.CheckResticErrors()
-				cluster.CheckPluginRejectionStates()
-				cluster.StateProcessing()
-				cluster.CheckHasFailCertLoadP12()
-				go cluster.GetSlowLogTable() // prevent blocking cycle
-			}
+			// See reloadMu's declaration: serializes this tick's synchronous
+			// work against a concurrent ReloadConfig() rebuild. Wrapped in a
+			// func() purely so a panic anywhere in the tick still releases
+			// the lock via defer -- the body itself is untouched.
+			cluster.reloadMu.Lock()
+			func() {
+				defer cluster.reloadMu.Unlock()
+				cluster.tickBody()
+			}()
 		}
 
 		if cluster.clog != nil {
@@ -1143,6 +942,252 @@ func (cluster *Cluster) Run() {
 
 		time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
 
+	}
+}
+
+// trackTickGoroutine launches fn in a goroutine tracked by tickWG. Use it for
+// a tick's genuinely fire-and-forget spawns -- ones not already joined by a
+// local sync.WaitGroup within the same tick (e.g. the wg/goRun-based Phase
+// 1/2/3 work already is). See tickWG's declaration for why this matters for
+// reload safety.
+func (cluster *Cluster) trackTickGoroutine(fn func()) {
+	cluster.tickWG.Add(1)
+	go func() {
+		defer cluster.tickWG.Done()
+		fn()
+	}()
+}
+
+// tickBody is Run()'s per-iteration monitoring work, extracted only so
+// reloadMu can wrap it with a plain defer (see Run()) without reformatting
+// the ~225-line body itself.
+func (cluster *Cluster) tickBody() {
+	cluster.ReconcileSecretVersionStore()
+	cluster.ServerIdList = cluster.GetDBServerIdList()
+	cluster.ProxyIdList = cluster.GetProxyServerIdList()
+	cluster.AppIdList = cluster.GetAppServerIdList()
+	if cluster.ResticManager != nil {
+		cluster.IsResticQueuePaused = cluster.ResticManager.IsPaused()
+	}
+	if cluster.ServerGlobals != nil && cluster.ServerGlobals.BackupSemaphore != nil {
+		cluster.BackupSlotsInUse = len(cluster.ServerGlobals.BackupSemaphore)
+		cluster.BackupSlotsTotal = cap(cluster.ServerGlobals.BackupSemaphore)
+	}
+	cluster.trackTickGoroutine(func() { cluster.CheckDefaultUser(false) })
+
+	if cluster.HasBadConfigMeasurement() {
+		cluster.SetState("WARN0135", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0135"], cluster.ErrorConfigs), ErrFrom: "CONFIG"})
+	}
+
+	select {
+	case sig := <-cluster.switchoverChan:
+		if sig {
+			if cluster.Status == "A" {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Signaling Switchover...")
+				cluster.MasterFailover(false)
+				cluster.switchoverCond.Send <- true
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Not in active mode, cancel switchover %s", cluster.Status)
+			}
+		}
+
+	default:
+		if cluster.Conf.LogLevel > 2 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Monitoring server loop")
+			if len(cluster.Servers) > 0 {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Servers not nil : %v\n", cluster.Servers)
+				for k, v := range cluster.Servers {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Servers loops k : %d, url : %s, state : %s, prevstate %s", k, v.URL, v.State, v.PrevState)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+				}
+				if m := cluster.GetMaster(); m != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", m.URL, m.State, m.PrevState)
+					for k, v := range cluster.slaves {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+					}
+				}
+			}
+		}
+		// Phase 1: topology discovery must complete before anything reads Servers
+		wg := new(sync.WaitGroup)
+		wg.Add(1)
+		go cluster.TopologyDiscover(wg)
+		wg.Wait()
+
+		cluster.CheckInterventionSchedule()
+
+		if cluster.runOnceAfterTopology {
+			if !cluster.IsInFailover() {
+				cluster.initProxies()
+			}
+			cluster.trackTickGoroutine(cluster.initOrchetratorNodes)
+			cluster.trackTickGoroutine(cluster.ResticFetchRepo)
+			cluster.SetRollingJobsUpgradeState()
+			cluster.CleanupRestartCookies()
+			cluster.ReloadLogPlugins()
+			if master := cluster.GetMaster(); master != nil {
+				cachedTables := master.DictTables.ToNewMap()
+				if len(cachedTables) == 0 {
+					cluster.trackTickGoroutine(cluster.MonitorSchema)
+				} else {
+					var tottablesize, totindexsize int64
+					for _, t := range cachedTables {
+						tottablesize += t.DataLength
+						totindexsize += t.IndexLength
+					}
+					cluster.WorkLoad.DBTableSize = tottablesize
+					cluster.WorkLoad.DBIndexSize = totindexsize
+				}
+			}
+			cluster.runOnceAfterTopology = false
+		} else {
+
+			if !cluster.IsInFailover() {
+				goRun := func(fn func()) {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						fn()
+					}()
+				}
+				heartbeats := cluster.StateMachine.GetHeartbeats()
+
+				// Fire-and-forget: long-running, no synchronization needed
+				if cluster.Conf.MdbsProxyOn {
+					cluster.trackTickGoroutine(cluster.MonitorSchema)
+				}
+				if heartbeats%30 == 0 {
+					cluster.trackTickGoroutine(cluster.initOrchetratorNodes)
+					cluster.trackTickGoroutine(cluster.CheckCredentialRotation)
+				}
+				if heartbeats%3600 == 0 {
+					cluster.trackTickGoroutine(cluster.RefreshAllAppTemplateMD5)
+				}
+				if cluster.Conf.BackupReconcileInterval > 0 && heartbeats%int64(cluster.Conf.BackupReconcileInterval) == 0 {
+					cluster.ReconcileSnapshotMetadataAsync()
+				}
+
+				// Phase 2: parallel reads of stable topology — Phase 3 depends on these
+				goRun(cluster.ArbitratorHandler)
+				wg.Add(2)
+				go cluster.refreshProxies(wg)
+				go cluster.refreshApps(wg)
+				if heartbeats%10 == 0 {
+					goRun(cluster.MonitorTableSchemaDiff)
+				}
+				if heartbeats%30 == 0 {
+					goRun(cluster.ResticFetchRepo)
+					goRun(cluster.MonitorVariablesDiff)
+					goRun(cluster.MonitorVariablesChange)
+				}
+				wg.Wait()
+
+				// Phase 3: parallel — depends on Phase 2, independent of each other
+				if heartbeats%30 == 0 {
+					goRun(cluster.MonitorQueryRules)
+				}
+				if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
+					goRun(cluster.InjectProxiesTraffic)
+				}
+				if heartbeats%3600 == 0 {
+					goRun(func() { cluster.ResticPurgeRepo(false) })
+					goRun(cluster.RefreshToolVersions)
+					goRun(cluster.CheckBackupToolVersions)
+					goRun(cluster.CheckComplianceUpdate)
+					goRun(cluster.ReloadDockerRepos)
+				}
+				goRun(cluster.CheckAppsCredit)
+				goRun(cluster.CheckWaitRunJobSSH)
+				goRun(cluster.CheckDummyConfigSendCookies)
+				goRun(cluster.CheckRestartContainerCookies)
+				goRun(cluster.PrintDelayStat)
+				if cluster.SlavesOldestMasterFile.Suffix == 0 {
+					goRun(cluster.CheckSlavesReplicationsPurge)
+				}
+				if heartbeats%10 == 0 {
+					goRun(cluster.CheckJobsVersion)
+				}
+				if heartbeats%30 == 0 {
+					goRun(func() { cluster.IsValidBackup = cluster.HasValidBackup() })
+					goRun(func() { cluster.HasCatalogBackupForRejoin() })
+					goRun(cluster.CheckCanSaveDynamicConfig)
+					goRun(cluster.CheckIsOverwrite)
+					goRun(cluster.CheckAllBackupEstimatedSize)
+					goRun(cluster.CheckAvailableCredit)
+					goRun(cluster.CheckOpenSVCTresholds)
+					goRun(cluster.JobsCheckSchedulerTable)
+					goRun(cluster.CheckOnPremiseSSHKey)
+					goRun(cluster.CheckOnPremiseSSHConnect)
+					goRun(cluster.CheckConfiguratorPrerequisites)
+					goRun(cluster.CheckGlobalDeprecatedKeys)
+					goRun(cluster.CheckClusterDeprecatedKeys)
+					goRun(cluster.CheckClusterServiceAgents)
+				}
+				if cluster.Conf.GraphiteMetrics && heartbeats%5 == 0 {
+					goRun(func() { cluster.SendGraphiteMetrics() })
+					goRun(cluster.CheckDisksUsage)
+				}
+				wg.Wait()
+
+				// PreserveState for non-running ticks (fast, no I/O)
+				if heartbeats%10 != 0 {
+					cluster.StateMachine.PreserveState("WARN0147")
+					cluster.SchemaStateMachine.PreserveState("WARN0164")
+				}
+				if heartbeats%30 != 0 {
+					cluster.StateMachine.PreserveState(pstates30...)
+					cluster.ConfigStateMachine.PreserveState("WARN0159", "WARN0160", "WARN0178")
+				}
+				if heartbeats%3600 != 0 {
+					cluster.StateMachine.PreserveState(pstates3600...)
+					cluster.ConfigStateMachine.PreserveState("WARN0168")
+				}
+				if !(cluster.Conf.GraphiteMetrics && heartbeats%5 == 0) {
+					cluster.StateMachine.PreserveState("WARN0139", "WARN0140")
+				}
+				if !cluster.CanInitNodes {
+					cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
+				}
+				if !cluster.CanConnectVault {
+					cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], cluster.errorConnectVault), ErrFrom: "OPENSVC"})
+				}
+			} else {
+				cluster.StateMachine.PreserveState("ERR00100")
+			}
+		}
+
+		cluster.EmitAppErrors()
+
+		if cluster.HasDiscoverTopologyMismatchTarget() {
+			cluster.SetState("ERR00092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00092"], cluster.Name, cluster.Topology, cluster.Conf.TopologyTarget), ErrFrom: "TOPO"})
+		}
+
+		// AddChildServers can't be done before TopologyDiscover but need a refresh aquiring more fresh gtid vs current cluster so election win but server is ignored see electFailoverCandidate
+		err := cluster.AddChildServers()
+
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Fail of AddChildServers %s", err)
+		}
+
+		cluster.IsFailable = cluster.GetStatus()
+		cluster.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().IsFailed()
+		cluster.CheckDBCredentials()
+		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
+		cluster.CheckLogPlugins()
+		// CheckFailed trigger failover code if passing all false positiv and constraints
+		cluster.CheckFailed()
+		// Run any operator-armed rejoin (GUI delta viewer) — independent of
+		// Conf.Autorejoin and the Failed->up edge, so a manual rejoin actually
+		// executes even with auto-rejoin off.
+		cluster.ProcessArmedRejoins()
+		cluster.IsConfigPathChange = cluster.HasConfigPathChanged()
+		cluster.SetStatus()
+		cluster.CheckBackupStates()
+		cluster.CheckResticErrors()
+		cluster.CheckPluginRejectionStates()
+		cluster.StateProcessing()
+		cluster.CheckHasFailCertLoadP12()
+		cluster.trackTickGoroutine(cluster.GetSlowLogTable) // prevent blocking cycle
 	}
 }
 
@@ -1212,12 +1257,12 @@ func (cluster *Cluster) StateProcessing() {
 				for _, srv := range cluster.Servers {
 					if srv.HasWaitLogicalBackupCookie() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for logical backup", srv.URL)
-						go func() {
+						cluster.trackTickGoroutine(func() {
 							err := srv.JobReseedLogicalBackup(context.Background(), "default")
 							if err != nil {
 								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Logical reseed on %s error: %s", srv.URL, err.Error())
 							}
-						}()
+						})
 					}
 				}
 			}
@@ -1226,25 +1271,25 @@ func (cluster *Cluster) StateProcessing() {
 				for _, srv := range cluster.Servers {
 					if srv.HasWaitPhysicalBackupCookie() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for physical backup", srv.URL)
-						go func() {
+						cluster.trackTickGoroutine(func() {
 							err := srv.JobReseedPhysicalBackup("default")
 							if err != nil {
 								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, err.Error())
 							}
-						}()
+						})
 					}
 				}
 			}
 			if s.ErrKey == "WARN0148" && servertoreseed != nil {
-				go servertoreseed.UpgradeJobsScript()
+				cluster.trackTickGoroutine(func() { servertoreseed.UpgradeJobsScript() })
 			}
 
 			if s.ErrKey == "WARN0155" {
-				go cluster.RollingJobsUpgrade()
+				cluster.trackTickGoroutine(func() { cluster.RollingJobsUpgrade() })
 			}
 
 			if s.ErrKey == "WARN0163" {
-				go cluster.MonitorSchema()
+				cluster.trackTickGoroutine(cluster.MonitorSchema)
 			}
 
 			//		cluster.statecloseChan <- s
@@ -1279,7 +1324,8 @@ func (cluster *Cluster) StateProcessing() {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
 						"Dequeued restic reseed request for %s snapshot=%s method=%s strategy=%s",
 						server.URL, req.SnapshotID, req.Method, req.Strategy)
-					go func(srv *ServerMonitor, request ResticReseedRequest) {
+					srv, request := server, req
+					cluster.trackTickGoroutine(func() {
 						err := srv.JobReseedFromRestic(request.SnapshotID, request.Method, request.Strategy, request.Options)
 						if err != nil {
 							if srv.HasAnyReseedingState() {
@@ -1297,7 +1343,7 @@ func (cluster *Cluster) StateProcessing() {
 						}
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
 							"Restic reseed completed for %s snapshot=%s", srv.URL, request.SnapshotID)
-					}(server, req)
+					})
 				}
 			}
 
@@ -2113,6 +2159,19 @@ func (cluster *Cluster) InitAgent(conf config.Config) {
 }
 
 func (cluster *Cluster) ReloadConfig(conf config.Config) {
+	// reloadMu excludes Run()'s tick body (see its declaration) for the
+	// whole rebuild: Conf/state-machine/Servers replacement below is not
+	// safe to run concurrently with a tick's topology discovery or Phase
+	// 1/2/3 monitoring work reading/writing the same fields.
+	cluster.reloadMu.Lock()
+	defer cluster.reloadMu.Unlock()
+
+	// Drain any tick-spawned fire-and-forget goroutines still running from
+	// the tick that just released reloadMu (see tickWG's declaration). Safe
+	// to call here: reloadMu being held blocks Run() from starting a new
+	// tick, so no concurrent Add() can race this Wait().
+	cluster.tickWG.Wait()
+
 	cluster.Lock()
 	*cluster.Conf = conf
 	cluster.Unlock()
