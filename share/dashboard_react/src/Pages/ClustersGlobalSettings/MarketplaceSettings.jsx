@@ -8,7 +8,6 @@ import TextForm from '../../components/TextForm'
 import Dropdown from '../../components/Dropdown'
 import RMIconButton from '../../components/RMIconButton'
 import { HiCalculator, HiOutlineInformationCircle, HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
-import RMButton from '../../components/RMButton'
 import Markdown from 'react-markdown'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
@@ -52,8 +51,25 @@ function MarketplaceSettings({ config }) {
   const hPricingMode = `**Marketplace Pricing Mode**\n\nHow clusters are priced in the Cloud18 marketplace:\n\n- **csv-service-plan** (default): each cluster is priced from a per-cluster service plan downloaded as CSV.\n- **global-unit-pricing**: all clusters are priced from a single global EUR price per Database Unit and per Application Unit — no per-cluster plan.\n\nThe calculator button recomputes and persists each cluster's Database Units and Application Units immediately, instead of waiting for the next periodic save cycle — useful right after switching mode or changing a cluster's sizing.\n\nConfig: \`cloud18-marketplace-pricing-mode\``
   const hDbuPrice = `**Database Unit Price**\n\nPrice in EUR per Database Unit (1 core / 4GB RAM / 40GB disk / 1000 IOPS).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-dbu-price\``
   const hAppUnitPrice = `**Application Unit Price**\n\nPrice in EUR per Application Unit (application credits used, plus proxy CPU contribution).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-app-unit-price\``
+  const hMonthlyInfraCost = `**Monthly Infrastructure Cost**\n\nGlobal monthly infrastructure cost for this marketplace instance, shared by every cluster it hosts.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-monthly-infra-cost\``
+  const hMonthlyLicenseCost = `**Monthly License Cost**\n\nGlobal monthly license cost for this marketplace instance.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-monthly-license-cost\``
+  const hMonthlySysopsCost = `**Monthly SysOps Cost**\n\nGlobal monthly system operations cost for this marketplace instance.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-monthly-sysops-cost\``
+  const hMonthlyDbopsCost = `**Monthly DBOps Cost**\n\nGlobal monthly database operations cost for this marketplace instance.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-monthly-dbops-cost\``
+  const hCostCurrency = `**Cost Currency**\n\nCurrency code used for the monthly cost and promotion fields above (e.g. EUR, USD).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-cost-currency\``
+  const hPromotionPct = `**Promotion Percentage**\n\nDiscount percentage (0-100) applied to the total monthly cost when advertised in the marketplace.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-promotion-pct\``
+  const hInfraCpuModel = `**Infrastructure CPU Model**\n\nCPU model powering this marketplace instance's infrastructure (e.g. AMD EPYC 7763).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-infra-cpu-model\``
+  const hInfraCpuFreq = `**Infrastructure CPU Frequency**\n\nCPU clock frequency of this marketplace instance's infrastructure (e.g. 2.45GHz).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-infra-cpu-freq\``
+  const hInfraDataCenters = `**Infrastructure Data Centers**\n\nData centers hosting this marketplace instance's infrastructure.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-infra-data-centers\``
+  const hInfraPublicBandwidth = `**Infrastructure Public Bandwidth**\n\nPublic network bandwidth (Mbps) available to this marketplace instance's infrastructure.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-infra-public-bandwidth\``
+  const hInfraGeoLocalizations = `**Infrastructure Geo Localizations**\n\nGeographic zone(s) of this marketplace instance's infrastructure.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-infra-geo-localizations\``
+  const hInfraCertifications = `**Infrastructure Certifications**\n\nCompliance certifications held by this marketplace instance's infrastructure (e.g. ISO 27001, SOC 2).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-infra-certifications\``
+  const hSlaResponseTime = `**SLA Response Time**\n\nGuaranteed incident response time in hours for this marketplace instance.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-sla-response-time\``
+  const hSlaRepairTime = `**SLA Repair Time**\n\nGuaranteed incident repair time in hours for this marketplace instance.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-sla-repair-time\``
+  const hSlaProvisionTime = `**SLA Provision Time**\n\nGuaranteed provisioning time in hours for this marketplace instance.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-sla-provision-time\``
 
-  const dataObject = [
+  // Pricing mode is the control that decides which of the sections below apply,
+  // so it stays outside the collapsible cards, always visible at the top.
+  const pricingModeRow = [
     {
       key: 'Marketplace Pricing Mode',
       help: h(hPricingMode, 'Marketplace Pricing Mode'),
@@ -76,33 +92,222 @@ function MarketplaceSettings({ config }) {
           />
         </Flex>
       )
+    }
+  ]
+
+  // Unit pricing settings, grouped into cards so the ~17-field unit-pricing
+  // form is scannable instead of one long flat list.
+  const unitPriceRows = [
+    {
+      key: 'Database Unit Price (EUR)',
+      help: h(hDbuPrice, 'Database Unit Price'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceDbuPrice}
+          regexPattern='^\d+(\.\d+)?$'
+          confirmTitle='Confirm Database Unit price (EUR) to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-dbu-price', value }))}
+        />
+      )
     },
-    ...(isUnitPricing ? [
-      {
-        key: 'Database Unit Price (EUR)',
-        help: h(hDbuPrice, 'Database Unit Price'),
-        value: (
-          <TextForm
-            value={config?.cloud18MarketplaceDbuPrice}
-            regexPattern='^\d+(\.\d+)?$'
-            confirmTitle='Confirm Database Unit price (EUR) to '
-            onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-dbu-price', value }))}
-          />
-        )
-      },
-      {
-        key: 'Application Unit Price (EUR)',
-        help: h(hAppUnitPrice, 'Application Unit Price'),
-        value: (
-          <TextForm
-            value={config?.cloud18MarketplaceAppUnitPrice}
-            regexPattern='^\d+(\.\d+)?$'
-            confirmTitle='Confirm Application Unit price (EUR) to '
-            onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-app-unit-price', value }))}
-          />
-        )
-      },
-    ] : []),
+    {
+      key: 'Application Unit Price (EUR)',
+      help: h(hAppUnitPrice, 'Application Unit Price'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceAppUnitPrice}
+          regexPattern='^\d+(\.\d+)?$'
+          confirmTitle='Confirm Application Unit price (EUR) to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-app-unit-price', value }))}
+        />
+      )
+    }
+  ]
+
+  const costRows = [
+    {
+      key: 'Monthly Infrastructure Cost',
+      help: h(hMonthlyInfraCost, 'Monthly Infrastructure Cost'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceMonthlyInfraCost}
+          regexPattern='^\d+(\.\d+)?$'
+          confirmTitle='Confirm monthly infrastructure cost to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-monthly-infra-cost', value }))}
+        />
+      )
+    },
+    {
+      key: 'Monthly License Cost',
+      help: h(hMonthlyLicenseCost, 'Monthly License Cost'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceMonthlyLicenseCost}
+          regexPattern='^\d+(\.\d+)?$'
+          confirmTitle='Confirm monthly license cost to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-monthly-license-cost', value }))}
+        />
+      )
+    },
+    {
+      key: 'Monthly SysOps Cost',
+      help: h(hMonthlySysopsCost, 'Monthly SysOps Cost'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceMonthlySysopsCost}
+          regexPattern='^\d+(\.\d+)?$'
+          confirmTitle='Confirm monthly sysops cost to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-monthly-sysops-cost', value }))}
+        />
+      )
+    },
+    {
+      key: 'Monthly DBOps Cost',
+      help: h(hMonthlyDbopsCost, 'Monthly DBOps Cost'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceMonthlyDbopsCost}
+          regexPattern='^\d+(\.\d+)?$'
+          confirmTitle='Confirm monthly dbops cost to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-monthly-dbops-cost', value }))}
+        />
+      )
+    },
+    {
+      key: 'Cost Currency',
+      help: h(hCostCurrency, 'Cost Currency'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceCostCurrency}
+          confirmTitle='Confirm cost currency to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-cost-currency', value }))}
+        />
+      )
+    },
+    {
+      key: 'Promotion Percentage',
+      help: h(hPromotionPct, 'Promotion Percentage'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplacePromotionPct}
+          regexPattern='^\d+(\.\d+)?$'
+          confirmTitle='Confirm promotion percentage to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-promotion-pct', value }))}
+        />
+      )
+    }
+  ]
+
+  const infraRows = [
+    {
+      key: 'Infrastructure CPU Model',
+      help: h(hInfraCpuModel, 'Infrastructure CPU Model'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceInfraCpuModel}
+          confirmTitle='Confirm infrastructure CPU model to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-infra-cpu-model', value }))}
+        />
+      )
+    },
+    {
+      key: 'Infrastructure CPU Frequency',
+      help: h(hInfraCpuFreq, 'Infrastructure CPU Frequency'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceInfraCpuFreq}
+          confirmTitle='Confirm infrastructure CPU frequency to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-infra-cpu-freq', value }))}
+        />
+      )
+    },
+    {
+      key: 'Infrastructure Data Centers',
+      help: h(hInfraDataCenters, 'Infrastructure Data Centers'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceInfraDataCenters}
+          confirmTitle='Confirm infrastructure data centers to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-infra-data-centers', value }))}
+        />
+      )
+    },
+    {
+      key: 'Infrastructure Public Bandwidth (Mbps)',
+      help: h(hInfraPublicBandwidth, 'Infrastructure Public Bandwidth'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceInfraPublicBandwidth}
+          regexPattern='^\d+(\.\d+)?$'
+          confirmTitle='Confirm infrastructure public bandwidth to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-infra-public-bandwidth', value }))}
+        />
+      )
+    },
+    {
+      key: 'Infrastructure Geo Localizations',
+      help: h(hInfraGeoLocalizations, 'Infrastructure Geo Localizations'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceInfraGeoLocalizations}
+          confirmTitle='Confirm infrastructure geo localizations to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-infra-geo-localizations', value }))}
+        />
+      )
+    },
+    {
+      key: 'Infrastructure Certifications',
+      help: h(hInfraCertifications, 'Infrastructure Certifications'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceInfraCertifications}
+          confirmTitle='Confirm infrastructure certifications to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-infra-certifications', value }))}
+        />
+      )
+    }
+  ]
+
+  const slaRows = [
+    {
+      key: 'SLA Response Time (hours)',
+      help: h(hSlaResponseTime, 'SLA Response Time'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceSlaResponseTime}
+          regexPattern='^\d+(\.\d+)?$'
+          confirmTitle='Confirm SLA response time to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-sla-response-time', value }))}
+        />
+      )
+    },
+    {
+      key: 'SLA Repair Time (hours)',
+      help: h(hSlaRepairTime, 'SLA Repair Time'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceSlaRepairTime}
+          regexPattern='^\d+(\.\d+)?$'
+          confirmTitle='Confirm SLA repair time to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-sla-repair-time', value }))}
+        />
+      )
+    },
+    {
+      key: 'SLA Provision Time (hours)',
+      help: h(hSlaProvisionTime, 'SLA Provision Time'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceSlaProvisionTime}
+          regexPattern='^\d+(\.\d+)?$'
+          confirmTitle='Confirm SLA provision time to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-sla-provision-time', value }))}
+        />
+      )
+    }
+  ]
+
+  const platformGatewayRows = [
     {
       key: 'Platform Description',
       help: h(hPlatformDesc, 'Platform Description'),
@@ -135,7 +340,10 @@ function MarketplaceSettings({ config }) {
           onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-gateway-service', value }))}
         />
       )
-    },
+    }
+  ]
+
+  const domainAutomationRows = [
     {
       key: 'Domain Add Script',
       help: h(hDomainAdd, 'Domain Add Script'),
@@ -180,7 +388,10 @@ function MarketplaceSettings({ config }) {
           onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-domain-secret', value: btoa(value) }))}
         />
       )
-    },
+    }
+  ]
+
+  const plansRows = [
     {
       key: 'Reload Plans',
       help: h(hReloadPlans, 'Reload Plans'),
@@ -208,14 +419,40 @@ function MarketplaceSettings({ config }) {
           />
         </Flex>
       )
-    },
+    }
   ]
+
+  // Lightweight, non-collapsible group label — reuses the label/sub-label
+  // color pairing TableType2 already uses internally (tertiary/quaternary),
+  // so a group reads as "nested under Market Place" rather than another
+  // top-level accordion section.
+  const sectionHeading = (text) => <Box className={styles.subSectionHeading}>{text}</Box>
+
+  const settingsSection = (heading, data) => (
+    <>
+      {sectionHeading(heading)}
+      <Flex justify='space-between' gap='0'>
+        <TableType2 dataArray={data} className={`${styles.tableWithHelp} ${styles.tableFlushTop}`} helpColumn />
+      </Flex>
+    </>
+  )
 
   return (
     <>
       <Flex justify='space-between' gap='0'>
-        <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn />
+        <TableType2 dataArray={pricingModeRow} className={styles.tableWithHelp} helpColumn />
       </Flex>
+      {isUnitPricing && (
+        <>
+          {settingsSection('Unit Prices', unitPriceRows)}
+          {settingsSection('Costs & Currency', costRows)}
+          {settingsSection('Infrastructure', infraRows)}
+          {settingsSection('SLA', slaRows)}
+        </>
+      )}
+      {settingsSection('Platform & Gateway', platformGatewayRows)}
+      {settingsSection('Domain Automation', domainAutomationRows)}
+      {!isUnitPricing && settingsSection('Plans', plansRows)}
       <CommonModal
         isOpen={isInfoModalOpen}
         closeModal={() => setIsInfoModalOpen(false)}

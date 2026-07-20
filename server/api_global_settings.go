@@ -290,6 +290,99 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return fmt.Errorf("invalid Eur price for %s: must not be negative", name)
 		}
 		repman.Conf.Cloud18MarketplaceAppUnitPrice = price
+	case "cloud18-marketplace-monthly-infra-cost":
+		cost, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid Eur cost for %s: %w", name, err)
+		}
+		if cost < 0 {
+			return fmt.Errorf("invalid Eur cost for %s: must not be negative", name)
+		}
+		repman.Conf.Cloud18MarketplaceMonthlyInfraCost = cost
+	case "cloud18-marketplace-monthly-license-cost":
+		cost, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid Eur cost for %s: %w", name, err)
+		}
+		if cost < 0 {
+			return fmt.Errorf("invalid Eur cost for %s: must not be negative", name)
+		}
+		repman.Conf.Cloud18MarketplaceMonthlyLicenseCost = cost
+	case "cloud18-marketplace-monthly-sysops-cost":
+		cost, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid Eur cost for %s: %w", name, err)
+		}
+		if cost < 0 {
+			return fmt.Errorf("invalid Eur cost for %s: must not be negative", name)
+		}
+		repman.Conf.Cloud18MarketplaceMonthlySysopsCost = cost
+	case "cloud18-marketplace-monthly-dbops-cost":
+		cost, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid Eur cost for %s: %w", name, err)
+		}
+		if cost < 0 {
+			return fmt.Errorf("invalid Eur cost for %s: must not be negative", name)
+		}
+		repman.Conf.Cloud18MarketplaceMonthlyDbopsCost = cost
+	case "cloud18-marketplace-cost-currency":
+		repman.Conf.Cloud18MarketplaceCostCurrency = value
+	case "cloud18-marketplace-infra-cpu-model":
+		repman.Conf.Cloud18MarketplaceInfraCPUModel = value
+	case "cloud18-marketplace-infra-cpu-freq":
+		repman.Conf.Cloud18MarketplaceInfraCPUFreq = value
+	case "cloud18-marketplace-infra-data-centers":
+		repman.Conf.Cloud18MarketplaceInfraDataCenters = value
+	case "cloud18-marketplace-infra-public-bandwidth":
+		bw, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid public bandwidth for %s: %w", name, err)
+		}
+		if bw < 0 {
+			return fmt.Errorf("invalid public bandwidth for %s: must not be negative", name)
+		}
+		repman.Conf.Cloud18MarketplaceInfraPublicBandwidth = bw
+	case "cloud18-marketplace-infra-geo-localizations":
+		repman.Conf.Cloud18MarketplaceInfraGeoLocalizations = value
+	case "cloud18-marketplace-sla-response-time":
+		t, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid SLA response time for %s: %w", name, err)
+		}
+		if t < 0 {
+			return fmt.Errorf("invalid SLA response time for %s: must not be negative", name)
+		}
+		repman.Conf.Cloud18MarketplaceSlaResponseTime = t
+	case "cloud18-marketplace-sla-repair-time":
+		t, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid SLA repair time for %s: %w", name, err)
+		}
+		if t < 0 {
+			return fmt.Errorf("invalid SLA repair time for %s: must not be negative", name)
+		}
+		repman.Conf.Cloud18MarketplaceSlaRepairTime = t
+	case "cloud18-marketplace-sla-provision-time":
+		t, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid SLA provision time for %s: %w", name, err)
+		}
+		if t < 0 {
+			return fmt.Errorf("invalid SLA provision time for %s: must not be negative", name)
+		}
+		repman.Conf.Cloud18MarketplaceSlaProvisionTime = t
+	case "cloud18-marketplace-promotion-pct":
+		pct, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid promotion percentage for %s: %w", name, err)
+		}
+		if pct < 0 || pct > 100 {
+			return fmt.Errorf("invalid promotion percentage for %s: must be between 0 and 100", name)
+		}
+		repman.Conf.Cloud18MarketplacePromotionPct = pct
+	case "cloud18-marketplace-infra-certifications":
+		repman.Conf.Cloud18MarketplaceInfraCertifications = value
 	case "api-bind":
 		repman.Conf.APIBind = value
 	case "api-port":

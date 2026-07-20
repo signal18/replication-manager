@@ -28,6 +28,20 @@ div.settingsContainer {
   .accordionPanel {
     overflow: hidden;
   }
+  .subSectionHeading {
+    font-size: rem(12);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background-color: var(--quaternary-color);
+    padding: rem(6) rem(16);
+  }
+  // Scoped to tables immediately preceded by .subSectionHeading in this page
+  // only — overrides TableType2's own margin-top so the table sits flush
+  // under the heading, without touching TableType2's shared stylesheet.
+  .tableFlushTop {
+    margin-top: 0 !important;
+  }
   .listContainer {
     flex-basis: 10%;
     @include breakpoint('md', 'lg') {
