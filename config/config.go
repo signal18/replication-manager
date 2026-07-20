@@ -966,6 +966,7 @@ type Config struct {
 	Cloud18MarketplaceCostCurrency          string                 `scope:"server" mapstructure:"cloud18-marketplace-cost-currency" toml:"cloud18-marketplace-cost-currency" json:"cloud18MarketplaceCostCurrency"`
 	Cloud18MarketplaceInfraCPUModel         string                 `scope:"server" mapstructure:"cloud18-marketplace-infra-cpu-model" toml:"cloud18-marketplace-infra-cpu-model" json:"cloud18MarketplaceInfraCpuModel"`
 	Cloud18MarketplaceInfraCPUFreq          string                 `scope:"server" mapstructure:"cloud18-marketplace-infra-cpu-freq" toml:"cloud18-marketplace-infra-cpu-freq" json:"cloud18MarketplaceInfraCpuFreq"`
+	Cloud18MarketplaceInfraDescription      string                 `scope:"server" mapstructure:"cloud18-marketplace-infra-description" toml:"cloud18-marketplace-infra-description" json:"cloud18MarketplaceInfraDescription"`
 	Cloud18MarketplaceInfraDataCenters      string                 `scope:"server" mapstructure:"cloud18-marketplace-infra-data-centers" toml:"cloud18-marketplace-infra-data-centers" json:"cloud18MarketplaceInfraDataCenters"`
 	Cloud18MarketplaceInfraPublicBandwidth  float64                `scope:"server" mapstructure:"cloud18-marketplace-infra-public-bandwidth" toml:"cloud18-marketplace-infra-public-bandwidth" json:"cloud18MarketplaceInfraPublicBandwidth"`
 	Cloud18MarketplaceInfraGeoLocalizations string                 `scope:"server" mapstructure:"cloud18-marketplace-infra-geo-localizations" toml:"cloud18-marketplace-infra-geo-localizations" json:"cloud18MarketplaceInfraGeoLocalizations"`

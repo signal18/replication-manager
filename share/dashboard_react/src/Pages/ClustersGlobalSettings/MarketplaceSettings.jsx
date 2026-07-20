@@ -59,6 +59,7 @@ function MarketplaceSettings({ config }) {
   const hPromotionPct = `**Promotion Percentage**\n\nDiscount percentage (0-100) applied to the total monthly cost when advertised in the marketplace.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-promotion-pct\``
   const hInfraCpuModel = `**Infrastructure CPU Model**\n\nCPU model powering this marketplace instance's infrastructure (e.g. AMD EPYC 7763).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-infra-cpu-model\``
   const hInfraCpuFreq = `**Infrastructure CPU Frequency**\n\nCPU clock frequency of this marketplace instance's infrastructure (e.g. 2.45GHz).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-infra-cpu-freq\``
+  const hInfraDescription = `**Infrastructure Description**\n\nFree-form description of this marketplace instance's infrastructure (e.g. bare-metal, dedicated hosting, cloud provider).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-infra-description\``
   const hInfraDataCenters = `**Infrastructure Data Centers**\n\nData centers hosting this marketplace instance's infrastructure.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-infra-data-centers\``
   const hInfraPublicBandwidth = `**Infrastructure Public Bandwidth**\n\nPublic network bandwidth (Mbps) available to this marketplace instance's infrastructure.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-infra-public-bandwidth\``
   const hInfraGeoLocalizations = `**Infrastructure Geo Localizations**\n\nGeographic zone(s) of this marketplace instance's infrastructure.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-infra-geo-localizations\``
@@ -218,6 +219,17 @@ function MarketplaceSettings({ config }) {
           value={config?.cloud18MarketplaceInfraCpuFreq}
           confirmTitle='Confirm infrastructure CPU frequency to '
           onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-infra-cpu-freq', value }))}
+        />
+      )
+    },
+    {
+      key: 'Infrastructure Description',
+      help: h(hInfraDescription, 'Infrastructure Description'),
+      value: (
+        <TextForm
+          value={config?.cloud18MarketplaceInfraDescription}
+          confirmTitle='Confirm infrastructure description to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-infra-description', value }))}
         />
       )
     },

@@ -313,6 +313,7 @@ func TestSetRepmanSetting_MarketplaceStringFields(t *testing.T) {
 		{"cloud18-marketplace-cost-currency", func(c *config.Config) string { return c.Cloud18MarketplaceCostCurrency }},
 		{"cloud18-marketplace-infra-cpu-model", func(c *config.Config) string { return c.Cloud18MarketplaceInfraCPUModel }},
 		{"cloud18-marketplace-infra-cpu-freq", func(c *config.Config) string { return c.Cloud18MarketplaceInfraCPUFreq }},
+		{"cloud18-marketplace-infra-description", func(c *config.Config) string { return c.Cloud18MarketplaceInfraDescription }},
 		{"cloud18-marketplace-infra-data-centers", func(c *config.Config) string { return c.Cloud18MarketplaceInfraDataCenters }},
 		{"cloud18-marketplace-infra-geo-localizations", func(c *config.Config) string { return c.Cloud18MarketplaceInfraGeoLocalizations }},
 		{"cloud18-marketplace-infra-certifications", func(c *config.Config) string { return c.Cloud18MarketplaceInfraCertifications }},

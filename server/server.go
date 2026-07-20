@@ -1183,6 +1183,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18MarketplaceCostCurrency, "cloud18-marketplace-cost-currency", "", "Currency for the global marketplace cost fields, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
 	flags.StringVar(&conf.Cloud18MarketplaceInfraCPUModel, "cloud18-marketplace-infra-cpu-model", "", "Global infrastructure CPU model, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
 	flags.StringVar(&conf.Cloud18MarketplaceInfraCPUFreq, "cloud18-marketplace-infra-cpu-freq", "", "Global infrastructure CPU frequency, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
+	flags.StringVar(&conf.Cloud18MarketplaceInfraDescription, "cloud18-marketplace-infra-description", "", "Global infrastructure description, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
 	flags.StringVar(&conf.Cloud18MarketplaceInfraDataCenters, "cloud18-marketplace-infra-data-centers", "", "Global infrastructure data centers, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
 	flags.Float64Var(&conf.Cloud18MarketplaceInfraPublicBandwidth, "cloud18-marketplace-infra-public-bandwidth", 0, "Global infrastructure public bandwidth, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
 	flags.StringVar(&conf.Cloud18MarketplaceInfraGeoLocalizations, "cloud18-marketplace-infra-geo-localizations", "", "Global infrastructure geo localizations, used when cloud18-marketplace-pricing-mode is global-unit-pricing")

@@ -332,6 +332,8 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.Cloud18MarketplaceInfraCPUModel = value
 	case "cloud18-marketplace-infra-cpu-freq":
 		repman.Conf.Cloud18MarketplaceInfraCPUFreq = value
+	case "cloud18-marketplace-infra-description":
+		repman.Conf.Cloud18MarketplaceInfraDescription = value
 	case "cloud18-marketplace-infra-data-centers":
 		repman.Conf.Cloud18MarketplaceInfraDataCenters = value
 	case "cloud18-marketplace-infra-public-bandwidth":
