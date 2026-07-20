@@ -411,6 +411,15 @@ These build on the unit model above; not scoped yet, captured so the design poin
    enforceable in the kernel rather than by policy alone. The configurator's derived sizing
    (§3.3) becomes the cgroup binding target.
 
+   **Feasibility — the online-resize primitives already exist today.** Dynamic resize of the
+   **InnoDB buffer pool**, **CPU cores** (thread pool) and **IOPS** (io capacity / io threads)
+   is all achievable *now* via **dynamic config**, applied at runtime with no restart
+   (`SET GLOBAL innodb_buffer_pool_size`, `thread_pool_size`, `innodb_io_capacity` /
+   io-threads) — and the configurator (§3.3) already computes these values from resources. So
+   binding a live cgroup up or down and having the engine track it **without downtime** is
+   within reach. This is what turns §9.1 (auto-downsize) and §9.2 (delta reconciliation) from
+   aspirational into buildable: resize the cluster to match real usage, live.
+
 2. **Fixed-plan baseline + delta reconciliation (refund / overage).** Treat a **fixed plan as
    the base contract** — the committed baseline the customer pays for up front (predictable).
    Then, using the live measurement from #1, compute the **delta = real consumption − plan
@@ -422,3 +431,14 @@ These build on the unit model above; not scoped yet, captured so the design poin
    §2.1) *and* fair pay-for-what-you-use adjustment (the delta), with the commercial contract
    defining the refund/overage terms per partner–customer. The fixed plan stays the anchor; the
    delta is the only metered part.
+
+   **The measurement primitive exists; reporting it to BO is a task for the workload plugin
+   (not yet done).** repman already *measures* per-server **CPU** (`WorkLoad.CpuThreadPool` /
+   `CpuUserStats`) and **memory** — **average and peak** (`GetClusterMaxCpuUsage` etc. in
+   `cluster_get.go`; the `WorkloadStateMachine` + `WorkloadLogrus` capture spikes) — and can emit
+   to Graphite/carbon (`graphite-metrics`, `SendGraphiteMetrics()`). What is **not yet wired** is
+   delivering that avg/peak consumption to the **BO** for delta reconciliation — that is a
+   **task for the workload plugin** (the log-plugin system), the right home for turning measured
+   workload into a BO-side consumption signal. So the raw signal exists; only its BO reporting
+   remains to be built. §9.1's cgroup binding then adds *enforcement* on top of this
+   *measurement*.
