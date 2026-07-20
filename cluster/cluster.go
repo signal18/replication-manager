@@ -945,6 +945,31 @@ func (cluster *Cluster) Run() {
 	}
 }
 
+// reloadDrainTimeout bounds how long ReloadConfig waits for tickWG to drain.
+// See waitTickDrain and its call site in ReloadConfig for why this must not
+// be indefinite.
+const reloadDrainTimeout = 10 * time.Second
+
+// waitTickDrain waits for tickWG to reach zero, up to timeout. Returns true
+// if it drained fully, false if the timeout elapsed first. The Wait() runs in
+// its own goroutine so a timeout can be observed without blocking the
+// caller; if tickWG never drains, that goroutine leaks for the life of the
+// process, which is an accepted tradeoff for a codepath that should be rare
+// (see ReloadConfig's caller).
+func (cluster *Cluster) waitTickDrain(timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		cluster.tickWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
 // trackTickGoroutine launches fn in a goroutine tracked by tickWG. Use it for
 // a tick's genuinely fire-and-forget spawns -- ones not already joined by a
 // local sync.WaitGroup within the same tick (e.g. the wg/goRun-based Phase
@@ -2170,7 +2195,21 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	// the tick that just released reloadMu (see tickWG's declaration). Safe
 	// to call here: reloadMu being held blocks Run() from starting a new
 	// tick, so no concurrent Add() can race this Wait().
-	cluster.tickWG.Wait()
+	//
+	// Bounded, not indefinite: some tracked work (rolling jobs upgrade,
+	// script/reseed deployment, restic fetch) is a genuinely long per-server
+	// operational job that can run for minutes, not the quick cluster-state
+	// touch tickWG exists to catch. Waiting on it forever here would freeze
+	// the whole monitor loop for this cluster -- reloadMu stays held for as
+	// long as the wait does, and Run() needs reloadMu for every subsequent
+	// tick, so a stuck drain silently stops the ticker with no panic (the
+	// stuck goroutine itself is doing real work, not asleep). Past the
+	// timeout, proceed anyway: residual overlap with one long job is a
+	// smaller risk than reload never completing at all.
+	if !cluster.waitTickDrain(reloadDrainTimeout) {
+		cluster.LogModulePrintf(true, config.ConstLogModGeneral, config.LvlWarn,
+			"ReloadConfig(%s): proceeding after %s with tick goroutines still running", cluster.Name, reloadDrainTimeout)
+	}
 
 	cluster.Lock()
 	*cluster.Conf = conf
