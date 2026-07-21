@@ -1576,18 +1576,37 @@ func (cluster *Cluster) recomputeAppCredits() {
 	cluster.Conf.Cloud18ApplicationCreditsPlanned = planned
 }
 
-// ComputeApplicationUnits returns the cluster's Application Unit total for
-// marketplace global-unit-pricing: used application credits plus each live
-// proxy's contribution at prov-proxy-cpu-cores.
+// ComputeApplicationUnits returns the cluster's Application Unit total for marketplace
+// global-unit-pricing: the resource-derived App Unit (1 core / 4GB / 10GB ratio) per
+// provisioned app node, summed over all apps, plus the same App Unit ratio applied to
+// each live proxy's provisioned shape. Both apps and proxies are priced under the same
+// "Compute" unit — see doc/implementation/config/CLOUD18_CREDIT_MODEL.md §2 — and this
+// derives live from provisioned resources rather than from Cloud18ApplicationCreditsUsed,
+// which is only kept in sync for unit-sizing-mode apps (see cluster/app_set.go).
 func (cluster *Cluster) ComputeApplicationUnits() float64 {
-	proxyCores, _ := strconv.ParseFloat(cluster.Conf.ProvProxCores, 64)
-	liveProxyCount := 0
+	var total float64
+	for _, app := range cluster.Apps {
+		if !app.HasProvisionCookie() {
+			continue
+		}
+		numAgents := len(app.GetAppAgents())
+		if numAgents == 0 {
+			continue
+		}
+		total += float64(app.deriveUnitFromStoredResources() * numAgents)
+	}
+
+	proxyCores, _ := strconv.Atoi(cluster.Conf.ProvProxCores)
+	proxyMemMB, _ := config.ParseUnitMeasurementToInt("M", cluster.Conf.ProvProxMem, false)
+	proxyDiskGB, _ := config.ParseUnitMeasurementToInt("G", cluster.Conf.ProvProxDisk, false)
+	proxyUnit := appUnitFromResources(proxyCores, proxyMemMB, proxyDiskGB)
 	for _, prx := range cluster.Proxies {
 		if !prx.IsDown() {
-			liveProxyCount++
+			total += float64(proxyUnit)
 		}
 	}
-	return float64(cluster.Conf.Cloud18ApplicationCreditsUsed) + float64(liveProxyCount)*proxyCores
+
+	return total
 }
 
 // rebaseAppCreditCap raises Cloud18ApplicationCredits to the current used total

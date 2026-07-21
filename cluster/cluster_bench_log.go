@@ -123,13 +123,33 @@ func (cluster *Cluster) ComputeDBUPerNode() float64 {
 	diskGBi, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
 	diskGB := float64(diskGBi)
 	iops, _ := strconv.ParseFloat(cluster.Conf.ProvIops, 64)
-	return math.Max(cores, math.Max(memMB/4096, math.Max(diskGB/40, iops/1000)))
+	return math.Max(cores, math.Max(memMB/config.DBUnitMemMB, math.Max(diskGB/config.DBUnitDiskGB, iops/config.DBUnitIops)))
 }
 
 // ComputeDatabaseUnits returns the cluster-wide Database Unit total: per-node DBU
-// times the number of monitored db nodes (master + replicas).
+// times the number of monitored db nodes (master + replicas), plus a flat +1
+// Database Unit when the cluster has backups enabled. A backup is a full
+// DB-sized copy, so instead of pricing its storage separately it is folded into
+// the Database unit count as a single flat unit (retained snapshots are bundled
+// in, not counted individually) — see doc/implementation/config/CLOUD18_CREDIT_MODEL.md §4.
+//
+// "Enabled" is read from the scheduler flags (SchedulerBackupLogical /
+// SchedulerBackupPhysical), not Conf.Backup: Conf.Backup's toggle handler is
+// never wired to an API route or UI control, so it stays frozen at its
+// TOML/CLI-flag default and would never reflect a real cluster's backup
+// state. The scheduler flags are what actually drive the cron-scheduled
+// backup jobs (cluster/cluster_scheduler.go) and are the ones exposed/toggled
+// in the dashboard's Scheduler settings.
 func (cluster *Cluster) ComputeDatabaseUnits() float64 {
-	return cluster.ComputeDBUPerNode() * float64(len(cluster.Servers))
+	nodes := len(cluster.Servers)
+	if nodes == 0 {
+		return 0
+	}
+	units := cluster.ComputeDBUPerNode() * float64(nodes)
+	if cluster.Conf.SchedulerBackupLogical || cluster.Conf.SchedulerBackupPhysical {
+		units++
+	}
+	return units
 }
 
 // LogSysbenchRun captures the context and results of a sysbench run and appends it to history.

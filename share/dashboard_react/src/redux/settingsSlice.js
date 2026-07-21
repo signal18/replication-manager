@@ -18,6 +18,25 @@ export const switchSetting = createAsyncThunk('settings/switchSetting', async ({
   }
 })
 
+export const resizeDatabaseUnits = createAsyncThunk(
+  'settings/resizeDatabaseUnits',
+  async ({ clusterName, units }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await settingsService.resizeDatabaseUnits(clusterName, units, baseURL)
+      if (status === 200) {
+        showSuccessBanner(`Database Units resized to ${units} successfully!`, status, thunkAPI)
+        return { data, status }
+      } else {
+        throw new Error(data)
+      }
+    } catch (error) {
+      showErrorBanner(`Resizing Database Units to ${units} failed!`, error.toString(), thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const changeTopology = createAsyncThunk(
   'settings/changeTopology',
   async ({ clusterName, topology }, thunkAPI) => {

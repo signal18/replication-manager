@@ -152,6 +152,16 @@ func (app *App) deriveUnitFromStoredResources() int {
 	cores, _ := strconv.Atoi(app.AppConfig.ProvAppCpuCores)
 	memMB, _ := config.ParseUnitMeasurementToInt("M", app.AppConfig.ProvAppMem, false)
 	diskGB, _ := config.ParseUnitMeasurementToInt("G", app.AppConfig.ProvAppDisk, false)
+	return appUnitFromResources(cores, memMB, diskGB)
+}
+
+// appUnitFromResources computes the App/Compute Unit count (ceil of the max of the
+// three ratio terms, each floored at 1) for a given cores/memMB/diskGB shape, using the
+// 1 core / 4GB / 10GB App Unit ratio. Shared by per-app derivation
+// (deriveUnitFromStoredResources) and proxy Application Unit accounting
+// (Cluster.ComputeApplicationUnits), since both workload types are priced under the same
+// "Compute" unit — see doc/implementation/config/CLOUD18_CREDIT_MODEL.md §2.
+func appUnitFromResources(cores, memMB, diskGB int) int {
 	unitFromCores, unitFromMem, unitFromDisk := 1, 1, 1
 	if cores > config.AppUnitCpuCores {
 		unitFromCores = (cores + config.AppUnitCpuCores - 1) / config.AppUnitCpuCores

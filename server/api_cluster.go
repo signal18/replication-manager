@@ -329,6 +329,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettings)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/resize-database-units/{units}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResizeDatabaseUnits)),
+	))
 	router.Handle("/api/clusters/settings/actions/reload-clusters-plans", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReloadPlans)),
@@ -3024,6 +3028,56 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 	}
 }
 
+// handlerMuxResizeDatabaseUnits atomically resizes a cluster's Database sizing to a
+// whole number of Database Units per node (1 core / 4GB / 40GB / 1000 IOPS each),
+// applying cores/memory/disk/iops in a single server-side operation. This is the
+// required path for Database resizing while cloud18-marketplace-pricing-mode is
+// global-unit-pricing, since setClusterSetting rejects direct prov-db-* writes in that
+// mode (see isRatioLockedDBSetting).
+// @Summary Resize a cluster's Database sizing to N Database Units per node
+// @Description Applies cores/memory/disk/iops together so the ratio-locked Database shape is never observed mid-write.
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param units path int true "Database Units per node"
+// @Success 200 {string} string "Successfully resized database units"
+// @Failure 400 {string} string "Invalid units value"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/settings/actions/resize-database-units/{units} [post]
+func (repman *ReplicationManager) handlerMuxResizeDatabaseUnits(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	cName := vars["clusterName"]
+
+	units, err := strconv.Atoi(vars["units"])
+	if err != nil {
+		http.Error(w, "Invalid units value: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	mycluster := repman.getClusterByName(cName)
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	valid, _ := repman.IsValidClusterACL(r, mycluster)
+	if !valid {
+		http.Error(w, fmt.Sprintf("User doesn't have required ACL for resize-database-units in cluster %s", cName), http.StatusForbidden)
+		return
+	}
+
+	if err := mycluster.ResizeDatabaseUnits(units); err != nil {
+		http.Error(w, "Failed to resize database units: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Successfully resized database units"))
+}
+
 // handlerMuxSetCron handles the setting of cron jobs for a given cluster.
 // @Summary Set cron jobs for a specific cluster
 // @Description This endpoint sets the cron jobs for the specified cluster.
@@ -3096,6 +3150,31 @@ func isProvAppTemplateRepoSetting(name string) bool {
 		return false
 	}
 }
+
+// isRatioLockedDBSetting reports whether name is one of the four raw Database sizing
+// dimensions that must stay in the fixed 1 core : 4GB : 40GB : 1000 IOPS ratio while
+// cloud18-marketplace-pricing-mode is global-unit-pricing. See
+// doc/implementation/config/CLOUD18_CREDIT_MODEL.md §2.
+func isRatioLockedDBSetting(name string) bool {
+	switch name {
+	case "prov-db-cpu-cores",
+		"prov-db-memory",
+		"prov-db-disk-size",
+		"prov-db-disk-iops":
+		return true
+	default:
+		return false
+	}
+}
+
+// Do NOT add a "cloud18-marketplace-pricing-mode" case to setClusterSetting's switch.
+// setClusterSetting is reachable from multiple per-cluster paths that only require a
+// cluster-level ACL, not a server/global grant (e.g. handlerMuxSetCron, the gRPC
+// ClusterSetting_SET case in repmanv3.go) — none of which apply the config.IsScope(...,
+// "server") redirect that the plain set/switch REST handlers do. A case here would let
+// any such caller flip a single cluster's pricing mode instead of the whole server. The
+// scope:"server" fan-out writes cl.Conf.Cloud18MarketplacePricingMode directly in
+// setServerSetting (api_global_settings.go) instead.
 
 func parseProvAppTemplateRepoTimeout(value string) (int, error) {
 	parsed, err := strconv.Atoi(strings.TrimSpace(value))
@@ -3287,6 +3366,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	}
 	if isProvAppTemplateRepoSetting(name) && !mycluster.Conf.ProvAppTemplateRepoAllowOverride {
 		return errors.New("cluster override is disabled for prov-app-template-repo* settings")
+	}
+	if isRatioLockedDBSetting(name) && mycluster.IsGlobalUnitPricing() {
+		return fmt.Errorf("%s cannot be edited directly while cloud18-marketplace-pricing-mode is global-unit-pricing; use the database-units resize action instead", name)
 	}
 
 	switch name {

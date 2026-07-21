@@ -727,6 +727,17 @@ func (repman *ReplicationManager) setServerSetting(user string, URL string, name
 	for _, cl := range repman.Clusters {
 		//Don't print error with no valid ACL
 		if cl.IsURLPassACL(user, URL, false) {
+			if name == "cloud18-marketplace-pricing-mode" {
+				// scope:"server" — deliberately not a setClusterSetting case: that
+				// function is also reachable per-cluster with only a cluster-level
+				// ACL (e.g. set-cron, gRPC ClusterSetting_SET), which would let a
+				// caller flip a single cluster's pricing mode instead of the whole
+				// server. setRepmanSetting above already validated value; write it
+				// straight into the per-cluster Conf so IsGlobalUnitPricing() sees
+				// a live mode change on already-running clusters without a restart.
+				cl.Conf.Cloud18MarketplacePricingMode = value
+				continue
+			}
 			repman.setClusterSetting(cl, name, value)
 		}
 	}

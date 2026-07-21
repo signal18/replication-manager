@@ -452,3 +452,112 @@ func TestSetRepmanSetting_MarketplaceInfraFields_NoClusterFanOut(t *testing.T) {
 		t.Errorf("per-cluster Cloud18InfraCPUModel changed to %q, want unchanged %q (no fan-out)", cl.Conf.Cloud18InfraCPUModel, "per-cluster-cpu")
 	}
 }
+
+// --- Database ratio lock (CLOUD18_CREDIT_MODEL_IMPLEMENTATION_PLAN.md §3.2/§4.1) ---
+
+// TestSetClusterSetting_MarketplacePricingMode_NeverSettableViaClusterScopedPath guards
+// against a privilege-boundary regression: cloud18-marketplace-pricing-mode is
+// scope:"server", but setClusterSetting is reachable from several per-cluster paths that
+// only require a cluster-level ACL grant, not a server/global one (e.g. handlerMuxSetCron,
+// the gRPC ClusterSetting_SET case in repmanv3.go) — none of which redirect scope:"server"
+// settings the way the plain set/switch REST handlers do. If setClusterSetting ever grew
+// a case for this setting, any such caller could flip a single cluster's pricing mode
+// instead of the whole server. It must always fall through to "setting not found", exactly
+// like the other cloud18-marketplace-* scope:"server" fields already do.
+func TestSetClusterSetting_MarketplacePricingMode_NeverSettableViaClusterScopedPath(t *testing.T) {
+	for _, value := range []string{config.ConstMarketplacePricingModeGlobalUnitPricing, "bogus-mode"} {
+		cl := newTestClusterForAPI(t)
+		cl.ConfigManager = newConfigManagerForTest()
+		repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+		err := repman.setClusterSetting(cl, "cloud18-marketplace-pricing-mode", value)
+		if err == nil {
+			t.Fatalf("value %q: expected setClusterSetting to reject cloud18-marketplace-pricing-mode, got nil error", value)
+		}
+		if cl.Conf.Cloud18MarketplacePricingMode == value {
+			t.Errorf("value %q: cl.Conf.Cloud18MarketplacePricingMode was set to it via setClusterSetting — privilege-boundary regression", value)
+		}
+	}
+}
+
+// TestSetServerSetting_MarketplacePricingMode_FansOutOnlyWithGlobalGrant proves the
+// legitimate path still works: a user with the global-settings grant flipping the
+// server-wide pricing mode does propagate to every ACL-passing cluster's own Conf (so
+// Cluster.IsGlobalUnitPricing() sees it live, without a restart), while a user without
+// that grant is refused before anything is mutated.
+func TestSetServerSetting_MarketplacePricingMode_FansOutOnlyWithGlobalGrant(t *testing.T) {
+	url := "/api/clusters/settings/actions/set/cloud18-marketplace-pricing-mode/" + config.ConstMarketplacePricingModeGlobalUnitPricing
+
+	t.Run("with global-settings grant", func(t *testing.T) {
+		cl := newTestClusterForAPI(t)
+		cl.APIUsers = map[string]cluster.APIUser{
+			"admin": {Grants: map[string]bool{config.GrantGlobalSettings: true}},
+		}
+		repman := newTestRepmanWithCluster(t, cl.Name, cl)
+		repman.Conf = &config.Config{Secrets: make(map[string]config.Secret)}
+		repman.ConfigManager = newConfigManagerForTest()
+
+		if err := repman.setServerSetting("admin", url, "cloud18-marketplace-pricing-mode", config.ConstMarketplacePricingModeGlobalUnitPricing); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if repman.Conf.Cloud18MarketplacePricingMode != config.ConstMarketplacePricingModeGlobalUnitPricing {
+			t.Errorf("repman.Conf.Cloud18MarketplacePricingMode = %q, want %q", repman.Conf.Cloud18MarketplacePricingMode, config.ConstMarketplacePricingModeGlobalUnitPricing)
+		}
+		if cl.Conf.Cloud18MarketplacePricingMode != config.ConstMarketplacePricingModeGlobalUnitPricing {
+			t.Errorf("cl.Conf.Cloud18MarketplacePricingMode = %q, want %q (fan-out)", cl.Conf.Cloud18MarketplacePricingMode, config.ConstMarketplacePricingModeGlobalUnitPricing)
+		}
+	})
+
+	t.Run("without global-settings grant", func(t *testing.T) {
+		cl := newTestClusterForAPI(t)
+		cl.APIUsers = map[string]cluster.APIUser{
+			"nobody": {Grants: map[string]bool{}},
+		}
+		repman := newTestRepmanWithCluster(t, cl.Name, cl)
+		repman.Conf = &config.Config{Secrets: make(map[string]config.Secret)}
+		repman.ConfigManager = newConfigManagerForTest()
+
+		// setRepmanSetting itself has no ACL gate (the HTTP/gRPC layer above it does),
+		// so the global default still flips; what must NOT happen is the per-cluster
+		// fan-out for a caller lacking the grant.
+		if err := repman.setServerSetting("nobody", url, "cloud18-marketplace-pricing-mode", config.ConstMarketplacePricingModeGlobalUnitPricing); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cl.Conf.Cloud18MarketplacePricingMode == config.ConstMarketplacePricingModeGlobalUnitPricing {
+			t.Error("cl.Conf.Cloud18MarketplacePricingMode was fanned out to a cluster despite the caller lacking global-settings grant")
+		}
+	})
+}
+
+func TestSetClusterSetting_RatioLockedDBFields_RejectedInGlobalUnitPricing(t *testing.T) {
+	for _, setting := range []string{"prov-db-cpu-cores", "prov-db-memory", "prov-db-disk-size", "prov-db-disk-iops"} {
+		t.Run(setting, func(t *testing.T) {
+			cl := newTestClusterForAPI(t)
+			cl.Conf.Cloud18MarketplacePricingMode = config.ConstMarketplacePricingModeGlobalUnitPricing
+			cl.ConfigManager = newConfigManagerForTest()
+			repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+			err := repman.setClusterSetting(cl, setting, "8")
+			if err == nil {
+				t.Fatalf("expected %s to be rejected under global-unit-pricing, got nil error", setting)
+			}
+		})
+	}
+}
+
+func TestSetClusterSetting_RatioLockedDBFields_AllowedOutsideGlobalUnitPricing(t *testing.T) {
+	for _, mode := range []string{config.ConstMarketplacePricingModeCsvServicePlan, ""} {
+		for _, setting := range []string{"prov-db-cpu-cores", "prov-db-memory", "prov-db-disk-size", "prov-db-disk-iops"} {
+			t.Run(mode+"/"+setting, func(t *testing.T) {
+				cl := newTestClusterForAPI(t)
+				cl.Conf.Cloud18MarketplacePricingMode = mode
+				cl.ConfigManager = newConfigManagerForTest()
+				repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+				if err := repman.setClusterSetting(cl, setting, "8"); err != nil {
+					t.Errorf("%s rejected outside global-unit-pricing (mode %q): %v", setting, mode, err)
+				}
+			})
+		}
+	}
+}

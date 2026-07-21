@@ -4,7 +4,7 @@ import RMSwitch from '../../../components/RMSwitch'
 import TableType2 from '../../../components/TableType2'
 import styles from '../styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
-import { setSetting, switchSetting } from '../../../redux/settingsSlice'
+import { setSetting, switchSetting, resizeDatabaseUnits } from '../../../redux/settingsSlice'
 import AccordionComponent from '../../../components/AccordionComponent'
 import AddRemovePill from '../../../components/AddRemovePill'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
@@ -144,6 +144,12 @@ function DBConfigs({ selectedCluster, user }) {
   const baseURL = useSelector((state) => state?.auth?.baseURL || '')
 
   const dispatch = useDispatch()
+
+  // Database sizing is ratio-locked while global-unit-pricing is active — see
+  // doc/implementation/config/CLOUD18_CREDIT_MODEL.md §2. Raw per-dimension edits are
+  // rejected server-side in that mode; disable them here too so the UI doesn't offer a
+  // control that will just error.
+  const isGlobalUnitPricing = selectedCluster?.config?.cloud18MarketplacePricingMode === 'global-unit-pricing'
 
   const handleViewContent = async (tagName) => {
     try {
@@ -382,17 +388,14 @@ function DBConfigs({ selectedCluster, user }) {
               setIsConfirmModalOpen(true)
               setConfirmHandler(
                 () => () => {
-                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-cpu-cores', value: dbu }))
-                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-memory', value: mem }))
-                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-disk-size', value: disk }))
-                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-disk-iops', value: iops }))
+                  dispatch(resizeDatabaseUnits({ clusterName: selectedCluster?.name, units: dbu }))
                 }
               )
             }}
           />
           <Flex className={styles.resources} flexWrap='wrap'>
           <Gauge
-            isDisabled={user?.grants['proxy-config-flag'] == false}
+            isDisabled={user?.grants['proxy-config-flag'] == false || isGlobalUnitPricing}
             minValue={4096}
             maxValue={1048576}
             value={convertSize(selectedCluster?.config?.provDbMemory,"M","M")}
@@ -419,7 +422,7 @@ function DBConfigs({ selectedCluster, user }) {
             }}
           />
           <Gauge
-            isDisabled={user?.grants['proxy-config-flag'] == false}
+            isDisabled={user?.grants['proxy-config-flag'] == false || isGlobalUnitPricing}
             minValue={10}
             maxValue={20480}
             value={convertSize(selectedCluster?.config?.provDbDiskSize,"G","G")}
@@ -446,7 +449,7 @@ function DBConfigs({ selectedCluster, user }) {
             }}
           />
           <Gauge
-            isDisabled={user?.grants['proxy-config-flag'] == false}
+            isDisabled={user?.grants['proxy-config-flag'] == false || isGlobalUnitPricing}
             minValue={1}
             maxValue={100000}
             value={selectedCluster?.config?.provDbDiskIops}
@@ -472,7 +475,7 @@ function DBConfigs({ selectedCluster, user }) {
             }}
           />
           <Gauge
-            isDisabled={user?.grants['proxy-config-flag'] == false}
+            isDisabled={user?.grants['proxy-config-flag'] == false || isGlobalUnitPricing}
             minValue={1}
             maxValue={512}
             value={selectedCluster?.config?.provDbCpuCores}

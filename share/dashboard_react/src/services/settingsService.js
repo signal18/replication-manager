@@ -18,6 +18,7 @@ export const settingsService = {
   changeTopology,
   setSetting,
   clearSetting,
+  resizeDatabaseUnits,
   updateGraphiteWhiteList,
   updateGraphiteBlackList,
   setAppSetting,
@@ -49,6 +50,10 @@ function setSetting(clusterName, setting, value, baseURL) {
   } else {
     return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/set/${setting}/${encodeURIComponent(value)}`)
   }
+}
+
+function resizeDatabaseUnits(clusterName, units, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/resize-database-units/${units}`)
 }
 
 function clearSetting(clusterName, setting, baseURL) {

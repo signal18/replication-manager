@@ -1390,12 +1390,25 @@ func (cluster *Cluster) SetServicePlanInfos(theplan string) error {
 	plans := cluster.GetServicePlans()
 	for _, plan := range plans {
 		if plan.Plan == theplan {
+			// Resolve DB sizing before mutating any cluster state, so an unmapped plan
+			// under global-unit-pricing fails clean with no partial writes.
+			dbCores, dbMemory, dbDataSize, dbIops := plan.DbCores, plan.DbMemory, plan.DbDataSize, plan.DbIops
+			if cluster.IsGlobalUnitPricing() {
+				dbu, ok := config.ServicePlanDatabaseUnits(theplan)
+				if !ok {
+					return fmt.Errorf("plan %q has no Database Unit mapping required for global-unit-pricing", theplan)
+				}
+				dbCores = dbu * config.DBUnitCpuCores
+				dbMemory = dbu * config.DBUnitMemMB
+				dbDataSize = dbu * config.DBUnitDiskGB
+				dbIops = dbu * config.DBUnitIops
+			}
 
 			cluster.Conf.ProvServicePlan = theplan
-			cluster.SetDBCores(strconv.Itoa(plan.DbCores))
-			cluster.SetDBMemorySize(strconv.Itoa(plan.DbMemory))
-			cluster.SetDBDiskSize(strconv.Itoa(plan.DbDataSize))
-			cluster.SetDBDiskIOPS(strconv.Itoa(plan.DbIops))
+			cluster.SetDBCores(strconv.Itoa(dbCores))
+			cluster.SetDBMemorySize(strconv.Itoa(dbMemory))
+			cluster.SetDBDiskSize(strconv.Itoa(dbDataSize))
+			cluster.SetDBDiskIOPS(strconv.Itoa(dbIops))
 			cluster.SetProxyCores(strconv.Itoa(plan.PrxCores))
 			cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize))
 			cluster.SetCloud18MonthlyInfraCost(plan.InfraCost)
