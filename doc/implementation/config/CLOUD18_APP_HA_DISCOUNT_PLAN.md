@@ -1,13 +1,20 @@
-# Cloud18 App HA Discount — Plan
+# Cloud18 App HA Structural Pricing — Plan
 
 **Status:** future implementation plan. This document is intentionally separate from
-`CLOUD18_CREDIT_MODEL.md` and `CLOUD18_CREDIT_MODEL_IMPLEMENTATION_PLAN.md` so the base unit model
+`CLOUD18_CREDIT_MODEL.md` so the base unit model
 stays unchanged.
+
+**Note:** the filename is kept for continuity, but the model described here is **structural
+pricing** for App HA, not a marketplace promotion plan.
 
 ## 1. Purpose
 
 Define a future **commercial pricing adjustment** for Application / Compute workloads when an app is
  deployed in HA mode across multiple OpenSVC nodes.
+
+For the first implementation, the best model is to treat App HA pricing as a **structural pricing
+rule**, not as a marketplace promotion. In other words, failover should cost less than flex because
+that is the product model, while promotions remain a separate later pricing layer.
 
 This plan distinguishes two HA modes:
 
@@ -22,8 +29,9 @@ This plan distinguishes two HA modes:
 
 The pricing consequence is:
 
-- **flex gets no discount**
-- **failover may receive a discount**
+- **flex gets no structural adjustment**
+- **failover may receive a structural pricing adjustment**
+- promotions, if any, apply later as a separate pricing layer
 
 ## 2. Core design choice
 
@@ -34,9 +42,42 @@ That means:
 
 - `ComputeApplicationUnits()` remains the technical consumption signal
 - Application Unit math is **not** reduced for failover
-- failover discount changes only the **billed app price**, not the technical unit count
+- failover structural pricing changes only the **billed app price**, not the technical unit count
 
 This preserves comparability and avoids mixing accounting with commercial policy.
+
+### 2.1 Pricing layers
+
+The clean pricing model is layered:
+
+1. **Technical metering layer**
+   - technical DB units
+   - technical app units
+   - technical proxy units
+   - app topology and node count
+2. **Base unit pricing layer**
+   - raw `units × unit price` pricing before any commercial adjustment
+3. **Structural pricing layer**
+   - normal product-model pricing rules
+   - App HA failover adjustment lives here
+4. **Promotion layer**
+   - temporary or business overlays such as campaigns, coupons, bundle offers, or partner promos
+5. **Final billing layer**
+   - final totals after structural pricing and promotions are applied
+
+Recommended order:
+
+- `technical units -> base unit pricing -> structural pricing adjustments -> promotions -> final price`
+
+This keeps failover cheaper **by design**, while leaving room for separate promotions later.
+
+Promotion compatibility rule:
+
+- promotions operate on the **post-structure commercial subtotal** for whatever scope they target
+  (for example app-only, bundle-level, or full cluster subtotal)
+- promotions never rewrite raw technical units
+- this plan defines the **ordering boundary** only; promotion policy, eligibility, stacking, and
+  scope remain future work
 
 ## 3. Technical baseline
 
@@ -56,7 +97,7 @@ Example:
 - 2 Application Units per node
 - technical consumption = **6 Application Units**
 
-That same technical count also applies to failover deployments before discounting.
+That same technical count also applies to failover deployments before structural pricing adjustment.
 
 ## 4. HA mode classification
 
@@ -67,21 +108,32 @@ For this plan, app HA mode classification is:
 - active-standby
 - shared storage pool (for example DRBD-backed)
 - one active node, remaining nodes are standby capacity
-- eligible for commercial discount
+- eligible for structural pricing adjustment
 
 ### 4.2 flex
 
 - active-active
 - non-shared storage pool (for example ZFS pool)
 - all nodes are considered active capacity
-- not eligible for discount
+- not eligible for structural pricing adjustment
 
-## 5. Chosen discount model
+## 5. Chosen structural pricing model
 
 Use a **standby-factor** model.
 
 This is better than a flat percentage discount because it scales with node count and better matches
 actual utilization differences between failover and flex.
+
+For the first implementation, use these recommended policy choices:
+
+- `StandbyFactor` = **configurable**
+- `StandbyFactor` default = **`0.3`**
+- `StandbyFactor` initial scope = **global server-level setting**
+- **single-node apps receive no structural adjustment**
+- **proxy workloads receive no structural adjustment**
+- structural pricing adjustment is computed **per app**, never from the cluster-wide combined
+  `ApplicationUnits` total
+- promotions are a **separate later layer** and must not be mixed into the HA structural pricing rule
 
 ### 5.1 Formula
 
@@ -100,12 +152,31 @@ And:
 
 - `AppPrice = BillableAppUnits × AppUnitPrice`
 
+This is a **structural pricing adjustment** to normal app pricing, not a promotion.
+
 ### 5.2 Flex rule
 
 For a flex app:
 
 - `BillableAppUnits = TechnicalApplicationUnits`
-- no discount is applied
+- no structural pricing adjustment is applied
+
+### 5.3 Single-node rule
+
+For an app with fewer than 2 nodes:
+
+- `BillableAppUnits = TechnicalApplicationUnits`
+- no structural pricing adjustment is applied, even if topology metadata says `failover`
+
+This avoids treating non-HA or partially configured apps as failover-priced deployments.
+
+### 5.4 Proxy rule
+
+Proxy workloads do **not** participate in this app HA structural pricing model.
+
+- proxy technical units remain computed under the normal App/Compute Unit ratio
+- proxy commercial pricing remains full price
+- any future proxy-specific structural pricing model must be designed separately
 
 ## 6. Worked examples
 
@@ -132,14 +203,67 @@ Result:
 - technical units = `2 × 3 = 6`
 - billed units = `2 × (1 + 2 × 0.3) = 3.2`
 
+### 6.3 Single-node example
+
+- topology = `failover` or `flex`
+- `AppNodeCount = 1`
+- `AppUnitsPerNode = 2`
+
+Result:
+
+- technical units = `2 × 1 = 2`
+- billed units = `2`
+
+### 6.4 Mixed-cluster example
+
+Example cluster:
+
+- 3 DB nodes
+- 2 proxies
+- 3 apps:
+  - App A: 2 nodes, `flex`
+  - App B: 2 nodes, `failover`
+  - App C: 1 node
+
+Let:
+
+- `FlexUnitsPerNode = FA`
+- `FailoverUnitsPerNode = FB`
+- `SingleNodeUnitsPerNode = FC`
+- `ProxyUnitsPerNode = PX`
+
+Then:
+
+- technical app units = `2 × FA + 2 × FB + 1 × FC`
+- technical proxy units = `2 × PX` (assuming both proxies are live)
+- current technical combined `ApplicationUnits` export = `2 × FA + 2 × FB + 1 × FC + 2 × PX`
+
+Billable app units only:
+
+- flex app = `2 × FA`
+- failover app = `FB × (1 + 0.3)`
+- single-node app = `1 × FC`
+
+So:
+
+- `BillableAppUnits = 2 × FA + 1.3 × FB + FC`
+
+This example shows why the failover structural pricing rule must be applied **per app** and why pricing cannot be
+derived safely from the current cluster-wide `ApplicationUnits` total alone, because that figure
+includes proxies and mixed app topologies.
+
 ## 7. Scope boundaries
 
 ### In scope for the future implementation
 
 - classify app HA mode as `failover` vs `flex`
-- compute **billable** app units or equivalent discounted app price for failover
+- compute **billable** app units or equivalent structurally adjusted app price for failover
 - keep DB pricing unchanged
 - keep technical `ApplicationUnits` unchanged
+- keep single-node apps at full price
+- keep proxy pricing unchanged
+- expose enough raw technical detail so BO/pricing can apply app-only failover structural pricing safely
+- keep App HA structural pricing separate from marketplace promotions
 
 ### Out of scope for this plan
 
@@ -150,6 +274,8 @@ Result:
 - storage pricing
 - fixed-amount discounts
 - marketplace promotions for DB/app bundles
+- proxy-specific HA structural pricing models
+- general promotion policy/engine design beyond the App HA structural layer
 
 ## 8. Authoritative inputs needed
 
@@ -159,10 +285,28 @@ Future implementation must use authoritative runtime/config inputs for:
 - app/OpenSVC deployment node list
 - per-node app resource shape
 
+For the first implementation, use these concrete rules:
+
+- **app topology source** = `prov-app-ha-topology`
+- **app node count source** = the app's configured deployment node list (`prov-app-agents` /
+  `GetAppAgents()`)
+- **failover pricing eligibility** requires:
+  - app is provisioned
+  - topology is `failover`
+  - node count is `>= 2`
+- `prov-app-agents-failover` is **not** the pricing node-count authority for the first
+  implementation; it may describe placement/failover behavior, but structural pricing eligibility is based on
+  total configured app nodes
+
+Promotion inputs, if added later, must be handled in a separate pricing layer and must not alter the
+technical or App HA structural inputs above.
+
 Additional validation should ensure:
 
-- failover topology is only discounted when it is actually configured as failover
-- flex topology is never discounted
+- failover topology is only structurally adjusted when it is actually configured as failover
+- flex topology is never structurally adjusted
+- single-node apps are never structurally adjusted
+- missing or ambiguous topology falls back to **no structural adjustment**
 
 ## 9. Likely code areas for future work
 
@@ -170,34 +314,66 @@ This is a follow-up plan; exact implementation is deferred. Likely touchpoints:
 
 - `cluster/cluster.go`
   - keep `ComputeApplicationUnits()` technical
-  - add a separate billable-app-unit or app-price helper
+  - add separate helpers for:
+    - technical app-only units
+    - technical proxy-only units
+    - billable app units after App HA structural pricing adjustment
 - app/OpenSVC topology helpers
   - authoritative node count and topology detection
 - pricing/export layer
-  - expose discounted app price separately from technical unit count
+  - expose structural app pricing separately from technical unit count
+  - expose promotion pricing separately from structural app pricing
+  - do not derive failover structural pricing from the current combined `ApplicationUnits` field alone
 - UI/catalog/integration layer
-  - render failover discount without corrupting technical unit accounting
+  - render App HA structural pricing separately from promotions without corrupting technical unit accounting
 
-## 10. Open questions to lock before implementation
+Preferred export direction for first implementation:
 
-1. What is the default `StandbyFactor`?
-2. Is `StandbyFactor` global, partner-specific, or per-offer?
-3. Should the discounted figure be exported as:
-   - discounted billable app units, or
-   - base app units + separate discount metadata?
-4. Should proxy workloads ever participate in this same failover discount model, or remain full
-   priced unless explicitly modeled later?
+- `technicalAppUnits`
+- `technicalProxyUnits`
+- `technicalApplicationUnitsTotal`
+- `billableAppUnits`
+- `baseAppPrice`
+- `appHAStructuralAdjustment`
+- optional promotion metadata / promotion adjustment
+- `finalAppPrice`
+
+## 10. Recommended decisions for first implementation
+
+1. `StandbyFactor` is **configurable**
+2. Default `StandbyFactor` = `0.3`
+3. `StandbyFactor` should be a **global server-level setting** for the first implementation
+4. Single-node apps remain **full price**
+5. Proxy workloads remain **full price** and outside this structural pricing model
+6. Technical `ApplicationUnits` remain unchanged
+7. Prefer exporting **raw technical app/proxy totals plus billable app units / structural metadata**
+   rather than replacing raw technical totals with structurally adjusted figures
+8. App HA pricing is a **structural pricing rule**, not a promotion
+9. Promotions should apply **after** structural App HA pricing adjustments
+
+## 10.1 Future questions still open
+
+1. Should `StandbyFactor` later become partner-specific or per-offer?
+2. Should proxy workloads ever participate in a separate HA structural pricing model?
+3. Should BO consume structurally adjusted billable app units directly, or compute final price from raw totals
+   plus structural/promotion metadata?
+4. Which promotion scopes should be supported first: app-only, bundle-level, or full cluster subtotal?
 
 ## 11. Validation plan
 
 Future tests should prove:
 
-- flex receives no discount
-- failover receives a discount
+- flex receives no structural adjustment
+- failover receives a structural pricing adjustment
+- single-node apps receive no structural adjustment
+- proxies receive no structural adjustment
 - technical `ApplicationUnits` do not change between flex and failover
 - only the app commercial price changes
 - DB price is unaffected
 - 3-node failover and 3-node flex can have identical technical units but different billed app price
+- mixed clusters with apps + proxies are priced correctly without structurally adjusting proxy units
+- missing or ambiguous topology does not receive a structural pricing adjustment
+- promotions, if added later, stack after structural pricing and do not alter technical units
 
 ## 12. Expected outcome
 
@@ -205,5 +381,8 @@ After the future implementation:
 
 - Application Units remain a hard technical signal
 - failover apps are billed more fairly than fully utilized flex apps
+- single-node apps remain fully billed
+- proxies remain fully billed
 - flex remains fully billed because it consumes active multi-node value
-- discount logic stays isolated in the pricing layer, not in the unit-accounting layer
+- App HA structural pricing stays isolated in the pricing layer, not in the unit-accounting layer
+- promotions remain a separate layer on top of the structural pricing model

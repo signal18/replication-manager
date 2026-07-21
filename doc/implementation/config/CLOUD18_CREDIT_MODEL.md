@@ -254,7 +254,7 @@ written on cluster save so the BO can price = `units × €/unit`.
 plus marketplace-level infra/SLA/cert/currency metadata (moved up from per-plan to per-partner).
 
 **Future work note:** the **Storage** unit, promotion / discount handling in
-`global-unit-pricing`, and the App HA commercial discount layer for failover vs flex are all
+`global-unit-pricing`, and the App HA structural pricing layer for failover vs flex are all
 intentionally deferred out of this implementation phase; see [§9](#9-future-goals-roadmap) and
 `CLOUD18_APP_HA_DISCOUNT_PLAN.md`.
 
@@ -303,7 +303,7 @@ unit — matching §2.
 > **Implementation note — current phase choices.** For the current implementation phase,
 > `global-unit-pricing` uses **each DB node counts** as the technical DBU rule, scopes strict DB
 > ratio-lock enforcement to unit pricing, and defers Storage, promotion/discount in unit pricing,
-> and App HA commercial discount to future work. Root cause: lock down one clean technical unit
+> and App HA structural pricing to future work. Root cause: lock down one clean technical unit
 > model first, then add commercial overlays later.
 
 **Implementation note — current backup handling:** when backup is enabled, current branch behavior
@@ -330,7 +330,7 @@ zero and only the storage footprint remains billable. This is a concrete driver 
 **Storage unit** (§4.2) — idle/stopped app data is priced as storage, not compute — and it feeds
 the delta reconciliation (§9.2): a stopped app naturally falls *below* its plan baseline → refund.
 
-> **Implementation note — App HA discount is separate.** The future commercial difference between
+> **Implementation note — App HA structural pricing is separate.** The future commercial difference between
 > **failover** apps (active-standby, shared storage) and **flex** apps (active-active, non-shared
 > storage) is intentionally deferred to `CLOUD18_APP_HA_DISCOUNT_PLAN.md`. Root cause: it changes
 > billed app price, not the technical `ApplicationUnits` count.
@@ -410,7 +410,7 @@ These are the things to resolve — the model as published + implemented does no
 
    **Implementation note:** the current implementation phase for `global-unit-pricing` uses **each
    node counts** as the technical DBU rule. Any future HA concession should be a pricing-layer
-   discount, not a change to raw DBU counting.
+   commercial adjustment, not a change to raw DBU counting.
 
 4. **`.compute` cores are "free" under the credit model but not under absolute €.** When mem
    binds, extra cores don't raise the credit count (`x2.small` and `x2.small.compute` are
@@ -465,7 +465,7 @@ These build on the unit model above; not scoped yet, captured so the design poin
      temporarily folding some cases into Database Units.
    - **Promotion / discount in `global-unit-pricing`** — keep technical unit accounting hard first,
      then add commercial overlays later.
-   - **App HA commercial discount (failover vs flex)** — tracked separately in
+   - **App HA structural pricing (failover vs flex)** — tracked separately in
      `CLOUD18_APP_HA_DISCOUNT_PLAN.md`; this changes billed app price, not technical
      `ApplicationUnits`.
 
