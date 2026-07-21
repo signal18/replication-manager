@@ -9,6 +9,7 @@ package githelper
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,55 @@ import (
 )
 
 var Logrus = logrus.New()
+
+// ErrDomainAlreadyOwned is returned when creating a Cloud18 domain group fails
+// because the group path is already taken — i.e. the domain exists but the
+// requesting user is not a member (GitLab returns 404 on GET for a private
+// group the user can't see, then 400 "has already been taken" on create).
+// This is the ownership boundary: the first registrant owns the domain group,
+// and later users must be invited by that owner rather than auto-joined.
+var ErrDomainAlreadyOwned = errors.New("cloud18 domain already exists and is owned by another account")
+
+// gitlabErrorMessage extracts a human-readable message from a GitLab API error
+// body. GitLab is inconsistent: OAuth endpoints use {"error","error_description"},
+// while REST validation errors use "message" as either a string
+// ({"message":"403 Forbidden"}) or an object keyed by field
+// ({"message":{"path":["has already been taken"]}}). Return the best available
+// text, falling back to the raw body so nothing is ever silently dropped.
+func gitlabErrorMessage(body []byte) string {
+	var probe struct {
+		Error            string          `json:"error"`
+		ErrorDescription string          `json:"error_description"`
+		Message          json.RawMessage `json:"message"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return strings.TrimSpace(string(body))
+	}
+
+	if probe.ErrorDescription != "" || probe.Error != "" {
+		return strings.TrimSpace(probe.Error + " " + probe.ErrorDescription)
+	}
+
+	if len(probe.Message) > 0 {
+		// message may be a plain string...
+		var s string
+		if err := json.Unmarshal(probe.Message, &s); err == nil {
+			return s
+		}
+		// ...or an object mapping field -> []reasons.
+		var fields map[string][]string
+		if err := json.Unmarshal(probe.Message, &fields); err == nil {
+			var parts []string
+			for field, reasons := range fields {
+				parts = append(parts, field+" "+strings.Join(reasons, ", "))
+			}
+			return strings.Join(parts, "; ")
+		}
+		return strings.TrimSpace(string(probe.Message))
+	}
+
+	return strings.TrimSpace(string(body))
+}
 
 type TokenInfo struct {
 	ID     int    `json:"id"`
@@ -466,13 +516,21 @@ func InitGroupAccessLevel(acces_token, domain string, user_id int, log_git bool)
 	}
 	defer resp.Body.Close()
 
-	// If 404 error, create the group
+	// A 404 is ambiguous: the group truly does not exist, OR it exists but is
+	// private and this user is not a member. Attempt to create it — the group
+	// becomes owned by the creating user (first-claimant ownership, enforced by
+	// GitLab). If the create is rejected because the path is already taken, the
+	// group exists and belongs to someone else: stop with an actionable error
+	// (do NOT recurse — that would loop forever on a group the user can't see).
 	if resp.StatusCode == http.StatusNotFound {
 		_, createErr := CreateCloud18Domain(acces_token, domain, log_git)
 		if createErr != nil {
+			if errors.Is(createErr, ErrDomainAlreadyOwned) {
+				return 0, fmt.Errorf("cloud18 domain %q is already registered to another account; ask its owner to grant you access in GitLab", domain)
+			}
 			return 0, fmt.Errorf("Error creating GitLab domain %s: %s", domain, createErr.Error())
 		}
-		// Try to get the access level again
+		// Group created and owned by this user — resolve the access level.
 		return InitGroupAccessLevel(acces_token, domain, user_id, log_git)
 	}
 
@@ -513,12 +571,14 @@ func CreateCloud18Domain(acces_token, domain string, log_git bool) (int, error) 
 	}
 
 	if resp.StatusCode != http.StatusCreated {
-		// Parse the error response into Main struct
-		var apiError ErrorResponse
-		if err := json.Unmarshal(body, &apiError); err != nil {
-			return 0, fmt.Errorf("received non-OK HTTP status %d and failed to parse error response: %w", resp.StatusCode, err)
+		msg := gitlabErrorMessage(body)
+		// A taken path means the group already exists but this user can't see
+		// it (not a member) — surface the ownership sentinel so the caller can
+		// tell the user to request access instead of looping on create.
+		if strings.Contains(strings.ToLower(msg), "has already been taken") {
+			return 0, fmt.Errorf("%w (domain %q): %s", ErrDomainAlreadyOwned, domain, msg)
 		}
-		return 0, fmt.Errorf("API error: %d - %s - %s", resp.StatusCode, apiError.Error, apiError.ErrorDescription)
+		return 0, fmt.Errorf("gitlab group create failed for domain %q: HTTP %d - %s", domain, resp.StatusCode, msg)
 	}
 
 	var groupId GroupId

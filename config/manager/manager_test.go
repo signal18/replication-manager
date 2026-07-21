@@ -596,3 +596,49 @@ func TestIsRepositoryNotFoundError_MatchesWrappedError(t *testing.T) {
 		t.Fatalf("unexpected match for unrelated error")
 	}
 }
+
+// TestInitRepositoryForEmptyRemote_SetsOriginAndMasterHead verifies the
+// empty-remote bootstrap: when a freshly-created project has no commits (clone
+// returns ErrEmptyRemoteRepository), we init a local repo pointed at the same
+// URL on branch master so a subsequent commit+push lands the first commit.
+func TestInitRepositoryForEmptyRemote_SetsOriginAndMasterHead(t *testing.T) {
+	workDir := t.TempDir()
+	const url = "https://gitlab.example.com/example-domain/example-cluster.git"
+
+	logger := logrus.New()
+	logger.SetOutput(&bytes.Buffer{})
+	cm := NewConfigManager(config.NewLogrusWrapper(&config.Config{WorkingDir: workDir}, logger))
+	defer cm.Stop()
+
+	repo, err := cm.initRepositoryForEmptyRemote(workDir, url)
+	if err != nil {
+		t.Fatalf("initRepositoryForEmptyRemote failed: %v", err)
+	}
+
+	// origin remote points at the URL
+	rem, err := repo.Remote("origin")
+	if err != nil {
+		t.Fatalf("origin remote not created: %v", err)
+	}
+	if got := rem.Config().URLs; len(got) != 1 || got[0] != url {
+		t.Fatalf("origin URLs = %v, want [%s]", got, url)
+	}
+
+	// HEAD points at refs/heads/master (matches the config-sync push branch)
+	head, err := repo.Reference(plumbing.HEAD, false)
+	if err != nil {
+		t.Fatalf("cannot read HEAD: %v", err)
+	}
+	if want := plumbing.NewBranchReferenceName("master"); head.Target() != want {
+		t.Fatalf("HEAD target = %s, want %s", head.Target(), want)
+	}
+
+	// idempotent: calling again on the now-initialized dir must not error and
+	// must keep a single origin remote.
+	if _, err := cm.initRepositoryForEmptyRemote(workDir, url); err != nil {
+		t.Fatalf("second initRepositoryForEmptyRemote (existing repo) failed: %v", err)
+	}
+	if _, err := repo.Remote("origin"); err != nil {
+		t.Fatalf("origin remote lost after second init: %v", err)
+	}
+}
