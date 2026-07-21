@@ -10,6 +10,10 @@ marketplace are advertised **asynchronously** (git-pull cadence, no live polling
 > Office (BO) that aggregates and ships `peer.json` is a separate, private
 > service and is referenced here only by its contract (the shape of `peer.json`
 > and the git `.pull` cadence) — no BO internals.
+>
+> Prerequisite: everything here assumes the repman has already **joined Cloud18**.
+> For how a repman registers (domain ownership, the config/`-pull` repos, first
+> config-repo bootstrap), see [Cloud18 registration](../cloud18/REGISTRATION.md).
 
 ---
 

@@ -2,6 +2,11 @@
 
 This directory contains detailed implementation documentation for various features and components of replication-manager.
 
+## Cloud18 (community)
+
+- **cloud18/REGISTRATION.md** - Community onboarding A→Z: GitLab SSO login, first-claimant domain ownership, the config vs `-pull` repos, empty-remote config-repo bootstrap, GWARN002 troubleshooting
+- **peer/MARKETPLACE.md** - What registration unlocks: `peer.json` community feed, for-sale listings, delegated cross-repman access and health
+
 ## Build & Release
 
 - **CI_RELEASE_PIPELINE.md** - GitHub Actions CI/release pipeline map (Jenkins is retired): package/repo publication, docker images, release assets, tag naming rules
