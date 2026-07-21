@@ -1,16 +1,19 @@
 # Cloud18 Credit / Unit Model
 
-**Status:** SPEC + rationale + open decisions. The model is **largely implemented** on branch
-`origin/marketplace-pricing` (caffeinated92 / Ahmad) — see [§3.4](#34-implemented-on-the-marketplace-pricing-branch-ahmad).
-This doc explains *why* the model is shaped this way, records what the branch already decided,
-and narrows the remaining open questions ([§4](#4-unitusage--implemented-vs-open),
-[§7](#7-known-inconsistencies--broken-definitions)).
+**Status:** SPEC + rationale + implementation notes + remaining open decisions. The model is
+**largely implemented** on branch `origin/marketplace-pricing` (caffeinated92 / Ahmad) — see
+[§3.4](#34-implemented-on-the-marketplace-pricing-branch-ahmad). This doc keeps the original model
+and rationale as the base, and now annotates the implementation direction from
+`CLOUD18_CREDIT_MODEL_IMPLEMENTATION_PLAN.md` where the branch intentionally diverges, stages the
+rollout, or defers a feature.
 
 **Scope:** how Cloud18 service plans map to *units* (a.k.a. "credits"), the workload-profile
 taxonomy, the ratio-lock rule, and the concrete implementation. Related code: `config/`
-(`ServicePlan`, `AppUnit*`, the `Cloud18Marketplace*` fields), `cluster/` (`app_set.go` unit
-math, `cluster.go` `ComputeDatabaseUnits`/`ComputeApplicationUnits`, `cluster_set.go` plan
-apply), `configurator/` (auto-tuning), and `server/api_global_settings.go` (pricing settings).
+(`ServicePlan`, `AppUnit*`, `marketplace_ratio.go`, the `Cloud18Marketplace*` fields), `cluster/`
+(`app_set.go` unit math, `cluster_marketplace_ratio.go`, `cluster.go`
+`ComputeDatabaseUnits`/`ComputeApplicationUnits`, `cluster_set.go` plan apply), `configurator/`
+(auto-tuning), and `server/api_global_settings.go` / `server/api_cluster.go` (pricing settings and
+atomic DBU resize path).
 
 ---
 
@@ -51,6 +54,11 @@ different on every instance and cross-partner price comparison — the whole poi
 marketplace — would collapse (a partner could look "cheap" just by shrinking the unit). Ratios
 are **global and enforced**; only €/unit is per-partner. (Compute/Storage workloads may allow
 looser sizing — the strict lock is specifically the **Database** unit.)
+
+> **Implementation note — enforcement scope.** The implementation plan enforces this strict DB
+> ratio specifically when `cloud18-marketplace-pricing-mode == global-unit-pricing`. Root cause:
+> cross-partner comparability is only at risk once price is being derived from the locked ratio.
+> Outside that mode, replication-manager still supports in-house / advanced custom sizing.
 
 **Three unit types, by workload profile:**
 
@@ -115,6 +123,13 @@ So the CSV plan survives as the **enforcement / override** lane for promos and t
 price, while per-unit removes the day-to-day list upkeep for everything else. *Open detail:*
 whether the CSV fully replaces per-unit for a cluster (a hard mode switch — Ahmad's current
 model) or only **overrides those specific parts** (promo, db+proxy) on top of a per-unit base.
+
+> **Implementation note — current mode behavior.** The implementation plan uses a **hard price
+> source switch** for now: `csv-service-plan` keeps bundled plan pricing/promo, while
+> `global-unit-pricing` keeps plans only as sizing shortcuts and derives price from units.
+> Root cause: avoid mixed price authorities while unit accounting, DBU plan mapping, and App Unit
+> accounting stabilize. Promotion / discount handling in unit pricing is explicitly deferred and
+> will be a later pricing-layer feature, not part of raw unit accounting.
 
 ## 3. What already exists in code
 
@@ -196,8 +211,12 @@ ConstMarketplacePricingModeCsvServicePlan    = "csv-service-plan"     // legacy 
 ConstMarketplacePricingModeGlobalUnitPricing = "global-unit-pricing"  // the unit model
 Cloud18MarketplacePricingMode string `scope:"server" ...`             // per-instance selector
 ```
-Commit *"disable cluster plans in unit pricing"* turns the CSV service-plans off in unit mode
-— i.e. §2.1 made real: in unit mode, plans (shortcuts) step aside and units drive pricing.
+**Plans remain shortcuts in both modes, but unit mode rebuilds DB shape from DBU.** The current
+implementation direction keeps `prov-service-plan` as a deployment shortcut in both modes (§2.1),
+but in `global-unit-pricing` the Database shape is rebuilt from a **plan suffix → per-node DBU**
+mapping instead of using the raw CSV DB resource columns. Root cause: the legacy CSV DB resource
+rows are often off-ratio for the strict Database Unit, so using them directly would reintroduce
+non-comparable Database shapes into unit pricing.
 
 **Database Units** (`cluster/cluster.go` + `cluster_marketplace_units_test.go`):
 ```
@@ -210,21 +229,39 @@ disk=160→4, iops=4000→4). **IOPS is counted** — this is the fix for §7.2.
 
 **Application Units** (== our "Compute" unit) (`cluster/cluster.go`):
 ```
+// historical branch baseline
 ComputeApplicationUnits() = Cloud18ApplicationCreditsUsed + Σ(live proxy) prov-proxy-cores
 ```
 i.e. reserved app credits plus each *running* proxy's cores.
 
+> **Implementation note — Application Unit model superseded.** The implementation plan treats the
+> formula above as the historical branch baseline, not the final model. The target model is:
+> **resource-derived App Units per app/OpenSVC node × app/OpenSVC node count**, plus the same App
+> Unit ratio applied to live proxies. Root cause: app credits are not a stable technical accounting
+> signal for flex/failover/multi-node app deployments, while resource-per-node accounting is.
+
 **Persisted for the BO** — `DatabaseUnits` / `ApplicationUnits` (float, `json:"..."`) are
 written on cluster save so the BO can price = `units × €/unit`.
+
+> **Implementation note — export boundary.** `clusterstate.json` is the clean technical persistence
+> path for unit totals. If the BO/export pipeline only scans another artifact (for example TOML or
+> a repo-driven extraction path), implementation may temporarily mirror/export the computed values
+> through that path too. Root cause: BO integration boundaries, not a change in the unit model.
 
 **Global per-partner pricing settings** (all `scope:"server"`, `server/api_global_settings.go`
 + `MarketplaceSettings.jsx`): `cloud18-marketplace-dbu-price` (€/Database unit),
 `cloud18-marketplace-app-unit-price` (€/Application unit), `cloud18-application-credits(-price)`,
 plus marketplace-level infra/SLA/cert/currency metadata (moved up from per-plan to per-partner).
 
-**Not yet on the branch:** the **Storage** unit (Database + Application only), and enforcement
-of the ratio lock on *user* DB sizing (§2 is stated policy; the branch prices units but does
-not yet forbid off-ratio provisioning).
+**Future work note:** the **Storage** unit, promotion / discount handling in
+`global-unit-pricing`, and the App HA commercial discount layer for failover vs flex are all
+intentionally deferred out of this implementation phase; see [§9](#9-future-goals-roadmap) and
+`CLOUD18_APP_HA_DISCOUNT_PLAN.md`.
+
+**DB ratio-lock enforcement is now part of the implementation direction.** The plan scopes strict
+DB enforcement to `global-unit-pricing` and uses an **atomic Database Unit resize action** rather
+than four independent `prov-db-*` writes. Root cause: the ratio is only commercially binding in
+unit pricing, and per-field writes would otherwise create transient off-ratio states mid-update.
 
 ## 4. `UnitUsage` — implemented vs open
 
@@ -243,31 +280,37 @@ Naming: our taxonomy's **Compute** unit is called **Application Units** in code,
 *live proxy cores* on top of reserved app credits (§3.4). IOPS is locked only for the Database
 unit — matching §2.
 
-**Current branch behavior (implementation choices — NOT settled policy; Stephane signs off):**
+**Current branch behavior (implementation choices — NOT settled policy in the original model):**
 - **Total = per-node × node count** — `ComputeDatabaseUnits` multiplies `ComputeDBUPerNode` by
-  the DB-server count. This is *provisional* and is exactly what open decision 1 below may
-  change.
+  the DB-server count. The original model treated this as provisional because the published
+  Database credit bundled HA language, but the implementation plan locks this as the current
+  technical counting rule for `global-unit-pricing`.
 - **IOPS is in the Database unit** — §7.2 fixed (a correct fix, not a contested call).
-- **Plans yield to units** in `global-unit-pricing` mode — §7.6 direction.
+- **Plans remain shortcuts** in `global-unit-pricing`, but DB sizing is rebuilt from the appendix
+  DBU mapping rather than from raw CSV DB resource columns.
+- **Application Unit target model** is now resource-per-node × app/OpenSVC node count; the older
+  app-credit formula should be treated as historical branch context.
 
-**Open — Stephane decides (architecture/pricing policy, not the implementer):**
-1. **HA vs node count (§7.3)** — *the* main open question. The published Database credit
-   bundles "HA 1–2 replicas" *inside* one credit, but `ComputeDatabaseUnits` multiplies by
-   every node. Pick one: replica nodes are **free** (bundled), or **each node counts**.
+**Open in the original model / expectation:**
+1. **HA vs node count (§7.3)** — *the* main original open question. The published Database credit
+   bundles "HA 1–2 replicas" *inside* one credit, but `ComputeDatabaseUnits` multiplies by every
+   node. Pick one: replica nodes are **free** (bundled), or **each node counts**.
 2. **Storage unit ratio** — disk-dominant, low cpu/mem (e.g. `{0, 1024, 100, 0}` → ~one unit
    per 100 GB) so bulk NVMe/backup bills as storage, not DB. Not implemented yet.
 3. **Ratio-lock *enforcement*** — §2 is stated policy; the branch prices units but does not yet
    *forbid* a user from provisioning a DB off-ratio. Enforce, or advisory-only?
 
-**Ruling in progress (Stephane, 2026-07-20): a backup counts as 1 Database unit.** A backup is a
-full DB-sized copy, so instead of pricing its storage separately it adds a flat **+1 Database
-unit** to the cluster's `ComputeDatabaseUnits`. Not on the branch yet — debrief Ahmad to add it.
-Two points to pin:
-- **Per-backup or flat?** +1 for *each* backup line/destination, or +1 if any backup is enabled?
-  (And do the 8 retained snapshots count, or just the live backup?)
-- **Reconcile with the published credit**, which already bundles *"1 backup / 8 snapshots"* per
-  Database credit — so either the first backup is "included" (extra ones count) or every backup
-  counts and the published text is updated.
+> **Implementation note — current phase choices.** For the current implementation phase,
+> `global-unit-pricing` uses **each DB node counts** as the technical DBU rule, scopes strict DB
+> ratio-lock enforcement to unit pricing, and defers Storage, promotion/discount in unit pricing,
+> and App HA commercial discount to future work. Root cause: lock down one clean technical unit
+> model first, then add commercial overlays later.
+
+**Implementation note — current backup handling:** when backup is enabled, current branch behavior
+adds a flat **+1 Database Unit** to `ComputeDatabaseUnits`. Root cause: storage pricing is still
+deferred, so backup is temporarily folded into DBU instead of being modeled as its own storage
+priced line. Retained snapshots are not counted individually. This is an implementation staging
+choice, not the final Storage-unit design.
 
 ### 4.1 App lifecycle — running vs stopped changes what it consumes
 
@@ -287,6 +330,11 @@ zero and only the storage footprint remains billable. This is a concrete driver 
 **Storage unit** (§4.2) — idle/stopped app data is priced as storage, not compute — and it feeds
 the delta reconciliation (§9.2): a stopped app naturally falls *below* its plan baseline → refund.
 
+> **Implementation note — App HA discount is separate.** The future commercial difference between
+> **failover** apps (active-standby, shared storage) and **flex** apps (active-active, non-shared
+> storage) is intentionally deferred to `CLOUD18_APP_HA_DISCOUNT_PLAN.md`. Root cause: it changes
+> billed app price, not the technical `ApplicationUnits` count.
+
 ## 5. Pricing: today vs the credit model
 
 | | Today (code) | Website / target |
@@ -298,6 +346,11 @@ the delta reconciliation (§9.2): a stopped app naturally falls *below* its plan
 
 **Phase 2** (not this doc): partner sets €/credit; total = `UnitUsage × €/credit`; optional
 metered consumption.
+
+> **Implementation note — current price-source discipline.** The implementation plan treats
+> `global-unit-pricing` as a hard technical price-source switch: unit accounting first, later
+> commercial overlays second. Promotions/discounts in unit pricing are deferred so the branch does
+> not have two competing price authorities while the unit model stabilizes.
 
 ## 6. Appendix — units per current plan (computed)
 
@@ -346,15 +399,18 @@ These are the things to resolve — the model as published + implemented does no
    `AppUnit`/`deriveUnitFromStoredResources` still has no IOPS term — correct there, since
    Application units don't lock IOPS.)
 
-3. **Do HA replica nodes count, or are they "free"? — decide on resource reality, not the copy.**
+3. **Do HA replica nodes count, or are they "free"? — original model question kept.**
    `ComputeDatabaseUnits` multiplies `ComputeDBUPerNode` by **every** DB server, so a 3-node HA
-   cluster bills 3× the per-node units. The marketing copy says "HA 1–2 replicas" is bundled in
-   one credit — but that is a *packaging claim*, not a spec, and technically each replica is a
-   real node consuming real cores/mem/disk. So the technically-honest default is that **each
-   node counts** (`× node_count`); "bundling HA" would be a deliberate commercial giveaway.
+   cluster bills 3× the per-node units technically. The marketing copy says "HA 1–2 replicas" is
+   bundled in one credit — but that is a *packaging claim*, not a spec, and technically each
+   replica is a real node consuming real cores/mem/disk. So the technically-honest default is that
+   **each node counts** (`× node_count`); "bundling HA" would be a deliberate commercial giveaway.
    Decide on technical + business grounds — and if replicas are billed, **update the marketing
-   copy to match**, not the code. §4 open decision 1. (Legacy `SetServicePlan`,
-   `cluster_set.go:1552`, separately gates `xN == len(db-servers-hosts)`.)
+   copy to match**, not the code. §4 original open decision 1.
+
+   **Implementation note:** the current implementation phase for `global-unit-pricing` uses **each
+   node counts** as the technical DBU rule. Any future HA concession should be a pricing-layer
+   discount, not a change to raw DBU counting.
 
 4. **`.compute` cores are "free" under the credit model but not under absolute €.** When mem
    binds, extra cores don't raise the credit count (`x2.small` and `x2.small.compute` are
@@ -367,10 +423,10 @@ These are the things to resolve — the model as published + implemented does no
 6. **Two pricing sources — coexisting *by design*.** `csv-service-plan` = enforced exact prices
    from the sheet (partner maintains it), kept specifically to **enforce promos and lock the
    db+proxy price** (§2.1); `global-unit-pricing` = derived `UnitUsage × €/unit`, no list to
-   maintain (the goal). Not a bug, not a reason to retire the CSV. *Open:* whether the CSV fully
-   replaces per-unit for a cluster (mode switch — current impl) or only **overrides** the promo /
-   db+proxy parts on a per-unit base. Either way the price source must be unambiguous per cluster
-   (`Cloud18MarketplacePricingMode` authoritative) so the cluster and the catalogue agree.
+   maintain (the goal). Not a bug, not a reason to retire the CSV. **Implementation note:** the
+   current implementation plan uses a **hard mode switch** for now, and explicitly defers
+   promotions/discounts in `global-unit-pricing`. Root cause: keep price authority unambiguous
+   while the unit model stabilizes.
 
 7. **Silent price failures (already documented in the plan-apply path).**
    - Count-gate mismatch → `SetServicePlan` returns *"Plan not possible for that cluster"*
@@ -382,26 +438,36 @@ These are the things to resolve — the model as published + implemented does no
 
 ## 8. Status & next steps
 
-**Done on `marketplace-pricing` (Ahmad):** pricing-mode switch (`csv-service-plan` vs
-`global-unit-pricing`); `ComputeDBUPerNode` / `ComputeDatabaseUnits` (Database units, IOPS
-included); `ComputeApplicationUnits` (app credits + live proxy cores); per-partner €/unit +
-marketplace metadata settings; units persisted on the cluster for the BO; plans disabled in
-unit mode; tests + Marketplace GUI.
+**Done / implementation-plan-locked on `marketplace-pricing` (Ahmad):** pricing-mode switch
+(`csv-service-plan` vs `global-unit-pricing`); `ComputeDBUPerNode` /
+`ComputeDatabaseUnits` (Database units, IOPS included, each DB node counts); per-partner €/unit +
+marketplace metadata settings; plans kept as shortcuts but with unit-mode DB shape rebuilt from
+appendix DBU mapping; DB ratio-lock enforcement scoped to `global-unit-pricing`; atomic DBU resize
+path as the implementation choice; Application Unit target model locked to resource-per-node ×
+app/OpenSVC node count; units persisted/exported for BO consumption; tests + Marketplace GUI.
 
-**Remaining:**
-1. **Resolve §7.3 (HA vs `× node_count`)** — the one blocking design call.
-2. **Storage unit** — decide the ratio (§4.2), add `ComputeStorageUnits` + a
-   €/storage-unit price, mirroring the Database/Application paths.
-3. **Enforce the ratio lock (§2)** on *user* DB sizing — reject or snap off-ratio provisioning
-   to whole Database units so the configurator never gets an unbalanced shape.
-4. **Retire per-plan absolute €** once unit pricing is default (§7.6), or keep
+**Remaining in the current implementation phase:**
+1. **Retire per-plan absolute €** once unit pricing is default (§7.6), or keep
    `csv-service-plan` as a legacy-only mode.
-5. Legacy silent-price failures (§7.7) are moot in unit mode but live while `csv-service-plan`
+2. Legacy silent-price failures (§7.7) are moot in unit mode but live while `csv-service-plan`
    remains.
+3. Any BO/export/catalog integration path that cannot yet consume the clean unit outputs directly
+   may still need explicit export wiring. Root cause: integration boundaries, not the unit model
+   itself.
 
 ## 9. Future goals (roadmap)
 
 These build on the unit model above; not scoped yet, captured so the design points that way.
+
+0. **Deferred marketplace pricing work from this phase.** These are acknowledged parts of the
+   model, but intentionally not implemented in the current phase:
+   - **Storage unit** — define a storage ratio and price bulk-disk/backup as storage instead of
+     temporarily folding some cases into Database Units.
+   - **Promotion / discount in `global-unit-pricing`** — keep technical unit accounting hard first,
+     then add commercial overlays later.
+   - **App HA commercial discount (failover vs flex)** — tracked separately in
+     `CLOUD18_APP_HA_DISCOUNT_PLAN.md`; this changes billed app price, not technical
+     `ApplicationUnits`.
 
 1. **Live OpenSVC cgroup-binding integration.** Bind unit accounting to OpenSVC's live cgroup
    resource control API (the "linux kernel virtualization using CGROUP" the infra already uses),
