@@ -5,6 +5,10 @@ distributed to servers at runtime through the signed-plugin store. This note def
 publishes to that store, and when** — the rule that keeps the store consistent with what
 servers actually run.
 
+The publisher lives inside the release pipeline; for the full CI map (workflows, triggers,
+package/repo publication, tag naming rules) see
+[CI_RELEASE_PIPELINE.md](CI_RELEASE_PIPELINE.md).
+
 ## The rule
 
 > **Publishing is opt-in and single-owner.** A build publishes plugins **only** when it is

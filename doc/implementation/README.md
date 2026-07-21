@@ -2,6 +2,11 @@
 
 This directory contains detailed implementation documentation for various features and components of replication-manager.
 
+## Build & Release
+
+- **CI_RELEASE_PIPELINE.md** - GitHub Actions CI/release pipeline map (Jenkins is retired): package/repo publication, docker images, release assets, tag naming rules
+- **BUILD_PLUGIN_PUBLISHING.md** - Log-plugin publishing ownership (single publisher, `PLUGIN_PUSH` gate)
+
 ## Directory Structure
 
 ### `/restart-cookie/`
