@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	gogitcfg "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	git_obj "github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -826,7 +827,47 @@ func (cm *ConfigManager) cloneRepositoryWithBootstrap(path string, conf *config.
 		repo, cloneErr = git.PlainClone(path, false, cloneopt)
 	}
 
+	// A freshly-created remote project has no commits: PlainClone returns
+	// ErrEmptyRemoteRepository and cannot establish a working tree. Clone can't
+	// bootstrap a bare remote, so initialize a local repository pointed at the
+	// same URL — the caller's add/commit/push then lands the first commit and
+	// creates the remote's default branch. Without this the repo stays empty
+	// forever and GWARN002 ("empty remote repository") re-fires every sync.
+	// (Regression: the pre-ConfigManager push path handled empty remotes;
+	// cloneRepositoryWithBootstrap only covered repository-not-found.)
+	if errors.Is(cloneErr, transport.ErrEmptyRemoteRepository) {
+		return cm.initRepositoryForEmptyRemote(path, cloneopt.URL)
+	}
+
 	return repo, cloneErr
+}
+
+// initRepositoryForEmptyRemote initializes a local git repository at path with
+// an "origin" remote at url, so a subsequent commit+push bootstraps the first
+// commit into an empty remote. The default branch is "master", matching the
+// branch the config-sync worker commits and pushes on (ResolveCurrentLocalBranch).
+func (cm *ConfigManager) initRepositoryForEmptyRemote(path, url string) (*git.Repository, error) {
+	cm.logger.Warnf("none", config.ConstLogModGit,
+		"Remote repository %s is empty; initializing local repository to bootstrap the first commit", url)
+
+	repo, err := git.PlainInit(path, false)
+	if err != nil {
+		if !errors.Is(err, git.ErrRepositoryAlreadyExists) {
+			return nil, fmt.Errorf("empty-remote bootstrap: cannot init repo at %s: %w", path, err)
+		}
+		if repo, err = git.PlainOpen(path); err != nil {
+			return nil, fmt.Errorf("empty-remote bootstrap: cannot open existing repo at %s: %w", path, err)
+		}
+	}
+
+	if _, err = repo.CreateRemote(&gogitcfg.RemoteConfig{
+		Name: "origin",
+		URLs: []string{url},
+	}); err != nil && !errors.Is(err, git.ErrRemoteExists) {
+		return nil, fmt.Errorf("empty-remote bootstrap: cannot set origin remote %s: %w", url, err)
+	}
+
+	return repo, nil
 }
 
 func (cm *ConfigManager) swapGitMetadata(workDir, stagedGitDir string) error {
