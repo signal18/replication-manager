@@ -21,7 +21,9 @@ jobs:
     name: Build Linux Packages and Publish Repos
     runs-on: [self-hosted, linux, x64]
 
-    timeout-minutes: 20
+    # Full run (amd64 + arm64 build + both repo publishes) takes ~20-21 min;
+    # the previous 20 min limit killed the RPM publish mid-run on 2026-07-21.
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -39,6 +41,13 @@ jobs:
           fi
           echo "Checking out $tag"
           git checkout "$tag"
+
+      # On workflow_dispatch GITHUB_REF_NAME is 'develop' while the publish
+      # steps read /builds/v<tag> — resolve the checked-out tag once and use
+      # it everywhere so built artifacts and published artifacts always match.
+      - name: Resolve build tag
+        id: buildtag
+        run: echo "tag=$(git describe --tags --exact-match 2>/dev/null || echo "${GITHUB_REF_NAME}")" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go 1.25
         uses: actions/setup-go@v5
@@ -77,7 +86,7 @@ jobs:
           PLUGIN_PUSH: "ON"
         run: |
           echo "::add-mask::${PLUGIN_SIGNER_USER}:${PLUGIN_SIGNER_TOKEN}"
-          branch="${GITHUB_REF_NAME}"
+          branch="${{ steps.buildtag.outputs.tag }}"
           mkdir -p /builds/"$branch"
           bash -x ./package_linux.sh
           mv build/release/* /builds/"$branch"/
@@ -94,14 +103,14 @@ jobs:
           PLUGIN_PUSH: "ON"
         run: |
           echo "::add-mask::${PLUGIN_SIGNER_USER}:${PLUGIN_SIGNER_TOKEN}"
-          branch="${GITHUB_REF_NAME}"
+          branch="${{ steps.buildtag.outputs.tag }}"
           export architecture=arm64
           bash -x ./package_linux.sh
           mv build/release/* /builds/"$branch"/
 
       - name: Publish DEB repo
         run: |
-          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          tag="${{ steps.buildtag.outputs.tag }}"
           cleantag="${tag#v}"
           docker run --rm \
             -v /root/.gnupg:/root/.gnupg \
