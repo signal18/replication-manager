@@ -76,12 +76,16 @@ The project provides multiple Docker image variants for different deployment sce
 - `Dockerfile.slim_rootless` - Slim rootless
 - `Dockerfile.dev_rootless` - Dev rootless
 
-**Jenkins CI/CD Pipeline**:
+**CI/CD Pipeline (GitHub Actions — Jenkins is retired)**:
 
-Automated builds create tagged images:
-- Standard tags: `latest`, `pro`, `slim`, `dev`, `{TAG_NAME}`
-- Rootless tags: `latest-rootless`, `pro-rootless`, `{TAG_NAME}-rootless`
-- Nightly builds: `nightly`, `nightly-rootless`
+All builds run from `.github/workflows/` (the root `Jenkinsfile` is dead code). See
+`doc/implementation/CI_RELEASE_PIPELINE.md` for the full map. Docker images built by
+`docker-build-push.yml`:
+- Release tags (on `v*` tag push): `{TAG_NAME}`, `latest`, `{TAG_NAME}-pro`, `{TAG_NAME}-slim`, `{TAG_NAME}-arb`, `arb` + `-rootless` variants
+- Branch builds (push to `develop`): `nightly`, `nightly-rootless`, `nightly-arb`, `dev`, `dev-rootless`
+
+Packages (DEB/RPM) and signed plugins are published by `build-packages.yml` on tag push;
+release binaries, SBOM, and changelog run on GitHub release publication.
 
 **Local Development**:
 ```bash
