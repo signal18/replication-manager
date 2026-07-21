@@ -127,6 +127,8 @@ function BackupSettings({ selectedCluster, user }) {
   const hMydumperOptions = `**Mydumper Options**\n\nAdditional command-line flags passed to mydumper.\n\nConfig: \`backup-mydumper-options\``
   const hMydumperRegex = `**Mydumper Regex**\n\nRegular expression to filter which tables mydumper includes in the backup.\n\nConfig: \`backup-mydumper-regex\``
   const hMyloaderOptions = `**Myloader Options**\n\nAdditional command-line flags passed to myloader during restore.\n\nConfig: \`backup-myloader-options\``
+  const hLoadThreads = `**Logical Restore Threads**\n\nNumber of parallel threads used when restoring a logical/splitdump backup (passed as \`--threads\` to myloader/splitdump).\nHigher values speed up restore at the cost of more CPU and I/O on the target. Default: 2.\n\nConfig: \`backup-logical-load-threads\``
+  const hDumpThreads = `**Logical Dump Threads**\n\nNumber of parallel threads used when taking a logical/splitdump backup.\nHigher values speed up the dump at the cost of more load on the source. Default: 2.\n\nConfig: \`backup-logical-dump-threads\``
   const hSplitUser = `**Split Logical Dump with DB Credentials**\n\nWhen enabled, the logical dump is split into per-database files using the database credentials for each.\n\nConfig: \`backup-split-mysql-user\``
   const hRestoreUser = `**Restore User When Reseed**\n\nWhen enabled, MySQL user accounts and grants are restored as part of the reseed process.\n\nConfig: \`backup-restore-mysql-user\``
   const hPhysicalBackup = `**Physical Backup**\n\nSelects the tool used for physical backups (xtrabackup, mariabackup, etc.).\nPhysical backups copy raw data files and are faster to restore for large datasets.\n\nConfig: \`backup-physical-type\``
@@ -301,6 +303,24 @@ function BackupSettings({ selectedCluster, user }) {
         <TextForm value={selectedCluster?.config?.backupMyLoaderOptions} confirmTitle={`Confirm backup-myloader-options to `}
           maxLength={1024} className={styles.textbox}
           onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-myloader-options', value: btoa(value) }))} />
+      )
+    },
+    {
+      key: 'Logical Restore Threads',
+      help: h(hLoadThreads, 'Logical Restore Threads'),
+      value: (
+        <NumberInput min={1} max={64} value={selectedCluster?.config?.backupLogicalLoadThreads}
+          showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change logical restore threads to: `}
+          onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-logical-load-threads', value }))} />
+      )
+    },
+    {
+      key: 'Logical Dump Threads',
+      help: h(hDumpThreads, 'Logical Dump Threads'),
+      value: (
+        <NumberInput min={1} max={64} value={selectedCluster?.config?.backupLogicalDumpThreads}
+          showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change logical dump threads to: `}
+          onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-logical-dump-threads', value }))} />
       )
     },
     {
