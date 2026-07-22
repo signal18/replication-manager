@@ -95,3 +95,24 @@ func TestIsValidACL_AuthGuards(t *testing.T) {
 		}
 	})
 }
+
+// TestIsLocalOnlyAccount checks the single-source-of-truth helper shared by
+// IsValidACL's OIDC branch and the OIDC-callback collision guard.
+func TestIsLocalOnlyAccount(t *testing.T) {
+	c := newAuthGuardCluster() // Cloud18GitUser = "owner"
+	c.APIUsers["dba"] = APIUser{User: "dba", Password: "secret"}       // local
+	c.APIUsers["peer@corp.com"] = APIUser{User: "peer@corp.com"}       // SSO (no password)
+	c.APIUsers["owner"] = APIUser{User: "owner", Password: "gitlabpw"} // owner, exempt
+
+	cases := map[string]bool{
+		"dba":           true,  // password-protected -> local only
+		"peer@corp.com": false, // passwordless -> SSO
+		"owner":         false, // Cloud18GitUser exempt despite password
+		"ghost":         false, // unknown
+	}
+	for user, want := range cases {
+		if got := c.IsLocalOnlyAccount(user); got != want {
+			t.Errorf("IsLocalOnlyAccount(%q) = %v, want %v", user, got, want)
+		}
+	}
+}

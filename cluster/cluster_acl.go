@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"slices"
 	"sort"
@@ -107,6 +108,21 @@ func (u *APIUser) Granted(grant string) error {
 //   - no password        => SSO identity. Authenticated by OIDC only; local
 //     password auth is refused — an empty stored or submitted password must
 //     never authenticate, closing the blank-password bypass.
+// IsLocalOnlyAccount reports whether strUser is a local (password-protected)
+// account that must authenticate by password only — SSO must never bind or
+// authenticate it, or a same-named GitLab identity would ride its ACL. The
+// registering owner (Cloud18GitUser) is exempt: it authenticates via SSO despite
+// carrying a GitLab password. Single source of truth for the auth-model
+// invariant, used by IsValidACL's OIDC branch and the OIDC callback's collision
+// guard in server/api.go.
+func (cluster *Cluster) IsLocalOnlyAccount(strUser string) bool {
+	user, ok := cluster.APIUsers[strUser]
+	if !ok {
+		return false
+	}
+	return user.Password != "" && strUser != cluster.Conf.Cloud18GitUser
+}
+
 func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL string, AuthMethod string) bool {
 	user, ok := cluster.APIUsers[strUser]
 	if !ok {
@@ -115,8 +131,8 @@ func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL strin
 
 	if AuthMethod == "oidc" {
 		// A password-protected account is local; SSO cannot authenticate it
-		// (except the registering owner, whose credential is a GitLab password).
-		if user.Password != "" && strUser != cluster.Conf.Cloud18GitUser {
+		// (except the registering owner). Same rule the collision guard uses.
+		if cluster.IsLocalOnlyAccount(strUser) {
 			return false
 		}
 		return cluster.IsURLPassACL(strUser, URL, true)
@@ -127,7 +143,7 @@ func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL strin
 	if user.Password == "" || strPassword == "" {
 		return false
 	}
-	if user.Password == cluster.Conf.GetDecryptedPassword("api-credentials", strPassword) {
+	if subtle.ConstantTimeCompare([]byte(user.Password), []byte(cluster.Conf.GetDecryptedPassword("api-credentials", strPassword))) == 1 {
 		return cluster.IsURLPassACL(strUser, URL, true)
 	}
 	return false
@@ -140,7 +156,7 @@ func (cluster *Cluster) GetAPIUser(strUser string, strPassword string) (APIUser,
 		if user.Password == "" || strPassword == "" {
 			return APIUser{}, fmt.Errorf("incorrect password")
 		}
-		if user.Password == strPassword {
+		if subtle.ConstantTimeCompare([]byte(user.Password), []byte(strPassword)) == 1 {
 			return user, nil
 		}
 		return APIUser{}, fmt.Errorf("incorrect password")
