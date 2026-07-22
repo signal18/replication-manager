@@ -87,9 +87,26 @@ instead of hanging. Cancelling frees the pipes → `wg.Wait()` returns → the c
 clears. **One fix resolves the hang, the pinned source transaction, and the ghost
 state.**
 
-`backup-write-stall-timeout` (seconds, default **300**; `0` disables) — a *stall*
-timeout, not a total-time cap, so legitimately long dumps are unaffected; only a backup
-that stops making progress is aborted.
+`backup-write-stall-timeout` (seconds, default **300**; `0` disables, negative
+logs a warning and disables) — a *stall* timeout, not a total-time cap, so
+legitimately long dumps are unaffected; only a backup that stops making progress
+is aborted.
+
+**Detection latency.** The watchdog samples every `stallTimeout/4` (min 1s) and
+confirms over four idle samples, so the abort lands up to
+`stallTimeout + checkInterval` after progress stops (~375s at the 300s default).
+
+**Best-effort against a *hard*-hung mount, not a guarantee.** Cancellation relies
+on `exec.CommandContext` sending `SIGKILL`. That frees a normal subprocess, but a
+process wedged in uninterruptible sleep (**D-state**) on a hard-hung NFS-style
+mount will not die on `SIGKILL`, and its pipe reader/writer goroutines cannot
+unwind. So after cancelling, the wait on those goroutines is **bounded**
+(`backupStallLeakGrace`, 60s): if they still haven't finished, the backup returns
+the stall error and **leaks** the stuck goroutine rather than hanging forever
+(only a mount recovery or a repman restart can free a D-state process). This
+guarantees the *backup call* unwinds — clearing `InLogicalBackup` and releasing
+the source transaction — even in the worst case; it does not guarantee the OS
+process is gone.
 
 ### Secondary: stop taxing the monitoring hot path (defect #3)
 

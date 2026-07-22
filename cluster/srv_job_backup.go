@@ -2067,6 +2067,37 @@ func backupStallWatchdog(done <-chan struct{}, cancel context.CancelFunc, progre
 	}
 }
 
+// backupStallLeakGrace is how long, after the stall watchdog has cancelled, we
+// still wait for the backup's reader/pipeline goroutines to unwind before giving
+// up on them. SIGKILL (from context cancel) frees a normal subprocess well within
+// this window; a subprocess wedged in uninterruptible sleep (D-state) on a
+// hard-hung mount never dies, so we stop waiting and leak it rather than hang the
+// backup forever.
+const backupStallLeakGrace = 60 * time.Second
+
+// boundedWait blocks until wg completes. If `fired` is signalled (the stall
+// watchdog cancelled) and wg still hasn't completed after `grace`, it returns
+// true — the goroutine is stuck (e.g. a subprocess in uninterruptible sleep on a
+// hung mount that SIGKILL can't free) and must be treated as leaked so the caller
+// can return instead of blocking indefinitely. Returns false on normal
+// completion. The internal waiter goroutine leaks with wg only in the true case,
+// which is exactly the unavoidable hard-hung-mount scenario.
+func boundedWait(wg *sync.WaitGroup, fired <-chan struct{}, grace time.Duration) bool {
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	select {
+	case <-done:
+		return false
+	case <-fired:
+		select {
+		case <-done:
+			return false
+		case <-time.After(grace):
+			return true
+		}
+	}
+}
+
 func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filename string, allowRotate bool) error {
 	cluster := server.ClusterGroup
 	var err error
@@ -2202,6 +2233,11 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 	var bytesProgress atomic.Int64
 	var stalled atomic.Bool
 	stallDone := make(chan struct{})
+	stallFired := make(chan struct{})
+	if cluster.Conf.BackupWriteStallTimeout < 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"backup-write-stall-timeout is negative (%d) — the write-stall watchdog is DISABLED; use 0 to disable intentionally, or a positive number of seconds to enable", cluster.Conf.BackupWriteStallTimeout)
+	}
 	stallTimeout := time.Duration(cluster.Conf.BackupWriteStallTimeout) * time.Second
 	checkInterval := stallTimeout / 4
 	if checkInterval < time.Second {
@@ -2209,6 +2245,7 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 	}
 	go backupStallWatchdog(stallDone, dumpCancel, &bytesProgress, stallTimeout, checkInterval, func() {
 		stalled.Store(true)
+		close(stallFired)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
 			"Backup write stalled for %s with no output written (dead/hung backup volume?); aborting backup for %s", stallTimeout, server.URL)
 	})
@@ -2253,13 +2290,28 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 		}
 	}()
 
-	wg.Wait()
-	close(stallDone) // stop the watchdog now that the read loop is done
+	// Bounded wait: normally block until the reader goroutine unwinds, but if the
+	// watchdog cancelled and the subprocess is stuck in uninterruptible sleep
+	// (D-state, a hard-hung NFS-style mount) SIGKILL cannot free it and this wait
+	// would never return — so after backupStallLeakGrace give up, leak the stuck
+	// goroutine, and return the stall error. Best-effort mitigation for the
+	// hard-hung-mount case, not a hard guarantee — see BACKUP_DEAD_VOLUME_STALL.md.
+	leaked := boundedWait(&wg, stallFired, backupStallLeakGrace)
+	close(stallDone) // stop the watchdog
+	if leaked {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"Backup reader did not unwind %s after stall-cancel on %s (subprocess likely in uninterruptible sleep on a hung mount); leaking the stuck goroutine and returning stall error", backupStallLeakGrace, server.URL)
+		return fmt.Errorf("backup aborted: no output written for %s (dead/hung backup volume; subprocess stuck and unkillable)", stallTimeout)
+	}
 
 	// Collect all errors
 	var splitDumpErr, readErr error
 	if splitDumpPipeline != nil {
-		splitDumpPipeline.wg.Wait()
+		if boundedWait(splitDumpPipeline.wg, stallFired, backupStallLeakGrace) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Splitdump pipeline did not unwind %s after stall-cancel on %s (hung mount?); leaking and returning stall error", backupStallLeakGrace, server.URL)
+			return fmt.Errorf("backup aborted: no output written for %s (dead/hung backup volume; splitdump stuck and unkillable)", stallTimeout)
+		}
 		splitDumpErr = drainErrorChannel(splitDumpPipeline.errCh)
 		if splitDumpErr != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Splitdump error: %s", splitDumpErr)

@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -97,5 +98,31 @@ func TestBackupStallWatchdog_DisabledWhenZero(t *testing.T) {
 	}
 	if canceled.Load() {
 		t.Fatal("disabled watchdog cancelled the backup")
+	}
+}
+
+// TestBoundedWait covers the D-state / hard-hung-mount mitigation: a wait that
+// never completes must be abandoned (leaked=true) once the stall was fired, so
+// the backup returns instead of hanging forever; a completing wait returns false.
+func TestBoundedWait_LeaksStuckGoroutineAfterStall(t *testing.T) {
+	// completes normally, no stall → false
+	var wgOK sync.WaitGroup
+	wgOK.Add(1)
+	go func() { time.Sleep(10 * time.Millisecond); wgOK.Done() }()
+	if boundedWait(&wgOK, make(chan struct{}), 50*time.Millisecond) {
+		t.Fatal("boundedWait reported leak for a wg that completed")
+	}
+
+	// never completes + stall fired → leaked=true after grace
+	var wgStuck sync.WaitGroup
+	wgStuck.Add(1) // never Done() — simulates a D-state-wedged goroutine
+	fired := make(chan struct{})
+	close(fired) // watchdog already fired
+	start := time.Now()
+	if !boundedWait(&wgStuck, fired, 40*time.Millisecond) {
+		t.Fatal("boundedWait did not report leak for a stuck wg after stall fired")
+	}
+	if time.Since(start) < 30*time.Millisecond {
+		t.Fatal("boundedWait returned before the grace period elapsed")
 	}
 }
