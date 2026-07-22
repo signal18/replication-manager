@@ -1097,6 +1097,18 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 	r.Header.Get("Accept")
 
 	for _, cluster := range repman.Clusters {
+		// A password-protected account is a LOCAL account; SSO must never bind to
+		// it. If a GitLab identity matches a local account name, deny loudly so a
+		// real attempt to ride a reserved local name is visible in the security
+		// log. Uses cluster.IsLocalOnlyAccount — the single source of truth also
+		// enforced by IsValidACL's OIDC branch, so the two can't drift.
+		// NB: distinct from api_login_local_sso_mismatch (api_login_upgrade.go),
+		// which is "local login succeeded but the SSO upgrade was refused".
+		if cluster.IsLocalOnlyAccount(userInfo.Email) {
+			repman.logSecurityEvent("api_sso_local_collision", userInfo.Email, r.RemoteAddr,
+				"SSO denied: "+userInfo.Email+" is a password-protected local account; refusing to bind a GitLab identity to it")
+			continue
+		}
 		//validate user credentials
 		if cluster.IsValidACL(userInfo.Email, cluster.APIUsers[userInfo.Email].Password, r.URL.Path, "oidc") {
 			repman.ensureCRMSessionBootstrappedAsync(oauth2Token.AccessToken)

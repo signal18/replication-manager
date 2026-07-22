@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"slices"
 	"sort"
@@ -97,22 +98,65 @@ func (u *APIUser) Granted(grant string) error {
 	return v3.NewErrorResource(codes.PermissionDenied, v3.ErrGrantNotFound, "grant not found", "").Err()
 }
 
+// IsValidACL authenticates strUser for URL. The auth model is keyed on whether
+// the account carries a local password:
+//
+//   - password present  => LOCAL account. Authenticated by password only; SSO is
+//     refused (a same-named GitLab identity must never ride a local account's
+//     ACL). The registering owner (Cloud18GitUser) is the one SSO account that
+//     legitimately carries a credential, so it is exempt.
+//   - no password        => SSO identity. Authenticated by OIDC only; local
+//     password auth is refused — an empty stored or submitted password must
+//     never authenticate, closing the blank-password bypass.
+// IsLocalOnlyAccount reports whether strUser is a local (password-protected)
+// account that must authenticate by password only — SSO must never bind or
+// authenticate it, or a same-named GitLab identity would ride its ACL. The
+// registering owner (Cloud18GitUser) is exempt: it authenticates via SSO despite
+// carrying a GitLab password. Single source of truth for the auth-model
+// invariant, used by IsValidACL's OIDC branch and the OIDC callback's collision
+// guard in server/api.go.
+func (cluster *Cluster) IsLocalOnlyAccount(strUser string) bool {
+	user, ok := cluster.APIUsers[strUser]
+	if !ok {
+		return false
+	}
+	return user.Password != "" && strUser != cluster.Conf.Cloud18GitUser
+}
+
 func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL string, AuthMethod string) bool {
-	if user, ok := cluster.APIUsers[strUser]; ok {
-		if user.Password == cluster.Conf.GetDecryptedPassword("api-credentials", strPassword) || AuthMethod == "oidc" {
-			// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL URL check for user %s ", strUser)
-			return cluster.IsURLPassACL(strUser, URL, true)
-		}
+	user, ok := cluster.APIUsers[strUser]
+	if !ok {
 		return false
 	}
 
-	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL failed, user not found %s ", strUser)
+	if AuthMethod == "oidc" {
+		// A password-protected account is local; SSO cannot authenticate it
+		// (except the registering owner). Same rule the collision guard uses.
+		if cluster.IsLocalOnlyAccount(strUser) {
+			return false
+		}
+		return cluster.IsURLPassACL(strUser, URL, true)
+	}
+
+	// Local password auth: passwordless accounts are SSO-only, and a blank
+	// submitted password never authenticates.
+	if user.Password == "" || strPassword == "" {
+		return false
+	}
+	if subtle.ConstantTimeCompare([]byte(user.Password), []byte(cluster.Conf.GetDecryptedPassword("api-credentials", strPassword))) == 1 {
+		return cluster.IsURLPassACL(strUser, URL, true)
+	}
 	return false
 }
 
 func (cluster *Cluster) GetAPIUser(strUser string, strPassword string) (APIUser, error) {
 	if user, ok := cluster.APIUsers[strUser]; ok {
-		if user.Password == strPassword {
+		// A passwordless (SSO-provisioned) account must never authenticate by a
+		// blank local password (blank-password bypass).
+		if user.Password == "" || strPassword == "" {
+			return APIUser{}, fmt.Errorf("incorrect password")
+		}
+		if subtle.ConstantTimeCompare([]byte(user.Password), []byte(strPassword)) == 1 {
 			return user, nil
 		}
 		return APIUser{}, fmt.Errorf("incorrect password")
