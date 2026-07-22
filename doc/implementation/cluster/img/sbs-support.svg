@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-18 -18 1156 596" role="img" aria-label="Support plan after failover"><style>
+  :root{
+    --bg:#eceef1;--panel:#ffffff;--ink:#12171d;--ink-soft:#4a5560;--ink-faint:#7b8794;
+    --line:#d7dbe0;--accent:#0a8f9c;--accent-ink:#06666f;--cloud:#f3f5f9;
+    --arb:#4b5cc4;--arb-bg:#eaecf9;--ok:#2f7fd1;
+    --majority:#1f8f52;--majority-bg:#e6f4ec;--minority:#c99613;--minority-bg:#f7efd8;
+    --cut:#cf4646;--cut-bg:#fbe9e9;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#0d1014;--panel:#161b21;--ink:#eaeef2;--ink-soft:#a9b4bf;--ink-faint:#6b7681;
+    --line:#2a323b;--accent:#2bc0cd;--accent-ink:#7fe0e8;--cloud:#1a2027;
+    --arb:#8b98ec;--arb-bg:#1b1f36;--ok:#5aa6e6;
+    --majority:#4cc47f;--majority-bg:#142a1e;--minority:#e0b24a;--minority-bg:#2c2614;
+    --cut:#e26d6d;--cut-bg:#2c1717;
+  }}
+  :root[data-theme="light"]{--bg:#eceef1;--panel:#fff;--ink:#12171d;--ink-soft:#4a5560;--ink-faint:#7b8794;--line:#d7dbe0;--accent:#0a8f9c;--accent-ink:#06666f;--cloud:#f3f5f9;--arb:#4b5cc4;--arb-bg:#eaecf9;--ok:#2f7fd1;--majority:#1f8f52;--majority-bg:#e6f4ec;--minority:#c99613;--minority-bg:#f7efd8;--cut:#cf4646;--cut-bg:#fbe9e9;}
+  :root[data-theme="dark"]{--bg:#0d1014;--panel:#161b21;--ink:#eaeef2;--ink-soft:#a9b4bf;--ink-faint:#6b7681;--line:#2a323b;--accent:#2bc0cd;--accent-ink:#7fe0e8;--cloud:#1a2027;--arb:#8b98ec;--arb-bg:#1b1f36;--ok:#5aa6e6;--majority:#4cc47f;--majority-bg:#142a1e;--minority:#e0b24a;--minority-bg:#2c2614;--cut:#e26d6d;--cut-bg:#2c1717;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:44px 24px 64px}
+  .eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent-ink);font-weight:600;margin:0 0 10px}
+  h1{font-size:clamp(25px,4vw,36px);line-height:1.1;margin:0 0 12px;letter-spacing:-.02em;text-wrap:balance;font-weight:700}
+  .lede{font-size:16.5px;color:var(--ink-soft);max-width:68ch;margin:0}
+  .lede b{color:var(--ink);font-weight:600}
+
+  .legend{display:flex;gap:22px;flex-wrap:wrap;margin:22px 0 4px;font-size:13px;color:var(--ink-soft)}
+  .legend span{display:inline-flex;align-items:center;gap:8px}
+  .swatch{width:34px;height:0;border-top:3px solid var(--ok)}
+  .swatch.cut{border-top:3px solid var(--cut);position:relative}
+  .swatch.cut::after{content:"||";position:absolute;left:11px;top:-11px;color:var(--cut);font-weight:800;font-size:14px;letter-spacing:-1px}
+  .swatch.ftwl{border-top:3px solid var(--accent)}
+  .pill{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700}
+  .pill.maj{background:var(--majority-bg);color:var(--majority)}
+  .pill.min{background:var(--minority-bg);color:var(--minority)}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 18px 8px;margin:24px 0}
+  .card h2{margin:0 6px 2px;font-size:19px;letter-spacing:-.01em}
+  .card .sub{margin:0 6px 6px;font-size:13.5px;color:var(--ink-faint)}
+  .card.support h2{color:var(--majority)}
+  .card.free h2{color:var(--minority)}
+  .card.lose h2{color:var(--cut)}
+  svg{display:block;width:100%;height:auto}
+  .note{margin:0 6px 14px;font-size:13.5px;color:var(--ink-soft)}
+  .note b{color:var(--ink);font-weight:600} .note .bad{color:var(--cut);font-weight:600}
+
+  .cloud-r{fill:var(--cloud);stroke:var(--line);stroke-width:1.5}
+  .cloud-dc1{stroke:color-mix(in srgb,var(--minority) 50%,var(--line))}
+  .cloud-dc2{stroke:color-mix(in srgb,var(--majority) 45%,var(--line))}
+  .cloud-dc3{fill:var(--arb-bg);stroke:color-mix(in srgb,var(--arb) 50%,var(--line))}
+  .cloud-lbl{fill:var(--ink);font:700 13px var(--sans)}
+  .cloud-loc{fill:var(--ink-faint);font:500 12px var(--mono)}
+  .tag-min{fill:var(--minority);font:800 11px var(--sans);letter-spacing:.5px}
+  .tag-maj{fill:var(--majority);font:800 11px var(--sans);letter-spacing:.5px}
+  .tag-fenced{fill:var(--cut);font:800 11px var(--sans);letter-spacing:.5px}
+  .box{fill:var(--panel);stroke:var(--line);stroke-width:2}
+  .box-old{stroke:color-mix(in srgb,var(--minority) 65%,var(--line));fill:var(--minority-bg)}
+  .box-new{stroke:color-mix(in srgb,var(--majority) 65%,var(--line));fill:var(--majority-bg)}
+  .box-repman{stroke:color-mix(in srgb,var(--accent) 60%,var(--line));fill:color-mix(in srgb,var(--accent) 14%,var(--panel))}
+  .box-arb{stroke:color-mix(in srgb,var(--arb) 60%,var(--line))}
+  .box-io{fill:var(--cut-bg);stroke:color-mix(in srgb,var(--cut) 45%,var(--line));stroke-width:1.5}
+  .t-name{fill:var(--ink);font:700 15px var(--mono)}
+  .t-name-s{fill:var(--ink);font:700 14px var(--sans)}
+  .t-badge-old{fill:var(--minority);font:800 10px var(--sans);letter-spacing:.5px}
+  .t-badge-new{fill:var(--majority);font:800 10px var(--sans);letter-spacing:.5px}
+  .t-badge-s{fill:var(--ink-faint);font:700 10px var(--sans);letter-spacing:.5px}
+  .t-io{fill:var(--cut);font:700 10px var(--mono)}
+  .t-arb{fill:var(--arb);font:700 15px var(--sans)}
+  .uid{fill:var(--accent-ink);font-weight:800}
+  .lnk-ok{stroke:var(--ok);stroke-width:3;fill:none}
+  .lnk-cut{stroke:var(--cut);stroke-width:3;fill:none;opacity:.85}
+  .cutbar{stroke:var(--cut);stroke-width:5;stroke-linecap:round}
+  .lnk-lbl{fill:var(--ink-faint);font:600 11.5px var(--sans)}
+  .lnk-lbl-cut{fill:var(--cut);font:700 11.5px var(--mono)}
+  .binlog{fill:var(--minority-bg);stroke:color-mix(in srgb,var(--minority) 55%,var(--line))}
+  .t-pile{fill:var(--cut);font:700 12px var(--sans)}
+  .yield-r{fill:var(--minority-bg);stroke:color-mix(in srgb,var(--minority) 45%,var(--line))}
+  .t-yield{fill:var(--minority);font:700 11.5px var(--sans)}
+  .box-proxy{fill:var(--panel);stroke:color-mix(in srgb,var(--accent) 45%,var(--line));stroke-width:2}
+  .t-proxy{fill:var(--accent-ink);font:700 13px var(--sans)}
+  .lnk-ftwl{stroke:var(--accent);stroke-width:3;fill:none}
+  .cutbar-ftwl{stroke:var(--accent);stroke-width:5;stroke-linecap:round}
+  .lnk-lbl-ftwl{fill:var(--accent-ink);font:700 11.5px var(--mono)}
+</style><rect x="-18" y="-18" width="1156" height="596" rx="18" fill="var(--panel)"/>
+      <!-- arbitrator links: DC1 cut (red), DC2 healthy (blue) -->
+      <path class="lnk-cut" d="M330,182 L470,116"/>
+      <path class="lnk-ok" d="M802,182 L650,116"/>
+      <text class="lnk-lbl-cut" x="300" y="152">✂ DC1 → arbitrator: cut</text>
+      <text class="lnk-lbl" x="820" y="152" text-anchor="end" style="fill:var(--ok)">DC2 → arbitrator: healthy</text>
+
+      <!-- horizontal DC1 <-> DC2 link, severed in the middle -->
+      <line class="cutbar" x1="336" y1="372" x2="796" y2="372" stroke-dasharray="10 8"/>
+      <rect x="448" y="322" width="224" height="100" rx="12" fill="var(--cut-bg)" stroke="var(--cut)" stroke-width="2"/>
+      <text x="560" y="350" text-anchor="middle" style="fill:var(--cut);font:800 14px var(--sans)">✕ NETWORK PARTITION</text>
+      <text x="560" y="373" text-anchor="middle" style="fill:var(--cut);font:600 12px var(--sans)">DC1 ↔ DC2 severed —</text>
+      <text x="560" y="392" text-anchor="middle" style="fill:var(--cut);font:600 12px var(--sans)">• peer heartbeat</text>
+      <text x="560" y="410" text-anchor="middle" style="fill:var(--cut);font:600 12px var(--sans)">• replication → slave IO</text>
+
+      <!-- DC3 arbitrator (MAJORITY) -->
+      <rect class="cloud-r cloud-dc3" x="400" y="20" width="320" height="104" rx="24"/>
+      <text class="cloud-lbl" x="424" y="46">☁ Cloud 3 · DC3 <tspan class="cloud-loc">@ signal18</tspan> <tspan class="tag-maj">· MAJORITY</tspan></text>
+      <rect class="box box-arb" x="432" y="56" width="256" height="54" rx="9"/>
+      <text class="t-arb" x="560" y="80" text-anchor="middle">ARBITRATOR</text>
+      <text class="t-sub" x="560" y="98" text-anchor="middle" style="fill:var(--ink-faint);font:500 11.5px var(--sans)">always reachable · breaks the tie</text>
+
+      <!-- DC1 (MINORITY) -->
+      <rect class="cloud-r cloud-dc1" x="24" y="176" width="312" height="344" rx="22"/>
+      <text class="cloud-lbl" x="48" y="204">☁ Cloud 1 · DC1 <tspan class="tag-min">· MINORITY</tspan></text>
+      <rect class="box box-proxy" x="60" y="220" width="184" height="42" rx="9"/>
+      <text class="t-proxy" x="152" y="246" text-anchor="middle">PROXY</text>
+      <!-- FTWRL fence (repman color, broken): proxy -> db1 -->
+      <line class="lnk-ftwl" x1="152" y1="262" x2="152" y2="288"/>
+      <line class="cutbar-ftwl" x1="141" y1="270" x2="163" y2="280"/>
+      <line class="cutbar-ftwl" x1="141" y1="280" x2="163" y2="270"/>
+      <text class="lnk-lbl-ftwl" x="172" y="279">FTWRL — writes blocked</text>
+      <rect class="box box-old" x="60" y="288" width="184" height="60" rx="9"/>
+      <text class="t-name" x="152" y="314" text-anchor="middle">db1</text>
+      <text class="t-badge-old" x="152" y="333" text-anchor="middle">MASTER → OLD MASTER</text>
+      <rect class="box box-repman" x="60" y="372" width="184" height="58" rx="9"/>
+      <text class="t-name-s" x="152" y="398" text-anchor="middle">REPMAN · main</text>
+      <text class="t-sub" x="152" y="416" text-anchor="middle" style="fill:var(--ink-faint);font:500 11.5px var(--sans)">Active → Standby · uid <tspan class="uid">1</tspan></text>
+      <rect class="yield-r" x="44" y="456" width="256" height="26" rx="13"/>
+      <text class="t-yield" x="172" y="473" text-anchor="middle">simulate-minority → read-only</text>
+      <!-- divergence: happy smiley on top of a single (flashback-able) delta -->
+      <text x="288" y="312" font-size="26" text-anchor="middle">😊</text>
+      <rect class="binlog" x="259" y="320" width="58" height="13" rx="2" style="fill:var(--majority-bg);stroke:color-mix(in srgb,var(--majority) 55%,var(--line))"/>
+      <text x="288" y="352" text-anchor="middle" style="fill:var(--majority);font:800 10.5px var(--sans)">delta ×1</text>
+      <text x="288" y="365" text-anchor="middle" style="fill:var(--majority);font:600 9.5px var(--sans)">flashback-able</text>
+
+      <!-- DC2 (MAJORITY) -->
+      <rect class="cloud-r cloud-dc2" x="796" y="176" width="300" height="364" rx="22"/>
+      <text class="cloud-lbl" x="820" y="204">☁ Cloud 2 · DC2 <tspan class="tag-maj">· MAJORITY</tspan></text>
+      <rect class="box box-proxy" x="836" y="220" width="220" height="42" rx="9"/>
+      <text class="t-proxy" x="946" y="246" text-anchor="middle">PROXY</text>
+      <!-- healthy (blue): proxy -> NEW MASTER -->
+      <line class="lnk-ok" x1="946" y1="262" x2="946" y2="288" stroke-width="3"/>
+      <rect class="box box-new" x="836" y="288" width="220" height="78" rx="9"/>
+      <text class="t-name" x="946" y="316" text-anchor="middle">db2</text>
+      <text class="t-badge-new" x="946" y="333" text-anchor="middle">SLAVE → NEW MASTER</text>
+      <rect class="box-io" x="852" y="338" width="72" height="24" rx="6"/>
+      <text class="t-io" x="888" y="354" text-anchor="middle">IO ✂</text>
+      <rect class="box" x="836" y="386" width="220" height="72" rx="9"/>
+      <text class="t-name" x="946" y="412" text-anchor="middle">db3</text>
+      <text class="t-badge-s" x="946" y="429" text-anchor="middle">SLAVE</text>
+      <rect class="box-io" x="852" y="432" width="72" height="24" rx="6"/>
+      <text class="t-io" x="888" y="448" text-anchor="middle">IO ✂</text>
+      <rect class="box box-repman" x="836" y="478" width="220" height="56" rx="9"/>
+      <text class="t-name-s" x="946" y="503" text-anchor="middle">REPMAN · DR</text>
+      <text class="t-sub" x="946" y="521" text-anchor="middle" style="fill:var(--ink-faint);font:500 11.5px var(--sans)">holds Active · uid <tspan class="uid">2</tspan></text>
+    </svg>
