@@ -1136,6 +1136,339 @@ func (server *ServerMonitor) restoreSplitdumpFileContextStripDefiner(ctx context
 	return execErr
 }
 
+// ---------------------------------------------------------------------------
+// Native Go splitdump loader (replaces the `mysql --force` subprocess).
+//
+// The subprocess path piped each shard to `mysql --force`, which skips a failing
+// statement and still exits 0. executeMysqlRestoreContext only inspected stderr
+// on a non-zero exit, so any shard that errored (typically the first shard, which
+// carries LOCK TABLES / DISABLE KEYS and loses the deadlock race under N-way
+// parallel load) was reported as a successful restore with its rows silently
+// dropped. This loader instead runs every shard over a dedicated pinned
+// connection, batches INSERT/REPLACE into transactions, RETRIES on transient
+// InnoDB lock contention, and returns any other error so the restore fails loud.
+// ---------------------------------------------------------------------------
+
+const (
+	splitdumpLockRetryMax    = 8
+	splitdumpBatchStatements = 500
+	splitdumpRetryBaseDelay  = 50 * time.Millisecond
+	splitdumpRetryMaxDelay   = 5 * time.Second
+)
+
+// isRetryableDBError reports whether err is a transient InnoDB lock error that a
+// plain transaction replay can resolve (deadlock victim / lock-wait timeout).
+func isRetryableDBError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var me *mysql.MySQLError
+	if errors.As(err, &me) {
+		switch me.Number {
+		case 1213, 1205: // ER_LOCK_DEADLOCK, ER_LOCK_WAIT_TIMEOUT
+			return true
+		}
+	}
+	return false
+}
+
+func splitdumpRetryDelay(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	d := splitdumpRetryBaseDelay << uint(attempt-1)
+	if d <= 0 || d > splitdumpRetryMaxDelay {
+		return splitdumpRetryMaxDelay
+	}
+	return d
+}
+
+// prepareRestoreConn applies per-session state to a dedicated bulk-load
+// connection: slow-log normalization and FK/UNIQUE checks disabled. These three
+// statements are identical on MySQL and MariaDB. It owns neither of the two
+// decisions that need version/flavor or topology awareness:
+//   - binlog on/off (master vs slave) is realized at connection-acquisition time
+//     (GetConnNoBinlog for a slave reseed vs a plain pinned conn for a master
+//     restore), per the decision taken in buildLogicalRestorePreamble;
+//   - the one-time binlog reset is done via the version-aware server.ResetMaster()
+//     (which handles MySQL 8.4's RESET BINARY LOGS AND GTIDS vs RESET MASTER).
+func (server *ServerMonitor) prepareRestoreConn(ctx context.Context, conn *sqlx.Conn) error {
+	for _, q := range []string{
+		"SET SESSION long_query_time=10",
+		"SET SESSION FOREIGN_KEY_CHECKS=0",
+		"SET SESSION UNIQUE_CHECKS=0",
+	} {
+		if _, err := conn.ExecContext(ctx, q); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// restoreSplitdumpFileGo loads a single splitdump file over the supplied dedicated
+// connection. It preserves the mysql.* special-casing of the subprocess path
+// (gtid_slave_pos skip, system-all continue-on-error, missing-table skip) and
+// optionally strips DEFINER clauses.
+func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *sqlx.Conn, path string, stripDefiner bool) error {
+	cluster := server.ClusterGroup
+
+	schema := splitdump.SchemaFromFilename(path)
+	table := splitdump.TableFromFilename(path)
+	continueOnError := false
+	if schema == "mysql" {
+		if splitdump.IsGtidSlavePosDataFile(path) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn,
+				"Splitdump restore skipped mysql.gtid_slave_pos data file: %s", filepath.Base(path))
+			return nil
+		}
+		if splitdump.IsMysqlSystemAll(filepath.Base(path)) {
+			continueOnError = true // matches the old --force behaviour for plugin/user rows
+		}
+		if table != "" && splitdump.IsMysqlTableCheckEligible(path) {
+			exists, err := server.tableExists(schema, table)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn,
+					"Splitdump restore skipped missing mysql table %s for %s", table, filepath.Base(path))
+				return nil
+			}
+		}
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	var reader io.Reader = file
+	if strings.HasSuffix(strings.ToLower(path), ".gz") {
+		parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
+		bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModTask)
+		gzReader, err := gzip.NewReaderN(file, bufferSize, parallelBlocks)
+		if err != nil {
+			return err
+		}
+		defer gzReader.Close()
+		reader = gzReader
+	}
+
+	var doneStrip func(error)
+	if stripDefiner {
+		reader, doneStrip = splitdump.NewDefinerStrippingReader(reader)
+	}
+
+	if schema != "" {
+		if _, err := conn.ExecContext(ctx, "USE `"+strings.ReplaceAll(schema, "`", "``")+"`"); err != nil {
+			if doneStrip != nil {
+				doneStrip(err)
+			}
+			return err
+		}
+	}
+
+	execErr := server.streamSplitdumpStatements(ctx, conn, reader, continueOnError, path)
+	if doneStrip != nil {
+		doneStrip(execErr)
+	}
+	return execErr
+}
+
+// streamSplitdumpStatements segments the SQL stream into statements (honouring
+// DELIMITER for trigger/routine bodies) and executes them on conn. INSERT/REPLACE
+// statements are batched into retrying transactions; every other statement runs
+// in autocommit (also retried on lock errors). LOCK/UNLOCK TABLES and
+// ALTER TABLE ... {DISABLE,ENABLE} KEYS are dropped: the former conflicts with
+// our transaction control, the latter is an InnoDB no-op whose implicit commit
+// would break batching.
+func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn *sqlx.Conn, reader io.Reader, continueOnError bool, path string) error {
+	br := bufio.NewReaderSize(reader, 1<<20)
+	delimiter := ";"
+	var stmt strings.Builder
+	batch := make([]string, 0, splitdumpBatchStatements)
+
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		err := server.execSplitdumpBatch(ctx, conn, batch, path)
+		batch = batch[:0]
+		return err
+	}
+
+	handle := func(full string) error {
+		up := strings.ToUpper(strings.TrimLeft(full, " \t\r\n("))
+		switch {
+		case strings.HasPrefix(up, "LOCK TABLES"), strings.HasPrefix(up, "UNLOCK TABLES"):
+			return nil
+		case strings.Contains(up, "ALTER TABLE") && (strings.Contains(up, "DISABLE KEYS") || strings.Contains(up, "ENABLE KEYS")):
+			return nil
+		case strings.HasPrefix(up, "INSERT"), strings.HasPrefix(up, "REPLACE"):
+			batch = append(batch, full)
+			if len(batch) >= splitdumpBatchStatements {
+				return flush()
+			}
+			return nil
+		default:
+			if err := flush(); err != nil {
+				return err
+			}
+			return server.execSplitdumpSingle(ctx, conn, full, continueOnError, path)
+		}
+	}
+
+	emit := func() error {
+		core := strings.TrimRight(stmt.String(), " \t\r\n")
+		core = strings.TrimSuffix(core, delimiter)
+		core = strings.TrimSpace(core)
+		stmt.Reset()
+		if core == "" {
+			return nil
+		}
+		return handle(core)
+	}
+
+	for {
+		line, readErr := br.ReadString('\n')
+		body := strings.TrimRight(line, "\r\n")
+		trimmed := strings.TrimSpace(body)
+
+		if stmt.Len() == 0 {
+			// DELIMITER is a client directive (trigger/routine bodies) — never sent to the server.
+			if len(trimmed) >= 9 && strings.EqualFold(trimmed[:9], "DELIMITER") {
+				if fields := strings.Fields(trimmed); len(fields) >= 2 {
+					delimiter = fields[1]
+				}
+				if readErr != nil {
+					break
+				}
+				continue
+			}
+			// Standalone comment / blank line between statements.
+			if trimmed == "" || strings.HasPrefix(trimmed, "-- ") || trimmed == "--" || strings.HasPrefix(trimmed, "#") {
+				if readErr != nil {
+					break
+				}
+				continue
+			}
+		}
+
+		if stmt.Len() > 0 {
+			stmt.WriteByte('\n')
+		}
+		stmt.WriteString(body)
+
+		if strings.HasSuffix(trimmed, delimiter) {
+			if err := emit(); err != nil {
+				return err
+			}
+		}
+		if readErr != nil {
+			if readErr != io.EOF {
+				return readErr
+			}
+			break
+		}
+	}
+	// Trailing statement with no terminator (rare) — do not drop it.
+	if strings.TrimSpace(stmt.String()) != "" {
+		if err := emit(); err != nil {
+			return err
+		}
+	}
+	return flush()
+}
+
+// execSplitdumpBatch runs stmts inside a single transaction and retries the whole
+// transaction on transient lock contention. A non-retryable error is returned so
+// the caller aborts the restore instead of silently losing rows.
+func (server *ServerMonitor) execSplitdumpBatch(ctx context.Context, conn *sqlx.Conn, stmts []string, path string) error {
+	cluster := server.ClusterGroup
+	var lastErr error
+	for attempt := 0; attempt <= splitdumpLockRetryMax; attempt++ {
+		if attempt > 0 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo,
+				"Splitdump lock contention on %s, retrying transaction (%d/%d): %v",
+				filepath.Base(path), attempt, splitdumpLockRetryMax, lastErr)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(splitdumpRetryDelay(attempt)):
+			}
+		}
+		tx, err := conn.BeginTxx(ctx, nil)
+		if err != nil {
+			lastErr = err
+			if isRetryableDBError(err) {
+				continue
+			}
+			return err
+		}
+		failed := false
+		for _, s := range stmts {
+			if _, err := tx.ExecContext(ctx, s); err != nil {
+				_ = tx.Rollback()
+				lastErr = err
+				failed = true
+				if !isRetryableDBError(err) {
+					return err
+				}
+				break
+			}
+		}
+		if failed {
+			continue
+		}
+		if err := tx.Commit(); err != nil {
+			lastErr = err
+			if isRetryableDBError(err) {
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+	return fmt.Errorf("splitdump restore transaction on %s failed after %d retries: %w",
+		filepath.Base(path), splitdumpLockRetryMax, lastErr)
+}
+
+// execSplitdumpSingle runs one non-INSERT statement in autocommit, retrying on
+// lock contention. When continueOnError is set (mysql.system-all, matching the
+// old --force) a non-retryable error is logged and swallowed; otherwise it is
+// returned (DEFINER errors flow up to the strip-definer fallback in restore.go).
+func (server *ServerMonitor) execSplitdumpSingle(ctx context.Context, conn *sqlx.Conn, stmt string, continueOnError bool, path string) error {
+	cluster := server.ClusterGroup
+	var lastErr error
+	for attempt := 0; attempt <= splitdumpLockRetryMax; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(splitdumpRetryDelay(attempt)):
+			}
+		}
+		if _, err := conn.ExecContext(ctx, stmt); err != nil {
+			lastErr = err
+			if isRetryableDBError(err) {
+				continue
+			}
+			if continueOnError {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn,
+					"Splitdump restore continuing past error on %s: %v", filepath.Base(path), err)
+				return nil
+			}
+			return err
+		}
+		return nil
+	}
+	if continueOnError {
+		return nil
+	}
+	return lastErr
+}
+
 func (server *ServerMonitor) tableExists(schema, table string) (bool, error) {
 	if server.Conn == nil {
 		cluster := server.ClusterGroup
@@ -1219,7 +1552,7 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 		ctx = context.Background()
 	}
 
-	cmdstring, sqlLogBin, err := server.buildLogicalRestorePreamble()
+	_, sqlLogBin, err := server.buildLogicalRestorePreamble()
 	if err != nil {
 		return err
 	}
@@ -1249,11 +1582,71 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 		"Logical restore (splitdump+mysql) started at %s for: %s", start.Format(time.RFC3339), server.URL)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 		"Splitdump restore sets sql_log_bin=%d for %s", sqlLogBin, server.URL)
-	if err := server.executeMysqlRestoreContext(ctx, bytes.NewBufferString(cmdstring), false); err != nil {
-		return err
-	}
 
 	defer server.SetInReseedBackup("")
+
+	// One-time, server-global step: reset the binlog before any data is loaded.
+	// Only for a slave reseed (sqlLogBin==0); a master restore (sqlLogBin==1)
+	// keeps its binlog so replicas receive the restored data. ResetMaster is
+	// version/flavor-aware (RESET MASTER vs MySQL 8.4 RESET BINARY LOGS AND GTIDS).
+	if sqlLogBin == 0 {
+		if logs, err := server.ResetMaster(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+				"Splitdump restore failed to reset binlog on %s: %v (%s)", server.URL, err, logs)
+			return err
+		}
+	}
+
+	// Open one dedicated pinned connection per parallel worker. We deliberately
+	// avoid the shared server.Conn pool: statement ordering, session state
+	// (USE / FK / UNIQUE) and transaction affinity all require a single connection
+	// held for the whole of a file's load. Binlog state follows the master/slave
+	// decision: GetConnNoBinlog for a slave reseed, a plain pinned conn (binlog ON)
+	// for a master restore.
+	parallel := cluster.Conf.BackupLogicalLoadThreads
+	if parallel < 1 {
+		parallel = 1
+	}
+	connPool := make(chan *sqlx.Conn, parallel)
+	var dbHandles []*sqlx.DB
+	closeAll := func() {
+		close(connPool)
+		for c := range connPool {
+			_ = c.Close()
+		}
+		for _, h := range dbHandles {
+			_ = h.Close()
+		}
+	}
+	for i := 0; i < parallel; i++ {
+		dbh, connErr := server.GetNewDBConn()
+		if connErr != nil {
+			closeAll()
+			return connErr
+		}
+		dbHandles = append(dbHandles, dbh)
+
+		var conn *sqlx.Conn
+		if sqlLogBin == 0 {
+			conn, connErr = server.GetConnNoBinlog(dbh) // slave reseed: keep the restore out of the binlog
+		} else {
+			conn, connErr = dbh.Connx(ctx) // master restore: leave binlog ON so replicas receive the data
+		}
+		if connErr != nil {
+			closeAll()
+			return connErr
+		}
+		if connErr := server.prepareRestoreConn(ctx, conn); connErr != nil {
+			_ = conn.Close()
+			closeAll()
+			return connErr
+		}
+		connPool <- conn
+	}
+	defer closeAll()
+
+	borrow := func() *sqlx.Conn { return <-connPool }
+	giveback := func(c *sqlx.Conn) { connPool <- c }
 
 	if cluster.Conf.BackupSplitdumpCreateDatabases {
 		schemas, schemaErr := splitdump.ListSchemas(backupPath)
@@ -1261,24 +1654,27 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream,
 				config.LvlWarn, "Could not list schemas for CREATE DATABASE: %v", schemaErr)
 		} else {
+			conn := borrow()
 			for _, schema := range schemas {
 				escaped := strings.ReplaceAll(schema, "`", "``")
-				sql := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`;\n", escaped)
-				if err := server.executeMysqlRestoreContext(ctx, strings.NewReader(sql), false); err != nil {
+				if _, err := conn.ExecContext(ctx, "CREATE DATABASE IF NOT EXISTS `"+escaped+"`"); err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream,
 						config.LvlWarn, "CREATE DATABASE failed for %s: %v", schema, err)
 				}
 			}
+			giveback(conn)
 		}
 	}
 
 	restoreFile := func(ctx context.Context, path string) error {
-		preamble := server.buildSplitdumpRestorePreamble(path, sqlLogBin)
-		return server.restoreSplitdumpFileContextWithPreamble(ctx, path, preamble)
+		conn := borrow()
+		defer giveback(conn)
+		return server.restoreSplitdumpFileGo(ctx, conn, path, false)
 	}
 	restoreFileWithoutDefiner := func(ctx context.Context, path string) error {
-		preamble := server.buildSplitdumpRestorePreamble(path, sqlLogBin)
-		return server.restoreSplitdumpFileContextStripDefiner(ctx, path, preamble)
+		conn := borrow()
+		defer giveback(conn)
+		return server.restoreSplitdumpFileGo(ctx, conn, path, true)
 	}
 
 	restoreErr := splitdump.Restore(backupPath, splitdump.RestoreOptions{
@@ -1288,7 +1684,7 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, level, format, args...)
 		},
 		Context:                   ctx,
-		RestoreFileWithContext:     restoreFile,
+		RestoreFileWithContext:    restoreFile,
 		RestoreFileWithoutDefiner: restoreFileWithoutDefiner,
 		DefinerStrict:             cluster.Conf.BackupRestoreDefinerStrict,
 	})
