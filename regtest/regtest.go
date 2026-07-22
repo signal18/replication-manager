@@ -63,6 +63,7 @@ var tests = []string{
 	"testSplitBrainNoWinner",
 	"testMasterNil",
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
+	"testConfigPersistBackupOption",
 	"testConfigCookiePushBasic",
 	"testConfigCookiePushLifecycle",
 	"testConfigCookiePushMultipleServers",

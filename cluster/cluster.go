@@ -348,6 +348,7 @@ type Cluster struct {
 	SstAvailablePorts                   map[string]string           `json:"sstAvailablePorts" groups:"web"`
 	InPhysicalBackup                    bool                        `json:"inPhysicalBackup" groups:"web"`
 	InLogicalBackup                     bool                        `json:"inLogicalBackup" groups:"web"`
+	LastConfigSaveToDisk                time.Time                   `json:"lastConfigSaveToDisk" groups:"web"` // when the datadir <cluster>.toml was last actually written (config persistence observability)
 	InBinlogBackup                      bool                        `json:"inBinlogBackup" groups:"web"`
 	InResticLogicalBackup               bool                        `json:"inResticLogicalBackup" groups:"web"`
 	InResticPhysicalBackup              bool                        `json:"inResticPhysicalBackup" groups:"web"`
@@ -1895,6 +1896,13 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 	s.WriteTo(&buf)
 
 	has_changed, err = cluster.saveConfigArtifact(filePath, buf.Bytes(), "saved-"+cluster.Name, true)
+	if err == nil && has_changed {
+		// Stamp the last time the persisted cluster config actually hit disk.
+		// Exposed via the API and GUI so operators (and the config-persistence
+		// regtest) can tell "changed in memory" from "written to the datadir
+		// <cluster>.toml that startup reads back".
+		cluster.LastConfigSaveToDisk = time.Now()
+	}
 	return has_changed, err
 }
 

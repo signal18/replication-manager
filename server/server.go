@@ -1555,6 +1555,26 @@ func (repman *ReplicationManager) MergeOnStart(conf config.Config) error {
 	return nil
 }
 
+// monitoringSaveConfigEnabled resolves whether startup loads the datadir saved
+// overlays (default.toml + <cluster>/<cluster>.toml, i.e. the [saved-*]
+// sections). It must default to flagDefault (the monitoring-save-config pflag
+// default, true) when the key is ABSENT from the config file.
+//
+// The bug this fixes: reading a bare firstRead.GetBool("default.monitoring-save-config")
+// returns false when the key is not present in the file, so the datadir
+// overlays were skipped at startup — even though the SAVE path is gated on
+// conf.ConfRewrite (the same flag, default true) and had been writing them. A
+// user who never sets monitoring-save-config in their config therefore had
+// their per-cluster changes persisted to disk/git but silently reverted on
+// every restart (e.g. custom backup-mysqldump-options). Aligning the load gate
+// with the save gate removes the asymmetry.
+func monitoringSaveConfigEnabled(firstRead *viper.Viper, flagDefault bool) bool {
+	if firstRead.IsSet("default.monitoring-save-config") {
+		return firstRead.GetBool("default.monitoring-save-config")
+	}
+	return flagDefault
+}
+
 func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) {
 	if repman.Conf == nil {
 		repman.Conf = new(config.Config)
@@ -1773,8 +1793,12 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		tmp_read.Unmarshal(&conf)
 	}
 
-	// Proceed dynamic config
-	monitoringSaveConfig := firstRead.GetBool("default.monitoring-save-config")
+	// Proceed dynamic config. Default to the flag value (conf.ConfRewrite,
+	// default true) when monitoring-save-config is absent from the file — a bare
+	// GetBool returned false when absent and skipped the datadir saved overlays
+	// at startup, silently reverting persisted per-cluster settings on restart
+	// even though the save path (conf.ConfRewrite) had written them.
+	monitoringSaveConfig := monitoringSaveConfigEnabled(firstRead, conf.ConfRewrite)
 	envDefault := envViperForScope("DEFAULT")
 	if envDefault.IsSet("monitoring-save-config") {
 		monitoringSaveConfig = envDefault.GetBool("monitoring-save-config")
