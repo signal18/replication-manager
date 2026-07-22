@@ -930,6 +930,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupResticRepository, "backup-restic-repository", "s3:https://s3.signal18.io/backups", "Restic backend repository")
 	flags.StringVar(&conf.BackupResticPassword, "backup-restic-password", "secret", "Restic backend password")
 	flags.BoolVar(&conf.BackupResticAws, "backup-restic-aws", false, "Restic will archive to s3 or to datadir/backups/archive")
+	flags.IntVar(&conf.BackupWriteStallTimeout, "backup-write-stall-timeout", 300, "Seconds with no bytes written to the backup output before a logical backup is aborted (dead/hung backup volume). 0 disables. This is a stall timeout, not a cap on total backup time.")
 	flags.IntVar(&conf.BackupResticTimeout, "backup-restic-timeout", 7200, "Restic operation timeout in seconds")
 	flags.IntVar(&conf.BackupResticDumpTimeout, "backup-restic-dump-timeout", 0, "Timeout in seconds for restic dump operations (0 uses backup-restic-timeout)")
 	flags.IntVar(&conf.BackupResticDirMode, "backup-restic-dir-mode", 700, "Restic directory permissions (octal, e.g. 700)")
@@ -1554,6 +1555,26 @@ func (repman *ReplicationManager) MergeOnStart(conf config.Config) error {
 	return nil
 }
 
+// monitoringSaveConfigEnabled resolves whether startup loads the datadir saved
+// overlays (default.toml + <cluster>/<cluster>.toml, i.e. the [saved-*]
+// sections). It must default to flagDefault (the monitoring-save-config pflag
+// default, true) when the key is ABSENT from the config file.
+//
+// The bug this fixes: reading a bare firstRead.GetBool("default.monitoring-save-config")
+// returns false when the key is not present in the file, so the datadir
+// overlays were skipped at startup — even though the SAVE path is gated on
+// conf.ConfRewrite (the same flag, default true) and had been writing them. A
+// user who never sets monitoring-save-config in their config therefore had
+// their per-cluster changes persisted to disk/git but silently reverted on
+// every restart (e.g. custom backup-mysqldump-options). Aligning the load gate
+// with the save gate removes the asymmetry.
+func monitoringSaveConfigEnabled(firstRead *viper.Viper, flagDefault bool) bool {
+	if firstRead.IsSet("default.monitoring-save-config") {
+		return firstRead.GetBool("default.monitoring-save-config")
+	}
+	return flagDefault
+}
+
 func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) {
 	if repman.Conf == nil {
 		repman.Conf = new(config.Config)
@@ -1772,8 +1793,12 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		tmp_read.Unmarshal(&conf)
 	}
 
-	// Proceed dynamic config
-	monitoringSaveConfig := firstRead.GetBool("default.monitoring-save-config")
+	// Proceed dynamic config. Default to the flag value (conf.ConfRewrite,
+	// default true) when monitoring-save-config is absent from the file — a bare
+	// GetBool returned false when absent and skipped the datadir saved overlays
+	// at startup, silently reverting persisted per-cluster settings on restart
+	// even though the save path (conf.ConfRewrite) had written them.
+	monitoringSaveConfig := monitoringSaveConfigEnabled(firstRead, conf.ConfRewrite)
 	envDefault := envViperForScope("DEFAULT")
 	if envDefault.IsSet("monitoring-save-config") {
 		monitoringSaveConfig = envDefault.GetBool("monitoring-save-config")

@@ -8,6 +8,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 // newReloadTestRepman builds the minimal ReplicationManager needed to drive
@@ -309,5 +310,84 @@ func TestReconstructLiveClusterConfig_AppliesSavedDefaultSectionAlias(t *testing
 
 	if conf.LogFile != "/var/log/saved-deprecated-alias.log" {
 		t.Errorf("LogFile = %q, want %q (deprecated [saved-default] key \"logfile\" was not aliased to \"log-file\")", conf.LogFile, "/var/log/saved-deprecated-alias.log")
+	}
+}
+
+// TestReconstructLiveClusterConfig_PreservesSavedBackupOption reproduces the
+// "custom backup options lost after restart" bug. A per-cluster dynamic value
+// (backup-mysqldump-options, e.g. with --skip-ssl) is changed at runtime and
+// persisted to the datadir <cluster>/<cluster>.toml under [saved-<cluster>]
+// (verified present in the git config repo). The reload MUST re-apply it; if
+// the saved overlay is dropped, the value silently reverts on restart even
+// though it is on disk.
+func TestReconstructLiveClusterConfig_PreservesSavedBackupOption(t *testing.T) {
+	includeDir := t.TempDir()
+	workingDir := t.TempDir()
+
+	// Static section (from /etc-style include) — does NOT set the backup option.
+	if err := os.WriteFile(filepath.Join(includeDir, "regcluster.toml"),
+		[]byte("[regcluster]\ndb-servers-hosts = \"db1\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mainConfigPath := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(mainConfigPath, []byte("[DEFAULT]\ninclude = \""+includeDir+"\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Dynamic overlay persisted since the last restart — the custom value.
+	clusterDir := filepath.Join(workingDir, "regcluster")
+	if err := os.MkdirAll(clusterDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	const marker = "--hex-blob --single-transaction --skip-ssl"
+	if err := os.WriteFile(filepath.Join(clusterDir, "regcluster.toml"),
+		[]byte("[saved-regcluster]\ntitle = \"regcluster\"\nbackup-mysqldump-options = \""+marker+"\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repman := newReloadTestRepman(&config.Config{
+		ConfigFile:  mainConfigPath,
+		WorkingDir:  workingDir,
+		ConfRewrite: true,
+	})
+
+	conf, err := repman.ReconstructLiveClusterConfig("regcluster")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if conf.BackupMysqldumpOptions != marker {
+		t.Errorf("BackupMysqldumpOptions = %q, want %q — the persisted [saved-regcluster] backup option was dropped on reload (custom backup options lost after restart)", conf.BackupMysqldumpOptions, marker)
+	}
+}
+
+// TestMonitoringSaveConfigEnabled_DefaultsToFlagWhenAbsent reproduces the
+// save/load gate asymmetry behind "custom settings lost after restart": when
+// monitoring-save-config is not in the config file, the startup load gate must
+// default to the flag value (true), NOT false — otherwise the datadir saved
+// overlays are skipped at startup even though the save path (same flag, default
+// true) wrote them.
+func TestMonitoringSaveConfigEnabled_DefaultsToFlagWhenAbsent(t *testing.T) {
+	// Absent in file, flag default true -> must enable (the bug returned false).
+	v := viper.New()
+	v.SetConfigType("toml")
+	if !monitoringSaveConfigEnabled(v, true) {
+		t.Fatal("absent monitoring-save-config must default to the flag value true; got false -> datadir overlays skipped at startup, persisted settings revert on restart")
+	}
+
+	// Explicit false overrides the flag default.
+	vFalse := viper.New()
+	vFalse.SetConfigType("toml")
+	vFalse.Set("default.monitoring-save-config", false)
+	if monitoringSaveConfigEnabled(vFalse, true) {
+		t.Fatal("explicit monitoring-save-config=false must disable")
+	}
+
+	// Explicit true is honored even if the flag default were false.
+	vTrue := viper.New()
+	vTrue.SetConfigType("toml")
+	vTrue.Set("default.monitoring-save-config", true)
+	if !monitoringSaveConfigEnabled(vTrue, false) {
+		t.Fatal("explicit monitoring-save-config=true must enable")
 	}
 }

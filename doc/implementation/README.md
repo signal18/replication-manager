@@ -14,6 +14,11 @@ This directory contains detailed implementation documentation for various featur
 
 ## Directory Structure
 
+### `/cluster/`
+Cluster monitoring, backup, and resilience.
+
+- **BACKUP_DEAD_VOLUME_STALL.md** - Why a lost backup volume must not stall the monitor: the write-stall watchdog (`backup-write-stall-timeout`), the monitoring-hot-path sleep fix, and the controllable-mount reproduction
+
 ### `/restart-cookie/`
 Documentation related to the restart cookie mechanism and database restart functionality.
 
