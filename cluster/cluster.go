@@ -1255,14 +1255,26 @@ func (cluster *Cluster) StateProcessing() {
 					})
 				}
 
-				err := servertoreseed.ProcessReseedLogical(task)
-				if err != nil {
-					servertoreseed.JobsUpdateState(task, err.Error(), 5, 1)
-					if servertoreseed.HasReseedingState(task) {
-						servertoreseed.SetInReseedBackup("")
+				// Run the logical reseed OFF the monitor tick. A splitdump /
+				// mysqldump restore takes minutes; running it inline here froze
+				// the whole cluster monitor loop (no health checks, no failover —
+				// not even if the master died) for the entire restore, and
+				// serialized concurrent slave reseeds. ProcessReseedLogical claims
+				// the per-server IsReseeding flag atomically (TrySetInReseedBackup),
+				// and rejoin/switchover already refuse a reseeding server, so a
+				// later tick that still sees WARN0075 cannot start a second reseed.
+				// Mirrors the WARN0111 async reseed path below.
+				srvReseed := servertoreseed
+				reseedTask := task
+				cluster.trackTickGoroutine(func() {
+					if err := srvReseed.ProcessReseedLogical(reseedTask); err != nil {
+						srvReseed.JobsUpdateState(reseedTask, err.Error(), 5, 1)
+						if srvReseed.HasReseedingState(reseedTask) {
+							srvReseed.SetInReseedBackup("")
+						}
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing logical reseed for %s: %s", srvReseed.URL, err)
 					}
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing logical reseed for %s: %s", servertoreseed.URL, err)
-				}
+				})
 			}
 
 			if s.ErrKey == "WARN0076" && servertoreseed != nil {
