@@ -930,6 +930,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupResticRepository, "backup-restic-repository", "s3:https://s3.signal18.io/backups", "Restic backend repository")
 	flags.StringVar(&conf.BackupResticPassword, "backup-restic-password", "secret", "Restic backend password")
 	flags.BoolVar(&conf.BackupResticAws, "backup-restic-aws", false, "Restic will archive to s3 or to datadir/backups/archive")
+	flags.IntVar(&conf.BackupWriteStallTimeout, "backup-write-stall-timeout", 300, "Seconds with no bytes written to the backup output before a logical backup is aborted (dead/hung backup volume). 0 disables. This is a stall timeout, not a cap on total backup time.")
 	flags.IntVar(&conf.BackupResticTimeout, "backup-restic-timeout", 7200, "Restic operation timeout in seconds")
 	flags.IntVar(&conf.BackupResticDumpTimeout, "backup-restic-dump-timeout", 0, "Timeout in seconds for restic dump operations (0 uses backup-restic-timeout)")
 	flags.IntVar(&conf.BackupResticDirMode, "backup-restic-dir-mode", 700, "Restic directory permissions (octal, e.g. 700)")

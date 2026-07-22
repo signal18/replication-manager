@@ -1127,8 +1127,15 @@ func (server *ServerMonitor) JobsCheckFinished(conn *sqlx.Conn) error {
 		server.SetNeedRefreshJobs(true)
 	}
 
-	//Wait for debug sent via API
-	time.Sleep(3 * time.Second)
+	// Wait for the writelog API to flush a finished job's status before we log it
+	// — but ONLY when there was actually a finished task. This runs on the
+	// monitoring hot path (Ping → Refresh → JobsCheckStates), so an unconditional
+	// sleep taxed every tick for every server even with no finished job, which
+	// (compounded by a stuck backup) is enough to trip the global heartbeat stall
+	// detector. Sleep only when there is something to flush.
+	if len(logs) > 0 {
+		time.Sleep(3 * time.Second)
+	}
 	for _, logrow := range logs {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, logrow[0], logrow[1], logrow[2])
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, logrow[0], logrow[1], logrow[2])
