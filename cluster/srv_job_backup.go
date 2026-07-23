@@ -1184,43 +1184,50 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 // ALTER TABLE ... {DISABLE,ENABLE} KEYS are dropped: the former conflicts with
 // our transaction control, the latter is an InnoDB no-op whose implicit commit
 // would break batching.
-func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn *sqlx.Conn, reader io.Reader, continueOnError bool, path string) error {
+// splitdumpStmtKind routes a restore statement.
+type splitdumpStmtKind int
+
+const (
+	splitdumpStmtSkip   splitdumpStmtKind = iota // LOCK/UNLOCK TABLES, ALTER..DISABLE/ENABLE KEYS
+	splitdumpStmtInsert                          // INSERT/REPLACE (batchable, unless continue-on-error)
+	splitdumpStmtOther                           // everything else (autocommit single)
+)
+
+// classifySplitdumpStatement classifies a single terminator-stripped statement.
+// DISABLE/ENABLE KEYS arrives wrapped in a /*!40000 ALTER TABLE ... */ executable
+// comment, so it is matched by Contains rather than a statement-start prefix. Pure —
+// unit-testable without a DB.
+func classifySplitdumpStatement(stmt string) splitdumpStmtKind {
+	up := strings.ToUpper(strings.TrimLeft(stmt, " \t\r\n("))
+	switch {
+	case strings.HasPrefix(up, "LOCK TABLES"), strings.HasPrefix(up, "UNLOCK TABLES"):
+		return splitdumpStmtSkip
+	case strings.Contains(up, "ALTER TABLE") && (strings.Contains(up, "DISABLE KEYS") || strings.Contains(up, "ENABLE KEYS")):
+		return splitdumpStmtSkip
+	case strings.HasPrefix(up, "INSERT"), strings.HasPrefix(up, "REPLACE"):
+		return splitdumpStmtInsert
+	default:
+		return splitdumpStmtOther
+	}
+}
+
+// forEachSplitdumpStatement segments the SQL stream into complete statements and
+// calls emit for each (terminator stripped, standalone comments dropped, DELIMITER
+// honoured for trigger/routine bodies). Pure — no DB — so segmentation is testable
+// without a live connection.
+//
+// Statement-end is a per-line HasSuffix(trimmed, delimiter) check. This is correct
+// for mysqldump/splitdump output (single-line INSERT rows — newlines inside string
+// values are escaped as \n — and DELIMITER-fenced multi-line routine/trigger
+// bodies). It is NOT a general SQL tokenizer: a statement with a real embedded
+// newline whose line happens to end in the delimiter would misparse. The source is
+// always mysqldump, so that does not occur.
+func forEachSplitdumpStatement(reader io.Reader, emit func(stmt string) error) error {
 	br := bufio.NewReaderSize(reader, 1<<20)
 	delimiter := ";"
 	var stmt strings.Builder
-	batch := make([]string, 0, splitdumpBatchStatements)
 
-	flush := func() error {
-		if len(batch) == 0 {
-			return nil
-		}
-		err := server.execSplitdumpBatch(ctx, conn, batch, path)
-		batch = batch[:0]
-		return err
-	}
-
-	handle := func(full string) error {
-		up := strings.ToUpper(strings.TrimLeft(full, " \t\r\n("))
-		switch {
-		case strings.HasPrefix(up, "LOCK TABLES"), strings.HasPrefix(up, "UNLOCK TABLES"):
-			return nil
-		case strings.Contains(up, "ALTER TABLE") && (strings.Contains(up, "DISABLE KEYS") || strings.Contains(up, "ENABLE KEYS")):
-			return nil
-		case strings.HasPrefix(up, "INSERT"), strings.HasPrefix(up, "REPLACE"):
-			batch = append(batch, full)
-			if len(batch) >= splitdumpBatchStatements {
-				return flush()
-			}
-			return nil
-		default:
-			if err := flush(); err != nil {
-				return err
-			}
-			return server.execSplitdumpSingle(ctx, conn, full, continueOnError, path)
-		}
-	}
-
-	emit := func() error {
+	flushStmt := func() error {
 		core := strings.TrimRight(stmt.String(), " \t\r\n")
 		core = strings.TrimSuffix(core, delimiter)
 		core = strings.TrimSpace(core)
@@ -1228,7 +1235,7 @@ func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn
 		if core == "" {
 			return nil
 		}
-		return handle(core)
+		return emit(core)
 	}
 
 	for {
@@ -1237,7 +1244,7 @@ func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn
 		trimmed := strings.TrimSpace(body)
 
 		if stmt.Len() == 0 {
-			// DELIMITER is a client directive (trigger/routine bodies) — never sent to the server.
+			// DELIMITER is a client directive — never sent to the server.
 			if len(trimmed) >= 9 && strings.EqualFold(trimmed[:9], "DELIMITER") {
 				if fields := strings.Fields(trimmed); len(fields) >= 2 {
 					delimiter = fields[1]
@@ -1262,7 +1269,7 @@ func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn
 		stmt.WriteString(body)
 
 		if strings.HasSuffix(trimmed, delimiter) {
-			if err := emit(); err != nil {
+			if err := flushStmt(); err != nil {
 				return err
 			}
 		}
@@ -1275,11 +1282,72 @@ func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn
 	}
 	// Trailing statement with no terminator (rare) — do not drop it.
 	if strings.TrimSpace(stmt.String()) != "" {
-		if err := emit(); err != nil {
-			return err
+		return flushStmt()
+	}
+	return nil
+}
+
+// splitdumpExecutor is the DB side of the restore, injectable so planAndExecSplitdump
+// is testable with a recording stub instead of a live connection.
+type splitdumpExecutor struct {
+	batch  func(stmts []string) error       // run stmts in one retrying transaction
+	single func(stmt string, continueOnError bool) error
+}
+
+// planAndExecSplitdump segments the stream (forEachSplitdumpStatement) and drives
+// exec: INSERT/REPLACE batch (batchSize) into exec.batch, EXCEPT when continueOnError
+// (mysql.system-all seed rows) — then each runs via exec.single so one conflicting
+// row is skipped instead of the whole transaction rolling back, matching the old
+// --force. LOCK/UNLOCK/DISABLE-KEYS are dropped; everything else flushes then single.
+func planAndExecSplitdump(reader io.Reader, continueOnError bool, batchSize int, exec splitdumpExecutor) error {
+	batch := make([]string, 0, batchSize)
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
 		}
+		err := exec.batch(batch)
+		batch = batch[:0]
+		return err
+	}
+
+	err := forEachSplitdumpStatement(reader, func(full string) error {
+		switch classifySplitdumpStatement(full) {
+		case splitdumpStmtSkip:
+			return nil
+		case splitdumpStmtInsert:
+			if continueOnError {
+				if err := flush(); err != nil {
+					return err
+				}
+				return exec.single(full, true)
+			}
+			batch = append(batch, full)
+			if len(batch) >= batchSize {
+				return flush()
+			}
+			return nil
+		default:
+			if err := flush(); err != nil {
+				return err
+			}
+			return exec.single(full, continueOnError)
+		}
+	})
+	if err != nil {
+		return err
 	}
 	return flush()
+}
+
+func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn *sqlx.Conn, reader io.Reader, continueOnError bool, path string) error {
+	return planAndExecSplitdump(reader, continueOnError, splitdumpBatchStatements, splitdumpExecutor{
+		batch: func(stmts []string) error {
+			return server.execSplitdumpBatch(ctx, conn, stmts, path)
+		},
+		single: func(stmt string, coe bool) error {
+			return server.execSplitdumpSingle(ctx, conn, stmt, coe, path)
+		},
+	})
 }
 
 // execSplitdumpBatch runs stmts inside a single transaction and retries the whole
@@ -1500,9 +1568,13 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 	// Open one dedicated pinned connection per parallel worker. We deliberately
 	// avoid the shared server.Conn pool: statement ordering, session state
 	// (USE / FK / UNIQUE) and transaction affinity all require a single connection
-	// held for the whole of a file's load. Binlog state follows the master/slave
-	// decision: GetConnNoBinlog for a slave reseed, a plain pinned conn (binlog ON)
-	// for a master restore.
+	// held for the whole of a file's load. Each worker gets its OWN *sqlx.DB
+	// (GetNewDBConn) and pins one conn from it, rather than pinning N conns off a
+	// single shared *sqlx.DB — so the load never contends with the monitor's own
+	// pool and each worker's session state is fully isolated (a few extra pool
+	// objects, bounded by BackupLogicalLoadThreads). Binlog state follows the
+	// master/slave decision: GetConnNoBinlog for a slave reseed, a plain pinned conn
+	// (binlog ON) for a master restore.
 	parallel := cluster.Conf.BackupLogicalLoadThreads
 	if parallel < 1 {
 		parallel = 1
