@@ -79,6 +79,15 @@ func (server *ServerMonitor) RejoinMaster() error {
 	// Strange here add comment for why
 	cluster.canFlashBack = true
 
+	// A reseed armed by a previous rejoin tick is still in flight: the rejoin is
+	// NOT finished — its outcome is recorded by the reseed completion handler
+	// (WARN0074/WARN0075 → recordOrDeferRejoin), not here. Do not re-enter or
+	// record; hold the one-shot until completion. reseedFromRejoin covers the tiny
+	// window after the reseed clears IsReseeding but before finishRejoin lands.
+	if server.HasAnyReseedingState() || server.reseedFromRejoin.Load() {
+		return nil
+	}
+
 	// ONE-SHOT terminator: this event already ended with a recorded result (in
 	// crash history). Do nothing until an explicit re-arm (rearmRejoin) copies it
 	// back. Makes the Failed->up edge AND the per-tick topology extra-master call
@@ -157,7 +166,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 					}
 					if cluster.Conf.Autoseed {
 						err := server.ReseedMasterSST()
-						cluster.finishRejoin(server.URL, rejoinResultOf(err))
+						cluster.recordOrDeferRejoin(server, err)
 						return nil
 					}
 					// PEER-UNREACHABLE (real-world transient split): arbitration is on and
@@ -603,6 +612,27 @@ func rejoinResultOf(err error) string {
 		return RejoinResultNoMethod
 	}
 	return RejoinResultSuccess
+}
+
+// recordOrDeferRejoin records the rejoin outcome NOW, or defers it to the reseed
+// completion handler when an async reseed is still in flight.
+//
+// A synchronous reseed (RejoinDirectDump) has already run and cleared its
+// reseeding state by the time it returns, so err is the real result → record it.
+// An async reseed (JobReseedLogicalBackup/JobReseedPhysicalBackup) only ARMS
+// WARN0075/WARN0074 and returns nil while the restore runs off-tick; recording
+// success here would stamp the rejoin done before the restore even ran. Instead we
+// set reseedFromRejoin and let the WARN0074/WARN0075 completion call finishRejoin
+// with the REAL result (rejoinResultOf(err) from ProcessReseed*). Never a retry —
+// one-shot either way; RejoinMaster holds the one-shot while reseedFromRejoin is set.
+func (cluster *Cluster) recordOrDeferRejoin(server *ServerMonitor, err error) {
+	if err == nil && server.HasAnyReseedingState() {
+		server.reseedFromRejoin.Store(true)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Rejoin of %s: async reseed in flight — outcome recorded at reseed completion", server.URL)
+		return
+	}
+	cluster.finishRejoin(server.URL, rejoinResultOf(err))
 }
 
 // rejoinWithMethod runs the OPERATOR-CHOSEN recovery method for a re-armed crash,
