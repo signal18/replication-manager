@@ -182,6 +182,68 @@ func (cluster *Cluster) assertLostEventsStates() {
 	}
 }
 
+// reconcileDeferredRejoinReseeds records the outcome of a rejoin-armed reseed once
+// it actually completes, and surfaces a generic in-flight progress state meanwhile.
+//
+// recordOrDeferRejoin defers finishRejoin for a reseed still in flight (it sets
+// reseedFromRejoin) because EVERY reseed method — physical SST (ProcessReseedPhysical),
+// direct mysqldump (RejoinDirectDump), and the off-tick logical restore
+// (ProcessReseedLogical) — arms a DETACHED goroutine and returns before the restore
+// finishes. The one signal they all share is clearing IsReseeding (SetInReseedBackup(""))
+// on completion; none carries a uniform success/fail return. So the outcome is read
+// from OBSERVED health, not from any arming call's return value.
+//
+//   - in flight (IsReseeding still set): raise a generic "rejoin reseed in progress,
+//     started T" state (WARN0189) for methods WITHOUT byte instrumentation — the ones
+//     that DO instrument bytes are already surfaced by assertReseedProgressStates.
+//   - completed (IsReseeding cleared): record from observed health — a healthy slave of
+//     the current master is success, otherwise failed. A node still establishing
+//     replication right after the reseed self-corrects: assertRejoinResultStates
+//     rewrites a stale "failed" to "recovered" once it becomes a healthy slave.
+//
+// Called per tick, before assertRejoinResultStates.
+func (cluster *Cluster) reconcileDeferredRejoinReseeds() {
+	for _, sv := range cluster.Servers {
+		if sv == nil || !sv.reseedFromRejoin.Load() {
+			continue
+		}
+		if sv.HasAnyReseedingState() {
+			// Reseed still running — RejoinMaster stays held. Show generic progress
+			// only when there is no byte progress (assertReseedProgressStates covers
+			// the instrumented methods).
+			if _, info := sv.reseedProgressLine(); info == nil {
+				if startNanos := sv.rejoinReseedStart.Load(); startNanos > 0 {
+					start := time.Unix(0, startNanos)
+					generic := fmt.Sprintf("rejoin reseed in progress, started %s (%s)",
+						start.Format("15:04:05"), time.Since(start).Round(time.Second))
+					cluster.SetState("WARN0189", state.State{
+						ErrType:   "WARNING",
+						ErrKey:    "WARN0189",
+						ErrDesc:   fmt.Sprintf(cluster.GetErrorList()["WARN0189"], sv.URL, generic, sv.IsReseeding),
+						ErrFrom:   "REJOIN",
+						ServerUrl: sv.URL,
+					})
+				}
+			}
+			continue
+		}
+		// Reseed completed (IsReseeding cleared) → record from observed health.
+		result := RejoinResultFailed
+		if sv.IsSlave && !sv.IsFailed() && cluster.master != nil {
+			if m, _ := cluster.GetMasterFromReplication(sv); m != nil && m.URL == cluster.master.URL {
+				result = RejoinResultSuccess
+			}
+		}
+		// finishRejoin first (→ rejoinAlreadyAttempted true), then clear the marker,
+		// so RejoinMaster's one-shot has no open gap.
+		cluster.finishRejoin(sv.URL, result)
+		sv.reseedFromRejoin.Store(false)
+		sv.rejoinReseedStart.Store(0)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Rejoin of %s reseed completed → %s", sv.URL, result)
+	}
+}
+
 // assertRejoinResultStates makes a FINISHED rejoin outcome visible per tick,
 // read from durable history (finishRejoin moved the crash there). Only outcomes
 // that need the operator are raised, and only while the server is not yet a

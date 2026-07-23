@@ -75,6 +75,189 @@ set ONLY if that event is not already in our history with a result. Same event =
 same (loser URL, elected URL, peer failover ts). Already-attempted => leave it in
 history with its state, do nothing.
 
+## Execution model — RejoinMaster runs in a goroutine (async by design)
+
+*(Added 2026-07-23 — this was implicit in the code but never written down, and its
+absence led the topology caller to run synchronously.)*
+
+A rejoin can run a logical/physical reseed that takes minutes, hours, or days. It
+MUST NOT run on the monitor tick, or the entire cluster loop — health checks,
+failover, everything — freezes for the whole restore.
+
+So `RejoinMaster` is **always spawned asynchronously**, and is safe to fire per tick:
+
+- `go server.RejoinMaster()` at every edge that detects a server needing rejoin:
+  the Failed→up edge (`srv.go`), the armed/operator path (`crash.go`), and the
+  topology extra-master path (`cluster_topo.go`).
+- **Re-entrancy** is guarded by `server.rejoinInProgress` (atomic CompareAndSwap):
+  a second spawn while one is running returns immediately, so per-tick spawning
+  never stacks duplicates.
+- **One-shot** is guarded by `rejoinAlreadyAttempted` (crash-history result): once
+  the first attempt records a result, later spawns are no-ops until an explicit
+  re-arm. (This is the "Retry is EXPLICIT, never automatic" law above.)
+
+### The reseed stays async; the RECORD is reconciled at TRUE completion
+
+The reseed does NOT need to be synchronous — the monitor loop is never blocked
+(rejoin is a goroutine; the logical handler is `trackTickGoroutine`). The one thing
+the async restore broke was the **record**: `finishRejoin` fired at ARM time and
+stamped `success` before the restore had run.
+
+**The trap I fell into first (and the review caught):** there is no reliable
+"the reseed returned" signal to hook. **Every** reseed method arms a DETACHED
+goroutine and returns before the restore runs:
+
+| Reseed method | Arming call | What it does | Completion signal |
+|---|---|---|---|
+| logical backup | `ProcessReseedLogical` (WARN0075, off-tick) | runs the restore in the tick goroutine, `StartSlave`, clears `IsReseeding` | `IsReseeding` clear |
+| physical SST | `ProcessReseedPhysical` (WARN0074) | `go WaitAndSendSST → go SSTRunSender`, **returns `nil` immediately** | `IsReseeding` clear (in the goroutine) |
+| direct mysqldump | `RejoinDirectDump` | `go JobRejoinMysqldumpFromSource`, **returns `nil` immediately**, no WARN state | `IsReseeding` clear (`defer`) |
+
+So reconciling in the WARN0074/WARN0075 handlers on their return value was wrong:
+physical would stamp success at *arm* time, and direct-mysqldump (no WARN state)
+would never reconcile at all — leaving `reseedFromRejoin` set forever and
+permanently blocking `RejoinMaster` for that server.
+
+**Fix (2026-07-23) — reconcile from OBSERVED health at the ONE shared completion
+signal (`IsReseeding` clears):**
+
+- **`recordOrDeferRejoin(server, err)`** (`srv_rejoin.go`): arm failed → record now;
+  else (reseed in flight, `HasAnyReseedingState()`) set `reseedFromRejoin` +
+  `rejoinReseedStart`, return **without** recording.
+- **`reconcileDeferredRejoinReseeds()`** (`srv_lostevents.go`, per tick, before
+  `assertRejoinResultStates`): for each server with `reseedFromRejoin` set —
+  - still reseeding → hold; surface a generic `WARN0189` "rejoin reseed in progress,
+    started T" for methods without byte instrumentation (instrumented ones are shown
+    by `assertReseedProgressStates`);
+  - `IsReseeding` cleared (completed) → record from observed health: a **healthy
+    slave of the current master** is `success`, otherwise `failed`. finishRejoin
+    first, then clear the marker (one-shot has no gap).
+- **Self-correcting:** a node still establishing replication right after the reseed
+  is rewritten `failed → recovered` by `assertRejoinResultStates` once it becomes a
+  healthy slave — so a transient `failed` never sticks.
+- **One-shot hold:** `RejoinMaster` early-returns while pending
+  (`HasAnyReseedingState() || reseedFromRejoin.Load()`).
+- **Never a retry:** one record, one-shot; retry stays EXPLICIT (operator re-arm).
+
+The WARN0074/WARN0075 handlers no longer reconcile — they only *execute* the reseed
+(for rejoin and non-rejoin triggers alike).
+
+### Status
+- ✅ All rejoin call sites are `go`-spawned (topology caller fixed 2026-07-23).
+- ✅ Async-reseed rejoin record reconciled at completion (2026-07-23): rejoin
+  history records the real restore outcome, not arm-time success. Scope: the
+  `Autoseed` → `ReseedMasterSST` path (logical + physical). Flashback and
+  operator-method paths are unchanged — their restores are synchronous or
+  operator-observed, so their arm-time record is already the real result.
+
+## Rejoin workflow — triggers, gates, and the state each path emits
+
+*(Added 2026-07-23. Map of `RejoinMaster` in `srv_rejoin.go` as built.)*
+
+### Triggers — every one is async (`go`-spawned)
+| Edge | Site | When |
+|---|---|---|
+| Failed→up | `srv.go:759` | a monitored server that was Failed comes back standalone |
+| Armed / operator | `crash.go:511` | a re-armed crash (operator chose a method in the delta viewer) |
+| Topology extra-master | `cluster_topo.go:320` | a 2nd node still acts as master (colocated old master after split-brain; never got a Failed→up edge) |
+
+### Entry gates — each returns WITHOUT acting (top of `RejoinMaster`)
+| Gate | Condition | Why |
+|---|---|---|
+| re-entrancy | `rejoinInProgress` CAS fails | one rejoin goroutine per server |
+| active-passive | `Conf.ActivePassive` | a passive node never rejoins |
+| wsrep | `TopoMultiMasterWsrep` | Galera self-heals |
+| in failover | `StateMachine.IsInFailover()` | never rejoin mid-failover |
+| **reseed in flight** | `HasAnyReseedingState() \|\| reseedFromRejoin` | rejoin not finished — its record lands at reseed completion; hold the one-shot *(2026-07-23)* |
+| **one-shot** | `rejoinAlreadyAttempted(url)` | a result already sits in crash history → done until explicit re-arm |
+
+### Role resolution (before the rejoin paths)
+- No local crash + `Conf.Arbitration` → `fetchMasterFromPeer()` materializes the peer verdict as a normal crash (the crash SOURCE).
+- **Winner** (`getCrashFromMaster` names this server) → **crown it master**, `return` (it is the elected master, not a rejoiner — no result recorded).
+- `cluster.master == nil` + crash names `ElectedMasterURL` → adopt that master, then converge with the paths below.
+
+### The paths (server ≠ master → a returning replica / old master)
+Prelude for all: `WARN0022` (server ≠ master) + `RejoinScript`. If `MultiMasterGrouprep` → `StartGroupReplication` and stop.
+
+**A. `crash == nil` (no divergence record) → raises `ERR00066`, then:**
+
+| Sub-path | Gate | Restore action | Result recorded |
+|---|---|---|---|
+| old master | `oldMaster.URL == server.URL` | `RejoinMasterSST` (flashback/SST) | `success` / `no-rejoin-method` |
+| **fresh-provision seed** | `Conf.Autoseed` | `ReseedMasterSST` → logical/physical backup or direct mysqldump (all async) | **deferred** → observed-health outcome at reseed completion (`success` / `failed`, self-corrects to `recovered`) |
+| peer unreachable | `Conf.Arbitration && peerFetchTried && peerFetchErr` | fence read-only, NO re-slave | `peer-unreachable` (RETRYABLE — not terminal) |
+| default | — | `attachAsReadOnlySlave` on current GTID | `no-divergence` |
+
+**B. `crash != nil` (divergence record) →**
+- if `AutorejoinBackupBinlog` → capture the lost tail first (`freezeThenCaptureLostEvents`).
+- if `crash.RejoinMethod != ""` (operator chose) → `rejoinWithMethod`: flashback / logical-dump / logical-bkp / physical-bkp / ignore-force / reset-master-reslave / bootstrap-ftwrl / script → `success` / `no-divergence` / `not-flashback-able` / `no-rejoin-method`.
+- else automatic → `rejoinMasterIncremental` (flashback):
+  - success → `success` (or `no-divergence` if the delta was empty),
+  - fail → `RejoinMasterSST`; on its failure → `not-flashback-able` (diverged + DDL) or `no-rejoin-method`, and **always** `attachAsReadOnlySlave` (fenced RO — never a floating writable standalone; strict mode then guards a divergent tail as SlaveErr).
+
+If no master is discovered at all, RejoinMaster falls through to rediscover from `lastmaster` (no rejoin/record).
+
+### Result states (`finishRejoin` → crash history, one-shot)
+`success` · `no-divergence` · `not-flashback-able` · `no-rejoin-method` · `peer-unreachable` · `failed` · `recovered`
+(`recovered` = a previously-`failed` rejoin whose node later became a healthy slave by other means — reconciled so history stops showing a stale failure.)
+
+### Dashboard states raised during the workflow
+`WARN0022` (server ≠ master) · `ERR00066` (no-crash SST/reseed) · `ERR00063` (extra master) · `WARN0074`/`WARN0075` (physical/logical reseed armed) · `WARN0114` (super-read-only blocks the reseed) · `WARN0189` (reseed in progress — byte progress or generic "started T").
+
+### Reseed record timing (the async-reseed reconcile)
+- **All** rejoin reseeds are async (each arms a detached goroutine and returns nil).
+  `recordOrDeferRejoin` sets `reseedFromRejoin` + `rejoinReseedStart`.
+- `reconcileDeferredRejoinReseeds` (per tick) records `finishRejoin` from **observed
+  health** at the ONE shared completion signal — `IsReseeding` clearing — not from any
+  arming call's return. `RejoinMaster` holds the one-shot via `reseedFromRejoin`
+  meanwhile. See "The reseed stays async; the RECORD is reconciled at TRUE completion".
+
+## Reseed progress instrumentation (WARN0189)
+
+*(Added 2026-07-23.)*
+
+A reseed can run for hours; without progress it shows only a silent "processing".
+The mechanism (`restore_progress.go`):
+
+- **`startReseedProgress(info, reader, total)`** stamps the server (`reseedInfo`,
+  `reseedBytes`, `reseedTotal`, `reseedStart`) and returns a `countingReader` that
+  tallies bytes streamed through it. `total` is the compressed backup size (0 =
+  unknown). `defer stopReseedProgress()` clears it.
+- **`assertReseedProgressStates()`** runs **per tick** (`cluster_topo.go:158`) and,
+  for any server with a live `reseedInfo`, raises **`WARN0189`** with a human line:
+  `"<streamed> streamed out of <total> compressed backup, started 14:32:01 (1h23m, avg 45M/s)"`.
+  Rate is the average over elapsed (per-table speed varies too much for instantaneous).
+
+### Coverage — what is and isn't byte-instrumented
+| Reseed path | Byte progress? |
+|---|---|
+| `JobReseedMysqldump` (monolithic `mysqldump.sql.gz`) | ✅ yes |
+| native-Go splitdump loader (`fix/splitdump-native-restore` PR #1627) | ✅ yes (per-shard accumulating counter) |
+| splitdump via mysql CLI (this branch) | ❌ no |
+| physical / restic | ❌ no |
+
+### Generic fallback so a rejoin ALWAYS shows progress (proof-of-work)
+Independent of byte instrumentation, `reconcileDeferredRejoinReseeds` raises a
+**generic `WARN0189`** — `"rejoin reseed in progress, started 14:32:01 (3m12s)"` —
+from `rejoinReseedStart` for any rejoin-armed reseed whose method has no byte
+counter (physical SST, direct mysqldump, CLI splitdump). So the GUI always shows a
+running rejoin (generic timer), and upgrades to `<streamed> out of <total>` when the
+method instruments bytes. The progress line landing its true outcome at completion
+is the visible proof that the reconciliation works.
+
+### To instrument splitdump (the multi-file shape)
+`countingReader` accumulates into a single `reseedBytes` atomic, so the multi-file
+restore fits with a small change to the reset semantics:
+1. **Once**, before the restore: set `reseedTotal = Σ shard sizes`, `reseedBytes = 0`,
+   `reseedStart = now`, `reseedInfo = {Backup: dir}` (a start-without-reset variant,
+   since the current `startReseedProgress` resets bytes on every call).
+2. Wrap **each shard's file reader** with a plain `countingReader` (adds to the
+   shared `reseedBytes`), so bytes accumulate across all shards.
+3. `stopReseedProgress()` at the end.
+
+Then WARN0189 reports the same live line for a splitdump reload. Same hook applies to
+the native-Go loader (wrap each shard's `os.Open` reader before pgzip).
+
 ## What this deletes (the night's fragmentation)
 
 - `rejoinFromElection` (srv_rejoin.go) — was a SECOND rejoin. Delete.
@@ -180,13 +363,17 @@ What each code change DOES (documented before coding, per Stephane's process rul
 - DELETE `rejoinFromElection` (folded into the above).
 
 ### cluster_topo.go — reach the ONE path, don't reimplement it
-- Extra-master branch: keep `SetState(ERR00063)`, and call `extra.RejoinMaster()`
-  (like 3.0) — NO getFreshCrashForLoser, NO age gate. RejoinMaster is now one-shot
-  via finishRejoin, so the per-tick topology call is harmless after the first
-  attempt (crash in history-with-result → rejoinAlreadyAttempted true → returns).
-  This is how the COLOCATED old master (never gets a Failed->up edge on the
-  minority) reaches the unified rejoin.
+- Extra-master branch: keep `SetState(ERR00063)`, and call `go extra.RejoinMaster()`
+  (async — see "Execution model" below) — NO getFreshCrashForLoser, NO age gate.
+  RejoinMaster is one-shot via finishRejoin, so the per-tick topology call is
+  harmless after the first attempt (crash in history-with-result →
+  rejoinAlreadyAttempted true → returns). This is how the COLOCATED old master
+  (never gets a Failed->up edge on the minority) reaches the unified rejoin.
 - REMOVE the `consumeServedCrashes()` call.
+- NOTE (2026-07-23): this branch historically called `extra.RejoinMaster()`
+  **synchronously** — the one rejoin caller that ran on the monitor tick. That is
+  why the reseed had to be decoupled (arm WARN0075 and return). It is now
+  `go`-spawned like the others; see "Execution model".
 
 ### States (config/error.go) — the visible outcomes
 - Reuse WARN0184 (flashback-able) / WARN0185 (not flashback-able) where they fit;

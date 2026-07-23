@@ -40,6 +40,20 @@ function assert(condition, description) {
   assert(crashRejoinNeedsAttention(other) === false, 'non-REJOIN warnings (disk, proxy) do not alarm the crash pill')
 }
 
+// ─── WARN0189 (reseed in progress) is informational, NOT a crash-pill alarm ──
+{
+  const inProgress = { warnings: [{ number: 'WARN0189', desc: 'Restore in progress on db1', from: 'REJOIN' }], errors: [] }
+  assert(crashRejoinNeedsAttention(inProgress) === false,
+    'WARN0189 (reseed in progress) does NOT alarm the crash pill (the Reseed pill shows it)')
+
+  const mixed = { warnings: [
+    { number: 'WARN0189', desc: 'Restore in progress on db1', from: 'REJOIN' },
+    { number: 'WARN0186', desc: 'rejoin needs operator', from: 'REJOIN' },
+  ], errors: [] }
+  assert(crashRejoinNeedsAttention(mixed) === true,
+    'a real needs-attention state (WARN0186) still alarms even alongside an in-progress reseed')
+}
+
 // ─── Defensive ───────────────────────────────────────────────────────────────
 {
   assert(crashRejoinNeedsAttention(null) === false, 'null alerts → no alarm')

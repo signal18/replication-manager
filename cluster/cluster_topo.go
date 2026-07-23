@@ -154,6 +154,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		}
 	}
 	cluster.assertLostEventsStates()
+	cluster.reconcileDeferredRejoinReseeds()
 	cluster.assertRejoinResultStates()
 	cluster.assertReseedProgressStates()
 	if cluster.Conf.Arbitration {
@@ -317,7 +318,11 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					if m := cluster.GetMaster(); m != nil && extra.URL != m.URL && !extra.IsFailed() &&
 						!cluster.IsSplitBrain && !cluster.StateMachine.IsInFailover() && cluster.Conf.Autorejoin {
 						cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00063"], ErrFrom: "TOPO"})
-						extra.RejoinMaster()
+						// Spawn async like every other rejoin edge (srv.go, crash.go): a
+						// rejoin may run a multi-hour reseed and must never block the monitor
+						// tick. rejoinInProgress makes the per-tick spawn safe; finishRejoin
+						// makes it one-shot. This was the last synchronous rejoin caller.
+						go extra.RejoinMaster()
 					}
 				} else if !cluster.IsFailedArbitrator {
 					// Minority fail-safe: a node that cannot confirm authority via the
