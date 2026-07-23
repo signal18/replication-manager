@@ -12,17 +12,20 @@ automation.
 
 ## 1. Executive summary
 
-The best implementation is:
+The correct implementation is:
+1. **Backend owns pricing resolution and billing event production.**
+2. **Sponsorship acceptance is the only authority that activates base cluster billing.**
+3. **CRM owns EUR settlement, balance movement, billing cycles, and ledger history.**
+4. **App provision / unprovision events are the authority for app billing state changes.**
+5. **Base cluster cost is the fixed non-refundable baseline.**
+6. **Only app credit is refundable or creditable.**
+7. **Usage telemetry remains evidence and reconciliation input, not direct debit authority.**
 
-1. **Backend owns pricing and usage snapshots.**
-2. **CRM owns settlement and ledger transactions.**
-3. **Accounting is done in `EUR`, not in credits.**
-4. **CRM stores backend snapshots immutably and never recomputes historical price later.**
-5. **Phase 1 implements immediate debits only.**
-6. **Automatic app refunds are deliberately deferred to a later phase gated by a proven periodic
-   confirmed usage feed.**
+This matches the direction in `docs/CONSUMER_CLOUD18_CREDIT_MODEL.md`:
 
-This keeps scope tight while still building the final architecture in the right direction.
+- the cluster base contract is fixed,
+- app usage is the refundable delta around that baseline,
+- and lower app state should not let CRM invent charges or refunds from first-seen observations.
 
 ## 2. Frozen decisions
 
@@ -33,28 +36,34 @@ The following decisions are fixed for this plan.
 **Backend owns:**
 
 - `pricing_mode`
-- usage measurement / confirmed usage state
+- base cluster pricing snapshot
+- app pricing snapshot per app billing event
 - `db_units`
 - `app_units`
-- `db_amount`
+- `infra_amount`
+- `license_amount`
+- `sysops_amount`
+- `dbops_amount`
+- `base_amount`
 - `app_amount`
-- resolved commercial price snapshot at that time
 - `cluster_ref`
-- `snapshot_key`
-- `usage_sequence`
+- `event_key`
+- `event_sequence`
 - `sponsorship_cycle_ref`
 - `billing_owner_ref`
 - `sponsorship_last_event_id`
+- `app_ref`
 
 **CRM owns:**
 
 - validation of payload freshness and sponsorship binding consistency
 - balance-account lookup from `billing_owner_ref`
-- balance updates
+- cluster billing activation state
+- app billing item state
+- billing-cycle opening and closing
 - debit transactions
-- future refund transactions
+- app-only refund or credit transactions
 - idempotency
-- settlement state
 - historical ledger
 
 ### 2.2 Pricing modes
@@ -64,15 +73,8 @@ Both pricing modes must remain supported:
 1. `csv-service-plan`
 2. `global-unit-pricing`
 
-CRM does not calculate either mode. Backend sends the authoritative price snapshot for both.
-
-> **Pricing-source alignment.** The backend pricing inputs and structural pricing
-> layering referenced here are described in
-> `../config/CLOUD18_CREDIT_MODEL.md` and
-> `../config/CLOUD18_APP_HA_DISCOUNT_PLAN.md`. Those documents define how
-> replication-manager computes technical units and, where applicable, app
-> structural pricing. This settlement plan defines that CRM consumes the **resolved
-> EUR amounts** from backend, not the raw pricing logic.
+CRM does not calculate either mode. Backend sends the authoritative resolved price snapshot for the
+event being recorded.
 
 ### 2.3 Accounting unit
 
@@ -84,29 +86,35 @@ The accounting ledger must be monetary:
 
 `db_units` and `app_units` remain operational pricing metadata, not the accounting currency.
 
-That means:
-
-- `db_units` / `app_units` help explain the backend pricing decision,
-- `db_amount` / `app_amount` are the authoritative commercial amounts for settlement,
-- CRM must not recompute the monetary result from the unit counts.
-
 ### 2.4 Historical truth
 
-CRM must store the backend-provided snapshot used for settlement and must never recompute old
-transactions from current prices or current formulas.
+CRM must store the backend-provided billing event payload used for settlement and must never
+recompute old transactions from current prices or current formulas.
 
-### 2.5 DB versus App settlement behavior
+### 2.5 Billing authority rule
 
-**Database:**
+The brownfield-safe settlement rule is:
 
-- debit immediately on increase
-- no runtime auto-refund on lower observed usage
+- no charge from first-seen cluster state,
+- no charge from first-seen usage increase,
+- no charge from passive usage snapshots,
+- charge only from explicit billing lifecycle events plus recurring billing-cycle processing.
+
+### 2.6 Base versus App commercial behavior
+
+**Base cluster:**
+
+- starts when sponsorship becomes actively billable,
+- uses the backend-resolved base cluster price snapshot,
+- is billed every cycle while the sponsorship remains active,
+- is not refundable from lower observed usage.
 
 **Application / Web:**
 
-- debit immediately on increase
-- future refund path allowed only from sustained confirmed lower usage
-- refund automation is out of scope for Phase 1
+- becomes billable on `app_provisioned`,
+- stops future billing on `app_unprovisioned`,
+- is the only refundable or creditable portion,
+- remains eligible for later measurement-backed reconciliation.
 
 ## 3. Scope boundaries
 
@@ -114,18 +122,20 @@ transactions from current prices or current formulas.
 
 Phase 1 must include only the foundation below:
 
-1. internal backend-to-CRM settlement ingest route
-2. immutable backend snapshot storage
+1. internal backend-to-CRM settlement event ingest route
+2. immutable billing event storage
 3. EUR balance ledger
-4. cluster settlement baseline state
-5. immediate debit processing
-6. peer-compatible latest-price mirroring
-7. refund-ready state hooks, but no automatic refund execution
+4. cluster billing state
+5. app billing item state
+6. recurring billing-cycle charging
+7. app refund-ready hooks, but no measurement-driven refund automation
+8. peer-compatible latest-price mirroring
+9. brownfield-safe import and activation rules
 
 ### 3.1.1 Backward compatibility boundary
 
 Backward compatibility for this plan is defined by the current consumer route set documented in
-`crm-api/docs/CONSUMER.md`.
+`docs/CONSUMER.md`.
 
 For Phase 1, the public CRM routes that must remain externally compatible for current
 replication-manager and frontend consumers are:
@@ -144,34 +154,40 @@ Compatibility here is route-contract compatibility:
 This compatibility promise is about the public route behavior, not about preserving any particular
 CRM-internal table names or storage implementation.
 
-For Phase 1, `crm-api/docs/CONSUMER.md` is the compatibility source of truth for these public routes.
+For Phase 1, `docs/CONSUMER.md` is the compatibility source of truth for these public routes.
+
+If CRM groundwork is implemented before consumer emits the new internal settlement events, follow
+`docs/CLOUD18_CRM_PRE_CONSUMER_EXECUTION_PLAN.md` and defer live public-route repoint until the
+consumer cutover gate is met.
 
 ### 3.2 Explicitly out of scope now
 
 The following are deferred and must not be added to Phase 1:
 
-1. automatic app refunds
-2. refund cron/finalizer
-3. public UI work
-4. changing the external contract of existing public end-user billing routes
-5. CRM-side price calculation for either pricing mode
-6. replacing existing legacy pricing routes as part of the same implementation
-7. promotion logic on top of usage pricing
+1. charging from raw usage snapshots alone
+2. automatic measurement-driven app refunds
+3. refund finalizers driven only by sustained lower telemetry
+4. public UI work
+5. changing the external contract of existing public end-user billing routes
+6. CRM-side price calculation for either pricing mode
+7. replacing existing legacy pricing routes as part of the same implementation
+8. promotion logic on top of unit pricing
 
 ## 4. High-level architecture
 
 ### 4.1 Flow
 
-1. Backend measures or confirms current cluster usage state.
-2. Backend resolves the current price snapshot for that state.
-3. Backend builds one self-contained settlement snapshot from current authoritative local sponsorship
-   state plus current usage/pricing state.
-4. Backend sends that authoritative settlement snapshot to CRM.
-5. CRM validates snapshot freshness, ordering, and sponsorship binding.
-6. CRM stores that snapshot idempotently.
-7. CRM compares the snapshot to the last settled baseline for the cluster binding.
-8. CRM creates immediate debits when DB or App usage increases.
-9. CRM records lower-app state for future refund support without creating a refund yet.
+1. Backend accepts sponsorship with a valid `billing_owner_ref`.
+2. Backend resolves the authoritative base cluster price snapshot for that sponsorship episode.
+3. Backend sends `sponsorship_started` to CRM.
+4. CRM opens active cluster billing state and records the current base cluster commercial baseline
+   from that sponsorship start time.
+5. Backend sends `app_provisioned` and `app_unprovisioned` events as app lifecycle changes occur.
+6. CRM updates app billing item state idempotently from those events.
+7. At each billing cycle, CRM charges the active base cluster amount and all active app amounts.
+8. If app policy grants a credit or refund, CRM creates app-only monetary adjustments.
+9. Usage telemetry may be stored for evidence and reconciliation, but it does not directly create a
+   debit.
 10. CRM mirrors the latest effective component amounts into the existing peer-compatible config
     keys.
 
@@ -183,137 +199,199 @@ CRM is the **settlement authority**.
 
 This means:
 
-- CRM trusts the backend snapshot for pricing.
-- CRM trusts the backend snapshot for sponsorship binding identity.
+- CRM trusts backend event payloads for pricing and sponsorship binding identity.
 - CRM does not derive price from units by itself.
 - CRM does not reconstruct sponsorship truth from BO, git, or local heuristics.
-- CRM is responsible for monetary balance movement and ledger history.
+- CRM does not infer billable app creation from raw usage deltas alone.
+- CRM is responsible for billing-cycle execution, monetary balance movement, and ledger history.
 
 ## 5. Internal contract
 
 ### 5.1 Route
 
-Add a dedicated internal route for backend settlement ingestion.
+Add a dedicated internal route for backend settlement events.
 
 Recommended path:
 
-- `POST /api/internal/usage-settlements`
+- `POST /api/internal/settlement-events`
 
 This route is internal service-to-service traffic and must not reuse end-user PAT authentication.
 
-It is additive only and is not part of the `crm-api/docs/CONSUMER.md` backward-compatibility set.
+It is additive only and is not part of the `docs/CONSUMER.md` backward-compatibility set.
 
 ### 5.2 Authentication
 
-Use a dedicated shared secret or internal token, for example:
+Use a dedicated per-instance machine credential for the settlement sender.
 
-- `Authorization: Bearer <INTERNAL_SETTLEMENT_TOKEN>`
+Preferred Phase 1 model:
+
+1. CRM issues a settlement credential per registered instance,
+2. replication-manager stores it locally,
+3. `POST /api/internal/settlement-events` authenticates that per-instance
+   credential from day one of the new route,
+4. CRM resolves sender identity from the credential binding, not from a global
+   shared secret.
+
+Recommended header form:
+
+```http
+Authorization: Bearer <settlement_secret>
+X-Settlement-Key-Id: <settlement_key_id>
+```
+
+See `docs/CLOUD18_SETTLEMENT_INSTANCE_AUTH_PLAN.md` for the credential issue,
+rotate, revoke, and active-standby rules.
 
 ### 5.3 Request payload
 
-Required fields:
+Required common fields:
 
 ```json
 {
+  "event_type": "app_provisioned",
+  "event_key": "cluster:123:app:web-1:provision:2026-07-23T10:00:00Z",
+  "event_sequence": 182,
   "cluster_ref": "cluster-123",
-  "snapshot_key": "cluster:123:2026-07-23T10:00:00Z",
-  "usage_sequence": 182,
-  "measured_at": "2026-07-23T10:00:00Z",
+  "occurred_at": "2026-07-23T10:00:00Z",
   "pricing_mode": "global-unit-pricing",
-  "usage_confirmed": true,
-  "db_units": "12",
-  "app_units": "5",
-  "db_amount": "68.00",
-  "app_amount": "32.00",
   "currency": "EUR",
-  "infra_amount": "40.00",
-  "license_amount": "15.00",
-  "sysops_amount": "12.00",
-  "dbops_amount": "33.00",
-  "total_amount": "100.00",
   "sponsorship_cycle_ref": "spc_01...",
   "billing_owner_ref": "own_01...",
   "sponsorship_last_event_id": "evt_000000000042"
 }
 ```
 
+Supported `event_type` values in Phase 1:
+
+1. `sponsorship_started`
+2. `sponsorship_ended`
+3. `base_plan_changed`
+4. `app_provisioned`
+5. `app_unprovisioned`
+
+Additional required fields by event type:
+
+- `sponsorship_started`
+  - `db_units`
+  - `infra_amount`
+  - `license_amount`
+  - `sysops_amount`
+  - `dbops_amount`
+  - `base_amount`
+- `base_plan_changed`
+  - `db_units`
+  - `infra_amount`
+  - `license_amount`
+  - `sysops_amount`
+  - `dbops_amount`
+  - `base_amount`
+- `app_provisioned`
+  - `app_ref`
+  - `app_units`
+  - `app_amount`
+- `app_unprovisioned`
+  - `app_ref`
+
 Optional fields:
 
+- `usage_snapshot_json`
 - `pricing_inputs_json`
 - `backend_metadata_json`
 
+If an app changes size, backend should emit `app_unprovisioned` for the old billable app shape and
+`app_provisioned` for the new one rather than introducing a second price authority.
+
 ### 5.4 Contract rules
 
-1. Backend always sends the resolved component snapshot.
-2. Backend always sends `db_units` and `app_units`.
-3. `snapshot_key` must be unique and stable across retries.
+1. Backend always sends the resolved price snapshot for the event being recorded.
+2. `event_key` must be unique and stable across retries.
+3. `event_sequence` must be monotonically increasing for one cluster billing stream.
 4. `currency` is `EUR` for this implementation.
-5. `usage_sequence` must be monotonically increasing for one cluster settlement stream.
-6. Active billable settlement snapshots must include `billing_owner_ref`.
-7. `sponsorship_last_event_id` must represent the current authoritative sponsorship watermark from
+5. Active billable events must include `billing_owner_ref`.
+6. `sponsorship_last_event_id` must represent the current authoritative sponsorship watermark from
    the producer.
+7. `app_ref` must be stable across the lifecycle of one logical app billing item.
 8. Payloads must be built from current authoritative local state only, not from history replay,
    CRM lookups, or BO lookups.
-9. CRM treats the payload as authoritative pricing and binding input, subject to freshness and
+9. CRM treats event payloads as authoritative pricing and binding input, subject to freshness and
    consistency validation.
+10. Passive usage telemetry must never, by itself, create a charge.
 
 ## 6. Data model
 
-### 6.1 `cluster_usage_snapshots`
+### 6.1 `cluster_billing_events`
 
-Purpose: immutable backend evidence used for settlement.
+Purpose: immutable backend billing evidence used for settlement.
 
 Recommended columns:
 
 - `id`
 - `cluster_ref`
-- `snapshot_key` unique
-- `usage_sequence`
-- `measured_at`
+- `event_key` unique
+- `event_sequence`
+- `event_type`
+- `occurred_at`
 - `pricing_mode`
-- `usage_confirmed`
-- `db_units` `DECIMAL(12,2)`
-- `app_units` `DECIMAL(12,2)`
-- `db_amount` `DECIMAL(12,2)`
-- `app_amount` `DECIMAL(12,2)`
-- `currency` `CHAR(3)`
-- `infra_amount` `DECIMAL(12,2)`
-- `license_amount` `DECIMAL(12,2)`
-- `sysops_amount` `DECIMAL(12,2)`
-- `dbops_amount` `DECIMAL(12,2)`
-- `total_amount` `DECIMAL(12,2)`
+- `currency`
+- `db_units` `DECIMAL(12,2)` nullable
+- `app_ref` nullable
+- `app_units` `DECIMAL(12,2)` nullable
+- `infra_amount` `DECIMAL(12,2)` nullable
+- `license_amount` `DECIMAL(12,2)` nullable
+- `sysops_amount` `DECIMAL(12,2)` nullable
+- `dbops_amount` `DECIMAL(12,2)` nullable
+- `base_amount` `DECIMAL(12,2)` nullable
+- `app_amount` `DECIMAL(12,2)` nullable
 - `sponsorship_cycle_ref`
 - `billing_owner_ref`
 - `sponsorship_last_event_id`
+- `usage_snapshot_json` `JSON` or `TEXT`
 - `pricing_inputs_json` `JSON` or `TEXT`
 - `backend_metadata_json` `JSON` or `TEXT`
 - `received_at`
 
-### 6.2 `cluster_settlement_state`
+### 6.2 `cluster_billing_state`
 
-Purpose: one current settled baseline per active cluster binding as last accepted by CRM.
+Purpose: one current billing baseline per active cluster sponsorship episode as last accepted by
+CRM.
 
 Recommended columns:
 
 - `cluster_ref`
-- `cycle_start_at`
-- `last_settled_snapshot_id`
-- `last_usage_sequence`
+- `billing_status` (`active`, `ended`, `paused`)
+- `current_period_ref`
+- `current_period_started_at`
+- `next_billing_at`
+- `last_event_id`
+- `last_event_sequence`
 - `last_sponsorship_cycle_ref`
 - `last_billing_owner_ref`
 - `last_sponsorship_last_event_id`
-- `last_billed_db_units` `DECIMAL(12,2)`
-- `last_billed_app_units` `DECIMAL(12,2)`
-- `last_billed_db_amount` `DECIMAL(12,2)`
-- `last_billed_app_amount` `DECIMAL(12,2)`
+- `current_db_units` `DECIMAL(12,2)`
+- `current_base_amount` `DECIMAL(12,2)`
+- `current_total_active_app_amount` `DECIMAL(12,2)`
 - `currency` `CHAR(3)`
-- `pending_lower_app_snapshot_id` nullable
-- `pending_lower_app_seen_at` nullable
 - `updated_at`
 
-Phase 1 uses the pending-lower-app fields only as a future hook. They do not create refunds yet.
+### 6.3 `cluster_app_billing_items`
 
-### 6.3 `balance_accounts`
+Purpose: track the current billable state of each app independently from the base cluster.
+
+Recommended columns:
+
+- `id`
+- `cluster_ref`
+- `app_ref`
+- `status` (`active`, `inactive`)
+- `last_provision_event_id`
+- `last_unprovision_event_id` nullable
+- `current_app_units` `DECIMAL(12,2)`
+- `current_app_amount` `DECIMAL(12,2)`
+- `activated_at`
+- `deactivated_at` nullable
+- `updated_at`
+
+### 6.4 `balance_accounts`
 
 Purpose: EUR balance per billed owner as resolved from `billing_owner_ref`.
 
@@ -329,7 +407,7 @@ Recommended columns:
 - `created_at`
 - `updated_at`
 
-### 6.4 `balance_ledger_entries`
+### 6.5 `balance_ledger_entries`
 
 Purpose: immutable EUR transaction history.
 
@@ -346,89 +424,172 @@ Recommended columns:
 - `metadata_json`
 - `created_at`
 
+### 6.6 `cluster_billing_cycles`
+
+Purpose: one settlement record per cluster billing period.
+
+Recommended columns:
+
+- `id`
+- `cluster_ref`
+- `billing_period_ref`
+- `period_started_at`
+- `period_ended_at`
+- `base_amount_charged` `DECIMAL(12,2)`
+- `app_amount_charged` `DECIMAL(12,2)`
+- `app_amount_credited` `DECIMAL(12,2)`
+- `currency` `CHAR(3)`
+- `status`
+- `created_at`
+
+Use a unique key on `cluster_ref + billing_period_ref`.
+
 ## 7. Settlement rules
 
-### 7.1 Baseline comparison
+### 7.1 Sponsorship activation
 
-CRM validates each new snapshot against `cluster_settlement_state` before settlement.
+CRM must validate each new billing event against `cluster_billing_state` before settlement.
 
-Validation must reject snapshots that are stale or binding-inconsistent, including:
+Validation must reject events that are stale or binding-inconsistent, including:
 
-- `usage_sequence` older than `last_usage_sequence`
+- `event_sequence` older than `last_event_sequence`
 - `sponsorship_last_event_id` older than `last_sponsorship_last_event_id`
 - unexpected `billing_owner_ref` change within the same active `sponsorship_cycle_ref`
 - unknown or unmapped `billing_owner_ref`
 
-Only after passing validation does CRM compare the snapshot against `cluster_settlement_state`.
+Billing starts only after `sponsorship_started` is accepted.
 
-The comparison is done separately for DB and App.
+That event:
 
-### 7.2 Database behavior
+- opens the active billing episode,
+- establishes the fixed base cluster commercial baseline,
+- is the only valid start of billable cluster state,
+- must never be synthesized from first-seen cluster presence or first-seen usage.
 
-If the incoming snapshot shows a DB increase versus the settled baseline:
+### 7.2 Base cluster behavior
 
-- compute immediate prorated debit
-- write one EUR ledger entry
-- update DB baseline in the same transaction
+The base cluster amount is the fixed non-refundable baseline described by
+`docs/CONSUMER_CLOUD18_CREDIT_MODEL.md`.
 
-If DB decreases:
+Rules:
 
-- no runtime auto-refund
-- no monetary transaction
+- base billing starts when sponsorship becomes actively billable,
+- `sponsorship_started` makes the base cluster chargeable from its `occurred_at` time under the
+  configured current-cycle policy,
+- base billing uses backend-resolved `base_amount`,
+- base billing renews every billing cycle while the sponsorship remains active,
+- lower observed DB or cluster usage does not create a base refund,
+- base amount changes only from explicit commercial lifecycle events such as
+  `base_plan_changed`, not from passive telemetry.
 
 ### 7.3 Application behavior
 
-If the incoming snapshot shows an App increase versus the settled baseline:
+Application units are the delta around the fixed base contract.
 
-- compute immediate prorated debit
-- write one EUR ledger entry
-- update App baseline in the same transaction
+Rules:
 
-If App decreases:
+- `app_provisioned` creates or reactivates one billable app item,
+- `app_provisioned` corresponds to an app usage increase, but the billing event is the accounting
+  authority,
+- `app_provisioned` makes that app chargeable from its `occurred_at` time under the configured
+  current-cycle policy,
+- `app_unprovisioned` closes that app item and stops future app-cycle charging,
+- `app_unprovisioned` corresponds to an app usage decrease, but the billing event is the accounting
+  authority,
+- `app_unprovisioned` ends app chargeability from its `occurred_at` time under the configured
+  current-cycle policy,
+- app decreases must not be inferred solely from first-seen lower usage,
+- only app amounts are eligible for refund or credit,
+- usage measurements may validate app state later, but they do not create the initial charge.
 
-- do not create a refund in Phase 1
-- store the lower-app marker fields in `cluster_settlement_state`
-- leave the settled App baseline unchanged
+### 7.4 Billing cycle processing
 
-This keeps the implementation refund-ready without turning on refund automation prematurely.
+At each billing cycle, CRM must:
+
+1. lock the active cluster billing state,
+2. resolve and lock the EUR balance account,
+3. charge the current base amount if the sponsorship is active,
+4. charge all active app billing items,
+5. apply any app-only credits or refunds allowed by policy,
+6. write the billing-cycle record,
+7. commit.
+
+The exact policy for same-cycle proration may be configured later, but the following are fixed now:
+
+- recurring base billing happens only while sponsorship is active,
+- base billing is never refunded because observed usage fell,
+- app-only credits may exist,
+- no billing cycle may create duplicate debits or duplicate app credits.
+
+### 7.5 Usage evidence role
+
+Usage snapshots are allowed as evidence and future reconciliation input, but they are not direct
+settlement authority in this plan.
+
+They may be used for:
+
+- operator audit,
+- mismatch detection,
+- later measurement-backed app refund validation,
+- later overage or underuse reporting.
+
+They must not be used for:
+
+- brownfield activation,
+- charging a cluster that has not had `sponsorship_started`,
+- charging an app that has not had `app_provisioned`.
 
 ## 8. Idempotency and anti-duplication
 
-Phase 1 must guarantee no duplicate charges and lay the groundwork for no duplicate refunds later.
+Phase 1 must guarantee no duplicate charges and no duplicate app credits.
 
-### 8.1 Snapshot idempotency
+### 8.1 Event idempotency
 
-- `cluster_usage_snapshots.snapshot_key` is unique
-- retries of the same backend snapshot must not create a second settlement movement
+- `cluster_billing_events.event_key` is unique
+- retries of the same backend event must not create a second settlement movement
 
-### 8.2 Snapshot ordering and binding freshness
+### 8.2 Event ordering and binding freshness
 
-- `usage_sequence` is the ordering source for one cluster settlement stream
+- `event_sequence` is the ordering source for one cluster billing stream
 - `sponsorship_last_event_id` is the ordering source for sponsorship binding freshness
-- stale snapshots must be rejected before baseline mutation
+- stale events must be rejected before billing-state mutation
 
-### 8.3 Ledger idempotency
+### 8.3 Billing-cycle idempotency
 
-- each debit ledger entry uses a deterministic unique `idempotency_key`
+- each cluster billing period uses a deterministic unique `billing_period_ref`
+- duplicate cycle processing is treated as replay, not a second charge
+
+### 8.4 Ledger idempotency
+
+- each ledger entry uses a deterministic unique `idempotency_key`
 - duplicate insert is treated as replay, not a second charge
 
-### 8.4 Transaction boundary
+Recommended key shapes:
 
-For any immediate debit, CRM must perform the following in one DB transaction:
+- `cluster_ref + sponsorship_cycle_ref + "base-start"`
+- `cluster_ref + billing_period_ref + "base-renewal"`
+- `cluster_ref + app_ref + event_key + "app-activate"`
+- `cluster_ref + app_ref + billing_period_ref + "app-renewal"`
+- `cluster_ref + app_ref + billing_period_ref + "app-credit"`
 
-1. lock settlement state
+### 8.5 Transaction boundary
+
+For any monetary settlement movement, CRM must perform the following in one DB transaction:
+
+1. lock billing state
 2. resolve and lock the EUR balance account
 3. insert ledger row
 4. update account balance
-5. update `cluster_settlement_state`
-6. commit
+5. update cluster or app billing state
+6. update billing-cycle state when applicable
+7. commit
 
 This is the mandatory foundation for later refund safety as well.
 
 ## 9. Peer compatibility
 
-After successful snapshot processing, CRM mirrors the latest effective component amounts into
-`clusters_config` using the existing peer-compatible keys:
+After successful settlement-event processing, CRM mirrors the latest effective component amounts
+into `clusters_config` using the existing peer-compatible keys:
 
 - `cloud18-monthly-infra-cost`
 - `cloud18-monthly-license-cost`
@@ -447,8 +608,8 @@ Phase 1 must preserve the externally consumed contracts of the existing billing 
 1. `GET /api/credits/personal`
 2. `GET /api/users/transactions`
 
-In Phase 1, CRM internally repoints these routes to the active settlement source while preserving
-the route behavior and response-shape compatibility relied on by current consumers.
+When these routes are repointed to the new settlement source, CRM must preserve the route
+behavior and response-shape compatibility relied on by current consumers.
 
 Phase 1 compatibility for these routes is **additive only**:
 
@@ -467,28 +628,14 @@ For `GET /api/credits/personal`, Phase 1 should preserve the currently consumed 
 - `owner_type`
 - `balance`
 
-Those fields remain the compatibility surface. If EUR settlement data is surfaced through this route
-in Phase 1, it must be additive and must not remove, rename, or replace the currently used fields.
+Those fields remain the compatibility surface. If EUR settlement data is surfaced through this
+route in Phase 1, it must be additive and must not remove, rename, or replace the currently used
+fields.
 
-Phase 1 may add fields such as:
+It may add fields such as:
 
 - `amount`
 - `currency`
-
-The route may be internally backed by the new EUR settlement source, but the compatibility promise
-is about the public contract, not about preserving legacy credit-storage semantics behind the same
-field names. After the Phase 1 repoint, the preserved public fields may be sourced from the active
-EUR settlement source rather than legacy credit storage.
-
-CRM must therefore define a Phase 1 user-to-settlement-account resolution rule for these routes that
-preserves their user-scoped behavior while reading from the active settlement source.
-
-Best Phase 1 rule:
-
-- `GET /api/credits/personal` and `GET /api/users/transactions` resolve as user-scoped
-  compatibility views for the authenticated CRM user,
-- that user-scoped resolution remains separate from the owner-bound internal settlement ingest path
-  keyed by `billing_owner_ref`.
 
 For `GET /api/users/transactions`, Phase 1 should preserve the current envelope and row-field
 compatibility used by consumers, including:
@@ -503,14 +650,14 @@ without removing or renaming the currently consumed fields.
 
 ### 10.1 Bootstrap/status contract freeze
 
-Before Phase 1 rollout, CRM must reconcile the live handler behavior with `crm-api/docs/CONSUMER.md`
-and the current end-to-end consumer expectation, then freeze one source-of-truth contract.
+Before rollout, CRM must reconcile the live handler behavior with `docs/CONSUMER.md` and the
+current end-to-end consumer expectation, then freeze one source-of-truth contract.
 
-Because backward compatibility for this plan is defined by `crm-api/docs/CONSUMER.md`, any mismatch
-must be resolved before rollout by either:
+Because backward compatibility for this plan is defined by `docs/CONSUMER.md`, any mismatch must be
+resolved before rollout by either:
 
-- aligning the live handlers to `crm-api/docs/CONSUMER.md`, or
-- explicitly updating `crm-api/docs/CONSUMER.md` first and treating the updated document as the frozen
+- aligning the live handlers to `docs/CONSUMER.md`, or
+- explicitly updating `docs/CONSUMER.md` first and treating the updated document as the frozen
   contract.
 
 During Phase 1, that route-level bootstrap/status contract must not change as part of the
@@ -527,67 +674,79 @@ Existing active sponsored clusters must not be back-billed accidentally.
 
 For already-active clusters at rollout:
 
-- initialize `cluster_settlement_state` from the first received snapshot
-- do not create a retroactive debit
-- do not create a retroactive refund
+- import current active sponsorship state into billing state without creating historical debits,
+- import current active app inventory as billing baseline without creating historical app debits,
+- do not synthesize `sponsorship_started` charges from old state,
+- do not synthesize `app_provisioned` charges from old state,
+- do not create a retroactive refund.
+
+The first real money movement for imported brownfield clusters must happen only from an explicit
+chosen billing-cycle boundary or from new post-cutover billing events.
 
 ### 11.2 New clusters after rollout
 
-For clusters created after cutover:
+For new clusters after cutover:
 
-- the first post-creation snapshot is billable
-- CRM may create the initial prorated debit
+- `sponsorship_started` is the first billable event,
+- the base cluster becomes billable from that sponsorship start,
+- later app billing begins only from explicit `app_provisioned` events,
+- no charge is created from first-seen usage snapshots.
 
 ## 12. Phases
 
-### Phase 1: Settlement foundation
+### Phase 1: Event-driven settlement foundation
 
-**Goal:** build the correct final architecture without refund automation.
+**Goal:** build the correct final architecture around explicit billing authority and recurring cycle
+settlement.
 
 Deliverables:
 
-1. internal settlement ingest route
-2. `cluster_usage_snapshots`
-3. `cluster_settlement_state`
-4. `balance_accounts`
-5. `balance_ledger_entries`
-6. immediate debit logic for DB/App increases
-7. lower-app marker storage only
-8. internal repointing of the existing public billing read routes to the active settlement source,
-   while preserving their current external contract
-9. peer-compatible cost mirroring
-10. brownfield baseline initialization path
-11. tests and docs
+1. internal `settlement-events` ingest route
+2. `cluster_billing_events`
+3. `cluster_billing_state`
+4. `cluster_app_billing_items`
+5. `balance_accounts`
+6. `balance_ledger_entries`
+7. `cluster_billing_cycles`
+8. sponsorship-start base billing activation
+9. app provision / unprovision billing-state handling
+10. recurring cycle charging for active base and app amounts
+11. app refund-ready hooks without telemetry-only automation
+12. peer-compatible cost mirroring
+13. brownfield-safe import path
+14. tests and docs
 
 **Exit criteria:**
 
-- duplicate snapshot replay produces no second debit
-- DB increase creates one debit only
-- App increase creates one debit only
-- DB decrease creates no refund
-- App decrease creates no refund
+- duplicate event replay produces no second charge
+- `sponsorship_started` opens billing once only
+- `app_provisioned` creates one app billing activation only
+- `app_unprovisioned` stops future app-cycle charges
+- cycle renewal charges base and active apps once only
+- brownfield import creates no historical debit
+- no passive usage snapshot creates a charge
 - latest component values are mirrored to peer-compatible fields
-- `GET /api/credits/personal` remains backward-compatible and additive only
-- `GET /api/users/transactions` remains backward-compatible and additive only
+- public billing route compatibility remains preserved where repointed
 
-### Phase 2: Refund enablement
+### Phase 2: Measurement-backed app reconciliation
 
-**Gate:** backend must provide a proven periodic confirmed usage feed suitable for sustained lower-app
-usage detection.
+**Gate:** backend must provide a proven periodic confirmed usage feed suitable for reliable app-state
+reconciliation.
 
 Deliverables:
 
-1. dedicated app refund candidate table
-2. hourly refund finalizer script
-3. configurable cooldown, default `24h`
-4. exactly-once refund finalization using candidate state + ledger idempotency + baseline update in
-   one transaction
+1. optional usage-evidence ingest and storage hardening
+2. reconciliation between app event state and measured lower app usage
+3. app-only refund or credit finalization driven by confirmed policy
+4. exactly-once refund or credit finalization using cycle state + ledger idempotency in one
+   transaction
 
 **Exit criteria:**
 
-- app temporary decrease under cooldown creates no refund
-- sustained lower confirmed App usage creates exactly one refund
-- repeated finalizer runs create no duplicate refund
+- mismatched app event state can be detected from confirmed telemetry
+- app-only credit creates exactly one monetary adjustment
+- repeated finalizer runs create no duplicate app credit
+- base cluster still never refunds from lower observed usage alone
 
 ### Phase 3: Legacy cleanup
 
@@ -605,25 +764,28 @@ Phase 1 tests must cover:
 1. wrong method -> `405`
 2. missing/invalid internal auth -> `401`
 3. invalid JSON / missing required fields -> `400`
-4. unknown `cluster_ref` or missing active billing binding -> clear failure
-5. duplicate `snapshot_key` -> idempotent replay with no second debit
-6. stale `usage_sequence` -> rejected
+4. missing active billing binding inputs -> clear failure
+5. duplicate `event_key` -> idempotent replay with no second charge
+6. stale `event_sequence` -> rejected
 7. stale `sponsorship_last_event_id` -> rejected
-8. missing `billing_owner_ref` for active billable settlement -> rejected
+8. missing `billing_owner_ref` for active billable events -> rejected
 9. unknown `billing_owner_ref` -> rejected
-10. DB increase -> exactly one immediate debit
-11. App increase -> exactly one immediate debit
-12. DB decrease -> no transaction
-13. App decrease -> no refund, lower-app marker only
-14. peer-compatible fields updated correctly
-15. `GET /api/credits/personal` keeps its current route path, auth, bootstrap/status behavior, and
+10. `sponsorship_started` -> exactly one billing activation and one base commercial baseline
+11. `base_plan_changed` -> updates the base billing state once only
+12. `app_provisioned` -> exactly one app billing activation
+13. `app_unprovisioned` -> future app-cycle charge stops
+14. recurring cycle settlement -> exactly one base renewal charge per billing period
+15. recurring cycle settlement -> exactly one active-app renewal charge per billing period
+16. brownfield import -> no historical ledger rows
+17. passive usage evidence -> no transaction
+18. peer-compatible fields updated correctly
+19. `GET /api/credits/personal` keeps its current route path, auth, bootstrap/status behavior, and
     currently used fields; any EUR-oriented fields are additive only
-16. `GET /api/users/transactions` keeps its current route path, auth, bootstrap/status behavior,
+20. `GET /api/users/transactions` keeps its current route path, auth, bootstrap/status behavior,
     envelope compatibility, and currently used row fields; any EUR-oriented fields are additive only
-17. ledger metadata contains full pricing, usage, and sponsorship-binding snapshot
-18. the live public billing-route behavior is reconciled with `crm-api/docs/CONSUMER.md` before
-    rollout and
-    remains stable after the Phase 1 repoint
+21. ledger metadata contains full pricing and sponsorship-binding snapshot for each monetary event
+22. the live public billing-route behavior is reconciled with `docs/CONSUMER.md` before rollout and
+    remains stable after any Phase 1 repoint
 
 Per repo testing policy, any broad or expensive suite should be logged to a file.
 
@@ -632,34 +794,38 @@ Per repo testing policy, any broad or expensive suite should be logged to a file
 Phase 1 must update:
 
 1. `README.md`
-2. `crm-api/docs/openapi.yaml`
-3. `crm-api/docs/CONSUMER_CLOUD18_CREDIT_MODEL.md`
+2. `docs/openapi.yaml`
+3. `docs/CONSUMER_CLOUD18_CREDIT_MODEL.md`
 
 The key clarification to add everywhere is:
 
-- backend owns pricing snapshots
-- CRM owns EUR settlement
-- backward compatibility is defined by the `crm-api/docs/CONSUMER.md` route contracts, not by current CRM
+- backend owns pricing snapshots and billing event production
+- sponsorship acceptance activates base cluster billing
+- CRM owns EUR settlement and recurring billing cycles
+- app provision / unprovision drive app billing state changes
+- backward compatibility is defined by the `docs/CONSUMER.md` route contracts, not by current CRM
   storage internals
 - existing consumed billing-route fields remain contract-stable in Phase 1; those routes may be
   internally re-backed by the new settlement source, and any EUR settlement fields exposed there
   are additive only
-- legacy credit-storage semantics are not the compatibility contract for those public routes
-- refunds are a later gated phase, not part of the foundation milestone
+- base cluster cost is the fixed non-refundable baseline
+- only app credit is refundable or creditable
+- passive usage snapshots are evidence and reconciliation inputs, not direct debit authority
 
 ## 15. Final recommendation
 
 Implement **Phase 1 only** now.
 
-This is the full correct plan without scope creep because it builds:
+This is the correct plan because it builds:
 
-- the final ownership boundary
-- the correct accounting unit
-- immutable historical evidence
-- idempotent settlement
-- peer compatibility
-- a clean path to future app refunds
+- the final ownership boundary,
+- the correct accounting unit,
+- explicit billing authority,
+- immutable historical evidence,
+- idempotent cycle settlement,
+- peer compatibility,
+- and a clean path to later measurement-backed app reconciliation.
 
-while deliberately excluding the one risky area that is still gated by backend measurement maturity:
+It also closes the brownfield flaw by making one rule non-negotiable:
 
-- automatic refund execution
+- nothing is charged merely because CRM first sees it.

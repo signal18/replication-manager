@@ -15,13 +15,6 @@ taxonomy, the ratio-lock rule, and the concrete implementation. Related code: `c
 (auto-tuning), and `server/api_global_settings.go` / `server/api_cluster.go` (pricing settings and
 atomic DBU resize path).
 
-> **Settlement-boundary alignment.** This document defines how replication-manager computes
-> technical units and derives pricing under `csv-service-plan` and `global-unit-pricing`.
-> It does **not** make CRM a pricing calculator. Under the settlement model in
-> `../crm/CRM_SETTLEMENT.md`, replication-manager resolves the final commercial EUR
-> snapshot locally and sends those resolved amounts to CRM. Units remain operational
-> pricing metadata; the backend-resolved monetary snapshot is the settlement input.
-
 ---
 
 ## 1. The model in one line
@@ -138,10 +131,6 @@ model) or only **overrides those specific parts** (promo, db+proxy) on top of a 
 > accounting stabilize. Promotion / discount handling in unit pricing is explicitly deferred and
 > will be a later pricing-layer feature, not part of raw unit accounting.
 
-> **Settlement note.** For CRM settlement, the backend must resolve the final EUR amounts
-> **after** this price-source selection. In other words, `csv-service-plan` and
-> `global-unit-pricing` are backend pricing modes, not CRM pricing modes.
-
 ## 3. What already exists in code
 
 ### 3.1 The App credit == `AppUnit` (already implemented)
@@ -254,13 +243,6 @@ i.e. reserved app credits plus each *running* proxy's cores.
 **Persisted for the BO** — `DatabaseUnits` / `ApplicationUnits` (float, `json:"..."`) are
 written on cluster save so the BO can price = `units × €/unit`.
 
-> **Alignment update.** Keep the paragraph above as historical BO/export context, but for
-> the settlement path the frozen rule is now: replication-manager computes the units,
-> applies any applicable structural/commercial pricing rules, resolves final `db_amount`
-> and `app_amount` in EUR, and sends those resolved amounts to CRM. CRM stores and
-> settles the resolved snapshot; it does not recompute historical price from the unit
-> counts.
-
 > **Implementation note — export boundary.** `clusterstate.json` is the clean technical persistence
 > path for unit totals. If the BO/export pipeline only scans another artifact (for example TOML or
 > a repo-driven extraction path), implementation may temporarily mirror/export the computed values
@@ -353,10 +335,6 @@ the delta reconciliation (§9.2): a stopped app naturally falls *below* its plan
 > storage) is intentionally deferred to `CLOUD18_APP_HA_DISCOUNT_PLAN.md`. Root cause: it changes
 > billed app price, not the technical `ApplicationUnits` count.
 
-> **Settlement alignment.** When that structural pricing rule is implemented, it changes the
-> backend-resolved billed app price that eventually feeds settlement `app_amount`; it does
-> not change the authoritative technical unit totals exported as pricing metadata.
-
 ## 5. Pricing: today vs the credit model
 
 | | Today (code) | Website / target |
@@ -373,10 +351,6 @@ metered consumption.
 > `global-unit-pricing` as a hard technical price-source switch: unit accounting first, later
 > commercial overlays second. Promotions/discounts in unit pricing are deferred so the branch does
 > not have two competing price authorities while the unit model stabilizes.
-
-> **Settlement alignment.** The resulting DB/App commercial price after all backend pricing
-> layers is what should be sent to CRM as the authoritative monetary snapshot. CRM should
-> validate and settle that snapshot, not derive or recompute it from units.
 
 ## 6. Appendix — units per current plan (computed)
 
@@ -581,3 +555,12 @@ The flow:
 (`backup-restic`, S3/SFTP), provision + restore, binlog capture/replay across instances, the DNS
 SRV records above, and the peer catalogue + free-pool (§9.3). §10 wires them into one
 orchestrated, consumption-driven migration.
+
+## 11. CRM-side settlement implementation
+
+CRM-side settlement now implements the explicit billing-lifecycle-event model described in
+`docs/CLOUD18_BACKEND_CRM_SETTLEMENT_PLAN.md` (backend resolves and sends pricing snapshots; CRM
+owns EUR settlement, billing cycles, and ledger history). The fixed-base / refundable-app-delta
+distinction this document describes operationally is what
+`cluster_billing_state.current_base_amount` (the fixed, non-refundable base cluster baseline) and
+`cluster_app_billing_items` (the refundable/creditable app delta) encode on the CRM side.
