@@ -102,6 +102,66 @@ func (server *ServerMonitor) reseedProgressLine() (string, *ReseedProgress) {
 	return line, info
 }
 
+// ReseedProgressView is the JSON-friendly snapshot of an in-flight restore for the
+// dashboard: enough to render a progress bar (bytes/total/percent) or a generic
+// "started T (elapsed)" timer when the method has no byte instrumentation.
+type ReseedProgressView struct {
+	InProgress   bool   `json:"inProgress"`
+	FromRejoin   bool   `json:"fromRejoin"`   // armed by a rejoin (reseedFromRejoin)
+	Task         string `json:"task"`         // reseed task: "reseedmysqldump", "reseedmariabackup", "direct", …
+	Backup       string `json:"backup"`       // backup file/dir being restored ("" if generic)
+	Tool         string `json:"tool"`         // restore tool
+	Bytes        int64  `json:"bytes"`        // streamed (compressed) so far
+	Total        int64  `json:"total"`        // total compressed size (0 = unknown)
+	Percent      int    `json:"percent"`      // 0..100, or -1 when total is unknown
+	StartedUnix  int64  `json:"startedUnix"`  // restore start (byte path) or rejoin-arm time (generic)
+	ElapsedSecs  int64  `json:"elapsedSecs"`
+	RateBytesSec int64  `json:"rateBytesSec"` // average over elapsed (0 when no bytes)
+	Line         string `json:"line"`         // the human progress line
+}
+
+// GetReseedProgress returns a snapshot of the server's in-flight restore, or nil
+// when idle. It merges the byte-instrumented progress (reseedInfo + counters) with
+// the generic rejoin timer (rejoinReseedStart) so a rejoin is always reportable
+// even for methods that do not count bytes.
+func (server *ServerMonitor) GetReseedProgress() *ReseedProgressView {
+	task := server.IsReseeding
+	fromRejoin := server.reseedFromRejoin.Load()
+	if task == "" && !fromRejoin {
+		return nil
+	}
+	v := &ReseedProgressView{InProgress: task != "", FromRejoin: fromRejoin, Task: task, Percent: -1}
+	info, _ := server.reseedInfo.Load().(*ReseedProgress)
+	startNanos := server.reseedStart.Load()
+	if info != nil {
+		v.Backup = info.Backup
+		v.Tool = info.Tool
+		v.Bytes = server.reseedBytes.Load()
+		v.Total = server.reseedTotal.Load()
+		if v.Total > 0 {
+			v.Percent = int(v.Bytes * 100 / v.Total)
+		}
+	} else if startNanos == 0 {
+		startNanos = server.rejoinReseedStart.Load() // generic rejoin timer, no byte instrumentation
+	}
+	if startNanos > 0 {
+		v.StartedUnix = startNanos / int64(time.Second)
+		elapsed := time.Since(time.Unix(0, startNanos))
+		v.ElapsedSecs = int64(elapsed / time.Second)
+		if v.ElapsedSecs > 0 && v.Bytes > 0 {
+			v.RateBytesSec = v.Bytes / v.ElapsedSecs
+		}
+	}
+	if line, _ := server.reseedProgressLine(); line != "" {
+		v.Line = line
+	} else if v.StartedUnix > 0 {
+		v.Line = fmt.Sprintf("rejoin reseed in progress, started %s (%s)",
+			time.Unix(v.StartedUnix, 0).Format("15:04:05"),
+			(time.Duration(v.ElapsedSecs) * time.Second).String())
+	}
+	return v
+}
+
 // humanBytes formats a byte count like "223M" / "100G".
 func humanBytes(b int64) string {
 	const unit = 1024

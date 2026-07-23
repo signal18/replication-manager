@@ -944,6 +944,15 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 				http.Error(w, "Encoding error: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
+			// Live restore progress (nil when idle) so the dashboard can render a
+			// progress bar / "rejoin reseed in progress, started T" panel per server.
+			if rp := srv.GetReseedProgress(); rp != nil {
+				data, err = sjson.SetBytes(data, "reseedProgress", rp)
+				if err != nil {
+					http.Error(w, "Encoding error: "+err.Error(), http.StatusInternalServerError)
+					return
+				}
+			}
 			err = json.Unmarshal(data, &cont)
 			if err != nil {
 				http.Error(w, "Encoding error: "+err.Error(), http.StatusInternalServerError)

@@ -15,10 +15,14 @@
 // though its live REJOIN state had already cleared.
 
 // crashRejoinNeedsAttention reports whether the crash pill should alarm (blink +
-// red): true iff the cluster currently has an OPEN rejoin/crash health state.
+// red): true iff the cluster currently has an OPEN rejoin/crash health state that
+// NEEDS THE OPERATOR. WARN0189 ("reseed in progress") is a live, self-resolving
+// restore — informational, surfaced by the dedicated Reseed pill/panel — so it is
+// excluded here; otherwise every normal reseed made the crash pill blink red as if
+// something were broken.
 export const crashRejoinNeedsAttention = (clusterAlerts) => {
   if (!clusterAlerts) return false
-  const isRejoin = (s) => s && s.from === 'REJOIN'
-  return (clusterAlerts.warnings || []).some(isRejoin) ||
-    (clusterAlerts.errors || []).some(isRejoin)
+  const needsAttention = (s) => s && s.from === 'REJOIN' && s.number !== 'WARN0189'
+  return (clusterAlerts.warnings || []).some(needsAttention) ||
+    (clusterAlerts.errors || []).some(needsAttention)
 }

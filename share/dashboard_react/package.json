@@ -15,7 +15,8 @@
     "test:volume-dir-tokens": "node src/Pages/ClusterApp/components/Storage/__tests__/volumeDirTokens.test.js",
     "test:git-clone-volume-dir": "node src/Pages/ClusterApp/components/Storage/__tests__/gitCloneVolumeDir.test.js",
     "test:s3-volume-dir": "node src/Pages/ClusterApp/components/Storage/__tests__/s3VolumeDir.test.js",
-    "test:crash-pill": "node src/utility/__tests__/crashPill.test.js"
+    "test:crash-pill": "node src/utility/__tests__/crashPill.test.js",
+    "test:reseed-progress": "node src/utility/__tests__/reseedProgress.test.js"
   },
   "dependencies": {
     "@chakra-ui/react": "^2.10.5",
