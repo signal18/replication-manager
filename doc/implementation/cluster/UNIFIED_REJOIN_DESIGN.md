@@ -96,36 +96,51 @@ So `RejoinMaster` is **always spawned asynchronously**, and is safe to fire per 
   the first attempt records a result, later spawns are no-ops until an explicit
   re-arm. (This is the "Retry is EXPLICIT, never automatic" law above.)
 
-### The reseed stays async; the RECORD is what gets reconciled
-The reseed does NOT need to be synchronous. Whether it runs inside the rejoin
-goroutine or off-tick via the `WARN0074`/`WARN0075` handlers, the monitor loop is
-never blocked (rejoin is a goroutine; the logical handler is `trackTickGoroutine`;
-both are one-shot). The one thing the async restore broke was the **record**:
-`finishRejoin` fired at ARM time and stamped `success` before the restore had run,
-so the rejoin/crash-history outcome disagreed with the actual reseed job result.
+### The reseed stays async; the RECORD is reconciled at TRUE completion
 
-**Fix (implemented 2026-07-23) — defer the record to reseed completion:**
+The reseed does NOT need to be synchronous — the monitor loop is never blocked
+(rejoin is a goroutine; the logical handler is `trackTickGoroutine`). The one thing
+the async restore broke was the **record**: `finishRejoin` fired at ARM time and
+stamped `success` before the restore had run.
 
-- **`recordOrDeferRejoin(server, err)`** (`srv_rejoin.go`) replaces the arm-time
-  `finishRejoin` on the auto-rejoin reseed path (`Autoseed` → `ReseedMasterSST`).
-  - Synchronous reseed (`RejoinDirectDump`): its reseeding state is already
-    cleared on return, so `err` is real → record now.
-  - Async reseed in flight (`HasAnyReseedingState()` true — logical/physical
-    backup only armed `WARN0075`/`WARN0074`): set `server.reseedFromRejoin`,
-    return **without** recording.
-- **Reconcile at completion:** the `WARN0075` (logical, off-tick) and `WARN0074`
-  (physical) handlers, after `ProcessReseed*` returns the real `err`, call
-  `finishRejoin(url, rejoinResultOf(err))` when `reseedFromRejoin` is set, then
-  clear the marker. Order is finishRejoin → clear, so the one-shot has no open gap.
-- **One-shot hold:** `RejoinMaster` early-returns while a reseed is pending —
-  `if HasAnyReseedingState() || reseedFromRejoin.Load() { return nil }`. The
-  `reseedFromRejoin` half covers the tiny window after `IsReseeding` clears but
-  before `finishRejoin` lands, so no per-tick re-entry can re-arm or record early.
-- **Never a retry:** the record is one-shot either way; `finishRejoin` runs exactly
-  once, with the true outcome. Retry stays EXPLICIT (operator re-arm) as always.
+**The trap I fell into first (and the review caught):** there is no reliable
+"the reseed returned" signal to hook. **Every** reseed method arms a DETACHED
+goroutine and returns before the restore runs:
 
-The `WARN0074`/`WARN0075` handlers stay the reseed executors for NON-rejoin
-triggers too (manual, GUI, staging); the reconcile is a no-op there (marker unset).
+| Reseed method | Arming call | What it does | Completion signal |
+|---|---|---|---|
+| logical backup | `ProcessReseedLogical` (WARN0075, off-tick) | runs the restore in the tick goroutine, `StartSlave`, clears `IsReseeding` | `IsReseeding` clear |
+| physical SST | `ProcessReseedPhysical` (WARN0074) | `go WaitAndSendSST → go SSTRunSender`, **returns `nil` immediately** | `IsReseeding` clear (in the goroutine) |
+| direct mysqldump | `RejoinDirectDump` | `go JobRejoinMysqldumpFromSource`, **returns `nil` immediately**, no WARN state | `IsReseeding` clear (`defer`) |
+
+So reconciling in the WARN0074/WARN0075 handlers on their return value was wrong:
+physical would stamp success at *arm* time, and direct-mysqldump (no WARN state)
+would never reconcile at all — leaving `reseedFromRejoin` set forever and
+permanently blocking `RejoinMaster` for that server.
+
+**Fix (2026-07-23) — reconcile from OBSERVED health at the ONE shared completion
+signal (`IsReseeding` clears):**
+
+- **`recordOrDeferRejoin(server, err)`** (`srv_rejoin.go`): arm failed → record now;
+  else (reseed in flight, `HasAnyReseedingState()`) set `reseedFromRejoin` +
+  `rejoinReseedStart`, return **without** recording.
+- **`reconcileDeferredRejoinReseeds()`** (`srv_lostevents.go`, per tick, before
+  `assertRejoinResultStates`): for each server with `reseedFromRejoin` set —
+  - still reseeding → hold; surface a generic `WARN0189` "rejoin reseed in progress,
+    started T" for methods without byte instrumentation (instrumented ones are shown
+    by `assertReseedProgressStates`);
+  - `IsReseeding` cleared (completed) → record from observed health: a **healthy
+    slave of the current master** is `success`, otherwise `failed`. finishRejoin
+    first, then clear the marker (one-shot has no gap).
+- **Self-correcting:** a node still establishing replication right after the reseed
+  is rewritten `failed → recovered` by `assertRejoinResultStates` once it becomes a
+  healthy slave — so a transient `failed` never sticks.
+- **One-shot hold:** `RejoinMaster` early-returns while pending
+  (`HasAnyReseedingState() || reseedFromRejoin.Load()`).
+- **Never a retry:** one record, one-shot; retry stays EXPLICIT (operator re-arm).
+
+The WARN0074/WARN0075 handlers no longer reconcile — they only *execute* the reseed
+(for rejoin and non-rejoin triggers alike).
 
 ### Status
 - ✅ All rejoin call sites are `go`-spawned (topology caller fixed 2026-07-23).
@@ -169,7 +184,7 @@ Prelude for all: `WARN0022` (server ≠ master) + `RejoinScript`. If `MultiMaste
 | Sub-path | Gate | Restore action | Result recorded |
 |---|---|---|---|
 | old master | `oldMaster.URL == server.URL` | `RejoinMasterSST` (flashback/SST) | `success` / `no-rejoin-method` |
-| **fresh-provision seed** | `Conf.Autoseed` | `ReseedMasterSST` → logical (`WARN0075`) or physical (`WARN0074`) backup | **deferred** → real `ProcessReseed*` outcome (`success` / `no-rejoin-method`) |
+| **fresh-provision seed** | `Conf.Autoseed` | `ReseedMasterSST` → logical/physical backup or direct mysqldump (all async) | **deferred** → observed-health outcome at reseed completion (`success` / `failed`, self-corrects to `recovered`) |
 | peer unreachable | `Conf.Arbitration && peerFetchTried && peerFetchErr` | fence read-only, NO re-slave | `peer-unreachable` (RETRYABLE — not terminal) |
 | default | — | `attachAsReadOnlySlave` on current GTID | `no-divergence` |
 
@@ -187,11 +202,15 @@ If no master is discovered at all, RejoinMaster falls through to rediscover from
 (`recovered` = a previously-`failed` rejoin whose node later became a healthy slave by other means — reconciled so history stops showing a stale failure.)
 
 ### Dashboard states raised during the workflow
-`WARN0022` (server ≠ master) · `ERR00066` (no-crash SST/reseed) · `ERR00063` (extra master) · `WARN0074`/`WARN0075` (physical/logical reseed armed) · `WARN0114` (super-read-only blocks the reseed).
+`WARN0022` (server ≠ master) · `ERR00066` (no-crash SST/reseed) · `ERR00063` (extra master) · `WARN0074`/`WARN0075` (physical/logical reseed armed) · `WARN0114` (super-read-only blocks the reseed) · `WARN0189` (reseed in progress — byte progress or generic "started T").
 
 ### Reseed record timing (the async-reseed reconcile)
-- **Synchronous** restore (`RejoinDirectDump`): `finishRejoin` records the real result inline.
-- **Async** reseed (`ReseedMasterSST` → `WARN0074`/`WARN0075`): `recordOrDeferRejoin` defers; the WARN handler reconciles `finishRejoin` with the real `ProcessReseed*` outcome; `RejoinMaster` holds the one-shot via `reseedFromRejoin` in between. See "Execution model" above.
+- **All** rejoin reseeds are async (each arms a detached goroutine and returns nil).
+  `recordOrDeferRejoin` sets `reseedFromRejoin` + `rejoinReseedStart`.
+- `reconcileDeferredRejoinReseeds` (per tick) records `finishRejoin` from **observed
+  health** at the ONE shared completion signal — `IsReseeding` clearing — not from any
+  arming call's return. `RejoinMaster` holds the one-shot via `reseedFromRejoin`
+  meanwhile. See "The reseed stays async; the RECORD is reconciled at TRUE completion".
 
 ## Reseed progress instrumentation (WARN0189)
 
@@ -209,15 +228,22 @@ The mechanism (`restore_progress.go`):
   `"<streamed> streamed out of <total> compressed backup, started 14:32:01 (1h23m, avg 45M/s)"`.
   Rate is the average over elapsed (per-table speed varies too much for instantaneous).
 
-### Coverage — what is and isn't instrumented
-| Reseed path | Instrumented? |
+### Coverage — what is and isn't byte-instrumented
+| Reseed path | Byte progress? |
 |---|---|
-| `JobReseedMysqldump` (monolithic `mysqldump.sql.gz`) | ✅ yes — the only wired path |
-| **splitdump** (`restoreSplitdumpWithMysql` / per-table shards) | ❌ **no** — silent "processing" |
-| native-Go splitdump loader (`fix/splitdump-skip-first-shard`) | ❌ no |
-| physical / restic | ❌ no (not via WARN0189) |
+| `JobReseedMysqldump` (monolithic `mysqldump.sql.gz`) | ✅ yes |
+| native-Go splitdump loader (`fix/splitdump-native-restore` PR #1627) | ✅ yes (per-shard accumulating counter) |
+| splitdump via mysql CLI (this branch) | ❌ no |
+| physical / restic | ❌ no |
 
-This is why a rejoin/reseed **from a splitdump backup shows no progress**.
+### Generic fallback so a rejoin ALWAYS shows progress (proof-of-work)
+Independent of byte instrumentation, `reconcileDeferredRejoinReseeds` raises a
+**generic `WARN0189`** — `"rejoin reseed in progress, started 14:32:01 (3m12s)"` —
+from `rejoinReseedStart` for any rejoin-armed reseed whose method has no byte
+counter (physical SST, direct mysqldump, CLI splitdump). So the GUI always shows a
+running rejoin (generic timer), and upgrades to `<streamed> out of <total>` when the
+method instruments bytes. The progress line landing its true outcome at completion
+is the visible proof that the reconciliation works.
 
 ### To instrument splitdump (the multi-file shape)
 `countingReader` accumulates into a single `reseedBytes` atomic, so the multi-file

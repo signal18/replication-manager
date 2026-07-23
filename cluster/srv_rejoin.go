@@ -628,6 +628,7 @@ func rejoinResultOf(err error) string {
 func (cluster *Cluster) recordOrDeferRejoin(server *ServerMonitor, err error) {
 	if err == nil && server.HasAnyReseedingState() {
 		server.reseedFromRejoin.Store(true)
+		server.rejoinReseedStart.Store(time.Now().UnixNano())
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Rejoin of %s: async reseed in flight — outcome recorded at reseed completion", server.URL)
 		return

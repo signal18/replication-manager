@@ -154,6 +154,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		}
 	}
 	cluster.assertLostEventsStates()
+	cluster.reconcileDeferredRejoinReseeds()
 	cluster.assertRejoinResultStates()
 	cluster.assertReseedProgressStates()
 	if cluster.Conf.Arbitration {

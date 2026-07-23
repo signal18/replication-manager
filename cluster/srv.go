@@ -251,7 +251,8 @@ type ServerMonitor struct {
 	configGenMutex              sync.Mutex // protects config generation operations
 	backupMetaMutex             sync.Mutex  // protects LastBackupMeta from concurrent Restic callback updates
 	rejoinInProgress            atomic.Bool  // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
-	reseedFromRejoin            atomic.Bool  // set when a rejoin armed an ASYNC reseed; the reseed completion handler (WARN0074/WARN0075) reconciles finishRejoin with the real outcome, and RejoinMaster holds the one-shot while it is set
+	reseedFromRejoin            atomic.Bool  // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
+	rejoinReseedStart           atomic.Int64 // unix-nanos when the rejoin armed its reseed; drives the generic "rejoin reseed in progress, started T" state (WARN0189) for methods without byte instrumentation
 	reseedInfo                  atomic.Value // *ReseedProgress: the in-flight restore's backup (nil when idle) — for the progress state
 	reseedBytes                 atomic.Int64 // raw bytes streamed so far (compressed input; no decompression accounting yet)
 	reseedTotal                 atomic.Int64 // total compressed backup file size (0 = unknown)

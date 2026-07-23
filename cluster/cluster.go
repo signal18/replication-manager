@@ -1239,12 +1239,10 @@ func (cluster *Cluster) StateProcessing() {
 					}
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing reseed for %s: %s", servertoreseed.URL, err)
 				}
-				// Reconcile a rejoin-armed reseed with the real outcome (deferred at
-				// arm time). See the WARN0075 handler below for the ordering rationale.
-				if servertoreseed.reseedFromRejoin.Load() {
-					cluster.finishRejoin(servertoreseed.URL, rejoinResultOf(err))
-					servertoreseed.reseedFromRejoin.Store(false)
-				}
+				// NOTE: a rejoin-armed reseed is NOT reconciled here — ProcessReseedPhysical
+				// only arms a detached WaitAndSendSST/SSTRunSender goroutine and returns nil,
+				// so err is not the real outcome. Reconciliation happens at true completion
+				// (IsReseeding clear) via reconcileDeferredRejoinReseeds.
 			}
 
 			if s.ErrKey == "WARN0075" && servertoreseed != nil {
@@ -1281,14 +1279,9 @@ func (cluster *Cluster) StateProcessing() {
 						}
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing logical reseed for %s: %s", srvReseed.URL, err)
 					}
-					// If this reseed was armed by a rejoin, reconcile the rejoin record
-					// with the REAL restore outcome (finishRejoin was deferred at arm
-					// time). finishRejoin first (→ rejoinAlreadyAttempted true), then
-					// clear the marker, so the one-shot never has an open gap.
-					if srvReseed.reseedFromRejoin.Load() {
-						cluster.finishRejoin(srvReseed.URL, rejoinResultOf(err))
-						srvReseed.reseedFromRejoin.Store(false)
-					}
+					// Rejoin-armed reseed outcome is reconciled uniformly at true
+					// completion (IsReseeding clear) by reconcileDeferredRejoinReseeds,
+					// not here — see that function and the WARN0074 note above.
 				})
 			}
 
