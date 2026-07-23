@@ -1033,109 +1033,6 @@ func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, ba
 	return server.reseedMysqldumpWithSplitdump(ctx, backupPath, restoreUser)
 }
 
-func (server *ServerMonitor) restoreSplitdumpFileContextWithPreamble(ctx context.Context, path, preamble string) error {
-	cluster := server.ClusterGroup
-
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	var reader io.Reader = file
-	if strings.HasSuffix(strings.ToLower(path), ".gz") {
-		parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
-		bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModTask)
-		gzReader, err := gzip.NewReaderN(file, bufferSize, parallelBlocks)
-		if err != nil {
-			return err
-		}
-		defer gzReader.Close()
-		reader = gzReader
-	}
-
-	schema := splitdump.SchemaFromFilename(path)
-	table := splitdump.TableFromFilename(path)
-	var force bool
-	if schema == "mysql" {
-		if splitdump.IsGtidSlavePosDataFile(path) {
-			if cluster != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn,
-					"Splitdump restore skipped mysql.gtid_slave_pos data file: %s", filepath.Base(path))
-			}
-			return nil
-		}
-
-		// We need force in system-all to prevent failed plugins.
-		// IsMysqlSystemAll compares basename only, so pass filepath.Base(path).
-		if splitdump.IsMysqlSystemAll(filepath.Base(path)) {
-			force = true
-		}
-
-		if table != "" && splitdump.IsMysqlTableCheckEligible(path) {
-			// Server path proactively checks information_schema; CLI path reacts to mysql error output instead.
-			exists, err := server.tableExists(schema, table)
-			if err != nil {
-				return err
-			}
-			if !exists {
-				if cluster != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn,
-						"Splitdump restore skipped missing mysql table %s for %s", table, filepath.Base(path))
-				}
-				return nil
-			}
-		}
-	}
-
-	if preamble != "" {
-		reader = io.MultiReader(bytes.NewBufferString(preamble), reader)
-	}
-
-	return server.executeMysqlRestoreContext(ctx, reader, force)
-}
-
-// restoreSplitdumpFileContextStripDefiner opens path (handling gzip), strips DEFINER clauses
-// while streaming via splitdump.NewDefinerStrippingReader, prepends preamble, and pipes the
-// result to the mysql client. It is used as the non-strict DEFINER fallback when
-// backup-restore-definer-strict=false.
-// splitdump.NewDefinerStrippingReader uses bufio.Reader.ReadString (no fixed token ceiling)
-// so lines of arbitrary length — including multi-megabyte INSERT rows — are handled without
-// the bufio.ErrTooLong failure that the old bufio.Scanner approach was susceptible to.
-func (server *ServerMonitor) restoreSplitdumpFileContextStripDefiner(ctx context.Context, path, preamble string) error {
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	cluster := server.ClusterGroup
-	var reader io.Reader = file
-	if strings.HasSuffix(strings.ToLower(path), ".gz") {
-		parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
-		bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModTask)
-		gzReader, err := gzip.NewReaderN(file, bufferSize, parallelBlocks)
-		if err != nil {
-			return err
-		}
-		defer gzReader.Close()
-		reader = gzReader
-	}
-
-	strippedReader, done := splitdump.NewDefinerStrippingReader(reader)
-
-	var finalReader io.Reader = strippedReader
-	if preamble != "" {
-		finalReader = io.MultiReader(bytes.NewBufferString(preamble), strippedReader)
-	}
-
-	// IsMysqlSystemAll compares basename only, so pass filepath.Base(path).
-	force := splitdump.IsMysqlSystemAll(filepath.Base(path))
-	execErr := server.executeMysqlRestoreContext(ctx, finalReader, force)
-	done(execErr) // unblock goroutine and wait for it before deferred file.Close fires
-	return execErr
-}
-
 // ---------------------------------------------------------------------------
 // Native Go splitdump loader (replaces the `mysql --force` subprocess).
 //
@@ -1243,11 +1140,15 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 	}
 	defer file.Close()
 
-	var reader io.Reader = file
+	// Count compressed bytes streamed for the WARN0189 reseed-progress state.
+	// beginReseedProgress (in restoreSplitdumpWithMysql) accumulates every shard
+	// into one counter, so a splitdump reload shows live progress like the
+	// monolithic path — instead of a silent "processing".
+	var reader io.Reader = server.countReseedReader(file)
 	if strings.HasSuffix(strings.ToLower(path), ".gz") {
 		parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
 		bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModTask)
-		gzReader, err := gzip.NewReaderN(file, bufferSize, parallelBlocks)
+		gzReader, err := gzip.NewReaderN(reader, bufferSize, parallelBlocks)
 		if err != nil {
 			return err
 		}
@@ -1531,14 +1432,6 @@ func (server *ServerMonitor) buildLogicalRestorePreamble() (string, int, error) 
 	return cmdstring, sqlLogBin, nil
 }
 
-func (server *ServerMonitor) buildSplitdumpRestorePreamble(path string, sqlLogBin int) string {
-	preamble := splitdump.RestorePreamble(path)
-	if sqlLogBin == 0 {
-		return "SET sql_log_bin=0;\n" + preamble
-	}
-	return preamble
-}
-
 func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, backupPath string, restoreUser bool) error {
 	return server.restoreSplitdumpWithMysql(ctx, backupPath, restoreUser)
 }
@@ -1584,6 +1477,13 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 		"Splitdump restore sets sql_log_bin=%d for %s", sqlLogBin, server.URL)
 
 	defer server.SetInReseedBackup("")
+
+	// Reseed progress (WARN0189): stamp the in-flight restore and its total size so
+	// a long splitdump reload shows live "<streamed> out of <total>" per tick.
+	// restoreSplitdumpFileGo wraps each shard reader into this one accumulating
+	// counter (see countReseedReader).
+	server.beginReseedProgress(&ReseedProgress{Backup: backupPath, Tool: "splitdump"}, sumSplitdumpBytes(backupPath))
+	defer server.stopReseedProgress()
 
 	// One-time, server-global step: reset the binlog before any data is loaded.
 	// Only for a slave reseed (sqlLogBin==0); a master restore (sqlLogBin==1)

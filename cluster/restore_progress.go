@@ -6,6 +6,8 @@ package cluster
 import (
 	"fmt"
 	"io"
+	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -71,6 +73,49 @@ func (server *ServerMonitor) startReseedProgress(info *ReseedProgress, r io.Read
 
 func (server *ServerMonitor) stopReseedProgress() {
 	server.reseedInfo.Store((*ReseedProgress)(nil))
+}
+
+// beginReseedProgress stamps an in-flight restore whose streamed bytes accumulate
+// across MANY readers (a splitdump restore reads one file per table/shard). total
+// is the sum of all input sizes (0 = unknown). Unlike startReseedProgress it
+// returns no reader — wrap each input with countReseedReader so every shard
+// accumulates into the single byte counter. defer stopReseedProgress when done.
+func (server *ServerMonitor) beginReseedProgress(info *ReseedProgress, total int64) {
+	server.reseedBytes.Store(0)
+	server.reseedTotal.Store(total)
+	server.reseedStart.Store(time.Now().UnixNano())
+	server.reseedInfo.Store(info)
+}
+
+// countReseedReader wraps r so bytes read accumulate into the current reseed's
+// byte counter (set up by beginReseedProgress). The counter is atomic, so the
+// parallel shard readers of a splitdump restore can be counted concurrently.
+func (server *ServerMonitor) countReseedReader(r io.Reader) io.Reader {
+	return &countingReader{r: r, n: &server.reseedBytes}
+}
+
+// sumSplitdumpBytes returns the total compressed size of the splitdump shard files
+// under dir (flat *.sql / *.sql.gz), the denominator for the progress line. Best
+// effort: unreadable entries are skipped (0 total just hides the "out of N" part).
+func sumSplitdumpBytes(dir string) int64 {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	var total int64
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := strings.ToLower(e.Name())
+		if !strings.HasSuffix(name, ".sql") && !strings.HasSuffix(name, ".sql.gz") {
+			continue
+		}
+		if fi, err := e.Info(); err == nil {
+			total += fi.Size()
+		}
+	}
+	return total
 }
 
 // reseedProgressLine returns a human progress line + the backup being restored,
