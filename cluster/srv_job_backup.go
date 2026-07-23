@@ -1177,13 +1177,6 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 	return execErr
 }
 
-// streamSplitdumpStatements segments the SQL stream into statements (honouring
-// DELIMITER for trigger/routine bodies) and executes them on conn. INSERT/REPLACE
-// statements are batched into retrying transactions; every other statement runs
-// in autocommit (also retried on lock errors). LOCK/UNLOCK TABLES and
-// ALTER TABLE ... {DISABLE,ENABLE} KEYS are dropped: the former conflicts with
-// our transaction control, the latter is an InnoDB no-op whose implicit commit
-// would break batching.
 // splitdumpStmtKind routes a restore statement.
 type splitdumpStmtKind int
 
@@ -1339,6 +1332,13 @@ func planAndExecSplitdump(reader io.Reader, continueOnError bool, batchSize int,
 	return flush()
 }
 
+// streamSplitdumpStatements segments the SQL stream (honouring DELIMITER for
+// trigger/routine bodies) and executes it on conn: INSERT/REPLACE batch into
+// retrying transactions (or run individually when continueOnError, e.g.
+// mysql.system-all); every other statement runs in autocommit; LOCK/UNLOCK TABLES
+// and ALTER..{DISABLE,ENABLE} KEYS are dropped. Segmentation and routing live in the
+// pure forEachSplitdumpStatement / classifySplitdumpStatement / planAndExecSplitdump
+// helpers; this wrapper just binds the executor to conn.
 func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn *sqlx.Conn, reader io.Reader, continueOnError bool, path string) error {
 	return planAndExecSplitdump(reader, continueOnError, splitdumpBatchStatements, splitdumpExecutor{
 		batch: func(stmts []string) error {
