@@ -7,6 +7,12 @@ stays unchanged.
 **Note:** the filename is kept for continuity, but the model described here is **structural
 pricing** for App HA, not a marketplace promotion plan.
 
+> **Settlement-boundary alignment.** This document describes a backend pricing-layer
+> adjustment. Under `../crm/CRM_SETTLEMENT.md`, CRM must not derive App HA price
+> from topology or unit counts itself. Replication-manager applies any structural
+> pricing rule locally, resolves the final app commercial amount in EUR, and sends
+> that resolved amount to CRM as settlement `app_amount`.
+
 ## 1. Purpose
 
 Define a future **commercial pricing adjustment** for Application / Compute workloads when an app is
@@ -44,6 +50,9 @@ That means:
 - Application Unit math is **not** reduced for failover
 - failover structural pricing changes only the **billed app price**, not the technical unit count
 
+For the settlement path, that billed app price maps to the backend-owned settlement
+field `app_amount`.
+
 This preserves comparability and avoids mixing accounting with commercial policy.
 
 ### 2.1 Pricing layers
@@ -70,6 +79,10 @@ Recommended order:
 - `technical units -> base unit pricing -> structural pricing adjustments -> promotions -> final price`
 
 This keeps failover cheaper **by design**, while leaving room for separate promotions later.
+
+> **Settlement note.** The output of these pricing layers is a backend-resolved
+> commercial app price snapshot. CRM consumes the resolved snapshot; it does not
+> recalculate the structural adjustment or final app price from units.
 
 Promotion compatibility rule:
 
@@ -338,6 +351,11 @@ Preferred export direction for first implementation:
 - optional promotion metadata / promotion adjustment
 - `finalAppPrice`
 
+> **Settlement alignment.** For CRM settlement, `finalAppPrice` is the backend-resolved
+> app commercial amount that should feed settlement `app_amount`. The additional
+> technical and structural fields are useful as backend/export metadata, but they are
+> not a license for CRM to recompute price from units.
+
 ## 10. Recommended decisions for first implementation
 
 1. `StandbyFactor` is **configurable**
@@ -358,6 +376,11 @@ Preferred export direction for first implementation:
 3. Should BO consume structurally adjusted billable app units directly, or compute final price from raw totals
    plus structural/promotion metadata?
 4. Which promotion scopes should be supported first: app-only, bundle-level, or full cluster subtotal?
+
+> **Current settlement answer.** For the CRM settlement path, question 3 is no longer
+> open: replication-manager should compute the final app commercial amount locally and
+> send that resolved amount to CRM. Any remaining openness here applies only to other
+> BO/export or presentation paths, not to settlement authority.
 
 ## 11. Validation plan
 
