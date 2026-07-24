@@ -1,0 +1,924 @@
+<title>Backup paths — trace the path a backup takes</title>
+<style>
+  :root{
+    --bg:#f5f7fb; --panel:#fff; --surface:#fff; --surface2:#f0f4fa;
+    --ink:#111827; --muted:#5b6472; --line:#d9e1ec; --accent:#2f7fe0;
+    --c-trigger:#64748b; --c-gate:#0284c7; --c-type:#6366f1; --c-rman:#2f7fe0; --c-node:#7c3aed;
+    --c-artifact:#0891b2; --c-local:#16a34a; --c-restic:#0d9488; --c-next:#94a3b8; --c-run:#c2650a; --c-road:#d97706;
+    --c-sm:#16a34a; --c-mon:#ca8a04; --c-var:#ea580c;
+    --on-accent:#fff; --shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.06);
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#0b0e14; --panel:#111725; --surface:#151d2c; --surface2:#0f1622;
+    --ink:#e6ecf5; --muted:#93a0b4; --line:#26303f; --accent:#4aa3ff;
+    --c-trigger:#94a3b8; --c-gate:#38bdf8; --c-type:#818cf8; --c-rman:#4aa3ff; --c-node:#a78bfa;
+    --c-artifact:#38bdf8; --c-local:#4ade80; --c-restic:#2dd4bf; --c-next:#64748b; --c-run:#f59e0b; --c-road:#f59e0b;
+    --c-sm:#4ade80; --c-mon:#facc15; --c-var:#fb923c;
+    --on-accent:#08111f; --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+  }}
+  :root[data-theme="light"]{--bg:#f5f7fb;--panel:#fff;--surface:#fff;--surface2:#f0f4fa;--ink:#111827;--muted:#5b6472;--line:#d9e1ec;--accent:#2f7fe0;--c-trigger:#64748b;--c-gate:#0284c7;--c-type:#6366f1;--c-rman:#2f7fe0;--c-node:#7c3aed;--c-artifact:#0891b2;--c-local:#16a34a;--c-restic:#0d9488;--c-next:#94a3b8;--c-run:#c2650a;--c-road:#d97706;--c-sm:#16a34a;--c-mon:#ca8a04;--c-var:#ea580c;--on-accent:#fff;--shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.06);}
+  :root[data-theme="dark"]{--bg:#0b0e14;--panel:#111725;--surface:#151d2c;--surface2:#0f1622;--ink:#e6ecf5;--muted:#93a0b4;--line:#26303f;--accent:#4aa3ff;--c-trigger:#94a3b8;--c-gate:#38bdf8;--c-type:#818cf8;--c-rman:#4aa3ff;--c-node:#a78bfa;--c-artifact:#38bdf8;--c-local:#4ade80;--c-restic:#2dd4bf;--c-next:#64748b;--c-run:#f59e0b;--c-road:#f59e0b;--c-sm:#4ade80;--c-mon:#facc15;--c-var:#fb923c;--on-accent:#08111f;--shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);}
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;line-height:1.5}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 22px 60px}
+  header h1{margin:0 0 6px;font-size:25px;letter-spacing:-.02em}
+  header p{margin:0;color:var(--muted);max-width:78ch;font-size:13.5px}
+  .src{font-family:ui-monospace,monospace;font-size:12px;color:var(--muted);margin-top:8px}
+
+  .layout{position:relative;display:block;margin-top:22px}
+  #inedges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4;overflow:visible}
+  .iline{fill:none;stroke:var(--c-gate);stroke-width:2;stroke-dasharray:5 4;opacity:.9}
+  .iline.sm{stroke:var(--c-sm)} .iline.mon{stroke:var(--c-mon)} .iline.var{stroke:var(--c-var)}
+  .panel{position:fixed;top:16px;right:16px;width:230px;max-height:calc(100vh - 32px);overflow:auto;z-index:60;background:color-mix(in srgb,var(--panel) 86%,transparent);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow)}
+  @media (max-width:640px){.panel{position:static;width:auto;max-height:none;margin-bottom:16px;backdrop-filter:none}}
+  .panel h2{margin:0 0 10px;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .ctl{margin-bottom:12px}
+  .ctl>label{display:block;font-size:12.5px;font-weight:600;margin-bottom:6px}
+  .ctl>label .dim{color:var(--muted);font-weight:400}
+  .seg{display:flex;flex-wrap:wrap;gap:5px;min-height:32px}
+  .seg button{flex:1 1 auto;border:1px solid var(--line);background:var(--surface2);color:var(--ink);border-radius:8px;padding:6px 8px;font-size:12px;cursor:pointer;font-family:ui-monospace,monospace;transition:.14s;white-space:nowrap}
+  .seg button:hover{border-color:var(--accent)}
+  .seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+  .ctl{border-left:3px solid transparent;padding-left:9px;border-radius:2px}
+  .catlab{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.09em;text-transform:uppercase;padding:1px 5px;border-radius:4px;margin-left:6px;vertical-align:1px}
+  .catlab.sm{color:var(--c-sm);background:color-mix(in srgb,var(--c-sm) 14%,transparent)}
+  .catlab.mon{color:var(--c-mon);background:color-mix(in srgb,var(--c-mon) 16%,transparent)}
+  .catlab.var{color:var(--c-var);background:color-mix(in srgb,var(--c-var) 14%,transparent)}
+  .leg{display:flex;flex-wrap:wrap;gap:6px 12px;margin:-2px 0 12px;font-size:11px;color:var(--muted)}
+  .leg span{display:inline-flex;align-items:center;gap:5px}
+  .leg i{width:9px;height:9px;border-radius:3px;display:inline-block}
+  .run{display:flex;gap:8px;margin-top:2px}
+  .run button{flex:1;border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:9px;padding:9px;font-size:13px;font-weight:600;cursor:pointer}
+  .run button.primary{background:var(--accent);color:var(--on-accent)}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.45}
+  .readout{margin-top:13px;border:1px solid var(--line);border-radius:11px;padding:12px 13px;background:var(--surface2);min-height:96px}
+  .readout .st{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .readout h3{margin:3px 0 6px;font-size:15px}
+  .readout p{margin:0;font-size:12.5px;color:var(--muted)}
+
+  .flowscroll{overflow-x:auto}
+  .flow{position:relative;width:max-content;min-width:600px;padding:10px 4px 6px;margin:0 auto}
+    .flow svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+  .row{position:relative;z-index:1;display:flex;justify-content:center;gap:16px;flex-wrap:nowrap;margin:0 0 38px}
+  .fan{position:relative;z-index:1;display:flex;justify-content:center;gap:48px;margin:0 auto 38px;padding-left:130px}
+  .monfloat{position:absolute;top:0;z-index:3}
+  .tcol{display:flex;flex-direction:column;align-items:center;gap:34px}
+  .gunit{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px}
+  #havetoolrow{gap:520px}
+  #subgaterow{gap:520px}
+  .lrow{display:flex;justify-content:center;gap:44px}
+  .lrow .tgroup{width:1500px;display:flex;justify-content:space-around;align-items:flex-start}
+  /* gate input: its OWN level (above the gate), shifted RIGHT, NO incoming edge — it emerges alone and hooks into the RIGHT of the losange via its arrow. triangle shape, colour = provenance */
+  .gsm{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px}
+  /* input on its OWN level (in flow, keeps its vertical row) but shifted RIGHT via transform (no overlay, no reflow) */
+  .node.innode.top{position:static;transform:translateX(46px);width:132px;clip-path:polygon(0 0,100% 0,100% 66%,50% 100%,0 66%);padding-bottom:14px}
+  .node.innode.top.statein{position:static;transform:translateX(46px);width:150px;padding:6px 9px 14px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;clip-path:polygon(0 0,100% 0,100% 66%,50% 100%,0 66%)}
+  .sgrow{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px}
+  .statein .stttl{font-family:ui-monospace,monospace;font-size:9px;font-weight:700;color:var(--gc);white-space:nowrap}
+  .statein .stlbl{display:flex;align-items:center;gap:5px;font-family:ui-monospace,monospace;font-size:8.5px;cursor:pointer;color:var(--gc);white-space:nowrap;opacity:.85}
+  .statein input{accent-color:var(--gc);width:12px;height:12px;margin:0;flex:none;cursor:pointer}
+  .fgroup{display:flex;gap:9px}
+  .fnode{width:150px !important}
+  .l3node{width:92px !important;padding:8px 9px}
+  .toolgrp{display:flex;flex-direction:column;gap:9px;width:1500px}
+  .toolgrp .gh{font-family:ui-monospace,monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:center;padding-bottom:3px;border-bottom:1px dashed var(--line)}
+  .toolrow{display:flex;gap:8px;align-items:stretch;justify-content:space-around}
+  .toolnode{width:150px !important;min-height:118px;display:flex;flex-direction:column}
+  .toolnode .ns{flex:1}
+  .toolrow{align-items:flex-start}
+  .gatecell{position:relative;width:150px;flex:none;display:flex;flex-direction:column;align-items:center;gap:6px}
+  .gatecell .innode{width:104px}
+  .cellpad{width:150px;flex:none}
+  .splitnode,.execnode{width:150px !important}
+  .stateout{width:150px !important;clip-path:polygon(13px 0,100% 0,calc(100% - 13px) 100%,0 100%);padding:9px 18px}
+  .stateout .nt{font-family:ui-monospace,monospace;font-size:11px}
+  .fn{font-family:ui-monospace,monospace;font-size:9.5px;color:var(--gc);opacity:.9;margin-top:4px;word-break:break-all}
+  .edge.iL{stroke:var(--c-var);stroke-width:1.4;stroke-dasharray:3 3;opacity:.7;fill:none}
+  .splitnode .badge{clip-path:polygon(0 0,calc(100% - 6px) 0,100% 50%,calc(100% - 6px) 100%,0 100%);border-radius:0;padding-right:13px}
+  /* outputs get a parallelogram shape, distinct from tree rects / diamonds / pills */
+  .monout{width:172px !important;clip-path:polygon(15px 0,100% 0,calc(100% - 15px) 100%,0 100%);border-left-width:1px;background:color-mix(in srgb,var(--gc) 12%,var(--surface));padding:11px 24px}
+  /* running-state code shown as a pointed output tag */
+  .toolnode .badge{clip-path:polygon(0 0,calc(100% - 6px) 0,100% 50%,calc(100% - 6px) 100%,0 100%);border-radius:0;padding-right:13px}
+  .node.roadlit{border-color:var(--c-road) !important;border-style:dashed;background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--c-road) 20%,transparent) 0 5px,transparent 5px 11px),color-mix(in srgb,var(--c-road) 10%,var(--surface)) !important}
+  .l3node .lv{font-size:8.5px}
+  .l3node .nt{font-size:11px;gap:5px}
+  .l3node .nt .dot{width:7px;height:7px}
+  .l3node.na{opacity:.4;border-style:dashed;cursor:not-allowed}
+  .lzholder{position:relative;display:flex;justify-content:center}
+  .innode{width:118px;flex:none}
+  /* inputs: distinct rounded pill + category-tinted fill, carrying their own controls */
+  .node.innode{border-radius:16px;padding:7px 9px;border-style:dashed;border-color:color-mix(in srgb,var(--gc) 55%,var(--line));border-left-width:1.5px;background:color-mix(in srgb,var(--gc) 13%,var(--surface))}
+  .node.innode .lv{opacity:1;color:var(--gc);font-size:8.5px}
+  .pillseg{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
+  .pillseg button{flex:1 1 45%;border:1px solid var(--line);background:var(--surface2);color:var(--ink);border-radius:5px;padding:2px 3px;font-size:8.5px;font-family:ui-monospace,monospace;cursor:pointer;white-space:nowrap}
+  .pillseg button[aria-pressed="true"]{background:var(--gc);border-color:var(--gc);color:var(--on-accent);font-weight:700}
+  .pillseg button.road{border-color:var(--c-road);border-style:dashed;color:var(--c-road);background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--c-road) 16%,transparent) 0 4px,transparent 4px 9px),var(--surface2)}
+  .pillseg button.road[aria-pressed="true"]{background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--c-road) 42%,transparent) 0 4px,color-mix(in srgb,var(--c-road) 18%,var(--surface)) 4px 9px);color:var(--ink);border-color:var(--c-road)}
+  .pillseg button.na{text-decoration:line-through;text-decoration-thickness:1.5px;opacity:.55;font-style:italic}
+  .pillseg button.na[aria-pressed="true"]{background:var(--surface2);color:var(--muted);border-color:var(--line);opacity:.7}
+  .pillchks{display:flex;flex-direction:column;gap:2px;margin-top:5px}
+  .pillchks label{display:flex;align-items:center;gap:4px;font-size:8px;font-family:ui-monospace,monospace;color:var(--muted);cursor:pointer;line-height:1.2}
+  .pillchks input{accent-color:var(--gc);width:11px;height:11px;flex:none;margin:0}
+  .node.innode .vn{font-family:ui-monospace,monospace;font-size:8px;color:var(--gc);opacity:.95;margin-top:4px;word-break:break-all;line-height:1.15}
+  .innode.side{position:absolute;top:50%;transform:translateY(-50%);right:calc(50% + 100px);z-index:3}
+  .startbtn{display:block;width:100%;margin-top:7px;border:1.5px solid var(--gc);background:var(--gc);color:var(--on-accent);border-radius:8px;padding:5px;font-size:10.5px;font-weight:700;font-family:ui-monospace,monospace;cursor:pointer}
+  .node.innode.starter{animation:starterpulse 1.15s ease-in-out infinite}
+  @keyframes starterpulse{0%,100%{box-shadow:0 0 0 2px color-mix(in srgb,var(--gc) 55%,transparent),var(--shadow)}50%{box-shadow:0 0 0 8px color-mix(in srgb,var(--gc) 16%,transparent),var(--shadow)}}
+  @media (prefers-reduced-motion:reduce){.node.innode.starter{animation:none}}
+  .edge.iedge{stroke-width:2.2;opacity:.95;stroke-dasharray:none}
+  .edge.iedge.sm{stroke:var(--c-sm)} .edge.iedge.mon{stroke:var(--c-mon)} .edge.iedge.var{stroke:var(--c-var)}
+  .lznode{width:150px !important}
+  .lznode .nt{justify-content:flex-start}
+  .lznode.na{opacity:.42;border-style:dashed;cursor:not-allowed}
+  .node{position:relative;z-index:1;width:212px;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--gc,var(--line));border-radius:12px;padding:11px 13px;box-shadow:var(--shadow);transition:opacity .25s,box-shadow .2s,transform .2s,border-color .2s,background .2s}
+  .node[data-g="trigger"]{--gc:var(--c-trigger)} .node[data-g="gate"]{--gc:var(--c-gate)} .node[data-g="type"]{--gc:var(--c-type)}
+  .node[data-g="rman"]{--gc:var(--c-rman)} .node[data-g="node"]{--gc:var(--c-node)} .node[data-g="artifact"]{--gc:var(--c-artifact)}
+  .node[data-g="local"]{--gc:var(--c-local)} .node[data-g="restic"]{--gc:var(--c-restic)} .node[data-g="next"]{--gc:var(--c-next);border-style:dashed}
+  .node[data-g="sm"]{--gc:var(--c-sm)} .node[data-g="mon"]{--gc:var(--c-mon)} .node[data-g="var"]{--gc:var(--c-var)}
+  .node[data-g="road"]{--gc:var(--c-road);border-style:dashed;background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--c-road) 13%,transparent) 0 5px,transparent 5px 11px),color-mix(in srgb,var(--c-road) 6%,var(--surface))}
+  .node .lv{font-family:ui-monospace,monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--gc);opacity:.85}
+  .node .nt{font-size:13.5px;font-weight:640;display:flex;align-items:center;gap:7px;margin-top:2px}
+  .node .nt .dot{width:9px;height:9px;border-radius:50%;background:var(--gc);flex:none}
+  .node .ns{font-size:11.5px;color:var(--muted);margin-top:4px;font-family:ui-monospace,monospace;line-height:1.4}
+  .node .badge{display:inline-block;margin-top:8px;font-family:ui-monospace,monospace;font-size:10.5px;padding:1px 7px;border-radius:5px;border:1px solid}
+  .badge.run{color:var(--c-run);border-color:color-mix(in srgb,var(--c-run) 45%,transparent);background:color-mix(in srgb,var(--c-run) 12%,transparent)}
+  .badge.neutral{color:var(--muted);border-color:var(--line);background:var(--surface2)}
+  .node.dec{width:178px;height:178px;background:transparent;border:none;box-shadow:none;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+  .node.dec::before{content:"";position:absolute;inset:28px;background:var(--surface);border:1.5px solid var(--gc);border-radius:12px;transform:rotate(45deg);box-shadow:var(--shadow);transition:box-shadow .2s,border-color .2s,background .2s}
+  .node.dec>*{position:relative;z-index:1;max-width:120px}
+  .node.dec .nt{font-size:13px;justify-content:center}
+  .node.dec.on{background:transparent !important;box-shadow:none !important}
+  .node.dec.on::before{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--surface));box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 38%,transparent),var(--shadow)}
+  .node.dec.cur{animation:none}
+  .node.dec.cur::before{animation:blinkd 1s ease-in-out infinite}
+  @keyframes blinkd{0%,100%{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 65%,transparent),var(--shadow)}50%{box-shadow:0 0 0 8px color-mix(in srgb,var(--accent) 24%,transparent),var(--shadow)}}
+  .node.dec.warn::before{border-color:var(--c-road);background:color-mix(in srgb,var(--c-road) 10%,var(--surface))}
+  .node.dec[data-g="road"]::before{border-color:var(--c-road);border-style:dashed;background:repeating-linear-gradient(45deg,color-mix(in srgb,var(--c-road) 18%,transparent) 0 5px,transparent 5px 11px),color-mix(in srgb,var(--c-road) 7%,var(--surface))}
+  .node.dec.warn .nt,.node.dec.warn .ns{color:var(--c-road)}
+  .flow.dim .node{opacity:.24}
+  .flow.dim .node.innode{opacity:.5}
+  .node.on{opacity:1 !important;border-color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--surface));box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 38%,transparent),var(--shadow)}
+  .node.cur{animation:blink 1s ease-in-out infinite}
+  @keyframes blink{0%,100%{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 65%,transparent),var(--shadow)}50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--accent) 26%,transparent),var(--shadow)}}
+  @media (prefers-reduced-motion:reduce){.node.cur{animation:none}.node.dec.cur::before{animation:none}}
+  .edge{fill:none;stroke:var(--line);stroke-width:1.6;opacity:.5}
+  .edge.on{stroke:var(--accent);stroke-width:2.6;opacity:1}
+  .edge.on.anim{stroke-dasharray:8 7;animation:flow 1s linear infinite}
+  @keyframes flow{to{stroke-dashoffset:-15}}
+  @media (prefers-reduced-motion:reduce){.edge.on.anim{animation:none}}
+  footer{margin-top:32px;color:var(--muted);font-size:12px;font-family:ui-monospace,monospace}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Backup paths — trace the path a backup takes</h1>
+    <p>Input <b>trigger</b> → gate → <b>L1 type</b> → <b>flavor?</b> → <b>L2 flavor</b> (2×2) → <b>L3 localisation</b> (local · remote · built-in) → its branch (local→<b>have tool?</b> · remote→<b>orchestrator?</b>→ssh?→dbjob · built-in→through) → <b>L4 tool</b> → metadata → last backup → archive → capabilities. Left cards wire to their losanges; Play blinks the live step.</p>
+    <p class="src">verified against the merged code · cluster/srv_job_backup.go · config/error.go · 961f5ecf2</p>
+  </header>
+
+  <div class="layout">
+    <svg id="inedges" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+      <marker id="ain-sm" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--c-sm)"/></marker>
+      <marker id="ain-mon" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--c-mon)"/></marker>
+      <marker id="ain-var" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--c-var)"/></marker>
+    </defs></svg>
+    <aside class="panel">
+      <h2>Graph inputs</h2>
+      <div class="leg">
+        <span><i style="background:var(--c-trigger)"></i>trigger</span>
+        <span><i style="background:var(--c-sm)"></i>state machine</span>
+        <span><i style="background:var(--c-mon)"></i>monitored</span>
+        <span><i style="background:var(--c-var)"></i>variables</span>
+      </div>
+      <p class="hint" style="margin:0 0 12px">Everything is set <b>in the graph</b>. Click the buttons inside the dashed input pills (trigger · gate WARNs · flavor · orchestrator · tool), and click tree nodes — <b>type</b> (L1), <b>localisation</b> (L3), <b>storage</b>, <b>archive</b> — to route the path.</p>
+      <div class="run"><button id="play" class="primary">▶ Play</button><button id="reset">Reset</button></div>
+      <div class="hint">The lit path is the current config; the blinking node is the live step.</div>
+      <div class="readout" id="readout"><div class="st">state readout</div><h3>Ready</h3><p>Adjust the config or press Play.</p></div>
+    </aside>
+
+    <div class="flowscroll"><div class="flow" id="flow">
+      <svg id="edges" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+        <marker id="ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--line)"/></marker>
+        <marker id="aha" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 Z" fill="var(--accent)"/></marker>
+      </defs></svg>
+
+      <div class="row"><div class="gunit">
+        <div class="node innode top starter" data-node="IN_TRIG" data-g="trigger"><div class="lv">input · trigger</div><div class="pillseg" data-ctl="entry"><button data-v="sched">scheduler</button><button data-v="api">API</button><button data-v="cookie">cookie</button></div><div class="vn">scheduler-db-servers-*-backup-cron</div><button class="startbtn" data-start>▶ start backup</button></div>
+        <div class="node dec" data-node="TRIGQ" data-g="trigger"><div class="lv">trigger · path</div><div class="nt"><span class="dot"></span>trigger?</div><div class="ns" data-trigq-b>scheduler</div></div>
+      </div></div>
+      <div class="row">
+        <div class="node" data-node="ENT_SCHED" data-g="trigger"><div class="lv">L0 · entry</div><div class="nt"><span class="dot"></span>Scheduler</div><div class="ns">cron</div></div>
+        <div class="node" data-node="ENT_API" data-g="trigger"><div class="lv">L0 · entry</div><div class="nt"><span class="dot"></span>API call</div><div class="ns">on-demand</div></div>
+        <div class="node" data-node="ENT_COOKIE" data-g="trigger"><div class="lv">L0 · entry</div><div class="nt"><span class="dot"></span>Cookie</div><div class="ns">topology event</div></div>
+      </div>
+      <div class="row"><div class="gunit">
+        <div class="node innode top" data-node="IN_SERVER" data-g="var"><div class="lv">config · backup server</div><div class="pillseg" data-ctl="server"><button data-v="slave">prefered slave</button><button data-v="master">master</button></div><div class="vn">db-servers-backup-hosts · PreferedBackup</div></div>
+        <div class="node dec" data-node="SERVERQ" data-g="var"><div class="lv">WHERE · which server</div><div class="nt"><span class="dot"></span>backup server?</div><div class="ns" data-srv-b>prefered slave</div></div>
+      </div></div>
+      <div class="row"><div class="gunit">
+        <div class="node innode top" data-node="IN_TYPE" data-g="var"><div class="lv">input · variable</div><div class="pillseg" data-ctl="type"><button data-v="logical">logical</button><button data-v="physical">physical</button><button data-v="binlog">binlog</button></div><div class="vn">backup-{logical,physical}-type · backup-binlogs</div></div>
+        <div class="node dec" data-node="TYPEQ" data-g="var"><div class="lv">variable · type</div><div class="nt"><span class="dot"></span>type?</div><div class="ns" data-typeq-b>logical</div></div>
+      </div></div>
+      <div class="row"><div class="gunit">
+        <div class="node innode top" data-node="IN_SM1" data-g="sm"><div class="lv">state machine · gate</div><div class="pillchks">
+          <label><input type="checkbox" data-w="w0174">WARN0174 slot busy</label>
+          <label><input type="checkbox" data-w="w0110">WARN0110 job pending</label>
+          <label><input type="checkbox" data-w="w0175">WARN0175 logical run</label>
+          <label><input type="checkbox" data-w="w0073">WARN0073 physical run</label>
+          <label><input type="checkbox" data-w="wbin">InBinlog run</label></div></div>
+        <div class="node dec" data-node="GATE" data-g="sm"><div class="lv">state machine · slot</div><div class="nt"><span class="dot"></span>free slot?</div><div class="ns" data-slot-b>slot free</div></div>
+      </div></div>
+
+      <!-- L1 type + flavor? + L2 flavor fan generated in JS -->
+
+      <div class="row lrow" id="locgaterow"></div><!-- per-flavor user locality-choice gate (local/remote/internal), BEFORE reach-node -->
+      <div class="row lrow" id="rgaterow"></div><!-- per-flavor "What Orchestrator?" gate (branches) -->
+      <div class="row lrow" id="sshreachrow"></div><!-- per-flavor "ssh can reach?" gate — on-premise branch only -->
+      <!-- per-type gate rows generated by buildGates() -->
+      <div class="row" id="dbjobmoderow" style="gap:16px;justify-content:center">
+        <div class="node" data-node="DBJOBEXEC" data-g="node" style="width:230px"><div class="lv">remote · converge</div><div class="nt"><span class="dot"></span>dbjob execution</div><div class="ns">all remote paths run here on the node</div></div>
+      </div>
+      <div class="row" id="l4row" style="gap:44px;align-items:flex-start"></div>
+      <div class="row" id="sgaterow" style="gap:44px;align-items:flex-start"></div><!-- split gates (losange + variable input), aligned under each L4 tool -->
+      <div class="row" id="l5row" style="gap:44px;align-items:flex-start"></div><!-- L5 split tools -->
+      <div class="row" id="partialrow" style="gap:44px;justify-content:center"><!-- PATH outputs: capabilities unlocked mid-path (partial ← split · PITR ← binlog branch) -->
+        <div class="node monout" data-node="PARTIAL_OUT" data-g="next"><div class="lv">output · path (split)</div><div class="nt"><span class="dot"></span>partial table restore</div><div class="ns">per-table shards ready</div></div>
+        <div class="node monout" data-node="PITR_OUT" data-g="next"><div class="lv">output · path (binlog)</div><div class="nt"><span class="dot"></span>PITR — last N days</div><div class="ns">local binlogs</div></div>
+        <div class="node monout" data-node="PITR_ARCHIVED" data-g="next"><div class="lv">output · binlog + archive</div><div class="nt"><span class="dot"></span>PITR — long archived</div><div class="ns">binlog gate ∧ archive gate</div></div>
+        <div class="node monout" data-node="SYSOBJ_OUT" data-g="road" style="width:210px"><div class="lv">⚑ output · system objects</div><div class="nt"><span class="dot"></span>⚑ users &amp; grants (multi-source)</div><div class="ns">backup · live grants · other server</div></div>
+      </div>
+      <div class="row" id="btestrow" style="gap:44px;align-items:flex-start"></div><!-- pre-exec · backup-test (planned): validate + extract system users/schema -->
+      <div class="row" id="l6row" style="gap:44px;align-items:flex-start"></div><!-- L6 execute -->
+      <div class="row" id="staterow" style="gap:44px;align-items:flex-start"></div><!-- execution-state outputs: WARN0175 (logical/left) · WARN0073 (physical/centre) · InBinlogBackup (binlog/right) -->
+      <div class="row" id="dumpparamsrow" style="justify-content:center;gap:20px"><!-- per-tool consequences of the master/slave server choice -->
+        <div class="node stateout" data-node="DUMPPARAMS" data-g="var" style="width:280px"><div class="lv">output · dump params (server-aware)</div><div class="nt"><span class="dot"></span>binlog position flags</div><div class="fn" data-dp-b>--dump-slave=1</div><div class="ns">master → --master-data · slave → --dump-slave</div></div>
+        <div class="node stateout" data-node="SLAVESTOP" data-g="sm" style="width:220px"><div class="lv">output · slave-safe</div><div class="nt"><span class="dot"></span>StopSlave / StartSlave</div><div class="ns">physical backup on a slave</div></div>
+      </div>
+      <div class="row" id="monrow" style="flex-direction:column;align-items:center;gap:14px"><!-- CODED: byte counter + stall watchdog (numerator + dead-volume abort). ⚑ ROADMAP: exposing a progress % / bandwidth (needs a TOTAL to divide by) — only reseed/WARN0189 surfaces it today. -->
+        <div class="node stateout" data-node="STALL_WD" data-g="sm" style="width:260px"><div class="lv">output · coded · backup-side</div><div class="nt"><span class="dot"></span>byte counter + stall watchdog</div><div class="fn">bytesProgress · backup-write-stall-timeout</div><div class="ns">counts bytes written · aborts dead volume</div></div>
+        <div class="sgrow"><div class="node innode top" data-node="IN_PROGRESS" data-g="road"><div class="pillseg" data-ctl="progress"><button data-v="on">on</button><button data-v="off">off</button></div><div class="vn">⚑ no backup-progress var yet</div></div>
+          <div class="node dec" data-node="MONPROGQ" data-g="road"><div class="lv">⚑ % = counter ÷ total</div><div class="nt"><span class="dot"></span>estimate total?</div><div class="ns" data-mp-b>off</div></div></div>
+        <div style="display:flex;gap:12px;align-items:flex-end;justify-content:center;flex-wrap:wrap;max-width:900px">
+          <div class="node monout" data-node="MON_SCHEMA" data-g="road"><div class="lv">⚑ total · logical</div><div class="nt"><span class="dot"></span>⚑ monitor-schema sizes</div><div class="ns">Σ table data-length / rows</div></div>
+          <div class="node monout" data-node="MON_DISK_SZ" data-g="road"><div class="lv">⚑ total · physical</div><div class="nt"><span class="dot"></span>⚑ data size on disk</div><div class="ns">datadir / info_schema</div></div>
+          <div class="node monout" data-node="MON_PREV" data-g="road"><div class="lv">⚑ total · fallback</div><div class="nt"><span class="dot"></span>⚑ previous backup size</div><div class="ns">last same-type run</div></div>
+          <div class="node monout" data-node="MON_PROC" data-g="road"><div class="lv">⚑ source · direct dump</div><div class="nt"><span class="dot"></span>⚑ SHOW PROCESSLIST</div><div class="ns">no splitdump — liveness/stage</div></div>
+          <div class="node monout" data-node="MON_STDOUT" data-g="road"><div class="lv">⚑ source · verbose · per tool</div><div class="nt"><span class="dot"></span>⚑ stdout parser</div><div class="ns">shown but NOT parsed yet</div></div>
+        </div>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <div class="node monout" data-node="MON_PROG" data-g="road"><div class="lv">⚑ output · monitor</div><div class="nt"><span class="dot"></span>⚑ progress %</div><div class="ns">counter ÷ total — not exposed</div></div>
+          <div class="node monout" data-node="MON_BW" data-g="road"><div class="lv">⚑ output · monitor</div><div class="nt"><span class="dot"></span>⚑ network + disk bandwidth</div><div class="ns">rate from counter — not exposed</div></div>
+        </div>
+      </div>
+      <div class="row" id="metarow" style="gap:44px;align-items:flex-start"></div><!-- L7 · gather metadata, per tool (native / stream-extract) -->
+      <div class="row" id="comprow" style="gap:44px;align-items:flex-start"></div><!-- L8 · compression, per tool (native / internal pigz for splitdump) -->
+      <div class="row" id="encrow" style="gap:12px;justify-content:center"><!-- L9 · encryption (variable gate, roadmap) -->
+        <div class="gunit"><div class="node innode top" data-node="IN_ENCRYPT" data-g="road"><div class="lv">⚑ variable · encryption</div><div class="pillseg" data-ctl="encrypt"><button data-v="on">encrypt</button><button data-v="off">off</button></div><div class="vn">⚑ roadmap — no backup-crypt var yet</div></div>
+        <div class="node dec" data-node="ENCRYPTG" data-g="road"><div class="lv">encryption</div><div class="nt"><span class="dot"></span>encrypt?</div><div class="ns" data-en-b>off</div></div></div>
+        <div class="node" data-node="ENCRYPT" data-g="road" style="width:230px"><div class="lv">L10 · encrypt</div><div class="nt"><span class="dot"></span>⚑ encrypt backup file</div><div class="fn">…gz.enc</div><div class="ns">AES · roadmap</div></div>
+      </div>
+      <div class="row">
+        <div class="node" data-node="SLOT" data-g="local" style="width:300px"><div class="lv">L11 · last backup</div><div class="nt"><span class="dot"></span>rewritten each request</div><div class="ns">backups/&lt;cluster&gt;/&lt;host&gt;_&lt;port&gt;/</div><span class="badge neutral">overwritten in place</span></div>
+      </div>
+      <div class="row">
+        <div class="node" data-node="DISK" data-g="local"><div class="lv">L12 · storage</div><div class="nt"><span class="dot"></span>local disk</div><div class="ns">repman host</div></div>
+        <div class="node" data-node="S3FUSE" data-g="local"><div class="lv">L12 · storage</div><div class="nt"><span class="dot"></span>S3 · FUSE</div><div class="ns">slot lives on S3</div></div>
+      </div>
+      <div class="row" id="archiverow"><div class="gunit">
+        <div class="node innode top" data-node="IN_ARCHIVE" data-g="var"><div class="lv">config · archive</div><div class="pillseg" data-ctl="restic"><button data-v="off">off</button><button data-v="local">local</button><button data-v="s3">S3</button><button data-v="sftp">SFTP</button></div><div class="vn">backup-restic · backup-restic-aws</div></div>
+        <div class="node dec" data-node="ARCHIVEQ" data-g="var"><div class="lv">L13 · archive</div><div class="nt"><span class="dot"></span>can archive?</div><div class="ns" data-aq-b>local</div></div>
+      </div></div>
+      <div class="row">
+        <div class="node" data-node="RESTIC" data-g="restic" style="width:280px"><div class="lv">archive</div><div class="nt"><span class="dot"></span>restic (async)</div><div class="ns">retention / history</div><span class="badge run">WARN0166</span></div>
+      </div>
+      <div class="row">
+        <div class="node" data-node="RLOCAL" data-g="restic"><div class="lv">repo</div><div class="nt"><span class="dot"></span>local repo</div><div class="ns">backups/archive/</div></div>
+        <div class="node" data-node="RS3" data-g="restic"><div class="lv">repo</div><div class="nt"><span class="dot"></span>S3 bucket</div><div class="ns">backup-restic-aws</div></div>
+        <div class="node" data-node="RSFTP" data-g="restic"><div class="lv">repo</div><div class="nt"><span class="dot"></span>SFTP</div><div class="ns">sftp://</div></div>
+      </div>
+      <div class="row">
+        <div class="node" data-node="DONE" data-g="local" style="width:250px"><div class="lv">backup complete</div><div class="nt"><span class="dot"></span>backup available</div><div class="ns">now usable as ↓</div></div>
+      </div>
+      <div class="row">
+        <div class="node" data-node="CAP_RESTORE" data-g="next"><div class="lv">capability</div><div class="nt"><span class="dot"></span>restore / reseed source</div><div class="ns">→ restore workflow</div></div>
+        <div class="node" data-node="CAP_RET" data-g="restic"><div class="lv">capability</div><div class="nt"><span class="dot"></span>retention / history</div><div class="ns">restic snapshots</div></div>
+        <div class="node" data-node="CAP_OFF" data-g="restic"><div class="lv">capability</div><div class="nt"><span class="dot"></span>off-site copy</div><div class="ns">S3 / SFTP</div></div>
+      </div>
+    </div></div>
+  </div>
+  <footer>doc/implementation/cluster/BACKUP_PATHS.md · replication-manager develop</footer>
+</div>
+
+<script>
+(function(){
+  var SIDE={};
+  var INEDGES=[['IN_TRIG','TRIGQ'],['IN_SERVER','SERVERQ'],['IN_TYPE','TYPEQ'],['IN_SM1','GATE'],['IN_MON','FQ'],['IN_ENCRYPT','ENCRYPTG'],['IN_PROGRESS','MONPROGQ'],['IN_ARCHIVE','ARCHIVEQ']];   // [inputId, gateId] — funnel input above → arrow into the RIGHT of the losange. One input can feed many gates or just one.
+  var EDGES=[
+    
+    ['TRIGQ','ENT_SCHED'],['TRIGQ','ENT_API'],['TRIGQ','ENT_COOKIE'],
+    ['ENT_SCHED','SERVERQ'],['ENT_API','SERVERQ'],['ENT_COOKIE','SERVERQ'],['SERVERQ','TYPEQ'],
+    ['TYPEQ','GATE'],
+    
+    ['STALL_WD','MONPROGQ'],['MONPROGQ','MON_PROG'],['MONPROGQ','MON_BW'],['MON_SCHEMA','MON_PROG'],['MON_DISK_SZ','MON_PROG'],['MON_PREV','MON_PROG'],['MON_PROC','MON_PROG'],['MON_STDOUT','MON_PROG'],
+    ['ENCRYPTG','ENCRYPT'],['ENCRYPT','SLOT'],['ENCRYPTG','SLOT'],['SLOT','DISK'],['SLOT','S3FUSE'],
+    ['DISK','ARCHIVEQ'],['S3FUSE','ARCHIVEQ'],['ARCHIVEQ','RESTIC'],['ARCHIVEQ','DONE'],
+    ['RESTIC','RLOCAL'],['RESTIC','RS3'],['RESTIC','RSFTP'],['RESTIC','DONE'],
+    ['DONE','CAP_RESTORE'],['DONE','CAP_RET'],['DONE','CAP_OFF'],['BINLOGGATE','PITR_OUT'],['BINLOGGATE','PITR_ARCHIVED'],['ARCHIVEQ','PITR_ARCHIVED']
+  ];
+  var TEXT={
+    IN_TRIG:['Trigger · input','Scheduler / API / Cookie — click the pill to change which entry fires.'],
+    TRIGQ:['trigger? · path','Routes to the scheduler / API / cookie entry that fired.'],
+    IN_TYPE:['Backup type · variable','logical / physical / binlog — the backup kind requested for this run.'],
+    TYPEQ:['type? · variable','Routes to the logical / physical / binlog branch.'],
+    IN_SERVER:['config · backup server','db-servers-backup-hosts designates the backup host(s); each such server gets PreferedBackup=true. GetBackupServer() picks the first up PreferedBackup server, else the master.'],
+    SERVERQ:['WHERE · backup server','GetBackupServer(): a designated prefered-backup slave if up, else fallback to the master. A backup requested on any other server is treated as ad-hoc. This choice changes the per-tool dump params downstream (--master-data vs --dump-slave) and adds a StopSlave/StartSlave step for a physical slave backup.'],
+    DUMPPARAMS:['output · dump params (server-aware)','GetMysqlDumpOptions: master → --master-data=1 (own binlog pos) · slave → --dump-slave=1 (upstream master pos). MariaDB adds --gtid=true/false; MySQL/Percona with GTID drop --master-data (transparent). mydumper uses --source-data=2.'],
+    FQ:['flavor? · logical/physical','Flavor gate for the logical & physical branches — routes to the monitored DB flavor.'],
+    FQ_BIN:['flavor? · binlog','Separate flavor gate for the binlog branch (after binlog track) — keeps binlog paths from mixing with logical/physical.'],
+    ENT_SCHED:['Trigger · Scheduler','A cron schedule fires the backup.'],
+    ENT_API:['Trigger · API call','An operator requests it on demand.'],
+    ENT_COOKIE:['Trigger · Cookie','A topology event triggers a backup.'],
+    GATE:['Free slot? · type-aware','Decided from the backup type: a logical backup is held by a logical run (WARN0175), physical by WARN0073, binlog by InBinlog — plus the shared slot (WARN0174) and pending-job (WARN0110) gates.'],
+    LOCAL:['L3 · local','A co-installed tool runs colocated to repman.'],
+    REMOTE:['L3 · remote','A DB-package tool runs on the node via dbjob.'],
+    BUILTIN:['L3 · built-in',"repman's internal Go engine."],
+    HAVETOOL:['local tool exists? · state','On the local path: is a co-installed tool present on the repman host? If not, the path is discarded.'],
+    REMOTETOOL:['remote tool exists? · state','On the remote path: is a DB-package backup tool installed on the node? If not, the path is discarded.'],
+    DBJOBGATE:['dbjob support · implementation','dbjob runs remote tasks. Even when the tool exists on the node, the dbjob script must implement that task — implemented → real; not → roadmap. Dispatched via api or table (scheduler-jobs-mode).'],
+    DBJOBEXEC:['remote · dbjob execution','All per-flavor remote paths converge here — the dbjob runs on the node. api: cookie + needs API. table: jobs table polled by the dbjobs script.'],
+    BUILTINGATE:['built-in binlog tools · config','Under binlog track: the built-in Go engine copies binlogs. The input selects the engine — river or gomysql (both valid); the gate value shows the current engine.'],
+    RGATE:['remote gate · orchestrator·ssh·scheduler','Between L2 and L3: the remote localisation is reachable only if the orchestrator can reach the node, ssh is up (OnPremise), AND the scheduler dbjob is running. Any one missing → the remote path is discarded.'],
+    BINLOGGATE:['binlog track · config','backup-binlogs decides whether binlogs are tracked and collected. Off → no binlog backup on this path.'],
+    RUNBACKUP:['L5 · run backup','The tool executes and produces the backup output. With progress reporting on (monitor-schema) it emits live monitors below.'],
+    STALL_WD:['coded · byte counter + stall watchdog','ALREADY CODED on the backup side: a bytesProgress counter is incremented as the dump writes, and the stall watchdog (backup-write-stall-timeout) aborts on a dead/hung volume (BACKUP_DEAD_VOLUME_STALL.md). This is the numerator for a progress % — the value exists, it is just not exposed as a live %/rate yet (only reseed surfaces it, WARN0189).'],
+    MONPROGQ:['⚑ % = counter ÷ estimated total','The byte counter gives bytes-written (numerator). To turn it into a %, we need a TOTAL. Roadmap: estimate the total from monitor-schema table sizes (logical), data size on disk (physical), or the last same-type backup size (fallback); confirm liveness via SHOW PROCESSLIST / stdout parsing. No backup-progress variable exists yet.'],
+    MON_SCHEMA:['⚑ total · monitor-schema sizes','Roadmap total source (logical): sum of table data-lengths / row counts already monitored per schema → the most accurate denominator for a logical dump %.'],
+    MON_DISK_SZ:['⚑ total · data size on disk','Roadmap total source (physical): datadir footprint / information_schema sizes as the denominator for a physical backup %.'],
+    MON_PREV:['⚑ total · previous backup size','Roadmap fallback total: the size of the last successful backup of the same type/tool, used as a rolling estimate when nothing better is known.'],
+    MON_BW:['⚑ output · network + disk bandwidth','Roadmap: rolling transfer/throughput rate derived from the coded byte counter over time — not exposed to the user yet.'],
+    MON_PROG:['⚑ output · progress %','Roadmap: live progress percentage = coded byte counter ÷ estimated total. The counter exists; only the total-estimate + surfacing are missing (backup side). Reseed already surfaces this via WARN0189.'],
+    SPLITDUMP:['pipe · splitdump (before execute)','Piped from the logical dump (dump | splitdump) before the backup executes: writes per-table shards + a manifest. This is what enables partial (per-table) restore.'],
+    META_NATIVE:['metadata · native','The backup tool emits its own metadata (mariabackup/xtrabackup checkpoints).'],
+    META_EXTRACT:['metadata · extracted','repman parses/derives the metadata (splitdump manifest, binlog positions, river-managed).'],
+    SLOT:['① Last backup','Overwritten in place at backups/<cluster>/<host>_<port>/.'],
+    DISK:['Storage · local disk','On the repman host disk.'], S3FUSE:['Storage · S3 FUSE','FUSE-mounted S3 bucket.'],
+    ARCHIVEQ:['L7 · can archive? · config','backup-restic decides whether the last backup is also archived (restic). Off → the backup is complete without archiving.'],
+    RESTIC:['Archive · WARN0166','Async restic archive — never fails the backup.'],
+    RLOCAL:['Archive · local','backups/archive/<cluster>.'], RS3:['Archive · S3','backup-restic-aws.'], RSFTP:['Archive · SFTP','sftp:// — no auto-init.'],
+    DONE:['Backup complete','Available and granting the capabilities below.'],
+    CAP_RESTORE:['Capability · restore source','Seeds/rebuilds a node.'], PARTIAL_OUT:['path output · partial table restore','Purely path-linked: as soon as the split is done (per-table shards + schema + users), per-table restore is available. Not a far-end capability — an output of the split step.'],
+    SYSOBJ_OUT:['⚑ path output · system objects (users & grants)','Roadmap: split system objects out of EVERY logical backup (always, tool-uniform) as system.users.sql + system.schema.sql. Then materialize them from MULTIPLE sources, recorded in metadata: (a) the backup split — point-in-time; (b) repman’s live tracked grants — needs full-grants-as-state; (c) another server’s tracked grants — rebuild a slave from the master (CheckSlaveSameMasterGrants). Enables staging with passwords stripped/rotated.'],
+    CAP_RET:['Capability · retention','restic snapshots.'], CAP_OFF:['Capability · off-site','S3 / SFTP.'],
+    PITR_OUT:['path output · PITR last-N-days (binlog branch)','Point-in-time recovery over the recent window is available as soon as you take the binlog branch (binlogs tracked/collected) — a path output of the binlog gate, not a far-end capability.'],
+    PITR_ARCHIVED:['path output · PITR long-archived (binlog ∧ archive)','Long-range PITR needs BOTH: the binlog branch (collected binlogs) AND the archive gate (restic) keeping them long-term. Output of the two gates combined.']
+  };
+  var WARNS=[['w0174','WARN0174','slot busy'],['w0110','WARN0110','prior job pending'],['w0175','WARN0175','logical backup running'],['w0073','WARN0073','physical backup running'],['wbin','InBinlogBackupState','binlog running']];
+  var cfg={entry:'sched',type:'logical',vendor:'mariadb',exec:'local',conn:'onpremise',jobsssh:'on',ssh:'present',dbjob:'running',toolstate:'present',rtoolstate:'present',engine:'river',binlogtrack:'on',jobsmode:'table',progress:'on',w0174:false,w0110:false,w0175:false,w0073:false,wbin:false,storage:'disk',restic:'off',encrypt:'off',server:'slave',binlogcompress:'off'};
+  var flow=document.getElementById('flow'), svg=document.getElementById('edges'), readout=document.getElementById('readout');
+  var order=[], edgeOn={}, dynEdges=[], playTimer=null, playIdx=-1;
+  function node(id){return flow.querySelector('[data-node="'+id+'"]');}
+  function setTxt(id,sel,t){var n=node(id); if(!n)return; var e=n.querySelector(sel); if(e)e.textContent=t;}
+  function floatBeside(inId,tgtId,holderSel){
+    var inN=node(inId), tg=node(tgtId), hold=holderSel?flow.querySelector(holderSel):(inN&&inN.parentNode);
+    if(!inN||!tg||!hold)return; var hr=hold.getBoundingClientRect(), tr=tg.getBoundingClientRect();
+    inN.style.top=(tr.top-hr.top+(tr.height-inN.offsetHeight)/2)+'px';
+    inN.style.left=(tr.left-hr.left-inN.offsetWidth-26)+'px';
+  }
+  function positionInputs(){}
+  function execsFor(ty){ if(ty==='physical') return [{id:'local',na:1},{id:'remote'},{id:'builtin',na:1}]; return [{id:'local'},{id:'remote'},{id:'builtin'}]; }
+  function fixExec(){ var l=execsFor(cfg.type), cur=l.filter(function(x){return x.id===cfg.exec;})[0]; if(!cur||cur.na){ cfg.exec=(l.filter(function(x){return !x.na;})[0]||l[0]).id; } }
+
+  var TYPES3=[['logical','LOG','Logical','dump of schema + data'],['physical','PHY','Physical','hot datadir copy'],['binlog','BIN','Binlog','binary logs · incremental']];
+  var VENDS=[['mariadb','MariaDB','mariadb-dump · mariabackup'],['mysql','MySQL','mysqldump · xtrabackup'],['percona','Percona','mysqldump · xtrabackup'],['pg','PostgreSQL','pg_dump · pg_basebackup']];
+  var LOCS=[['local','local','rman','A co-installed tool colocated to repman'],['remote','remote','node','A DB-package tool on the node via dbjob'],['builtin','built-in','rman',"repman's internal Go engine"]];
+  // grouped by BACKUP TYPE; each tool tagged with its localisation (local/remote/internal)
+  var TOOLS={
+    logical:[['T_mariadbdump','mariadb-dump','local logical dump','WARN0175','local'],['T_mysqldump','mysqldump','local logical dump','WARN0175','local'],['T_mydumper','mydumper','local · version-independent','WARN0175','local'],['T_scriptL','custom script','non-empty var','script','local'],['T_internal','⚑ internal (river)','built-in Go dump — not mature','road','internal'],['T_dumpling','⚑ dumpling','Go dump — not mature','road','internal'],['T_rmariadbdump','⚑ remote mariadb-dump','dump on node — no code','road','remote'],['T_rmysqldump','⚑ remote mysqldump','dump on node — no code','road','remote'],['T_rpgdump','⚑ remote pg_dump','dump on node — no code','road','remote'],['T_pgdumpL','⚑ pg_dump','local · no code','road','local']],
+    physical:[['T_mariabackup','mariabackup','--stream on node','WARN0073','remote'],['T_xtrabackup','xtrabackup','--stream on node','WARN0073','remote'],['T_fssnap','⚑ FS snapshot','plugin — no code','road','remote'],['T_pgbaseR','⚑ pg_basebackup','no code','road','remote']],
+    binlog:[['T_mariabinlog','mariadb-binlog','stream --read-from-remote → repman','InBinlog','local'],['T_mysqlbinlog','mysqlbinlog','stream --read-from-remote → repman','InBinlog','local'],['T_river','river','built-in binlog tool (mature)','InBinlog','internal'],['T_gomysql','gomysql','built-in binlog tool (mature)','InBinlog','internal'],['T_rmariabinlog','remote mariadb-binlog','run on the node','InBinlog','remote'],['T_rmysqlbinlog','remote mysqlbinlog','run on the node','InBinlog','remote'],['T_scp','scp','copy binlog files from node','InBinlog','remote'],['T_pgwal','⚑ pg WAL reader','reads WAL segments · incremental','InBinlog','local'],['T_pgpubsub','⚑ pg pub/sub','logical replication · publisher→subscriber','InBinlog','remote']]
+  };
+  var TGROUPS=[['logical','logical backup · tools'],['physical','physical backup · tools'],['binlog','binlog backup · tools']];
+  var NAMEOF={}; ['logical','physical','binlog'].forEach(function(g){});  // filled below
+  Object.keys(TOOLS).forEach(function(g){ TOOLS[g].forEach(function(t){ NAMEOF[t[0]]=t[1].replace(/^⚑ /,''); }); });
+  // native = tool emits its own metadata; extract = repman parses/derives it
+  var METAOF={T_mariabackup:'native',T_xtrabackup:'native',T_mydumper:'native'};
+  var DUMPTOOLS={T_mariadbdump:1,T_mysqldump:1,T_pgdumpL:1,T_rmariadbdump:1,T_rmysqldump:1,T_rpgdump:1,T_internal:1,T_dumpling:1};  // monolithic dumps → extracted metadata
+  // L5 = the split TOOLS (4 kinds), each sits under its backup tool, preceded by a variable input.
+  //  m: 'pipe' = splitdump (variable backup-save-per-table) · 'native' = mydumper self-splits (no variable) · 'extract' = physical extract, variable backup-physical-extract-tables (NOT wired → roadmap)
+  var SPLITDEF={
+    T_mariadbdump:{n:'splitdump',m:'pipe',v:'backup-mysqldump-splitdump'}, T_mysqldump:{n:'splitdump',m:'pipe',v:'backup-mysqldump-splitdump'},
+    T_pgdumpL:{n:'splitdump',m:'pipe',v:'backup-mysqldump-splitdump'}, T_rmariadbdump:{n:'splitdump',m:'pipe',v:'backup-mysqldump-splitdump'}, T_rmysqldump:{n:'splitdump',m:'pipe',v:'backup-mysqldump-splitdump'}, T_rpgdump:{n:'splitdump',m:'pipe',v:'backup-mysqldump-splitdump'}, T_internal:{n:'splitdump',m:'pipe',v:'backup-mysqldump-splitdump'}, T_dumpling:{n:'splitdump',m:'pipe',v:'backup-mysqldump-splitdump'},
+    T_mydumper:{n:'native · per-table',m:'native'},
+    T_mariabackup:{n:'mariabackup extract',m:'extract',v:'backup-physical-extract-tables'}, T_xtrabackup:{n:'xtrabackup extract',m:'extract',v:'backup-physical-extract-tables'}
+  };
+  function metaOf(id){return METAOF[id]==='native'?'META_NATIVE':'META_EXTRACT';}
+  // L7 · execution STATE emitted per tool (verified in config/error.go + srv_job_backup.go).
+  //  k:'sm' = real WARN running state (green) · 'gap' = only a boolean, NO state code (⚑) · absent = no state at all (⚑ missing)
+  var EXECSTATE={
+    T_mariadbdump:{c:'WARN0175',k:'sm',d:'running logical'}, T_mysqldump:{c:'WARN0175',k:'sm',d:'running logical'},
+    T_mydumper:{c:'WARN0175',k:'sm',d:'running logical (+WARN0133 version abort)'}, T_internal:{c:'WARN0175',k:'sm',d:'running logical'}, T_dumpling:{c:'WARN0175',k:'sm',d:'running logical'}, T_scriptL:{c:'WARN0175',k:'sm',d:'running logical'},
+    T_mariabackup:{c:'WARN0073',k:'sm',d:'running physical (+WARN0115 on fail)'}, T_xtrabackup:{c:'WARN0073',k:'sm',d:'running physical (+WARN0115 on fail)'},
+    T_mariabinlog:{c:'InBinlogBackup',k:'gap',d:'boolean only — no WARN'}, T_mysqlbinlog:{c:'InBinlogBackup',k:'gap',d:'boolean only — no WARN'}, T_river:{c:'InBinlogBackup',k:'gap',d:'boolean only — no WARN'}, T_gomysql:{c:'InBinlogBackup',k:'gap',d:'boolean only — no WARN'}, T_scp:{c:'InBinlogBackup',k:'gap',d:'boolean only — no WARN'}, T_rmariabinlog:{c:'InBinlogBackup',k:'gap',d:'boolean only — no WARN'}, T_rmysqlbinlog:{c:'InBinlogBackup',k:'gap',d:'boolean only — no WARN'}
+    // absent (⚑ no state): pg_dump/pg_basebackup/pg WAL/pub-sub (not implemented), FS snapshot, remote logical dumps
+  };
+  function buildTools(){
+    // ONE ROW PER LEVEL: L4 tools · split gates · L5 split tools · L6 execute — columns aligned, empty cells keep the grid
+    var rT='', rG='', r5='', rBt='', r6='', rMeta='', rComp='';
+    TGROUPS.forEach(function(g){
+      rT+='<div class="toolgrp"><div class="gh">'+g[1]+'</div><div class="toolrow">';
+      rG+='<div class="toolgrp"><div class="toolrow">';
+      r5+='<div class="toolgrp"><div class="toolrow">';
+      rBt+='<div class="toolgrp"><div class="toolrow">';
+      r6+='<div class="toolgrp"><div class="toolrow">';
+      rMeta+='<div class="toolgrp"><div class="toolrow">';
+      rComp+='<div class="toolgrp"><div class="toolrow">';
+      TOOLS[g[0]].forEach(function(tl){
+        var road=tl[3]==='road', locn=tl[4], gc=road?'road':(locn==='remote'?'node':'rman'), bc=/WARN/.test(tl[3])?'run':'neutral';
+        var def=SPLITDEF[tl[0]], sid='SPLIT_'+tl[0], ex='EXEC_'+tl[0], btid='BTEST_'+tl[0], preX=road?ex:btid, mtt=DUMPTOOLS[tl[0]]?'META_EXTRACT':metaOf(tl[0]);
+        // per-tool base output filename (extensions accumulate: split → .gz → .enc)
+        var fbase = g[0]==='binlog' ? 'mysql-bin.000001' : g[0]==='physical' ? 'backup.xbstream' : (def&&def.m==='pipe') ? 'table.sql.shard' : (def&&def.m==='native') ? 'table.sql' : 'backup.sql';
+        // ── L4 tool cell ──
+        rT+='<div class="node toolnode" data-node="'+tl[0]+'" data-g="'+gc+'"><div class="lv">L4 · '+locn+'</div><div class="nt"><span class="dot"></span>'+tl[1]+'</div><div class="ns">'+tl[2]+'</div>'+(road?'':'<span class="badge '+bc+'">'+tl[3]+'</span>')+'</div>';
+        TEXT[tl[0]]=['L4 · '+tl[1]+' ('+locn+(road?', roadmap':'')+')', tl[2]+'.'];
+        // ── split-gate cell (losange + variable input) · only for tools whose split is variable-driven ──
+        if(!road && def && def.m!=='native'){
+          var gid='SPLITG_'+tl[0], iid='INSPLIT_'+tl[0]; cfg['split_'+tl[0]]=cfg['split_'+tl[0]]||'on';
+          rG+='<div class="gatecell"><div class="node innode top" data-node="'+iid+'" data-g="var"><div class="lv">split · on/off</div><div class="pillseg" data-ctl="split_'+tl[0]+'"><button data-v="on">split</button><button data-v="off">off</button></div><div class="vn">'+def.v+'</div></div>'+
+              '<div class="node dec" data-node="'+gid+'" data-g="var"><div class="lv">config</div><div class="nt"><span class="dot"></span>split?</div><div class="ns" data-sq-b>split on</div></div></div>';
+          EDGES.push([tl[0],gid],[gid,sid],[gid,preX]); INEDGES.push([iid,gid]);   // input→gate via funnel arrow; tool→gate→split(on) / gate→execute(off)
+          TEXT[iid]=['variable · '+def.v,'Whether the user asks '+tl[1]+' to split into per-table units.'];
+          TEXT[gid]=['split gate ('+tl[1]+')','Variable-driven ('+def.v+'). ON → through the split tool then execute; OFF → straight to execute.'];
+        } else { rG+='<div class="cellpad"></div>'; }
+        // ── L5 split-tool cell ──
+        if(!road && def){
+          var sroad=(def.m==='extract'), sg=sroad?'road':'rman', bdg=sroad?['roadmap','neutral']:['→ partial restore','run'];
+          r5+='<div class="node splitnode" data-node="'+sid+'" data-g="'+sg+'"><div class="lv">L5 · split tool</div><div class="nt"><span class="dot"></span>'+(sroad?'⚑ ':'')+def.n+'</div><div class="fn">'+fbase+'</div><span class="badge '+bdg[1]+'">'+bdg[0]+'</span></div>';
+          if(def.m==='native') EDGES.push([tl[0],sid]);   // native: no gate
+          EDGES.push([sid,preX],[sid,'PARTIAL_OUT']);   // split feeds execute AND the partial-restore path output
+          TEXT[sid]=[(sroad?'⚑ ':'')+'L5 · '+def.n+' ('+tl[1]+')', def.m==='native'?'mydumper naturally writes one file per table — split is inherent.':def.m==='extract'?def.n+' can split per-table, but it is NOT wired in repman — roadmap.':'Piped from the '+tl[1]+' monolithic dump → per-table shards + manifest.'];
+        } else { r5+='<div class="cellpad"></div>'; }
+        // ── L6 · backup-test cell (per tool) — pre-exec --no-data pass: empty schema + system users (NO fan-in) ──
+        if(!road){
+          rBt+='<div class="node btestnode" data-node="'+btid+'" data-g="road"><div class="lv">L6 · backup-test</div><div class="nt"><span class="dot"></span>⚑ --no-data</div><div class="fn">table.schema.sql</div><div class="fn">system.users.sql</div><div class="ns">empty schema + system users</div></div>';
+          EDGES.push([btid,ex]);   // backup-test → execute
+          TEXT[btid]=['⚑ L6 · backup-test ('+tl[1]+')','Planned pre-execution pass: a --no-data dump of the empty schema + the system tables (users & grants). Produces table.schema.sql and system.users.sql before the real data backup runs.'];
+        } else { rBt+='<div class="cellpad"></div>'; }
+        // ── L7 execute cell — ONE per tool, aligned ──
+        r6+='<div class="node execnode" data-node="'+ex+'" data-g="'+(road?'road':'artifact')+'"><div class="lv">L7 · execute</div><div class="nt"><span class="dot"></span>execute</div><div class="ns">tool runs → output</div></div>';
+        if(road||!def) EDGES.push([tl[0],preX]);   // roadmap / no-split → tool straight to backup-test/execute
+        TEXT[ex]=['L7 · execute ('+tl[1]+')','The '+tl[1]+' backup executes and produces its data output. Progress monitors branch here when monitor-schema is on.'];
+        // ── link this exec to the SHARED state node it emits (no link = observability gap) ──
+        var st=EXECSTATE[tl[0]]; if(st) EDGES.push([ex,'S_'+st.c]);
+        // ── L8 gather-metadata + L9 compression cells (per tool) ──
+        if(!road){
+          var mnat=(mtt==='META_NATIVE'), mid='META_'+tl[0], cid='COMP_'+tl[0], pigz=(def&&def.m==='pipe'), isBin=(g[0]==='binlog');
+          rMeta+='<div class="node metanode" data-node="'+mid+'" data-g="artifact"><div class="lv">L8 · gather metadata</div><div class="nt"><span class="dot"></span>'+(isBin?'binlog positions':(mnat?'native':'stream · extract'))+'</div><div class="fn">'+(isBin?'binlog index · GTID':fbase)+'</div></div>';
+          if(isBin){
+            // BINLOG = raw copy (mysqlbinlog --raw): NO pipeline compress/encrypt. Only the SOURCE compression matters.
+            var bcIn = (tl[0]==='T_mariabinlog') ? '<div class="node innode top" data-node="IN_BINCOMP" data-g="var"><div class="lv">source · binlog</div><div class="pillseg" data-ctl="binlogcompress"><button data-v="on">compress</button><button data-v="off">off</button></div><div class="vn">force-binlog-compress (server)</div></div>' : '';
+            rComp+='<div class="gunit">'+bcIn+'<div class="node compnode" data-node="'+cid+'" data-g="var"><div class="lv">source · binlog-compress</div><div class="nt"><span class="dot"></span>raw copy</div><div class="ns" data-bc-b>force-binlog-compress</div></div></div>';
+            INEDGES.push(['IN_BINCOMP',cid]);
+            EDGES.push([ex,mid],[mid,cid],[cid,'SLOT']);   // exec → meta → (source-compress state) → SLOT, SKIP L9 encryption
+            TEXT[mid]=['metadata · binlog positions ('+tl[1]+')','Binlog index / GTID coordinates.'];
+            TEXT[cid]=['source · binlog-compress ('+tl[1]+')','Binlog backup is a RAW copy (mysqlbinlog --raw) — repman does NOT compress or encrypt it. If force-binlog-compress is on, the DB already compressed the binlogs at the source (no re-compress); else they stay raw. restic archiving can still compress/encrypt at the archive layer.'];
+          } else {
+            rComp+='<div class="node compnode" data-node="'+cid+'" data-g="artifact"><div class="lv">L9 · compression</div><div class="nt"><span class="dot"></span>'+(pigz?'pigz · threaded':'native')+'</div><div class="fn">'+fbase+'.gz</div><div class="ns">compress-backups</div></div>';
+            EDGES.push([ex,mid],[mid,cid],[cid,'ENCRYPTG']);   // exec → metadata → compression → encryption gate
+            TEXT[mid]=['L7 · gather metadata ('+tl[1]+')',mnat?'Metadata provided natively by '+tl[1]+'.':'Metadata parsed/extracted by repman (splitdump manifest, binlog positions).'];
+            TEXT[cid]=['L8 · compression ('+tl[1]+')',pigz?'Internal threaded pigz over the splitdump stream (compress-backups · compress-backups-parallel-blocks).':'Native compression by '+tl[1]+' (compress-backups).'];
+          }
+        } else { rMeta+='<div class="cellpad"></div>'; rComp+='<div class="cellpad"></div>'; }
+      });
+      rT+='</div></div>'; rG+='</div></div>'; r5+='</div></div>'; rBt+='</div></div>'; r6+='</div></div>'; rMeta+='</div></div>'; rComp+='</div></div>';
+    });
+    document.getElementById('l4row').innerHTML=rT;
+    document.getElementById('sgaterow').innerHTML=rG;
+    document.getElementById('l5row').innerHTML=r5;
+    document.getElementById('btestrow').innerHTML=rBt;   // L6 backup-test (per tool)
+    document.getElementById('l6row').innerHTML=r6;        // L7 execute
+    document.getElementById('metarow').innerHTML=rMeta;   // L8 gather metadata (per tool)
+    document.getElementById('comprow').innerHTML=rComp;   // L9 compression (per tool)
+    // SHARED execution-state outputs (side) — execs fan in via links above (schema/users are per-tool on the backup-test block, NO fan-in)
+    document.getElementById('staterow').innerHTML=
+      '<div class="toolgrp"><div class="toolrow"><div class="node stateout" data-node="S_WARN0175" data-g="sm"><div class="lv">output · state</div><div class="nt"><span class="dot"></span>WARN0175</div><div class="ns">running logical</div></div></div></div>'+
+      '<div class="toolgrp"><div class="toolrow"><div class="node stateout" data-node="S_WARN0073" data-g="sm"><div class="lv">output · state</div><div class="nt"><span class="dot"></span>WARN0073</div><div class="ns">running physical</div></div></div></div>'+
+      '<div class="toolgrp"><div class="toolrow"><div class="node stateout" data-node="S_InBinlogBackup" data-g="road"><div class="lv">output · state</div><div class="nt"><span class="dot"></span>⚑ InBinlogBackup</div><div class="ns">boolean only — no WARN</div></div></div></div>';
+    TEXT['S_WARN0175']=['exec state · WARN0175','"Running logical backup" — set once at backup start, shared by ALL logical tools (mysqldump/mariadb-dump/mydumper/dumpling/river/script). PreserveState-held; no progress detail.'];
+    TEXT['S_WARN0073']=['exec state · WARN0073','"Running physical backup" — shared by mariabackup/xtrabackup. PreserveState-held; +WARN0115 on failure.'];
+    TEXT['S_InBinlogBackup']=['⚑ exec state · InBinlogBackup (boolean)','Binlog backup emits NO WARN running code — only the InBinlogBackup boolean (+ WARN0110 pending). The binlog copy is invisible to the state registry: the gap.'];
+  }
+  function tool(ty,v,ex,engine){
+    var pg=(v==='pg');
+    if(ex==='builtin'){
+      if(ty==='binlog') return {id:engine==='gomysql'?'T_gomysql':'T_river',road:pg};
+      return {id:engine==='gomysql'?'T_dumpling':'T_internal',road:true};
+    }
+    if(ex==='remote'){
+      if(ty==='physical') return {id:pg?'T_pgbaseR':(v==='mariadb'?'T_mariabackup':'T_xtrabackup'),road:pg};
+      if(ty==='binlog') return {id:pg?'T_pgwal':(v==='mariadb'?'T_rmariabinlog':'T_rmysqlbinlog'),road:pg};
+      return {id:pg?'T_rpgdump':(v==='mariadb'?'T_rmariadbdump':'T_rmysqldump'),road:true};
+    }
+    if(ty==='binlog') return {id:pg?'T_pgwal':(v==='mariadb'?'T_mariabinlog':'T_mysqlbinlog'),road:pg};
+    if(ty==='physical') return {id:null,road:true};
+    return {id:pg?'T_pgdumpL':(v==='mariadb'?'T_mariadbdump':'T_mysqldump'),road:pg};
+  }
+  function activeTool(){ return tool(cfg.type,cfg.vendor,cfg.exec,cfg.engine); }
+  var TCODE={logical:'LOG',physical:'PHY',binlog:'BIN'};
+  // CLI presence state code per tool family (local L / remote R)
+  var CLI={T_mariadbdump:1,T_rmariadbdump:1,T_mysqldump:2,T_rmysqldump:2,T_mydumper:3,T_pgdumpL:4,T_rpgdump:4,T_mariabackup:5,T_xtrabackup:6,T_pgbaseR:7,T_mariabinlog:8,T_rmariabinlog:8,T_mysqlbinlog:9,T_rmysqlbinlog:9,T_scp:10,T_scriptL:11,T_internal:12,T_dumpling:13,T_river:14,T_gomysql:15,T_pgwal:16,T_pgpubsub:17};
+  function cliCode(loc,tid){ var n=CLI[tid]||0; return (loc==='local'?'L':'R')+'CLI'+('0000'+n).slice(-5); }
+  function toolCode(tid){ var n=CLI[tid]||0; return 'CLI'+('0000'+n).slice(-5); }   // unified tool-state code — local/remote carried by the path, not the code
+  function buildFan(){
+    var H='';
+    // L1 · type row (one row, grouped)
+    H+='<div class="row lrow" id="typerow">';
+    TYPES3.forEach(function(t){
+      H+='<div class="tgroup"><div class="node tnode" data-node="T_'+t[1]+'" data-g="type"><div class="lv">L1 · type</div><div class="nt"><span class="dot"></span>'+t[2]+'</div><div class="ns">'+t[3]+'</div></div></div>';
+      EDGES.push(['GATE','T_'+t[1]]);
+      if(t[1]==='BIN'){ EDGES.push(['T_BIN','BINLOGGATE']); EDGES.push(['BINLOGGATE','FQ_BIN']); }   // binlog: type → binlog track → its own flavor gate
+      else EDGES.push(['T_'+t[1],'FQ']);
+      TEXT['T_'+t[1]]=['L1 · '+t[2],t[3]+'.'];
+    });
+    H+='</div>';
+    // binlog track — on the binlog branch, right after the type, before the flavor gate
+    H+='<div class="row lrow" id="trackrow"><div class="tgroup"></div><div class="tgroup"></div><div class="tgroup"><div class="gunit">'+
+      '<div class="node innode top" data-node="IN_BINLOG" data-g="var"><div class="lv">config · binlog</div><div class="pillseg" data-ctl="binlogtrack"><button data-v="on">track</button><button data-v="off">off</button></div><div class="vn">backup-binlogs</div></div>'+
+      '<div class="node dec" data-node="BINLOGGATE" data-g="var"><div class="lv">binlog · track</div><div class="nt"><span class="dot"></span>binlog track</div><div class="ns" data-bl-b>track &amp; collect</div></div>'+
+      '</div></div></div>';
+    INEDGES.push(['IN_BINLOG','BINLOGGATE']);
+    // single flavor gate (one losange, fed by the monitored input)
+    H+='<div class="row lrow" id="fqrow">'+
+      '<div class="tgroup"><div class="gunit"><div class="node innode top" data-node="IN_MON" data-g="mon"><div class="lv">input · monitored</div><div class="pillseg" data-ctl="vendor"><button data-v="mariadb">MariaDB</button><button data-v="mysql">MySQL</button><button data-v="percona">Percona</button><button data-v="pg">pg</button></div></div>'+
+      '<div class="node dec" data-node="FQ" data-g="mon"><div class="lv">logical/physical · flavor</div><div class="nt"><span class="dot"></span>flavor?</div><div class="ns" data-fq-b>mariadb</div></div></div></div>'+
+      '<div class="tgroup"></div>'+
+      '<div class="tgroup"><div class="node dec" data-node="FQ_BIN" data-g="mon"><div class="lv">binlog · flavor</div><div class="nt"><span class="dot"></span>flavor?</div><div class="ns" data-fq-b>mariadb</div></div></div>'+
+      '</div>';
+    // L2 · flavor row (12, grouped by type)
+    H+='<div class="row lrow" id="flrow">';
+    TYPES3.forEach(function(t){
+      H+='<div class="tgroup">';
+      VENDS.forEach(function(v){
+        H+='<div class="node fnode" data-node="F_'+t[1]+'_'+v[0]+'" data-g="rman" data-t="'+t[0]+'" data-v="'+v[0]+'"><div class="lv">L2 · '+t[0]+'</div><div class="nt"><span class="dot"></span>'+v[1]+'</div></div>';
+        EDGES.push([(t[1]==='BIN'?'FQ_BIN':'FQ'),'F_'+t[1]+'_'+v[0]]);
+        TEXT['F_'+t[1]+'_'+v[0]]=['L2 · '+v[1]+' ('+t[0]+')', v[2]+(v[0]==='pg'?' — its tool gap shows at L4.':'.')];
+      });
+      H+='</div>';
+    });
+    H+='</div>';
+    document.getElementById('locgaterow').insertAdjacentHTML('beforebegin',H);   // fan (…flavor row) must land BEFORE the locality gate
+    // L3 · localisation row (36, grouped by flavor) — placed AFTER the remote gate
+    var L='<div class="row lrow" id="l3grow">';
+    TYPES3.forEach(function(t){
+      L+='<div class="tgroup">';
+      VENDS.forEach(function(v){
+        L+='<div class="fgroup">';
+        LOCS.forEach(function(loc){
+          var na=(t[0]==='physical'&&loc[0]!=='remote');
+          var id='L3_'+t[1]+'_'+v[0]+'_'+loc[0];
+          L+='<div class="node l3node'+(na?' na':'')+'" data-node="'+id+'" data-g="'+loc[2]+'" data-t="'+t[0]+'" data-v="'+v[0]+'" data-exec="'+loc[0]+'"><div class="lv">L3</div><div class="nt"><span class="dot"></span>'+loc[1]+'</div></div>';
+          var locg='LOCG_'+t[1]+'_'+v[0];
+          EDGES.push(['F_'+t[1]+'_'+v[0],locg]);   // L2 → user locality-choice gate (dedup harmless)
+          if(loc[0]==='remote'){ var og='RGATE_'+t[1]+'_'+v[0], sr='SSHREACH_'+t[1]+'_'+v[0], sc='SCHEDRUN_'+t[1]+'_'+v[0];
+            EDGES.push([locg,og],[og,sr],[og,sc],[sr,id],[sc,id]);   // remote → orchestrator? → {on-prem: reach node? · managed: scheduled dbjob?} → L3 remote
+          } else EDGES.push([locg,id]);                                                                   // choice=local / internal → L3 directly
+          if(loc[0]==='remote') EDGES.push([id,'REMOTETOOL_'+t[1]+'_'+v[0]]);   // per-flavor remote tool gate
+          else if(na){ /* EXCEPTION: physical tools live ONLY on the remote branch — local & built-in are n/a dead-ends */ }
+          else if(loc[0]==='local') EDGES.push([id,'HAVETOOL_'+t[1]+'_'+v[0]]); // per-flavor local tool gate
+          else if(t[1]==='BIN'){ EDGES.push([id,'T_river'],[id,'T_gomysql']); } // binlog builtin → direct to river/gomysql (no gate)
+          else { EDGES.push([id,'T_internal'],[id,'T_dumpling']); }             // logical builtin → direct to internal/dumpling
+          // logical/physical builtin L3: no gate — routes straight to the roadmap built-in dump
+          TEXT[id]=['L3 · '+loc[1]+' ('+v[1]+' '+t[0]+')', loc[3]+(na?' — n/a for a physical backup.':'.')];
+        });
+        L+='</div>';
+      });
+      L+='</div>';
+    });
+    L+='</div>';
+    document.getElementById('dbjobmoderow').insertAdjacentHTML('beforebegin',L);
+  }
+
+  // per-type tool-exists / dbjob / binlog gates, aligned under each type's L3 group
+  // per-FLAVOR tool-exists gates, mirroring the L3 structure (input on top of the losange to save width)
+  function buildGates(){
+    function glz(id,g,lv,nt,dattr,dval,topin){ return '<div class="gunit gsm">'+(topin||'')+'<div class="node dec" data-node="'+id+'" data-g="'+g+'"><div class="lv">'+lv+'</div><div class="nt"><span class="dot"></span>'+nt+'</div><div class="ns" '+dattr+'>'+dval+'</div></div></div>'; }
+    function tp(inid,ctl,lv,opts,g){ var b=opts.map(function(o){return '<button data-v="'+o[0]+'">'+o[1]+'</button>';}).join(''); return '<div class="node innode top" data-node="'+inid+'" data-g="'+(g||'var')+'">'+(lv?'<div class="lv">'+lv+'</div>':'')+'<div class="pillseg" data-ctl="'+ctl+'">'+b+'</div></div>'; }
+    // state pill: the input IS the state (the CLI code); toggle present/missing
+    function sp(inid,stkey,name,code,road){ return '<div class="node innode top statein'+(road?' road':'')+'" data-node="'+inid+'" data-g="'+(road?'road':'sm')+'"><div class="stttl">'+(road?'⚑ ':'')+name+'</div><label class="stlbl"><input type="checkbox" data-st="'+stkey+'" checked><span>'+code+'</span></label></div>'; }
+    var EX=[['present','exists'],['missing','missing']];
+    // remote reach split into a "What Orchestrator?" gate that branches to two condition gates (small inputs, not one big pill)
+    // ONE gate input can drive several gates: it's placed once, then an L connector fans out to each gate (via INEDGES), entering each losange from the right
+    function orchIn(){ return '<div class="node innode top" data-node="IN_ORCH" data-g="var"><div class="lv">orchestrator</div><div class="pillseg" data-ctl="conn"><button data-v="opensvc">OpenSVC</button><button data-v="k8s">K8S</button><button data-v="cookie">Cookie</button><button data-v="onpremise">OnPrem</button></div></div>'; }
+    function sshIn(){ return '<div class="node innode top" data-node="IN_SSH" data-g="var"><div class="lv">on-prem · ssh</div><div class="pillseg" data-ctl="jobsssh"><button data-v="on">exec-ssh</button><button data-v="off">off</button></div><div class="pillseg" data-ctl="ssh"><button data-v="present">reach ✓</button><button data-v="absent">reach ✗</button></div><div class="vn">scheduler-jobs-ssh + reach state</div></div>'; }
+    function schedIn(){ return '<div class="node innode top" data-node="IN_SCHED" data-g="var"><div class="lv">managed · scheduler</div><div class="pillseg" data-ctl="dbjob"><button data-v="running">running</button><button data-v="stopped">stopped</button></div><div class="vn">scheduled dbjob (monitoring-scheduler)</div></div>'; }
+    // user locality-choice gate (local/remote/internal) BEFORE reach-node. Preference matters because the tool VERSION differs:
+    // local = repman's bundled binary · remote = the node's own binary · internal = built-in Go engine. Forced choice ⇒ gate offers only one option.
+    var LG='';
+    TYPES3.forEach(function(t){ LG+='<div class="tgroup">'; VENDS.forEach(function(v){
+      var lgid='LOCG_'+t[1]+'_'+v[0];
+      // prefer options are TYPE-dependent: logical = local✓/⚑remote/~~internal · physical = remote ONLY · binlog = all three real
+      var pbtn = t[1]==='PHY' ? '<button data-v="local" class="na">local</button><button data-v="remote">remote</button><button data-v="builtin" class="na">internal</button>'
+             : t[1]==='BIN' ? '<button data-v="local">local</button><button data-v="remote">remote</button><button data-v="builtin">internal</button>'
+             : '<button data-v="local">local</button><button data-v="remote" class="road">⚑ remote</button><button data-v="builtin" class="na">internal</button>';
+      var input=(v[0]==='mariadb')?'<div class="node innode top" data-node="IN_EXEC_'+t[1]+'" data-g="var"><div class="lv">'+t[0]+' · prefer</div><div class="pillseg" data-ctl="exec">'+pbtn+'</div><div class="vn">which binary version</div></div>':'';
+      LG+='<div class="gunit gsm">'+input+'<div class="node dec" data-node="'+lgid+'" data-g="var"><div class="lv">'+t[0]+' · prefer</div><div class="nt"><span class="dot"></span>prefer?</div><div class="ns" data-lg-b>local</div></div></div>';
+      INEDGES.push(['IN_EXEC_'+t[1],lgid]);   // one prefer input per TYPE → its 4 flavor gates
+      TEXT[lgid]=['locality preference · '+t[0]+' '+v[1],'User picks which implementation/version runs the backup — local (repman binary) / remote (the node’s own binary) / internal (Go engine). If only one is wired, the gate offers just that one. Comes BEFORE the reach-node gate.'];
+    }); LG+='</div>'; });
+    document.getElementById('locgaterow').innerHTML=LG;
+    // row: What Orchestrator? (branches on conn)
+    var RG='';
+    TYPES3.forEach(function(t){ RG+='<div class="tgroup">'; VENDS.forEach(function(v){
+      var rid='RGATE_'+t[1]+'_'+v[0];
+      RG+='<div class="gunit gsm">'+((t[1]==='LOG'&&v[0]==='mariadb')?orchIn():'')+'<div class="node dec" data-node="'+rid+'" data-g="var"><div class="lv">'+t[0]+' · remote</div><div class="nt"><span class="dot"></span>orchestrator?</div><div class="ns" data-rg-b>OnPrem</div></div></div>';
+      INEDGES.push(['IN_ORCH',rid]);
+      TEXT[rid]=['orchestrator · '+t[0]+' '+v[1],'Which orchestrator runs the node. on-premise → the ssh reach-node gate. OpenSVC/K8s/cookie → the scheduled-dbjob-running gate (no ssh path).'];
+    }); RG+='</div>'; });
+    document.getElementById('rgaterow').innerHTML=RG;
+    // row: two branch condition gates per flavor — reach node? (ssh, on-prem) · scheduled dbjob running? (managed)
+    var SR='';
+    TYPES3.forEach(function(t){ SR+='<div class="tgroup">'; VENDS.forEach(function(v){
+      var srid='SSHREACH_'+t[1]+'_'+v[0], scid='SCHEDRUN_'+t[1]+'_'+v[0], first=(t[1]==='LOG'&&v[0]==='mariadb');
+      SR+='<div class="fgroup">'+
+        '<div class="gunit gsm">'+(first?sshIn():'')+'<div class="node dec" data-node="'+srid+'" data-g="var"><div class="lv">on-prem</div><div class="nt"><span class="dot"></span>reach node?</div><div class="ns" data-sr-b>ssh reach ✓</div></div></div>'+
+        '<div class="gunit gsm">'+(first?schedIn():'')+'<div class="node dec" data-node="'+scid+'" data-g="var"><div class="lv">managed</div><div class="nt"><span class="dot"></span>scheduled dbjob running?</div><div class="ns" data-sc-b>running</div></div></div>'+
+        '</div>';
+      INEDGES.push(['IN_SSH',srid],['IN_SCHED',scid]);
+      TEXT[srid]=['reach node (ssh) · '+t[0]+' '+v[1],'On-premise: dbjob runs via ssh — works whenever scheduler-jobs-ssh is on AND ssh reaches the node. No scheduler needed.'];
+      TEXT[scid]=['scheduled dbjob running · '+t[0]+' '+v[1],'OpenSVC / K8s / cookie rely on the scheduled dbjob (monitoring-scheduler). If it is not running they cannot function — there is no ssh path.'];
+    }); SR+='</div>'; });
+    document.getElementById('sshreachrow').innerHTML=SR;
+    var H='<div class="row lrow" id="toolgaterow">';
+    TYPES3.forEach(function(t){
+      H+='<div class="tgroup">';
+      VENDS.forEach(function(v){
+        var first=(t[1]==='LOG'&&v[0]==='mariadb'), lt=tool(t[0],v[0],'local'), rt=tool(t[0],v[0],'remote');
+        H+='<div class="fgroup">';
+        // local slot
+        // the SAME tool is detected in two places → two states: LCLI (local) + RCLI (remote)
+        var toolId=lt.id||rt.id, toolNm=NAMEOF[toolId]||v[1];
+        if(t[0]!=='physical'){ var hid='HAVETOOL_'+t[1]+'_'+v[0], lk='det_'+toolId, lcli=cliCode('local',toolId); cfg[lk]='present'; H+=glz(hid,'sm','','exists?','data-have-b','present', sp('IN_'+hid,lk,toolNm,lcli,false)); if(lt.id)EDGES.push([hid,lt.id]); INEDGES.push(['IN_'+hid,hid]); TEXT[hid]=['tool state '+lcli+' · local detection of '+toolNm+'. Today backed by repman’s VersionsMap (a version map); in theory a per-tool state.','']; }
+        else H+='<div class="gsm"></div>';
+        // remote slot — SAME tool, remote detection state (RCLI). Does NOT exist yet (roadmap)
+        var rid='REMOTETOOL_'+t[1]+'_'+v[0], rk='rdet_'+toolId, rcli=cliCode('remote',toolId); cfg[rk]='present'; H+=glz(rid,'sm','','exists?','data-rhave-b','present', sp('IN_'+rid,rk,toolNm,rcli,true)); EDGES.push([rid,'DBJOBMODE_'+t[1]+'_'+v[0]]); INEDGES.push(['IN_'+rid,rid]); TEXT[rid]=['⚑ tool state '+rcli+' · remote detection of '+toolNm+' on the db server — same tool as local, second state. repman does NOT detect it there yet — roadmap.',''];
+        // builtin slot
+        if(t[1]==='BIN'&&v[0]==='mariadb'){ H+='<div class="gsm">'+tp('IN_BUILTIN','engine','input · built-in tool',[['river','river'],['gomysql','gomysql']])+'</div>'; }   // engine choice only; built-in L3 links direct to the tool (no exists gate)
+        else H+='<div class="gsm"></div>';
+        H+='</div>';
+      });
+      H+='</div>';
+    });
+    H+='</div>';
+    // per-flavor "dbjob mode?" gate UNDER each remote exists path (keeps the paths separate), converging to the shared dbjob-execution level
+    H+='<div class="row lrow" id="dbjobmode2row">';
+    TYPES3.forEach(function(t){ H+='<div class="tgroup">'; VENDS.forEach(function(v){ var dm='DBJOBMODE_'+t[1]+'_'+v[0], first=(t[1]==='LOG'&&v[0]==='mariadb');
+      var din=first?'<div class="node innode top" data-node="IN_DBJOB" data-g="var"><div class="lv">input · dbjob mode</div><div class="pillseg" data-ctl="jobsmode"><button data-v="api">api</button><button data-v="table">table</button></div><div class="vn">scheduler-jobs-mode</div></div>':'';
+      H+=glz(dm,'var','','dbjob mode?','data-dm-b','table',din);
+      EDGES.push([dm,'DBJOBEXEC']); INEDGES.push(['IN_DBJOB',dm]);   // one dbjob-mode input → all 12 gates
+      TEXT[dm]=['dbjob mode · '+t[0]+' '+v[1],'How the dbjob executes (scheduler-jobs-mode api/table) — one per remote path so paths stay separate. Converges to the shared dbjob execution level.'];
+    }); H+='</div>'; });
+    H+='</div>';
+    document.getElementById('dbjobmoderow').insertAdjacentHTML('beforebegin',H);
+  }
+
+
+  function compute(){
+    order=[]; edgeOn={}; dynEdges=[];
+    flow.querySelectorAll('.toolnode').forEach(function(n){n.classList.remove('roadlit');});
+    var add=function(id){order.push(id);}, edge=function(a,b){edgeOn[a+'>'+b]=1;}, dyn=function(a,b){dynEdges.push([a,b]); edgeOn[a+'>'+b]=1;};
+    var A=cfg.type==='logical'?'LOG':cfg.type==='physical'?'PHY':'BIN', ty='T_'+A;
+    var tl={sched:'Scheduler',api:'API call',cookie:'Cookie'}[cfg.entry];
+    var relRun=cfg.type==='logical'?'w0175':cfg.type==='physical'?'w0073':'wbin';
+    var active=WARNS.filter(function(w){return cfg[w[0]]&&(w[0]==='w0174'||w[0]==='w0110'||w[0]===relRun);});
+    var slotFree=active.length===0;
+    var ent={sched:'ENT_SCHED',api:'ENT_API',cookie:'ENT_COOKIE'}[cfg.entry];
+    setTxt('TRIGQ','[data-trigq-b]',tl);
+    add('TRIGQ'); edge('TRIGQ',ent); add(ent);
+    // WHERE the backup runs: prefered backup host (slave) if up, else fallback to master. Drives per-tool dump params later.
+    edge(ent,'SERVERQ'); add('SERVERQ'); setTxt('SERVERQ','[data-srv-b]', cfg.server==='master'?'master (fallback)':'prefered slave (PreferedBackup)');
+    edge('SERVERQ','TYPEQ'); add('TYPEQ'); setTxt('TYPEQ','[data-typeq-b]',cfg.type); edge('TYPEQ','GATE'); add('GATE');
+    node('GATE').querySelector('[data-slot-b]').textContent=slotFree?'slot free · '+cfg.type+' · proceed':'⛔ '+active.map(function(w){return w[1];}).join(' · ')+' · wait';
+    node('GATE').classList.toggle('warn',!slotFree);
+    if(!slotFree) return;
+    edge('GATE',ty); add(ty);
+    // binlog track (before its own flavor gate) ; logical/physical share FQ, binlog uses FQ_BIN
+    var fqid='FQ';
+    if(cfg.type==='binlog'){
+      setTxt('BINLOGGATE','[data-bl-b]',cfg.binlogtrack==='off'?'⚑ not tracked':'track & collect');
+      node('BINLOGGATE').classList.toggle('warn',cfg.binlogtrack==='off');
+      edge(ty,'BINLOGGATE'); add('BINLOGGATE');
+      if(cfg.binlogtrack==='off') return;
+      // PITR (last-N-days) is a PATH OUTPUT of the binlog branch — you have it as soon as binlogs are tracked
+      edge('BINLOGGATE','PITR_OUT'); add('PITR_OUT');
+      fqid='FQ_BIN'; edge('BINLOGGATE','FQ_BIN'); add('FQ_BIN');
+    } else { edge(ty,'FQ'); add('FQ'); }
+    setTxt(fqid,'[data-fq-b]',cfg.vendor);
+    var fl='F_'+A+'_'+cfg.vendor; edge(fqid,fl); add(fl);
+    fixExec();
+    var loc='L3_'+A+'_'+cfg.vendor+'_'+cfg.exec, at=activeTool();
+    // user locality-choice gate (local / remote / internal) BEFORE the reach-node gate
+    var lgid='LOCG_'+A+'_'+cfg.vendor;
+    edge(fl,lgid); add(lgid); setTxt(lgid,'[data-lg-b]', cfg.exec==='builtin'?'internal':cfg.exec);
+    // bring L3 onto the path (remote needs the reach gate first)
+    if(cfg.exec==='remote'){
+      var orch=({opensvc:'OpenSVC',k8s:'K8S',onpremise:'OnPrem',cookie:'Cookie'}[cfg.conn])||'OnPrem';
+      var rgid='RGATE_'+A+'_'+cfg.vendor;
+      setTxt(rgid,'[data-rg-b]',orch); edge(lgid,rgid); add(rgid);
+      if(cfg.conn==='onpremise'){
+        // on-premise → reach node via ssh: works if scheduler-jobs-ssh (var) on AND ssh reaches node (state)
+        var srid='SSHREACH_'+A+'_'+cfg.vendor, sshOff=cfg.jobsssh==='off', sshUnreach=cfg.ssh==='absent', sfail=sshOff||sshUnreach;
+        setTxt(srid,'[data-sr-b]', sshOff?'⚑ scheduler-jobs-ssh off → discard':sshUnreach?'⚑ ssh can’t reach → discard':'ssh reach ✓');
+        node(srid).classList.toggle('warn',sfail); edge(rgid,srid); add(srid);
+        if(sfail) return; edge(srid,loc); add(loc);
+      } else {
+        // OpenSVC / K8s / cookie → scheduled dbjob must be running, else cannot function (no ssh path)
+        var scid='SCHEDRUN_'+A+'_'+cfg.vendor, schedStop=cfg.dbjob==='stopped';
+        setTxt(scid,'[data-sc-b]', schedStop?'⚑ scheduler stopped → discard':'running');
+        node(scid).classList.toggle('warn',schedStop); edge(rgid,scid); add(scid);
+        if(schedStop) return; edge(scid,loc); add(loc);
+      }
+    } else {
+      edge(lgid,loc); add(loc);
+    }
+    // per-type gates. helper for the remote → dbjob → api/table tail
+    var remoteTail=function(fromGate,rtid,djid,rcode){
+      var rmiss=(cfg[rcode]==='missing');
+      node(rtid).querySelector('[data-rhave-b]').textContent=rmiss?'⚑ missing → discard':'present';
+      node(rtid).classList.toggle('warn',rmiss);
+      edge(fromGate,rtid); add(rtid);
+      if(rmiss) return false;
+      // per-flavor dbjob mode? (api/table) UNDER this remote path, then converge to the shared dbjob execution level
+      var dm='DBJOBMODE_'+A+'_'+cfg.vendor;
+      setTxt(dm,'[data-dm-b]',cfg.jobsmode); edge(rtid,dm); add(dm);
+      edge(dm,'DBJOBEXEC'); add('DBJOBEXEC');
+      dyn('DBJOBEXEC',at.id);
+      return true;
+    };
+    var vv=cfg.vendor;
+    if(cfg.exec==='local'){
+      var hg='HAVETOOL_'+A+'_'+vv, lk='det_'+at.id, lmiss=(cfg[lk]==='missing');
+      node(hg).querySelector('[data-have-b]').textContent=lmiss?'⚑ not detected → discard':'detected';
+      node(hg).classList.toggle('warn',lmiss);
+      edge(loc,hg); add(hg);
+      if(lmiss) return;
+      dyn(hg,at.id);
+    } else if(cfg.exec==='remote'){
+      var baseId=tool(cfg.type,cfg.vendor,'local').id||at.id;   // same tool as local → shared RCLI detection state
+      if(!remoteTail(loc,'REMOTETOOL_'+A+'_'+vv,'DBJOB_'+A+'_'+vv,'rdet_'+baseId)) return;
+    } else {
+      dyn(loc,at.id);   // built-in: direct link, no exists gate
+    }
+    add(at.id);
+    var tn=node(at.id); if(tn) tn.classList.toggle('roadlit',!!at.road);
+    if(at.road) return;
+    var ex='EXEC_'+at.id, def=SPLITDEF[at.id], sid='SPLIT_'+at.id, bt='BTEST_'+at.id;
+    if(def && def.m==='native'){ edge(at.id,sid); add(sid); edge(sid,bt); }                    // mydumper always splits
+    else if(def){ var gid='SPLITG_'+at.id, on=cfg['split_'+at.id]!=='off';
+      edge(at.id,gid); add(gid); setTxt(gid,'[data-sq-b]', def.m==='extract'?(on?'⚑ not wired':'off'):(on?'split on':'off'));
+      if(def.m==='pipe'&&on){ edge(gid,sid); add(sid); edge(sid,bt); } else { edge(gid,bt); } }   // extract split is roadmap → backup-test/execute direct
+    else { edge(at.id,bt); }
+    add(bt);                    // L6 · backup-test (produces empty schema + system users, inline — no fan-in)
+    // ⚑ system objects are a PATH OUTPUT of the backup-test split (logical) — materializable from backup / live grants / other server
+    if(logical){ edge(bt,'SYSOBJ_OUT'); add('SYSOBJ_OUT'); }
+    edge(bt,ex); add(ex);
+    var est=EXECSTATE[at.id]; if(est){ edge(ex,'S_'+est.c); add('S_'+est.c); }   // link to the shared state this tool emits (none = gap, no link)
+    var logical=cfg.type==='logical';
+    // per-tool DUMP PARAMS — a consequence of the master/slave server choice (GetMysqlDumpOptions)
+    if(logical && cfg.vendor!=='pg' && (DUMPTOOLS[at.id]||at.id==='T_mydumper')){
+      var isMaria=(cfg.vendor==='mariadb'), onMaster=(cfg.server==='master'), dp;
+      if(at.id==='T_mydumper'){ dp='--source-data=2'; }
+      else if(onMaster){ dp = isMaria?'--master-data=1':'(MySQL+GTID → transparent, no --master-data)'; }
+      else { dp='--dump-slave=1'; }
+      dp += isMaria?' · --gtid=true':'';
+      dp += ' · --apply-slave-statements';
+      setTxt('DUMPPARAMS','[data-dp-b]',dp); node('DUMPPARAMS').classList.toggle('warn',false);
+      edge(ex,'DUMPPARAMS'); add('DUMPPARAMS');
+    }
+    // physical backup on a slave → StopSlave/StartSlave around it (consistent snapshot)
+    if(cfg.type==='physical' && cfg.server==='slave'){ edge(ex,'SLAVESTOP'); add('SLAVESTOP'); }
+    // CODED backup-side: byte counter (bytesProgress) + stall watchdog (dead-volume abort) — ALWAYS runs during execution.
+    edge(ex,'STALL_WD'); add('STALL_WD');
+    // ⚑ progress% = counter ÷ estimated total. Gate on the (roadmap) progress var.
+    edge('STALL_WD','MONPROGQ'); add('MONPROGQ'); setTxt('MONPROGQ','[data-mp-b]', cfg.progress==='on'?'estimate total':'off'); node('MONPROGQ').classList.toggle('warn',cfg.progress!=='on');
+    if(cfg.progress==='on'){
+      // total-estimate sources by type: logical → schema sizes; physical → data on disk; always a previous-backup fallback
+      if(logical){ edge('MONPROGQ','MON_SCHEMA'); add('MON_SCHEMA'); edge('MON_SCHEMA','MON_PROG'); }
+      if(cfg.type==='physical'){ edge('MONPROGQ','MON_DISK_SZ'); add('MON_DISK_SZ'); edge('MON_DISK_SZ','MON_PROG'); }
+      edge('MONPROGQ','MON_PREV'); add('MON_PREV'); edge('MON_PREV','MON_PROG');
+      // ⚑ SHOW PROCESSLIST : LOGICAL direct dump only (no splitdump) — liveness/stage
+      if(logical && def && def.m==='pipe' && cfg['split_'+at.id]==='off'){ edge(ex,'MON_PROC'); add('MON_PROC'); edge('MON_PROC','MON_PROG'); }
+      // ⚑ stdout parser (per tool, to code) : logical + physical have verbose output; raw binlog copy does not
+      if(cfg.type!=='binlog'){ edge(ex,'MON_STDOUT'); add('MON_STDOUT'); edge('MON_STDOUT','MON_PROG'); }
+      add('MON_PROG'); edge('MONPROGQ','MON_BW'); add('MON_BW');
+    }
+    // L8 metadata → L9 compression → L10 encryption gate → slot (per-tool up to the shared encryption gate)
+    var mid='META_'+at.id, cid='COMP_'+at.id, enc=cfg.encrypt==='on';
+    edge(ex,mid); add(mid); edge(mid,cid); add(cid);
+    if(cfg.type==='binlog'){
+      // binlog = RAW copy: no pipeline compress/encrypt. Source compression (force-binlog-compress) only; skip the encryption gate.
+      setTxt(cid,'[data-bc-b]', cfg.binlogcompress==='on'?'source-compressed (no re-compress)':'raw · uncompressed');
+      edge(cid,'SLOT'); add('SLOT');
+    } else {
+      edge(cid,'ENCRYPTG'); add('ENCRYPTG'); setTxt('ENCRYPTG','[data-en-b]', enc?'⚑ encrypt':'off');
+      if(enc){ edge('ENCRYPTG','ENCRYPT'); add('ENCRYPT'); edge('ENCRYPT','SLOT'); } else { edge('ENCRYPTG','SLOT'); }
+      add('SLOT');
+    }
+    var store=cfg.storage==='fuse'?'S3FUSE':'DISK'; edge('SLOT',store); add(store);
+    setTxt('ARCHIVEQ','[data-aq-b]',cfg.restic==='off'?'no archive':'archive '+cfg.restic);
+    node('ARCHIVEQ').classList.toggle('warn',cfg.restic==='off');
+    edge(store,'ARCHIVEQ'); add('ARCHIVEQ');
+    if(cfg.restic!=='off'){ edge('ARCHIVEQ','RESTIC'); add('RESTIC'); var rd=cfg.restic==='s3'?'RS3':cfg.restic==='sftp'?'RSFTP':'RLOCAL'; edge('RESTIC',rd); add(rd); }
+    // long-archived PITR needs BOTH gates: binlog branch AND archive (restic)
+    if(cfg.type==='binlog' && cfg.restic!=='off'){ edge('BINLOGGATE','PITR_ARCHIVED'); edge('ARCHIVEQ','PITR_ARCHIVED'); add('PITR_ARCHIVED'); }
+    var last=cfg.restic!=='off'?'RESTIC':'ARCHIVEQ'; edge(last,'DONE'); add('DONE');
+    var caps=['CAP_RESTORE'];
+    if(cfg.restic!=='off') caps.push('CAP_RET');
+    if(cfg.storage==='fuse'||cfg.restic==='s3'||cfg.restic==='sftp') caps.push('CAP_OFF');
+    caps.forEach(function(c){ edge('DONE',c); add(c); });
+    if(order.indexOf(sid)>=0){ edge(sid,'PARTIAL_OUT'); add('PARTIAL_OUT'); }   // partial-restore is a PATH output of the split (produced right after splitting)
+  }
+
+  function paint(uptoIdx){
+    var full=uptoIdx<0; flow.classList.toggle('dim',!full);
+    var lit={}, lim=full?order.length:uptoIdx+1; for(var i=0;i<lim;i++) lit[order[i]]=1;
+    flow.querySelectorAll('.node,.tchip').forEach(function(n){var id=n.getAttribute('data-node');
+      n.classList.toggle('on', full?order.indexOf(id)>=0:!!lit[id]); n.classList.toggle('cur',!full&&order[uptoIdx]===id);});
+    positionInputs(); drawEdges(lit,full); drawInputLines();
+  }
+  function drawInputLines(){
+    var sv=document.getElementById('inedges'); if(!sv)return;
+    Array.prototype.slice.call(sv.querySelectorAll('path.iline')).forEach(function(p){p.remove();});
+  }
+  var _raf; function scheduleIn(){ if(_raf)cancelAnimationFrame(_raf); _raf=requestAnimationFrame(drawInputLines); }
+  function drawEdges(lit,full){
+    var r=flow.getBoundingClientRect(); if(!r.width)return; svg.setAttribute('viewBox','0 0 '+r.width+' '+r.height);
+    Array.prototype.slice.call(svg.querySelectorAll('path.edge')).forEach(function(p){p.remove();});
+    var NS='http://www.w3.org/2000/svg';
+    EDGES.concat(dynEdges).forEach(function(e){var na=node(e[0]),nb=node(e[1]); if(!na||!nb)return;
+      var a=na.getBoundingClientRect(),b=nb.getBoundingClientRect(),key=e[0]+'>'+e[1],p=document.createElementNS(NS,'path');
+      if(SIDE[key]){ var sx1=a.right-r.left,sy1=a.top-r.top+a.height/2,sx2=b.left-r.left,sy2=b.top-r.top+b.height/2,smx=(sx1+sx2)/2,cat=na.getAttribute('data-g');
+        p.setAttribute('d','M'+sx1+' '+sy1+' C '+smx+' '+sy1+', '+smx+' '+sy2+', '+sx2+' '+sy2);
+        p.setAttribute('class','edge iedge '+cat); p.setAttribute('marker-end','url(#ain-'+cat+')'); svg.appendChild(p); return; }
+      var x1=a.left-r.left+a.width/2,y1=a.bottom-r.top,x2=b.left-r.left+b.width/2,y2=b.top-r.top,dy=Math.max(16,(y2-y1)*0.42);
+      p.setAttribute('d','M'+x1+' '+y1+' C '+x1+' '+(y1+dy)+', '+x2+' '+(y2-dy)+', '+x2+' '+y2);
+      var on=edgeOn[key]&&lit[e[0]]&&lit[e[1]];
+      p.setAttribute('class','edge'+(on?' on'+(full?' anim':''):'')); p.setAttribute('marker-end',on?'url(#aha)':'url(#ah)'); svg.appendChild(p);
+    });
+    // input → gate connectors: start at the funnel's bottom TIP, sweep in a rounded curve into the LEFT of the losange
+    INEDGES.forEach(function(e){ var na=node(e[0]),nb=node(e[1]); if(!na||!nb)return;
+      var a=na.getBoundingClientRect(),b=nb.getBoundingClientRect();
+      var ax=a.left-r.left+a.width/2, ay=a.bottom-r.top;      // triangle tip (bottom-centre of the input, above-right)
+      var bx=b.right-r.left-2, byc=b.top-r.top+b.height/2;     // hooks into the RIGHT of the gate losange
+      var p=document.createElementNS(NS,'path');
+      p.setAttribute('d','M'+ax+' '+ay+' C '+ax+' '+(ay+16)+', '+(bx+24)+' '+(byc-14)+', '+bx+' '+byc);
+      p.setAttribute('class','edge iL'); p.setAttribute('marker-end','url(#ain-var)'); svg.appendChild(p);
+    });
+  }
+  function say(id,i){var t=TEXT[id]||['','']; readout.innerHTML='<div class="st">step '+(i+1)+' / '+order.length+'</div><h3>'+t[0]+'</h3><p>'+t[1]+'</p>';}
+  function stopPlay(){ if(playTimer){clearInterval(playTimer);playTimer=null;} document.getElementById('play').textContent='▶ Play'; }
+  function play(){ if(playTimer){stopPlay();paint(-1);return;} compute(); syncControls(); playIdx=-1; document.getElementById('play').textContent='❚❚ Pause';
+    var tick=function(){ playIdx++; if(playIdx>=order.length){stopPlay();paint(-1);
+      var lastN=order[order.length-1];
+      var m=lastN==='GATE'?['blocked','Gate holds the path','A WARN state is active — a backup/job is already running, so the slot gate blocks.']:lastN.indexOf('HAVETOOL')===0?['discarded','Path discarded — no local tool','No co-installed tool on the repman host.']:lastN.indexOf('REMOTETOOL')===0?['discarded','Path discarded — no remote tool','No DB-package tool installed on the node.']:lastN.indexOf('RGATE')===0?['discarded','Remote path discarded','The remote gate failed — missing ssh (OnPremise) or the scheduler dbjob is stopped.']:lastN==='BINLOGGATE'?['discarded','Binlog not collected','backup-binlogs is off — binlogs are not tracked/collected on this path.']:(node(lastN)&&(node(lastN).classList.contains('roadlit')||node(lastN).getAttribute('data-g')==='road'))?['roadmap','Roadmap — not wired','This tool path is a planned capability, not yet in the code.']:['complete','Backup complete',order.length+' blocks — trigger to capabilities.'];
+      readout.innerHTML='<div class="st">'+m[0]+'</div><h3>'+m[1]+'</h3><p>'+m[2]+'</p>';return;}
+      paint(playIdx); say(order[playIdx],playIdx); };
+    tick(); playTimer=setInterval(tick,1000);
+  }
+  function reset(){ stopPlay(); compute(); syncControls(); paint(-1); readout.innerHTML='<div class="st">state readout</div><h3>Full path lit</h3><p>'+order.length+' blocks. Press ▶ start.</p>'; }
+  function refresh(){ stopPlay(); compute(); syncControls(); paint(-1); }
+
+  function seg(id,key){ document.querySelectorAll('#'+id+' .seg button').forEach(function(b){ b.addEventListener('click',function(){
+    document.querySelectorAll('#'+id+' .seg button').forEach(function(x){x.setAttribute('aria-pressed','false');}); b.setAttribute('aria-pressed','true'); cfg[key]=b.getAttribute('data-v'); refresh(); }); }); }
+  function syncControls(){
+    document.querySelectorAll('.pillseg').forEach(function(sg){var ctl=sg.getAttribute('data-ctl');
+      sg.querySelectorAll('button').forEach(function(b){b.setAttribute('aria-pressed', b.getAttribute('data-v')===cfg[ctl]?'true':'false');});});
+    document.querySelectorAll('.pillchks input').forEach(function(b){b.checked=!!cfg[b.getAttribute('data-w')];});
+    document.querySelectorAll('.statein input').forEach(function(b){b.checked=cfg[b.getAttribute('data-st')]!=='missing';});
+  }
+  flow.addEventListener('change',function(e){ var ck=e.target.closest('.pillchks input'); if(ck){cfg[ck.getAttribute('data-w')]=ck.checked;refresh();return;} var st=e.target.closest('.statein input'); if(st){cfg[st.getAttribute('data-st')]=st.checked?'present':'missing';refresh();} });
+  flow.addEventListener('click',function(e){
+    if(e.target.closest('[data-start]')){ play(); return; }
+    var sg=e.target.closest('.pillseg button');
+    if(sg){ cfg[sg.parentNode.getAttribute('data-ctl')]=sg.getAttribute('data-v'); refresh(); return; }
+    var l=e.target.closest('[data-node]'); if(!l)return; var dn=l.getAttribute('data-node');
+    if(dn.indexOf('L3_')===0){ if(l.classList.contains('na'))return; cfg.type=l.getAttribute('data-t'); cfg.vendor=l.getAttribute('data-v'); cfg.exec=l.getAttribute('data-exec'); }
+    else if(dn.indexOf('T_')===0){ cfg.type={T_LOG:'logical',T_PHY:'physical',T_BIN:'binlog'}[dn]; }
+    else if(dn.indexOf('F_')===0){ cfg.type=l.getAttribute('data-t'); cfg.vendor=l.getAttribute('data-v'); }
+    else if(dn.indexOf('ENT_')===0){ cfg.entry={ENT_SCHED:'sched',ENT_API:'api',ENT_COOKIE:'cookie'}[dn]; }
+    else if(dn==='DISK'){ cfg.storage='disk'; }
+    else if(dn==='S3FUSE'){ cfg.storage='fuse'; }
+    else if(dn==='RESTIC'){ cfg.restic=cfg.restic==='off'?'local':'off'; }
+    else if(dn==='RLOCAL'){ cfg.restic='local'; }
+    else if(dn==='RS3'){ cfg.restic='s3'; }
+    else if(dn==='RSFTP'){ cfg.restic='sftp'; }
+    else return; refresh(); });
+  document.getElementById('play').addEventListener('click',play);
+  document.getElementById('reset').addEventListener('click',reset);
+  new ResizeObserver(function(){ paint(playTimer?playIdx:-1); }).observe(flow);
+  window.addEventListener('resize',function(){ paint(playTimer?playIdx:-1); });
+  window.addEventListener('scroll',scheduleIn,{passive:true});
+  document.querySelector('.flowscroll').addEventListener('scroll',scheduleIn,{passive:true});
+  buildFan(); buildGates(); buildTools(); requestAnimationFrame(refresh);
+})();
+</script>
