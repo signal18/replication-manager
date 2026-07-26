@@ -7199,7 +7199,7 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 	// 	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "The sponsorship process for %s is proceeding without creating a DBA user, as it does not impact the sponsor's operations", mycluster.Name)
 	// }
 
-	err = repman.AcceptSubscription(userform, mycluster)
+	err = repman.AcceptSubscription(userform, mycluster, uinfomap["User"])
 	if err != nil {
 		// Reset sponsor credentials if failed
 		repman.setClusterSetting(mycluster, "cloud18-sponsor-user-credentials", base64.StdEncoding.EncodeToString([]byte("")))
@@ -7295,7 +7295,7 @@ func (repman *ReplicationManager) handlerMuxRejectSubscription(w http.ResponseWr
 		}
 	}
 
-	err = repman.CancelSubscription(userform, mycluster)
+	err = repman.CancelSubscription(userform, mycluster, uinfomap["User"])
 	if err != nil {
 		http.Error(w, "Error removing subscription :"+err.Error(), http.StatusInternalServerError)
 		return
@@ -7364,7 +7364,7 @@ func (repman *ReplicationManager) handlerMuxRemoveSponsor(w http.ResponseWriter,
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "Ending subscription for cluster %s by %s", mycluster.Name, uinfomap["User"])
 	}
 
-	err = repman.EndSubscription(userform, mycluster)
+	err = repman.EndSubscription(userform, mycluster, uinfomap["User"])
 	if err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error removing sponsor subscription: %s", err)
 		http.Error(w, "Error removing sponsor subscription :"+err.Error(), http.StatusInternalServerError)

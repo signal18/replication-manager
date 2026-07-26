@@ -1729,6 +1729,11 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 		}
 	}
 
+	if err := mycluster.SetSponsorshipRequested(userform.Username, userform.Username); err != nil {
+		http.Error(w, "Error persisting sponsorship request :"+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	roles := []string{"pending"}
 	grants := []string{}
 	auser, ok := mycluster.APIUsers[userform.Username]
@@ -1746,11 +1751,19 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 			}
 		}
 		userform.Grants = strings.Join(grants, " ")
-		mycluster.UpdateUser(userform, repman.Conf.Cloud18GitUser, true)
+		// Sponsorship request is already committed above and stays committed
+		// regardless of what happens here — a follow-up ACL update failure is
+		// degraded reconciliation, not a request failure.
+		if err := mycluster.UpdateUser(userform, repman.Conf.Cloud18GitUser, true); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sponsorship requested but failed to update user %s (degraded reconciliation): %s", userform.Username, err)
+		}
 	} else {
 		userform.Roles = strings.Join(roles, " ")
 		userform.Grants = strings.Join(grants, " ")
-		mycluster.AddUser(userform, repman.Conf.Cloud18GitUser, true)
+		// Same degraded-reconciliation treatment as above for the new-user path.
+		if err := mycluster.AddUser(userform, repman.Conf.Cloud18GitUser, true); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sponsorship requested but failed to add user %s (degraded reconciliation): %s", userform.Username, err)
+		}
 	}
 
 	// User already listed as pending

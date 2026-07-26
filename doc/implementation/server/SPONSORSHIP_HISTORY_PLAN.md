@@ -1,5 +1,17 @@
 # Cloud18 sponsorship and settlement state plan
 
+> **Status note.** This document is now historical design context. The active implementation plan for
+> the current Phase 1 sponsorship-state work is
+> `doc/implementation/server/CRM_SPONSORSHIP_USAGE_PREPARATION_PLAN.md`.
+>
+> In particular, the newer plan supersedes this document on:
+>
+> - the Phase 1 non-breaking handler behavior,
+> - `occurred_at + event_key` as the current CRM freshness/idempotency model,
+> - app/proxy pricing separation,
+> - the current staged scope that implements local authority first while deferring stable-ref minting
+>   and live CRM runtime sending.
+
 ## Objective
 
 Add sponsorship tracking that follows the final product boundary:

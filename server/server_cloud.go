@@ -20,7 +20,7 @@ type CloudUserForm struct {
 	Reason   string  `json:"reason"`
 }
 
-func (repman *ReplicationManager) AcceptSubscription(userform cluster.UserForm, cl *cluster.Cluster) error {
+func (repman *ReplicationManager) AcceptSubscription(userform cluster.UserForm, cl *cluster.Cluster, actor string) error {
 	user := userform.Username
 	auser, ok := cl.APIUsers[user]
 	if !ok {
@@ -29,6 +29,10 @@ func (repman *ReplicationManager) AcceptSubscription(userform cluster.UserForm, 
 
 	if v, ok := auser.Roles[config.RolePending]; !ok || !v {
 		return fmt.Errorf("User %s does not have 'pending' role", user)
+	}
+
+	if err := cl.SetSponsorshipActive(user, actor); err != nil {
+		return fmt.Errorf("failed to persist sponsorship acceptance: %w", err)
 	}
 
 	grants := strings.Split(config.GetDefaultGrants(config.RoleSponsor), " ")
@@ -47,27 +51,39 @@ func (repman *ReplicationManager) AcceptSubscription(userform cluster.UserForm, 
 	}
 	userform.Roles = strings.Join(roles, " ")
 
-	// If external sysops different from cloud18 git user
+	// If external sysops different from cloud18 git user. This is ancillary
+	// sync (not the main subject user's mutation): a failure here is
+	// degraded reconciliation, logged and not propagated, so it never
+	// affects the sponsorship acceptance that is already committed above.
 	if cl.Conf.Cloud18ExternalSysOps != "" && cl.Conf.Cloud18ExternalSysOps != cl.Conf.Cloud18GitUser {
 		esys := repman.CreateExtSysopsForm(cl.Conf.Cloud18ExternalSysOps)
 		if euser, ok := cl.APIUsers[cl.Conf.Cloud18ExternalSysOps]; !ok {
-			cl.AddUser(esys, cl.Conf.Cloud18GitUser, false)
+			if err := cl.AddUser(esys, cl.Conf.Cloud18GitUser, false); err != nil {
+				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sponsorship accepted but failed to add external sysops user %s (degraded reconciliation): %s", cl.Conf.Cloud18ExternalSysOps, err)
+			}
 		} else {
 			esys.Grants = cl.AppendGrants(esys.Grants, &euser)
 			esys.Roles = cl.AppendRoles(esys.Roles, &euser)
-			cl.UpdateUser(esys, cl.Conf.Cloud18GitUser, false)
+			if err := cl.UpdateUser(esys, cl.Conf.Cloud18GitUser, false); err != nil {
+				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sponsorship accepted but failed to update external sysops user %s (degraded reconciliation): %s", cl.Conf.Cloud18ExternalSysOps, err)
+			}
 		}
 	}
 
-	// If external dbops different from cloud18 dbops
+	// If external dbops different from cloud18 dbops. Same ancillary,
+	// degraded-reconciliation treatment as external sysops above.
 	if cl.Conf.Cloud18ExternalDbOps != "" && cl.Conf.Cloud18ExternalDbOps != cl.Conf.Cloud18DbOps {
 		edbops := repman.CreateExtDBOpsForm(cl.Conf.Cloud18ExternalDbOps)
 		if edbuser, ok := cl.APIUsers[cl.Conf.Cloud18ExternalDbOps]; !ok {
-			cl.AddUser(edbops, cl.Conf.Cloud18GitUser, false)
+			if err := cl.AddUser(edbops, cl.Conf.Cloud18GitUser, false); err != nil {
+				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sponsorship accepted but failed to add external dbops user %s (degraded reconciliation): %s", cl.Conf.Cloud18ExternalDbOps, err)
+			}
 		} else {
 			edbops.Grants = cl.AppendGrants(edbops.Grants, &edbuser)
 			edbops.Roles = cl.AppendRoles(edbops.Roles, &edbuser)
-			cl.UpdateUser(edbops, cl.Conf.Cloud18GitUser, false)
+			if err := cl.UpdateUser(edbops, cl.Conf.Cloud18GitUser, false); err != nil {
+				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sponsorship accepted but failed to update external dbops user %s (degraded reconciliation): %s", cl.Conf.Cloud18ExternalDbOps, err)
+			}
 		}
 	}
 
@@ -104,7 +120,13 @@ func (repman *ReplicationManager) AcceptSubscription(userform cluster.UserForm, 
 	cl.Conf.APIUsersACLAllowExternal = strings.Join(new_acls, ",")
 	// log.Printf("APIUsersACLAllowExternal: %s", cl.Conf.APIUsersACLAllowExternal)
 
-	cl.LoadAPIUsers()
+	// Sponsorship is already committed above and stays committed regardless of
+	// what happens below — this is a core side effect (API user reload after
+	// the ACL rewrite) and its failure must be surfaced, not swallowed, even
+	// though we don't roll back the authoritative state for it.
+	if err := cl.LoadAPIUsers(); err != nil {
+		return fmt.Errorf("sponsorship accepted but failed to reload API users: %w", err)
+	}
 	cl.SaveAcls()
 	cl.Save()
 	// Sponsorship is already committed above; treat cap-persist failure as a
@@ -115,12 +137,21 @@ func (repman *ReplicationManager) AcceptSubscription(userform cluster.UserForm, 
 	return nil
 }
 
-func (repman *ReplicationManager) CancelSubscription(userform cluster.UserForm, cl *cluster.Cluster) error {
+func (repman *ReplicationManager) CancelSubscription(userform cluster.UserForm, cl *cluster.Cluster, actor string) error {
 	user := userform.Username
 	auser, ok := cl.APIUsers[user]
 	if !ok {
 		return fmt.Errorf("User %s does not exist ", user)
 	}
+
+	if v, ok := auser.Roles[config.RolePending]; !ok || !v {
+		return fmt.Errorf("User %s does not have 'pending' role", user)
+	}
+
+	if err := cl.SetSponsorshipRejected(user, actor); err != nil {
+		return fmt.Errorf("failed to persist sponsorship rejection: %w", err)
+	}
+
 	grants := make([]string, 0)
 	roles := make([]string, 0)
 	for grant, v := range auser.Grants {
@@ -138,16 +169,23 @@ func (repman *ReplicationManager) CancelSubscription(userform cluster.UserForm, 
 
 	userform.Roles = strings.Join(roles, " ")
 
+	// Sponsorship is already committed above and stays committed regardless of
+	// what happens below — this is a core side effect (main subject user
+	// role/ACL mutation) and its failure must be surfaced, not swallowed.
 	if userform.Grants == "" {
-		cl.DropUser(userform, true)
+		if err := cl.DropUser(userform, true); err != nil {
+			return fmt.Errorf("sponsorship rejected but failed to drop user: %w", err)
+		}
 	} else {
-		cl.UpdateUser(userform, "admin", true)
+		if err := cl.UpdateUser(userform, "admin", true); err != nil {
+			return fmt.Errorf("sponsorship rejected but failed to update user: %w", err)
+		}
 	}
 
 	return nil
 }
 
-func (repman *ReplicationManager) EndSubscription(userform cluster.UserForm, cl *cluster.Cluster) error {
+func (repman *ReplicationManager) EndSubscription(userform cluster.UserForm, cl *cluster.Cluster, actor string) error {
 	user := userform.Username
 	auser, ok := cl.APIUsers[user]
 
@@ -157,6 +195,10 @@ func (repman *ReplicationManager) EndSubscription(userform cluster.UserForm, cl 
 
 	if v, ok := auser.Roles[config.RoleSponsor]; !ok || !v {
 		return fmt.Errorf("User %s does not have 'sponsor' role", user)
+	}
+
+	if err := cl.SetSponsorshipEnded(user, actor); err != nil {
+		return fmt.Errorf("failed to persist sponsorship end: %w", err)
 	}
 
 	grants := make([]string, 0)
@@ -183,7 +225,12 @@ func (repman *ReplicationManager) EndSubscription(userform cluster.UserForm, cl 
 
 	userform.Roles = strings.Join(roles, " ")
 
-	cl.UpdateUser(userform, "admin", true)
+	// Sponsorship is already committed above and stays committed regardless of
+	// what happens below — this is a core side effect (main subject user
+	// role/ACL mutation) and its failure must be surfaced, not swallowed.
+	if err := cl.UpdateUser(userform, "admin", true); err != nil {
+		return fmt.Errorf("sponsorship ended but failed to update user: %w", err)
+	}
 
 	return nil
 }

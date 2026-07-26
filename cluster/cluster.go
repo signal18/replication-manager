@@ -397,6 +397,8 @@ type Cluster struct {
 	appListRebuildMu sync.Mutex `json:"-"`
 	secretVersionStoreMu        sync.Mutex                 `json:"-"`
 	secretVersionStoreDirty     bool                       `json:"-"`
+	sponsorshipState            SponsorshipState           `json:"-"`
+	sponsorshipStateMu          sync.Mutex                 `json:"-"`
 	// pluginSpikeCache holds the last DetectSpike result per server+plugin pair.
 	// Keyed as "serverURL:pluginName". Prevents graphite HTTP on every tick.
 	pluginSpikeCache map[string]*logplugin.SpikeCache `json:"-"`
@@ -654,6 +656,9 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.SaveAcls()
 	cluster.InitMailer()
 	cluster.GetPersistentState()
+	if err := cluster.RestoreSponsorshipState(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "RestoreSponsorshipState: %v", err)
+	}
 
 	cluster.LogPushover = log.New()
 	cluster.LogPushover.SetFormatter(&log.TextFormatter{FullTimestamp: true})
@@ -1558,6 +1563,19 @@ type ClusterState struct {
 	// cluster from cloud18-marketplace-dbu-price / cloud18-marketplace-app-unit-price.
 	DatabaseUnits    float64 `json:"databaseUnits"`
 	ApplicationUnits float64 `json:"applicationUnits"`
+	// Sponsorship authority summary — safe subset only, mirrored from the
+	// authoritative record in cluster/cluster_sponsorship_state.go for the BO/API.
+	// Deliberately excludes BillingOwnerRef, secrets, and full audit/event
+	// history — see doc/implementation/server/CRM_SPONSORSHIP_USAGE_PREPARATION_PLAN.md
+	// Phase 2.
+	SponsorshipStatus               SponsorshipStatus `json:"sponsorshipStatus"`
+	SponsorshipClusterRef           string            `json:"sponsorshipClusterRef"`
+	SponsorshipCycleRef             string            `json:"sponsorshipCycleRef,omitempty"`
+	SponsorshipPricingMode          string            `json:"sponsorshipPricingMode"`
+	SponsorshipLastEventType        string            `json:"sponsorshipLastEventType,omitempty"`
+	SponsorshipLastEventTime        time.Time         `json:"sponsorshipLastEventTime"`
+	SponsorshipLastBillingEventType string            `json:"sponsorshipLastBillingEventType,omitempty"`
+	SponsorshipLastBillingEventTime time.Time         `json:"sponsorshipLastBillingEventTime"`
 }
 
 // recomputeAppCredits recomputes Cloud18ApplicationCreditsUsed and
@@ -1694,6 +1712,8 @@ func (cluster *Cluster) SaveCallBack() error {
 	clsave.IsProvisioned = cluster.IsAllDbUp
 	clsave.DatabaseUnits = cluster.ComputeDatabaseUnits()
 	clsave.ApplicationUnits = cluster.ComputeApplicationUnits()
+
+	applySponsorshipMirror(&clsave, cluster.GetSponsorshipState(), cluster.Conf.Cloud18MarketplacePricingMode)
 
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
 	err := os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)
