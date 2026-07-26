@@ -3,9 +3,12 @@
 **Status:** implementation plan
 
 > **Implementation-status note.** The currently implemented/staged Phase 1 slice covers:
-> authoritative local sponsorship state, startup restore, safe `clusterstate.json` mirroring, and
-> handler-side lifecycle persistence. It intentionally does **not** yet implement stable persisted
-> `cluster_ref` / `app_ref` minting or any live `/api/instances/*` CRM runtime sending.
+> authoritative local sponsorship state, startup restore, safe `clusterstate.json` mirroring,
+> handler-side lifecycle persistence, and `sponsorship-state.json` participating in the normal
+> config/git sync (staged by `config/manager/manager.go`'s live `PushConfigToGit`) so active/standby
+> instances restore the same authoritative sponsorship state after pull/restart. It intentionally
+> does **not** yet implement stable persisted `cluster_ref` / `app_ref` minting or any live
+> `/api/instances/*` CRM runtime sending.
 
 ## Purpose
 
@@ -243,6 +246,25 @@ Do **not** mirror:
 - sponsor private identity details
 - full audit history
 
+### Phase 2.5 — git-backed active/standby replication of authority state (done)
+
+After the local authority file exists, the next required step is to propagate that authority through
+the existing config/git sync so active and standby instances converge on the same sponsorship state.
+
+Requirements:
+
+- `sponsorship-state.json` must be staged alongside the other cluster runtime JSON artifacts that are
+  already pushed through git,
+- a standby that pulls the repo and restarts must restore the same authoritative sponsorship state,
+- `sponsorship-state.json` remains the replicated source of truth,
+- `clusterstate.json` remains only the safe BO/API mirror.
+
+Non-goals for this step:
+
+- no live CRM runtime sending,
+- no change to pricing authority,
+- no stable-ref wire cutover.
+
 ### Phase 3 — stable ref persistence
 
 Target later-phase work:
@@ -294,6 +316,13 @@ Current Phase 1 handler behavior:
   because those flows already operate with stricter admin/operator semantics,
 - ancillary external sysops/dbops sync in accept is logged as degraded reconciliation and does not
   fail the already-committed sponsorship transition.
+
+Git-sync expectation for the current implementation path:
+
+- handler-side lifecycle persistence writes `sponsorship-state.json` locally first,
+- normal config/git sync then carries that file to the shared repo,
+- active/standby instances converge only through that git path in this phase,
+- no direct peer-to-peer sponsorship-state transport is introduced.
 
 ### Phase 5 — capture app billing lifecycle locally
 
@@ -470,6 +499,18 @@ Proxy pricing rule for long-run alignment:
 
 - add only the minimal config needed for gated settlement behavior and optional future endpoint toggles
 
+### `config/manager/` and legacy git staging paths
+
+- **Done.** `config/manager/manager.go`'s `(cm *ConfigManager) PushConfigToGit` — the only live push
+  path — now stages `sponsorship-state.json` in the same low-churn loop as `clusterstate.json`/
+  `queryrules.json` (unthrottled, staged every cycle; unlike `agents.json` it does not need the
+  `shouldStageAgents` throttle).
+- `server/server_git.go`'s `(repman *ReplicationManager) PushConfigToGit`/`PushAllConfigsToGit` and
+  `config/config.go`'s `(conf *Config) PushConfigToGit` were **not** touched: both are explicitly
+  marked dead code in their own doc comments ("no callers... safe to delete") and confirmed to have
+  zero live callers repo-wide. Adding `sponsorship-state.json` there would have no functional effect
+  and was intentionally skipped rather than maintained for cosmetic parity.
+
 ## Validation plan
 
 ### Unit tests
@@ -480,6 +521,10 @@ Proxy pricing rule for long-run alignment:
 - request / accept / reject / end transition ordering
 - app provision / unprovision local event generation
 - disabled CRM settlement client makes no outbound calls
+- git staging includes `sponsorship-state.json` — **done**,
+  `TestPushConfigToGit_SponsorshipStateReplicatesToRemote`
+- a pulled/clone standby can restore the same sponsorship authority from `sponsorship-state.json` —
+  **done**, composed from the above plus `TestRestoreSponsorshipState_ExistingFile`
 
 ### Behavioral checks
 
@@ -506,13 +551,30 @@ remains deferred beyond the current Phase 1 slice.
 Several current sponsorship flows perform ACL/mail/script work on the success path. This plan
 redefines success around durable authoritative state, with side effects treated as reconciliation.
 
+### Git replication gap — closed
+
+`sponsorship-state.json` is now staged and pushed through the normal config/git machinery (see
+`config/manager/` above), the same way `clusterstate.json`/`queryrules.json` already are. The file
+reaches a standby's working tree after the next push/pull cycle, but `RestoreSponsorshipState()` is
+only invoked at startup (`cluster/cluster.go:659`, inside `InitFromConf`) — so the standby's in-memory
+authoritative state converges after the next pull **and** restart, not on pull alone.
+`TestPushConfigToGit_SponsorshipStateReplicatesToRemote` (`config/manager/manager_test.go`) proves the
+file survives a push-then-clone round trip byte-for-byte using a local bare repo (no network/env
+credentials required); combined with `TestRestoreSponsorshipState_ExistingFile`
+(`cluster/cluster_sponsorship_state_test.go`), which proves `RestoreSponsorshipState()` correctly
+reads whatever bytes land in that file, the two together cover the full source-write → git-replicate →
+standby-restore path without a single test needing to span both packages (`config/manager` cannot
+import `cluster`, which imports it).
+
 ## Exit criteria for this plan
 
 This preparation phase is complete when:
 
 1. sponsorship authority is durably local and restart-safe,
-2. safe sponsorship summary is mirrored into `clusterstate.json`,
-3. stable persisted `cluster_ref` and `app_ref` exist,
-4. sponsorship and app lifecycle events can be generated deterministically from local state,
-5. CRM settlement client scaffolding exists but is disabled by default,
-6. no current live CRM consumer behavior regresses.
+2. `sponsorship-state.json` is propagated through git so active/standby instances restore the same
+   authoritative sponsorship data — **done**,
+3. safe sponsorship summary is mirrored into `clusterstate.json`,
+4. stable persisted `cluster_ref` and `app_ref` exist,
+5. sponsorship and app lifecycle events can be generated deterministically from local state,
+6. CRM settlement client scaffolding exists but is disabled by default,
+7. no current live CRM consumer behavior regresses.

@@ -261,6 +261,100 @@ func TestPushConfigToGit_ShallowClonePreservesLocalFilesThenPushMaster(t *testin
 	}
 }
 
+// TestPushConfigToGit_SponsorshipStateReplicatesToRemote proves the git-sync
+// gap for sponsorship-state.json is closed: PushConfigToGit stages it
+// alongside queryrules.json/clusterstate.json (see the staging loop in
+// PushConfigToGit) so a standby instance's next pull actually receives it.
+// Uses a local bare repo (no network/env credentials needed) following the
+// pattern in TestRefreshGitMetadata_PreservesCurrentBranchReference.
+func TestPushConfigToGit_SponsorshipStateReplicatesToRemote(t *testing.T) {
+	remoteBare := filepath.Join(t.TempDir(), "remote.git")
+	if _, err := git.PlainInit(remoteBare, true); err != nil {
+		t.Fatalf("failed to initialize bare remote repo: %v", err)
+	}
+
+	// Seed the bare remote with an initial master commit so the working
+	// clone below has a branch to check out.
+	seedDir := t.TempDir()
+	seedRepo, err := git.PlainInit(seedDir, false)
+	if err != nil {
+		t.Fatalf("failed to initialize seed repo: %v", err)
+	}
+	seedWorktree, err := seedRepo.Worktree()
+	if err != nil {
+		t.Fatalf("failed to open seed worktree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(seedDir, "README.md"), []byte("seed\n"), 0o644); err != nil {
+		t.Fatalf("failed to write seed README: %v", err)
+	}
+	if _, err := seedWorktree.Add("README.md"); err != nil {
+		t.Fatalf("failed to add README: %v", err)
+	}
+	if _, err := seedWorktree.Commit("initial", &git.CommitOptions{Author: &git_obj.Signature{Name: "tester", Email: "tester@example.com", When: time.Now()}}); err != nil {
+		t.Fatalf("failed to commit initial master commit: %v", err)
+	}
+	if _, err := seedRepo.CreateRemote(&git_config.RemoteConfig{Name: "origin", URLs: []string{remoteBare}}); err != nil {
+		t.Fatalf("failed to add seed remote: %v", err)
+	}
+	if err := seedRepo.Push(&git.PushOptions{RefSpecs: []git_config.RefSpec{"refs/heads/master:refs/heads/master"}}); err != nil {
+		t.Fatalf("failed to push master branch: %v", err)
+	}
+
+	workDir := t.TempDir()
+	if _, err := git.PlainClone(workDir, false, &git.CloneOptions{URL: remoteBare}); err != nil {
+		t.Fatalf("failed to clone working repository: %v", err)
+	}
+
+	clusterName := "cluster1"
+	conf := &config.Config{
+		WorkingDir:  workDir,
+		GitUrl:      remoteBare,
+		GitUsername: "local",
+		Secrets: map[string]config.Secret{
+			"git-acces-token": {Value: ""},
+		},
+	}
+	logger := logrus.New()
+	cm := NewConfigManager(config.NewLogrusWrapper(conf, logger))
+	defer cm.Stop()
+
+	if err := os.MkdirAll(filepath.Join(workDir, clusterName), 0o755); err != nil {
+		t.Fatalf("failed creating cluster directory: %v", err)
+	}
+
+	marker := "sponsorship-marker=" + time.Now().UTC().Format(time.RFC3339Nano)
+	sponsorshipState := []byte("{\"status\":\"active\",\"clusterRef\":\"" + clusterName + "\",\"integrationMarker\":\"" + marker + "\"}\n")
+	sponsorshipPath := filepath.Join(workDir, clusterName, "sponsorship-state.json")
+	if err := os.WriteFile(sponsorshipPath, sponsorshipState, 0o644); err != nil {
+		t.Fatalf("failed writing sponsorship-state.json: %v", err)
+	}
+
+	if err := cm.PushConfigToGit(conf, []string{clusterName}); err != nil {
+		t.Fatalf("PushConfigToGit failed: %v", err)
+	}
+
+	// Verify a fresh clone of the remote (standing in for a standby instance's
+	// pull) receives sponsorship-state.json byte-for-byte — the same file
+	// RestoreSponsorshipState reads on startup, so this is sufficient to prove
+	// a standby's restore would observe exactly what the source authored.
+	verifyDir := t.TempDir()
+	if _, err := git.PlainClone(verifyDir, false, &git.CloneOptions{
+		URL:           remoteBare,
+		SingleBranch:  true,
+		ReferenceName: plumbing.NewBranchReferenceName("master"),
+	}); err != nil {
+		t.Fatalf("failed to clone remote for verification: %v", err)
+	}
+
+	remoteState, err := os.ReadFile(filepath.Join(verifyDir, clusterName, "sponsorship-state.json"))
+	if err != nil {
+		t.Fatalf("failed reading sponsorship-state.json from remote clone: %v", err)
+	}
+	if !bytes.Equal(remoteState, sponsorshipState) {
+		t.Fatalf("remote sponsorship-state.json does not match source, got=%q want=%q", string(remoteState), string(sponsorshipState))
+	}
+}
+
 func TestCommitManagerStop_DrainsPendingTasksAndRejectsNewOnes(t *testing.T) {
 	workDir := t.TempDir()
 
