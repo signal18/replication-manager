@@ -1,0 +1,51 @@
+{
+  "description": "Backup Monitor & Configurator — the backup-paths automaton as a plugin.\n\nTwo halves: a CONFIG half that emits backup-configuration coherence advisories (CONF0001-0006: encryption off, physical-on-master, no off-site archive, split off, subscription-gated paths) routed to the ConfigStateMachine; and a MONITOR half that emits backup observability (BUP0001 progress bytes, BUP0002 binlog-coverage watermark, BUP0003 restorability) routed to the BackupStateMachine. Does NOT produce backups — it reads live state and advises config.",
+  "tier": "free",
+  "prerequisites": [],
+  "config_keys": [
+    {
+      "key": "subscription-plan",
+      "label": "Subscription plan",
+      "type": "enum",
+      "default": "free",
+      "help": "Cloud18 subscription plan used to gate supported-only backup paths. Falls back to the injected cloud18-subscription-plan.",
+      "options": [
+        { "value": "free", "label": "Free" },
+        { "value": "pro", "label": "Pro" },
+        { "value": "enterprise", "label": "Enterprise" }
+      ]
+    },
+    {
+      "key": "supported-paths-min-plan",
+      "label": "Supported-only paths minimum plan",
+      "type": "enum",
+      "default": "pro",
+      "help": "Minimum plan at which supported-only backup paths (off-site archive, encryption, long-archived PITR, remote exec) are considered valid.",
+      "options": [
+        { "value": "pro", "label": "Pro" },
+        { "value": "enterprise", "label": "Enterprise" }
+      ]
+    },
+    {
+      "key": "require-encryption",
+      "label": "Advise when backups are not encrypted",
+      "type": "bool",
+      "default": "true",
+      "help": "Emit CONF0001 when no restic password / backup-crypt key is set."
+    },
+    {
+      "key": "require-offsite",
+      "label": "Advise when no off-site archive",
+      "type": "bool",
+      "default": "false",
+      "help": "Emit CONF0003 when restic off-site archiving is disabled."
+    },
+    {
+      "key": "warn-physical-on-master",
+      "label": "Advise when physical backup runs on master",
+      "type": "bool",
+      "default": "true",
+      "help": "Emit CONF0002 when a physical backup is taken on the master instead of a prefered backup slave."
+    }
+  ]
+}

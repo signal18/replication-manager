@@ -53,6 +53,17 @@ const (
 	// storms, tmp-table storms, etc.) and are tracked in the WorkloadStateMachine
 	// separately from HA findings so performance noise does not pollute the HA view.
 	SeverityWorkload Severity = "WORKLOAD"
+	// SeverityConfig is used by configuration-advisory plugins (e.g.
+	// plugin-backup-monitor's config half): backup-configuration coherence
+	// advisories such as encryption off, physical backup taken on the master,
+	// split off (no partial restore), no off-site archive, stale/missing tool.
+	// Findings are routed to the cluster ConfigStateMachine, kept out of the HA view.
+	SeverityConfig Severity = "CONFIG"
+	// SeverityBackup is used by backup-monitoring plugins (plugin-backup-monitor's
+	// monitor half): live backup progress, binlog-coverage watermark, backup
+	// validity/restorability. Findings are routed to the cluster BackupStateMachine
+	// so backup observability does not pollute the HA view.
+	SeverityBackup Severity = "BACKUP"
 )
 
 // Remediation is a machine-readable fix proposal attached to a Finding.
@@ -301,6 +312,17 @@ type ClusterContext struct {
 	// products (repman itself, proxies, backup tools, etc.).
 	// Keys: "repman", "mariadb", "mysql", "proxysql", "maxscale", "haproxy", "restic", etc.
 	ToolVersions     map[string]string `json:"tool_versions,omitempty"`
+
+	// Backup facts consumed by plugin-backup-monitor (config + monitor halves).
+	// All optional: a plugin must tolerate zero values. Populated in
+	// buildClusterContext; several are best-effort / roadmap-wired.
+	BackupServerRole   string `json:"backup_server_role,omitempty"`   // "master" | "slave" — GetBackupServer() role
+	BackupArchived     bool   `json:"backup_archived,omitempty"`      // restic off-site archive enabled
+	BackupType         string `json:"backup_type,omitempty"`          // "logical" | "physical" | "binlog" (roadmap: per-line)
+	BackupSplit        bool   `json:"backup_split,omitempty"`         // splitdump / native per-table split (roadmap wiring)
+	BackupLastMeta     string `json:"backup_last_meta,omitempty"`     // last backup id/path (roadmap wiring)
+	BinlogWatermark    string `json:"binlog_watermark,omitempty"`     // last-covered binlog timestamp/position = PITR window end (roadmap wiring)
+	BackupBytesWritten int64  `json:"backup_bytes_written,omitempty"` // live byte counter (bytesProgress) (roadmap wiring)
 }
 
 // IsEnabled returns false only when config explicitly sets enabled=false/0/no.

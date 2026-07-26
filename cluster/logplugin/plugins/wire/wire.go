@@ -115,6 +115,17 @@ type ClusterContext struct {
 	// ToolVersions maps tool/product names to their version strings.
 	// Keys: "repman", "mariadb", "mysql", "proxysql", "maxscale", "haproxy", "restic", etc.
 	ToolVersions      map[string]string `json:"tool_versions,omitempty"`
+
+	// Backup facts for plugin-backup-monitor (config + monitor halves).
+	// All optional — a plugin must tolerate zero values. Several are best-effort
+	// / roadmap-wired on the repman side (see epic v3.2).
+	BackupServerRole   string `json:"backup_server_role,omitempty"`   // "master" | "slave" — GetBackupServer() role
+	BackupArchived     bool   `json:"backup_archived,omitempty"`      // restic off-site archive enabled
+	BackupType         string `json:"backup_type,omitempty"`          // "logical" | "physical" | "binlog"
+	BackupSplit        bool   `json:"backup_split,omitempty"`         // splitdump / native per-table split
+	BackupLastMeta     string `json:"backup_last_meta,omitempty"`     // last backup id/path
+	BinlogWatermark    string `json:"binlog_watermark,omitempty"`     // last-covered binlog timestamp/position = PITR window end
+	BackupBytesWritten int64  `json:"backup_bytes_written,omitempty"` // live byte counter (bytesProgress)
 }
 
 // DBUser is one row from mysql.user, stripped of credential data.

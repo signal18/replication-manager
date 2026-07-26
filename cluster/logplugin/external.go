@@ -312,6 +312,12 @@ func (p *ExternalLogPlugin) DefaultSeverity() Severity {
 	if strings.HasPrefix(n, "plugin-schema-") {
 		return SeveritySchema
 	}
+	if strings.HasPrefix(n, "plugin-backup-") {
+		return SeverityBackup
+	}
+	if strings.HasPrefix(n, "plugin-config-") {
+		return SeverityConfig
+	}
 	if strings.HasPrefix(n, "plugin-security-") ||
 		strings.HasPrefix(n, "plugin-score-") ||
 		strings.HasPrefix(n, "plugin-binlog-") ||
@@ -395,7 +401,7 @@ func (p *ExternalLogPlugin) Evaluate(src LogSource) EvaluateResult {
 	findings := make([]Finding, 0, len(resp.Findings))
 	for _, sf := range resp.Findings {
 		sev := Severity(strings.ToUpper(sf.Severity))
-		if sev != SeverityWarning && sev != SeverityError && sev != SeveritySecurity && sev != SeverityWorkload && sev != SeveritySchema {
+		if sev != SeverityWarning && sev != SeverityError && sev != SeveritySecurity && sev != SeverityWorkload && sev != SeveritySchema && sev != SeverityConfig && sev != SeverityBackup {
 			sev = SeverityWarning
 		}
 		remeds := make([]Remediation, 0, len(sf.Remediations))

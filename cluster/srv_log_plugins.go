@@ -243,6 +243,8 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			isSecurity := f.Severity == logplugin.SeveritySecurity
 			isWorkload := f.Severity == logplugin.SeverityWorkload
 			isSchema := f.Severity == logplugin.SeveritySchema
+			isConfig := f.Severity == logplugin.SeverityConfig
+			isBackup := f.Severity == logplugin.SeverityBackup
 
 			var sm *state.StateMachine
 			switch {
@@ -252,6 +254,10 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				sm = cluster.WorkloadStateMachine
 			case isSchema:
 				sm = cluster.SchemaStateMachine
+			case isConfig:
+				sm = cluster.ConfigStateMachine
+			case isBackup:
+				sm = cluster.BackupStateMachine
 			default:
 				sm = cluster.StateMachine
 			}
@@ -329,7 +335,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				}
 			}
 			sm.AddState(compositeKey, st)
-			if !isSecurity && !isWorkload && !isSchema {
+			if !isSecurity && !isWorkload && !isSchema && !isConfig && !isBackup {
 				cluster.SetState(f.ErrKey, st)
 			}
 		}
@@ -1254,6 +1260,18 @@ func buildClusterContext(cluster *Cluster, server *ServerMonitor) logplugin.Clus
 		}
 	}
 
+	// Backup facts for plugin-backup-monitor. Only cheaply/safely derivable
+	// values are set here; the rest (BackupType/BackupSplit/BackupLastMeta/
+	// BinlogWatermark/BackupBytesWritten) are roadmap-wired as the epic items land.
+	backupServerRole := ""
+	if bs := cluster.GetBackupServer(); bs != nil {
+		if bs.IsMaster() {
+			backupServerRole = "master"
+		} else {
+			backupServerRole = "slave"
+		}
+	}
+
 	return logplugin.ClusterContext{
 		HasProxies:       len(cluster.Proxies) > 0,
 		BackupEncrypted:  cluster.Conf.BackupRestic && cluster.Conf.BackupResticPassword != "",
@@ -1261,6 +1279,8 @@ func buildClusterContext(cluster *Cluster, server *ServerMonitor) logplugin.Clus
 		HistoryClearPwd:  cluster.SecurityClearPwdHistory,
 		DockerDeployment: cluster.Configurator.IsFilterInDBTags("docker"),
 		ToolVersions:     toolVersions,
+		BackupServerRole: backupServerRole,
+		BackupArchived:   cluster.Conf.BackupRestic,
 	}
 }
 

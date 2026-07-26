@@ -255,6 +255,11 @@ type Cluster struct {
 	// ConfigStateMachine tracks configuration findings: deprecated variables
 	// (WARN0159/0160) and pending compliance modulesets (WARN0168).
 	ConfigStateMachine *state.StateMachine `json:"configStateMachine" groups:"web"`
+	// BackupStateMachine tracks backup-observability findings from plugin-backup-monitor
+	// (BACKUP severity): live progress, binlog-coverage watermark, backup
+	// validity/restorability. Kept separate from the HA StateMachine so backup
+	// observability does not pollute operational cluster health.
+	BackupStateMachine *state.StateMachine `json:"backupStateMachine" groups:"web"`
 	// SecurityStates is a snapshot of all open security findings from the current monitoring
 	// tick, serialised into the cluster JSON for the dashboard (SecurityStateMachine.CurState
 	// has json:"-" so it cannot be read directly). Updated by CheckLogPlugins.
@@ -622,6 +627,9 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.ConfigStateMachine = new(state.StateMachine)
 	cluster.ConfigStateMachine.Init()
 	cluster.ConfigStateMachine.SetMasterUpAndSync(false, false, false)
+	cluster.BackupStateMachine = new(state.StateMachine)
+	cluster.BackupStateMachine.Init()
+	cluster.BackupStateMachine.SetMasterUpAndSync(false, false, false)
 	// k, _ := cluster.Conf.LoadEncrytionKey()
 	// if k == nil {
 	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key")
@@ -1403,6 +1411,7 @@ func (cluster *Cluster) StateProcessing() {
 		cluster.SecurityStateMachine.ClearState()
 		cluster.SchemaStateMachine.ClearState()
 		cluster.ConfigStateMachine.ClearState()
+		cluster.BackupStateMachine.ClearState()
 		// Periodic config save is no longer driven from the cluster monitor loop.
 		// The server-level loop fans out per-cluster saves (server.go serve loop);
 		// see doc/implementation/config/CONFIG_SYNC.md decision #3. Event-driven
