@@ -1313,13 +1313,23 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 	}
 	defer f.Close()
 
-	slowqueries := []dbhelper.LogSlow{}
+	// Stream rows one at a time instead of loading the whole buffer table
+	// into memory: this query has no LIMIT, and a large backlog (first run
+	// after enabling MonitorQueries, a query storm, or a monitoring gap) can
+	// otherwise pull an unbounded amount of SQL text into a single slice.
 	query := "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id, 0 as rows_affected FROM  replication_manager_schema.slow_log_buffer WHERE start_time > FROM_UNIXTIME(" + strconv.FormatInt(server.MaxSlowQueryTimestamp+1, 10) + ")"
-	err = server.ConnSelectQueryWithTimeout(Conn, time.Duration(cluster.Conf.ReadTimeout)*time.Second, &slowqueries, query)
+	queryCtx, queryCancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.ReadTimeout)*time.Second)
+	defer queryCancel()
+	rows, err := Conn.QueryxContext(queryCtx, query)
 	if err != nil {
 		return fmt.Errorf("Error selecting slow queries logs in buffer table on %s: %v", server.URL, err)
 	}
-	for _, s := range slowqueries {
+	defer rows.Close()
+	for rows.Next() {
+		var s dbhelper.LogSlow
+		if err := rows.StructScan(&s); err != nil {
+			return fmt.Errorf("Error scanning slow queries logs in buffer table on %s: %v", server.URL, err)
+		}
 		fmt.Fprintf(f, "# User@Host: %s\n# Thread_id: %d  Schema: %s  QC_hit: No\n# Query_time: %s  Lock_time: %s  Rows_sent: %d  Rows_examined: %d\n# Rows_affected: %d\nSET timestamp=%d;\n%s;\n",
 			s.User_host.String,
 			s.Thread_id,
@@ -1333,6 +1343,9 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 			strings.ReplaceAll(strings.ReplaceAll(s.Sql_text.String, "\r\n", " "), "\n", " "),
 		)
 		server.MaxSlowQueryTimestamp = s.Start_time
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("Error iterating slow queries logs in buffer table on %s: %v", server.URL, err)
 	}
 
 	if err := dbhelper.MoveLogsToDailyTable(Conn, server.DBVersion, "slow_log", timeStampString, timeout); err != nil {
