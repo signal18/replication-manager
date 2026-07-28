@@ -232,3 +232,24 @@ server's `dbLogMigrated` latch (see the migration-latch note above).
 - Repman's own main/security/internal SQL log rotation
   (`log-rotate-max-size` etc.) is deliberately untouched — this work only
   affects fetched DB working-dir logs.
+- **Behavior change**: `cluster/srv_get.go`'s `GetSlowLogTable` (TABLE-mode
+  slow-log export) previously had a crude 100MB truncate-in-place safety net,
+  unconditional. That's gone; with `db-log-rotate` defaulting to `false`,
+  TABLE-mode slow-log export now grows the file completely unbounded by
+  default (no truncation, no rotation) unless the operator opts into
+  `db-log-rotate` or already runs external `logrotate`. Intentional given the
+  compatibility-first stance for this feature (repman shouldn't silently
+  rotate/truncate unless asked to), but it's a real change from "crude cap"
+  to "no cap" and deserves a changelog line, e.g.:
+  > **Changed**: TABLE-mode slow-log export (`log_slow_query.log`) no longer
+  > truncates at a hard-coded 100MB by default; enable `db-log-rotate` (or
+  > continue relying on external `logrotate`) to bound its size.
+- Changing `db-log-rotate-max-size`/`-max-backup`/`-max-age` at runtime takes
+  effect on the next SST receiver or `GetSlowLogTable` call, not
+  instantaneously: each call constructs a fresh `lumberjack.Logger` via
+  `s18log.NewRotateWriter` (`cluster_sst.go` / `srv_get.go`), reading
+  `cluster.Conf.DBLogRotate*` at that moment. An *already-open* instance
+  (an SST receiver can stay open up to an hour) keeps using whatever values
+  it was constructed with until it closes. Fine in practice since these are
+  short-lived per job/receiver, just worth knowing it's not applied
+  mid-flight.
