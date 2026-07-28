@@ -540,18 +540,31 @@ func (server *ServerMonitor) RestartLogTailers() {
 }
 
 // NewLogTailer opens a tailer on the canonical path for one fetched DB log
-// file. Rotation/pruning (when db-log-rotate is enabled) is owned entirely
-// by the lumberjack-backed writer on the write path
+// file. Size/backup-count rotation (when db-log-rotate is enabled) is owned
+// entirely by the lumberjack-backed writer on the write path
 // (SSTRunReceiverToDBLogFile, TABLE-mode slow-log export) -- including
-// rotating an oversized pre-existing file on its very first write. There is
-// deliberately no separate startup-time rotation policy here; this only
-// ensures the file exists so the tailer has something to open.
+// rotating an oversized pre-existing file on its very first write, so there
+// is deliberately no separate startup-time size-rotation policy here.
+//
+// It does still prune old-style rotated files (log_<type>_<timestamp>.log),
+// which predate the lumberjack-backed writer path and use a different
+// naming scheme than lumberjack's own backups (log_<type>-<ts>.log) --
+// lumberjack only ever manages its own scheme, so without this, any files
+// left over in the old scheme would never be cleaned up by anything.
 func (server *ServerMonitor) NewLogTailer(logtype string) (*tail.Tail, error) {
+	cluster := server.ClusterGroup
+
 	kind, ok := DBLogKindFromTailerType(logtype)
 	if !ok {
 		return nil, fmt.Errorf("unknown DB log tailer type %q", logtype)
 	}
+	logDir := server.DBLogDir()
+	logName := "log_" + logtype
 	logfile := server.DBLogFilePath(kind)
+
+	if cluster.Conf.DBLogRotate {
+		misc.RemoveOldLogFiles(logDir, fmt.Sprintf("%s_", logName), cluster.Conf.DBLogRotateMaxAge, "20060102_150405")
+	}
 
 	if _, err := os.Stat(logfile); os.IsNotExist(err) {
 		nofile, ferr := os.OpenFile(logfile, os.O_WRONLY|os.O_CREATE, 0600)

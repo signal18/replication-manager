@@ -57,6 +57,54 @@ DB log file lives:
     (permission error, transient I/O error) does **not** latch success, so
     it's retried on a later call instead of being silently skipped for the
     rest of the process lifetime.
+  - Before moving a given file, it checks
+    `Cluster.IsFileOpenForSSTReceive(path)` (scans the global `SSTs`
+    registry for a matching `Filename`) and skips — leaving it for a later
+    attempt — any file an SST receiver currently has open. This matters
+    specifically for the `EXDEV` copy-then-remove fallback: without the
+    check, a receiver (scheduler-mode job or API-mode `receive-task`, either
+    of which can hold the file open for up to an hour) could keep writing to
+    an fd after the copy snapshot was taken, and those bytes would be lost
+    once the now-unlinked legacy inode is freed on close. `SST` gained a
+    `Filename` field (set by both `SSTRunReceiverToFile` and
+    `SSTRunReceiverToDBLogFile`) to make this check possible; it covers
+    API-mode too, which — unlike scheduler-mode — never sets the
+    `Has/SetWait*Cookie` cookies, so those cookies alone aren't sufficient.
+  - `Cluster.RestartDBLogTailers()` (see Tailers below) resets
+    `dbLogMigrated` to `false` for every server whenever
+    `db-log-on-backup-storage` flips, in either direction. Without this, the
+    latch being process-lifetime-scoped meant toggling the setting off then
+    back on would silently strand anything written to the legacy dir during
+    the "off" window — `ensureDBLogsMigrated` would short-circuit on the
+    stale `true` latch and never re-sweep. Resetting on every flip is safe
+    regardless of direction, since a redundant re-sweep is a no-op (never
+    overwrites an existing destination).
+  - The destination-collision check treats an existing **non-empty** file as
+    real content to preserve, but an existing **zero-byte** file as a
+    placeholder to clear and replace. This matters because `NewLogTailer`
+    (and any writer that opens a file with `O_CREATE`) will happily create an
+    empty file at the new canonical path for a kind whose real migration was
+    just skipped (e.g. because it was open for SST receive at flip time). A
+    size-blind "exists → skip" check would treat that placeholder as
+    "already migrated" forever, permanently stranding the real file in the
+    legacy dir with no path to ever recover it — a strictly worse outcome
+    than the in-flight skip itself. Checking size instead makes a later
+    migration attempt (see below) actually able to finish the job once the
+    receiver closes.
+  - `ServerMonitor.maybeRetryDBLogMigration()` is called from
+    `JobFinishReceiveFile` (in `cluster/srv_job_backup.go`, which every SST
+    receiver's cleanup already calls, for both scheduler-mode jobs and
+    API-mode `receive-task`) whenever a DB-log task finishes. If
+    `db-log-on-backup-storage` is on and migration hasn't fully succeeded
+    yet, it calls `RestartLogTailers()` immediately — retrying migration
+    (now unblocked, since the receiver that was holding the file open just
+    closed) and pointing tailers at whatever is now canonical. Without this,
+    a file skipped at flip time had no automatic trigger to retry once its
+    receiver closed; the legacy file (and a stale/empty tailer view of it in
+    the UI) could persist indefinitely until some *unrelated* later
+    `DBLogDir()` call happened to fire, or repman restarted. Gated behind a
+    single atomic-bool read so the steady state (disabled, or already fully
+    migrated) costs nothing on every job completion.
 
 ## Write paths
 
@@ -83,12 +131,20 @@ DB log file lives:
 
 `cluster/srv.go`:
 
-- `NewLogTailer` no longer contains its own startup-time rotate/prune logic
-  (manual oversized-file rename + age-based prune). That logic was fully
-  redundant with lumberjack, which already rotates an oversized pre-existing
-  file on its first write — confirmed by reading lumberjack's source before
-  removing it. `NewLogTailer` now only ensures the file exists so `tail` has
-  something to open.
+- `NewLogTailer` no longer contains its own startup-time *size*-rotation
+  logic (manual oversized-file rename). That part was fully redundant with
+  lumberjack, which already rotates an oversized pre-existing file on its
+  first write — confirmed by reading lumberjack's source before removing it.
+  It still calls `misc.RemoveOldLogFiles` when `DBLogRotate` is enabled, but
+  now scoped to `DBLogRotateMaxAge` and the canonical `DBLogDir()` rather
+  than the generic `LogRotateMaxAge`/hardcoded legacy dir. This specifically
+  targets the old manual-rename naming scheme (`log_<type>_<timestamp>.log`,
+  underscore separator) which predates the lumberjack-backed writer path and
+  which lumberjack never touches (it only manages its own
+  `log_<type>-<timestamp>.log` backups, hyphen separator) — without this
+  call, any old-style files already on disk from before this feature would
+  never be cleaned up by anything again. `NewLogTailer` otherwise only
+  ensures the file exists so `tail` has something to open.
 - `startLogTailers()` factors out the four `NewLogTailer` calls (used by both
   `InitLogTailers` and `RestartLogTailers`) and logs — rather than silently
   discards — any error from opening a tailer.
@@ -106,7 +162,8 @@ DB log file lives:
   assumption).
 
 `cluster/srv_job_logs.go` also gained `Cluster.RestartDBLogTailers()`, which
-fans `RestartLogTailers()` out to every server in the cluster.
+fans `RestartLogTailers()` out to every server in the cluster and resets each
+server's `dbLogMigrated` latch (see the migration-latch note above).
 
 ## API / UI
 
@@ -128,9 +185,18 @@ fans `RestartLogTailers()` out to every server in the cluster.
   `MaxSize` and doesn't rotate under it.
 - `cluster/srv_job_logs_test.go`:
   - Migration: moves active + rotated-history files (both naming schemes),
-    preserves an existing destination without overwriting, treats a missing
-    legacy dir as trivial success, and treats a permission/read error as
-    retriable failure (not a false success).
+    preserves an existing *non-empty* destination without overwriting,
+    clears and replaces an existing *empty* destination (the placeholder
+    case), treats a missing legacy dir as trivial success, treats a
+    permission/read error as retriable failure (not a false success), and
+    skips (rather than moves) a file currently registered as open in the
+    `SSTs` registry. A dedicated end-to-end test walks the exact
+    skip-then-placeholder-then-close sequence and confirms the real file
+    still wins over the placeholder on the next attempt.
+  - `maybeRetryDBLogMigration`: restarts tailers (and thus retries
+    migration) when a receiver finishes while migration is still pending;
+    no-ops when already migrated or when `db-log-on-backup-storage` is off
+    (checked by confirming no tailer ever gets created in those cases).
   - `renameOrCopyFile`: real cross-device fallback and its
     don't-overwrite-destination guard, exercised against `/tmp` vs
     `/dev/shm` (skipped if unavailable or co-located on the same device).
@@ -140,6 +206,11 @@ fans `RestartLogTailers()` out to every server in the cluster.
     the `ErrorLog` ring buffer rather than the tailer's raw channel, since
     `RestartLogTailers` itself starts `ErrorLogWatcher` as a concurrent
     consumer of that same unbuffered channel.
+  - `RestartDBLogTailers`: confirms it resets a server's `dbLogMigrated`
+    latch.
+  - `NewLogTailer`: confirms old-style rotated files are pruned when
+    `DBLogRotate` is on (and lumberjack-style ones are left alone), and that
+    nothing is pruned when it's off.
 
 ## Known limitations / non-goals
 
@@ -150,6 +221,14 @@ fans `RestartLogTailers()` out to every server in the cluster.
 - Migration is per-server and lazy (triggered on first `DBLogDir()` call
   after the flag is on), not a bulk/eager migration across the whole
   cluster at the moment the setting changes.
+- A file skipped because it's open for SST receive gets retried as soon as
+  that receiver's `JobFinishReceiveFile` fires (`maybeRetryDBLogMigration`),
+  not just on some later unrelated `DBLogDir()` call — but there's still no
+  dedicated background retry loop. If a *new* receiver for the same log kind
+  starts again immediately (scheduler-mode can't overlap the same kind due to
+  its wait-cookie guard, but API-mode has no such guard), the file could in
+  principle keep getting skipped back-to-back for longer than expected before
+  it's actually moved.
 - Repman's own main/security/internal SQL log rotation
   (`log-rotate-max-size` etc.) is deliberately untouched — this work only
   affects fetched DB working-dir logs.

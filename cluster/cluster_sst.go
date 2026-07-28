@@ -33,6 +33,22 @@ type SST struct {
 	outresticreader   io.WriteCloser
 	outfilegzipwriter *gzip.Writer
 	cluster           *Cluster
+	Filename          string // destination path, if this receiver writes to a file; used to detect an in-flight receiver for a given path (see IsFileOpenForSSTReceive)
+}
+
+// IsFileOpenForSSTReceive reports whether filename currently has an active
+// SST file receiver (scheduler-mode job or API-mode receive-task) writing to
+// it. Used to avoid migrating a fetched DB log file while a receiver might
+// still append to it -- see migrateDBLogsToBackupStorage in srv_job_logs.go.
+func (cluster *Cluster) IsFileOpenForSSTReceive(filename string) bool {
+	SSTs.Lock()
+	defer SSTs.Unlock()
+	for _, s := range SSTs.SSTconnections {
+		if s.Filename == filename {
+			return true
+		}
+	}
+	return false
 }
 
 type SSTStreamOpener func() (io.ReadCloser, int64, error)
@@ -119,6 +135,7 @@ func (cluster *Cluster) SSTRunReceiverToRestic(filename string) (string, error) 
 func (cluster *Cluster) SSTRunReceiverToFile(server *ServerMonitor, filename string, openfile string, task string) (string, error) {
 	sst := new(SST)
 	sst.cluster = cluster
+	sst.Filename = filename
 	var writers []io.Writer
 
 	var err error
@@ -172,6 +189,7 @@ func (cluster *Cluster) SSTRunReceiverToDBLogFile(server *ServerMonitor, filenam
 
 	sst := new(SST)
 	sst.cluster = cluster
+	sst.Filename = filename
 
 	rw, err := s18log.NewRotateWriter(s18log.RotateFileConfig{
 		Filename:   filename,

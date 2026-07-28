@@ -83,16 +83,46 @@ func DBLogKindFromTailerType(logtype string) (DBLogKind, bool) {
 }
 
 // RestartDBLogTailers restarts every server's fetched-DB-log tailers so they
-// pick up the current canonical path. Call this after toggling
-// db-log-on-backup-storage at runtime; without it, already-running tailers
-// keep following the old path until repman restarts.
+// pick up the current canonical path, and resets each server's migration
+// latch. Call this after toggling db-log-on-backup-storage at runtime.
+//
+// Without the tailer restart, already-running tailers keep following the old
+// path until repman restarts. Without the migration reset, dbLogMigrated
+// stays true forever once a migration has succeeded once in this process:
+// toggling the setting off then back on would otherwise leave any logs
+// written to the legacy dir during the "off" window unmigrated, since
+// ensureDBLogsMigrated would short-circuit on the stale latch. Resetting it
+// unconditionally on any flip is safe either way -- migrateDBLogsToBackupStorage
+// never overwrites an existing destination file, so a redundant re-sweep is a
+// no-op when there is nothing new to move.
 func (cluster *Cluster) RestartDBLogTailers() {
 	for _, srv := range cluster.Servers {
 		if srv == nil {
 			continue
 		}
+		srv.dbLogMigrated.Store(false)
 		srv.RestartLogTailers()
 	}
+}
+
+// maybeRetryDBLogMigration re-attempts the legacy->backup-backed DB log
+// migration and restarts this server's tailers as soon as an SST receiver
+// for a DB log task finishes (scheduler-mode job or API-mode receive-task),
+// instead of waiting for some later, unrelated DBLogDir() call to happen to
+// retry it. Without this, a file skipped during migration because it was
+// open for SST receive at flip time could be left stranded in the legacy
+// dir -- and the tailer left watching a stale/empty new-location file --
+// indefinitely if nothing else touches this server's DB logs afterward.
+//
+// Only does anything when db-log-on-backup-storage is enabled and migration
+// hasn't fully succeeded yet, so the steady state (disabled, or already
+// fully migrated) costs a single atomic read.
+func (server *ServerMonitor) maybeRetryDBLogMigration() {
+	cluster := server.ClusterGroup
+	if !cluster.Conf.DBLogOnBackupStorage || server.dbLogMigrated.Load() {
+		return
+	}
+	server.RestartLogTailers()
 }
 
 func (server *ServerMonitor) legacyDBLogDir() string {
@@ -185,8 +215,38 @@ func (server *ServerMonitor) migrateDBLogsToBackupStorage() bool {
 			}
 			src := filepath.Join(legacyDir, entry.Name())
 			dst := filepath.Join(newDir, entry.Name())
-			if _, err := os.Stat(dst); err == nil {
-				// Preserve both; never overwrite an existing destination file.
+			if dstInfo, err := os.Stat(dst); err == nil {
+				if dstInfo.Size() > 0 {
+					// Preserve real content; never overwrite an existing,
+					// non-empty destination file.
+					continue
+				}
+				// A zero-byte destination is not real migrated content --
+				// it's most likely a placeholder some writer created (e.g.
+				// NewLogTailer's "create if missing", or a receiver opening
+				// a fresh file) at the new canonical path while this kind's
+				// real migration was still pending (skipped below because
+				// the legacy file was open for SST receive). Clear it so
+				// the real file can take its place, instead of being
+				// treated as "already migrated" and permanently stranded in
+				// the legacy dir.
+				if err := os.Remove(dst); err != nil {
+					ok = false
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "DB log migration: failed to clear empty placeholder %s: %s", dst, err)
+					continue
+				}
+			}
+			if cluster.IsFileOpenForSSTReceive(src) {
+				// A scheduler-mode job or API-mode receive-task currently has
+				// this exact file open for append (SST receivers can stay
+				// open up to an hour). Moving it now would be safe on the
+				// same filesystem, but the EXDEV cross-device fallback does
+				// copy-then-remove: any bytes the receiver writes after the
+				// copy snapshot but before it closes the file would be
+				// silently lost once the now-unlinked legacy inode is freed.
+				// Leave it for a later migration attempt once the receiver
+				// finishes.
+				ok = false
 				continue
 			}
 			if err := renameOrCopyFile(src, dst); err != nil {
