@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc64"
+	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -1300,16 +1301,22 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 		return fmt.Errorf("Error truncate slow logs buffer table on %s. Err : %v", server.URL, err)
 	}
 
-	os.MkdirAll(server.Datadir+"/log", 0755)
-
-	f, err := os.OpenFile(server.Datadir+"/log/log_slow_query.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	logfile := server.DBLogFilePath(DBLogSlowQuery)
+	var f io.WriteCloser
+	if cluster.Conf.DBLogRotate {
+		f, err = s18log.NewRotateWriter(s18log.RotateFileConfig{
+			Filename:   logfile,
+			MaxSize:    cluster.Conf.DBLogRotateMaxSize,
+			MaxBackups: cluster.Conf.DBLogRotateMaxBackup,
+			MaxAge:     cluster.Conf.DBLogRotateMaxAge,
+		})
+	} else {
+		// db-log-rotate disabled: append only, no rotation/pruning, leave
+		// retention to external logrotate/custom tooling.
+		f, err = os.OpenFile(logfile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	}
 	if err != nil {
 		return fmt.Errorf("Error writing slow queries logs on %s. Err : %v", server.URL, err)
-	}
-	fi, _ := f.Stat()
-	if fi.Size() > 100000000 {
-		f.Truncate(0)
-		f.Seek(0, 0)
 	}
 	defer f.Close()
 

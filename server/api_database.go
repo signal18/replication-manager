@@ -5166,8 +5166,17 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 			rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
 		}
 	case config.ConstTaskError, config.ConstTaskSlowQuery, config.ConstTaskAuditLog, config.ConstTaskSqlError:
-		dest = node.GetMyBackupDirectory() + taskname
-		rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
+		// Fetched DB log tasks must land in the same canonical, helper-selected
+		// files used by scheduler-mode fetches and log tailers (legacy cluster
+		// dir or backup-backed dir, per db-log-on-backup-storage), not in the
+		// raw backup payload directory, so API-mode and scheduler-mode stay aligned.
+		kind, ok := cluster.DBLogKindFromTaskName(config.TaskName(taskname))
+		if !ok {
+			http.Error(w, "Unknown DB log task: "+taskname, 500)
+			return
+		}
+		dest = node.DBLogFilePath(kind)
+		rcvPort, err = mycluster.SSTRunReceiverToDBLogFile(node, dest, taskname)
 	case config.ConstTaskReseedXB, config.ConstTaskReseedMB, config.ConstTaskFlashXB, config.ConstTaskFlashMB:
 		dest = node.GetMyBackupDirectory() + taskname
 		rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)

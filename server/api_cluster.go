@@ -3430,6 +3430,36 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return fmt.Errorf("compress-backups-compression-level must be between 1 and 9, got %d", val)
 		}
 		mycluster.Conf.CompressBackupsCompressionLevel = val
+	case "db-log-rotate":
+		mycluster.Conf.DBLogRotate = applyIsActive(mycluster.Conf.DBLogRotate, isactive)
+	case "db-log-on-backup-storage":
+		oldVal := mycluster.Conf.DBLogOnBackupStorage
+		newVal := applyIsActive(mycluster.Conf.DBLogOnBackupStorage, isactive)
+		mycluster.Conf.DBLogOnBackupStorage = newVal
+		if newVal != oldVal {
+			// Already-running tailers keep following whatever path they were
+			// opened against; restart them so they pick up the new canonical
+			// location instead of silently going stale until a repman restart.
+			mycluster.RestartDBLogTailers()
+		}
+	case "db-log-rotate-max-size":
+		val, err := strconv.Atoi(value)
+		if err != nil || val <= 0 {
+			return fmt.Errorf("db-log-rotate-max-size must be greater than 0, got %q", value)
+		}
+		mycluster.Conf.DBLogRotateMaxSize = val
+	case "db-log-rotate-max-backup":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 0 {
+			return fmt.Errorf("db-log-rotate-max-backup must be greater than or equal to 0, got %q", value)
+		}
+		mycluster.Conf.DBLogRotateMaxBackup = val
+	case "db-log-rotate-max-age":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 0 {
+			return fmt.Errorf("db-log-rotate-max-age must be greater than or equal to 0, got %q", value)
+		}
+		mycluster.Conf.DBLogRotateMaxAge = val
 	case "backup-restic-purge-oldest-on-disk-space":
 		mycluster.Conf.BackupResticPurgeOldestOnDiskSpace = applyIsActive(mycluster.Conf.BackupResticPurgeOldestOnDiskSpace, isactive)
 	case "backup-restic-allow-unsafe-mount":

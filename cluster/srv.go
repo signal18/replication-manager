@@ -249,6 +249,8 @@ type ServerMonitor struct {
 	RestartRid                  string     // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
 	jobMutex                    sync.Mutex // protects IsRunningJobs flag
 	configGenMutex              sync.Mutex // protects config generation operations
+	dbLogMigrateMutex           sync.Mutex // serializes concurrent attempts at the lazy legacy->backup-backed fetched DB log migration
+	dbLogMigrated               atomic.Bool // set once a migration pass completes with no errors; left false to allow retry after a transient failure
 	backupMetaMutex             sync.Mutex  // protects LastBackupMeta from concurrent Restic callback updates
 	rejoinInProgress            atomic.Bool  // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
 	reseedFromRejoin            atomic.Bool  // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
@@ -471,10 +473,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 func (server *ServerMonitor) InitLogTailers() {
 	cluster := server.ClusterGroup
 
-	server.ErrorLogTailer, _ = server.NewLogTailer("error")
-	server.SlowLogTailer, _ = server.NewLogTailer("slow_query")
-	server.AuditLogTailer, _ = server.NewLogTailer("audit")
-	server.SqlErrorLogTailer, _ = server.NewLogTailer("sql_error")
+	server.startLogTailers()
 	server.ErrorLog = s18log.NewHttpLog(cluster.Conf.MonitorErrorLogLength)
 	server.SlowLog = s18log.NewSlowLog(cluster.Conf.MonitorLongQueryLogLength)
 	server.SqlErrorLog = s18log.NewHttpLog(cluster.Conf.MonitorSqlErrorLogLength)
@@ -488,26 +487,77 @@ func (server *ServerMonitor) InitLogTailers() {
 	server.BinlogEventLog = s18log.NewBinlogEventLog(sz)
 }
 
-func (server *ServerMonitor) NewLogTailer(logtype string) (*tail.Tail, error) {
+// startLogTailers opens tail.Tail instances for the four fetched DB log
+// files at their current canonical path (DBLogFilePath). Shared by
+// InitLogTailers (first start) and RestartLogTailers (after a runtime
+// location change).
+func (server *ServerMonitor) startLogTailers() {
 	cluster := server.ClusterGroup
 
-	logDir := server.Datadir + "/log"
-	logName := "log_" + logtype
-	logfile := fmt.Sprintf("%s/%s.log", logDir, logName)
-	timeFormat := "20060102_150405"
+	var err error
+	server.ErrorLogTailer, err = server.NewLogTailer("error")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot open error log tailer for %s: %s", server.URL, err)
+	}
+	server.SlowLogTailer, err = server.NewLogTailer("slow_query")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot open slow query log tailer for %s: %s", server.URL, err)
+	}
+	server.AuditLogTailer, err = server.NewLogTailer("audit")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot open audit log tailer for %s: %s", server.URL, err)
+	}
+	server.SqlErrorLogTailer, err = server.NewLogTailer("sql_error")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot open sql error log tailer for %s: %s", server.URL, err)
+	}
+}
 
-	// Remove old files, prevent too many logs
-	misc.RemoveOldLogFiles(logDir, fmt.Sprintf("%s_", logName), cluster.Conf.LogRotateMaxAge, timeFormat)
-
-	logInfo, err := os.Stat(logfile)
-	if os.IsNotExist(err) || logInfo.Size() > int64(server.ClusterGroup.Conf.LogRotateMaxSize*1024*1024) {
-		// If size is bigger than LogRotateMaxSize when init, rotate it
-		if !os.IsNotExist(err) {
-			os.Rename(logfile, fmt.Sprintf("%s/%s_%s.log", logDir, logName, time.Now().Format(timeFormat)))
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rotate %s log for %s on monitor datadir", logName, server.URL)
+// RestartLogTailers stops the currently running fetched-DB-log tailers and
+// starts fresh ones against the current canonical path for each log type.
+//
+// This is required after a runtime db-log-on-backup-storage change: the
+// existing *tail.Tail instances keep following whatever path they were
+// opened against and never notice a config change on their own -- tail's
+// ReOpen only follows rotation of the SAME path (e.g. a lumberjack rotate),
+// not a switch to a different path, so without this the tailers would keep
+// reading the stale legacy/backup-backed file until repman restarts.
+func (server *ServerMonitor) RestartLogTailers() {
+	for _, t := range []*tail.Tail{server.ErrorLogTailer, server.SlowLogTailer, server.AuditLogTailer, server.SqlErrorLogTailer} {
+		if t == nil {
+			continue
 		}
-		nofile, _ := os.OpenFile(logfile, os.O_WRONLY|os.O_CREATE, 0600)
-		nofile.Close()
+		t.Stop()
+		t.Cleanup()
+	}
+
+	server.startLogTailers()
+
+	go server.ErrorLogWatcher()
+	go server.SlowLogWatcher()
+	go server.AuditLogWatcher()
+	go server.SqlErrorLogWatcher()
+}
+
+// NewLogTailer opens a tailer on the canonical path for one fetched DB log
+// file. Rotation/pruning (when db-log-rotate is enabled) is owned entirely
+// by the lumberjack-backed writer on the write path
+// (SSTRunReceiverToDBLogFile, TABLE-mode slow-log export) -- including
+// rotating an oversized pre-existing file on its very first write. There is
+// deliberately no separate startup-time rotation policy here; this only
+// ensures the file exists so the tailer has something to open.
+func (server *ServerMonitor) NewLogTailer(logtype string) (*tail.Tail, error) {
+	kind, ok := DBLogKindFromTailerType(logtype)
+	if !ok {
+		return nil, fmt.Errorf("unknown DB log tailer type %q", logtype)
+	}
+	logfile := server.DBLogFilePath(kind)
+
+	if _, err := os.Stat(logfile); os.IsNotExist(err) {
+		nofile, ferr := os.OpenFile(logfile, os.O_WRONLY|os.O_CREATE, 0600)
+		if ferr == nil {
+			nofile.Close()
+		}
 	}
 
 	return tail.TailFile(logfile, tail.Config{Follow: true, ReOpen: true})

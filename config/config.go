@@ -156,6 +156,11 @@ type Config struct {
 	LogRotateMaxSize                          int                          `mapstructure:"log-rotate-max-size" toml:"log-rotate-max-size" json:"logRotateMaxSize"`
 	LogRotateMaxBackup                        int                          `mapstructure:"log-rotate-max-backup" toml:"log-rotate-max-backup" json:"logRotateMaxBackup"`
 	LogRotateMaxAge                           int                          `mapstructure:"log-rotate-max-age" toml:"log-rotate-max-age" json:"logRotateMaxAge"`
+	DBLogRotate                               bool                         `mapstructure:"db-log-rotate" toml:"db-log-rotate" json:"dbLogRotate"`
+	DBLogOnBackupStorage                      bool                         `mapstructure:"db-log-on-backup-storage" toml:"db-log-on-backup-storage" json:"dbLogOnBackupStorage"`
+	DBLogRotateMaxSize                        int                          `mapstructure:"db-log-rotate-max-size" toml:"db-log-rotate-max-size" json:"dbLogRotateMaxSize"`
+	DBLogRotateMaxBackup                      int                          `mapstructure:"db-log-rotate-max-backup" toml:"db-log-rotate-max-backup" json:"dbLogRotateMaxBackup"`
+	DBLogRotateMaxAge                         int                          `mapstructure:"db-log-rotate-max-age" toml:"db-log-rotate-max-age" json:"dbLogRotateMaxAge"`
 	LogTask                                   bool                         `mapstructure:"log-task" toml:"log-task" json:"logTask"`
 	LogTaskLevel                              int                          `mapstructure:"log-level-task" toml:"log-level-task" json:"logTaskLevel"`
 	LogSST                                    bool                         `mapstructure:"log-sst" toml:"log-sst" json:"logSst"`                  // internal replication-manager sst
