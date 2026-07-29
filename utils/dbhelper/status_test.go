@@ -7,9 +7,13 @@
 package dbhelper
 
 import (
+	"database/sql"
+	"errors"
 	"strings"
 	"testing"
+	"unsafe"
 
+	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"github.com/signal18/replication-manager/utils/version"
 )
 
@@ -570,4 +574,158 @@ func TestGetMaxscaleVersion_Integration(t *testing.T) {
 	}
 
 	t.Logf("MaxScale version: %s", value)
+}
+
+// stringDataAddr returns the address of s's backing array, for aliasing checks.
+//
+// This relies on unsafe.StringData exposing the Go runtime's actual string representation
+// (pointer + length), which is an implementation detail rather than a language guarantee.
+// It holds for the standard gc toolchain used by this project; a different Go implementation
+// (e.g. gccgo/TinyGo) or a future runtime change to string representation could invalidate
+// this check. If this test ever needs to be dropped for portability, the underlying fix
+// (cloning submatches in GetEngineInnoDBVariables) still stands on its own.
+func stringDataAddr(s string) uintptr {
+	if len(s) == 0 {
+		return 0
+	}
+	return uintptr(unsafe.Pointer(unsafe.StringData(s)))
+}
+
+// aliasesBacking reports whether s's backing array overlaps big's, i.e. s was produced by
+// slicing big (via strings.Split / regexp submatches) rather than being copied out of it.
+func aliasesBacking(s, big string) bool {
+	if len(s) == 0 || len(big) == 0 {
+		return false
+	}
+	start := stringDataAddr(big)
+	end := start + uintptr(len(big))
+	sp := stringDataAddr(s)
+	return sp >= start && sp < end
+}
+
+// TestGetEngineInnoDBVariables_DetachesFromLargeStatus is a regression test for the memory
+// growth reported in issue #1633: SHOW ENGINE INNODB STATUS output can reach ~1MB on busy
+// servers, and both strings.Split lines and regexp.FindStringSubmatch results alias the
+// original string's backing array. Storing an un-cloned submatch into the returned map keeps
+// the entire large status string reachable (and un-collectable) for as long as the map lives.
+func TestGetEngineInnoDBVariables_DetachesFromLargeStatus(t *testing.T) {
+	db, mock := mockDB(t, "mysql")
+
+	// Pad the status blob well past any driver/runtime buffer reuse thresholds so a real
+	// aliasing bug would be unambiguous.
+	padding := strings.Repeat("X", 2*1024*1024)
+	status := padding + "\n" +
+		"5 queries inside InnoDB, 2 queries in queue\n" +
+		"3 read views open inside InnoDB\n" +
+		"History list length 42\n" +
+		padding
+
+	rows := sqlmock.NewRows([]string{"Type", "Name", "Status"}).AddRow("InnoDB", "", status)
+	mock.ExpectQuery("SHOW ENGINE INNODB STATUS").WillReturnRows(rows)
+
+	vars, _, err := GetEngineInnoDBVariables(db)
+	if err != nil {
+		t.Fatalf("GetEngineInnoDBVariables() failed: %v", err)
+	}
+
+	want := map[string]string{
+		"queries_inside_innodb":             "5",
+		"queries_in_queue":                  "2",
+		"read_views_open_inside_innodb":     "3",
+		"history_list_lenght_inside_innodb": "42",
+	}
+	for k, v := range want {
+		if vars[k] != v {
+			t.Errorf("vars[%q] = %q, want %q", k, vars[k], v)
+		}
+		if aliasesBacking(vars[k], status) {
+			t.Errorf("vars[%q] aliases the large status string's backing array; expected a detached copy", k)
+		}
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+// TestGetEngineInnoDBStatus_ScanError verifies that a rows.Scan failure is surfaced to the
+// caller instead of being swallowed as a nil error (issue #1633 follow-up finding).
+func TestGetEngineInnoDBStatus_ScanError(t *testing.T) {
+	db, mock := mockDB(t, "mysql")
+
+	// Two columns instead of the expected three makes rows.Scan(&typeCol, &nameCol, &statusCol)
+	// fail with a destination-argument-count error. The exact wording is a database/sql
+	// implementation detail, so only assert that an error comes back at all.
+	rows := sqlmock.NewRows([]string{"Type", "Status"}).AddRow("InnoDB", "some status")
+	mock.ExpectQuery("SHOW ENGINE INNODB STATUS").WillReturnRows(rows)
+
+	_, _, err := GetEngineInnoDBStatus(db)
+	if err == nil {
+		t.Fatal("expected an error from rows.Scan(), got nil")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+// TestGetEngineInnoDBStatus_NoRows verifies that a zero-row result set (SHOW ENGINE INNODB
+// STATUS should always return exactly one row) is treated as an error rather than silently
+// returning an empty status string as if it were a successful call.
+func TestGetEngineInnoDBStatus_NoRows(t *testing.T) {
+	db, mock := mockDB(t, "mysql")
+
+	rows := sqlmock.NewRows([]string{"Type", "Name", "Status"})
+	mock.ExpectQuery("SHOW ENGINE INNODB STATUS").WillReturnRows(rows)
+
+	status, _, err := GetEngineInnoDBStatus(db)
+	if err == nil {
+		t.Fatal("expected an error for a zero-row result, got nil")
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("expected sql.ErrNoRows, got: %v", err)
+	}
+	if status != "" {
+		t.Errorf("expected empty status on error, got %q", status)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+// TestGetEngineInnoDBStatus_RowIterationError verifies that an error surfaced only once the
+// cursor is advanced past the first row (e.g. a mid-stream network error while reading the
+// terminating EOF packet) is not silently discarded. sqlmock ties a RowError to the row index
+// it's attached to, and that row's data is populated on the very same Next() call as the
+// error, so the only way to simulate "row 0 scans cleanly, then the next cursor advance
+// fails" is to give the mock a second row and attach the error there: GetEngineInnoDBStatus
+// calls rows.Next() a second time purely to reach that point in the stream, discarding
+// whatever data it would have carried.
+func TestGetEngineInnoDBStatus_RowIterationError(t *testing.T) {
+	db, mock := mockDB(t, "mysql")
+
+	wantErr := errors.New("simulated row iteration error")
+	rows := sqlmock.NewRows([]string{"Type", "Name", "Status"}).
+		AddRow("InnoDB", "", "some status").
+		AddRow("InnoDB", "", "unreachable: error fires before this row's data is used").
+		RowError(1, wantErr)
+	mock.ExpectQuery("SHOW ENGINE INNODB STATUS").WillReturnRows(rows)
+
+	status, _, err := GetEngineInnoDBStatus(db)
+	if err == nil {
+		t.Fatal("expected a row iteration error, got nil")
+	}
+	if !strings.Contains(err.Error(), wantErr.Error()) {
+		t.Errorf("expected error to wrap %q, got: %v", wantErr, err)
+	}
+	// The first row was scanned successfully before the second Next() surfaced the error;
+	// that data should still be returned rather than discarded.
+	if status != "some status" {
+		t.Errorf("expected the successfully scanned first row to be preserved, got %q", status)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
 }
