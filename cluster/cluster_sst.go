@@ -20,17 +20,35 @@ import (
 
 	gzip "github.com/klauspost/pgzip"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/s18log"
 )
 
 type SST struct {
 	in                io.Reader
 	file              *os.File
+	rotateWriter      io.WriteCloser
 	listener          net.Listener
 	tcplistener       *net.TCPListener
 	outfilewriter     io.Writer
 	outresticreader   io.WriteCloser
 	outfilegzipwriter *gzip.Writer
 	cluster           *Cluster
+	Filename          string // destination path, if this receiver writes to a file; used to detect an in-flight receiver for a given path (see IsFileOpenForSSTReceive)
+}
+
+// IsFileOpenForSSTReceive reports whether filename currently has an active
+// SST file receiver (scheduler-mode job or API-mode receive-task) writing to
+// it. Used to avoid migrating a fetched DB log file while a receiver might
+// still append to it -- see migrateDBLogsToBackupStorage in srv_job_logs.go.
+func (cluster *Cluster) IsFileOpenForSSTReceive(filename string) bool {
+	SSTs.Lock()
+	defer SSTs.Unlock()
+	for _, s := range SSTs.SSTconnections {
+		if s.Filename == filename {
+			return true
+		}
+	}
+	return false
 }
 
 type SSTStreamOpener func() (io.ReadCloser, int64, error)
@@ -117,6 +135,7 @@ func (cluster *Cluster) SSTRunReceiverToRestic(filename string) (string, error) 
 func (cluster *Cluster) SSTRunReceiverToFile(server *ServerMonitor, filename string, openfile string, task string) (string, error) {
 	sst := new(SST)
 	sst.cluster = cluster
+	sst.Filename = filename
 	var writers []io.Writer
 
 	var err error
@@ -144,6 +163,57 @@ func (cluster *Cluster) SSTRunReceiverToFile(server *ServerMonitor, filename str
 	destinationPort := sst.listener.Addr().(*net.TCPAddr).Port
 	if sst.cluster.Conf.LogSST {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Listening for SST on port to file %d", destinationPort)
+	}
+	SSTs.Lock()
+	SSTs.SSTconnections[destinationPort] = sst
+	SSTs.Unlock()
+	go sst.tcp_con_handle_to_file(server, task)
+
+	return strconv.Itoa(destinationPort), nil
+}
+
+// SSTRunReceiverToDBLogFile opens a receiver for fetched DB working-dir logs
+// (log_error.log, log_slow_query.log, log_sql_error.log, log_audit.log).
+//
+// When cluster.Conf.DBLogRotate is disabled (compatibility-first default),
+// it behaves exactly like SSTRunReceiverToFile in append mode: repman does
+// not rotate or prune the file, leaving retention to external logrotate.
+//
+// When enabled, writes go through the shared s18log rotating writer using
+// DB-log-specific thresholds, independent of the generic log-rotate-* repman
+// settings.
+func (cluster *Cluster) SSTRunReceiverToDBLogFile(server *ServerMonitor, filename string, task string) (string, error) {
+	if !cluster.Conf.DBLogRotate {
+		return cluster.SSTRunReceiverToFile(server, filename, ConstJobAppendFile, task)
+	}
+
+	sst := new(SST)
+	sst.cluster = cluster
+	sst.Filename = filename
+
+	rw, err := s18log.NewRotateWriter(s18log.RotateFileConfig{
+		Filename:   filename,
+		MaxSize:    cluster.Conf.DBLogRotateMaxSize,
+		MaxBackups: cluster.Conf.DBLogRotateMaxBackup,
+		MaxAge:     cluster.Conf.DBLogRotateMaxAge,
+	})
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Open rotating writer failed for job %s %s", filename, err)
+		return "", err
+	}
+	sst.rotateWriter = rw
+	sst.outfilewriter = rw
+
+	sst.listener, err = net.Listen("tcp", cluster.Conf.BindAddr+":"+cluster.SSTGetSenderPort())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Exiting SST on socket listen %s", err)
+		return "", err
+	}
+	sst.tcplistener = sst.listener.(*net.TCPListener)
+	sst.tcplistener.SetDeadline(time.Now().Add(time.Second * 3600))
+	destinationPort := sst.listener.Addr().(*net.TCPAddr).Port
+	if sst.cluster.Conf.LogSST {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Listening for SST on port to rotating file %d", destinationPort)
 	}
 	SSTs.Lock()
 	SSTs.SSTconnections[destinationPort] = sst
@@ -247,6 +317,9 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 		port := sst.listener.Addr().(*net.TCPAddr).Port
 		sst.tcplistener.Close()
 		sst.file.Close()
+		if sst.rotateWriter != nil {
+			sst.rotateWriter.Close()
+		}
 		sst.listener.Close()
 		SSTs.Lock()
 		delete(SSTs.SSTconnections, port)

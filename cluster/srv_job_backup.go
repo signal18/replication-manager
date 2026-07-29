@@ -4679,12 +4679,16 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	switch task {
 	case "errorlog":
 		server.DelWaitErrorlogCookie()
+		server.maybeRetryDBLogMigration()
 	case "slowquery":
 		server.DelWaitSlowqueryCookie()
+		server.maybeRetryDBLogMigration()
 	case "auditlog":
 		server.DelWaitAuditlogCookie()
+		server.maybeRetryDBLogMigration()
 	case "sqlerrorlog":
 		server.DelWaitSqlErrorlogCookie()
+		server.maybeRetryDBLogMigration()
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
 		// The SST file has been received — mark the backup as completed.

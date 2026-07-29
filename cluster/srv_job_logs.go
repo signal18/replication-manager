@@ -14,17 +14,285 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/s18log"
 )
+
+// DBLogKind identifies one of the four fetched DB log files.
+type DBLogKind int
+
+const (
+	DBLogError DBLogKind = iota
+	DBLogSlowQuery
+	DBLogAudit
+	DBLogSqlError
+)
+
+// dbLogBaseNames maps a DBLogKind to its filename base, without extension.
+// Kept distinct enough that none is a prefix of another, which the migration
+// logic below relies on to match a file's rotated history by prefix.
+var dbLogBaseNames = map[DBLogKind]string{
+	DBLogError:     "log_error",
+	DBLogSlowQuery: "log_slow_query",
+	DBLogAudit:     "log_audit",
+	DBLogSqlError:  "log_sql_error",
+}
+
+func (k DBLogKind) filename() string {
+	return dbLogBaseNames[k] + ".log"
+}
+
+// DBLogKindFromTaskName maps a fetched-DB-log task name to its DBLogKind.
+func DBLogKindFromTaskName(task config.TaskName) (DBLogKind, bool) {
+	switch task {
+	case config.ConstTaskError:
+		return DBLogError, true
+	case config.ConstTaskSlowQuery:
+		return DBLogSlowQuery, true
+	case config.ConstTaskAuditLog:
+		return DBLogAudit, true
+	case config.ConstTaskSqlError:
+		return DBLogSqlError, true
+	}
+	return DBLogKind(-1), false
+}
+
+// DBLogKindFromTailerType maps a NewLogTailer logtype string to its DBLogKind.
+func DBLogKindFromTailerType(logtype string) (DBLogKind, bool) {
+	switch logtype {
+	case "error":
+		return DBLogError, true
+	case "slow_query":
+		return DBLogSlowQuery, true
+	case "audit":
+		return DBLogAudit, true
+	case "sql_error":
+		return DBLogSqlError, true
+	}
+	return DBLogKind(-1), false
+}
+
+// RestartDBLogTailers restarts every server's fetched-DB-log tailers so they
+// pick up the current canonical path, and resets each server's migration
+// latch. Call this after toggling db-log-on-backup-storage at runtime.
+//
+// Without the tailer restart, already-running tailers keep following the old
+// path until repman restarts. Without the migration reset, dbLogMigrated
+// stays true forever once a migration has succeeded once in this process:
+// toggling the setting off then back on would otherwise leave any logs
+// written to the legacy dir during the "off" window unmigrated, since
+// ensureDBLogsMigrated would short-circuit on the stale latch. Resetting it
+// unconditionally on any flip is safe either way -- migrateDBLogsToBackupStorage
+// never overwrites an existing destination file, so a redundant re-sweep is a
+// no-op when there is nothing new to move.
+func (cluster *Cluster) RestartDBLogTailers() {
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+		srv.dbLogMigrated.Store(false)
+		srv.RestartLogTailers()
+	}
+}
+
+// maybeRetryDBLogMigration re-attempts the legacy->backup-backed DB log
+// migration and restarts this server's tailers as soon as an SST receiver
+// for a DB log task finishes (scheduler-mode job or API-mode receive-task),
+// instead of waiting for some later, unrelated DBLogDir() call to happen to
+// retry it. Without this, a file skipped during migration because it was
+// open for SST receive at flip time could be left stranded in the legacy
+// dir -- and the tailer left watching a stale/empty new-location file --
+// indefinitely if nothing else touches this server's DB logs afterward.
+//
+// Only does anything when db-log-on-backup-storage is enabled and migration
+// hasn't fully succeeded yet, so the steady state (disabled, or already
+// fully migrated) costs a single atomic read.
+func (server *ServerMonitor) maybeRetryDBLogMigration() {
+	cluster := server.ClusterGroup
+	if !cluster.Conf.DBLogOnBackupStorage || server.dbLogMigrated.Load() {
+		return
+	}
+	server.RestartLogTailers()
+}
+
+func (server *ServerMonitor) legacyDBLogDir() string {
+	return server.Datadir + "/log"
+}
+
+// DBLogDir returns the canonical directory for this server's fetched DB logs,
+// selected by cluster.Conf.DBLogOnBackupStorage:
+//   - false (default): legacy per-server cluster working dir
+//   - true: a dedicated subtree under the backup-backed storage path, kept
+//     separate from backup payload files
+//
+// When the backup-backed location is selected, legacy files are migrated in
+// lazily the first time this is called; a failed attempt is retried on the
+// next call instead of being permanently skipped.
+func (server *ServerMonitor) DBLogDir() string {
+	cluster := server.ClusterGroup
+
+	var dir string
+	if !cluster.Conf.DBLogOnBackupStorage {
+		dir = server.legacyDBLogDir()
+	} else {
+		server.ensureDBLogsMigrated()
+		dir = filepath.Join(server.GetMyBackupDirectory(), "dblogs")
+	}
+	os.MkdirAll(dir, 0755)
+	return dir
+}
+
+// DBLogFilePath returns the canonical path for one fetched DB log file.
+func (server *ServerMonitor) DBLogFilePath(kind DBLogKind) string {
+	return filepath.Join(server.DBLogDir(), kind.filename())
+}
+
+// ensureDBLogsMigrated runs the legacy->backup-backed DB log migration at
+// most once concurrently per server. It only marks migration as done once a
+// full pass completes with no errors, so a transient failure (e.g. disk
+// full, permission denied) gets retried on a later call instead of being
+// silently skipped for the rest of the process lifetime.
+func (server *ServerMonitor) ensureDBLogsMigrated() {
+	if server.dbLogMigrated.Load() {
+		return
+	}
+	server.dbLogMigrateMutex.Lock()
+	defer server.dbLogMigrateMutex.Unlock()
+	if server.dbLogMigrated.Load() {
+		return
+	}
+	if server.migrateDBLogsToBackupStorage() {
+		server.dbLogMigrated.Store(true)
+	}
+}
+
+// migrateDBLogsToBackupStorage moves existing fetched DB log files (active
+// file + any rotated history, regardless of which rotation scheme produced
+// them) from the legacy cluster working dir to the backup-backed location.
+// Existing destination files are never overwritten, so this is safe to
+// invoke repeatedly (e.g. after a partial failure, or if the switch is
+// toggled back and forth). Returns false if any file failed to migrate, so
+// the caller knows to retry later.
+func (server *ServerMonitor) migrateDBLogsToBackupStorage() bool {
+	cluster := server.ClusterGroup
+	legacyDir := server.legacyDBLogDir()
+
+	entries, err := os.ReadDir(legacyDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Nothing to migrate (legacy dir never used).
+			return true
+		}
+		// Transient/permission/I-O error reading the legacy dir: do not mark
+		// migration as done, so the caller retries on a later access instead
+		// of permanently assuming there was nothing to migrate.
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "DB log migration: cannot read %s: %s", legacyDir, err)
+		return false
+	}
+
+	newDir := filepath.Join(server.GetMyBackupDirectory(), "dblogs")
+	if err := os.MkdirAll(newDir, 0755); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "DB log migration: cannot create %s: %s", newDir, err)
+		return false
+	}
+
+	ok := true
+	for _, kind := range []DBLogKind{DBLogError, DBLogSlowQuery, DBLogAudit, DBLogSqlError} {
+		base := dbLogBaseNames[kind]
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasPrefix(entry.Name(), base) {
+				continue
+			}
+			src := filepath.Join(legacyDir, entry.Name())
+			dst := filepath.Join(newDir, entry.Name())
+			if dstInfo, err := os.Stat(dst); err == nil {
+				if dstInfo.Size() > 0 {
+					// Preserve real content; never overwrite an existing,
+					// non-empty destination file.
+					continue
+				}
+				// A zero-byte destination is not real migrated content --
+				// it's most likely a placeholder some writer created (e.g.
+				// NewLogTailer's "create if missing", or a receiver opening
+				// a fresh file) at the new canonical path while this kind's
+				// real migration was still pending (skipped below because
+				// the legacy file was open for SST receive). Clear it so
+				// the real file can take its place, instead of being
+				// treated as "already migrated" and permanently stranded in
+				// the legacy dir.
+				if err := os.Remove(dst); err != nil {
+					ok = false
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "DB log migration: failed to clear empty placeholder %s: %s", dst, err)
+					continue
+				}
+			}
+			if cluster.IsFileOpenForSSTReceive(src) {
+				// A scheduler-mode job or API-mode receive-task currently has
+				// this exact file open for append (SST receivers can stay
+				// open up to an hour). Moving it now would be safe on the
+				// same filesystem, but the EXDEV cross-device fallback does
+				// copy-then-remove: any bytes the receiver writes after the
+				// copy snapshot but before it closes the file would be
+				// silently lost once the now-unlinked legacy inode is freed.
+				// Leave it for a later migration attempt once the receiver
+				// finishes.
+				ok = false
+				continue
+			}
+			if err := renameOrCopyFile(src, dst); err != nil {
+				ok = false
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "DB log migration: failed to move %s to %s: %s", src, dst, err)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "DB log migration: moved %s to backup-backed storage for %s", entry.Name(), server.URL)
+			}
+		}
+	}
+	return ok
+}
+
+// renameOrCopyFile moves src to dst, falling back to a copy+remove when
+// os.Rename fails because src/dst are on different filesystems (EXDEV) --
+// expected for db-log-on-backup-storage, since backup-backed storage is
+// commonly a separate, larger partition than the legacy cluster working dir.
+func renameOrCopyFile(src, dst string) error {
+	err := os.Rename(src, dst)
+	if err == nil || !errors.Is(err, syscall.EXDEV) {
+		return err
+	}
+
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(dst)
+		return err
+	}
+
+	return os.Remove(src)
+}
 
 func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	cluster := server.ClusterGroup
@@ -42,13 +310,9 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	}
 	server.SetWaitErrorlogCookie()
 
-	filename := server.Datadir + "/log/log_error.log"
-	dirname := filepath.Dir(filename)
-	if _, err := os.Stat(dirname); os.IsNotExist(err) {
-		os.MkdirAll(dirname, 0755)
-	}
+	filename := server.DBLogFilePath(DBLogError)
 
-	port, err := cluster.SSTRunReceiverToFile(server, filename, ConstJobAppendFile, task)
+	port, err := cluster.SSTRunReceiverToDBLogFile(server, filename, task)
 	if err != nil {
 		return 0, nil
 	}
@@ -71,13 +335,9 @@ func (server *ServerMonitor) JobBackupAuditLog() (int64, error) {
 	}
 	server.SetWaitAuditlogCookie()
 
-	filename := server.Datadir + "/log/log_audit.log"
-	dirname := filepath.Dir(filename)
-	if _, err := os.Stat(dirname); os.IsNotExist(err) {
-		os.MkdirAll(dirname, 0755)
-	}
+	filename := server.DBLogFilePath(DBLogAudit)
 
-	port, err := cluster.SSTRunReceiverToFile(server, filename, ConstJobAppendFile, task)
+	port, err := cluster.SSTRunReceiverToDBLogFile(server, filename, task)
 	if err != nil {
 		return 0, nil
 	}
@@ -100,13 +360,9 @@ func (server *ServerMonitor) JobBackupSqlErrorLog() (int64, error) {
 	}
 	server.SetWaitSqlErrorlogCookie()
 
-	filename := server.Datadir + "/log/log_sql_error.log"
-	dirname := filepath.Dir(filename)
-	if _, err := os.Stat(dirname); os.IsNotExist(err) {
-		os.MkdirAll(dirname, 0755)
-	}
+	filename := server.DBLogFilePath(DBLogSqlError)
 
-	port, err := cluster.SSTRunReceiverToFile(server, filename, ConstJobAppendFile, task)
+	port, err := cluster.SSTRunReceiverToDBLogFile(server, filename, task)
 	if err != nil {
 		return 0, nil
 	}
@@ -132,13 +388,9 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 		return 0, nil
 	}
 
-	filename := server.Datadir + "/log/log_slow_query.log"
-	dirname := filepath.Dir(filename)
-	if _, err := os.Stat(dirname); os.IsNotExist(err) {
-		os.MkdirAll(dirname, 0755)
-	}
+	filename := server.DBLogFilePath(DBLogSlowQuery)
 
-	port, err := cluster.SSTRunReceiverToFile(server, filename, ConstJobAppendFile, task)
+	port, err := cluster.SSTRunReceiverToDBLogFile(server, filename, task)
 	if err != nil {
 		return 0, nil
 	}
@@ -178,6 +430,9 @@ var spacesRe = regexp.MustCompile(`\s+`)
 
 // ErrorLogWatcher monitor the tail of the log and populate ring buffer
 func (server *ServerMonitor) AuditLogWatcher() {
+	if server.AuditLogTailer == nil {
+		return
+	}
 	cluster := server.ClusterGroup
 	for line := range server.AuditLogTailer.Lines {
 		var log s18log.HttpMessage
@@ -199,6 +454,9 @@ func (server *ServerMonitor) AuditLogWatcher() {
 
 // ErrorLogWatcher monitor the tail of the log and populate ring buffer
 func (server *ServerMonitor) SqlErrorLogWatcher() {
+	if server.SqlErrorLogTailer == nil {
+		return
+	}
 	cluster := server.ClusterGroup
 	for line := range server.SqlErrorLogTailer.Lines {
 		var log s18log.HttpMessage
