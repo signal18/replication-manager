@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"hash/crc64"
 	"log"
+	"net"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -155,68 +157,219 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 	return cm, nil
 }
 
+// hostAccountMatch reports whether a mysql.user account host pattern matches
+// a connecting client identified by hostname and/or IP, following MariaDB/MySQL
+// account host syntax: literal hostname/IP, the "%" wildcard, SQL LIKE-style
+// wildcards ('%' and '_', escapable with '\'), and IPv4 "network/netmask"
+// notation. MariaDB/MySQL only support netmasks for IPv4 addresses.
+func hostAccountMatch(accountHost, clientHost, clientIP string) bool {
+	if accountHost == "" {
+		return false
+	}
+	if accountHost == "%" {
+		return true
+	}
+	if (clientHost != "" && strings.EqualFold(accountHost, clientHost)) ||
+		(clientIP != "" && strings.EqualFold(accountHost, clientIP)) {
+		return true
+	}
+	if strings.Contains(accountHost, "/") {
+		return hostMatchesNetmask(accountHost, clientIP)
+	}
+	// Route through the LIKE-pattern matcher whenever the pattern contains a
+	// wildcard OR a backslash: a pattern that only contains escaped
+	// characters (e.g. "db1\_host") has no unescaped wildcard per
+	// firstWildcardIndex, but still needs sqlLikeToRegexp to unescape it
+	// before comparing -- the raw string still has the backslash in it, so
+	// the exact-match check above never fires for it.
+	if strings.ContainsAny(accountHost, "%_\\") {
+		return hostMatchesWildcard(accountHost, clientHost) || hostMatchesWildcard(accountHost, clientIP)
+	}
+	return false
+}
+
+// hostMatchesNetmask evaluates MariaDB/MySQL IPv4 "network/netmask" account
+// host notation (e.g. "10.0.0.0/255.0.0.0") against the connecting client IP.
+func hostMatchesNetmask(accountHost, clientIP string) bool {
+	if clientIP == "" {
+		return false
+	}
+	parts := strings.SplitN(accountHost, "/", 2)
+	if len(parts) != 2 {
+		return false
+	}
+	network := parseIPv4(parts[0])
+	mask := parseIPv4(parts[1])
+	ip := parseIPv4(clientIP)
+	if network == nil || mask == nil || ip == nil {
+		return false
+	}
+	netmask := net.IPMask(mask)
+	return ip.Mask(netmask).Equal(network.Mask(netmask))
+}
+
+// parseIPv4 parses s as an IPv4 address, returning nil if s is empty,
+// malformed, or an IPv6 address.
+func parseIPv4(s string) net.IP {
+	ip := net.ParseIP(s)
+	if ip == nil {
+		return nil
+	}
+	return ip.To4()
+}
+
+// hostMatchesWildcard evaluates a mysql.user account host pattern containing
+// SQL LIKE-style wildcards ('%' matches any sequence, '_' matches a single
+// character, '\' escapes the following character) against a client hostname
+// or IP.
+func hostMatchesWildcard(pattern, value string) bool {
+	if value == "" {
+		return false
+	}
+	re, err := sqlLikeToRegexp(pattern)
+	if err != nil {
+		return false
+	}
+	return re.MatchString(value)
+}
+
+func sqlLikeToRegexp(pattern string) (*regexp.Regexp, error) {
+	var b strings.Builder
+	b.WriteString("(?i)^")
+	runes := []rune(pattern)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		switch r {
+		case '\\':
+			if i+1 < len(runes) {
+				i++
+				b.WriteString(regexp.QuoteMeta(string(runes[i])))
+			} else {
+				b.WriteString(regexp.QuoteMeta(string(r)))
+			}
+		case '%':
+			b.WriteString(".*")
+		case '_':
+			b.WriteString(".")
+		default:
+			b.WriteString(regexp.QuoteMeta(string(r)))
+		}
+	}
+	b.WriteString("$")
+	return regexp.Compile(b.String())
+}
+
+// firstWildcardIndex returns the byte index of the first unescaped SQL
+// LIKE-style wildcard ('%' or '_') in pattern, or -1 if there is none.
+// A backslash escapes the character that follows it.
+func firstWildcardIndex(pattern string) int {
+	for i := 0; i < len(pattern); i++ {
+		switch pattern[i] {
+		case '\\':
+			i++
+		case '%', '_':
+			return i
+		}
+	}
+	return -1
+}
+
+// hostAccountSpecificity ranks a mysql.user account host pattern by how
+// specific it is, so that when several account rows match a connecting
+// client, GetPrivileges can pick the single most specific one -- mirroring
+// how MariaDB/MySQL resolve which account row applies to a connection --
+// instead of taking the union (MAX) of privileges across every matching row.
+// Higher return values are more specific; "%" is the least specific (0).
+func hostAccountSpecificity(accountHost string) int {
+	const (
+		tierWildcard = 1 << 20
+		tierNetmask  = 2 << 20
+		tierExact    = 3 << 20
+	)
+	if accountHost == "%" {
+		return 0
+	}
+	if strings.Contains(accountHost, "/") {
+		score := tierNetmask
+		parts := strings.SplitN(accountHost, "/", 2)
+		if len(parts) == 2 {
+			if mask := parseIPv4(parts[1]); mask != nil {
+				ones, _ := net.IPMask(mask).Size()
+				score += ones
+			}
+		}
+		return score
+	}
+	if idx := firstWildcardIndex(accountHost); idx >= 0 {
+		return tierWildcard + idx
+	}
+	return tierExact
+}
+
 func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *version.Version) (Privileges, string, error) {
 	db.MapperFunc(strings.Title)
-	stmt := ""
-	var err error
 	priv := Privileges{}
 	if ip == "" {
 		return priv, "", errors.New("Error getting privileges for non-existent IP address")
 	}
 
-	if strings.Contains(ip, ":") {
-		splitip := strings.Split(ip, ":")
-		iprange1 := splitip[0] + ":%:%:%"
-		iprange2 := splitip[0] + ":" + splitip[1] + ":%:%"
-		iprange3 := splitip[0] + ":" + splitip[1] + ":" + splitip[2] + ":%"
-
-		if myver.IsPostgreSQL() {
-			stmt = `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = $1`
-			row := db.QueryRowx(stmt, user)
-			err = row.StructScan(&priv)
-			if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
-				return priv, stmt, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
-			}
-
-		} else {
-			stmt = "SELECT COALESCE(MAX(Select_priv),'N') as Select_priv, COALESCE(MAX(Process_priv),'N') as Process_priv, COALESCE(MAX(Super_priv),'N') as Super_priv, COALESCE(MAX(Repl_slave_priv),'N') as Repl_slave_priv, COALESCE(MAX(Repl_client_priv),'N') as Repl_client_priv, COALESCE(MAX(Reload_priv),'N') as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
-			row := db.QueryRowx(stmt, user, host, ip, "::", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255:255.255.0", iprange1, iprange2, iprange3)
-			err = row.StructScan(&priv)
-
-			if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
-				return priv, stmt, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
-			}
+	if myver.IsPostgreSQL() {
+		stmt := `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = $1`
+		row := db.QueryRowx(stmt, user)
+		err := row.StructScan(&priv)
+		if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
+			return priv, stmt, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
 		}
 		return priv, stmt, err
 	}
-	splitip := strings.Split(ip, ".")
 
-	iprange1 := splitip[0] + ".%.%.%"
-	iprange4 := splitip[0] + ".%"
+	// Fetch every account row for this user and pick the single row that
+	// MariaDB/MySQL would select for this client, rather than approximating
+	// it with a host IN(...) list and unioning privileges across matches.
+	// ORDER BY makes row order (and thus tie-breaking between equally
+	// specific matches) deterministic across calls.
+	stmt := "SELECT Host, Select_priv, Process_priv, Super_priv, Repl_slave_priv, Repl_client_priv, Reload_priv FROM mysql.user WHERE user = ? ORDER BY Host"
+	rows, err := db.Query(stmt, user)
+	if err != nil {
+		return priv, stmt, err
+	}
+	defer rows.Close()
 
-	iprange2 := splitip[0] + "." + splitip[1] + ".%.%"
-	iprange5 := splitip[0] + "." + splitip[1] + ".%"
-
-	iprange3 := splitip[0] + "." + splitip[1] + "." + splitip[2] + ".%"
-
-	if myver.IsPostgreSQL() {
-		stmt = `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = $1`
-		row := db.QueryRowx(stmt, user)
-		err = row.StructScan(&priv)
-		if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
-			return priv, stmt, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
+	found := false
+	bestScore := 0
+	for rows.Next() {
+		var acctHost string
+		var p Privileges
+		if err := rows.Scan(&acctHost, &p.Select_priv, &p.Process_priv, &p.Super_priv, &p.Repl_slave_priv, &p.Repl_client_priv, &p.Reload_priv); err != nil {
+			return priv, stmt, err
 		}
-
-	} else {
-		stmt := "SELECT COALESCE(MAX(Select_priv),'N') as Select_priv, COALESCE(MAX(Process_priv),'N') as Process_priv, COALESCE(MAX(Super_priv),'N') as Super_priv, COALESCE(MAX(Repl_slave_priv),'N') as Repl_slave_priv, COALESCE(MAX(Repl_client_priv),'N') as Repl_client_priv, COALESCE(MAX(Reload_priv),'N') as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?,?,?)"
-		row := db.QueryRowx(stmt, user, host, ip, "%", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255.255.255.0", iprange1, iprange2, iprange3, iprange4, iprange5)
-		err = row.StructScan(&priv)
-		if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
-			return priv, stmt, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
+		if !hostAccountMatch(acctHost, host, ip) {
+			continue
+		}
+		if score := hostAccountSpecificity(acctHost); !found || score > bestScore {
+			found = true
+			bestScore = score
+			priv = p
 		}
 	}
-	return priv, stmt, err
-
+	if err := rows.Err(); err != nil {
+		return priv, stmt, err
+	}
+	if !found {
+		// No account row matches this client: report "N" for every privilege
+		// (not an error) so callers evaluating individual priv.*_priv fields,
+		// e.g. cluster.CheckPrivileges, keep raising their usual per-privilege
+		// alerts instead of a generic connection/query error.
+		priv = Privileges{
+			Select_priv:      "N",
+			Process_priv:     "N",
+			Super_priv:       "N",
+			Repl_slave_priv:  "N",
+			Repl_client_priv: "N",
+			Reload_priv:      "N",
+		}
+	}
+	return priv, stmt, nil
 }
 
 func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string, ip string, myver *version.Version) (bool, string, error) {

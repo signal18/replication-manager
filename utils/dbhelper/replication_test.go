@@ -9,8 +9,13 @@ package dbhelper
 
 import (
 	"math"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 func TestCheckSlavePrerequisites(t *testing.T) {
@@ -579,6 +584,352 @@ func TestSkipBinlogEvent_CommandGeneration(t *testing.T) {
 
 			if !strings.Contains(cmd, tt.wantCmd) {
 				t.Errorf("Generated command %q doesn't contain expected %q", cmd, tt.wantCmd)
+			}
+		})
+	}
+}
+
+func TestHostAccountMatch(t *testing.T) {
+	tests := []struct {
+		name        string
+		accountHost string
+		clientHost  string
+		clientIP    string
+		want        bool
+	}{
+		{"bare percent matches anything", "%", "db1.example.com", "10.2.3.4", true},
+		{"exact ip match", "10.2.3.4", "db1.example.com", "10.2.3.4", true},
+		{"exact hostname match", "db1.example.com", "db1.example.com", "10.2.3.4", true},
+		{"exact match is case-insensitive", "DB1.EXAMPLE.COM", "db1.example.com", "10.2.3.4", true},
+		{"unrelated exact host does not match", "otherhost", "db1.example.com", "10.2.3.4", false},
+		{"netmask /8 matches", "10.0.0.0/255.0.0.0", "db1.example.com", "10.2.3.4", true},
+		{"netmask /8 rejects out of range ip", "10.0.0.0/255.0.0.0", "db1.example.com", "11.2.3.4", false},
+		{"netmask /16 matches", "10.2.0.0/255.255.0.0", "db1.example.com", "10.2.3.4", true},
+		{"netmask /16 rejects out of range ip", "10.2.0.0/255.255.0.0", "db1.example.com", "10.9.3.4", false},
+		{"wildcard ip prefix matches", "10.2.%", "db1.example.com", "10.2.3.4", true},
+		{"wildcard ip prefix rejects mismatch", "10.9.%", "db1.example.com", "10.2.3.4", false},
+		{"wildcard hostname matches", "db%.example.com", "db1.example.com", "10.2.3.4", true},
+		{"wildcard underscore matches single char", "db_.example.com", "db1.example.com", "10.2.3.4", true},
+		{"empty account host never matches", "", "db1.example.com", "10.2.3.4", false},
+		{"escaped underscore is literal", `db1\_host`, "db1_host", "10.2.3.4", true},
+		{"escaped underscore rejects substitution", `db1\_host`, "db1Xhost", "10.2.3.4", false},
+		{"IPv6 netmask notation never matches (IPv4-only feature)", "::/ffff::", "db1.example.com", "::1", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := hostAccountMatch(tt.accountHost, tt.clientHost, tt.clientIP)
+			if got != tt.want {
+				t.Errorf("hostAccountMatch(%q, %q, %q) = %v, want %v", tt.accountHost, tt.clientHost, tt.clientIP, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHostAccountSpecificity(t *testing.T) {
+	tests := []struct {
+		name string
+		a    string
+		b    string
+	}{
+		{"exact beats netmask", "10.2.3.4", "10.2.0.0/255.255.0.0"},
+		{"exact beats wildcard", "10.2.3.4", "10.2.%"},
+		{"exact beats percent", "10.2.3.4", "%"},
+		{"narrower netmask beats broader netmask", "10.2.0.0/255.255.0.0", "10.0.0.0/255.0.0.0"},
+		{"netmask beats percent", "10.0.0.0/255.0.0.0", "%"},
+		{"more specific wildcard beats less specific wildcard", "10.2.%", "10.%"},
+		{"wildcard beats percent", "10.%", "%"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sa := hostAccountSpecificity(tt.a)
+			sb := hostAccountSpecificity(tt.b)
+			if sa <= sb {
+				t.Errorf("hostAccountSpecificity(%q)=%d, hostAccountSpecificity(%q)=%d; want %q strictly more specific", tt.a, sa, tt.b, sb, tt.a)
+			}
+		})
+	}
+}
+
+func mariaDBVersionForTest() *version.Version {
+	v, _ := version.NewVersionFromString("MariaDB", "10.6.12-MariaDB")
+	return v
+}
+
+const getPrivilegesQuery = "SELECT Host, Select_priv, Process_priv, Super_priv, Repl_slave_priv, Repl_client_priv, Reload_priv FROM mysql.user WHERE user = ? ORDER BY Host"
+
+func TestGetPrivileges_NetmaskMatch(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+
+	mock.ExpectQuery(regexp.QuoteMeta(getPrivilegesQuery)).
+		WithArgs("repl").
+		WillReturnRows(sqlmock.NewRows([]string{"Host", "Select_priv", "Process_priv", "Super_priv", "Repl_slave_priv", "Repl_client_priv", "Reload_priv"}).
+			AddRow("10.0.0.0/255.0.0.0", "Y", "Y", "Y", "Y", "Y", "Y"))
+
+	priv, _, err := GetPrivileges(sqlxdb, "repl", "db1.example.com", "10.2.3.4", mariaDBVersionForTest())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if priv.Repl_slave_priv != "Y" {
+		t.Errorf("expected netmask account to match, got privileges %+v", priv)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestGetPrivileges_MoreSpecificNetmaskWins(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+
+	mock.ExpectQuery(regexp.QuoteMeta(getPrivilegesQuery)).
+		WithArgs("repl").
+		WillReturnRows(sqlmock.NewRows([]string{"Host", "Select_priv", "Process_priv", "Super_priv", "Repl_slave_priv", "Repl_client_priv", "Reload_priv"}).
+			AddRow("10.0.0.0/255.0.0.0", "N", "N", "N", "N", "N", "N").
+			AddRow("10.2.0.0/255.255.0.0", "Y", "Y", "Y", "Y", "Y", "Y"))
+
+	priv, _, err := GetPrivileges(sqlxdb, "repl", "db1.example.com", "10.2.3.4", mariaDBVersionForTest())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if priv.Repl_slave_priv != "Y" {
+		t.Errorf("expected the /16 netmask row to win over the /8 row, got privileges %+v", priv)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+// TestGetPrivileges_MixedExactHostAndIP documents a known, deliberately
+// unresolved ambiguity: hostAccountSpecificity ranks an exact hostname row
+// and an exact IP row identically (both "tierExact"), so when a user has
+// both and a client's hostname and IP each exactly match one of them,
+// GetPrivileges breaks the tie using the ORDER BY Host row order rather than
+// replicating MariaDB/MySQL's internal ACL sort. This is a narrower
+// approximation than the wildcard/netmask specificity ranking, called out as
+// an accepted risk rather than implemented, because a byte-for-byte clone of
+// MariaDB's ACL sort was judged out of scope for this fix. If a deployment
+// relies on this exact combination for privilege differentiation, this test
+// is the place to add real precedence logic.
+func TestGetPrivileges_MixedExactHostAndIP(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+
+	// ORDER BY Host sorts "10.2.3.4" before "db1.example.com" (ASCII '1' <
+	// 'd'), so with the tie-break in GetPrivileges (first row seen wins ties
+	// via strict '>'), the IP row currently wins.
+	mock.ExpectQuery(regexp.QuoteMeta(getPrivilegesQuery)).
+		WithArgs("repl").
+		WillReturnRows(sqlmock.NewRows([]string{"Host", "Select_priv", "Process_priv", "Super_priv", "Repl_slave_priv", "Repl_client_priv", "Reload_priv"}).
+			AddRow("10.2.3.4", "Y", "N", "N", "N", "N", "N").
+			AddRow("db1.example.com", "N", "Y", "N", "N", "N", "N"))
+
+	priv, _, err := GetPrivileges(sqlxdb, "repl", "db1.example.com", "10.2.3.4", mariaDBVersionForTest())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if priv.Select_priv != "Y" || priv.Process_priv != "N" {
+		t.Errorf("tie-break behavior changed: expected the IP row (Select_priv=Y) to win via ORDER BY Host, got %+v", priv)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestGetPrivileges_ExactBeatsWildcard(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+
+	mock.ExpectQuery(regexp.QuoteMeta(getPrivilegesQuery)).
+		WithArgs("repl").
+		WillReturnRows(sqlmock.NewRows([]string{"Host", "Select_priv", "Process_priv", "Super_priv", "Repl_slave_priv", "Repl_client_priv", "Reload_priv"}).
+			AddRow("%", "N", "N", "N", "N", "N", "N").
+			AddRow("10.2.%", "N", "N", "N", "N", "N", "N").
+			AddRow("10.2.3.4", "Y", "Y", "Y", "Y", "Y", "Y"))
+
+	priv, _, err := GetPrivileges(sqlxdb, "repl", "db1.example.com", "10.2.3.4", mariaDBVersionForTest())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if priv.Repl_slave_priv != "Y" {
+		t.Errorf("expected the exact-host row to win, got privileges %+v", priv)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestGetPrivileges_WildcardSpecificity(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+
+	mock.ExpectQuery(regexp.QuoteMeta(getPrivilegesQuery)).
+		WithArgs("repl").
+		WillReturnRows(sqlmock.NewRows([]string{"Host", "Select_priv", "Process_priv", "Super_priv", "Repl_slave_priv", "Repl_client_priv", "Reload_priv"}).
+			AddRow("10.%", "N", "N", "N", "N", "N", "N").
+			AddRow("10.2.%", "Y", "Y", "Y", "Y", "Y", "Y"))
+
+	priv, _, err := GetPrivileges(sqlxdb, "repl", "db1.example.com", "10.2.3.4", mariaDBVersionForTest())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if priv.Repl_slave_priv != "Y" {
+		t.Errorf("expected the more specific '10.2.%%' row to win, got privileges %+v", priv)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestGetPrivileges_HostnameExactMatch(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+
+	mock.ExpectQuery(regexp.QuoteMeta(getPrivilegesQuery)).
+		WithArgs("repl").
+		WillReturnRows(sqlmock.NewRows([]string{"Host", "Select_priv", "Process_priv", "Super_priv", "Repl_slave_priv", "Repl_client_priv", "Reload_priv"}).
+			AddRow("%", "N", "N", "N", "N", "N", "N").
+			AddRow("db1.example.com", "Y", "Y", "Y", "Y", "Y", "Y"))
+
+	priv, _, err := GetPrivileges(sqlxdb, "repl", "db1.example.com", "10.2.3.4", mariaDBVersionForTest())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if priv.Repl_slave_priv != "Y" {
+		t.Errorf("expected the exact hostname row to win over '%%', got privileges %+v", priv)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+// TestGetPrivileges_NoMatch pins the pre-existing caller contract: when no
+// account row matches the client, GetPrivileges must return a "N"-filled
+// Privileges struct with a nil error (not a synthetic error), because
+// cluster.CheckPrivileges (cluster/srv_chk.go) only inspects individual
+// priv.*_priv fields to raise its ERR00006/ERR00007/ERR00008/ERR00009
+// alerts and treats a non-nil error as a separate ERR00005 condition.
+// Returning an error here would silently stop those specific alerts from
+// firing.
+func TestGetPrivileges_NoMatch(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+
+	mock.ExpectQuery(regexp.QuoteMeta(getPrivilegesQuery)).
+		WithArgs("repl").
+		WillReturnRows(sqlmock.NewRows([]string{"Host", "Select_priv", "Process_priv", "Super_priv", "Repl_slave_priv", "Repl_client_priv", "Reload_priv"}).
+			AddRow("192.168.0.0/255.255.0.0", "Y", "Y", "Y", "Y", "Y", "Y"))
+
+	priv, _, err := GetPrivileges(sqlxdb, "repl", "db1.example.com", "10.2.3.4", mariaDBVersionForTest())
+	if err != nil {
+		t.Fatalf("expected nil error when no account row matches (old MAX(...) query never errored either), got: %v", err)
+	}
+	want := Privileges{
+		Select_priv:      "N",
+		Process_priv:     "N",
+		Super_priv:       "N",
+		Repl_slave_priv:  "N",
+		Repl_client_priv: "N",
+		Reload_priv:      "N",
+	}
+	if priv != want {
+		t.Errorf("expected all-N privileges on no match, got %+v", priv)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestGetPrivileges_NetmaskIsIPv4Only(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+
+	mock.ExpectQuery(regexp.QuoteMeta(getPrivilegesQuery)).
+		WithArgs("repl").
+		WillReturnRows(sqlmock.NewRows([]string{"Host", "Select_priv", "Process_priv", "Super_priv", "Repl_slave_priv", "Repl_client_priv", "Reload_priv"}).
+			AddRow("::/ffff::", "Y", "Y", "Y", "Y", "Y", "Y"))
+
+	priv, _, err := GetPrivileges(sqlxdb, "repl", "db1.example.com", "::1", mariaDBVersionForTest())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if priv.Repl_slave_priv != "N" {
+		t.Errorf("expected an IPv6 network/netmask account host to never match (MariaDB/MySQL netmasks are IPv4-only), got privileges %+v", priv)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestGetPrivileges_EscapedWildcardIsLiteral(t *testing.T) {
+	// "db1\_host" (escaped underscore) must match only the literal
+	// "db1_host", not an arbitrary substitution like "db1Xhost".
+	tests := []struct {
+		name       string
+		clientHost string
+		want       string
+	}{
+		{"substituted char does not match", "db1Xhost", "N"},
+		{"literal escaped char matches", "db1_host", "Y"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatalf("failed to create sqlmock: %v", err)
+			}
+			defer db.Close()
+			sqlxdb := sqlx.NewDb(db, "sqlmock")
+
+			mock.ExpectQuery(regexp.QuoteMeta(getPrivilegesQuery)).
+				WithArgs("repl").
+				WillReturnRows(sqlmock.NewRows([]string{"Host", "Select_priv", "Process_priv", "Super_priv", "Repl_slave_priv", "Repl_client_priv", "Reload_priv"}).
+					AddRow(`db1\_host`, "Y", "Y", "Y", "Y", "Y", "Y"))
+
+			priv, _, err := GetPrivileges(sqlxdb, "repl", tt.clientHost, "10.2.3.4", mariaDBVersionForTest())
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if priv.Repl_slave_priv != tt.want {
+				t.Errorf("clientHost %q: got Repl_slave_priv %q, want %q", tt.clientHost, priv.Repl_slave_priv, tt.want)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("unmet sqlmock expectations: %v", err)
 			}
 		})
 	}
