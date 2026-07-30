@@ -5864,6 +5864,8 @@ func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWr
 	}
 
 	snapshotID := strings.TrimSpace(req.SnapshotID)
+	explicitSnapshot := snapshotID != ""
+	pickedTool := strings.TrimSpace(req.Tool)
 	if snapshotID == "" {
 		// No explicit snapshot pinned: auto-select one via the shared
 		// RestoreSelector + backup catalog (PresetResticRemoteFetch) — issue
@@ -5878,15 +5880,21 @@ func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWr
 		// prepareResticReseedPaths/reseedFromResticDump): mydumper/dumpling
 		// snapshots are directory-based and fail at execution time with
 		// "dump strategy cannot be used with directory-based backups". Force
-		// tool=mysqldump so auto-select can't hand back an incompatible
-		// logical snapshot when a compatible one exists. Physical needs no
-		// such constraint: xtrabackup/mariabackup (the only physical tools)
-		// are always single-file, so every physical pick is dump-compatible.
+		// tool=mysqldump so auto-select can't hand back mydumper/dumpling.
+		// That alone isn't enough, though: a splitdump-mode mysqldump backup
+		// is ALSO directory-based but still cataloged with Tool=="mysqldump"
+		// (SplitDump is an orthogonal bool, not a distinct tool name) --
+		// requireSingleFile additionally excludes anything tagged
+		// IsDirectory==true (mydumper or splitdump) to catch that case too.
+		// Physical needs neither constraint: xtrabackup/mariabackup (the
+		// only physical tools) are always single-file, so every physical
+		// pick is already dump-compatible.
 		tool := ""
-		if method == "logical" && strategy == "dump" {
+		requireSingleFile := method == "logical" && strategy == "dump"
+		if requireSingleFile {
 			tool = config.ConstBackupLogicalTypeMysqldump
 		}
-		snapshotID = mycluster.ResolveResticSnapshot(method, tool)
+		snapshotID, pickedTool = mycluster.ResolveResticSnapshot(method, tool, requireSingleFile)
 		if snapshotID == "" {
 			http.Error(w, "snapshotId is required (no validated restic snapshot available to auto-select)", http.StatusBadRequest)
 			return
@@ -5897,6 +5905,15 @@ func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWr
 	if snap == nil {
 		http.Error(w, "Snapshot with given ID not found", http.StatusBadRequest)
 		return
+	}
+	if explicitSnapshot {
+		// An auto-selected snapshot is already guaranteed ready (ResolveResticSnapshot's
+		// own filter requires it). An operator-pinned ID has no such guarantee:
+		// a schema-invalidated or never-scanned cache entry would otherwise
+		// 409 indefinitely with nothing to prompt a recompute except an
+		// unrelated periodic catalog rebuild. Kick off extraction before the
+		// readiness check so a retry shortly after can actually succeed.
+		mycluster.EnsureSnapshotMetadataScheduled(snapshotID)
 	}
 	if err := mycluster.RequireSnapshotMetadataReady(snapshotID); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
@@ -5912,7 +5929,13 @@ func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWr
 		SnapshotID: snapshotID,
 		Method:     method,
 		Strategy:   strategy,
-		Options:    opts,
+		// pickedTool disambiguates which of a snapshot ID's possibly-multiple
+		// same-method summaries execution should resolve to (see
+		// ResolveResticSnapshot/getSnapshotMetadataForMethod) -- from the
+		// auto-select pick above, or the operator's explicit req.Tool when
+		// they pinned their own snapshotId.
+		Tool:    pickedTool,
+		Options: opts,
 	}
 	if err := node.QueueResticReseed(queueReq); err != nil {
 		message := fmt.Sprintf("Restic reseed already queued for server %s", node.URL)
@@ -5944,6 +5967,12 @@ type ResticReseedRequest struct {
 	SnapshotID string `json:"snapshotId"`
 	Method     string `json:"method"`
 	Strategy   string `json:"strategy,omitempty"`
+	// Tool optionally disambiguates which backup tool's summary to use when
+	// snapshotId is explicitly pinned and that snapshot carries more than
+	// one same-method summary (e.g. a mysqldump line and a mydumper line
+	// taken together) -- see ResolveResticSnapshot/getSnapshotMetadataForMethod.
+	// Ignored when snapshotId is omitted (auto-select determines its own).
+	Tool       string `json:"tool,omitempty"`
 	TempDir    string `json:"tempDir,omitempty"`
 	UseTempDir *bool  `json:"useTempDir,omitempty"`
 	Cleanup    *bool  `json:"cleanup,omitempty"`

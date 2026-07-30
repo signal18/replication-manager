@@ -181,7 +181,7 @@ func (regtest *RegTest) TestResticReseedMydumper(cl *clusterpkg.Cluster, conf st
 
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Reseeding with auto strategy (should prefer mount > restore)")
 	opts := clusterpkg.ResticReseedOptions{Overwrite: "if-newer"}
-	if err := slave.JobReseedFromRestic(compressedSnapshotID, "logical", "auto", opts); err != nil {
+	if err := slave.JobReseedFromRestic(compressedSnapshotID, "logical", "auto", "", opts); err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Auto strategy reseed failed: %s", err)
 		return false
 	}
@@ -210,7 +210,7 @@ func (regtest *RegTest) TestResticReseedMydumper(cl *clusterpkg.Cluster, conf st
 		}
 
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Reseeding with explicit mount strategy (zero-copy)")
-		if err := slave.JobReseedFromRestic(compressedSnapshotID, "logical", "mount", opts); err != nil {
+		if err := slave.JobReseedFromRestic(compressedSnapshotID, "logical", "mount", "", opts); err != nil {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Mount strategy reseed failed: %s", err)
 			return false
 		}
@@ -241,7 +241,7 @@ func (regtest *RegTest) TestResticReseedMydumper(cl *clusterpkg.Cluster, conf st
 	}
 
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Reseeding with explicit restore strategy")
-	if err := slave.JobReseedFromRestic(compressedSnapshotID, "logical", "restore", opts); err != nil {
+	if err := slave.JobReseedFromRestic(compressedSnapshotID, "logical", "restore", "", opts); err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restore strategy reseed failed: %s", err)
 		return false
 	}
@@ -269,7 +269,7 @@ func (regtest *RegTest) TestResticReseedMydumper(cl *clusterpkg.Cluster, conf st
 	}
 
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Attempting dump strategy (not ideal for multi-file backups)")
-	err := slave.JobReseedFromRestic(compressedSnapshotID, "logical", "dump", opts)
+	err := slave.JobReseedFromRestic(compressedSnapshotID, "logical", "dump", "", opts)
 	if err != nil {
 		// Dump strategy is expected to fail for directory-based backups
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Dump strategy failed as expected for mydumper: %s", err)
@@ -301,7 +301,7 @@ func (regtest *RegTest) TestResticReseedMydumper(cl *clusterpkg.Cluster, conf st
 		}
 
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Reseeding from uncompressed snapshot with mount strategy")
-		if err := slave.JobReseedFromRestic(uncompressedSnapshotID, "logical", "mount", opts); err != nil {
+		if err := slave.JobReseedFromRestic(uncompressedSnapshotID, "logical", "mount", "", opts); err != nil {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Uncompressed mount strategy reseed failed: %s", err)
 			return false
 		}
@@ -332,7 +332,7 @@ func (regtest *RegTest) TestResticReseedMydumper(cl *clusterpkg.Cluster, conf st
 	}
 
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Reseeding from uncompressed snapshot with restore strategy")
-	if err := slave.JobReseedFromRestic(uncompressedSnapshotID, "logical", "restore", opts); err != nil {
+	if err := slave.JobReseedFromRestic(uncompressedSnapshotID, "logical", "restore", "", opts); err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Uncompressed restore strategy reseed failed: %s", err)
 		return false
 	}

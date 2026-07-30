@@ -28,6 +28,20 @@ const (
 	snapshotMetadataExtractorConcurrency    = 2 // Default; configurable via backup-restic-metadata-extractor-concurrency.
 	snapshotMetadataExtractionRetryInterval = 5 * time.Minute
 	snapshotMetadataFileExtension           = ".json"
+
+	// snapshotMetadataSchemaVersion identifies the shape of
+	// SnapshotMetadataSummary as persisted to disk. Bump this whenever a
+	// field is added that changes a strategy/layout decision derived from a
+	// summary (e.g. SplitDump, added so isDirectoryBackupLayout could tell a
+	// splitdump-mode mysqldump apart from a single-file one) -- otherwise a
+	// pre-upgrade on-disk cache entry loads with that field silently
+	// zero-valued, gets marked Ready with stale Summaries, and
+	// markSnapshotMetadataReadyFromSummary's "already ready, has summaries"
+	// guard means it never gets recomputed with the fixed logic. Loading an
+	// entry whose persisted version is older than this discards its
+	// Summaries and resets Status so it's treated as needing a fresh
+	// extraction, rather than trusted as still valid.
+	snapshotMetadataSchemaVersion = 2
 )
 
 var snapshotMetadataIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
@@ -58,6 +72,11 @@ type snapshotMetadataDiskEntry struct {
 	Status      snapshotMetadataStatus              `json:"status"`
 	LastAttempt time.Time                           `json:"lastAttempt"`
 	LastError   string                              `json:"lastError"`
+	// SchemaVersion is absent (zero value) on any file written before this
+	// field existed -- loadSnapshotMetadataFromDisk treats that, or any
+	// version older than snapshotMetadataSchemaVersion, as stale and
+	// discards Summaries rather than trusting them.
+	SchemaVersion int `json:"schemaVersion,omitempty"`
 }
 
 func newSnapshotMetadataCache() *snapshotMetadataCache {
@@ -272,10 +291,11 @@ func (cluster *Cluster) persistSnapshotMetadataEntry(snapshotID string, entry *s
 		return err
 	}
 	diskEntry := snapshotMetadataDiskEntry{
-		Summaries:   cloneSnapshotMetadataMap(entry.Summaries),
-		Status:      entry.Status,
-		LastAttempt: entry.LastAttempt,
-		LastError:   entry.LastError,
+		Summaries:     cloneSnapshotMetadataMap(entry.Summaries),
+		Status:        entry.Status,
+		LastAttempt:   entry.LastAttempt,
+		LastError:     entry.LastError,
+		SchemaVersion: snapshotMetadataSchemaVersion,
 	}
 	data, err := json.MarshalIndent(diskEntry, "", "  ")
 	if err != nil {
@@ -334,6 +354,19 @@ func (cluster *Cluster) loadSnapshotMetadataFromDisk(snapshotID string) (*snapsh
 	var diskEntry snapshotMetadataDiskEntry
 	if err := json.Unmarshal(data, &diskEntry); err != nil {
 		return nil, err
+	}
+	if diskEntry.SchemaVersion < snapshotMetadataSchemaVersion {
+		// Pre-upgrade file (or one written before SchemaVersion existed at
+		// all, defaulting to 0): its Summaries may be silently missing
+		// fields added since (e.g. SplitDump) that change layout/strategy
+		// decisions. Discard them and report "not computed yet" rather than
+		// trusting stale data -- the next real access recomputes fresh via
+		// SummarizeSnapshotMetadata/scheduleSnapshotMetadataExtraction, this
+		// time with the current code's derivation logic.
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo,
+			"Discarding pre-upgrade snapshot metadata cache for %s (schema %d < %d); will be recomputed",
+			snapshotID, diskEntry.SchemaVersion, snapshotMetadataSchemaVersion)
+		return &snapshotMetadataCacheEntry{Status: snapshotMetadataStatusUnknown}, nil
 	}
 	entry := &snapshotMetadataCacheEntry{
 		Status:      diskEntry.Status,
@@ -589,6 +622,12 @@ type SnapshotMetadataSummary struct {
 	BackupSessionID  string    `json:"backupSessionID,omitempty"`
 	ResticSnapshotID string    `json:"resticSnapshotID,omitempty"`
 	ResticBasePath   string    `json:"resticBasePath,omitempty"`
+	// SplitDump carries BackupMetadata.SplitDump through the summary path so
+	// isDirectoryBackupLayout (restore_catalog.go) can tell a splitdump-mode
+	// mysqldump backup apart from a single-file one even when the catalog
+	// row is derived from this summary rather than directly from a still-
+	// resident BackupMetadata record (see snapshotSummaryToCatalog).
+	SplitDump bool `json:"splitDump,omitempty"`
 }
 
 type snapshotMetadataCandidate struct {
@@ -636,6 +675,7 @@ func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupm
 		BackupSessionID:  meta.BackupSessionID,
 		ResticSnapshotID: meta.ResticSnapshotID,
 		ResticBasePath:   strings.TrimSpace(basepath),
+		SplitDump:        meta.SplitDump,
 	}
 }
 
@@ -910,6 +950,35 @@ func (cluster *Cluster) RequireSnapshotMetadataReady(snapshotID string) error {
 	default:
 		return fmt.Errorf("metadata not available for snapshot %s", snapshotID)
 	}
+}
+
+// EnsureSnapshotMetadataScheduled kicks off metadata extraction for
+// snapshotID when its cached status is neither Ready nor already Pending.
+// RequireSnapshotMetadataReady only READS status — nothing about calling it
+// makes an Unknown/Failed entry recompute. An auto-selected snapshot
+// (ResolveResticSnapshot) is already guaranteed Ready at pick time (its own
+// filter requires it), but an operator's explicitly pinned snapshotId has no
+// such guarantee: a schema-invalidated cache entry (loadSnapshotMetadataFromDisk,
+// snapshotMetadataSchemaVersion) or a snapshot never scanned at all would
+// otherwise 409 indefinitely until some UNRELATED periodic buildBackupCatalog()
+// call (HasCatalogBackupForRejoin, every 30 monitoring ticks) happens to
+// touch it. Call this before RequireSnapshotMetadataReady on an explicit
+// pin so a retry shortly after has a real chance of succeeding instead of
+// depending on that unrelated cycle. No-op (cheap) when already
+// Ready/Pending, or when the snapshot itself doesn't exist.
+func (cluster *Cluster) EnsureSnapshotMetadataScheduled(snapshotID string) {
+	if cluster == nil || cluster.ResticManager == nil {
+		return
+	}
+	switch cluster.GetSnapshotMetadataStatus(snapshotID) {
+	case snapshotMetadataStatusReady, snapshotMetadataStatusPending:
+		return
+	}
+	snap := cluster.ResticManager.GetSnapshot(snapshotID)
+	if snap == nil {
+		return
+	}
+	cluster.scheduleSnapshotMetadataExtraction(snap)
 }
 
 func (cluster *Cluster) scheduleSnapshotMetadataExtraction(snapshot *backupmgr.BackupSnapshot) {

@@ -138,6 +138,19 @@ type BackupCatalogEntry struct {
 	BinPos    string
 	Path      string // local path or repo/snapshot id
 
+	// IsDirectory is the one true "single file vs multi-file/directory"
+	// layout signal, derived via isDirectoryBackupLayout (restore_catalog.go)
+	// from Tool + the source's SplitDump flag -- NOT inferred from Tool
+	// alone. Tool=="mysqldump" cannot by itself distinguish a genuine
+	// single-file dump from a splitdump-mode one (srv_job_backup.go:3184
+	// sets SplitDump as a bool orthogonal to BackupTool). Both
+	// ResolveResticSnapshot's requireSingleFile and
+	// resolveResticReseedStrategy's dump-strategy auto-selection
+	// (srv_job_restic.go) must consult this field rather than each
+	// independently re-deriving (and potentially disagreeing about) layout
+	// from Tool.
+	IsDirectory bool
+
 	// Meta, when non-nil, is the exact BackupMetadata record this row was
 	// derived from (set only for BackupMetaMap/LastBackupMeta-sourced
 	// entries in backupMetaToCatalog; restic-summary and on-disk-enumerated

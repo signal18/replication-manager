@@ -1376,7 +1376,7 @@ func (cluster *Cluster) StateProcessing() {
 						server.URL, req.SnapshotID, req.Method, req.Strategy)
 					srv, request := server, req
 					cluster.trackTickGoroutine(func() {
-						err := srv.JobReseedFromRestic(request.SnapshotID, request.Method, request.Strategy, request.Options)
+						err := srv.JobReseedFromRestic(request.SnapshotID, request.Method, request.Strategy, request.Tool, request.Options)
 						if err != nil {
 							if srv.HasAnyReseedingState() {
 								srv.SetInReseedBackup("")

@@ -204,7 +204,7 @@ func (regtest *RegTest) TestResticReseedMariabackup(cl *clusterpkg.Cluster, conf
 
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Reseeding with auto strategy (should use restore for physical)")
 	opts := clusterpkg.ResticReseedOptions{Overwrite: "if-newer"}
-	if err := slave.JobReseedFromRestic(compressedSnapshotID, "physical", "auto", opts); err != nil {
+	if err := slave.JobReseedFromRestic(compressedSnapshotID, "physical", "auto", "", opts); err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Auto strategy reseed failed: %s", err)
 		return false
 	}
@@ -232,7 +232,7 @@ func (regtest *RegTest) TestResticReseedMariabackup(cl *clusterpkg.Cluster, conf
 	}
 
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Reseeding with explicit restore strategy (prepare, copy)")
-	if err := slave.JobReseedFromRestic(compressedSnapshotID, "physical", "restore", opts); err != nil {
+	if err := slave.JobReseedFromRestic(compressedSnapshotID, "physical", "restore", "", opts); err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restore strategy reseed failed: %s", err)
 		return false
 	}
@@ -261,7 +261,7 @@ func (regtest *RegTest) TestResticReseedMariabackup(cl *clusterpkg.Cluster, conf
 		}
 
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Reseeding with explicit mount strategy (mount, prepare, copy)")
-		if err := slave.JobReseedFromRestic(compressedSnapshotID, "physical", "mount", opts); err != nil {
+		if err := slave.JobReseedFromRestic(compressedSnapshotID, "physical", "mount", "", opts); err != nil {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Mount strategy reseed failed: %s", err)
 			return false
 		}
@@ -292,7 +292,7 @@ func (regtest *RegTest) TestResticReseedMariabackup(cl *clusterpkg.Cluster, conf
 	}
 
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Attempting dump strategy (should fail for binary files)")
-	err := slave.JobReseedFromRestic(compressedSnapshotID, "physical", "dump", opts)
+	err := slave.JobReseedFromRestic(compressedSnapshotID, "physical", "dump", "", opts)
 	if err != nil {
 		if !strings.Contains(err.Error(), "dump strategy not supported for physical backups") {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Dump strategy failed for unexpected reason: %s", err)
@@ -325,7 +325,7 @@ func (regtest *RegTest) TestResticReseedMariabackup(cl *clusterpkg.Cluster, conf
 	}
 
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Reseeding from uncompressed snapshot with restore strategy")
-	if err := slave.JobReseedFromRestic(uncompressedSnapshotID, "physical", "restore", opts); err != nil {
+	if err := slave.JobReseedFromRestic(uncompressedSnapshotID, "physical", "restore", "", opts); err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Uncompressed restore strategy reseed failed: %s", err)
 		return false
 	}
@@ -354,7 +354,7 @@ func (regtest *RegTest) TestResticReseedMariabackup(cl *clusterpkg.Cluster, conf
 		}
 
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Reseeding from uncompressed snapshot with mount strategy")
-		if err := slave.JobReseedFromRestic(uncompressedSnapshotID, "physical", "mount", opts); err != nil {
+		if err := slave.JobReseedFromRestic(uncompressedSnapshotID, "physical", "mount", "", opts); err != nil {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Uncompressed mount strategy reseed failed: %s", err)
 			return false
 		}

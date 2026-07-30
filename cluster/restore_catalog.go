@@ -202,11 +202,35 @@ func (cluster *Cluster) liveDumpCatalog() []BackupCatalogEntry {
 // to auto-select a snapshot when the operator does not pin one explicitly.
 // Exported: called from the server package, across the same boundary as
 // ListValidatedSelectors/AddValidatedSelector. tool may be empty (no tool
-// gate). Returns "" when the resolver has no remote/restic pick — the
-// caller then requires an explicit snapshot ID, same idiom as
-// resolveLogicalBackupSource/resolvePhysicalBackupSource returning ("", nil)
-// for their opposite (local-only) case.
-func (cluster *Cluster) ResolveResticSnapshot(method, tool string) string {
+// gate). requireSingleFile excludes any candidate with IsDirectory==true
+// (mydumper, dumpling, or a splitdump-mode mysqldump — see
+// isDirectoryBackupLayout, the shared source of truth resolveResticReseedStrategy
+// (srv_job_restic.go) also consults, so selection and strategy-decision can't
+// disagree about layout): the restic dump strategy
+// (srv_job_restic.go's reseedFromResticDump) only streams a single file and
+// rejects directory-based backups, so handlerMuxServerReseedRestic passes
+// true here for method=logical+strategy=dump. Returns "" when the resolver
+// has no remote/restic pick — the caller then requires an explicit
+// snapshot ID, same idiom as resolveLogicalBackupSource/resolvePhysicalBackupSource
+// returning ("", nil) for their opposite (local-only) case.
+//
+// All exclusions (single-file, existing, metadata-ready) are applied as
+// PRE-filters over the candidate set, not post-pick rejections of just the
+// single top-ranked entry — RestoreSelector has no "exclude"/"skip and
+// retry" gate, so filtering the catalog itself is what lets ranking fall
+// through to the next-best USABLE candidate (e.g. an older, ready snapshot)
+// instead of degrading to "" whenever the top-ranked one happens to be
+// pruned or still-extracting but a perfectly good older one exists.
+//
+// Returns the picked entry's Tool alongside its snapshot ID: a single
+// restic snapshot ID can carry more than one same-method summary (e.g. a
+// mysqldump line and a mydumper line taken together), and
+// getSnapshotMetadataForMethod (srv_job_restic.go) has no way to know which
+// one THIS selection meant without being told explicitly — the caller must
+// thread pickedTool through to JobReseedFromRestic/ResticReseedRequest.Tool
+// so execution resolves the same summary the selector picked, not an
+// arbitrary same-ID sibling.
+func (cluster *Cluster) ResolveResticSnapshot(method, tool string, requireSingleFile bool) (snapshotID, pickedTool string) {
 	sel := PresetResticRemoteFetch()
 	if method != "" {
 		sel.Type = []string{method}
@@ -214,35 +238,47 @@ func (cluster *Cluster) ResolveResticSnapshot(method, tool string) string {
 	if tool != "" {
 		sel.Tool = []string{tool}
 	}
-	pick := ResolveRestore(cluster.buildBackupCatalog(), sel, ResolveContext{})
+
+	catalog := cluster.buildBackupCatalog()
+	filtered := make([]BackupCatalogEntry, 0, len(catalog))
+	for _, e := range catalog {
+		if requireSingleFile && e.IsDirectory {
+			continue
+		}
+		// Existence/readiness only apply to remote/restic entries -- a
+		// local entry's Path is a filesystem path, not a restic snapshot
+		// ID, and it gets excluded by the isLocal() check below regardless.
+		if !e.isLocal() {
+			// The catalog carries restic snapshot IDs from historical
+			// metadata (BackupMetaMap/LastBackupMeta), independent of
+			// whether that snapshot still exists in the restic repo -- a
+			// purge (PurgeTask) can remove it while the old metadata
+			// record (and thus the catalog row) remains.
+			if cluster.ResticManager == nil || cluster.ResticManager.GetSnapshot(e.Path) == nil {
+				continue
+			}
+			// Existing != ready: a catalog entry's Kind/Tool can come
+			// straight from BackupMetaMap (backupMetaToCatalog) or from
+			// SummarizeSnapshotMetadata's own independent path-prefix
+			// matching against BackupMetaMap (BuildSnapshotMetadataIndex)
+			// -- neither consults the separate fetch/extraction status
+			// cache handlerMuxServerReseedRestic gates on via
+			// RequireSnapshotMetadataReady (populated by
+			// scheduleSnapshotMetadataExtraction). So a snapshot can be a
+			// fully well-formed catalog candidate while its metadata
+			// extraction is still pending/unknown/failed.
+			if cluster.RequireSnapshotMetadataReady(e.Path) != nil {
+				continue
+			}
+		}
+		filtered = append(filtered, e)
+	}
+
+	pick := ResolveRestore(filtered, sel, ResolveContext{})
 	if pick == nil || pick.isLocal() {
-		return ""
+		return "", ""
 	}
-	// The catalog carries restic snapshot IDs from historical metadata
-	// (BackupMetaMap/LastBackupMeta), independent of whether that snapshot
-	// still exists in the restic repo -- a purge (PurgeTask) can remove it
-	// while the old metadata record (and thus the catalog row) remains.
-	// Verify the pick is still actually resolvable before handing it back,
-	// so handlerMuxServerReseedRestic doesn't auto-select an ID that's
-	// guaranteed to fail "Snapshot with given ID not found" for something
-	// the operator never chose themselves.
-	if cluster.ResticManager == nil || cluster.ResticManager.GetSnapshot(pick.Path) == nil {
-		return ""
-	}
-	// Existing != ready: a catalog entry's Kind/Tool can come straight from
-	// BackupMetaMap (backupMetaToCatalog) or from SummarizeSnapshotMetadata's
-	// own independent path-prefix matching against BackupMetaMap
-	// (BuildSnapshotMetadataIndex) -- neither consults the separate
-	// fetch/extraction status cache handlerMuxServerReseedRestic gates on
-	// via RequireSnapshotMetadataReady (populated by
-	// scheduleSnapshotMetadataExtraction). So a snapshot can be a fully
-	// well-formed catalog candidate while its metadata extraction is still
-	// pending/unknown/failed, and would otherwise reach the handler only to
-	// be rejected there with a 409 for a pick the operator never made.
-	if cluster.RequireSnapshotMetadataReady(pick.Path) != nil {
-		return ""
-	}
-	return pick.Path
+	return pick.Path, pick.Tool
 }
 
 // buildBackupCatalog assembles the unified backup catalog the RestoreSelector
@@ -434,13 +470,14 @@ func (cluster *Cluster) snapshotSummaryToCatalog(snap *backupmgr.BackupSnapshot,
 		caps = append(caps, "compress")
 	}
 	return BackupCatalogEntry{
-		Server:    cluster.resolveServerURLForDest(summary.Dest),
-		Location:  RepoRemote,
-		Kind:      summary.BackupMethod,
-		Tool:      summary.BackupTool,
-		Caps:      caps,
-		Timestamp: ts,
-		Path:      snap.Id,
+		Server:      cluster.resolveServerURLForDest(summary.Dest),
+		Location:    RepoRemote,
+		Kind:        summary.BackupMethod,
+		Tool:        summary.BackupTool,
+		Caps:        caps,
+		Timestamp:   ts,
+		Path:        snap.Id,
+		IsDirectory: isDirectoryBackupLayout(summary.BackupTool, summary.SplitDump),
 	}
 }
 
@@ -473,18 +510,19 @@ func (cluster *Cluster) resolveServerURLForDest(dest string) string {
 // timestamp those call sites splice into the name between the base and its
 // extension (e.g. "mysqldump.1700000000.sql.gz").
 type onDiskBackupPattern struct {
-	re   *regexp.Regexp
-	kind string
-	tool string
-	caps []string
+	re          *regexp.Regexp
+	kind        string
+	tool        string
+	caps        []string
+	isDirectory bool
 }
 
 func onDiskBackupPatterns(physicalTool string) []onDiskBackupPattern {
 	patterns := []onDiskBackupPattern{
 		{re: regexp.MustCompile(`^mysqldump(?:\.(\d+))?\.sql\.gz$`), kind: "logical", tool: config.ConstBackupLogicalTypeMysqldump},
-		{re: regexp.MustCompile(`^splitdump(?:\.(\d+))?$`), kind: "logical", tool: config.ConstBackupLogicalTypeMysqldump, caps: []string{"can-partial-restorable"}},
-		{re: regexp.MustCompile(`^mydumper(?:\.(\d+))?$`), kind: "logical", tool: config.ConstBackupLogicalTypeMydumper, caps: []string{"can-partial-restorable"}},
-		{re: regexp.MustCompile(`^dumpling(?:\.(\d+))?$`), kind: "logical", tool: config.ConstBackupLogicalTypeDumpling},
+		{re: regexp.MustCompile(`^splitdump(?:\.(\d+))?$`), kind: "logical", tool: config.ConstBackupLogicalTypeMysqldump, caps: []string{"can-partial-restorable"}, isDirectory: true},
+		{re: regexp.MustCompile(`^mydumper(?:\.(\d+))?$`), kind: "logical", tool: config.ConstBackupLogicalTypeMydumper, caps: []string{"can-partial-restorable"}, isDirectory: true},
+		{re: regexp.MustCompile(`^dumpling(?:\.(\d+))?$`), kind: "logical", tool: config.ConstBackupLogicalTypeDumpling, isDirectory: true},
 	}
 	if physicalTool != "" {
 		patterns = append(patterns, onDiskBackupPattern{
@@ -531,18 +569,38 @@ func enumerateOnDiskBackups(server *ServerMonitor) []BackupCatalogEntry {
 				ts = info.ModTime().Unix()
 			}
 			out = append(out, BackupCatalogEntry{
-				Server:    server.URL,
-				Location:  RepoLocal,
-				Kind:      p.kind,
-				Tool:      p.tool,
-				Caps:      p.caps,
-				Timestamp: ts,
-				Path:      filepath.Join(dir, name),
+				Server:      server.URL,
+				Location:    RepoLocal,
+				Kind:        p.kind,
+				Tool:        p.tool,
+				Caps:        p.caps,
+				Timestamp:   ts,
+				Path:        filepath.Join(dir, name),
+				IsDirectory: p.isDirectory,
 			})
 			break
 		}
 	}
 	return out
+}
+
+// isDirectoryBackupLayout is the one true source for "single file vs
+// multi-file/directory" backup layout — backupMetaToCatalog,
+// snapshotSummaryToCatalog, onDiskBackupPatterns (restore_catalog.go), and
+// resolveResticReseedStrategy (srv_job_restic.go) must all derive it from
+// here instead of independently inferring from tool alone. Tool=="mysqldump"
+// covers both a genuine single-file dump and a splitdump-mode one
+// (srv_job_backup.go:3184 sets SplitDump as a bool orthogonal to BackupTool),
+// so tool name by itself cannot tell them apart.
+func isDirectoryBackupLayout(tool string, splitDump bool) bool {
+	switch strings.ToLower(strings.TrimSpace(tool)) {
+	case config.ConstBackupLogicalTypeMydumper, config.ConstBackupLogicalTypeDumpling:
+		return true
+	case config.ConstBackupLogicalTypeMysqldump:
+		return splitDump
+	default:
+		return false
+	}
 }
 
 // backupMetaToCatalog maps one BackupMetadata (Ahmad's) to a catalog entry so
@@ -583,17 +641,18 @@ func backupMetaToCatalog(serverURL string, m *backupmgr.BackupMetadata) BackupCa
 	}
 
 	return BackupCatalogEntry{
-		Server:    serverURL,
-		Location:  loc,
-		Kind:      kind,
-		Tool:      m.BackupTool,
-		Caps:      caps,
-		Proven:    false, // NEW verify mechanism will set this
-		Timestamp: ts,
-		Gtid:      m.BinLogGtid,
-		BinFile:   m.BinLogFileName,
-		BinPos:    strconv.FormatUint(m.BinLogFilePos, 10),
-		Path:      path,
-		Meta:      m,
+		Server:      serverURL,
+		Location:    loc,
+		Kind:        kind,
+		Tool:        m.BackupTool,
+		Caps:        caps,
+		Proven:      false, // NEW verify mechanism will set this
+		Timestamp:   ts,
+		Gtid:        m.BinLogGtid,
+		BinFile:     m.BinLogFileName,
+		BinPos:      strconv.FormatUint(m.BinLogFilePos, 10),
+		Path:        path,
+		Meta:        m,
+		IsDirectory: isDirectoryBackupLayout(m.BackupTool, m.SplitDump),
 	}
 }

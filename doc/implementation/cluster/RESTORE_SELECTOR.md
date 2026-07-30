@@ -131,12 +131,39 @@ type BackupCatalogEntry struct {
     BinFile   string
     BinPos    string
     Path      string   // local path or repo/snapshot id
+    IsDirectory bool   // single-file vs directory layout (mysqldump vs splitdump/mydumper/dumpling)
 }
 ```
 
 Built by merging what already exists into one list: per-server `LastBackupMeta`
 (local) **+** Restic snapshots (`ResticManager`, repo) **+** on-disk backup dirs — de-duped,
 one row per backup, any type. That merged list is what `RestoreSelector` runs against.
+
+### Restic tool disambiguation
+
+One restic `snapshotId` is **not** always one restore method. A single restic snapshot can
+carry more than one same-method summary under the same ID — for example a logical
+`mysqldump` line and a logical `mydumper` line taken together. That means the selector may
+pick a specific `(snapshotId, tool)` row, but handing execution only the `snapshotId` is not
+enough: execution must preserve **which tool-summary was chosen**.
+
+Current implementation rule:
+
+- `ResolveResticSnapshot(...)` returns both the chosen `snapshotId` **and** the chosen
+  `tool`.
+- `handlerMuxServerReseedRestic` threads that tool through `ResticReseedRequest.Tool`.
+- execution-side metadata resolution (`getSnapshotMetadataForMethod`) treats `tool` as a
+  **hard per-source constraint**, not just a ranking preference, so a wrong-tool summary from
+  an earlier cache/index source cannot shadow the correct-tool summary in a later source.
+
+Layout is also carried explicitly, not re-inferred from tool name alone:
+
+- `mysqldump` can mean either a true single-file dump or a splitdump-mode directory.
+- `SplitDump` is persisted through `SnapshotMetadataSummary`.
+- `IsDirectory` on `BackupCatalogEntry` is derived from `Tool + SplitDump` via one shared
+  helper (`isDirectoryBackupLayout`).
+- both selection (`ResolveResticSnapshot(..., requireSingleFile=true)`) and strategy choice
+  (`resolveResticReseedStrategy`) consult that same layout signal so they cannot disagree.
 
 ## Implementation notes — ranking / query
 

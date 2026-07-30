@@ -74,7 +74,14 @@ type ResticReseedRequest struct {
 	SnapshotID string
 	Method     string
 	Strategy   string
-	Options    ResticReseedOptions
+	// Tool disambiguates which backup tool's summary a snapshot ID's metadata
+	// lookup should resolve to, when that ID carries more than one same-method
+	// summary (e.g. a mysqldump line and a mydumper line taken together) --
+	// see snapshotSummaryBetter. "" means no preference (falls back to
+	// whatever ranks best by recency). Populated from ResolveResticSnapshot's
+	// pick when auto-selected, or from the operator's explicit choice.
+	Tool    string
+	Options ResticReseedOptions
 }
 
 func (server *ServerMonitor) buildResticReseedPayload(summary *SnapshotMetadataSummary, sourceBase, strategy string) map[string]string {
@@ -143,7 +150,7 @@ func (server *ServerMonitor) DequeueResticReseed() (ResticReseedRequest, bool) {
 // This function returns a single strategy (no fallback chain) to avoid partial state
 // corruption, resource leaks, and misleading error messages that can occur when
 // multiple strategies are attempted sequentially.
-func resolveResticReseedStrategy(requestedStrategy, method, snapshotID string, cluster *Cluster) string {
+func resolveResticReseedStrategy(requestedStrategy, method, snapshotID, tool string, cluster *Cluster) string {
 	normalizedRequested := strings.ToLower(strings.TrimSpace(requestedStrategy))
 	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
 
@@ -184,9 +191,12 @@ func resolveResticReseedStrategy(requestedStrategy, method, snapshotID string, c
 		}
 	}
 
-	// Auto-select optimal strategy based on snapshot metadata.
+	// Auto-select optimal strategy based on snapshot metadata. Method AND
+	// tool aware (getSnapshotMetadataForMethod), so this resolves the SAME
+	// summary prepareResticReseedPaths will use for the same
+	// (snapshotID, method, tool) -- not just method-blind as before.
 	if strategy == "" {
-		metadata := getSnapshotMetadata(cluster, snapshotID, nil)
+		metadata := getSnapshotMetadataForMethod(cluster, snapshotID, normalizedMethod, tool, nil)
 		if metadata == nil {
 			// Without metadata we choose the safest option.
 			strategy = "restore"
@@ -194,8 +204,13 @@ func resolveResticReseedStrategy(requestedStrategy, method, snapshotID string, c
 			backupTool := strings.ToLower(strings.TrimSpace(metadata.BackupTool))
 			backupMethod := strings.ToLower(strings.TrimSpace(metadata.BackupMethod))
 
-			// Prefer mysqldump streaming when it is a logical, single-file snapshot.
-			if backupTool == config.ConstBackupLogicalTypeMysqldump {
+			// Prefer mysqldump streaming when it is a logical, single-file
+			// snapshot -- isDirectoryBackupLayout (restore_catalog.go) is the
+			// shared layout signal ResolveResticSnapshot's requireSingleFile
+			// also consults, so a splitdump-mode mysqldump (BackupTool ==
+			// "mysqldump" but SplitDump == true) can't independently resolve
+			// to "dump" here after being correctly excluded there.
+			if backupTool == config.ConstBackupLogicalTypeMysqldump && !isDirectoryBackupLayout(backupTool, metadata.SplitDump) {
 				if normalizedMethod == "logical" || (normalizedMethod == "" && backupMethod == "logical") {
 					strategy = "dump"
 				}
@@ -228,36 +243,89 @@ func resolveResticReseedStrategy(requestedStrategy, method, snapshotID string, c
 	return strategy
 }
 
-// getSnapshotMetadata selects the best available metadata summary for a restic snapshot.
-// It prefers cached metadata derived from snapshot metadata files, with a fallback to
-// backup metadata summaries when no extracted metadata is available.
-func getSnapshotMetadata(cluster *Cluster, snapshotID string, index SnapshotMetadataIndex) *SnapshotMetadataSummary {
+// snapshotSummaryBetter reports whether candidate ranks ahead of current (nil
+// current always loses) when disambiguating which SnapshotMetadataSummary
+// under one restic snapshot ID actually corresponds to what was selected.
+// Exact-ResticSnapshotID-match and tool are EVALUATED, never short-circuited
+// on first match: a snapshot can carry multiple same-method summaries (e.g.
+// a mysqldump line and a mydumper line taken together, see
+// TestBuildBackupCatalog_ResticSnapshotMultipleSummariesSameKindDifferentTool,
+// restore_catalog_test.go), so returning on the first exact-ID hit made this
+// non-deterministic over Go's randomized map iteration -- ResolveResticSnapshot
+// could pick the mysqldump entry while this returned the mydumper one purely
+// by iteration luck. tool ("" = no preference) breaks ties deterministically
+// in favor of whichever candidate matches the tool the selector actually
+// picked.
+func snapshotSummaryBetter(candidate, current *SnapshotMetadataSummary, snapshotID, tool string) bool {
+	if current == nil {
+		return true
+	}
+	candidateExact := strings.TrimSpace(candidate.ResticSnapshotID) == snapshotID
+	currentExact := strings.TrimSpace(current.ResticSnapshotID) == snapshotID
+	if candidateExact != currentExact {
+		return candidateExact
+	}
+	if tool != "" {
+		candidateTool := strings.EqualFold(strings.TrimSpace(candidate.BackupTool), tool)
+		currentTool := strings.EqualFold(strings.TrimSpace(current.BackupTool), tool)
+		if candidateTool != currentTool {
+			return candidateTool
+		}
+	}
+	if current.EndTime.IsZero() != candidate.EndTime.IsZero() {
+		return !candidate.EndTime.IsZero()
+	}
+	if !candidate.EndTime.Equal(current.EndTime) {
+		return candidate.EndTime.After(current.EndTime)
+	}
+	if !candidate.StartTime.Equal(current.StartTime) {
+		return candidate.StartTime.After(current.StartTime)
+	}
+	// Genuine tie on every real signal (can happen when two lines were
+	// captured in the same run with identical timestamps and no tool hint
+	// was given) -- fall back to lexical BackupTool so the pick is at least
+	// reproducible across calls instead of depending on Go's randomized map
+	// iteration order over entry.Summaries.
+	return strings.TrimSpace(candidate.BackupTool) < strings.TrimSpace(current.BackupTool)
+}
+
+// getSnapshotMetadataForMethod selects the best available metadata summary
+// for a restic snapshot, optionally constrained to a method ("logical" |
+// "physical", "" = any) and a tool ("mysqldump" | "mydumper" | ..., "" = any
+// -- the disambiguator when one snapshot ID carries multiple same-method
+// summaries. Prefers cached metadata derived from snapshot metadata files,
+// with a fallback to backup metadata summaries when no extracted metadata
+// is available.
+//
+// tool, when non-empty, is a HARD constraint WITHIN each of the three
+// sources below (index, cache entry, live BackupMetaMap fallback) — not
+// just a ranking preference among whichever source answers first. The
+// caller only ever passes a non-empty tool because it already knows
+// (typically from ResolveResticSnapshot's pick) exactly which tool's
+// summary it needs, so a same-method but wrong-tool summary from an
+// EARLIER source must not shadow the correct-tool one sitting in a LATER
+// source: each source is filtered to tool-matching candidates only, and a
+// source with none falls through to the next rather than returning the
+// wrong tool. See TestGetSnapshotMetadataForMethod_ToolConstraintFallsThroughSources.
+func getSnapshotMetadataForMethod(cluster *Cluster, snapshotID, method, tool string, index SnapshotMetadataIndex) *SnapshotMetadataSummary {
 	if cluster == nil || strings.TrimSpace(snapshotID) == "" {
 		return nil
 	}
+	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
+	normalizedTool := strings.ToLower(strings.TrimSpace(tool))
 	selectBestSummary := func(candidates []*SnapshotMetadataSummary) *SnapshotMetadataSummary {
 		var selected *SnapshotMetadataSummary
 		for _, candidate := range candidates {
 			if candidate == nil {
 				continue
 			}
-			resticID := strings.TrimSpace(candidate.ResticSnapshotID)
-			if resticID != "" && resticID == snapshotID {
-				return candidate
-			}
-			if selected == nil {
-				selected = candidate
+			if normalizedMethod != "" && strings.ToLower(strings.TrimSpace(candidate.BackupMethod)) != normalizedMethod {
 				continue
 			}
-			if selected.EndTime.IsZero() && !candidate.EndTime.IsZero() {
-				selected = candidate
+			if normalizedTool != "" && !strings.EqualFold(strings.TrimSpace(candidate.BackupTool), normalizedTool) {
 				continue
 			}
-			if candidate.EndTime.After(selected.EndTime) {
-				selected = candidate
-				continue
-			}
-			if candidate.EndTime.Equal(selected.EndTime) && candidate.StartTime.After(selected.StartTime) {
+			if snapshotSummaryBetter(candidate, selected, snapshotID, normalizedTool) {
 				selected = candidate
 			}
 		}
@@ -282,71 +350,6 @@ func getSnapshotMetadata(cluster *Cluster, snapshotID string, index SnapshotMeta
 		}
 	}
 	// Fall back to best-effort summaries derived from backup metadata.
-	snapshots := cluster.GetSnapshots()
-	for i := range snapshots {
-		if snapshots[i].Id == snapshotID {
-			return selectBestSummary(cluster.SummarizeSnapshotMetadata(&snapshots[i]))
-		}
-	}
-	return nil
-}
-
-func getSnapshotMetadataForMethod(cluster *Cluster, snapshotID, method string, index SnapshotMetadataIndex) *SnapshotMetadataSummary {
-	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
-	if normalizedMethod == "" {
-		return getSnapshotMetadata(cluster, snapshotID, index)
-	}
-	if cluster == nil || strings.TrimSpace(snapshotID) == "" {
-		return nil
-	}
-	selectBestSummary := func(candidates []*SnapshotMetadataSummary) *SnapshotMetadataSummary {
-		var selected *SnapshotMetadataSummary
-		for _, candidate := range candidates {
-			if candidate == nil {
-				continue
-			}
-			if strings.ToLower(strings.TrimSpace(candidate.BackupMethod)) != normalizedMethod {
-				continue
-			}
-			resticID := strings.TrimSpace(candidate.ResticSnapshotID)
-			if resticID != "" && resticID == snapshotID {
-				return candidate
-			}
-			if selected == nil {
-				selected = candidate
-				continue
-			}
-			if selected.EndTime.IsZero() && !candidate.EndTime.IsZero() {
-				selected = candidate
-				continue
-			}
-			if candidate.EndTime.After(selected.EndTime) {
-				selected = candidate
-				continue
-			}
-			if candidate.EndTime.Equal(selected.EndTime) && candidate.StartTime.After(selected.StartTime) {
-				selected = candidate
-			}
-		}
-		return selected
-	}
-	if len(index) > 0 {
-		if selected := selectBestSummary(index[snapshotID]); selected != nil {
-			return selected
-		}
-	}
-	if entry, ok := cluster.getSnapshotMetadataCacheEntry(snapshotID); ok && entry != nil {
-		candidates := make([]*SnapshotMetadataSummary, 0, len(entry.Summaries))
-		for _, summary := range entry.Summaries {
-			if summary == nil {
-				continue
-			}
-			candidates = append(candidates, summary)
-		}
-		if selected := selectBestSummary(candidates); selected != nil {
-			return selected
-		}
-	}
 	snapshots := cluster.GetSnapshots()
 	for i := range snapshots {
 		if snapshots[i].Id == snapshotID {
@@ -396,11 +399,31 @@ func getSnapshotCompression(cluster *Cluster, snapshotID string) (bool, bool) {
 
 // getSnapshotLogicalSplitUser returns split-user flag from backup metadata when available.
 // Returns (splitUser, true) when matching metadata is found.
-func getSnapshotLogicalSplitUser(cluster *Cluster, snapshotID string) (bool, bool) {
+func getSnapshotLogicalSplitUser(cluster *Cluster, snapshotID, tool string) (bool, bool) {
 	if cluster == nil || cluster.BackupMetaMap == nil || strings.TrimSpace(snapshotID) == "" {
 		return false, false
 	}
+	normalizedTool := strings.ToLower(strings.TrimSpace(tool))
 	var selected *backupmgr.BackupMetadata
+	better := func(meta, current *backupmgr.BackupMetadata) bool {
+		if current == nil {
+			return true
+		}
+		if normalizedTool != "" {
+			metaTool := strings.EqualFold(strings.TrimSpace(meta.BackupTool), normalizedTool)
+			currentTool := strings.EqualFold(strings.TrimSpace(current.BackupTool), normalizedTool)
+			if metaTool != currentTool {
+				return metaTool
+			}
+		}
+		if current.EndTime.IsZero() != meta.EndTime.IsZero() {
+			return !meta.EndTime.IsZero()
+		}
+		if !meta.EndTime.Equal(current.EndTime) {
+			return meta.EndTime.After(current.EndTime)
+		}
+		return meta.StartTime.After(current.StartTime)
+	}
 	cluster.BackupMetaMap.Range(func(_, value any) bool {
 		meta, ok := value.(*backupmgr.BackupMetadata)
 		if !ok || meta == nil {
@@ -412,19 +435,7 @@ func getSnapshotLogicalSplitUser(cluster *Cluster, snapshotID string) (bool, boo
 		if meta.BackupMethod != backupmgr.BackupMethodLogical {
 			return true
 		}
-		if selected == nil {
-			selected = meta
-			return true
-		}
-		if selected.EndTime.IsZero() && !meta.EndTime.IsZero() {
-			selected = meta
-			return true
-		}
-		if meta.EndTime.After(selected.EndTime) {
-			selected = meta
-			return true
-		}
-		if meta.EndTime.Equal(selected.EndTime) && meta.StartTime.After(selected.StartTime) {
+		if better(meta, selected) {
 			selected = meta
 		}
 		return true
@@ -438,7 +449,7 @@ func getSnapshotLogicalSplitUser(cluster *Cluster, snapshotID string) (bool, boo
 // prepareResticReseedPaths builds the list of snapshot paths to restore for a restic reseed.
 // It inspects snapshot metadata to determine backup tool, layout (file vs directory), and
 // compression, then returns a populated ResticReseedPaths descriptor for later stages.
-func (server *ServerMonitor) prepareResticReseedPaths(snapshotID, method string) (*ResticReseedPaths, error) {
+func (server *ServerMonitor) prepareResticReseedPaths(snapshotID, method, tool string) (*ResticReseedPaths, error) {
 	if strings.TrimSpace(snapshotID) == "" {
 		return nil, fmt.Errorf("snapshot id is required")
 	}
@@ -446,7 +457,7 @@ func (server *ServerMonitor) prepareResticReseedPaths(snapshotID, method string)
 	if cluster == nil {
 		return nil, fmt.Errorf("cluster not available")
 	}
-	metadata := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil)
+	metadata := getSnapshotMetadataForMethod(cluster, snapshotID, method, tool, nil)
 	if metadata == nil {
 		return nil, fmt.Errorf("snapshot metadata not available for %s (method %s)", snapshotID, strings.ToLower(strings.TrimSpace(method)))
 	}
@@ -469,11 +480,25 @@ func (server *ServerMonitor) prepareResticReseedPaths(snapshotID, method string)
 		isDirectory = true
 		sourcePaths = []string{"dumpling"}
 	case config.ConstBackupLogicalTypeMysqldump:
-		fileName = "mysqldump.sql"
-		if compressed {
-			fileName += ".gz"
+		// isDirectoryBackupLayout (restore_catalog.go) is the same signal
+		// ResolveResticSnapshot/resolveResticReseedStrategy already consult
+		// -- a splitdump-mode mysqldump (metadata.SplitDump==true) is a
+		// directory ("splitdump", resolveMysqldumpDest/backup_helpers.go),
+		// not the single mysqldump.sql[.gz] file. Without this, isDirectory
+		// stayed false here even after resolveResticSourcePaths below
+		// correctly rewrote sourcePaths to "splitdump" from metadata.Dest,
+		// leaving reseedFromResticDump's directory guard (paths.IsDirectory)
+		// bypassable for a splitdump snapshot.
+		if isDirectoryBackupLayout(backupTool, metadata.SplitDump) {
+			isDirectory = true
+			sourcePaths = []string{"splitdump"}
+		} else {
+			fileName = "mysqldump.sql"
+			if compressed {
+				fileName += ".gz"
+			}
+			sourcePaths = []string{fileName}
 		}
-		sourcePaths = []string{fileName}
 	case config.ConstBackupPhysicalTypeXtrabackup:
 		fileName = "xtrabackup.xbtream"
 		if compressed {
@@ -922,12 +947,12 @@ var resticReseedTimeout = func(opts ResticReseedOptions, conf *config.Config) ti
 	return 1 * time.Hour
 }
 
-func resticReseedTaskName(cluster *Cluster, snapshotID, method string) string {
+func resticReseedTaskName(cluster *Cluster, snapshotID, method, tool string) string {
 	if cluster == nil {
 		return ""
 	}
 	backupTool := ""
-	if summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil); summary != nil {
+	if summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, tool, nil); summary != nil {
 		backupTool = strings.TrimSpace(summary.BackupTool)
 	}
 	if backupTool == "" {
@@ -951,7 +976,7 @@ func resticReseedTaskName(cluster *Cluster, snapshotID, method string) string {
 // The function validates inputs, ensures snapshot metadata is ready, resolves the strategy chain,
 // and then attempts each strategy in order until one succeeds or all fail. Cleanup is handled
 // defensively via defer by the underlying strategy implementations.
-func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy string, opts ResticReseedOptions) error {
+func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy, tool string, opts ResticReseedOptions) error {
 	if strings.TrimSpace(snapshotID) == "" {
 		return fmt.Errorf("snapshot ID is required")
 	}
@@ -1019,7 +1044,7 @@ func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy st
 		return fmt.Errorf("snapshot metadata not ready: %w", err)
 	}
 
-	selectedStrategy := resolveResticReseedStrategy(strategy, normalizedMethod, snapshotID, cluster)
+	selectedStrategy := resolveResticReseedStrategy(strategy, normalizedMethod, snapshotID, tool, cluster)
 	logSnapshotID := resticLogSnapshotID(cluster, snapshotID)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose,
@@ -1034,7 +1059,7 @@ func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy st
 	var cancel context.CancelFunc
 	if normalizedMethod == "logical" {
 		ctx, cancel = context.WithCancel(context.Background())
-		task := resticReseedTaskName(cluster, snapshotID, normalizedMethod)
+		task := resticReseedTaskName(cluster, snapshotID, normalizedMethod, tool)
 		if task != "" {
 			server.registerJobCancel(task, cancel)
 			defer server.clearJobCancel(task)
@@ -1055,11 +1080,11 @@ func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy st
 	var err error
 	switch selectedStrategy {
 	case "restore":
-		err = server.reseedFromResticRestore(ctx, snapshotID, normalizedMethod, opts)
+		err = server.reseedFromResticRestore(ctx, snapshotID, normalizedMethod, tool, opts)
 	case "dump":
-		err = server.reseedFromResticDump(ctx, snapshotID, normalizedMethod)
+		err = server.reseedFromResticDump(ctx, snapshotID, normalizedMethod, tool)
 	case "mount":
-		err = server.reseedFromResticMount(ctx, snapshotID, normalizedMethod)
+		err = server.reseedFromResticMount(ctx, snapshotID, normalizedMethod, tool)
 	default:
 		return fmt.Errorf("unknown strategy: %s", selectedStrategy)
 	}
@@ -1070,7 +1095,7 @@ func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy st
 			config.LvlErr,
 			"Restic reseed failed with strategy %s: %s",
 			selectedStrategy, err)
-		server.updateResticReseedJobError(snapshotID, normalizedMethod, err)
+		server.updateResticReseedJobError(snapshotID, normalizedMethod, tool, err)
 		return fmt.Errorf("reseed strategy %s failed: %w", selectedStrategy, err)
 	}
 	if normalizedMethod == "physical" {
@@ -1086,7 +1111,7 @@ func (server *ServerMonitor) JobReseedFromRestic(snapshotID, method, strategy st
 	return nil
 }
 
-func (server *ServerMonitor) updateResticReseedJobError(snapshotID, method string, err error) {
+func (server *ServerMonitor) updateResticReseedJobError(snapshotID, method, tool string, err error) {
 	if server == nil || err == nil {
 		return
 	}
@@ -1094,7 +1119,7 @@ func (server *ServerMonitor) updateResticReseedJobError(snapshotID, method strin
 	if cluster == nil {
 		return
 	}
-	task := resticReseedTaskName(cluster, snapshotID, method)
+	task := resticReseedTaskName(cluster, snapshotID, method, tool)
 	if task == "" {
 		return
 	}
@@ -1109,7 +1134,7 @@ func (server *ServerMonitor) updateResticReseedJobError(snapshotID, method strin
 	}
 }
 
-func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapshotID, method string, opts ResticReseedOptions) error {
+func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapshotID, method, tool string, opts ResticReseedOptions) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -1141,14 +1166,14 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
 	shortID := strings.TrimSpace(snap.ShortId)
 
-	paths, err := server.prepareResticReseedPaths(snapshotID, method)
+	paths, err := server.prepareResticReseedPaths(snapshotID, method, tool)
 	if err != nil {
 		return fmt.Errorf("failed to prepare paths: %w", err)
 	}
 
 	logSnapshotID := resticLogSnapshotID(cluster, snapshotID)
 	metadataPathMatches := func(path string) (bool, error) {
-		summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil)
+		summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, tool, nil)
 		if summary == nil {
 			return false, fmt.Errorf("snapshot metadata not available")
 		}
@@ -1440,7 +1465,7 @@ func (server *ServerMonitor) reseedFromResticRestore(ctx context.Context, snapsh
 	switch normalizedMethod {
 	case "logical":
 		logicalOpts := JobReseedLogicalOptions{}
-		if splitUser, ok := getSnapshotLogicalSplitUser(cluster, snapshotID); ok {
+		if splitUser, ok := getSnapshotLogicalSplitUser(cluster, snapshotID, tool); ok {
 			logicalOpts.SplitUser = &splitUser
 			cluster.LogModulePrintf(cluster.Conf.Verbose,
 				config.ConstLogModRestic,
@@ -1520,7 +1545,7 @@ func (server *ServerMonitor) restoreSnapshotWithFallback(cluster *Cluster, snaps
 	}
 }
 
-func (server *ServerMonitor) reseedFromResticDump(ctx context.Context, snapshotID, method string) error {
+func (server *ServerMonitor) reseedFromResticDump(ctx context.Context, snapshotID, method, tool string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -1543,7 +1568,7 @@ func (server *ServerMonitor) reseedFromResticDump(ctx context.Context, snapshotI
 		return fmt.Errorf("restic snapshot %s not found", snapshotID)
 	}
 
-	paths, err := server.prepareResticReseedPaths(snapshotID, method)
+	paths, err := server.prepareResticReseedPaths(snapshotID, method, tool)
 	if err != nil {
 		return fmt.Errorf("failed to prepare paths: %w", err)
 	}
@@ -1559,7 +1584,7 @@ func (server *ServerMonitor) reseedFromResticDump(ctx context.Context, snapshotI
 	sourceFile := filepath.Join(paths.SourceBasePath, paths.SourcePaths[0])
 	logSnapshotID := resticLogSnapshotID(cluster, snapshotID)
 	metadataPathMatches := func(path string) (bool, error) {
-		summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil)
+		summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, tool, nil)
 		if summary == nil {
 			return false, fmt.Errorf("snapshot metadata not available")
 		}
@@ -1832,7 +1857,7 @@ func (server *ServerMonitor) reseedMysqldumpFromResticStream(ctx context.Context
 	return nil
 }
 
-func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshotID, method string) error {
+func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshotID, method, tool string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -1855,7 +1880,7 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 
 	normalizedMethod := strings.ToLower(strings.TrimSpace(method))
 
-	paths, err := server.prepareResticReseedPaths(snapshotID, method)
+	paths, err := server.prepareResticReseedPaths(snapshotID, method, tool)
 	if err != nil {
 		return fmt.Errorf("failed to prepare paths: %w", err)
 	}
@@ -2205,7 +2230,7 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 	switch normalizedMethod {
 	case "logical":
 		logicalOpts := JobReseedLogicalOptions{SkipMetadata: true}
-		if splitUser, ok := getSnapshotLogicalSplitUser(cluster, snapshotID); ok {
+		if splitUser, ok := getSnapshotLogicalSplitUser(cluster, snapshotID, tool); ok {
 			logicalOpts.SplitUser = &splitUser
 			cluster.LogModulePrintf(cluster.Conf.Verbose,
 				config.ConstLogModRestic,
@@ -2216,7 +2241,7 @@ func (server *ServerMonitor) reseedFromResticMount(ctx context.Context, snapshot
 		return server.JobReseedLogicalBackupFromPathWithOptions(ctx, paths.BackupType, paths.TargetPaths[0], logicalOpts)
 	case "physical":
 		task := "reseed" + paths.BackupType
-		if summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, nil); summary != nil {
+		if summary := getSnapshotMetadataForMethod(cluster, snapshotID, method, tool, nil); summary != nil {
 			payload := server.buildResticReseedPayload(summary, paths.SourceBasePath, "mount")
 			server.registerResticReseedCleanup(task, paths, true, userID)
 			if err := server.JobReseedPhysicalBackupWithPayload(paths.BackupType, paths.TargetPaths[0], payload); err != nil {

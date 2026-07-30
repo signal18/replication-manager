@@ -35,7 +35,7 @@ func TestPrepareResticReseedPathsUsesMetadataDest(t *testing.T) {
 		entry.Summaries = map[string]*SnapshotMetadataSummary{key: summary}
 	})
 	server := &ServerMonitor{ClusterGroup: cluster}
-	paths, err := server.prepareResticReseedPaths("snap-1", "logical")
+	paths, err := server.prepareResticReseedPaths("snap-1", "logical", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestPrepareResticReseedPathsUsesMetadataDir(t *testing.T) {
 		entry.Summaries = map[string]*SnapshotMetadataSummary{key: summary}
 	})
 	server := &ServerMonitor{ClusterGroup: cluster}
-	paths, err := server.prepareResticReseedPaths("snap-2", "logical")
+	paths, err := server.prepareResticReseedPaths("snap-2", "logical", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -80,6 +80,271 @@ func TestPrepareResticReseedPathsUsesMetadataDir(t *testing.T) {
 	}
 	if paths.SourcePaths[0] != "custom_dir" {
 		t.Fatalf("unexpected source path %q", paths.SourcePaths[0])
+	}
+}
+
+func TestPrepareResticReseedPathsSplitdumpIsDirectory(t *testing.T) {
+	// The execution-side counterpart to the selector/strategy splitdump
+	// fixes: a splitdump-mode mysqldump snapshot (BackupTool=="mysqldump",
+	// SplitDump=true) must be reported as IsDirectory==true, matching
+	// isDirectoryBackupLayout (restore_catalog.go) -- not the previous
+	// tool-name-only inference, which always treated "mysqldump" as
+	// single-file regardless of SplitDump and left reseedFromResticDump's
+	// directory guard bypassable.
+	cluster := &Cluster{
+		Conf:          &config.Config{},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
+	}
+	manager := cluster.getSnapshotMetadataManager()
+	summary := &SnapshotMetadataSummary{
+		Dest:             "/backups/cluster1/splitdump",
+		BackupMethod:     "logical",
+		BackupTool:       config.ConstBackupLogicalTypeMysqldump,
+		BackupLine:       backupmgr.BackupLineDefault,
+		StartTime:        time.Now(),
+		ResticSnapshotID: "snap-splitdump",
+		ResticBasePath:   "/backups/cluster1",
+		SplitDump:        true,
+	}
+	key := "1|default"
+	manager.cache.Update("snap-splitdump", func(entry *snapshotMetadataCacheEntry) {
+		entry.Status = snapshotMetadataStatusReady
+		entry.Summaries = map[string]*SnapshotMetadataSummary{key: summary}
+	})
+	server := &ServerMonitor{ClusterGroup: cluster}
+	paths, err := server.prepareResticReseedPaths("snap-splitdump", "logical", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !paths.IsDirectory {
+		t.Fatalf("BUG: splitdump-mode mysqldump snapshot must report IsDirectory=true")
+	}
+	if len(paths.SourcePaths) != 1 || paths.SourcePaths[0] != "splitdump" {
+		t.Fatalf("expected source path [splitdump], got %+v", paths.SourcePaths)
+	}
+}
+
+func TestPrepareResticReseedPathsSingleFileMysqldumpStaysFile(t *testing.T) {
+	// Regression companion to the above: a genuine single-file mysqldump
+	// (SplitDump=false) must still report IsDirectory==false.
+	cluster := &Cluster{
+		Conf:          &config.Config{},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
+	}
+	manager := cluster.getSnapshotMetadataManager()
+	summary := &SnapshotMetadataSummary{
+		Dest:             "/backups/cluster1/mysqldump.sql.gz",
+		BackupMethod:     "logical",
+		BackupTool:       config.ConstBackupLogicalTypeMysqldump,
+		BackupLine:       backupmgr.BackupLineDefault,
+		StartTime:        time.Now(),
+		ResticSnapshotID: "snap-singlefile-exec",
+		ResticBasePath:   "/backups/cluster1",
+		SplitDump:        false,
+	}
+	key := "1|default"
+	manager.cache.Update("snap-singlefile-exec", func(entry *snapshotMetadataCacheEntry) {
+		entry.Status = snapshotMetadataStatusReady
+		entry.Summaries = map[string]*SnapshotMetadataSummary{key: summary}
+	})
+	server := &ServerMonitor{ClusterGroup: cluster}
+	paths, err := server.prepareResticReseedPaths("snap-singlefile-exec", "logical", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if paths.IsDirectory {
+		t.Fatalf("single-file mysqldump snapshot must not report IsDirectory=true")
+	}
+	if len(paths.SourcePaths) != 1 || paths.SourcePaths[0] != "mysqldump.sql.gz" {
+		t.Fatalf("expected source path [mysqldump.sql.gz], got %+v", paths.SourcePaths)
+	}
+}
+
+// ---- resolveResticReseedStrategy + splitdump layout signal ----
+
+func TestResolveResticReseedStrategy_AutoPicksDumpForSingleFileMysqldump(t *testing.T) {
+	cluster := &Cluster{
+		Conf:          &config.Config{},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
+	}
+	manager := cluster.getSnapshotMetadataManager()
+	summary := &SnapshotMetadataSummary{
+		Dest: "/backups/cluster1/mysqldump.sql.gz", BackupMethod: "logical",
+		BackupTool: config.ConstBackupLogicalTypeMysqldump, BackupLine: backupmgr.BackupLineDefault,
+		StartTime: time.Now(), ResticSnapshotID: "snap-singlefile", SplitDump: false,
+	}
+	key := "1|default"
+	manager.cache.Update("snap-singlefile", func(entry *snapshotMetadataCacheEntry) {
+		entry.Status = snapshotMetadataStatusReady
+		entry.Summaries = map[string]*SnapshotMetadataSummary{key: summary}
+	})
+
+	if got := resolveResticReseedStrategy("auto", "logical", "snap-singlefile", "", cluster); got != "dump" {
+		t.Fatalf("expected auto-selection to pick dump for a single-file mysqldump snapshot, got %q", got)
+	}
+}
+
+func TestResolveResticReseedStrategy_AutoDoesNotPickDumpForSplitdump(t *testing.T) {
+	// The exact "Option B" regression: a splitdump-mode mysqldump summary
+	// (BackupTool=="mysqldump", SplitDump=true) reaching the strategy
+	// resolver via the summary-backed metadata path must NOT resolve to
+	// "dump" -- isDirectoryBackupLayout (restore_catalog.go) is the shared
+	// signal that keeps this decision consistent with
+	// ResolveResticSnapshot's requireSingleFile exclusion.
+	cluster := &Cluster{
+		Conf:          &config.Config{},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
+	}
+	manager := cluster.getSnapshotMetadataManager()
+	summary := &SnapshotMetadataSummary{
+		Dest: "/backups/cluster1/splitdump", BackupMethod: "logical",
+		BackupTool: config.ConstBackupLogicalTypeMysqldump, BackupLine: backupmgr.BackupLineDefault,
+		StartTime: time.Now(), ResticSnapshotID: "snap-splitdump", SplitDump: true,
+	}
+	key := "1|default"
+	manager.cache.Update("snap-splitdump", func(entry *snapshotMetadataCacheEntry) {
+		entry.Status = snapshotMetadataStatusReady
+		entry.Summaries = map[string]*SnapshotMetadataSummary{key: summary}
+	})
+
+	if got := resolveResticReseedStrategy("auto", "logical", "snap-splitdump", "", cluster); got == "dump" {
+		t.Fatalf("BUG: auto-selection must not pick dump for a splitdump-mode mysqldump snapshot, got %q", got)
+	}
+}
+
+func TestResolveResticReseedStrategy_MydumperUnaffected(t *testing.T) {
+	cluster := &Cluster{
+		Conf:          &config.Config{},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
+	}
+	manager := cluster.getSnapshotMetadataManager()
+	summary := &SnapshotMetadataSummary{
+		Dest: "/backups/cluster1/mydumper", BackupMethod: "logical",
+		BackupTool: config.ConstBackupLogicalTypeMydumper, BackupLine: backupmgr.BackupLineDefault,
+		StartTime: time.Now(), ResticSnapshotID: "snap-mydumper",
+	}
+	key := "1|default"
+	manager.cache.Update("snap-mydumper", func(entry *snapshotMetadataCacheEntry) {
+		entry.Status = snapshotMetadataStatusReady
+		entry.Summaries = map[string]*SnapshotMetadataSummary{key: summary}
+	})
+
+	if got := resolveResticReseedStrategy("auto", "logical", "snap-mydumper", "", cluster); got == "dump" {
+		t.Fatalf("mydumper must never resolve to dump strategy, got %q", got)
+	}
+}
+
+// ---- getSnapshotMetadataForMethod tool disambiguation (identity preserved
+// across selection -> execution for a snapshot ID with multiple same-method
+// summaries) ----
+
+func mixedToolMetadataCluster() *Cluster {
+	cluster := &Cluster{
+		Conf:          &config.Config{},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
+	}
+	manager := cluster.getSnapshotMetadataManager()
+	mysqldumpSummary := &SnapshotMetadataSummary{
+		Dest: "/backups/db1/mysqldump.sql.gz", BackupMethod: "logical", BackupTool: "mysqldump",
+		BackupLine: backupmgr.BackupLineDefault, StartTime: time.Unix(900, 0), EndTime: time.Unix(1000, 0),
+		ResticSnapshotID: "snap-mixed",
+	}
+	mydumperSummary := &SnapshotMetadataSummary{
+		Dest: "/backups/db1/mydumper", BackupMethod: "logical", BackupTool: "mydumper",
+		BackupLine: backupmgr.BackupLineAdhoc, StartTime: time.Unix(900, 0), EndTime: time.Unix(1000, 0),
+		ResticSnapshotID: "snap-mixed",
+	}
+	manager.cache.Update("snap-mixed", func(entry *snapshotMetadataCacheEntry) {
+		entry.Status = snapshotMetadataStatusReady
+		entry.Summaries = map[string]*SnapshotMetadataSummary{
+			snapshotMetadataKey(backupmgr.BackupMethodLogical, backupmgr.BackupLineDefault): mysqldumpSummary,
+			snapshotMetadataKey(backupmgr.BackupMethodLogical, backupmgr.BackupLineAdhoc):    mydumperSummary,
+		}
+	})
+	return cluster
+}
+
+func TestGetSnapshotMetadataForMethod_DeterministicWithoutToolHint(t *testing.T) {
+	// Regression pin for the bug: before snapshotSummaryBetter, this
+	// returned a RANDOM tool across calls (Go map iteration order) for a
+	// snapshot ID carrying two same-method summaries. Without a tool hint,
+	// the result must at least be stable across repeated calls, even though
+	// which one wins (newest, since both share EndTime here — arbitrary but
+	// consistent) isn't itself meaningful.
+	cluster := mixedToolMetadataCluster()
+	first := getSnapshotMetadataForMethod(cluster, "snap-mixed", "logical", "", nil)
+	if first == nil {
+		t.Fatal("expected a summary")
+	}
+	for i := 0; i < 50; i++ {
+		got := getSnapshotMetadataForMethod(cluster, "snap-mixed", "logical", "", nil)
+		if got == nil || got.BackupTool != first.BackupTool {
+			t.Fatalf("non-deterministic: call %d returned tool %v, first call returned %q", i, got, first.BackupTool)
+		}
+	}
+}
+
+func TestGetSnapshotMetadataForMethod_ToolHintSelectsExactSummary(t *testing.T) {
+	// The actual fix: ResolveResticSnapshot picks a specific tool (e.g.
+	// mysqldump, having excluded mydumper via requireSingleFile); execution
+	// must resolve to THAT summary, not an arbitrary same-ID sibling.
+	cluster := mixedToolMetadataCluster()
+	for i := 0; i < 20; i++ {
+		got := getSnapshotMetadataForMethod(cluster, "snap-mixed", "logical", "mysqldump", nil)
+		if got == nil || got.BackupTool != "mysqldump" {
+			t.Fatalf("tool hint mysqldump must always resolve to the mysqldump summary, got %+v", got)
+		}
+	}
+	for i := 0; i < 20; i++ {
+		got := getSnapshotMetadataForMethod(cluster, "snap-mixed", "logical", "mydumper", nil)
+		if got == nil || got.BackupTool != "mydumper" {
+			t.Fatalf("tool hint mydumper must always resolve to the mydumper summary, got %+v", got)
+		}
+	}
+}
+
+func TestGetSnapshotMetadataForMethod_ToolConstraintFallsThroughSources(t *testing.T) {
+	// tool must be a HARD constraint spanning all three sources
+	// (index, cache entry, live BackupMetaMap fallback), not just a ranking
+	// preference within whichever source answers first: the cache entry
+	// here has ONLY a mydumper summary (Ready), while the live
+	// BackupMetaMap fallback has the correct mysqldump record for the same
+	// snapshot ID. Requesting tool="mysqldump" must fall through the cache
+	// source (no match there) to the live fallback instead of returning the
+	// cached mydumper summary just because that source answered first.
+	cl := &Cluster{
+		Conf:          &config.Config{},
+		BackupMetaMap: backupmgr.NewBackupMetaMap(),
+	}
+	sv := &ServerMonitor{URL: "db1:3306", Host: "db1", Port: "3306", ClusterGroup: cl}
+	cl.Servers = serverList{sv}
+
+	manager := cl.getSnapshotMetadataManager()
+	mydumperSummary := &SnapshotMetadataSummary{
+		Dest: "/backups/db1/mydumper", BackupMethod: "logical", BackupTool: "mydumper",
+		BackupLine: backupmgr.BackupLineDefault, StartTime: time.Unix(900, 0), EndTime: time.Unix(1000, 0),
+		ResticSnapshotID: "snap-cross-source",
+	}
+	manager.cache.Update("snap-cross-source", func(entry *snapshotMetadataCacheEntry) {
+		entry.Status = snapshotMetadataStatusReady
+		entry.Summaries = map[string]*SnapshotMetadataSummary{
+			snapshotMetadataKey(backupmgr.BackupMethodLogical, backupmgr.BackupLineDefault): mydumperSummary,
+		}
+	})
+
+	cl.ResticManager = &backupmgr.ResticManager{Backups: []backupmgr.BackupSnapshot{
+		{Id: "snap-cross-source", Time: time.Unix(1000, 0).Format(time.RFC3339Nano), Paths: []string{"/backups/db1"}},
+	}}
+	mysqldumpMeta := &backupmgr.BackupMetadata{
+		Id: 1, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: "mysqldump",
+		Source: sv.URL, Dest: "/backups/db1/mysqldump.sql.gz",
+		ResticSnapshotID: "snap-cross-source", Completed: true, EndTime: time.Unix(1000, 0),
+	}
+	cl.BackupMetaMap.Store(mysqldumpMeta.Id, mysqldumpMeta)
+
+	got := getSnapshotMetadataForMethod(cl, "snap-cross-source", "logical", "mysqldump", nil)
+	if got == nil || got.BackupTool != "mysqldump" {
+		t.Fatalf("tool=mysqldump must fall through the wrong-tool cache source to the correct-tool live fallback, got %+v", got)
 	}
 }
 
@@ -102,7 +367,7 @@ func TestUpdateResticReseedJobErrorUsesMetadataTool(t *testing.T) {
 		}
 	})
 	server := &ServerMonitor{ClusterGroup: cluster, JobResults: config.NewTasksMap()}
-	server.updateResticReseedJobError("snap-1", "physical", fmt.Errorf("mount already running"))
+	server.updateResticReseedJobError("snap-1", "physical", "", fmt.Errorf("mount already running"))
 	if job, ok := server.JobResults.CheckAndGet("reseedxtrabackup"); ok {
 		if job.State != 5 || job.Done != 1 {
 			t.Fatalf("expected job state 5 done 1, got state=%d done=%d", job.State, job.Done)

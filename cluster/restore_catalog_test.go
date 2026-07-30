@@ -699,7 +699,7 @@ func TestResolveResticSnapshot_PicksRemoteEntryForMethod(t *testing.T) {
 	cl.ResticManager = &backupmgr.ResticManager{Mutex: &sync.Mutex{}, Backups: []backupmgr.BackupSnapshot{{Id: "snap-logical"}}}
 	markSnapshotMetadataReady(cl, "snap-logical")
 
-	if got := cl.ResolveResticSnapshot("logical", ""); got != "snap-logical" {
+	if got, _ := cl.ResolveResticSnapshot("logical", "", false); got != "snap-logical" {
 		t.Fatalf("expected snap-logical, got %q", got)
 	}
 }
@@ -725,7 +725,7 @@ func TestResolveResticSnapshot_PrunedSnapshotDegradesToEmpty(t *testing.T) {
 	// ResticManager has no snapshots at all (as if snap-purged was removed).
 	cl.ResticManager = &backupmgr.ResticManager{Mutex: &sync.Mutex{}}
 
-	if got := cl.ResolveResticSnapshot("logical", ""); got != "" {
+	if got, _ := cl.ResolveResticSnapshot("logical", "", false); got != "" {
 		t.Fatalf("expected empty pick for a since-purged snapshot, got %q", got)
 	}
 }
@@ -755,8 +755,70 @@ func TestResolveResticSnapshot_NotReadySnapshotDegradesToEmpty(t *testing.T) {
 	}}
 	// Deliberately NOT calling markSnapshotMetadataReady here.
 
-	if got := cl.ResolveResticSnapshot("logical", ""); got != "" {
+	if got, _ := cl.ResolveResticSnapshot("logical", "", false); got != "" {
 		t.Fatalf("expected empty pick for a not-yet-ready snapshot, got %q", got)
+	}
+}
+
+func TestResolveResticSnapshot_FallsBackToNextBestWhenNewestNotReady(t *testing.T) {
+	// Two remote logical candidates: the newest one's metadata was never
+	// marked ready (as if extraction is still pending), the older one is
+	// fully ready. ResolveResticSnapshot must not degrade to "" just
+	// because the top-ranked (newest) candidate isn't usable yet -- it
+	// should fall through to the older, ready one instead.
+	cl := newCatalogTestCluster(t)
+	sv := newCatalogTestServer(cl, "db1", "3306")
+	newer := &backupmgr.BackupMetadata{
+		Id: 2, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: "mysqldump",
+		Source: sv.URL, ResticEnabled: true, ResticSnapshotID: "snap-newer-notready",
+		Completed: true, EndTime: time.Unix(2000, 0),
+	}
+	older := &backupmgr.BackupMetadata{
+		Id: 1, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: "mysqldump",
+		Source: sv.URL, ResticEnabled: true, ResticSnapshotID: "snap-older-ready",
+		Completed: true, EndTime: time.Unix(1000, 0),
+	}
+	cl.Servers = serverList{sv}
+	cl.BackupMetaMap.Store(newer.Id, newer)
+	cl.BackupMetaMap.Store(older.Id, older)
+	cl.ResticManager = &backupmgr.ResticManager{Mutex: &sync.Mutex{}, Backups: []backupmgr.BackupSnapshot{
+		{Id: "snap-newer-notready"}, {Id: "snap-older-ready"},
+	}}
+	// snap-newer-notready deliberately left without markSnapshotMetadataReady.
+	markSnapshotMetadataReady(cl, "snap-older-ready")
+
+	if got, _ := cl.ResolveResticSnapshot("logical", "", false); got != "snap-older-ready" {
+		t.Fatalf("expected fallback to the older ready snapshot, got %q", got)
+	}
+}
+
+func TestResolveResticSnapshot_FallsBackToNextBestWhenNewestPruned(t *testing.T) {
+	// Same idea, but the newest candidate's snapshot ID was pruned from the
+	// restic repo entirely (absent from ResticManager.Backups) rather than
+	// just not-ready.
+	cl := newCatalogTestCluster(t)
+	sv := newCatalogTestServer(cl, "db1", "3306")
+	newer := &backupmgr.BackupMetadata{
+		Id: 2, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: "mysqldump",
+		Source: sv.URL, ResticEnabled: true, ResticSnapshotID: "snap-newer-pruned",
+		Completed: true, EndTime: time.Unix(2000, 0),
+	}
+	older := &backupmgr.BackupMetadata{
+		Id: 1, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: "mysqldump",
+		Source: sv.URL, ResticEnabled: true, ResticSnapshotID: "snap-older-present",
+		Completed: true, EndTime: time.Unix(1000, 0),
+	}
+	cl.Servers = serverList{sv}
+	cl.BackupMetaMap.Store(newer.Id, newer)
+	cl.BackupMetaMap.Store(older.Id, older)
+	// snap-newer-pruned is absent from Backups entirely.
+	cl.ResticManager = &backupmgr.ResticManager{Mutex: &sync.Mutex{}, Backups: []backupmgr.BackupSnapshot{
+		{Id: "snap-older-present"},
+	}}
+	markSnapshotMetadataReady(cl, "snap-older-present")
+
+	if got, _ := cl.ResolveResticSnapshot("logical", "", false); got != "snap-older-present" {
+		t.Fatalf("expected fallback to the older present snapshot, got %q", got)
 	}
 }
 
@@ -774,7 +836,7 @@ func TestResolveResticSnapshot_NilResticManagerDegradesToEmpty(t *testing.T) {
 	cl.Servers = serverList{sv}
 	// cl.ResticManager left nil.
 
-	if got := cl.ResolveResticSnapshot("logical", ""); got != "" {
+	if got, _ := cl.ResolveResticSnapshot("logical", "", false); got != "" {
 		t.Fatalf("expected empty pick with no ResticManager, got %q", got)
 	}
 }
@@ -791,7 +853,7 @@ func TestResolveResticSnapshot_NoRemoteCandidateReturnsEmpty(t *testing.T) {
 	}
 	cl.Servers = serverList{sv}
 
-	if got := cl.ResolveResticSnapshot("logical", ""); got != "" {
+	if got, _ := cl.ResolveResticSnapshot("logical", "", false); got != "" {
 		t.Fatalf("expected no auto-pick when only a local backup exists, got %q", got)
 	}
 }
@@ -824,11 +886,85 @@ func TestResolveResticSnapshot_ToolGateOverridesNewest(t *testing.T) {
 	markSnapshotMetadataReady(cl, "snap-mydumper")
 	markSnapshotMetadataReady(cl, "snap-mysqldump")
 
-	if got := cl.ResolveResticSnapshot("logical", ""); got != "snap-mydumper" {
+	if got, _ := cl.ResolveResticSnapshot("logical", "", false); got != "snap-mydumper" {
 		t.Fatalf("expected newest (mydumper) without a tool gate, got %q", got)
 	}
-	if got := cl.ResolveResticSnapshot("logical", "mysqldump"); got != "snap-mysqldump" {
+	if got, _ := cl.ResolveResticSnapshot("logical", "mysqldump", false); got != "snap-mysqldump" {
 		t.Fatalf("tool=mysqldump must exclude the newer mydumper snapshot, got %q", got)
+	}
+}
+
+func TestResolveResticSnapshot_RequireSingleFileExcludesSplitdump(t *testing.T) {
+	// A splitdump-mode mysqldump backup is STILL cataloged with
+	// Tool=="mysqldump" (srv_job_backup.go:3184 sets SplitDump as a bool
+	// orthogonal to BackupTool, not a distinct tool name), so tool=mysqldump
+	// alone cannot exclude it -- only IsDirectory (isDirectoryBackupLayout,
+	// restore_catalog.go) can. requireSingleFile=true (what
+	// handlerMuxServerReseedRestic now passes for method=logical+strategy=dump)
+	// must exclude the newer splitdump entry even though tool=mysqldump
+	// matches both. This is the BackupMetaMap-backed path (backupMetaToCatalog);
+	// see TestResolveResticSnapshot_RequireSingleFileExcludesSplitdumpViaSummary
+	// for the summary-backed path (snapshotSummaryToCatalog).
+	cl := newCatalogTestCluster(t)
+	sv := newCatalogTestServer(cl, "db1", "3306")
+	splitDump := &backupmgr.BackupMetadata{
+		Id: 2, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: "mysqldump",
+		Source: sv.URL, ResticEnabled: true, ResticSnapshotID: "snap-splitdump",
+		Completed: true, EndTime: time.Unix(2000, 0), SplitDump: true,
+	}
+	singleFile := &backupmgr.BackupMetadata{
+		Id: 1, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: "mysqldump",
+		Source: sv.URL, ResticEnabled: true, ResticSnapshotID: "snap-singlefile",
+		Completed: true, EndTime: time.Unix(1000, 0), SplitDump: false,
+	}
+	cl.Servers = serverList{sv}
+	cl.BackupMetaMap.Store(splitDump.Id, splitDump)
+	cl.BackupMetaMap.Store(singleFile.Id, singleFile)
+	cl.ResticManager = &backupmgr.ResticManager{Mutex: &sync.Mutex{}, Backups: []backupmgr.BackupSnapshot{
+		{Id: "snap-splitdump"}, {Id: "snap-singlefile"},
+	}}
+	markSnapshotMetadataReady(cl, "snap-splitdump")
+	markSnapshotMetadataReady(cl, "snap-singlefile")
+
+	if got, _ := cl.ResolveResticSnapshot("logical", "mysqldump", false); got != "snap-splitdump" {
+		t.Fatalf("without requireSingleFile, expected newest (splitdump) to win on tool=mysqldump alone, got %q", got)
+	}
+	if got, _ := cl.ResolveResticSnapshot("logical", "mysqldump", true); got != "snap-singlefile" {
+		t.Fatalf("requireSingleFile=true must exclude the splitdump snapshot despite tool=mysqldump matching, got %q", got)
+	}
+}
+
+func TestResolveResticSnapshot_RequireSingleFileExcludesSplitdumpViaSummary(t *testing.T) {
+	// Same as TestResolveResticSnapshot_RequireSingleFileExcludesSplitdump,
+	// but the splitdump entry reaches the catalog via the SUMMARY-backed
+	// path (snapshotSummaryToCatalog, no surviving BackupMetaMap record for
+	// this exact snapshot) rather than a directly tracked BackupMetadata --
+	// the "Option B" gap: SnapshotMetadataSummary now carries SplitDump
+	// through (cluster_bck_meta.go) so isDirectoryBackupLayout can still
+	// exclude it here too.
+	cl := newCatalogTestCluster(t)
+	sv := newCatalogTestServer(cl, "db1", "3306")
+	cl.Servers = serverList{sv}
+	cl.ResticManager = &backupmgr.ResticManager{Mutex: &sync.Mutex{}, Backups: []backupmgr.BackupSnapshot{
+		{Id: "snap-splitdump-summary", Time: time.Unix(2000, 0).Format(time.RFC3339Nano), Paths: []string{"/backups/db1"}},
+		{Id: "snap-singlefile-summary", Time: time.Unix(1000, 0).Format(time.RFC3339Nano), Paths: []string{"/backups/db1"}},
+	}}
+	snapshotIndexFixture(cl, "snap-splitdump-summary", &SnapshotMetadataSummary{
+		Dest: "/backups/db1/splitdump", BackupMethod: "logical", BackupTool: "mysqldump",
+		BackupLine: backupmgr.BackupLineDefault, StartTime: time.Unix(1900, 0), EndTime: time.Unix(2000, 0),
+		ResticSnapshotID: "snap-splitdump-summary", SplitDump: true,
+	})
+	snapshotIndexFixture(cl, "snap-singlefile-summary", &SnapshotMetadataSummary{
+		Dest: "/backups/db1/mysqldump.sql.gz", BackupMethod: "logical", BackupTool: "mysqldump",
+		BackupLine: backupmgr.BackupLineDefault, StartTime: time.Unix(900, 0), EndTime: time.Unix(1000, 0),
+		ResticSnapshotID: "snap-singlefile-summary", SplitDump: false,
+	})
+
+	if got, _ := cl.ResolveResticSnapshot("logical", "mysqldump", false); got != "snap-splitdump-summary" {
+		t.Fatalf("without requireSingleFile, expected newest (splitdump) to win, got %q", got)
+	}
+	if got, _ := cl.ResolveResticSnapshot("logical", "mysqldump", true); got != "snap-singlefile-summary" {
+		t.Fatalf("requireSingleFile=true must exclude the summary-backed splitdump snapshot too, got %q", got)
 	}
 }
 
@@ -847,10 +983,10 @@ func TestResolveResticSnapshot_GatesOnMethod(t *testing.T) {
 	cl.ResticManager = &backupmgr.ResticManager{Mutex: &sync.Mutex{}, Backups: []backupmgr.BackupSnapshot{{Id: "snap-physical"}}}
 	markSnapshotMetadataReady(cl, "snap-physical")
 
-	if got := cl.ResolveResticSnapshot("logical", ""); got != "" {
+	if got, _ := cl.ResolveResticSnapshot("logical", "", false); got != "" {
 		t.Fatalf("expected no logical pick when only a physical restic snapshot exists, got %q", got)
 	}
-	if got := cl.ResolveResticSnapshot("physical", ""); got != "snap-physical" {
+	if got, _ := cl.ResolveResticSnapshot("physical", "", false); got != "snap-physical" {
 		t.Fatalf("expected snap-physical for physical method, got %q", got)
 	}
 }

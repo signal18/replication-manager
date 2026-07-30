@@ -101,7 +101,7 @@ func (regtest *RegTest) TestResticReseedDump(cl *clusterpkg.Cluster, conf string
 
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Reseeding replica from restic snapshot %s (dump strategy)", snapshotID)
 	opts := clusterpkg.ResticReseedOptions{Overwrite: "if-newer"}
-	if err := slave.JobReseedFromRestic(snapshotID, "logical", "dump", opts); err != nil {
+	if err := slave.JobReseedFromRestic(snapshotID, "logical", "dump", "", opts); err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Restic reseed failed: %s", err)
 		return false
 	}
