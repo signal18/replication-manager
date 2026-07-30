@@ -294,6 +294,11 @@ func hostAccountSpecificity(accountHost string) int {
 		parts := strings.SplitN(accountHost, "/", 2)
 		if len(parts) == 2 {
 			if mask := parseIPv4(parts[1]); mask != nil {
+				// Size() returns (0, 0) for a non-contiguous mask (e.g. a
+				// hypothetical 255.0.255.0), which silently ranks it as the
+				// least specific netmask (same as /0). MySQL/MariaDB netmask
+				// accounts are effectively always contiguous CIDR-style
+				// masks in practice, so this is left unhandled.
 				ones, _ := net.IPMask(mask).Size()
 				score += ones
 			}
@@ -307,13 +312,15 @@ func hostAccountSpecificity(accountHost string) int {
 }
 
 func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *version.Version) (Privileges, string, error) {
-	db.MapperFunc(strings.Title)
 	priv := Privileges{}
 	if ip == "" {
 		return priv, "", errors.New("Error getting privileges for non-existent IP address")
 	}
 
 	if myver.IsPostgreSQL() {
+		// MapperFunc controls how StructScan maps column names to struct
+		// fields; only the StructScan call below needs it.
+		db.MapperFunc(strings.Title)
 		stmt := `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = $1`
 		row := db.QueryRowx(stmt, user)
 		err := row.StructScan(&priv)
