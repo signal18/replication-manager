@@ -3,7 +3,12 @@
 
 package cluster
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+
+	"github.com/signal18/replication-manager/utils/gtid"
+)
 
 // a small fixed catalog covering the axes the resolver ranks/gates on.
 func fixtureCatalog() []BackupCatalogEntry {
@@ -108,9 +113,109 @@ func TestRank_SafetyPrefersLocalForNetwork(t *testing.T) {
 	}
 }
 
+func TestRank_SafetyMasterloadPrefersNonMasterLiveEntry(t *testing.T) {
+	// Two "live" candidates (no on-disk backup involved, see liveDumpCatalog
+	// in restore_catalog.go): one served by the master, one by a designated
+	// backup replica. preservemasterload/preservemasterlock must rank the
+	// non-master one first -- this is what lets resolveLiveDumpSource
+	// (srv_rejoin.go) reproduce "prefer the backup replica, else master"
+	// through the selector.
+	cat := []BackupCatalogEntry{
+		{Server: "master", Location: RepoLive, Kind: "logical", Tool: "mysqldump", Timestamp: 100},
+		{Server: "replica", Location: RepoLive, Kind: "logical", Tool: "mysqldump", Timestamp: 100},
+	}
+	ctx := ResolveContext{MasterURL: "master"}
+	sel := RestoreSelector{Origin: OriginAny, Repo: RepoLive, Safety: []string{"preservenetwork", "preservemasterload"}}
+	got := ResolveRestore(cat, sel, ctx)
+	if got == nil || got.Server != "replica" {
+		t.Fatalf("preservemasterload should prefer the non-master live entry, got %+v", got)
+	}
+}
+
+func TestRank_SafetyMasterloadFallsBackToMasterWhenOnlyCandidate(t *testing.T) {
+	cat := []BackupCatalogEntry{
+		{Server: "master", Location: RepoLive, Kind: "logical", Tool: "mysqldump", Timestamp: 100},
+	}
+	ctx := ResolveContext{MasterURL: "master"}
+	sel := RestoreSelector{Origin: OriginAny, Repo: RepoLive, Safety: []string{"preservenetwork", "preservemasterload"}}
+	got := ResolveRestore(cat, sel, ctx)
+	if got == nil || got.Server != "master" {
+		t.Fatalf("with only the master live entry available, expected it to be picked, got %+v", got)
+	}
+}
+
 func TestNoCandidate(t *testing.T) {
 	got := ResolveRestore(fixtureCatalog(), RestoreSelector{Tool: []string{"xtrabackup"}}, ResolveContext{})
 	if got != nil {
 		t.Fatalf("no xtrabackup in catalog → expected nil, got %+v", got)
+	}
+}
+
+// ---- method presets (doc/implementation/cluster/RESTORE_SELECTOR.md table) ----
+
+func TestPresetRejoinLogical(t *testing.T) {
+	got := PresetRejoinLogical()
+	want := RestoreSelector{
+		Origin: OriginAny, Repo: RepoAny, Type: []string{"logical"}, Time: TimeNotAfterHead,
+		Safety: []string{"any"}, Order: []string{"last", "local"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("PresetRejoinLogical = %+v, want %+v", got, want)
+	}
+}
+
+func TestPresetReseedFromMaster(t *testing.T) {
+	got := PresetReseedFromMaster()
+	want := RestoreSelector{Origin: OriginMaster, Repo: RepoLive, Safety: []string{"any"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("PresetReseedFromMaster = %+v, want %+v", got, want)
+	}
+}
+
+func TestPresetReseedSpareMaster(t *testing.T) {
+	got := PresetReseedSpareMaster()
+	want := RestoreSelector{Origin: OriginMaster, Repo: RepoLive, Safety: []string{"preservenetwork"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("PresetReseedSpareMaster = %+v, want %+v", got, want)
+	}
+}
+
+func TestPresetResticRemoteFetch(t *testing.T) {
+	got := PresetResticRemoteFetch()
+	want := RestoreSelector{Repo: RepoRemote}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("PresetResticRemoteFetch = %+v, want %+v", got, want)
+	}
+}
+
+func TestPresetRejoinPhysical(t *testing.T) {
+	got := PresetRejoinPhysical()
+	want := RestoreSelector{Type: []string{"physical"}, Order: []string{"last", "local"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("PresetRejoinPhysical = %+v, want %+v", got, want)
+	}
+}
+
+func TestPresetsReturnFreshValues(t *testing.T) {
+	a := PresetRejoinLogical()
+	a.Type[0] = "mutated"
+	b := PresetRejoinLogical()
+	if b.Type[0] == "mutated" {
+		t.Fatalf("preset must return a fresh value per call, got a shared slice mutated across calls")
+	}
+}
+
+// ---- masterHeadGtidString ----
+
+func TestMasterHeadGtidString(t *testing.T) {
+	if got := masterHeadGtidString(nil); got != "" {
+		t.Fatalf("nil master should yield empty string, got %q", got)
+	}
+	if got := masterHeadGtidString(&ServerMonitor{}); got != "" {
+		t.Fatalf("nil GTIDBinlogPos should yield empty string (not panic), got %q", got)
+	}
+	master := &ServerMonitor{GTIDBinlogPos: gtid.NewList("0-1-300")}
+	if got := masterHeadGtidString(master); got != "0-1-300" {
+		t.Fatalf("expected the GTID list's Sprint(), got %q", got)
 	}
 }

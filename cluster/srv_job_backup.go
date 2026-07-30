@@ -231,23 +231,16 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 	}
 
 	useMaster := true
-	backupext := ".xbtream"
-	if cluster.Conf.CompressBackups {
-		backupext = backupext + ".gz"
+	var backupfile string
+	var source *ServerMonitor
+	if resolved, resolvedSource := cluster.resolvePhysicalBackupSource(master, server, backtype); resolved != "" {
+		backupfile = resolved
+		source = resolvedSource
+		useMaster = source == master
 	}
 
-	file := backtype + backupext
-	backupfile := master.GetMyBackupDirectory() + file
-
-	bckserver := cluster.GetBackupServer()
-	if bckserver != nil && bckserver.HasBackupTypeCookie(backtype) {
-		if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
-			backupfile = bckserver.GetMyBackupDirectory() + file
-			useMaster = false
-		} else {
-			//Remove false cookie
-			bckserver.DelBackupTypeCookie(backtype)
-		}
+	if backupfile == "" {
+		backupfile, source, useMaster = cluster.legacyPhysicalBackupFallback(master, backtype)
 	}
 
 	if useMaster {
@@ -256,10 +249,9 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 			master.DelBackupTypeCookie(backtype)
 			return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", backtype)
 		}
-		bckserver = master
 	}
 
-	err := cluster.CheckPhysicalBackupToolVersion(bckserver)
+	err := cluster.CheckPhysicalBackupToolVersion(source)
 	if err != nil && cluster.Conf.BackupRestoreVersionStrict {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s version is not compatible with restore version on %s. Cancelling reseed for data safety.", backtype, server.URL)
 		return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
@@ -432,6 +424,21 @@ func (server *ServerMonitor) JobReseedPhysicalBackupFromPath(backtype, backupPat
 	return server.JobReseedPhysicalBackupWithPayload(backtype, backupPath, nil)
 }
 
+// JobFlashbackPhysicalBackup restores server from a physical backup selected
+// via the shared RestoreSelector, reusing the exact
+// resolvePhysicalBackupSource/legacyPhysicalBackupFallback pair
+// JobReseedPhysicalBackup already uses (restore_catalog.go) instead of
+// adding a third independent lookup -- issue #1589's ask to collapse the
+// duplicated restore lookups so a manual physical rejoin (rejoinWithMethod's
+// RejoinMethodPhysicalBkp) behaves consistently with the reseed API path.
+// Was: a bespoke "prefer the designated backup server's cookie'd file, else
+// THIS server's own prior backup" cascade that never considered the master;
+// the shared resolver's fallback target is the master (matching every other
+// physical/logical restore path), so a promoted node with no backup of its
+// own can still flashback from the master's. Unlike
+// JobFlashbackLogicalBackup, this does NOT call recordValidatedSelectorOnSuccess
+// -- whether a successful manual physical flashback should feed
+// valid_restore_selectors.json is an open policy question, not assumed here.
 func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 	cluster := server.ClusterGroup
 
@@ -444,38 +451,33 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 		return errors.New("No master found. Cancel flashback physical backup")
 	}
 
-	useSelfBackup := true
-	backupext := ".xbtream"
-	if cluster.Conf.CompressBackups {
-		backupext = backupext + ".gz"
+	backtype := cluster.Conf.BackupPhysicalType
+
+	useMaster := true
+	var backupfile string
+	var source *ServerMonitor
+	if resolved, resolvedSource := cluster.resolvePhysicalBackupSource(master, server, backtype); resolved != "" {
+		backupfile = resolved
+		source = resolvedSource
+		useMaster = source == master
 	}
 
-	file := cluster.Conf.BackupPhysicalType + backupext
-	backupfile := server.GetMyBackupDirectory() + file
-
-	bckserver := cluster.GetBackupServer()
-	if bckserver != nil && bckserver.HasBackupTypeCookie(cluster.Conf.BackupPhysicalType) {
-		if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
-			backupfile = bckserver.GetMyBackupDirectory() + file
-			useSelfBackup = false
-		} else {
-			//Remove false cookie
-			bckserver.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
-		}
+	if backupfile == "" {
+		backupfile, source, useMaster = cluster.legacyPhysicalBackupFallback(master, backtype)
 	}
 
-	if useSelfBackup {
+	if useMaster {
 		if _, err := os.Stat(backupfile); err != nil {
 			//Remove false cookie
-			server.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
-			return fmt.Errorf("Cancelling flashback. No backup file found on master for %s", cluster.Conf.BackupPhysicalType)
+			master.DelBackupTypeCookie(backtype)
+			return fmt.Errorf("Cancelling flashback. No backup file found on master for %s", backtype)
 		}
 	}
 
 	//Delete wait physical backup cookie
 	server.DelWaitPhysicalBackupCookie()
 
-	task := "flashback" + cluster.Conf.BackupPhysicalType
+	task := "flashback" + backtype
 	if ok, currentTask := server.TrySetInReseedBackup(task); !ok {
 		err := fmt.Errorf("Server is in reseeding state by %s", currentTask)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Concurrent reseed blocked: server %s already reseeding with %s, cannot start %s", server.URL, currentTask, task)
@@ -497,14 +499,14 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 
 	logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
 	if err != nil {
-		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Flashback can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Flashback can't changing master for physical backup %s request for server: %s %s", backtype, server.URL, err)
 		if server.HasReseedingState(task) {
 			server.SetInReseedBackup("")
 		}
 		return err
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive flashback physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive flashback physical backup %s request for server: %s", backtype, server.URL)
 
 	return nil
 }
@@ -608,30 +610,16 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 	}
 
 	var backupfile string
-	bckserver := cluster.GetBackupServer()
-	if bckserver != nil && bckserver.HasBackupTypeCookie(backtype) {
-		if resolved, ok := resolveLogicalBackupPathFromMeta(bckserver, backtype); ok {
-			backupfile = resolved
-			useMaster = false
-			source = bckserver
-		} else if resolved, ok := findExistingBackupPath(bckserver, destCandidates); ok {
-			backupfile = resolved
-			useMaster = false
-			source = bckserver
-		} else {
-			//Remove false cookie
-			bckserver.DelBackupTypeCookie(backtype)
-		}
+	var pickedMeta *backupmgr.BackupMetadata
+	if resolved, resolvedSource, resolvedMeta := cluster.resolveLogicalBackupSource(master, server, backtype); resolved != "" {
+		backupfile = resolved
+		source = resolvedSource
+		pickedMeta = resolvedMeta
+		useMaster = source == master
 	}
 
 	if backupfile == "" {
-		if resolved, ok := resolveLogicalBackupPathFromMeta(master, backtype); ok {
-			backupfile = resolved
-		} else if resolved, ok := findExistingBackupPath(master, destCandidates); ok {
-			backupfile = resolved
-		} else {
-			backupfile = master.GetMyBackupDirectory() + dest
-		}
+		backupfile, source, useMaster = cluster.legacyLogicalBackupFallback(master, backtype, dest, destCandidates)
 	}
 
 	if useMaster {
@@ -640,11 +628,9 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 			master.DelBackupTypeCookie(backtype)
 			return nil, fmt.Errorf("No backup file found on master for %s", backtype)
 		}
-
-		bckserver = master
 	}
 
-	err = cluster.CheckLogicalBackupToolVersion(bckserver)
+	err = cluster.CheckLogicalBackupToolVersion(source)
 	if err != nil && cluster.Conf.BackupRestoreVersionStrict {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s version is not compatible with restore version on %s. Cancelling reseed for data safety.", backtype, server.URL)
 		return nil, fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
@@ -678,7 +664,15 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 		server.SetState(stateUnconn)
 	}
 
-	meta := snapshotLogicalBackupMeta(source)
+	// Prefer the exact metadata backing the selector's pick over source's
+	// current LastBackupMeta.Logical -- the selector can have picked an
+	// OLDER BackupMetaMap entry than source's latest (see
+	// resolveLogicalBackupSource), and re-reading LastBackupMeta would
+	// silently apply a DIFFERENT backup's SplitUser to the one restored.
+	meta := pickedMeta
+	if meta == nil {
+		meta = snapshotLogicalBackupMeta(source)
+	}
 	splitUser := meta != nil && meta.SplitUser
 	restoreUser := cluster.Conf.BackupRestoreMysqlUser && splitUser
 	payload, err := buildLogicalReseedPayload(backtype, backupfile, splitUser, false, false, isPITR, server.URL)
@@ -1723,9 +1717,19 @@ func isSplitDumpName(path string) bool {
 	return err == nil
 }
 
-func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
+// JobFlashbackLogicalBackup restores server from a logical backup selected
+// via the shared RestoreSelector. manual distinguishes an operator-chosen
+// rejoin (rejoinWithMethod) from the automatic rejoin path (RejoinMasterSST)
+// — only a manual restore that genuinely succeeds via a real selector pick
+// gets recorded into valid_restore_selectors.json (see
+// recordValidatedSelectorOnSuccess); automatic success is never recorded, per
+// the issue's stated flow (manual restores earn trust, automatic reuses it).
+func (server *ServerMonitor) JobFlashbackLogicalBackup(manual bool) error {
 	var dest, backupfile string
 	var err error
+	var sel RestoreSelector
+	var pick *BackupCatalogEntry
+	usedSelectorPick := false
 
 	cluster := server.ClusterGroup
 	backtype := cluster.Conf.BackupLogicalType
@@ -1774,16 +1778,17 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		// whenever the elected master had never been backed up. In a rejoin any
 		// consistent backup works — replication catches up the delta — so the source
 		// node does not matter. Local-only for now (remote/restic fetch is not wired).
-		sel := cluster.getAutorejoinBackupSelector("logical")
+		sel = cluster.getAutorejoinBackupSelector("logical")
 		sel.Tool = []string{backtype} // restore dispatch is backtype-based → force the tool for consistency
-		pick := ResolveRestore(cluster.buildBackupCatalog(), sel,
-			ResolveContext{MasterURL: master.URL, TargetURL: server.URL})
+		pick = ResolveRestore(cluster.buildBackupCatalog(), sel,
+			ResolveContext{MasterURL: master.URL, TargetURL: server.URL, HeadGtid: masterHeadGtidString(master)})
 		if pick != nil && pick.isLocal() {
 			backupfile = pick.Path
 			if s := cluster.GetServerFromURL(pick.Server); s != nil {
 				source = s
 			}
 			useMaster = source == master
+			usedSelectorPick = true
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "flashback %s: selector picked %s backup %s", backtype, source.URL, backupfile)
 		} else {
 			// Fallback (no catalogued local backup — metadata not populated): legacy
@@ -1864,7 +1869,16 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 		// Handle mysqldump-based reseed
 	} else if backtype == config.ConstBackupLogicalTypeMysqldump {
-		err := server.reseedMysqldumpWithMetadata(context.Background(), backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser, source.LastBackupMeta.Logical)
+		// Prefer the exact metadata backing the selector's pick over source's
+		// current LastBackupMeta.Logical -- pick can be an OLDER BackupMetaMap
+		// entry than source's latest (see resolveLogicalBackupSource), and
+		// re-reading LastBackupMeta would silently apply a DIFFERENT backup's
+		// SplitUser to the one actually being restored (backupfile).
+		restoreMeta := source.LastBackupMeta.Logical
+		if usedSelectorPick && pick != nil && pick.Meta != nil {
+			restoreMeta = pick.Meta
+		}
+		err := server.reseedMysqldumpWithMetadata(context.Background(), backupfile, cluster.Conf.BackupRestoreMysqlUser && restoreMeta != nil && restoreMeta.SplitUser, restoreMeta)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", backtype, server.URL, err.Error())
 			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
@@ -1885,6 +1899,18 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 			if e2 := server.JobsUpdateState(task, "Flashback completed", 3, 1); e2 != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+			}
+			// Record on true manual success only: this branch is reached only
+			// when reseedMysqldumpWithMetadata itself returned nil (the actual
+			// restore succeeded, not just "the function returned"), manual is
+			// true (operator-chosen rejoin, not automatic), and a real selector
+			// pick was used (not the legacy on-disk fallback, which isn't a
+			// meaningful "selector that worked"). mydumper/dumpling are not
+			// recorded here — their success signaling below marks "completed"
+			// even when a later sub-step (e.g. metadata parse) fails, so
+			// recording there would risk a false validated entry.
+			if manual && usedSelectorPick {
+				cluster.recordValidatedSelectorOnSuccess("logical", sel, pick)
 			}
 		}
 
@@ -4187,31 +4213,17 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		}
 	}
 
+	var pickedMeta *backupmgr.BackupMetadata
 	if backupfile == "" {
-		bckserver := cluster.GetBackupServer()
-		if bckserver != nil && bckserver.HasBackupTypeCookie(backupType) {
-			if resolved, ok := resolveLogicalBackupPathFromMeta(bckserver, backupType); ok {
-				backupfile = resolved
-				useMaster = false
-				source = bckserver
-			} else if resolved, ok := findExistingBackupPath(bckserver, destCandidates); ok {
-				backupfile = resolved
-				useMaster = false
-				source = bckserver
-			} else {
-				//Remove false cookie
-				bckserver.DelBackupTypeCookie(backupType)
-			}
+		if resolved, resolvedSource, resolvedMeta := cluster.resolveLogicalBackupSource(master, server, backupType); resolved != "" {
+			backupfile = resolved
+			source = resolvedSource
+			pickedMeta = resolvedMeta
+			useMaster = source == master
 		}
 
 		if backupfile == "" {
-			if resolved, ok := resolveLogicalBackupPathFromMeta(master, backupType); ok {
-				backupfile = resolved
-			} else if resolved, ok := findExistingBackupPath(master, destCandidates); ok {
-				backupfile = resolved
-			} else {
-				backupfile = master.GetMyBackupDirectory() + dest
-			}
+			backupfile, source, useMaster = cluster.legacyLogicalBackupFallback(master, backupType, dest, destCandidates)
 		}
 
 		if useMaster {
@@ -4223,7 +4235,13 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		}
 	}
 
-	meta := snapshotLogicalBackupMeta(source)
+	// Prefer the exact metadata backing the selector's pick over source's
+	// current LastBackupMeta.Logical -- see resolveLogicalBackupSource /
+	// JobReseedLogicalBackupPrepare's identical guard.
+	meta := pickedMeta
+	if meta == nil {
+		meta = snapshotLogicalBackupMeta(source)
+	}
 	if !splitUserSet && meta != nil {
 		splitUser = meta.SplitUser
 	}
@@ -4425,15 +4443,13 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Using payload backup path %s for %s", backupfile, task)
 	} else {
-		bckserver := cluster.GetBackupServer()
-		if bckserver != nil && bckserver.HasBackupTypeCookie(backupType) {
-			if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
-				backupfile = bckserver.GetMyBackupDirectory() + file
-				useMaster = false
-			} else {
-				//Remove false cookie
-				bckserver.DelBackupTypeCookie(backupType)
-			}
+		if resolved, resolvedSource := cluster.resolvePhysicalBackupSource(master, server, backupType); resolved != "" {
+			backupfile = resolved
+			useMaster = resolvedSource == master
+		}
+
+		if backupfile == "" {
+			backupfile, _, useMaster = cluster.legacyPhysicalBackupFallback(master, backupType)
 		}
 
 		if useMaster {
@@ -4460,6 +4476,18 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 	return nil
 }
 
+// ProcessFlashbackPhysical is the execution side of JobFlashbackPhysicalBackup
+// (srv_job_backup.go). It must resolve the SAME backup that function's
+// pre-check validated — it now calls the identical
+// resolvePhysicalBackupSource/legacyPhysicalBackupFallback pair, mirroring
+// ProcessReseedPhysical's no-payload branch (this task carries none, same
+// as ProcessReseedPhysical's plain-API-reseed case). Was: an independent
+// self/backup-server-only lookup that never considered the master or any
+// other node — so once JobFlashbackPhysicalBackup started resolving via the
+// selector (which can legitimately pick a backup on neither self nor the
+// GetBackupServer()-designated node), this executor could fail a flashback
+// whose pre-check had just passed, or (worse) silently restore from a
+// different, stale backup than the one validated.
 func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 
 	cluster := server.ClusterGroup
@@ -4479,31 +4507,24 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 		return errors.New("Slave is in super read-only")
 	}
 
-	useSelfBackup := true
-	backupext := ".xbtream"
-	if cluster.Conf.CompressBackups {
-		backupext = backupext + ".gz"
+	backupType := cluster.Conf.BackupPhysicalType
+
+	useMaster := true
+	var backupfile string
+	if resolved, resolvedSource := cluster.resolvePhysicalBackupSource(master, server, backupType); resolved != "" {
+		backupfile = resolved
+		useMaster = resolvedSource == master
 	}
 
-	file := cluster.Conf.BackupPhysicalType + backupext
-	backupfile := server.GetMyBackupDirectory() + file
-
-	bckserver := cluster.GetBackupServer()
-	if bckserver != nil && bckserver.HasBackupTypeCookie(cluster.Conf.BackupPhysicalType) {
-		if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
-			backupfile = bckserver.GetMyBackupDirectory() + file
-			useSelfBackup = false
-		} else {
-			//Remove false cookie
-			bckserver.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
-		}
+	if backupfile == "" {
+		backupfile, _, useMaster = cluster.legacyPhysicalBackupFallback(master, backupType)
 	}
 
-	if useSelfBackup {
+	if useMaster {
 		if _, err := os.Stat(backupfile); err != nil {
 			//Remove false cookie
-			server.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
-			return fmt.Errorf("Cancelling flashback. No backup file found for %s", cluster.Conf.BackupPhysicalType)
+			master.DelBackupTypeCookie(backupType)
+			return fmt.Errorf("Cancelling flashback. No backup file found for %s", backupType)
 		}
 	}
 

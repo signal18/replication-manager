@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/signal18/replication-manager/utils/backupmgr"
 )
 
 // ---- selector value constants ----
@@ -45,24 +47,79 @@ const (
 // Ranking preferences (relax to best-available): Origin, Repo, Safety, Order.
 type RestoreSelector struct {
 	// bool
-	Proven bool // GATE: require a backup validated by test-restore (NEW: needs a verify mechanism)
+	Proven bool `json:"proven,omitempty"` // GATE: require a backup validated by test-restore (NEW: needs a verify mechanism)
 
 	// []string — GATE whitelists: empty = none (that's what makes them gate)
-	Type []string // logical | physical | parallel | compress | encrypt | gtid | can-partial-restorable
-	Tool []string // mysqldump | mariadump | mariadbbackup | xtrabackup | innodbhotbackup | mydumper
+	Type []string `json:"type,omitempty"` // logical | physical | parallel | compress | encrypt | gtid | can-partial-restorable
+	Tool []string `json:"tool,omitempty"` // mysqldump | mariadump | mariadbbackup | xtrabackup | innodbhotbackup | mydumper
 
 	// []string — ranking preferences: empty = any (no preference)
-	Safety []string // preserve{dbdisk,repmandisk,network,masterload,masterlock,cpu,diskio,memory} (combinable)
-	Order  []string // e.g. ["last","local"] or ["logical","last"]
+	Safety []string `json:"safety,omitempty"` // preserve{dbdisk,repmandisk,network,masterload,masterlock,cpu,diskio,memory} (combinable)
+	Order  []string `json:"order,omitempty"`  // e.g. ["last","local"] or ["logical","last"]
 
 	// string
-	Origin    string // any | master | mine
-	Repo      string // any | local | remote | live
-	Time      string // any | notafterlastmasterbinlog | nobeforemasterbinlog | pitr
-	StartGtid string // GTID boundary — PITR target AND backup filtering (not pitr-only)
+	Origin    string `json:"origin,omitempty"`    // any | master | mine
+	Repo      string `json:"repo,omitempty"`      // any | local | remote | live
+	Time      string `json:"time,omitempty"`      // any | notafterlastmasterbinlog | nobeforemasterbinlog | pitr
+	StartGtid string `json:"startGtid,omitempty"` // GTID boundary — PITR target AND backup filtering (not pitr-only)
 
 	// time.Time
-	StartTime time.Time // time boundary — PITR target AND backup filtering (not pitr-only)
+	StartTime time.Time `json:"startTime,omitempty"` // time boundary — PITR target AND backup filtering (not pitr-only)
+}
+
+// ---- method presets (doc/implementation/cluster/RESTORE_SELECTOR.md's
+// "Method presets" table). Each returns a fresh value — never a shared var —
+// so a caller can safely mutate .Type/.Tool after getting one back (the
+// existing sel := ...; sel.Tool = [...] pattern already used at call sites).
+
+// PresetRejoinLogical: any origin/repo, logical backups only, not beyond the
+// master's binlog head, newest-then-local as the tie-break.
+func PresetRejoinLogical() RestoreSelector {
+	return RestoreSelector{
+		Origin: OriginAny,
+		Repo:   RepoAny,
+		Type:   []string{"logical"},
+		Time:   TimeNotAfterHead,
+		Safety: []string{"any"},
+		Order:  []string{"last", "local"},
+	}
+}
+
+// PresetReseedFromMaster: a live mysqldump straight from the master, no
+// safety constraint.
+func PresetReseedFromMaster() RestoreSelector {
+	return RestoreSelector{
+		Origin: OriginMaster,
+		Repo:   RepoLive,
+		Safety: []string{"any"},
+	}
+}
+
+// PresetReseedSpareMaster: the same live-from-master reseed, but ranked to
+// avoid the master's network/load — relaxes to a stored backup instead when
+// one is available.
+func PresetReseedSpareMaster() RestoreSelector {
+	return RestoreSelector{
+		Origin: OriginMaster,
+		Repo:   RepoLive,
+		Safety: []string{"preservenetwork"},
+	}
+}
+
+// PresetResticRemoteFetch: pick a backup from the restic/remote repo.
+func PresetResticRemoteFetch() RestoreSelector {
+	return RestoreSelector{
+		Repo: RepoRemote,
+	}
+}
+
+// PresetRejoinPhysical: physical backups only, newest-then-local as the
+// tie-break.
+func PresetRejoinPhysical() RestoreSelector {
+	return RestoreSelector{
+		Type:  []string{"physical"},
+		Order: []string{"last", "local"},
+	}
 }
 
 // BackupCatalogEntry is one row of the unified backup catalog: any backup we
@@ -80,6 +137,21 @@ type BackupCatalogEntry struct {
 	BinFile   string
 	BinPos    string
 	Path      string // local path or repo/snapshot id
+
+	// Meta, when non-nil, is the exact BackupMetadata record this row was
+	// derived from (set only for BackupMetaMap/LastBackupMeta-sourced
+	// entries in backupMetaToCatalog; restic-summary and on-disk-enumerated
+	// entries have no full BackupMetadata to reference, and leave this nil).
+	//
+	// Consumers that need restore parameters the catalog doesn't itself
+	// model (SplitUser, etc.) MUST prefer this over independently re-reading
+	// a server's LastBackupMeta.Logical/Physical: buildBackupCatalog can
+	// pick an OLDER BackupMetaMap entry than a server's current
+	// LastBackupMeta (e.g. the newest backup excluded by a TimeNotAfterHead
+	// gate), and re-reading LastBackupMeta would silently apply a DIFFERENT
+	// backup's parameters to the one actually selected. Callers should fall
+	// back to the old LastBackupMeta-based lookup only when Meta is nil.
+	Meta *backupmgr.BackupMetadata
 }
 
 func (e BackupCatalogEntry) isLocal() bool { return e.Location == "" || e.Location == RepoLocal }
@@ -92,6 +164,18 @@ type ResolveContext struct {
 	HeadGtid   string // the master's current GTID head
 	MasterURL  string // resolves origin=master
 	TargetURL  string // resolves origin=mine (the node being reseeded)
+}
+
+// masterHeadGtidString returns the master's current GTID head for
+// ResolveContext.HeadGtid, or "" when unknown. gtid.List.Sprint has a value
+// receiver, so calling it through a nil *gtid.List (early cluster discovery,
+// or a master that hasn't captured a GTID) panics — guard it here rather than
+// at every call site.
+func masterHeadGtidString(master *ServerMonitor) string {
+	if master == nil || master.GTIDBinlogPos == nil {
+		return ""
+	}
+	return master.GTIDBinlogPos.Sprint()
 }
 
 // ResolveRestore returns the best backup for the selector, or nil if nothing
@@ -232,7 +316,7 @@ func prefCmp(sel RestoreSelector, ctx ResolveContext, a, b BackupCatalogEntry) i
 		}
 	}
 	if len(sel.Safety) > 0 {
-		if c := safetyScore(sel, b) - safetyScore(sel, a); c != 0 {
+		if c := safetyScore(sel, ctx, b) - safetyScore(sel, ctx, a); c != 0 {
 			return c
 		}
 	}
@@ -258,9 +342,18 @@ func repoMatch(repo string, e BackupCatalogEntry) bool {
 }
 
 // safetyScore is a coarse first-cut: local backups avoid network, stored
-// backups avoid master load. Refined once the strategy costs are modelled.
-func safetyScore(sel RestoreSelector, e BackupCatalogEntry) int {
+// backups (or a live dump sourced from something other than the master)
+// avoid master load. Refined once the strategy costs are modelled.
+//
+// isLiveFromMaster is what lets preservemasterload/preservemasterlock
+// discriminate between the two "live" candidates a direct-dump rejoin
+// resolves over (see liveDumpCatalog/resolveLiveDumpSource,
+// srv_rejoin.go): both share Location==RepoLive, so Repo alone can't tell
+// a live dump FROM the master apart from one sourced from the designated
+// backup replica — only ctx.MasterURL + the entry's Server can.
+func safetyScore(sel RestoreSelector, ctx ResolveContext, e BackupCatalogEntry) int {
 	s := 0
+	isLiveFromMaster := e.Location == RepoLive && ctx.MasterURL != "" && e.Server == ctx.MasterURL
 	for _, tag := range sel.Safety {
 		switch tag {
 		case "preservenetwork":
@@ -268,7 +361,7 @@ func safetyScore(sel RestoreSelector, e BackupCatalogEntry) int {
 				s++
 			}
 		case "preservemasterload", "preservemasterlock":
-			if e.Location != RepoLive { // a stored backup does not touch the live master
+			if !isLiveFromMaster { // a stored backup, or a live dump NOT sourced from the master, does not touch the live master
 				s++
 			}
 		}

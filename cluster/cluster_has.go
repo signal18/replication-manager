@@ -94,6 +94,7 @@ func (cluster *Cluster) HasCatalogBackupForRejoin() (bool, bool) {
 	ctx := ResolveContext{}
 	if m := cluster.GetMaster(); m != nil {
 		ctx.MasterURL = m.URL
+		ctx.HeadGtid = masterHeadGtidString(m)
 	}
 
 	logical := ResolveRestore(catalog, cluster.getAutorejoinBackupSelector("logical"), ctx) != nil

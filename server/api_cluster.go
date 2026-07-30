@@ -121,6 +121,22 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterTags)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/valid-restore-selectors", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost {
+				repman.handlerMuxAddValidRestoreSelector(w, r)
+				return
+			}
+			repman.handlerMuxClusterValidRestoreSelectors(w, r)
+		})),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/valid-restore-selectors/{index}/drop", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropValidRestoreSelector)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/jobs", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterGetJobEntries)),
@@ -5200,6 +5216,119 @@ func (repman *ReplicationManager) handlerMuxDropTag(w http.ResponseWriter, r *ht
 		mycluster.DropDBTag(vars["tagValue"], false)
 	} else {
 		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxClusterValidRestoreSelectors lists every validated restore
+// selector recorded for this cluster (issue #1589: valid_restore_selectors.json).
+// @Summary List validated restore selectors for a cluster
+// @Description Returns every RestoreSelector that a manual restore has actually succeeded with on this deployment.
+// @Tags ClusterActions
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} cluster.ValidatedSelectorEntry "Validated selector entries"
+// @Failure 500 {string} string "No cluster / read error"
+// @Router /api/clusters/{clusterName}/valid-restore-selectors [get]
+func (repman *ReplicationManager) handlerMuxClusterValidRestoreSelectors(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	entries, err := mycluster.ListValidatedSelectors()
+	if err != nil {
+		http.Error(w, "Cannot read valid_restore_selectors.json: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	if err := e.Encode(entries); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxAddValidRestoreSelector operator-curated addition of a validated
+// restore selector entry, independent of an actual restore running.
+// @Summary Add a validated restore selector entry
+// @Description Manually adds a RestoreSelector to the validated set for this cluster.
+// @Tags ClusterActions
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param request body cluster.ValidatedSelectorEntry true "Validated selector entry"
+// @Success 200 {string} string "Entry added"
+// @Failure 400 {string} string "Invalid request body"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster / write error"
+// @Router /api/clusters/{clusterName}/valid-restore-selectors [post]
+func (repman *ReplicationManager) handlerMuxAddValidRestoreSelector(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	var entry cluster.ValidatedSelectorEntry
+	if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
+		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if entry.Method == "" {
+		http.Error(w, "method is required", http.StatusBadRequest)
+		return
+	}
+	if err := mycluster.AddValidatedSelector(entry); err != nil {
+		http.Error(w, "Cannot write valid_restore_selectors.json: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxDropValidRestoreSelector removes a validated restore selector
+// entry by its index in the list returned by handlerMuxClusterValidRestoreSelectors.
+// @Summary Remove a validated restore selector entry
+// @Description Removes a validated selector entry by index for this cluster.
+// @Tags ClusterActions
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param index path string true "Entry index"
+// @Success 200 {string} string "Entry removed"
+// @Failure 400 {string} string "Invalid index"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster / write error"
+// @Router /api/clusters/{clusterName}/valid-restore-selectors/{index}/drop [post]
+func (repman *ReplicationManager) handlerMuxDropValidRestoreSelector(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	index, err := strconv.Atoi(strings.TrimSpace(vars["index"]))
+	if err != nil {
+		http.Error(w, "Invalid index", http.StatusBadRequest)
+		return
+	}
+	if err := mycluster.RemoveValidatedSelector(index); err != nil {
+		http.Error(w, "Cannot remove entry: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 }

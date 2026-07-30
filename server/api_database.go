@@ -5796,9 +5796,11 @@ func (repman *ReplicationManager) handlerMuxServersPortConfigDummySender(w http.
 }
 
 // handlerMuxServerProvision handles the HTTP request to provision a server within a cluster.
-// handlerMuxServerReseedRestic handles reseeding using a specific restic snapshot.
-// @Summary Reseed a server from restic snapshot
+// handlerMuxServerReseedRestic handles reseeding using a restic snapshot.
+// @Summary Reseed a server from a restic snapshot
 // @Description Reseeds a specified server using the provided restic snapshot ID and method.
+// @Description snapshotId is optional: when omitted, one is auto-selected via the shared
+// @Description RestoreSelector + backup catalog (remote/restic preset) for the given method.
 // @Description Method accepts logical or physical. Strategy accepts auto, restore, dump, or mount.
 // @Description The dump strategy is supported for logical mysqldump and single-file physical backups.
 // @Tags DatabaseBackup
@@ -5847,31 +5849,57 @@ func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWr
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
-	if strings.TrimSpace(req.SnapshotID) == "" {
-		http.Error(w, "snapshotId is required", http.StatusBadRequest)
-		return
-	}
-
-	snap := mycluster.ResticManager.GetSnapshot(req.SnapshotID)
-	if snap == nil {
-		http.Error(w, "Snapshot with given ID not found", http.StatusBadRequest)
-		return
-	}
 
 	method := strings.ToLower(strings.TrimSpace(req.Method))
 	if method == "" {
 		method = "logical"
 	}
+	if method != "logical" && method != "physical" {
+		http.Error(w, "Invalid method", http.StatusBadRequest)
+		return
+	}
 	strategy := strings.ToLower(strings.TrimSpace(req.Strategy))
 	if strategy == "" {
 		strategy = "auto"
 	}
-	if err := mycluster.RequireSnapshotMetadataReady(req.SnapshotID); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+
+	snapshotID := strings.TrimSpace(req.SnapshotID)
+	if snapshotID == "" {
+		// No explicit snapshot pinned: auto-select one via the shared
+		// RestoreSelector + backup catalog (PresetResticRemoteFetch) — issue
+		// #1589's ask to route the restic reseed request-builder through the
+		// same selector/catalog mechanism as the logical/physical reseed
+		// paths, rather than always requiring the operator to hand-pick a
+		// snapshot ID. An explicit snapshotId in the request still overrides
+		// this and is used as-is (the selection mechanism, not the
+		// execution — strategy resolution below is unaffected either way).
+		//
+		// strategy=="dump" only streams a single file (srv_job_restic.go's
+		// prepareResticReseedPaths/reseedFromResticDump): mydumper/dumpling
+		// snapshots are directory-based and fail at execution time with
+		// "dump strategy cannot be used with directory-based backups". Force
+		// tool=mysqldump so auto-select can't hand back an incompatible
+		// logical snapshot when a compatible one exists. Physical needs no
+		// such constraint: xtrabackup/mariabackup (the only physical tools)
+		// are always single-file, so every physical pick is dump-compatible.
+		tool := ""
+		if method == "logical" && strategy == "dump" {
+			tool = config.ConstBackupLogicalTypeMysqldump
+		}
+		snapshotID = mycluster.ResolveResticSnapshot(method, tool)
+		if snapshotID == "" {
+			http.Error(w, "snapshotId is required (no validated restic snapshot available to auto-select)", http.StatusBadRequest)
+			return
+		}
+	}
+
+	snap := mycluster.ResticManager.GetSnapshot(snapshotID)
+	if snap == nil {
+		http.Error(w, "Snapshot with given ID not found", http.StatusBadRequest)
 		return
 	}
-	if method != "logical" && method != "physical" {
-		http.Error(w, "Invalid method", http.StatusBadRequest)
+	if err := mycluster.RequireSnapshotMetadataReady(snapshotID); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 	opts := cluster.ResticReseedOptions{
@@ -5881,7 +5909,7 @@ func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWr
 		Overwrite:  req.Overwrite,
 	}
 	queueReq := cluster.ResticReseedRequest{
-		SnapshotID: req.SnapshotID,
+		SnapshotID: snapshotID,
 		Method:     method,
 		Strategy:   strategy,
 		Options:    opts,
@@ -5893,7 +5921,7 @@ func (repman *ReplicationManager) handlerMuxServerReseedRestic(w http.ResponseWr
 		}
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModRestic, "WARN",
 			"Restic reseed queue conflict on %s snapshot=%s method=%s strategy=%s: %s",
-			node.URL, req.SnapshotID, method, strategy, message)
+			node.URL, snapshotID, method, strategy, message)
 		http.Error(w, message, http.StatusConflict)
 		return
 	}

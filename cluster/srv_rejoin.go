@@ -292,7 +292,7 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 			return errors.New("Dump from master failed")
 		}
 	} else if cluster.Conf.AutorejoinLogicalBackup {
-		err := server.JobFlashbackLogicalBackup()
+		err := server.JobFlashbackLogicalBackup(false) // automatic path -- never recorded as validated
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "logical backup flashback restore failed %s", err)
 			return errors.New("Restore from logical backup failed")
@@ -482,6 +482,52 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	return nil
 }
 
+// resolveLiveDumpSource picks which live server to mysqldump from for a
+// direct-dump rejoin: the operator-designated backup replica when one
+// exists, else the master. Routed through RestoreSelector + ResolveRestore
+// over liveDumpCatalog (issue #1589's ask to unify RejoinDirectDump onto the
+// same selector/catalog mechanism as the other reseed paths), using the
+// PresetReseedSpareMaster preset RESTORE_SELECTOR.md documents for exactly
+// this case: {Origin:"master", Repo:"live", Safety:["preservenetwork"]}.
+//
+// Origin is reset to "any" here: OriginMaster's only meaning
+// (originMatch: e.Server == ctx.MasterURL) would rank the literal master
+// entry ABOVE the backup-replica entry — the opposite of what "spare the
+// master" needs, and it's checked before Safety in prefCmp. Origin has no
+// concept of "the designated backup replica" (same gap the old inline
+// comment here used to flag), so for this live-only, two-candidate catalog
+// it's left neutral and Safety does the actual work: preservemasterload is
+// added alongside the preset's own preservenetwork so safetyScore's
+// isLiveFromMaster check (restore_selector.go) can tell the two live
+// candidates apart and rank the non-master one first — reproducing the
+// prior hardcoded "prefer the backup replica, else master" behavior through
+// the selector instead of as a bespoke pick.
+//
+// Known limitation, deliberately NOT fixed here: unlike
+// rejoinMasterSync/rejoinMasterFlashBack, this does not consult
+// GetRelayServer() for Maxscale-binlog/multi-tier topologies.
+// RejoinDirectDump computes a relay-aware realmaster separately for its
+// pre-dump CHANGE MASTER step, but that value is dropped before this pick —
+// a pre-existing asymmetry, preserved exactly, not introduced or corrected
+// by this migration.
+func (cluster *Cluster) resolveLiveDumpSource() *ServerMonitor {
+	sel := PresetReseedSpareMaster()
+	sel.Origin = OriginAny
+	sel.Safety = append(sel.Safety, "preservemasterload")
+
+	var ctx ResolveContext
+	if cluster.master != nil {
+		ctx.MasterURL = cluster.master.URL
+	}
+
+	if pick := ResolveRestore(cluster.liveDumpCatalog(), sel, ctx); pick != nil {
+		if s := cluster.GetServerFromURL(pick.Server); s != nil {
+			return s
+		}
+	}
+	return cluster.master
+}
+
 func (server *ServerMonitor) RejoinDirectDump() error {
 	cluster := server.ClusterGroup
 	var err3 error
@@ -542,12 +588,7 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 		return err3
 	}
 	// dump here
-	backupserver := cluster.GetBackupServer()
-	if backupserver == nil {
-		go cluster.JobRejoinMysqldumpFromSource(cluster.master, server)
-	} else {
-		go cluster.JobRejoinMysqldumpFromSource(backupserver, server)
-	}
+	go cluster.JobRejoinMysqldumpFromSource(cluster.resolveLiveDumpSource(), server)
 	return nil
 }
 
@@ -650,7 +691,7 @@ func (server *ServerMonitor) rejoinWithMethod(crash *Crash) {
 	case RejoinMethodLogicalDump:
 		err = server.RejoinDirectDump()
 	case RejoinMethodLogicalBkp:
-		err = server.JobFlashbackLogicalBackup()
+		err = server.JobFlashbackLogicalBackup(true) // manual, operator-chosen -- eligible for validated-selector recording
 	case RejoinMethodPhysicalBkp:
 		err = server.JobFlashbackPhysicalBackup()
 	case RejoinMethodIgnoreForce:

@@ -397,6 +397,10 @@ type Cluster struct {
 	appListRebuildMu        sync.Mutex `json:"-"`
 	secretVersionStoreMu    sync.Mutex `json:"-"`
 	secretVersionStoreDirty bool       `json:"-"`
+	// validatedSelectorsMu guards valid_restore_selectors.json: read on every
+	// getAutorejoinBackupSelector call (hot path), written rarely (manual
+	// restore success, or explicit API add/remove).
+	validatedSelectorsMu sync.RWMutex `json:"-"`
 	// reloadMu serializes Run()'s per-tick synchronous work (topology
 	// discovery, the wg-joined Phase 1/2/3 monitoring work) against
 	// ReloadConfig() rebuilding Conf/state machines/Servers out from under
