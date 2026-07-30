@@ -1150,6 +1150,201 @@ func TestCheckResticErrors_WARN0095Lifecycle(t *testing.T) {
 	}
 }
 
+// newWarn0075TestCluster builds the minimal Cluster+ServerMonitor fixture
+// shared by the StateProcessing/WARN0075 tests below. monitorScheduler and
+// schedulerJobsMode are deliberately parameters (not fixed) so the same
+// fixture can prove the fix is mode-independent.
+func newWarn0075TestCluster(t *testing.T, monitorScheduler bool, schedulerJobsMode string) (*Cluster, *ServerMonitor) {
+	t.Helper()
+	sm := new(state.StateMachine)
+	sm.Init()
+	sm.SetMasterUpAndSync(true, true, true)
+
+	srv := &ServerMonitor{
+		Host:       "127.0.0.1",
+		Port:       "3306",
+		URL:        "127.0.0.1:3306",
+		JobResults: config.NewTasksMap(),
+	}
+
+	cluster := &Cluster{
+		Name:                 "test",
+		Conf:                 &config.Config{MonitorScheduler: monitorScheduler, SchedulerJobsMode: schedulerJobsMode},
+		StateMachine:         sm,
+		WorkloadStateMachine: new(state.StateMachine),
+		SecurityStateMachine: new(state.StateMachine),
+		SchemaStateMachine:   new(state.StateMachine),
+		ConfigStateMachine:   new(state.StateMachine),
+		Servers:              []*ServerMonitor{srv},
+	}
+	cluster.WorkloadStateMachine.Init()
+	cluster.SecurityStateMachine.Init()
+	cluster.SchemaStateMachine.Init()
+	cluster.ConfigStateMachine.Init()
+	srv.ClusterGroup = cluster
+	return cluster, srv
+}
+
+// TestStateProcessing_WARN0075LaunchesWhenArmed proves StateProcessing()
+// launches ProcessReseedLogical for a server that has both WARN0075 open and
+// IsReseeding armed (TrySetInReseedBackup, as JobReseedLogicalBackupPrepare
+// does at request time) -- this is now checked every tick against
+// GetOpenStates(), not an open/resolved edge, so it is independent of
+// MonitorScheduler/SchedulerJobsMode. Runs both the memory-tracked
+// (MonitorScheduler=false) and DB-backed (MonitorScheduler=true,
+// SchedulerJobsMode="sql") configurations to prove neither is special-cased
+// anymore.
+func TestStateProcessing_WARN0075LaunchesWhenArmed(t *testing.T) {
+	cases := []struct {
+		name              string
+		monitorScheduler  bool
+		schedulerJobsMode string
+	}{
+		{"memory-tracked (scheduler off)", false, "sql"},
+		{"memory-tracked (api mode)", true, "api"},
+		{"DB-backed", true, "sql"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cluster, srv := newWarn0075TestCluster(t, tc.monitorScheduler, tc.schedulerJobsMode)
+			task := "reseed" + cluster.Conf.BackupLogicalType
+
+			if ok, _ := srv.TrySetInReseedBackup(task); !ok {
+				t.Fatal("setup: failed to arm server for reseed")
+			}
+
+			cluster.SetState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: "test", ErrFrom: "JOB", ServerUrl: srv.URL})
+			cluster.StateProcessing()
+			cluster.tickWG.Wait()
+
+			// ProcessReseedLogical will fail past the arming check (no master,
+			// no DB conn in this fixture) -- what matters is that it was
+			// reached at all, proven by IsReseeding having been cleared by its
+			// deferred cleanup and JobResults recording the attempt.
+			if srv.HasReseedingState(task) {
+				t.Fatal("expected ProcessReseedLogical to have run and cleared IsReseeding, but it's still armed -- launchLogicalReseed was never reached")
+			}
+			if got := srv.JobResults.Get(task); got == nil {
+				t.Fatal("expected an outcome recorded on JobResults, got none -- launchLogicalReseed was never reached")
+			}
+		})
+	}
+}
+
+// TestStateProcessing_WARN0075StaleTriggerIsNoop is the regression guard for
+// the double-launch bug: once a reseed has actually finished (IsReseeding
+// cleared, win or lose), a later tick that still observes WARN0075 open --
+// e.g. a stale warning that hasn't been cleaned up yet -- must not relaunch
+// ProcessReseedLogical and clobber the recorded result. This is now enforced
+// by the HasReseedingState guard at the top of launchLogicalReseed, not by
+// gating which branch is allowed to fire in which mode.
+func TestStateProcessing_WARN0075StaleTriggerIsNoop(t *testing.T) {
+	cluster, srv := newWarn0075TestCluster(t, false, "sql")
+	task := "reseed" + cluster.Conf.BackupLogicalType
+
+	// Simulate a reseed that already ran to completion: IsReseeding cleared,
+	// a success result recorded, but WARN0075 is still (spuriously) open.
+	srv.JobResults.Set(task, &config.Task{Task: task, Done: 1, State: 3, Result: "success-marker"})
+	cluster.SetState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: "test", ErrFrom: "JOB", ServerUrl: srv.URL})
+
+	cluster.StateProcessing()
+	cluster.tickWG.Wait()
+
+	got := srv.JobResults.Get(task)
+	if got == nil {
+		t.Fatal("expected task result to still be present")
+	}
+	if got.Result != "success-marker" || got.State != 3 {
+		t.Fatalf("stale open WARN0075 relaunched the reseed and clobbered the successful result: got done=%d,state=%d,result=%q", got.Done, got.State, got.Result)
+	}
+}
+
+// TestStateProcessing_WARN0075SurvivesModeFlipMidReseed directly covers the
+// scenario that motivated checking GetOpenStates() every tick instead of an
+// open/resolved edge: MonitorScheduler and SchedulerJobsMode are
+// live-reloadable (see Cluster.SwitchMonitoringScheduler), so an operator can
+// flip mode between the tick WARN0075 opens and a later tick. With an
+// edge-based trigger split by mode, that flip could cause either a
+// double-launch (mode flips to the side whose trigger was previously gated
+// off, and it fires again for an already-finished reseed) or a stall (mode
+// flips to the side that already missed its one edge). Neither can happen
+// now: the trigger doesn't care which mode was active when, only whether the
+// server is currently armed.
+func TestStateProcessing_WARN0075SurvivesModeFlipMidReseed(t *testing.T) {
+	cluster, srv := newWarn0075TestCluster(t, false, "sql") // start memory-tracked
+	task := "reseed" + cluster.Conf.BackupLogicalType
+
+	if ok, _ := srv.TrySetInReseedBackup(task); !ok {
+		t.Fatal("setup: failed to arm server for reseed")
+	}
+	cluster.SetState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: "test", ErrFrom: "JOB", ServerUrl: srv.URL})
+
+	// Tick 1: memory-tracked mode observes the open state and dispatches.
+	cluster.StateProcessing()
+	cluster.tickWG.Wait()
+
+	if srv.HasReseedingState(task) {
+		t.Fatal("tick 1: expected the reseed attempt to have run and cleared IsReseeding")
+	}
+	first := srv.JobResults.Get(task)
+	if first == nil {
+		t.Fatal("tick 1: expected an outcome recorded on JobResults")
+	}
+
+	// Flip live, as an operator toggling monitoring-scheduler mid-reseed would.
+	// WARN0075 may still be open here if whatever normally clears it hasn't
+	// run yet on this tick.
+	cluster.Conf.MonitorScheduler = true
+
+	// Tick 2: DB-backed mode now observes the same (still open) WARN0075. It
+	// must not relaunch -- the server is no longer armed for this task.
+	cluster.StateProcessing()
+	cluster.tickWG.Wait()
+
+	second := srv.JobResults.Get(task)
+	if second == nil {
+		t.Fatal("tick 2: task result unexpectedly disappeared")
+	}
+	if second.Result != first.Result || second.State != first.State {
+		t.Fatalf("mode flip between ticks caused a relaunch: tick1=%+v tick2=%+v", first, second)
+	}
+}
+
+// TestLaunchLogicalReseed_ConcurrentCallsDispatchOnce proves the atomic
+// dispatch flag: two calls to launchLogicalReseed while the server is armed
+// (as would happen if two ticks in a row both observe the same open
+// WARN0075, e.g. right around a MonitorScheduler/SchedulerJobsMode flip)
+// must only ever start ProcessReseedLogical once, never concurrently.
+// HasReseedingState can't distinguish this on its own since it stays true
+// for the whole in-flight duration -- this is what the CompareAndSwap closes.
+func TestLaunchLogicalReseed_ConcurrentCallsDispatchOnce(t *testing.T) {
+	cluster, srv := newWarn0075TestCluster(t, false, "sql")
+	task := "reseed" + cluster.Conf.BackupLogicalType
+
+	if ok, _ := srv.TrySetInReseedBackup(task); !ok {
+		t.Fatal("setup: failed to arm server for reseed")
+	}
+
+	// Manually claim the dispatch flag to simulate "a call from a previous
+	// tick is still in flight" without needing a real slow ProcessReseedLogical.
+	if !srv.logicalReseedDispatching.CompareAndSwap(false, true) {
+		t.Fatal("setup: failed to claim dispatch flag")
+	}
+
+	cluster.launchLogicalReseed(srv)
+	cluster.tickWG.Wait()
+
+	// launchLogicalReseed must have bailed out immediately on the already-claimed
+	// flag: no goroutine spawned, so JobResults is untouched and IsReseeding
+	// is still armed (nothing ran ProcessReseedLogical's cleanup).
+	if got := srv.JobResults.Get(task); got != nil {
+		t.Fatalf("expected no dispatch while flag is claimed, but JobResults was touched: %+v", got)
+	}
+	if !srv.HasReseedingState(task) {
+		t.Fatal("expected IsReseeding to remain armed -- a second dispatch must not have run ProcessReseedLogical")
+	}
+}
+
 // TestCheckResticErrors_WARN0095ResolvesWithoutPstates30 proves that WARN0095
 // resolves in the very next cycle after the init issue clears, without relying
 // on pstates30 preservation to carry the state. This is the regression guard

@@ -259,6 +259,7 @@ type ServerMonitor struct {
 	reseedBytes                 atomic.Int64 // raw bytes streamed so far (compressed input; no decompression accounting yet)
 	reseedTotal                 atomic.Int64 // total compressed backup file size (0 = unknown)
 	reseedStart                 atomic.Int64 // unix-nanos the current restore started (for MB/s)
+	logicalReseedDispatching    atomic.Bool  // claimed for the duration of an in-flight launchLogicalReseed call, so repeated StateProcessing ticks over the same open WARN0075 can't enter ProcessReseedLogical concurrently
 	// Lock ordering (to prevent deadlocks):
 	// 1. Cluster.stateMutex (highest)
 	// 2. ServerMonitor.stateMutex
