@@ -1136,6 +1136,46 @@ func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {
 	return haTopology
 }
 
+// appRefreshStaleThreshold picks the staleness/stuck threshold for
+// APPERR007: the largest of three lower bounds.
+//
+//  1. A flat floor (10x the tick interval), covering the bootstrap case
+//     before any batch has ever completed.
+//  2. 4x the last observed batch duration -- adapts to a fleet that has
+//     been steady for a while, without needing to know its size,
+//     concurrency, or timeout directly.
+//  3. A theoretical bound derived from the *current* fleet size,
+//     ceil(appCount/concurrency) rounds x timeoutSeconds, x4 for headroom
+//     (apps commonly have more than one route, and each route check is
+//     bounded by timeoutSeconds, not the whole app). Bound (2) alone lags
+//     by one batch: if the fleet just grew (e.g. 1 app -> 11 apps), the
+//     last observed duration is still the old, small one, so the first
+//     larger batch would false-positive as "stuck" before bound (2) has
+//     any data reflecting the new size. Bound (3) reacts immediately
+//     because it's computed from the current snapshot, not history.
+func appRefreshStaleThreshold(monitoringTicker int64, appCount, concurrency, timeoutSeconds int, lastDurationMs int64) time.Duration {
+	threshold := time.Duration(10*monitoringTicker) * time.Second
+
+	if appCount > 0 && timeoutSeconds > 0 {
+		workers := concurrency
+		if workers <= 0 {
+			workers = 1
+		}
+		rounds := (appCount + workers - 1) / workers // ceil division
+		if fleetBound := time.Duration(4*rounds*timeoutSeconds) * time.Second; fleetBound > threshold {
+			threshold = fleetBound
+		}
+	}
+
+	if lastDurationMs > 0 {
+		if adaptive := time.Duration(4*lastDurationMs) * time.Millisecond; adaptive > threshold {
+			threshold = adaptive
+		}
+	}
+
+	return threshold
+}
+
 // appRefreshStaleness reports whether the last completed app-refresh batch
 // is too old (stale) or the current batch has been running too long
 // (stuck), relative to threshold. Pure function, factored out of the tick
@@ -1157,6 +1197,9 @@ func appRefreshStaleness(inProgress bool, lastStart, lastEnd, now time.Time, thr
 // half-old/half-new mix of app error state.
 func (cluster *Cluster) maybeRefreshAppsAsync() {
 	if !cluster.appRefreshInProgress.CompareAndSwap(false, true) {
+		cluster.Lock()
+		cluster.AppRefreshSkippedCount++
+		cluster.Unlock()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg,
 			"Skipping app refresh: previous batch still in progress")
 		return
@@ -1164,8 +1207,30 @@ func (cluster *Cluster) maybeRefreshAppsAsync() {
 	defer cluster.appRefreshInProgress.Store(false)
 
 	start := time.Now()
+
+	// Snapshot cluster.Apps under cluster.Lock(): it's reassigned wholesale
+	// under this lock elsewhere (newAppList, cluster_del.go), so iterating
+	// the live slice without it races on the slice header itself -- same
+	// class of bug already found and fixed in GetAppsSubstitutionJSon
+	// (cluster/app_get.go). appCount is taken from this same snapshot so
+	// AppRefreshLastAppCount reflects the batch actually processed, not a
+	// possibly-since-changed cluster.Apps read again after the fact.
+	//
+	// AppRefreshSkippedCount is reset here, at batch start, not at batch
+	// end: resetting at the end races against the deferred
+	// appRefreshInProgress.Store(false) above, which only runs after this
+	// whole function returns -- a tick landing in that gap would fail the
+	// CompareAndSwap and increment a counter that was just zeroed,
+	// appearing as stray leftover contention from a batch that actually
+	// just succeeded cleanly. Resetting at start has no such window: it
+	// happens strictly after this goroutine wins the CompareAndSwap above,
+	// so every rejection counted from here on is unambiguously "since this
+	// batch started."
 	cluster.Lock()
 	cluster.AppRefreshLastStart = start
+	cluster.AppRefreshSkippedCount = 0
+	apps := make([]*App, len(cluster.Apps))
+	copy(apps, cluster.Apps)
 	cluster.Unlock()
 
 	var workerWg sync.WaitGroup
@@ -1196,7 +1261,7 @@ func (cluster *Cluster) maybeRefreshAppsAsync() {
 		}()
 	}
 
-	for _, app := range cluster.Apps {
+	for _, app := range apps {
 		if app != nil {
 			appChan <- app
 		}
@@ -1213,7 +1278,7 @@ func (cluster *Cluster) maybeRefreshAppsAsync() {
 	cluster.AppRefreshLastDurationMs = cluster.AppRefreshLastEnd.Sub(start).Milliseconds()
 	cluster.AppRefreshLastSuccess = true
 	cluster.AppRefreshLastError = ""
-	cluster.AppRefreshLastAppCount = len(cluster.Apps)
+	cluster.AppRefreshLastAppCount = len(apps)
 	cluster.Unlock()
 }
 

@@ -126,6 +126,109 @@ func TestMaybeRefreshAppsAsync_SingleFlight(t *testing.T) {
 	}
 }
 
+// TestMaybeRefreshAppsAsync_ConcurrentAppListRebuildNoRace guards against
+// cluster.Apps being reassigned wholesale (as newAppList/cluster_del.go do,
+// under cluster.Lock()) while maybeRefreshAppsAsync is iterating it. Before
+// the fix, the fan-out loop read cluster.Apps directly with no lock -- the
+// same class of bug already found and fixed in GetAppsSubstitutionJSon
+// (cluster/app_get.go). Run with -race.
+func TestMaybeRefreshAppsAsync_ConcurrentAppListRebuildNoRace(t *testing.T) {
+	cluster := &Cluster{
+		Name: "list-rebuild",
+		Conf: &config.Config{Timeout: 5, AppRefreshConcurrency: 2},
+	}
+	app1 := newAppRefreshTestApp(cluster, "app1", nil)
+	app2 := newAppRefreshTestApp(cluster, "app2", nil)
+	cluster.Apps = []*App{app1, app2}
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// Mutator: repeatedly rebuilds cluster.Apps under cluster.Lock(),
+	// mirroring newAppList's atomic swap.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				cluster.Lock()
+				cluster.Apps = []*App{app1, app2}
+				cluster.Unlock()
+			}
+		}
+	}()
+
+	deadline := time.Now().Add(200 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		cluster.maybeRefreshAppsAsync()
+	}
+
+	close(stop)
+	wg.Wait()
+}
+
+// TestMaybeRefreshAppsAsync_SkippedCount asserts AppRefreshSkippedCount
+// increments once per rejected overlapping launch, stays visible after the
+// batch that saw the rejections finishes (not reset at completion -- that
+// would race against the deferred appRefreshInProgress clear, see
+// maybeRefreshAppsAsync), and resets to 0 only once the next batch starts.
+func TestMaybeRefreshAppsAsync_SkippedCount(t *testing.T) {
+	entered := make(chan struct{}, 8)
+	block := make(chan struct{})
+
+	srv := blockingHTTPServer(entered, block)
+	defer srv.Close()
+
+	cluster := &Cluster{
+		Name: "skipped-count",
+		Conf: &config.Config{Timeout: 5, AppRefreshConcurrency: 1},
+	}
+	app := newAppRefreshTestApp(cluster, "app1", []config.Route{httpRouteFor(srv)})
+	cluster.Apps = []*App{app}
+
+	done := make(chan struct{})
+	go func() {
+		cluster.maybeRefreshAppsAsync()
+		close(done)
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the batch to start checking the app")
+	}
+
+	const rejectedAttempts = 3
+	for i := 0; i < rejectedAttempts; i++ {
+		cluster.maybeRefreshAppsAsync()
+	}
+	if got := cluster.AppRefreshSkippedCount; got != rejectedAttempts {
+		t.Fatalf("expected AppRefreshSkippedCount=%d after %d overlapping calls, got %d", rejectedAttempts, rejectedAttempts, got)
+	}
+
+	close(block)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the batch to finish")
+	}
+
+	// Finishing the batch must NOT reset the count -- it stays visible for
+	// inspection until the next batch starts.
+	if got := cluster.AppRefreshSkippedCount; got != rejectedAttempts {
+		t.Fatalf("expected AppRefreshSkippedCount to remain %d after the batch finishes, got %d", rejectedAttempts, got)
+	}
+
+	// Starting the next batch resets it.
+	cluster.maybeRefreshAppsAsync()
+	if got := cluster.AppRefreshSkippedCount; got != 0 {
+		t.Fatalf("expected AppRefreshSkippedCount reset to 0 once the next batch starts, got %d", got)
+	}
+}
+
 func TestMaybeRefreshAppsAsync_AtomicPublish(t *testing.T) {
 	entered := make(chan struct{}, 8)
 	block := make(chan struct{})
@@ -340,6 +443,81 @@ func TestAppRefreshStaleness(t *testing.T) {
 			if stale != tc.wantStale || stuck != tc.wantStuck {
 				t.Fatalf("appRefreshStaleness() = (stale=%v, stuck=%v), want (stale=%v, stuck=%v)",
 					stale, stuck, tc.wantStale, tc.wantStuck)
+			}
+		})
+	}
+}
+
+// TestAppRefreshStaleThreshold guards two fixes for a flat threshold not
+// scaling with app count:
+//
+//  1. Worst-case batch duration is roughly
+//     ceil(apps/AppRefreshConcurrency) x routesPerApp x Conf.Timeout, which
+//     at even 5 apps and default settings can exceed a flat
+//     10xMonitoringTicker floor under a plausible worst case, producing
+//     false "stuck" warnings on a batch that's still working normally.
+//  2. Bound (1)'s fix -- scaling off the *last observed* batch duration --
+//     still lags by one batch when the fleet just grew (e.g. 1 app -> 11
+//     apps): the last duration reflects the old, small fleet, so the first
+//     larger batch would still false-positive before any history catches
+//     up. The current-fleet-size bound must react immediately, using the
+//     current snapshot's app count rather than history.
+func TestAppRefreshStaleThreshold(t *testing.T) {
+	cases := []struct {
+		name             string
+		monitoringTicker int64
+		appCount         int
+		concurrency      int
+		timeoutSeconds   int
+		lastDurationMs   int64
+		want             time.Duration
+	}{
+		{
+			name:             "no batch completed yet: flat floor",
+			monitoringTicker: 2,
+			appCount:         1,
+			concurrency:      2,
+			timeoutSeconds:   5,
+			lastDurationMs:   0,
+			want:             20 * time.Second,
+		},
+		{
+			name:             "fast batch, small fleet: flat floor still wins",
+			monitoringTicker: 2,
+			appCount:         1,
+			concurrency:      2,
+			timeoutSeconds:   5,
+			lastDurationMs:   1000, // 4x = 4s, less than the 20s floor
+			want:             20 * time.Second,
+		},
+		{
+			name:             "slow observed batch: adaptive-from-history wins",
+			monitoringTicker: 2,
+			appCount:         1,
+			concurrency:      2,
+			timeoutSeconds:   5,
+			lastDurationMs:   25000, // 4x = 100s, more than the 20s floor
+			want:             100 * time.Second,
+		},
+		{
+			name:             "fleet just grew, no history yet: current-size bound wins",
+			monitoringTicker: 2,
+			appCount:         11,
+			concurrency:      2,
+			timeoutSeconds:   5,
+			lastDurationMs:   200, // still reflects the old 1-app fleet
+			// ceil(11/2)=6 rounds x 5s x4 = 120s
+			want: 120 * time.Second,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got := appRefreshStaleThreshold(tc.monitoringTicker, tc.appCount, tc.concurrency, tc.timeoutSeconds, tc.lastDurationMs)
+			if got != tc.want {
+				t.Fatalf("appRefreshStaleThreshold(%d, %d, %d, %d, %d) = %s, want %s",
+					tc.monitoringTicker, tc.appCount, tc.concurrency, tc.timeoutSeconds, tc.lastDurationMs, got, tc.want)
 			}
 		})
 	}

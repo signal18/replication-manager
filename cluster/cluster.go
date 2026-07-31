@@ -408,14 +408,24 @@ type Cluster struct {
 	appRefreshEpoch       uint64                                 `json:"-"`
 	publishedAppErrStates atomic.Pointer[map[string]state.State] `json:"-"`
 
-	AppRefreshLastStart      time.Time  `json:"appRefreshLastStart" groups:"web"`
-	AppRefreshLastEnd        time.Time  `json:"appRefreshLastEnd" groups:"web"`
-	AppRefreshLastSuccess    bool       `json:"appRefreshLastSuccess" groups:"web"`
-	AppRefreshLastDurationMs int64      `json:"appRefreshLastDurationMs" groups:"web"`
-	AppRefreshLastError      string     `json:"appRefreshLastError" groups:"web"`
-	AppRefreshLastAppCount   int        `json:"appRefreshLastAppCount" groups:"web"`
-	secretVersionStoreMu     sync.Mutex `json:"-"`
-	secretVersionStoreDirty  bool       `json:"-"`
+	AppRefreshLastStart      time.Time `json:"appRefreshLastStart" groups:"web"`
+	AppRefreshLastEnd        time.Time `json:"appRefreshLastEnd" groups:"web"`
+	AppRefreshLastSuccess    bool      `json:"appRefreshLastSuccess" groups:"web"`
+	AppRefreshLastDurationMs int64     `json:"appRefreshLastDurationMs" groups:"web"`
+	AppRefreshLastError      string    `json:"appRefreshLastError" groups:"web"`
+	AppRefreshLastAppCount   int       `json:"appRefreshLastAppCount" groups:"web"`
+	// AppRefreshSkippedCount counts single-flight rejections (a previous
+	// batch still running when the tick tries to launch the next one)
+	// since the current/most recent batch started -- a rising count means
+	// the app fleet has outgrown current refresh capacity
+	// (AppRefreshConcurrency/Conf.Timeout), a visibility signal that's
+	// otherwise only a DBG log line. Reset to 0 when a new batch starts
+	// (not when one finishes -- see maybeRefreshAppsAsync for why), so it
+	// stays visible for inspection after a batch completes until the next
+	// one begins.
+	AppRefreshSkippedCount  int        `json:"appRefreshSkippedCount" groups:"web"`
+	secretVersionStoreMu    sync.Mutex `json:"-"`
+	secretVersionStoreDirty bool       `json:"-"`
 	// reloadMu serializes Run()'s per-tick synchronous work (topology
 	// discovery, the wg-joined Phase 1/2/3 monitoring work) against
 	// ReloadConfig() rebuilding Conf/state machines/Servers out from under
@@ -1202,13 +1212,20 @@ func (cluster *Cluster) tickBody() {
 				// App refresh now runs off the tick's critical path (see
 				// maybeRefreshAppsAsync); warn only if it's genuinely stale or
 				// stuck, not merely because it's async. No warning before the
-				// first batch has ever run.
-				if len(cluster.Apps) > 0 {
-					cluster.Lock()
-					lastStart := cluster.AppRefreshLastStart
-					lastEnd := cluster.AppRefreshLastEnd
-					cluster.Unlock()
-					threshold := time.Duration(10*cluster.Conf.MonitoringTicker) * time.Second
+				// first batch has ever run. appCount is read under the same
+				// lock as the freshness fields: cluster.Apps is reassigned
+				// wholesale under cluster.Lock() elsewhere (newAppList,
+				// cluster_del.go), so reading its length unlocked would race
+				// on the slice header itself, same as the bug already fixed
+				// in maybeRefreshAppsAsync's fan-out loop.
+				cluster.Lock()
+				appCount := len(cluster.Apps)
+				lastStart := cluster.AppRefreshLastStart
+				lastEnd := cluster.AppRefreshLastEnd
+				lastDurationMs := cluster.AppRefreshLastDurationMs
+				cluster.Unlock()
+				if appCount > 0 {
+					threshold := appRefreshStaleThreshold(cluster.Conf.MonitoringTicker, appCount, cluster.Conf.AppRefreshConcurrency, cluster.Conf.Timeout, lastDurationMs)
 					inProgress := cluster.appRefreshInProgress.Load()
 					stale, stuck := appRefreshStaleness(inProgress, lastStart, lastEnd, time.Now(), threshold)
 					if stale || stuck {
