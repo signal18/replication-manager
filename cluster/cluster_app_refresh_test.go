@@ -522,3 +522,58 @@ func TestAppRefreshStaleThreshold(t *testing.T) {
 		})
 	}
 }
+
+// TestAppRefresh_TracksInProgressDuringSlowCheck guards the App-level
+// (not batch-level) RefreshInProgress/LastRefreshDurationMs fields:
+// RefreshInProgress must be observably true for the whole duration of a
+// slow Refresh() call, and LastRefreshDurationMs must reflect that it
+// actually blocked, not just that Refresh() was called.
+func TestAppRefresh_TracksInProgressDuringSlowCheck(t *testing.T) {
+	entered := make(chan struct{}, 4)
+	block := make(chan struct{})
+	srv := blockingHTTPServer(entered, block)
+	defer srv.Close()
+
+	cluster := &Cluster{
+		Name: "app-refresh-tracking",
+		Conf: &config.Config{Timeout: 5},
+	}
+	app := newAppRefreshTestApp(cluster, "app1", []config.Route{httpRouteFor(srv)})
+
+	done := make(chan struct{})
+	go func() {
+		app.Refresh()
+		close(done)
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the refresh to start checking the app")
+	}
+
+	app.Lock()
+	inProgress := app.RefreshInProgress
+	app.Unlock()
+	if !inProgress {
+		t.Fatalf("expected RefreshInProgress=true while Refresh() is still running")
+	}
+
+	close(block)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for Refresh() to finish")
+	}
+
+	app.Lock()
+	inProgress = app.RefreshInProgress
+	lastDurationMs := app.LastRefreshDurationMs
+	app.Unlock()
+	if inProgress {
+		t.Fatalf("expected RefreshInProgress=false after Refresh() finishes")
+	}
+	if lastDurationMs <= 0 {
+		t.Fatalf("expected positive LastRefreshDurationMs for a check that blocked, got %d", lastDurationMs)
+	}
+}

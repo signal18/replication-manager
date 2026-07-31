@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
@@ -619,5 +620,43 @@ func TestGetMonitoringStatusRefreshTotalOutageBecomesFailedAfterMaxFail(t *testi
 	}
 	if app.State != stateFailed {
 		t.Fatalf("expected %s after max-fail threshold, got %s", stateFailed, app.State)
+	}
+}
+
+// TestAppRefreshTracksTimingAndInProgress guards the per-app freshness
+// fields (app.go) added so operators can tell which specific app is slow,
+// not just that the batch as a whole is -- the cluster-level
+// AppRefreshLast* fields only cover the batch, not any one app within it.
+func TestAppRefreshTracksTimingAndInProgress(t *testing.T) {
+	app := newMonitoringTestApp([]config.Route{{Protocol: "tcp", CName: "127.0.0.1", Port: "1", Primary: true}})
+
+	if app.RefreshInProgress {
+		t.Fatalf("expected RefreshInProgress=false before any Refresh() call")
+	}
+
+	before := time.Now()
+	if err := app.Refresh(); err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	after := time.Now()
+
+	app.Lock()
+	inProgress := app.RefreshInProgress
+	lastStart := app.LastRefreshStart
+	lastEnd := app.LastRefreshEnd
+	lastDurationMs := app.LastRefreshDurationMs
+	app.Unlock()
+
+	if inProgress {
+		t.Fatalf("expected RefreshInProgress=false after Refresh() returns")
+	}
+	if lastStart.Before(before) || lastStart.After(after) {
+		t.Fatalf("LastRefreshStart %s not within [%s, %s]", lastStart, before, after)
+	}
+	if lastEnd.Before(lastStart) {
+		t.Fatalf("LastRefreshEnd %s before LastRefreshStart %s", lastEnd, lastStart)
+	}
+	if lastDurationMs < 0 {
+		t.Fatalf("expected non-negative LastRefreshDurationMs, got %d", lastDurationMs)
 	}
 }

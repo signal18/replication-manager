@@ -1153,6 +1153,23 @@ func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {
 //     larger batch would false-positive as "stuck" before bound (2) has
 //     any data reflecting the new size. Bound (3) reacts immediately
 //     because it's computed from the current snapshot, not history.
+//
+// This is a deliberately coarse, heuristic pipeline-health signal, not a
+// per-app health check -- see App's own LastRefresh*/RefreshInProgress
+// fields (app.go, set via SetRefreshInProgress/SetRefreshResult) for which
+// specific app is slow. The x4 in bound (3) is a fixed safety margin, not a
+// measurement: a fleet with unusually route-heavy apps (e.g. most apps
+// having 5+ routes, each potentially doing a local+external check) can
+// still exceed it on the very first batch after a fleet/route-count jump,
+// producing one false "stuck"/"stale" warning. This is accepted as a known
+// limitation rather than chased further: it's warning noise, not a
+// functional failure (app monitoring itself is unaffected), and it
+// self-corrects on the very next completed batch once bound (2) reflects
+// the new reality. Closing it fully would require summing actual route
+// counts across the snapshot under each app's own lock before every
+// threshold check, adding real complexity for a one-cycle, self-healing
+// symptom -- not worth it without production evidence that the x4 margin
+// is actually being hit in practice.
 func appRefreshStaleThreshold(monitoringTicker int64, appCount, concurrency, timeoutSeconds int, lastDurationMs int64) time.Duration {
 	threshold := time.Duration(10*monitoringTicker) * time.Second
 
