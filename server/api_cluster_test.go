@@ -460,6 +460,188 @@ func TestBuildClusterAPIPayload_ConcurrentMutationNoRace(t *testing.T) {
 	<-done
 }
 
+// TestBuildClusterAPIPayload_AppsAbsent verifies that "apps" is never present
+// at the top level or inside "config", now that buildClusterAPIPayload
+// suppresses Cluster.Apps and substitutes a Conf snapshot with Apps cleared,
+// instead of marshaling then sjson-deleting them.
+func TestBuildClusterAPIPayload_AppsAbsent(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	app := &cluster.App{
+		Id: "app1", Name: "app1", Mutex: &sync.Mutex{},
+		AppConfig: &config.AppConfig{Deployment: &config.Deployment{}},
+	}
+	cl.Apps = []*cluster.App{app}
+	cl.Conf.Apps = []*config.AppConfig{app.AppConfig}
+
+	payload, err := buildClusterAPIPayload(cl)
+	if err != nil {
+		t.Fatalf("buildClusterAPIPayload: %v", err)
+	}
+
+	var out map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &out); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if _, ok := out["apps"]; ok {
+		t.Errorf("expected top-level \"apps\" key to be absent")
+	}
+
+	var cfg map[string]json.RawMessage
+	if err := json.Unmarshal(out["config"], &cfg); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+	if _, ok := cfg["apps"]; ok {
+		t.Errorf("expected \"config.apps\" key to be absent")
+	}
+}
+
+// TestBuildClusterAPIPayload_AppConcurrentMutationNoRace verifies that
+// buildClusterAPIPayload no longer races against concurrent App state writes.
+// Run with `go test -race`: before this fix, buildClusterAPIPayload did
+// json.Marshal(mycluster) directly, reflecting over every live *App in
+// mycluster.Apps (and mycluster.Conf.Apps) while SetState/SetFailCount could
+// concurrently mutate them.
+func TestBuildClusterAPIPayload_AppConcurrentMutationNoRace(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	app := &cluster.App{
+		Id: "app1", Name: "app1", Mutex: &sync.Mutex{},
+		AppConfig: &config.AppConfig{Deployment: &config.Deployment{}},
+	}
+	cl.Apps = []*cluster.App{app}
+	cl.Conf.Apps = []*config.AppConfig{app.AppConfig}
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		i := 0
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				app.SetState(fmt.Sprintf("state-%d", i))
+				app.SetFailCount(i)
+				i++
+			}
+		}
+	}()
+
+	deadline := time.Now().Add(200 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if _, err := buildClusterAPIPayload(cl); err != nil {
+			close(stop)
+			<-done
+			t.Fatalf("buildClusterAPIPayload: %v", err)
+		}
+	}
+
+	close(stop)
+	<-done
+}
+
+// TestHandlerMuxApps_AppConcurrentMutationNoRace verifies that handlerMuxApps
+// no longer races against concurrent App state writes. Run with `go test
+// -race`: before GetAppsCopy()/GetAppAPIView(), handlerMuxApps did
+// json.MarshalIndent(mycluster.Apps, ...) directly against the live slice.
+func TestHandlerMuxApps_AppConcurrentMutationNoRace(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	app := &cluster.App{
+		Id: "app1", Name: "app1", Mutex: &sync.Mutex{},
+		AppConfig: &config.AppConfig{
+			AppDbUser: "u", AppDbPass: "secret",
+			Deployment: &config.Deployment{},
+		},
+	}
+	cl.Apps = []*cluster.App{app}
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		i := 0
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				app.SetState(fmt.Sprintf("state-%d", i))
+				app.SetFailCount(i)
+				i++
+			}
+		}
+	}()
+
+	deadline := time.Now().Add(200 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		req := httptest.NewRequest("GET", "/api/clusters/"+cl.Name+"/topology/apps", nil)
+		req = setMuxVars(req, map[string]string{"clusterName": cl.Name})
+		w := httptest.NewRecorder()
+		repman.handlerMuxApps(w, req)
+		if w.Code != http.StatusOK {
+			close(stop)
+			<-done
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+	}
+
+	close(stop)
+	<-done
+}
+
+// TestHandlerMuxApps_ShapePreserved verifies that handlerMuxApps's output
+// still matches the shape the previous sjson-based post-processing produced:
+// no "appClusterSubstitute" key, no "config.deployment" key, and
+// "config.appDbPass" masked to "*****" -- now baked into GetAppAPIView()
+// instead of being stripped from the marshaled bytes afterward.
+func TestHandlerMuxApps_ShapePreserved(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	app := &cluster.App{
+		Id: "app1", Name: "app1", State: "Running", Mutex: &sync.Mutex{},
+		AppClusterSubstitute: "should-not-appear",
+		AppConfig: &config.AppConfig{
+			AppDbUser: "u", AppDbPass: "supersecret",
+			Deployment: &config.Deployment{Routes: config.Routes{{CName: "x"}}},
+		},
+	}
+	cl.Apps = []*cluster.App{app}
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	req := httptest.NewRequest("GET", "/api/clusters/"+cl.Name+"/topology/apps", nil)
+	req = setMuxVars(req, map[string]string{"clusterName": cl.Name})
+	w := httptest.NewRecorder()
+	repman.handlerMuxApps(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "supersecret") {
+		t.Fatalf("appDbPass leaked raw value in response body")
+	}
+
+	var parsed []map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &parsed); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(parsed) != 1 {
+		t.Fatalf("expected 1 app, got %d", len(parsed))
+	}
+	if _, ok := parsed[0]["appClusterSubstitute"]; ok {
+		t.Errorf("expected \"appClusterSubstitute\" key to be absent")
+	}
+	cfg, ok := parsed[0]["config"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected \"config\" object in response, got: %v", parsed[0]["config"])
+	}
+	if _, ok := cfg["deployment"]; ok {
+		t.Errorf("expected \"config.deployment\" key to be absent, got: %v", cfg["deployment"])
+	}
+	if cfg["appDbPass"] != "*****" {
+		t.Errorf("expected appDbPass masked to \"*****\", got %v", cfg["appDbPass"])
+	}
+}
+
 // truncate returns s truncated to max chars, for safe error display.
 func truncate(s string, max int) string {
 	if len(s) > max {

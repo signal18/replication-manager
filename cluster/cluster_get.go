@@ -506,6 +506,28 @@ func (cluster *Cluster) GetConf() *config.Config {
 	return cluster.Conf
 }
 
+// GetConfigSnapshotForWire returns an independent copy of cluster.Conf with
+// Apps cleared, safe to hand to a generic marshaler (e.g. encoding/json)
+// even while CheckPrimaryRoute or other app-refresh work concurrently
+// mutates AppConfig.Deployment for entries in the live Conf.Apps.
+// cluster.Conf.Apps[i] and the corresponding App's AppConfig are literally
+// the same *config.AppConfig pointer (see GetAppConfig), so any caller that
+// doesn't need the apps list -- e.g. an API response that strips
+// "config.apps" anyway -- should use this instead of reading cluster.Conf
+// directly. config.Config has no embedded lock, so the value copy itself is
+// safe; it's taken under cluster.Lock() because Conf.Apps is reassigned
+// wholesale under that same lock elsewhere (newAppList, cluster_del.go).
+func (cluster *Cluster) GetConfigSnapshotForWire() *config.Config {
+	cluster.Lock()
+	defer cluster.Unlock()
+	if cluster.Conf == nil {
+		return nil
+	}
+	confCopy := *cluster.Conf
+	confCopy.Apps = nil
+	return &confCopy
+}
+
 func (cluster *Cluster) GetWaitTrx() int64 {
 	return cluster.Conf.SwitchWaitTrx
 }

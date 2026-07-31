@@ -660,3 +660,60 @@ func TestAppRefreshTracksTimingAndInProgress(t *testing.T) {
 		t.Fatalf("expected non-negative LastRefreshDurationMs, got %d", lastDurationMs)
 	}
 }
+
+// TestAppStateAccessorsThreadSafe verifies SetState/GetState (and
+// SetPrevState) are race-free under concurrent access. Run with `go test
+// -race`: before SetState/GetState took app.Lock(), this raced against
+// GetAppAPIView()/IsDown() reading app.State directly.
+func TestAppStateAccessorsThreadSafe(t *testing.T) {
+	app := newTestApp()
+
+	const total = 100
+	var wg sync.WaitGroup
+	wg.Add(total * 3)
+
+	for i := 0; i < total; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			app.SetState(fmt.Sprintf("state-%d", i))
+		}()
+		go func() {
+			defer wg.Done()
+			app.SetPrevState(fmt.Sprintf("prev-%d", i))
+		}()
+	}
+	for i := 0; i < total; i++ {
+		go func() {
+			defer wg.Done()
+			_ = app.GetState()
+			_ = app.GetPrevState()
+		}()
+	}
+
+	wg.Wait()
+}
+
+// TestAppFailCountAccessorsThreadSafe verifies SetFailCount/GetFailCount are
+// race-free under concurrent access, mirroring the increment pattern used in
+// Refresh() (app.SetFailCount(app.GetFailCount() + 1)).
+func TestAppFailCountAccessorsThreadSafe(t *testing.T) {
+	app := newTestApp()
+
+	const total = 100
+	var wg sync.WaitGroup
+	wg.Add(total)
+
+	for i := 0; i < total; i++ {
+		go func() {
+			defer wg.Done()
+			app.SetFailCount(app.GetFailCount() + 1)
+		}()
+	}
+
+	wg.Wait()
+
+	if got := app.GetFailCount(); got <= 0 || got > total {
+		t.Fatalf("expected FailCount in (0, %d], got %d", total, got)
+	}
+}

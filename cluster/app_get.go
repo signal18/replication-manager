@@ -13,8 +13,10 @@ package cluster
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/liip/sheriff/v2"
 	"github.com/tidwall/sjson"
@@ -78,6 +80,108 @@ func cloneAppConfigForSubstitution(cnf *config.AppConfig) *config.AppConfig {
 		}
 	}
 	return &clone
+}
+
+// appConfigAPIView wraps a cloned *config.AppConfig for the wire API and
+// suppresses "deployment" from the output entirely, matching what
+// handlerMuxApps has always stripped. A same-named shadow field at a
+// shallower embedding depth wins encoding/json's field conflict resolution
+// (see AppAPIView's package doc for why json:"-" does NOT achieve this --
+// it drops out of the conflict instead of winning it, so the embedded field
+// would still be marshaled); tagging the shadow field "omitempty" then
+// means the key is omitted entirely (nil pointer) rather than emitted as
+// "deployment":null.
+type appConfigAPIView struct {
+	*config.AppConfig
+	Deployment *struct{} `json:"deployment,omitempty"`
+}
+
+// AppAPIView mirrors every field of App that the wire API
+// (handlerMuxApps, server/api_cluster.go) exposes, built as an independent
+// copy so the API layer never marshals a live *App -- encoding/json
+// reflects over live struct memory the same way sheriff does (see
+// appSubstitutionView's comment), so it races against
+// maybeRefreshAppsAsync's workers exactly the same way GetAppsSubstitutionJSon
+// did before that was fixed. AppClusterSubstitute is intentionally absent:
+// the handler has always stripped it from its response, so the view simply
+// never has it, rather than adding it and deleting it after marshal.
+type AppAPIView struct {
+	Id                    string               `json:"id"`
+	Name                  string               `json:"name"`
+	Type                  string               `json:"type"`
+	Host                  string               `json:"host"`
+	HostIPV6              string               `json:"hostIPV6"`
+	Port                  string               `json:"port"`
+	Version               string               `json:"version"`
+	Datadir               string               `json:"datadir"`
+	State                 string               `json:"state"`
+	PrevState             string               `json:"prevState"`
+	SlapOSDatadir         string               `json:"slaposDatadir"`
+	ServiceName           string               `json:"serviceName"`
+	Agent                 string               `json:"agent"`
+	Weight                string               `json:"weight"`
+	FailCount             int                  `json:"failCount"`
+	LastRefreshStart      time.Time            `json:"lastRefreshStart"`
+	LastRefreshEnd        time.Time            `json:"lastRefreshEnd"`
+	LastRefreshDurationMs int64                `json:"lastRefreshDurationMs"`
+	LastRefreshError      string               `json:"lastRefreshError"`
+	RefreshInProgress     bool                 `json:"refreshInProgress"`
+	Process               *os.Process          `json:"process" swaggerignore:"true"`
+	RouteStatus           []config.RouteStatus `json:"routeStatus"`
+	AppConfig             *appConfigAPIView    `json:"config"`
+	TemplateMD5Prov       string               `json:"templateMD5Prov"`
+	TemplateMD5           string               `json:"templateMD5"`
+	IsHashingTemplate     bool                 `json:"isHashingTemplate"`
+}
+
+// GetAppAPIView builds an independent, race-free snapshot of app for the
+// wire API, taken entirely under app.Lock() (App has no other embedded
+// lock -- *sync.Mutex is a pointer field -- so this is the one place it's
+// safe to read every field in one pass). AppConfig is cloned via
+// cloneAppConfigForSubstitution (already race-free, already used by
+// GetAppsSubstitutionJSon), then Deployment is cleared and AppDbPass is
+// masked to match what handlerMuxApps has always stripped/redacted from
+// its response -- baked in here instead of patched into the JSON bytes
+// after the fact.
+func (app *App) GetAppAPIView() *AppAPIView {
+	app.Lock()
+	defer app.Unlock()
+
+	view := &AppAPIView{
+		Id:                    app.Id,
+		Name:                  app.Name,
+		Type:                  app.Type,
+		Host:                  app.Host,
+		HostIPV6:              app.HostIPV6,
+		Port:                  app.Port,
+		Version:               app.Version,
+		Datadir:               app.Datadir,
+		State:                 app.State,
+		PrevState:             app.PrevState,
+		SlapOSDatadir:         app.SlapOSDatadir,
+		ServiceName:           app.ServiceName,
+		Agent:                 app.Agent,
+		Weight:                app.Weight,
+		FailCount:             app.FailCount,
+		LastRefreshStart:      app.LastRefreshStart,
+		LastRefreshEnd:        app.LastRefreshEnd,
+		LastRefreshDurationMs: app.LastRefreshDurationMs,
+		LastRefreshError:      app.LastRefreshError,
+		RefreshInProgress:     app.RefreshInProgress,
+		Process:               app.Process,
+		TemplateMD5Prov:       app.TemplateMD5Prov,
+		TemplateMD5:           app.TemplateMD5,
+		IsHashingTemplate:     app.IsHashingTemplate,
+	}
+	if app.RouteStatus != nil {
+		view.RouteStatus = append([]config.RouteStatus(nil), app.RouteStatus...)
+	}
+	if app.AppConfig != nil {
+		cfg := cloneAppConfigForSubstitution(app.AppConfig)
+		cfg.AppDbPass = "*****"
+		view.AppConfig = &appConfigAPIView{AppConfig: cfg}
+	}
+	return view
 }
 
 // buildAppSubstitutionView builds an independent, race-free copy of the
@@ -482,7 +586,10 @@ func (p *App) GetId() string {
 	return p.Id
 }
 
+// GetState is locked (app.Lock()) -- see App.SetState (app_set.go).
 func (p *App) GetState() string {
+	p.Lock()
+	defer p.Unlock()
 	return p.State
 }
 
@@ -494,11 +601,17 @@ func (p *App) GetPass() string {
 	return p.Pass
 }
 
+// GetFailCount is locked (app.Lock()) -- see App.SetFailCount (app_set.go).
 func (p *App) GetFailCount() int {
+	p.Lock()
+	defer p.Unlock()
 	return p.FailCount
 }
 
+// GetPrevState is locked (app.Lock()) -- see App.SetPrevState (app_set.go).
 func (p *App) GetPrevState() string {
+	p.Lock()
+	defer p.Unlock()
 	return p.PrevState
 }
 

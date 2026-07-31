@@ -54,11 +54,10 @@ type App struct {
 	// Per-app refresh freshness (cluster-level AppRefreshLast* on Cluster
 	// only shows batch-wide timing, not which app is actually slow). Set
 	// via SetRefreshInProgress/SetRefreshResult under app.Mutex -- read
-	// them the same way (App.Lock()/Unlock()) rather than directly, for
-	// the same reason State/PrevState should be but historically aren't
-	// (see KNOWN ISSUE notes elsewhere in this package): these are read
-	// from a different goroutine than the one that writes them
-	// (maybeRefreshAppsAsync's worker vs. any status/API reader).
+	// them the same way (App.Lock()/Unlock(), or GetAppAPIView) rather than
+	// directly: these are read from a different goroutine than the one
+	// that writes them (maybeRefreshAppsAsync's worker vs. any status/API
+	// reader).
 	LastRefreshStart      time.Time `json:"lastRefreshStart"`
 	LastRefreshEnd        time.Time `json:"lastRefreshEnd"`
 	LastRefreshDurationMs int64     `json:"lastRefreshDurationMs"`
@@ -305,13 +304,13 @@ func (app *App) Refresh() error {
 		app.SetState(stateMaintenance)
 	case stateAppRunning:
 		app.SetState(stateAppRunning)
-		app.FailCount = 0
+		app.SetFailCount(0)
 	case stateFailed:
-		if app.FailCount >= cluster.Conf.MaxFail {
+		if app.GetFailCount() >= cluster.Conf.MaxFail {
 			app.SetState(stateFailed)
 		} else {
 			app.SetState(stateSuspect)
-			app.FailCount++
+			app.SetFailCount(app.GetFailCount() + 1)
 		}
 	case stateAppWarning:
 		app.SetState(stateAppWarning)

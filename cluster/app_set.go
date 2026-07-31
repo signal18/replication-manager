@@ -105,16 +105,20 @@ func (app *App) SetNoConfigFetchCookie() error {
 	return app.createCookie("cookie_noconfigfetch")
 }
 
+// SetPrevState is locked (app.Lock()) because it, like SetState, is read
+// cross-goroutine by GetAppAPIView() (cluster/app_get.go) while
+// maybeRefreshAppsAsync's worker concurrently calls it during Refresh().
 func (app *App) SetPrevState(state string) {
+	app.Lock()
+	defer app.Unlock()
 	app.PrevState = state
 }
 
 // SetRefreshInProgress marks whether this app's Refresh() is currently
-// running, under app.Lock() -- unlike State/PrevState (historically
-// unlocked, see the KNOWN ISSUE notes elsewhere in this package), this is
-// meant to be read from a different goroutine than the one that writes it
-// (any status/API reader vs. the maybeRefreshAppsAsync worker calling
-// Refresh()), so it needs to actually be safe to do so.
+// running, under app.Lock() -- meant to be read from a different goroutine
+// than the one that writes it (any status/API reader vs. the
+// maybeRefreshAppsAsync worker calling Refresh()), so it needs to actually
+// be safe to do so.
 func (app *App) SetRefreshInProgress(v bool) {
 	app.Lock()
 	defer app.Unlock()
@@ -143,7 +147,10 @@ func (app *App) SetSuspect() {
 	app.State = stateSuspect
 }
 
+// SetFailCount is locked (app.Lock()) -- see SetPrevState.
 func (app *App) SetFailCount(c int) {
+	app.Lock()
+	defer app.Unlock()
 	app.FailCount = c
 }
 
@@ -151,7 +158,10 @@ func (app *App) SetCredential(credential string) {
 	app.User, app.Pass = misc.SplitPair(credential)
 }
 
+// SetState is locked (app.Lock()) -- see SetPrevState.
 func (app *App) SetState(v string) {
+	app.Lock()
+	defer app.Unlock()
 	app.State = v
 }
 
