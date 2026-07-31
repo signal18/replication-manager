@@ -400,7 +400,10 @@ func (p *Proxy) GetType() string {
 	return p.Type
 }
 
+// GetVersion reads Version under p.Lock -- see SetVersion.
 func (p *Proxy) GetVersion() string {
+	p.Lock.Lock()
+	defer p.Lock.Unlock()
 	return p.Version
 }
 

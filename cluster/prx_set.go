@@ -31,6 +31,21 @@ func (p *Proxy) SetLock() {
 	p.Lock.Lock()
 }
 
+// SetVersion sets Version under p.Lock. Refresh() implementations on
+// several proxy types (ExternalProxy, MariadbShardProxy, ProxySQLProxy,
+// HaproxyProxy, ProxyJanitor, SphinxProxy) reassign Version every refresh
+// cycle; GetAppsSubstitutionJSon's buildProxySubstitutionView reads it
+// concurrently from a different goroutine (refreshProxies runs
+// independently of app-refresh workers). Locking inside the setter/getter
+// (see GetVersion) means callers never manually pair SetLock()/DelLock()
+// around this field -- a manual pairing left the lock permanently held if
+// anything between the calls ever panicked or returned early.
+func (p *Proxy) SetVersion(v string) {
+	p.Lock.Lock()
+	defer p.Lock.Unlock()
+	p.Version = v
+}
+
 // TODO: clarify where this is used, can maybe be replaced with a Getter
 func (proxy *Proxy) SetServiceName(namespace string) {
 	proxy.ServiceName = namespace + "/svc/" + proxy.Name

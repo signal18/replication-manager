@@ -196,7 +196,7 @@ func (proxy *ProxyJanitor) Refresh() error {
 		return err
 	}
 	defer psql.Connection.Close()
-	proxy.Version = psql.GetVersion()
+	proxy.SetVersion(psql.GetVersion())
 
 	var updated bool
 	proxy.BackendsWrite = nil

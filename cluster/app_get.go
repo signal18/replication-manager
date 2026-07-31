@@ -23,18 +23,311 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-// KNOWN ISSUE: this does an unlocked sheriff.Marshal reflection walk over the
-// whole Cluster, including every *App in cluster.Apps. When app refresh runs
-// multiple apps concurrently (see maybeRefreshAppsAsync), other workers can
-// be mutating their own app's fields (SetRouteStatuses, SetState) under only
-// app.Mutex at the same time, which -race flags as a data race against this
-// read. Predates the app-refresh async decoupling change; needs its own fix
-// (e.g. locking per app during marshal, or building the substitution JSON
-// from a locked snapshot) rather than a quick patch here.
-func (cluster *Cluster) GetAppsSubstitutionJSon(app *App) (string, error) {
+// appSubstitutionView mirrors the groups:"apps" subset of App
+// (cluster/app.go). It exists so GetAppsSubstitutionJSon never hands sheriff
+// a live *App: sheriff's reflection boxes each struct element via
+// reflect.Value.Interface() to recurse into it, which bulk-copies the whole
+// struct's memory *before* its own group-tag filtering runs -- so handing it
+// a live App races against any concurrent app-refresh worker mutating that
+// same app, regardless of whether the racing field is itself group-tagged.
+// buildAppSubstitutionView instead produces an independent copy up front.
+type appSubstitutionView struct {
+	Id        string            `json:"id" groups:"apps"`
+	Name      string            `json:"name" groups:"apps"`
+	Type      string            `json:"type" groups:"apps"`
+	Host      string            `json:"host" groups:"apps"`
+	Port      string            `json:"port" groups:"apps"`
+	Version   string            `json:"version" groups:"apps"`
+	AppConfig *config.AppConfig `json:"config" groups:"apps"`
+}
 
+// cloneAppConfigForSubstitution returns an independent copy of cnf, safe to
+// hand to sheriff even while cnf (or the App owning it) is concurrently
+// mutated elsewhere. config.AppConfig has no embedded lock, so a shallow
+// value copy is safe; config.Deployment does embed a sync.RWMutex
+// (config/deployment.go), so it's rebuilt fresh rather than copied by
+// value, with Routes/PrimaryRoute deep-cloned via config.Route.Clone() (the
+// only Deployment fields the refresh loop -- CheckPrimaryRoute -- mutates)
+// and Storages/Paths/Variables passed through by reference (only touched by
+// config/API flows, not the refresh loop).
+//
+// Callers owning an *App that shares this AppConfig (via app.AppConfig)
+// must call this under app.Lock(), since CheckPrimaryRoute mutates
+// Routes/PrimaryRoute under that same lock. cluster.Conf.Apps entries with
+// no matching App (e.g. skipped by newAppList for an invalid host) are
+// never touched by the refresh loop, so cloning them lock-free is safe.
+func cloneAppConfigForSubstitution(cnf *config.AppConfig) *config.AppConfig {
+	if cnf == nil {
+		return nil
+	}
+	clone := *cnf
+	if d := cnf.Deployment; d != nil {
+		var routes config.Routes
+		if d.Routes != nil {
+			routes = make(config.Routes, len(d.Routes))
+			for i, r := range d.Routes {
+				routes[i] = r.Clone()
+			}
+		}
+		clone.Deployment = &config.Deployment{
+			PrimaryRoute: d.PrimaryRoute.Clone(),
+			Routes:       routes,
+			Storages:     d.Storages,
+			Paths:        d.Paths,
+			Variables:    d.Variables,
+		}
+	}
+	return &clone
+}
+
+// buildAppSubstitutionView builds an independent, race-free copy of the
+// groups:"apps" subset of app's fields, safe to hand to sheriff even while
+// other app-refresh workers concurrently mutate this same app.
+//
+// Id/Name/Type/Host/Port/Version are set once at construction/config-load
+// and never mutated by the refresh loop, so they're read lock-free here --
+// the same trust already given to GetHost()/GetPort(), called lock-free
+// elsewhere in this exact refresh path. AppConfig is cloned under
+// app.Lock() (see cloneAppConfigForSubstitution).
+func (app *App) buildAppSubstitutionView() *appSubstitutionView {
+	view := &appSubstitutionView{
+		Id:      app.Id,
+		Name:    app.Name,
+		Type:    app.Type,
+		Host:    app.Host,
+		Port:    app.Port,
+		Version: app.Version,
+	}
+	if app.AppConfig == nil {
+		return view
+	}
+	app.Lock()
+	view.AppConfig = cloneAppConfigForSubstitution(app.AppConfig)
+	app.Unlock()
+	return view
+}
+
+// proxySubstitutionView mirrors the groups:"apps" subset of Proxy
+// (cluster/prx.go). Every concrete proxy type (HaproxyProxy, ProxySQLProxy,
+// MaxscaleProxy, etc.) embeds Proxy by value with no fields of its own, so
+// this one view type covers all of them. Built for the same reason as
+// appSubstitutionView: sheriff's reflect.Value.Interface() bulk-copies the
+// whole struct to box it for recursion, before its own group-tag filtering
+// runs, so handing it a live DatabaseProxy races against refreshProxies
+// (cluster/prx.go) regardless of which field is racing -- refreshProxies
+// runs as its own goroutine, concurrently with app-refresh workers building
+// this same substitution JSON, since app refresh was decoupled from the
+// tick's waited phase. Proven under -race, not assumed.
+type proxySubstitutionView struct {
+	Id            string `json:"id" groups:"apps"`
+	Name          string `json:"name" groups:"apps"`
+	Type          string `json:"type" groups:"apps"`
+	Host          string `json:"host" groups:"apps"`
+	Port          string `json:"port" groups:"apps"`
+	WritePort     int    `json:"writePort" groups:"apps"`
+	ReadPort      int    `json:"readPort" groups:"apps"`
+	ReadWritePort int    `json:"readWritePort" groups:"apps"`
+	Version       string `json:"version" groups:"apps"`
+}
+
+// buildProxySubstitutionView builds an independent, race-free copy of the
+// groups:"apps" subset of pr's fields, safe to hand to sheriff even while
+// refreshProxies concurrently mutates this same proxy.
+//
+// Id/Name/Type/Host/Port/WritePort/ReadPort/ReadWritePort are set once at
+// proxy construction/config-load and never mutated by the refresh loop, so
+// they're read lock-free here. Version IS reassigned on every Refresh() by
+// several proxy types (ExternalProxy, MariadbShardProxy, ProxySQLProxy,
+// HaproxyProxy, ProxyJanitor, SphinxProxy); GetVersion() takes p.Lock
+// internally (see prx_get.go), matching SetVersion() on the write side, so
+// no manual lock pairing is needed (or exposed) here.
+func buildProxySubstitutionView(pr DatabaseProxy) *proxySubstitutionView {
+	if pr == nil {
+		return nil
+	}
+	return &proxySubstitutionView{
+		Id:            pr.GetId(),
+		Name:          pr.GetName(),
+		Type:          pr.GetType(),
+		Host:          pr.GetHost(),
+		Port:          pr.GetPort(),
+		WritePort:     pr.GetWritePort(),
+		ReadPort:      pr.GetReadPort(),
+		ReadWritePort: pr.GetReadWritePort(),
+		Version:       pr.GetVersion(),
+	}
+}
+
+// serverSubstitutionView mirrors the groups:"apps" subset of ServerMonitor
+// (cluster/srv.go). ServerMonitor embeds several sync.Mutex/sync.RWMutex
+// fields by value (freezeMu, workingAgentMu, jobMutex, etc.), so it can
+// never be copied by value -- this view exists precisely to avoid that,
+// same as appSubstitutionView/proxySubstitutionView. Proven under -race:
+// ServerMonitor.SetState (cluster/srv_set.go) is unlocked and runs
+// continuously as part of normal DB topology monitoring, a goroutine
+// independent of app-refresh workers; sheriff's whole-struct bulk copy
+// races against it exactly like App/Proxy, regardless of State itself not
+// being groups:"apps"-tagged.
+type serverSubstitutionView struct {
+	Id                string `json:"id" groups:"apps"`
+	Name              string `json:"name" groups:"apps"`
+	Domain            string `json:"domain" groups:"apps"`
+	SourceClusterName string `json:"sourceClusterName" groups:"apps"`
+	URL               string `json:"url" groups:"apps"`
+	Host              string `json:"host" groups:"apps"`
+	Port              string `json:"port" groups:"apps"`
+}
+
+// buildServerSubstitutionView builds an independent, race-free copy of the
+// groups:"apps" subset of srv's fields, safe to hand to sheriff even while
+// the DB monitoring loop concurrently mutates this same server.
+//
+// All 7 fields are set once at server construction/config-load and never
+// reassigned by ServerMonitor.Refresh() (grepped; no hits) -- same
+// write-once trust already given to App/Proxy identity fields -- so they're
+// read lock-free here. No lock is needed because, unlike Deployment.Routes
+// or Proxy.Version, nothing in the refresh loop mutates these specific
+// fields; the race is purely sheriff's whole-struct bulk copy racing
+// against *other* ServerMonitor fields, which this view sidesteps by never
+// handing sheriff the live struct at all.
+func buildServerSubstitutionView(srv *ServerMonitor) *serverSubstitutionView {
+	if srv == nil {
+		return nil
+	}
+	return &serverSubstitutionView{
+		Id:                srv.Id,
+		Name:              srv.Name,
+		Domain:            srv.Domain,
+		SourceClusterName: srv.SourceClusterName,
+		URL:               srv.URL,
+		Host:              srv.Host,
+		Port:              srv.Port,
+	}
+}
+
+func (cluster *Cluster) GetAppsSubstitutionJSon(app *App) (string, error) {
 	o := &sheriff.Options{Groups: []string{"apps"}}
-	data, err := sheriff.Marshal(o, cluster)
+
+	// Snapshot cluster.Apps, cluster.Proxies, cluster.Servers, cluster.Conf
+	// and cluster.Conf.Apps under cluster.Lock(): all are reassigned
+	// wholesale under this lock elsewhere (see newAppList, cluster_del.go,
+	// and GetAppConfig's own "Conf.Apps is mutated under cluster.Lock()
+	// elsewhere" note) -- reading any of them without it races on the
+	// slice/pointer header itself, separately from the per-object races
+	// fixed below. confCopy is taken here (not later) so the whole-Config
+	// value copy is covered by the same lock as Conf.Apps. nil is preserved
+	// (not made into an empty-but-non-nil slice) so a cluster with nothing
+	// in a given collection still marshals e.g. "apps": null, matching
+	// sheriff's original behavior for a nil slice -- templates rely on that
+	// to leave {{apps...}}/{{proxies...}} placeholders unresolved rather
+	// than "".
+	cluster.Lock()
+	var apps []*App
+	if cluster.Apps != nil {
+		apps = make([]*App, len(cluster.Apps))
+		copy(apps, cluster.Apps)
+	}
+	var proxies []DatabaseProxy
+	if cluster.Proxies != nil {
+		proxies = make([]DatabaseProxy, len(cluster.Proxies))
+		copy(proxies, cluster.Proxies)
+	}
+	var servers []*ServerMonitor
+	if cluster.Servers != nil {
+		servers = make([]*ServerMonitor, len(cluster.Servers))
+		copy(servers, cluster.Servers)
+	}
+	var liveConfApps []*config.AppConfig
+	var confCopy config.Config
+	haveConf := cluster.Conf != nil
+	if haveConf {
+		confCopy = *cluster.Conf
+		if cluster.Conf.Apps != nil {
+			liveConfApps = make([]*config.AppConfig, len(cluster.Conf.Apps))
+			copy(liveConfApps, cluster.Conf.Apps)
+		}
+	}
+	cluster.Unlock()
+
+	var proxyViews []*proxySubstitutionView
+	if proxies != nil {
+		proxyViews = make([]*proxySubstitutionView, 0, len(proxies))
+		for _, pr := range proxies {
+			if pr != nil {
+				proxyViews = append(proxyViews, buildProxySubstitutionView(pr))
+			}
+		}
+	}
+
+	var serverViews []*serverSubstitutionView
+	if servers != nil {
+		serverViews = make([]*serverSubstitutionView, 0, len(servers))
+		for _, srv := range servers {
+			if srv != nil {
+				serverViews = append(serverViews, buildServerSubstitutionView(srv))
+			}
+		}
+	}
+
+	// Build each app's substitution view (clones AppConfig/Deployment under
+	// that app's own lock) and remember which cloned AppConfig corresponds
+	// to which live one, so cluster.Conf.Apps below can reuse it instead of
+	// reflecting the exact same live object a second, unsynchronized way:
+	// cluster.Conf.Apps[i] and app.AppConfig are literally the same
+	// *config.AppConfig pointer (see GetAppConfig), so leaving Conf's copy
+	// live would still race against CheckPrimaryRoute even after fixing the
+	// App-list path above.
+	var appViews []*appSubstitutionView
+	cloneByLiveConfig := make(map[*config.AppConfig]*config.AppConfig, len(apps))
+	if apps != nil {
+		appViews = make([]*appSubstitutionView, 0, len(apps))
+		for _, a := range apps {
+			if a == nil {
+				continue
+			}
+			view := a.buildAppSubstitutionView()
+			appViews = append(appViews, view)
+			if a.AppConfig != nil {
+				cloneByLiveConfig[a.AppConfig] = view.AppConfig
+			}
+		}
+	}
+
+	var confAppClones []*config.AppConfig
+	if liveConfApps != nil {
+		confAppClones = make([]*config.AppConfig, 0, len(liveConfApps))
+		for _, cnf := range liveConfApps {
+			if cnf == nil {
+				continue
+			}
+			if clone, ok := cloneByLiveConfig[cnf]; ok {
+				confAppClones = append(confAppClones, clone)
+				continue
+			}
+			confAppClones = append(confAppClones, cloneAppConfigForSubstitution(cnf))
+		}
+	}
+
+	// config.Config itself has no embedded lock, so the value copy taken
+	// under cluster.Lock() above is safe; it also means the rest of
+	// Config's ~500 other fields are read from a single point-in-time
+	// snapshot rather than reflected live for the whole marshal walk. Only
+	// Apps needed replacing here.
+	var confView *config.Config
+	if haveConf {
+		confCopy.Apps = confAppClones
+		confView = &confCopy
+	}
+
+	clusterView := struct {
+		Name    string                    `json:"name" groups:"apps,web"`
+		Servers []*serverSubstitutionView `json:"servers" groups:"apps"`
+		Apps    []*appSubstitutionView    `json:"apps" groups:"apps"`
+		Proxies []*proxySubstitutionView  `json:"proxies" groups:"apps"`
+		Conf    *config.Config            `json:"config" groups:"apps"`
+	}{cluster.Name, serverViews, appViews, proxyViews, confView}
+
+	data, err := sheriff.Marshal(o, &clusterView)
 	if err != nil {
 		return "", err
 	}
@@ -44,7 +337,7 @@ func (cluster *Cluster) GetAppsSubstitutionJSon(app *App) (string, error) {
 	}
 
 	// Add app specific data
-	child, err3 := sheriff.Marshal(o, app)
+	child, err3 := sheriff.Marshal(o, app.buildAppSubstitutionView())
 	if err3 != nil {
 		return string(result), err3
 	}

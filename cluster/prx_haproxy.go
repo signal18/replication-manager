@@ -267,7 +267,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 		vstring, err := haRuntime.GetVersion()
 		if err == nil {
 			if vstring != "" {
-				proxy.Version = vstring
+				proxy.SetVersion(vstring)
 			}
 		}
 	}

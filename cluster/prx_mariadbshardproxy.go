@@ -224,7 +224,7 @@ func (proxy *MariadbShardProxy) Refresh() error {
 		//proxy.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxy,config.LvlErr, "Sharding proxy refresh error (%s)", err)
 		return err
 	}
-	proxy.Version = proxy.ShardProxy.Variables.Get("VERSION")
+	proxy.SetVersion(proxy.ShardProxy.Variables.Get("VERSION"))
 
 	proxy.BackendsWrite = nil
 	proxy.BackendsRead = nil
@@ -275,7 +275,7 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Mariad
 
 		return err
 	}
-	proxy.Version = proxy.ShardProxy.Variables.Get("VERSION")
+	proxy.SetVersion(proxy.ShardProxy.Variables.Get("VERSION"))
 
 	proxy.BackendsWrite = nil
 	proxy.BackendsRead = nil
