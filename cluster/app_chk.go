@@ -315,6 +315,12 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr}
+	// A fresh Transport is built per call, so its keep-alive connection (and the
+	// persistConn.readLoop/writeLoop goroutines it spawns) would otherwise never
+	// be closed once this function returns, leaking a socket + goroutines on
+	// every successful check. Close it explicitly, matching the convention used
+	// for the ephemeral arbitrator client in cluster_set.go.
+	defer client.CloseIdleConnections()
 
 	host := route.CName
 	if route.Mode == "port" && route.SourcePort != "" {
