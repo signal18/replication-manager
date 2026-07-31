@@ -304,7 +304,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 		return err
 	}
 	defer psql.Connection.Close()
-	proxy.Version = psql.GetVersion()
+	proxy.SetVersion(psql.GetVersion())
 
 	var updated bool
 	bkWriters := make([]Backend, 0)

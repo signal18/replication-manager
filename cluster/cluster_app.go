@@ -11,11 +11,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/viper"
 )
 
@@ -1133,8 +1136,119 @@ func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {
 	return haTopology
 }
 
-func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
-	defer wg.Done()
+// appRefreshStaleThreshold picks the staleness/stuck threshold for
+// APPERR007: the largest of three lower bounds.
+//
+//  1. A flat floor (10x the tick interval), covering the bootstrap case
+//     before any batch has ever completed.
+//  2. 4x the last observed batch duration -- adapts to a fleet that has
+//     been steady for a while, without needing to know its size,
+//     concurrency, or timeout directly.
+//  3. A theoretical bound derived from the *current* fleet size,
+//     ceil(appCount/concurrency) rounds x timeoutSeconds, x4 for headroom
+//     (apps commonly have more than one route, and each route check is
+//     bounded by timeoutSeconds, not the whole app). Bound (2) alone lags
+//     by one batch: if the fleet just grew (e.g. 1 app -> 11 apps), the
+//     last observed duration is still the old, small one, so the first
+//     larger batch would false-positive as "stuck" before bound (2) has
+//     any data reflecting the new size. Bound (3) reacts immediately
+//     because it's computed from the current snapshot, not history.
+//
+// This is a deliberately coarse, heuristic pipeline-health signal, not a
+// per-app health check -- see App's own LastRefresh*/RefreshInProgress
+// fields (app.go, set via SetRefreshInProgress/SetRefreshResult) for which
+// specific app is slow. The x4 in bound (3) is a fixed safety margin, not a
+// measurement: a fleet with unusually route-heavy apps (e.g. most apps
+// having 5+ routes, each potentially doing a local+external check) can
+// still exceed it on the very first batch after a fleet/route-count jump,
+// producing one false "stuck"/"stale" warning. This is accepted as a known
+// limitation rather than chased further: it's warning noise, not a
+// functional failure (app monitoring itself is unaffected), and it
+// self-corrects on the very next completed batch once bound (2) reflects
+// the new reality. Closing it fully would require summing actual route
+// counts across the snapshot under each app's own lock before every
+// threshold check, adding real complexity for a one-cycle, self-healing
+// symptom -- not worth it without production evidence that the x4 margin
+// is actually being hit in practice.
+func appRefreshStaleThreshold(monitoringTicker int64, appCount, concurrency, timeoutSeconds int, lastDurationMs int64) time.Duration {
+	threshold := time.Duration(10*monitoringTicker) * time.Second
+
+	if appCount > 0 && timeoutSeconds > 0 {
+		workers := concurrency
+		if workers <= 0 {
+			workers = 1
+		}
+		rounds := (appCount + workers - 1) / workers // ceil division
+		if fleetBound := time.Duration(4*rounds*timeoutSeconds) * time.Second; fleetBound > threshold {
+			threshold = fleetBound
+		}
+	}
+
+	if lastDurationMs > 0 {
+		if adaptive := time.Duration(4*lastDurationMs) * time.Millisecond; adaptive > threshold {
+			threshold = adaptive
+		}
+	}
+
+	return threshold
+}
+
+// appRefreshStaleness reports whether the last completed app-refresh batch
+// is too old (stale) or the current batch has been running too long
+// (stuck), relative to threshold. Pure function, factored out of the tick
+// loop for direct unit testing.
+func appRefreshStaleness(inProgress bool, lastStart, lastEnd, now time.Time, threshold time.Duration) (stale, stuck bool) {
+	stale = !inProgress && !lastEnd.IsZero() && now.Sub(lastEnd) > threshold
+	stuck = inProgress && !lastStart.IsZero() && now.Sub(lastStart) > threshold
+	return stale, stuck
+}
+
+// maybeRefreshAppsAsync runs one app-refresh batch, unless a previous batch
+// is still in flight (single-flight, guarded by cluster.appRefreshInProgress).
+// It is launched via trackTickGoroutine as fire-and-forget background work,
+// deliberately kept off the tick's waited-on critical path: topology
+// discovery and failover detection must not stall behind slow or
+// unresponsive app backends. Per-app results are aggregated locally and
+// published to cluster.publishedAppErrStates in a single atomic Store once
+// the whole batch completes, so EmitAppErrors() never observes a
+// half-old/half-new mix of app error state.
+func (cluster *Cluster) maybeRefreshAppsAsync() {
+	if !cluster.appRefreshInProgress.CompareAndSwap(false, true) {
+		cluster.Lock()
+		cluster.AppRefreshSkippedCount++
+		cluster.Unlock()
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg,
+			"Skipping app refresh: previous batch still in progress")
+		return
+	}
+	defer cluster.appRefreshInProgress.Store(false)
+
+	start := time.Now()
+
+	// Snapshot cluster.Apps under cluster.Lock(): it's reassigned wholesale
+	// under this lock elsewhere (newAppList, cluster_del.go), so iterating
+	// the live slice without it races on the slice header itself -- same
+	// class of bug already found and fixed in GetAppsSubstitutionJSon
+	// (cluster/app_get.go). appCount is taken from this same snapshot so
+	// AppRefreshLastAppCount reflects the batch actually processed, not a
+	// possibly-since-changed cluster.Apps read again after the fact.
+	//
+	// AppRefreshSkippedCount is reset here, at batch start, not at batch
+	// end: resetting at the end races against the deferred
+	// appRefreshInProgress.Store(false) above, which only runs after this
+	// whole function returns -- a tick landing in that gap would fail the
+	// CompareAndSwap and increment a counter that was just zeroed,
+	// appearing as stray leftover contention from a batch that actually
+	// just succeeded cleanly. Resetting at start has no such window: it
+	// happens strictly after this goroutine wins the CompareAndSwap above,
+	// so every rejection counted from here on is unambiguously "since this
+	// batch started."
+	cluster.Lock()
+	cluster.AppRefreshLastStart = start
+	cluster.AppRefreshSkippedCount = 0
+	apps := make([]*App, len(cluster.Apps))
+	copy(apps, cluster.Apps)
+	cluster.Unlock()
 
 	var workerWg sync.WaitGroup
 	appChan := make(chan *App)
@@ -1144,17 +1258,27 @@ func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
 		workerCount = 1
 	}
 
+	var aggMu sync.Mutex
+	aggregated := make(map[string]state.State)
+
 	for range workerCount {
 		workerWg.Add(1)
 		go func() {
 			defer workerWg.Done()
 			for app := range appChan {
 				app.Refresh()
+				app.Lock()
+				for key, st := range app.ErrState {
+					aggMu.Lock()
+					aggregated[key] = st
+					aggMu.Unlock()
+				}
+				app.Unlock()
 			}
 		}()
 	}
 
-	for _, app := range cluster.Apps {
+	for _, app := range apps {
 		if app != nil {
 			appChan <- app
 		}
@@ -1162,22 +1286,36 @@ func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
 	close(appChan)
 
 	workerWg.Wait()
+
+	cluster.publishedAppErrStates.Store(&aggregated)
+	atomic.AddUint64(&cluster.appRefreshEpoch, 1)
+
+	cluster.Lock()
+	cluster.AppRefreshLastEnd = time.Now()
+	cluster.AppRefreshLastDurationMs = cluster.AppRefreshLastEnd.Sub(start).Milliseconds()
+	cluster.AppRefreshLastSuccess = true
+	cluster.AppRefreshLastError = ""
+	cluster.AppRefreshLastAppCount = len(apps)
+	cluster.Unlock()
 }
 
+// EmitAppErrors feeds the cluster-wide state machine from the last
+// completed app-refresh batch (see maybeRefreshAppsAsync). It deliberately
+// does not read cluster.Apps live: since app refresh runs asynchronously
+// and can be mid-batch on any given tick, reading live per-app state here
+// would risk mixing already-refreshed apps with stale ones into a single
+// "cluster-wide" snapshot. Reading the published aggregate instead means
+// this always reflects one fully-coherent batch, old or new.
 func (cluster *Cluster) EmitAppErrors() {
-	for _, app := range cluster.Apps {
-		if app == nil {
-			continue
+	snap := cluster.publishedAppErrStates.Load()
+	if snap == nil {
+		return
+	}
+	for key, st := range *snap {
+		if st.ErrKey == "" {
+			st.ErrKey = key
 		}
-		app.Lock()
-		for key, st := range app.ErrState {
-			if st.ErrKey == "" {
-				st.ErrKey = key
-			}
-
-			cluster.SetState(key, st)
-		}
-		app.Unlock()
+		cluster.SetState(key, st)
 	}
 }
 

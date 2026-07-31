@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
@@ -619,5 +620,100 @@ func TestGetMonitoringStatusRefreshTotalOutageBecomesFailedAfterMaxFail(t *testi
 	}
 	if app.State != stateFailed {
 		t.Fatalf("expected %s after max-fail threshold, got %s", stateFailed, app.State)
+	}
+}
+
+// TestAppRefreshTracksTimingAndInProgress guards the per-app freshness
+// fields (app.go) added so operators can tell which specific app is slow,
+// not just that the batch as a whole is -- the cluster-level
+// AppRefreshLast* fields only cover the batch, not any one app within it.
+func TestAppRefreshTracksTimingAndInProgress(t *testing.T) {
+	app := newMonitoringTestApp([]config.Route{{Protocol: "tcp", CName: "127.0.0.1", Port: "1", Primary: true}})
+
+	if app.RefreshInProgress {
+		t.Fatalf("expected RefreshInProgress=false before any Refresh() call")
+	}
+
+	before := time.Now()
+	if err := app.Refresh(); err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	after := time.Now()
+
+	app.Lock()
+	inProgress := app.RefreshInProgress
+	lastStart := app.LastRefreshStart
+	lastEnd := app.LastRefreshEnd
+	lastDurationMs := app.LastRefreshDurationMs
+	app.Unlock()
+
+	if inProgress {
+		t.Fatalf("expected RefreshInProgress=false after Refresh() returns")
+	}
+	if lastStart.Before(before) || lastStart.After(after) {
+		t.Fatalf("LastRefreshStart %s not within [%s, %s]", lastStart, before, after)
+	}
+	if lastEnd.Before(lastStart) {
+		t.Fatalf("LastRefreshEnd %s before LastRefreshStart %s", lastEnd, lastStart)
+	}
+	if lastDurationMs < 0 {
+		t.Fatalf("expected non-negative LastRefreshDurationMs, got %d", lastDurationMs)
+	}
+}
+
+// TestAppStateAccessorsThreadSafe verifies SetState/GetState (and
+// SetPrevState) are race-free under concurrent access. Run with `go test
+// -race`: before SetState/GetState took app.Lock(), this raced against
+// GetAppAPIView()/IsDown() reading app.State directly.
+func TestAppStateAccessorsThreadSafe(t *testing.T) {
+	app := newTestApp()
+
+	const total = 100
+	var wg sync.WaitGroup
+	wg.Add(total * 3)
+
+	for i := 0; i < total; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			app.SetState(fmt.Sprintf("state-%d", i))
+		}()
+		go func() {
+			defer wg.Done()
+			app.SetPrevState(fmt.Sprintf("prev-%d", i))
+		}()
+	}
+	for i := 0; i < total; i++ {
+		go func() {
+			defer wg.Done()
+			_ = app.GetState()
+			_ = app.GetPrevState()
+		}()
+	}
+
+	wg.Wait()
+}
+
+// TestAppFailCountAccessorsThreadSafe verifies SetFailCount/GetFailCount are
+// race-free under concurrent access, mirroring the increment pattern used in
+// Refresh() (app.SetFailCount(app.GetFailCount() + 1)).
+func TestAppFailCountAccessorsThreadSafe(t *testing.T) {
+	app := newTestApp()
+
+	const total = 100
+	var wg sync.WaitGroup
+	wg.Add(total)
+
+	for i := 0; i < total; i++ {
+		go func() {
+			defer wg.Done()
+			app.SetFailCount(app.GetFailCount() + 1)
+		}()
+	}
+
+	wg.Wait()
+
+	if got := app.GetFailCount(); got <= 0 || got > total {
+		t.Fatalf("expected FailCount in (0, %d], got %d", total, got)
 	}
 }

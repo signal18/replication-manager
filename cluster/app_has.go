@@ -70,7 +70,8 @@ func (app *App) IsIgnored() bool {
 }
 
 func (app *App) IsDown() bool {
-	if app.State == stateFailed || app.State == stateSuspect || app.State == stateErrorAuth {
+	state := app.GetState()
+	if state == stateFailed || state == stateSuspect || state == stateErrorAuth {
 		return true
 	}
 	return false

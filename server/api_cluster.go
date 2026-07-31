@@ -6056,7 +6056,27 @@ func (repman *ReplicationManager) handlerMuxClusterWaitDatabases(w http.Response
 // with a safely-snapshotted copy (acquired under the grouped s3Providers state lock) so
 // concurrent CRUD mutations cannot produce a racy or inconsistent response.
 func buildClusterAPIPayload(mycluster *cluster.Cluster) ([]byte, error) {
-	cl, err := json.Marshal(mycluster)
+	// Apps must be excluded from the marshal walk entirely, not just from
+	// the output. encoding/json's embedded-field conflict resolution only
+	// promotes a shallower field over a deeper one when both compete for
+	// the same JSON name; a shallower field tagged json:"-" is dropped from
+	// that competition instead of winning it, so it does NOT suppress the
+	// embedded Cluster.Apps field (tag json:"apps") -- Apps would still be
+	// visited and marshaled live. Instead, the shadow field below is tagged
+	// json:"apps" (matching Cluster.Apps's tag) so it wins the conflict and
+	// the deep, live Apps field is never visited by json.Marshal at all;
+	// the harmless empty-struct placeholder it produces is deleted from the
+	// bytes afterward alongside servers/proxies. Conf is substituted with a
+	// locked snapshot that has its own Apps cleared for the same reason
+	// (cluster.Conf.Apps[i] and the corresponding App's AppConfig are the
+	// same pointer -- see GetAppConfig).
+	view := struct {
+		*cluster.Cluster
+		Apps struct{}       `json:"apps"`
+		Conf *config.Config `json:"config"`
+	}{Cluster: mycluster, Conf: mycluster.GetConfigSnapshotForWire()}
+
+	cl, err := json.Marshal(&view)
 	if err != nil {
 		return nil, fmt.Errorf("marshal cluster: %w", err)
 	}
@@ -6068,11 +6088,21 @@ func buildClusterAPIPayload(mycluster *cluster.Cluster) ([]byte, error) {
 		}
 	}
 
-	// Reduce the content of the cluster object
+	// Reduce the content of the cluster object. "apps" is the harmless
+	// placeholder from the shadow field above (never touched live Apps
+	// data). "config.apps" comes from GetConfigSnapshotForWire's cleared
+	// (nil) Apps slice, which config.Config's `json:"apps"` tag (no
+	// omitempty) would otherwise emit as "apps":null rather than omitting
+	// the key -- deleting it here is safe: unlike the old
+	// "marshal-live-then-delete" pattern this fix replaced, cl at this
+	// point was already produced from a race-free snapshot, so this delete
+	// only tidies already-inert bytes, it doesn't touch live memory.
+	// Servers/Proxies are intentionally left as live-marshaled-then-deleted,
+	// unchanged -- out of scope for this pass.
+	cl, _ = sjson.DeleteBytes(cl, "apps")
 	cl, _ = sjson.DeleteBytes(cl, "config.apps")
 	cl, _ = sjson.DeleteBytes(cl, "servers")
 	cl, _ = sjson.DeleteBytes(cl, "proxies")
-	cl, _ = sjson.DeleteBytes(cl, "apps")
 
 	// Overwrite clusterS3Providers with a safe snapshot acquired under the mutex
 	// to prevent races with concurrent CRUD mutations (AddS3Provider, etc.).
@@ -8907,21 +8937,29 @@ func (repman *ReplicationManager) handlerMuxClusterVariablesPreserve(w http.Resp
 
 func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	//marshal unmarchal for ofuscation deep copy of struc
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		apps, err := json.MarshalIndent(mycluster.Apps, "", "\t")
+		// GetAppsCopy() snapshots the slice under cluster.Lock() (cluster.Apps
+		// is reassigned wholesale elsewhere under that same lock), and
+		// GetAppAPIView() snapshots each app under its own lock -- so this
+		// never hands encoding/json a live *App the way the previous
+		// json.MarshalIndent(mycluster.Apps, ...) did. Deployment/appDbPass
+		// redaction is baked into GetAppAPIView() itself now, so no sjson
+		// post-processing is needed here.
+		appsSnapshot := mycluster.GetAppsCopy()
+		views := make([]*cluster.AppAPIView, 0, len(appsSnapshot))
+		for _, a := range appsSnapshot {
+			if a != nil {
+				views = append(views, a.GetAppAPIView())
+			}
+		}
+
+		apps, err := json.MarshalIndent(views, "", "\t")
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
-		}
-
-		for idx := range mycluster.Apps {
-			apps, _ = sjson.DeleteBytes(apps, fmt.Sprintf("%d.appClusterSubstitute", idx))
-			apps, _ = sjson.DeleteBytes(apps, fmt.Sprintf("%d.config.deployment", idx))
-			apps, _ = sjson.SetBytes(apps, fmt.Sprintf("%d.config.appDbPass", idx), "*****")
 		}
 
 		w.Header().Set("Content-Type", "application/json")

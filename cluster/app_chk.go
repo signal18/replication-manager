@@ -441,8 +441,13 @@ func (app *App) GetAppTCPStatus(route config.Route) error {
 	return nil
 }
 
+// CheckPrimaryRoute mutates app.AppConfig.Deployment.Routes/PrimaryRoute, so
+// it must take app.Mutex: buildAppSubstitutionView (app_get.go) clones these
+// same fields under the same lock to build a race-free copy for template
+// substitution, and that only works if every writer shares the lock.
 func (app *App) CheckPrimaryRoute() {
 	cluster := app.ClusterGroup
+	app.Lock()
 	hasPrimaryRoute := false
 	for _, route := range app.AppConfig.Deployment.Routes {
 		if route.Primary {
@@ -451,9 +456,15 @@ func (app *App) CheckPrimaryRoute() {
 			break
 		}
 	}
+	assignedFirstAsPrimary := false
 	if !hasPrimaryRoute && len(app.AppConfig.Deployment.Routes) > 0 {
 		app.AppConfig.Deployment.Routes[0].Primary = true
 		app.AppConfig.Deployment.PrimaryRoute = app.AppConfig.Deployment.Routes[0]
+		assignedFirstAsPrimary = true
+	}
+	app.Unlock()
+
+	if assignedFirstAsPrimary {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "No primary route defined for app %s, setting first route as primary", app.Name)
 	}
 }

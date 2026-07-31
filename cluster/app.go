@@ -15,6 +15,7 @@ import (
 	"os"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -50,6 +51,18 @@ type App struct {
 	Agent         string `json:"agent"`
 	Weight        string `json:"weight"`
 	FailCount     int    `json:"failCount"`
+	// Per-app refresh freshness (cluster-level AppRefreshLast* on Cluster
+	// only shows batch-wide timing, not which app is actually slow). Set
+	// via SetRefreshInProgress/SetRefreshResult under app.Mutex -- read
+	// them the same way (App.Lock()/Unlock(), or GetAppAPIView) rather than
+	// directly: these are read from a different goroutine than the one
+	// that writes them (maybeRefreshAppsAsync's worker vs. any status/API
+	// reader).
+	LastRefreshStart      time.Time `json:"lastRefreshStart"`
+	LastRefreshEnd        time.Time `json:"lastRefreshEnd"`
+	LastRefreshDurationMs int64     `json:"lastRefreshDurationMs"`
+	LastRefreshError      string    `json:"lastRefreshError"`
+	RefreshInProgress     bool      `json:"refreshInProgress"`
 	// Route-scoped debounce counters are the single source of truth.
 	AppErrConsecutiveMap map[string]int         `json:"-"`
 	ErrState             map[string]state.State `json:"-"`
@@ -269,25 +282,35 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 
 func (app *App) Refresh() error {
 	cluster := app.ClusterGroup
+
+	start := time.Now()
+	app.SetRefreshInProgress(true)
+	var refreshErr error
+	defer func() {
+		app.SetRefreshResult(start, time.Now(), refreshErr)
+		app.SetRefreshInProgress(false)
+	}()
+
 	app.CheckPrimaryRoute()
 	appState := app.GetMonitoringStatus()
 	sub, err := cluster.GetAppsSubstitutionJSon(app)
 	if err == nil {
 		app.AppClusterSubstitute = sub
 	}
+	refreshErr = err
 
 	switch appState {
 	case stateMaintenance:
 		app.SetState(stateMaintenance)
 	case stateAppRunning:
 		app.SetState(stateAppRunning)
-		app.FailCount = 0
+		app.SetFailCount(0)
 	case stateFailed:
-		if app.FailCount >= cluster.Conf.MaxFail {
+		if app.GetFailCount() >= cluster.Conf.MaxFail {
 			app.SetState(stateFailed)
 		} else {
 			app.SetState(stateSuspect)
-			app.FailCount++
+			app.SetFailCount(app.GetFailCount() + 1)
 		}
 	case stateAppWarning:
 		app.SetState(stateAppWarning)
