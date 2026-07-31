@@ -11,11 +11,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/viper"
 )
 
@@ -1133,8 +1136,37 @@ func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {
 	return haTopology
 }
 
-func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
-	defer wg.Done()
+// appRefreshStaleness reports whether the last completed app-refresh batch
+// is too old (stale) or the current batch has been running too long
+// (stuck), relative to threshold. Pure function, factored out of the tick
+// loop for direct unit testing.
+func appRefreshStaleness(inProgress bool, lastStart, lastEnd, now time.Time, threshold time.Duration) (stale, stuck bool) {
+	stale = !inProgress && !lastEnd.IsZero() && now.Sub(lastEnd) > threshold
+	stuck = inProgress && !lastStart.IsZero() && now.Sub(lastStart) > threshold
+	return stale, stuck
+}
+
+// maybeRefreshAppsAsync runs one app-refresh batch, unless a previous batch
+// is still in flight (single-flight, guarded by cluster.appRefreshInProgress).
+// It is launched via trackTickGoroutine as fire-and-forget background work,
+// deliberately kept off the tick's waited-on critical path: topology
+// discovery and failover detection must not stall behind slow or
+// unresponsive app backends. Per-app results are aggregated locally and
+// published to cluster.publishedAppErrStates in a single atomic Store once
+// the whole batch completes, so EmitAppErrors() never observes a
+// half-old/half-new mix of app error state.
+func (cluster *Cluster) maybeRefreshAppsAsync() {
+	if !cluster.appRefreshInProgress.CompareAndSwap(false, true) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg,
+			"Skipping app refresh: previous batch still in progress")
+		return
+	}
+	defer cluster.appRefreshInProgress.Store(false)
+
+	start := time.Now()
+	cluster.Lock()
+	cluster.AppRefreshLastStart = start
+	cluster.Unlock()
 
 	var workerWg sync.WaitGroup
 	appChan := make(chan *App)
@@ -1144,12 +1176,22 @@ func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
 		workerCount = 1
 	}
 
+	var aggMu sync.Mutex
+	aggregated := make(map[string]state.State)
+
 	for range workerCount {
 		workerWg.Add(1)
 		go func() {
 			defer workerWg.Done()
 			for app := range appChan {
 				app.Refresh()
+				app.Lock()
+				for key, st := range app.ErrState {
+					aggMu.Lock()
+					aggregated[key] = st
+					aggMu.Unlock()
+				}
+				app.Unlock()
 			}
 		}()
 	}
@@ -1162,22 +1204,36 @@ func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
 	close(appChan)
 
 	workerWg.Wait()
+
+	cluster.publishedAppErrStates.Store(&aggregated)
+	atomic.AddUint64(&cluster.appRefreshEpoch, 1)
+
+	cluster.Lock()
+	cluster.AppRefreshLastEnd = time.Now()
+	cluster.AppRefreshLastDurationMs = cluster.AppRefreshLastEnd.Sub(start).Milliseconds()
+	cluster.AppRefreshLastSuccess = true
+	cluster.AppRefreshLastError = ""
+	cluster.AppRefreshLastAppCount = len(cluster.Apps)
+	cluster.Unlock()
 }
 
+// EmitAppErrors feeds the cluster-wide state machine from the last
+// completed app-refresh batch (see maybeRefreshAppsAsync). It deliberately
+// does not read cluster.Apps live: since app refresh runs asynchronously
+// and can be mid-batch on any given tick, reading live per-app state here
+// would risk mixing already-refreshed apps with stale ones into a single
+// "cluster-wide" snapshot. Reading the published aggregate instead means
+// this always reflects one fully-coherent batch, old or new.
 func (cluster *Cluster) EmitAppErrors() {
-	for _, app := range cluster.Apps {
-		if app == nil {
-			continue
+	snap := cluster.publishedAppErrStates.Load()
+	if snap == nil {
+		return
+	}
+	for key, st := range *snap {
+		if st.ErrKey == "" {
+			st.ErrKey = key
 		}
-		app.Lock()
-		for key, st := range app.ErrState {
-			if st.ErrKey == "" {
-				st.ErrKey = key
-			}
-
-			cluster.SetState(key, st)
-		}
-		app.Unlock()
+		cluster.SetState(key, st)
 	}
 }
 

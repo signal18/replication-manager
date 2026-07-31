@@ -394,9 +394,28 @@ type Cluster struct {
 	s3SyncApplyMu               sync.Mutex                 `json:"-"`
 	appListEpoch                uint64                     `json:"-"`
 	// appListRebuildMu serializes newAppList() (held internally, see app.go).
-	appListRebuildMu        sync.Mutex `json:"-"`
-	secretVersionStoreMu    sync.Mutex `json:"-"`
-	secretVersionStoreDirty bool       `json:"-"`
+	appListRebuildMu sync.Mutex `json:"-"`
+	// App refresh is decoupled from the tick's critical path (see
+	// maybeRefreshAppsAsync in cluster_app.go): appRefreshInProgress is a
+	// single-flight guard so a slow batch is never overlapped by the next
+	// tick's launch attempt, appRefreshEpoch mirrors appListEpoch as a
+	// monotonic counter bumped once per completed batch, and
+	// publishedAppErrStates is the whole-batch aggregate that
+	// EmitAppErrors() reads -- it is only ever replaced wholesale after a
+	// batch fully completes, so readers never observe a half-old/half-new
+	// mix of app error state.
+	appRefreshInProgress  atomic.Bool                            `json:"-"`
+	appRefreshEpoch       uint64                                 `json:"-"`
+	publishedAppErrStates atomic.Pointer[map[string]state.State] `json:"-"`
+
+	AppRefreshLastStart      time.Time  `json:"appRefreshLastStart" groups:"web"`
+	AppRefreshLastEnd        time.Time  `json:"appRefreshLastEnd" groups:"web"`
+	AppRefreshLastSuccess    bool       `json:"appRefreshLastSuccess" groups:"web"`
+	AppRefreshLastDurationMs int64      `json:"appRefreshLastDurationMs" groups:"web"`
+	AppRefreshLastError      string     `json:"appRefreshLastError" groups:"web"`
+	AppRefreshLastAppCount   int        `json:"appRefreshLastAppCount" groups:"web"`
+	secretVersionStoreMu     sync.Mutex `json:"-"`
+	secretVersionStoreDirty  bool       `json:"-"`
 	// reloadMu serializes Run()'s per-tick synchronous work (topology
 	// discovery, the wg-joined Phase 1/2/3 monitoring work) against
 	// ReloadConfig() rebuilding Conf/state machines/Servers out from under
@@ -1095,9 +1114,12 @@ func (cluster *Cluster) tickBody() {
 
 				// Phase 2: parallel reads of stable topology — Phase 3 depends on these
 				goRun(cluster.ArbitratorHandler)
-				wg.Add(2)
+				wg.Add(1)
 				go cluster.refreshProxies(wg)
-				go cluster.refreshApps(wg)
+				// App refresh is deliberately not part of this waited group: it
+				// must never stall topology discovery/failover detection behind
+				// slow or unresponsive app backends. See maybeRefreshAppsAsync.
+				cluster.trackTickGoroutine(cluster.maybeRefreshAppsAsync)
 				if heartbeats%10 == 0 {
 					goRun(cluster.MonitorTableSchemaDiff)
 				}
@@ -1176,6 +1198,22 @@ func (cluster *Cluster) tickBody() {
 				}
 				if !cluster.CanConnectVault {
 					cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], cluster.errorConnectVault), ErrFrom: "OPENSVC"})
+				}
+				// App refresh now runs off the tick's critical path (see
+				// maybeRefreshAppsAsync); warn only if it's genuinely stale or
+				// stuck, not merely because it's async. No warning before the
+				// first batch has ever run.
+				if len(cluster.Apps) > 0 {
+					cluster.Lock()
+					lastStart := cluster.AppRefreshLastStart
+					lastEnd := cluster.AppRefreshLastEnd
+					cluster.Unlock()
+					threshold := time.Duration(10*cluster.Conf.MonitoringTicker) * time.Second
+					inProgress := cluster.appRefreshInProgress.Load()
+					stale, stuck := appRefreshStaleness(inProgress, lastStart, lastEnd, time.Now(), threshold)
+					if stale || stuck {
+						cluster.SetState("APPERR007", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["APPERR007"], cluster.Name, threshold, lastEnd.Format(time.RFC3339)), ErrFrom: "APP"})
+					}
 				}
 			} else {
 				cluster.StateMachine.PreserveState("ERR00100")

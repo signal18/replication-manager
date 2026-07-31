@@ -23,6 +23,14 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
+// KNOWN ISSUE: this does an unlocked sheriff.Marshal reflection walk over the
+// whole Cluster, including every *App in cluster.Apps. When app refresh runs
+// multiple apps concurrently (see maybeRefreshAppsAsync), other workers can
+// be mutating their own app's fields (SetRouteStatuses, SetState) under only
+// app.Mutex at the same time, which -race flags as a data race against this
+// read. Predates the app-refresh async decoupling change; needs its own fix
+// (e.g. locking per app during marshal, or building the substitution JSON
+// from a locked snapshot) rather than a quick patch here.
 func (cluster *Cluster) GetAppsSubstitutionJSon(app *App) (string, error) {
 
 	o := &sheriff.Options{Groups: []string{"apps"}}
