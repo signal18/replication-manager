@@ -64,6 +64,18 @@ func (cluster *Cluster) buildBackupCatalog() []BackupCatalogEntry {
 			cat = append(cat, backupMetaToCatalog(sv.URL, m))
 		}
 	}
+	// Snapshots are catalogued in the full BackupMetaMap (many per node,
+	// ingested from `plugin-snapshot list`), not in the per-server
+	// LastBackupMeta.Logical/Physical slots — so sweep them in here too.
+	if cluster.BackupMetaMap != nil {
+		cluster.BackupMetaMap.Range(func(_, v any) bool {
+			m, ok := v.(*backupmgr.BackupMetadata)
+			if ok && m != nil && m.Completed && m.BackupMethod == backupmgr.BackupMethodSnapshot {
+				cat = append(cat, backupMetaToCatalog(m.Source, m))
+			}
+			return true
+		})
+	}
 	return cat
 }
 
@@ -71,8 +83,11 @@ func (cluster *Cluster) buildBackupCatalog() []BackupCatalogEntry {
 // every selector dimension can be evaluated against it.
 func backupMetaToCatalog(serverURL string, m *backupmgr.BackupMetadata) BackupCatalogEntry {
 	kind := "logical"
-	if m.BackupMethod == backupmgr.BackupMethodPhysical {
+	switch m.BackupMethod {
+	case backupmgr.BackupMethodPhysical:
 		kind = "physical"
+	case backupmgr.BackupMethodSnapshot:
+		kind = "snapshot"
 	}
 
 	loc := RepoLocal
@@ -93,6 +108,28 @@ func backupMetaToCatalog(serverURL string, m *backupmgr.BackupMetadata) BackupCa
 	if m.BinLogGtid != "" {
 		caps = append(caps, "gtid")
 	}
+	// Capability dimensions by method: speed / integrity / downtime / target.
+	// Polarity (benefit vs cost) is a GUI concern — here we just record the fact.
+	switch m.BackupMethod {
+	case backupmgr.BackupMethodSnapshot:
+		// Fast rollback, but a blind block copy: needs a restart, is NOT
+		// corruption-verified (carries any on-disk corruption forward), and
+		// seeds a freshly-provisioned empty node (whole volume).
+		caps = append(caps, "fast-restore", "needs-db-restart", "work-for-prov")
+	case backupmgr.BackupMethodPhysical:
+		// Offline restore; InnoDB page checksums give partial integrity; lays
+		// down a whole datadir → works from provisioning.
+		caps = append(caps, "needs-db-restart", "work-for-prov")
+	case backupmgr.BackupMethodLogical:
+		// Read row-by-row through the engine → proven readable.
+		caps = append(caps, "corruption-verified")
+	}
+	// can-repair-online is a repman RESTORE-side capability, not method-derivable
+	// and not yet attached. A logical dump can repair a live diverged DB only if
+	// repman STREAMS the restore and rewrites it on the fly: INSERT -> REPLACE
+	// (overwrite diverged rows) and strip DROP TABLE (repair data in place, don't
+	// recreate). That stream-rewrite restore is roadmap; attach can-repair-online
+	// to logical once it exists. (A plain client-side `mysql < dump.sql` cannot.)
 
 	ts := m.EndTime.Unix()
 	if ts <= 0 {

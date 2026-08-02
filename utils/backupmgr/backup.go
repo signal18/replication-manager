@@ -15,6 +15,9 @@ type BackupMethod int
 const (
 	BackupMethodLogical  = 1
 	BackupMethodPhysical = 2
+	// BackupMethodSnapshot is a filesystem (ZFS/LVM) snapshot catalogued as a
+	// backup: whole-instance, fast-restore, needs-db-restart, not corruption-verified.
+	BackupMethodSnapshot = 3
 )
 
 type BackupStrategy int
