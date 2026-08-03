@@ -4,6 +4,8 @@
 package arbitrator
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -174,6 +176,73 @@ func TestGetArbitratorDB_SQLiteReconnectAndCooldown(t *testing.T) {
 		}
 		if !lastReconnectAttempt.IsZero() {
 			t.Error("expected lastReconnectAttempt to be reset to zero after a successful reconnect")
+		}
+	})
+}
+
+func TestArbitratorConnectTimeoutSeconds(t *testing.T) {
+	cases := []struct {
+		name       string
+		configured int
+		want       int
+	}{
+		{"positive value passes through", 5, 5},
+		{"zero clamps to default", 0, defaultArbitratorConnectTimeoutSeconds},
+		{"negative clamps to default", -1, defaultArbitratorConnectTimeoutSeconds},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			RepMan = &server.ReplicationManager{Confs: map[string]config.Config{
+				"arbitrator": {ArbitratorConnectTimeout: tc.configured},
+			}}
+			if got := arbitratorConnectTimeoutSeconds(); got != tc.want {
+				t.Errorf("arbitratorConnectTimeoutSeconds() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestHandlerHealth(t *testing.T) {
+	t.Run("healthy sqlite backend returns 200", func(t *testing.T) {
+		resetArbitratorTestState(t)
+		conf.WorkingDir = t.TempDir()
+		RepMan = &server.ReplicationManager{Confs: map[string]config.Config{
+			"arbitrator": {ArbitratorDriver: "sqlite", ArbitratorConnectTimeout: 3},
+		}}
+
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		rr := httptest.NewRecorder()
+		handlerHealth(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d, body=%s", rr.Code, http.StatusOK, rr.Body.String())
+		}
+	})
+
+	t.Run("unreachable backend returns 503, not a hang", func(t *testing.T) {
+		resetArbitratorTestState(t)
+		// A directory sqlite cannot open a database file in, so every
+		// connect attempt fails and getArbitratorDB returns an error.
+		conf.WorkingDir = t.TempDir() + "/does-not-exist"
+		RepMan = &server.ReplicationManager{Confs: map[string]config.Config{
+			"arbitrator": {ArbitratorDriver: "sqlite", ArbitratorConnectTimeout: 3},
+		}}
+
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		rr := httptest.NewRecorder()
+		done := make(chan struct{})
+		go func() {
+			handlerHealth(rr, req)
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("handlerHealth did not return within 5s")
+		}
+
+		if rr.Code != http.StatusServiceUnavailable {
+			t.Errorf("status = %d, want %d, body=%s", rr.Code, http.StatusServiceUnavailable, rr.Body.String())
 		}
 	})
 }

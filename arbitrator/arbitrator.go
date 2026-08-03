@@ -201,6 +201,26 @@ var (
 	reconnectCooldown    = 2 * time.Second
 )
 
+// defaultArbitratorConnectTimeoutSeconds is both the flag default and the
+// fallback used whenever arbitrator-connect-timeout is non-positive.
+const defaultArbitratorConnectTimeoutSeconds = 3
+
+// arbitratorConnectTimeoutSeconds returns the configured connect/ping
+// timeout, clamping non-positive values to the default. Passing 0 through
+// unclamped would flip this flag's two use sites to opposite failure modes:
+// context.WithTimeout(ctx, 0) expires immediately (every liveness ping on an
+// otherwise-healthy connection would fail, forcing a reconnect on every
+// request), while the MySQL DSN's "timeout=0s" means unbounded on the dial
+// side — exactly backwards from what a operator typing 0 for "no timeout"
+// would expect from either.
+func arbitratorConnectTimeoutSeconds() int {
+	t := RepMan.Confs["arbitrator"].ArbitratorConnectTimeout
+	if t <= 0 {
+		return defaultArbitratorConnectTimeoutSeconds
+	}
+	return t
+}
+
 func init() {
 	cobra.OnInitialize()
 	rootCmd.AddCommand(arbitratorCmd)
@@ -208,7 +228,7 @@ func init() {
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorDriver, "arbitrator-driver", "sqlite", "sqlite|mysql, use a local sqllite or use a mysql backend")
 	arbitratorCmd.Flags().BoolVar(&conf.ArbitratorURICheck, "arbitrator-uri-check", false, "When true, validate client URI against CRM before accepting requests")
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorURICheckURL, "arbitrator-uri-check-url", "", "CRM health endpoint URL for URI validation (e.g. https://crm.cloud18.io/api/health)")
-	arbitratorCmd.Flags().IntVar(&conf.ArbitratorConnectTimeout, "arbitrator-connect-timeout", 3, "MySQL connect timeout in seconds per backend host when the arbitrator connects or reconnects, and the bound on liveness-checking an existing connection, kept short so a down host doesn't stall the whole arbitrator")
+	arbitratorCmd.Flags().IntVar(&conf.ArbitratorConnectTimeout, "arbitrator-connect-timeout", defaultArbitratorConnectTimeoutSeconds, "MySQL connect timeout in seconds per backend host when the arbitrator connects or reconnects, and the bound on liveness-checking an existing connection, kept short so a down host doesn't stall the whole arbitrator. Non-positive values fall back to the default rather than meaning \"no timeout\"")
 
 }
 
@@ -308,7 +328,7 @@ func connectArbitratorMySQL() (*sqlx.DB, error) {
 		host, port := misc.SplitHostPort(h)
 		// dbhelper.MySQLConnect uses sqlx.Connect, which already opens and
 		// pings the connection, so err == nil here implies a verified connection.
-		db, err := dbhelper.MySQLConnect(user, pass, dbhelper.GetAddress(host, port, ""), fmt.Sprintf("timeout=%ds", arbConf.ArbitratorConnectTimeout))
+		db, err := dbhelper.MySQLConnect(user, pass, dbhelper.GetAddress(host, port, ""), fmt.Sprintf("timeout=%ds", arbitratorConnectTimeoutSeconds()))
 		if err != nil {
 			lastErr = err
 			log.Warnf("Arbitrator failed to connect to MySQL backend %s: %s", h, err)
@@ -356,7 +376,7 @@ func getArbitratorDB() (*sqlx.DB, error) {
 		// would stall the whole arbitrator for every cluster, not just the one
 		// hitting the dead connection — exactly the failure mode this reconnect
 		// path exists to avoid.
-		pingTimeout := time.Duration(RepMan.Confs["arbitrator"].ArbitratorConnectTimeout) * time.Second
+		pingTimeout := time.Duration(arbitratorConnectTimeoutSeconds()) * time.Second
 		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 		err := arbitratorDB.PingContext(ctx)
 		cancel()
@@ -396,14 +416,12 @@ func handlerVersion(w http.ResponseWriter, r *http.Request) {
 func handlerHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	db, err := getArbitratorDB()
-	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "failed"})
-		return
-	}
-
-	if err := db.Ping(); err != nil {
+	// getArbitratorDB already validates the handle with a bounded PingContext
+	// before returning it — a second, unbounded db.Ping() here would be both
+	// redundant on the healthy path and, in the narrow window where the
+	// connection dies between the two calls, exactly the unbounded-block
+	// hazard the bounded ping was added to eliminate.
+	if _, err := getArbitratorDB(); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "failed"})
 		return
