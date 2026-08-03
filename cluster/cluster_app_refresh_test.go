@@ -291,8 +291,51 @@ func TestMaybeRefreshAppsAsync_AtomicPublish(t *testing.T) {
 	if snap == nil {
 		t.Fatal("expected a published snapshot once the batch completes")
 	}
-	if _, ok := (*snap)[ErrAppTCPConnectFailed]; !ok {
-		t.Fatalf("expected the published snapshot to contain %s from the completed batch", ErrAppTCPConnectFailed)
+	wantKey := state.BuildStateKey(ErrAppTCPConnectFailed, failApp.Host)
+	if _, ok := (*snap)[wantKey]; !ok {
+		t.Fatalf("expected the published snapshot to contain %s from the completed batch", wantKey)
+	}
+}
+
+// TestMaybeRefreshAppsAsync_PreservesPerAppErrorsWithSameCode is a
+// regression test for the async-refresh aggregation collapsing per-app
+// state: two different apps raising the exact same error code must both
+// survive into the published snapshot, keyed by app (ServerUrl), not
+// overwrite each other under the bare error code.
+func TestMaybeRefreshAppsAsync_PreservesPerAppErrorsWithSameCode(t *testing.T) {
+	cluster := &Cluster{
+		Name: "same-code-per-app",
+		Conf: &config.Config{Timeout: 5, AppRefreshConcurrency: 2, AppErrorDebounceThreshold: 1},
+	}
+	failAppA := newAppRefreshTestApp(cluster, "fail-a", []config.Route{
+		{Protocol: "tcp", CName: "127.0.0.1", Port: "1", DestinationPort: "1", Primary: true},
+	})
+	failAppA.Host = "app-a.example.com"
+	failAppB := newAppRefreshTestApp(cluster, "fail-b", []config.Route{
+		{Protocol: "tcp", CName: "127.0.0.1", Port: "1", DestinationPort: "1", Primary: true},
+	})
+	failAppB.Host = "app-b.example.com"
+	cluster.Apps = []*App{failAppA, failAppB}
+
+	cluster.maybeRefreshAppsAsync()
+
+	snap := cluster.publishedAppErrStates.Load()
+	if snap == nil {
+		t.Fatal("expected a published snapshot")
+	}
+
+	keyA := state.BuildStateKey(ErrAppTCPConnectFailed, failAppA.Host)
+	keyB := state.BuildStateKey(ErrAppTCPConnectFailed, failAppB.Host)
+	if keyA == keyB {
+		t.Fatalf("test setup error: expected distinct keys, got %q for both apps", keyA)
+	}
+	stA, okA := (*snap)[keyA]
+	stB, okB := (*snap)[keyB]
+	if !okA || !okB {
+		t.Fatalf("expected both apps' %s errors to survive aggregation, got snapshot %v", ErrAppTCPConnectFailed, *snap)
+	}
+	if stA.ServerUrl != failAppA.Host || stB.ServerUrl != failAppB.Host {
+		t.Fatalf("expected each entry to retain its own app's ServerUrl, got %q and %q", stA.ServerUrl, stB.ServerUrl)
 	}
 }
 
@@ -380,6 +423,39 @@ func TestEmitAppErrors_NoPublishedSnapshotYetIsNoop(t *testing.T) {
 
 	if cluster.StateMachine.IsInState(ErrAppConnectFailed) {
 		t.Fatalf("did not expect any state before the first published batch")
+	}
+}
+
+// TestEmitAppErrors_EmitsPerAppStateForSameErrorCode is a regression test
+// covering the full publish -> emit path: a published snapshot holding the
+// same error code for two different apps (composite-keyed, as
+// maybeRefreshAppsAsync now produces) must result in both apps' states
+// landing in the cluster-wide state machine, not just one.
+func TestEmitAppErrors_EmitsPerAppStateForSameErrorCode(t *testing.T) {
+	cluster := &Cluster{
+		Name:         "emit-errors-per-app",
+		Conf:         &config.Config{},
+		StateMachine: &state.StateMachine{},
+	}
+	cluster.StateMachine.Init()
+
+	hostA := "app-a.example.com"
+	hostB := "app-b.example.com"
+	published := map[string]state.State{
+		state.BuildStateKey(ErrAppUnexpectedStatus, hostA): {ErrKey: ErrAppUnexpectedStatus, ServerUrl: hostA, ErrDesc: "app A unexpected status"},
+		state.BuildStateKey(ErrAppUnexpectedStatus, hostB): {ErrKey: ErrAppUnexpectedStatus, ServerUrl: hostB, ErrDesc: "app B unexpected status"},
+	}
+	cluster.publishedAppErrStates.Store(&published)
+
+	cluster.EmitAppErrors()
+
+	keyA := state.BuildStateKey(ErrAppUnexpectedStatus, hostA)
+	keyB := state.BuildStateKey(ErrAppUnexpectedStatus, hostB)
+	if !cluster.StateMachine.IsInState(keyA) {
+		t.Fatalf("expected app A's %s to be emitted under %s", ErrAppUnexpectedStatus, keyA)
+	}
+	if !cluster.StateMachine.IsInState(keyB) {
+		t.Fatalf("expected app B's %s to be emitted under %s", ErrAppUnexpectedStatus, keyB)
 	}
 }
 

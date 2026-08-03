@@ -185,17 +185,27 @@ func (SM *StateMachine) IsInSchemaMonitor() bool {
 	return SM.InSchemaMonitor
 }
 
+// BuildStateKey returns the storage key for a state entry: the bare key, or
+// "key@serverUrl" when the state is scoped to a specific server/app instance
+// and the key isn't already scoped. Shared between AddState and any code that
+// needs to pre-scope keys before they reach AddState (e.g. batching per-app
+// errors from multiple apps into one map without collisions).
+func BuildStateKey(key string, serverUrl string) string {
+	if serverUrl != "" && !strings.Contains(key, "@") {
+		return key + "@" + serverUrl
+	}
+	return key
+}
+
 // if state is cluster based the key is the error if state is server based then we concat server URL
 func (SM *StateMachine) AddState(key string, s State) {
 	//Retain the state
 	s.ErrKey = key
-	if s.ServerUrl != "" && !strings.Contains(key, "@") {
-		key = key + "@" + s.ServerUrl
-	}
+	storageKey := BuildStateKey(key, s.ServerUrl)
 	SM.Lock()
-	SM.CurState.Add(key, s)
+	SM.CurState.Add(storageKey, s)
 	if SM.heartbeats == 0 {
-		SM.OldState.Add(key, s)
+		SM.OldState.Add(storageKey, s)
 	}
 	SM.Unlock()
 }

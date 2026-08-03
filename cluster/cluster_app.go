@@ -1258,6 +1258,10 @@ func (cluster *Cluster) maybeRefreshAppsAsync() {
 		workerCount = 1
 	}
 
+	// Keyed by state.BuildStateKey(errKey, ServerUrl), not the bare error
+	// key: multiple apps can raise the same error code (e.g. APPERR002), and
+	// a bare key would let one app's entry overwrite another's here before
+	// the batch is ever published.
 	var aggMu sync.Mutex
 	aggregated := make(map[string]state.State)
 
@@ -1269,8 +1273,11 @@ func (cluster *Cluster) maybeRefreshAppsAsync() {
 				app.Refresh()
 				app.Lock()
 				for key, st := range app.ErrState {
+					if st.ErrKey == "" {
+						st.ErrKey = key
+					}
 					aggMu.Lock()
-					aggregated[key] = st
+					aggregated[state.BuildStateKey(key, st.ServerUrl)] = st
 					aggMu.Unlock()
 				}
 				app.Unlock()
@@ -1306,16 +1313,21 @@ func (cluster *Cluster) maybeRefreshAppsAsync() {
 // would risk mixing already-refreshed apps with stale ones into a single
 // "cluster-wide" snapshot. Reading the published aggregate instead means
 // this always reflects one fully-coherent batch, old or new.
+//
+// SetState is called with st.ErrKey (the bare error code), not the map key:
+// the map key is a composite (state.BuildStateKey) used only to keep
+// different apps' same-error-code entries from colliding in the published
+// snapshot. AddState independently re-derives the correct per-app storage
+// key from st.ServerUrl, so passing the bare key here keeps ErrKey on the
+// stored state as the plain error code, matching what callers (UI, alerts,
+// config.ClusterError lookups) expect.
 func (cluster *Cluster) EmitAppErrors() {
 	snap := cluster.publishedAppErrStates.Load()
 	if snap == nil {
 		return
 	}
-	for key, st := range *snap {
-		if st.ErrKey == "" {
-			st.ErrKey = key
-		}
-		cluster.SetState(key, st)
+	for _, st := range *snap {
+		cluster.SetState(st.ErrKey, st)
 	}
 }
 
