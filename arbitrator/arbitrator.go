@@ -10,6 +10,7 @@
 package arbitrator
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -207,7 +208,7 @@ func init() {
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorDriver, "arbitrator-driver", "sqlite", "sqlite|mysql, use a local sqllite or use a mysql backend")
 	arbitratorCmd.Flags().BoolVar(&conf.ArbitratorURICheck, "arbitrator-uri-check", false, "When true, validate client URI against CRM before accepting requests")
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorURICheckURL, "arbitrator-uri-check-url", "", "CRM health endpoint URL for URI validation (e.g. https://crm.cloud18.io/api/health)")
-	arbitratorCmd.Flags().IntVar(&conf.ArbitratorConnectTimeout, "arbitrator-connect-timeout", 3, "MySQL connect timeout in seconds per backend host when the arbitrator connects or reconnects, kept short so a down host doesn't stall failover to the next one")
+	arbitratorCmd.Flags().IntVar(&conf.ArbitratorConnectTimeout, "arbitrator-connect-timeout", 3, "MySQL connect timeout in seconds per backend host when the arbitrator connects or reconnects, and the bound on liveness-checking an existing connection, kept short so a down host doesn't stall the whole arbitrator")
 
 }
 
@@ -348,10 +349,21 @@ func getArbitratorDB() (*sqlx.DB, error) {
 	defer arbitratorDBMu.Unlock()
 
 	if arbitratorDB != nil {
-		if err := arbitratorDB.Ping(); err == nil {
+		// Bounded: a plain Ping() has no deadline and can block on the OS-level
+		// TCP timeout (minutes) against a backend that silently drops packets
+		// (network partition) instead of refusing the connection. Since this
+		// runs under arbitratorDBMu on every request, an unbounded ping here
+		// would stall the whole arbitrator for every cluster, not just the one
+		// hitting the dead connection — exactly the failure mode this reconnect
+		// path exists to avoid.
+		pingTimeout := time.Duration(RepMan.Confs["arbitrator"].ArbitratorConnectTimeout) * time.Second
+		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+		err := arbitratorDB.PingContext(ctx)
+		cancel()
+		if err == nil {
 			return arbitratorDB, nil
 		}
-		log.Warn("Arbitrator database connection lost, attempting to reconnect")
+		log.WithError(err).Warn("Arbitrator database connection lost, attempting to reconnect")
 		arbitratorDB.Close()
 		arbitratorDB = nil
 	}
