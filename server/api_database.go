@@ -3634,7 +3634,7 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 			mod = config.ConstLogModDbOptimize
 		case "mariabackup", "xtrabackup", "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariadbackup", "reseedmysqldump", "flashbackmysqldump":
 			mod = config.ConstLogModBackupStream
-		case "zfssnapback", "stop", "restart", "start", "main", "jobs-check", "jobs-upgrade", "print-defaults":
+		case "zfssnapback", "zfssnapshot", "zfssnapshotcatalog", "stop", "restart", "start", "main", "jobs-check", "jobs-upgrade", "print-defaults":
 			mod = config.ConstLogModTask
 		default:
 			http.Error(w, "Bad request: Task is not registered", http.StatusBadRequest)
@@ -3665,6 +3665,21 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 			if err != nil {
 				node.SetErrState("WARN0158", "WARNING", "JOB", config.ClusterError["WARN0158"], node.URL, err.Error())
 				http.Error(w, "Error decrypting data : "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			// zfssnapshot (create) and zfssnapshotcatalog (list) carry the JSON
+			// output of `plugin-snapshot` (not log lines) — ingest it into the
+			// backup catalogue instead of routing to a log.
+			if task == "zfssnapshot" || task == "zfssnapshotcatalog" {
+				count, err := node.ParseAndIngestSnapshotList(decrypted)
+				if err != nil {
+					node.SetErrState("WARN0158", "WARNING", "JOB", config.ClusterError["WARN0158"], node.URL, err.Error())
+					http.Error(w, "Error ingesting snapshot catalogue : "+err.Error(), http.StatusInternalServerError)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(ApiResponse{Data: fmt.Sprintf("Catalogued %d snapshot(s)", count), Success: true})
 				return
 			}
 
