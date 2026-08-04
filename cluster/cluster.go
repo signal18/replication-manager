@@ -2777,6 +2777,7 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 		return fmt.Errorf("Master connection is not established")
 	}
 
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Monitoring master table schema on %s", cmaster.URL)
 	cmaster.Conn.SetConnMaxLifetime(3595 * time.Second)
 
 	tables, tablelist, logs, err := dbhelper.GetTables(cmaster.Conn, cmaster.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes, cluster.Conf.MonitorSchemaScanTimeout)
@@ -3070,6 +3071,7 @@ func (cluster *Cluster) MonitorSchema() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Running on-demand schema scan")
 	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Starting schema monitoring")
 
 	cluster.StateMachine.SetMonitorSchemaState()
 	defer func() {
