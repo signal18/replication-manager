@@ -103,7 +103,7 @@ readonly JOBS_MODE="$_JOBS_MODE"
 # Job types
 readonly -a JOBS=(
     "xtrabackup" "mariabackup" "errorlog" "slowquery"
-    "auditlog" "sqlerrorlog" "zfssnapback" "optimize"
+    "auditlog" "sqlerrorlog" "zfssnapback" "zfssnapshot" "zfssnapshotcatalog" "optimize"
     "reseedxtrabackup" "reseedmariabackup"
     "flashbackxtrabackup" "flashbackmariadbackup"
     "stop" "restart" "start"
@@ -1838,6 +1838,24 @@ for job in "${JOBS[@]}"; do
             %%ENV:SERVICES_SVCNAME%% stop
             zfs rollback $LASTSNAP
             %%ENV:SERVICES_SVCNAME%% start
+            ;;
+        zfssnapshot|zfssnapshotcatalog)
+            # Enterprise plugin-snapshot, delivered co-located (beside
+            # replication-manager-cli) in config.tar.gz. Emits a JSON result which
+            # we POST raw to write-log/<job>; repman decrypts, IsSnapshotPayload
+            # routes it to ParseAndIngestSnapshotList (backup catalogue).
+            PLUGIN_SNAPSHOT="$SCRIPT_DIR/plugin-snapshot"
+            [[ -x "$PLUGIN_SNAPSHOT" ]] || PLUGIN_SNAPSHOT=$(command -v plugin-snapshot)
+            if [[ -z "$PLUGIN_SNAPSHOT" ]]; then
+                SNAP_JSON='{"ok":false,"action":"'"$job"'","error":"plugin-snapshot not installed on node"}'
+            elif [[ "$job" == "zfssnapshot" ]]; then
+                SNAP_JSON=$("$PLUGIN_SNAPSHOT" --type=zfs snapshot --datadir="$DATADIR" --keep="${SNAPSHOT_KEEP:-7}" 2>&1)
+            else
+                SNAP_JSON=$("$PLUGIN_SNAPSHOT" --type=zfs list --datadir="$DATADIR" 2>&1)
+            fi
+            send_to_api_with_retry "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" \
+                "/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/write-log/$job" \
+                "$SNAP_JSON" "$MAX_RETRIES"
             ;;
         optimize)
             $BINARY_CHECK -o $DB_CONN_PARAMETERS --all-databases --skip-write-binlog &>"$LOG_DIR/$job.process.out"
