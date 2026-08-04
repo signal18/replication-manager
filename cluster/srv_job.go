@@ -679,6 +679,28 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 	return server.JobInsertTask("zfssnapback", "0", cluster.Conf.MonitorAddress)
 }
 
+// JobZFSSnapshot dispatches the enterprise plugin-snapshot create action on the
+// DB node. Its JSON output is POSTed back via write-log/zfssnapshot and ingested
+// into the backup catalogue.
+func (server *ServerMonitor) JobZFSSnapshot() (int64, error) {
+	cluster := server.ClusterGroup
+	if server.IsDown() {
+		return 0, nil
+	}
+	return server.JobInsertTask(string(config.ConstTaskZFSSnapshot), "0", cluster.Conf.MonitorAddress)
+}
+
+// JobZFSSnapshotCatalog dispatches the enterprise plugin-snapshot list action on
+// the DB node so repman can catalogue its existing filesystem snapshots
+// (write-log/zfssnapshotcatalog -> ParseAndIngestSnapshotList).
+func (server *ServerMonitor) JobZFSSnapshotCatalog() (int64, error) {
+	cluster := server.ClusterGroup
+	if server.IsDown() {
+		return 0, nil
+	}
+	return server.JobInsertTask(string(config.ConstTaskZFSSnapshotCatalog), "0", cluster.Conf.MonitorAddress)
+}
+
 func (server *ServerMonitor) JobsCheckRunning() error {
 	cluster := server.ClusterGroup
 	if cluster.Conf.SchedulerJobsMode == "api" {

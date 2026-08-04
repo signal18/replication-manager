@@ -1544,6 +1544,8 @@ const (
 	ConstTaskSqlError           TaskName = "sqlerrorlog"
 	ConstTaskAuditLog           TaskName = "auditlog"
 	ConstTaskZFS                TaskName = "zfssnapback"
+	ConstTaskZFSSnapshot        TaskName = "zfssnapshot"
+	ConstTaskZFSSnapshotCatalog TaskName = "zfssnapshotcatalog"
 	ConstTaskOptimize           TaskName = "optimize"
 	ConstTaskReseedXB           TaskName = "reseedxtrabackup"
 	ConstTaskReseedMB           TaskName = "reseedmariabackup"
@@ -1598,6 +1600,8 @@ var TaskRegistry = map[TaskName]TaskDef{
 	ConstTaskSqlError:           {Name: ConstTaskSqlError, Capability: TaskCapRemoteOnly},
 	ConstTaskAuditLog:           {Name: ConstTaskAuditLog, Capability: TaskCapRemoteOnly},
 	ConstTaskZFS:                {Name: ConstTaskZFS, Capability: TaskCapRemoteOnly},
+	ConstTaskZFSSnapshot:        {Name: ConstTaskZFSSnapshot, Capability: TaskCapRemoteOnly},
+	ConstTaskZFSSnapshotCatalog: {Name: ConstTaskZFSSnapshotCatalog, Capability: TaskCapRemoteOnly},
 	ConstTaskJobsCheck:          {Name: ConstTaskJobsCheck, Capability: TaskCapRemoteOnly},
 	ConstTaskJobsUpgrade:        {Name: ConstTaskJobsUpgrade, Capability: TaskCapRemoteOnly},
 	ConstTaskPrintCurrentConfig: {Name: ConstTaskPrintCurrentConfig, Capability: TaskCapRemoteOnly},
