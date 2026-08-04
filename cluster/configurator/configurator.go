@@ -1050,6 +1050,23 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 		}
 	}
 
+	// Co-locate the enterprise plugin-snapshot binary beside dbjobs_new so the
+	// node finds it at $SCRIPT_DIR/plugin-snapshot. It ships in config.tar.gz and
+	// is unpacked on the node exactly like dbjobs_new (an executable) — NOT via
+	// the Docker image. Enterprise-gated: only copied when the signed binary has
+	// been delivered to repman's plugins dir (via the signed-plugin pull).
+	// NOTE: the delivered binary must match the DB node's arch — the pull should
+	// place the node-arch build; arch selection is a follow-up.
+	snapSrc := filepath.Join(configurator.ClusterConfig.WorkingDir, "plugins", "plugin-snapshot")
+	if _, err := os.Stat(snapSrc); err == nil {
+		snapDst := filepath.Join(Datadir, "init", "init", "plugin-snapshot")
+		if err := misc.CopyFile(snapSrc, snapDst); err != nil {
+			configurator.Logger.Errorf("Failed to co-locate plugin-snapshot: %s", err)
+		} else {
+			os.Chmod(snapDst, 0755)
+		}
+	}
+
 	// Ensure preserved file-path variables have their referenced files in the tarball.
 	// When a tag is removed but its variables are preserved, the config fragment stays
 	// but the files it references (e.g. encryption key files) are no longer deployed.
