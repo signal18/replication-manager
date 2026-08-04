@@ -58,7 +58,7 @@ CHECKPOINT_DIR="$TMP_DIR/checkpoints"
 # Directory where lock files are stored
 LOCK_DIR="$TMP_DIR/locks"
 BATCH_SIZE=5
-JOBS=("xtrabackup" "mariabackup" "errorlog" "slowquery" "zfssnapback" "optimize" "reseedxtrabackup" "reseedmariabackup" "flashbackxtrabackup" "flashbackmariadbackup" "stop" "restart" "start")
+JOBS=("xtrabackup" "mariabackup" "errorlog" "slowquery" "zfssnapback" "zfssnapshot" "zfssnapshotcatalog" "optimize" "reseedxtrabackup" "reseedmariabackup" "flashbackxtrabackup" "flashbackmariadbackup" "stop" "restart" "start")
 
 # OSX need socat extra path
 export PATH=$PATH:/usr/local/bin
@@ -578,6 +578,21 @@ for job in "${JOBS[@]}"; do
             %%ENV:SERVICES_SVCNAME%% stop
             zfs rollback $LASTSNAP
             %%ENV:SERVICES_SVCNAME%% start
+            ;;
+        zfssnapshot|zfssnapshotcatalog)
+            # Enterprise plugin-snapshot, delivered co-located in config.tar.gz.
+            # Emits a JSON result which we POST raw to write-log/<job>; repman
+            # ingests it into the backup catalogue (ParseAndIngestSnapshotList).
+            PLUGIN_SNAPSHOT="$SCRIPT_DIR/plugin-snapshot"
+            [ -x "$PLUGIN_SNAPSHOT" ] || PLUGIN_SNAPSHOT=$(command -v plugin-snapshot)
+            if [ -z "$PLUGIN_SNAPSHOT" ]; then
+                echo '{"ok":false,"action":"'"$job"'","error":"plugin-snapshot not installed on node"}' >"$LOG_DIR/$job.out"
+            elif [ "$job" == "zfssnapshot" ]; then
+                "$PLUGIN_SNAPSHOT" --type=zfs snapshot --datadir="$DATADIR" --keep="${SNAPSHOT_KEEP:-7}" >"$LOG_DIR/$job.out" 2>>"$LOG_DIR/$job.out"
+            else
+                "$PLUGIN_SNAPSHOT" --type=zfs list --datadir="$DATADIR" >"$LOG_DIR/$job.out" 2>>"$LOG_DIR/$job.out"
+            fi
+            send_encrypted_data "$REPLICATION_MANAGER_ADDR" "$job" "$(cat "$LOG_DIR/$job.out")"
             ;;
         optimize)
             $BINARY_CHECK -o $BINARY_CLIENT_PARAMETERS --all-databases --skip-write-binlog &>"$LOG_DIR/$job.out"

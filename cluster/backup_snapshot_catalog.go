@@ -81,6 +81,21 @@ func (server *ServerMonitor) IngestSnapshots(dataset string, entries []SnapshotE
 	return n
 }
 
+// IsSnapshotPayload reports whether a decrypted write-log body is a
+// plugin-snapshot result (has a top-level "action") rather than a framework
+// status LogEntry ({server,log}). The zfssnapshot/zfssnapshotcatalog tasks post
+// both over the same write-log endpoint, so the handler uses this to route the
+// snapshot JSON to the catalogue and the status lines to the log.
+func IsSnapshotPayload(out []byte) bool {
+	var probe struct {
+		Action string `json:"action"`
+	}
+	if err := json.Unmarshal(out, &probe); err != nil {
+		return false
+	}
+	return probe.Action != ""
+}
+
 // ParseAndIngestSnapshotList parses the JSON output of `plugin-snapshot list`
 // and catalogues the snapshots it reports.
 func (server *ServerMonitor) ParseAndIngestSnapshotList(out []byte) (int, error) {

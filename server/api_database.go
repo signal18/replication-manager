@@ -3668,10 +3668,11 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 				return
 			}
 
-			// zfssnapshot (create) and zfssnapshotcatalog (list) carry the JSON
-			// output of `plugin-snapshot` (not log lines) — ingest it into the
-			// backup catalogue instead of routing to a log.
-			if task == "zfssnapshot" || task == "zfssnapshotcatalog" {
+			// zfssnapshot (create) and zfssnapshotcatalog (list) post BOTH the
+			// plugin-snapshot JSON result AND framework status lines over the same
+			// write-log endpoint. Ingest only the snapshot result (has a top-level
+			// "action"); status/log lines fall through to ParseDecryptedLogs below.
+			if (task == "zfssnapshot" || task == "zfssnapshotcatalog") && cluster.IsSnapshotPayload(decrypted) {
 				count, err := node.ParseAndIngestSnapshotList(decrypted)
 				if err != nil {
 					node.SetErrState("WARN0158", "WARNING", "JOB", config.ClusterError["WARN0158"], node.URL, err.Error())
