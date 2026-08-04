@@ -1134,7 +1134,7 @@ func (cluster *Cluster) tickBody() {
 					goRun(cluster.MonitorTableSchemaDiff)
 				}
 				if heartbeats%30 == 0 {
-					goRun(cluster.ResticFetchRepo)
+					goRun(cluster.FetchBackupCatalog)
 					goRun(cluster.MonitorVariablesDiff)
 					goRun(cluster.MonitorVariablesChange)
 				}

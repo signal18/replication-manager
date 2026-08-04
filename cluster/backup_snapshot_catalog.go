@@ -9,6 +9,7 @@ import (
 	"hash/fnv"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 )
 
@@ -79,6 +80,32 @@ func (server *ServerMonitor) IngestSnapshots(dataset string, entries []SnapshotE
 		n++
 	}
 	return n
+}
+
+// FetchBackupCatalog is the generic, multi-source backup-catalogue refresh, run
+// from the monitor loop on the regular backup-refresh cadence (no dedicated
+// scheduler). Each source is an action that gates itself on its own enable
+// variable, mirroring ResticFetchRepo (gated by backup-restic).
+func (cluster *Cluster) FetchBackupCatalog() {
+	cluster.ResticFetchRepo() // restic snapshots — gated by backup-restic
+	cluster.CatalogSnapshots() // fs snapshots     — gated by backup-collect-snapshots
+	// future sources (storage-array snapshots, …) plug in here, each self-gated.
+}
+
+// CatalogSnapshots dispatches the zfssnapshotcatalog dbjob to the backup server
+// so its filesystem snapshots are (re-)catalogued. Gated by backup-collect-snapshots.
+func (cluster *Cluster) CatalogSnapshots() {
+	if !cluster.Conf.BackupCollectSnapshots {
+		return
+	}
+	srv := cluster.GetBackupServer()
+	if srv == nil || srv.IsDown() {
+		return
+	}
+	if _, err := srv.JobZFSSnapshotCatalog(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg,
+			"snapshot catalogue dispatch on %s: %s", srv.URL, err)
+	}
 }
 
 // IsSnapshotPayload reports whether a decrypted write-log body is a

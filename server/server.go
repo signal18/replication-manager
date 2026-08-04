@@ -918,6 +918,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.BackupResticPurgePruneRepackSmall, "backup-restic-purge-prune-repack-small", false, "Restic prune --repack-small.")
 	flags.BoolVar(&conf.BackupResticPurgePruneRepackUncompressed, "backup-restic-purge-prune-repack-uncompressed", false, "Restic prune --repack-uncompressed.")
 	flags.StringVar(&conf.BackupResticBinaryPath, "backup-restic-binary-path", "/usr/bin/restic", "Path to restic binary")
+	flags.BoolVar(&conf.BackupCollectSnapshots, "backup-collect-snapshots", false, "Periodically catalogue filesystem (zfs/lvm) snapshots on the backup server via plugin-snapshot")
 	flags.StringVar(&conf.BackupResticAwsAccessKeyId, "backup-restic-aws-access-key-id", "admin", "Restic backup AWS key id")
 	flags.StringVar(&conf.BackupResticAwsAccessSecret, "backup-restic-aws-access-secret", "secret", "Restic backup AWS key sercret")
 	flags.StringVar(&conf.BackupResticAwsRegion, "backup-restic-aws-region", "", "Restic backup AWS region (empty = AWS SDK default)")
