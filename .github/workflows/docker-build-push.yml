@@ -396,6 +396,8 @@ jobs:
           build-args: |
             PLUGIN_SIGNER_USER=${{ secrets.PLUGIN_SIGNER_USER }}
             PLUGIN_SIGNER_TOKEN=${{ secrets.PLUGIN_SIGNER_TOKEN }}
+            PLUGIN_PUSH=ON
+            PLUGIN_CHANNEL=nightly
           cache-from: type=gha,scope=nightly
           cache-to: type=gha,mode=max,scope=nightly
 
