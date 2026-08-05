@@ -2957,6 +2957,15 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.LogArbitration = !mycluster.Conf.LogArbitration
 	case "onpremise-ssh":
 		mycluster.Conf.OnPremiseSSH = !mycluster.Conf.OnPremiseSSH
+	case "db-log-rotate":
+		mycluster.Conf.DBLogRotate = !mycluster.Conf.DBLogRotate
+	case "db-log-on-backup-storage":
+		mycluster.Conf.DBLogOnBackupStorage = !mycluster.Conf.DBLogOnBackupStorage
+		// Already-running tailers keep following whatever path they were opened
+		// against; restart them so they pick up the new canonical location
+		// instead of silently going stale until a repman restart (mirrors the
+		// setClusterSetting case for this same setting).
+		mycluster.RestartDBLogTailers()
 	case "monitoring-binlog-events":
 		mycluster.SwitchMonitorBinlogEvents()
 	default:
