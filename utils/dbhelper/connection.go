@@ -9,10 +9,12 @@
 package dbhelper
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/utils/version"
@@ -87,15 +89,22 @@ func GetHostFromConnection(db *sqlx.DB, user string, version *version.Version) (
 }
 
 // CheckHostAddr checks if a string is an IP address or hostname and returns an IP address
-// If input is already an IP, returns it as-is. Otherwise performs DNS lookup.
-func CheckHostAddr(h string) (string, error) {
-	var err error
+// If input is already an IP, returns it as-is. Otherwise performs DNS lookup, bounded by
+// timeoutSeconds so a slow/unreachable resolver can't block the caller indefinitely.
+// timeoutSeconds <= 0 falls back to a 5s default.
+func CheckHostAddr(h string, timeoutSeconds int) (string, error) {
 	if net.ParseIP(h) != nil {
-		return h, err
+		return h, nil
 	}
-	ha, err := net.LookupHost(h)
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 5
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+	resolver := &net.Resolver{}
+	ha, err := resolver.LookupHost(ctx, h)
 	if err != nil {
 		return "", err
 	}
-	return ha[0], err
+	return ha[0], nil
 }

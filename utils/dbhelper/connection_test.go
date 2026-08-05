@@ -103,7 +103,7 @@ func TestCheckHostAddr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := CheckHostAddr(tt.input)
+			result, err := CheckHostAddr(tt.input, 3)
 
 			if tt.shouldFail {
 				if err == nil {
