@@ -143,6 +143,25 @@ PLUGIN_PLATFORM     := $(OS)-$(ARCH)
 # Temporary clone of the signer repo — populated by plugin-keys, reused by plugin-push.
 PLUGIN_SIGNER_CLONE := $(PLUGIN_KEY_DIR)/signer-repo
 
+# ---- Publishing channel -----------------------------------------------------
+# release (default): binaries → plugins/<platform>/wire-v<N>/, version symlink
+#                    keyed by the base tag (VERSION). Cut on tagged release builds.
+# nightly          : binaries → plugins/<platform>/nightly/<full-version>/, version
+#                    symlink keyed by the FULL git-describe (FULLVERSION). The back
+#                    office resolves replication-manager-<repmgr_version> exactly
+#                    (repmgr_version == FullVersion), so a nightly gets its OWN build's
+#                    plugins — matching the .sig baked in the same image — and never
+#                    clobbers the release wire-v<N>/ set. See NIGHTLY_PLUGIN_DELIVERY.
+PLUGIN_CHANNEL       ?= release
+PLUGIN_NIGHTLY_KEEP  ?= 10
+ifeq ($(PLUGIN_CHANNEL),nightly)
+  PLUGIN_PUBLISH_SUBDIR  := nightly/$(FULLVERSION)
+  PLUGIN_SYMLINK_VERSION := $(FULLVERSION)
+else
+  PLUGIN_PUBLISH_SUBDIR  := wire-v$(WIRE_VERSION)
+  PLUGIN_SYMLINK_VERSION := $(VERSION)
+endif
+
 # plugins is always rebuilt unconditionally (.PHONY).
 # Incremental builds are handled by Go's own build cache, which is more
 # reliable than Make timestamp tracking (Docker COPY flattens all mtimes).
@@ -261,38 +280,52 @@ plugin-sigs: plugin-keys
 	@cp "$(PLUGIN_SIGNING_PUB)" "$(PLUGIN_SIG_DIR)/plugin-signing.pub"
 	@echo "Public key → $(PLUGIN_SIG_DIR)/plugin-signing.pub"
 
-# Push built plugins + sigs back to the signer repo under:
-#   plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)/   — binaries + .sig files
-#   $(PLUGIN_PLATFORM)/replication-manager-$(VERSION)   — symlink → ../plugins/…/wire-v$(WIRE_VERSION)/
+# Push built plugins back to the signer repo under (channel-dependent):
+#   release: plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)/   + symlink replication-manager-$(VERSION)
+#   nightly: plugins/$(PLUGIN_PLATFORM)/nightly/$(FULLVERSION)/  + symlink replication-manager-$(FULLVERSION)
+# The .sig are NOT pushed here — they ship with the package/image (ShareDir); the BO
+# delivers binaries only and the instance verifies against the package .sig. Binary and
+# .sig come from this same build, so they match.
 #
 # Only runs when PLUGIN_SIGNER_USER + TOKEN are set (i.e. CI builds).
 # Skipped silently for dev/source builds.
 plugin-push:
 	@if [ -n "$(PLUGIN_SIGNER_USER)" ] && [ -n "$(PLUGIN_SIGNER_TOKEN)" ] && [ -d "$(PLUGIN_SIGNER_CLONE)/.git" ]; then \
-		echo "Publishing plugins to signer repo [$(VERSION) → $(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)]"; \
-		WIREDIR="$(PLUGIN_SIGNER_CLONE)/plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)"; \
+		echo "Publishing plugins to signer repo [$(PLUGIN_CHANNEL): $(PLUGIN_SYMLINK_VERSION) → $(PLUGIN_PLATFORM)/$(PLUGIN_PUBLISH_SUBDIR)]"; \
+		WIREDIR="$(PLUGIN_SIGNER_CLONE)/plugins/$(PLUGIN_PLATFORM)/$(PLUGIN_PUBLISH_SUBDIR)"; \
 		mkdir -p "$$WIREDIR"; \
 		for name in $(PLUGIN_NAMES); do \
 			bin=$(PLUGIN_BINDIR)/$$name; \
 			if [ -f $$bin ]; then \
 				cp $$bin "$$WIREDIR/$$name"; \
-				echo "  published $$name → plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)/"; \
+				echo "  published $$name → plugins/$(PLUGIN_PLATFORM)/$(PLUGIN_PUBLISH_SUBDIR)/"; \
 			fi; \
 		done; \
 		SYMLINK_DIR="$(PLUGIN_SIGNER_CLONE)/$(PLUGIN_PLATFORM)"; \
 		mkdir -p "$$SYMLINK_DIR"; \
 		cd "$(PLUGIN_SIGNER_CLONE)" && \
-		ln -sfn "../plugins/$(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION)" \
-		        "$(PLUGIN_PLATFORM)/replication-manager-$(VERSION)" && \
+		ln -sfn "../plugins/$(PLUGIN_PLATFORM)/$(PLUGIN_PUBLISH_SUBDIR)" \
+		        "$(PLUGIN_PLATFORM)/replication-manager-$(PLUGIN_SYMLINK_VERSION)" && \
+		if [ "$(PLUGIN_CHANNEL)" = "nightly" ]; then \
+			NDIR="plugins/$(PLUGIN_PLATFORM)/nightly"; \
+			ls -1d "$$NDIR"/*/ 2>/dev/null | while read d; do \
+				ct=$$(git log -1 --format=%ct -- "$$d" 2>/dev/null); \
+				[ "$$d" = "$$NDIR/$(FULLVERSION)/" ] && ct=9999999999; \
+				printf '%s %s\n' "$${ct:-0}" "$$d"; \
+			done | sort -rn | awk 'NR>$(PLUGIN_NIGHTLY_KEEP){print $$2}' | while read old; do \
+				echo "  pruning old nightly set $$old"; rm -rf "$$old"; \
+			done; \
+			find "$(PLUGIN_PLATFORM)" -maxdepth 1 -xtype l -delete 2>/dev/null || true; \
+		fi; \
 		git config user.email "ci@signal18.io" && \
 		git config user.name  "replication-manager CI" && \
 		git add -A && \
 		git diff --cached --quiet || \
-		  git commit -m "plugins: $(VERSION) [$(PLUGIN_PLATFORM)] → wire-v$(WIRE_VERSION) [$(FULLVERSION)]" && \
+		  git commit -m "plugins($(PLUGIN_CHANNEL)): $(PLUGIN_SYMLINK_VERSION) [$(PLUGIN_PLATFORM)] → $(PLUGIN_PUBLISH_SUBDIR) [$(FULLVERSION)]" && \
 		AUTH_URL=$$(echo "$(PLUGIN_SIGNER_REPO)" | sed "s|https://|https://$(PLUGIN_SIGNER_USER):$(PLUGIN_SIGNER_TOKEN)@|"); \
 		git fetch --quiet "$$AUTH_URL" main && git rebase FETCH_HEAD --quiet 2>/dev/null || true; \
 		git -c http.postBuffer=104857600 push "$$AUTH_URL" HEAD:main && \
-		echo "Pushed $(VERSION) → $(PLUGIN_PLATFORM)/wire-v$(WIRE_VERSION) to signer repo"; \
+		echo "Pushed $(PLUGIN_SYMLINK_VERSION) → $(PLUGIN_PLATFORM)/$(PLUGIN_PUBLISH_SUBDIR) to signer repo"; \
 	else \
 		echo "Skipping plugin-push (no credentials or dev build)"; \
 	fi

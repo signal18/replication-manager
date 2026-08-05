@@ -13,7 +13,10 @@ on:
 
 # Match Jenkins concurrentBuild: false — queue builds, don't cancel
 concurrency:
-  group: build-packages
+  # Shared with docker-build-push.yml build-nightly: the release publisher and the
+  # nightly publisher must never push to the plugin-signer repo concurrently.
+  # (Also still serializes release-vs-release re-dispatch, as before.)
+  group: plugin-signer-publish
   cancel-in-progress: false
 
 jobs:
