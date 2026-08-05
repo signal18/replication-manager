@@ -9,10 +9,12 @@
 package dbhelper
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/percona/go-mysql/query"
@@ -208,32 +210,56 @@ func GetSampleQueryFromPFS(db *sqlx.DB, Query PFSQuery) (string, error) {
 func GetQueries(db *sqlx.DB, version *version.Version) (map[string]PFSQuery, string, error) {
 
 	vars := make(map[string]PFSQuery)
-	query := "set session group_concat_max_len=2048"
-	db.Exec(query)
 
-	// Build the sample-query expression depending on the server flavour.
-	// MySQL 5.7+ exposes QUERY_SAMPLE_TEXT directly on the summary table — zero extra cost.
-	// MariaDB requires a correlated subquery on events_statements_history_long.
-	var sampleExpr string
+	// Run the digest capture on a DEDICATED connection with a timeout: the speed-tuning
+	// SET SESSION statements below then apply to THIS query only (they never leak onto the
+	// shared monitoring connection), and a pathological execution can never hang the monitor.
+	// Making our query cheap is on us — we force the session-scoped optimizer knobs here rather
+	// than depending on the client's global config, and we never touch the server's global state.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	conn, err := db.Connx(ctx)
+	if err != nil {
+		return vars, "GetQueries: dedicated connection", err
+	}
+	defer conn.Close()
+	// Common to both flavours (group_concat_max_len exists on MySQL and MariaDB).
+	conn.ExecContext(ctx, "SET SESSION group_concat_max_len=2048")
+
+	var query string
+
+	// Build the sample-query source depending on the server flavour.
+	//   MySQL 5.7.9+: QUERY_SAMPLE_TEXT is a column on the summary table — free, read inline.
+	//   MariaDB: no such column and PFS is unindexed, so a per-digest correlated subquery on
+	//   events_statements_history_long full-scans the ring once PER digest — O(digests × history)
+	//   (issue #1651). Instead we LEFT JOIN a NON-correlated derived table (one sample per digest
+	//   via GROUP BY DIGEST): MariaDB materializes it once and auto-keys it (derived_with_keys),
+	//   giving O(digests + history). A projection-list scalar subquery can't be decorrelated by
+	//   the optimizer, so we hand it a shape (a join) it is allowed to index/hash.
+	var sampleCol, sampleJoin string
 	if version != nil && version.IsMySQLOrPerconaGreater57() {
-		// QUERY_SAMPLE_TEXT was introduced in MySQL 5.7.9 performance_schema
-		sampleExpr = "COALESCE(A.QUERY_SAMPLE_TEXT, '')"
+		sampleCol = "COALESCE(A.QUERY_SAMPLE_TEXT, '')"
 	} else {
-		// MariaDB: correlated lookup — filtered so we never store our own monitoring queries
-		sampleExpr = `COALESCE((
-			SELECT B.SQL_TEXT
-			FROM performance_schema.events_statements_history_long B
-			WHERE B.DIGEST = A.DIGEST
-			AND B.SQL_TEXT IS NOT NULL
-			AND B.SQL_TEXT NOT LIKE '%replication-manager%'
-			LIMIT 1
-		), '')`
+		// MariaDB-only session knobs that keep the derived-table join cheap regardless of the
+		// server's global optimizer config. These flags don't exist on MySQL, so they live here
+		// (MySQL never runs the join — it reads QUERY_SAMPLE_TEXT above).
+		conn.ExecContext(ctx, "SET SESSION optimizer_switch='derived_with_keys=on'") // auto-key the derived table
+		conn.ExecContext(ctx, "SET SESSION join_cache_level=4")                      // hash-join backstop
+		sampleCol = "COALESCE(H.sample_query, '')"
+		sampleJoin = `
+	LEFT JOIN (
+		SELECT DIGEST, MAX(SQL_TEXT) AS sample_query
+		FROM performance_schema.events_statements_history_long
+		WHERE SQL_TEXT IS NOT NULL
+		AND SQL_TEXT NOT LIKE '%replication-manager%'
+		GROUP BY DIGEST
+	) H ON H.DIGEST = A.DIGEST`
 	}
 
 	query = `SELECT /*replication-manager*/
 	A.digest as digest,
 	'' as query,
-	` + sampleExpr + ` as sample_query,
+	` + sampleCol + ` as sample_query,
 	A.digest_text as digest_text,
 	A.LAST_SEEN as last_seen,
 	COALESCE(A.SCHEMA_NAME,'') as schema_name,
@@ -251,11 +277,11 @@ func GetQueries(db *sqlx.DB, version *version.Version) (map[string]PFSQuery, str
 	A.SUM_ROWS_EXAMINED AS rows_scanned,
 	A.SUM_SORT_ROWS AS sort_rows,
 	round(A.sum_timer_wait/1000000000000, 6) as value
-	FROM performance_schema.events_statements_summary_by_digest A
+	FROM performance_schema.events_statements_summary_by_digest A` + sampleJoin + `
 	WHERE A.digest_text is not null`
 
 	// Do not order — filesort on the full summary table is expensive
-	rows, err := db.Queryx(query)
+	rows, err := conn.QueryxContext(ctx, query)
 	if err != nil {
 		return nil, query, errors.New("Could not get queries")
 	}

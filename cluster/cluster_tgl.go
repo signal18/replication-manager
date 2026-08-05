@@ -515,6 +515,14 @@ func (cluster *Cluster) SwitchMonitoringProcesslistInformationSchema() {
 	cluster.Conf.MonitorProcessListInformationSchema = !cluster.Conf.MonitorProcessListInformationSchema
 }
 
+// SwitchMonitorPFS toggles the master performance_schema monitoring flag at runtime.
+// Previously monitoring-performance-schema had no live switch, so turning it off in the
+// GUI never reached the running loop (the PFS digest capture kept firing). The monitor
+// loop reads cluster.Conf.MonitorPFS live, so flipping it here takes effect next tick.
+func (cluster *Cluster) SwitchMonitorPFS() {
+	cluster.Conf.MonitorPFS = !cluster.Conf.MonitorPFS
+}
+
 func (cluster *Cluster) SwitchCloud18Shared() {
 	if cluster.Conf.Cloud18 {
 		cluster.Conf.Cloud18Shared = !cluster.Conf.Cloud18Shared
