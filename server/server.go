@@ -410,7 +410,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorPFSMemory, "monitoring-performance-schema-memory", true, "Monitor Performance Schema memory used")
 	flags.BoolVar(&conf.MonitorPFSQueries, "monitoring-performance-schema-queries", false, "Enable periodic PFS digest snapshot: flush and log all query templates with sample SQL at each period")
 	flags.IntVar(&conf.MonitorPFSQueriesPeriod, "monitoring-performance-schema-queries-period", 1, "Period in hours between PFS digest snapshot flushes (requires monitoring-performance-schema-queries=true)")
-	flags.IntVar(&conf.MonitorPFSQueriesInterval, "monitoring-performance-schema-queries-interval", 30, "Refresh the live PFS digest capture every N monitoring ticks (modulo, like the other periodic fetches; 0 = 30). Stops re-running it on every tick")
+	flags.IntVar(&conf.MonitorPFSQueriesInterval, "monitoring-performance-schema-queries-interval", 30, "Live PFS digest capture ticker interval in monitoring ticks, 0=disabled (throttles the GUI Top-Queries refresh instead of running it every tick)")
 	flags.BoolVar(&conf.MonitorPFSQueriesExplain, "monitoring-performance-schema-queries-explain", false, "Run EXPLAIN for each new query template captured during a PFS snapshot and persist the plan to disk")
 	flags.IntVar(&conf.MonitorPFSQueriesExplainDelay, "monitoring-performance-schema-queries-explain-delay", 200, "Milliseconds to sleep between consecutive EXPLAIN calls during a snapshot (0 = no delay)")
 	flags.IntVar(&conf.MonitorPFSQueriesExplainPurgePeriod, "monitoring-performance-schema-queries-explain-purge-period", 30, "Age in days after which a cached explain plan is evicted from memory and disk (0 = never purge)")

@@ -1206,13 +1206,10 @@ func (server *ServerMonitor) Refresh() error {
 		}
 		// Gate on the LIVE flag (SwitchMonitorPFS disables it next tick — nothing is even spawned)
 		// AND throttle to every N monitoring ticks: the digest capture is cumulative/slow-moving, so
-		// re-running it every tick just hammers the client. Modulo-tick cadence, same idiom as
-		// ResticFetchRepo (cluster.go) and the tunable BackupReconcileInterval.
-		pfsEvery := int64(cluster.Conf.MonitorPFSQueriesInterval)
-		if pfsEvery <= 0 {
-			pfsEvery = 30
-		}
-		if cluster.Conf.MonitorPFS && cluster.StateMachine.GetHeartbeats()%pfsEvery == 0 {
+		// re-running it every tick just hammers the client. Same modulo-tick idiom and 0=disabled
+		// semantics as BackupReconcileInterval (cluster.go) / ResticFetchRepo.
+		if cluster.Conf.MonitorPFS && cluster.Conf.MonitorPFSQueriesInterval > 0 &&
+			cluster.StateMachine.GetHeartbeats()%int64(cluster.Conf.MonitorPFSQueriesInterval) == 0 {
 			go server.GetPFSQueries()
 		}
 
