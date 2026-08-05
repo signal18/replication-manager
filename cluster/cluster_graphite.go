@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/graphite"
@@ -29,6 +30,7 @@ type ClusterGraphite struct {
 	Blacklist    []*regexp.Regexp
 	metrics      []graphite.Metric
 	lock         sync.Mutex
+	flushing     atomic.Bool
 }
 
 func (cluster *Cluster) NewClusterGraphite() {
@@ -123,27 +125,52 @@ func (cg *ClusterGraphite) AddMetrics(metrics []graphite.Metric) {
 }
 
 func (cg *ClusterGraphite) SendGraphiteMetrics() error {
+	if !cg.flushing.CompareAndSwap(false, true) {
+		// A flush is already in progress: skip this tick rather than
+		// blocking on it. Anything queued in the meantime is picked up by
+		// the next scheduled flush, not immediately after the in-flight one
+		// finishes (a deliberate latency/safety tradeoff vs. the old
+		// lock-serialized behavior).
+		return nil
+	}
+	defer cg.flushing.Store(false)
+
 	cg.lock.Lock()
-	defer cg.lock.Unlock()
+	batch := cg.metrics
+	cg.metrics = make([]graphite.Metric, 0)
+	cg.lock.Unlock()
+
+	if len(batch) == 0 {
+		return nil
+	}
 
 	graph, err := cg.GetGraphiteConnection()
 	if err != nil {
+		cg.requeue(batch)
 		return err
 	}
 
 	err = graph.Connect() // Ensure connection is established
 	if err != nil {
+		cg.requeue(batch)
 		return err
 	}
 
-	err = graph.SendMetrics(cg.metrics)
+	err = graph.SendMetrics(batch)
 	if err != nil {
+		cg.requeue(batch)
 		return err
 	}
-
-	cg.metrics = make([]graphite.Metric, 0) // Clear metrics after sending
 
 	return nil
+}
+
+// requeue puts a batch that failed to send back at the front of the queue,
+// ahead of any metrics appended by producers while the send was in flight.
+func (cg *ClusterGraphite) requeue(batch []graphite.Metric) {
+	cg.lock.Lock()
+	defer cg.lock.Unlock()
+	cg.metrics = append(batch, cg.metrics...)
 }
 
 func (cg *ClusterGraphite) CopyFromShareDir(filtertype string) error {
