@@ -120,6 +120,7 @@ type Config struct {
 	MonitorPFSMemory                          bool                         `mapstructure:"monitoring-performance-schema-memory" toml:"monitoring-performance-schema-memory" json:"monitoringPerformanceSchemaMemory"`
 	MonitorPFSQueries                         bool                         `mapstructure:"monitoring-performance-schema-queries" toml:"monitoring-performance-schema-queries" json:"monitoringPerformanceSchemaQueries"`
 	MonitorPFSQueriesPeriod                   int                          `mapstructure:"monitoring-performance-schema-queries-period" toml:"monitoring-performance-schema-queries-period" json:"monitoringPerformanceSchemaQueriesPeriod"`
+	MonitorPFSQueriesInterval                 int                          `mapstructure:"monitoring-performance-schema-queries-interval" toml:"monitoring-performance-schema-queries-interval" json:"monitoringPerformanceSchemaQueriesInterval"`
 	MonitorPFSQueriesExplain                  bool                         `mapstructure:"monitoring-performance-schema-queries-explain" toml:"monitoring-performance-schema-queries-explain" json:"monitoringPerformanceSchemaQueriesExplain"`
 	MonitorPFSQueriesExplainDelay             int                          `mapstructure:"monitoring-performance-schema-queries-explain-delay" toml:"monitoring-performance-schema-queries-explain-delay" json:"monitoringPerformanceSchemaQueriesExplainDelay"`
 	MonitorPFSQueriesExplainPurgePeriod       int                          `mapstructure:"monitoring-performance-schema-queries-explain-purge-period" toml:"monitoring-performance-schema-queries-explain-purge-period" json:"monitoringPerformanceSchemaQueriesExplainPurgePeriod"`
@@ -1489,7 +1490,7 @@ const (
 	// ConstLogModMaintenance covers planned-operations modules (backup, SST,
 	// task execution, purge, orchestrator provisioning). Routed to maintenance.log
 	// when configured so operational noise does not pollute the HA main log.
-	ConstLogModMaintenance  = 31
+	ConstLogModMaintenance = 31
 	ConstLogModArbitration = 32
 )
 

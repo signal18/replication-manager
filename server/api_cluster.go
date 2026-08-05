@@ -2700,6 +2700,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchGraphiteMetrics()
 	case "graphite-blacklist":
 		mycluster.SwitchGraphiteBlacklist()
+	case "monitoring-performance-schema":
+		mycluster.SwitchMonitorPFS()
 	case "monitoring-performance-schema-mutex":
 		mycluster.SwitchMonitorPFSMutex()
 	case "monitoring-performance-schema-latch":

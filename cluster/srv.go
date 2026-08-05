@@ -1204,7 +1204,14 @@ func (server *ServerMonitor) Refresh() error {
 			server.EngineInnoDB = config.FromNormalStringMap(server.EngineInnoDB, engine)
 			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get engine innodb status %s %s", server.URL, err)
 		}
-		go server.GetPFSQueries()
+		// Gate on the LIVE flag (SwitchMonitorPFS disables it next tick — nothing is even spawned)
+		// AND throttle to every N monitoring ticks: the digest capture is cumulative/slow-moving, so
+		// re-running it every tick just hammers the client. Same modulo-tick idiom and 0=disabled
+		// semantics as BackupReconcileInterval (cluster.go) / ResticFetchRepo.
+		if cluster.Conf.MonitorPFS && cluster.Conf.MonitorPFSQueriesInterval > 0 &&
+			cluster.StateMachine.GetHeartbeats()%int64(cluster.Conf.MonitorPFSQueriesInterval) == 0 {
+			go server.GetPFSQueries()
+		}
 
 		if server.HaveDiskMonitor {
 			server.Disks, logs, err = dbhelper.GetDisks(server.Conn, server.DBVersion)
