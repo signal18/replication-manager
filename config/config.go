@@ -228,6 +228,7 @@ type Config struct {
 	Timeout                                   int                          `mapstructure:"db-servers-connect-timeout" toml:"db-servers-connect-timeout" json:"dbServersConnectTimeout"`
 	ExecTimeout                               int                          `mapstructure:"db-servers-exec-timeout" toml:"db-servers-exec-timeout" json:"dbServersExecTimeout"`
 	ReadTimeout                               int                          `mapstructure:"db-servers-read-timeout" toml:"db-servers-read-timeout" json:"dbServersReadTimeout"`
+	DNSTimeout                                int                          `mapstructure:"db-servers-dns-timeout" toml:"db-servers-dns-timeout" json:"dbServersDnsTimeout"`
 	DBServersLocality                         string                       `mapstructure:"db-servers-locality" toml:"db-servers-locality" json:"dbServersLocality"`
 	DbServersBindAddress                      string                       `mapstructure:"db-servers-bind-address" toml:"db-servers-bind-address" json:"dbServersBindAddress"`
 	PRXServersReadOnMaster                    bool                         `mapstructure:"proxy-servers-read-on-master" toml:"proxy-servers-read-on-master" json:"proxyServersReadOnMaster"`
