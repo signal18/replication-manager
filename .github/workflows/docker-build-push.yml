@@ -357,6 +357,13 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
+    # This job publishes nightly plugins to the signer repo (PLUGIN_PUSH=ON,
+    # PLUGIN_CHANNEL=nightly). Share the release publisher's concurrency group so a
+    # nightly and a release build can NEVER push to the signer repo concurrently —
+    # they serialize repo-wide, no ref race. See BUILD_PLUGIN_PUBLISHING.md.
+    concurrency:
+      group: plugin-signer-publish
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write
