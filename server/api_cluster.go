@@ -3612,6 +3612,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Secrets["db-servers-credential"] = new_secret
 		mycluster.SetClusterMonitorCredentialsFromConfig()
 		// mycluster.SetDbServersMonitoringCredential(value)
+	case "db-servers-dns-timeout":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 1 || val > 300 {
+			return fmt.Errorf("db-servers-dns-timeout must be between 1 and 300 seconds, got %q", value)
+		}
+		mycluster.Conf.DNSTimeout = val
 	case "prov-service-plan":
 		mycluster.SetServicePlan(value)
 	case "prov-net-cni-cluster":
