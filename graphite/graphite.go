@@ -106,6 +106,8 @@ func (graphite *Graphite) sendMetrics(metrics []Metric) error {
 		}
 		return nil
 	}
+	graphite.conn.SetWriteDeadline(time.Now().Add(graphite.Timeout))
+
 	zeroed_metric := Metric{} // ignore unintialized metrics
 	buf := bytes.NewBufferString("")
 	for _, metric := range metrics {
