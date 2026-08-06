@@ -564,9 +564,11 @@ func (server *ServerMonitor) NewLogTailer(logtype string) (*tail.Tail, error) {
 	logName := "log_" + logtype
 	logfile := server.DBLogFilePath(kind)
 
-	if cluster.Conf.DBLogRotate {
-		misc.RemoveOldLogFiles(logDir, fmt.Sprintf("%s_", logName), cluster.Conf.DBLogRotateMaxAge, "20060102_150405")
-	}
+	// Always prune repman's own rotated DB-log history by age -- a perpetual
+	// repman never lets its own log history grow unbounded. This is repman-side
+	// housekeeping and is intentionally NOT gated by db-log-rotate (that flag
+	// governs DB-node-side behavior; see #1667).
+	misc.RemoveOldLogFiles(logDir, fmt.Sprintf("%s_", logName), cluster.Conf.DBLogRotateMaxAge, "20060102_150405")
 
 	// Self-heal a runaway collected log (broken-deployment artifact) before we
 	// attach the tailer, so we don't reopen/follow a multi-GB file.
