@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc64"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -573,7 +574,15 @@ func (server *ServerMonitor) NewLogTailer(logtype string) (*tail.Tail, error) {
 		}
 	}
 
-	return tail.TailFile(logfile, tail.Config{Follow: true, ReOpen: true})
+	// Seek to end on open: follow only lines appended after startup. Without a
+	// Location, hpcloud/tail starts at offset 0 and re-reads the ENTIRE file on
+	// every repman start/restart -- re-parsing and re-fingerprinting every
+	// historical line and re-flooding the in-memory buffer. On a large collected
+	// log that is a pure-waste CPU spike. Standard tail -f semantics: the buffer
+	// is a rolling recent window, so lines appended while repman was down are
+	// intentionally skipped rather than re-processed.
+	return tail.TailFile(logfile, tail.Config{Follow: true, ReOpen: true,
+		Location: &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd}})
 }
 
 func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
