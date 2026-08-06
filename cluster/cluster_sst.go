@@ -203,10 +203,10 @@ func (cluster *Cluster) SSTRunReceiverToFile(server *ServerMonitor, filename str
 func (cluster *Cluster) SSTRunReceiverToDBLogFile(server *ServerMonitor, kind DBLogKind, task string) (string, error) {
 	filename := server.DBLogFilePath(kind)
 
-	if !cluster.Conf.DBLogRotate {
-		return cluster.SSTRunReceiverToFile(server, filename, ConstJobAppendFile, task)
-	}
-
+	// repman-side collected DB logs ALWAYS go through the shared rotating writer
+	// (bounded by size + count + gzip) -- never an unbounded append. This is the
+	// single mechanism that keeps the file bounded; there is no separate
+	// self-heal path to race with.
 	sst := new(SST)
 	sst.cluster = cluster
 	sst.Filename = filename

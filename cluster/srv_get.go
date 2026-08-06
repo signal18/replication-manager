@@ -637,8 +637,28 @@ type PFSSnapshotEntry struct {
 //
 // Rotation: if the file grows beyond 100 MB it is truncated before writing
 // (same policy as the slow-query log file in GetSlowLogTable).
+// prunePFSSnapshots removes hourly PFS snapshot files (log_pfs_queries_*.jsonl)
+// older than monitoring-pfs-snapshot-retention-days. Unconditional repman-side
+// housekeeping, called both from FlushPFSSnapshotToLog (every snapshot cycle)
+// and from NewLogTailer (every startup/reload) so the series stays bounded even
+// when monitoring-pfs-queries is off and Flush is never called. The per-hour
+// files are a feature (the Schema Graph time-series browses them), so this keeps
+// a rolling window rather than merging them.
+func (server *ServerMonitor) prunePFSSnapshots() {
+	retentionDays := server.ClusterGroup.Conf.MonitorPFSSnapshotRetentionDays
+	if retentionDays <= 0 {
+		retentionDays = 2
+	}
+	misc.RemoveOldLogFilesWithExt(server.Datadir+"/log", "log_pfs_queries_", ".jsonl", retentionDays, "20060102_15")
+}
+
 func (server *ServerMonitor) FlushPFSSnapshotToLog() {
 	cluster := server.ClusterGroup
+
+	os.MkdirAll(server.Datadir+"/log", 0755)
+	// Prune the hourly PFS snapshot series BEFORE the "nothing to flush"
+	// early-return, so an idle or erroring server still gets pruned every cycle.
+	server.prunePFSSnapshots()
 
 	// We need an up-to-date fetch to get sample queries before the TRUNCATE.
 	pfsq, _, err := dbhelper.GetQueries(server.Conn, server.DBVersion)
@@ -647,19 +667,6 @@ func (server *ServerMonitor) FlushPFSSnapshotToLog() {
 			"PFS snapshot: nothing to flush on %s", server.URL)
 		return
 	}
-
-	os.MkdirAll(server.Datadir+"/log", 0755)
-
-	// Unconditional repman-side housekeeping: prune hourly PFS snapshot files
-	// older than the configured retention so the series stays bounded. These
-	// per-hour files ARE a feature (the Schema Graph time-series browses them
-	// via /api .../pfs-snapshots), so we keep a rolling window rather than
-	// merging them; the window is monitoring-pfs-snapshot-retention-days.
-	retentionDays := cluster.Conf.MonitorPFSSnapshotRetentionDays
-	if retentionDays <= 0 {
-		retentionDays = 2
-	}
-	misc.RemoveOldLogFilesWithExt(server.Datadir+"/log", "log_pfs_queries_", ".jsonl", retentionDays, "20060102_15")
 
 	now := time.Now()
 	filename := server.Datadir + "/log/log_pfs_queries_" + now.Format("20060102_15") + ".jsonl"
@@ -1312,36 +1319,21 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 		return fmt.Errorf("Error truncate slow logs buffer table on %s. Err : %v", server.URL, err)
 	}
 
+	// repman-side collected slow log ALWAYS goes through the shared,
+	// cluster-owned rotating writer (bounded by size + count + gzip), reused
+	// across calls -- callers must NOT close it, they release it instead (see
+	// getDBLogRotatingWriter). There is no unbounded append path.
 	var f io.Writer
-	releaseWriter := func() {} // no-op unless the DBLogRotate branch below sets it
-	if cluster.Conf.DBLogRotate {
-		// Shared, cluster-owned rotating writer: reused across calls instead
-		// of opening a fresh lumberjack.Logger every time, so callers must
-		// NOT close it -- release it instead (see getDBLogRotatingWriter).
-		var rawRelease func()
-		f, rawRelease, err = server.getDBLogRotatingWriter(DBLogSlowQuery)
-		if err != nil {
-			return fmt.Errorf("Error writing slow queries logs on %s. Err : %v", server.URL, err)
-		}
-		// sync.Once so releaseWriter can be called explicitly right after the
-		// last write below *and* safely again via defer (covering any error
-		// return in between) without double-releasing -- rawRelease is
-		// already idempotent on its own (see releaseDBLogWriterFunc), so this
-		// is defense in depth, not strictly required.
-		var once sync.Once
-		releaseWriter = func() { once.Do(rawRelease) }
-		defer releaseWriter()
-	} else {
-		// db-log-rotate disabled: append only, no rotation/pruning, leave
-		// retention to external logrotate/custom tooling.
-		logfile := server.DBLogFilePath(DBLogSlowQuery)
-		file, ferr := os.OpenFile(logfile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-		if ferr != nil {
-			return fmt.Errorf("Error writing slow queries logs on %s. Err : %v", server.URL, ferr)
-		}
-		defer file.Close()
-		f = file
+	var rawRelease func()
+	f, rawRelease, err = server.getDBLogRotatingWriter(DBLogSlowQuery)
+	if err != nil {
+		return fmt.Errorf("Error writing slow queries logs on %s. Err : %v", server.URL, err)
 	}
+	// sync.Once so releaseWriter can be called explicitly right after the last
+	// write below *and* safely again via defer, without double-releasing.
+	var once sync.Once
+	releaseWriter := func() { once.Do(rawRelease) }
+	defer releaseWriter()
 
 	// Stream rows one at a time instead of loading the whole buffer table
 	// into memory: this query has no LIMIT, and a large backlog (first run
