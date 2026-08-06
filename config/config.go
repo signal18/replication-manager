@@ -118,6 +118,7 @@ type Config struct {
 	MonitorPFSMutex                           bool                         `mapstructure:"monitoring-performance-schema-mutex" toml:"monitoring-performance-schema-mutex" json:"monitoringPerformanceSchemaMutex"`
 	MonitorPFSLatch                           bool                         `mapstructure:"monitoring-performance-schema-latch" toml:"monitoring-performance-schema-latch" json:"monitoringPerformanceSchemaLatch"`
 	MonitorPFSMemory                          bool                         `mapstructure:"monitoring-performance-schema-memory" toml:"monitoring-performance-schema-memory" json:"monitoringPerformanceSchemaMemory"`
+	MonitorPFSSnapshotRetentionDays           int                          `mapstructure:"monitoring-pfs-snapshot-retention-days" toml:"monitoring-pfs-snapshot-retention-days" json:"monitoringPfsSnapshotRetentionDays"`
 	MonitorPFSQueries                         bool                         `mapstructure:"monitoring-performance-schema-queries" toml:"monitoring-performance-schema-queries" json:"monitoringPerformanceSchemaQueries"`
 	MonitorPFSQueriesPeriod                   int                          `mapstructure:"monitoring-performance-schema-queries-period" toml:"monitoring-performance-schema-queries-period" json:"monitoringPerformanceSchemaQueriesPeriod"`
 	MonitorPFSQueriesInterval                 int                          `mapstructure:"monitoring-performance-schema-queries-interval" toml:"monitoring-performance-schema-queries-interval" json:"monitoringPerformanceSchemaQueriesInterval"`

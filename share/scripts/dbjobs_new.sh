@@ -1299,14 +1299,23 @@ dblogfile() {
         fi
     fi
 
-    # Extract new lines into temporary file
-    local TMPLOG="$TMPDIR/${JOB}.newlines"
+    # Extract new lines into temporary file (TMP_DIR, not the unset TMPDIR)
+    local TMPLOG="$TMP_DIR/${JOB}.newlines"
     tail -n +"$NEXT_LINE" "$DBLOG" > "$TMPLOG"
 
-    # If DB log has content
+    # If DB log has new content
     if [ -s "$TMPLOG" ]; then
         # Send content via socat
-        socat -u stdio TCP:$ADDRESS < "$TMPLOG" &>"$LOG_DIR/$JOB.process.out"
+        if socat -u stdio TCP:$ADDRESS < "$TMPLOG" &>"$LOG_DIR/$JOB.process.out"; then
+            # Persist the streaming offset: remember the last non-empty line we
+            # just streamed so the next run resumes AFTER it (grep -Fxn on the
+            # source) instead of re-sending the whole file from line 1. Without
+            # this the state file never exists, NEXT_LINE stays 1, and every run
+            # re-streams the entire log -> the collected copy inflates ~100x.
+            local LAST_SENT
+            LAST_SENT=$(grep -v '^$' "$TMPLOG" | tail -n 1)
+            [ -n "$LAST_SENT" ] && printf '%s\n' "$LAST_SENT" > "$STATEFILE"
+        fi
     else
         # Send empty payload
         echo -n | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$JOB.process.out"
