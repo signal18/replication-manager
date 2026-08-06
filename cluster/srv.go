@@ -227,6 +227,8 @@ type ServerMonitor struct {
 	PFSLastExplainPurge         time.Time                   // timestamp of last explain cache purge run
 	PFSExplainCache             map[string]PFSExplainRecord // digest → cached explain plan, keyed by digest hash
 	PFSExplainCacheMu           sync.Mutex                  // protects PFSExplainCache against goroutine/monitor-loop races
+	pluginEval                  map[string]*pluginEvalEntry // per-plugin cached Evaluate() result; refreshed OFF the tick so a slow plugin subprocess can't freeze the monitor loop
+	pluginEvalMu                sync.Mutex                  // protects pluginEval
 	pfsExplainCancel            context.CancelFunc          // cancels any in-flight RunPFSExplainCapture goroutine
 	InPurgingBinaryLog          bool
 	IsBackingUpBinaryLog        bool
