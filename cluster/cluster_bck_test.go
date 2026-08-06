@@ -2381,3 +2381,68 @@ func TestResticInitRepoWithOptions_ProceedsWhenBucketPreCheckFails(t *testing.T)
 		t.Fatal("expected init to still attempt and fail (no real restic binary here), not return nil early")
 	}
 }
+
+// TestPstates30_IncludesRejoinCatalogStates guards the contract documented in
+// doc/monitoring.md: a state whose check runs only every N ticks MUST be listed
+// in pstatesN, or it flaps open/resolve on every intermediate tick and storms
+// alerting. HasCatalogBackupForRejoin runs at heartbeats%30==0 and asserts
+// WARN0190/WARN0191, so both must be preserved by pstates30.
+func TestPstates30_IncludesRejoinCatalogStates(t *testing.T) {
+	for _, want := range []string{"WARN0190", "WARN0191"} {
+		found := false
+		for _, k := range pstates30 {
+			if k == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("pstates30 must include %s (HasCatalogBackupForRejoin runs every 30 ticks; "+
+				"without preservation the state flaps open/resolve every intermediate tick)", want)
+		}
+	}
+}
+
+// TestRejoinCatalog_WARN0191_PreservedAcrossIntermediateTicks reproduces the
+// alert-storm flap and proves pstates30 preservation fixes it. The check that
+// raises WARN0191 only runs on %30 ticks; on the 29 intermediate ticks the loop
+// calls PreserveState(pstates30...). A control state absent from pstates30 keeps
+// the test honest by verifying it really does resolve when not preserved.
+func TestRejoinCatalog_WARN0191_PreservedAcrossIntermediateTicks(t *testing.T) {
+	sm := new(state.StateMachine)
+	sm.Init()
+
+	// Tick %30==0: HasCatalogBackupForRejoin raises WARN0191 (no physical backup for rejoin).
+	sm.AddState("WARN0191", state.State{ErrType: "WARNING", ErrDesc: "no physical backup", ErrFrom: "JOIN"})
+	// Control: not in pstates30, so it must resolve on the intermediate tick.
+	sm.AddState("WARN9999", state.State{ErrType: "WARNING", ErrDesc: "control unpreserved", ErrFrom: "TEST"})
+	sm.ClearState() // end of tick 30: OldState = {WARN0191, WARN9999}, CurState = {}
+
+	if !sm.IsInState("WARN0191") {
+		t.Fatal("setup: WARN0191 should be open after the %30 tick that raised it")
+	}
+
+	// Intermediate tick (%30 != 0): the check does NOT run, so nothing re-raises the
+	// states. The monitor loop calls PreserveState(pstates30...) (cluster.go:1196).
+	sm.PreserveState(pstates30...)
+
+	resolvedHas := func(key string) bool {
+		for _, s := range sm.GetLastResolvedStates() {
+			if s.ErrKey == key {
+				return true
+			}
+		}
+		return false
+	}
+	if resolvedHas("WARN0191") {
+		t.Fatal("WARN0191 flapped to RESOLVED on an intermediate tick: it must be in pstates30")
+	}
+	if !resolvedHas("WARN9999") {
+		t.Fatal("control WARN9999 should resolve when not preserved; test is not sensitive to the flap")
+	}
+
+	sm.ClearState()
+	if !sm.IsInState("WARN0191") {
+		t.Fatal("WARN0191 dropped after an intermediate tick despite pstates30 preservation")
+	}
+}

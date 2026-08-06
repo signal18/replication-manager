@@ -926,6 +926,7 @@ var pstates30 = []string{
 	"WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
 	"WARN0153", // Job related
 	"WARN0158", // Job secrets mismatch
+	"WARN0190", "WARN0191", // Rejoin catalog (HasCatalogBackupForRejoin runs %30)
 	"CREDIT01", // Credit related
 }
 
