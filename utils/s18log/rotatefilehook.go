@@ -31,6 +31,7 @@ func NewRotateFileHook(config RotateFileConfig) (logrus.Hook, error) {
 		MaxSize:    config.MaxSize,
 		MaxBackups: config.MaxBackups,
 		MaxAge:     config.MaxAge,
+		Compress:   true, // repman logs are always gzip-compressed on rotation
 	}
 
 	return &hook, nil
@@ -59,5 +60,6 @@ func NewRotateWriter(config RotateFileConfig) (io.WriteCloser, error) {
 		MaxSize:    config.MaxSize,
 		MaxBackups: config.MaxBackups,
 		MaxAge:     config.MaxAge,
+		Compress:   true, // repman logs are always gzip-compressed on rotation
 	}, nil
 }
