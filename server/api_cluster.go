@@ -2961,6 +2961,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.OnPremiseSSH = !mycluster.Conf.OnPremiseSSH
 	case "db-log-rotate":
 		mycluster.Conf.DBLogRotate = !mycluster.Conf.DBLogRotate
+		// Nothing else notices this flag turning off -- close any writers
+		// cached while it was on instead of leaving them open indefinitely
+		// (mirrors the db-log-on-backup-storage case below).
+		mycluster.CloseAllDBLogWriters()
 	case "db-log-on-backup-storage":
 		mycluster.Conf.DBLogOnBackupStorage = !mycluster.Conf.DBLogOnBackupStorage
 		// Already-running tailers keep following whatever path they were opened
@@ -3442,7 +3446,15 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 		mycluster.Conf.CompressBackupsCompressionLevel = val
 	case "db-log-rotate":
-		mycluster.Conf.DBLogRotate = applyIsActive(mycluster.Conf.DBLogRotate, isactive)
+		oldVal := mycluster.Conf.DBLogRotate
+		newVal := applyIsActive(mycluster.Conf.DBLogRotate, isactive)
+		mycluster.Conf.DBLogRotate = newVal
+		if newVal != oldVal {
+			// Nothing else notices this flag turning off -- close any writers
+			// cached while it was on instead of leaving them open
+			// indefinitely (mirrors the db-log-on-backup-storage case below).
+			mycluster.CloseAllDBLogWriters()
+		}
 	case "db-log-on-backup-storage":
 		oldVal := mycluster.Conf.DBLogOnBackupStorage
 		newVal := applyIsActive(mycluster.Conf.DBLogOnBackupStorage, isactive)

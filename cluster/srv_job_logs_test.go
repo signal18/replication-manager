@@ -9,10 +9,24 @@ import (
 	"time"
 
 	"github.com/hpcloud/tail"
+	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func newTestServerForDBLogs(t *testing.T, workingDir string) *ServerMonitor {
+	t.Helper()
+	return newTestServerForDBLogsWithHost(t, workingDir, "node1", "3306")
+}
+
+// newTestServerForDBLogsWithHost is newTestServerForDBLogs for tests that
+// need multiple distinct servers -- Datadir (and so every DBLogFilePath) is
+// derived from host/port, so distinct hosts get genuinely distinct canonical
+// DB log paths. Needed because the DB log writer cache is now keyed by
+// absolute path (see getDBLogRotatingWriter), so two ServerMonitor fixtures
+// that happened to share a Datadir would collide in the cache regardless of
+// their Host field.
+func newTestServerForDBLogsWithHost(t *testing.T, workingDir string, host string, port string) *ServerMonitor {
 	t.Helper()
 	cluster := &Cluster{
 		Conf: &config.Config{
@@ -22,9 +36,9 @@ func newTestServerForDBLogs(t *testing.T, workingDir string) *ServerMonitor {
 	}
 	server := &ServerMonitor{
 		ClusterGroup: cluster,
-		Datadir:      filepath.Join(workingDir, "cluster-dir", "node1_3306"),
-		Host:         "node1",
-		Port:         "3306",
+		Datadir:      filepath.Join(workingDir, "cluster-dir", host+"_"+port),
+		Host:         host,
+		Port:         port,
 	}
 	return server
 }
@@ -671,6 +685,639 @@ func TestNewLogTailer_PrunesOldStyleRotatedFilesWhenRotateEnabled(t *testing.T) 
 	}
 }
 
+// TestGetDBLogRotatingWriter_ReusesSameWriterAcrossCalls guards against the
+// original bug: NewRotateWriter used to be called fresh on every fetch/job,
+// and each fresh *lumberjack.Logger leaks a millRun goroutine on Close (mill()
+// starts it on first Write; Close never stops it). Repeated calls for the
+// same server/kind must now return the exact same writer instance instead of
+// allocating a new one.
+func TestGetDBLogRotatingWriter_ReusesSameWriterAcrossCalls(t *testing.T) {
+	tmp := t.TempDir()
+	server := newTestServerForDBLogs(t, tmp)
+	server.ClusterGroup.Conf.DBLogRotate = true
+
+	w1, release1, err := server.getDBLogRotatingWriter(DBLogSlowQuery)
+	if err != nil {
+		t.Fatalf("first getDBLogRotatingWriter call returned error: %v", err)
+	}
+	defer release1()
+	w2, release2, err := server.getDBLogRotatingWriter(DBLogSlowQuery)
+	if err != nil {
+		t.Fatalf("second getDBLogRotatingWriter call returned error: %v", err)
+	}
+	defer release2()
+	if w1 != w2 {
+		t.Fatal("expected repeated calls for the same kind to return the same cached writer instance")
+	}
+
+	if len(server.ClusterGroup.dbLogWriters) != 1 {
+		t.Fatalf("expected exactly one cached writer entry, got %d", len(server.ClusterGroup.dbLogWriters))
+	}
+}
+
+// TestGetDBLogRotatingWriter_DistinctKindsGetDistinctWriters confirms the
+// cache is keyed per canonical path, not shared across all four fetched log
+// files for one server.
+func TestGetDBLogRotatingWriter_DistinctKindsGetDistinctWriters(t *testing.T) {
+	tmp := t.TempDir()
+	server := newTestServerForDBLogs(t, tmp)
+	server.ClusterGroup.Conf.DBLogRotate = true
+
+	errW, releaseErr, err := server.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter(DBLogError) returned error: %v", err)
+	}
+	defer releaseErr()
+	slowW, releaseSlow, err := server.getDBLogRotatingWriter(DBLogSlowQuery)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter(DBLogSlowQuery) returned error: %v", err)
+	}
+	defer releaseSlow()
+	if errW == slowW {
+		t.Fatal("expected distinct DBLogKinds to get distinct writers")
+	}
+	if len(server.ClusterGroup.dbLogWriters) != 2 {
+		t.Fatalf("expected two cached writer entries, got %d", len(server.ClusterGroup.dbLogWriters))
+	}
+}
+
+// TestGetDBLogRotatingWriter_DistinctServersGetDistinctWriters confirms the
+// cluster-scoped cache does not accidentally collapse two different
+// servers' entries for the same DBLogKind onto one writer.
+func TestGetDBLogRotatingWriter_DistinctServersGetDistinctWriters(t *testing.T) {
+	tmp := t.TempDir()
+	node1 := newTestServerForDBLogsWithHost(t, tmp, "node1", "3306")
+	node2 := newTestServerForDBLogsWithHost(t, tmp, "node2", "3306")
+	node2.ClusterGroup = node1.ClusterGroup
+	node1.ClusterGroup.Conf.DBLogRotate = true
+
+	w1, release1, err := node1.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter for node1 returned error: %v", err)
+	}
+	defer release1()
+	w2, release2, err := node2.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter for node2 returned error: %v", err)
+	}
+	defer release2()
+
+	if w1 == w2 {
+		t.Fatal("expected distinct servers to get distinct writers even for the same DBLogKind")
+	}
+	if len(node1.ClusterGroup.dbLogWriters) != 2 {
+		t.Fatalf("expected two cached writer entries (one per server), got %d", len(node1.ClusterGroup.dbLogWriters))
+	}
+}
+
+// TestGetDBLogRotatingWriter_OrdinaryReloadReusesSameWriter is the core
+// regression test for the cluster-scoped, path-keyed redesign: an ordinary
+// reload (same host, brand new *ServerMonitor object -- see
+// newServerMonitor, which never reuses an existing instance) must resolve to
+// the SAME cached writer as the old ServerMonitor, not a second independent
+// one. Two independent *lumberjack.Logger instances for the same path have
+// independent size/rotation bookkeeping and can lose data into a backup file
+// if either one rotates -- which is exactly what a per-ServerMonitor cache
+// allowed across a reload racing a long-running GetSlowLogTable export.
+func TestGetDBLogRotatingWriter_OrdinaryReloadReusesSameWriter(t *testing.T) {
+	tmp := t.TempDir()
+	oldServer := newTestServerForDBLogs(t, tmp)
+	oldServer.ClusterGroup.Conf.DBLogRotate = true
+
+	oldWriter, oldRelease, err := oldServer.getDBLogRotatingWriter(DBLogSlowQuery)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter on old server returned error: %v", err)
+	}
+	defer oldRelease()
+
+	// Simulate a reload: a brand new *ServerMonitor for the identical host
+	// (same Datadir/Host/Port -- same ClusterGroup), exactly as
+	// newServerMonitor produces on every reload regardless of whether the
+	// host actually changed.
+	newServer := newTestServerForDBLogs(t, tmp)
+	newServer.ClusterGroup = oldServer.ClusterGroup
+
+	newWriter, newRelease, err := newServer.getDBLogRotatingWriter(DBLogSlowQuery)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter on new server returned error: %v", err)
+	}
+	defer newRelease()
+
+	if oldWriter != newWriter {
+		t.Fatal("expected the new ServerMonitor to resolve to the same cached writer as the old one for an unchanged path")
+	}
+	if len(oldServer.ClusterGroup.dbLogWriters) != 1 {
+		t.Fatalf("expected exactly one cache entry shared across both ServerMonitor instances, got %d", len(oldServer.ClusterGroup.dbLogWriters))
+	}
+}
+
+// TestGetDBLogRotatingWriter_ReplacesWriterWhenMaxSettingsChange guards
+// against a regression where db-log-rotate-max-size/backup/age (mutable at
+// runtime via the cluster settings API, server/api_cluster.go) would get
+// baked into a cached writer at creation and then silently stop applying
+// after that, since lumberjack.Logger's MaxSize/MaxBackups/MaxAge are plain
+// fields copied in once, not re-read from cluster.Conf on every write.
+func TestGetDBLogRotatingWriter_ReplacesWriterWhenMaxSettingsChange(t *testing.T) {
+	tmp := t.TempDir()
+	server := newTestServerForDBLogs(t, tmp)
+	server.ClusterGroup.Conf.DBLogRotate = true
+	server.ClusterGroup.Conf.DBLogRotateMaxSize = 100
+	server.ClusterGroup.Conf.DBLogRotateMaxBackup = 10
+	server.ClusterGroup.Conf.DBLogRotateMaxAge = 7
+
+	w1, release1, err := server.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("first getDBLogRotatingWriter call returned error: %v", err)
+	}
+	release1()
+
+	// Simulate a runtime "db-log-rotate-max-size" API call.
+	server.ClusterGroup.Conf.DBLogRotateMaxSize = 250
+
+	w2, release2, err := server.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter after threshold change returned error: %v", err)
+	}
+	defer release2()
+	if w1 == w2 {
+		t.Fatal("expected a new writer instance once db-log-rotate-max-size changed at runtime")
+	}
+	logfile := server.DBLogFilePath(DBLogError)
+	if server.ClusterGroup.dbLogWriters[logfile].maxSize != 250 {
+		t.Fatalf("expected cached entry to record the new maxSize, got %d", server.ClusterGroup.dbLogWriters[logfile].maxSize)
+	}
+
+	// A repeated call with unchanged settings must go back to reusing the
+	// writer, not keep recreating it forever.
+	w3, release3, err := server.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter returned error: %v", err)
+	}
+	defer release3()
+	if w2 != w3 {
+		t.Fatal("expected the writer to be reused once settings stop changing")
+	}
+}
+
+// TestGetDBLogRotatingWriter_EvictionDoesNotCloseWriterWhileBorrowed guards
+// against the core risk this refcounting exists to prevent: an eviction
+// (threshold change, CloseAllDBLogWriters, pruneStaleDBLogWriters) racing
+// with a long-lived borrower -- an SST receiver's async stream_copy_to_file
+// goroutine can hold a writer open for as long as sstStreamIdleTimeout
+// allows -- must not actually Close the underlying writer until that
+// borrower releases it, since lumberjack silently reopens a closed writer on
+// next Write rather than erroring, which would otherwise leave two
+// independent *lumberjack.Logger instances (with independent size/rotation
+// bookkeeping) writing the same path concurrently.
+func TestGetDBLogRotatingWriter_EvictionDoesNotCloseWriterWhileBorrowed(t *testing.T) {
+	tmp := t.TempDir()
+	server := newTestServerForDBLogs(t, tmp)
+	server.ClusterGroup.Conf.DBLogRotate = true
+
+	if err := os.MkdirAll(server.legacyDBLogDir(), 0755); err != nil {
+		t.Fatalf("failed to create legacy dir: %v", err)
+	}
+
+	// Simulate a long-lived borrower (an in-flight SST receiver) that has
+	// acquired the writer but not released it yet.
+	w, release, err := server.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter returned error: %v", err)
+	}
+	if _, err := w.Write([]byte("in-flight receiver data\n")); err != nil {
+		t.Fatalf("write through the borrowed writer failed: %v", err)
+	}
+
+	// Evict it (mirrors CloseAllDBLogWriters/pruneStaleDBLogWriters).
+	server.ClusterGroup.CloseAllDBLogWriters()
+
+	// It must still be cached (marked stale, not removed): the borrower
+	// isn't done with it yet.
+	logfile := server.DBLogFilePath(DBLogError)
+	if len(server.ClusterGroup.dbLogWriters) != 1 {
+		t.Fatalf("expected the borrowed entry to remain cached (stale) after eviction, got %d entries", len(server.ClusterGroup.dbLogWriters))
+	}
+
+	// The borrower must still be able to write successfully after eviction:
+	// the real Close is deferred until it releases.
+	if _, err := w.Write([]byte("more data while still borrowed\n")); err != nil {
+		t.Fatalf("write through the evicted-but-still-borrowed writer failed: %v", err)
+	}
+
+	got, err := os.ReadFile(logfile)
+	if err != nil {
+		t.Fatalf("failed to read log file: %v", err)
+	}
+	if !strings.Contains(string(got), "in-flight receiver data") || !strings.Contains(string(got), "more data while still borrowed") {
+		t.Fatalf("expected both writes to land in the log file, got %q", got)
+	}
+
+	// Release: this is the last (only) borrower, so the deferred close/removal
+	// happens synchronously inside release().
+	release()
+
+	if len(server.ClusterGroup.dbLogWriters) != 0 {
+		t.Fatalf("expected release() to close and remove the stale entry once the last borrower is done, got %d entries", len(server.ClusterGroup.dbLogWriters))
+	}
+}
+
+// TestCloseAllDBLogWriters_MarksBorrowedWriterStaleInsteadOfClosing is the
+// CloseAllDBLogWriters-specific companion to
+// TestGetDBLogRotatingWriter_EvictionDoesNotCloseWriterWhileBorrowed: with
+// two borrowers on the same entry, it must take both releases -- not just
+// one -- before the entry is actually closed and removed.
+func TestCloseAllDBLogWriters_MarksBorrowedWriterStaleInsteadOfClosing(t *testing.T) {
+	tmp := t.TempDir()
+	server := newTestServerForDBLogs(t, tmp)
+	server.ClusterGroup.Conf.DBLogRotate = true
+	server.ClusterGroup.Servers = serverList{server}
+
+	_, release1, err := server.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("first getDBLogRotatingWriter call returned error: %v", err)
+	}
+	_, release2, err := server.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("second getDBLogRotatingWriter call returned error: %v", err)
+	}
+
+	server.ClusterGroup.CloseAllDBLogWriters()
+
+	if len(server.ClusterGroup.dbLogWriters) != 1 {
+		t.Fatalf("expected the twice-borrowed entry to remain cached (stale), got %d entries", len(server.ClusterGroup.dbLogWriters))
+	}
+
+	release1()
+	if len(server.ClusterGroup.dbLogWriters) != 1 {
+		t.Fatal("expected the entry to remain cached after only one of two borrowers released")
+	}
+
+	release2()
+	if len(server.ClusterGroup.dbLogWriters) != 0 {
+		t.Fatalf("expected the last release to close and remove the entry, got %d entries", len(server.ClusterGroup.dbLogWriters))
+	}
+}
+
+// TestPruneStaleDBLogWriters_MarksBorrowedWriterStaleInsteadOfClosing is the
+// pruneStaleDBLogWriters-specific companion to
+// TestCloseAllDBLogWriters_MarksBorrowedWriterStaleInsteadOfClosing: a
+// server dropping out of the topology (host removal, reload) while its
+// writer is still borrowed must not have that writer closed out from under
+// the borrower -- it should be marked stale and only actually closed once
+// the last borrower releases it.
+func TestPruneStaleDBLogWriters_MarksBorrowedWriterStaleInsteadOfClosing(t *testing.T) {
+	tmp := t.TempDir()
+	server := newTestServerForDBLogs(t, tmp)
+	server.ClusterGroup.Conf.DBLogRotate = true
+	cluster := server.ClusterGroup
+	cluster.Servers = serverList{server}
+
+	_, release, err := server.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter returned error: %v", err)
+	}
+
+	// The server drops out of the topology entirely (e.g. host removed from
+	// config on reload) while its writer is still borrowed.
+	cluster.Servers = serverList{}
+	cluster.pruneStaleDBLogWriters()
+
+	if len(cluster.dbLogWriters) != 1 {
+		t.Fatalf("expected the borrowed entry to remain cached (stale) after pruning, got %d entries", len(cluster.dbLogWriters))
+	}
+
+	release()
+
+	if len(cluster.dbLogWriters) != 0 {
+		t.Fatalf("expected release() to close and remove the pruned-but-borrowed entry once drained, got %d entries", len(cluster.dbLogWriters))
+	}
+}
+
+// TestGetDBLogRotatingWriter_ReleaseIsSafeToCallMoreThanOnce guards against a
+// caller mistake (e.g. both an explicit release call and an unconditional
+// deferred one) desyncing the borrower count from actual outstanding
+// borrows, which could cause a still-in-use writer to be closed out from
+// under an unrelated, later borrower. The release func returned by
+// getDBLogRotatingWriter must be idempotent.
+func TestGetDBLogRotatingWriter_ReleaseIsSafeToCallMoreThanOnce(t *testing.T) {
+	tmp := t.TempDir()
+	server := newTestServerForDBLogs(t, tmp)
+	server.ClusterGroup.Conf.DBLogRotate = true
+
+	_, release, err := server.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter returned error: %v", err)
+	}
+
+	// Force the entry stale so a release can actually trigger a close --
+	// otherwise a non-stale entry's release is pure accounting and a repeat
+	// call wouldn't reveal anything (the bug only bites once stale=true).
+	server.ClusterGroup.Conf.DBLogRotateMaxSize++
+	_, release2, err := server.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("second getDBLogRotatingWriter call returned error: %v", err)
+	}
+	defer release2()
+
+	// First (legitimate) release: one borrower left (release2's), entry
+	// stays cached.
+	release()
+	if len(server.ClusterGroup.dbLogWriters) != 1 {
+		t.Fatal("expected the stale entry to remain cached while release2's borrow is still outstanding")
+	}
+
+	// Calling release again must be a no-op. Without the sync.Once guard,
+	// this would decrement borrowers a second time (to -1, since release2's
+	// borrow is the only real one left) and, because the entry is stale,
+	// incorrectly close and remove it out from under release2's still-active
+	// borrow.
+	release()
+
+	if len(server.ClusterGroup.dbLogWriters) != 1 {
+		t.Fatal("expected a repeated release call to be a no-op and not close the entry out from under a later, unrelated borrower")
+	}
+}
+
+// TestGetDBLogRotatingWriter_ThresholdChangeWhileBorrowedDefersReplacement is
+// the regression test for the gap CloseAllDBLogWriters/
+// pruneStaleDBLogWriters already handled but getDBLogRotatingWriter's own
+// threshold-mismatch path did not: on a db-log-rotate-max-* change
+// (server/api_cluster.go) while the current writer is still borrowed, a
+// naive "evict now, create the replacement now" would spin up a second live
+// *lumberjack.Logger for the same path immediately -- not just delay closing
+// the old one -- which is exactly the dual-writer hazard this cache exists
+// to prevent. The fix keeps serving the same (now stale) writer to every
+// acquirer until the last borrower releases it, and only then creates the
+// replacement.
+func TestGetDBLogRotatingWriter_ThresholdChangeWhileBorrowedDefersReplacement(t *testing.T) {
+	tmp := t.TempDir()
+	server := newTestServerForDBLogs(t, tmp)
+	server.ClusterGroup.Conf.DBLogRotate = true
+	server.ClusterGroup.Conf.DBLogRotateMaxSize = 100
+
+	// Acquire A and do not release it -- simulates an in-flight SST receiver
+	// or GetSlowLogTable export still writing through it.
+	writerA, releaseA, err := server.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("first getDBLogRotatingWriter call returned error: %v", err)
+	}
+
+	// Simulate a runtime "db-log-rotate-max-size" API call while A is still
+	// borrowed.
+	server.ClusterGroup.Conf.DBLogRotateMaxSize = 250
+
+	// A second acquire for the same path, while A is still outstanding, must
+	// get A back -- NOT a second, independent writer -- even though the
+	// thresholds no longer match what A was created with.
+	writerAAgain, releaseAAgain, err := server.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("second getDBLogRotatingWriter call returned error: %v", err)
+	}
+	if writerAAgain != writerA {
+		t.Fatal("expected a threshold change to keep serving the still-borrowed writer instead of creating a second one for the same path")
+	}
+	if len(server.ClusterGroup.dbLogWriters) != 1 {
+		t.Fatalf("expected exactly one cache entry while A is still borrowed, got %d", len(server.ClusterGroup.dbLogWriters))
+	}
+
+	// Release one of the two borrows: still not the last one, so no
+	// replacement yet.
+	releaseA()
+	if len(server.ClusterGroup.dbLogWriters) != 1 {
+		t.Fatal("expected the entry to remain cached after only one of two borrowers released")
+	}
+
+	// Release the last borrow: NOW the stale entry is closed and removed.
+	releaseAAgain()
+	if len(server.ClusterGroup.dbLogWriters) != 0 {
+		t.Fatalf("expected the last release to close and remove the stale entry, got %d entries", len(server.ClusterGroup.dbLogWriters))
+	}
+
+	// A fresh acquire now gets a genuinely new writer, with the current
+	// (changed) threshold.
+	writerB, releaseB, err := server.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter after drain returned error: %v", err)
+	}
+	defer releaseB()
+	if writerB == writerA {
+		t.Fatal("expected a genuinely new writer instance once the stale one fully drained")
+	}
+	logfile := server.DBLogFilePath(DBLogError)
+	if server.ClusterGroup.dbLogWriters[logfile].maxSize != 250 {
+		t.Fatalf("expected the new writer to be created with the current maxSize, got %d", server.ClusterGroup.dbLogWriters[logfile].maxSize)
+	}
+}
+
+// TestClusterClose_ClosesAllDBLogWriters guards against the reload/teardown
+// paths bypassing DB log writer cleanup: Cluster.Close used to close each
+// server's Conn directly without ever touching the cached rotating writers,
+// leaking their millRun goroutines on every cluster shutdown.
+func TestClusterClose_ClosesAllDBLogWriters(t *testing.T) {
+	tmp := t.TempDir()
+	server := newTestServerForDBLogs(t, tmp)
+	server.ClusterGroup.Conf.DBLogRotate = true
+	server.ClusterGroup.Servers = serverList{server}
+	// A real but unconnected *sqlx.DB: Cluster.Close unconditionally calls
+	// Conn.Close(), which panics on a nil *sqlx.DB, so the test needs a live
+	// (if never-dialed) handle rather than leaving Conn nil.
+	conn, err := sqlx.Open("mysql", "user:pass@tcp(127.0.0.1:3306)/db")
+	if err != nil {
+		t.Fatalf("failed to open test DB handle: %v", err)
+	}
+	server.Conn = conn
+
+	_, release, err := server.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter returned error: %v", err)
+	}
+	if len(server.ClusterGroup.dbLogWriters) != 1 {
+		t.Fatalf("expected one cached writer entry before Close, got %d", len(server.ClusterGroup.dbLogWriters))
+	}
+	// Release before Close: this test is about Close reaching an unborrowed
+	// writer, not about the stale/borrow deferral (see
+	// TestGetDBLogRotatingWriter_EvictionDoesNotCloseWriterWhileBorrowed for
+	// that).
+	release()
+
+	server.ClusterGroup.Close()
+
+	if len(server.ClusterGroup.dbLogWriters) != 0 {
+		t.Fatalf("expected Cluster.Close to clear the cluster's DB log writer cache, got %d entries", len(server.ClusterGroup.dbLogWriters))
+	}
+}
+
+// TestNewServerList_PrunesWritersForHostsDroppedFromTopology guards against
+// a reload (ReloadConfig -> InitFromConf -> newServerList) silently
+// abandoning cached writers for hosts that actually left the topology, with
+// no cleanup call at all.
+func TestNewServerList_PrunesWritersForHostsDroppedFromTopology(t *testing.T) {
+	tmp := t.TempDir()
+	oldServer := newTestServerForDBLogs(t, tmp)
+	oldServer.ClusterGroup.Conf.DBLogRotate = true
+
+	_, release, err := oldServer.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter returned error: %v", err)
+	}
+	if len(oldServer.ClusterGroup.dbLogWriters) != 1 {
+		t.Fatalf("expected one cached writer entry before reload, got %d", len(oldServer.ClusterGroup.dbLogWriters))
+	}
+	// Release before the reload: this test is about pruning reaching an
+	// unborrowed writer, not about the stale/borrow deferral.
+	release()
+
+	cluster := oldServer.ClusterGroup
+	cluster.Servers = serverList{oldServer}
+	// No hosts configured: newServerList will rebuild Servers into an empty
+	// slice, i.e. this host actually left the topology, which is what should
+	// make its cached writer stale.
+	cluster.Conf.Hosts = ""
+
+	if err := cluster.newServerList(); err != nil {
+		t.Fatalf("newServerList returned error: %v", err)
+	}
+
+	if len(cluster.dbLogWriters) != 0 {
+		t.Fatalf("expected newServerList to prune the dropped host's DB log writers, got %d entries", len(cluster.dbLogWriters))
+	}
+}
+
+// TestPruneStaleDBLogWriters_OrdinaryReloadLeavesStillValidWriterAlone is the
+// complement of the drop test above: when a host's canonical DB log path is
+// still produced by some current server (the common reload case -- see
+// newServerMonitor, srv.go:421, which deterministically derives Datadir from
+// WorkingDir/cluster name/host/port, so an unchanged host always recomputes
+// the same path regardless of which *ServerMonitor generation asks), pruning
+// must NOT close its cached writer just because the specific *ServerMonitor
+// instance that created it is no longer the one in cluster.Servers.
+//
+// This is the core regression test for the cluster-scoped, path-keyed
+// redesign: it is what makes an ordinary reload -- which always replaces
+// every *ServerMonitor object, even for unchanged hosts -- safe to run
+// concurrently with a long-running GetSlowLogTable export instead of
+// spawning a second independent *lumberjack.Logger for the same path.
+func TestPruneStaleDBLogWriters_OrdinaryReloadLeavesStillValidWriterAlone(t *testing.T) {
+	tmp := t.TempDir()
+	oldServer := newTestServerForDBLogs(t, tmp)
+	oldServer.ClusterGroup.Conf.DBLogRotate = true
+	cluster := oldServer.ClusterGroup
+	cluster.Servers = serverList{oldServer}
+
+	writer, release, err := oldServer.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter returned error: %v", err)
+	}
+	defer release()
+
+	// Simulate a reload: a brand new *ServerMonitor for the identical host
+	// (same Datadir/Host/Port), exactly as newServerMonitor produces on every
+	// reload regardless of whether the host actually changed, replaces the
+	// old one in cluster.Servers.
+	newServer := newTestServerForDBLogs(t, tmp)
+	newServer.ClusterGroup = cluster
+	cluster.Servers = serverList{newServer}
+
+	cluster.pruneStaleDBLogWriters()
+
+	if len(cluster.dbLogWriters) != 1 {
+		t.Fatalf("expected the still-valid writer to remain cached across an ordinary reload, got %d entries", len(cluster.dbLogWriters))
+	}
+
+	// The new ServerMonitor for the same host must resolve to the exact same
+	// writer instance -- not a second one -- for this to be a real fix.
+	newWriter, newRelease, err := newServer.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter on the post-reload server returned error: %v", err)
+	}
+	defer newRelease()
+	if newWriter != writer {
+		t.Fatal("expected the post-reload ServerMonitor to reuse the pre-reload cached writer for the same path")
+	}
+}
+
+// TestRemoveServerFromIndex_PrunesRemovedServersDBLogWriters guards against
+// dynamic server removal (e.g. topology churn dropping an unlinked
+// child-cluster server, cluster_topo.go) silently abandoning cached writers
+// for the removed server's paths, with no cleanup call.
+func TestRemoveServerFromIndex_PrunesRemovedServersDBLogWriters(t *testing.T) {
+	tmp := t.TempDir()
+	removed := newTestServerForDBLogsWithHost(t, tmp, "node1", "3306")
+	removed.ClusterGroup.Conf.DBLogRotate = true
+
+	kept := newTestServerForDBLogsWithHost(t, tmp, "node2", "3306")
+	kept.ClusterGroup = removed.ClusterGroup
+
+	cluster := removed.ClusterGroup
+	cluster.Servers = serverList{removed, kept}
+
+	_, removedRelease, err := removed.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter returned error: %v", err)
+	}
+	// Release before removal: this test is about pruning reaching an
+	// unborrowed writer, not about the stale/borrow deferral.
+	removedRelease()
+	_, keptRelease, err := kept.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter returned error: %v", err)
+	}
+	defer keptRelease()
+
+	cluster.RemoveServerFromIndex(0)
+
+	if len(cluster.Servers) != 1 || cluster.Servers[0] != kept {
+		t.Fatalf("expected only the kept server to remain, got %v", cluster.Servers)
+	}
+	if len(cluster.dbLogWriters) != 1 {
+		t.Fatalf("expected only the kept server's writer to remain cached, got %d entries", len(cluster.dbLogWriters))
+	}
+}
+
+// TestRemoveServerMonitor_PrunesRemovedServersDBLogWriters is the
+// RemoveServerMonitor (host/port-based removal, used by the server-removal
+// API) counterpart of TestRemoveServerFromIndex_PrunesRemovedServersDBLogWriters.
+func TestRemoveServerMonitor_PrunesRemovedServersDBLogWriters(t *testing.T) {
+	tmp := t.TempDir()
+	removed := newTestServerForDBLogsWithHost(t, tmp, "node1", "3306")
+	removed.ClusterGroup.Conf.DBLogRotate = true
+
+	kept := newTestServerForDBLogsWithHost(t, tmp, "node2", "3306")
+	kept.ClusterGroup = removed.ClusterGroup
+
+	cluster := removed.ClusterGroup
+	cluster.Servers = serverList{removed, kept}
+	// RemoveServerMonitor drives the cluster's failover state machine; the
+	// bare test fixture doesn't set one up, unlike a real cluster (see
+	// InitFromConf).
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+
+	_, removedRelease, err := removed.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter returned error: %v", err)
+	}
+	// Release before removal: this test is about pruning reaching an
+	// unborrowed writer, not about the stale/borrow deferral.
+	removedRelease()
+	_, keptRelease, err := kept.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter returned error: %v", err)
+	}
+	defer keptRelease()
+
+	if err := cluster.RemoveServerMonitor("node1", "3306"); err != nil {
+		t.Fatalf("RemoveServerMonitor returned error: %v", err)
+	}
+
+	if len(cluster.Servers) != 1 || cluster.Servers[0] != kept {
+		t.Fatalf("expected only the kept server to remain, got %v", cluster.Servers)
+	}
+	if len(cluster.dbLogWriters) != 1 {
+		t.Fatalf("expected only the kept server's writer to remain cached, got %d entries", len(cluster.dbLogWriters))
+	}
+}
+
 func TestNewLogTailer_DoesNotPruneWhenRotateDisabled(t *testing.T) {
 	tmp := t.TempDir()
 	server := newTestServerForDBLogs(t, tmp)
@@ -694,5 +1341,50 @@ func TestNewLogTailer_DoesNotPruneWhenRotateDisabled(t *testing.T) {
 
 	if _, err := os.Stat(oldStyle); err != nil {
 		t.Fatalf("expected old-style rotated file to remain untouched when db-log-rotate is disabled: %v", err)
+	}
+}
+
+// TestCloseAllDBLogWriters_ClosesEveryCachedWriter guards against runtime
+// db-log-rotate=false leaving cached writers behind: once the flag is off,
+// neither GetSlowLogTable nor SSTRunReceiverToDBLogFile ever calls
+// getDBLogRotatingWriter again for that cluster, so nothing else would ever
+// evict/close writers created while it was on. CloseAllDBLogWriters (called
+// from server/api_cluster.go's db-log-rotate handlers on an actual flip) is
+// the only thing that does.
+func TestCloseAllDBLogWriters_ClosesEveryCachedWriter(t *testing.T) {
+	tmp := t.TempDir()
+	first := newTestServerForDBLogsWithHost(t, tmp, "node1", "3306")
+	first.ClusterGroup.Conf.DBLogRotate = true
+
+	second := newTestServerForDBLogsWithHost(t, tmp, "node2", "3306")
+	second.ClusterGroup = first.ClusterGroup
+
+	cluster := first.ClusterGroup
+	cluster.Servers = serverList{first, second}
+
+	_, releaseFirst, err := first.getDBLogRotatingWriter(DBLogError)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter returned error: %v", err)
+	}
+	_, releaseSecond, err := second.getDBLogRotatingWriter(DBLogSlowQuery)
+	if err != nil {
+		t.Fatalf("getDBLogRotatingWriter returned error: %v", err)
+	}
+	if len(cluster.dbLogWriters) != 2 {
+		t.Fatalf("expected two cached writer entries before disabling, got %d", len(cluster.dbLogWriters))
+	}
+	// Release before disabling: this test is about CloseAllDBLogWriters
+	// reaching unborrowed writers, not about the stale/borrow deferral (see
+	// TestCloseAllDBLogWriters_MarksBorrowedWriterStaleInsteadOfClosing).
+	releaseFirst()
+	releaseSecond()
+
+	// Simulate the runtime "db-log-rotate" toggle/set-value handlers in
+	// server/api_cluster.go flipping the flag off and calling this.
+	cluster.Conf.DBLogRotate = false
+	cluster.CloseAllDBLogWriters()
+
+	if len(cluster.dbLogWriters) != 0 {
+		t.Fatalf("expected CloseAllDBLogWriters to close every cached writer, got %d entries", len(cluster.dbLogWriters))
 	}
 }
