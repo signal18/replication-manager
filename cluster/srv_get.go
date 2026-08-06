@@ -1304,7 +1304,7 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 	var f io.Writer
 	releaseWriter := func() {} // no-op unless the DBLogRotate branch below sets it
 	if cluster.Conf.DBLogRotate {
-		// Shared, server-owned rotating writer: reused across calls instead
+		// Shared, cluster-owned rotating writer: reused across calls instead
 		// of opening a fresh lumberjack.Logger every time, so callers must
 		// NOT close it -- release it instead (see getDBLogRotatingWriter).
 		var rawRelease func()
@@ -1314,7 +1314,9 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 		}
 		// sync.Once so releaseWriter can be called explicitly right after the
 		// last write below *and* safely again via defer (covering any error
-		// return in between) without double-Done()-ing the entry's WaitGroup.
+		// return in between) without double-releasing -- rawRelease is
+		// already idempotent on its own (see releaseDBLogWriterFunc), so this
+		// is defense in depth, not strictly required.
 		var once sync.Once
 		releaseWriter = func() { once.Do(rawRelease) }
 		defer releaseWriter()

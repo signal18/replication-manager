@@ -19,9 +19,10 @@ import (
 // stalled/hung SST sender blocking stream_copy_to_file's Read loop forever.
 // The listener's own SetDeadline (SSTRunReceiverToFile,
 // SSTRunReceiverToDBLogFile) only bounds Accept(), not the connection it
-// returns -- sstStreamIdleTimeout is what actually bounds this loop, which
-// in turn is what lets closeDBLogWriterEntryWhenIdle's wg.Wait() resolve
-// instead of leaking a waiter goroutine forever.
+// returns -- sstStreamIdleTimeout is what actually bounds this loop, which in
+// turn is what lets a stalled receiver's DB log writer borrow (see
+// getDBLogRotatingWriter, srv_job_logs.go) actually get released instead of
+// leaving a stale, still-borrowed cache entry parked forever.
 func TestStreamCopyToFile_IdleReadTimeoutEndsStalledReceiver(t *testing.T) {
 	prevTimeout := sstStreamIdleTimeout
 	sstStreamIdleTimeout = 50 * time.Millisecond
