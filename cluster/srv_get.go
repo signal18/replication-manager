@@ -650,10 +650,16 @@ func (server *ServerMonitor) FlushPFSSnapshotToLog() {
 
 	os.MkdirAll(server.Datadir+"/log", 0755)
 
-	// Unconditional repman-side housekeeping: prune old hourly PFS snapshot
-	// files so the series stays bounded. Each file is size-capped below, but
-	// the series itself had no retention and accumulated one file/hour forever.
-	misc.RemoveOldLogFilesWithExt(server.Datadir+"/log", "log_pfs_queries_", ".jsonl", cluster.Conf.DBLogRotateMaxAge, "20060102_15")
+	// Unconditional repman-side housekeeping: prune hourly PFS snapshot files
+	// older than the configured retention so the series stays bounded. These
+	// per-hour files ARE a feature (the Schema Graph time-series browses them
+	// via /api .../pfs-snapshots), so we keep a rolling window rather than
+	// merging them; the window is monitoring-pfs-snapshot-retention-days.
+	retentionDays := cluster.Conf.MonitorPFSSnapshotRetentionDays
+	if retentionDays <= 0 {
+		retentionDays = 2
+	}
+	misc.RemoveOldLogFilesWithExt(server.Datadir+"/log", "log_pfs_queries_", ".jsonl", retentionDays, "20060102_15")
 
 	now := time.Now()
 	filename := server.Datadir + "/log/log_pfs_queries_" + now.Format("20060102_15") + ".jsonl"
