@@ -96,67 +96,88 @@ func (configurator *Configurator) getUsableMemoryMB() (int64, error) {
 	return usable, nil
 }
 
+// minEngineMemMB is the floor for any allocated storage-engine buffer, in MB.
+// Below this an engine can drop under its own startup minimum — e.g. InnoDB with
+// a 16K page size refuses to start with innodb_buffer_pool_size under 6 MiB — which
+// is exactly how a small/misresolved prov-db-memory produced innodb_buffer_pool_size=0M
+// and stopped the DB from booting. Every engine that is allocated memory gets at least this.
+const minEngineMemMB int64 = 128
+
+// engineMemMB returns an engine buffer size in MB from the usable memory and the
+// engine's shared-memory percentage. An enabled engine (pct > 0) never gets less
+// than minEngineMemMB; a disabled engine (pct <= 0) stays at 0 (so we never silently
+// turn on an engine, e.g. the query cache, that is meant to be off).
+func engineMemMB(usableMB, pct int64) int64 {
+	if pct <= 0 {
+		return 0
+	}
+	if v := usableMB * pct / 100; v > minEngineMemMB {
+		return v
+	}
+	return minEngineMemMB
+}
+
 func (configurator *Configurator) GetConfigInnoDBBPSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
-		return "128"
+		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(usable*int64(sharedmempcts["innodb"])/100, 10)
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["innodb"])), 10)
 }
 
 func (configurator *Configurator) GetConfigMyISAMKeyBufferSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
-		return "128"
+		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(usable*int64(sharedmempcts["myisam"])/100, 10)
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["myisam"])), 10)
 }
 
 func (configurator *Configurator) GetConfigTokuDBBufferSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
-		return "128"
+		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(usable*int64(sharedmempcts["tokudb"])/100, 10)
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["tokudb"])), 10)
 }
 
 func (configurator *Configurator) GetConfigQueryCacheSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
-		return "128"
+		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(usable*int64(sharedmempcts["querycache"])/100, 10)
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["querycache"])), 10)
 }
 
 func (configurator *Configurator) GetConfigAriaCacheSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
-		return "128"
+		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(usable*int64(sharedmempcts["aria"])/100, 10)
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["aria"])), 10)
 }
 
 func (configurator *Configurator) GetConfigS3CacheSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
-		return "128"
+		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(usable*int64(sharedmempcts["s3"])/100, 10)
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["s3"])), 10)
 }
 
 func (configurator *Configurator) GetConfigRocksDBCacheSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
-		return "128"
+		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(usable*int64(sharedmempcts["rocksdb"])/100, 10)
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["rocksdb"])), 10)
 }
 
 func (configurator *Configurator) GetConfigMyISAMKeyBufferSegements() string {
