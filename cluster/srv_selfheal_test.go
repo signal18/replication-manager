@@ -68,6 +68,47 @@ func TestMaybeSelfHealOversizedDBLog(t *testing.T) {
 	}
 }
 
+// TestMaybeSelfHealOversizedDBLog_SkipsWhenCachedWriterHoldsFile verifies the
+// fix for the review finding: self-heal must NOT rename/reclaim a file that a
+// long-lived cached rotating writer (getDBLogRotatingWriter) holds open, or the
+// writer's later writes go to the renamed inode and get gzip+deleted -> silent
+// data loss.
+func TestMaybeSelfHealOversizedDBLog_SkipsWhenCachedWriterHoldsFile(t *testing.T) {
+	tmp := t.TempDir()
+	server := newTestServerForDBLogsWithHost(t, tmp, "node1", "3306")
+	server.ClusterGroup.StateMachine = new(state.StateMachine)
+	server.ClusterGroup.StateMachine.Init()
+
+	dir := filepath.Join(tmp, "logs")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	logfile := filepath.Join(dir, "log_slow_query.log")
+	if err := os.WriteFile(logfile, []byte("runaway content that a writer still owns\n"), 0600); err != nil {
+		t.Fatalf("seed logfile: %v", err)
+	}
+
+	orig := selfHealDBLogCeilingMB
+	selfHealDBLogCeilingMB = 0 // any non-empty file is "oversized"
+	defer func() { selfHealDBLogCeilingMB = orig }()
+
+	// A cached rotating writer holds this exact path open.
+	server.ClusterGroup.dbLogWriters = map[string]*dbLogWriterEntry{logfile: {}}
+
+	server.maybeSelfHealOversizedDBLog(logfile)
+
+	// The file must be untouched (not renamed), no backup created, no WARN0208.
+	if _, err := os.Stat(logfile); err != nil {
+		t.Fatalf("expected file untouched while a cached writer holds it, but it was moved: %v", err)
+	}
+	if moved, _ := filepath.Glob(filepath.Join(dir, "log_slow_query_oversize_*")); len(moved) != 0 {
+		t.Fatalf("expected NO backup when self-heal is skipped, got %v", moved)
+	}
+	if server.ClusterGroup.StateMachine.IsInState("WARN0208") {
+		t.Fatalf("WARN0208 must not be raised when self-heal is skipped")
+	}
+}
+
 // TestMaybeSelfHealOversizedDBLog_LeavesSmallFileAlone verifies a normal-sized
 // collected log is never touched.
 func TestMaybeSelfHealOversizedDBLog_LeavesSmallFileAlone(t *testing.T) {

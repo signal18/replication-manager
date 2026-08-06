@@ -640,14 +640,6 @@ type PFSSnapshotEntry struct {
 func (server *ServerMonitor) FlushPFSSnapshotToLog() {
 	cluster := server.ClusterGroup
 
-	// We need an up-to-date fetch to get sample queries before the TRUNCATE.
-	pfsq, _, err := dbhelper.GetQueries(server.Conn, server.DBVersion)
-	if err != nil || len(pfsq) == 0 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg,
-			"PFS snapshot: nothing to flush on %s", server.URL)
-		return
-	}
-
 	os.MkdirAll(server.Datadir+"/log", 0755)
 
 	// Unconditional repman-side housekeeping: prune hourly PFS snapshot files
@@ -655,11 +647,24 @@ func (server *ServerMonitor) FlushPFSSnapshotToLog() {
 	// per-hour files ARE a feature (the Schema Graph time-series browses them
 	// via /api .../pfs-snapshots), so we keep a rolling window rather than
 	// merging them; the window is monitoring-pfs-snapshot-retention-days.
+	//
+	// This runs BEFORE the "nothing to flush" early-return below so it fires on
+	// EVERY cycle -- an idle server, or one whose PFS fetch is temporarily
+	// disabled/erroring, must still have its old snapshots pruned, otherwise the
+	// series grows unbounded exactly like the bug this PR was written to fix.
 	retentionDays := cluster.Conf.MonitorPFSSnapshotRetentionDays
 	if retentionDays <= 0 {
 		retentionDays = 2
 	}
 	misc.RemoveOldLogFilesWithExt(server.Datadir+"/log", "log_pfs_queries_", ".jsonl", retentionDays, "20060102_15")
+
+	// We need an up-to-date fetch to get sample queries before the TRUNCATE.
+	pfsq, _, err := dbhelper.GetQueries(server.Conn, server.DBVersion)
+	if err != nil || len(pfsq) == 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg,
+			"PFS snapshot: nothing to flush on %s", server.URL)
+		return
+	}
 
 	now := time.Now()
 	filename := server.Datadir + "/log/log_pfs_queries_" + now.Format("20060102_15") + ".jsonl"

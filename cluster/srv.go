@@ -621,6 +621,18 @@ func (server *ServerMonitor) maybeSelfHealOversizedDBLog(logfile string) {
 	if cluster.IsFileOpenForSSTReceive(logfile) {
 		return
 	}
+	// Don't race a long-lived cached rotating writer either. GetSlowLogTable and
+	// the SST rotate path borrow a shared *lumberjack.Logger for this exact path
+	// (getDBLogRotatingWriter) that holds the file open by fd. If we renamed the
+	// file out from under it, its subsequent writes would go to the renamed inode
+	// -- which gzipFileAndRemove then compresses and deletes -- silently losing
+	// data. A cached writer also already bounds the file, so defer to it.
+	cluster.dbLogWriterMutex.Lock()
+	_, hasCachedWriter := cluster.dbLogWriters[logfile]
+	cluster.dbLogWriterMutex.Unlock()
+	if hasCachedWriter {
+		return
+	}
 
 	ts := time.Now().Format("20060102_150405")
 	backup := strings.TrimSuffix(logfile, ".log") + "_oversize_" + ts + ".log"
