@@ -20,20 +20,33 @@ import (
 
 	gzip "github.com/klauspost/pgzip"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/s18log"
 )
 
+// sstStreamIdleTimeout bounds how long stream_copy_to_file will wait for the
+// next byte before giving up on a stalled/hung sender. A var, not a const,
+// so tests can shrink it.
+//
+// Matches the existing 1-hour accept-deadline convention already used by
+// both SSTRunReceiverToFile and SSTRunReceiverToDBLogFile: listener
+// SetDeadline only bounds Accept() (see net.TCPListener.SetDeadline), not
+// the connection it returns, so without a deadline of its own here a stuck
+// sender blocks stream_copy_to_file's Read loop -- and anything holding the
+// SST receiver's DB log writer borrow open (see getDBLogRotatingWriter,
+// srv_job_logs.go) -- forever.
+var sstStreamIdleTimeout = time.Hour
+
 type SST struct {
-	in                io.Reader
-	file              *os.File
-	rotateWriter      io.WriteCloser
-	listener          net.Listener
-	tcplistener       *net.TCPListener
-	outfilewriter     io.Writer
-	outresticreader   io.WriteCloser
-	outfilegzipwriter *gzip.Writer
-	cluster           *Cluster
-	Filename          string // destination path, if this receiver writes to a file; used to detect an in-flight receiver for a given path (see IsFileOpenForSSTReceive)
+	in                 io.Reader
+	file               *os.File
+	rotateWriter       io.WriteCloser
+	listener           net.Listener
+	tcplistener        *net.TCPListener
+	outfilewriter      io.Writer
+	outresticreader    io.WriteCloser
+	outfilegzipwriter  *gzip.Writer
+	cluster            *Cluster
+	Filename           string // destination path, if this receiver writes to a file; used to detect an in-flight receiver for a given path (see IsFileOpenForSSTReceive)
+	dbLogWriterRelease func() // set when outfilewriter is a shared ServerMonitor.getDBLogRotatingWriter borrow; must be called exactly once when this receiver is done writing (see tcp_con_handle_to_file), so a concurrent cache eviction doesn't close the writer out from under this still-streaming receiver
 }
 
 // IsFileOpenForSSTReceive reports whether filename currently has an active
@@ -172,17 +185,24 @@ func (cluster *Cluster) SSTRunReceiverToFile(server *ServerMonitor, filename str
 	return strconv.Itoa(destinationPort), nil
 }
 
-// SSTRunReceiverToDBLogFile opens a receiver for fetched DB working-dir logs
-// (log_error.log, log_slow_query.log, log_sql_error.log, log_audit.log).
+// SSTRunReceiverToDBLogFile opens a receiver for one fetched DB working-dir
+// log (log_error.log, log_slow_query.log, log_sql_error.log, log_audit.log),
+// identified by kind.
 //
 // When cluster.Conf.DBLogRotate is disabled (compatibility-first default),
 // it behaves exactly like SSTRunReceiverToFile in append mode: repman does
 // not rotate or prune the file, leaving retention to external logrotate.
 //
-// When enabled, writes go through the shared s18log rotating writer using
-// DB-log-specific thresholds, independent of the generic log-rotate-* repman
-// settings.
-func (cluster *Cluster) SSTRunReceiverToDBLogFile(server *ServerMonitor, filename string, task string) (string, error) {
+// When enabled, writes go through this server's shared, long-lived rotating
+// writer for kind (see ServerMonitor.getDBLogRotatingWriter) using DB-log-
+// specific thresholds, independent of the generic log-rotate-* repman
+// settings. That writer is server-owned and outlives this receiver, so it is
+// intentionally not assigned to sst.rotateWriter -- only sst.outfilewriter --
+// and the borrow is released (not closed) via sst.dbLogWriterRelease once the
+// receiver's stream ends, in tcp_con_handle_to_file's cleanup.
+func (cluster *Cluster) SSTRunReceiverToDBLogFile(server *ServerMonitor, kind DBLogKind, task string) (string, error) {
+	filename := server.DBLogFilePath(kind)
+
 	if !cluster.Conf.DBLogRotate {
 		return cluster.SSTRunReceiverToFile(server, filename, ConstJobAppendFile, task)
 	}
@@ -191,21 +211,17 @@ func (cluster *Cluster) SSTRunReceiverToDBLogFile(server *ServerMonitor, filenam
 	sst.cluster = cluster
 	sst.Filename = filename
 
-	rw, err := s18log.NewRotateWriter(s18log.RotateFileConfig{
-		Filename:   filename,
-		MaxSize:    cluster.Conf.DBLogRotateMaxSize,
-		MaxBackups: cluster.Conf.DBLogRotateMaxBackup,
-		MaxAge:     cluster.Conf.DBLogRotateMaxAge,
-	})
+	rw, release, err := server.getDBLogRotatingWriter(kind)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Open rotating writer failed for job %s %s", filename, err)
 		return "", err
 	}
-	sst.rotateWriter = rw
 	sst.outfilewriter = rw
+	sst.dbLogWriterRelease = release
 
 	sst.listener, err = net.Listen("tcp", cluster.Conf.BindAddr+":"+cluster.SSTGetSenderPort())
 	if err != nil {
+		release()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Exiting SST on socket listen %s", err)
 		return "", err
 	}
@@ -320,6 +336,9 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 		if sst.rotateWriter != nil {
 			sst.rotateWriter.Close()
 		}
+		if sst.dbLogWriterRelease != nil {
+			sst.dbLogWriterRelease()
+		}
 		sst.listener.Close()
 		SSTs.Lock()
 		delete(SSTs.SSTconnections, port)
@@ -399,6 +418,9 @@ func (sst *SST) stream_copy_to_file() <-chan int {
 			var nBytes int
 			var err error
 
+			if con, ok := sst.in.(net.Conn); ok {
+				con.SetReadDeadline(time.Now().Add(sstStreamIdleTimeout))
+			}
 			nBytes, err = sst.in.Read(buf)
 
 			if err != nil {

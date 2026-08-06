@@ -5175,8 +5175,7 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 			http.Error(w, "Unknown DB log task: "+taskname, 500)
 			return
 		}
-		dest = node.DBLogFilePath(kind)
-		rcvPort, err = mycluster.SSTRunReceiverToDBLogFile(node, dest, taskname)
+		rcvPort, err = mycluster.SSTRunReceiverToDBLogFile(node, kind, taskname)
 	case config.ConstTaskReseedXB, config.ConstTaskReseedMB, config.ConstTaskFlashXB, config.ConstTaskFlashMB:
 		dest = node.GetMyBackupDirectory() + taskname
 		rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)

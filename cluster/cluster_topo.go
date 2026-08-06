@@ -48,6 +48,14 @@ func (cluster *Cluster) newServerList() error {
 
 	cluster.RefreshDatabaseConfigs()
 	cluster.Unlock()
+
+	// The DB log writer cache is Cluster-scoped and keyed by canonical path
+	// (see getDBLogRotatingWriter), not by *ServerMonitor identity, so an
+	// ordinary reload -- new *ServerMonitor objects for the same, still
+	// monitored hosts -- leaves every still-valid entry alone to be reused.
+	// This only closes entries for hosts that actually dropped out of the
+	// topology.
+	cluster.pruneStaleDBLogWriters()
 	return nil
 }
 

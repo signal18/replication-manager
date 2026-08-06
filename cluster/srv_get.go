@@ -1301,24 +1301,34 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 		return fmt.Errorf("Error truncate slow logs buffer table on %s. Err : %v", server.URL, err)
 	}
 
-	logfile := server.DBLogFilePath(DBLogSlowQuery)
-	var f io.WriteCloser
+	var f io.Writer
+	releaseWriter := func() {} // no-op unless the DBLogRotate branch below sets it
 	if cluster.Conf.DBLogRotate {
-		f, err = s18log.NewRotateWriter(s18log.RotateFileConfig{
-			Filename:   logfile,
-			MaxSize:    cluster.Conf.DBLogRotateMaxSize,
-			MaxBackups: cluster.Conf.DBLogRotateMaxBackup,
-			MaxAge:     cluster.Conf.DBLogRotateMaxAge,
-		})
+		// Shared, server-owned rotating writer: reused across calls instead
+		// of opening a fresh lumberjack.Logger every time, so callers must
+		// NOT close it -- release it instead (see getDBLogRotatingWriter).
+		var rawRelease func()
+		f, rawRelease, err = server.getDBLogRotatingWriter(DBLogSlowQuery)
+		if err != nil {
+			return fmt.Errorf("Error writing slow queries logs on %s. Err : %v", server.URL, err)
+		}
+		// sync.Once so releaseWriter can be called explicitly right after the
+		// last write below *and* safely again via defer (covering any error
+		// return in between) without double-Done()-ing the entry's WaitGroup.
+		var once sync.Once
+		releaseWriter = func() { once.Do(rawRelease) }
+		defer releaseWriter()
 	} else {
 		// db-log-rotate disabled: append only, no rotation/pruning, leave
 		// retention to external logrotate/custom tooling.
-		f, err = os.OpenFile(logfile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+		logfile := server.DBLogFilePath(DBLogSlowQuery)
+		file, ferr := os.OpenFile(logfile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+		if ferr != nil {
+			return fmt.Errorf("Error writing slow queries logs on %s. Err : %v", server.URL, ferr)
+		}
+		defer file.Close()
+		f = file
 	}
-	if err != nil {
-		return fmt.Errorf("Error writing slow queries logs on %s. Err : %v", server.URL, err)
-	}
-	defer f.Close()
 
 	// Stream rows one at a time instead of loading the whole buffer table
 	// into memory: this query has no LIMIT, and a large backlog (first run
@@ -1354,6 +1364,12 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("Error iterating slow queries logs in buffer table on %s: %v", server.URL, err)
 	}
+
+	// Done writing through f: release now instead of waiting for this call's
+	// ~60s tail (RotateSystemLogs + Sleep below), so a reload racing with
+	// that tail can't leave this borrow open for tens of seconds after the
+	// last actual write (see getDBLogRotatingWriter).
+	releaseWriter()
 
 	if err := dbhelper.MoveLogsToDailyTable(Conn, server.DBVersion, "slow_log", timeStampString, timeout); err != nil {
 		return fmt.Errorf("Error moving logs from buffer to daily table on %s: %v", server.URL, err)

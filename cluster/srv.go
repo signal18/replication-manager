@@ -244,14 +244,14 @@ type ServerMonitor struct {
 	LastBackupMeta              ServerBackupMeta        `json:"lastBackupMeta"`
 	IsNeedPathCheck             bool
 	HasConfigPathChanged        bool
-	HasConfigDiff               bool       `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config
-	RestartNode                 string     // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
-	RestartRid                  string     // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
-	jobMutex                    sync.Mutex // protects IsRunningJobs flag
-	configGenMutex              sync.Mutex // protects config generation operations
-	dbLogMigrateMutex           sync.Mutex // serializes concurrent attempts at the lazy legacy->backup-backed fetched DB log migration
-	dbLogMigrated               atomic.Bool // set once a migration pass completes with no errors; left false to allow retry after a transient failure
-	backupMetaMutex             sync.Mutex  // protects LastBackupMeta from concurrent Restic callback updates
+	HasConfigDiff               bool         `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config
+	RestartNode                 string       // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
+	RestartRid                  string       // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
+	jobMutex                    sync.Mutex   // protects IsRunningJobs flag
+	configGenMutex              sync.Mutex   // protects config generation operations
+	dbLogMigrateMutex           sync.Mutex   // serializes concurrent attempts at the lazy legacy->backup-backed fetched DB log migration
+	dbLogMigrated               atomic.Bool  // set once a migration pass completes with no errors; left false to allow retry after a transient failure
+	backupMetaMutex             sync.Mutex   // protects LastBackupMeta from concurrent Restic callback updates
 	rejoinInProgress            atomic.Bool  // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
 	reseedFromRejoin            atomic.Bool  // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
 	rejoinReseedStart           atomic.Int64 // unix-nanos when the rejoin armed its reseed; drives the generic "rejoin reseed in progress, started T" state (WARN0189) for methods without byte instrumentation

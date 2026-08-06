@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -103,6 +104,84 @@ func (cluster *Cluster) RestartDBLogTailers() {
 		srv.dbLogMigrated.Store(false)
 		srv.RestartLogTailers()
 	}
+	// Every server's DBLogFilePath just moved (legacy <-> backup-backed), so
+	// every currently-cached writer is now keyed by a stale path; nothing
+	// will ever look it up again under that old key.
+	cluster.pruneStaleDBLogWriters()
+}
+
+// CloseAllDBLogWriters closes every cached DB log rotating writer for this
+// cluster that is not currently borrowed, and marks every borrowed one stale
+// so its last release (see getDBLogRotatingWriter) closes it instead. Call
+// whenever every cached path can become stale or unreachable at once and
+// nothing else would notice:
+//   - db-log-rotate disabled at runtime (server/api_cluster.go) -- unlike a
+//     path/threshold change, nothing re-acquires (and so nothing lazily
+//     replaces) a cached writer once DBLogRotate goes false, since both call
+//     sites (GetSlowLogTable, SSTRunReceiverToDBLogFile) gate on the flag
+//     before ever calling getDBLogRotatingWriter.
+//   - cluster teardown (Cluster.Close).
+//
+// For a reload or single-server removal, where most cached paths are still
+// valid and should be left alone/reused, use pruneStaleDBLogWriters instead.
+func (cluster *Cluster) CloseAllDBLogWriters() {
+	cluster.dbLogWriterMutex.Lock()
+	defer cluster.dbLogWriterMutex.Unlock()
+
+	for path, entry := range cluster.dbLogWriters {
+		if entry.borrowers > 0 {
+			entry.stale = true
+			continue
+		}
+		delete(cluster.dbLogWriters, path)
+		entry.writer.Close()
+	}
+}
+
+// pruneStaleDBLogWriters closes every cached DB log writer whose canonical
+// path no longer corresponds to any current server's DBLogFilePath (marking
+// a still-borrowed one stale instead, same as CloseAllDBLogWriters -- see
+// getDBLogRotatingWriter). Call after cluster.Servers changes (reload's
+// newServerList, server removal) or after any single server's canonical DB
+// log path changes (a db-log-on-backup-storage flip, via
+// RestartDBLogTailers).
+//
+// This is deliberately NOT "close everything and let callers recreate":
+// an ordinary reload gives every still-monitored host a brand new
+// *ServerMonitor object (see newServerMonitor), even though its
+// DBLogFilePath is unchanged. Evicting on every reload would let an old
+// ServerMonitor's in-flight GetSlowLogTable/SST borrow and a new
+// ServerMonitor's freshly acquired writer both exist for the same physical
+// path at once -- two independent *lumberjack.Logger instances with
+// independent size/rotation bookkeeping, which can lose data into a backup
+// file if either one rotates. Diffing by path and only closing entries with
+// no current owner avoids that: still-valid entries are left cached and
+// reused across the handoff.
+func (cluster *Cluster) pruneStaleDBLogWriters() {
+	valid := make(map[string]bool)
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+		for _, kind := range []DBLogKind{DBLogError, DBLogSlowQuery, DBLogAudit, DBLogSqlError} {
+			valid[srv.DBLogFilePath(kind)] = true
+		}
+	}
+
+	cluster.dbLogWriterMutex.Lock()
+	defer cluster.dbLogWriterMutex.Unlock()
+
+	for path, entry := range cluster.dbLogWriters {
+		if valid[path] {
+			continue
+		}
+		if entry.borrowers > 0 {
+			entry.stale = true
+			continue
+		}
+		delete(cluster.dbLogWriters, path)
+		entry.writer.Close()
+	}
 }
 
 // maybeRetryDBLogMigration re-attempts the legacy->backup-backed DB log
@@ -155,6 +234,154 @@ func (server *ServerMonitor) DBLogDir() string {
 // DBLogFilePath returns the canonical path for one fetched DB log file.
 func (server *ServerMonitor) DBLogFilePath(kind DBLogKind) string {
 	return filepath.Join(server.DBLogDir(), kind.filename())
+}
+
+// dbLogWriterEntry is one cached, long-lived rotating writer for a fetched DB
+// log file, keyed by its canonical absolute path in Cluster.dbLogWriters
+// (see getDBLogRotatingWriter), along with the rotation thresholds it was
+// opened against.
+//
+// borrowers and stale (both protected by Cluster.dbLogWriterMutex, like the
+// map itself) track in-flight borrows and defer closing a writer that no
+// longer matches -- a threshold change, a path becoming unreachable
+// (pruneStaleDBLogWriters), CloseAllDBLogWriters, or cluster teardown --
+// until the last borrower releases it, instead of replacing it immediately.
+// Replacing immediately would let a still-in-flight borrower (the SST
+// receiver path, SSTRunReceiverToDBLogFile, can hold one open for as long as
+// sstStreamIdleTimeout allows via an async goroutine, stream_copy_to_file,
+// that keeps writing after the acquire call returns) keep using the old
+// writer while a fresh acquire gets a second, independent *lumberjack.Logger
+// for the very same path -- two independent size/rotation bookkeepers that
+// can lose data into a backup file if either one rotates. Marking stale and
+// deferring the swap keeps at most one live writer per path at all times, at
+// the cost of a threshold/path change not taking effect until whoever is
+// currently borrowing the old writer finishes.
+type dbLogWriterEntry struct {
+	writer     io.WriteCloser
+	maxSize    int
+	maxBackups int
+	maxAge     int
+	borrowers  int
+	stale      bool
+}
+
+// getDBLogRotatingWriter acquires this cluster's long-lived rotating writer
+// for server/kind, creating it -- or replacing it, once no borrower is left
+// using it, if the db-log-rotate-max-* thresholds changed at runtime
+// (server/api_cluster.go) -- as needed. Only call when
+// cluster.Conf.DBLogRotate is true.
+//
+// The cache is Cluster-scoped and keyed by server.DBLogFilePath(kind), not
+// per-ServerMonitor: a reload replaces every *ServerMonitor with a fresh
+// instance even for an unchanged host (see newServerMonitor), so keying by
+// ServerMonitor identity would make an ordinary reload evict and recreate a
+// writer whose underlying file hasn't gone anywhere, opening a window where
+// an old ServerMonitor's still-in-flight borrow and a new ServerMonitor's
+// fresh writer both exist for the same physical path at once. Keying by path
+// instead means both old and new ServerMonitor objects for the same host
+// resolve to the very same cache entry.
+//
+// lumberjack.Logger.MaxSize/MaxBackups/MaxAge are plain fields copied in at
+// construction, not re-read from cluster.Conf on every write, so a runtime
+// threshold change would otherwise never reach an already-cached writer.
+// Comparing them here on every acquire keeps that setting live the same way
+// it was before caching was introduced -- modulo the deferral described on
+// dbLogWriterEntry: a threshold change while the current writer is still
+// borrowed keeps serving that writer (now marked stale) to every acquirer
+// until the last one releases it, rather than risk a second live writer for
+// the same path.
+//
+// The returned writer is cluster-owned: callers write to it but must NOT
+// close it. Instead, the caller MUST call the returned release func exactly
+// once when it is done writing through it -- when GetSlowLogTable's export
+// finishes, or when an SST receiver's stream ends.
+//
+// A fresh lumberjack.Logger leaks a goroutine on every Close (mill() starts
+// millRun on first Write, and Close never stops it), so creating one per call
+// -- as this used to do -- accumulates one leaked goroutine per call. Caching
+// it here means the leak happens at most once per path/threshold-set instead
+// of once per call.
+func (server *ServerMonitor) getDBLogRotatingWriter(kind DBLogKind) (io.Writer, func(), error) {
+	cluster := server.ClusterGroup
+	logfile := server.DBLogFilePath(kind)
+	maxSize := cluster.Conf.DBLogRotateMaxSize
+	maxBackups := cluster.Conf.DBLogRotateMaxBackup
+	maxAge := cluster.Conf.DBLogRotateMaxAge
+
+	cluster.dbLogWriterMutex.Lock()
+	defer cluster.dbLogWriterMutex.Unlock()
+
+	if entry := cluster.dbLogWriters[logfile]; entry != nil {
+		matches := entry.maxSize == maxSize && entry.maxBackups == maxBackups && entry.maxAge == maxAge
+		if !entry.stale && matches {
+			entry.borrowers++
+			return entry.writer, cluster.releaseDBLogWriterFunc(logfile, entry), nil
+		}
+		if entry.borrowers > 0 {
+			// Still borrowed: keep serving this writer (now stale) rather
+			// than start a second live *lumberjack.Logger for this path. The
+			// last release below swaps it out.
+			entry.stale = true
+			entry.borrowers++
+			return entry.writer, cluster.releaseDBLogWriterFunc(logfile, entry), nil
+		}
+		// Nobody borrowing it: safe to replace right now.
+		delete(cluster.dbLogWriters, logfile)
+		entry.writer.Close()
+	}
+
+	rw, err := s18log.NewRotateWriter(s18log.RotateFileConfig{
+		Filename:   logfile,
+		MaxSize:    maxSize,
+		MaxBackups: maxBackups,
+		MaxAge:     maxAge,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	entry := &dbLogWriterEntry{writer: rw, maxSize: maxSize, maxBackups: maxBackups, maxAge: maxAge, borrowers: 1}
+
+	if cluster.dbLogWriters == nil {
+		cluster.dbLogWriters = make(map[string]*dbLogWriterEntry)
+	}
+	cluster.dbLogWriters[logfile] = entry
+	return rw, cluster.releaseDBLogWriterFunc(logfile, entry), nil
+}
+
+// releaseDBLogWriterFunc returns the release func getDBLogRotatingWriter
+// hands back to a caller: decrements entry's borrower count, and if that was
+// the last borrower of a stale entry, removes it from the cache and closes
+// its writer. A non-stale entry's release is just accounting -- it stays
+// cached for reuse.
+//
+// Wrapped in a sync.Once so the func is safe to call more than once: callers
+// are documented to call it exactly once, but a defensive Once here means a
+// caller mistake (e.g. an extra defer alongside an explicit call on an early
+// return path) can't double-decrement borrowers -- which would otherwise
+// desync the count from actual outstanding borrows and risk closing a writer
+// a still-active, unrelated borrower is using.
+func (cluster *Cluster) releaseDBLogWriterFunc(logfile string, entry *dbLogWriterEntry) func() {
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			cluster.dbLogWriterMutex.Lock()
+			defer cluster.dbLogWriterMutex.Unlock()
+
+			entry.borrowers--
+			if entry.borrowers > 0 || !entry.stale {
+				return
+			}
+			// Only remove it if it's still the cached entry for this path --
+			// always true in practice, since a stale entry is never replaced
+			// in the map until it drains (see getDBLogRotatingWriter), but
+			// cheap to guard rather than assume.
+			if cluster.dbLogWriters[logfile] == entry {
+				delete(cluster.dbLogWriters, logfile)
+			}
+			entry.writer.Close()
+		})
+	}
 }
 
 // ensureDBLogsMigrated runs the legacy->backup-backed DB log migration at
@@ -310,9 +537,7 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	}
 	server.SetWaitErrorlogCookie()
 
-	filename := server.DBLogFilePath(DBLogError)
-
-	port, err := cluster.SSTRunReceiverToDBLogFile(server, filename, task)
+	port, err := cluster.SSTRunReceiverToDBLogFile(server, DBLogError, task)
 	if err != nil {
 		return 0, nil
 	}
@@ -335,9 +560,7 @@ func (server *ServerMonitor) JobBackupAuditLog() (int64, error) {
 	}
 	server.SetWaitAuditlogCookie()
 
-	filename := server.DBLogFilePath(DBLogAudit)
-
-	port, err := cluster.SSTRunReceiverToDBLogFile(server, filename, task)
+	port, err := cluster.SSTRunReceiverToDBLogFile(server, DBLogAudit, task)
 	if err != nil {
 		return 0, nil
 	}
@@ -360,9 +583,7 @@ func (server *ServerMonitor) JobBackupSqlErrorLog() (int64, error) {
 	}
 	server.SetWaitSqlErrorlogCookie()
 
-	filename := server.DBLogFilePath(DBLogSqlError)
-
-	port, err := cluster.SSTRunReceiverToDBLogFile(server, filename, task)
+	port, err := cluster.SSTRunReceiverToDBLogFile(server, DBLogSqlError, task)
 	if err != nil {
 		return 0, nil
 	}
@@ -388,9 +609,7 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 		return 0, nil
 	}
 
-	filename := server.DBLogFilePath(DBLogSlowQuery)
-
-	port, err := cluster.SSTRunReceiverToDBLogFile(server, filename, task)
+	port, err := cluster.SSTRunReceiverToDBLogFile(server, DBLogSlowQuery, task)
 	if err != nil {
 		return 0, nil
 	}
