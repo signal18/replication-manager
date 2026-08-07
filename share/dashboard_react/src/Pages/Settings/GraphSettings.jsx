@@ -2,6 +2,7 @@ import { Box, Flex } from '@chakra-ui/react'
 import React, { useEffect, useState } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
+import NumberInput from '../../components/NumberInput'
 import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting, updateGraphiteBlackList, updateGraphiteWhiteList } from '../../redux/settingsSlice'
@@ -35,6 +36,7 @@ function GraphSettings({ selectedCluster, user, openConfirmModal }) {
 
   const hMetrics = `**Graphite Metrics**\n\nEnables pushing cluster and server metrics to a Graphite server.\nRequires a Graphite server reachable from the replication-manager host.\n\nConfig: \`graphite-metrics\``
   const hEmbedded = `**Graphite Embedded**\n\nStarts an embedded Graphite-compatible server inside replication-manager.\nUseful for development or small deployments without a separate Graphite installation.\n\nConfig: \`graphite-embedded\``
+  const hQueueLimit = `**Graphite Metrics Queue Limit**\n\nMax metrics buffered in memory awaiting flush to the carbon sink. Oldest are dropped once exceeded, protecting against unbounded memory growth when the sink is slow or unreachable.\n\n0 falls back to the default (100000).\n\nConfig: \`graphite-metrics-queue-limit\``
   const hTemplate = `**Reset Graphite Template**\n\nResets the Graphite metric filter list to the selected built-in template.\nThis overwrites any custom whitelist or blacklist currently configured.\n\nConfig: \`reset-graphite-filterlist\``
   const hWhitelist = `**Graphite Whitelist**\n\nRegular expression list (one per line) of metric names to **include** when forwarding to Graphite.\nLeave empty to forward all metrics (subject to the blacklist).\n\nConfig: \`graphite-whitelist\``
   const hBlacklist = `**Graphite Blacklist**\n\nRegular expression list (one per line) of metric names to **exclude** when forwarding to Graphite.\nMetrics matching any blacklist entry are dropped even if they match the whitelist.\n\nConfig: \`graphite-blacklist\``
@@ -44,6 +46,22 @@ function GraphSettings({ selectedCluster, user, openConfirmModal }) {
       key: 'GRAPHITE CONFIG', value: [
         { key: 'Graphite Metrics', help: h(hMetrics, 'Graphite Metrics'), value: (<RMSwitch confirmTitle={'Confirm switch settings for graphite-metrics?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'graphite-metrics' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.graphiteMetrics} />) },
         { key: 'Graphite Embedded', help: h(hEmbedded, 'Graphite Embedded'), value: (<RMSwitch confirmTitle={'Confirm switch settings for graphite-embedded?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'graphite-embedded' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.graphiteEmbedded} />) },
+        {
+          key: 'Graphite Metrics Queue Limit',
+          help: h(hQueueLimit, 'Graphite Metrics Queue Limit'),
+          value: (
+            <NumberInput
+              min={0}
+              max={1000000}
+              value={selectedCluster?.config?.graphiteMetricsQueueLimit}
+              showEditButton={true}
+              showConfirmModal={true}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              confirmTitle={`Confirm change graphite metrics queue limit to: `}
+              onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'graphite-metrics-queue-limit', value: value.length === 0 ? '100000' : value }))}
+            />
+          )
+        },
       ]
     },
     {

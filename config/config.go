@@ -524,6 +524,7 @@ type Config struct {
 	GraphiteCarbonLinkPort                    int                          `scope:"server" mapstructure:"graphite-carbon-link-port" toml:"graphite-carbon-link-port" json:"graphiteCarbonLinkPort"`
 	GraphiteCarbonPicklePort                  int                          `scope:"server" mapstructure:"graphite-carbon-pickle-port" toml:"graphite-carbon-pickle-port" json:"graphiteCarbonPicklePort"`
 	GraphiteCarbonPprofPort                   int                          `scope:"server" mapstructure:"graphite-carbon-pprof-port" toml:"graphite-carbon-pprof-port" json:"graphiteCarbonPprofPort"`
+	GraphiteMetricsQueueLimit                 int                          `mapstructure:"graphite-metrics-queue-limit" toml:"graphite-metrics-queue-limit" json:"graphiteMetricsQueueLimit"`
 	SysbenchBinaryPath                        string                       `scope:"server" mapstructure:"sysbench-binary-path" toml:"sysbench-binary-path" json:"sysbenchBinaryPath"`
 	SysbenchTest                              string                       `mapstructure:"sysbench-test" toml:"sysbench-test" json:"sysbenchBinaryTest"`
 	SysbenchV1                                bool                         `scope:"server" mapstructure:"sysbench-v1" toml:"sysbench-v1" json:"sysbenchV1"` // deprecated, version is now detected by binary

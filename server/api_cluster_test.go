@@ -155,6 +155,62 @@ func TestDecodeS3SyncRequestBody(t *testing.T) {
 	})
 }
 
+// TestSetClusterSetting_GraphiteMetricsQueueLimit guards against
+// graphite-metrics-queue-limit regressing to "setting not found" in
+// setClusterSetting, the hardcoded (not reflection-driven) switch that
+// /api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}
+// resolves to. The field is intentionally cluster-scoped (no scope:"server"
+// tag) because the queue/counters it bounds live on each cluster's
+// ClusterGraphite instance — see doc/implementation/cluster/GRAPHITE_SCOPE.md.
+func TestSetClusterSetting_GraphiteMetricsQueueLimit(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	if err := repman.setClusterSetting(cl, "graphite-metrics-queue-limit", "250000"); err != nil {
+		t.Fatalf("setClusterSetting(graphite-metrics-queue-limit): unexpected error: %v", err)
+	}
+	if cl.Conf.GraphiteMetricsQueueLimit != 250000 {
+		t.Fatalf("expected GraphiteMetricsQueueLimit=250000, got %d", cl.Conf.GraphiteMetricsQueueLimit)
+	}
+}
+
+// TestSetClusterSetting_GraphiteMetricsQueueLimit_IndependentPerCluster proves
+// two clusters monitored by the same repman instance can hold different
+// queue-limit values — the actual reason the field is cluster-scoped rather
+// than scope:"server" (which would force one shared value across every
+// cluster, as all other graphite-* settings currently do).
+func TestSetClusterSetting_GraphiteMetricsQueueLimit_IndependentPerCluster(t *testing.T) {
+	cl1 := newTestClusterForAPI(t)
+	cl1.Name = "cluster1"
+	cl1.Conf.Secrets = make(map[string]config.Secret)
+	cl1.ConfigManager = newConfigManagerForTest()
+
+	cl2 := newTestClusterForAPI(t)
+	cl2.Name = "cluster2"
+	cl2.Conf.Secrets = make(map[string]config.Secret)
+	cl2.ConfigManager = newConfigManagerForTest()
+
+	repman := &ReplicationManager{
+		Clusters: map[string]*cluster.Cluster{cl1.Name: cl1, cl2.Name: cl2},
+	}
+
+	if err := repman.setClusterSetting(cl1, "graphite-metrics-queue-limit", "50000"); err != nil {
+		t.Fatalf("setClusterSetting on cluster1: unexpected error: %v", err)
+	}
+	if err := repman.setClusterSetting(cl2, "graphite-metrics-queue-limit", "500000"); err != nil {
+		t.Fatalf("setClusterSetting on cluster2: unexpected error: %v", err)
+	}
+
+	if cl1.Conf.GraphiteMetricsQueueLimit != 50000 {
+		t.Fatalf("expected cluster1 limit 50000, got %d", cl1.Conf.GraphiteMetricsQueueLimit)
+	}
+	if cl2.Conf.GraphiteMetricsQueueLimit != 500000 {
+		t.Fatalf("expected cluster2 limit 500000, got %d", cl2.Conf.GraphiteMetricsQueueLimit)
+	}
+}
+
 func TestNormalizeCompressionOverride(t *testing.T) {
 	tests := []struct {
 		name    string

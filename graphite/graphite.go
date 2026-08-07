@@ -55,7 +55,10 @@ func (graphite *Graphite) IsNop() bool {
 func (graphite *Graphite) Connect() error {
 	if !graphite.IsNop() {
 		if graphite.conn != nil {
-			graphite.conn.Close()
+			// sendMetrics closes and nils conn on any write/deadline
+			// failure, so a non-nil conn here means the last use was
+			// healthy — reuse it instead of paying a redial every flush.
+			return nil
 		}
 
 		address := fmt.Sprintf("%s:%d", graphite.Host, graphite.Port)
@@ -106,7 +109,11 @@ func (graphite *Graphite) sendMetrics(metrics []Metric) error {
 		}
 		return nil
 	}
-	graphite.conn.SetWriteDeadline(time.Now().Add(graphite.Timeout))
+	if err := graphite.conn.SetWriteDeadline(time.Now().Add(graphite.Timeout)); err != nil {
+		graphite.conn.Close()
+		graphite.conn = nil
+		return err
+	}
 
 	zeroed_metric := Metric{} // ignore unintialized metrics
 	buf := bytes.NewBufferString("")
@@ -134,6 +141,8 @@ func (graphite *Graphite) sendMetrics(metrics []Metric) error {
 		_, err := graphite.conn.Write(buf.Bytes())
 		//fmt.Print("Sent msg:", buf.String(), "'")
 		if err != nil {
+			graphite.conn.Close()
+			graphite.conn = nil
 			return err
 		}
 	}

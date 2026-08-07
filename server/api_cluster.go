@@ -3832,6 +3832,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetLogMailerLevel(val)
 	case "graphite-whitelist-template":
 		mycluster.SetGraphiteWhitelistTemplate(value)
+	case "graphite-metrics-queue-limit":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.GraphiteMetricsQueueLimit = val
 	case "topology-target":
 		mycluster.BootstrapTopology(value)
 	case "log-task-level", "log-level-task":

@@ -14,6 +14,17 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/share"
+	"github.com/signal18/replication-manager/utils/state"
+)
+
+const (
+	// defaultGraphiteMetricsQueueLimit bounds the in-memory metrics queue
+	// when Conf.GraphiteMetricsQueueLimit is unset/<=0 — never unbounded.
+	defaultGraphiteMetricsQueueLimit = 100000
+	// graphiteSustainedDropThreshold is how many consecutive flush cycles
+	// must observe drops before WARN0192 is raised. A single trim on an
+	// otherwise-healthy sink (e.g. a burst tick) must not page anyone.
+	graphiteSustainedDropThreshold = 2
 )
 
 type GraphiteFilterList struct {
@@ -31,6 +42,16 @@ type ClusterGraphite struct {
 	metrics      []graphite.Metric
 	lock         sync.Mutex
 	flushing     atomic.Bool
+
+	// DroppedMetricsTotal is a monotonic count of metrics dropped by the
+	// queue cap (observability). consecutiveDropFlushes/lastDroppedAtFlush
+	// are only touched from SendGraphiteMetrics, which is single-flighted
+	// via `flushing`, so they need no separate locking. They track whether
+	// drops persist across flush cycles, which is what actually indicates
+	// the carbon sink is failing, as opposed to a single transient trim.
+	DroppedMetricsTotal    atomic.Uint64
+	consecutiveDropFlushes int
+	lastDroppedAtFlush     uint64
 }
 
 func (cluster *Cluster) NewClusterGraphite() {
@@ -121,7 +142,11 @@ func (cg *ClusterGraphite) AddMetrics(metrics []graphite.Metric) {
 	cg.lock.Lock()
 	defer cg.lock.Unlock()
 
-	cg.metrics = append(cg.metrics, metrics...)
+	bounded, dropped := cg.boundMetrics(cg.metrics, metrics)
+	cg.metrics = bounded
+	if dropped > 0 {
+		cg.DroppedMetricsTotal.Add(uint64(dropped))
+	}
 }
 
 func (cg *ClusterGraphite) SendGraphiteMetrics() error {
@@ -134,6 +159,10 @@ func (cg *ClusterGraphite) SendGraphiteMetrics() error {
 		return nil
 	}
 	defer cg.flushing.Store(false)
+
+	// Evaluated once per flush cycle, before the empty-queue check, so a
+	// quiet flush still decays consecutiveDropFlushes back toward recovery.
+	cg.checkSustainedDrops()
 
 	cg.lock.Lock()
 	batch := cg.metrics
@@ -150,7 +179,7 @@ func (cg *ClusterGraphite) SendGraphiteMetrics() error {
 		return err
 	}
 
-	err = graph.Connect() // Ensure connection is established
+	err = graph.Connect() // Reuses the existing connection if still healthy
 	if err != nil {
 		cg.requeue(batch)
 		return err
@@ -170,7 +199,70 @@ func (cg *ClusterGraphite) SendGraphiteMetrics() error {
 func (cg *ClusterGraphite) requeue(batch []graphite.Metric) {
 	cg.lock.Lock()
 	defer cg.lock.Unlock()
-	cg.metrics = append(batch, cg.metrics...)
+
+	bounded, dropped := cg.boundMetrics(batch, cg.metrics)
+	cg.metrics = bounded
+	if dropped > 0 {
+		cg.DroppedMetricsTotal.Add(uint64(dropped))
+	}
+}
+
+// queueLimit resolves the configured cap, falling back to a hardcoded safe
+// default when unset, <= 0, or when cg.cl is nil (as in unit tests that
+// construct a bare &ClusterGraphite{}) — never unbounded.
+func (cg *ClusterGraphite) queueLimit() int {
+	if cg.cl != nil && cg.cl.Conf.GraphiteMetricsQueueLimit > 0 {
+		return cg.cl.Conf.GraphiteMetricsQueueLimit
+	}
+	return defaultGraphiteMetricsQueueLimit
+}
+
+// boundMetrics combines existing (older) and incoming (newer) metrics into
+// one queue capped at queueLimit(), dropping from the front (oldest first)
+// when over. On a trim, the result is a freshly allocated slice so the
+// dropped metric strings can actually be garbage-collected rather than
+// lingering in a reused backing array. Returns the bounded queue and how
+// many metrics were dropped (0 if under the limit).
+func (cg *ClusterGraphite) boundMetrics(existing, incoming []graphite.Metric) ([]graphite.Metric, int) {
+	limit := cg.queueLimit()
+	total := len(existing) + len(incoming)
+	if total <= limit {
+		return append(existing, incoming...), 0
+	}
+
+	dropped := total - limit
+	bounded := make([]graphite.Metric, 0, limit)
+	if dropped < len(existing) {
+		bounded = append(bounded, existing[dropped:]...)
+		bounded = append(bounded, incoming...)
+	} else {
+		bounded = append(bounded, incoming[dropped-len(existing):]...)
+	}
+	return bounded, dropped
+}
+
+// checkSustainedDrops runs once per flush cycle (called only from
+// SendGraphiteMetrics, so it's implicitly single-flighted) and raises
+// WARN0192 once drops have persisted across graphiteSustainedDropThreshold
+// consecutive cycles. A cycle with no new drops resets the counter, and
+// since nothing re-raises the state that tick, it lapses on its own per the
+// StateMachine's OldState/CurState rotation.
+func (cg *ClusterGraphite) checkSustainedDrops() {
+	total := cg.DroppedMetricsTotal.Load()
+	if total > cg.lastDroppedAtFlush {
+		cg.consecutiveDropFlushes++
+	} else {
+		cg.consecutiveDropFlushes = 0
+	}
+	cg.lastDroppedAtFlush = total
+
+	if cg.cl != nil && cg.consecutiveDropFlushes >= graphiteSustainedDropThreshold {
+		cg.cl.SetState("WARN0192", state.State{
+			ErrType: config.LvlWarn,
+			ErrDesc: fmt.Sprintf(clusterError["WARN0192"], cg.queueLimit(), cg.consecutiveDropFlushes, total),
+			ErrFrom: "GRAPHITE",
+		})
+	}
 }
 
 func (cg *ClusterGraphite) CopyFromShareDir(filtertype string) error {
