@@ -191,5 +191,39 @@ Size`).
 
 ### Tests
 
-`cluster/cluster_graphite_test.go`, `graphite/graphite_test.go`,
-`server/api_global_settings_test.go`.
+Unit: `cluster/cluster_graphite_test.go`, `graphite/graphite_test.go`,
+`server/api_cluster_test.go` (`TestSetClusterSetting_GraphiteMetricsQueueLimit*`).
+
+Regtest (T13 — real cluster, not a mock): `testGraphiteMetricsQueueBound`
+(`regtest/test_graphite_metrics_queue_bound.go`, registered in
+`regtest/regtest.go` and `server/regtest.go`). Points the live cluster's
+Graphite connection at a guaranteed-refused TCP address, feeds it bursts of
+metrics well over the configured cap, and asserts:
+
+- queue length never exceeds the cap (`ClusterGraphite.QueueLength()`, an
+  accessor added for this purpose — `cg.metrics` is otherwise unexported so
+  its bound can't be observed or bypassed from outside the package);
+- `WARN0192` is raised once drops persist across sustained flush cycles —
+  checked via **both** `StateMachine.CurState.Search(...)` and
+  `IsInState(...)` (which reads `OldState`), since each has the opposite
+  blind spot against the real concurrent monitor loop's own
+  `ClearState()` rotation: `CurState` can be wiped by a rotation racing
+  right after this scenario's own call raised it, while `IsInState` won't
+  see a freshly raised state until the *next* rotation completes (which
+  depends on the ambient `monitoring-ticker` cadence, not this scenario's
+  own retry loop) — either one seeing it is sufficient;
+- a flush succeeds again once connectivity is restored — against a
+  **locally-started accept-and-discard listener**, not the cluster's
+  original/ambient Graphite destination, since that destination's
+  reachability inside any given regtest environment isn't actually
+  guaranteed (embedded carbon may be disabled, or the scenario's
+  `config.toml` may not configure a real sink) and isn't part of #1675's
+  acceptance criteria anyway. This also exercises the real
+  reconnect-after-failure path, since the broken connection was nilled on
+  failure and must be redialed, not reused.
+
+Written to tolerate the real concurrent per-tick monitor goroutine also
+running against the same live cluster throughout (bounded retries /
+inequality checks rather than assuming exclusive access, and no assertion
+depends on ambient environment state), unlike the deterministic bare-struct
+unit tests.

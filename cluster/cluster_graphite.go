@@ -126,6 +126,16 @@ func (cg *ClusterGraphite) SetGraphiteConnection(gc *graphite.Graphite) {
 	cg.gc = gc
 }
 
+// QueueLength returns the current number of buffered metrics awaiting
+// flush. Read-only observability accessor — the queue itself (cg.metrics)
+// is unexported so its bound (enforced by boundMetrics on every mutation)
+// can't be silently bypassed by external code.
+func (cg *ClusterGraphite) QueueLength() int {
+	cg.lock.Lock()
+	defer cg.lock.Unlock()
+	return len(cg.metrics)
+}
+
 func (cg *ClusterGraphite) GetGraphiteConnection() (*graphite.Graphite, error) {
 	if cg.gc != nil {
 		return cg.gc, nil
