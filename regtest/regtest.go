@@ -87,6 +87,7 @@ var tests = []string{
 	"testResticReseedMariabackup",
 	"testOpenSVCUpgradeWarnRecovery",
 	"testSchemaPlugin",
+	"testGraphiteMetricsQueueBound",
 }
 
 const recoverTime = 8
