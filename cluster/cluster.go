@@ -460,6 +460,18 @@ type Cluster struct {
 	pluginRejections    map[string]string `json:"-"`
 	pluginPubKeyMissing string            `json:"-"`
 	pluginStateLock     sync.Mutex        `json:"-"`
+	// dbLogWriterMutex protects dbLogWriters, this cluster's cache of
+	// long-lived rotating writers for fetched DB log files. Cluster-scoped
+	// (not per-ServerMonitor) and keyed by canonical absolute path (see
+	// getDBLogRotatingWriter in srv_job_logs.go): a reload replaces every
+	// *ServerMonitor with a fresh instance even when the underlying host is
+	// unchanged, so a per-instance cache would otherwise let an old
+	// ServerMonitor's in-flight writer and a new ServerMonitor's freshly
+	// acquired writer both exist for the same physical file at once.
+	// Cluster-scoping and path-keying means the same cache entry is found
+	// and reused across that handoff instead.
+	dbLogWriterMutex sync.Mutex                   `json:"-"`
+	dbLogWriters     map[string]*dbLogWriterEntry `json:"-"`
 	// variableDiffSignature is the identity of the last logged variable diff
 	// set so MonitorVariablesDiff only logs/persists on real changes.
 	variableDiffSignature string `json:"-"`
@@ -926,6 +938,7 @@ var pstates30 = []string{
 	"WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
 	"WARN0153", // Job related
 	"WARN0158", // Job secrets mismatch
+	"WARN0190", "WARN0191", // Rejoin catalog (HasCatalogBackupForRejoin runs %30)
 	"CREDIT01", // Credit related
 }
 
@@ -2419,6 +2432,7 @@ func (cluster *Cluster) Close() {
 	for _, server := range cluster.Servers {
 		defer server.Conn.Close()
 	}
+	cluster.CloseAllDBLogWriters()
 }
 
 func (cluster *Cluster) ResetFailoverCtr() {

@@ -9,9 +9,9 @@ package config
 // DatabaseConfig contains all database server-related configuration
 type DatabaseConfig struct {
 	// Credentials and Hosts
-	Credential           string `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
-	Hosts                string `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
-	StateChangeScript    string `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
+	Credential        string `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
+	Hosts             string `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
+	StateChangeScript string `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
 
 	// Delayed Replication
 	DelayedHosts string `mapstructure:"replication-delayed-hosts" toml:"replication-delayed-hosts" json:"replicationDelayedHosts"`
@@ -27,15 +27,16 @@ type DatabaseConfig struct {
 	TLSSSLMode                 string `mapstructure:"db-servers-tls-ssl-mode" toml:"db-servers-tls-ssl-mode" json:"dbServersTlsSslMode" validate:"omitempty,oneof=DISABLED PREFERRED REQUIRED VERIFY_CA VERIFY_IDENTITY"`
 
 	// Server Selection
-	PreferedMaster   string `mapstructure:"db-servers-prefered-master" toml:"db-servers-prefered-master" json:"dbServersPreferedMaster"`
-	BackupServers    string `mapstructure:"db-servers-backup-hosts" toml:"db-servers-backup-hosts" json:"dbServersBackupHosts"`
-	IgnoredHosts     string `mapstructure:"db-servers-ignored-hosts" toml:"db-servers-ignored-hosts" json:"dbServersIgnoredHosts"`
-	IgnoredReadOnly  string `mapstructure:"db-servers-ignored-readonly" toml:"db-servers-ignored-readonly" json:"dbServersIgnoredReadonly"`
+	PreferedMaster  string `mapstructure:"db-servers-prefered-master" toml:"db-servers-prefered-master" json:"dbServersPreferedMaster"`
+	BackupServers   string `mapstructure:"db-servers-backup-hosts" toml:"db-servers-backup-hosts" json:"dbServersBackupHosts"`
+	IgnoredHosts    string `mapstructure:"db-servers-ignored-hosts" toml:"db-servers-ignored-hosts" json:"dbServersIgnoredHosts"`
+	IgnoredReadOnly string `mapstructure:"db-servers-ignored-readonly" toml:"db-servers-ignored-readonly" json:"dbServersIgnoredReadonly"`
 
 	// Timeouts
 	ConnectTimeout int `mapstructure:"db-servers-connect-timeout" toml:"db-servers-connect-timeout" json:"dbServersConnectTimeout" validate:"min=1,max=300"`
 	ExecTimeout    int `mapstructure:"db-servers-exec-timeout" toml:"db-servers-exec-timeout" json:"dbServersExecTimeout" validate:"min=1,max=3600"`
 	ReadTimeout    int `mapstructure:"db-servers-read-timeout" toml:"db-servers-read-timeout" json:"dbServersReadTimeout" validate:"min=1,max=86400"`
+	DNSTimeout     int `mapstructure:"db-servers-dns-timeout" toml:"db-servers-dns-timeout" json:"dbServersDnsTimeout" validate:"min=1,max=300"`
 
 	// Network
 	Locality    string `mapstructure:"db-servers-locality" toml:"db-servers-locality" json:"dbServersLocality"`
@@ -55,6 +56,10 @@ func (d *DatabaseConfig) Validate() error {
 
 	if d.ReadTimeout < 1 || d.ReadTimeout > 86400 {
 		return NewValidationError("db-servers-read-timeout", d.ReadTimeout, "must be between 1 and 86400 seconds")
+	}
+
+	if d.DNSTimeout < 1 || d.DNSTimeout > 300 {
+		return NewValidationError("db-servers-dns-timeout", d.DNSTimeout, "must be between 1 and 300 seconds")
 	}
 
 	// Validate SSL mode if specified

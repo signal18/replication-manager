@@ -660,9 +660,14 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 	filePath := pullDir + "/cloud18.toml"
 
 	if repman.Conf.GitUrlPull != "" {
+		// Self-heal a pre-symlink upgrade: a legacy real .pull/<cluster>/plugins
+		// directory blocks the checkout of the ../plugins symlink the -pull repo now
+		// ships, which aborts the whole pull. Normalize it up front.
+		repman.normalizePullPluginSymlinks(pullDir)
 		err := repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.Secrets["git-acces-token"].Value, pullDir)
 		if err != nil {
 			os.RemoveAll(pullDir + "/.git")
+			repman.normalizePullPluginSymlinks(pullDir) // clear any remaining conflict before the retry
 			err = repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.Secrets["git-acces-token"].Value, pullDir)
 			if err != nil {
 				pullErr = err
@@ -894,6 +899,45 @@ func (repman *ReplicationManager) ensurePluginSymlink(clusterPluginDir, sharedDi
 		return false
 	}
 	return true
+}
+
+// normalizePullPluginSymlinks converts any legacy real .pull/<cluster>/plugins
+// directory into the ../plugins symlink the -pull repo ships, BEFORE the git
+// checkout runs. go-git cannot lay a tracked symlink over a real directory
+// ("symlink ../plugins ...: file exists"), which aborts the whole cloud18 pull and
+// never recovers (the retry only wipes .git, not the working tree). Instances
+// upgraded from the pre-symlink layout still carry those real dirs, so this lets
+// them self-heal on the next pull. .pull is fully git-authoritative, so removing a
+// stale dir loses nothing — the shared plugins/ and the symlink are restored by the
+// pull. No-op when .pull is absent (first clone) or the entry is already a symlink.
+func (repman *ReplicationManager) normalizePullPluginSymlinks(pullDir string) {
+	entries, err := os.ReadDir(pullDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == ".git" || e.Name() == logplugin.PluginDirName {
+			continue
+		}
+		clusterPluginDir := filepath.Join(pullDir, e.Name(), logplugin.PluginDirName)
+		fi, lerr := os.Lstat(clusterPluginDir)
+		if lerr != nil || fi.Mode()&os.ModeSymlink != 0 {
+			continue // absent, or already the symlink we want — leave it
+		}
+		if rerr := os.RemoveAll(clusterPluginDir); rerr != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn,
+				"[git] cannot normalize legacy plugin dir %s: %v", clusterPluginDir, rerr)
+			continue
+		}
+		rel, rerr := filepath.Rel(filepath.Dir(clusterPluginDir), filepath.Join(pullDir, logplugin.PluginDirName))
+		if rerr != nil {
+			rel = filepath.Join("..", logplugin.PluginDirName)
+		}
+		// Best-effort: the checkout will also (re)create it from the repo.
+		os.Symlink(rel, clusterPluginDir)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo,
+			"[git] normalized legacy real plugin dir %s -> %s (pre-symlink upgrade self-heal)", clusterPluginDir, rel)
+	}
 }
 
 // ensurePluginSymlinksAtStartup creates the shared plugin dir and migrates
@@ -1680,4 +1724,3 @@ func (repman *ReplicationManager) ShallowClone() error {
 
 	return err
 }
-

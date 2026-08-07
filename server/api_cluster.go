@@ -2700,6 +2700,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchGraphiteMetrics()
 	case "graphite-blacklist":
 		mycluster.SwitchGraphiteBlacklist()
+	case "monitoring-performance-schema":
+		mycluster.SwitchMonitorPFS()
 	case "monitoring-performance-schema-mutex":
 		mycluster.SwitchMonitorPFSMutex()
 	case "monitoring-performance-schema-latch":
@@ -2957,6 +2959,19 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.LogArbitration = !mycluster.Conf.LogArbitration
 	case "onpremise-ssh":
 		mycluster.Conf.OnPremiseSSH = !mycluster.Conf.OnPremiseSSH
+	case "db-log-rotate":
+		mycluster.Conf.DBLogRotate = !mycluster.Conf.DBLogRotate
+		// Nothing else notices this flag turning off -- close any writers
+		// cached while it was on instead of leaving them open indefinitely
+		// (mirrors the db-log-on-backup-storage case below).
+		mycluster.CloseAllDBLogWriters()
+	case "db-log-on-backup-storage":
+		mycluster.Conf.DBLogOnBackupStorage = !mycluster.Conf.DBLogOnBackupStorage
+		// Already-running tailers keep following whatever path they were opened
+		// against; restart them so they pick up the new canonical location
+		// instead of silently going stale until a repman restart (mirrors the
+		// setClusterSetting case for this same setting).
+		mycluster.RestartDBLogTailers()
 	case "monitoring-binlog-events":
 		mycluster.SwitchMonitorBinlogEvents()
 	default:
@@ -3431,7 +3446,15 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 		mycluster.Conf.CompressBackupsCompressionLevel = val
 	case "db-log-rotate":
-		mycluster.Conf.DBLogRotate = applyIsActive(mycluster.Conf.DBLogRotate, isactive)
+		oldVal := mycluster.Conf.DBLogRotate
+		newVal := applyIsActive(mycluster.Conf.DBLogRotate, isactive)
+		mycluster.Conf.DBLogRotate = newVal
+		if newVal != oldVal {
+			// Nothing else notices this flag turning off -- close any writers
+			// cached while it was on instead of leaving them open
+			// indefinitely (mirrors the db-log-on-backup-storage case below).
+			mycluster.CloseAllDBLogWriters()
+		}
 	case "db-log-on-backup-storage":
 		oldVal := mycluster.Conf.DBLogOnBackupStorage
 		newVal := applyIsActive(mycluster.Conf.DBLogOnBackupStorage, isactive)
@@ -3612,6 +3635,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Secrets["db-servers-credential"] = new_secret
 		mycluster.SetClusterMonitorCredentialsFromConfig()
 		// mycluster.SetDbServersMonitoringCredential(value)
+	case "db-servers-dns-timeout":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 1 || val > 300 {
+			return fmt.Errorf("db-servers-dns-timeout must be between 1 and 300 seconds, got %q", value)
+		}
+		mycluster.Conf.DNSTimeout = val
 	case "prov-service-plan":
 		mycluster.SetServicePlan(value)
 	case "prov-net-cni-cluster":

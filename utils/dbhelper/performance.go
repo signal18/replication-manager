@@ -9,10 +9,12 @@
 package dbhelper
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/percona/go-mysql/query"
@@ -199,41 +201,34 @@ func GetSampleQueryFromPFS(db *sqlx.DB, Query PFSQuery) (string, error) {
 	return "", err
 }
 
-// GetQueries fetches digest statistics from performance_schema.events_statements_summary_by_digest.
-// On MySQL/Percona 5.7+ the QUERY_SAMPLE_TEXT column is available directly on the summary table,
-// so we use it with no extra join.  On MariaDB (which lacks that column) we do a correlated
-// lookup against events_statements_history_long, filtering out internal queries.
-// The sample_query field is kept in memory and written to the periodic snapshot log so that
-// EXPLAIN can later be replayed against any captured template without hitting the DB again.
-func GetQueries(db *sqlx.DB, version *version.Version) (map[string]PFSQuery, string, error) {
-
-	vars := make(map[string]PFSQuery)
-	query := "set session group_concat_max_len=2048"
-	db.Exec(query)
-
-	// Build the sample-query expression depending on the server flavour.
-	// MySQL 5.7+ exposes QUERY_SAMPLE_TEXT directly on the summary table — zero extra cost.
-	// MariaDB requires a correlated subquery on events_statements_history_long.
-	var sampleExpr string
+// pfsQueriesSQL builds the digest-capture SELECT for the given server flavour. It is pure
+// (no DB access) so the per-flavour branch is unit-testable.
+//
+//	MySQL/Percona 5.7.9+: read the built-in QUERY_SAMPLE_TEXT column inline (no join).
+//	MariaDB: it has no such column, so the concrete sample per digest is joined from
+//	events_statements_history_long via a NON-correlated, materialized + auto-keyed derived table
+//	(GROUP BY DIGEST) — O(digests + history). This deliberately replaces the old per-digest
+//	correlated subquery, which on MariaDB's unindexed PFS was O(digests × history) (issue #1651);
+//	a projection-list scalar subquery can't be decorrelated by the optimizer, so we hand it a
+//	join it is allowed to index/hash.
+func pfsQueriesSQL(version *version.Version) string {
+	sampleCol := "COALESCE(H.sample_query, '')"
+	sampleJoin := `
+	LEFT JOIN (
+		SELECT DIGEST, MAX(SQL_TEXT) AS sample_query
+		FROM performance_schema.events_statements_history_long
+		WHERE SQL_TEXT IS NOT NULL
+		AND SQL_TEXT NOT LIKE '%replication-manager%'
+		GROUP BY DIGEST
+	) H ON H.DIGEST = A.DIGEST`
 	if version != nil && version.IsMySQLOrPerconaGreater57() {
-		// QUERY_SAMPLE_TEXT was introduced in MySQL 5.7.9 performance_schema
-		sampleExpr = "COALESCE(A.QUERY_SAMPLE_TEXT, '')"
-	} else {
-		// MariaDB: correlated lookup — filtered so we never store our own monitoring queries
-		sampleExpr = `COALESCE((
-			SELECT B.SQL_TEXT
-			FROM performance_schema.events_statements_history_long B
-			WHERE B.DIGEST = A.DIGEST
-			AND B.SQL_TEXT IS NOT NULL
-			AND B.SQL_TEXT NOT LIKE '%replication-manager%'
-			LIMIT 1
-		), '')`
+		sampleCol = "COALESCE(A.QUERY_SAMPLE_TEXT, '')"
+		sampleJoin = ""
 	}
-
-	query = `SELECT /*replication-manager*/
+	return `SELECT /*replication-manager*/
 	A.digest as digest,
 	'' as query,
-	` + sampleExpr + ` as sample_query,
+	` + sampleCol + ` as sample_query,
 	A.digest_text as digest_text,
 	A.LAST_SEEN as last_seen,
 	COALESCE(A.SCHEMA_NAME,'') as schema_name,
@@ -251,11 +246,53 @@ func GetQueries(db *sqlx.DB, version *version.Version) (map[string]PFSQuery, str
 	A.SUM_ROWS_EXAMINED AS rows_scanned,
 	A.SUM_SORT_ROWS AS sort_rows,
 	round(A.sum_timer_wait/1000000000000, 6) as value
-	FROM performance_schema.events_statements_summary_by_digest A
+	FROM performance_schema.events_statements_summary_by_digest A` + sampleJoin + `
 	WHERE A.digest_text is not null`
+}
+
+// GetQueries fetches digest statistics from performance_schema.events_statements_summary_by_digest.
+// The per-flavour SELECT is built by pfsQueriesSQL (MariaDB joins a materialized/auto-keyed derived
+// table for the sample; MySQL reads QUERY_SAMPLE_TEXT inline — no join, no MariaDB-specific SQL).
+// The sample_query is kept in memory and written to the periodic snapshot log so EXPLAIN can be
+// replayed offline.
+func GetQueries(db *sqlx.DB, version *version.Version) (map[string]PFSQuery, string, error) {
+
+	vars := make(map[string]PFSQuery)
+	mariadb := version == nil || !version.IsMySQLOrPerconaGreater57()
+
+	// Pin a connection, force the session-scoped speed knobs on it, and RESTORE them before the
+	// connection is returned to the shared pool — so they can't leak onto later monitoring queries
+	// that reuse it. Making our query cheap is on us (session-level, never the server's global
+	// config); a guard timeout stops a pathological run from hanging the monitor.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	conn, err := db.Connx(ctx)
+	if err != nil {
+		return vars, "GetQueries: connection", err
+	}
+	defer func() {
+		// Restore on a fresh context so the reset runs even if ctx already timed out.
+		rctx := context.Background()
+		conn.ExecContext(rctx, "SET SESSION group_concat_max_len=DEFAULT")
+		if mariadb {
+			conn.ExecContext(rctx, "SET SESSION optimizer_switch=DEFAULT")
+			conn.ExecContext(rctx, "SET SESSION join_cache_level=DEFAULT")
+		}
+		conn.Close()
+	}()
+
+	conn.ExecContext(ctx, "SET SESSION group_concat_max_len=2048")
+	if mariadb {
+		// MariaDB-only knobs that keep the derived-table join cheap regardless of the server's
+		// global optimizer config (not present on MySQL, which does no join).
+		conn.ExecContext(ctx, "SET SESSION optimizer_switch='derived_with_keys=on'") // auto-key the derived table
+		conn.ExecContext(ctx, "SET SESSION join_cache_level=4")                      // hash-join backstop
+	}
+
+	query := pfsQueriesSQL(version)
 
 	// Do not order — filesort on the full summary table is expensive
-	rows, err := db.Queryx(query)
+	rows, err := conn.QueryxContext(ctx, query)
 	if err != nil {
 		return nil, query, errors.New("Could not get queries")
 	}

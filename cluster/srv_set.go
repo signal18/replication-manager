@@ -329,8 +329,8 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 	server.Pass = pass
 	server.URL = url
 	server.Host, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
-	server.IP, err = dbhelper.CheckHostAddr(server.Host)
 	cluster := server.ClusterGroup
+	server.IP, err = dbhelper.CheckHostAddr(server.Host, cluster.Conf.DNSTimeout)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot resolved DNS for host %s, error: %s", server.Host, err.Error())
 	}

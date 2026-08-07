@@ -74,6 +74,7 @@ Cluster Monitor Loop (every tick, per cluster)
     │   ├── PrintDelayStat()                                               │
     │   ├── CheckJobsVersion()               (every 10)                   │
     │   ├── HasValidBackup()                 (every 30)                    │
+    │   ├── HasCatalogBackupForRejoin()      (every 30) WARN0190/WARN0191   │
     │   ├── CheckCanSaveDynamicConfig()      (every 30)                    │
     │   ├── CheckIsOverwrite()               (every 30)                    │
     │   ├── CheckAllBackupEstimatedSize()    (every 30)                    │

@@ -15,7 +15,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"compress/gzip"
 	"hash/crc64"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -244,14 +246,14 @@ type ServerMonitor struct {
 	LastBackupMeta              ServerBackupMeta        `json:"lastBackupMeta"`
 	IsNeedPathCheck             bool
 	HasConfigPathChanged        bool
-	HasConfigDiff               bool       `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config
-	RestartNode                 string     // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
-	RestartRid                  string     // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
-	jobMutex                    sync.Mutex // protects IsRunningJobs flag
-	configGenMutex              sync.Mutex // protects config generation operations
-	dbLogMigrateMutex           sync.Mutex // serializes concurrent attempts at the lazy legacy->backup-backed fetched DB log migration
-	dbLogMigrated               atomic.Bool // set once a migration pass completes with no errors; left false to allow retry after a transient failure
-	backupMetaMutex             sync.Mutex  // protects LastBackupMeta from concurrent Restic callback updates
+	HasConfigDiff               bool         `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config
+	RestartNode                 string       // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
+	RestartRid                  string       // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
+	jobMutex                    sync.Mutex   // protects IsRunningJobs flag
+	configGenMutex              sync.Mutex   // protects config generation operations
+	dbLogMigrateMutex           sync.Mutex   // serializes concurrent attempts at the lazy legacy->backup-backed fetched DB log migration
+	dbLogMigrated               atomic.Bool  // set once a migration pass completes with no errors; left false to allow retry after a transient failure
+	backupMetaMutex             sync.Mutex   // protects LastBackupMeta from concurrent Restic callback updates
 	rejoinInProgress            atomic.Bool  // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
 	reseedFromRejoin            atomic.Bool  // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
 	rejoinReseedStart           atomic.Int64 // unix-nanos when the rejoin armed its reseed; drives the generic "rejoin reseed in progress, started T" state (WARN0189) for methods without byte instrumentation
@@ -562,9 +564,15 @@ func (server *ServerMonitor) NewLogTailer(logtype string) (*tail.Tail, error) {
 	logName := "log_" + logtype
 	logfile := server.DBLogFilePath(kind)
 
-	if cluster.Conf.DBLogRotate {
-		misc.RemoveOldLogFiles(logDir, fmt.Sprintf("%s_", logName), cluster.Conf.DBLogRotateMaxAge, "20060102_150405")
-	}
+	// Always prune repman's own rotated DB-log history by age -- a perpetual
+	// repman never lets its own log history grow unbounded. This is repman-side
+	// housekeeping and is intentionally NOT gated by db-log-rotate (that flag
+	// governs DB-node-side behavior; see #1667).
+	misc.RemoveOldLogFiles(logDir, fmt.Sprintf("%s_", logName), cluster.Conf.DBLogRotateMaxAge, "20060102_150405")
+
+	// Self-heal a runaway collected log (broken-deployment artifact) before we
+	// attach the tailer, so we don't reopen/follow a multi-GB file.
+	server.maybeSelfHealOversizedDBLog(logfile)
 
 	if _, err := os.Stat(logfile); os.IsNotExist(err) {
 		nofile, ferr := os.OpenFile(logfile, os.O_WRONLY|os.O_CREATE, 0600)
@@ -573,7 +581,98 @@ func (server *ServerMonitor) NewLogTailer(logtype string) (*tail.Tail, error) {
 		}
 	}
 
-	return tail.TailFile(logfile, tail.Config{Follow: true, ReOpen: true})
+	// Seek to end on open: follow only lines appended after startup. Without a
+	// Location, hpcloud/tail starts at offset 0 and re-reads the ENTIRE file on
+	// every repman start/restart -- re-parsing and re-fingerprinting every
+	// historical line and re-flooding the in-memory buffer. On a large collected
+	// log that is a pure-waste CPU spike. Standard tail -f semantics: the buffer
+	// is a rolling recent window, so lines appended while repman was down are
+	// intentionally skipped rather than re-processed.
+	return tail.TailFile(logfile, tail.Config{Follow: true, ReOpen: true,
+		Location: &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd}})
+}
+
+// selfHealDBLogCeilingMB is the absolute size above which a repman-side
+// collected DB log is treated as a runaway (a broken-deployment artifact --
+// e.g. left behind by a pre-fix whole-file re-stream) and self-healed: moved
+// aside, the disk reclaimed, a compressed sample kept for forensics. This is
+// repman's OWN housekeeping and is deliberately independent of the
+// db-log-rotate flag (which governs DB-node-side behavior, not this).
+// A var, not a const, so tests can shrink it.
+var selfHealDBLogCeilingMB int64 = 1024
+
+// maybeSelfHealOversizedDBLog reclaims a runaway repman-side collected DB log.
+// Safe only because the inflation root causes are fixed (the dbjob no longer
+// re-streams the whole file, and the tailer no longer re-parses it on start),
+// so the accumulated bulk is confirmed garbage rather than live evidence. It
+// still preserves a compressed sample and raises WARN0208, so the remediation
+// is recorded, not silent.
+func (server *ServerMonitor) maybeSelfHealOversizedDBLog(logfile string) {
+	cluster := server.ClusterGroup
+
+	fi, err := os.Stat(logfile)
+	if err != nil {
+		return // missing/unreadable: nothing to heal
+	}
+	if fi.Size() <= selfHealDBLogCeilingMB*1024*1024 {
+		return
+	}
+	// Don't race an in-flight SST receiver still appending to this exact file.
+	if cluster.IsFileOpenForSSTReceive(logfile) {
+		return
+	}
+
+	ts := time.Now().Format("20060102_150405")
+	backup := strings.TrimSuffix(logfile, ".log") + "_oversize_" + ts + ".log"
+	if err := os.Rename(logfile, backup); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Self-heal: rename of oversized DB log %s failed: %s", logfile, err)
+		return
+	}
+	// Recreate an empty file immediately so the tailer attaches to a fresh log.
+	if f, ferr := os.OpenFile(logfile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600); ferr == nil {
+		f.Close()
+	}
+
+	humanSize := fmt.Sprintf("%.1fGB", float64(fi.Size())/(1024*1024*1024))
+	gz := backup + ".gz"
+	cluster.StateMachine.AddState("WARN0208", state.State{ErrType: "WARNING", ErrKey: "WARN0208", ErrDesc: fmt.Sprintf(clusterError["WARN0208"], logfile, humanSize, gz), ErrFrom: "MON", ServerUrl: server.URL})
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Self-heal: reclaimed runaway collected DB log %s (%s); compressing sample to %s", logfile, humanSize, gz)
+
+	// Compress + remove the moved-aside copy in the background so startup isn't
+	// blocked gzipping gigabytes; keep the .gz as forensic evidence.
+	go func() {
+		if err := gzipFileAndRemove(backup, gz); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Self-heal: gzip of %s failed: %s", backup, err)
+		}
+	}()
+}
+
+// gzipFileAndRemove gzips src into dst, then removes src on success.
+func gzipFileAndRemove(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	gw := gzip.NewWriter(out)
+	if _, err := io.Copy(gw, in); err != nil {
+		gw.Close()
+		return err
+	}
+	if err := gw.Close(); err != nil {
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		return err
+	}
+	return os.Remove(src)
 }
 
 func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
@@ -1204,7 +1303,14 @@ func (server *ServerMonitor) Refresh() error {
 			server.EngineInnoDB = config.FromNormalStringMap(server.EngineInnoDB, engine)
 			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get engine innodb status %s %s", server.URL, err)
 		}
-		go server.GetPFSQueries()
+		// Gate on the LIVE flag (SwitchMonitorPFS disables it next tick — nothing is even spawned)
+		// AND throttle to every N monitoring ticks: the digest capture is cumulative/slow-moving, so
+		// re-running it every tick just hammers the client. Same modulo-tick idiom and 0=disabled
+		// semantics as BackupReconcileInterval (cluster.go) / ResticFetchRepo.
+		if cluster.Conf.MonitorPFS && cluster.Conf.MonitorPFSQueriesInterval > 0 &&
+			cluster.StateMachine.GetHeartbeats()%int64(cluster.Conf.MonitorPFSQueriesInterval) == 0 {
+			go server.GetPFSQueries()
+		}
 
 		if server.HaveDiskMonitor {
 			server.Disks, logs, err = dbhelper.GetDisks(server.Conn, server.DBVersion)

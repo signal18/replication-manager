@@ -118,8 +118,10 @@ type Config struct {
 	MonitorPFSMutex                           bool                         `mapstructure:"monitoring-performance-schema-mutex" toml:"monitoring-performance-schema-mutex" json:"monitoringPerformanceSchemaMutex"`
 	MonitorPFSLatch                           bool                         `mapstructure:"monitoring-performance-schema-latch" toml:"monitoring-performance-schema-latch" json:"monitoringPerformanceSchemaLatch"`
 	MonitorPFSMemory                          bool                         `mapstructure:"monitoring-performance-schema-memory" toml:"monitoring-performance-schema-memory" json:"monitoringPerformanceSchemaMemory"`
+	MonitorPFSSnapshotRetentionDays           int                          `mapstructure:"monitoring-pfs-snapshot-retention-days" toml:"monitoring-pfs-snapshot-retention-days" json:"monitoringPfsSnapshotRetentionDays"`
 	MonitorPFSQueries                         bool                         `mapstructure:"monitoring-performance-schema-queries" toml:"monitoring-performance-schema-queries" json:"monitoringPerformanceSchemaQueries"`
 	MonitorPFSQueriesPeriod                   int                          `mapstructure:"monitoring-performance-schema-queries-period" toml:"monitoring-performance-schema-queries-period" json:"monitoringPerformanceSchemaQueriesPeriod"`
+	MonitorPFSQueriesInterval                 int                          `mapstructure:"monitoring-performance-schema-queries-interval" toml:"monitoring-performance-schema-queries-interval" json:"monitoringPerformanceSchemaQueriesInterval"`
 	MonitorPFSQueriesExplain                  bool                         `mapstructure:"monitoring-performance-schema-queries-explain" toml:"monitoring-performance-schema-queries-explain" json:"monitoringPerformanceSchemaQueriesExplain"`
 	MonitorPFSQueriesExplainDelay             int                          `mapstructure:"monitoring-performance-schema-queries-explain-delay" toml:"monitoring-performance-schema-queries-explain-delay" json:"monitoringPerformanceSchemaQueriesExplainDelay"`
 	MonitorPFSQueriesExplainPurgePeriod       int                          `mapstructure:"monitoring-performance-schema-queries-explain-purge-period" toml:"monitoring-performance-schema-queries-explain-purge-period" json:"monitoringPerformanceSchemaQueriesExplainPurgePeriod"`
@@ -228,6 +230,7 @@ type Config struct {
 	Timeout                                   int                          `mapstructure:"db-servers-connect-timeout" toml:"db-servers-connect-timeout" json:"dbServersConnectTimeout"`
 	ExecTimeout                               int                          `mapstructure:"db-servers-exec-timeout" toml:"db-servers-exec-timeout" json:"dbServersExecTimeout"`
 	ReadTimeout                               int                          `mapstructure:"db-servers-read-timeout" toml:"db-servers-read-timeout" json:"dbServersReadTimeout"`
+	DNSTimeout                                int                          `mapstructure:"db-servers-dns-timeout" toml:"db-servers-dns-timeout" json:"dbServersDnsTimeout"`
 	DBServersLocality                         string                       `mapstructure:"db-servers-locality" toml:"db-servers-locality" json:"dbServersLocality"`
 	DbServersBindAddress                      string                       `mapstructure:"db-servers-bind-address" toml:"db-servers-bind-address" json:"dbServersBindAddress"`
 	PRXServersReadOnMaster                    bool                         `mapstructure:"proxy-servers-read-on-master" toml:"proxy-servers-read-on-master" json:"proxyServersReadOnMaster"`
@@ -1488,7 +1491,7 @@ const (
 	// ConstLogModMaintenance covers planned-operations modules (backup, SST,
 	// task execution, purge, orchestrator provisioning). Routed to maintenance.log
 	// when configured so operational noise does not pollute the HA main log.
-	ConstLogModMaintenance  = 31
+	ConstLogModMaintenance = 31
 	ConstLogModArbitration = 32
 )
 

@@ -287,6 +287,7 @@ var ClusterError = map[string]string{
 	"VSPLIT0007": "Split-brain simulator: io_thread REALLY stopped on slave %s (op 5/6) — this SlaveErr is simulation-induced, not a genuine replication failure; auto-restored when the cut expires or the sim is cleared",
 	"WARN0206":  "Log plugin %s rejected: %s",
 	"WARN0207":  "Plugin signature verification skipped: %s",
+	"WARN0208":  "Self-healed runaway collected DB log %s (%s): moved aside and reclaimed; compressed sample kept at %s",
 	// CINF: cluster observability statuses (INFO, state-as-tag) — each domain
 	// state machine always explains why it may have nothing to report.
 	"CINF0001":  "%s reporting limited: instance not registered on Cloud18",
