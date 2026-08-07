@@ -35,6 +35,7 @@ type GraphiteFilterList struct {
 type ClusterGraphite struct {
 	cl           *Cluster           `json:"-"`
 	gc           *graphite.Graphite `json:"-"`
+	gcLock       sync.Mutex         // guards gc only, distinct from lock (which guards metrics) — see GetGraphiteConnection/SetGraphiteConnection
 	UseWhitelist bool
 	UseBlacklist bool
 	Whitelist    []*regexp.Regexp
@@ -123,6 +124,8 @@ func (cluster *Cluster) ReloadGraphiteFilterList() error {
 }
 
 func (cg *ClusterGraphite) SetGraphiteConnection(gc *graphite.Graphite) {
+	cg.gcLock.Lock()
+	defer cg.gcLock.Unlock()
 	cg.gc = gc
 }
 
@@ -136,7 +139,16 @@ func (cg *ClusterGraphite) QueueLength() int {
 	return len(cg.metrics)
 }
 
+// GetGraphiteConnection returns the cached connection, dialing a new one
+// under gcLock if none is cached yet. The dial (graphite.NewGraphite) runs
+// with gcLock held so two concurrent callers can't both dial and race to
+// overwrite cg.gc with an orphaned connection -- gcLock is never held across
+// the actual metric send (see SendGraphiteMetrics), only this pointer
+// swap/setup, so it never blocks AddMetrics producers.
 func (cg *ClusterGraphite) GetGraphiteConnection() (*graphite.Graphite, error) {
+	cg.gcLock.Lock()
+	defer cg.gcLock.Unlock()
+
 	if cg.gc != nil {
 		return cg.gc, nil
 	}
@@ -144,7 +156,7 @@ func (cg *ClusterGraphite) GetGraphiteConnection() (*graphite.Graphite, error) {
 	if err != nil {
 		return nil, err
 	}
-	cg.SetGraphiteConnection(graph)
+	cg.gc = graph
 	return cg.gc, nil
 }
 

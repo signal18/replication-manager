@@ -58,7 +58,7 @@ function GraphSettings({ selectedCluster, user, openConfirmModal }) {
               showConfirmModal={true}
               isDisabled={user?.grants['cluster-settings'] == false}
               confirmTitle={`Confirm change graphite metrics queue limit to: `}
-              onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'graphite-metrics-queue-limit', value: value.length === 0 ? '100000' : value }))}
+              onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'graphite-metrics-queue-limit', value }))}
             />
           )
         },
