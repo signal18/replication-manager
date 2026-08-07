@@ -1216,6 +1216,14 @@ func (cluster *Cluster) tickBody() {
 				if !(cluster.Conf.GraphiteMetrics && heartbeats%5 == 0) {
 					cluster.StateMachine.PreserveState("WARN0139", "WARN0140")
 				}
+				// Preserved only while GraphiteMetrics stays enabled: bundling this
+				// with WARN0139/WARN0140 above would make the outer condition true on
+				// every tick once GraphiteMetrics is turned off (SendGraphiteMetrics
+				// never runs to naturally resolve it), self-sustaining WARN0192
+				// forever via PreserveState re-adding it from OldState each tick.
+				if cluster.Conf.GraphiteMetrics && heartbeats%5 != 0 {
+					cluster.StateMachine.PreserveState("WARN0192")
+				}
 				if !cluster.CanInitNodes {
 					cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
 				}
