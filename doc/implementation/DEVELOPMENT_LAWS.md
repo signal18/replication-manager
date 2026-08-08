@@ -216,6 +216,16 @@ are named and match — don't coin a new word for an existing concept.
 
 This is the naming face of T2: one concept, one name.
 
+**T20. Before starting any work, sync from `develop` and check for in-flight work
+— never duplicate.** Before branching or writing a line: (1) `git fetch` and
+branch off / rebase onto the **latest `origin/develop`**, and (2) check existing
+branches, open PRs, and the issue's own thread for anything already implementing
+the fix. Building a parallel fix while a teammate's PR for the same issue is in
+review wastes effort and creates conflicts. Sync first, check first, then work.
+This is T2 (don't reimplement what already exists) at the repository level, and
+it pairs with T9→T10 — the issue is where you discover the branch/PR that already
+exists before you open a duplicate.
+
 ---
 
 *Precedence: functional laws outrank technical laws; the perpetual-monitoring
