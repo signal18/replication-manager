@@ -490,7 +490,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 				cluster.BashScriptPrxServersChangeState(pr, pr.GetState(), pr.GetPrevState())
 				pr.SetPrevState(pr.GetState())
 			}
-			if cluster.Conf.GraphiteMetrics {
+			if cluster.CanSendGraphiteMetrics() {
 				pr.FetchStats()
 			}
 			//	pr.DelLock()

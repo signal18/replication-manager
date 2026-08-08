@@ -503,6 +503,21 @@ func (cluster *Cluster) IsActive() bool {
 	}
 }
 
+// CanSendGraphiteMetrics reports whether this monitor should collect and emit
+// graphite metrics this tick. The active monitor always does. A passive/standby
+// monitor does so only when carbon is embedded: it then records its OWN
+// observation of the cluster into its OWN local carbon — each monitor keeps its
+// independent view of the world (comparing the active vs passive perspective is
+// diagnostic, e.g. split-brain). This way a standby never duplicates the active
+// monitor's series on a shared carbon, and never doubles the metric query load
+// on the monitored DB for nothing. See issue #1680.
+func (cluster *Cluster) CanSendGraphiteMetrics() bool {
+	if !cluster.Conf.GraphiteMetrics {
+		return false
+	}
+	return cluster.IsActive() || cluster.Conf.GraphiteEmbedded
+}
+
 func (cluster *Cluster) IsVerbose() bool {
 	if cluster.Conf.Verbose {
 		return true

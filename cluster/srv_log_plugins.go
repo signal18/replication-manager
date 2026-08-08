@@ -209,7 +209,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 
 		// Send synthetic graphite metric if the plugin produced one.
 		// This ensures history accumulates even before any spike is detected.
-		if result.MetricName != "" && cluster.Conf.GraphiteMetrics && cluster.ClusterGraphite != nil {
+		if result.MetricName != "" && cluster.CanSendGraphiteMetrics() && cluster.ClusterGraphite != nil {
 			m := graphite.NewMetric(
 				result.MetricName,
 				fmt.Sprintf("%d", result.CurrentCount),
@@ -785,11 +785,11 @@ func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
 	SM := cluster.GetStateMachine()
 	opened := SM.GetLastOpenedStates()
 	keys := map[string]bool{
-		logplugin.ErrKeyDBError24h:          true,
-		logplugin.ErrKeySQLError24h:         true,
-		logplugin.ErrKeySlowLog24h:          true,
-		logplugin.ErrKeyAuditDrift:          true,
-		"WARN0205":                           true,
+		logplugin.ErrKeyDBError24h:            true,
+		logplugin.ErrKeySQLError24h:           true,
+		logplugin.ErrKeySlowLog24h:            true,
+		logplugin.ErrKeyAuditDrift:            true,
+		"WARN0205":                            true,
 		logplugin.ErrKeyMissingMonitoringFeed: true,
 	}
 	var out []state.State
