@@ -513,6 +513,7 @@ type Config struct {
 	StagingProxyHosts                         string                       `mapstructure:"staging-proxy-hosts" toml:"staging-proxy-hosts" json:"stagingProxyHosts"`
 	StagingServerHost                         string                       `mapstructure:"staging-server-host" toml:"staging-server-host" json:"stagingServerHost"`
 	GraphiteMetrics                           bool                         `scope:"server" mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
+	GraphiteMetricsMaxQueueSize               int                          `scope:"server" mapstructure:"graphite-metrics-max-queue-size" toml:"graphite-metrics-max-queue-size" json:"graphiteMetricsMaxQueueSize"`
 	GraphiteEmbedded                          bool                         `scope:"server" mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
 	GraphiteWhitelist                         bool                         `scope:"server" mapstructure:"graphite-whitelist" toml:"graphite-whitelist" json:"graphiteWhitelist"`
 	GraphiteBlacklist                         bool                         `scope:"server" mapstructure:"graphite-blacklist" toml:"graphite-blacklist" json:"graphiteBlacklist"`

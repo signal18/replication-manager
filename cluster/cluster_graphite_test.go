@@ -1,9 +1,12 @@
 package cluster
 
 import (
+	"fmt"
 	"net"
+	"sync/atomic"
 	"testing"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/graphite"
 )
 
@@ -108,6 +111,55 @@ func TestClusterGraphite_Requeue_PrependsAheadOfNewMetrics(t *testing.T) {
 		if cg.metrics[i].Name != name {
 			t.Fatalf("unexpected order at %d: got %q want %q", i, cg.metrics[i].Name, name)
 		}
+	}
+}
+
+func TestClusterGraphite_AddMetrics_CapDropsOldest(t *testing.T) {
+	// Bounded queue (T18): appending past the cap drops the oldest, keeps newest.
+	cg := &ClusterGraphite{cl: &Cluster{Conf: &config.Config{GraphiteMetricsMaxQueueSize: 3}}}
+
+	for i := 0; i < 5; i++ {
+		cg.AddMetrics([]graphite.Metric{graphite.NewMetric(fmt.Sprintf("m%d", i), "1", int64(i))})
+	}
+
+	if len(cg.metrics) != 3 {
+		t.Fatalf("expected queue capped at 3, got %d", len(cg.metrics))
+	}
+	want := []string{"m2", "m3", "m4"} // oldest (m0, m1) dropped
+	for i, name := range want {
+		if cg.metrics[i].Name != name {
+			t.Fatalf("unexpected kept metric at %d: got %q want %q", i, cg.metrics[i].Name, name)
+		}
+	}
+	if got := atomic.LoadUint64(&cg.DroppedMetrics); got != 2 {
+		t.Fatalf("expected 2 dropped, got %d", got)
+	}
+}
+
+func TestClusterGraphite_Requeue_RespectsCap(t *testing.T) {
+	// requeue must also honor the cap, else a persistently-failing sink grows the
+	// queue without bound via repeated requeue (the #1675 leak).
+	cg := &ClusterGraphite{cl: &Cluster{Conf: &config.Config{GraphiteMetricsMaxQueueSize: 2}}}
+
+	cg.AddMetrics([]graphite.Metric{graphite.NewMetric("new-1", "9", 9)})
+	failed := []graphite.Metric{
+		graphite.NewMetric("old-1", "1", 1),
+		graphite.NewMetric("old-2", "2", 2),
+		graphite.NewMetric("old-3", "3", 3),
+	}
+	cg.requeue(failed) // [old-1,old-2,old-3,new-1] -> cap 2 -> keep [old-3,new-1]
+
+	if len(cg.metrics) != 2 {
+		t.Fatalf("expected queue capped at 2 after requeue, got %d", len(cg.metrics))
+	}
+	want := []string{"old-3", "new-1"}
+	for i, name := range want {
+		if cg.metrics[i].Name != name {
+			t.Fatalf("unexpected metric at %d: got %q want %q", i, cg.metrics[i].Name, name)
+		}
+	}
+	if got := atomic.LoadUint64(&cg.DroppedMetrics); got != 2 {
+		t.Fatalf("expected 2 dropped after requeue, got %d", got)
 	}
 }
 

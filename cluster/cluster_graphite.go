@@ -14,7 +14,14 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/share"
+	"github.com/signal18/replication-manager/utils/state"
 )
+
+// defaultGraphiteMetricsMaxQueueSize bounds the in-memory graphite send queue when
+// no (or an invalid) value is configured. The queue is a telemetry buffer: when
+// the carbon sink cannot keep up it must drop, never grow without bound (a monitor
+// that OOMs on a failing sink stops monitoring). See doc DEVELOPMENT_LAWS T18.
+const defaultGraphiteMetricsMaxQueueSize = 100000
 
 type GraphiteFilterList struct {
 	Whitelist string `json:"whitelist"`
@@ -31,6 +38,14 @@ type ClusterGraphite struct {
 	metrics      []graphite.Metric
 	lock         sync.Mutex
 	flushing     atomic.Bool
+	// DroppedMetrics is the cumulative count of metrics dropped because the send
+	// queue hit its cap (carbon sink not draining). Atomic; read for observability
+	// and to drive the WARN0209 drop-state.
+	DroppedMetrics uint64
+	// lastDropReported tracks the drop count already surfaced as a state, so the
+	// flush only (re)raises WARN0209 when new drops occurred. Only touched inside
+	// the single-flight flush, so it needs no separate lock.
+	lastDropReported uint64
 }
 
 func (cluster *Cluster) NewClusterGraphite() {
@@ -117,11 +132,59 @@ func (cg *ClusterGraphite) GetGraphiteConnection() (*graphite.Graphite, error) {
 	return cg.gc, nil
 }
 
+// maxMetrics returns the configured send-queue cap, falling back to the default
+// when unset/invalid. It is never zero — the queue is always bounded (T18).
+func (cg *ClusterGraphite) maxMetrics() int {
+	if cg.cl != nil && cg.cl.Conf.GraphiteMetricsMaxQueueSize > 0 {
+		return cg.cl.Conf.GraphiteMetricsMaxQueueSize
+	}
+	return defaultGraphiteMetricsMaxQueueSize
+}
+
+// capMetricsLocked enforces the send-queue cap; cg.lock must be held. When the
+// queue exceeds the cap it drops the OLDEST (front) metrics — the stalest data —
+// copying the newest ones into a fresh backing array so the dropped metrics and
+// their strings are actually released (a forward reslice would keep the old
+// backing array, and its strings, alive). Returns the number dropped.
+func (cg *ClusterGraphite) capMetricsLocked() int {
+	over := len(cg.metrics) - cg.maxMetrics()
+	if over <= 0 {
+		return 0
+	}
+	kept := make([]graphite.Metric, cg.maxMetrics())
+	copy(kept, cg.metrics[over:])
+	cg.metrics = kept
+	atomic.AddUint64(&cg.DroppedMetrics, uint64(over))
+	return over
+}
+
+// reportMetricDrops raises WARN0209 when new drops have occurred since the last
+// flush. Called once per flush (single-flight, every 5 ticks); on the 4
+// intervening ticks WARN0209 is held by the %5 PreserveState block in the
+// monitor loop, so the alert reflects sustained drops without flapping.
+func (cg *ClusterGraphite) reportMetricDrops() {
+	if cg.cl == nil {
+		return
+	}
+	dropped := atomic.LoadUint64(&cg.DroppedMetrics)
+	if dropped <= cg.lastDropReported {
+		return
+	}
+	delta := dropped - cg.lastDropReported
+	cg.lastDropReported = dropped
+	cg.cl.SetState("WARN0209", state.State{
+		ErrType: "WARNING",
+		ErrDesc: fmt.Sprintf(clusterError["WARN0209"], delta, dropped),
+		ErrFrom: "MON",
+	})
+}
+
 func (cg *ClusterGraphite) AddMetrics(metrics []graphite.Metric) {
 	cg.lock.Lock()
 	defer cg.lock.Unlock()
 
 	cg.metrics = append(cg.metrics, metrics...)
+	cg.capMetricsLocked()
 }
 
 func (cg *ClusterGraphite) SendGraphiteMetrics() error {
@@ -134,6 +197,9 @@ func (cg *ClusterGraphite) SendGraphiteMetrics() error {
 		return nil
 	}
 	defer cg.flushing.Store(false)
+
+	// Surface sustained queue drops (carbon sink not draining) as WARN0209.
+	cg.reportMetricDrops()
 
 	cg.lock.Lock()
 	batch := cg.metrics
@@ -166,11 +232,15 @@ func (cg *ClusterGraphite) SendGraphiteMetrics() error {
 }
 
 // requeue puts a batch that failed to send back at the front of the queue,
-// ahead of any metrics appended by producers while the send was in flight.
+// ahead of any metrics appended by producers while the send was in flight. It is
+// bounded: if the requeued batch + newer metrics exceed the cap, the oldest are
+// dropped (T18) — otherwise a persistently-failing sink would grow the queue
+// forever via requeue.
 func (cg *ClusterGraphite) requeue(batch []graphite.Metric) {
 	cg.lock.Lock()
 	defer cg.lock.Unlock()
 	cg.metrics = append(batch, cg.metrics...)
+	cg.capMetricsLocked()
 }
 
 func (cg *ClusterGraphite) CopyFromShareDir(filtertype string) error {

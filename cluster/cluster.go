@@ -936,8 +936,8 @@ var pstates30 = []string{
 	"WARN0093", "WARN0134", "WARN0145", // Restic related
 	"WARN0101", "WARN0111", "WARN0112", // Backup related
 	"WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
-	"WARN0153", // Job related
-	"WARN0158", // Job secrets mismatch
+	"WARN0153",             // Job related
+	"WARN0158",             // Job secrets mismatch
 	"WARN0190", "WARN0191", // Rejoin catalog (HasCatalogBackupForRejoin runs %30)
 	"CREDIT01", // Credit related
 }
@@ -1214,7 +1214,7 @@ func (cluster *Cluster) tickBody() {
 					cluster.ConfigStateMachine.PreserveState("WARN0168")
 				}
 				if !(cluster.Conf.GraphiteMetrics && heartbeats%5 == 0) {
-					cluster.StateMachine.PreserveState("WARN0139", "WARN0140")
+					cluster.StateMachine.PreserveState("WARN0139", "WARN0140", "WARN0209")
 				}
 				if !cluster.CanInitNodes {
 					cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
