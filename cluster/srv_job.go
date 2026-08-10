@@ -1233,7 +1233,40 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 }
 
 // Job state always updated in replication-manager runtime.
+// JobsUpdateState updates a task's state for the normal case, where a real
+// jobs-table row may exist (it was created via JobInsertTask). Start/End are
+// only stamped here in API mode, where there is no jobs table at all;
+// otherwise the SQL UPDATE below (when the scheduler is active) is the
+// source of truth for those fields.
+//
+// Call sites that deliberately skip JobInsertTask — so there is no DB row for
+// this task run regardless of scheduler state — must use
+// JobsUpdateStateRuntimeOnly instead, not infer "no DB row" from
+// !MonitorScheduler: some callers (JobServerStop, JobServerRestart,
+// JobOptimize) call JobInsertTask unconditionally and do get a real row even
+// with the scheduler disabled.
 func (server *ServerMonitor) JobsUpdateState(task, result string, state, done int) error {
+	cluster := server.ClusterGroup
+	return server.jobsUpdateState(task, result, state, done, cluster.Conf.SchedulerJobsMode == "api")
+}
+
+// JobsUpdateStateRuntimeOnly behaves like JobsUpdateState but always stamps
+// Start/End from the in-memory cache, regardless of SchedulerJobsMode or
+// MonitorScheduler, and never touches the jobs table. Use it only from call
+// sites that never call JobInsertTask for this task, e.g. manual logical
+// backup/reseed flows (cluster/srv_job_backup.go) — JobsUpdateState alone
+// would leave Start/End blank forever there since there is no DB row to fall
+// back on, and running the SQL UPDATE against a task that was never inserted
+// would just be a wasted round trip against zero matching rows.
+//
+// No error return: jobsUpdateState's runtimeOnly path only ever touches the
+// in-memory cache and always returns nil, so a caller checking an error here
+// would be dead code that can never fire — do not add one back.
+func (server *ServerMonitor) JobsUpdateStateRuntimeOnly(task, result string, state, done int) {
+	server.jobsUpdateState(task, result, state, done, true)
+}
+
+func (server *ServerMonitor) jobsUpdateState(task, result string, state, done int, runtimeOnly bool) error {
 	var err error
 	cluster := server.ClusterGroup
 	now := time.Now().Unix()
@@ -1249,7 +1282,7 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 		t.Done = done
 		t.Result = result
 
-		if cluster.Conf.SchedulerJobsMode == "api" {
+		if runtimeOnly {
 			if done == 1 {
 				if t.Start == 0 {
 					t.Start = now
@@ -1262,7 +1295,7 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 				t.End = 0
 			}
 		}
-	} else if cluster.Conf.SchedulerJobsMode == "api" {
+	} else if runtimeOnly {
 		if done == 1 {
 			t.Start = now
 			t.End = now
@@ -1271,12 +1304,17 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 			t.End = 0
 		}
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job state updated in runtime. Continue to update state in jobs table.")
 
-	// In API mode, state is tracked in memory only — no jobs table
-	if cluster.Conf.SchedulerJobsMode == "api" {
+	// runtimeOnly callers (JobsUpdateState in API mode, or JobsUpdateStateRuntimeOnly)
+	// never have a DB row for this task -- API mode has no jobs table at all, and
+	// JobsUpdateStateRuntimeOnly's callers deliberately never call JobInsertTask.
+	// Stop here, or this would fall through to the SQL section below and run a
+	// no-op UPDATE against a row that was never inserted.
+	if runtimeOnly {
 		return nil
 	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job state updated in runtime. Continue to update state in jobs table.")
 
 	if !cluster.Conf.MonitorScheduler {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Monitoring scheduler is inactive, task only updated in runtime")
@@ -1306,7 +1344,32 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 	return err
 }
 
+// JobsUpdatePayload updates a task's payload for the normal case, where a
+// real jobs-table row may exist (it was created via JobInsertTask).
+//
+// Call sites that deliberately skip JobInsertTask — so there is no DB row for
+// this task run regardless of scheduler state — must use
+// JobsUpdatePayloadRuntimeOnly instead; see JobsUpdateState/
+// JobsUpdateStateRuntimeOnly for the same distinction and why it can't be
+// inferred from !MonitorScheduler alone.
 func (server *ServerMonitor) JobsUpdatePayload(task, payload string) error {
+	cluster := server.ClusterGroup
+	return server.jobsUpdatePayload(task, payload, cluster.Conf.SchedulerJobsMode == "api")
+}
+
+// JobsUpdatePayloadRuntimeOnly behaves like JobsUpdatePayload but never
+// touches the jobs table, regardless of SchedulerJobsMode or
+// MonitorScheduler. Use it only from call sites that never call
+// JobInsertTask for this task (e.g. JobReseedLogicalBackupPrepare).
+//
+// No error return: jobsUpdatePayload's runtimeOnly path only ever touches the
+// in-memory cache and always returns nil, so a caller checking an error here
+// would be dead code that can never fire — do not add one back.
+func (server *ServerMonitor) JobsUpdatePayloadRuntimeOnly(task, payload string) {
+	server.jobsUpdatePayload(task, payload, true)
+}
+
+func (server *ServerMonitor) jobsUpdatePayload(task, payload string, runtimeOnly bool) error {
 	cluster := server.ClusterGroup
 	if t, exists := server.JobResults.LoadOrStore(task, &config.Task{
 		Task: task,
@@ -1316,7 +1379,9 @@ func (server *ServerMonitor) JobsUpdatePayload(task, payload string) error {
 		t.Payload = payload
 	}
 
-	if cluster.Conf.SchedulerJobsMode == "api" {
+	// See jobsUpdateState's identical early return for why this must not fall
+	// through to the SQL section: there is no DB row for a runtimeOnly task.
+	if runtimeOnly {
 		return nil
 	}
 

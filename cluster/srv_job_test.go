@@ -178,6 +178,140 @@ func TestJobInsertTask_APIMode_RemoteTask_CookieFailureDoesNotBlockRetry(t *test
 	}
 }
 
+// newTestServerForRuntimeOnlyJobs builds a fixture for the non-API,
+// scheduler-disabled case: SQL-identity mode, but MonitorScheduler=false, so
+// JobsUpdateState is the only thing ever touching this task (JobInsertTask's
+// SQL INSERT is skipped by the caller, e.g. cluster/srv_job_backup.go).
+func newTestServerForRuntimeOnlyJobs(t *testing.T) *ServerMonitor {
+	t.Helper()
+	tmp := t.TempDir()
+	cluster := &Cluster{
+		Conf: &config.Config{
+			WorkingDir:        tmp,
+			SchedulerJobsMode: "sql",
+			MonitorScheduler:  false,
+		},
+		Name:         "testcluster",
+		StateMachine: &state.StateMachine{},
+	}
+	server := &ServerMonitor{
+		ClusterGroup: cluster,
+		Datadir:      tmp + "/node1_3306",
+		Host:         "node1",
+		Port:         "3306",
+	}
+	server.JobResults = config.NewTasksMap()
+	if err := os.MkdirAll(server.Datadir, 0755); err != nil {
+		t.Fatalf("failed to create server datadir: %v", err)
+	}
+	return server
+}
+
+// TestJobsUpdatePayloadRuntimeOnly_SchedulerEnabled_NeverTouchesSQL mirrors
+// TestJobsUpdateStateRuntimeOnly_SchedulerEnabled_NeverTouchesSQL for the
+// payload helper: JobReseedLogicalBackupPrepare calls this right after
+// JobsUpdateStateRuntimeOnly, for the same task that never gets a DB row via
+// JobInsertTask, so it must never fall through to the SQL UPDATE either.
+func TestJobsUpdatePayloadRuntimeOnly_SchedulerEnabled_NeverTouchesSQL(t *testing.T) {
+	server := newTestServerForRuntimeOnlyJobs(t)
+	server.ClusterGroup.Conf.MonitorScheduler = true
+	task := "reseedmysqldump"
+
+	// No connection pool is configured; if this ever fell through to the SQL
+	// section it would hit a nil server.Conn there. It doesn't panic or hang,
+	// which is the observable proof it stayed fully in-memory.
+	server.JobsUpdatePayloadRuntimeOnly(task, "some-payload")
+	got := server.JobResults.Get(task)
+	if got == nil || got.Payload != "some-payload" {
+		t.Fatalf("expected payload to be set in the cache, got %+v", got)
+	}
+}
+
+// TestJobsUpdateStateRuntimeOnly_SchedulerEnabled_NeverTouchesSQL guards
+// against JobsUpdateStateRuntimeOnly falling through to the SQL UPDATE
+// section when the scheduler happens to be enabled: its callers (e.g.
+// ProcessReseedLogical) never call JobInsertTask, so there is no DB row
+// regardless of MonitorScheduler, and reaching the SQL section would either
+// run a no-op UPDATE against zero matching rows or, as here with no
+// connection pool configured, return "No connection pool" -- a scheduler-only
+// error a purely in-memory call must never surface.
+func TestJobsUpdateStateRuntimeOnly_SchedulerEnabled_NeverTouchesSQL(t *testing.T) {
+	server := newTestServerForRuntimeOnlyJobs(t)
+	server.ClusterGroup.Conf.MonitorScheduler = true
+	task := "reseedmysqldump"
+
+	// No connection pool is configured; if this ever fell through to the SQL
+	// section it would hit a nil server.Conn there. It doesn't panic or hang,
+	// which is the observable proof it stayed fully in-memory.
+	server.JobsUpdateStateRuntimeOnly(task, "processing", JobStateRunning, 0)
+	running := server.JobResults.Get(task)
+	if running == nil || running.Start == 0 {
+		t.Fatal("expected Start to be stamped")
+	}
+
+	server.JobsUpdateStateRuntimeOnly(task, "Reseed completed", JobStateFinished, 1)
+	finished := server.JobResults.Get(task)
+	if finished.End == 0 {
+		t.Fatal("expected End to be stamped on terminal update")
+	}
+}
+
+// TestJobsUpdateStateRuntimeOnly_SchedulerDisabled_StampsTimestamps guards
+// manual backup/reseed working outside the scheduler: cluster/srv_job_backup.go
+// call sites that never call JobInsertTask (e.g. ProcessReseedLogical) use
+// JobsUpdateStateRuntimeOnly, which must stamp Start/End itself since there is
+// no DB row and, outside API mode, the SQL UPDATE never runs while
+// MonitorScheduler is false.
+func TestJobsUpdateStateRuntimeOnly_SchedulerDisabled_StampsTimestamps(t *testing.T) {
+	server := newTestServerForRuntimeOnlyJobs(t)
+	task := "mysqldump"
+
+	server.JobsUpdateStateRuntimeOnly(task, "", JobStateRunning, 0)
+	running := server.JobResults.Get(task)
+	if running == nil || running.Start == 0 {
+		t.Fatal("expected Start to be stamped when scheduler is disabled")
+	}
+	if running.End != 0 {
+		t.Fatalf("expected End=0 while running, got %d", running.End)
+	}
+
+	server.JobsUpdateStateRuntimeOnly(task, "Backup completed", JobStateFinished, 1)
+	finished := server.JobResults.Get(task)
+	if finished.End == 0 {
+		t.Fatal("expected End to be stamped on terminal update when scheduler is disabled")
+	}
+}
+
+// TestJobsUpdateState_SchedulerDisabled_DoesNotStampTimestamps locks in the
+// narrowed condition: plain JobsUpdateState must NOT infer "no DB row" from
+// !MonitorScheduler alone, since some callers (JobServerStop, JobServerRestart,
+// JobOptimize) call JobInsertTask unconditionally and do get a real row even
+// with the scheduler disabled. Only JobsUpdateStateRuntimeOnly (used by call
+// sites that skip JobInsertTask) should stamp in that case.
+func TestJobsUpdateState_SchedulerDisabled_DoesNotStampTimestamps(t *testing.T) {
+	server := newTestServerForRuntimeOnlyJobs(t)
+	task := "restart"
+
+	if err := server.JobsUpdateState(task, "", JobStateRunning, 0); err != nil {
+		t.Fatalf("JobsUpdateState returned unexpected error: %v", err)
+	}
+	running := server.JobResults.Get(task)
+	if running == nil {
+		t.Fatal("expected a JobResults entry")
+	}
+	if running.Start != 0 {
+		t.Fatalf("expected Start to stay 0 (no DB row to fall back on here), got %d", running.Start)
+	}
+
+	if err := server.JobsUpdateState(task, "done", JobStateSuccess, 1); err != nil {
+		t.Fatalf("JobsUpdateState returned unexpected error: %v", err)
+	}
+	finished := server.JobResults.Get(task)
+	if finished.End != 0 {
+		t.Fatalf("expected End to stay 0, got %d", finished.End)
+	}
+}
+
 func assertFreshAPITask(t *testing.T, task *config.Task, previousStart int64) {
 	t.Helper()
 	if task == nil {

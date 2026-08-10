@@ -434,8 +434,6 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 		dest = "mysqldump.sql.gz"
 	case config.ConstBackupLogicalTypeMydumper:
 		dest = "mydumper"
-	case config.ConstBackupLogicalTypeDumpling:
-		dest = "dumpling"
 	}
 
 	// Can't handle script validation, unknown logic
@@ -456,6 +454,18 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 			target.SetInReseedBackup("")
 		}
 	}()
+
+	// Stamp the real start time now, before the potentially slow work below
+	// (StopSlaveChannel, ChangeMaster) -- but only for a type the dispatch
+	// below actually executes. Stamping unconditionally here would risk
+	// leaving an unsupported type stuck at "processing" forever, since the
+	// dispatch below has no case for it; only stamp when we know a terminal
+	// call is guaranteed to follow, without changing what counts as a
+	// supported type. No JobInsertTask call anywhere in this function, so
+	// there is no DB row either way.
+	if backtype == config.ConstBackupLogicalTypeMysqldump || backtype == config.ConstBackupLogicalTypeMydumper {
+		target.JobsUpdateStateRuntimeOnly(task, "processing", 1, 0)
+	}
 
 	//Delete wait logical backup cookie
 	target.DelWaitLogicalBackupCookie()
@@ -481,13 +491,12 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 		dbhelper.ChangeMaster(target.Conn, changeOpt, target.DBVersion) // Ignore error
 	}
 
-	target.JobsUpdateState(task, "processing", 1, 0)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backtype, target.URL)
 
 	if backtype == config.ConstBackupLogicalTypeMysqldump {
 		if pmaster.LastBackupMeta.Logical != nil && !pmaster.LastBackupMeta.Logical.SplitUser {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Reseed mysqldump with no split user is not supported")
-			target.JobsUpdateState(task, "Reseed mysqldump with no split user is not supported", 5, 1)
+			target.JobsUpdateStateRuntimeOnly(task, "Reseed mysqldump with no split user is not supported", 5, 1)
 			return "", fmt.Errorf("Reseed mysqldump with no split user is not supported")
 		}
 		err = target.JobReseedMysqldump(backupfile, false)
@@ -517,16 +526,12 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, target.URL, err.Error())
-		if e2 := target.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-		}
+		target.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Reseed logical backup %s from parent cluster failed on %s", backtype, target.URL)
 		return "", err
 	}
 
-	if e2 := target.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-	}
+	target.JobsUpdateStateRuntimeOnly(task, "Reseed completed", 3, 1)
 
 	if target.IsMaster() {
 		_, err2 := target.StartSlaveChannel(parent.Conf.MasterConn)
