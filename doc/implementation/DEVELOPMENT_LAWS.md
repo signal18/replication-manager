@@ -135,10 +135,15 @@ matrix.
 **T11. NEVER open a GitHub issue without tags/labels.** Every issue is labelled
 (`bug`, `critical`, `blocker`, domain tags…) so it can be triaged and found.
 
-**T12. NEVER leave an issue without a target fix release (milestone) — on our
-side.** Every issue *we* own is assigned to the release it will be fixed in.
-Clients can file whatever they want, no milestone required from them; *we* triage,
-tag, and milestone.
+**T12. A milestone marks where a fix ACTUALLY LANDS — assign it only when the
+fixing code exists, never speculatively at filing.** The milestone/version is the
+release a fix *ships in*, so it goes on an issue **only once that fix is merged or
+in a ready PR** — not the moment the issue is filed, and never stamped onto an
+unreleased/not-yet-cut version as aspiration. **A filed-but-unfixed issue carries
+NO milestone** — it stays in the backlog; the milestone appears when the code
+does. Do not auto-stamp a target release on issues you open. Clients file freely
+(no milestone); *we* triage — but triage is labels + priority, and the milestone
+comes with the fix.
 
 **T13. NEVER ship a feature without a REAL multi-product Docker test.** A "test
 case" means the regtest framework spinning up real MariaDB/MySQL/Percona across
