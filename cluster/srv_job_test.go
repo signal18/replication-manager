@@ -2,13 +2,16 @@ package cluster
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 func TestDumpStreamParserExtractsBinlogAndGTID(t *testing.T) {
@@ -192,10 +195,9 @@ func newTestServerForRuntimeOnlyJobs(t *testing.T) *ServerMonitor {
 
 func newTestRuntimeOnlyClusterServer(t *testing.T, clusterName, host, port string) (*Cluster, *ServerMonitor) {
 	t.Helper()
-	tmp := t.TempDir()
 	cluster := &Cluster{
 		Conf: &config.Config{
-			WorkingDir:        tmp,
+			WorkingDir:        t.TempDir(),
 			SchedulerJobsMode: "sql",
 			MonitorScheduler:  false,
 		},
@@ -204,20 +206,42 @@ func newTestRuntimeOnlyClusterServer(t *testing.T, clusterName, host, port strin
 	}
 	cluster.StateMachine.Init()
 	cluster.StateMachine.Discovered = true
+	cluster.VersionsMap = config.NewVersionsMap()
+	server := newTestRuntimeOnlyServer(t, cluster, host, port)
+	cluster.Servers = serverList{server}
+	return cluster, server
+}
+
+// newTestRuntimeOnlyServer builds one more ServerMonitor sharing an already
+// constructed runtime-only test cluster (see newTestRuntimeOnlyClusterServer),
+// for tests that need more than one server on the same cluster (e.g. a direct
+// reseed's source+dest pair). It does not append to cluster.Servers -- callers
+// that need it in the list do that themselves.
+//
+// DBVersion is set to a real (non-nil) *version.Version because several
+// methods it feeds into transitively (e.g. GetMysqlDumpOptions ->
+// ServerMonitor.IsMariaDB -> *version.Version.GreaterEqual) are not
+// nil-receiver-safe, unlike the *version.Version methods that do guard nil.
+// JobResults/Variables must be the real map constructors, not left as nil:
+// both wrap *sync.Map and panic on first use if nil, they don't just behave
+// like an empty map.
+func newTestRuntimeOnlyServer(t *testing.T, cluster *Cluster, host, port string) *ServerMonitor {
+	t.Helper()
 	server := &ServerMonitor{
 		Id:           host,
 		ClusterGroup: cluster,
-		Datadir:      tmp + "/" + host + "_" + port,
+		Datadir:      cluster.Conf.WorkingDir + "/" + host + "_" + port,
 		Host:         host,
 		Port:         port,
 		URL:          host + ":" + port,
+		DBVersion:    &version.Version{Flavor: "MariaDB", Major: 10, Minor: 5},
 	}
 	server.JobResults = config.NewTasksMap()
+	server.Variables = config.NewStringsMap()
 	if err := os.MkdirAll(server.Datadir, 0755); err != nil {
 		t.Fatalf("failed to create server datadir: %v", err)
 	}
-	cluster.Servers = serverList{server}
-	return cluster, server
+	return server
 }
 
 // TestJobsUpdatePayloadRuntimeOnly_SchedulerEnabled_NeverTouchesSQL mirrors
@@ -526,5 +550,183 @@ func TestJobInsertTask_APIMode_RejectsRescheduleWhileInProgress(t *testing.T) {
 		if err := server.JobsUpdateState(task, "completed", JobStateSuccess, 1); err != nil {
 			t.Fatalf("JobsUpdateState(%s) returned unexpected error: %v", task, err)
 		}
+	}
+}
+
+// writeFakeExecutable writes a shell script to dir/name and makes it
+// executable, returning its path.
+func writeFakeExecutable(t *testing.T, dir, name, script string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+		t.Fatalf("failed to write fake executable %s: %v", name, err)
+	}
+	return path
+}
+
+// TestJobRejoinMysqldumpFromSource_ClientFailureClearsReseed is the
+// regression test for the bug this whole fix chain addresses: a restore-side
+// (mysql client) failure must not leave the direct reseed stuck. Before the
+// fix, dumpCmd.Wait() then clientCmd.Wait() ran sequentially, so a client that
+// died first left mysqldump blocked forever on a full stdout pipe nobody was
+// draining -- the function never returned, the deferred SetInReseedBackup("")
+// never ran, and IsReseeding="direct" stayed set forever.
+//
+// The fake mysqldump here writes far more than one pipe buffer's worth of
+// output in a tight loop with no pacing, so if nothing drains it (the bug),
+// it blocks on write() almost immediately and would run for a very long time
+// (bounded only by the loop's line count, effectively "forever" relative to
+// this test's timeout). The fake mysql client exits immediately with a
+// nonzero status and stderr output, simulating a SQL error abort.
+//
+// Verified against the pre-fix implementation: reverted to the sequential
+// dumpCmd.Wait() then clientCmd.Wait() code, this test fails at the 5s
+// timeout with "direct reseed is stuck" instead of passing in well under a
+// second.
+func TestJobRejoinMysqldumpFromSource_ClientFailureClearsReseed(t *testing.T) {
+	cluster, source := newTestRuntimeOnlyClusterServer(t, "direct-reseed-test", "source", "3306")
+	dest := newTestRuntimeOnlyServer(t, cluster, "dest", "3307")
+	cluster.Servers = append(cluster.Servers, dest)
+	binDir := t.TempDir()
+
+	// Keeps writing to stdout past any reasonable OS pipe buffer size (64KiB
+	// is typical on Linux) with no sleeps, so an undrained pipe blocks it
+	// quickly rather than letting it exit "naturally" before the bug would
+	// have a chance to manifest.
+	fakeDump := writeFakeExecutable(t, binDir, "fakedump.sh", `#!/bin/sh
+echo "-- fake dump header" >&2
+i=0
+while [ $i -lt 1000000 ]; do
+  echo "INSERT INTO t VALUES ($i, 'padding-to-make-this-line-not-tiny');"
+  i=$((i+1))
+done
+echo "-- fake dump finished without being cancelled" >&2
+`)
+
+	fakeClient := writeFakeExecutable(t, binDir, "fakeclient.sh", `#!/bin/sh
+echo "ERROR 1064 (42000) at line 1: fake SQL syntax error" >&2
+exit 1
+`)
+
+	cluster.Conf.BackupMysqldumpPath = fakeDump
+	cluster.Conf.BackupMysqlclientPath = fakeClient
+
+	dest.SetInReseedBackup("direct")
+
+	resultCh := make(chan error, 1)
+	go func() {
+		resultCh <- cluster.JobRejoinMysqldumpFromSource(source, dest)
+	}()
+
+	const timeout = 5 * time.Second
+	var err error
+	select {
+	case err = <-resultCh:
+		// good — returned within the timeout
+	case <-time.After(timeout):
+		t.Fatalf("JobRejoinMysqldumpFromSource did not return within %s -- direct reseed is stuck", timeout)
+	}
+
+	if err == nil {
+		t.Fatal("expected JobRejoinMysqldumpFromSource to return an error when the mysql client fails")
+	}
+
+	if dest.HasAnyReseedingState() {
+		t.Fatalf("expected reseeding state to clear after failure, got %q", dest.IsReseeding)
+	}
+
+	task := dest.JobResults.Get("direct")
+	if task == nil {
+		t.Fatal("expected a JobResults entry for task \"direct\"")
+	}
+	if task.Done != 1 {
+		t.Fatalf("expected task \"direct\" to be marked done, got Done=%d", task.Done)
+	}
+	if task.State != JobStateErrorExec {
+		t.Fatalf("expected task \"direct\" to be marked failed (state=%d), got state=%d (result=%q)",
+			JobStateErrorExec, task.State, task.Result)
+	}
+}
+
+// TestJobRejoinMysqldumpFromSource_StallClearsReseed is the regression test
+// for the remaining hang vector no exit-based fix can catch: mysqldump and
+// the mysql client both wedge WITHOUT exiting or erroring (e.g. a source-side
+// lock wait, or a destination query that never returns). None of the
+// dump/client Wait() goroutines and none of the pump's own error paths ever
+// fire in that case -- only a stall watchdog watching byte progress through
+// the pump can. The fake mysqldump here writes one line, then blocks forever
+// instead of exiting; the fake mysql client just drains whatever it's given
+// and blocks waiting for more, exactly like a real client sitting on a
+// long-running statement -- neither side ever exits or errors on its own.
+func TestJobRejoinMysqldumpFromSource_StallClearsReseed(t *testing.T) {
+	cluster, source := newTestRuntimeOnlyClusterServer(t, "direct-reseed-stall-test", "source", "3306")
+	dest := newTestRuntimeOnlyServer(t, cluster, "dest", "3307")
+	cluster.Servers = append(cluster.Servers, dest)
+	binDir := t.TempDir()
+
+	// exec, not a plain call: sleep/cat are external binaries the shell would
+	// otherwise fork as a CHILD. cancel() only sends SIGKILL to dumpCmd's own
+	// Process (the shell's PID) -- killing the shell wouldn't touch an
+	// orphaned grandchild still holding the pipe open, and this test would
+	// hang the same way a real stuck subprocess is supposed to prove it
+	// doesn't. `exec` replaces the shell's process image with sleep/cat in
+	// place (same PID), so killing dumpCmd's/clientCmd's Process kills the
+	// real blocked process directly, exactly like a real single-process
+	// mysqldump/mysql client would be killed.
+	fakeDump := writeFakeExecutable(t, binDir, "fakestalldump.sh", `#!/bin/sh
+echo "-- fake dump header" >&2
+echo "INSERT INTO t VALUES (1);"
+# Stall: no more output, no exit -- simulates a wedged source-side query.
+exec sleep 300
+`)
+
+	fakeClient := writeFakeExecutable(t, binDir, "fakestallclient.sh", `#!/bin/sh
+# Simulate a client that stays alive and keeps waiting for more input,
+# exactly like a real mysql client blocked on a long-running statement --
+# never exits, never errors on its own.
+exec cat >/dev/null
+`)
+
+	cluster.Conf.BackupMysqldumpPath = fakeDump
+	cluster.Conf.BackupMysqlclientPath = fakeClient
+	cluster.Conf.BackupWriteStallTimeout = 1 // seconds; small so the test stays fast
+
+	dest.SetInReseedBackup("direct")
+
+	resultCh := make(chan error, 1)
+	go func() {
+		resultCh <- cluster.JobRejoinMysqldumpFromSource(source, dest)
+	}()
+
+	const timeout = 10 * time.Second
+	var err error
+	select {
+	case err = <-resultCh:
+		// good — returned within the timeout
+	case <-time.After(timeout):
+		t.Fatalf("JobRejoinMysqldumpFromSource did not return within %s -- stalled direct reseed is stuck", timeout)
+	}
+
+	if err == nil {
+		t.Fatal("expected JobRejoinMysqldumpFromSource to return an error when the stream stalls")
+	}
+	if !strings.Contains(err.Error(), "stall") && !strings.Contains(err.Error(), "no bytes streamed") {
+		t.Fatalf("expected a stall-specific error, got: %v", err)
+	}
+
+	if dest.HasAnyReseedingState() {
+		t.Fatalf("expected reseeding state to clear after stall, got %q", dest.IsReseeding)
+	}
+
+	task := dest.JobResults.Get("direct")
+	if task == nil {
+		t.Fatal("expected a JobResults entry for task \"direct\"")
+	}
+	if task.Done != 1 {
+		t.Fatalf("expected task \"direct\" to be marked done, got Done=%d", task.Done)
+	}
+	if task.State != JobStateErrorExec {
+		t.Fatalf("expected task \"direct\" to be marked failed (state=%d), got state=%d (result=%q)",
+			JobStateErrorExec, task.State, task.Result)
 	}
 }
