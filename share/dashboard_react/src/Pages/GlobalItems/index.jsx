@@ -9,6 +9,7 @@ import styles from './styles.module.scss'
 import Logs from '../Dashboard/components/Logs'
 import AccordionComponent from '../../components/AccordionComponent'
 import AlertModal from '../../components/Modals/AlertModal'
+import GlobalJobsBody from './GlobalJobs'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -343,6 +344,7 @@ function GlobalItems() {
         body={<GlobalAlertsBody globalAlerts={globalAlerts} onOpenModal={setGlobalAlertModalType} />}
       />
       <AccordionComponent heading='Global Logs' body={<GlobalLogs />} />
+      <AccordionComponent heading='Global Jobs' body={<GlobalJobsBody />} />
       <AlertModal
         type={globalAlertModalType}
         isOpen={globalAlertModalType.length !== 0}

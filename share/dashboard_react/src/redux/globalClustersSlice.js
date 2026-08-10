@@ -428,6 +428,18 @@ export const getGlobalAlerts = createGuardedAsyncThunk('globalClusters/getGlobal
   }
 })
 
+export const getGlobalJobs = createGuardedAsyncThunk('globalClusters/getGlobalJobs', async ({ baseURL = '' } = {}, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.getGlobalJobs(baseURL)
+    if (status !== 200) {
+      throw new Error(data)
+    }
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
 export const refreshAppTemplateRepo = createGuardedAsyncThunk(
   'globalClusters/refreshAppTemplateRepo',
   async ({ clusterName, silent = false, forceRefresh = false }, thunkAPI) => {
@@ -494,7 +506,8 @@ const initialState = {
   terms: ``,
   globalAlerts: { errors: [], warnings: [], infos: [] },
   globalMetrics: null,
-  globalLogs: { general: { buffer: [], len: 0, line: 0 } }
+  globalLogs: { general: { buffer: [], len: 0, line: 0 } },
+  globalJobs: { runningJobs: [], recentCompletedJobs: [], resticCurrentTasks: [] }
 }
 
 export const globalClustersSlice = createSlice({
@@ -623,6 +636,16 @@ export const globalClustersSlice = createSlice({
         state.globalLogs = action.payload.data ?? { general: { buffer: [], len: 0, line: 0 } }
       })
       .addCase(getGlobalLogs.rejected, (state, action) => {
+        state.error = action.error
+      })
+      .addCase(getGlobalJobs.fulfilled, (state, action) => {
+        state.globalJobs = {
+          runningJobs: action.payload.data?.runningJobs ?? [],
+          recentCompletedJobs: action.payload.data?.recentCompletedJobs ?? [],
+          resticCurrentTasks: action.payload.data?.resticCurrentTasks ?? []
+        }
+      })
+      .addCase(getGlobalJobs.rejected, (state, action) => {
         state.error = action.error
       })
 

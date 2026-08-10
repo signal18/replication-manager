@@ -29,7 +29,7 @@ import {
   getBackups,
   getResticCurrentTask
 } from '../../redux/clusterSlice'
-import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale, getGlobalAlerts, getGlobalMetrics, getGlobalLogs } from '../../redux/globalClustersSlice'
+import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale, getGlobalAlerts, getGlobalMetrics, getGlobalLogs, getGlobalJobs } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
 import { isAutoReloadPaused } from '../../utility/autoReloadPause'
 import styles from './styles.module.scss'
@@ -251,6 +251,7 @@ function Home() {
           dispatch(getGlobalAlerts({}))
           dispatch(getGlobalMetrics({}))
           dispatch(getGlobalLogs({}))
+          dispatch(getGlobalJobs({}))
         }
       }
     } else if (selectedClusterNameRef.current) {

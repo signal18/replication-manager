@@ -47,6 +47,11 @@ Frontend UI component documentation.
 - **ServerMenu.REVIEW.md** - ServerMenu component review notes
 - **ServerMenu.SUMMARY.md** - ServerMenu component summary
 
+### `/server/`
+Server API and cross-cluster aggregation documentation.
+
+- **GLOBAL_JOBS_DASHBOARD.md** - Global jobs aggregate endpoint, ACL behavior, and dashboard wiring
+
 ### `/utils/dbhelper/`
 Database helper utilities documentation.
 

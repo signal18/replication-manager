@@ -108,6 +108,7 @@ func (u *APIUser) Granted(grant string) error {
 //   - no password        => SSO identity. Authenticated by OIDC only; local
 //     password auth is refused — an empty stored or submitted password must
 //     never authenticate, closing the blank-password bypass.
+//
 // IsLocalOnlyAccount reports whether strUser is a local (password-protected)
 // account that must authenticate by password only — SSO must never bind or
 // authenticate it, or a same-named GitLab identity would ride its ACL. The
@@ -124,6 +125,19 @@ func (cluster *Cluster) IsLocalOnlyAccount(strUser string) bool {
 }
 
 func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL string, AuthMethod string) bool {
+	return cluster.isValidACL(strUser, strPassword, URL, AuthMethod, true)
+}
+
+// IsValidACLQuiet behaves exactly like IsValidACL (same password re-verification,
+// same grant check) but does not log denied checks. Intended for aggregate/probing
+// callers, e.g. the global jobs dashboard, that deliberately test many clusters per
+// request and would otherwise flood cluster logs with expected denials for clusters
+// the caller can't see.
+func (cluster *Cluster) IsValidACLQuiet(strUser string, strPassword string, URL string, AuthMethod string) bool {
+	return cluster.isValidACL(strUser, strPassword, URL, AuthMethod, false)
+}
+
+func (cluster *Cluster) isValidACL(strUser string, strPassword string, URL string, AuthMethod string, errorPrint bool) bool {
 	user, ok := cluster.APIUsers[strUser]
 	if !ok {
 		return false
@@ -135,7 +149,7 @@ func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL strin
 		if cluster.IsLocalOnlyAccount(strUser) {
 			return false
 		}
-		return cluster.IsURLPassACL(strUser, URL, true)
+		return cluster.IsURLPassACL(strUser, URL, errorPrint)
 	}
 
 	// Local password auth: passwordless accounts are SSO-only, and a blank
@@ -144,7 +158,7 @@ func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL strin
 		return false
 	}
 	if subtle.ConstantTimeCompare([]byte(user.Password), []byte(cluster.Conf.GetDecryptedPassword("api-credentials", strPassword))) == 1 {
-		return cluster.IsURLPassACL(strUser, URL, true)
+		return cluster.IsURLPassACL(strUser, URL, errorPrint)
 	}
 	return false
 }
