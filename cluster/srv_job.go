@@ -441,15 +441,26 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 	// Remote tasks: set a cookie so the dbjobs script discovers them via the needs API.
 	// Local tasks (mysqldump, mydumper): only track state in memory — repman runs them directly.
 	if cluster.Conf.SchedulerJobsMode == "api" {
+		if server.IsInTask(task) {
+			return 0, fmt.Errorf("task %s is already in progress", task)
+		}
+
+		// Attempt dispatch (cookie write for remote tasks) before storing the fresh
+		// snapshot: IsInTask treats any stored Done=0 entry as in-progress, so
+		// storing first and only then attempting the cookie would leave a stale
+		// entry that blocks every retry forever if the cookie write fails.
 		if config.IsRemoteTask(config.TaskName(task), cluster.Conf.SchedulerJobsExecOverrides) {
 			if err := server.setTaskCookie(task); err != nil {
 				return 0, fmt.Errorf("Failed to set cookie for remote task %s: %v", task, err)
 			}
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "API mode: set cookie for task %s on %s", task, server.URL)
-		} else {
-			// Local task — track in memory only, no cookie, no dbjobs dispatch
-			server.JobsUpdateState(task, "", 0, 0)
 		}
+
+		newTask := &config.Task{Task: task, Start: time.Now().Unix(), State: JobStateAvailable}
+		if payload != nil {
+			newTask.Payload = *payload
+		}
+		server.JobResults.Store(task, newTask)
 		return 0, nil
 	}
 
@@ -861,7 +872,11 @@ func (server *ServerMonitor) JobsCheckErrors(Conn *sqlx.Conn) error {
 	}
 
 	if ct > 0 {
-		query := "UPDATE replication_manager_schema.jobs SET done=1 WHERE done=0 AND state=5 and task in (%s)"
+		// end=NOW() here (not at the original failure site) because this is where
+		// these rows are actually settled: WaitAndSendSST/WaitAndSendSSTStream
+		// deliberately leave reseed/flashback SST failures at done=0 so this scan
+		// can find them and run the cleanup above before marking them done.
+		query := "UPDATE replication_manager_schema.jobs SET done=1, end=NOW() WHERE done=0 AND state=5 and task in (%s)"
 		server.ExecQueryNoBinLog(fmt.Sprintf(query, strings.Join(p, ",")), JobTimeout)
 		server.SetNeedRefreshJobs(true)
 	}
@@ -1221,6 +1236,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 func (server *ServerMonitor) JobsUpdateState(task, result string, state, done int) error {
 	var err error
 	cluster := server.ClusterGroup
+	now := time.Now().Unix()
 
 	if t, exists := server.JobResults.LoadOrStore(task, &config.Task{
 		Task:   task,
@@ -1228,9 +1244,32 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 		Result: result,
 		Done:   done,
 	}); exists {
+		wasDone := t.Done
 		t.State = state
 		t.Done = done
 		t.Result = result
+
+		if cluster.Conf.SchedulerJobsMode == "api" {
+			if done == 1 {
+				if t.Start == 0 {
+					t.Start = now
+				}
+				t.End = now
+			} else {
+				if t.Start == 0 || wasDone == 1 {
+					t.Start = now
+				}
+				t.End = 0
+			}
+		}
+	} else if cluster.Conf.SchedulerJobsMode == "api" {
+		if done == 1 {
+			t.Start = now
+			t.End = now
+		} else {
+			t.Start = now
+			t.End = 0
+		}
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job state updated in runtime. Continue to update state in jobs table.")
 

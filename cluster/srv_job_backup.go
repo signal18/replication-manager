@@ -3948,6 +3948,10 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 				elapsed := time.Since(sendStart).Round(time.Second)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST send for %s failed after %s: %s", task, elapsed, err.Error())
+					// done=0: JobsCheckErrors (srv_job.go) owns settling this row —
+					// it finds done=0/state=5 rows, runs restic-cookie/mount cleanup
+					// for reseed/flashback task names, then marks done=1 with End set.
+					// Marking done=1 here would hide the row from that cleanup.
 					server.JobsUpdateState(task, err.Error(), 5, 0)
 					return
 				}
@@ -3962,6 +3966,7 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 		}
 	}
 
+	// done=0: see JobsCheckErrors ownership note above.
 	server.JobsUpdateState(task, "Waiting more than max loop", 5, 0)
 	server.SetNeedRefreshJobs(true)
 	return errors.New("Error: waiting for " + task + " more than max loop.")
@@ -4016,6 +4021,7 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST stream send for %s started at %s (source: %s)", task, sendStart.Format(time.RFC3339), sourceName)
 				if err := ctx.Err(); err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST stream for %s canceled before start: %s", task, err)
+					// done=0: see JobsCheckErrors ownership note in WaitAndSendSST.
 					server.JobsUpdateState(task, err.Error(), 5, 0)
 					return
 				}
