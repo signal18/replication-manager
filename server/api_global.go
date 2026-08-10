@@ -13,13 +13,19 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"sort"
+	"strings"
 	"time"
 
+	jwt "github.com/golang-jwt/jwt/v5"
+	"github.com/golang-jwt/jwt/v5/request"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/mem"
 	"github.com/shirou/gopsutil/process"
+	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -315,4 +321,234 @@ func (repman *ReplicationManager) handlerMuxForgetArbitration(w http.ResponseWri
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
+}
+
+// globalJobsRecentLimit caps how many recently completed DB jobs are kept per cluster.
+const globalJobsRecentLimit = 5
+
+// globalRequestIdentity is the JWT-derived caller identity used to evaluate
+// per-cluster ACL for /api/global/jobs sections.
+type globalRequestIdentity struct {
+	Username   string
+	Password   string
+	AuthMethod string
+}
+
+// resolveGlobalRequestIdentity parses the request JWT once so the same
+// (username, password, authMethod) can be checked against multiple clusters'
+// cluster.IsValidACL with synthetic per-section URLs. It mirrors the claims
+// handling in IsValidClusterACL, kept local here rather than factored into that
+// shared, widely-used function to avoid touching behavior other endpoints rely on.
+func (repman *ReplicationManager) resolveGlobalRequestIdentity(r *http.Request) (globalRequestIdentity, bool) {
+	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
+		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
+		return vk, nil
+	})
+	if err != nil {
+		return globalRequestIdentity{}, false
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return globalRequestIdentity{}, false
+	}
+	mycutinfo, ok := claims["CustomUserInfo"].(map[string]interface{})
+	if !ok {
+		return globalRequestIdentity{}, false
+	}
+	username, _ := mycutinfo["Name"].(string)
+	password, _ := mycutinfo["Password"].(string)
+
+	if profile, ok := mycutinfo["profile"].(string); ok {
+		if strings.Contains(profile, repman.Conf.OAuthProvider) {
+			email, _ := mycutinfo["email"].(string)
+			return globalRequestIdentity{Username: email, Password: password, AuthMethod: "oidc"}, true
+		}
+	}
+	return globalRequestIdentity{Username: username, Password: password, AuthMethod: "password"}, true
+}
+
+// globalJobEntry is a single DB job entry surfaced in the global jobs aggregate,
+// annotated with the cluster and server it belongs to.
+type globalJobEntry struct {
+	ClusterName string `json:"clusterName"`
+	ServerId    string `json:"serverId"`
+	ServerUrl   string `json:"serverUrl"`
+	Task        string `json:"task"`
+	State       int    `json:"state"`
+	StateLabel  string `json:"stateLabel"`
+	Result      string `json:"result,omitempty"`
+	Start       int64  `json:"start"`
+	End         int64  `json:"end,omitempty"`
+}
+
+// globalClusterResticTask is the current restic task for one cluster in the global jobs aggregate.
+type globalClusterResticTask struct {
+	ClusterName string                     `json:"clusterName"`
+	CurrentTask *backupmgr.ResticTaskState `json:"currentTask"`
+}
+
+// globalJobsResponse is the JSON payload for GET /api/global/jobs.
+type globalJobsResponse struct {
+	RunningJobs         []globalJobEntry          `json:"runningJobs"`
+	RecentCompletedJobs []globalJobEntry          `json:"recentCompletedJobs"`
+	ResticCurrentTasks  []globalClusterResticTask `json:"resticCurrentTasks"`
+}
+
+// jobStateLabel mirrors the state labels used by the per-cluster jobs UI
+// (share/dashboard_react/src/Pages/Maintenance/DatabaseJobs).
+func jobStateLabel(jobState int) string {
+	switch jobState {
+	case cluster.JobStateAvailable:
+		return "Init"
+	case cluster.JobStateRunning:
+		return "Running"
+	case cluster.JobStateHalted:
+		return "Halted"
+	case cluster.JobStateFinished:
+		return "Done"
+	case cluster.JobStateSuccess:
+		return "Success"
+	case cluster.JobStateErrorExec:
+		return "Error"
+	case cluster.JobStateErrorAfter:
+		return "PTError"
+	default:
+		return "Unknown"
+	}
+}
+
+// handlerMuxGlobalJobs returns a cross-cluster aggregate of running DB jobs, the
+// last few completed DB jobs per cluster, and the current Restic task per cluster.
+//
+// @Summary Get global jobs
+// @Description Returns running and recently completed DB jobs, and current Restic tasks, across all clusters.
+// @Tags Global
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Success 200 {object} globalJobsResponse
+// @Failure 401 {string} string "Unauthorized"
+// @Router /api/global/jobs [get]
+func (repman *ReplicationManager) handlerMuxGlobalJobs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if !repman.UserHasGlobalGrant(r, config.GrantGlobalAdminShow) {
+		http.Error(w, "Forbidden: requires "+config.GrantGlobalAdminShow+" grant", http.StatusForbidden)
+		return
+	}
+
+	resp := globalJobsResponse{
+		RunningJobs:         []globalJobEntry{},
+		RecentCompletedJobs: []globalJobEntry{},
+		ResticCurrentTasks:  []globalClusterResticTask{},
+	}
+
+	identity, ok := repman.resolveGlobalRequestIdentity(r)
+	if !ok {
+		http.Error(w, "Forbidden: unable to resolve caller identity", http.StatusForbidden)
+		return
+	}
+
+	// Snapshot the Clusters map under the repman lock to avoid racing with
+	// StartCluster / cluster removal, which mutate the map under that same lock.
+	// This endpoint is polled continuously, so an unsynchronized range here would
+	// eventually overlap a dynamic add/remove and panic (concurrent map read/write).
+	repman.Lock()
+	clusterSnapshot := make(map[string]*cluster.Cluster, len(repman.Clusters))
+	for k, v := range repman.Clusters {
+		clusterSnapshot[k] = v
+	}
+	repman.Unlock()
+
+	clusterNames := make([]string, 0, len(clusterSnapshot))
+	for name := range clusterSnapshot {
+		clusterNames = append(clusterNames, name)
+	}
+	sort.Strings(clusterNames)
+
+	for _, name := range clusterNames {
+		cl := clusterSnapshot[name]
+		if cl == nil {
+			continue
+		}
+
+		// Per-cluster ACL: only include a section if this caller would already be
+		// allowed to reach the equivalent per-cluster endpoint. global-admin-show
+		// grants visibility into the aggregate, not into every cluster's data.
+		// Quiet variant: this endpoint is polled and probes every cluster, so a
+		// caller without access to cluster X would otherwise log a denial on X
+		// every refresh even though the denial here is expected, not an incident.
+		canViewJobs := cl.IsValidACLQuiet(identity.Username, identity.Password, "/api/clusters/"+name+"/jobs", identity.AuthMethod)
+		canViewRestic := cl.IsValidACLQuiet(identity.Username, identity.Password, "/api/clusters/"+name+"/restic/task-current", identity.AuthMethod)
+
+		if canViewJobs {
+			if entries, err := cl.JobsGetEntries(); err == nil {
+				var completed []globalJobEntry
+				for serverId, list := range entries.Servers {
+					for _, t := range list.Tasks {
+						entry := globalJobEntry{
+							ClusterName: name,
+							ServerId:    serverId,
+							ServerUrl:   list.ServerURL,
+							Task:        t.Task,
+							State:       t.State,
+							StateLabel:  jobStateLabel(t.State),
+							Result:      t.Result,
+							Start:       t.Start,
+							End:         t.End,
+						}
+						switch t.State {
+						case cluster.JobStateAvailable, cluster.JobStateRunning, cluster.JobStateHalted:
+							resp.RunningJobs = append(resp.RunningJobs, entry)
+						case cluster.JobStateFinished, cluster.JobStateSuccess, cluster.JobStateErrorExec, cluster.JobStateErrorAfter:
+							completed = append(completed, entry)
+						}
+					}
+				}
+				sort.Slice(completed, func(i, j int) bool { return completed[i].End > completed[j].End })
+				if len(completed) > globalJobsRecentLimit {
+					completed = completed[:globalJobsRecentLimit]
+				}
+				resp.RecentCompletedJobs = append(resp.RecentCompletedJobs, completed...)
+			}
+		}
+
+		if canViewRestic && cl.ResticManager != nil {
+			if task := cl.ResticManager.GetCurrentTaskState(); task != nil {
+				resp.ResticCurrentTasks = append(resp.ResticCurrentTasks, globalClusterResticTask{
+					ClusterName: name,
+					CurrentTask: task,
+				})
+			}
+		}
+	}
+
+	// Per-cluster capping above keeps any one cluster from crowding out the rest;
+	// this final sort makes the combined list globally newest-first.
+	sort.Slice(resp.RecentCompletedJobs, func(i, j int) bool {
+		return resp.RecentCompletedJobs[i].End > resp.RecentCompletedJobs[j].End
+	})
+
+	// entries.Servers (cluster/cluster_job.go) is a map, so the per-server
+	// iteration order that built RunningJobs is randomized per request; sort it
+	// for a stable row order across polls even when nothing has changed.
+	sort.Slice(resp.RunningJobs, func(i, j int) bool {
+		a, b := resp.RunningJobs[i], resp.RunningJobs[j]
+		if a.ClusterName != b.ClusterName {
+			return a.ClusterName < b.ClusterName
+		}
+		if a.ServerUrl != b.ServerUrl {
+			return a.ServerUrl < b.ServerUrl
+		}
+		return a.Task < b.Task
+	})
+
+	out, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(out)
 }
