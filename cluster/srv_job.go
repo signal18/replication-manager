@@ -441,26 +441,44 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 	// Remote tasks: set a cookie so the dbjobs script discovers them via the needs API.
 	// Local tasks (mysqldump, mydumper): only track state in memory — repman runs them directly.
 	if cluster.Conf.SchedulerJobsMode == "api" {
-		if server.IsInTask(task) {
-			return 0, fmt.Errorf("task %s is already in progress", task)
+		newTask := &config.Task{Task: task, Start: time.Now().Unix(), State: JobStateAvailable}
+		if payload != nil {
+			newTask.Payload = *payload
 		}
 
-		// Attempt dispatch (cookie write for remote tasks) before storing the fresh
-		// snapshot: IsInTask treats any stored Done=0 entry as in-progress, so
-		// storing first and only then attempting the cookie would leave a stale
-		// entry that blocks every retry forever if the cookie write fails.
+		// Atomically claim the task slot with LoadOrStore instead of a separate
+		// IsInTask check followed by a later Store: two concurrent callers can
+		// both pass a plain check before either stores, dispatching the task
+		// twice. LoadOrStore performs the check-and-set as one operation, so at
+		// most one caller ever claims a given task.
+		for {
+			existing, loaded := server.JobResults.LoadOrStore(task, newTask)
+			if !loaded {
+				break // we claimed the slot
+			}
+			if existing.Done == 0 {
+				return 0, fmt.Errorf("task %s is already in progress", task)
+			}
+			// Previous run finished; try to replace it with our claim. If another
+			// caller wins this race, existing has since changed and we loop to
+			// re-evaluate it rather than clobber their claim.
+			if server.JobResults.CompareAndSwap(task, existing, newTask) {
+				break
+			}
+		}
+
+		// Attempt dispatch (cookie write for remote tasks) after claiming the
+		// slot above, since the claim is what makes the check-and-set atomic.
+		// On failure, release the claim so a stale Done=0 entry doesn't block
+		// every retry forever.
 		if config.IsRemoteTask(config.TaskName(task), cluster.Conf.SchedulerJobsExecOverrides) {
 			if err := server.setTaskCookie(task); err != nil {
+				server.JobResults.CompareAndDelete(task, newTask)
 				return 0, fmt.Errorf("Failed to set cookie for remote task %s: %v", task, err)
 			}
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "API mode: set cookie for task %s on %s", task, server.URL)
 		}
 
-		newTask := &config.Task{Task: task, Start: time.Now().Unix(), State: JobStateAvailable}
-		if payload != nil {
-			newTask.Payload = *payload
-		}
-		server.JobResults.Store(task, newTask)
 		return 0, nil
 	}
 

@@ -4088,12 +4088,6 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		return errors.New("Slave is in super read-only")
 	}
 
-	// Stamp the real start time now, before the potentially slow work below
-	// (StopSlave, pointSlaveToMaster, the restore itself). No JobInsertTask
-	// call anywhere in this function, in any scheduler state, so there is
-	// never a DB row for a logical reseed task run.
-	server.JobsUpdateStateRuntimeOnly(task, "processing", 1, 0)
-
 	backupType := cluster.Conf.BackupLogicalType
 	payloadBackupPath := ""
 	splitUser := false
@@ -4148,6 +4142,12 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	}()
 
 	if cluster.Conf.BackupLoadScript != "" {
+		// Stamp the real start time now, before the potentially slow work below
+		// (StopSlave, pointSlaveToMaster, the restore itself). No JobInsertTask
+		// call anywhere in this function, in any scheduler state, so there is
+		// never a DB row for a logical reseed task run.
+		server.JobsUpdateStateRuntimeOnly(task, "processing", 1, 0)
+
 		if !isPITR {
 			logs, err := server.StopSlave()
 			if err != nil {
@@ -4185,6 +4185,12 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	if backupType != config.ConstBackupLogicalTypeMysqldump && backupType != config.ConstBackupLogicalTypeMydumper {
 		return fmt.Errorf("Logical reseed backup type %s is not supported", backupType)
 	}
+
+	// Stamp the real start time now, before the potentially slow work below
+	// (StopSlave, pointSlaveToMaster, the restore itself). No JobInsertTask
+	// call anywhere in this function, in any scheduler state, so there is
+	// never a DB row for a logical reseed task run.
+	server.JobsUpdateStateRuntimeOnly(task, "processing", 1, 0)
 
 	useMaster := true
 	source := master
