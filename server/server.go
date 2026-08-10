@@ -3374,6 +3374,10 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	repman.currentCluster.DiskStatManager = repman.DiskStatManager
 	repman.currentCluster.Mailer = repman.Mailer
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
+	// Report the full git-describe version (nightly detection) and repman's own
+	// process start time to the BO via clusterstate.json — RepMgrVersion stays the base tag.
+	repman.currentCluster.RepMgrFullVersion = repman.Fullversion
+	repman.currentCluster.RepMgrRestartTime = repman.StartTime.Unix()
 	repman.Lock()
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.Unlock()
