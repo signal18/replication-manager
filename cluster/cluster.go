@@ -1350,7 +1350,9 @@ func (cluster *Cluster) StateProcessing() {
 				cluster.trackTickGoroutine(func() {
 					err := srvReseed.ProcessReseedLogical(reseedTask)
 					if err != nil {
-						srvReseed.JobsUpdateState(reseedTask, err.Error(), 5, 1)
+						// ProcessReseedLogical never calls JobInsertTask, so there is no
+						// DB row for this task regardless of scheduler state.
+						srvReseed.JobsUpdateStateRuntimeOnly(reseedTask, err.Error(), 5, 1)
 						if srvReseed.HasReseedingState(reseedTask) {
 							srvReseed.SetInReseedBackup("")
 						}
