@@ -295,6 +295,8 @@ type Cluster struct {
 	runUUID                             string                      `json:"-"`
 	cfgGroupDisplay                     string                      `json:"-"`
 	RepMgrVersion                       string                      `json:"-"`
+	RepMgrFullVersion                   string                      `json:"-"`
+	RepMgrRestartTime                   int64                       `json:"-"`
 	RepMgrHostname                      string                      `json:"-"`
 	exitMsg                             string                      `json:"-"`
 	exit                                atomic.Bool                 `json:"-"`
@@ -936,8 +938,8 @@ var pstates30 = []string{
 	"WARN0093", "WARN0134", "WARN0145", // Restic related
 	"WARN0101", "WARN0111", "WARN0112", // Backup related
 	"WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
-	"WARN0153", // Job related
-	"WARN0158", // Job secrets mismatch
+	"WARN0153",             // Job related
+	"WARN0158",             // Job secrets mismatch
 	"WARN0190", "WARN0191", // Rejoin catalog (HasCatalogBackupForRejoin runs %30)
 	"CREDIT01", // Credit related
 }
@@ -1715,8 +1717,15 @@ type ClusterState struct {
 	Crashes       crashList `json:"crashes"`
 	IsAllDbUp     bool      `json:"provisioned"`
 	RepmgrVersion string    `json:"repmgrVersion"`
-	RepmgrArch    string    `json:"repmgrArch"`
-	RepmgrOS      string    `json:"repmgrOS"`
+	// RepmgrFullVersion is the full git-describe version (e.g. v3.1.38-40-gbfd7fb334).
+	// RepmgrVersion above stays the base tag for backward compat; the BO reads this
+	// to distinguish a nightly (has a -N-g<hash> suffix) from a release.
+	RepmgrFullVersion string `json:"repmgrFullVersion"`
+	// RepmgrRestartTime is when THIS repman process started (Unix seconds) — repman's
+	// own restart time, distinct from the database-side SLA/uptime.
+	RepmgrRestartTime int64  `json:"repmgrRestartTime"`
+	RepmgrArch        string `json:"repmgrArch"`
+	RepmgrOS          string `json:"repmgrOS"`
 	// Peer health fields — consumed by the BO to build peer.json with health data,
 	// removing the need for direct peer-to-peer HTTP polling.
 	IsDown        bool `json:"isDown"`
@@ -1818,6 +1827,8 @@ func (cluster *Cluster) SaveCallBack() error {
 	clsave.Servers = cluster.Conf.Hosts
 	clsave.IsAllDbUp = cluster.IsAllDbUp
 	clsave.RepmgrVersion = cluster.RepMgrVersion
+	clsave.RepmgrFullVersion = cluster.RepMgrFullVersion
+	clsave.RepmgrRestartTime = cluster.RepMgrRestartTime
 	clsave.RepmgrArch = cluster.Conf.GoArch
 	clsave.RepmgrOS = cluster.Conf.GoOS
 	clsave.IsDown = cluster.IsDown
