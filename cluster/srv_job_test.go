@@ -139,11 +139,14 @@ func newTestServerForAPIJobs(t *testing.T) *ServerMonitor {
 		Name:         "testcluster",
 		StateMachine: &state.StateMachine{},
 	}
+	cluster.StateMachine.Init()
 	server := &ServerMonitor{
+		Id:           "node1",
 		ClusterGroup: cluster,
 		Datadir:      tmp + "/node1_3306",
 		Host:         "node1",
 		Port:         "3306",
+		URL:          "node1:3306",
 	}
 	server.JobResults = config.NewTasksMap()
 	if err := os.MkdirAll(server.Datadir, 0755); err != nil {
@@ -183,6 +186,11 @@ func TestJobInsertTask_APIMode_RemoteTask_CookieFailureDoesNotBlockRetry(t *test
 // JobsUpdateState is the only thing ever touching this task (JobInsertTask's
 // SQL INSERT is skipped by the caller, e.g. cluster/srv_job_backup.go).
 func newTestServerForRuntimeOnlyJobs(t *testing.T) *ServerMonitor {
+	_, server := newTestRuntimeOnlyClusterServer(t, "testcluster", "node1", "3306")
+	return server
+}
+
+func newTestRuntimeOnlyClusterServer(t *testing.T, clusterName, host, port string) (*Cluster, *ServerMonitor) {
 	t.Helper()
 	tmp := t.TempDir()
 	cluster := &Cluster{
@@ -191,20 +199,25 @@ func newTestServerForRuntimeOnlyJobs(t *testing.T) *ServerMonitor {
 			SchedulerJobsMode: "sql",
 			MonitorScheduler:  false,
 		},
-		Name:         "testcluster",
+		Name:         clusterName,
 		StateMachine: &state.StateMachine{},
 	}
+	cluster.StateMachine.Init()
+	cluster.StateMachine.Discovered = true
 	server := &ServerMonitor{
+		Id:           host,
 		ClusterGroup: cluster,
-		Datadir:      tmp + "/node1_3306",
-		Host:         "node1",
-		Port:         "3306",
+		Datadir:      tmp + "/" + host + "_" + port,
+		Host:         host,
+		Port:         port,
+		URL:          host + ":" + port,
 	}
 	server.JobResults = config.NewTasksMap()
 	if err := os.MkdirAll(server.Datadir, 0755); err != nil {
 		t.Fatalf("failed to create server datadir: %v", err)
 	}
-	return server
+	cluster.Servers = serverList{server}
+	return cluster, server
 }
 
 // TestJobsUpdatePayloadRuntimeOnly_SchedulerEnabled_NeverTouchesSQL mirrors
@@ -309,6 +322,69 @@ func TestJobsUpdateState_SchedulerDisabled_DoesNotStampTimestamps(t *testing.T) 
 	finished := server.JobResults.Get(task)
 	if finished.End != 0 {
 		t.Fatalf("expected End to stay 0, got %d", finished.End)
+	}
+}
+
+// TestProcessReseedLogical_UnsupportedType_DoesNotCreateRunningTask guards the
+// srv_job_backup.go call site where the regression lived: unsupported logical
+// restore types must fail before the function stamps an in-memory runtime-only
+// task as running, or the jobs view gets stuck at processing forever.
+func TestProcessReseedLogical_UnsupportedType_DoesNotCreateRunningTask(t *testing.T) {
+	cluster, server := newTestRuntimeOnlyClusterServer(t, "reseed-cluster", "target", "3307")
+	cluster.Conf.BackupLogicalType = "unsupported"
+	cluster.master = &ServerMonitor{
+		Id:           "master",
+		Host:         "master",
+		Port:         "3306",
+		URL:          "master:3306",
+		ClusterGroup: cluster,
+	}
+
+	task := "reseedunsupported"
+	server.SetInReseedBackup(task)
+
+	err := server.ProcessReseedLogical(task)
+	if err == nil {
+		t.Fatal("expected ProcessReseedLogical to reject unsupported logical reseed type")
+	}
+	if err.Error() != "Logical reseed backup type unsupported is not supported" {
+		t.Fatalf("unexpected ProcessReseedLogical error: %v", err)
+	}
+	if got := server.JobResults.Get(task); got != nil {
+		t.Fatalf("expected no runtime task entry for unsupported logical reseed type, got %+v", got)
+	}
+	if server.HasAnyReseedingState() {
+		t.Fatalf("expected reseeding state to be cleared after failure, got %q", server.IsReseeding)
+	}
+}
+
+// TestReseedFromParentCluster_UnsupportedType_DoesNotCreateRunningTask guards
+// the cluster_staging.go call site where the regression lived: an unsupported
+// parent logical backup type must not stamp a runtime-only task as processing
+// before the dispatch switch rejects it.
+func TestReseedFromParentCluster_UnsupportedType_DoesNotCreateRunningTask(t *testing.T) {
+	parentCluster, parentServer := newTestRuntimeOnlyClusterServer(t, "parent", "parent-master", "3306")
+	parentCluster.Conf.BackupLogicalType = "unsupported"
+	parentCluster.master = parentServer
+	if err := parentServer.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMysqldump); err != nil {
+		t.Fatalf("failed to set parent logical backup cookie: %v", err)
+	}
+
+	targetCluster, target := newTestRuntimeOnlyClusterServer(t, "child", "child-slave", "3307")
+	targetCluster.master = nil // keep IsMaster() false so the unsupported-type path stays DB-free in this regression test
+
+	_, err := targetCluster.ReseedFromParentCluster(parentCluster, target, "")
+	if err == nil {
+		t.Fatal("expected ReseedFromParentCluster to reject unsupported parent logical backup type")
+	}
+	if err.Error() != "Unknown backup type unsupported" {
+		t.Fatalf("unexpected ReseedFromParentCluster error: %v", err)
+	}
+	if got := target.JobResults.Get("reseedunsupported"); got != nil {
+		t.Fatalf("expected no runtime task entry for unsupported parent reseed type, got %+v", got)
+	}
+	if target.HasAnyReseedingState() {
+		t.Fatalf("expected reseeding state to be cleared after failure, got %q", target.IsReseeding)
 	}
 }
 
