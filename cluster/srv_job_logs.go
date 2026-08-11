@@ -537,6 +537,14 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	}
 	server.SetWaitErrorlogCookie()
 
+	// API mode: dbjobs discovers this task via the cookie above and opens its
+	// own receiver on demand through handlerMuxServerReceiveTask. Opening one
+	// here too would leak an SST listener that nothing ever connects to --
+	// it just sits until its 1h accept deadline expires (see cluster_sst.go).
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
+	}
+
 	port, err := cluster.SSTRunReceiverToDBLogFile(server, DBLogError, task)
 	if err != nil {
 		return 0, nil
@@ -560,6 +568,13 @@ func (server *ServerMonitor) JobBackupAuditLog() (int64, error) {
 	}
 	server.SetWaitAuditlogCookie()
 
+	// See JobBackupErrorLog: in API mode, dbjobs pulls the receiver address
+	// from handlerMuxServerReceiveTask on demand -- pre-opening one here
+	// would leak an unused SST listener until its 1h accept deadline.
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
+	}
+
 	port, err := cluster.SSTRunReceiverToDBLogFile(server, DBLogAudit, task)
 	if err != nil {
 		return 0, nil
@@ -582,6 +597,13 @@ func (server *ServerMonitor) JobBackupSqlErrorLog() (int64, error) {
 		return 0, nil
 	}
 	server.SetWaitSqlErrorlogCookie()
+
+	// See JobBackupErrorLog: in API mode, dbjobs pulls the receiver address
+	// from handlerMuxServerReceiveTask on demand -- pre-opening one here
+	// would leak an unused SST listener until its 1h accept deadline.
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
+	}
 
 	port, err := cluster.SSTRunReceiverToDBLogFile(server, DBLogSqlError, task)
 	if err != nil {
@@ -607,6 +629,13 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 
 	if server.HasWaitSlowqueryCookie() {
 		return 0, nil
+	}
+
+	// See JobBackupErrorLog: in API mode, dbjobs pulls the receiver address
+	// from handlerMuxServerReceiveTask on demand -- pre-opening one here
+	// would leak an unused SST listener until its 1h accept deadline.
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
 	}
 
 	port, err := cluster.SSTRunReceiverToDBLogFile(server, DBLogSlowQuery, task)

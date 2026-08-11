@@ -1026,3 +1026,135 @@ func TestReseedFailureMessage(t *testing.T) {
 		})
 	}
 }
+
+// sstConnectionPorts takes a locked snapshot of the currently open SST
+// receiver ports. SSTs is a package-global guarded by SSTs.Mutex precisely
+// because background goroutines (SSTRunReceiverTo*, tcp_con_handle_to_file's
+// deferred cleanup) mutate it concurrently with whatever else is running --
+// tests must go through the lock too, not read SSTs.SSTconnections bare.
+func sstConnectionPorts(t *testing.T) map[int]bool {
+	t.Helper()
+	SSTs.Lock()
+	defer SSTs.Unlock()
+	ports := make(map[int]bool, len(SSTs.SSTconnections))
+	for port := range SSTs.SSTconnections {
+		ports[port] = true
+	}
+	return ports
+}
+
+// newSSTPorts returns the ports present in after but not before, i.e. the
+// receivers actually opened by whatever ran in between the two snapshots --
+// not "whatever happens to be in the map now", which could belong to an
+// unrelated pre-existing entry from elsewhere in the package's test run.
+func newSSTPorts(before, after map[int]bool) []int {
+	var added []int
+	for port := range after {
+		if !before[port] {
+			added = append(added, port)
+		}
+	}
+	return added
+}
+
+// closeSSTReceiverAndWait closes the given receiver's listener, unblocking
+// its tcp_con_handle_to_file goroutine's Accept(), then waits for that
+// goroutine's own deferred cleanup to remove the SSTs entry. Waiting matters:
+// without it, a not-yet-removed entry can outlive this test and skew a later
+// test's own before/after snapshot into thinking something it didn't open is
+// "new".
+func closeSSTReceiverAndWait(t *testing.T, port int) {
+	t.Helper()
+	SSTs.Lock()
+	sst, ok := SSTs.SSTconnections[port]
+	SSTs.Unlock()
+	if !ok {
+		return
+	}
+	sst.listener.Close()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		SSTs.Lock()
+		_, stillOpen := SSTs.SSTconnections[port]
+		SSTs.Unlock()
+		if !stillOpen {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Errorf("SST receiver on port %d did not clean up its SSTconnections entry within timeout", port)
+}
+
+// TestJobBackupDBLog_APIMode_DoesNotPreOpenReceiver guards against the
+// orphaned-listener regression (#1693): in API mode, dbjobs discovers a log
+// task via its wait cookie and opens the real SST receiver itself through
+// handlerMuxServerReceiveTask (server/api_database.go). If these scheduler
+// functions also open a receiver up front, that first listener never gets a
+// connection and sits until its 1h accept deadline fires "i/o timeout" (see
+// SSTRunReceiverToDBLogFile's SetDeadline in cluster_sst.go) even though the
+// task completes successfully through the second, on-demand receiver.
+func TestJobBackupDBLog_APIMode_DoesNotPreOpenReceiver(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(*ServerMonitor) (int64, error)
+	}{
+		{"errorlog", (*ServerMonitor).JobBackupErrorLog},
+		{"auditlog", (*ServerMonitor).JobBackupAuditLog},
+		{"sqlerrorlog", (*ServerMonitor).JobBackupSqlErrorLog},
+		{"slowquery", (*ServerMonitor).JobBackupSlowQueryLog},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newTestServerForAPIJobs(t)
+			server.Variables = config.NewStringsMap()
+
+			before := sstConnectionPorts(t)
+			if _, err := tt.run(server); err != nil {
+				t.Fatalf("unexpected error in API mode: %v", err)
+			}
+			added := newSSTPorts(before, sstConnectionPorts(t))
+
+			// Register cleanup before asserting, so a regression that opens
+			// a receiver doesn't also leak it out of this test run.
+			for _, port := range added {
+				port := port
+				t.Cleanup(func() { closeSSTReceiverAndWait(t, port) })
+			}
+
+			if len(added) != 0 {
+				t.Fatalf("API mode opened %d SST receiver(s) (ports %v); it should only set the wait cookie and let handlerMuxServerReceiveTask open the real one on demand", len(added), added)
+			}
+		})
+	}
+}
+
+// TestJobBackupDBLog_SQLMode_StillOpensReceiver is the compatibility check
+// for the fix above: SQL mode must keep pre-opening the receiver, since the
+// dbjobs script polls the jobs table for its port directly (no receive-task
+// round trip in that mode).
+func TestJobBackupDBLog_SQLMode_StillOpensReceiver(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+	server.ClusterGroup.Conf.SchedulerJobsMode = "sql"
+	server.Variables = config.NewStringsMap()
+	// tcp_con_handle_to_file's cleanup path writes back to this map
+	// (SSTSenderFreePort) once the listener closes; a nil map here would
+	// panic that goroutine.
+	server.ClusterGroup.SstAvailablePorts = make(map[string]string)
+
+	before := sstConnectionPorts(t)
+	// JobInsertTask errors here (no live DB pool in this fixture), but the
+	// receiver is opened before that call, so the listener still appears.
+	_, _ = server.JobBackupErrorLog()
+	added := newSSTPorts(before, sstConnectionPorts(t))
+
+	for _, port := range added {
+		port := port
+		t.Cleanup(func() { closeSSTReceiverAndWait(t, port) })
+	}
+
+	if len(added) != 1 {
+		t.Fatalf("SQL mode should still pre-open exactly one SST receiver, got %d new (ports %v)", len(added), added)
+	}
+}
