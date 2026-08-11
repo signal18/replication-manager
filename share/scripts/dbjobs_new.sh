@@ -86,6 +86,7 @@ readonly LOCK_DIR="${TMP_DIR}/locks"
 # Constants
 readonly BATCH_SIZE=5
 readonly MAX_RETRIES=3
+readonly JOB_STATE_MAX_RETRIES=5
 readonly API_LOG_FILE="${LOG_DIR}/api_calls.log"
 readonly LOG_MAX_SIZE=1048576  # 1MB
 
@@ -508,18 +509,40 @@ get_task_receiver() {
 report_job_state() {
     local taskname="$1"
     local jobstate="$2"
-    local api_host="$REPLICATION_MANAGER_HOST"
-    local api_port="$REPLICATION_MANAGER_PORT"
 
-    local endpoint="/api/clusters/${CLUSTER_NAME}/servers/${MYSQL_SERVER}/${MYSQL_PORT}/actions/job-state/${taskname}/${jobstate}"
-    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
-
-    local http_code=$(extract_http_code "$response")
-    if [[ "$http_code" != "200" ]]; then
-        send_lines_to_api "Failed to report job state $jobstate for $taskname (HTTP $http_code)" "$taskname" "$LVL_ERROR"
+    # An empty state means the caller has a bug (e.g. an unset result
+    # variable) — the route requires a non-empty {jobstate} path segment, so
+    # sending this would just 404 against a URL like .../job-state/task/.
+    # Fail fast locally instead of spending retries on a request that can
+    # never succeed.
+    if [[ -z "$jobstate" ]]; then
+        send_lines_to_api "report_job_state called with empty state for $taskname" "$taskname" "$LVL_ERROR"
         return 1
     fi
-    return 0
+
+    local api_host="$REPLICATION_MANAGER_HOST"
+    local api_port="$REPLICATION_MANAGER_PORT"
+    local endpoint="/api/clusters/${CLUSTER_NAME}/servers/${MYSQL_SERVER}/${MYSQL_PORT}/actions/job-state/${taskname}/${jobstate}"
+    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}"
+
+    # Retry like send_lines_to_api already does via send_to_api_with_retry.
+    # done/error are terminal — a dropped report there is what leaves a job
+    # stuck with no resolution (the #1690 symptom) — so they get a larger
+    # budget to ride out restart/startup timing. processing/waiting use the
+    # same budget as log lines; losing one of those doesn't strand the job,
+    # since the terminal report (or startup reconciliation) still resolves
+    # it later.
+    local retries="$MAX_RETRIES"
+    case "$jobstate" in
+        done|error) retries="$JOB_STATE_MAX_RETRIES" ;;
+    esac
+
+    if send_to_api_with_retry "$api_host" "$api_port" "$endpoint" "$data" "$retries"; then
+        return 0
+    fi
+
+    send_lines_to_api "Failed to report job state $jobstate for $taskname after $retries attempts" "$taskname" "$LVL_ERROR"
+    return 1
 }
 
 ##################################
@@ -1863,8 +1886,16 @@ for job in "${JOBS[@]}"; do
 
         # Report job completion
         if [[ "$JOBS_MODE" == "api" ]]; then
-            # Check backup success the same way doneJob does
-            local api_job_result="done"
+            # Check backup success the same way doneJob does.
+            # Not `local`: this code runs in the top-level JOBS loop, not
+            # inside a function — `local` here prints "local: can only be
+            # used in a function" and does not assign. The script has no
+            # set -e, so execution continues with api_job_result left
+            # unset/stale for any job that doesn't hit the case branches
+            # below (e.g. auditlog, sqlerrorlog), which then calls
+            # report_job_state with an empty state and 404s on the route's
+            # non-empty {jobstate} segment.
+            api_job_result="done"
             case "$job" in
             mariabackup|xtrabackup)
                 if ! grep -q '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!' "$LOG_DIR/backup.out" 2>/dev/null; then

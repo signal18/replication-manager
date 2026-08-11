@@ -57,14 +57,35 @@ actually drives dispatch is whether the cookie file exists
 attempts `delTaskCookie`, which is already a safe no-op for task names that
 never had a cookie.
 
+## Related fix: the HTTP 404 on terminal callback (dbjobs_new.sh)
+
+The HTTP 404 mentioned in #1690 turned out to have its own root cause,
+separate from the Go-side reconciliation above, fixed in the same pass in
+`share/scripts/dbjobs_new.sh`. `report_job_state()`'s caller built its result
+in `local api_job_result="done"`, but that line runs in the top-level `JOBS`
+loop, not inside a function — `local` outside a function prints `local: can
+only be used in a function` and does not assign. The script has no `set -e`,
+so execution continues with the variable left unset for any job that doesn't
+hit the mariabackup/xtrabackup/reseed/flashback case branches (e.g.
+`auditlog`, `sqlerrorlog`). `report_job_state` was then called with an empty
+state, producing a URL with an empty `{jobstate}` path segment that gorilla
+mux never matches — hence 404, not the handler's 400 for a
+recognized-but-invalid state.
+
+Fixed by dropping `local`. `report_job_state()` also now fails fast (no
+network call) on an empty state so this bug class can't silently 404 again,
+and retries via the existing `send_to_api_with_retry` helper for genuine
+transient failures during restart timing — the scenario #1690 actually
+describes. Only the terminal `done`/`error` report gets the larger budget (5
+attempts vs. the 3 used for log lines): a dropped terminal report is what
+leaves a job stuck with no resolution, whereas a dropped `processing` or
+`waiting` report (`pauseJob`, before job execution) doesn't strand the job —
+the later terminal report or startup reconciliation still resolves it.
+
 ## Explicitly out of scope
 
 - SQL-mode jobs: unaffected. `JobsCheckPending` already has its own SQL-side
   timeout for stale `state=0` rows.
-- The HTTP 404 mentioned in #1690 when a late dbjobs callback reports a
-  result: the issue itself calls this a secondary symptom, not the primary
-  gap. The route exists in code; a late callback simply overwrites the
-  reconciled entry with the real outcome, which is expected and fine.
 - `zfssnapback`'s dispatch: found during review that `CheckTaskNeeded`
   (`cluster/srv_chk.go`) unconditionally returns `false` for
   `ConstTaskZFS`, so its cookie (created by `setTaskCookie`, now also
