@@ -1,10 +1,14 @@
 package cluster
 
 import (
+	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -728,5 +732,150 @@ exec cat >/dev/null
 	if task.State != JobStateErrorExec {
 		t.Fatalf("expected task \"direct\" to be marked failed (state=%d), got state=%d (result=%q)",
 			JobStateErrorExec, task.State, task.Result)
+	}
+}
+
+// mustSignalExitError runs a throwaway subprocess that kills itself with sig
+// and returns the resulting *exec.ExitError. This gives reseedFailureMessage
+// tests a real, signal-terminated os.ProcessState to inspect -- the same
+// kind wasCollateralKill/wasCollateralPipeClose parse via ExitError.Sys() --
+// without needing to race the actual dump/client/pump pipeline to provoke
+// one.
+func mustSignalExitError(t *testing.T, sig syscall.Signal) error {
+	t.Helper()
+	err := exec.Command("sh", "-c", fmt.Sprintf("kill -s %d $$", int(sig))).Run()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected a *exec.ExitError from a self-signal with %v, got %T: %v", sig, err, err)
+	}
+	if ws, ok := exitErr.Sys().(syscall.WaitStatus); !ok || !ws.Signaled() || ws.Signal() != sig {
+		t.Fatalf("expected process to have exited via signal %v, got %v", sig, exitErr)
+	}
+	return exitErr
+}
+
+// mustNonzeroExitError runs a throwaway subprocess that exits with a normal
+// nonzero status -- a "genuine failure" exit, as opposed to the
+// signal-terminated collateral-kill exits from mustSignalExitError.
+func mustNonzeroExitError(t *testing.T) error {
+	t.Helper()
+	err := exec.Command("sh", "-c", "exit 1").Run()
+	if err == nil {
+		t.Fatal("expected `sh -c exit 1` to return an error")
+	}
+	return err
+}
+
+// TestReseedFailureMessage is the regression test for the error-attribution
+// switch in reseedFailureMessage (extracted from
+// JobRejoinMysqldumpFromSource): given real signal-terminated and
+// normal-nonzero-exit errors, does the message blame the side that actually
+// failed on its own, and stay silent about a side that only died as
+// collateral from cancelling the shared context or from the pump closing
+// mysqldump's stdout pipe early? Covers both collateral mechanisms
+// (wasCollateralKill's SIGKILL and wasCollateralPipeClose's pump-gated
+// SIGPIPE) plus the case a bare signal heuristic would get wrong: a dump-side
+// SIGPIPE with no pump failure at all, which must be reported as genuine
+// since nothing of ours could have closed the pipe.
+func TestReseedFailureMessage(t *testing.T) {
+	const sourceURL = "source:3306"
+	const destURL = "dest:3307"
+
+	dumpLabel := "mysqldump on " + sourceURL
+	clientLabel := "mysql client on " + destURL
+
+	tests := []struct {
+		name         string
+		dumpErr      error
+		clientErr    error
+		pumpErr      error
+		wantContains []string
+		wantExcludes []string
+	}{
+		{
+			name:         "client fails on its own, dump clean",
+			clientErr:    mustNonzeroExitError(t),
+			wantContains: []string{clientLabel},
+			wantExcludes: []string{dumpLabel},
+		},
+		{
+			name:         "dump fails on its own, client clean",
+			dumpErr:      mustNonzeroExitError(t),
+			wantContains: []string{dumpLabel},
+			wantExcludes: []string{clientLabel},
+		},
+		{
+			name:         "client collaterally SIGKILLed by a pump failure, dump clean",
+			clientErr:    mustSignalExitError(t, syscall.SIGKILL),
+			pumpErr:      errors.New("boom"),
+			wantContains: []string{"stdin pump"},
+			wantExcludes: []string{clientLabel, dumpLabel},
+		},
+		{
+			// Regression test: dump and pump both succeeded, so nothing in
+			// this function ever called cancel(); a client SIGKILL here can
+			// only be from an external actor (OOM killer, `kill -9`, ...),
+			// never our own doing. Scoring it "collateral" purely because
+			// SIGKILL matches our own cancel()'s signal produces an empty
+			// "Reseed failed: " with no cause at all -- it must be reported
+			// as genuine instead.
+			name:         "client SIGKILLed with no dump or pump failure is genuine, not collateral",
+			clientErr:    mustSignalExitError(t, syscall.SIGKILL),
+			wantContains: []string{clientLabel},
+			wantExcludes: []string{dumpLabel},
+		},
+		{
+			// Mirrors the case above but with both sides SIGKILLed and no
+			// pump error: neither SIGKILL can "explain" the other (each
+			// looks collateral only by pointing at the other's equally
+			// unexplained SIGKILL), so both must be reported as genuine
+			// rather than mutually cancelling out into an empty message.
+			name:         "both sides SIGKILLed with no pump failure are both genuine",
+			dumpErr:      mustSignalExitError(t, syscall.SIGKILL),
+			clientErr:    mustSignalExitError(t, syscall.SIGKILL),
+			wantContains: []string{dumpLabel, clientLabel},
+		},
+		{
+			name:         "dump collaterally SIGPIPEd by a pump failure, client clean",
+			dumpErr:      mustSignalExitError(t, syscall.SIGPIPE),
+			pumpErr:      errors.New("boom"),
+			wantContains: []string{"stdin pump"},
+			wantExcludes: []string{dumpLabel, clientLabel},
+		},
+		{
+			name:         "dump SIGPIPE with no pump failure is genuine, not collateral",
+			dumpErr:      mustSignalExitError(t, syscall.SIGPIPE),
+			wantContains: []string{dumpLabel},
+		},
+		{
+			name:         "both fail independently -- double fault reported together",
+			dumpErr:      mustNonzeroExitError(t),
+			clientErr:    mustNonzeroExitError(t),
+			wantContains: []string{dumpLabel, clientLabel},
+		},
+		{
+			name:         "dump collaterally SIGKILLed, client genuine, pump also surfaced",
+			dumpErr:      mustSignalExitError(t, syscall.SIGKILL),
+			clientErr:    mustNonzeroExitError(t),
+			pumpErr:      errors.New("boom"),
+			wantContains: []string{clientLabel, "stdin pump"},
+			wantExcludes: []string{dumpLabel},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg := reseedFailureMessage(sourceURL, destURL, tt.dumpErr, tt.clientErr, tt.pumpErr, nil, nil)
+			for _, want := range tt.wantContains {
+				if !strings.Contains(msg, want) {
+					t.Errorf("expected message to contain %q, got: %s", want, msg)
+				}
+			}
+			for _, exclude := range tt.wantExcludes {
+				if strings.Contains(msg, exclude) {
+					t.Errorf("expected message to NOT contain %q, got: %s", exclude, msg)
+				}
+			}
+		})
 	}
 }

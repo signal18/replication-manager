@@ -1290,7 +1290,7 @@ func forEachSplitdumpStatement(reader io.Reader, emit func(stmt string) error) e
 // splitdumpExecutor is the DB side of the restore, injectable so planAndExecSplitdump
 // is testable with a recording stub instead of a live connection.
 type splitdumpExecutor struct {
-	batch  func(stmts []string) error       // run stmts in one retrying transaction
+	batch  func(stmts []string) error // run stmts in one retrying transaction
 	single func(stmt string, continueOnError bool) error
 }
 
@@ -3805,15 +3805,142 @@ func (server *ServerMonitor) JobGetDumpGtidParameter() string {
 // which goroutine happens to observe it first, so callers can use it to tell
 // a genuine failure apart from a collateral kill without racing on timing.
 func wasCollateralKill(err error) bool {
+	return exitSignal(err) == syscall.SIGKILL
+}
+
+// wasCollateralPipeClose reports whether err represents mysqldump dying from
+// SIGPIPE as a side effect of the pump's own unwind, rather than a genuine
+// failure of its own. The pump (see JobRejoinMysqldumpFromSource) defers
+// dumpStdoutR.Close() on every one of its own error returns, including
+// preamble-write and mid-copy failures that have nothing to do with
+// mysqldump itself; if mysqldump is still writing to the paired dumpStdoutW
+// when that happens, its next write dies with SIGPIPE, before -- or
+// independent of -- the shared context's SIGKILL ever lands.
+//
+// Unlike SIGKILL, SIGPIPE is not unambiguously ours: mysqldump could in
+// principle die from a SIGPIPE against its own source-DB connection with no
+// pump involvement at all. The pumpErr != nil guard is what makes this safe
+// -- that pipe-closing unwind path only runs when the pump itself hit an
+// error. If the pump never errored (pumpErr == nil), it never closed
+// dumpStdoutR early, so a dump-side SIGPIPE in that case cannot be ours and
+// must be reported as genuine.
+func wasCollateralPipeClose(err, pumpErr error) bool {
+	return pumpErr != nil && exitSignal(err) == syscall.SIGPIPE
+}
+
+// exitSignal returns the signal that terminated err's process, or 0 if err
+// is not a signal-terminated *exec.ExitError (e.g. a normal nonzero exit, or
+// a platform where ExitError.Sys() isn't a syscall.WaitStatus).
+func exitSignal(err error) syscall.Signal {
 	var exitErr *exec.ExitError
 	if !errors.As(err, &exitErr) {
-		return false
+		return 0
 	}
 	ws, ok := exitErr.Sys().(syscall.WaitStatus)
-	if !ok {
-		return false
+	if !ok || !ws.Signaled() {
+		return 0
 	}
-	return ws.Signaled() && ws.Signal() == syscall.SIGKILL
+	return ws.Signal()
+}
+
+// reseedFailureMessage builds the "Reseed failed: ..." message for
+// JobRejoinMysqldumpFromSource from the three goroutines' results. It's a
+// pure function of its arguments -- no subprocess or channel involved -- so
+// the attribution logic (which of dumpErr/clientErr is a genuine failure
+// versus a collateral kill caused by the other) can be table-tested directly
+// against synthetic errors instead of racing real subprocesses.
+func reseedFailureMessage(sourceURL, destURL string, dumpErr, clientErr, pumpErr error, dumpTail, clientTail []string) string {
+	// Killing one side to unstick the other means a single real failure
+	// commonly shows up as errors on BOTH Waits: the genuine one, plus a
+	// collateral kill on the side we cancelled (or, for mysqldump
+	// specifically, a SIGPIPE from the pump closing its stdout pipe early --
+	// see wasCollateralPipeClose). Deciding which is "the" cause by which
+	// goroutine happened to run first is a timing race; wasCollateralKill /
+	// wasCollateralPipeClose instead inspect the exit status itself, which is
+	// deterministic and independent of scheduling. That lets both
+	// genuinely-independent failures be reported together, and a collateral
+	// kill be excluded, with no dependence on timing.
+	//
+	// But a signal match alone isn't sufficient: SIGKILL/SIGPIPE only means
+	// "collateral" if something in THIS function actually had a reason to
+	// cancel() -- cancel() only ever fires from dump's own failure, client's
+	// own failure, or the pump's own failure (see the goroutines above). If
+	// none of those three happened, nothing here could have triggered a
+	// cancel(), so a SIGKILL observed anyway (an external `kill -9`, the OOM
+	// killer, a stray admin action, ...) cannot be blamed on us and must be
+	// reported as genuine. Skipping this check would let a lone externally
+	// killed side (dumpErr == nil, pumpErr == nil, clientErr == SIGKILL) be
+	// scored not-genuine on signal alone, with nothing else to report --
+	// producing an empty "Reseed failed: " with no cause listed at all.
+	dumpOwnFailure := dumpErr != nil && !wasCollateralKill(dumpErr) && !wasCollateralPipeClose(dumpErr, pumpErr)
+	clientOwnFailure := clientErr != nil && !wasCollateralKill(clientErr)
+	triggerExists := pumpErr != nil || dumpOwnFailure || clientOwnFailure
+	dumpGenuine := dumpErr != nil && (dumpOwnFailure || !triggerExists)
+	clientGenuine := clientErr != nil && (clientOwnFailure || !triggerExists)
+
+	var parts []string
+	addDump := func() {
+		p := fmt.Sprintf("mysqldump on %s: %s", sourceURL, dumpErr.Error())
+		if len(dumpTail) > 0 {
+			p += " | stderr: " + strings.Join(dumpTail, " / ")
+		}
+		parts = append(parts, p)
+	}
+	addClient := func() {
+		p := fmt.Sprintf("mysql client on %s: %s", destURL, clientErr.Error())
+		if len(clientTail) > 0 {
+			p += " | stderr: " + strings.Join(clientTail, " / ")
+		}
+		parts = append(parts, p)
+	}
+	switch {
+	case dumpErr == nil:
+		// Covers dumpErr == nil && clientErr == nil too (e.g. a pump-only
+		// failure with both processes exiting cleanly) -- addClient must
+		// stay guarded on clientGenuine, never called unconditionally, or a
+		// nil clientErr here would panic on err.Error(). Guarding on
+		// clientGenuine rather than clientErr != nil also covers the case
+		// where dump exits 0 on its own but the pump fails for an unrelated
+		// reason (e.g. a read error on its own side) and its cancel()
+		// collaterally SIGKILLs the still-running client: that exit must not
+		// be reported as a genuine client failure.
+		if clientGenuine {
+			addClient()
+		}
+	case clientErr == nil:
+		// Symmetric with the dumpErr == nil case above.
+		if dumpGenuine {
+			addDump()
+		}
+	case dumpGenuine && clientGenuine:
+		// Both failed on their own -- a coincidental double fault, not one
+		// side collaterally killing the other. Neither caused the other, so
+		// report both instead of guessing.
+		addDump()
+		addClient()
+	case clientGenuine:
+		addClient()
+	case dumpGenuine:
+		addDump()
+	default:
+		// Both sides have errors but neither looks like a genuine own
+		// failure by the signal heuristic (e.g. ExitError.Sys() isn't a
+		// syscall.WaitStatus on this platform). Surface both rather than
+		// silently pick one.
+		addDump()
+		addClient()
+	}
+	// The pump (dump stdout -> client stdin) is the glue between the two
+	// processes, not a third competitor for "root cause" -- surface it
+	// whenever it saw something, in addition to whatever dump/client
+	// reported. It's often the earliest and clearest signal (e.g. an
+	// immediate EPIPE the moment the client dies), and it's the only signal
+	// at all in the rare case neither process's own exit status reflected
+	// the failure.
+	if pumpErr != nil {
+		parts = append(parts, fmt.Sprintf("stdin pump (mysqldump to mysql client) on %s: %s", destURL, pumpErr.Error()))
+	}
+	return "Reseed failed: " + strings.Join(parts, "; ")
 }
 
 // progressCountingWriter wraps an io.Writer and adds each successful Write's
@@ -4137,75 +4264,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	}
 
 	if dumpErr != nil || clientErr != nil || pumpErr != nil {
-		// Killing one side to unstick the other means a single real failure
-		// commonly shows up as errors on BOTH Waits: the genuine one, plus a
-		// collateral SIGKILL exit on the side we cancelled. Deciding which is
-		// "the" cause by which goroutine happened to run first is a timing
-		// race. wasCollateralKill instead inspects the exit status itself --
-		// exec.CommandContext's default Cancel sends SIGKILL, so a side that
-		// died specifically from SIGKILL (rather than its own nonzero exit)
-		// is, deterministically and regardless of scheduling, the one WE
-		// killed, not the one that failed on its own. That lets both
-		// genuinely-independent failures be reported together, and a
-		// collateral kill be excluded, with no dependence on timing.
-		dumpGenuine := dumpErr != nil && !wasCollateralKill(dumpErr)
-		clientGenuine := clientErr != nil && !wasCollateralKill(clientErr)
-
-		var parts []string
-		addDump := func() {
-			p := fmt.Sprintf("mysqldump on %s: %s", source.URL, dumpErr.Error())
-			if len(dumpTail) > 0 {
-				p += " | stderr: " + strings.Join(dumpTail, " / ")
-			}
-			parts = append(parts, p)
-		}
-		addClient := func() {
-			p := fmt.Sprintf("mysql client on %s: %s", dest.URL, clientErr.Error())
-			if len(clientTail) > 0 {
-				p += " | stderr: " + strings.Join(clientTail, " / ")
-			}
-			parts = append(parts, p)
-		}
-		switch {
-		case dumpErr == nil:
-			// Covers dumpErr == nil && clientErr == nil too (e.g. a pump-only
-			// failure with both processes exiting cleanly) -- addClient must
-			// stay guarded on clientErr != nil, never called unconditionally,
-			// or a nil dumpErr/clientErr here would panic on err.Error().
-			if clientErr != nil {
-				addClient()
-			}
-		case clientErr == nil:
-			addDump()
-		case dumpGenuine && clientGenuine:
-			// Both failed on their own -- a coincidental double fault, not one
-			// side collaterally killing the other. Neither caused the other,
-			// so report both instead of guessing.
-			addDump()
-			addClient()
-		case clientGenuine:
-			addClient()
-		case dumpGenuine:
-			addDump()
-		default:
-			// Both sides have errors but neither looks like a genuine own
-			// failure by the signal heuristic (e.g. ExitError.Sys() isn't a
-			// syscall.WaitStatus on this platform). Surface both rather than
-			// silently pick one.
-			addDump()
-			addClient()
-		}
-		// The pump (dump stdout -> client stdin) is the glue between the two
-		// processes, not a third competitor for "root cause" -- surface it
-		// whenever it saw something, in addition to whatever dump/client
-		// reported. It's often the earliest and clearest signal (e.g. an
-		// immediate EPIPE the moment the client dies), and it's the only
-		// signal at all in the rare case neither process's own exit status
-		// reflected the failure.
-		if pumpErr != nil {
-			parts = append(parts, fmt.Sprintf("stdin pump (mysqldump to mysql client) on %s: %s", dest.URL, pumpErr.Error()))
-		}
-		msg := "Reseed failed: " + strings.Join(parts, "; ")
+		msg := reseedFailureMessage(source.URL, dest.URL, dumpErr, clientErr, pumpErr, dumpTail, clientTail)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
 		dest.JobsUpdateStateRuntimeOnly(task, msg, 5, 1)
 		return errors.New(msg)
