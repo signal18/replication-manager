@@ -595,6 +595,47 @@ func (server *ServerMonitor) setTaskCookie(task string) error {
 	}
 }
 
+// delTaskCookie removes the wait cookie for a remote task, mirroring
+// setTaskCookie's mapping in reverse. Used by ReconcileRestoredAPIJobs for
+// best-effort cleanup: without it, a task already reconciled to a terminal
+// state would still get dispatched to dbjobs off a stale cookie the next
+// time it polls CheckTaskNeeded (server/api_database.go), contradicting the
+// terminal state we just recorded.
+func (server *ServerMonitor) delTaskCookie(task string) error {
+	switch config.TaskName(task) {
+	case config.ConstTaskXB, config.ConstTaskMB:
+		return server.DelWaitPhysicalBackupCookie()
+	case config.ConstTaskOptimize:
+		return server.DelWaitOptimizeCookie()
+	case config.ConstTaskRestart:
+		return server.DelWaitRestartCookie()
+	case config.ConstTaskStop:
+		return server.DelWaitStopCookie()
+	case config.ConstTaskStart:
+		return server.DelWaitStartCookie()
+	case config.ConstTaskReseedXB:
+		return server.DelWaitReseedXtrabackupCookie()
+	case config.ConstTaskReseedMB:
+		return server.DelWaitReseedMariabackupCookie()
+	case config.ConstTaskFlashXB:
+		return server.DelWaitFlashbackXtrabackupCookie()
+	case config.ConstTaskFlashMB:
+		return server.DelWaitFlashbackMariabackupCookie()
+	case config.ConstTaskError:
+		return server.DelWaitErrorlogCookie()
+	case config.ConstTaskSlowQuery:
+		return server.DelWaitSlowqueryCookie()
+	case config.ConstTaskAuditLog:
+		return server.DelWaitAuditlogCookie()
+	case config.ConstTaskSqlError:
+		return server.DelWaitSqlErrorlogCookie()
+	case config.ConstTaskZFS:
+		return server.delCookie("cookie_waitzfssnapback")
+	default:
+		return nil
+	}
+}
+
 func (server *ServerMonitor) HasRunningDBJobs() (bool, error) {
 	if server.ClusterGroup.Conf.SchedulerJobsMode == "api" {
 		return false, nil
@@ -809,6 +850,48 @@ func (server *ServerMonitor) jobsCheckRunningFromMemory() error {
 	})
 
 	return nil
+}
+
+// ReconcileRestoredAPIJobs converts any restored-but-unfinished API-mode job
+// (Done == 0) into a terminal error state, and best-effort clears any wait
+// cookie for a reconciled remote task so it cannot still be dispatched to
+// dbjobs off stale disk state after we've already recorded it as failed.
+// Call once per server, only on a genuine process startup (never on a
+// cluster settings reload) — see cluster.go's InitFromConf/cluster.initiated
+// gating.
+func (server *ServerMonitor) ReconcileRestoredAPIJobs() {
+	cluster := server.ClusterGroup
+	if cluster.Conf.SchedulerJobsMode != "api" || server.JobResults == nil {
+		return
+	}
+	now := time.Now().Unix()
+	server.JobResults.Callback(func(task string, t *config.Task) bool {
+		if t.Done != 0 {
+			return true
+		}
+		t.Done = 1
+		t.State = JobStateErrorExec
+		t.Result = "replication-manager restarted before this job finished"
+		if t.Start == 0 {
+			t.Start = now
+		}
+		t.End = now
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"Reconciled stale API job %s on %s to error state: job was still unfinished when repman restarted", task, server.URL)
+
+		// Not gated on IsRemoteTask(...): that reflects the *current*
+		// SchedulerJobsExecOverrides, which can differ from what was in
+		// effect when the cookie was originally set (it's parsed fresh from
+		// config on every load, not fixed for the process lifetime). Whether
+		// a cookie exists is what actually drives dispatch in
+		// CheckTaskNeeded(), so always attempt cleanup — delTaskCookie is
+		// already a no-op for tasks that never had one.
+		if err := server.delTaskCookie(task); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg,
+				"Cookie cleanup for reconciled task %s on %s: %v", task, server.URL, err)
+		}
+		return true
+	})
 }
 
 func (server *ServerMonitor) JobsCheckPending(Conn *sqlx.Conn) error {
