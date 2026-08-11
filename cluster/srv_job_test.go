@@ -188,6 +188,153 @@ func TestJobInsertTask_APIMode_RemoteTask_CookieFailureDoesNotBlockRetry(t *test
 	}
 }
 
+// TestReconcileRestoredAPIJobs_UnfinishedBecomesTerminal simulates a restart
+// mid-job: a restored JobResults entry with Done=0 (as ReloadSaveInfosVariables
+// would leave it) must be converted to a terminal error state so the UI stops
+// showing it as Running forever.
+func TestReconcileRestoredAPIJobs_UnfinishedBecomesTerminal(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+	task := string(config.ConstTaskOptimize)
+	server.JobResults.Set(task, &config.Task{Task: task, State: JobStateAvailable, Done: 0, Start: 100})
+
+	server.ReconcileRestoredAPIJobs()
+
+	got := server.JobResults.Get(task)
+	if got == nil {
+		t.Fatal("expected job entry to still exist")
+	}
+	if got.Done != 1 {
+		t.Fatalf("expected Done=1, got %d", got.Done)
+	}
+	if got.State != JobStateErrorExec {
+		t.Fatalf("expected State=JobStateErrorExec, got %d", got.State)
+	}
+	if got.End == 0 {
+		t.Fatal("expected End to be stamped")
+	}
+	if got.Result == "" {
+		t.Fatal("expected a Result message explaining the restart")
+	}
+}
+
+// TestReconcileRestoredAPIJobs_CompletedUnchanged ensures reconciliation never
+// touches a job that already finished before the restart.
+func TestReconcileRestoredAPIJobs_CompletedUnchanged(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+	task := string(config.ConstTaskOptimize)
+	want := &config.Task{Task: task, State: JobStateSuccess, Done: 1, Start: 100, End: 200, Result: "completed"}
+	server.JobResults.Set(task, want)
+
+	server.ReconcileRestoredAPIJobs()
+
+	got := server.JobResults.Get(task)
+	if got.State != JobStateSuccess || got.Done != 1 || got.End != 200 || got.Result != "completed" {
+		t.Fatalf("expected completed job to remain unchanged, got %+v", got)
+	}
+}
+
+// TestReconcileRestoredAPIJobs_SQLModeNoop ensures this API-mode-only
+// reconciliation never mutates jobs when the scheduler runs in SQL mode,
+// which already has its own stale-job timeout in JobsCheckPending.
+func TestReconcileRestoredAPIJobs_SQLModeNoop(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+	server.ClusterGroup.Conf.SchedulerJobsMode = "sql"
+	task := string(config.ConstTaskOptimize)
+	server.JobResults.Set(task, &config.Task{Task: task, State: JobStateAvailable, Done: 0, Start: 100})
+
+	server.ReconcileRestoredAPIJobs()
+
+	got := server.JobResults.Get(task)
+	if got.Done != 0 || got.State != JobStateAvailable {
+		t.Fatalf("expected SQL mode job to remain unchanged, got %+v", got)
+	}
+}
+
+// TestReconcileRestoredAPIJobs_MultipleUnfinished checks every restored
+// Done=0 task is reconciled, not just the first one encountered.
+func TestReconcileRestoredAPIJobs_MultipleUnfinished(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+	tasks := []string{string(config.ConstTaskOptimize), string(config.ConstTaskRestart), string(config.ConstTaskDump)}
+	for _, task := range tasks {
+		server.JobResults.Set(task, &config.Task{Task: task, State: JobStateAvailable, Done: 0, Start: 100})
+	}
+
+	server.ReconcileRestoredAPIJobs()
+
+	for _, task := range tasks {
+		got := server.JobResults.Get(task)
+		if got.Done != 1 || got.State != JobStateErrorExec {
+			t.Fatalf("expected task %s to be reconciled, got %+v", task, got)
+		}
+	}
+}
+
+// TestReconcileRestoredAPIJobs_ClearsRemoteTaskCookie guards against a stale
+// wait cookie surviving reconciliation: if left in place, dbjobs would still
+// consume it via CheckTaskNeeded on its next poll and dispatch a task we
+// just recorded as failed, contradicting the reconciled state.
+func TestReconcileRestoredAPIJobs_ClearsRemoteTaskCookie(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+	task := string(config.ConstTaskOptimize)
+	if err := server.SetWaitOptimizeCookie(); err != nil {
+		t.Fatalf("failed to seed optimize cookie: %v", err)
+	}
+	server.JobResults.Set(task, &config.Task{Task: task, State: JobStateAvailable, Done: 0, Start: 100})
+
+	server.ReconcileRestoredAPIJobs()
+
+	if server.HasWaitOptimizeCookie() {
+		t.Fatal("expected reconciled remote task's wait cookie to be removed")
+	}
+}
+
+// TestReconcileRestoredAPIJobs_ClearsCookieDespiteCurrentOverride guards
+// against gating cleanup on IsRemoteTask(): SchedulerJobsExecOverrides is
+// re-parsed from config on every load and can differ from what was in effect
+// when the cookie was originally set (e.g. an admin edited
+// scheduler-jobs-exec-remote while repman was down). Whether the cookie
+// exists is what actually drives dbjobs dispatch via CheckTaskNeeded(), so
+// cleanup must not depend on the current override value.
+func TestReconcileRestoredAPIJobs_ClearsCookieDespiteCurrentOverride(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+	task := string(config.ConstTaskOptimize)
+	if err := server.SetWaitOptimizeCookie(); err != nil {
+		t.Fatalf("failed to seed optimize cookie: %v", err)
+	}
+	server.JobResults.Set(task, &config.Task{Task: task, State: JobStateAvailable, Done: 0, Start: 100})
+
+	// Force IsRemoteTask(optimize, ...) to false under the *current* config,
+	// simulating an override change made while repman was restarting.
+	server.ClusterGroup.Conf.SchedulerJobsExecOverrides = map[config.TaskName]bool{
+		config.ConstTaskOptimize: false,
+	}
+
+	server.ReconcileRestoredAPIJobs()
+
+	got := server.JobResults.Get(task)
+	if got.Done != 1 || got.State != JobStateErrorExec {
+		t.Fatalf("expected job to be reconciled, got %+v", got)
+	}
+	if server.HasWaitOptimizeCookie() {
+		t.Fatal("expected stale cookie to be removed even though current override reports the task as local")
+	}
+}
+
+// TestReconcileRestoredAPIJobs_LocalTaskCookieUntouched ensures reconciliation
+// does not try to manage cookies for local-only tasks, which never have one.
+func TestReconcileRestoredAPIJobs_LocalTaskCookieUntouched(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+	task := string(config.ConstTaskDump)
+	server.JobResults.Set(task, &config.Task{Task: task, State: JobStateAvailable, Done: 0, Start: 100})
+
+	server.ReconcileRestoredAPIJobs()
+
+	got := server.JobResults.Get(task)
+	if got.Done != 1 || got.State != JobStateErrorExec {
+		t.Fatalf("expected local task to still be reconciled, got %+v", got)
+	}
+}
+
 // newTestServerForRuntimeOnlyJobs builds a fixture for the non-API,
 // scheduler-disabled case: SQL-identity mode, but MonitorScheduler=false, so
 // JobsUpdateState is the only thing ever touching this task (JobInsertTask's

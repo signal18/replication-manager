@@ -822,6 +822,9 @@ func (cluster *Cluster) InitFromConf() {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set server list %s", err)
 	}
+	if !cluster.initiated {
+		cluster.ReconcileRestoredAPIJobs()
+	}
 	cluster.ClearOldCookies()
 
 	err = cluster.newProxyList()
@@ -2504,6 +2507,20 @@ func (cluster *Cluster) ClearOldCookies() {
 		s.DelWaitErrorlogCookie()
 		s.DelWaitSqlErrorlogCookie()
 		s.DelWaitSlowqueryCookie()
+	}
+}
+
+// ReconcileRestoredAPIJobs converts restored-but-unfinished API-mode jobs on
+// every server into a terminal error state. Must only be called on a genuine
+// process startup (see the cluster.initiated gate in InitFromConf) — calling
+// it on a cluster settings reload would wrongly interrupt a job that started
+// after the reload, not before a process restart.
+func (cluster *Cluster) ReconcileRestoredAPIJobs() {
+	for _, s := range cluster.Servers {
+		if s == nil {
+			continue
+		}
+		s.ReconcileRestoredAPIJobs()
 	}
 }
 func (cluster *Cluster) RotateLogs() {
