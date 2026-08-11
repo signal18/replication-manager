@@ -1380,7 +1380,14 @@ doneJob() {
     else
         send_lines_to_api "Job $job ended with state: Error" "$job" "$LVL_ERROR"
     fi
-    $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), state=$jobstate, result=LOAD_FILE('$LOG_DIR/$job.out'), done=$done  WHERE id='$ID';" &
+    # Not backgrounded (no trailing &): this is the final completion write
+    # for the job row. Backgrounding it let the script move on to the next
+    # loop iteration (or exit) before the write landed — if the process
+    # group got reaped at that point (cron/systemd/container exit), the row
+    # was left at state=1/done=0 forever, indistinguishable from a job still
+    # actually running. Nothing after this call does other useful work
+    # concurrently, so there's no benefit to backgrounding it.
+    $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), state=$jobstate, result=LOAD_FILE('$LOG_DIR/$job.out'), done=$done  WHERE id='$ID';"
 }
 
 pauseJob() {

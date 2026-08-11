@@ -82,10 +82,45 @@ leaves a job stuck with no resolution, whereas a dropped `processing` or
 `waiting` report (`pauseJob`, before job execution) doesn't strand the job —
 the later terminal report or startup reconciliation still resolves it.
 
+## SQL-mode stale-running jobs (default `scheduler-jobs-mode = "sql"`)
+
+`scheduler-jobs-mode` defaults to `"sql"`, so the API-mode fixes above don't
+cover the common case. `JobsCheckPending` (`cluster/srv_job.go`) already
+timed out `state=0` (not-yet-started) rows past an hour, but had no
+equivalent for `state=1` (processing) — a SQL-mode DB log job
+(`errorlog`/`slowquery`/`auditlog`/`sqlerrorlog`) that reached `processing`
+but never wrote its completion row stayed visibly `Running` forever, same
+symptom as the API-mode case.
+
+Two contributing causes, both in `share/scripts/dbjobs_new.sh`:
+- `doneJob()`'s final completion `UPDATE` was backgrounded (`&`), with
+  nothing after it — `remove_run_lockdir`, the next loop iteration, or script
+  exit — waiting for it to land. If the process group got reaped at that
+  point (cron/systemd/container exit), the write was lost and the row stayed
+  at `state=1`/`done=0` indefinitely. Fixed by dropping the `&`; nothing
+  after this call does other useful concurrent work, so there's no cost to
+  making it synchronous.
+- No cleanup existed for the resulting stale rows. Added a second UPDATE in
+  `JobsCheckPending`, right after the existing `state=0` timeout, scoped to
+  `state=1 and done=0 and task in ('errorlog','slowquery','auditlog',
+  'sqlerrorlog')` past the same one-hour threshold, converting to terminal
+  error and calling `SetNeedRefreshJobs(true)` so the UI cache converges.
+
+Deliberately **not** extended to backup/reseed/flashback tasks: those can
+legitimately run for hours, so a generic `state=1` timeout across all task
+types would risk cancelling real in-progress work. `pauseJob()`'s SQL-mode
+`state=2` ("waiting") write is also left backgrounded — it's not a terminal
+write, so losing it doesn't strand the job the way losing `doneJob`'s write
+does.
+
+No Go unit test was added for the new query: `JobsCheckPending` (including
+its existing, unmodified `state=0` sibling) has no unit test today — this
+class of SQL-executing function is validated by the regtest/Docker suite
+(T13), not Go unit tests, and this change doesn't alter that. Not run here —
+needs either a live SQL-mode cluster or the regtest suite.
+
 ## Explicitly out of scope
 
-- SQL-mode jobs: unaffected. `JobsCheckPending` already has its own SQL-side
-  timeout for stale `state=0` rows.
 - `zfssnapback`'s dispatch: found during review that `CheckTaskNeeded`
   (`cluster/srv_chk.go`) unconditionally returns `false` for
   `ConstTaskZFS`, so its cookie (created by `setTaskCookie`, now also

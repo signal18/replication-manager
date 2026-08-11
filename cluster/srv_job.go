@@ -906,6 +906,24 @@ func (server *ServerMonitor) JobsCheckPending(Conn *sqlx.Conn) error {
 	// Set timeout for old task
 	server.ConnExecQueryWithTimeout(Conn, JobTimeout, "UPDATE replication_manager_schema.jobs SET state=5, result='Timeout waiting for job to start', done=1, end=now() where state=0 and start <= DATE_SUB(NOW(), interval 1 hour)")
 
+	// Stale-running cleanup, scoped to short-lived DB log jobs only: if one
+	// of these is still state=1/done=0 after an hour, its completion write
+	// (doneJob's backgrounded final UPDATE, or the dbjobs process itself)
+	// was lost, not that it's still legitimately running. Backup/reseed/
+	// flashback jobs are deliberately excluded — they can legitimately run
+	// far longer than an hour, so timing them out generically would risk
+	// cancelling real in-progress work.
+	logTasks := fmt.Sprintf("'%s','%s','%s','%s'", config.ConstTaskError, config.ConstTaskSlowQuery, config.ConstTaskAuditLog, config.ConstTaskSqlError)
+	if res, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, fmt.Sprintf(
+		"UPDATE replication_manager_schema.jobs SET state=5, done=1, end=now(), result='Timeout waiting for job to finish' where state=1 and done=0 and task in (%s) and start <= DATE_SUB(NOW(), interval 1 hour)", logTasks)); err == nil {
+		if n, _ := res.RowsAffected(); n > 0 {
+			server.SetNeedRefreshJobs(true)
+		}
+	} else {
+		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"Stale-running log job cleanup failed on %s: %v", server.URL, err)
+	}
+
 	tasks, err := server.GetTasksByState(Conn, JobStateHalted)
 	if err != nil {
 		return fmt.Errorf("Error retrieving pending tasks on %s: %s", server.URL, err)
