@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -1289,7 +1290,7 @@ func forEachSplitdumpStatement(reader io.Reader, emit func(stmt string) error) e
 // splitdumpExecutor is the DB side of the restore, injectable so planAndExecSplitdump
 // is testable with a recording stub instead of a live connection.
 type splitdumpExecutor struct {
-	batch  func(stmts []string) error       // run stmts in one retrying transaction
+	batch  func(stmts []string) error // run stmts in one retrying transaction
 	single func(stmt string, continueOnError bool) error
 }
 
@@ -3346,6 +3347,58 @@ func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string) {
 	}
 }
 
+// copyLogsTail behaves like copyLogs (streams every non-empty line to the
+// module log) and additionally keeps a bounded tail of at most maxLines of the
+// most recent output, so a caller can fold a short excerpt into a returned
+// error without an unbounded buffer (T18). Oldest lines are dropped by
+// reslicing into a fresh backing array so they don't keep old strings alive.
+func (server *ServerMonitor) copyLogsTail(r io.Reader, module int, level string, maxLines int) []string {
+	cluster := server.ClusterGroup
+	tail := make([]string, 0, maxLines)
+	appendTail := func(line string) {
+		if maxLines <= 0 {
+			return
+		}
+		if len(tail) == maxLines {
+			fresh := make([]string, maxLines-1, maxLines)
+			copy(fresh, tail[1:])
+			tail = fresh
+		}
+		tail = append(tail, line)
+	}
+	s := bufio.NewScanner(r)
+	// Bound the per-line buffer at 4MiB -- well above the default 64KiB
+	// (T18: bounded, not unbounded, but large enough that a long real stderr
+	// line, e.g. one echoing back a big INSERT, doesn't trip ErrTooLong).
+	const maxLineSize = 4 << 20
+	s.Buffer(make([]byte, 0, 64*1024), maxLineSize)
+	for s.Scan() {
+		line := s.Text()
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, line)
+		appendTail(line)
+	}
+	// Scanner.Err() is nil on a clean EOF (the normal case: the pipe closes
+	// when the process exits) and non-nil on a real read failure (e.g. a
+	// line past maxLineSize). Since this tail feeds directly into the error
+	// JobRejoinMysqldumpFromSource returns, a silently truncated read would
+	// hide the very diagnostic this helper exists to capture.
+	if err := s.Err(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, module, config.LvlWarn, "[%s] stderr read stopped early: %s", server.Name, err)
+		appendTail(fmt.Sprintf("[stderr read stopped early: %s]", err))
+		// bufio.Scanner abandons the underlying reader on error -- it does NOT
+		// drain what's left. If we stopped reading here too, nobody would
+		// read the rest of this pipe, and the child could block on its next
+		// stderr write, reintroducing the exact hang this function exists to
+		// prevent. Keep discarding bytes until the pipe actually closes (the
+		// child exits) so Wait() can always return.
+		io.Copy(io.Discard, r)
+	}
+	return tail
+}
+
 func (server *ServerMonitor) copyLogsPrefix(r io.Reader, module int, level string, prefix ...string) {
 	cluster := server.ClusterGroup
 	//	buf := make([]byte, 1024)
@@ -3742,8 +3795,176 @@ func (server *ServerMonitor) JobGetDumpGtidParameter() string {
 	return usegtid
 }
 
+// wasCollateralKill reports whether err represents a process terminated by
+// SIGKILL specifically -- the signal exec.CommandContext's default Cancel
+// sends when its context is cancelled. JobRejoinMysqldumpFromSource ties
+// mysqldump and the mysql client to one shared context and cancels it the
+// moment either side fails, so the side that failed on its own always exits
+// with a normal nonzero status while the side killed as a result exits via
+// SIGKILL specifically. That's a property of the exit status itself, not of
+// which goroutine happens to observe it first, so callers can use it to tell
+// a genuine failure apart from a collateral kill without racing on timing.
+func wasCollateralKill(err error) bool {
+	return exitSignal(err) == syscall.SIGKILL
+}
+
+// wasCollateralPipeClose reports whether err represents mysqldump dying from
+// SIGPIPE as a side effect of the pump's own unwind, rather than a genuine
+// failure of its own. The pump (see JobRejoinMysqldumpFromSource) defers
+// dumpStdoutR.Close() on every one of its own error returns, including
+// preamble-write and mid-copy failures that have nothing to do with
+// mysqldump itself; if mysqldump is still writing to the paired dumpStdoutW
+// when that happens, its next write dies with SIGPIPE, before -- or
+// independent of -- the shared context's SIGKILL ever lands.
+//
+// Unlike SIGKILL, SIGPIPE is not unambiguously ours: mysqldump could in
+// principle die from a SIGPIPE against its own source-DB connection with no
+// pump involvement at all. The pumpErr != nil guard is what makes this safe
+// -- that pipe-closing unwind path only runs when the pump itself hit an
+// error. If the pump never errored (pumpErr == nil), it never closed
+// dumpStdoutR early, so a dump-side SIGPIPE in that case cannot be ours and
+// must be reported as genuine.
+func wasCollateralPipeClose(err, pumpErr error) bool {
+	return pumpErr != nil && exitSignal(err) == syscall.SIGPIPE
+}
+
+// exitSignal returns the signal that terminated err's process, or 0 if err
+// is not a signal-terminated *exec.ExitError (e.g. a normal nonzero exit, or
+// a platform where ExitError.Sys() isn't a syscall.WaitStatus).
+func exitSignal(err error) syscall.Signal {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return 0
+	}
+	ws, ok := exitErr.Sys().(syscall.WaitStatus)
+	if !ok || !ws.Signaled() {
+		return 0
+	}
+	return ws.Signal()
+}
+
+// reseedFailureMessage builds the "Reseed failed: ..." message for
+// JobRejoinMysqldumpFromSource from the three goroutines' results. It's a
+// pure function of its arguments -- no subprocess or channel involved -- so
+// the attribution logic (which of dumpErr/clientErr is a genuine failure
+// versus a collateral kill caused by the other) can be table-tested directly
+// against synthetic errors instead of racing real subprocesses.
+func reseedFailureMessage(sourceURL, destURL string, dumpErr, clientErr, pumpErr error, dumpTail, clientTail []string) string {
+	// Killing one side to unstick the other means a single real failure
+	// commonly shows up as errors on BOTH Waits: the genuine one, plus a
+	// collateral kill on the side we cancelled (or, for mysqldump
+	// specifically, a SIGPIPE from the pump closing its stdout pipe early --
+	// see wasCollateralPipeClose). Deciding which is "the" cause by which
+	// goroutine happened to run first is a timing race; wasCollateralKill /
+	// wasCollateralPipeClose instead inspect the exit status itself, which is
+	// deterministic and independent of scheduling. That lets both
+	// genuinely-independent failures be reported together, and a collateral
+	// kill be excluded, with no dependence on timing.
+	//
+	// But a signal match alone isn't sufficient: SIGKILL/SIGPIPE only means
+	// "collateral" if something in THIS function actually had a reason to
+	// cancel() -- cancel() only ever fires from dump's own failure, client's
+	// own failure, or the pump's own failure (see the goroutines above). If
+	// none of those three happened, nothing here could have triggered a
+	// cancel(), so a SIGKILL observed anyway (an external `kill -9`, the OOM
+	// killer, a stray admin action, ...) cannot be blamed on us and must be
+	// reported as genuine. Skipping this check would let a lone externally
+	// killed side (dumpErr == nil, pumpErr == nil, clientErr == SIGKILL) be
+	// scored not-genuine on signal alone, with nothing else to report --
+	// producing an empty "Reseed failed: " with no cause listed at all.
+	dumpOwnFailure := dumpErr != nil && !wasCollateralKill(dumpErr) && !wasCollateralPipeClose(dumpErr, pumpErr)
+	clientOwnFailure := clientErr != nil && !wasCollateralKill(clientErr)
+	triggerExists := pumpErr != nil || dumpOwnFailure || clientOwnFailure
+	dumpGenuine := dumpErr != nil && (dumpOwnFailure || !triggerExists)
+	clientGenuine := clientErr != nil && (clientOwnFailure || !triggerExists)
+
+	var parts []string
+	addDump := func() {
+		p := fmt.Sprintf("mysqldump on %s: %s", sourceURL, dumpErr.Error())
+		if len(dumpTail) > 0 {
+			p += " | stderr: " + strings.Join(dumpTail, " / ")
+		}
+		parts = append(parts, p)
+	}
+	addClient := func() {
+		p := fmt.Sprintf("mysql client on %s: %s", destURL, clientErr.Error())
+		if len(clientTail) > 0 {
+			p += " | stderr: " + strings.Join(clientTail, " / ")
+		}
+		parts = append(parts, p)
+	}
+	switch {
+	case dumpErr == nil:
+		// Covers dumpErr == nil && clientErr == nil too (e.g. a pump-only
+		// failure with both processes exiting cleanly) -- addClient must
+		// stay guarded on clientGenuine, never called unconditionally, or a
+		// nil clientErr here would panic on err.Error(). Guarding on
+		// clientGenuine rather than clientErr != nil also covers the case
+		// where dump exits 0 on its own but the pump fails for an unrelated
+		// reason (e.g. a read error on its own side) and its cancel()
+		// collaterally SIGKILLs the still-running client: that exit must not
+		// be reported as a genuine client failure.
+		if clientGenuine {
+			addClient()
+		}
+	case clientErr == nil:
+		// Symmetric with the dumpErr == nil case above.
+		if dumpGenuine {
+			addDump()
+		}
+	case dumpGenuine && clientGenuine:
+		// Both failed on their own -- a coincidental double fault, not one
+		// side collaterally killing the other. Neither caused the other, so
+		// report both instead of guessing.
+		addDump()
+		addClient()
+	case clientGenuine:
+		addClient()
+	case dumpGenuine:
+		addDump()
+	default:
+		// Both sides have errors but neither looks like a genuine own
+		// failure by the signal heuristic (e.g. ExitError.Sys() isn't a
+		// syscall.WaitStatus on this platform). Surface both rather than
+		// silently pick one.
+		addDump()
+		addClient()
+	}
+	// The pump (dump stdout -> client stdin) is the glue between the two
+	// processes, not a third competitor for "root cause" -- surface it
+	// whenever it saw something, in addition to whatever dump/client
+	// reported. It's often the earliest and clearest signal (e.g. an
+	// immediate EPIPE the moment the client dies), and it's the only signal
+	// at all in the rare case neither process's own exit status reflected
+	// the failure.
+	if pumpErr != nil {
+		parts = append(parts, fmt.Sprintf("stdin pump (mysqldump to mysql client) on %s: %s", destURL, pumpErr.Error()))
+	}
+	return "Reseed failed: " + strings.Join(parts, "; ")
+}
+
+// progressCountingWriter wraps an io.Writer and adds each successful Write's
+// byte count to progress, so a stall watchdog (backupStallWatchdog) can
+// observe real forward progress through a pipe rather than just reads off
+// the source. Wrapping the writer -- rather than counting bytes off the
+// reader -- matters: a writer that stops draining (e.g. a wedged mysql
+// client) must freeze the counter too, or the watchdog would keep seeing
+// "progress" from reads alone while the pipe backs up.
+type progressCountingWriter struct {
+	w        io.Writer
+	progress *atomic.Int64
+}
+
+func (c *progressCountingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.progress.Add(int64(n))
+	return n, err
+}
+
 func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest *ServerMonitor) error {
+	task := "direct"
 	defer dest.SetInReseedBackup("")
+	dest.JobsUpdateStateRuntimeOnly(task, "processing", 1, 0)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rejoining from direct mysqldump from %s", source.URL)
 
 	// Stop ALL replication connections before the RESET MASTER below. StopSlave()
@@ -3755,18 +3976,103 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	if logs, err := dest.StopAllSlaves(); err != nil {
 		cluster.LogSQL(logs, err, dest.URL, "Rejoin", config.LvlErr, "Failed stop all slaves before direct dump reseed on %s: %s", dest.URL, err)
 	}
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(source, dest.JobGetDumpGtidParameter())...)
-	stderrIn, _ := dumpCmd.StderrPipe()
+
+	// Shared cancellable context across both subprocesses. mysqldump and the mysql
+	// client run concurrently, wired together by an OS pipe with no unbounded
+	// buffer: if the client dies first (bad SQL, lost connection...) nobody drains
+	// mysqldump's stdout anymore and it blocks on the next write(); waiting on the
+	// two commands sequentially (as this used to) then never returns, so the
+	// deferred SetInReseedBackup("") above never runs and IsReseeding="direct"
+	// stays stuck forever. Tying both commands to one context lets either side's
+	// exit cancel and kill the other instead of hanging. Same failure shape as
+	// doc/implementation/cluster/BACKUP_DEAD_VOLUME_STALL.md, one pipe hop earlier.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	dumpCmd := exec.CommandContext(ctx, cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(source, dest.JobGetDumpGtidParameter())...)
 
 	cliParams := append(cluster.GetDumpCredentials(dest), dest.GetSSLClientParam("client")...)
 	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
 
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
-	stderrOut, _ := clientCmd.StderrPipe()
+	clientCmd := exec.CommandContext(ctx, cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 
-	iodumpreader, _ := dumpCmd.StdoutPipe()
+	failPipeSetup := func(what string, err error) error {
+		msg := fmt.Sprintf("Failed to create %s: %s", what, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
+		dest.JobsUpdateStateRuntimeOnly(task, msg, 5, 1)
+		return err
+	}
+
+	// Own mysqldump's stdout/stderr and the client's stderr with plain
+	// os.Pipe() pairs assigned directly to Cmd.Stdout/Cmd.Stderr, rather than
+	// Cmd.StdoutPipe()/Cmd.StderrPipe(). Those helpers register their pipes in
+	// Cmd's internal parentIOPipes list, and Cmd.Wait() unconditionally
+	// force-closes every pipe on that list the instant the process exits --
+	// regardless of whether our own reader goroutines below (the stderr tail
+	// readers, the pump reading mysqldump's stdout) have finished draining
+	// them. That race doesn't hang; it silently loses whatever was still
+	// unread. For the stderr tails that's a truncated diagnostic; for the
+	// pump reading dumpStdoutR, it's potentially truncated RESTORE DATA on an
+	// otherwise-successful reseed. Plain *os.File pipes we create and own
+	// ourselves are invisible to Cmd -- Wait() never touches them.
+	// (Cmd.StdinPipe() doesn't have this problem: the same race there closes
+	// clientStdin out from under the pump's blocked Write(), which is exactly
+	// how we want a dead client to unstick a stuck pump -- so it stays.)
+	var ownedPipes []*os.File
+	newOwnedPipe := func() (*os.File, *os.File, error) {
+		r, w, err := os.Pipe()
+		if err != nil {
+			return nil, nil, err
+		}
+		ownedPipes = append(ownedPipes, r, w)
+		return r, w, nil
+	}
+	closeOwnedPipes := func() {
+		for _, f := range ownedPipes {
+			f.Close()
+		}
+	}
+
+	dumpStdoutR, dumpStdoutW, err := newOwnedPipe()
+	if err != nil {
+		return failPipeSetup(fmt.Sprintf("mysqldump stdout pipe on %s", source.URL), err)
+	}
+	dumpStderrR, dumpStderrW, err := newOwnedPipe()
+	if err != nil {
+		closeOwnedPipes()
+		return failPipeSetup(fmt.Sprintf("mysqldump stderr pipe on %s", source.URL), err)
+	}
+	clientStderrR, clientStderrW, err := newOwnedPipe()
+	if err != nil {
+		closeOwnedPipes()
+		return failPipeSetup(fmt.Sprintf("mysql client stderr pipe on %s", dest.URL), err)
+	}
+	dumpCmd.Stdout = dumpStdoutW
+	dumpCmd.Stderr = dumpStderrW
+	clientCmd.Stderr = clientStderrW
+
+	// Deliberately NOT clientCmd.Stdin = io.MultiReader(...). When Cmd.Stdin is
+	// an io.Reader rather than an *os.File, exec spawns its OWN goroutine that
+	// copies that reader into the child's stdin pipe, and Cmd.Wait() blocks
+	// until BOTH the process has exited AND that hidden copy goroutine has
+	// finished. That copy goroutine spends most of its time blocked in Read()
+	// on dumpStdoutR -- so if the mysql client exits (or is killed) while
+	// mysqldump is independently stalled (a source-side lock wait, a dead
+	// network to the source, anything unrelated to us not draining its
+	// output), the hidden copy goroutine never gets EOF, never notices the
+	// client is gone, and clientCmd.Wait() never returns -- cancel() never
+	// fires, dumpCmd is never killed, and the reseed hangs again despite every
+	// fix above. Using an explicit StdinPipe() instead means Wait() reflects
+	// ONLY process exit; we own the copy loop below (the "pump") as a
+	// goroutine independent of Wait(), so a stuck pump cannot block
+	// cancellation from firing.
+	clientStdin, err := clientCmd.StdinPipe()
+	if err != nil {
+		closeOwnedPipes()
+		return failPipeSetup(fmt.Sprintf("mysql client stdin pipe on %s", dest.URL), err)
+	}
 
 	// RESET MASTER (RESET BINARY LOGS AND GTIDS on MySQL/Percona 8.4+) wipes the
 	// dest's binary logs and GTID state before the restore. This is required
@@ -3784,39 +4090,184 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	if dest.DBVersion.IsMySQLOrPerconaGreater84() {
 		cmdstring = "RESET BINARY LOGS AND GTIDS;SET sql_log_bin=0;SET long_query_time=10;"
 	}
-	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), iodumpreader)
 
 	if err := dumpCmd.Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqldump command: %s at %s", err, strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
+		closeOwnedPipes()
+		clientStdin.Close()
+		dest.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
 		return err
 	}
+	// dumpCmd's child now holds its own inherited copies of dumpStdoutW and
+	// dumpStderrW -- close ours so the read ends (still held below by the
+	// pump and the stderr tail reader) can ever see EOF. Forgetting this is
+	// the classic mirror-image bug to the premature-close race above: instead
+	// of losing data to an early close, an fd we forgot to close keeps the
+	// pipe "held open" forever and the reader blocks past the point the child
+	// has actually exited.
+	dumpStdoutW.Close()
+	dumpStderrW.Close()
+
 	if err := clientCmd.Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't start mysql client:%s at %s", err, strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
+		clientStderrW.Close()
+		clientStderrR.Close()
+		clientStdin.Close()
+		cancel() // dumpCmd already started but the client never will -- kill it now instead of letting it dump into a pipe nobody reads
+		// Reap it: cancel() only signals the kill, it doesn't wait for the
+		// process to actually exit. Returning without Wait() here would leave
+		// an already-started mysqldump as an unreaped zombie.
+		if werr := dumpCmd.Wait(); werr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "mysqldump on %s exited after client start failure: %s", source.URL, werr)
+		}
+		dumpStdoutR.Close()
+		dumpStderrR.Close()
+		dest.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
 		return err
 	}
+	// Symmetric with dumpStdoutW/dumpStderrW above.
+	clientStderrW.Close()
+
+	const stderrTailLines = 20
 	var wg sync.WaitGroup
+	var dumpTail, clientTail []string
 	wg.Add(2)
 
 	go func() {
 		defer wg.Done()
-		source.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
+		defer dumpStderrR.Close()
+		dumpTail = source.copyLogsTail(dumpStderrR, config.ConstLogModBackupStream, config.LvlDbg, stderrTailLines)
 	}()
 	go func() {
 		defer wg.Done()
-		dest.copyLogs(stderrOut, config.ConstLogModBackupStream, config.LvlDbg)
+		defer clientStderrR.Close()
+		clientTail = dest.copyLogsTail(clientStderrR, config.ConstLogModBackupStream, config.LvlDbg, stderrTailLines)
 	}()
 
-	wg.Wait()
+	// Write/read-stall watchdog: every fix above reacts to a subprocess
+	// EXITING, with or without error. None of them help if nothing exits at
+	// all -- mysqldump can wedge on a source-side lock wait, or the mysql
+	// client can wedge mid-statement on the destination, with neither process
+	// ever erroring or returning. That leaves the reseed exactly as stuck as
+	// the bug this whole fix chain exists to close. This mirrors
+	// backupStallWatchdog's use in JobBackupMysqldump for the identical shape
+	// of incident one pipe hop over (see BACKUP_DEAD_VOLUME_STALL.md): track
+	// bytes actually forwarded through the pump, and if that stops advancing
+	// for backup-write-stall-timeout, treat it as stuck and cancel() the same
+	// way an explicit failure would. Reuses the existing backup-write-stall-
+	// timeout config rather than adding a second stall knob -- same signal
+	// ("is data still flowing"), same semantics (0 disables, <0 warns+disables).
+	var pumpProgress atomic.Int64
+	var stalled atomic.Bool
+	stallDone := make(chan struct{})
+	stallFired := make(chan struct{})
+	if cluster.Conf.BackupWriteStallTimeout < 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"backup-write-stall-timeout is negative (%d) — the direct reseed stall watchdog is DISABLED; use 0 to disable intentionally, or a positive number of seconds to enable", cluster.Conf.BackupWriteStallTimeout)
+	}
+	stallTimeout := time.Duration(cluster.Conf.BackupWriteStallTimeout) * time.Second
+	checkInterval := stallTimeout / 4
+	if checkInterval < time.Second {
+		checkInterval = time.Second
+	}
+	go backupStallWatchdog(stallDone, cancel, &pumpProgress, stallTimeout, checkInterval, func() {
+		stalled.Store(true)
+		close(stallFired)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
+			"Direct reseed stalled for %s with no bytes streamed from %s to %s; aborting", stallTimeout, source.URL, dest.URL)
+	})
 
-	// Wait for the commands to complete
-	if err := dumpCmd.Wait(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error waiting for dump client on %s: %s", source.URL, err.Error())
-		return err
+	// The pump: writes the SQL preamble then streams mysqldump's stdout into
+	// the mysql client's stdin, replacing what Cmd.Stdin=io.MultiReader(...)
+	// used to do implicitly (see the comments above clientCmd.StdinPipe() and
+	// above the owned os.Pipe() setup for why neither Cmd helper is used
+	// here). Owning this loop explicitly means a write/read failure here is
+	// detected and can cancel() directly, instead of being invisible to
+	// clientCmd.Wait().
+	pumpErrCh := make(chan error, 1)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer clientStdin.Close()
+		defer dumpStdoutR.Close()
+		if _, err := io.WriteString(clientStdin, cmdstring); err != nil {
+			cancel()
+			pumpErrCh <- fmt.Errorf("writing restore preamble to mysql client stdin: %w", err)
+			return
+		}
+		counted := &progressCountingWriter{w: clientStdin, progress: &pumpProgress}
+		if _, err := io.Copy(counted, dumpStdoutR); err != nil {
+			cancel()
+			pumpErrCh <- fmt.Errorf("streaming mysqldump output to mysql client stdin: %w", err)
+			return
+		}
+		pumpErrCh <- nil
+	}()
+
+	// Wait for both subprocesses concurrently -- NOT dumpCmd.Wait() then
+	// clientCmd.Wait() in sequence. If the mysql client dies first, nobody
+	// drains mysqldump's stdout pipe anymore and it blocks on the next write();
+	// waiting on it first would never return. Whichever side fails cancels ctx
+	// so the other is killed instead of left hanging.
+	dumpErrCh := make(chan error, 1)
+	clientErrCh := make(chan error, 1)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		err := dumpCmd.Wait()
+		if err != nil {
+			cancel()
+		}
+		dumpErrCh <- err
+	}()
+	go func() {
+		defer wg.Done()
+		err := clientCmd.Wait()
+		if err != nil {
+			cancel()
+		}
+		clientErrCh <- err
+	}()
+
+	// Bounded wait: normally block until every goroutine above (both stderr
+	// tail readers, the pump, both Wait()s) has unwound. But if the watchdog
+	// fired and a subprocess is stuck in uninterruptible sleep (D-state --
+	// e.g. an NFS-style hard-hung source or destination mount), SIGKILL
+	// cannot free it and this would never return. After backupStallLeakGrace,
+	// give up, leak the stuck goroutine(s), and return the stall error
+	// instead of hanging the reseed forever. Best-effort mitigation for the
+	// hard-hung-mount case, not a hard guarantee -- see
+	// BACKUP_DEAD_VOLUME_STALL.md.
+	leaked := boundedWait(&wg, stallFired, backupStallLeakGrace)
+	close(stallDone) // stop the watchdog
+	if leaked {
+		msg := fmt.Sprintf("Direct reseed from %s to %s did not unwind %s after stall-cancel (subprocess likely stuck in uninterruptible sleep); giving up",
+			source.URL, dest.URL, backupStallLeakGrace)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "%s", msg)
+		dest.JobsUpdateStateRuntimeOnly(task, msg, 5, 1)
+		return errors.New(msg)
 	}
 
-	if err := clientCmd.Wait(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error waiting for db client on %s: %s", dest.URL, err.Error())
-		return err
+	dumpErr := <-dumpErrCh
+	clientErr := <-clientErrCh
+	pumpErr := <-pumpErrCh
+
+	// A watchdog-triggered stall cancels the same context as any other
+	// failure, so dumpErr/clientErr/pumpErr above would just read back
+	// "context canceled" / "signal: killed" -- report the stall distinctly
+	// instead so operators see a diagnosis, not a generic cancellation.
+	if stalled.Load() {
+		msg := fmt.Sprintf("Direct reseed aborted: no bytes streamed from %s to %s for %s (stuck mysqldump/mysql client)", source.URL, dest.URL, stallTimeout)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
+		dest.JobsUpdateStateRuntimeOnly(task, msg, 5, 1)
+		return errors.New(msg)
+	}
+
+	if dumpErr != nil || clientErr != nil || pumpErr != nil {
+		msg := reseedFailureMessage(source.URL, dest.URL, dumpErr, clientErr, pumpErr, dumpTail, clientTail)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
+		dest.JobsUpdateStateRuntimeOnly(task, msg, 5, 1)
+		return errors.New(msg)
 	}
 
 	// Symmetric with StopAllSlaves above: restart every replication connection by
@@ -3824,13 +4275,27 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	// MasterConn channel, leaving a multi-source dest's other source connections
 	// stopped after they were stopped for the RESET MASTER.
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", dest.URL)
+	var slaveStartErrs []string
 	for _, rep := range dest.Replications {
 		if logs, err := dest.StartSlaveChannel(rep.ConnectionName.String); err != nil {
 			cluster.LogSQL(logs, err, dest.URL, "Rejoin", config.LvlErr, "Failed start slave channel '%s' after direct dump reseed on %s: %s", rep.ConnectionName.String, dest.URL, err)
+			slaveStartErrs = append(slaveStartErrs, fmt.Sprintf("%s: %s", rep.ConnectionName.String, err.Error()))
 		}
 	}
 
+	if len(slaveStartErrs) > 0 {
+		// The dump/restore itself succeeded, but a node that didn't actually
+		// rejoin replication is not a successful reseed -- report it as a
+		// failure instead of "completed", or the dest is left both broken
+		// and looking done.
+		msg := fmt.Sprintf("Restore completed but failed to start replication channel(s) on %s: %s", dest.URL, strings.Join(slaveStartErrs, "; "))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
+		dest.JobsUpdateStateRuntimeOnly(task, msg, 5, 1)
+		return errors.New(msg)
+	}
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed slave from %s to %s finished", source.URL, dest.URL)
+	dest.JobsUpdateStateRuntimeOnly(task, "Reseed completed", 3, 1)
 	return nil
 }
 
