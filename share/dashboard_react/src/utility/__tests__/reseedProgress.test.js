@@ -13,6 +13,7 @@ import {
   formatBytes,
   formatElapsed,
   formatRate,
+  formatRateLine,
 } from '../reseedProgress.js'
 
 let passed = 0
@@ -92,6 +93,37 @@ function assert(condition, description) {
     formatRate(0, 5) === '0B/s',
     'elapsed has passed but rate is genuinely 0 → real 0B/s shown, not hidden'
   )
+}
+
+// ─── formatRateLine (recent "now" rate + lifetime "avg" rate combined) ────────
+{
+  assert(
+    formatRateLine({ rateBytesSec: 0, elapsedSecs: 0, recentRateReady: false }) === 'measuring…',
+    'not enough ticks for recent, and avg not ready either → measuring placeholder'
+  )
+  assert(
+    formatRateLine({ rateBytesSec: 5 * 1024 * 1024, elapsedSecs: 20, recentRateReady: false }) === '5M/s',
+    'recent not ready yet → falls back to plain avg (same as formatRate alone)'
+  )
+  assert(
+    formatRateLine({
+      rateBytesSec: 18 * 1024 * 1024,
+      elapsedSecs: 20,
+      recentRateBytesSec: 3 * 1024 * 1024,
+      recentRateReady: true,
+    }) === '3M/s now · 18M/s avg',
+    'both ready → "recent now · avg avg"'
+  )
+  assert(
+    formatRateLine({
+      rateBytesSec: 0,
+      elapsedSecs: 0,
+      recentRateBytesSec: 2 * 1024 * 1024,
+      recentRateReady: true,
+    }) === '2M/s now · measuring…',
+    'recent ready before avg is (edge case) → "recent now · measuring…", no "avg" suffix on a placeholder'
+  )
+  assert(formatRateLine(null) === 'measuring…', 'null row → measuring placeholder, no throw')
 }
 
 // ─── formatElapsed ───────────────────────────────────────────────────────────

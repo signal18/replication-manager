@@ -4,7 +4,10 @@
 // structured progress the backend attaches to /api/clusters/{name}/topology/servers
 // as `server.reseedProgress` (absent when idle). Shape:
 //   { inProgress, fromRejoin, task, backup, tool, bytes, total, percent,
-//     startedUnix, elapsedSecs, rateBytesSec, line }
+//     startedUnix, elapsedSecs, rateBytesSec, recentRateBytesSec, recentRateReady, line }
+// rateBytesSec is a lifetime average (stable, but lags a real slowdown/speedup);
+// recentRateBytesSec is a windowed rate over the last few ticks (noisier, reflects
+// current throughput), valid only once recentRateReady is true (enough ticks sampled).
 // `percent` is -1 when the reseed method has no byte instrumentation — those show a
 // generic "rejoin reseed in progress, started T" timer instead of a filled bar.
 //
@@ -59,6 +62,20 @@ export const formatBytes = (b) => {
 // aborts the task instead of leaving a misleading rate on screen).
 export const formatRate = (rateBytesSec, elapsedSecs) =>
   elapsedSecs > 0 ? `${formatBytes(rateBytesSec)}/s` : 'measuring…'
+
+// formatRateLine combines the windowed "recent" rate (current throughput) with the
+// lifetime "average" rate into one display string, e.g. "3M/s now · 18M/s avg". The
+// average alone is known to lag a real slowdown/speedup (it barely moves once a
+// restore has been running a while), so once the backend has sampled enough ticks to
+// report a recent rate (rp.recentRateReady), lead with that. Before then -- the first
+// few ticks of a fresh reseed -- there's nothing windowed to show yet, so this falls
+// back to exactly what formatRate alone would show (including "measuring…").
+export const formatRateLine = (rp) => {
+  const avg = formatRate(rp && rp.rateBytesSec, rp && rp.elapsedSecs)
+  if (!rp || !rp.recentRateReady) return avg
+  const recent = `${formatBytes(rp.recentRateBytesSec)}/s now`
+  return avg === 'measuring…' ? `${recent} · ${avg}` : `${recent} · ${avg} avg`
+}
 
 // formatElapsed(seconds) → "1h23m" / "3m12s" / "45s".
 export const formatElapsed = (secs) => {

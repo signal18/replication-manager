@@ -7,7 +7,7 @@ import {
   reseedHasBytes,
   formatBytes,
   formatElapsed,
-  formatRate,
+  formatRateLine,
 } from '../../../utility/reseedProgress'
 
 // ReseedProgressModal shows every server currently being reseeded/rejoined with a
@@ -45,7 +45,7 @@ function ReseedProgressModal({ isOpen, closeModal, servers }) {
                 />
                 <Text fontSize='sm' mt={1}>
                   {formatBytes(rp.bytes)} / {formatBytes(rp.total)} ({rp.percent}%)
-                  {` · ${formatRate(rp.rateBytesSec, rp.elapsedSecs)}`}
+                  {` · ${formatRateLine(rp)}`}
                   {` · ${formatElapsed(rp.elapsedSecs)}`}
                 </Text>
               </>
@@ -56,7 +56,7 @@ function ReseedProgressModal({ isOpen, closeModal, servers }) {
                   {hasBytes ? (
                     <>
                       {formatBytes(rp.bytes)} streamed
-                      {` · ${formatRate(rp.rateBytesSec, rp.elapsedSecs)}`}
+                      {` · ${formatRateLine(rp)}`}
                       {` · ${formatElapsed(rp.elapsedSecs)}`}
                     </>
                   ) : (

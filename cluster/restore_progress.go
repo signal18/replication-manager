@@ -26,6 +26,7 @@ func (cluster *Cluster) assertReseedProgressStates() {
 		if info == nil {
 			continue
 		}
+		sv.sampleReseedRate()
 		cluster.SetState("WARN0189", state.State{
 			ErrType:   "WARNING",
 			ErrKey:    "WARN0189",
@@ -68,11 +69,13 @@ func (server *ServerMonitor) startReseedProgress(info *ReseedProgress, r io.Read
 	server.reseedTotal.Store(total)
 	server.reseedStart.Store(time.Now().UnixNano())
 	server.reseedInfo.Store(info)
+	server.reseedRateWindow.Store([]reseedRateSample(nil))
 	return &countingReader{r: r, n: &server.reseedBytes}
 }
 
 func (server *ServerMonitor) stopReseedProgress() {
 	server.reseedInfo.Store((*ReseedProgress)(nil))
+	server.reseedRateWindow.Store([]reseedRateSample(nil))
 }
 
 // beginReseedProgress stamps an in-flight restore whose streamed bytes accumulate
@@ -85,6 +88,7 @@ func (server *ServerMonitor) beginReseedProgress(info *ReseedProgress, total int
 	server.reseedTotal.Store(total)
 	server.reseedStart.Store(time.Now().UnixNano())
 	server.reseedInfo.Store(info)
+	server.reseedRateWindow.Store([]reseedRateSample(nil))
 }
 
 // countReseedReader wraps r so bytes read accumulate into the current reseed's
@@ -116,6 +120,59 @@ func sumSplitdumpBytes(dir string) int64 {
 		}
 	}
 	return total
+}
+
+// reseedRateWindowSize is how many per-tick samples sampleReseedRate keeps. A single
+// tick's delta is too noisy to show (e.g. the direct-reseed pump copies in ~32KB
+// io.Copy chunks, so one tick can land on "nothing copied this instant" right next to
+// a burst); averaging over a handful of ticks smooths that out while still being far
+// more responsive than the lifetime average (reseedBytes/reseedStart), which barely
+// moves once a restore has been running for a while.
+const reseedRateWindowSize = 3
+
+// reseedRateSample is one (bytes, sampled-at) point used to compute a windowed
+// "recent" rate, distinct from the RateBytesSec lifetime average.
+type reseedRateSample struct {
+	bytes int64
+	at    time.Time
+}
+
+// sampleReseedRate appends the current byte count to the rolling sample window, called
+// once per monitoring tick (assertReseedProgressStates) for every server with an
+// active byte-instrumented reseed. Single-writer (the tick goroutine runs serially per
+// cluster) -- reseedRateWindow is an atomic.Value so concurrent readers (GetReseedProgress,
+// called from HTTP handlers) never see a partially-built slice.
+func (server *ServerMonitor) sampleReseedRate() {
+	prev, _ := server.reseedRateWindow.Load().([]reseedRateSample)
+	window := append(append([]reseedRateSample{}, prev...), reseedRateSample{
+		bytes: server.reseedBytes.Load(),
+		at:    time.Now(),
+	})
+	if len(window) > reseedRateWindowSize {
+		window = window[len(window)-reseedRateWindowSize:]
+	}
+	server.reseedRateWindow.Store(window)
+}
+
+// recentReseedRate returns the average bytes/sec over the sample window (0 until at
+// least two ticks have been sampled) -- a noisier but far more current-throughput
+// signal than the lifetime average, e.g. it will trend toward 0 while a reseed is
+// stalled well before the stall watchdog's timeout fires and aborts it.
+func (server *ServerMonitor) recentReseedRate() (rate int64, ready bool) {
+	window, _ := server.reseedRateWindow.Load().([]reseedRateSample)
+	if len(window) < 2 {
+		return 0, false
+	}
+	first, last := window[0], window[len(window)-1]
+	elapsed := last.at.Sub(first.at)
+	if elapsed <= 0 {
+		return 0, false
+	}
+	delta := last.bytes - first.bytes
+	if delta < 0 {
+		delta = 0
+	}
+	return int64(float64(delta) / elapsed.Seconds()), true
 }
 
 // reseedProgressLine returns a human progress line + the backup being restored,
@@ -151,18 +208,20 @@ func (server *ServerMonitor) reseedProgressLine() (string, *ReseedProgress) {
 // dashboard: enough to render a progress bar (bytes/total/percent) or a generic
 // "started T (elapsed)" timer when the method has no byte instrumentation.
 type ReseedProgressView struct {
-	InProgress   bool   `json:"inProgress"`
-	FromRejoin   bool   `json:"fromRejoin"`   // armed by a rejoin (reseedFromRejoin)
-	Task         string `json:"task"`         // reseed task: "reseedmysqldump", "reseedmariabackup", "direct", …
-	Backup       string `json:"backup"`       // backup file/dir being restored ("" if generic)
-	Tool         string `json:"tool"`         // restore tool
-	Bytes        int64  `json:"bytes"`        // streamed (compressed) so far
-	Total        int64  `json:"total"`        // total compressed size (0 = unknown)
-	Percent      int    `json:"percent"`      // 0..100, or -1 when total is unknown
-	StartedUnix  int64  `json:"startedUnix"`  // restore start (byte path) or rejoin-arm time (generic)
-	ElapsedSecs  int64  `json:"elapsedSecs"`
-	RateBytesSec int64  `json:"rateBytesSec"` // average over elapsed (0 when no bytes)
-	Line         string `json:"line"`         // the human progress line
+	InProgress         bool   `json:"inProgress"`
+	FromRejoin         bool   `json:"fromRejoin"`  // armed by a rejoin (reseedFromRejoin)
+	Task               string `json:"task"`        // reseed task: "reseedmysqldump", "reseedmariabackup", "direct", …
+	Backup             string `json:"backup"`      // backup file/dir being restored ("" if generic)
+	Tool               string `json:"tool"`        // restore tool
+	Bytes              int64  `json:"bytes"`       // streamed (compressed) so far
+	Total              int64  `json:"total"`       // total compressed size (0 = unknown)
+	Percent            int    `json:"percent"`     // 0..100, or -1 when total is unknown
+	StartedUnix        int64  `json:"startedUnix"` // restore start (byte path) or rejoin-arm time (generic)
+	ElapsedSecs        int64  `json:"elapsedSecs"`
+	RateBytesSec       int64  `json:"rateBytesSec"`       // lifetime average over elapsed (0 when no bytes) — stable, but lags a real slowdown/speedup
+	RecentRateBytesSec int64  `json:"recentRateBytesSec"` // windowed rate over the last few ticks (~reseedRateWindowSize * monitoring-ticker) — noisier, reflects current throughput
+	RecentRateReady    bool   `json:"recentRateReady"`    // true once enough ticks have been sampled for RecentRateBytesSec to be meaningful
+	Line               string `json:"line"`               // the human progress line
 }
 
 // GetReseedProgress returns a snapshot of the server's in-flight restore, or nil
@@ -186,6 +245,7 @@ func (server *ServerMonitor) GetReseedProgress() *ReseedProgressView {
 		if v.Total > 0 {
 			v.Percent = int(v.Bytes * 100 / v.Total)
 		}
+		v.RecentRateBytesSec, v.RecentRateReady = server.recentReseedRate()
 	} else if startNanos == 0 {
 		startNanos = server.rejoinReseedStart.Load() // generic rejoin timer, no byte instrumentation
 	}

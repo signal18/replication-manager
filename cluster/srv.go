@@ -10,12 +10,12 @@
 package cluster
 
 import (
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"compress/gzip"
 	"hash/crc64"
 	"io"
 	"net/http"
@@ -261,6 +261,7 @@ type ServerMonitor struct {
 	reseedBytes                 atomic.Int64 // raw bytes streamed so far (compressed input; no decompression accounting yet)
 	reseedTotal                 atomic.Int64 // total compressed backup file size (0 = unknown)
 	reseedStart                 atomic.Int64 // unix-nanos the current restore started (for MB/s)
+	reseedRateWindow            atomic.Value // []reseedRateSample: last few per-tick (bytes,time) samples, for a windowed "recent" rate distinct from the lifetime average (reseedBytes/reseedStart) — see restore_progress.go
 	// Lock ordering (to prevent deadlocks):
 	// 1. Cluster.stateMutex (highest)
 	// 2. ServerMonitor.stateMutex
