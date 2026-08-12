@@ -9,8 +9,11 @@ import {
   getActiveReseeds,
   hasActiveReseed,
   reseedHasBar,
+  reseedHasBytes,
   formatBytes,
   formatElapsed,
+  formatRate,
+  formatRateLine,
 } from '../reseedProgress.js'
 
 let passed = 0
@@ -51,12 +54,76 @@ function assert(condition, description) {
   assert(reseedHasBar(null) === false, 'null → no bar')
 }
 
+// ─── reseedHasBytes (byte counts shown even with unknown total, e.g. direct reseed) ─
+{
+  assert(
+    reseedHasBytes({ percent: -1, total: 0, bytes: 12345 }) === true,
+    'unknown total but bytes streamed (direct reseed) → hasBytes'
+  )
+  assert(
+    reseedHasBytes({ percent: -1, total: 0, bytes: 0 }) === false,
+    'no bytes streamed yet → no hasBytes'
+  )
+  assert(
+    reseedHasBytes({ percent: -1, fromRejoin: true }) === false,
+    'generic rejoin timer with no byte instrumentation → no hasBytes'
+  )
+  assert(reseedHasBytes(null) === false, 'null → no hasBytes')
+}
+
 // ─── formatBytes (mirrors backend humanBytes) ────────────────────────────────
 {
   assert(formatBytes(0) === '0B', '0 → 0B')
   assert(formatBytes(512) === '512B', '512 → 512B')
   assert(formatBytes(1024) === '1K', '1024 → 1K')
   assert(formatBytes(100 * 1024 * 1024 * 1024) === '100G', '100 GiB → 100G')
+}
+
+// ─── formatRate ("measuring…" for the sub-1s window, real rate/0B/s after) ────
+{
+  assert(
+    formatRate(0, 0) === 'measuring…',
+    'elapsedSecs 0 (just started) → measuring placeholder, even though rate is also 0'
+  )
+  assert(
+    formatRate(3 * 1024 * 1024, 10) === '3M/s',
+    'elapsed + nonzero rate → formatted rate'
+  )
+  assert(
+    formatRate(0, 5) === '0B/s',
+    'elapsed has passed but rate is genuinely 0 → real 0B/s shown, not hidden'
+  )
+}
+
+// ─── formatRateLine (recent "now" rate + lifetime "avg" rate combined) ────────
+{
+  assert(
+    formatRateLine({ rateBytesSec: 0, elapsedSecs: 0, recentRateReady: false }) === 'measuring…',
+    'not enough ticks for recent, and avg not ready either → measuring placeholder'
+  )
+  assert(
+    formatRateLine({ rateBytesSec: 5 * 1024 * 1024, elapsedSecs: 20, recentRateReady: false }) === '5M/s',
+    'recent not ready yet → falls back to plain avg (same as formatRate alone)'
+  )
+  assert(
+    formatRateLine({
+      rateBytesSec: 18 * 1024 * 1024,
+      elapsedSecs: 20,
+      recentRateBytesSec: 3 * 1024 * 1024,
+      recentRateReady: true,
+    }) === '3M/s now · 18M/s avg',
+    'both ready → "recent now · avg avg"'
+  )
+  assert(
+    formatRateLine({
+      rateBytesSec: 0,
+      elapsedSecs: 0,
+      recentRateBytesSec: 2 * 1024 * 1024,
+      recentRateReady: true,
+    }) === '2M/s now · measuring…',
+    'recent ready before avg is (edge case) → "recent now · measuring…", no "avg" suffix on a placeholder'
+  )
+  assert(formatRateLine(null) === 'measuring…', 'null row → measuring placeholder, no throw')
 }
 
 // ─── formatElapsed ───────────────────────────────────────────────────────────

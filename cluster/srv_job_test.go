@@ -882,6 +882,79 @@ exec cat >/dev/null
 	}
 }
 
+// TestJobRejoinMysqldumpFromSource_ReportsProgress verifies that the bytes
+// already forwarded by the pump (progressCountingWriter -> dest.reseedBytes)
+// surface through the shared reseed-progress framework (beginReseedProgress /
+// GetReseedProgress), and that the progress is cleared once the function
+// returns. The fake dump writes one line then stalls forever, exactly like
+// TestJobRejoinMysqldumpFromSource_StallClearsReseed, giving a deterministic
+// window in which bytes have been forwarded but the function hasn't returned
+// yet -- and a short stall timeout so the function still returns quickly.
+func TestJobRejoinMysqldumpFromSource_ReportsProgress(t *testing.T) {
+	cluster, source := newTestRuntimeOnlyClusterServer(t, "direct-reseed-progress-test", "source", "3306")
+	dest := newTestRuntimeOnlyServer(t, cluster, "dest", "3307")
+	cluster.Servers = append(cluster.Servers, dest)
+	binDir := t.TempDir()
+
+	fakeDump := writeFakeExecutable(t, binDir, "fakeprogressdump.sh", `#!/bin/sh
+echo "-- fake dump header" >&2
+echo "INSERT INTO t VALUES (1, 'some-known-payload-bytes');"
+exec sleep 300
+`)
+
+	fakeClient := writeFakeExecutable(t, binDir, "fakeprogressclient.sh", `#!/bin/sh
+exec cat >/dev/null
+`)
+
+	cluster.Conf.BackupMysqldumpPath = fakeDump
+	cluster.Conf.BackupMysqlclientPath = fakeClient
+	cluster.Conf.BackupWriteStallTimeout = 1 // seconds; small so the test stays fast
+
+	dest.SetInReseedBackup("direct")
+
+	resultCh := make(chan error, 1)
+	go func() {
+		resultCh <- cluster.JobRejoinMysqldumpFromSource(source, dest)
+	}()
+
+	// Poll for mid-flight progress rather than a fixed sleep: the pump forwards
+	// the fake dump's line asynchronously.
+	const pollTimeout = 5 * time.Second
+	deadline := time.Now().Add(pollTimeout)
+	var rp *ReseedProgressView
+	for time.Now().Before(deadline) {
+		if v := dest.GetReseedProgress(); v != nil && v.Bytes > 0 {
+			rp = v
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if rp == nil {
+		t.Fatalf("expected GetReseedProgress() to report streamed bytes within %s", pollTimeout)
+	}
+	if rp.Task != "direct" {
+		t.Fatalf("expected Task %q, got %q", "direct", rp.Task)
+	}
+	if rp.Tool != "mysqldump" {
+		t.Fatalf("expected Tool %q, got %q", "mysqldump", rp.Tool)
+	}
+	if !strings.HasPrefix(rp.Backup, "direct stream from ") {
+		t.Fatalf("expected Backup to start with %q, got %q", "direct stream from ", rp.Backup)
+	}
+
+	const timeout = 10 * time.Second
+	select {
+	case <-resultCh:
+		// good -- returned within the timeout (stall watchdog fired)
+	case <-time.After(timeout):
+		t.Fatalf("JobRejoinMysqldumpFromSource did not return within %s", timeout)
+	}
+
+	if v := dest.GetReseedProgress(); v != nil {
+		t.Fatalf("expected reseed progress to clear after return, got %+v", v)
+	}
+}
+
 // mustSignalExitError runs a throwaway subprocess that kills itself with sig
 // and returns the resulting *exec.ExitError. This gives reseedFailureMessage
 // tests a real, signal-terminated os.ProcessState to inspect -- the same

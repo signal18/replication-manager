@@ -3967,6 +3967,19 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	dest.JobsUpdateStateRuntimeOnly(task, "processing", 1, 0)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rejoining from direct mysqldump from %s", source.URL)
 
+	// Reseed progress (WARN0189): stamp the in-flight restore so the per-tick
+	// state and the dashboard reseed modal show streamed bytes/avg speed
+	// instead of a generic "in progress" timer, and so the backup/tool text
+	// distinguishes this direct stream from a file-based mysqldump restore.
+	// Total is unknown for a live stream (0 -- GetReseedProgress renders
+	// Percent=-1 for that case, same as other unknown-total restores).
+	dest.beginReseedProgress(&ReseedProgress{
+		Backup: "direct stream from " + source.URL,
+		Source: source.URL,
+		Tool:   "mysqldump",
+	}, 0)
+	defer dest.stopReseedProgress()
+
 	// Stop ALL replication connections before the RESET MASTER below. StopSlave()
 	// only stops cluster.Conf.MasterConn (empty by default → the unnamed default
 	// connection), so a dest replicating on a NAMED connection (e.g. 'curepipe')
@@ -4157,7 +4170,9 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	// way an explicit failure would. Reuses the existing backup-write-stall-
 	// timeout config rather than adding a second stall knob -- same signal
 	// ("is data still flowing"), same semantics (0 disables, <0 warns+disables).
-	var pumpProgress atomic.Int64
+	// Uses dest.reseedBytes (the same counter beginReseedProgress above stamped
+	// for the dashboard/WARN0189) rather than a local counter, so the stall
+	// watchdog and the displayed progress can never diverge.
 	var stalled atomic.Bool
 	stallDone := make(chan struct{})
 	stallFired := make(chan struct{})
@@ -4170,7 +4185,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	if checkInterval < time.Second {
 		checkInterval = time.Second
 	}
-	go backupStallWatchdog(stallDone, cancel, &pumpProgress, stallTimeout, checkInterval, func() {
+	go backupStallWatchdog(stallDone, cancel, &dest.reseedBytes, stallTimeout, checkInterval, func() {
 		stalled.Store(true)
 		close(stallFired)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
@@ -4195,7 +4210,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 			pumpErrCh <- fmt.Errorf("writing restore preamble to mysql client stdin: %w", err)
 			return
 		}
-		counted := &progressCountingWriter{w: clientStdin, progress: &pumpProgress}
+		counted := &progressCountingWriter{w: clientStdin, progress: &dest.reseedBytes}
 		if _, err := io.Copy(counted, dumpStdoutR); err != nil {
 			cancel()
 			pumpErrCh <- fmt.Errorf("streaming mysqldump output to mysql client stdin: %w", err)

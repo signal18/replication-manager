@@ -4,8 +4,10 @@ import CommonModal from '../CommonModal'
 import {
   getActiveReseeds,
   reseedHasBar,
+  reseedHasBytes,
   formatBytes,
   formatElapsed,
+  formatRateLine,
 } from '../../../utility/reseedProgress'
 
 // ReseedProgressModal shows every server currently being reseeded/rejoined with a
@@ -20,6 +22,7 @@ function ReseedProgressModal({ isOpen, closeModal, servers }) {
       {active.length === 0 && <Text>No reseed in progress.</Text>}
       {active.map((rp) => {
         const hasBar = reseedHasBar(rp)
+        const hasBytes = reseedHasBytes(rp)
         return (
           <Box key={rp.url} borderWidth='1px' borderRadius='md' p={3}>
             <Flex justify='space-between' align='center' mb={2}>
@@ -42,7 +45,7 @@ function ReseedProgressModal({ isOpen, closeModal, servers }) {
                 />
                 <Text fontSize='sm' mt={1}>
                   {formatBytes(rp.bytes)} / {formatBytes(rp.total)} ({rp.percent}%)
-                  {rp.rateBytesSec > 0 ? ` · ${formatBytes(rp.rateBytesSec)}/s` : ''}
+                  {` · ${formatRateLine(rp)}`}
                   {` · ${formatElapsed(rp.elapsedSecs)}`}
                 </Text>
               </>
@@ -50,7 +53,15 @@ function ReseedProgressModal({ isOpen, closeModal, servers }) {
               <>
                 <Progress size='sm' colorScheme='blue' isIndeterminate borderRadius='md' />
                 <Text fontSize='sm' mt={1}>
-                  {rp.line || `in progress · ${formatElapsed(rp.elapsedSecs)}`}
+                  {hasBytes ? (
+                    <>
+                      {formatBytes(rp.bytes)} streamed
+                      {` · ${formatRateLine(rp)}`}
+                      {` · ${formatElapsed(rp.elapsedSecs)}`}
+                    </>
+                  ) : (
+                    rp.line || `in progress · ${formatElapsed(rp.elapsedSecs)}`
+                  )}
                 </Text>
               </>
             )}
