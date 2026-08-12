@@ -324,30 +324,6 @@ func TruncatePFSStatements(db *sqlx.DB) (string, error) {
 	return query, err
 }
 
-func GetPlugins(db *sqlx.DB, myver *version.Version) (map[string]*Plugin, string, error) {
-
-	vars := make(map[string]*Plugin)
-	query := `SHOW PLUGINS`
-	if myver.IsMariaDB() {
-		query = `SHOW PLUGINS soname`
-	}
-
-	rows, err := db.Queryx(query)
-	if err != nil {
-		return nil, query, errors.New("Could not get queries")
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var v Plugin
-		err := rows.Scan(&v.Name, &v.Status, &v.Type, &v.Library, &v.License)
-		if err != nil {
-			return nil, query, errors.New("Could not get results from plugins scan")
-		}
-		vars[v.Name] = &v
-	}
-	return vars, query, nil
-}
-
 func GetPFSVariablesInstruments(db *sqlx.DB) (map[string]string, string, error) {
 	vars := make(map[string]string)
 	query := "SELECT /*replication-manager*/ UPPER(NAME) AS variable_name, ENABLED AS VALUE from performance_schema.setup_instruments"

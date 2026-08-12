@@ -35,6 +35,7 @@ import (
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	river "github.com/signal18/replication-manager/utils/river"
 	"github.com/signal18/replication-manager/utils/splitdump"
@@ -1109,24 +1110,72 @@ func (server *ServerMonitor) prepareRestoreConn(ctx context.Context, conn *sqlx.
 	return nil
 }
 
+// restoreSystemCatalog replays a published mysql.system-all splitdump artifact
+// (gzip-compressed SQL) over a single pinned connection. It is the narrow,
+// dedicated phase-two path shared by normal splitdump restore (dispatched from
+// restoreSplitdumpWithMysql) and direct-reseed catalogue replay: FK/UNIQUE
+// session state only (prepareRestoreConn), then a plain statement stream with
+// continueOnError always false — every INSTALL PLUGIN skip decision is made
+// per-statement inside execSplitdumpSingle via a live dbhelper lookup, so this
+// function carries no policy logic of its own. It deliberately never calls
+// buildLogicalRestorePreamble, ResetMaster, or applies GTID — those stay
+// exclusively in the callers that own the one-time, restore-wide binlog/GTID
+// decisions.
+//
+// progressed reports whether any statement actually committed against conn
+// before err (if any). Callers that drive retry orchestration (direct-reseed
+// phase two, RetryDirectReseedSystemCatalog) use this to distinguish "failed
+// before touching the destination" (safe to retry the whole artifact from the
+// beginning) from "failed after partially applying the catalogue" (not safe —
+// most --system=all statement classes besides INSTALL PLUGIN are not proven
+// replay-idempotent). Callers that don't drive retry (restoreSplitdumpWithMysql's
+// normal splitdump dispatch) may ignore it.
+func (server *ServerMonitor) restoreSystemCatalog(ctx context.Context, conn *sqlx.Conn, systemArtifactPath string) (progressed bool, err error) {
+	var progress atomic.Bool
+	if err := server.prepareRestoreConn(ctx, conn); err != nil {
+		return false, err
+	}
+
+	file, err := os.Open(systemArtifactPath)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+
+	var reader io.Reader = server.countReseedReader(file)
+	if strings.HasSuffix(strings.ToLower(systemArtifactPath), ".gz") {
+		cluster := server.ClusterGroup
+		parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModTask)
+		bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModTask)
+		gzReader, err := gzip.NewReaderN(reader, bufferSize, parallelBlocks)
+		if err != nil {
+			return false, err
+		}
+		defer gzReader.Close()
+		reader = gzReader
+	}
+
+	execErr := server.streamSplitdumpStatements(ctx, conn, reader, false, systemArtifactPath, &progress)
+	return progress.Load(), execErr
+}
+
 // restoreSplitdumpFileGo loads a single splitdump file over the supplied dedicated
 // connection. It preserves the mysql.* special-casing of the subprocess path
-// (gtid_slave_pos skip, system-all continue-on-error, missing-table skip) and
-// optionally strips DEFINER clauses.
+// (gtid_slave_pos skip, missing-table skip) and optionally strips DEFINER clauses.
+// mysql.system-all gets no blanket continue-on-error here: restoreSystemCatalog
+// is the dedicated phase-two path for that file (see restoreSplitdumpWithMysql's
+// dispatch), and any INSTALL PLUGIN skip decision is made per-statement in
+// execSplitdumpSingle via a live dbhelper lookup.
 func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *sqlx.Conn, path string, stripDefiner bool) error {
 	cluster := server.ClusterGroup
 
 	schema := splitdump.SchemaFromFilename(path)
 	table := splitdump.TableFromFilename(path)
-	continueOnError := false
 	if schema == "mysql" {
 		if splitdump.IsGtidSlavePosDataFile(path) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn,
 				"Splitdump restore skipped mysql.gtid_slave_pos data file: %s", filepath.Base(path))
 			return nil
-		}
-		if splitdump.IsMysqlSystemAll(filepath.Base(path)) {
-			continueOnError = true // matches the old --force behaviour for plugin/user rows
 		}
 		if table != "" && splitdump.IsMysqlTableCheckEligible(path) {
 			exists, err := server.tableExists(schema, table)
@@ -1177,7 +1226,7 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 		}
 	}
 
-	execErr := server.streamSplitdumpStatements(ctx, conn, reader, continueOnError, path)
+	execErr := server.streamSplitdumpStatements(ctx, conn, reader, false, path, nil)
 	if doneStrip != nil {
 		doneStrip(execErr)
 	}
@@ -1341,26 +1390,36 @@ func planAndExecSplitdump(reader io.Reader, continueOnError bool, batchSize int,
 
 // streamSplitdumpStatements segments the SQL stream (honouring DELIMITER for
 // trigger/routine bodies) and executes it on conn: INSERT/REPLACE batch into
-// retrying transactions (or run individually when continueOnError, e.g.
-// mysql.system-all); every other statement runs in autocommit; LOCK/UNLOCK TABLES
-// and ALTER..{DISABLE,ENABLE} KEYS are dropped. Segmentation and routing live in the
-// pure forEachSplitdumpStatement / classifySplitdumpStatement / planAndExecSplitdump
+// retrying transactions (or run individually when continueOnError); every other
+// statement runs in autocommit; LOCK/UNLOCK TABLES and ALTER..{DISABLE,ENABLE}
+// KEYS are dropped. continueOnError is always false from every production caller
+// today (restoreSplitdumpFileGo, restoreSystemCatalog) — the INSTALL PLUGIN skip
+// decision is made unconditionally, per statement, inside execSplitdumpSingle via
+// a live dbhelper lookup, not by this flag. progressed, if non-nil, is set the
+// moment any statement actually commits against conn (a deliberately skipped
+// INSTALL PLUGIN does not count) — restoreSystemCatalog uses this to tell retry
+// orchestration whether a failure happened before or after any system-catalogue
+// statement was committed, since only the former is safe to retry from the
+// beginning (see RetryDirectReseedSystemCatalog). restoreSplitdumpFileGo has no
+// use for this signal and passes nil. Segmentation and routing live in the pure
+// forEachSplitdumpStatement / classifySplitdumpStatement / planAndExecSplitdump
 // helpers; this wrapper just binds the executor to conn.
-func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn *sqlx.Conn, reader io.Reader, continueOnError bool, path string) error {
+func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn *sqlx.Conn, reader io.Reader, continueOnError bool, path string, progressed *atomic.Bool) error {
 	return planAndExecSplitdump(reader, continueOnError, splitdumpBatchStatements, splitdumpExecutor{
 		batch: func(stmts []string) error {
-			return server.execSplitdumpBatch(ctx, conn, stmts, path)
+			return server.execSplitdumpBatch(ctx, conn, stmts, path, progressed)
 		},
 		single: func(stmt string, coe bool) error {
-			return server.execSplitdumpSingle(ctx, conn, stmt, coe, path)
+			return server.execSplitdumpSingle(ctx, conn, stmt, path, progressed)
 		},
 	})
 }
 
 // execSplitdumpBatch runs stmts inside a single transaction and retries the whole
 // transaction on transient lock contention. A non-retryable error is returned so
-// the caller aborts the restore instead of silently losing rows.
-func (server *ServerMonitor) execSplitdumpBatch(ctx context.Context, conn *sqlx.Conn, stmts []string, path string) error {
+// the caller aborts the restore instead of silently losing rows. See
+// streamSplitdumpStatements for what progressed tracks.
+func (server *ServerMonitor) execSplitdumpBatch(ctx context.Context, conn *sqlx.Conn, stmts []string, path string, progressed *atomic.Bool) error {
 	cluster := server.ClusterGroup
 	var lastErr error
 	for attempt := 0; attempt <= splitdumpLockRetryMax; attempt++ {
@@ -1404,18 +1463,84 @@ func (server *ServerMonitor) execSplitdumpBatch(ctx context.Context, conn *sqlx.
 			}
 			return err
 		}
+		if progressed != nil && len(stmts) > 0 {
+			progressed.Store(true)
+		}
 		return nil
 	}
 	return fmt.Errorf("splitdump restore transaction on %s failed after %d retries: %w",
 		filepath.Base(path), splitdumpLockRetryMax, lastErr)
 }
 
+// isInstallPluginStatement reports whether stmt is an INSTALL PLUGIN statement
+// and, if so, extracts the plugin name (the token immediately following
+// INSTALL PLUGIN, unquoted). Pure — unit-testable without a DB.
+func isInstallPluginStatement(stmt string) (name string, ok bool) {
+	trimmed := strings.TrimLeft(stmt, " \t\r\n(")
+	const prefix = "INSTALL PLUGIN"
+	if !strings.HasPrefix(strings.ToUpper(trimmed), prefix) {
+		return "", false
+	}
+	rest := strings.TrimSpace(trimmed[len(prefix):])
+	if rest == "" {
+		return "", false
+	}
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		return "", false
+	}
+	name = strings.Trim(fields[0], "`\"'")
+	if name == "" {
+		return "", false
+	}
+	return name, true
+}
+
+// resolveInstallPluginSkip decides whether an INSTALL PLUGIN <name> statement may
+// be skipped, using a live lookup on the same pinned restore connection (never the
+// monitoring cache — see dbhelper.GetPluginStatusConn). Only an unambiguous,
+// ACTIVE match is skipped; every other outcome (absent executes normally; present
+// but not ACTIVE, ambiguous, or a lookup error) is surfaced to the caller, which
+// treats a non-nil err as fatal.
+func (server *ServerMonitor) resolveInstallPluginSkip(ctx context.Context, conn *sqlx.Conn, name string) (skip bool, err error) {
+	status, observed, err := dbhelper.GetPluginStatusConn(ctx, conn, name, server.DBVersion)
+	if err != nil {
+		return false, fmt.Errorf("plugin lookup for %s failed: %w", name, err)
+	}
+	switch status {
+	case dbhelper.PluginActive:
+		return true, nil
+	case dbhelper.PluginAbsent:
+		return false, nil
+	case dbhelper.PluginPresentNotActive:
+		return false, fmt.Errorf("plugin %s is present but not ACTIVE (status: %s)", name, observed)
+	default: // dbhelper.PluginAmbiguous
+		return false, fmt.Errorf("plugin %s lookup returned ambiguous/duplicate rows", name)
+	}
+}
+
 // execSplitdumpSingle runs one non-INSERT statement in autocommit, retrying on
-// lock contention. When continueOnError is set (mysql.system-all, matching the
-// old --force) a non-retryable error is logged and swallowed; otherwise it is
-// returned (DEFINER errors flow up to the strip-definer fallback in restore.go).
-func (server *ServerMonitor) execSplitdumpSingle(ctx context.Context, conn *sqlx.Conn, stmt string, continueOnError bool, path string) error {
+// lock contention. INSTALL PLUGIN is the sole exception to "every error is
+// fatal": resolveInstallPluginSkip decides, from a live lookup, whether the
+// statement may be deliberately skipped. There is no other continue-on-error
+// path — a retry-exhausted or non-retryable error always propagates (DEFINER
+// errors flow up to the strip-definer fallback in restore.go). See
+// streamSplitdumpStatements for what progressed tracks; a deliberate skip does
+// not set it, since nothing was sent to conn.
+func (server *ServerMonitor) execSplitdumpSingle(ctx context.Context, conn *sqlx.Conn, stmt string, path string, progressed *atomic.Bool) error {
 	cluster := server.ClusterGroup
+	if name, ok := isInstallPluginStatement(stmt); ok {
+		skip, err := server.resolveInstallPluginSkip(ctx, conn, name)
+		if err != nil {
+			return err
+		}
+		if skip {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlDbg,
+				"Splitdump restore skipped INSTALL PLUGIN %s: already ACTIVE", name)
+			return nil
+		}
+	}
+	alterUserFallback, createUserAccount, createUserHost, isCreateUser := isCreateUserStatement(stmt)
 	var lastErr error
 	for attempt := 0; attempt <= splitdumpLockRetryMax; attempt++ {
 		if attempt > 0 {
@@ -1426,23 +1551,209 @@ func (server *ServerMonitor) execSplitdumpSingle(ctx context.Context, conn *sqlx
 			}
 		}
 		if _, err := conn.ExecContext(ctx, stmt); err != nil {
+			// CREATE USER for an account that already exists (e.g. mariadb.sys,
+			// or any account pre-created on the destination) fails with
+			// ER_CANNOT_USER instead of applying the dumped definition. Replaying
+			// it as ALTER USER makes the restore idempotent and actually brings
+			// the existing account's auth/attributes in line with the backup,
+			// rather than silently leaving it untouched.
+			if isCreateUser && isCannotUserError(err) {
+				if _, altErr := conn.ExecContext(ctx, alterUserFallback); altErr == nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlDbg,
+						"Splitdump restore: account %s@%s already existed for %s, applied as ALTER USER instead", createUserAccount, createUserHost, filepath.Base(path))
+					if progressed != nil {
+						progressed.Store(true)
+					}
+					return nil
+				} else if isAccessDeniedError(altErr) && isKnownProtectedSystemAccount(createUserAccount, createUserHost) {
+					// MySQL 8's SYSTEM_USER-protected bootstrap accounts
+					// (mysql.sys/mysql.session/mysql.infoschema) exist
+					// identically on any instance of that server version,
+					// created by the engine itself, not by a prior backup --
+					// so the destination's own copy is already correct, and
+					// a replay connection without the SYSTEM_USER privilege
+					// legitimately can't (and doesn't need to) touch it.
+					// Narrowly gated on the specific access-denied error AND
+					// the full account identity (user@host, not user alone --
+					// an ordinary account that merely reuses one of these user
+					// names on a different host is not the engine-provisioned
+					// account), so a real CREATE USER privilege
+					// misconfiguration on an ordinary account still surfaces
+					// as a fatal error below, unchanged.
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlDbg,
+						"Splitdump restore skipped CREATE USER for protected system account %s@%s: already present and not modifiable by this connection (%s)", createUserAccount, createUserHost, altErr)
+					return nil
+				} else {
+					// Neither fallback outcome applied: report both errors, not
+					// just the original ER_CANNOT_USER. The 1396 alone ("already
+					// exists") is not actionable on its own once a fallback was
+					// attempted -- an operator needs to see *why* the fallback
+					// didn't resolve it (a real privilege issue, a version/flavor
+					// clause the rewrite doesn't handle, etc.), and swallowing
+					// altErr here would hide exactly that.
+					wrapped := fmt.Errorf("CREATE USER failed for existing account %s@%s (%w); ALTER USER fallback also failed: %s", createUserAccount, createUserHost, err, altErr)
+					lastErr = wrapped
+					// The retry loop below only ever inspects the original
+					// CREATE USER error (now wrapped inside `wrapped`, still
+					// reachable via errors.As/%w) -- it has no visibility into
+					// altErr, so a transient failure specifically on the
+					// ALTER USER fallback (lock wait/deadlock) would
+					// otherwise never get retried, unlike every other
+					// statement class in this function.
+					if isRetryableDBError(altErr) {
+						continue
+					}
+					return wrapped
+				}
+			}
 			lastErr = err
 			if isRetryableDBError(err) {
 				continue
 			}
-			if continueOnError {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn,
-					"Splitdump restore continuing past error on %s: %v", filepath.Base(path), err)
-				return nil
-			}
 			return err
+		}
+		if progressed != nil {
+			progressed.Store(true)
 		}
 		return nil
 	}
-	if continueOnError {
-		return nil
-	}
 	return lastErr
+}
+
+// isCreateUserStatement reports whether stmt is a plain CREATE USER statement
+// (not CREATE USER IF NOT EXISTS, which already tolerates a pre-existing
+// account without erroring) and, if so, returns the same statement with the
+// CREATE USER keyword swapped for ALTER USER, plus the unquoted user/host of
+// the account it targets. mysqldump's --system=all output emits one CREATE
+// USER statement per account, so this fallback only needs to handle a single
+// account per statement.
+func isCreateUserStatement(stmt string) (alterUser string, user string, host string, ok bool) {
+	trimmed := strings.TrimLeft(stmt, " \t\r\n(")
+	const prefix = "CREATE USER"
+	if !strings.HasPrefix(strings.ToUpper(trimmed), prefix) {
+		return "", "", "", false
+	}
+	rest := trimmed[len(prefix):]
+	if strings.HasPrefix(strings.TrimSpace(strings.ToUpper(rest)), "IF NOT EXISTS") {
+		return "", "", "", false
+	}
+	user, host, ok = parseCreateUserAccount(rest)
+	if !ok {
+		return "", "", "", false
+	}
+	return "ALTER USER" + rest, user, host, true
+}
+
+// parseCreateUserAccount extracts the user and host from the account
+// specification immediately following CREATE USER/ALTER USER -- e.g.
+// 'mariadb.sys'@'localhost' -> ("mariadb.sys", "localhost"). A bare user with
+// no @host (valid CREATE USER syntax) defaults to host "%", matching the
+// server's own default.
+func parseCreateUserAccount(rest string) (user string, host string, ok bool) {
+	s := strings.TrimSpace(rest)
+	user, s, ok = parseCreateUserToken(s)
+	if !ok {
+		return "", "", false
+	}
+	if !strings.HasPrefix(s, "@") {
+		return user, "%", true
+	}
+	host, _, ok = parseCreateUserToken(s[1:])
+	if !ok {
+		return "", "", false
+	}
+	return user, host, true
+}
+
+// parseCreateUserToken extracts one quoted-or-bare identifier (a user or
+// host name) from the front of s, unquoted, and returns what's left of s
+// immediately after it. A doubled quote character inside a quoted identifier
+// (''/""/``) is the standard SQL escape for a literal quote and is decoded,
+// not treated as the closing quote; backslash-escaping is not handled (dump
+// output that relies on it fails this parse, which fails the CREATE USER
+// rewrite/matching safely -- see isCreateUserStatement's caller, which
+// treats a parse failure the same as "not a CREATE USER statement" rather
+// than guessing).
+func parseCreateUserToken(s string) (token string, rest string, ok bool) {
+	if s == "" {
+		return "", "", false
+	}
+	if quote := s[0]; quote == '\'' || quote == '"' || quote == '`' {
+		body := s[1:]
+		var b strings.Builder
+		for i := 0; i < len(body); i++ {
+			if body[i] == quote {
+				if i+1 < len(body) && body[i+1] == quote {
+					b.WriteByte(quote)
+					i++
+					continue
+				}
+				return b.String(), body[i+1:], true
+			}
+			b.WriteByte(body[i])
+		}
+		return "", "", false // unterminated quote
+	}
+	end := strings.IndexAny(s, "@ \t,")
+	if end == 0 {
+		// The very first character is a delimiter (e.g. s starts with "@"):
+		// an empty token, genuinely invalid.
+		return "", "", false
+	}
+	if end < 0 {
+		// No delimiter anywhere: a bare token that runs to the end of s (the
+		// no-@host CREATE USER case parseCreateUserAccount's doc comment
+		// describes), not a parse failure -- strings.IndexAny returning -1
+		// here must not be conflated with "empty token" above.
+		return s, "", true
+	}
+	return s[:end], s[end:], true
+}
+
+// isKnownProtectedSystemAccount reports whether user@host is one of the
+// server-bootstrapped internal accounts that MySQL 8 restricts to
+// connections holding the SYSTEM_USER privilege (mysql.sys, mysql.session,
+// mysql.infoschema), or MariaDB's equivalent (mariadb.sys, which carries no
+// such privilege restriction but is included here for the same "engine-
+// provisioned, not backup content" reasoning). Matched on the full account
+// identity, not the user name alone: MySQL/MariaDB account identity is
+// user@host, and an ordinary account that merely reuses one of these user
+// names on a different host is not the engine-provisioned account -- these
+// are always created at @localhost. The user name is compared
+// case-sensitively (MySQL/MariaDB user name comparison is case-sensitive by
+// default, unlike host name comparison, which is not) since the engine never
+// creates these accounts under any other casing.
+func isKnownProtectedSystemAccount(user, host string) bool {
+	if !strings.EqualFold(host, "localhost") {
+		return false
+	}
+	switch user {
+	case "mysql.sys", "mysql.session", "mysql.infoschema", "mariadb.sys":
+		return true
+	default:
+		return false
+	}
+}
+
+// isCannotUserError reports whether err is ER_CANNOT_USER (1396), the error
+// CREATE USER raises when the target account already exists.
+func isCannotUserError(err error) bool {
+	var me *mysql.MySQLError
+	if errors.As(err, &me) {
+		return me.Number == 1396
+	}
+	return false
+}
+
+// isAccessDeniedError reports whether err is ER_SPECIFIC_ACCESS_DENIED_ERROR
+// (1227), the error MySQL 8 raises for ALTER USER on a SYSTEM_USER-protected
+// account when the connection lacks that privilege.
+func isAccessDeniedError(err error) bool {
+	var me *mysql.MySQLError
+	if errors.As(err, &me) {
+		return me.Number == 1227
+	}
+	return false
 }
 
 func (server *ServerMonitor) tableExists(schema, table string) (bool, error) {
@@ -1645,14 +1956,27 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 		}
 	}
 
+	// mysql.system-all is dispatched through the dedicated, narrow catalogue
+	// replay helper (restoreSystemCatalog) rather than the general splitdump
+	// file loader — same connection pool and schema-phase position, but no
+	// DEFINER-stripping retry and no blanket error suppression. Every other
+	// file's dispatch is unchanged.
 	restoreFile := func(ctx context.Context, path string) error {
 		conn := borrow()
 		defer giveback(conn)
+		if splitdump.IsMysqlSystemAll(filepath.Base(path)) {
+			_, err := server.restoreSystemCatalog(ctx, conn, path)
+			return err
+		}
 		return server.restoreSplitdumpFileGo(ctx, conn, path, false)
 	}
 	restoreFileWithoutDefiner := func(ctx context.Context, path string) error {
 		conn := borrow()
 		defer giveback(conn)
+		if splitdump.IsMysqlSystemAll(filepath.Base(path)) {
+			_, err := server.restoreSystemCatalog(ctx, conn, path)
+			return err
+		}
 		return server.restoreSplitdumpFileGo(ctx, conn, path, true)
 	}
 
@@ -3843,6 +4167,18 @@ func exitSignal(err error) syscall.Signal {
 	return ws.Signal()
 }
 
+// reseedStage names the failing stage of a direct reseed for job state/log
+// messages, per SYSTEM_ALL_RESEED_FIX_PLAN.md's Cancellation and Failure
+// Semantics table.
+type reseedStage string
+
+const (
+	reseedStageApplicationRestore  reseedStage = "application restore"
+	reseedStageSystemExtraction    reseedStage = "system extraction"
+	reseedStageSystemCatalogReplay reseedStage = "system catalogue replay"
+	reseedStageReplicationRestart  reseedStage = "replication restart"
+)
+
 // reseedFailureMessage builds the "Reseed failed: ..." message for
 // JobRejoinMysqldumpFromSource from the three goroutines' results. It's a
 // pure function of its arguments -- no subprocess or channel involved -- so
@@ -3962,6 +4298,18 @@ func (c *progressCountingWriter) Write(p []byte) (int, error) {
 }
 
 func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest *ServerMonitor) error {
+	// See CheckDirectReseedSourceDestVersion's doc comment for why this is
+	// opt-in. Placed before any state-changing side effect (SetInReseedBackup,
+	// JobsUpdateStateRuntimeOnly, StopAllSlaves) so a strict-mode block
+	// leaves dest untouched.
+	if cluster.Conf.BackupRestoreVersionStrict {
+		if err := cluster.CheckDirectReseedSourceDestVersion(source, dest); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Direct reseed source/destination family/version mismatch for %s. Cancelling reseed for data safety.", dest.URL)
+			return fmt.Errorf("%w -- disable --backup-restore-version-strict to allow reseed across a source/destination family/version difference", err)
+		}
+	}
+
 	task := "direct"
 	defer dest.SetInReseedBackup("")
 	dest.JobsUpdateStateRuntimeOnly(task, "processing", 1, 0)
@@ -4104,7 +4452,28 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 		cmdstring = "RESET BINARY LOGS AND GTIDS;SET sql_log_bin=0;SET long_query_time=10;"
 	}
 
+	// The pump below routes mysql.system-all content into this artifact
+	// instead of the mysql client, so a pre-existing plugin/user row on dest
+	// can no longer abort the whole reseed. Created before either subprocess
+	// starts so a setup failure here can use the same early-return cleanup as
+	// dumpCmd.Start() just below.
+	reseedStart := time.Now()
+	jobIDSuffix, err := randomHexSuffix(6)
+	if err != nil {
+		closeOwnedPipes()
+		clientStdin.Close()
+		return failPipeSetup("direct-reseed job id", err)
+	}
+	jobID := task + "-" + jobIDSuffix
+	artifactWriter, err := dest.newDirectReseedSystemArtifactWriter(jobID, reseedStart)
+	if err != nil {
+		closeOwnedPipes()
+		clientStdin.Close()
+		return failPipeSetup(fmt.Sprintf("direct-reseed system artifact for %s", dest.URL), err)
+	}
+
 	if err := dumpCmd.Start(); err != nil {
+		artifactWriter.discard()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqldump command: %s at %s", err, strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 		closeOwnedPipes()
 		clientStdin.Close()
@@ -4122,6 +4491,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	dumpStderrW.Close()
 
 	if err := clientCmd.Start(); err != nil {
+		artifactWriter.discard()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't start mysql client:%s at %s", err, strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 		clientStderrW.Close()
 		clientStderrR.Close()
@@ -4199,6 +4569,13 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	// here). Owning this loop explicitly means a write/read failure here is
 	// detected and can cancel() directly, instead of being invisible to
 	// clientCmd.Wait().
+	// classifyResult and classifyFailed are written only inside the pump
+	// goroutine below and read only after pumpErrCh has been drained (via
+	// boundedWait/<-pumpErrCh), so the channel send/receive establishes the
+	// happens-before needed to read them race-free -- same pattern already
+	// used for dumpTail/clientTail above.
+	var classifyResult splitdump.ClassifyResult
+	var classifyFailed bool
 	pumpErrCh := make(chan error, 1)
 	wg.Add(1)
 	go func() {
@@ -4210,10 +4587,24 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 			pumpErrCh <- fmt.Errorf("writing restore preamble to mysql client stdin: %w", err)
 			return
 		}
+		// Both destinations are wrapped in progressCountingWriter over the
+		// SAME dest.reseedBytes counter -- the stall watchdog below tracks
+		// that counter as "is data still flowing at all", not specifically
+		// "is data still reaching the client". Wiring only the client side
+		// would let a long --system=all tail (written only to the artifact)
+		// freeze the counter while genuine forward progress is still
+		// happening, causing a false-positive stall abort.
 		counted := &progressCountingWriter{w: clientStdin, progress: &dest.reseedBytes}
-		if _, err := io.Copy(counted, dumpStdoutR); err != nil {
+		countedArtifact := &progressCountingWriter{w: artifactWriter, progress: &dest.reseedBytes}
+		result, err := splitdump.ClassifyStream(dumpStdoutR, splitdump.ClassifyOptions{
+			ApplicationWriter: counted,
+			SystemWriter:      countedArtifact,
+		})
+		classifyResult = result
+		if err != nil {
 			cancel()
-			pumpErrCh <- fmt.Errorf("streaming mysqldump output to mysql client stdin: %w", err)
+			classifyFailed = true
+			pumpErrCh <- fmt.Errorf("classifying mysqldump output into application/system SQL: %w", err)
 			return
 		}
 		pumpErrCh <- nil
@@ -4256,6 +4647,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	leaked := boundedWait(&wg, stallFired, backupStallLeakGrace)
 	close(stallDone) // stop the watchdog
 	if leaked {
+		artifactWriter.discard() // never publish a partial artifact (Cancellation and Failure Semantics: cancel during phase 1)
 		msg := fmt.Sprintf("Direct reseed from %s to %s did not unwind %s after stall-cancel (subprocess likely stuck in uninterruptible sleep); giving up",
 			source.URL, dest.URL, backupStallLeakGrace)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "%s", msg)
@@ -4272,6 +4664,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	// "context canceled" / "signal: killed" -- report the stall distinctly
 	// instead so operators see a diagnosis, not a generic cancellation.
 	if stalled.Load() {
+		artifactWriter.discard() // never publish a partial artifact
 		msg := fmt.Sprintf("Direct reseed aborted: no bytes streamed from %s to %s for %s (stuck mysqldump/mysql client)", source.URL, dest.URL, stallTimeout)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
 		dest.JobsUpdateStateRuntimeOnly(task, msg, 5, 1)
@@ -4279,16 +4672,120 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	}
 
 	if dumpErr != nil || clientErr != nil || pumpErr != nil {
-		msg := reseedFailureMessage(source.URL, dest.URL, dumpErr, clientErr, pumpErr, dumpTail, clientTail)
+		artifactWriter.discard() // never publish a partial artifact
+		// classifyFailed's cancel() routinely SIGKILLs both still-running
+		// subprocesses as a side effect; that collateral kill must not mask
+		// the real root cause, so a subprocess error only overrides the
+		// classify-side attribution when it's not explainable as collateral
+		// (same wasCollateralKill/wasCollateralPipeClose reasoning
+		// reseedFailureMessage uses internally).
+		dumpOwnFailure := dumpErr != nil && !wasCollateralKill(dumpErr) && !wasCollateralPipeClose(dumpErr, pumpErr)
+		clientOwnFailure := clientErr != nil && !wasCollateralKill(clientErr)
+		stage := reseedStageApplicationRestore
+		if classifyFailed && !dumpOwnFailure && !clientOwnFailure {
+			stage = reseedStageSystemExtraction
+		}
+		msg := fmt.Sprintf("%s: %s", stage, reseedFailureMessage(source.URL, dest.URL, dumpErr, clientErr, pumpErr, dumpTail, clientTail))
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
 		dest.JobsUpdateStateRuntimeOnly(task, msg, 5, 1)
 		return errors.New(msg)
 	}
 
+	// Phase two: replay the extracted system-catalogue artifact, if any, through
+	// the narrow SQLx helper before touching replication. No system content is a
+	// successful no-op (nothing to publish or replay); when present, publication
+	// is atomic and the artifact is preserved on any phase-two failure so it can
+	// be diagnosed or retried without repeating the (potentially long)
+	// application-data restore above.
+	if classifyResult.HasSystemContent {
+		finalDir, publishErr := artifactWriter.publish(classifyResult.Metadata, directReseedArtifactExtra{
+			SourceServer:          source.URL,
+			DestinationServer:     dest.URL,
+			SourceServerVersion:   source.DBVersion.ToString(),
+			DestinationFamily:     dest.DBVersion.Flavor,
+			DestinationMajorMinor: directReseedServerMajorMinor(dest.DBVersion),
+			BoundaryFormat:        "v1-eof-bounded",
+			ArtifactState:         directReseedArtifactStatePublished,
+		})
+		if publishErr != nil {
+			msg := fmt.Sprintf("%s: publish artifact for %s: %s", reseedStageSystemExtraction, dest.URL, publishErr)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
+			dest.JobsUpdateStateRuntimeOnly(task, msg, 5, 1)
+			return errors.New(msg)
+		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Direct reseed: replaying system catalogue on %s", dest.URL)
+		// Mark in-progress before executing any SQL: if we can't durably record
+		// that replay is starting, we must not proceed to run statements whose
+		// completion state we then couldn't reliably track either -- abort here
+		// rather than replay blind.
+		if err := setDirectReseedArtifactState(finalDir, directReseedArtifactStateReplayInProgress); err != nil {
+			msg := fmt.Sprintf("%s: record replay-in-progress state for artifact %s: %s", reseedStageSystemCatalogReplay, finalDir, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
+			dest.JobsUpdateStateRuntimeOnly(task, msg, 5, 1)
+			return errors.New(msg)
+		}
+
+		progressed, replayErr := func() (bool, error) {
+			dbh, connErr := dest.GetNewDBConn()
+			if connErr != nil {
+				return false, connErr
+			}
+			defer dbh.Close()
+			// GetConnNoBinlog, matching this function's unconditional RESET
+			// MASTER/SET sql_log_bin=0 preamble above -- JobRejoinMysqldumpFromSource
+			// always targets a slave reseed, so the catalogue replay connection
+			// stays out of the binlog like the rest of this restore.
+			conn, connErr := dest.GetConnNoBinlog(dbh)
+			if connErr != nil {
+				return false, connErr
+			}
+			defer conn.Close()
+			return dest.restoreSystemCatalog(ctx, conn, filepath.Join(finalDir, directReseedSystemArtifactName))
+		}()
+
+		if replayErr != nil {
+			// A failure before any statement committed (connection/setup failure,
+			// or the very first statement erroring) is safe to retry from the
+			// beginning; a failure after at least one commit is not, since most
+			// --system=all statement classes besides INSTALL PLUGIN are not proven
+			// replay-idempotent (see RetryDirectReseedSystemCatalog).
+			failState := directReseedArtifactStateReplayFailed
+			if !progressed {
+				failState = directReseedArtifactStateReplayFailedSafe
+			}
+			if stateErr := setDirectReseedArtifactState(finalDir, failState); stateErr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+					"Failed to record artifact state %s for %s after replay failure: %s", failState, finalDir, stateErr)
+			}
+			msg := fmt.Sprintf("%s: %s: %s", reseedStageSystemCatalogReplay, dest.URL, replayErr)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
+			dest.JobsUpdateStateRuntimeOnly(task, msg, 5, 1)
+			return errors.New(msg)
+		}
+		if err := setDirectReseedArtifactState(finalDir, directReseedArtifactStateReplaySucceeded); err != nil {
+			// The DB replay itself succeeded, but we can't durably prove it: an
+			// artifact whose recorded state doesn't reflect reality is a
+			// retry-safety hazard (a later retry decision would trust a stale
+			// state), so this is surfaced as a job failure rather than silently
+			// proceeding to restart replication.
+			msg := fmt.Sprintf("%s: replay succeeded but failed to record terminal state for artifact %s: %s", reseedStageSystemCatalogReplay, finalDir, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
+			dest.JobsUpdateStateRuntimeOnly(task, msg, 5, 1)
+			return errors.New(msg)
+		}
+	} else {
+		artifactWriter.discard()
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Direct reseed: no system-catalogue content found for %s; system replay phase skipped", dest.URL)
+	}
+
 	// Symmetric with StopAllSlaves above: restart every replication connection by
 	// its real ConnectionName. StartSlave() alone would restart only the default
 	// MasterConn channel, leaving a multi-source dest's other source connections
-	// stopped after they were stopped for the RESET MASTER.
+	// stopped after they were stopped for the RESET MASTER. Only reached after
+	// phase two (if any) has succeeded -- replication must never restart on top
+	// of a failed or skipped catalogue replay.
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", dest.URL)
 	var slaveStartErrs []string
 	for _, rep := range dest.Replications {
@@ -4303,7 +4800,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 		// rejoin replication is not a successful reseed -- report it as a
 		// failure instead of "completed", or the dest is left both broken
 		// and looking done.
-		msg := fmt.Sprintf("Restore completed but failed to start replication channel(s) on %s: %s", dest.URL, strings.Join(slaveStartErrs, "; "))
+		msg := fmt.Sprintf("%s: restore completed but failed to start replication channel(s) on %s: %s", reseedStageReplicationRestart, dest.URL, strings.Join(slaveStartErrs, "; "))
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
 		dest.JobsUpdateStateRuntimeOnly(task, msg, 5, 1)
 		return errors.New(msg)

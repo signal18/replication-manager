@@ -925,3 +925,29 @@ func TestSplitDumpManifestIncludesMysqlSystemAndRoutineArtifacts(t *testing.T) {
 		t.Fatalf("expected mysql.system-all in manifest schema phase, got schema=%v", m.Schema)
 	}
 }
+
+// TestIsSystemSectionBoundary is the direct unit test for the boundary check
+// mechanically extracted from SplitDumpLineParser's inline
+// INSTALL PLUGIN/CREATE USER prefix test. It must accept exactly what the
+// inline check accepted before extraction — this is a pure refactor, not a
+// behavior change — and TestClassifyStreamRoutesApplicationAndSystemSQL and
+// TestSharedBoundaryDefinition (classify_test.go) confirm ClassifyStream
+// agrees with the same predicate.
+func TestIsSystemSectionBoundary(t *testing.T) {
+	cases := []struct {
+		line string
+		want bool
+	}{
+		{"INSTALL PLUGIN disk SONAME 'disk.so';", true},
+		{"CREATE USER 'x'@'y';", true},
+		{"install plugin disk soname 'disk.so';", false}, // case-sensitive, matching the original inline check
+		{"CREATE TABLE t (id int);", false},
+		{"-- Dumping data for table `t`", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := isSystemSectionBoundary(c.line); got != c.want {
+			t.Errorf("isSystemSectionBoundary(%q) = %v, want %v", c.line, got, c.want)
+		}
+	}
+}

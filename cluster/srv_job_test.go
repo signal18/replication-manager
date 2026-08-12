@@ -799,6 +799,58 @@ exit 1
 	}
 }
 
+// TestJobRejoinMysqldumpFromSource_BlocksWhenStrictAndVersionMismatch is the
+// regression test for the source/destination preflight gate
+// (CheckDirectReseedSourceDestVersion): with BackupRestoreVersionStrict set,
+// a source/destination family/version mismatch must refuse the reseed before
+// touching any dest state (SetInReseedBackup, JobsUpdateStateRuntimeOnly,
+// StopAllSlaves) -- no fake mysqldump/mysql client binaries are configured
+// here, so if the preflight check didn't fire first, the job would fail for
+// an unrelated "exec: no such file" reason instead.
+func TestJobRejoinMysqldumpFromSource_BlocksWhenStrictAndVersionMismatch(t *testing.T) {
+	cluster, source := newTestRuntimeOnlyClusterServer(t, "direct-reseed-test", "source", "3306")
+	dest := newTestRuntimeOnlyServer(t, cluster, "dest", "3307")
+	cluster.Servers = append(cluster.Servers, dest)
+	cluster.Conf.BackupRestoreVersionStrict = true
+	dest.DBVersion = &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}
+
+	err := cluster.JobRejoinMysqldumpFromSource(source, dest)
+	if err == nil {
+		t.Fatal("expected an error for a source/destination family mismatch when BackupRestoreVersionStrict is set")
+	}
+	if !strings.Contains(err.Error(), "family/version") {
+		t.Fatalf("expected a family/version compatibility error, got: %v", err)
+	}
+	if dest.HasAnyReseedingState() {
+		t.Fatalf("preflight block must not leave dest in a reseeding state, got %q", dest.IsReseeding)
+	}
+	if task := dest.JobResults.Get("direct"); task != nil {
+		t.Fatalf("preflight block must return before any JobResults entry is created for task \"direct\", got %+v", task)
+	}
+}
+
+// TestJobRejoinMysqldumpFromSource_AllowsVersionMismatchWhenNotStrict
+// confirms the preflight gate is opt-in: a source/destination version
+// mismatch must not be evaluated (let alone block) when
+// BackupRestoreVersionStrict is unset, since that's a routine case for
+// logical reseed (e.g. seeding a replica running a different point release).
+func TestJobRejoinMysqldumpFromSource_AllowsVersionMismatchWhenNotStrict(t *testing.T) {
+	cluster, source := newTestRuntimeOnlyClusterServer(t, "direct-reseed-test", "source", "3306")
+	dest := newTestRuntimeOnlyServer(t, cluster, "dest", "3307")
+	cluster.Servers = append(cluster.Servers, dest)
+	dest.DBVersion = &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}
+
+	fakeDump := writeFakeExecutable(t, t.TempDir(), "fakedump.sh", "#!/bin/sh\nexit 0\n")
+	fakeClient := writeFakeExecutable(t, t.TempDir(), "fakeclient.sh", "#!/bin/sh\nexit 0\n")
+	cluster.Conf.BackupMysqldumpPath = fakeDump
+	cluster.Conf.BackupMysqlclientPath = fakeClient
+
+	err := cluster.JobRejoinMysqldumpFromSource(source, dest)
+	if err != nil && strings.Contains(err.Error(), "family/version") {
+		t.Fatalf("a source/destination version mismatch must not block reseed when BackupRestoreVersionStrict is false: %v", err)
+	}
+}
+
 // TestJobRejoinMysqldumpFromSource_StallClearsReseed is the regression test
 // for the remaining hang vector no exit-based fix can catch: mysqldump and
 // the mysql client both wedge WITHOUT exiting or erroring (e.g. a source-side
@@ -952,6 +1004,212 @@ exec cat >/dev/null
 
 	if v := dest.GetReseedProgress(); v != nil {
 		t.Fatalf("expected reseed progress to clear after return, got %+v", v)
+	}
+}
+
+// TestJobRejoinMysqldumpFromSource_SystemOnlyBytesAdvanceProgress is the
+// regression test for the stall-watchdog false-positive risk: the fake dump
+// emits ONLY --system=all content (INSTALL PLUGIN/CREATE USER lines), never
+// any regular application SQL, so ClassifyStream routes every byte after the
+// boundary line to the artifact writer and NOTHING reaches the mysql client.
+// If dest.reseedBytes (what both GetReseedProgress and the stall watchdog
+// read) were wired only to the client-bound writer, this would look
+// perpetually stalled despite genuine forward progress -- see
+// progressCountingWriter's two call sites in JobRejoinMysqldumpFromSource's
+// pump goroutine.
+func TestJobRejoinMysqldumpFromSource_SystemOnlyBytesAdvanceProgress(t *testing.T) {
+	cluster, source := newTestRuntimeOnlyClusterServer(t, "direct-reseed-systemonly-progress-test", "source", "3306")
+	dest := newTestRuntimeOnlyServer(t, cluster, "dest", "3307")
+	cluster.Servers = append(cluster.Servers, dest)
+	binDir := t.TempDir()
+
+	fakeDump := writeFakeExecutable(t, binDir, "fakesystemonlydump.sh", `#!/bin/sh
+echo "-- fake dump header" >&2
+echo "INSTALL PLUGIN disk SONAME 'disk.so';"
+echo "CREATE USER 'x'@'y';"
+exec sleep 300
+`)
+
+	fakeClient := writeFakeExecutable(t, binDir, "fakesystemonlyclient.sh", `#!/bin/sh
+exec cat >/dev/null
+`)
+
+	cluster.Conf.BackupMysqldumpPath = fakeDump
+	cluster.Conf.BackupMysqlclientPath = fakeClient
+	// Long enough that the test would time out (not silently pass) if the
+	// watchdog incorrectly fired from the system-only bytes never reaching
+	// dest.reseedBytes; short enough to keep the test fast if this regresses.
+	cluster.Conf.BackupWriteStallTimeout = 3
+
+	dest.SetInReseedBackup("direct")
+
+	resultCh := make(chan error, 1)
+	go func() {
+		resultCh <- cluster.JobRejoinMysqldumpFromSource(source, dest)
+	}()
+
+	// Poll for mid-flight progress from system-only content, well within the
+	// stall timeout -- proves the counter advanced from artifact-writer bytes
+	// alone, before the watchdog's own timeout could have fired for any reason.
+	const pollTimeout = 2 * time.Second
+	deadline := time.Now().Add(pollTimeout)
+	var rp *ReseedProgressView
+	for time.Now().Before(deadline) {
+		if v := dest.GetReseedProgress(); v != nil && v.Bytes > 0 {
+			rp = v
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if rp == nil {
+		t.Fatalf("expected GetReseedProgress() to report streamed bytes from system-only content within %s", pollTimeout)
+	}
+
+	// The fake dump has no more content to emit after its two system-catalogue
+	// lines, so the watchdog will (correctly, eventually) treat that as a real
+	// stall once BackupWriteStallTimeout elapses -- drain to completion the
+	// same way the other stall-driven tests do, so the subprocess/goroutine is
+	// properly reaped rather than left running.
+	const timeout = 10 * time.Second
+	select {
+	case <-resultCh:
+	case <-time.After(timeout):
+		t.Fatalf("JobRejoinMysqldumpFromSource did not return within %s", timeout)
+	}
+}
+
+// TestJobRejoinMysqldumpFromSource_NoSystemContentSkipsPhaseTwo is the
+// regression test for the "confirmed empty system section is a successful
+// no-op" requirement (SYSTEM_ALL_RESEED_FIX_PLAN.md). The fake dump has no
+// INSTALL PLUGIN/CREATE USER content at all, so ClassifyStream must report
+// HasSystemContent=false and the reseed must complete without ever touching
+// a real DB connection for phase two (dest has no working DSN in this
+// harness -- if phase two were entered, GetNewDBConn would fail and the
+// whole reseed would report "system catalogue replay" instead of success).
+func TestJobRejoinMysqldumpFromSource_NoSystemContentSkipsPhaseTwo(t *testing.T) {
+	cluster, source := newTestRuntimeOnlyClusterServer(t, "direct-reseed-nosystem-test", "source", "3306")
+	dest := newTestRuntimeOnlyServer(t, cluster, "dest", "3307")
+	cluster.Servers = append(cluster.Servers, dest)
+	binDir := t.TempDir()
+
+	fakeDump := writeFakeExecutable(t, binDir, "fakenosystemdump.sh", `#!/bin/sh
+echo "-- fake dump header" >&2
+echo "USE `+"`db`"+`;"
+echo "INSERT INTO t VALUES (1);"
+`)
+	fakeClient := writeFakeExecutable(t, binDir, "fakenosystemclient.sh", `#!/bin/sh
+cat >/dev/null
+exit 0
+`)
+
+	cluster.Conf.BackupMysqldumpPath = fakeDump
+	cluster.Conf.BackupMysqlclientPath = fakeClient
+
+	dest.SetInReseedBackup("direct")
+
+	resultCh := make(chan error, 1)
+	go func() {
+		resultCh <- cluster.JobRejoinMysqldumpFromSource(source, dest)
+	}()
+
+	const timeout = 5 * time.Second
+	var err error
+	select {
+	case err = <-resultCh:
+	case <-time.After(timeout):
+		t.Fatalf("JobRejoinMysqldumpFromSource did not return within %s", timeout)
+	}
+	if err != nil {
+		t.Fatalf("expected a clean reseed with no system content, got error: %v", err)
+	}
+
+	task := dest.JobResults.Get("direct")
+	if task == nil {
+		t.Fatal("expected a JobResults entry for task \"direct\"")
+	}
+	if task.Result != "Reseed completed" {
+		t.Fatalf("expected \"Reseed completed\", got %q", task.Result)
+	}
+
+	// No artifact should have been published for a dump with no system content.
+	artifactRoot := filepath.Join(dest.GetMyBackupDirectoryPath(), "direct-reseed-system")
+	if entries, statErr := os.ReadDir(artifactRoot); statErr == nil && len(entries) > 0 {
+		t.Fatalf("expected no published artifact directories, found: %v", entries)
+	}
+}
+
+// TestJobRejoinMysqldumpFromSource_SystemContentPublishesArtifactAndAttemptsReplay
+// is the regression test for the two-phase split itself: the fake dump's
+// INSTALL PLUGIN line must be routed to the system-catalogue artifact (not
+// the mysql client), phase one must succeed and publish that artifact, and
+// phase two must then be attempted (and fail, since this harness has no real
+// destination DB to replay against) with the "system catalogue replay" stage
+// -- proving phase two only starts after phase one's success, and that the
+// artifact survives the phase-two failure for later diagnosis/retry rather
+// than being deleted.
+func TestJobRejoinMysqldumpFromSource_SystemContentPublishesArtifactAndAttemptsReplay(t *testing.T) {
+	cluster, source := newTestRuntimeOnlyClusterServer(t, "direct-reseed-system-test", "source", "3306")
+	dest := newTestRuntimeOnlyServer(t, cluster, "dest", "3307")
+	cluster.Servers = append(cluster.Servers, dest)
+	binDir := t.TempDir()
+
+	fakeDump := writeFakeExecutable(t, binDir, "fakesystemdump.sh", `#!/bin/sh
+echo "-- fake dump header" >&2
+echo "USE `+"`db`"+`;"
+echo "INSERT INTO t VALUES (1);"
+echo "INSTALL PLUGIN disk SONAME 'disk.so';"
+echo "CREATE USER 'x'@'y';"
+`)
+	fakeClient := writeFakeExecutable(t, binDir, "fakesystemclient.sh", `#!/bin/sh
+cat >/dev/null
+exit 0
+`)
+
+	cluster.Conf.BackupMysqldumpPath = fakeDump
+	cluster.Conf.BackupMysqlclientPath = fakeClient
+
+	dest.SetInReseedBackup("direct")
+
+	resultCh := make(chan error, 1)
+	go func() {
+		resultCh <- cluster.JobRejoinMysqldumpFromSource(source, dest)
+	}()
+
+	const timeout = 5 * time.Second
+	var err error
+	select {
+	case err = <-resultCh:
+	case <-time.After(timeout):
+		t.Fatalf("JobRejoinMysqldumpFromSource did not return within %s", timeout)
+	}
+	if err == nil {
+		t.Fatal("expected phase two to fail in this harness (no real destination DB to replay against)")
+	}
+	if !strings.Contains(err.Error(), string(reseedStageSystemCatalogReplay)) {
+		t.Fatalf("expected the %q stage in the error, got: %v", reseedStageSystemCatalogReplay, err)
+	}
+
+	// The published artifact must survive the phase-two failure.
+	artifactRoot := filepath.Join(dest.GetMyBackupDirectoryPath(), "direct-reseed-system")
+	entries, statErr := os.ReadDir(artifactRoot)
+	if statErr != nil || len(entries) != 1 {
+		t.Fatalf("expected exactly one published artifact directory under %s, got entries=%v err=%v", artifactRoot, entries, statErr)
+	}
+	if strings.Contains(entries[0].Name(), ".tmp-") {
+		t.Fatalf("published artifact directory must not carry the temp suffix: %s", entries[0].Name())
+	}
+	artifactDir := filepath.Join(artifactRoot, entries[0].Name())
+	if _, statErr := os.Stat(filepath.Join(artifactDir, directReseedSystemArtifactName)); statErr != nil {
+		t.Fatalf("expected %s in the published artifact: %v", directReseedSystemArtifactName, statErr)
+	}
+	extra, extraErr := readDirectReseedArtifactExtra(artifactDir)
+	if extraErr != nil {
+		t.Fatalf("readDirectReseedArtifactExtra: %v", extraErr)
+	}
+	// GetNewDBConn fails immediately in this harness (no real DSN), so nothing
+	// ever executed against the destination -- this is the "safe" failure case.
+	if extra.ArtifactState != directReseedArtifactStateReplayFailedSafe {
+		t.Fatalf("expected artifact state %q after a failure with no progress, got %q", directReseedArtifactStateReplayFailedSafe, extra.ArtifactState)
 	}
 }
 

@@ -1167,6 +1167,7 @@ func (cluster *Cluster) tickBody() {
 				}
 				if heartbeats%3600 == 0 {
 					goRun(func() { cluster.ResticPurgeRepo(false) })
+					goRun(cluster.PurgeExpiredDirectReseedSystemArtifacts)
 					goRun(cluster.RefreshToolVersions)
 					goRun(cluster.CheckBackupToolVersions)
 					goRun(cluster.CheckComplianceUpdate)
