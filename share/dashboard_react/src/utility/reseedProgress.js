@@ -29,6 +29,13 @@ export const hasActiveReseed = (clusterServers) => getActiveReseeds(clusterServe
 export const reseedHasBar = (rp) =>
   !!rp && typeof rp.percent === 'number' && rp.percent >= 0 && rp.total > 0
 
+// reseedHasBytes reports whether a row has streamed-bytes/rate to show even though
+// the total is unknown (percent -1) — e.g. a direct-stream reseed, which counts real
+// bytes forwarded but has no fixed size to divide by. Distinct from reseedHasBar: a
+// row can have bytes without a bar (unknown total) or a bar without bytes (n/a here,
+// reseedHasBar already implies total>0 which implies byte instrumentation).
+export const reseedHasBytes = (rp) => !!rp && typeof rp.bytes === 'number' && rp.bytes > 0
+
 // formatBytes → "223M" / "100G" (mirror of the backend humanBytes).
 export const formatBytes = (b) => {
   if (!b || b < 1024) return `${b || 0}B`
@@ -41,6 +48,17 @@ export const formatBytes = (b) => {
   }
   return `${Math.round(n)}${units[i]}`
 }
+
+// formatRate → "<rate>/s", or a "measuring…" placeholder for the sub-1s window right
+// after a reseed starts (backend elapsedSecs is truncated to whole seconds, so
+// rateBytesSec reads 0 for that window regardless of how fast bytes are actually
+// flowing). Once elapsedSecs > 0 this shows the real average rate as-is, including a
+// genuine 0B/s if the reseed truly is that slow -- this is NOT a staleness detector
+// (rateBytesSec is a cumulative average, so it decays slowly rather than snapping to 0
+// on a stall; real staleness is caught server-side by the reseed stall watchdog, which
+// aborts the task instead of leaving a misleading rate on screen).
+export const formatRate = (rateBytesSec, elapsedSecs) =>
+  elapsedSecs > 0 ? `${formatBytes(rateBytesSec)}/s` : 'measuring…'
 
 // formatElapsed(seconds) → "1h23m" / "3m12s" / "45s".
 export const formatElapsed = (secs) => {
