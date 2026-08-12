@@ -26,6 +26,14 @@ func (cluster *Cluster) assertReseedProgressStates() {
 		if info == nil {
 			continue
 		}
+		// Benign race: info was non-nil above, but the job goroutine can concurrently
+		// call stopReseedProgress (this reseed finishing) or begin*ReseedProgress (a
+		// new one starting) between that check and this call, since neither is under a
+		// shared lock with the tick goroutine here. Worst case sampleReseedRate appends
+		// one stray/near-zero sample against a window that just got reset (or is about
+		// to be) -- it self-heals within a tick or two once the window fills with real
+		// samples again, and never blocks or panics, so it doesn't touch monitor-loop
+		// liveness (F2-F4). Not worth a lock for a display-only, self-correcting value.
 		sv.sampleReseedRate()
 		cluster.SetState("WARN0189", state.State{
 			ErrType:   "WARNING",
@@ -219,7 +227,7 @@ type ReseedProgressView struct {
 	StartedUnix        int64  `json:"startedUnix"` // restore start (byte path) or rejoin-arm time (generic)
 	ElapsedSecs        int64  `json:"elapsedSecs"`
 	RateBytesSec       int64  `json:"rateBytesSec"`       // lifetime average over elapsed (0 when no bytes) — stable, but lags a real slowdown/speedup
-	RecentRateBytesSec int64  `json:"recentRateBytesSec"` // windowed rate over the last few ticks (~reseedRateWindowSize * monitoring-ticker) — noisier, reflects current throughput
+	RecentRateBytesSec int64  `json:"recentRateBytesSec"` // windowed rate spanning the oldest-to-newest sample currently held (~(reseedRateWindowSize-1) * monitoring-ticker) — noisier, reflects current throughput
 	RecentRateReady    bool   `json:"recentRateReady"`    // true once enough ticks have been sampled for RecentRateBytesSec to be meaningful
 	Line               string `json:"line"`               // the human progress line
 }

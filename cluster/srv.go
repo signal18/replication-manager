@@ -10,12 +10,12 @@
 package cluster
 
 import (
-	"compress/gzip"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"compress/gzip"
 	"hash/crc64"
 	"io"
 	"net/http"

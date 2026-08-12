@@ -98,6 +98,7 @@ func TestSampleReseedRate_ClearedByLifecycle(t *testing.T) {
 	server := &ServerMonitor{}
 	server.reseedBytes.Store(500)
 	server.sampleReseedRate()
+	time.Sleep(5 * time.Millisecond) // guarantee a positive delta, see TestRecentReseedRate_NotReadyUntilTwoSamples
 	server.reseedBytes.Store(1000)
 	server.sampleReseedRate()
 	if _, ready := server.recentReseedRate(); !ready {
@@ -111,6 +112,7 @@ func TestSampleReseedRate_ClearedByLifecycle(t *testing.T) {
 
 	server.reseedBytes.Store(10)
 	server.sampleReseedRate()
+	time.Sleep(5 * time.Millisecond)
 	server.reseedBytes.Store(20)
 	server.sampleReseedRate()
 	if _, ready := server.recentReseedRate(); !ready {
