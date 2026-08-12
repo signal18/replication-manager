@@ -135,6 +135,45 @@ func TestClassifyStreamReEntersSystemSectionAfterNonSystemHeader(t *testing.T) {
 	}
 }
 
+// TestClassifyStreamIgnoresHeaderLikePrefixInsideTableData is the regression
+// for the asymmetry against SplitDumpLineParser's own onTableData gate
+// (split.go): that reference parser evaluates the section-header prefix
+// chain only while NOT between "LOCK TABLES `" and "UNLOCK TABLES;", so a
+// physical line inside a table's data section can never flip section state
+// no matter what it starts with. Genuine mysqldump/mariadb-dump output can't
+// produce such a line (embedded newlines in string literals are always
+// escaped as literal "\n" text, never a raw line break), but a non-standard
+// or hand-rolled dump producer could -- and ClassifyStream must stay a
+// faithful mirror of the same boundary contract on this reseed data-safety
+// path, not just of the header-prefix list in isolation.
+func TestClassifyStreamIgnoresHeaderLikePrefixInsideTableData(t *testing.T) {
+	input := strings.Join([]string{
+		"LOCK TABLES `t` WRITE;",
+		"INSERT INTO `t` VALUES (1);",
+		"INSTALL PLUGIN disk SONAME 'disk.so';", // spurious: physically inside LOCK/UNLOCK, must not open the system section
+		"UNLOCK TABLES;",
+		"CREATE USER 'x'@'y';", // genuine boundary, after the table-data section closes
+	}, "\n") + "\n"
+
+	var app, sys bytes.Buffer
+	result, err := ClassifyStream(strings.NewReader(input), ClassifyOptions{ApplicationWriter: &app, SystemWriter: &sys})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(sys.String(), "INSTALL PLUGIN") {
+		t.Fatalf("spurious header-like line inside LOCK TABLES/UNLOCK TABLES leaked into SystemWriter: %q", sys.String())
+	}
+	if !strings.Contains(app.String(), "INSTALL PLUGIN") {
+		t.Fatalf("expected the spurious line to stay in ApplicationWriter (still inside table data), got: %q", app.String())
+	}
+	if !strings.Contains(app.String(), "UNLOCK TABLES;") {
+		t.Fatalf("expected UNLOCK TABLES; to stay in ApplicationWriter, got: %q", app.String())
+	}
+	if !result.HasSystemContent || !strings.Contains(sys.String(), "CREATE USER 'x'@'y'") {
+		t.Fatalf("expected the genuine boundary after UNLOCK TABLES to open the system section, sys=%q HasSystemContent=%v", sys.String(), result.HasSystemContent)
+	}
+}
+
 func TestClassifyStreamEmptySystemSectionIsSuccessfulNoOp(t *testing.T) {
 	input := "USE `db`;\nCREATE TABLE `t` (id int);\nINSERT INTO `t` VALUES (1);\n"
 	var app, sys bytes.Buffer

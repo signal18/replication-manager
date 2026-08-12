@@ -1114,10 +1114,10 @@ func (server *ServerMonitor) prepareRestoreConn(ctx context.Context, conn *sqlx.
 // (gzip-compressed SQL) over a single pinned connection. It is the narrow,
 // dedicated phase-two path shared by normal splitdump restore (dispatched from
 // restoreSplitdumpWithMysql) and direct-reseed catalogue replay: FK/UNIQUE
-// session state only (prepareRestoreConn), then a plain statement stream with
-// continueOnError always false — every INSTALL PLUGIN skip decision is made
-// per-statement inside execSplitdumpSingle via a live dbhelper lookup, so this
-// function carries no policy logic of its own. It deliberately never calls
+// session state only (prepareRestoreConn), then a plain statement stream —
+// every INSTALL PLUGIN skip decision is made per-statement inside
+// execSplitdumpSingle via a live dbhelper lookup, so this function carries no
+// policy logic of its own. It deliberately never calls
 // buildLogicalRestorePreamble, ResetMaster, or applies GTID — those stay
 // exclusively in the callers that own the one-time, restore-wide binlog/GTID
 // decisions.
@@ -1155,15 +1155,15 @@ func (server *ServerMonitor) restoreSystemCatalog(ctx context.Context, conn *sql
 		reader = gzReader
 	}
 
-	execErr := server.streamSplitdumpStatements(ctx, conn, reader, false, systemArtifactPath, &progress)
+	execErr := server.streamSplitdumpStatements(ctx, conn, reader, systemArtifactPath, &progress)
 	return progress.Load(), execErr
 }
 
 // restoreSplitdumpFileGo loads a single splitdump file over the supplied dedicated
 // connection. It preserves the mysql.* special-casing of the subprocess path
 // (gtid_slave_pos skip, missing-table skip) and optionally strips DEFINER clauses.
-// mysql.system-all gets no blanket continue-on-error here: restoreSystemCatalog
-// is the dedicated phase-two path for that file (see restoreSplitdumpWithMysql's
+// mysql.system-all is never routed through here: restoreSystemCatalog is the
+// dedicated phase-two path for that file (see restoreSplitdumpWithMysql's
 // dispatch), and any INSTALL PLUGIN skip decision is made per-statement in
 // execSplitdumpSingle via a live dbhelper lookup.
 func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *sqlx.Conn, path string, stripDefiner bool) error {
@@ -1226,7 +1226,7 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 		}
 	}
 
-	execErr := server.streamSplitdumpStatements(ctx, conn, reader, false, path, nil)
+	execErr := server.streamSplitdumpStatements(ctx, conn, reader, path, nil)
 	if doneStrip != nil {
 		doneStrip(execErr)
 	}
@@ -1238,7 +1238,7 @@ type splitdumpStmtKind int
 
 const (
 	splitdumpStmtSkip   splitdumpStmtKind = iota // LOCK/UNLOCK TABLES, ALTER..DISABLE/ENABLE KEYS
-	splitdumpStmtInsert                          // INSERT/REPLACE (batchable, unless continue-on-error)
+	splitdumpStmtInsert                          // INSERT/REPLACE (batchable)
 	splitdumpStmtOther                           // everything else (autocommit single)
 )
 
@@ -1340,15 +1340,13 @@ func forEachSplitdumpStatement(reader io.Reader, emit func(stmt string) error) e
 // is testable with a recording stub instead of a live connection.
 type splitdumpExecutor struct {
 	batch  func(stmts []string) error // run stmts in one retrying transaction
-	single func(stmt string, continueOnError bool) error
+	single func(stmt string) error
 }
 
 // planAndExecSplitdump segments the stream (forEachSplitdumpStatement) and drives
-// exec: INSERT/REPLACE batch (batchSize) into exec.batch, EXCEPT when continueOnError
-// (mysql.system-all seed rows) — then each runs via exec.single so one conflicting
-// row is skipped instead of the whole transaction rolling back, matching the old
-// --force. LOCK/UNLOCK/DISABLE-KEYS are dropped; everything else flushes then single.
-func planAndExecSplitdump(reader io.Reader, continueOnError bool, batchSize int, exec splitdumpExecutor) error {
+// exec: INSERT/REPLACE batch (batchSize) into exec.batch; LOCK/UNLOCK/DISABLE-KEYS
+// are dropped; everything else flushes the pending batch, then runs via exec.single.
+func planAndExecSplitdump(reader io.Reader, batchSize int, exec splitdumpExecutor) error {
 	batch := make([]string, 0, batchSize)
 	flush := func() error {
 		if len(batch) == 0 {
@@ -1364,12 +1362,6 @@ func planAndExecSplitdump(reader io.Reader, continueOnError bool, batchSize int,
 		case splitdumpStmtSkip:
 			return nil
 		case splitdumpStmtInsert:
-			if continueOnError {
-				if err := flush(); err != nil {
-					return err
-				}
-				return exec.single(full, true)
-			}
 			batch = append(batch, full)
 			if len(batch) >= batchSize {
 				return flush()
@@ -1379,7 +1371,7 @@ func planAndExecSplitdump(reader io.Reader, continueOnError bool, batchSize int,
 			if err := flush(); err != nil {
 				return err
 			}
-			return exec.single(full, continueOnError)
+			return exec.single(full)
 		}
 	})
 	if err != nil {
@@ -1390,26 +1382,25 @@ func planAndExecSplitdump(reader io.Reader, continueOnError bool, batchSize int,
 
 // streamSplitdumpStatements segments the SQL stream (honouring DELIMITER for
 // trigger/routine bodies) and executes it on conn: INSERT/REPLACE batch into
-// retrying transactions (or run individually when continueOnError); every other
-// statement runs in autocommit; LOCK/UNLOCK TABLES and ALTER..{DISABLE,ENABLE}
-// KEYS are dropped. continueOnError is always false from every production caller
-// today (restoreSplitdumpFileGo, restoreSystemCatalog) — the INSTALL PLUGIN skip
-// decision is made unconditionally, per statement, inside execSplitdumpSingle via
-// a live dbhelper lookup, not by this flag. progressed, if non-nil, is set the
-// moment any statement actually commits against conn (a deliberately skipped
-// INSTALL PLUGIN does not count) — restoreSystemCatalog uses this to tell retry
-// orchestration whether a failure happened before or after any system-catalogue
-// statement was committed, since only the former is safe to retry from the
-// beginning (see RetryDirectReseedSystemCatalog). restoreSplitdumpFileGo has no
-// use for this signal and passes nil. Segmentation and routing live in the pure
+// retrying transactions; every other statement runs in autocommit; LOCK/UNLOCK
+// TABLES and ALTER..{DISABLE,ENABLE} KEYS are dropped. The INSTALL PLUGIN skip
+// decision (mysql.system-all replay) is made unconditionally, per statement,
+// inside execSplitdumpSingle via a live dbhelper lookup — this function carries
+// no policy of its own. progressed, if non-nil, is set the moment any statement
+// actually commits against conn (a deliberately skipped INSTALL PLUGIN does not
+// count) — restoreSystemCatalog uses this to tell retry orchestration whether a
+// failure happened before or after any system-catalogue statement was committed,
+// since only the former is safe to retry from the beginning (see
+// RetryDirectReseedSystemCatalog). restoreSplitdumpFileGo has no use for this
+// signal and passes nil. Segmentation and routing live in the pure
 // forEachSplitdumpStatement / classifySplitdumpStatement / planAndExecSplitdump
 // helpers; this wrapper just binds the executor to conn.
-func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn *sqlx.Conn, reader io.Reader, continueOnError bool, path string, progressed *atomic.Bool) error {
-	return planAndExecSplitdump(reader, continueOnError, splitdumpBatchStatements, splitdumpExecutor{
+func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn *sqlx.Conn, reader io.Reader, path string, progressed *atomic.Bool) error {
+	return planAndExecSplitdump(reader, splitdumpBatchStatements, splitdumpExecutor{
 		batch: func(stmts []string) error {
 			return server.execSplitdumpBatch(ctx, conn, stmts, path, progressed)
 		},
-		single: func(stmt string, coe bool) error {
+		single: func(stmt string) error {
 			return server.execSplitdumpSingle(ctx, conn, stmt, path, progressed)
 		},
 	})
@@ -4298,19 +4289,25 @@ func (c *progressCountingWriter) Write(p []byte) (int, error) {
 }
 
 func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest *ServerMonitor) error {
+	task := "direct"
+
 	// See CheckDirectReseedSourceDestVersion's doc comment for why this is
-	// opt-in. Placed before any state-changing side effect (SetInReseedBackup,
-	// JobsUpdateStateRuntimeOnly, StopAllSlaves) so a strict-mode block
-	// leaves dest untouched.
+	// opt-in. Checked before any of this function's OWN state-changing side
+	// effects (JobsUpdateStateRuntimeOnly, StopAllSlaves) -- but the caller
+	// (e.g. RejoinDirectDump) sets dest.IsReseeding before arming this as a
+	// goroutine, so a strict-mode block must clear that flag itself here or
+	// dest is left permanently stuck reseeding.
 	if cluster.Conf.BackupRestoreVersionStrict {
 		if err := cluster.CheckDirectReseedSourceDestVersion(source, dest); err != nil {
+			if dest.HasReseedingState(task) {
+				dest.SetInReseedBackup("")
+			}
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 				"Direct reseed source/destination family/version mismatch for %s. Cancelling reseed for data safety.", dest.URL)
 			return fmt.Errorf("%w -- disable --backup-restore-version-strict to allow reseed across a source/destination family/version difference", err)
 		}
 	}
 
-	task := "direct"
 	defer dest.SetInReseedBackup("")
 	dest.JobsUpdateStateRuntimeOnly(task, "processing", 1, 0)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rejoining from direct mysqldump from %s", source.URL)

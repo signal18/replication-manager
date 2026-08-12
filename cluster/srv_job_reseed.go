@@ -568,6 +568,20 @@ type directReseedArtifactRetentionEntry struct {
 	modTime int64
 }
 
+// hasDirectReseedArtifactDir reports whether entries contains any published
+// (non-.tmp-*) artifact directory, so the backup-keep-last<=0 warning in
+// PurgeExpiredDirectReseedSystemArtifacts fires only for servers that
+// actually have artifacts affected by it -- not for every cluster that has
+// simply never used direct reseed.
+func hasDirectReseedArtifactDir(entries []os.DirEntry) bool {
+	for _, e := range entries {
+		if e.IsDir() && !strings.Contains(e.Name(), ".tmp-") {
+			return true
+		}
+	}
+	return false
+}
+
 // PurgeExpiredDirectReseedSystemArtifacts prunes older SUCCESSFUL
 // direct-reseed system-catalogue artifacts, reusing the existing
 // backup-keep-last config knob as "how many successful artifacts to retain"
@@ -577,16 +591,19 @@ type directReseedArtifactRetentionEntry struct {
 // touched by this sweep -- only successful, superseded artifacts age out
 // (doc: "Preserve a published artifact when phase two fails or is
 // cancelled").
+//
+// Because backup-keep-last is reused rather than dedicated, its "0 = keep
+// forever" semantics also silently opt this unrelated artifact class out of
+// cleanup for an operator who set it to 0 for ordinary backup-retention
+// reasons; a WARN is logged per affected server so that isn't invisible.
+// Orphaned .tmp-* directories (reapOrphanedDirectReseedTmpDirs) are exempt
+// from all of the above -- they're a disk-fill safety concern, not a
+// retention policy, so they're reaped regardless of backup-keep-last.
 func (cluster *Cluster) PurgeExpiredDirectReseedSystemArtifacts() {
 	if cluster == nil {
 		return
 	}
 	keep := cluster.Conf.BackupKeepLast
-	if keep <= 0 {
-		// "Zero value will be omitted from the policy" -- matches the flag's
-		// own documented semantics (server/server.go, backup-keep-last).
-		return
-	}
 
 	for _, server := range cluster.Servers {
 		if server == nil {
@@ -596,6 +613,26 @@ func (cluster *Cluster) PurgeExpiredDirectReseedSystemArtifacts() {
 		entries, err := os.ReadDir(root)
 		if err != nil {
 			continue // no artifacts yet, or directory doesn't exist -- nothing to purge
+		}
+
+		cluster.reapOrphanedDirectReseedTmpDirs(server, root, entries)
+
+		if keep <= 0 {
+			// "Zero value will be omitted from the policy" -- matches the flag's
+			// own documented semantics (server/server.go, backup-keep-last).
+			// Orphan reaping above still runs regardless (disk-fill safety,
+			// not retention policy). backup-keep-last is an ordinary-backup
+			// retention knob reused here rather than a dedicated one (see this
+			// function's doc comment), so an operator setting it to 0 for
+			// normal backup reasons gets this unrelated artifact class opted
+			// out of cleanup as a side effect -- warn instead of growing this
+			// server's direct-reseed-system artifacts unbounded in silence.
+			if hasDirectReseedArtifactDir(entries) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+					"Direct-reseed system-catalogue artifacts on %s under %s will never be purged automatically: backup-keep-last is %d (0 = unlimited retention for this artifact class too)",
+					server.URL, root, keep)
+			}
+			continue
 		}
 
 		var successes []directReseedArtifactRetentionEntry
@@ -631,6 +668,46 @@ func (cluster *Cluster) PurgeExpiredDirectReseedSystemArtifacts() {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
 					"Failed removing direct-reseed system artifact %s on %s: %s", stale.dir, server.URL, err)
 			}
+		}
+	}
+}
+
+// reapOrphanedDirectReseedTmpDirs removes .tmp-* artifact directories left
+// behind by a process that died (OOM-killed, SIGKILLed, host reboot) mid
+// direct-reseed system-catalogue capture. Nothing else in the codebase ever
+// cleans these up: the only other remover is directReseedSystemArtifactWriter
+// .discard(), called synchronously from within JobRejoinMysqldumpFromSource
+// itself, so it never runs if that goroutine's process dies first (F3/F4:
+// unbounded disk growth across repeated crashes).
+//
+// server.IsReseeding is the race-free signal that distinguishes "orphaned"
+// from "actively being written right now": every direct-reseed caller sets
+// it (RejoinDirectDump) before a writer for that server can be created, and
+// JobRejoinMysqldumpFromSource only clears it, via a deferred call, after
+// every synchronous discard()/publish() in the function body has already
+// finished closing or removing the temp directory. So a writer this process
+// still holds open always keeps IsReseeding set for its whole lifetime; if
+// this server is idle, no in-memory writer can own any .tmp-* directory
+// found under its artifact root, regardless of that directory's age.
+func (cluster *Cluster) reapOrphanedDirectReseedTmpDirs(server *ServerMonitor, root string, entries []os.DirEntry) {
+	if server == nil || server.HasAnyReseedingState() {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !strings.Contains(e.Name(), ".tmp-") {
+			continue
+		}
+		dir := filepath.Join(root, e.Name())
+		if !isPathWithinBase(root, dir) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Skip removing orphaned direct-reseed temp artifact %s on %s: outside artifact directory", dir, server.URL)
+			continue
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Removing orphaned direct-reseed temp artifact %s on %s (unpublished, no reseed in flight)", dir, server.URL)
+		if err := os.RemoveAll(dir); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Failed removing orphaned direct-reseed temp artifact %s on %s: %s", dir, server.URL, err)
 		}
 	}
 }

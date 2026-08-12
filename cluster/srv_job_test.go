@@ -803,16 +803,25 @@ exit 1
 // regression test for the source/destination preflight gate
 // (CheckDirectReseedSourceDestVersion): with BackupRestoreVersionStrict set,
 // a source/destination family/version mismatch must refuse the reseed before
-// touching any dest state (SetInReseedBackup, JobsUpdateStateRuntimeOnly,
+// touching any of this function's OWN dest state (JobsUpdateStateRuntimeOnly,
 // StopAllSlaves) -- no fake mysqldump/mysql client binaries are configured
 // here, so if the preflight check didn't fire first, the job would fail for
 // an unrelated "exec: no such file" reason instead.
+//
+// dest.SetInReseedBackup is pre-set here, mirroring the real caller
+// (RejoinDirectDump sets it before arming this function as a goroutine --
+// see srv_rejoin.go) rather than left at its zero value: a bug where the
+// preflight block failed to clear it back out left dest stuck reseeding
+// forever, since nothing else in the codebase clears IsReseeding
+// (reconcileDeferredRejoinReseeds only reads it). A version of this test
+// that never pre-sets the flag can't observe that regression.
 func TestJobRejoinMysqldumpFromSource_BlocksWhenStrictAndVersionMismatch(t *testing.T) {
 	cluster, source := newTestRuntimeOnlyClusterServer(t, "direct-reseed-test", "source", "3306")
 	dest := newTestRuntimeOnlyServer(t, cluster, "dest", "3307")
 	cluster.Servers = append(cluster.Servers, dest)
 	cluster.Conf.BackupRestoreVersionStrict = true
 	dest.DBVersion = &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}
+	dest.SetInReseedBackup("direct")
 
 	err := cluster.JobRejoinMysqldumpFromSource(source, dest)
 	if err == nil {
@@ -822,7 +831,7 @@ func TestJobRejoinMysqldumpFromSource_BlocksWhenStrictAndVersionMismatch(t *test
 		t.Fatalf("expected a family/version compatibility error, got: %v", err)
 	}
 	if dest.HasAnyReseedingState() {
-		t.Fatalf("preflight block must not leave dest in a reseeding state, got %q", dest.IsReseeding)
+		t.Fatalf("preflight block must clear the caller-set reseeding state, got %q", dest.IsReseeding)
 	}
 	if task := dest.JobResults.Get("direct"); task != nil {
 		t.Fatalf("preflight block must return before any JobResults entry is created for task \"direct\", got %+v", task)

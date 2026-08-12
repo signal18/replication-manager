@@ -536,7 +536,57 @@ func TestPurgeExpiredDirectReseedSystemArtifactsNeverTouchesNonSuccessStates(t *
 	}
 }
 
-func TestPurgeExpiredDirectReseedSystemArtifactsIgnoresTempDirs(t *testing.T) {
+// TestHasDirectReseedArtifactDir covers the gate that decides whether
+// PurgeExpiredDirectReseedSystemArtifacts warns about backup-keep-last<=0
+// silently disabling this artifact class's cleanup: the warning must fire
+// only for a server that actually has a published artifact affected by it,
+// not for every cluster that has simply never used direct reseed, and a
+// leftover .tmp-* directory alone must not count as "affected" either.
+func TestHasDirectReseedArtifactDir(t *testing.T) {
+	server := newArtifactTestServer(t, t.TempDir())
+	root := filepath.Join(server.GetMyBackupDirectoryPath(), "direct-reseed-system")
+	if err := os.MkdirAll(root, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if hasDirectReseedArtifactDir(entries) {
+		t.Fatal("expected no artifact dir in an empty root")
+	}
+
+	w, err := server.newDirectReseedSystemArtifactWriter("job-tmp-only", time.Now())
+	if err != nil {
+		t.Fatalf("newDirectReseedSystemArtifactWriter: %v", err)
+	}
+	defer w.discard()
+	entries, err = os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if hasDirectReseedArtifactDir(entries) {
+		t.Fatal("expected an unpublished .tmp-* dir alone not to count as an artifact dir")
+	}
+
+	writeAndPublishTestArtifact(t, server, "job-published", "CREATE USER 'x'@'y';\n", splitdump.Metadata{})
+	entries, err = os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if !hasDirectReseedArtifactDir(entries) {
+		t.Fatal("expected a published artifact dir to be detected")
+	}
+}
+
+// TestPurgeExpiredDirectReseedSystemArtifactsIgnoresTempDirsWhileReseeding
+// confirms a .tmp-* directory for a reseed genuinely in flight right now is
+// never touched, regardless of BackupKeepLast: the writer that owns it is
+// still running in this process (server.IsReseeding stays set for the
+// writer's whole lifetime -- see JobRejoinMysqldumpFromSource), so removing
+// it here would corrupt an active reseed.
+func TestPurgeExpiredDirectReseedSystemArtifactsIgnoresTempDirsWhileReseeding(t *testing.T) {
 	server := newArtifactTestServer(t, t.TempDir())
 	server.ClusterGroup.Servers = serverList{server}
 	server.ClusterGroup.Conf.BackupKeepLast = 1
@@ -547,11 +597,43 @@ func TestPurgeExpiredDirectReseedSystemArtifactsIgnoresTempDirs(t *testing.T) {
 	}
 	tmpDir := w.tmpDir
 	defer w.discard()
+	server.SetInReseedBackup("direct")
+	defer server.SetInReseedBackup("")
 
 	server.ClusterGroup.PurgeExpiredDirectReseedSystemArtifacts()
 
 	if _, err := os.Stat(tmpDir); err != nil {
-		t.Fatalf("expected the unpublished temp dir to survive the sweep untouched: %v", err)
+		t.Fatalf("expected the in-flight temp dir to survive the sweep untouched: %v", err)
+	}
+}
+
+// TestPurgeExpiredDirectReseedSystemArtifactsReapsOrphanedTempDirsWhenIdle is
+// the regression test for orphaned .tmp-* artifact directories (F3/F4:
+// unbounded disk growth): if the process that owned a direct-reseed writer
+// dies mid-capture (OOM-killed, SIGKILLed, host reboot), discard() never
+// runs and the temp directory is left behind forever with no other cleanup
+// path. Once the server is observed idle (no reseed in flight in this
+// process), any leftover .tmp-* directory under its artifact root cannot
+// belong to a writer this process still holds open and must be reaped by
+// the sweep, regardless of BackupKeepLast or the directory's age.
+func TestPurgeExpiredDirectReseedSystemArtifactsReapsOrphanedTempDirsWhenIdle(t *testing.T) {
+	server := newArtifactTestServer(t, t.TempDir())
+	server.ClusterGroup.Servers = serverList{server}
+	server.ClusterGroup.Conf.BackupKeepLast = 0 // even with purge policy disabled entirely
+
+	w, err := server.newDirectReseedSystemArtifactWriter("job-orphaned", time.Now())
+	if err != nil {
+		t.Fatalf("newDirectReseedSystemArtifactWriter: %v", err)
+	}
+	tmpDir := w.tmpDir
+	// No SetInReseedBackup call: simulates this process starting fresh after
+	// a crash left the temp dir behind -- IsReseeding is back to its zero
+	// value and cannot reflect a writer that died in a previous process.
+
+	server.ClusterGroup.PurgeExpiredDirectReseedSystemArtifacts()
+
+	if _, err := os.Stat(tmpDir); !os.IsNotExist(err) {
+		t.Fatalf("expected the orphaned temp dir to be reaped, stat err: %v", err)
 	}
 }
 

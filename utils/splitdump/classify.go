@@ -105,14 +105,31 @@ func classifyStream(r io.Reader, opts ClassifyOptions, maxLineSize int) (Classif
 	scanner.Buffer(make([]byte, 0, initialBufSize), maxLineSize)
 	scanner.Split(scanLineKeepTerminator)
 	inSystemSection := false
+	// inTableData mirrors SplitDumpLineParser's onTableData gate (split.go):
+	// between "LOCK TABLES `" and "UNLOCK TABLES;" the reference parser
+	// evaluates nothing but that closing prefix, so a row value that happens
+	// to start with a recognized header prefix on its own physical line can
+	// never flip section state there. ClassifyStream must apply the same
+	// gate to stay a faithful mirror of that boundary contract, not just of
+	// the header-prefix list itself.
+	inTableData := false
 	for scanner.Scan() {
 		line := scanner.Text()
-		switch {
-		case isSystemSectionBoundary(line):
-			inSystemSection = true
-			result.HasSystemContent = true
-		case isNonSystemSectionHeader(line):
-			inSystemSection = false
+		if inTableData {
+			if strings.HasPrefix(line, "UNLOCK TABLES;") {
+				inTableData = false
+			}
+		} else {
+			switch {
+			case isSystemSectionBoundary(line):
+				inSystemSection = true
+				result.HasSystemContent = true
+			case isNonSystemSectionHeader(line):
+				inSystemSection = false
+			}
+			if strings.HasPrefix(line, "LOCK TABLES `") {
+				inTableData = true
+			}
 		}
 
 		dest := opts.ApplicationWriter
