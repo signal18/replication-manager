@@ -88,6 +88,11 @@ var tests = []string{
 	"testOpenSVCUpgradeWarnRecovery",
 	"testSchemaPlugin",
 	"testGraphiteMetricsQueueBound",
+	"testDirectReseedSystemAllEmptyDestination",
+	"testDirectReseedSystemAllPluginAlreadyActive",
+	"testDirectReseedSystemAllPreExistingUserAppliedViaAlterUser",
+	"testDirectReseedSystemAllRetainsArtifactOnPhaseTwoFailure",
+	"testDirectReseedSystemAllSplitUserSingleAuthority",
 }
 
 const recoverTime = 8

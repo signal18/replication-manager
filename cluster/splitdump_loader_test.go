@@ -79,51 +79,28 @@ func TestClassifySplitdumpStatement(t *testing.T) {
 	}
 }
 
-// TestPlanAndExecSplitdumpContinueOnError is the regression for the review gap:
-// mysql.system-all (continueOnError) INSERTs must run INDIVIDUALLY so one conflicting
-// seed row is skipped like the old --force, not batched into a transaction that
-// aborts the whole restore on the first conflict.
-func TestPlanAndExecSplitdumpContinueOnError(t *testing.T) {
+// TestPlanAndExecSplitdumpBatchesInserts verifies INSERT/REPLACE statements are
+// always batched into a single transaction (mysql.system-all's INSTALL PLUGIN
+// skip is a live, per-statement dbhelper lookup inside execSplitdumpSingle, not
+// a continue-on-error mode of planAndExecSplitdump — there is no other path that
+// runs INSERTs individually).
+func TestPlanAndExecSplitdumpBatchesInserts(t *testing.T) {
 	input := "INSERT INTO `mysql`.`user` VALUES (1);\nINSERT INTO `mysql`.`user` VALUES (2);\n"
 
-	// continueOnError=true → each INSERT via single(coe=true), NO batch.
 	var batches [][]string
 	var singles []string
 	rec := splitdumpExecutor{
-		batch: func(s []string) error { batches = append(batches, append([]string(nil), s...)); return nil },
-		single: func(s string, coe bool) error {
-			if !coe {
-				t.Errorf("continueOnError: single(%q) got coe=false, want true", s)
-			}
-			singles = append(singles, s)
-			return nil
-		},
-	}
-	if err := planAndExecSplitdump(strings.NewReader(input), true, 500, rec); err != nil {
-		t.Fatal(err)
-	}
-	if len(batches) != 0 {
-		t.Errorf("continueOnError: expected NO batched transaction, got %v", batches)
-	}
-	if len(singles) != 2 {
-		t.Errorf("continueOnError: expected 2 individual execs, got %d", len(singles))
-	}
-
-	// continueOnError=false → INSERTs batched into one transaction.
-	batches = nil
-	singles = nil
-	rec2 := splitdumpExecutor{
 		batch:  func(s []string) error { batches = append(batches, append([]string(nil), s...)); return nil },
-		single: func(s string, coe bool) error { singles = append(singles, s); return nil },
+		single: func(s string) error { singles = append(singles, s); return nil },
 	}
-	if err := planAndExecSplitdump(strings.NewReader(input), false, 500, rec2); err != nil {
+	if err := planAndExecSplitdump(strings.NewReader(input), 500, rec); err != nil {
 		t.Fatal(err)
 	}
 	if len(batches) != 1 || len(batches[0]) != 2 {
-		t.Errorf("normal: expected 1 batch of 2 INSERTs, got %v", batches)
+		t.Errorf("expected 1 batch of 2 INSERTs, got %v", batches)
 	}
 	if len(singles) != 0 {
-		t.Errorf("normal: expected no individual execs, got %v", singles)
+		t.Errorf("expected no individual execs, got %v", singles)
 	}
 }
 
@@ -146,9 +123,9 @@ func TestPlanAndExecSplitdumpDropsAndFlushes(t *testing.T) {
 	var singles []string
 	rec := splitdumpExecutor{
 		batch:  func(s []string) error { batches = append(batches, append([]string(nil), s...)); return nil },
-		single: func(s string, coe bool) error { singles = append(singles, s); return nil },
+		single: func(s string) error { singles = append(singles, s); return nil },
 	}
-	if err := planAndExecSplitdump(strings.NewReader(input), false, 500, rec); err != nil {
+	if err := planAndExecSplitdump(strings.NewReader(input), 500, rec); err != nil {
 		t.Fatal(err)
 	}
 	if len(batches) != 2 || len(batches[0]) != 2 || len(batches[1]) != 1 {

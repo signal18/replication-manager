@@ -263,6 +263,21 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testGraphiteMetricsQueueBound" {
 			res = regtest.TestGraphiteMetricsQueueBound(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testDirectReseedSystemAllEmptyDestination" {
+			res = regtest.TestDirectReseedSystemAllEmptyDestination(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testDirectReseedSystemAllPluginAlreadyActive" {
+			res = regtest.TestDirectReseedSystemAllPluginAlreadyActive(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testDirectReseedSystemAllPreExistingUserAppliedViaAlterUser" {
+			res = regtest.TestDirectReseedSystemAllPreExistingUserAppliedViaAlterUser(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testDirectReseedSystemAllRetainsArtifactOnPhaseTwoFailure" {
+			res = regtest.TestDirectReseedSystemAllRetainsArtifactOnPhaseTwoFailure(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testDirectReseedSystemAllSplitUserSingleAuthority" {
+			res = regtest.TestDirectReseedSystemAllSplitUserSingleAuthority(cl, test.ConfigFile, &test)
+		}
 
 		test.Result = regtest.GetTestResultLabel(res)
 		if testExp == "SUITE" {
