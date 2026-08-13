@@ -1490,9 +1490,10 @@ func isInstallPluginStatement(stmt string) (name string, ok bool) {
 // resolveInstallPluginSkip decides whether an INSTALL PLUGIN <name> statement may
 // be skipped, using a live lookup on the same pinned restore connection (never the
 // monitoring cache — see dbhelper.GetPluginStatusConn). Only an unambiguous,
-// ACTIVE match is skipped; every other outcome (absent executes normally; present
-// but not ACTIVE, ambiguous, or a lookup error) is surfaced to the caller, which
-// treats a non-nil err as fatal.
+// ACTIVE match is skipped; absent and NOT INSTALLED both execute normally (the
+// latter mirrors InstallPlugin's own NOT INSTALLED handling in srv.go); every
+// other outcome (present but not ACTIVE, ambiguous, or a lookup error) is
+// surfaced to the caller, which treats a non-nil err as fatal.
 func (server *ServerMonitor) resolveInstallPluginSkip(ctx context.Context, conn *sqlx.Conn, name string) (skip bool, err error) {
 	status, observed, err := dbhelper.GetPluginStatusConn(ctx, conn, name, server.DBVersion)
 	if err != nil {
@@ -1501,7 +1502,7 @@ func (server *ServerMonitor) resolveInstallPluginSkip(ctx context.Context, conn 
 	switch status {
 	case dbhelper.PluginActive:
 		return true, nil
-	case dbhelper.PluginAbsent:
+	case dbhelper.PluginAbsent, dbhelper.PluginNotInstalled:
 		return false, nil
 	case dbhelper.PluginPresentNotActive:
 		return false, fmt.Errorf("plugin %s is present but not ACTIVE (status: %s)", name, observed)

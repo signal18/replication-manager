@@ -60,6 +60,7 @@ type PluginLookupStatus int
 const (
 	PluginAbsent PluginLookupStatus = iota
 	PluginActive
+	PluginNotInstalled
 	PluginPresentNotActive
 	PluginAmbiguous
 )
@@ -112,6 +113,14 @@ func GetPluginStatusConn(ctx context.Context, conn *sqlx.Conn, name string, myve
 		return PluginAmbiguous, observedStatus, nil
 	case strings.EqualFold(observedStatus, "ACTIVE"):
 		return PluginActive, observedStatus, nil
+	case strings.EqualFold(observedStatus, "NOT INSTALLED"):
+		// SHOW PLUGINS can list a known-but-uninstalled plugin (e.g.
+		// QUERY_RESPONSE_TIME) with this status even though matches==1 --
+		// distinct from PluginAbsent (no row at all) and from a genuinely
+		// suspicious PluginPresentNotActive (e.g. DISABLED). Both PluginAbsent
+		// and PluginNotInstalled are safe for the caller to run INSTALL
+		// PLUGIN against; only PluginPresentNotActive is treated as fatal.
+		return PluginNotInstalled, observedStatus, nil
 	default:
 		return PluginPresentNotActive, observedStatus, nil
 	}
