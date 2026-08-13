@@ -633,11 +633,11 @@ func TestRestoreSystemCatalogProgressTrueAfterPartialCommit(t *testing.T) {
 	}
 }
 
-// TestExtractIdentifiedByPasswordHash covers the pure parser behind the
+// TestParseIdentifiedByPasswordClauseHash covers the pure parser behind the
 // hash-equivalence skip: only the classic `IDENTIFIED BY PASSWORD '<hash>'`
 // form is recognized; every other auth clause (or no clause at all) reports
 // ok=false rather than guessing.
-func TestExtractIdentifiedByPasswordHash(t *testing.T) {
+func TestParseIdentifiedByPasswordClauseHash(t *testing.T) {
 	cases := []struct {
 		rest     string
 		wantHash string
@@ -655,9 +655,9 @@ func TestExtractIdentifiedByPasswordHash(t *testing.T) {
 		{"IDENTIFIED BY PASSWORD ''", "", false},
 	}
 	for _, c := range cases {
-		hash, ok := extractIdentifiedByPasswordHash(c.rest)
+		hash, _, ok := parseIdentifiedByPasswordClause(c.rest)
 		if ok != c.wantOK || hash != c.wantHash {
-			t.Errorf("extractIdentifiedByPasswordHash(%q) = (%q, %v), want (%q, %v)", c.rest, hash, ok, c.wantHash, c.wantOK)
+			t.Errorf("parseIdentifiedByPasswordClause(%q) = (%q, _, %v), want (%q, _, %v)", c.rest, hash, ok, c.wantHash, c.wantOK)
 		}
 	}
 }

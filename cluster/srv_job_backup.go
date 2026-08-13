@@ -1574,6 +1574,19 @@ func (server *ServerMonitor) execSplitdumpSingle(ctx context.Context, conn *sqlx
 				// is cleared so the 1396/ALTER-USER-fallback machinery below
 				// (which still holds the OLD alterUserFallback text, password
 				// clause included) doesn't also fire for this statement.
+				//
+				// Unlike isGrantWithIdentifiedByPassword, this path does not
+				// bail out when a REQUIRE clause is present -- deliberately,
+				// not an oversight. CREATE USER and ALTER USER share the same
+				// REQUIRE syntax (the actively-maintained, canonical TLS-option
+				// clause for both statement forms on MySQL and MariaDB alike),
+				// unlike GRANT's own separate REQUIRE clause -- deprecated and
+				// removed in MySQL 8 -- whose cross-version/flavor behavior is
+				// what isGrantWithIdentifiedByPassword's caution is about.
+				// AfterHash is also never re-parsed here, only carried through
+				// byte-for-byte from wherever the hash literal ends, so there
+				// is no REQUIRE-specific clause boundary this rewrite needs to
+				// get right in the first place.
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlDbg,
 					"Splitdump restore: account %s@%s already has matching password, applying remaining attributes without IDENTIFIED BY PASSWORD for %s", createUserInfo.User, createUserInfo.Host, filepath.Base(path))
 				stmt = "ALTER USER" + createUserInfo.AccountSpec + " " + remaining
@@ -1727,22 +1740,16 @@ func isCreateUserStatement(stmt string) (info createUserStatementInfo, ok bool) 
 	}, true
 }
 
-// extractIdentifiedByPasswordHash parses a leading `IDENTIFIED BY PASSWORD
+// parseIdentifiedByPasswordClause parses a leading `IDENTIFIED BY PASSWORD
 // '<hash>'` clause (optionally preceded by whitespace) from rest -- the
 // classic mysql_native_password auth-clause form mariadb-dump/mysqldump
 // emits for CREATE USER and the TO-clause of GRANT statements. Any other
 // clause (IDENTIFIED VIA/WITH, no auth clause at all, trailing content that
 // doesn't start with this exact keyword sequence) is reported as ok=false --
 // this function only ever recognizes this one fixed form, never guesses.
-func extractIdentifiedByPasswordHash(rest string) (hash string, ok bool) {
-	hash, _, ok = parseIdentifiedByPasswordClause(rest)
-	return hash, ok
-}
-
-// parseIdentifiedByPasswordClause is extractIdentifiedByPasswordHash plus
-// what's left of rest immediately after the closing quote of the hash
-// literal, needed by isGrantWithIdentifiedByPassword to reconstruct the
-// statement with only that clause removed.
+// Also returns afterClause, what's left of rest immediately after the
+// closing quote of the hash literal, needed by isGrantWithIdentifiedByPassword
+// to reconstruct the statement with only that clause removed.
 func parseIdentifiedByPasswordClause(rest string) (hash string, afterClause string, ok bool) {
 	s := strings.TrimLeft(rest, " \t\r\n")
 	const prefix = "IDENTIFIED BY PASSWORD"
