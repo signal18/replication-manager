@@ -117,6 +117,52 @@ func TestGetPluginStatusConnPresentNotActive(t *testing.T) {
 	}
 }
 
+// TestGetPluginStatusConnNotInstalled covers the observed-in-production case:
+// SHOW PLUGINS can list a known plugin (e.g. QUERY_RESPONSE_TIME) with a row
+// present but status "NOT INSTALLED", distinct from PluginAbsent (no row at
+// all) and from a genuinely suspicious PluginPresentNotActive (e.g. DISABLED).
+func TestGetPluginStatusConnNotInstalled(t *testing.T) {
+	conn, mock, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "MySQL"}
+	mock.ExpectQuery("SHOW PLUGINS").WillReturnRows(
+		pluginRows().AddRow("QUERY_RESPONSE_TIME", "NOT INSTALLED", "INFORMATION SCHEMA", "query_response_time.so", "GPL"),
+	)
+
+	status, observed, err := GetPluginStatusConn(context.Background(), conn, "QUERY_RESPONSE_TIME", myver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status != PluginNotInstalled {
+		t.Fatalf("expected PluginNotInstalled, got %v", status)
+	}
+	if observed != "NOT INSTALLED" {
+		t.Fatalf("expected observed status 'NOT INSTALLED', got %q", observed)
+	}
+}
+
+// TestGetPluginStatusConnNotInstalledCaseInsensitive mirrors the ACTIVE
+// case-insensitive coverage above -- MariaDB/MySQL status strings should not
+// be compared exact-case.
+func TestGetPluginStatusConnNotInstalledCaseInsensitive(t *testing.T) {
+	conn, mock, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "MySQL"}
+	mock.ExpectQuery("SHOW PLUGINS").WillReturnRows(
+		pluginRows().AddRow("QUERY_RESPONSE_TIME", "not installed", "INFORMATION SCHEMA", "query_response_time.so", "GPL"),
+	)
+
+	status, _, err := GetPluginStatusConn(context.Background(), conn, "QUERY_RESPONSE_TIME", myver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status != PluginNotInstalled {
+		t.Fatalf("expected PluginNotInstalled despite lowercase status, got %v", status)
+	}
+}
+
 func TestGetPluginStatusConnAmbiguous(t *testing.T) {
 	conn, mock, closeFn := newPluginTestConn(t)
 	defer closeFn()

@@ -346,6 +346,28 @@ func TestResolveInstallPluginSkipAbsentExecutesNormally(t *testing.T) {
 	}
 }
 
+// TestResolveInstallPluginSkipNotInstalledExecutesNormally covers the
+// production case behind this fix: SHOW PLUGINS can list a known plugin
+// (e.g. QUERY_RESPONSE_TIME) with status "NOT INSTALLED" rather than simply
+// omitting it. That must execute INSTALL PLUGIN normally, the same as
+// PluginAbsent, not be treated as the fatal present-but-not-ACTIVE case.
+func TestResolveInstallPluginSkipNotInstalledExecutesNormally(t *testing.T) {
+	server, mock, conn, closeFn := newSystemReseedTestServer(t)
+	defer closeFn()
+
+	mock.ExpectQuery("SHOW PLUGINS soname").WillReturnRows(
+		pluginShowRows().AddRow("QUERY_RESPONSE_TIME", "NOT INSTALLED", "INFORMATION SCHEMA", "query_response_time.so", "GPL"),
+	)
+
+	skip, err := server.resolveInstallPluginSkip(context.Background(), conn, "QUERY_RESPONSE_TIME")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if skip {
+		t.Fatal("expected skip=false for a NOT INSTALLED plugin")
+	}
+}
+
 func TestResolveInstallPluginSkipPresentNotActiveIsFatal(t *testing.T) {
 	server, mock, conn, closeFn := newSystemReseedTestServer(t)
 	defer closeFn()
@@ -421,6 +443,32 @@ func TestExecSplitdumpSingleExecutesAbsentPlugin(t *testing.T) {
 
 	var progressed atomic.Bool
 	err := server.execSplitdumpSingle(context.Background(), conn, "INSTALL PLUGIN disk SONAME 'disk.so'", "mysql.system-all.sql.gz", &progressed)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+	if !progressed.Load() {
+		t.Error("expected progress to be marked after a real statement executed")
+	}
+}
+
+// TestExecSplitdumpSingleExecutesNotInstalledPlugin reproduces the reported
+// production failure: destination SHOW PLUGINS reports QUERY_RESPONSE_TIME as
+// present with status "NOT INSTALLED" (not simply absent from the list). That
+// must run INSTALL PLUGIN normally instead of aborting the reseed.
+func TestExecSplitdumpSingleExecutesNotInstalledPlugin(t *testing.T) {
+	server, mock, conn, closeFn := newSystemReseedTestServer(t)
+	defer closeFn()
+
+	mock.ExpectQuery("SHOW PLUGINS soname").WillReturnRows(
+		pluginShowRows().AddRow("QUERY_RESPONSE_TIME", "NOT INSTALLED", "INFORMATION SCHEMA", "query_response_time.so", "GPL"),
+	)
+	mock.ExpectExec("INSTALL PLUGIN QUERY_RESPONSE_TIME SONAME 'query_response_time.so'").WillReturnResult(sqlmock.NewResult(0, 0))
+
+	var progressed atomic.Bool
+	err := server.execSplitdumpSingle(context.Background(), conn, "INSTALL PLUGIN QUERY_RESPONSE_TIME SONAME 'query_response_time.so'", "mysql.system-all.sql.gz", &progressed)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
