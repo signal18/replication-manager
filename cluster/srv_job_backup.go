@@ -1511,6 +1511,26 @@ func (server *ServerMonitor) resolveInstallPluginSkip(ctx context.Context, conn 
 	}
 }
 
+// accountAlreadyMatchesHash reports whether user@host already exists on the
+// destination with exactly hash as its stored password, via a live lookup on
+// the same pinned restore connection (dbhelper.GetUserAuthConn) -- the
+// restore-time-truth check that lets execSplitdumpSingle skip re-sending a
+// password-setting clause that strict_password_validation (MariaDB) can
+// reject even when the value wouldn't actually change. A lookup error is
+// returned to the caller, which treats it as "skip the optimization, not the
+// statement" -- never fatal on its own, since this check only ever removes
+// work, it never gates whether the underlying statement is allowed to run.
+func (server *ServerMonitor) accountAlreadyMatchesHash(ctx context.Context, conn *sqlx.Conn, user string, host string, hash string) (skip bool, err error) {
+	destHash, exists, err := dbhelper.GetUserAuthConn(ctx, conn, user, host, server.DBVersion)
+	if err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, nil
+	}
+	return destHash == hash, nil
+}
+
 // execSplitdumpSingle runs one non-INSERT statement in autocommit, retrying on
 // lock contention. INSTALL PLUGIN is the sole exception to "every error is
 // fatal": resolveInstallPluginSkip decides, from a live lookup, whether the
@@ -1532,7 +1552,45 @@ func (server *ServerMonitor) execSplitdumpSingle(ctx context.Context, conn *sqlx
 			return nil
 		}
 	}
-	alterUserFallback, createUserAccount, createUserHost, isCreateUser := isCreateUserStatement(stmt)
+	createUserInfo, isCreateUser := isCreateUserStatement(stmt)
+	alterUserFallback, createUserAccount, createUserHost := createUserInfo.AlterUser, createUserInfo.User, createUserInfo.Host
+	if isCreateUser && createUserInfo.HashOK {
+		if skip, err := server.accountAlreadyMatchesHash(ctx, conn, createUserInfo.User, createUserInfo.Host, createUserInfo.Hash); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlDbg,
+				"Splitdump restore: account equivalence lookup for %s@%s failed, proceeding without it: %s", createUserInfo.User, createUserInfo.Host, err)
+		} else if skip {
+			if remaining := strings.TrimSpace(createUserInfo.AfterHash); remaining == "" {
+				// Nothing beyond the account and its password: the whole
+				// statement is redundant, not just the password clause.
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlDbg,
+					"Splitdump restore skipped CREATE USER for %s@%s: destination already matches %s", createUserInfo.User, createUserInfo.Host, filepath.Base(path))
+				return nil
+			} else {
+				// Other attributes (resource limits, lock state, password
+				// expiry, REQUIRE, ...) accompany the password clause: those
+				// must still be reconciled, so this can't be a full skip --
+				// only the redundant password clause is dropped, replayed as
+				// ALTER USER against the now-known-to-exist account. isCreateUser
+				// is cleared so the 1396/ALTER-USER-fallback machinery below
+				// (which still holds the OLD alterUserFallback text, password
+				// clause included) doesn't also fire for this statement.
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlDbg,
+					"Splitdump restore: account %s@%s already has matching password, applying remaining attributes without IDENTIFIED BY PASSWORD for %s", createUserInfo.User, createUserInfo.Host, filepath.Base(path))
+				stmt = "ALTER USER" + createUserInfo.AccountSpec + " " + remaining
+				isCreateUser = false
+			}
+		}
+	}
+	if rewritten, grantUser, grantHost, grantHash, isGrant := isGrantWithIdentifiedByPassword(stmt); isGrant {
+		if skip, err := server.accountAlreadyMatchesHash(ctx, conn, grantUser, grantHost, grantHash); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlDbg,
+				"Splitdump restore: account equivalence lookup for %s@%s failed, proceeding without it: %s", grantUser, grantHost, err)
+		} else if skip {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlDbg,
+				"Splitdump restore: GRANT for %s@%s already has matching password, applying without its IDENTIFIED BY PASSWORD clause for %s", grantUser, grantHost, filepath.Base(path))
+			stmt = rewritten
+		}
+	}
 	var lastErr error
 	for attempt := 0; attempt <= splitdumpLockRetryMax; attempt++ {
 		if attempt > 0 {
@@ -1612,28 +1670,97 @@ func (server *ServerMonitor) execSplitdumpSingle(ctx context.Context, conn *sqlx
 	return lastErr
 }
 
+// createUserStatementInfo holds everything execSplitdumpSingle needs to
+// evaluate, and possibly partially rewrite, a CREATE USER statement.
+type createUserStatementInfo struct {
+	AlterUser   string // CREATE USER rewritten to ALTER USER verbatim -- the existing ER_CANNOT_USER (1396) fallback
+	User        string
+	Host        string
+	AccountSpec string // exact original text of the account token (leading whitespace, original quoting) -- needed to rebuild a password-stripped ALTER USER without re-serializing the account spec from parsed parts
+	Hash        string // extracted password hash; "" if HashOK is false
+	HashOK      bool
+	AfterHash   string // whatever follows the IDENTIFIED BY PASSWORD clause, verbatim; "" if HashOK is false or nothing follows
+}
+
 // isCreateUserStatement reports whether stmt is a plain CREATE USER statement
 // (not CREATE USER IF NOT EXISTS, which already tolerates a pre-existing
-// account without erroring) and, if so, returns the same statement with the
-// CREATE USER keyword swapped for ALTER USER, plus the unquoted user/host of
-// the account it targets. mysqldump's --system=all output emits one CREATE
-// USER statement per account, so this fallback only needs to handle a single
-// account per statement.
-func isCreateUserStatement(stmt string) (alterUser string, user string, host string, ok bool) {
+// account without erroring) and, if so, returns info describing it: the same
+// statement with the CREATE USER keyword swapped for ALTER USER (the
+// existing 1396 fallback), the unquoted user/host of the account it targets,
+// and -- when the statement uses the classic `IDENTIFIED BY PASSWORD
+// '<hash>'` clause -- the extracted hash plus enough to rebuild the
+// statement with only that clause removed (AccountSpec, AfterHash), so the
+// caller can check destination equivalence before ever sending CREATE USER
+// or its ALTER USER fallback, and -- if other attributes accompany the
+// password clause -- still reconcile those without resending a redundant
+// password. mysqldump's --system=all output emits one CREATE USER statement
+// per account, so this only needs to handle a single account per statement.
+func isCreateUserStatement(stmt string) (info createUserStatementInfo, ok bool) {
 	trimmed := strings.TrimLeft(stmt, " \t\r\n(")
 	const prefix = "CREATE USER"
 	if !strings.HasPrefix(strings.ToUpper(trimmed), prefix) {
-		return "", "", "", false
+		return createUserStatementInfo{}, false
 	}
 	rest := trimmed[len(prefix):]
 	if strings.HasPrefix(strings.TrimSpace(strings.ToUpper(rest)), "IF NOT EXISTS") {
-		return "", "", "", false
+		return createUserStatementInfo{}, false
 	}
-	user, host, ok = parseCreateUserAccount(rest)
-	if !ok {
-		return "", "", "", false
+	user, host, accountRest, accOK := parseCreateUserAccountRest(rest)
+	if !accOK {
+		return createUserStatementInfo{}, false
 	}
-	return "ALTER USER" + rest, user, host, true
+	// accountSpec is the exact original text of the account token: accountRest
+	// is a content-suffix of rest by construction (parseCreateUserAccountRest
+	// only slices, never rewrites), so this never re-serializes the account
+	// spec from parsed parts -- same reasoning isGrantWithIdentifiedByPassword
+	// documents for its own accountSpec.
+	accountSpec := rest[:len(rest)-len(accountRest)]
+	hash, afterHash, hashOK := parseIdentifiedByPasswordClause(accountRest)
+	return createUserStatementInfo{
+		AlterUser:   "ALTER USER" + rest,
+		User:        user,
+		Host:        host,
+		AccountSpec: accountSpec,
+		Hash:        hash,
+		HashOK:      hashOK,
+		AfterHash:   afterHash,
+	}, true
+}
+
+// extractIdentifiedByPasswordHash parses a leading `IDENTIFIED BY PASSWORD
+// '<hash>'` clause (optionally preceded by whitespace) from rest -- the
+// classic mysql_native_password auth-clause form mariadb-dump/mysqldump
+// emits for CREATE USER and the TO-clause of GRANT statements. Any other
+// clause (IDENTIFIED VIA/WITH, no auth clause at all, trailing content that
+// doesn't start with this exact keyword sequence) is reported as ok=false --
+// this function only ever recognizes this one fixed form, never guesses.
+func extractIdentifiedByPasswordHash(rest string) (hash string, ok bool) {
+	hash, _, ok = parseIdentifiedByPasswordClause(rest)
+	return hash, ok
+}
+
+// parseIdentifiedByPasswordClause is extractIdentifiedByPasswordHash plus
+// what's left of rest immediately after the closing quote of the hash
+// literal, needed by isGrantWithIdentifiedByPassword to reconstruct the
+// statement with only that clause removed.
+func parseIdentifiedByPasswordClause(rest string) (hash string, afterClause string, ok bool) {
+	s := strings.TrimLeft(rest, " \t\r\n")
+	const prefix = "IDENTIFIED BY PASSWORD"
+	if len(s) < len(prefix) || !strings.EqualFold(s[:len(prefix)], prefix) {
+		return "", "", false
+	}
+	if len(s) > len(prefix) && !isSQLWordBoundaryByte(s[len(prefix)]) {
+		// e.g. a hypothetical "IDENTIFIED BY PASSWORDX ..." -- the prefix
+		// matched but isn't actually followed by a keyword/clause boundary,
+		// so this isn't really the clause it looks like.
+		return "", "", false
+	}
+	s = strings.TrimLeft(s[len(prefix):], " \t\r\n")
+	hash, afterClause, ok = parseCreateUserToken(s)
+	if !ok || hash == "" {
+		return "", "", false
+	}
+	return hash, afterClause, true
 }
 
 // parseCreateUserAccount extracts the user and host from the account
@@ -1642,19 +1769,28 @@ func isCreateUserStatement(stmt string) (alterUser string, user string, host str
 // no @host (valid CREATE USER syntax) defaults to host "%", matching the
 // server's own default.
 func parseCreateUserAccount(rest string) (user string, host string, ok bool) {
+	user, host, _, ok = parseCreateUserAccountRest(rest)
+	return user, host, ok
+}
+
+// parseCreateUserAccountRest is parseCreateUserAccount plus what's left of
+// rest immediately after the account spec (e.g. the auth clause tail),
+// needed by callers that must keep parsing past the account -- see
+// isCreateUserStatement's hash extraction and isGrantWithIdentifiedByPassword.
+func parseCreateUserAccountRest(rest string) (user string, host string, tail string, ok bool) {
 	s := strings.TrimSpace(rest)
 	user, s, ok = parseCreateUserToken(s)
 	if !ok {
-		return "", "", false
+		return "", "", "", false
 	}
 	if !strings.HasPrefix(s, "@") {
-		return user, "%", true
+		return user, "%", s, true
 	}
-	host, _, ok = parseCreateUserToken(s[1:])
+	host, tail, ok = parseCreateUserToken(s[1:])
 	if !ok {
-		return "", "", false
+		return "", "", "", false
 	}
-	return user, host, true
+	return user, host, tail, true
 }
 
 // parseCreateUserToken extracts one quoted-or-bare identifier (a user or
@@ -1725,6 +1861,101 @@ func isKnownProtectedSystemAccount(user, host string) bool {
 	default:
 		return false
 	}
+}
+
+// isSQLWordBoundaryByte reports whether b cannot be part of a SQL bare
+// identifier/keyword, i.e. it terminates one. Used to make prefix keyword
+// matches whole-word (so "IDENTIFIED BY PASSWORDX" doesn't false-match
+// "IDENTIFIED BY PASSWORD", and "TOKEN_COL" doesn't false-match a bare "TO").
+func isSQLWordBoundaryByte(b byte) bool {
+	return !(b == '_' || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9'))
+}
+
+// findTopLevelKeyword returns the byte index in s of the first case-insensitive,
+// whole-word occurrence of keyword that is not inside a quoted/backtick-quoted
+// span, or -1 if there is none. Quote spans use the same doubled-quote
+// escaping convention as parseCreateUserToken, so a keyword-shaped substring
+// inside a quoted identifier or string literal is correctly skipped rather
+// than matched.
+func findTopLevelKeyword(s string, keyword string) int {
+	upper := strings.ToUpper(s)
+	upperKeyword := strings.ToUpper(keyword)
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c == '\'' || c == '"' || c == '`' {
+			j := i + 1
+			for j < len(s) {
+				if s[j] == c {
+					if j+1 < len(s) && s[j+1] == c {
+						j += 2
+						continue
+					}
+					j++
+					break
+				}
+				j++
+			}
+			i = j
+			continue
+		}
+		if strings.HasPrefix(upper[i:], upperKeyword) {
+			leftOK := i == 0 || isSQLWordBoundaryByte(s[i-1])
+			rightIdx := i + len(keyword)
+			rightOK := rightIdx >= len(s) || isSQLWordBoundaryByte(s[rightIdx])
+			if leftOK && rightOK {
+				return i
+			}
+		}
+		i++
+	}
+	return -1
+}
+
+// isGrantWithIdentifiedByPassword reports whether stmt is a GRANT statement
+// of the fixed, single-account shape mariadb-dump/mysqldump --system=all
+// emits for a classic mysql_native_password account: `GRANT <privs> ON
+// <priv_level> TO <account> IDENTIFIED BY PASSWORD '<hash>' [WITH GRANT
+// OPTION]`. If it matches, rewritten is stmt with the `IDENTIFIED BY
+// PASSWORD '<hash>'` clause removed (everything else, including a trailing
+// WITH GRANT OPTION, preserved verbatim). Anything else -- no TO clause,
+// multiple comma-separated accounts, an unparseable account spec, no
+// IDENTIFIED BY PASSWORD clause, or a REQUIRE clause (whose interaction with
+// clause removal across versions/flavors isn't established) -- reports
+// ok=false, and the caller must execute stmt unmodified, exactly like today.
+func isGrantWithIdentifiedByPassword(stmt string) (rewritten string, user string, host string, hash string, ok bool) {
+	trimmed := strings.TrimLeft(stmt, " \t\r\n(")
+	if !strings.HasPrefix(strings.ToUpper(trimmed), "GRANT") {
+		return "", "", "", "", false
+	}
+	toIdx := findTopLevelKeyword(trimmed, "TO")
+	if toIdx < 0 {
+		return "", "", "", "", false
+	}
+	before := trimmed[:toIdx]
+	afterTo := trimmed[toIdx+len("TO"):]
+	user, host, tail, ok := parseCreateUserAccountRest(afterTo)
+	if !ok {
+		return "", "", "", "", false
+	}
+	hash, afterClause, ok := parseIdentifiedByPasswordClause(tail)
+	if !ok {
+		return "", "", "", "", false
+	}
+	if trimmedAfter := strings.TrimLeft(afterClause, " \t\r\n"); len(trimmedAfter) >= 7 && strings.EqualFold(trimmedAfter[:7], "REQUIRE") {
+		return "", "", "", "", false
+	}
+	// accountSpec is the exact original text of the account token (including
+	// its leading whitespace and original quoting), located via tail's length
+	// -- tail is a content-suffix of afterTo by construction (every step
+	// above only slices, never rewrites), so this never re-serializes the
+	// account spec from parsed parts.
+	accountSpec := afterTo[:len(afterTo)-len(tail)]
+	rest := strings.TrimLeft(afterClause, " \t\r\n")
+	if rest != "" {
+		rest = " " + rest
+	}
+	rewritten = before + "TO" + accountSpec + rest
+	return rewritten, user, host, hash, true
 }
 
 // isCannotUserError reports whether err is ER_CANNOT_USER (1396), the error
