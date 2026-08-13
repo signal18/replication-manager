@@ -93,6 +93,7 @@ var tests = []string{
 	"testDirectReseedSystemAllPreExistingUserAppliedViaAlterUser",
 	"testDirectReseedSystemAllRetainsArtifactOnPhaseTwoFailure",
 	"testDirectReseedSystemAllSplitUserSingleAuthority",
+	"testDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped",
 }
 
 const recoverTime = 8

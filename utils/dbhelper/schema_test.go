@@ -5,6 +5,8 @@
 package dbhelper
 
 import (
+	"context"
+	"errors"
 	"hash/crc64"
 	"regexp"
 	"strings"
@@ -421,5 +423,155 @@ func TestAnalyzeTableRejectsInvalidPersistentIndexes(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+// GetUserAuthConn tests -- GetUserAuthConn is the restore-time-truth
+// counterpart to GetUsers above (schema.go), so its tests live here too.
+
+func userAuthRows(hash string) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{"password"}).AddRow(hash)
+}
+
+func TestGetUserAuthConnMySQLUsesAuthenticationString(t *testing.T) {
+	conn, mock, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}
+	const query = "SELECT authentication_string FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WithArgs("root", "localhost").
+		WillReturnRows(userAuthRows("*HASH1"))
+
+	hash, exists, err := GetUserAuthConn(context.Background(), conn, "root", "localhost", myver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected exists=true")
+	}
+	if hash != "*HASH1" {
+		t.Fatalf("expected hash *HASH1, got %q", hash)
+	}
+}
+
+func TestGetUserAuthConnMariaDB104UsesPassword(t *testing.T) {
+	conn, mock, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 5}
+	const query = "SELECT u.password FROM mysql.user u WHERE u.user = ? AND u.host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WithArgs("root", "localhost").
+		WillReturnRows(userAuthRows("*HASH2"))
+
+	hash, exists, err := GetUserAuthConn(context.Background(), conn, "root", "localhost", myver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected exists=true")
+	}
+	if hash != "*HASH2" {
+		t.Fatalf("expected hash *HASH2, got %q", hash)
+	}
+}
+
+func TestGetUserAuthConnOldMariaDBUsesPlainPassword(t *testing.T) {
+	conn, mock, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 1}
+	const query = "SELECT password FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WithArgs("app", "%").
+		WillReturnRows(userAuthRows("*HASH3"))
+
+	hash, exists, err := GetUserAuthConn(context.Background(), conn, "app", "%", myver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected exists=true")
+	}
+	if hash != "*HASH3" {
+		t.Fatalf("expected hash *HASH3, got %q", hash)
+	}
+}
+
+func TestGetUserAuthConnOldMySQLUsesPlainPassword(t *testing.T) {
+	conn, mock, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "MySQL", Major: 5, Minor: 6}
+	const query = "SELECT password FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WithArgs("app", "%").
+		WillReturnRows(userAuthRows("*HASH4"))
+
+	hash, exists, err := GetUserAuthConn(context.Background(), conn, "app", "%", myver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected exists=true")
+	}
+	if hash != "*HASH4" {
+		t.Fatalf("expected hash *HASH4, got %q", hash)
+	}
+}
+
+func TestGetUserAuthConnNotFound(t *testing.T) {
+	conn, mock, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}
+	const query = "SELECT authentication_string FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WithArgs("ghost", "localhost").
+		WillReturnRows(sqlmock.NewRows([]string{"password"}))
+
+	hash, exists, err := GetUserAuthConn(context.Background(), conn, "ghost", "localhost", myver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if exists {
+		t.Fatal("expected exists=false")
+	}
+	if hash != "" {
+		t.Fatalf("expected empty hash, got %q", hash)
+	}
+}
+
+func TestGetUserAuthConnPostgreSQLUnsupported(t *testing.T) {
+	conn, _, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "PostgreSQL"}
+	_, exists, err := GetUserAuthConn(context.Background(), conn, "root", "localhost", myver)
+	if err == nil {
+		t.Fatal("expected an error for PostgreSQL, got nil")
+	}
+	if exists {
+		t.Fatal("expected exists=false on error")
+	}
+}
+
+func TestGetUserAuthConnQueryErrorIsWrapped(t *testing.T) {
+	conn, mock, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}
+	const query = "SELECT authentication_string FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WithArgs("root", "localhost").
+		WillReturnError(context.DeadlineExceeded)
+
+	_, _, err := GetUserAuthConn(context.Background(), conn, "root", "localhost", myver)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected the wrapped error to unwrap to context.DeadlineExceeded, got: %v", err)
 	}
 }

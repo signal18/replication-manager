@@ -83,6 +83,61 @@ func findTestDirectReseedPluginStatus(server *clusterpkg.ServerMonitor) (status 
 	return "", false, nil
 }
 
+const strictPasswordValidationPluginName = "simple_password_check"
+
+// ensureSimplePasswordCheckInstalled installs the simple_password_check
+// plugin on server if it isn't already ACTIVE, mirroring the SEC0113
+// remediation cluster/cluster_sec_fix.go applies in production --
+// strict_password_validation only meaningfully engages with a validation
+// plugin loaded. Reports installedByUs so the caller can uninstall it again
+// on teardown.
+//
+// A plugin that's present but not ACTIVE (same "found but inactive" case
+// installTestDirectReseedPlugin above handles for a different plugin) cannot
+// simply be INSTALL SONAME'd again -- that fails since the plugin already
+// exists. It's uninstalled and reinstalled to reach a known ACTIVE state,
+// the same way installTestDirectReseedPlugin does; installedByUs is true in
+// that case too (not only when the plugin was wholly absent before), since
+// this scenario is what moved it to ACTIVE and teardown should undo that.
+func ensureSimplePasswordCheckInstalled(server *clusterpkg.ServerMonitor) (installedByUs bool, err error) {
+	found, active, err := findSimplePasswordCheckStatus(server)
+	if err != nil {
+		return false, err
+	}
+	if found && active {
+		return false, nil
+	}
+	if found {
+		if err := server.ExecQueryNoBinLog("UNINSTALL SONAME '"+strictPasswordValidationPluginName+"'", 10*time.Second); err != nil {
+			return false, fmt.Errorf("plugin %s is present but not ACTIVE and could not be uninstalled to reinstall: %w", strictPasswordValidationPluginName, err)
+		}
+	}
+	if err := server.ExecQueryNoBinLog("INSTALL SONAME '"+strictPasswordValidationPluginName+"'", 10*time.Second); err != nil {
+		return false, err
+	}
+	found, active, err = findSimplePasswordCheckStatus(server)
+	if err != nil {
+		return false, err
+	}
+	if !found || !active {
+		return false, fmt.Errorf("plugin %s not ACTIVE immediately after INSTALL SONAME (found=%v, active=%v)", strictPasswordValidationPluginName, found, active)
+	}
+	return true, nil
+}
+
+func findSimplePasswordCheckStatus(server *clusterpkg.ServerMonitor) (found bool, active bool, err error) {
+	plugins, _, err := dbhelper.GetPlugins(server.Conn, server.DBVersion)
+	if err != nil {
+		return false, false, err
+	}
+	for name, p := range plugins {
+		if strings.EqualFold(name, strictPasswordValidationPluginName) {
+			return true, strings.EqualFold(p.Status, "ACTIVE"), nil
+		}
+	}
+	return false, false, nil
+}
+
 // hasPublishedDirectReseedArtifact reports whether dest has at least one
 // published (non-.tmp-) direct-reseed-system artifact directory on disk.
 func hasPublishedDirectReseedArtifact(dest *clusterpkg.ServerMonitor) bool {
@@ -605,5 +660,186 @@ func (regtest *RegTest) TestDirectReseedSystemAllSplitUserSingleAuthority(cl *cl
 	// a successful reseed with replication running, with no duplicate-user
 	// error surfaced, is the observable proof there was exactly one
 	// authoritative user source.
+	return true
+}
+
+// TestDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped
+// proves the fix for a second, subtler failure mode than
+// TestDirectReseedSystemAllPreExistingUserAppliedViaAlterUser above: when the
+// destination already has an account that is BYTE-IDENTICAL to the dumped
+// definition (same password hash, not merely a differing one), replaying its
+// CREATE USER/ALTER USER fallback -- or the GRANT ... IDENTIFIED BY PASSWORD
+// clause mariadb-dump --system=all can also emit for the same account -- can
+// still be rejected by MariaDB's strict_password_validation, which rejects a
+// password-setting clause purely for being present, independent of whether
+// the value would actually change. execSplitdumpSingle's live hash-
+// equivalence check (server.accountAlreadyMatchesHash /
+// dbhelper.GetUserAuthConn, cluster/srv_job_backup.go) must skip re-sending
+// that clause entirely so the reseed no longer aborts on an account that
+// requires no change at all.
+//
+// MariaDB-only: strict_password_validation doesn't exist on MySQL/Percona,
+// so this scenario isn't applicable there (same convention
+// test_restic_reseed_mariabackup.go's flavor gate uses).
+//
+// Runs with strict_password_validation=ON and simple_password_check
+// installed on the destination (mirroring cluster_sec_fix.go's SEC0113
+// remediation, since strict validation requires an active validation plugin
+// to be meaningfully exercised) -- both are restored to their prior state
+// before returning, since server/regtest.go runs scenarios sequentially
+// against one shared cluster outside SUITE mode.
+//
+// Alongside the identical account, a second probe account with a genuinely
+// DIFFERENT definition on each side (mirroring
+// TestDirectReseedSystemAllPreExistingUserAppliedViaAlterUser's
+// max_user_connections observable) proves the new equivalence check is
+// narrowly gated on actual equivalence, not a blanket "never touch a
+// pre-existing account" skip.
+func (regtest *RegTest) TestDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped(cl *clusterpkg.Cluster, conf string, test *clusterpkg.Test) bool {
+	if len(cl.GetSlaves()) == 0 {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No slave available for direct reseed test")
+		return false
+	}
+	master := cl.GetMaster()
+	if master == nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master available for direct reseed test")
+		return false
+	}
+	slave := cl.GetSlaves()[0]
+
+	if !slave.IsMariaDB() {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "strict_password_validation is only supported on MariaDB; test is not applicable to MySQL/Percona")
+		return false
+	}
+
+	cl.SetBenchMethod("table")
+	if err := cl.PrepareBench(); err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "PrepareBench failed: %s", err)
+		return false
+	}
+
+	originalStrict, _, err := dbhelper.GetVariableByNameToUpper(slave.Conn, "STRICT_PASSWORD_VALIDATION", slave.DBVersion)
+	if err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to read destination's strict_password_validation: %s", err)
+		return false
+	}
+	installedPlugin, err := ensureSimplePasswordCheckInstalled(slave)
+	if err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to install simple_password_check on destination: %s", err)
+		return false
+	}
+	// Armed immediately after the plugin install succeeds, before attempting
+	// SET GLOBAL below -- if that SET GLOBAL fails, this scenario must still
+	// not leave a plugin it installed behind on the shared regtest cluster.
+	// Restoring strict_password_validation to originalStrict is harmless even
+	// if the ON below never took effect (same value it already has).
+	defer func() {
+		if err := slave.ExecQueryNoBinLog("SET GLOBAL strict_password_validation = "+originalStrict, 10*time.Second); err != nil {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Failed to restore destination's strict_password_validation (would affect later regtests): %s", err)
+		}
+		if installedPlugin {
+			if err := slave.ExecQueryNoBinLog("UNINSTALL SONAME '"+strictPasswordValidationPluginName+"'", 10*time.Second); err != nil {
+				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+					"Failed to uninstall simple_password_check from destination (would affect later regtests): %s", err)
+			}
+		}
+	}()
+	if err := slave.ExecQueryNoBinLog("SET GLOBAL strict_password_validation = ON", 10*time.Second); err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to enable strict_password_validation on destination: %s", err)
+		return false
+	}
+
+	const identicalProbe = "'direct_reseed_strict_identical'@'%'"
+	const differingProbe = "'direct_reseed_strict_differing'@'%'"
+	const identicalHash = "*6C8989366EAF75BB670AD8EA7A7FC1176A95CEF"
+	const sourceMaxConn = 9
+	const destMaxConn = 2
+
+	// identicalProbe: byte-identical account (same hash) on both sides, plus
+	// a real privilege on the source so --system=all also dumps a GRANT for
+	// it -- this is the case that must now be a no-op skip on the
+	// destination rather than a failed password-setting statement.
+	for _, srv := range []*clusterpkg.ServerMonitor{master, slave} {
+		if err := srv.ExecQueryNoBinLog("DROP USER IF EXISTS "+identicalProbe, 10*time.Second); err != nil {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to reset identical probe user on %s: %s", srv.URL, err)
+			return false
+		}
+		if err := srv.ExecQueryNoBinLog("CREATE USER "+identicalProbe+" IDENTIFIED BY PASSWORD '"+identicalHash+"'", 10*time.Second); err != nil {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to create identical probe user on %s: %s", srv.URL, err)
+			return false
+		}
+	}
+	if err := master.ExecQueryNoBinLog("GRANT SELECT ON test.* TO "+identicalProbe, 10*time.Second); err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to grant privilege to identical probe user on source: %s", err)
+		return false
+	}
+
+	// differingProbe: same account name, DIFFERENT definition on each side
+	// (like TestDirectReseedSystemAllPreExistingUserAppliedViaAlterUser) --
+	// verifies the new equivalence check doesn't turn into a blanket "never
+	// touch a pre-existing account" skip.
+	if err := master.ExecQueryNoBinLog("DROP USER IF EXISTS "+differingProbe, 10*time.Second); err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to reset differing probe user on source: %s", err)
+		return false
+	}
+	if err := master.ExecQueryNoBinLog(fmt.Sprintf("CREATE USER %s WITH MAX_USER_CONNECTIONS %d", differingProbe, sourceMaxConn), 10*time.Second); err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to create differing probe user on source: %s", err)
+		return false
+	}
+	if err := slave.ExecQueryNoBinLog("DROP USER IF EXISTS "+differingProbe, 10*time.Second); err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to reset differing probe user on destination: %s", err)
+		return false
+	}
+	if err := slave.ExecQueryNoBinLog(fmt.Sprintf("CREATE USER %s WITH MAX_USER_CONNECTIONS %d", differingProbe, destMaxConn), 10*time.Second); err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to create differing probe user on destination: %s", err)
+		return false
+	}
+
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST",
+		"Direct reseed %s from %s (strict_password_validation=ON, byte-identical pre-existing account)", slave.URL, master.URL)
+	if err := cl.JobRejoinMysqldumpFromSource(master, slave); err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"JobRejoinMysqldumpFromSource failed (expected the redundant password-setting statement(s) for the identical account to be skipped, not to abort the reseed): %s", err)
+		return false
+	}
+	if !cl.CheckSlavesRunning() {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replication not running after direct reseed")
+		return false
+	}
+
+	var gotMaxConn int
+	if err := slave.Conn.QueryRow("SELECT max_user_connections FROM mysql.user WHERE user = 'direct_reseed_strict_differing' AND host = '%'").Scan(&gotMaxConn); err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to read back differing probe user's max_user_connections on destination: %s", err)
+		return false
+	}
+	if gotMaxConn != sourceMaxConn {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Differing probe user's max_user_connections is %d after reseed, want %d (source's value): a genuinely different account must still be reconciled, not skipped", gotMaxConn, sourceMaxConn)
+		return false
+	}
+
+	// Teardown, verified rather than trusted, same reasoning the other
+	// scenarios in this file document.
+	for _, srv := range []*clusterpkg.ServerMonitor{master, slave} {
+		if err := srv.ExecQueryNoBinLog("DROP USER IF EXISTS "+identicalProbe, 10*time.Second); err != nil {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to clean up identical probe user on %s: %s", srv.URL, err)
+			return false
+		}
+		if err := srv.ExecQueryNoBinLog("DROP USER IF EXISTS "+differingProbe, 10*time.Second); err != nil {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to clean up differing probe user on %s: %s", srv.URL, err)
+			return false
+		}
+	}
+	var leftoverCount int
+	if err := slave.Conn.QueryRow("SELECT COUNT(*) FROM mysql.user WHERE user IN ('direct_reseed_strict_identical', 'direct_reseed_strict_differing')").Scan(&leftoverCount); err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to verify probe user cleanup on destination: %s", err)
+		return false
+	}
+	if leftoverCount != 0 {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Probe users still present on destination after cleanup -- would leave account drift for later regtests")
+		return false
+	}
 	return true
 }

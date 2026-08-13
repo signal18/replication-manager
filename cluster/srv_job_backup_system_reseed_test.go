@@ -14,6 +14,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -67,9 +68,9 @@ func TestIsCreateUserStatement(t *testing.T) {
 		{"CREATE OR REPLACE USER 'x'@'y'", "", "", "", false},
 	}
 	for _, c := range cases {
-		got, account, host, ok := isCreateUserStatement(c.stmt)
-		if ok != c.wantOK || got != c.want || account != c.wantAccount || host != c.wantHost {
-			t.Errorf("isCreateUserStatement(%q) = (%q, %q, %q, %v), want (%q, %q, %q, %v)", c.stmt, got, account, host, ok, c.want, c.wantAccount, c.wantHost, c.wantOK)
+		info, ok := isCreateUserStatement(c.stmt)
+		if ok != c.wantOK || info.AlterUser != c.want || info.User != c.wantAccount || info.Host != c.wantHost {
+			t.Errorf("isCreateUserStatement(%q) = (%q, %q, %q, %v), want (%q, %q, %q, %v)", c.stmt, info.AlterUser, info.User, info.Host, ok, c.want, c.wantAccount, c.wantHost, c.wantOK)
 		}
 	}
 }
@@ -629,5 +630,409 @@ func TestRestoreSystemCatalogProgressTrueAfterPartialCommit(t *testing.T) {
 	}
 	if !progressed {
 		t.Error("expected progressed=true: the first statement committed before the second failed")
+	}
+}
+
+// TestParseIdentifiedByPasswordClauseHash covers the pure parser behind the
+// hash-equivalence skip: only the classic `IDENTIFIED BY PASSWORD '<hash>'`
+// form is recognized; every other auth clause (or no clause at all) reports
+// ok=false rather than guessing.
+func TestParseIdentifiedByPasswordClauseHash(t *testing.T) {
+	cases := []struct {
+		rest     string
+		wantHash string
+		wantOK   bool
+	}{
+		{"IDENTIFIED BY PASSWORD '*ABCDEF'", "*ABCDEF", true},
+		{"   IDENTIFIED BY PASSWORD '*ABCDEF'", "*ABCDEF", true},
+		{"identified by password '*abcdef'", "*abcdef", true},
+		{"IDENTIFIED BY PASSWORD 'o''brien'", "o'brien", true},
+		{"IDENTIFIED VIA mysql_native_password USING 'x'", "", false},
+		{"IDENTIFIED WITH mysql_native_password AS '*ABCDEF'", "", false},
+		{"", "", false},
+		{"IDENTIFIED BY PASSWORDX '*ABCDEF'", "", false},
+		{"WITH GRANT OPTION", "", false},
+		{"IDENTIFIED BY PASSWORD ''", "", false},
+	}
+	for _, c := range cases {
+		hash, _, ok := parseIdentifiedByPasswordClause(c.rest)
+		if ok != c.wantOK || hash != c.wantHash {
+			t.Errorf("parseIdentifiedByPasswordClause(%q) = (%q, _, %v), want (%q, _, %v)", c.rest, hash, ok, c.wantHash, c.wantOK)
+		}
+	}
+}
+
+// TestIsCreateUserStatementHashExtraction covers isCreateUserStatement's
+// additional Hash/HashOK/AccountSpec/AfterHash fields, layered on top of the
+// existing TestIsCreateUserStatement coverage of the ALTER USER
+// rewrite/account parse. AccountSpec/AfterHash matter specifically because
+// execSplitdumpSingle uses them to rebuild a password-stripped ALTER USER
+// when other attributes accompany the password clause -- dropping the whole
+// statement in that case would silently leave those attributes unreconciled.
+func TestIsCreateUserStatementHashExtraction(t *testing.T) {
+	cases := []struct {
+		stmt            string
+		wantHash        string
+		wantHashOK      bool
+		wantAccountSpec string
+		wantAfterHash   string
+	}{
+		{"CREATE USER 'root'@'localhost' IDENTIFIED BY PASSWORD '*HASH1'", "*HASH1", true, " 'root'@'localhost'", ""},
+		{"CREATE USER 'root'@'localhost' IDENTIFIED BY PASSWORD '*HASH1' WITH MAX_USER_CONNECTIONS 5", "*HASH1", true, " 'root'@'localhost'", " WITH MAX_USER_CONNECTIONS 5"},
+		{"CREATE USER 'mariadb.sys'@'localhost' IDENTIFIED VIA mysql_native_password USING 'x'", "", false, "", ""},
+		{"CREATE USER 'x'@'y'", "", false, "", ""},
+	}
+	for _, c := range cases {
+		info, ok := isCreateUserStatement(c.stmt)
+		if !ok {
+			t.Fatalf("isCreateUserStatement(%q) unexpectedly reported ok=false", c.stmt)
+		}
+		if info.HashOK != c.wantHashOK || info.Hash != c.wantHash {
+			t.Errorf("isCreateUserStatement(%q) hash = (%q, %v), want (%q, %v)", c.stmt, info.Hash, info.HashOK, c.wantHash, c.wantHashOK)
+		}
+		if info.HashOK {
+			if info.AccountSpec != c.wantAccountSpec {
+				t.Errorf("isCreateUserStatement(%q) AccountSpec = %q, want %q", c.stmt, info.AccountSpec, c.wantAccountSpec)
+			}
+			if info.AfterHash != c.wantAfterHash {
+				t.Errorf("isCreateUserStatement(%q) AfterHash = %q, want %q", c.stmt, info.AfterHash, c.wantAfterHash)
+			}
+		}
+	}
+}
+
+// TestIsGrantWithIdentifiedByPassword covers the GRANT clause-stripping
+// parser: only the fixed, single-account shape is recognized, and it must
+// never guess -- multiple accounts, a REQUIRE clause, or no IDENTIFIED BY
+// PASSWORD clause at all must all report ok=false so the caller executes the
+// statement unmodified.
+func TestIsGrantWithIdentifiedByPassword(t *testing.T) {
+	cases := []struct {
+		name          string
+		stmt          string
+		wantRewritten string
+		wantUser      string
+		wantHost      string
+		wantHash      string
+		wantOK        bool
+	}{
+		{
+			name:          "with grant option preserved",
+			stmt:          "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY PASSWORD '*HASH' WITH GRANT OPTION",
+			wantRewritten: "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' WITH GRANT OPTION",
+			wantUser:      "root", wantHost: "localhost", wantHash: "*HASH", wantOK: true,
+		},
+		{
+			name:          "no trailing clause",
+			stmt:          "GRANT SELECT ON db.* TO 'app'@'%' IDENTIFIED BY PASSWORD '*H2'",
+			wantRewritten: "GRANT SELECT ON db.* TO 'app'@'%'",
+			wantUser:      "app", wantHost: "%", wantHash: "*H2", wantOK: true,
+		},
+		{
+			name:   "multiple accounts bail out",
+			stmt:   "GRANT ALL PRIVILEGES ON *.* TO 'a'@'h1', 'b'@'h2' IDENTIFIED BY PASSWORD '*H' WITH GRANT OPTION",
+			wantOK: false,
+		},
+		{
+			name:   "require clause bails out",
+			stmt:   "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY PASSWORD '*HASH' REQUIRE NONE WITH GRANT OPTION",
+			wantOK: false,
+		},
+		{
+			name:   "no identified clause",
+			stmt:   "GRANT PROXY ON ''@'%' TO 'root'@'localhost' WITH GRANT OPTION",
+			wantOK: false,
+		},
+		{
+			name:   "not a grant statement",
+			stmt:   "CREATE USER 'x'@'y' IDENTIFIED BY PASSWORD '*H'",
+			wantOK: false,
+		},
+		{
+			name:   "no to clause",
+			stmt:   "GRANT ALL PRIVILEGES ON *.*",
+			wantOK: false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rewritten, user, host, hash, ok := isGrantWithIdentifiedByPassword(c.stmt)
+			if ok != c.wantOK {
+				t.Fatalf("isGrantWithIdentifiedByPassword(%q) ok = %v, want %v", c.stmt, ok, c.wantOK)
+			}
+			if !ok {
+				return
+			}
+			if rewritten != c.wantRewritten || user != c.wantUser || host != c.wantHost || hash != c.wantHash {
+				t.Errorf("isGrantWithIdentifiedByPassword(%q) = (%q, %q, %q, %q), want (%q, %q, %q, %q)",
+					c.stmt, rewritten, user, host, hash, c.wantRewritten, c.wantUser, c.wantHost, c.wantHash)
+			}
+		})
+	}
+}
+
+// TestAccountAlreadyMatchesHash covers the live equivalence-lookup helper
+// directly: matching hash -> skip; differing hash -> no skip; account absent
+// -> no skip (nothing to compare against); lookup error -> no skip, error
+// returned (the caller treats this as "forgo the optimization", not fatal).
+func TestAccountAlreadyMatchesHash(t *testing.T) {
+	const lookupQuery = "SELECT password FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+
+	t.Run("matching hash", func(t *testing.T) {
+		server, mock, conn, closeFn := newSystemReseedTestServer(t)
+		defer closeFn()
+		mock.ExpectQuery(regexp.QuoteMeta(lookupQuery)).WithArgs("root", "localhost").
+			WillReturnRows(sqlmock.NewRows([]string{"password"}).AddRow("*HASH"))
+		skip, err := server.accountAlreadyMatchesHash(context.Background(), conn, "root", "localhost", "*HASH")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !skip {
+			t.Error("expected skip=true for a matching hash")
+		}
+	})
+
+	t.Run("differing hash", func(t *testing.T) {
+		server, mock, conn, closeFn := newSystemReseedTestServer(t)
+		defer closeFn()
+		mock.ExpectQuery(regexp.QuoteMeta(lookupQuery)).WithArgs("root", "localhost").
+			WillReturnRows(sqlmock.NewRows([]string{"password"}).AddRow("*OTHER"))
+		skip, err := server.accountAlreadyMatchesHash(context.Background(), conn, "root", "localhost", "*HASH")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if skip {
+			t.Error("expected skip=false for a differing hash")
+		}
+	})
+
+	t.Run("account absent", func(t *testing.T) {
+		server, mock, conn, closeFn := newSystemReseedTestServer(t)
+		defer closeFn()
+		mock.ExpectQuery(regexp.QuoteMeta(lookupQuery)).WithArgs("ghost", "localhost").
+			WillReturnRows(sqlmock.NewRows([]string{"password"}))
+		skip, err := server.accountAlreadyMatchesHash(context.Background(), conn, "ghost", "localhost", "*HASH")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if skip {
+			t.Error("expected skip=false when the account doesn't exist yet")
+		}
+	})
+
+	t.Run("lookup error", func(t *testing.T) {
+		server, mock, conn, closeFn := newSystemReseedTestServer(t)
+		defer closeFn()
+		mock.ExpectQuery(regexp.QuoteMeta(lookupQuery)).WithArgs("root", "localhost").
+			WillReturnError(errors.New("connection reset"))
+		skip, err := server.accountAlreadyMatchesHash(context.Background(), conn, "root", "localhost", "*HASH")
+		if err == nil {
+			t.Fatal("expected the lookup error to propagate")
+		}
+		if skip {
+			t.Error("expected skip=false on a lookup error")
+		}
+	})
+}
+
+// TestExecSplitdumpSingleSkipsCreateUserWhenHashMatches is the regression for
+// the strict_password_validation case: when the destination already has this
+// exact account with this exact password hash, CREATE USER (and its ALTER
+// USER fallback) must never be sent at all -- both can be rejected by
+// strict_password_validation purely for containing a password-setting
+// clause, even though the value wouldn't change.
+func TestExecSplitdumpSingleSkipsCreateUserWhenHashMatches(t *testing.T) {
+	server, mock, conn, closeFn := newSystemReseedTestServer(t)
+	defer closeFn()
+
+	stmt := "CREATE USER 'root'@'localhost' IDENTIFIED BY PASSWORD '*HASHMATCH'"
+	const lookupQuery = "SELECT password FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(lookupQuery)).WithArgs("root", "localhost").
+		WillReturnRows(sqlmock.NewRows([]string{"password"}).AddRow("*HASHMATCH"))
+
+	var progressed atomic.Bool
+	err := server.execSplitdumpSingle(context.Background(), conn, stmt, "mysql.system-all.sql.gz", &progressed)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// No ExpectExec was registered at all: if CREATE USER (or an ALTER USER
+	// fallback) had actually been sent, sqlmock would have returned an
+	// "unexpected call" error, which would have surfaced as err above.
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+	if progressed.Load() {
+		t.Error("a deliberate hash-equivalence skip must not mark progress -- nothing committed")
+	}
+}
+
+// TestExecSplitdumpSingleCreateUserStripsPasswordButKeepsOtherAttributes is
+// the regression for silently dropping non-password attributes: a matching
+// hash must not turn into a full statement skip when the dumped CREATE USER
+// also carries other attributes (resource limits, lock state, password
+// expiry, etc.) -- those must still be reconciled against the destination.
+// Only the redundant IDENTIFIED BY PASSWORD clause is dropped; the rest is
+// replayed as ALTER USER.
+func TestExecSplitdumpSingleCreateUserStripsPasswordButKeepsOtherAttributes(t *testing.T) {
+	server, mock, conn, closeFn := newSystemReseedTestServer(t)
+	defer closeFn()
+
+	stmt := "CREATE USER 'root'@'localhost' IDENTIFIED BY PASSWORD '*HASHMATCH' WITH MAX_USER_CONNECTIONS 7"
+	rewritten := "ALTER USER 'root'@'localhost' WITH MAX_USER_CONNECTIONS 7"
+	const lookupQuery = "SELECT password FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(lookupQuery)).WithArgs("root", "localhost").
+		WillReturnRows(sqlmock.NewRows([]string{"password"}).AddRow("*HASHMATCH"))
+	mock.ExpectExec(regexp.QuoteMeta(rewritten)).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	var progressed atomic.Bool
+	err := server.execSplitdumpSingle(context.Background(), conn, stmt, "mysql.system-all.sql.gz", &progressed)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Only the rewritten (password-stripped) ALTER USER was registered: if
+	// either the original CREATE USER or a full skip (nothing sent) had
+	// occurred instead, sqlmock's unmet/unexpected-call checks below would
+	// catch it.
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+	if !progressed.Load() {
+		t.Error("expected progress to be marked after the rewritten ALTER USER committed")
+	}
+}
+
+// TestExecSplitdumpSingleCreateUserExecutesWhenHashDiffers proves the skip
+// above is gated on actual equivalence, not merely on the account existing:
+// a differing hash must still execute CREATE USER (and fall through to the
+// existing ALTER USER fallback machinery on collision) exactly as before.
+func TestExecSplitdumpSingleCreateUserExecutesWhenHashDiffers(t *testing.T) {
+	server, mock, conn, closeFn := newSystemReseedTestServer(t)
+	defer closeFn()
+
+	stmt := "CREATE USER 'root'@'localhost' IDENTIFIED BY PASSWORD '*NEWHASH'"
+	const lookupQuery = "SELECT password FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(lookupQuery)).WithArgs("root", "localhost").
+		WillReturnRows(sqlmock.NewRows([]string{"password"}).AddRow("*OLDHASH"))
+	mock.ExpectExec(regexp.QuoteMeta(stmt)).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	var progressed atomic.Bool
+	err := server.execSplitdumpSingle(context.Background(), conn, stmt, "mysql.system-all.sql.gz", &progressed)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+	if !progressed.Load() {
+		t.Error("expected progress to be marked after CREATE USER committed")
+	}
+}
+
+// TestExecSplitdumpSingleCreateUserExecutesWhenLookupErrors proves a failed
+// equivalence lookup only forgoes the optimization, never blocks the
+// statement: CREATE USER still executes normally.
+func TestExecSplitdumpSingleCreateUserExecutesWhenLookupErrors(t *testing.T) {
+	server, mock, conn, closeFn := newSystemReseedTestServer(t)
+	defer closeFn()
+
+	stmt := "CREATE USER 'root'@'localhost' IDENTIFIED BY PASSWORD '*HASH'"
+	const lookupQuery = "SELECT password FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(lookupQuery)).WithArgs("root", "localhost").
+		WillReturnError(errors.New("connection reset"))
+	mock.ExpectExec(regexp.QuoteMeta(stmt)).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	var progressed atomic.Bool
+	err := server.execSplitdumpSingle(context.Background(), conn, stmt, "mysql.system-all.sql.gz", &progressed)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+	if !progressed.Load() {
+		t.Error("expected progress to be marked after CREATE USER committed")
+	}
+}
+
+// TestExecSplitdumpSingleGrantRewritesWhenHashMatches is the GRANT-side
+// regression: mariadb-dump --system=all emits `GRANT ... IDENTIFIED BY
+// PASSWORD` for the same account CREATE USER targets, and that clause can
+// independently trip strict_password_validation. When the hash already
+// matches, only that clause is stripped -- the privilege grant itself still
+// executes.
+func TestExecSplitdumpSingleGrantRewritesWhenHashMatches(t *testing.T) {
+	server, mock, conn, closeFn := newSystemReseedTestServer(t)
+	defer closeFn()
+
+	stmt := "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY PASSWORD '*HASHMATCH' WITH GRANT OPTION"
+	rewritten := "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' WITH GRANT OPTION"
+	const lookupQuery = "SELECT password FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(lookupQuery)).WithArgs("root", "localhost").
+		WillReturnRows(sqlmock.NewRows([]string{"password"}).AddRow("*HASHMATCH"))
+	mock.ExpectExec(regexp.QuoteMeta(rewritten)).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	var progressed atomic.Bool
+	err := server.execSplitdumpSingle(context.Background(), conn, stmt, "mysql.system-all.sql.gz", &progressed)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Only the rewritten statement was registered: if the original
+	// (unstripped) GRANT had been sent instead, sqlmock would reject it as
+	// an unexpected call, surfacing as err above.
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+	if !progressed.Load() {
+		t.Error("expected progress to be marked after the rewritten GRANT committed")
+	}
+}
+
+// TestExecSplitdumpSingleGrantExecutesUnmodifiedWhenHashDiffers proves the
+// GRANT rewrite is also gated on actual equivalence: a differing hash must
+// execute the GRANT exactly as dumped, IDENTIFIED BY PASSWORD clause intact.
+func TestExecSplitdumpSingleGrantExecutesUnmodifiedWhenHashDiffers(t *testing.T) {
+	server, mock, conn, closeFn := newSystemReseedTestServer(t)
+	defer closeFn()
+
+	stmt := "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY PASSWORD '*NEWHASH' WITH GRANT OPTION"
+	const lookupQuery = "SELECT password FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(lookupQuery)).WithArgs("root", "localhost").
+		WillReturnRows(sqlmock.NewRows([]string{"password"}).AddRow("*OLDHASH"))
+	mock.ExpectExec(regexp.QuoteMeta(stmt)).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	var progressed atomic.Bool
+	err := server.execSplitdumpSingle(context.Background(), conn, stmt, "mysql.system-all.sql.gz", &progressed)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+	if !progressed.Load() {
+		t.Error("expected progress to be marked after the unmodified GRANT committed")
+	}
+}
+
+// TestExecSplitdumpSingleGrantWithoutIdentifiedClauseUnaffected proves
+// ordinary GRANT statements (no password-setting clause at all -- e.g. GRANT
+// PROXY, or a modern GRANT with no legacy auth tail) never trigger the new
+// equivalence lookup and execute exactly as before.
+func TestExecSplitdumpSingleGrantWithoutIdentifiedClauseUnaffected(t *testing.T) {
+	server, mock, conn, closeFn := newSystemReseedTestServer(t)
+	defer closeFn()
+
+	stmt := "GRANT PROXY ON ''@'%' TO 'root'@'localhost' WITH GRANT OPTION"
+	mock.ExpectExec(regexp.QuoteMeta(stmt)).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	var progressed atomic.Bool
+	err := server.execSplitdumpSingle(context.Background(), conn, stmt, "mysql.system-all.sql.gz", &progressed)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+	if !progressed.Load() {
+		t.Error("expected progress to be marked after GRANT PROXY committed")
 	}
 }
