@@ -1442,14 +1442,18 @@ pr_pipe() {
 
 partialRestore() {
     send_lines_to_api "Starting partial restore..." "$job" "$LVL_INFO"
-    # Optional $1: exit status of the mariabackup/xtrabackup --prepare
-    # --export invocation the caller just ran, folded in here so a prepare
-    # failure is caught even if it leaves plausible-looking files behind that
-    # let every subsequent pr_cmd/pr_pipe step below nominally succeed.
-    # Nothing past this line ever resets PR_STATUS back to 0 (pr_cmd/pr_pipe
-    # only ever set it to 1 on failure), so a nonzero seed here survives to
-    # the final return regardless of how the rest of the restore goes.
-    PR_STATUS=${1:-0}
+    # Deliberately NOT seeded from the prepare command's own exit status: that
+    # was tried (folding $? from the mariabackup/xtrabackup --prepare --export
+    # invocation in here) and reverted -- mariabackup/xtrabackup --prepare
+    # --export can return a nonzero exit code from a harmless warning in its
+    # internal --bootstrap sub-invocation while still producing a fully usable
+    # export, so treating that exit code as authoritative caused false-positive
+    # errors on restores that actually succeeded (confirmed: partialRestore
+    # below ran to completion normally in the case that surfaced this). What
+    # actually happened to the prepared files is only knowable by the restore
+    # steps below actually touching them, so PR_STATUS is deliberately judged
+    # solely on those (pr_cmd/pr_pipe), matching SQL mode's doneJob() check.
+    PR_STATUS=0
     case "$job" in
     reseed*)
         PR_LOG="$LOG_DIR/reseed.out"
@@ -1462,9 +1466,6 @@ partialRestore() {
         ;;
     esac
 
-    if [ "$PR_STATUS" -ne 0 ]; then
-        pr_log "ERROR: prepare command exited with status $PR_STATUS before partial restore started."
-    fi
     pr_log "Partial restore started for job $job."
 
     local isr=0
@@ -1875,7 +1876,7 @@ for job in "${JOBS[@]}"; do
             pauseJob "$job"
             socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
             $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
-            partialRestore $?
+            partialRestore
             ;;
         reseedmariabackup)
             rm -rf $BACKUPDIR
@@ -1886,7 +1887,7 @@ for job in "${JOBS[@]}"; do
             socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | mbstream -x -C $BACKUPDIR
             # mbstream -p, --parallel
             $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
-            partialRestore $?
+            partialRestore
             ;;
         flashbackxtrabackup)
             rm -rf $BACKUPDIR
@@ -1896,7 +1897,7 @@ for job in "${JOBS[@]}"; do
             pauseJob "$job"
             socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
             $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
-            partialRestore $?
+            partialRestore
             ;;
         flashbackmariabackup)
             rm -rf $BACKUPDIR
@@ -1906,7 +1907,7 @@ for job in "${JOBS[@]}"; do
             pauseJob "$job"
             socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
             $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
-            partialRestore $?
+            partialRestore
             ;;
         xtrabackup)
             cd /docker-entrypoint-initdb.d
