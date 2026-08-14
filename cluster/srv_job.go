@@ -561,9 +561,21 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 // otherwise the dbjobs script would also attempt to run them.
 func (server *ServerMonitor) setTaskCookie(task string) error {
 	switch config.TaskName(task) {
-	// Physical backup — dbjobs runs xtrabackup/mariabackup on DB host
-	case config.ConstTaskXB, config.ConstTaskMB:
-		return server.SetWaitPhysicalBackupCookie()
+	// Physical backup — dbjobs runs xtrabackup/mariabackup on DB host. Each
+	// tool gets its own cookie so dbjobs_new.sh's fixed poll order (xtrabackup
+	// checked before mariabackup) can't claim a mariabackup task as xtrabackup.
+	// Clear the sibling tool's cookie (and the old pre-split shared one) first:
+	// a stale leftover from a previous run or a pre-upgrade install could
+	// otherwise still be picked up by the poll for the *other* tool before its
+	// own cookie is ever checked.
+	case config.ConstTaskXB:
+		server.DelWaitMariabackupCookie()
+		server.delLegacyPhysicalBackupCookie()
+		return server.SetWaitXtrabackupCookie()
+	case config.ConstTaskMB:
+		server.DelWaitXtrabackupCookie()
+		server.delLegacyPhysicalBackupCookie()
+		return server.SetWaitMariabackupCookie()
 	// Optimize — dbjobs runs mysqlcheck on DB host
 	case config.ConstTaskOptimize:
 		return server.SetWaitOptimizeCookie()
@@ -608,8 +620,15 @@ func (server *ServerMonitor) setTaskCookie(task string) error {
 // terminal state we just recorded.
 func (server *ServerMonitor) delTaskCookie(task string) error {
 	switch config.TaskName(task) {
-	case config.ConstTaskXB, config.ConstTaskMB:
-		return server.DelWaitPhysicalBackupCookie()
+	// Also clears the old pre-split shared cookie here, not just on the next
+	// setTaskCookie: reconciliation should leave the datadir fully clean
+	// immediately rather than waiting for the next physical backup dispatch.
+	case config.ConstTaskXB:
+		server.delLegacyPhysicalBackupCookie()
+		return server.DelWaitXtrabackupCookie()
+	case config.ConstTaskMB:
+		server.delLegacyPhysicalBackupCookie()
+		return server.DelWaitMariabackupCookie()
 	case config.ConstTaskOptimize:
 		return server.DelWaitOptimizeCookie()
 	case config.ConstTaskRestart:

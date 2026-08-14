@@ -492,8 +492,18 @@ func (server *ServerMonitor) SetWaitLogicalBackupCookie() error {
 	return server.createCookie("cookie_waitlogicalbackup")
 }
 
-func (server *ServerMonitor) SetWaitPhysicalBackupCookie() error {
-	return server.createCookie("cookie_waitphysicalbackup")
+// SetWaitXtrabackupCookie and SetWaitMariabackupCookie are tool-specific so
+// CheckTaskNeeded (cluster/srv_chk.go) can tell which physical backup tool a
+// pending API-mode task actually needs. A single shared cookie here would let
+// dbjobs_new.sh's fixed poll order (xtrabackup checked before mariabackup)
+// claim any pending physical backup as "xtrabackup" regardless of which tool
+// cluster.Conf.BackupPhysicalType actually queued.
+func (server *ServerMonitor) SetWaitXtrabackupCookie() error {
+	return server.createCookie("cookie_waitxtrabackup")
+}
+
+func (server *ServerMonitor) SetWaitMariabackupCookie() error {
+	return server.createCookie("cookie_waitmariabackup")
 }
 
 func (server *ServerMonitor) SetWaitResticReseedCookie() error {

@@ -118,7 +118,20 @@ func (server *ServerMonitor) DelWaitLogicalBackupCookie() error {
 	return server.delCookie("cookie_waitlogicalbackup")
 }
 
-func (server *ServerMonitor) DelWaitPhysicalBackupCookie() error {
+func (server *ServerMonitor) DelWaitXtrabackupCookie() error {
+	return server.delCookie("cookie_waitxtrabackup")
+}
+
+func (server *ServerMonitor) DelWaitMariabackupCookie() error {
+	return server.delCookie("cookie_waitmariabackup")
+}
+
+// delLegacyPhysicalBackupCookie removes the pre-split "cookie_waitphysicalbackup"
+// file that older builds wrote for both xtrabackup and mariabackup tasks.
+// Nothing reads this key anymore, but a node upgraded mid-cycle can still have
+// one on disk; best-effort cleanup here keeps it from confusing anyone poking
+// around the datadir by hand.
+func (server *ServerMonitor) delLegacyPhysicalBackupCookie() error {
 	return server.delCookie("cookie_waitphysicalbackup")
 }
 

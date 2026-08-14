@@ -1740,3 +1740,131 @@ func TestJobBackupDBLog_SQLMode_StillOpensReceiver(t *testing.T) {
 		t.Fatalf("SQL mode should still pre-open exactly one SST receiver, got %d new (ports %v)", len(added), added)
 	}
 }
+
+// TestPhysicalBackupCookie_QueueMariabackup_OnlyMariabackupNeedsFires is the
+// core regression for the xtrabackup/mariabackup cookie split: dbjobs_new.sh
+// polls CheckTaskNeeded("xtrabackup") before CheckTaskNeeded("mariabackup")
+// (JOBS array order in share/scripts/dbjobs_new.sh). Before the split, both
+// task names shared one cookie, so the xtrabackup poll could claim a task
+// that was actually queued as mariabackup. Queuing mariabackup here must
+// leave the xtrabackup "needs" check false and the mariabackup one true.
+func TestPhysicalBackupCookie_QueueMariabackup_OnlyMariabackupNeedsFires(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+
+	if _, err := server.JobInsertTask(string(config.ConstTaskMB), "0", "monitor-host"); err != nil {
+		t.Fatalf("JobInsertTask(mariabackup) failed: %v", err)
+	}
+
+	if needed, err := server.CheckTaskNeeded(string(config.ConstTaskXB)); err != nil || needed {
+		t.Fatalf("CheckTaskNeeded(xtrabackup) = (%v, %v), want (false, nil) after queuing mariabackup", needed, err)
+	}
+
+	needed, err := server.CheckTaskNeeded(string(config.ConstTaskMB))
+	if err != nil || !needed {
+		t.Fatalf("CheckTaskNeeded(mariabackup) = (%v, %v), want (true, nil)", needed, err)
+	}
+
+	// The cookie is consumed on first read: a second poll must not re-fire.
+	if needed, err := server.CheckTaskNeeded(string(config.ConstTaskMB)); err != nil || needed {
+		t.Fatalf("CheckTaskNeeded(mariabackup) second poll = (%v, %v), want (false, nil)", needed, err)
+	}
+}
+
+// TestPhysicalBackupCookie_QueueXtrabackup_OnlyXtrabackupNeedsFires is the
+// mirror image: queuing xtrabackup must not make the mariabackup poll fire.
+func TestPhysicalBackupCookie_QueueXtrabackup_OnlyXtrabackupNeedsFires(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+
+	if _, err := server.JobInsertTask(string(config.ConstTaskXB), "0", "monitor-host"); err != nil {
+		t.Fatalf("JobInsertTask(xtrabackup) failed: %v", err)
+	}
+
+	if needed, err := server.CheckTaskNeeded(string(config.ConstTaskMB)); err != nil || needed {
+		t.Fatalf("CheckTaskNeeded(mariabackup) = (%v, %v), want (false, nil) after queuing xtrabackup", needed, err)
+	}
+
+	needed, err := server.CheckTaskNeeded(string(config.ConstTaskXB))
+	if err != nil || !needed {
+		t.Fatalf("CheckTaskNeeded(xtrabackup) = (%v, %v), want (true, nil)", needed, err)
+	}
+}
+
+// TestPhysicalBackupCookie_QueueClearsStaleSiblingCookie guards against a
+// leftover cookie from an earlier run (or a different tool that was
+// previously configured) surviving to steal the next dispatch. Before this
+// fix, a stale cookie_waitxtrabackup left over from any prior state would
+// still be consumed by dbjobs_new.sh's xtrabackup poll -- which runs before
+// the mariabackup poll -- even though the newly queued task is mariabackup.
+func TestPhysicalBackupCookie_QueueClearsStaleSiblingCookie(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+
+	// Simulate a stale cookie left behind by an earlier xtrabackup dispatch
+	// that was never consumed (e.g. the node was down, or the tool was
+	// switched before dbjobs polled).
+	if err := server.SetWaitXtrabackupCookie(); err != nil {
+		t.Fatalf("failed to seed stale xtrabackup cookie: %v", err)
+	}
+
+	if _, err := server.JobInsertTask(string(config.ConstTaskMB), "0", "monitor-host"); err != nil {
+		t.Fatalf("JobInsertTask(mariabackup) failed: %v", err)
+	}
+
+	if server.HasWaitXtrabackupCookie() {
+		t.Fatal("expected stale sibling xtrabackup cookie to be cleared when queuing mariabackup")
+	}
+	if !server.HasWaitMariabackupCookie() {
+		t.Fatal("expected mariabackup cookie to be set")
+	}
+
+	// The stale cookie must not survive to be picked up by dbjobs' xtrabackup
+	// poll, which runs before the mariabackup poll.
+	if needed, err := server.CheckTaskNeeded(string(config.ConstTaskXB)); err != nil || needed {
+		t.Fatalf("CheckTaskNeeded(xtrabackup) = (%v, %v), want (false, nil)", needed, err)
+	}
+}
+
+// TestPhysicalBackupCookie_QueueClearsLegacySharedCookie guards against the
+// pre-split "cookie_waitphysicalbackup" artifact (shared by both tools)
+// surviving on a node upgraded mid-cycle. Nothing reads that key anymore,
+// but queuing a physical backup should still sweep it away.
+func TestPhysicalBackupCookie_QueueClearsLegacySharedCookie(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+
+	if err := server.createCookie("cookie_waitphysicalbackup"); err != nil {
+		t.Fatalf("failed to seed legacy shared cookie: %v", err)
+	}
+
+	if _, err := server.JobInsertTask(string(config.ConstTaskMB), "0", "monitor-host"); err != nil {
+		t.Fatalf("JobInsertTask(mariabackup) failed: %v", err)
+	}
+
+	if server.hasCookie("cookie_waitphysicalbackup") {
+		t.Fatal("expected legacy shared cookie to be cleared when queuing a physical backup")
+	}
+}
+
+// TestPhysicalBackupCookie_ReconcileClearsLegacySharedCookie covers the
+// second cleanup path: restart reconciliation (delTaskCookie, driven by
+// ReconcileRestoredAPIJobs) should sweep the legacy shared cookie immediately
+// rather than leaving it on disk until the next physical backup is queued.
+func TestPhysicalBackupCookie_ReconcileClearsLegacySharedCookie(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+	task := string(config.ConstTaskMB)
+
+	if err := server.createCookie("cookie_waitphysicalbackup"); err != nil {
+		t.Fatalf("failed to seed legacy shared cookie: %v", err)
+	}
+	if err := server.SetWaitMariabackupCookie(); err != nil {
+		t.Fatalf("failed to seed mariabackup cookie: %v", err)
+	}
+	server.JobResults.Set(task, &config.Task{Task: task, State: JobStateAvailable, Done: 0, Start: 100})
+
+	server.ReconcileRestoredAPIJobs()
+
+	if server.hasCookie("cookie_waitphysicalbackup") {
+		t.Fatal("expected reconciliation to clear the legacy shared cookie")
+	}
+	if server.HasWaitMariabackupCookie() {
+		t.Fatal("expected reconciliation to clear the reconciled task's own cookie")
+	}
+}

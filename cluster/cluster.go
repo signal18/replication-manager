@@ -1371,7 +1371,7 @@ func (cluster *Cluster) StateProcessing() {
 			if s.ErrKey == "WARN0112" {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have physical backup")
 				for _, srv := range cluster.Servers {
-					if srv.HasWaitPhysicalBackupCookie() {
+					if srv.HasWaitXtrabackupCookie() || srv.HasWaitMariabackupCookie() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for physical backup", srv.URL)
 						cluster.trackTickGoroutine(func() {
 							err := srv.JobReseedPhysicalBackup("default")

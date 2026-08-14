@@ -431,8 +431,9 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 		return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
 	}
 
-	//Delete wait physical backup cookie
-	server.DelWaitPhysicalBackupCookie()
+	//Delete wait physical backup cookie (either tool, whichever was pending)
+	server.DelWaitXtrabackupCookie()
+	server.DelWaitMariabackupCookie()
 
 	task := "reseed" + backtype
 	if ok, currentTask := server.TrySetInReseedBackup(task); !ok {
@@ -533,8 +534,9 @@ func (server *ServerMonitor) JobReseedPhysicalBackupWithPayload(backtype, backup
 		return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
 	}
 
-	//Delete wait physical backup cookie
-	server.DelWaitPhysicalBackupCookie()
+	//Delete wait physical backup cookie (either tool, whichever was pending)
+	server.DelWaitXtrabackupCookie()
+	server.DelWaitMariabackupCookie()
 
 	task := "reseed" + backtype
 	if ok, currentTask := server.TrySetInReseedBackup(task); !ok {
@@ -660,8 +662,9 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 		}
 	}
 
-	//Delete wait physical backup cookie
-	server.DelWaitPhysicalBackupCookie()
+	//Delete wait physical backup cookie (either tool, whichever was pending)
+	server.DelWaitXtrabackupCookie()
+	server.DelWaitMariabackupCookie()
 
 	task := "flashback" + cluster.Conf.BackupPhysicalType
 	if ok, currentTask := server.TrySetInReseedBackup(task); !ok {
