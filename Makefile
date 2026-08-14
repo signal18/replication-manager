@@ -21,7 +21,7 @@ WITH_REACT = ON
 .PHONY: all bin non-cgo tar react osc osc-bin osc-basedir osc-cgo osc-cgo-basedir \
         tst tst-basedir pro pro-bin pro-basedir cli arb emb \
         plugins plugin-keys plugin-sigs plugin-push plugin-repo-init plugins-clean \
-        clean proto
+        clean proto repos
 
 all: cli bin tar arb
 
@@ -36,6 +36,13 @@ pro osc emb pro-basedir : react
 react:
 	$(Building react frontend $(REACT))
 	@if [ $(WITH_REACT) = "ON" ]; then rm -rf ./share/dashboard/assets; npm --prefix=./share/dashboard_react install; npm --prefix=./share/dashboard_react run build; cp -rp ./share/dashboard_react/dist/* ./share/dashboard/; fi
+
+# repos regenerates share/repo/repos.json (the embedded docker image tag catalog
+# used as the fallback when no back-office repos.json has been pushed). It is
+# network-dependent (Docker Hub) and needs jq, so it is NOT part of the default
+# build — run it in CI/release or manually. Mirrors the BO generate-docker-repos.sh.
+repos:
+	./scripts/updaterepo.sh
 
 osc: osc-bin plugins
 
