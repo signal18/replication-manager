@@ -897,7 +897,9 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 
 	meta := snapshotLogicalBackupMeta(source)
 	restoreUser, splitUser, userRestoreAssessment := resolveLogicalReseedUserRestore(cluster, backtype, backupfile, meta, nil)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical reseed preflight for %s: %s", server.URL, userRestoreAssessment.Message)
+	// Not logged here: ProcessReseedLogical re-derives and logs this same
+	// assessment at LvlInfo when it actually runs ("Logical reseed
+	// user/system restore for..."), which now follows prepare within seconds.
 	payload, err := buildLogicalReseedPayload(backtype, backupfile, splitUser, false, false, isPITR, server.URL, userRestoreAssessment)
 	if err != nil {
 		resetReseed()
@@ -1111,7 +1113,9 @@ func (server *ServerMonitor) JobReseedLogicalBackupFromPathPrepare(ctx context.C
 	meta := snapshotLogicalBackupMeta(master)
 	splitUserOverride := opts.SplitUser != nil
 	restoreUser, splitUser, userRestoreAssessment := resolveLogicalReseedUserRestore(cluster, backtype, backupfile, meta, opts.SplitUser)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical reseed preflight for %s: %s", server.URL, userRestoreAssessment.Message)
+	// Not logged here: see the matching comment in JobReseedLogicalBackupPrepare
+	// -- ProcessReseedLogical logs this same assessment at LvlInfo when it
+	// actually runs.
 	payload, err := buildLogicalReseedPayload(backtype, backupfile, splitUser, splitUserOverride, opts.SkipMetadata, isPITR, server.URL, userRestoreAssessment)
 	if err != nil {
 		resetReseed()
