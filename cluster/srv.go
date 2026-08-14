@@ -10,12 +10,12 @@
 package cluster
 
 import (
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"compress/gzip"
 	"hash/crc64"
 	"io"
 	"net/http"
@@ -1466,7 +1466,7 @@ func (server *ServerMonitor) Refresh() error {
 	server.CheckMaxConnections()
 
 	// Initialize graphite monitoring
-	if cluster.Conf.GraphiteMetrics {
+	if cluster.CanSendGraphiteMetrics() {
 		go server.FetchDatabaseStats()
 	}
 	return nil
