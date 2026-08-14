@@ -603,6 +603,25 @@ func (server *ServerMonitor) SetInReseedBackup(value string) {
 	// Clear on both arm and release: a stale phase from a prior reseed must
 	// never leak into a newly-armed one, and must not linger once idle.
 	server.reseedPhase.Store("")
+	if value == "" {
+		// Physical SST reseed (WaitAndSendSST/WaitAndSendSSTStream) has no
+		// synchronous scope to `defer stopReseedProgress()` from like the
+		// logical/splitdump/direct-stream paths do: beginReseedProgress runs
+		// inside the wait loop, but the actual outcome is only known inside a
+		// detached goroutine, and even that goroutine finishing (SST send done)
+		// isn't "done" -- dbjob still has to prepare/restore (the
+		// applying_backup phase) before this releases. SetInReseedBackup("")
+		// is the one signal common to every reseed path (physical included)
+		// for "actually over now", so hooking cleanup here -- rather than at
+		// each of WaitAndSendSST's several return points -- is what actually
+		// closes the gap: assertReseedProgressStates (restore_progress.go)
+		// raises WARN0189 purely from reseedInfo != nil, independent of
+		// IsReseeding, so leaving reseedInfo set here would keep that WARNING
+		// open indefinitely after a finished/failed/canceled reseed. Redundant
+		// (but harmless) for paths that already defer stopReseedProgress
+		// themselves.
+		server.stopReseedProgress()
+	}
 }
 
 // TrySetInReseedBackup atomically checks if the server is already in a reseeding state

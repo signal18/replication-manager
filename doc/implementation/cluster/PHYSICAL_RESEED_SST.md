@@ -116,10 +116,65 @@ restarts the DB (`JobInsertTask("restart", …)`), and the monitor's slave re-po
 ## 5. State & progress
 
 - `ServerMonitor.IsReseeding` — human/GUI state; set by `TrySetInReseedBackup`,
-  cleared on completion/cancel/error.
-- Progress (`cluster/restore_progress.go`, fields on `srv.go`): `reseedInfo`
-  (`*ReseedProgress`), `reseedBytes`, `reseedTotal`, `reseedStart` → the GUI's
-  MB/s + percent. `assertReseedProgressStates()` reconciles stuck states.
+  cleared on completion/cancel/error. `SetInReseedBackup` also unconditionally
+  clears `reseedPhase` (both arming and releasing), so a phase from a prior
+  reseed can never leak into the next one — and, on release (`value == ""`),
+  calls `stopReseedProgress()` (nils `reseedInfo`, clears the rate window).
+  Physical SST reseed has no single synchronous scope to `defer
+  stopReseedProgress()` from the way the logical/splitdump/direct-stream paths
+  do — `beginReseedProgress` runs inside `WaitAndSendSST`'s wait loop, but the
+  outcome is only known inside a detached goroutine, and even that finishing
+  (SST send done) isn't "done" (dbjob still has to apply the backup). Hooking
+  the cleanup into `SetInReseedBackup("")` — the one signal every reseed path
+  fires on true completion — is what actually closes it: without this,
+  `assertReseedProgressStates` raises WARN0189 purely from `reseedInfo != nil`,
+  independent of `IsReseeding`, so a finished/failed reseed would otherwise
+  keep reporting as in-progress forever.
+- **Phase** (`reseedPhase`, one of the `ReseedPhase*` constants in
+  `restore_progress.go`, exposed as `ReseedProgressView.Phase`): set by
+  `WaitAndSendSST` / `WaitAndSendSSTStream` (`cluster/srv_job_backup.go`) as the
+  SST lifecycle advances —
+  - `waiting_receiver` — armed, polling the target's job row for SQL state=2
+    (dbjob's `pauseJob()` — receiver ready).
+  - `sending_sst` — state=2 seen, actively streaming.
+  - `applying_backup` — send finished; dbjob is running `mariabackup --prepare`
+    + copy-back, not yet terminal. Not directly observed (repman has no signal
+    for this dbjob-side sub-phase), only inferred from "send done, task not
+    yet terminal."
+- **Bytes/rate** (`reseedInfo` (`*ReseedProgress`), `reseedBytes`, `reseedTotal`,
+  `reseedStart`, `reseedRateWindow` → the GUI's MB/s + percent): `beginReseedProgress`
+  is called at the `sending_sst` transition.
+  The SST send family itself (`SSTRunSendFile`, `SSTRunSendGzip`, `sstSendStream`
+  — the last shared by `SSTRunSenderStream`/`…StreamSSL`) has **no knowledge of
+  reseed at all**. It takes a `progress *SSTProgressSink` parameter (nil-able;
+  `SSTProgressSink.AddBytes`/`SetTotal` are no-ops on a nil sink) and only ever
+  calls that — it never touches `ServerMonitor` fields directly. This matters
+  because `SSTRunSender` is **not reseed-only**: `UpgradeJobsScript`
+  (`srv_job.go`) and the dummy-config sender (`srv_cnf.go`) call the same
+  family for unrelated transfers. Gating on `sv.IsReseeding != ""` wouldn't
+  actually separate the two, since a reseed can legitimately be in progress at
+  the same time as one of those unrelated sends — the sink has to be an
+  explicit per-call choice by the caller, not inferred from server state.
+  `WaitAndSendSST`/`WaitAndSendSSTStream` pass `newReseedProgressSink(server)`
+  (backed by `&server.reseedBytes`/`&server.reseedTotal`); `UpgradeJobsScript`
+  and the dummy-config sender pass `nil`. `assertReseedProgressStates()` picks
+  this up automatically once `reseedInfo` is non-nil, same as the
+  logical/splitdump paths.
+  **`SetTotal` (the percent-bar denominator) is called only where it's
+  trustworthy** — bytes counted are always what's actually gone out over the
+  wire, but the *denominator* to compare against differs by path:
+  - `SSTRunSendFile` (raw send, no on-the-fly decompression): the on-disk file
+    size — sent byte-for-byte, so it's exact.
+  - `SSTRunSendGzip` (decompress-then-send): never calls `SetTotal`, so it stays
+    0 (unknown). Bytes sent are the *decompressed* size; the on-disk file is
+    compressed — the two numbers are unrelated, so there is no correct total
+    to show.
+  - `sstSendStream`: the opener's `expectedSize`, but **only** when `uncompress`
+    is false. With `uncompress=true` the same compressed-vs-decompressed
+    mismatch as `SSTRunSendGzip` applies.
+  A physical reseed's progress bar therefore has real percent for the common
+  raw-send case, and byte count + rate but no percent (same as the logical
+  direct-stream path) when decompressing on the sender.
 - **Cookies** (filesystem latches under the server datadir):
   `cookie_waitreseedmariabackup` / `…xtrabackup` / `cookie_waitresticreseed`.
   Set when a reseed is requested, checked/cleared in `cluster/srv_chk.go`

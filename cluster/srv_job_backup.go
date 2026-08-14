@@ -2011,7 +2011,7 @@ func parseCreateUserAccountRest(rest string) (user string, host string, tail str
 // parseCreateUserToken extracts one quoted-or-bare identifier (a user or
 // host name) from the front of s, unquoted, and returns what's left of s
 // immediately after it. A doubled quote character inside a quoted identifier
-// ('a'/"b"/`c`) is the standard SQL escape for a literal quote and is decoded,
+// (''/""/``) is the standard SQL escape for a literal quote and is decoded,
 // not treated as the closing quote; backslash-escaping is not handled (dump
 // output that relies on it fails this parse, which fails the CREATE USER
 // rewrite/matching safely -- see isCreateUserStatement's caller, which
@@ -5799,10 +5799,17 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 		if count > 0 {
 			server.JobsUpdateState(task, "processing", 1, 0)
 			server.setReseedPhase(ReseedPhaseSendingSST)
+			// Total is 0 (unknown) here: whether it's trustworthy depends on which
+			// sender path actually runs (raw file send vs. decompress-then-send),
+			// decided inside SSTRunSender/SSTRunSendFile. SSTRunSendFile fills it
+			// in once it knows the on-disk file size; the gzip-decompress path
+			// leaves it 0, since bytes sent (decompressed) don't match the
+			// compressed file size on disk.
+			server.beginReseedProgress(&ReseedProgress{Backup: filename, Tool: cluster.Conf.BackupPhysicalType}, 0)
 			go func() {
 				sendStart := time.Now()
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST send for %s started at %s (file: %s)", task, sendStart.Format(time.RFC3339), filename)
-				err := cluster.SSTRunSender(filename, server, uncompress)
+				err := cluster.SSTRunSender(filename, server, uncompress, newReseedProgressSink(server))
 				elapsed := time.Since(sendStart).Round(time.Second)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST send for %s failed after %s: %s", task, elapsed, err.Error())
@@ -5878,6 +5885,11 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 		if count > 0 {
 			server.JobsUpdateState(task, "processing", 1, 0)
 			server.setReseedPhase(ReseedPhaseSendingSST)
+			// Total is 0 (unknown) here for the same reason as WaitAndSendSST:
+			// sstSendStream fills it in from the opener's expectedSize, but only
+			// when not decompressing on the fly (uncompress=true means bytes sent
+			// won't match the source's expected/compressed size).
+			server.beginReseedProgress(&ReseedProgress{Backup: sourceName, Tool: cluster.Conf.BackupPhysicalType}, 0)
 			go func() {
 				sendStart := time.Now()
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST stream send for %s started at %s (source: %s)", task, sendStart.Format(time.RFC3339), sourceName)
@@ -5887,7 +5899,7 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 					server.JobsUpdateState(task, err.Error(), 5, 0)
 					return
 				}
-				err = cluster.SSTRunSenderStream(sourceName, opener, server, uncompress)
+				err = cluster.SSTRunSenderStream(sourceName, opener, server, uncompress, newReseedProgressSink(server))
 				elapsed := time.Since(sendStart).Round(time.Second)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST stream send for %s failed after %s: %s", task, elapsed, err.Error())

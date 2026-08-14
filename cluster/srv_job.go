@@ -1735,7 +1735,11 @@ func (server *ServerMonitor) UpgradeJobsScript() error {
 	cluster := server.ClusterGroup
 	defer cluster.LogPanicToFile("jobs-upgrade")
 
-	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server, true)
+	// progress=nil: this is a jobs-script upgrade transfer, not a reseed --
+	// see SSTProgressSink's doc comment for why it must not write reseed
+	// progress counters (could corrupt an unrelated reseed in progress on
+	// this same server).
+	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server, true, nil)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "dbjobs_new file does not exist on %s, retrying later", server.Name)
