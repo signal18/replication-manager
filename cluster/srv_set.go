@@ -544,6 +544,12 @@ func (server *ServerMonitor) MarkJobsRefreshAttempt(at time.Time) {
 	server.jobRefreshStateMutex.Unlock()
 }
 
+func (server *ServerMonitor) MarkTerminalJobsReconcileAttempt(at time.Time) {
+	server.jobRefreshStateMutex.Lock()
+	server.lastReconcileAttempt = at
+	server.jobRefreshStateMutex.Unlock()
+}
+
 func (server *ServerMonitor) SetReplicationCredentialsRotation(ss *dbhelper.SlaveStatus) {
 	cluster := server.ClusterGroup
 	if server.GetCluster().Conf.IsVaultUsed() {

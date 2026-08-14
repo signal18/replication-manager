@@ -44,6 +44,16 @@ import (
 
 var errJobCanceledByUser = errors.New("job canceled by user")
 
+// errServerNotReseeding marks ProcessReseedPhysical/ProcessFlashbackPhysical's
+// "not currently reseeding" bail-out so callers can tell it apart from a real
+// mid-flight failure. This specific bail fires whenever HasReseedingState is
+// already false when the function is entered -- including the case where a
+// terminal-job reconciliation (JobsReconcileTerminalSQL) already ran
+// AfterJobProcess for this task and cleared the flag on a job that finished
+// successfully. Treating that case the same as a genuine failure would relabel
+// an already-finished job as JobStateHalted in the runtime cache.
+var errServerNotReseeding = errors.New("server is not in reseeding state")
+
 func (server *ServerMonitor) JobBackupPhysical() error {
 	return server.JobBackupPhysicalWithOptions(BackupRunOptions{})
 }
@@ -6189,7 +6199,7 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 
 	//Prevent multiple reseed
 	if !server.HasReseedingState(task) {
-		return fmt.Errorf("Server is not in %s state", task)
+		return fmt.Errorf("Server is not in %s state: %w", task, errServerNotReseeding)
 	}
 
 	if master == nil {
@@ -6331,7 +6341,7 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 
 	//Prevent multiple reseed
 	if !server.HasReseedingState(task) {
-		return errors.New("Server is not in physical flashback state")
+		return fmt.Errorf("Server is not in physical flashback state: %w", errServerNotReseeding)
 	}
 
 	if master == nil {

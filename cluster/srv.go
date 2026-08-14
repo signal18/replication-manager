@@ -238,6 +238,7 @@ type ServerMonitor struct {
 	jobsAPIHousekeepingDone     bool // true after schema ensured + jobs table dropped in API mode
 	NeedRefreshJobs             bool
 	lastJobsRefreshAttempt      time.Time
+	lastReconcileAttempt        time.Time
 	PointInTimeMeta             backupmgr.PointInTimeMeta
 	BinaryLogDir                string
 	BinaryLogName               string
@@ -1254,6 +1255,11 @@ func (server *ServerMonitor) Refresh() error {
 			server.JobsCheckStates()
 			server.JobsCheckRunning()
 		} else {
+			if cluster.Conf.SchedulerJobsMode == "sql" {
+				if err := server.JobsReconcileTerminalSQL(); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Terminal job reconciliation skipped on %s: %s", server.URL, err)
+				}
+			}
 			server.jobsCheckRunningFromMemory()
 		}
 

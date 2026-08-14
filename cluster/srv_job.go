@@ -60,6 +60,11 @@ var (
 // Timeout for getting job records
 var JobTimeout time.Duration = time.Second
 
+// terminalJobsReconcileMinInterval throttles JobsReconcileTerminalSQL, matching
+// the interval cluster_job.go's jobsAPIDBRefreshMinInterval already uses for the
+// same monitoring-scheduler=false condition on the dashboard-read path.
+const terminalJobsReconcileMinInterval = 5 * time.Second
+
 func (server *ServerMonitor) JobRun() {
 
 }
@@ -1232,6 +1237,78 @@ func (server *ServerMonitor) JobsCheckStates() error {
 	}
 
 	return nil
+}
+
+// JobsReconcileTerminalSQL syncs terminal (finished/errored) rows from the SQL
+// jobs table into the runtime JobResults cache for the monitoring-scheduler=false
+// + scheduler-jobs-mode=sql combination. In that mode the monitor loop calls
+// only jobsCheckRunningFromMemory(), which reads solely from JobResults -- and
+// nothing else refreshes that cache from SQL on a regular cadence (see the
+// comment on Cluster.JobsGetEntries, which patches this same gap but only for
+// API-triggered reads, not the monitor tick). Without this, a job dbjobs
+// already finished on disk (done=1/state=3 in SQL) never reaches
+// JobsCheckFinished() -> AfterJobProcess(), so the channel-aware
+// server.StartSlave() post-processing never runs and the reseed/flashback's
+// WARN0074/WARN0076 state never resolves.
+//
+// Deliberately narrower than JobsCheckStates(): it skips JobsCheckPending(),
+// whose scheduler/down-style cancellation semantics assume the scheduler is
+// actively driving dispatch. Running that with the scheduler off risks
+// cancelling a job dbjobs is still legitimately processing. Only genuinely
+// terminal rows (JobsCheckFinished, JobsCheckErrors) are reconciled here.
+//
+// Throttled to terminalJobsReconcileMinInterval: unlike JobsCheckStates()
+// (only ever called when MonitorScheduler is true, where a SQL scan on every
+// tick is an accepted, expected cost), this runs on the scheduler-off path
+// that previously did zero SQL work per tick -- an unthrottled call here,
+// including JobsCheckFinished()'s conditional 3s flush-wait, would be a real
+// monitoring-load regression for that mode. The attempt is marked
+// unconditionally as soon as the TTL gate passes, before any of the checks
+// below, so a persistent failure (e.g. no connection pool) still can't retry
+// on every tick and defeat the throttle.
+func (server *ServerMonitor) JobsReconcileTerminalSQL() error {
+	cluster := server.ClusterGroup
+
+	if !server.HasTerminalJobsReconcileTTLExpired(terminalJobsReconcileMinInterval) {
+		return nil
+	}
+	server.MarkTerminalJobsReconcileAttempt(time.Now())
+
+	if cluster.IsInFailover() || cluster.InRollingRestart {
+		return nil
+	}
+	if server.IsDown() {
+		return nil
+	}
+	if server.Conn == nil {
+		return fmt.Errorf("No connection pool on %s", server.URL)
+	}
+
+	if !server.TryStartLoadingJobList() {
+		return errors.New("Waiting for previous update")
+	}
+	defer server.SetLoadingJobList(false)
+
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
+	}
+	defer conn.Close()
+
+	master := cluster.GetMaster()
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
+		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
+		return nil
+	}
+
+	if err := server.JobsCheckFinished(conn); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Terminal job reconciliation (finished) on %s: %s", server.URL, err)
+	}
+	if err := server.JobsCheckErrors(conn); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Terminal job reconciliation (errors) on %s: %s", server.URL, err)
+	}
+
+	return server.JobsUpdateEntries(conn)
 }
 
 func (server *ServerMonitor) JobsCheckFinished(conn *sqlx.Conn) error {

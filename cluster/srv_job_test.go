@@ -533,6 +533,107 @@ func TestProcessReseedLogical_UnsupportedType_DoesNotCreateRunningTask(t *testin
 	}
 }
 
+// TestProcessReseedPhysical_NotReseeding_ReturnsSentinel guards the
+// monitoring-scheduler=false + scheduler-jobs-mode=sql fix: once a terminal
+// job reconciliation (JobsReconcileTerminalSQL) has already run
+// AfterJobProcess for a finished reseed and cleared IsReseeding, a late/stale
+// WARN0074 resolve calling ProcessReseedPhysical again must be distinguishable
+// from a genuine failure, so the cluster.go call site can skip relabeling the
+// already-finished job as JobStateHalted.
+func TestProcessReseedPhysical_NotReseeding_ReturnsSentinel(t *testing.T) {
+	cluster, server := newTestRuntimeOnlyClusterServer(t, "reseed-cluster", "target", "3307")
+	cluster.master = &ServerMonitor{
+		Id:           "master",
+		Host:         "master",
+		Port:         "3306",
+		URL:          "master:3306",
+		ClusterGroup: cluster,
+	}
+
+	task := "reseed" + cluster.Conf.BackupPhysicalType
+	// Deliberately not calling server.SetInReseedBackup(task): this is the
+	// state after AfterJobProcess already ran for a finished job.
+
+	err := server.ProcessReseedPhysical(task)
+	if err == nil {
+		t.Fatal("expected ProcessReseedPhysical to reject a server that is not reseeding")
+	}
+	if !errors.Is(err, errServerNotReseeding) {
+		t.Fatalf("expected errServerNotReseeding, got: %v", err)
+	}
+}
+
+// TestProcessFlashbackPhysical_NotReseeding_ReturnsSentinel is the flashback
+// counterpart of TestProcessReseedPhysical_NotReseeding_ReturnsSentinel; the
+// WARN0076 call site in cluster.go has the identical Halted-relabeling risk.
+func TestProcessFlashbackPhysical_NotReseeding_ReturnsSentinel(t *testing.T) {
+	cluster, server := newTestRuntimeOnlyClusterServer(t, "flashback-cluster", "target", "3307")
+	cluster.master = &ServerMonitor{
+		Id:           "master",
+		Host:         "master",
+		Port:         "3306",
+		URL:          "master:3306",
+		ClusterGroup: cluster,
+	}
+
+	task := "flashback" + cluster.Conf.BackupPhysicalType
+
+	err := server.ProcessFlashbackPhysical(task)
+	if err == nil {
+		t.Fatal("expected ProcessFlashbackPhysical to reject a server that is not reseeding")
+	}
+	if !errors.Is(err, errServerNotReseeding) {
+		t.Fatalf("expected errServerNotReseeding, got: %v", err)
+	}
+}
+
+// TestJobsReconcileTerminalSQL_ThrottlesRepeatedAttempts guards the
+// monitoring-load regression flagged in review: without a throttle, this
+// helper would run a full SQL scan (JobsCheckFinished + JobsCheckErrors +
+// JobsUpdateEntries) on every single monitor tick once
+// monitoring-scheduler=false + scheduler-jobs-mode=sql, undoing the point of
+// turning the scheduler off. The attempt must be marked -- and further calls
+// short-circuited -- even when the attempt itself fails (e.g. no connection
+// pool), or a persistently failing server would retry every tick and defeat
+// the throttle entirely.
+func TestJobsReconcileTerminalSQL_ThrottlesRepeatedAttempts(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "reconcile-cluster", "target", "3307")
+
+	// server.Conn is nil in this fixture, so the first call is expected to
+	// attempt and fail fast with "no connection pool" -- but it must still
+	// mark the throttle.
+	if err := server.JobsReconcileTerminalSQL(); err == nil {
+		t.Fatal("expected first call to attempt and fail (no connection pool)")
+	}
+	if server.HasTerminalJobsReconcileTTLExpired(terminalJobsReconcileMinInterval) {
+		t.Fatal("expected the attempt to be marked, throttling further calls within the TTL")
+	}
+
+	// A second call within the TTL window must short-circuit as a silent
+	// no-op instead of attempting (and failing) again.
+	if err := server.JobsReconcileTerminalSQL(); err != nil {
+		t.Fatalf("expected throttled call to no-op, got: %v", err)
+	}
+}
+
+// TestJobsReconcileTerminalSQL_RetriesAfterTTLExpires ensures the throttle
+// added above is not permanent: once the interval elapses, reconciliation
+// attempts again instead of wedging silently forever.
+func TestJobsReconcileTerminalSQL_RetriesAfterTTLExpires(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "reconcile-cluster", "target", "3307")
+
+	if err := server.JobsReconcileTerminalSQL(); err == nil {
+		t.Fatal("expected first call to attempt and fail (no connection pool)")
+	}
+
+	// Simulate TTL expiry by backdating the last attempt.
+	server.MarkTerminalJobsReconcileAttempt(time.Now().Add(-2 * terminalJobsReconcileMinInterval))
+
+	if err := server.JobsReconcileTerminalSQL(); err == nil {
+		t.Fatal("expected reconciliation to attempt again once the TTL has expired")
+	}
+}
+
 // TestReseedFromParentCluster_UnsupportedType_DoesNotCreateRunningTask guards
 // the cluster_staging.go call site where the regression lived: an unsupported
 // parent logical backup type must not stamp a runtime-only task as processing
