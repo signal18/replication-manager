@@ -824,12 +824,25 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 
 // jobsCheckRunningFromMemory scans JobResults for pending tasks in API mode
 // and sets the same WARN states as the SQL-based JobsCheckRunning.
+//
+// Mirrors JobsCheckRunning's GetTasksByState(Conn, JobStateAvailable) filter
+// by also skipping any task no longer in JobStateAvailable, not just Done
+// ones. Without this, a task that dbjobs has already picked up (State ==
+// JobStateRunning, reported via the "processing" job-state callback) keeps
+// re-opening its WARN state every tick until Done -- so the WARN never has
+// an open->resolved edge until the task finishes on its own. For physical
+// reseed/flashback (WARN0074/WARN0076), ProcessReseedPhysical/
+// ProcessFlashbackPhysical (cluster.go's StateProcessing) only fire on that
+// resolved edge, and that's what actually streams the backup to the target
+// -- so the target sits on a blocking receive waiting for a stream repman
+// never starts sending. Same root cause JobsReconcileSQL's doc comment
+// describes for the SQL-mode fallback; it was fixed there but not here.
 func (server *ServerMonitor) jobsCheckRunningFromMemory() error {
 	cluster := server.ClusterGroup
 	server.JobResults.Range(func(k, v any) bool {
 		t := v.(*config.Task)
-		if t.Done == 1 {
-			return true // skip completed
+		if t.Done == 1 || t.State != JobStateAvailable {
+			return true // skip completed or already picked up by dbjobs
 		}
 		switch config.TaskName(t.Task) {
 		case config.ConstTaskOptimize:

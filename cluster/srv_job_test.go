@@ -675,6 +675,106 @@ func TestJobsReconcileSQL_BypassesThrottleWhileBackupInProgress(t *testing.T) {
 	}
 }
 
+// TestJobsCheckRunningFromMemory_RunningTaskDoesNotReopenWarnState guards the
+// API-mode counterpart of the bug JobsReconcileSQL's doc comment describes
+// for SQL mode: a task already picked up by dbjobs (State == JobStateRunning)
+// must not keep re-opening its WARN state every tick, since
+// ProcessReseedPhysical/ProcessFlashbackPhysical (cluster.go's
+// StateProcessing) only fire on that WARN's open->resolved edge -- and that's
+// what actually streams the backup to the target. Keeping it open the whole
+// time means it never resolves until the task finishes on its own, which it
+// can't do without repman having streamed it the backup first.
+func TestJobsCheckRunningFromMemory_RunningTaskDoesNotReopenWarnState(t *testing.T) {
+	cluster, server := newTestRuntimeOnlyClusterServer(t, "reconcile-cluster", "target", "3307")
+	cluster.Conf.SchedulerJobsMode = "api"
+
+	server.JobResults.Store("reseedmariabackup", &config.Task{
+		Task:  "reseedmariabackup",
+		State: JobStateRunning,
+		Done:  0,
+	})
+
+	if err := server.jobsCheckRunningFromMemory(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, s := range cluster.StateMachine.GetOpenStates() {
+		if s.ErrKey == "WARN0074" {
+			t.Fatal("expected WARN0074 to stay closed for a task already picked up by dbjobs (State == JobStateRunning)")
+		}
+	}
+
+	// An Available task (not yet picked up) must still open the WARN state --
+	// this is the signal ProcessReseedPhysical eventually resolves off of.
+	server.JobResults.Store("reseedxtrabackup", &config.Task{
+		Task:  "reseedxtrabackup",
+		State: JobStateAvailable,
+		Done:  0,
+	})
+	if err := server.jobsCheckRunningFromMemory(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, s := range cluster.StateMachine.GetOpenStates() {
+		if s.ErrKey == "WARN0074" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected WARN0074 to open for a still-Available task")
+	}
+}
+
+// TestWaitAndSendSSTReady_APIMode guards the handoff immediately after
+// WARN0074 resolves: WaitAndSendSST/WaitAndSendSSTStream poll
+// waitAndSendSSTReady in a loop before starting the SST send. In SQL mode
+// that polls a replication_manager_schema.jobs row dbjobs_new.sh writes
+// state=2 (JobStateHalted) into once it's opened its receiver. API mode has
+// no jobs table for dbjobs to write that into at all -- it reports the same
+// "ready to receive" signal through the job-state HTTP callback's "waiting"
+// case (handlerMuxServerJobState, server/api_database.go), which
+// JobsUpdateState records as JobStateHalted in JobResults instead. Without
+// checking JobResults in API mode, this would issue a SQL query against a
+// row that can never exist and spin through the whole retry loop until it
+// times out, even though dbjobs already signaled readiness.
+func TestWaitAndSendSSTReady_APIMode(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "sst-cluster", "target", "3307")
+	server.ClusterGroup.Conf.SchedulerJobsMode = "api"
+
+	ready, err := server.waitAndSendSSTReady("reseedmariabackup")
+	if err != nil {
+		t.Fatalf("unexpected error with no JobResults entry yet: %v", err)
+	}
+	if ready {
+		t.Fatal("expected not ready: no JobResults entry for the task yet")
+	}
+
+	server.JobResults.Store("reseedmariabackup", &config.Task{
+		Task:  "reseedmariabackup",
+		State: JobStateRunning,
+		Done:  0,
+	})
+	ready, err = server.waitAndSendSSTReady("reseedmariabackup")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ready {
+		t.Fatal("expected not ready: task is Running (dispatched), not yet Halted (waiting for SST)")
+	}
+
+	server.JobResults.Store("reseedmariabackup", &config.Task{
+		Task:  "reseedmariabackup",
+		State: JobStateHalted,
+		Done:  0,
+	})
+	ready, err = server.waitAndSendSSTReady("reseedmariabackup")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ready {
+		t.Fatal("expected ready: dbjobs reported \"waiting\", recorded as JobStateHalted in JobResults")
+	}
+}
+
 // TestReseedFromParentCluster_UnsupportedType_DoesNotCreateRunningTask guards
 // the cluster_staging.go call site where the regression lived: an unsupported
 // parent logical backup type must not stamp a runtime-only task as processing

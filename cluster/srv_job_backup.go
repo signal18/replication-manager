@@ -5950,6 +5950,44 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge 
 	return errors.New("Wrong configuration for Backup Binlog Method!")
 }
 
+// waitAndSendSSTReady reports whether the target has signaled it's ready to
+// receive the SST stream, checked once per WaitAndSendSST/WaitAndSendSSTStream
+// retry-loop iteration.
+//
+// SQL mode: dbjobs_new.sh's only interface with repman is writing state=2
+// (JobStateHalted) into this server's own replication_manager_schema.jobs
+// row once it's opened its receiver and is blocked on accept -- so this
+// polls that row via GetJobCount, exactly as before.
+//
+// API mode has no jobs table at all: dbjobs reports the same "ready to
+// receive" signal through the job-state HTTP callback instead
+// (handlerMuxServerJobState's "waiting" case, server/api_database.go),
+// which JobsUpdateState records as JobStateHalted in the in-memory
+// JobResults cache and, per jobsUpdateState's runtimeOnly path, never
+// writes to SQL in this mode. Polling GetJobCount there would query a jobs
+// row that can never exist, so this checks JobResults instead -- without
+// it, the sender spins through the whole retry loop and times out even
+// though dbjobs already signaled readiness.
+func (server *ServerMonitor) waitAndSendSSTReady(task string) (bool, error) {
+	cluster := server.ClusterGroup
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		t := server.JobResults.Get(task)
+		return t != nil && t.State == JobStateHalted, nil
+	}
+
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return false, fmt.Errorf("Error connecting to %s: %s", server.URL, err)
+	}
+	defer conn.Close()
+
+	count, err := server.GetJobCount(conn, task, JobStateHalted)
+	if err != nil {
+		return false, fmt.Errorf("Error getting task on %s: %s", server.URL, err)
+	}
+	return count > 0, nil
+}
+
 func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncompress bool, loop int) error {
 	cluster := server.ClusterGroup
 
@@ -5968,20 +6006,15 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 	retryDelay := time.Second * time.Duration(cluster.Conf.SSTWaitRetryDelay)
 
 	for attempt := loop; attempt < maxLoop; attempt++ {
-		conn, err := server.GetConnNoBinlog(server.Conn)
+		ready, err := server.waitAndSendSSTReady(task)
 		if err != nil {
-			return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
+			return err
 		}
 
-		count, err := server.GetJobCount(conn, task, 2)
-		conn.Close()
-		if err != nil {
-			return fmt.Errorf("Error getting task on %s: %s", server.URL, err)
-		}
-
-		// Check if job is ready (state=2 means JobStateHalted, waiting for SST)
-		if count > 0 {
-			server.JobsUpdateState(task, "processing", 1, 0)
+		// Check if job is ready (state=2/JobStateHalted, waiting for SST --
+		// SQL row in SQL mode, JobResults entry in API mode)
+		if ready {
+			server.JobsUpdateState(task, "processing", JobStateRunning, 0)
 			server.setReseedPhase(ReseedPhaseSendingSST)
 			// Total is 0 (unknown) here: whether it's trustworthy depends on which
 			// sender path actually runs (raw file send vs. decompress-then-send),
@@ -6001,7 +6034,7 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 					// it finds done=0/state=5 rows, runs restic-cookie/mount cleanup
 					// for reseed/flashback task names, then marks done=1 with End set.
 					// Marking done=1 here would hide the row from that cleanup.
-					server.JobsUpdateState(task, err.Error(), 5, 0)
+					server.JobsUpdateState(task, err.Error(), JobStateErrorExec, 0)
 					return
 				}
 				server.setReseedPhase(ReseedPhaseApplyingBackup)
@@ -6017,7 +6050,7 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 	}
 
 	// done=0: see JobsCheckErrors ownership note above.
-	server.JobsUpdateState(task, "Waiting more than max loop", 5, 0)
+	server.JobsUpdateState(task, "Waiting more than max loop", JobStateErrorExec, 0)
 	server.SetNeedRefreshJobs(true)
 	return errors.New("Error: waiting for " + task + " more than max loop.")
 }
@@ -6054,20 +6087,15 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 			return fmt.Errorf("SST stream canceled: %w", err)
 		}
 
-		conn, err := server.GetConnNoBinlog(server.Conn)
+		ready, err := server.waitAndSendSSTReady(task)
 		if err != nil {
-			return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
+			return err
 		}
 
-		count, err := server.GetJobCount(conn, task, 2)
-		conn.Close()
-		if err != nil {
-			return fmt.Errorf("Error getting task on %s: %s", server.URL, err)
-		}
-
-		// Check if job is ready (state=2 means JobStateHalted, waiting for SST)
-		if count > 0 {
-			server.JobsUpdateState(task, "processing", 1, 0)
+		// Check if job is ready (state=2/JobStateHalted, waiting for SST --
+		// SQL row in SQL mode, JobResults entry in API mode)
+		if ready {
+			server.JobsUpdateState(task, "processing", JobStateRunning, 0)
 			server.setReseedPhase(ReseedPhaseSendingSST)
 			// Total is 0 (unknown) here for the same reason as WaitAndSendSST:
 			// sstSendStream fills it in from the opener's expectedSize, but only
@@ -6080,14 +6108,14 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 				if err := ctx.Err(); err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST stream for %s canceled before start: %s", task, err)
 					// done=0: see JobsCheckErrors ownership note in WaitAndSendSST.
-					server.JobsUpdateState(task, err.Error(), 5, 0)
+					server.JobsUpdateState(task, err.Error(), JobStateErrorExec, 0)
 					return
 				}
 				err = cluster.SSTRunSenderStream(sourceName, opener, server, uncompress, newReseedProgressSink(server))
 				elapsed := time.Since(sendStart).Round(time.Second)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST stream send for %s failed after %s: %s", task, elapsed, err.Error())
-					server.JobsUpdateState(task, err.Error(), 5, 0)
+					server.JobsUpdateState(task, err.Error(), JobStateErrorExec, 0)
 					return
 				}
 				server.setReseedPhase(ReseedPhaseApplyingBackup)
@@ -6105,7 +6133,7 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 		}
 	}
 
-	server.JobsUpdateState(task, "Waiting more than max loop", 5, 0)
+	server.JobsUpdateState(task, "Waiting more than max loop", JobStateErrorExec, 0)
 	server.SetNeedRefreshJobs(true)
 	return errors.New("Error: waiting for " + task + " more than max loop.")
 }
