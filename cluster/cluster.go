@@ -1316,7 +1316,7 @@ func (cluster *Cluster) StateProcessing() {
 
 				err := servertoreseed.ProcessReseedPhysical(task)
 				if err != nil {
-					servertoreseed.JobsUpdateState(task, err.Error(), 2, 1)
+					servertoreseed.JobsUpdateState(task, err.Error(), JobStateHalted, 1)
 					if servertoreseed.HasReseedingState(task) {
 						servertoreseed.SetInReseedBackup("")
 					}
@@ -1328,53 +1328,13 @@ func (cluster *Cluster) StateProcessing() {
 				// (IsReseeding clear) via reconcileDeferredRejoinReseeds.
 			}
 
-			if s.ErrKey == "WARN0075" && servertoreseed != nil {
-				task := "reseed" + cluster.Conf.BackupLogicalType
-				if servertoreseed.JobResults.Get(task) == nil {
-					servertoreseed.JobResults.Callback(func(key string, value *config.Task) bool {
-						switch key {
-						case "reseed" + config.ConstBackupLogicalTypeMysqldump, "reseed" + config.ConstBackupLogicalTypeMydumper:
-							task = key
-							return false
-						default:
-							return true
-						}
-					})
-				}
-
-				// Run the logical reseed OFF the monitor tick. A splitdump /
-				// mysqldump restore takes minutes; running it inline here froze
-				// the whole cluster monitor loop (no health checks, no failover —
-				// not even if the master died) for the entire restore, and
-				// serialized concurrent slave reseeds. ProcessReseedLogical claims
-				// the per-server IsReseeding flag atomically (TrySetInReseedBackup),
-				// and rejoin/switchover already refuse a reseeding server, so a
-				// later tick that still sees WARN0075 cannot start a second reseed.
-				// Mirrors the WARN0111 async reseed path below.
-				srvReseed := servertoreseed
-				reseedTask := task
-				cluster.trackTickGoroutine(func() {
-					err := srvReseed.ProcessReseedLogical(reseedTask)
-					if err != nil {
-						// ProcessReseedLogical never calls JobInsertTask, so there is no
-						// DB row for this task regardless of scheduler state.
-						srvReseed.JobsUpdateStateRuntimeOnly(reseedTask, err.Error(), 5, 1)
-						if srvReseed.HasReseedingState(reseedTask) {
-							srvReseed.SetInReseedBackup("")
-						}
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing logical reseed for %s: %s", srvReseed.URL, err)
-					}
-					// Rejoin-armed reseed outcome is reconciled uniformly at true
-					// completion (IsReseeding clear) by reconcileDeferredRejoinReseeds,
-					// not here — see that function and the WARN0074 note above.
-				})
-			}
-
+			// WARN0075 (logical reseed) is handled below, off the GetOpenStates()
+			// loop rather than this resolved-edge -- see the comment there for why.
 			if s.ErrKey == "WARN0076" && servertoreseed != nil {
 				task := "flashback" + cluster.Conf.BackupPhysicalType
 				err := servertoreseed.ProcessFlashbackPhysical(task)
 				if err != nil {
-					servertoreseed.JobsUpdateState(task, err.Error(), 2, 1)
+					servertoreseed.JobsUpdateState(task, err.Error(), JobStateHalted, 1)
 					if servertoreseed.HasReseedingState(task) {
 						servertoreseed.SetInReseedBackup("")
 					}
@@ -1436,6 +1396,30 @@ func (cluster *Cluster) StateProcessing() {
 		ostates := cluster.StateMachine.GetOpenStates()
 		for _, s := range ostates {
 			cluster.CheckCapture(s)
+
+			// WARN0075 (logical reseed) is launched off the open state itself,
+			// checked every tick, rather than an open/resolved edge. An edge-based
+			// trigger split by job-tracking mode (DB-backed resolved edge vs
+			// memory-tracked open edge) is fragile: MonitorScheduler and
+			// SchedulerJobsMode are live-reloadable (see
+			// Cluster.SwitchMonitoringScheduler), and if either changes between
+			// the tick WARN0075 opens and the tick it would resolve, the two
+			// edges stop being mutually exclusive -- either both fire (relaunching
+			// a finished reseed, clobbering its result) or neither does (the
+			// original deadlock, just reintroduced via a mode flip instead of a
+			// static config). Checking the open state every tick removes the
+			// dependency on that agreement entirely: launchLogicalReseed is
+			// idempotent (HasReseedingState + an atomic dispatch flag), so
+			// calling it repeatedly while WARN0075 stays open is a safe no-op
+			// once the real attempt is in flight or done. Does not apply to
+			// WARN0074/WARN0076 (physical reseed/flashback): those dispatch via
+			// the dbjobs SSH cookie flow, which is already flagged unavailable
+			// with scheduler off (WARN0170).
+			if s.ErrKey == "WARN0075" {
+				if server := cluster.GetServerFromURL(s.ServerUrl); server != nil {
+					cluster.launchLogicalReseed(server)
+				}
+			}
 		}
 
 		for _, s := range cluster.StateMachine.GetLastOpenedStates() {
@@ -1494,6 +1478,66 @@ func (cluster *Cluster) StateProcessing() {
 	}
 
 	cluster.CheckSendMail()
+}
+
+// launchLogicalReseed starts the async logical reseed for a server that has
+// WARN0075 open, if it isn't already running one. Two guards make repeated
+// calls (StateProcessing checks every open WARN0075 on every tick, see the
+// GetOpenStates() loop above) safe no-ops instead of duplicate/relaunched
+// attempts:
+//   - HasReseedingState(task): ProcessReseedLogical only ever runs for a
+//     server actually armed (TrySetInReseedBackup, done at request time) for
+//     this exact task, and its deferred cleanup (srv_job_backup.go, top of
+//     ProcessReseedLogical) clears that flag on both success and failure. So
+//     once a reseed finishes, this becomes false and later calls -- e.g. from
+//     a stale trigger -- correctly do nothing instead of relaunching a
+//     finished reseed and clobbering its result.
+//   - logicalReseedDispatching (atomic, CompareAndSwap): closes the window
+//     HasReseedingState alone can't, since it stays true for the entire
+//     in-flight duration -- without this, two calls arriving while the first
+//     is still running (e.g. two ticks in a row seeing the same open state)
+//     could both enter ProcessReseedLogical concurrently against the same
+//     server, which is a correctness/data-safety issue, not just a
+//     bookkeeping one.
+func (cluster *Cluster) launchLogicalReseed(servertoreseed *ServerMonitor) {
+	task := "reseed" + cluster.Conf.BackupLogicalType
+	if servertoreseed.JobResults.Get(task) == nil {
+		servertoreseed.JobResults.Callback(func(key string, value *config.Task) bool {
+			switch key {
+			case "reseed" + config.ConstBackupLogicalTypeMysqldump, "reseed" + config.ConstBackupLogicalTypeMydumper:
+				task = key
+				return false
+			default:
+				return true
+			}
+		})
+	}
+
+	if !servertoreseed.HasReseedingState(task) {
+		return
+	}
+	if !servertoreseed.logicalReseedDispatching.CompareAndSwap(false, true) {
+		return
+	}
+
+	srvReseed := servertoreseed
+	reseedTask := task
+	cluster.trackTickGoroutine(func() {
+		defer srvReseed.logicalReseedDispatching.Store(false)
+		err := srvReseed.ProcessReseedLogical(reseedTask)
+		if err != nil {
+			// ProcessReseedLogical never calls JobInsertTask, so there is no
+			// DB row for this task regardless of scheduler state.
+			srvReseed.JobsUpdateStateRuntimeOnly(reseedTask, err.Error(), JobStateErrorExec, 1)
+			if srvReseed.HasReseedingState(reseedTask) {
+				srvReseed.SetInReseedBackup("")
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing logical reseed for %s: %s", srvReseed.URL, err)
+		}
+		// Rejoin-armed reseed outcome is reconciled uniformly at true
+		// completion (IsReseeding clear) by reconcileDeferredRejoinReseeds,
+		// not here — see that function and the WARN0074 note above.
+	})
 }
 
 func (cluster *Cluster) Stop() {

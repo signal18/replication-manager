@@ -262,6 +262,7 @@ type ServerMonitor struct {
 	reseedTotal                 atomic.Int64 // total compressed backup file size (0 = unknown)
 	reseedStart                 atomic.Int64 // unix-nanos the current restore started (for MB/s)
 	reseedRateWindow            atomic.Value // []reseedRateSample: last few per-tick (bytes,time) samples, for a windowed "recent" rate distinct from the lifetime average (reseedBytes/reseedStart) — see restore_progress.go
+	logicalReseedDispatching    atomic.Bool  // claimed for the duration of an in-flight launchLogicalReseed call, so repeated StateProcessing ticks over the same open WARN0075 can't enter ProcessReseedLogical concurrently
 	// Lock ordering (to prevent deadlocks):
 	// 1. Cluster.stateMutex (highest)
 	// 2. ServerMonitor.stateMutex
