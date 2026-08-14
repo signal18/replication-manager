@@ -90,14 +90,25 @@ func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error
 			defer server.SetInReseedBackup("")
 		}
 		if !server.PointInTimeMeta.IsInPITR {
-			if _, err := server.StartSlave(); err != nil {
-				errStr = err.Error()
+			// Restart every channel by its real ConnectionName, symmetric with
+			// StopAllSlaves() in JobReseedPhysicalBackup/JobFlashbackPhysicalBackup.
+			// StartSlave() alone would restart only the managed MasterConn channel,
+			// leaving any other channel stopped after it was stopped for the hot
+			// restore. Mirrors the direct-reseed restart loop below in this file.
+			var slaveStartErrs []string
+			for _, rep := range server.Replications {
+				if _, err := server.StartSlaveChannel(rep.ConnectionName.String); err != nil {
+					slaveStartErrs = append(slaveStartErrs, fmt.Sprintf("%s: %s", rep.ConnectionName.String, err.Error()))
+				}
+			}
+			if len(slaveStartErrs) > 0 {
+				errStr = strings.Join(slaveStartErrs, "; ")
 				// Only set as failed if no error connection
 				if server.Conn != nil {
 					// Set state as 6 to differ post-job error with in-job error (code: 5)
 					server.ConnExecQueryWithTimeout(conn, JobTimeout, fmt.Sprintf(query, "\n"+errStr, JobStateErrorAfter, task.id))
 				}
-				return err
+				return errors.New(errStr)
 			}
 		}
 	}
@@ -324,9 +335,14 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 	// make the elapsed counter jump backward when the phase changes.
 	server.setReseedPhase(ReseedPhaseWaitingReceiver)
 
-	// Set replication master to current master if not PITR
+	// Set replication master to current master if not PITR. Stop every
+	// channel (not just the managed one) before the hot partial-restore
+	// window opens: partialRestore() pivots tablespaces into a live mysqld,
+	// so any other channel left running would keep applying writes into the
+	// same datadir while it's being restored. Symmetric with the restart
+	// loop in AfterJobProcess.
 	if !server.PointInTimeMeta.IsInPITR {
-		logs, err := server.StopSlave()
+		logs, err := server.StopAllSlaves()
 		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
@@ -435,9 +451,11 @@ func (server *ServerMonitor) JobReseedPhysicalBackupWithPayload(backtype, backup
 	// this is stamped here rather than left to WaitAndSendSST alone.
 	server.setReseedPhase(ReseedPhaseWaitingReceiver)
 
-	// Set replication master to current master if not PITR
+	// Set replication master to current master if not PITR. Stop every
+	// channel (not just the managed one) before the hot partial-restore
+	// window opens -- see the matching comment in JobReseedPhysicalBackup.
 	if !server.PointInTimeMeta.IsInPITR {
-		logs, err := server.StopSlave()
+		logs, err := server.StopAllSlaves()
 		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
@@ -521,7 +539,10 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 	// this is stamped here rather than left to WaitAndSendSST alone.
 	server.setReseedPhase(ReseedPhaseWaitingReceiver)
 
-	logs, err := server.StopSlave()
+	// Stop every channel (not just the managed one) before the hot
+	// partial-restore window opens -- see the matching comment in
+	// JobReseedPhysicalBackup.
+	logs, err := server.StopAllSlaves()
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 	}

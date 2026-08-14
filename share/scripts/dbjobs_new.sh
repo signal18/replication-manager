@@ -1538,6 +1538,15 @@ partialRestore() {
         g=$(echo "$g" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
     fi
     if [[ -n "$g" ]]; then
+        # Clear this server's own local binlog/GTID history before applying the
+        # backup's GTID position. Without this, a destination that previously
+        # advanced further in a domain (e.g. was a master, or replayed ahead)
+        # keeps that state in gtid_binlog_pos; MariaDB's strict-GTID mode then
+        # rejects the replicated events restarting from the (lower) restored
+        # position as "out of order" (error 1950), even though gtid_slave_pos
+        # itself was set correctly. Mirrors server.ResetMaster() in the Go
+        # logical/splitdump restore path (cluster/srv_job_backup.go).
+        pr_cmd "Reset binlog before GTID apply" $BINARY_CLIENT -e "set sql_log_bin=0;RESET MASTER;"
         pr_cmd "Set GTID of the last change" $BINARY_CLIENT -e "set sql_log_bin=0;set global gtid_slave_pos='$g'"
     else
         pr_log "No GTID info found; skip GTID set."
