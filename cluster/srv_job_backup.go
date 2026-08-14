@@ -2011,7 +2011,7 @@ func parseCreateUserAccountRest(rest string) (user string, host string, tail str
 // parseCreateUserToken extracts one quoted-or-bare identifier (a user or
 // host name) from the front of s, unquoted, and returns what's left of s
 // immediately after it. A doubled quote character inside a quoted identifier
-// (''/""/``) is the standard SQL escape for a literal quote and is decoded,
+// ('a'/"b"/`c`) is the standard SQL escape for a literal quote and is decoded,
 // not treated as the closing quote; backslash-escaping is not handled (dump
 // output that relies on it fails this parse, which fails the CREATE USER
 // rewrite/matching safely -- see isCreateUserStatement's caller, which
@@ -5777,6 +5777,8 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 		return fmt.Errorf("No connection pool on %s", server.URL)
 	}
 
+	server.setReseedPhase(ReseedPhaseWaitingReceiver)
+
 	// Use iterative loop instead of recursion to avoid stack buildup
 	maxLoop := cluster.Conf.SSTWaitMaxLoop
 	retryDelay := time.Second * time.Duration(cluster.Conf.SSTWaitRetryDelay)
@@ -5796,6 +5798,7 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 		// Check if job is ready (state=2 means JobStateHalted, waiting for SST)
 		if count > 0 {
 			server.JobsUpdateState(task, "processing", 1, 0)
+			server.setReseedPhase(ReseedPhaseSendingSST)
 			go func() {
 				sendStart := time.Now()
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST send for %s started at %s (file: %s)", task, sendStart.Format(time.RFC3339), filename)
@@ -5810,6 +5813,7 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 					server.JobsUpdateState(task, err.Error(), 5, 0)
 					return
 				}
+				server.setReseedPhase(ReseedPhaseApplyingBackup)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST send for %s completed in %s (started at %s)", task, elapsed, sendStart.Format(time.RFC3339))
 			}()
 			return nil
@@ -5846,6 +5850,8 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 		return fmt.Errorf("No connection pool on %s", server.URL)
 	}
 
+	server.setReseedPhase(ReseedPhaseWaitingReceiver)
+
 	// Use iterative loop instead of recursion to avoid stack buildup
 	// and ensure responsive context cancellation
 	maxLoop := cluster.Conf.SSTWaitMaxLoop
@@ -5871,6 +5877,7 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 		// Check if job is ready (state=2 means JobStateHalted, waiting for SST)
 		if count > 0 {
 			server.JobsUpdateState(task, "processing", 1, 0)
+			server.setReseedPhase(ReseedPhaseSendingSST)
 			go func() {
 				sendStart := time.Now()
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST stream send for %s started at %s (source: %s)", task, sendStart.Format(time.RFC3339), sourceName)
@@ -5887,6 +5894,7 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 					server.JobsUpdateState(task, err.Error(), 5, 0)
 					return
 				}
+				server.setReseedPhase(ReseedPhaseApplyingBackup)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST stream send for %s completed in %s (started at %s)", task, elapsed, sendStart.Format(time.RFC3339))
 			}()
 			return nil

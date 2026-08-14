@@ -600,11 +600,16 @@ func (server *ServerMonitor) SetInReseedBackup(value string) {
 	server.reseedMutex.Lock()
 	defer server.reseedMutex.Unlock()
 	server.IsReseeding = value
+	// Clear on both arm and release: a stale phase from a prior reseed must
+	// never leak into a newly-armed one, and must not linger once idle.
+	server.reseedPhase.Store("")
 }
 
 // TrySetInReseedBackup atomically checks if the server is already in a reseeding state
 // and sets it to the new task if not. Returns true if the state was successfully set,
 // false if the server is already reseeding. This prevents concurrent reseed operations.
+// Does not need to clear reseedPhase itself: it only succeeds when IsReseeding=="",
+// a state only reachable via SetInReseedBackup(""), which already cleared it.
 func (server *ServerMonitor) TrySetInReseedBackup(task string) (bool, string) {
 	server.reseedMutex.Lock()
 	defer server.reseedMutex.Unlock()

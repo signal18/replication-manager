@@ -124,3 +124,56 @@ func TestSampleReseedRate_ClearedByLifecycle(t *testing.T) {
 		t.Fatalf("expected stopReseedProgress to clear the sample window, got (%d, %v)", rate, ready)
 	}
 }
+
+// TestGetReseedProgress_SurfacesPhase verifies a phase set via setReseedPhase
+// (as WaitAndSendSST/WaitAndSendSSTStream do as the SST lifecycle advances)
+// shows up on the JSON-facing ReseedProgressView, and that an idle server
+// reports no phase.
+func TestGetReseedProgress_SurfacesPhase(t *testing.T) {
+	server := &ServerMonitor{}
+
+	if got := server.GetReseedProgress(); got != nil {
+		t.Fatalf("expected nil progress while idle, got %+v", got)
+	}
+
+	server.SetInReseedBackup("reseedmariabackup")
+	server.setReseedPhase(ReseedPhaseSendingSST)
+
+	v := server.GetReseedProgress()
+	if v == nil {
+		t.Fatal("expected a progress view once armed")
+	}
+	if v.Phase != ReseedPhaseSendingSST {
+		t.Fatalf("expected Phase=%q, got %q", ReseedPhaseSendingSST, v.Phase)
+	}
+}
+
+// TestReseedPhase_ClearedBySetInReseedBackup guards the leak this is meant to
+// prevent: a phase left over from a finished reseed must never be visible on
+// a subsequently armed one, and must not linger once idle. SetInReseedBackup
+// is the single choke point both arming and releasing go through (physical,
+// flashback, logical, splitdump, direct alike), so clearing there is what
+// makes this safe without every reseed path having to remember to do it.
+func TestReseedPhase_ClearedBySetInReseedBackup(t *testing.T) {
+	server := &ServerMonitor{}
+
+	server.SetInReseedBackup("reseedmariabackup")
+	server.setReseedPhase(ReseedPhaseApplyingBackup)
+	if got := server.getReseedPhase(); got != ReseedPhaseApplyingBackup {
+		t.Fatalf("expected phase set while armed, got %q", got)
+	}
+
+	// Release: phase must clear immediately, not linger for a nil-returning
+	// GetReseedProgress caller that never reads Phase.
+	server.SetInReseedBackup("")
+	if got := server.getReseedPhase(); got != "" {
+		t.Fatalf("expected phase cleared on release, got %q", got)
+	}
+
+	// Re-arm for a different task: must start with no phase, not inherit the
+	// finished reseed's last phase.
+	server.SetInReseedBackup("reseedxtrabackup")
+	if got := server.getReseedPhase(); got != "" {
+		t.Fatalf("expected no phase leaked into a newly-armed reseed, got %q", got)
+	}
+}

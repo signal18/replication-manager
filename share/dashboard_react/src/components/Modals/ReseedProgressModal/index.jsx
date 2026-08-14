@@ -8,6 +8,7 @@ import {
   formatBytes,
   formatElapsed,
   formatRateLine,
+  formatReseedPhase,
 } from '../../../utility/reseedProgress'
 
 // ReseedProgressModal shows every server currently being reseeded/rejoined with a
@@ -23,6 +24,7 @@ function ReseedProgressModal({ isOpen, closeModal, servers }) {
       {active.map((rp) => {
         const hasBar = reseedHasBar(rp)
         const hasBytes = reseedHasBytes(rp)
+        const phaseLabel = formatReseedPhase(rp.phase)
         return (
           <Box key={rp.url} borderWidth='1px' borderRadius='md' p={3}>
             <Flex justify='space-between' align='center' mb={2}>
@@ -59,6 +61,8 @@ function ReseedProgressModal({ isOpen, closeModal, servers }) {
                       {` · ${formatRateLine(rp)}`}
                       {` · ${formatElapsed(rp.elapsedSecs)}`}
                     </>
+                  ) : phaseLabel ? (
+                    `${phaseLabel} · ${formatElapsed(rp.elapsedSecs)}`
                   ) : (
                     rp.line || `in progress · ${formatElapsed(rp.elapsedSecs)}`
                   )}
