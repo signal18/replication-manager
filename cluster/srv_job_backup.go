@@ -567,7 +567,6 @@ type logicalReseedUserRestoreAssessment struct {
 	Applicable            bool
 	RestoreUserConfigured bool
 	RestoreUserEffective  bool
-	SplitUser             bool
 	SidecarChecked        bool
 	SidecarPresent        bool
 	Message               string
@@ -685,7 +684,6 @@ func assessLogicalReseedUserRestoreAvailability(backupfile string, restoreUserCo
 	a := logicalReseedUserRestoreAssessment{
 		Applicable:            monolithicFormat,
 		RestoreUserConfigured: restoreUserConfigured,
-		SplitUser:             splitUser,
 		// restoreUserConfigured alone, matching the actual restoreUser formula
 		// (JobReseedLogicalBackupPrepare et al.) -- splitUser no longer gates
 		// real restore behavior, only which message below is shown.
@@ -3182,6 +3180,7 @@ func (server *ServerMonitor) classifyReseedMysqldumpUserSidecar(backupfile strin
 	if err != nil {
 		return splitdump.ClassifyResult{}, false, err
 	}
+	defer sidecarReader.Close()
 	result, err = splitdump.ClassifyStream(sidecarReader, splitdump.ClassifyOptions{
 		ApplicationWriter: io.Discard,
 		SystemWriter:      systemWriter,
@@ -3240,11 +3239,31 @@ func hasMysqldumpUserSidecar(backupfile string) (bool, error) {
 	return false, err
 }
 
+// gzipFileReadCloser closes both the gzip reader and the underlying file it
+// wraps -- gzip.Reader.Close (pgzip included) only closes the gzip stream,
+// never the io.Reader it was built from, so ReadMysqldumpUser's caller needs
+// a single Close that accounts for both or the underlying *os.File leaks.
+type gzipFileReadCloser struct {
+	*gzip.Reader
+	file *os.File
+}
+
+func (g *gzipFileReadCloser) Close() error {
+	gzErr := g.Reader.Close()
+	fileErr := g.file.Close()
+	if gzErr != nil {
+		return gzErr
+	}
+	return fileErr
+}
+
 // ReadMysqldumpUser returns the decompressed mysql.users.sql.gz sidecar next
 // to backupfile. A missing directory or sidecar file is reported as an error
 // wrapping os.ErrNotExist so replayReseedMysqldumpUserSidecar can tell "no
 // sidecar available" (a tolerated no-op) apart from a genuine I/O failure.
-func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, error) {
+// The returned io.ReadCloser owns both the gzip reader and the underlying
+// file; the caller must Close it.
+func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.ReadCloser, error) {
 	cluster := server.ClusterGroup
 	var err error
 
@@ -3271,10 +3290,11 @@ func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, er
 	bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModTask)
 	fz, err := gzip.NewReaderN(gzfile, bufferSize, parallelBlocks)
 	if err != nil {
+		gzfile.Close()
 		return nil, fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
 	}
 
-	return fz, nil
+	return &gzipFileReadCloser{Reader: fz, file: gzfile}, nil
 }
 
 // JobReseedBackupScript will execute the backup load script
@@ -6062,7 +6082,12 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	meta := snapshotLogicalBackupMeta(source)
 	var splitUserOverridePtr *bool
 	if splitUserOverride {
-		splitUserOverridePtr = &splitUser
+		// A stable copy, not &splitUser: splitUser itself is about to be
+		// reassigned by the call below, and taking its address here would
+		// rely on Go's RHS-before-assignment evaluation order to read the
+		// pre-reassignment value -- correct today, but fragile and non-obvious.
+		overrideVal := splitUser
+		splitUserOverridePtr = &overrideVal
 	}
 	// Re-resolved from fresh meta (not trusted from the payload's stored
 	// split_user value) so a reseed prepared earlier and processed later

@@ -474,7 +474,6 @@ func TestBuildLogicalReseedPayloadIncludesUserRestoreFields(t *testing.T) {
 		Applicable:            true,
 		RestoreUserConfigured: true,
 		RestoreUserEffective:  true,
-		SplitUser:             true,
 		SidecarChecked:        true,
 		SidecarPresent:        false,
 		Message:               "User restore enabled, but the mysql.users.sql.gz sidecar is missing for this backup. Reseed will continue; user restore will only occur if inline system content exists in the dump.",
