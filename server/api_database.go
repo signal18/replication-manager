@@ -5275,9 +5275,24 @@ func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter
 			} else if warning != "" {
 				result = "completed: " + warning
 			}
+			// SQL mode clears the reseeding-in-progress flag inline via
+			// AfterJobProcess (JobsReconcileSQL polling the jobs table); API
+			// mode has no such table to reconcile from, so this terminal
+			// report is the only place left to release it. Without this, the
+			// server stays permanently marked as reseeding after every
+			// API-mode physical reseed/flashback, blocking all future ones
+			// via TrySetInReseedBackup's "already reseeding" guard.
+			node.FinishReseedJobState(taskname, "job-finished")
 		}
 		node.JobsUpdateState(taskname, result, state, 1)
 	case "error":
+		if physicalRestoreJobTasks[taskname] {
+			// Mirrors JobsCheckErrors' SQL-mode error path (cluster/srv_job.go):
+			// a reseed/flashback that ends in error must release the reseeding
+			// flag too, or the server is stuck "reseeding" forever with no way
+			// to retry.
+			node.FinishReseedJobState(taskname, "job-error")
+		}
 		node.JobsUpdateState(taskname, "error", cluster.JobStateErrorExec, 1)
 	case "waiting":
 		node.JobsUpdateState(taskname, "waiting", cluster.JobStateHalted, 0)

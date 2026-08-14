@@ -259,6 +259,31 @@ func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error
 	return nil
 }
 
+// FinishReseedJobState clears the reseeding-in-progress flag and any leftover
+// restic reseed cookie for a physical reseed/flashback task that just reached
+// a terminal state (done or error). AfterJobProcess above (SQL mode's success
+// path) and JobsCheckErrors (SQL mode's error path, cluster/srv_job.go) both
+// do this inline via JobsReconcileSQL polling the jobs table -- API mode has
+// no such table to reconcile from, so its job-state callback
+// (handlerMuxServerJobState, server/api_database.go) calls this directly
+// instead, on both its "done" and "error" branches. Exported because that
+// callback lives in package server, not cluster.
+func (server *ServerMonitor) FinishReseedJobState(task, reason string) {
+	cluster := server.ClusterGroup
+	if server.HasWaitResticReseedCookie() {
+		if err := server.DelWaitResticReseedCookie(); err != nil {
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+					"Failed to clear restic reseed cookie after %s for %s on %s: %s", reason, task, server.URL, err)
+			}
+		}
+	}
+	server.cleanupResticReseedForTask(task, reason)
+	if server.HasReseedingState(task) {
+		server.SetInReseedBackup("")
+	}
+}
+
 func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions) error {
 	if server == nil {
 		return nil

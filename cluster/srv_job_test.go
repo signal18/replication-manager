@@ -1868,3 +1868,57 @@ func TestPhysicalBackupCookie_ReconcileClearsLegacySharedCookie(t *testing.T) {
 		t.Fatal("expected reconciliation to clear the reconciled task's own cookie")
 	}
 }
+
+// TestFinishReseedJobState_ClearsReseedingState guards the API-mode "stuck
+// reseeding" bug: handlerMuxServerJobState (server/api_database.go) has no
+// SQL jobs table to reconcile a terminal physical reseed/flashback task from
+// (that's what SQL mode's AfterJobProcess/JobsCheckErrors do), so it must
+// call FinishReseedJobState directly on both its "done" and "error" branches.
+// Without this, TrySetInReseedBackup's armed state never releases and every
+// later reseed attempt on this server is rejected as "already reseeding".
+func TestFinishReseedJobState_ClearsReseedingState(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "reseed-cluster", "target", "3307")
+	task := "reseedmariabackup"
+
+	if ok, _ := server.TrySetInReseedBackup(task); !ok {
+		t.Fatal("failed to arm reseeding state")
+	}
+	if !server.HasReseedingState(task) {
+		t.Fatal("expected reseeding state to be armed")
+	}
+
+	server.FinishReseedJobState(task, "job-finished")
+
+	if server.HasAnyReseedingState() {
+		t.Fatalf("expected reseeding state to be cleared, got %q", server.IsReseeding)
+	}
+	// The flag must be free for a new attempt, not just cleared for this task.
+	if ok, current := server.TrySetInReseedBackup(task); !ok {
+		t.Fatalf("expected a new reseed to be armable after cleanup, blocked by %q", current)
+	}
+}
+
+// TestFinishReseedJobState_ClearsResticReseedCookie mirrors the SQL-mode
+// success/error paths' restic reseed cookie cleanup (AfterJobProcess,
+// JobsCheckErrors), which FinishReseedJobState exists to reproduce for API
+// mode.
+func TestFinishReseedJobState_ClearsResticReseedCookie(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "reseed-cluster", "target", "3307")
+	task := "reseedmariabackup"
+
+	if err := server.SetWaitResticReseedCookie(); err != nil {
+		t.Fatalf("failed to seed restic reseed cookie: %v", err)
+	}
+	if ok, _ := server.TrySetInReseedBackup(task); !ok {
+		t.Fatal("failed to arm reseeding state")
+	}
+
+	server.FinishReseedJobState(task, "job-error")
+
+	if server.HasWaitResticReseedCookie() {
+		t.Fatal("expected restic reseed cookie to be cleared")
+	}
+	if server.HasAnyReseedingState() {
+		t.Fatalf("expected reseeding state to be cleared, got %q", server.IsReseeding)
+	}
+}
