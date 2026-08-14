@@ -1019,9 +1019,14 @@ func (repman *ReplicationManager) syncPluginDataFromPull(pullDir string) {
 			}
 			// Reload db_distributions.json (safe to auto-refresh)
 			cluster.Configurator.ReloadDBDistributions()
-			// Reload repos.json (docker image tags)
+			// Reload repos.json (docker image tags) into the per-cluster list.
 			cluster.ReloadDockerRepos()
 		}
+		// Also refresh the server-level ServiceRepos -- what the GUI reads -- from the
+		// same BO-pushed repos.json. ReloadDockerRepos only updates the per-cluster
+		// DockerRepos (json:"-", not serialized), so without this the GUI version
+		// dropdown stays frozen on the tag list captured at startup (issue #1702).
+		repman.ReloadServiceRepos()
 
 		// Compliance modules are NOT auto-reloaded — the enterprise-compliance
 		// plugin detects the change and raises a state; the user must explicitly

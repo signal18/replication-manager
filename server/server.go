@@ -2655,10 +2655,10 @@ func (repman *ReplicationManager) Run() error {
 	repman.ReloadTerms()
 	repman.InitSharedAppTemplates()
 	repman.MonitorType = config.GetMonitorType()
-	repman.ServiceRepos, err = repman.Conf.GetDockerRepos(repman.Conf.ShareDir+"/repo/repos.json", repman.Conf.Test)
-	if err != nil {
-		repman.Logrus.WithError(err).Errorf("Initialization docker repo failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)
-	}
+	// ServiceRepos (the docker image tag list the GUI reads via json:"serviceRepos")
+	// is loaded through ReloadServiceRepos so the exact same path is reused when the
+	// back office pushes a fresh plugins/data/repos.json after startup (issue #1702).
+	repman.ReloadServiceRepos()
 	repman.ServiceTarballs, err = repman.Conf.GetTarballs(repman.Conf.Test)
 	if err != nil {
 		repman.Logrus.WithError(err).Errorf("Initialization tarballs repo failed: %s %s", repman.Conf.ShareDir+"/repo/tarballs.json", err)
@@ -3124,6 +3124,29 @@ func (repman *ReplicationManager) Run() error {
 	os.Exit(0)
 	return nil
 
+}
+
+// ReloadServiceRepos reloads the server-level ServiceRepos -- the docker image
+// tag list the GUI reads via json:"serviceRepos" (monitor.serviceRepos). It is
+// sourced from GetDockerRepos, which prefers the back-office-pushed
+// plugins/data/repos.json over the embedded fallback. It MUST be called whenever
+// the -pull repo delivers a fresh repos.json; otherwise the GUI keeps showing the
+// tag list captured at startup, while newer tags only land in the per-cluster
+// DockerRepos (which is json:"-" and never serialized to the GUI). See issue #1702.
+func (repman *ReplicationManager) ReloadServiceRepos() {
+	repos, err := repman.Conf.GetDockerRepos(repman.Conf.ShareDir+"/repo/repos.json", repman.Conf.Test)
+	if err != nil {
+		repman.Logrus.WithError(err).Errorf("Reload docker repos failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)
+		return
+	}
+	if len(repos) == 0 {
+		return
+	}
+	if len(repos) != len(repman.ServiceRepos) {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Service docker image repos updated: %d repos loaded from back office plugins/data/repos.json", len(repos))
+	}
+	repman.ServiceRepos = repos
 }
 
 // loadMainConfigInto reads the server's main config.toml into v, using the
