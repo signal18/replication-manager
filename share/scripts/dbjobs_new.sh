@@ -106,7 +106,7 @@ readonly -a JOBS=(
     "xtrabackup" "mariabackup" "errorlog" "slowquery"
     "auditlog" "sqlerrorlog" "zfssnapback" "optimize"
     "reseedxtrabackup" "reseedmariabackup"
-    "flashbackxtrabackup" "flashbackmariadbackup"
+    "flashbackxtrabackup" "flashbackmariabackup"
     "stop" "restart" "start"
 )
 
@@ -509,6 +509,12 @@ get_task_receiver() {
 report_job_state() {
     local taskname="$1"
     local jobstate="$2"
+    # Optional: a JSON object (e.g. PARTIAL_RESTORE_JSON) merged into the
+    # POST body under "restore", read by handlerMuxServerJobState
+    # (server/api_database.go) for a physical reseed/flashback task's "done"
+    # report -- API mode's only transport for this metadata, since there is
+    # no jobs-table payload column to write it to in this mode.
+    local restore_json="$3"
 
     # An empty state means the caller has a bug (e.g. an unset result
     # variable) — the route requires a non-empty {jobstate} path segment, so
@@ -523,7 +529,11 @@ report_job_state() {
     local api_host="$REPLICATION_MANAGER_HOST"
     local api_port="$REPLICATION_MANAGER_PORT"
     local endpoint="/api/clusters/${CLUSTER_NAME}/servers/${MYSQL_SERVER}/${MYSQL_PORT}/actions/job-state/${taskname}/${jobstate}"
-    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}"
+    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\""
+    if [[ -n "$restore_json" ]]; then
+        data="${data},\"restore\":${restore_json}"
+    fi
+    data="${data}}"
 
     # Retry like send_lines_to_api already does via send_to_api_with_retry.
     # done/error are terminal — a dropped report there is what leaves a job
@@ -1508,11 +1518,13 @@ partialRestore() {
         pr_cmd "Move MyISAM files for mysql.$file" mv "$BACKUPDIR/mysql/$file."* "$DATADIR/mysql/"
         pr_cmd "Flush table mysql.$file" $BINARY_CLIENT -e "set sql_log_bin=0;FLUSH TABLE mysql.$file"
     done
-    send_lines_to_api "Setting GTID of the last change..." "$job" "$LVL_DEBUG"
-    local g=""
+    send_lines_to_api "Extracting GTID of the last change..." "$job" "$LVL_DEBUG"
+    local g="" binfile="" binpos=""
     local f
     for f in "$BACKUPDIR/mariadb_backup_binlog_info" "$BACKUPDIR/xtrabackup_binlog_info"; do
         if [[ -f "$f" ]]; then
+            binfile=$(awk '{print $1}' "$f" 2>>"$PR_LOG")
+            binpos=$(awk '{print $2}' "$f" 2>>"$PR_LOG")
             g=$(awk '{print $3}' "$f" 2>>"$PR_LOG")
             [[ -n "$g" ]] && break
         fi
@@ -1537,28 +1549,53 @@ partialRestore() {
     if [[ -n "$g" ]]; then
         g=$(echo "$g" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
     fi
-    if [[ -n "$g" ]]; then
-        # Clear this server's own local binlog/GTID history before applying the
-        # backup's GTID position. Without this, a destination that previously
-        # advanced further in a domain (e.g. was a master, or replayed ahead)
-        # keeps that state in gtid_binlog_pos; MariaDB's strict-GTID mode then
-        # rejects the replicated events restarting from the (lower) restored
-        # position as "out of order" (error 1950), even though gtid_slave_pos
-        # itself was set correctly. Mirrors server.ResetMaster() in the Go
-        # logical/splitdump restore path (cluster/srv_job_backup.go).
-        pr_cmd "Reset binlog before GTID apply" $BINARY_CLIENT -e "set sql_log_bin=0;RESET MASTER;"
-        pr_cmd "Set GTID of the last change" $BINARY_CLIENT -e "set sql_log_bin=0;set global gtid_slave_pos='$g'"
-    else
-        pr_log "No GTID info found; skip GTID set."
+
+    if [[ -z "$g" ]]; then
+        pr_log "No GTID info found in prepared backup."
     fi
+    local vinfo=""
+    vinfo=$($BINARY_CLIENT -N -e "SELECT VERSION();" 2>>"$PR_LOG")
+    local vendor="mariadb"
+    [[ "$vinfo" != *MariaDB* ]] && vendor="mysql"
+
+    # GTID reset/apply and channel restart are NOT done here in either job
+    # mode. This shell script only extracts the restore-confirmed position
+    # and reports it, structured; repman is the vendor/topology-aware owner
+    # that resets, applies the GTID, and restarts channels once this job
+    # reports done -- via two different transports depending on job mode:
+    #
+    # SQL mode: this job has a jobs-table row, so the metadata goes in its
+    # payload column; repman's AfterJobProcess (cluster/srv_job_backup.go),
+    # driven by the SQL-mode-only terminal-job reconciliation
+    # JobsCheckFinished, reads it from there.
+    #
+    # API mode: there is no jobs-table row (no $ID), so PARTIAL_RESTORE_JSON
+    # (set here, NOT local -- it must survive after this function returns)
+    # is picked up by the "done" report_job_state call below in the main
+    # dispatch loop and sent in that HTTP callback's body instead; repman's
+    # handlerMuxServerJobState (server/api_database.go) reads it from there
+    # and calls the same RecoverPhysicalRestore repman uses for SQL mode.
+    PARTIAL_RESTORE_JSON=$(printf '{"vendor":"%s","gtid":"%s","binLogFile":"%s","binLogPos":"%s"}' \
+        "$vendor" "$g" "$binfile" "$binpos")
+    if [[ "$JOBS_MODE" != "api" && -n "$ID" ]]; then
+        pr_cmd "Report restore metadata" $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs SET payload='$PARTIAL_RESTORE_JSON' WHERE id=$ID;"
+    fi
+
     send_lines_to_api "Flushing privileges..." "$job" "$LVL_DEBUG"
     pr_cmd "Flush privileges" $BINARY_CLIENT -e "set sql_log_bin=0;flush privileges;"
+
+    # Replication restart is intentionally NOT done here, in either job mode
+    # -- repman is the sole restart authority (SQL mode: AfterJobProcess off
+    # the payload column; API mode: handlerMuxServerJobState off this job's
+    # "done" callback body, see PARTIAL_RESTORE_JSON above), and restarts
+    # every channel by its real ConnectionName, symmetric with the
+    # StopAllSlaves() call made before the restore began.
     local mh=""
     mh=$($BINARY_CLIENT -N -e "SHOW SLAVE STATUS" 2>>"$PR_LOG" | awk -F '	' 'NR==1{print $2}')
     if [[ -n "$mh" && "$mh" != "NULL" ]]; then
-        pr_cmd "Start slave" $BINARY_CLIENT -e "set sql_log_bin=0;start slave;"
+        pr_log "Master_Host configured ($mh); leaving channel restart to repman."
     else
-        pr_log "No Master_Host configured; skip start slave."
+        pr_log "No Master_Host configured; leaving channel restart to repman."
     fi
 
     if [[ "$PR_STATUS" -eq 0 ]]; then
@@ -1851,7 +1888,7 @@ for job in "${JOBS[@]}"; do
             $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
             partialRestore
             ;;
-        flashbackmariadbackup)
+        flashbackmariabackup)
             rm -rf $BACKUPDIR
             mkdir -p $BACKUPDIR
             socatCleaner
@@ -1929,7 +1966,20 @@ for job in "${JOBS[@]}"; do
                 fi
                 ;;
             esac
-            report_job_state "$job" "$api_job_result"
+            # Physical reseed/flashback: forward the restore metadata
+            # partialRestore() extracted (PARTIAL_RESTORE_JSON, set inside it
+            # unconditionally, not local) so repman can run the same
+            # GTID-apply/channel-restart recovery this mode has no
+            # jobs-table row to carry it through otherwise. See the
+            # PARTIAL_RESTORE_JSON comment in partialRestore().
+            case "$job" in
+            reseedmariabackup|reseedxtrabackup|flashbackmariabackup|flashbackxtrabackup)
+                report_job_state "$job" "$api_job_result" "$PARTIAL_RESTORE_JSON"
+                ;;
+            *)
+                report_job_state "$job" "$api_job_result"
+                ;;
+            esac
             if [[ "$api_job_result" == "done" ]]; then
                 send_lines_to_api "Job $job completed" "$job" "$LVL_INFO"
             else

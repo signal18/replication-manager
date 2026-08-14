@@ -245,6 +245,7 @@ type ServerMonitor struct {
 	DBDataDir                   string
 	LastConfigUpdate            config.LastConfigUpdate `json:"lastConfigUpdate"`
 	LastBackupMeta              ServerBackupMeta        `json:"lastBackupMeta"`
+	LastPhysicalRestoreMeta     *PhysicalRestoreMeta    `json:"lastPhysicalRestoreMeta,omitempty"`
 	IsNeedPathCheck             bool
 	HasConfigPathChanged        bool
 	HasConfigDiff               bool         `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config

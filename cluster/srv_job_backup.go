@@ -44,6 +44,151 @@ import (
 
 var errJobCanceledByUser = errors.New("job canceled by user")
 
+// PhysicalRestoreMeta is the structured result partialRestore()
+// (share/scripts/dbjobs_new.sh) reports back through the jobs table's
+// payload column once a hot physical restore finishes: the GTID/binlog
+// position it confirmed on the destination from the prepared backup's own
+// info files. Shell only extracts and reports this -- resetting the binlog
+// and applying the GTID is done here (applyPhysicalRestoreGTID), using
+// repman's own vendor/version detection rather than a self-reported label.
+type PhysicalRestoreMeta struct {
+	Vendor     string `json:"vendor"`
+	GTID       string `json:"gtid"`
+	BinLogFile string `json:"binLogFile"`
+	BinLogPos  string `json:"binLogPos"`
+}
+
+// fetchPhysicalRestoreMeta reads back the structured restore metadata
+// partialRestore() wrote into this job's payload column. Returns (nil, nil)
+// when the job left no payload (older dbjobs_new.sh, or nothing to report).
+func (server *ServerMonitor) fetchPhysicalRestoreMeta(conn *sqlx.Conn, id int64) (*PhysicalRestoreMeta, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), JobTimeout)
+	defer cancel()
+	var payload string
+	if err := conn.QueryRowxContext(ctx, "SELECT COALESCE(payload,'') FROM replication_manager_schema.jobs WHERE id=?", id).Scan(&payload); err != nil {
+		return nil, err
+	}
+	payload = strings.TrimSpace(payload)
+	if payload == "" {
+		return nil, nil
+	}
+	var meta PhysicalRestoreMeta
+	if err := json.Unmarshal([]byte(payload), &meta); err != nil {
+		return nil, err
+	}
+	return &meta, nil
+}
+
+// RecoverPhysicalRestore is the vendor/topology-aware post-restore recovery
+// owner shared by both job-completion transports: SQL mode's AfterJobProcess
+// (fed from the jobs table's payload column) and API mode's
+// handlerMuxServerJobState (server/api_database.go, fed from the job-state
+// HTTP callback's "restore" field). Whichever transport a deployment uses,
+// this is the one place that resets/applies GTID, restarts channels, and
+// gates on topology -- callers only differ in how they report the outcome
+// (jobs table vs HTTP/in-memory job state).
+//
+// Returns a non-empty warning (not an error) when recovery partially
+// succeeded -- the managed channel is back, but extra channels were left
+// stopped for operator review. A non-nil error means recovery did not
+// complete: nothing was silently half-applied beyond what's stated.
+func (server *ServerMonitor) RecoverPhysicalRestore(restoreMeta *PhysicalRestoreMeta) (string, error) {
+	cluster := server.ClusterGroup
+	if server.PointInTimeMeta.IsInPITR {
+		return "", nil
+	}
+
+	hasGTID := restoreMeta != nil && restoreMeta.GTID != ""
+	isMultiSource := len(server.Replications) > 1
+
+	// Relay topology stays fully blocked: a relay's risk is a downstream
+	// dependent's continuity, a different problem from a multi-source
+	// server's own recovery below, and not yet solved. Only gates when
+	// there is an actual GTID to apply -- a restore with no reported GTID
+	// (older dbjobs_new.sh, or none found in the backup) still restarts
+	// channels as before.
+	if hasGTID && server.IsRelay {
+		return "", fmt.Errorf("physical restore GTID recovery blocked on %s: server is a relay (other servers replicate from it) -- automatic recovery not supported, manual review required", server.URL)
+	}
+
+	// Reset the binlog and apply the restore-confirmed GTID position before
+	// any channel restarts below -- a channel started against the wrong (or
+	// absent) GTID baseline would either replicate a gap or fail outright.
+	if err := server.applyPhysicalRestoreGTID(restoreMeta); err != nil {
+		return "", err
+	}
+
+	// Restart every channel by its real ConnectionName, symmetric with
+	// StopAllSlaves() in JobReseedPhysicalBackup/JobFlashbackPhysicalBackup
+	// -- except on a multi-source server with a GTID position that was just
+	// applied: the reset above (RESET MASTER / RESET BINARY LOGS AND GTIDS)
+	// clears this server's whole shared GTID/binlog history, not just the
+	// managed channel's, so only the managed channel
+	// (server.ReplicationSourceName == cluster.Conf.MasterConn) is
+	// auto-restarted here. Extra channels are left stopped rather than
+	// resumed against a GTID baseline that may no longer match their own
+	// source -- managed-channel-first recovery; merged multi-source GTID
+	// recovery is a later milestone.
+	var slaveStartErrs []string
+	var pausedChannels []string
+	for _, rep := range server.Replications {
+		channel := rep.ConnectionName.String
+		if hasGTID && isMultiSource && channel != server.ReplicationSourceName {
+			label := channel
+			if label == "" {
+				label = "<default>"
+			}
+			pausedChannels = append(pausedChannels, fmt.Sprintf("%s (source %s:%s)", label, rep.MasterHost.String, rep.MasterPort.String))
+			continue
+		}
+		if _, err := server.StartSlaveChannel(channel); err != nil {
+			slaveStartErrs = append(slaveStartErrs, fmt.Sprintf("%s: %s", channel, err.Error()))
+		}
+	}
+	if len(slaveStartErrs) > 0 {
+		return "", errors.New(strings.Join(slaveStartErrs, "; "))
+	}
+
+	if len(pausedChannels) == 0 {
+		return "", nil
+	}
+	warning := fmt.Sprintf("managed channel recovered; extra replication source(s) left stopped for operator review (GTID reset during recovery affects this server's shared GTID state): %s", strings.Join(pausedChannels, ", "))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "%s on %s", warning, server.URL)
+	return warning, nil
+}
+
+// applyPhysicalRestoreGTID resets the binlog and applies the GTID position a
+// completed hot physical restore confirmed, before the caller restarts
+// replication channels. Vendor/version branching mirrors the logical
+// splitdump restore GTID-apply switch elsewhere in this file: MariaDB resets
+// then sets gtid_slave_pos, MySQL/Percona GTID resets then sets GTID_PURGED.
+// A target without GTID replication enabled (HasMySQLGTID false on a
+// non-MariaDB server, e.g. GTID_MODE=OFF) is left untouched -- setting
+// GTID_PURGED there would just error.
+func (server *ServerMonitor) applyPhysicalRestoreGTID(meta *PhysicalRestoreMeta) error {
+	if meta == nil || meta.GTID == "" {
+		return nil
+	}
+	gtidValue := strings.ReplaceAll(meta.GTID, "'", "''")
+	switch {
+	case server.IsMariaDB():
+		if logs, err := server.ResetMaster(); err != nil {
+			return fmt.Errorf("reset binlog before GTID apply: %s (%s)", err, logs)
+		}
+		if err := server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+gtidValue+"'", time.Second); err != nil {
+			return fmt.Errorf("apply gtid_slave_pos: %s", err)
+		}
+	case server.HasMySQLGTID() && server.DBVersion.IsMySQLOrPerconaGreater57():
+		if logs, err := server.ResetMaster(); err != nil {
+			return fmt.Errorf("reset binlog before GTID apply: %s (%s)", err, logs)
+		}
+		if err := server.ExecQueryNoBinLog("SET @@GLOBAL.GTID_PURGED='"+gtidValue+"'", time.Second); err != nil {
+			return fmt.Errorf("apply GTID_PURGED: %s", err)
+		}
+	}
+	return nil
+}
+
 // errServerNotReseeding marks ProcessReseedPhysical/ProcessFlashbackPhysical's
 // "not currently reseeding" bail-out so callers can tell it apart from a real
 // mid-flight failure. This specific bail fires whenever HasReseedingState is
@@ -89,28 +234,26 @@ func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error
 		if server.HasReseedingState(task.task) {
 			defer server.SetInReseedBackup("")
 		}
-		if !server.PointInTimeMeta.IsInPITR {
-			// Restart every channel by its real ConnectionName, symmetric with
-			// StopAllSlaves() in JobReseedPhysicalBackup/JobFlashbackPhysicalBackup.
-			// StartSlave() alone would restart only the managed MasterConn channel,
-			// leaving any other channel stopped after it was stopped for the hot
-			// restore. Mirrors the direct-reseed restart loop below in this file.
-			var slaveStartErrs []string
-			for _, rep := range server.Replications {
-				if _, err := server.StartSlaveChannel(rep.ConnectionName.String); err != nil {
-					slaveStartErrs = append(slaveStartErrs, fmt.Sprintf("%s: %s", rep.ConnectionName.String, err.Error()))
-				}
-			}
-			if len(slaveStartErrs) > 0 {
-				errStr = strings.Join(slaveStartErrs, "; ")
-				// Only set as failed if no error connection
-				if server.Conn != nil {
-					// Set state as 6 to differ post-job error with in-job error (code: 5)
-					server.ConnExecQueryWithTimeout(conn, JobTimeout, fmt.Sprintf(query, "\n"+errStr, JobStateErrorAfter, task.id))
-				}
-				return errors.New(errStr)
-			}
+		var restoreMeta *PhysicalRestoreMeta
+		if meta, err := server.fetchPhysicalRestoreMeta(conn, task.id); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg,
+				"No structured restore metadata for job %d (%s) on %s: %s", task.id, task.task, server.URL, err)
+		} else if meta != nil {
+			restoreMeta = meta
+			server.backupMetaMutex.Lock()
+			server.LastPhysicalRestoreMeta = meta
+			server.backupMetaMutex.Unlock()
 		}
+		warning, err := server.RecoverPhysicalRestore(restoreMeta)
+		if err != nil {
+			errStr = err.Error()
+			if server.Conn != nil {
+				// Set state as 6 to differ post-job error with in-job error (code: 5)
+				server.ConnExecQueryWithTimeout(conn, JobTimeout, fmt.Sprintf(query, "\n"+errStr, JobStateErrorAfter, task.id))
+			}
+			return errors.New(errStr)
+		}
+		errStr = warning
 	}
 	server.ConnExecQueryWithTimeout(conn, JobTimeout, fmt.Sprintf(query, errStr, JobStateSuccess, task.id))
 	return nil
@@ -347,7 +490,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 
-		logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+		logs, err = cluster.pointSlaveToMasterAutoDetect(server)
 		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", backtype, server.URL, err)
 			return err
@@ -460,7 +603,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackupWithPayload(backtype, backup
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 
-		logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+		logs, err = cluster.pointSlaveToMasterAutoDetect(server)
 		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", backtype, server.URL, err)
 			return err
@@ -547,7 +690,7 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 	}
 
-	logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+	logs, err = cluster.pointSlaveToMasterAutoDetect(server)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Flashback can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 		if server.HasReseedingState(task) {

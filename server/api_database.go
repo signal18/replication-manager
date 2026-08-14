@@ -4784,7 +4784,7 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 		return
 	}
 
-	_, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+	_, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), errcode)
 		return
@@ -5092,7 +5092,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.Respo
 	if mycluster != nil {
 		defer mycluster.LogPanicToFile("jobs-check")
 
-		node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+		node, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), errcode)
 			return
@@ -5138,7 +5138,7 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 	}
 	defer mycluster.LogPanicToFile("receive-task")
 
-	node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+	node, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), errcode)
 		return
@@ -5196,6 +5196,27 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 	w.Write([]byte("RECEIVER_PORT=" + rcvPort))
 }
 
+// physicalRestoreJobStateBody is the job-state callback's JSON body, read
+// once and reused for both auth (SecretLoginCheck) and, on a "done" report
+// for a physical reseed/flashback task, the restore metadata partialRestore()
+// (share/scripts/dbjobs_new.sh) extracted from the prepared backup. API mode
+// has no jobs-table row to carry this in (see the payload-column path used
+// in SQL mode, cluster/srv_job_backup.go fetchPhysicalRestoreMeta), so it
+// rides in this same HTTP callback instead.
+type physicalRestoreJobStateBody struct {
+	Restore *cluster.PhysicalRestoreMeta `json:"restore,omitempty"`
+}
+
+// physicalRestoreJobTasks are the task names AfterJobProcess also recognizes
+// in SQL mode (cluster/srv_job_backup.go) -- the only ones a "restore" field
+// in the body is meaningful for.
+var physicalRestoreJobTasks = map[string]bool{
+	"reseedxtrabackup":     true,
+	"reseedmariabackup":    true,
+	"flashbackxtrabackup":  true,
+	"flashbackmariabackup": true,
+}
+
 // handlerMuxServerJobState receives job state updates from the dbjobs script
 // in API mode. The script calls this instead of updating the jobs SQL table.
 // @Summary Update job state from dbjobs script
@@ -5215,7 +5236,7 @@ func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter
 		return
 	}
 
-	node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+	node, decrypted, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), errcode)
 		return
@@ -5232,7 +5253,30 @@ func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter
 	case "processing":
 		node.JobsUpdateState(taskname, "processing", cluster.JobStateRunning, 0)
 	case "done":
-		node.JobsUpdateState(taskname, "completed", cluster.JobStateSuccess, 1)
+		result := "completed"
+		state := cluster.JobStateSuccess
+		if physicalRestoreJobTasks[taskname] {
+			// RecoverPhysicalRestore is the same vendor/topology-aware
+			// GTID-apply and channel-restart owner SQL mode's
+			// AfterJobProcess uses -- API mode has no terminal-job SQL
+			// reconciliation to reach that from, so it runs here instead,
+			// off this same completion callback. The restore metadata rides
+			// inside the encrypted body alongside "secret"/"server", so it
+			// must be parsed from SecretLoginCheck's decrypted payload, not
+			// the raw (still-encrypted, {"data":"..."}) request body.
+			var body physicalRestoreJobStateBody
+			if err := json.Unmarshal([]byte(decrypted), &body); err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+					"Could not parse restore metadata in job-state body for %s on %s: %s", taskname, node.URL, err)
+			}
+			if warning, err := node.RecoverPhysicalRestore(body.Restore); err != nil {
+				result = "completed: " + err.Error()
+				state = cluster.JobStateErrorAfter
+			} else if warning != "" {
+				result = "completed: " + warning
+			}
+		}
+		node.JobsUpdateState(taskname, result, state, 1)
 	case "error":
 		node.JobsUpdateState(taskname, "error", cluster.JobStateErrorExec, 1)
 	case "waiting":
@@ -5307,7 +5351,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsUpgradeSender(w http.Respo
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+		node, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), errcode)
 			return
@@ -5343,7 +5387,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsCreateTable(w http.Respons
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+		node, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), errcode)
 			return

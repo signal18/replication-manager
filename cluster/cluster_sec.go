@@ -602,16 +602,21 @@ type DecodedData struct {
 	Data string `json:"data"`
 }
 
-func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCloser) (*ServerMonitor, int, error) {
+// SecretLoginCheck authenticates a job-callback request and, alongside the
+// resolved node, returns the full decrypted JSON payload -- not just the
+// "secret" field DecodeSecret checks -- so callers that send extra fields in
+// the encrypted body (e.g. handlerMuxServerJobState's "restore" field,
+// server/api_database.go) can parse them without a second decrypt pass.
+func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCloser) (*ServerMonitor, string, int, error) {
 	var decodedData DecodedData
 	body, err := io.ReadAll(rbody)
 	if err != nil {
-		return nil, 500, fmt.Errorf("Error reading body: %s", err.Error())
+		return nil, "", 500, fmt.Errorf("Error reading body: %s", err.Error())
 	}
 
 	err = json.Unmarshal(body, &decodedData)
 	if err != nil {
-		return nil, 400, fmt.Errorf("Decode body: %s. Err: %s", string(body), err.Error())
+		return nil, "", 400, fmt.Errorf("Decode body: %s. Err: %s", string(body), err.Error())
 	}
 
 	var node *ServerMonitor
@@ -621,20 +626,20 @@ func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCl
 		node = cluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 	}
 	if node == nil {
-		return nil, 500, fmt.Errorf("No server")
+		return nil, "", 500, fmt.Errorf("No server")
 	}
 	// Decrypt the encrypted data
 	key := crypto.GetSHA256Hash(node.Pass)
 	iv := crypto.GetMD5Hash(node.Pass)
 
-	decrypted, err := node.DecodeSecret(decodedData.Data, key, iv)
+	secret, payload, err := node.DecodeSecret(decodedData.Data, key, iv)
 	if err != nil {
-		return nil, 500, fmt.Errorf("Error decrypting data : %s", err.Error())
+		return nil, "", 500, fmt.Errorf("Error decrypting data : %s", err.Error())
 	}
 
-	if decrypted != cluster.GetDbPass() {
-		return nil, 401, fmt.Errorf("Invalid secret")
+	if secret != cluster.GetDbPass() {
+		return nil, "", 401, fmt.Errorf("Invalid secret")
 	}
 
-	return node, 200, nil
+	return node, payload, 200, nil
 }

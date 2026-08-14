@@ -436,6 +436,24 @@ func (cluster *Cluster) pointSlaveToMasterWithMode(sl *ServerMonitor, mode strin
 	return dbhelper.ChangeMaster(sl.Conn, changemasteropt, sl.DBVersion)
 }
 
+// pointSlaveToMasterAutoDetect picks the GTID mode for CHANGE MASTER/CHANGE
+// REPLICATION SOURCE from the target's own vendor rather than hardcoding
+// "SLAVE_POS" -- that mode emits MASTER_USE_GTID=SLAVE_POS, a MariaDB-only
+// clause that MySQL/Percona rejects outright, so calling
+// pointSlaveToMasterWithMode(sl, "SLAVE_POS") unconditionally breaks the
+// CHANGE MASTER step on a MySQL/Percona target before a physical
+// reseed/flashback ever starts streaming. Mirrors the mode selection already
+// used for logical reseed/flashback below in this file.
+func (cluster *Cluster) pointSlaveToMasterAutoDetect(sl *ServerMonitor) (string, error) {
+	if sl.DBVersion.IsMySQLOrPerconaGreater57() {
+		if sl.HasMySQLGTID() {
+			return cluster.pointSlaveToMasterWithMode(sl, "MASTER_AUTO_POSITION")
+		}
+		return cluster.pointSlaveToMasterPositional(sl)
+	}
+	return cluster.pointSlaveToMasterWithMode(sl, "SLAVE_POS")
+}
+
 func (cluster *Cluster) pointSlaveToMasterPositional(sl *ServerMonitor) (string, error) {
 	changemasteropt := cluster.GetChangeMasterBaseOptForSlave(sl, cluster.master, sl.IsDelayed)
 
