@@ -1442,7 +1442,14 @@ pr_pipe() {
 
 partialRestore() {
     send_lines_to_api "Starting partial restore..." "$job" "$LVL_INFO"
-    PR_STATUS=0
+    # Optional $1: exit status of the mariabackup/xtrabackup --prepare
+    # --export invocation the caller just ran, folded in here so a prepare
+    # failure is caught even if it leaves plausible-looking files behind that
+    # let every subsequent pr_cmd/pr_pipe step below nominally succeed.
+    # Nothing past this line ever resets PR_STATUS back to 0 (pr_cmd/pr_pipe
+    # only ever set it to 1 on failure), so a nonzero seed here survives to
+    # the final return regardless of how the rest of the restore goes.
+    PR_STATUS=${1:-0}
     case "$job" in
     reseed*)
         PR_LOG="$LOG_DIR/reseed.out"
@@ -1455,6 +1462,9 @@ partialRestore() {
         ;;
     esac
 
+    if [ "$PR_STATUS" -ne 0 ]; then
+        pr_log "ERROR: prepare command exited with status $PR_STATUS before partial restore started."
+    fi
     pr_log "Partial restore started for job $job."
 
     local isr=0
@@ -1865,7 +1875,7 @@ for job in "${JOBS[@]}"; do
             pauseJob "$job"
             socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
             $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
-            partialRestore
+            partialRestore $?
             ;;
         reseedmariabackup)
             rm -rf $BACKUPDIR
@@ -1876,7 +1886,7 @@ for job in "${JOBS[@]}"; do
             socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | mbstream -x -C $BACKUPDIR
             # mbstream -p, --parallel
             $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
-            partialRestore
+            partialRestore $?
             ;;
         flashbackxtrabackup)
             rm -rf $BACKUPDIR
@@ -1886,7 +1896,7 @@ for job in "${JOBS[@]}"; do
             pauseJob "$job"
             socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
             $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
-            partialRestore
+            partialRestore $?
             ;;
         flashbackmariabackup)
             rm -rf $BACKUPDIR
@@ -1896,7 +1906,7 @@ for job in "${JOBS[@]}"; do
             pauseJob "$job"
             socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
             $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
-            partialRestore
+            partialRestore $?
             ;;
         xtrabackup)
             cd /docker-entrypoint-initdb.d
@@ -1955,13 +1965,16 @@ for job in "${JOBS[@]}"; do
                     api_job_result="error"
                 fi
                 ;;
-            reseedmariabackup|reseedxtrabackup)
-                if ! grep -q '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!' "$LOG_DIR/reseed.out" 2>/dev/null; then
-                    api_job_result="error"
-                fi
-                ;;
-            flashbackmariabackup|flashbackxtrabackup)
-                if ! grep -q '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!' "$LOG_DIR/flash.out" 2>/dev/null; then
+            reseedmariabackup|reseedxtrabackup|flashbackmariabackup|flashbackxtrabackup)
+                # Mirrors doneJob()'s SQL-mode check above: PR_STATUS is the
+                # rollup partialRestore() computes from every actual restore
+                # step (pr_cmd/pr_pipe), so it's the authoritative signal here.
+                # Do NOT grep reseed.out/flash.out for "completed OK!" like the
+                # plain mariabackup|xtrabackup case above does -- that banner
+                # is emitted by --backup mode, not guaranteed by the --prepare
+                # --export invocation these tasks use, so a fully successful
+                # partial restore can still lack that exact line.
+                if [ "$PR_STATUS" -ne 0 ]; then
                     api_job_result="error"
                 fi
                 ;;
