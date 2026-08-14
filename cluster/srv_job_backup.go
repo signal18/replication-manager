@@ -524,21 +524,230 @@ type logicalReseedPlan struct {
 	fromPath          bool
 }
 
-func buildLogicalReseedPayload(backtype, backupPath string, splitUser, splitUserOverride, skipMetadata, isPITR bool, serverURL string) (string, error) {
+func buildLogicalReseedPayload(backtype, backupPath string, splitUser, splitUserOverride, skipMetadata, isPITR bool, serverURL string, userRestore logicalReseedUserRestoreAssessment) (string, error) {
 	payload := map[string]string{
-		"backup_type":         strings.TrimSpace(backtype),
-		"backup_path":         strings.TrimSpace(backupPath),
-		"split_user":          fmt.Sprintf("%t", splitUser),
-		"split_user_override": fmt.Sprintf("%t", splitUserOverride),
-		"skip_metadata":       fmt.Sprintf("%t", skipMetadata),
-		"is_pitr":             fmt.Sprintf("%t", isPITR),
-		"server_url":          strings.TrimSpace(serverURL),
+		"backup_type":                       strings.TrimSpace(backtype),
+		"backup_path":                       strings.TrimSpace(backupPath),
+		"split_user":                        fmt.Sprintf("%t", splitUser),
+		"split_user_override":               fmt.Sprintf("%t", splitUserOverride),
+		"skip_metadata":                     fmt.Sprintf("%t", skipMetadata),
+		"is_pitr":                           fmt.Sprintf("%t", isPITR),
+		"server_url":                        strings.TrimSpace(serverURL),
+		"restore_user_configured":           fmt.Sprintf("%t", userRestore.RestoreUserConfigured),
+		"restore_user_effective":            fmt.Sprintf("%t", userRestore.RestoreUserEffective),
+		"user_restore_preflight_applicable": fmt.Sprintf("%t", userRestore.Applicable),
+		"user_sidecar_checked":              fmt.Sprintf("%t", userRestore.SidecarChecked),
+		"user_sidecar_present":              fmt.Sprintf("%t", userRestore.SidecarPresent),
+		"user_restore_preflight_message":    userRestore.Message,
 	}
 	payloadData, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("Failed to marshal logical reseed payload: %v", err)
 	}
 	return string(payloadData), nil
+}
+
+// logicalReseedUserRestoreAssessment is preflight-only, informational: it
+// never changes what a logical reseed actually restores (that stays entirely
+// governed by restoreUser as computed today, and by JobReseedMysqldump's own
+// phase-two logic -- see reseedMysqldumpSystemReplaySource). It exists solely
+// so an operator finds out, at plan/execution start, whether backed-up
+// user/system SQL is actually going to be available, rather than only
+// discovering that from JobReseedMysqldump's late phase-two no-op log after
+// the (potentially long) application-data restore has already run. See
+// doc/implementation/cluster/SYSTEM_ALL_RESEED_IMPLEMENTATION_STATUS.md.
+type logicalReseedUserRestoreAssessment struct {
+	// Applicable is false for backup formats where the mysql.users.sql.gz
+	// sidecar isn't the relevant concept -- mydumper (its own per-file sidecar
+	// convention) and splitdump-format mysqldump backups (system content
+	// bundled as mysql.system-all.sql.gz inside the splitdump directory,
+	// selected by restoreUser at restore time, not by a sidecar file's
+	// presence). SidecarChecked/SidecarPresent are always false when this is
+	// false; Message still explains why nothing more specific is said.
+	Applicable            bool
+	RestoreUserConfigured bool
+	RestoreUserEffective  bool
+	SplitUser             bool
+	SidecarChecked        bool
+	SidecarPresent        bool
+	Message               string
+}
+
+// matchLogicalReseedBackupMeta is the single source of truth for whether meta
+// may be trusted as describing backupPath, reused by both the actual restore
+// dispatch (reseedMysqldumpWithMetadata) and the preflight helpers below
+// (logicalReseedUsesMonolithicMysqldumpFormat, assessLogicalReseedUserRestoreAvailability's
+// callers) so they can never diverge on it. meta with an empty Dest is
+// trusted unconditionally (legacy/incomplete metadata that never recorded a
+// destination path) -- otherwise meta.Dest must resolve to the same file as
+// backupPath, or meta describes some other backup (e.g. a custom/ad-hoc
+// backup path reseed picking up stale metadata left over from an unrelated
+// prior backup) and must not be trusted for this one; nil is returned in
+// that case.
+func matchLogicalReseedBackupMeta(meta *backupmgr.BackupMetadata, backupPath string) *backupmgr.BackupMetadata {
+	if meta == nil || meta.Dest == "" {
+		return meta
+	}
+	pathsMatch, err := comparePaths(meta.Dest, backupPath)
+	if err != nil || !pathsMatch {
+		return nil
+	}
+	return meta
+}
+
+// logicalReseedSplitUserProvenance records why splitUser holds the value it
+// does. splitUser no longer gates actual restore behavior (restoreUser is
+// cluster.Conf.BackupRestoreMysqlUser alone -- see JobReseedLogicalBackupPrepare);
+// it is purely informational input to assessLogicalReseedUserRestoreAvailability,
+// selecting which message explains why a mysql.users.sql.gz sidecar was or
+// wasn't expected. Before splitUser was routed through
+// resolveLogicalReseedSplitUser's trust check at all, "no split-user
+// metadata" was a single message -- and, before restoreUser was decoupled
+// from it, a single splitUser value -- conflating a valid backup that
+// genuinely recorded backup-split-mysql-user=false with a custom/ad-hoc
+// backup path that has no trustworthy metadata at all (which could still
+// inherit an unrelated prior backup's SplitUser=true).
+type logicalReseedSplitUserProvenance int
+
+const (
+	// logicalReseedSplitUserProvenanceUntrusted means splitUser could not be
+	// attributed to backup metadata known (via matchLogicalReseedBackupMeta)
+	// to describe this exact backupPath -- e.g. no metadata at all, or
+	// metadata left over from an unrelated prior backup. The common real
+	// case is a custom/ad-hoc backup path. resolveLogicalReseedSplitUser
+	// defaults splitUser to false in this case -- unknown/custom is never
+	// treated as "reuse whatever the last backup's contract was."
+	logicalReseedSplitUserProvenanceUntrusted logicalReseedSplitUserProvenance = iota
+	// logicalReseedSplitUserProvenanceMetadata means splitUser came from
+	// backup metadata confirmed (via matchLogicalReseedBackupMeta) to
+	// describe this exact backupPath.
+	logicalReseedSplitUserProvenanceMetadata
+	// logicalReseedSplitUserProvenanceOverride means splitUser was set by an
+	// explicit operator override (JobReseedLogicalOptions.SplitUser), trusted
+	// regardless of any metadata.
+	logicalReseedSplitUserProvenanceOverride
+)
+
+// resolveLogicalReseedSplitUser is the single source of truth for a logical
+// reseed's splitUser value and its provenance, so preflight messaging/payload
+// can never diverge the way it could before this: an explicit operator
+// override always wins; otherwise only backup metadata
+// matchLogicalReseedBackupMeta confirms describes this exact backupfile may
+// set splitUser; any other metadata (absent, or left over from an unrelated
+// backup -- the concrete case this closes: a custom/ad-hoc backup path
+// colliding with stale metadata from a different prior backup) is treated as
+// unknown, not as "reuse whatever the last backup's contract was", and
+// splitUser defaults to false. Note splitUser no longer gates actual restore
+// behavior (see restoreUser's own computation) -- this only controls which
+// preflight message is shown.
+func resolveLogicalReseedSplitUser(meta *backupmgr.BackupMetadata, backupfile string, override *bool) (trustedMeta *backupmgr.BackupMetadata, splitUser bool, provenance logicalReseedSplitUserProvenance) {
+	trustedMeta = matchLogicalReseedBackupMeta(meta, backupfile)
+	if trustedMeta != nil {
+		splitUser = trustedMeta.SplitUser
+		provenance = logicalReseedSplitUserProvenanceMetadata
+	}
+	if override != nil {
+		splitUser = *override
+		provenance = logicalReseedSplitUserProvenanceOverride
+	}
+	return trustedMeta, splitUser, provenance
+}
+
+// logicalReseedUsesMonolithicMysqldumpFormat reports whether backupfile, for
+// backtype, will be restored via the monolithic JobReseedMysqldump path (and
+// therefore consults the mysql.users.sql.gz sidecar) rather than the
+// splitdump-native path (JobReseedSplitdumpWithMysql) or mydumper. Reuses the
+// exact detection reseedMysqldumpWithMetadata/reseedMysqldumpWithSplitdump
+// apply at execution time -- including matchLogicalReseedBackupMeta's
+// path-match trust rule -- so preflight messaging and actual restore
+// behavior never disagree about which format a given backup is.
+func logicalReseedUsesMonolithicMysqldumpFormat(backtype, backupfile string, meta *backupmgr.BackupMetadata) bool {
+	if backtype != config.ConstBackupLogicalTypeMysqldump && backtype != "script" {
+		return false
+	}
+	meta = matchLogicalReseedBackupMeta(meta, backupfile)
+	if meta != nil && (meta.SplitDump || isSplitDumpName(meta.Dest)) {
+		return false
+	}
+	if isSplit, err := isSplitDumpDir(backupfile); err == nil && isSplit {
+		return false
+	}
+	return true
+}
+
+// assessLogicalReseedUserRestoreAvailability computes the preflight
+// assessment for a logical reseed's user/system SQL restore. It deliberately
+// never reads the dump itself -- only cluster config, already-resolved
+// backup metadata/override, the cheap format check above, and at most a
+// single Stat of the mysql.users.sql.gz sidecar path -- so it adds no new
+// dump-scanning cost to reseed planning or execution.
+func assessLogicalReseedUserRestoreAvailability(backupfile string, restoreUserConfigured, splitUser bool, splitUserProvenance logicalReseedSplitUserProvenance, monolithicFormat bool) logicalReseedUserRestoreAssessment {
+	a := logicalReseedUserRestoreAssessment{
+		Applicable:            monolithicFormat,
+		RestoreUserConfigured: restoreUserConfigured,
+		SplitUser:             splitUser,
+		// restoreUserConfigured alone, matching the actual restoreUser formula
+		// (JobReseedLogicalBackupPrepare et al.) -- splitUser no longer gates
+		// real restore behavior, only which message below is shown.
+		RestoreUserEffective: restoreUserConfigured,
+	}
+
+	if !restoreUserConfigured {
+		a.Message = "User restore disabled by configuration (backup-restore-mysql-user); backed-up user/system SQL will be skipped."
+		return a
+	}
+	if !monolithicFormat {
+		a.Message = "User restore enabled; this backup's format restores user/system content internally (not via a mysql.users.sql.gz sidecar)."
+		return a
+	}
+
+	// restoreUser no longer depends on splitUser: JobReseedMysqldump always
+	// checks for inline mysql.system-all content and, failing that, the
+	// mysql.users.sql.gz sidecar, whenever restore-user is enabled -- so the
+	// sidecar is always worth checking here too, regardless of splitUser.
+	// splitUser/splitUserProvenance only refine *why* a sidecar may or may not
+	// have been expected, once the check comes back empty.
+	present, statErr := hasMysqldumpUserSidecar(backupfile)
+	a.SidecarChecked = statErr == nil
+	a.SidecarPresent = present
+	switch {
+	case statErr != nil:
+		a.Message = fmt.Sprintf("User restore enabled; could not check for the mysql.users.sql.gz sidecar for this backup: %s. Reseed will continue; inline system content in the dump, if any, is still checked.", statErr)
+	case present:
+		a.Message = "User restore enabled; mysql.users.sql.gz sidecar found for this backup. If inline system content also exists in the dump, the dump remains authoritative."
+	case splitUser:
+		a.Message = "User restore enabled, but the mysql.users.sql.gz sidecar is missing for this backup. Reseed will continue; user restore will only occur if inline system content exists in the dump."
+	default:
+		switch splitUserProvenance {
+		case logicalReseedSplitUserProvenanceOverride:
+			a.Message = "User restore is enabled in configuration, and split-user was explicitly set to false for this reseed (no sidecar expected, and none was found); reseed will continue, and user restore will only occur if inline system content exists in the dump."
+		case logicalReseedSplitUserProvenanceMetadata:
+			a.Message = "User restore is enabled in configuration; this backup's own metadata records no split-user sidecar (backup-split-mysql-user was off when it was taken), and none was found. Reseed will continue; user restore will only occur if inline system content exists in the dump."
+		default:
+			a.Message = "User restore is enabled in configuration, but no backup metadata could be matched to this backup path (e.g. a custom/ad-hoc path, or metadata belonging to a different backup), and no mysql.users.sql.gz sidecar was found. Reseed will continue; user restore will only occur if inline system content exists in the dump."
+		}
+	}
+	return a
+}
+
+// resolveLogicalReseedUserRestore is the single place every logical-reseed/
+// flashback entry point derives splitUser, restoreUser, and the preflight
+// assessment from. Introduced after a flashback call site
+// (JobFlashbackLogicalBackup) was found still repeating the old, pre-fix
+// inline formula (cluster.Conf.BackupRestoreMysqlUser && meta.SplitUser) by
+// hand -- entirely bypassing resolveLogicalReseedSplitUser/
+// matchLogicalReseedBackupMeta/assessLogicalReseedUserRestoreAvailability,
+// so it had neither the metadata-trust fix nor the restoreUser/splitUser
+// decoupling. Routing every call site through one function instead of
+// repeating this same handful of lines makes that class of divergence
+// structurally harder to reintroduce: there is no formula left to copy
+// incorrectly.
+func resolveLogicalReseedUserRestore(cluster *Cluster, backtype, backupfile string, meta *backupmgr.BackupMetadata, override *bool) (restoreUser bool, splitUser bool, assessment logicalReseedUserRestoreAssessment) {
+	_, splitUser, provenance := resolveLogicalReseedSplitUser(meta, backupfile, override)
+	restoreUser = cluster.Conf.BackupRestoreMysqlUser
+	monolithicFormat := logicalReseedUsesMonolithicMysqldumpFormat(backtype, backupfile, meta)
+	assessment = assessLogicalReseedUserRestoreAvailability(backupfile, cluster.Conf.BackupRestoreMysqlUser, splitUser, provenance, monolithicFormat)
+	return restoreUser, splitUser, assessment
 }
 
 func snapshotLogicalBackupMeta(server *ServerMonitor) *backupmgr.BackupMetadata {
@@ -687,9 +896,9 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 	}
 
 	meta := snapshotLogicalBackupMeta(source)
-	splitUser := meta != nil && meta.SplitUser
-	restoreUser := cluster.Conf.BackupRestoreMysqlUser && splitUser
-	payload, err := buildLogicalReseedPayload(backtype, backupfile, splitUser, false, false, isPITR, server.URL)
+	restoreUser, splitUser, userRestoreAssessment := resolveLogicalReseedUserRestore(cluster, backtype, backupfile, meta, nil)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical reseed preflight for %s: %s", server.URL, userRestoreAssessment.Message)
+	payload, err := buildLogicalReseedPayload(backtype, backupfile, splitUser, false, false, isPITR, server.URL, userRestoreAssessment)
 	if err != nil {
 		resetReseed()
 		server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
@@ -900,14 +1109,10 @@ func (server *ServerMonitor) JobReseedLogicalBackupFromPathPrepare(ctx context.C
 	}
 
 	meta := snapshotLogicalBackupMeta(master)
-	splitUser := meta != nil && meta.SplitUser
-	splitUserOverride := false
-	if opts.SplitUser != nil {
-		splitUser = *opts.SplitUser
-		splitUserOverride = true
-	}
-	restoreUser := cluster.Conf.BackupRestoreMysqlUser && splitUser
-	payload, err := buildLogicalReseedPayload(backtype, backupfile, splitUser, splitUserOverride, opts.SkipMetadata, isPITR, server.URL)
+	splitUserOverride := opts.SplitUser != nil
+	restoreUser, splitUser, userRestoreAssessment := resolveLogicalReseedUserRestore(cluster, backtype, backupfile, meta, opts.SplitUser)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical reseed preflight for %s: %s", server.URL, userRestoreAssessment.Message)
+	payload, err := buildLogicalReseedPayload(backtype, backupfile, splitUser, splitUserOverride, opts.SkipMetadata, isPITR, server.URL, userRestoreAssessment)
 	if err != nil {
 		resetReseed()
 		return nil, err
@@ -1022,16 +1227,7 @@ func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, ba
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if meta != nil {
-		if meta.Dest != "" {
-			pathsMatch, err := comparePaths(meta.Dest, backupPath)
-			if err != nil {
-				meta = nil
-			} else if !pathsMatch {
-				meta = nil
-			}
-		}
-	}
+	meta = matchLogicalReseedBackupMeta(meta, backupPath)
 	if meta != nil && (meta.SplitDump || isSplitDumpName(meta.Dest)) {
 		cluster := server.ClusterGroup
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
@@ -2433,7 +2629,20 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 		// Handle mysqldump-based reseed
 	} else if backtype == config.ConstBackupLogicalTypeMysqldump {
-		err := server.reseedMysqldumpWithMetadata(context.Background(), backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser, source.LastBackupMeta.Logical)
+		// Same trust rule and restoreUser formula as JobReseedLogicalBackupPrepare
+		// (see resolveLogicalReseedUserRestore,
+		// doc/implementation/cluster/SYSTEM_ALL_RESEED_IMPLEMENTATION_STATUS.md):
+		// source.LastBackupMeta.Logical is read via snapshotLogicalBackupMeta
+		// (thread-safe, unlike the raw field access this replaces) and, like the
+		// main logical reseed flow, backupfile here can be selected from any
+		// node via ResolveRestore/the legacy fallback lookup above, so source's
+		// metadata is not guaranteed to describe this exact backupfile --
+		// untrusted/unrelated metadata must not silently suppress user restore,
+		// and restoreUser is no longer multiplied by splitUser at all.
+		meta := snapshotLogicalBackupMeta(source)
+		restoreUser, _, userRestoreAssessment := resolveLogicalReseedUserRestore(cluster, backtype, backupfile, meta, nil)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Flashback logical backup preflight for %s: %s", server.URL, userRestoreAssessment.Message)
+		err := server.reseedMysqldumpWithMetadata(context.Background(), backupfile, restoreUser, meta)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", backtype, server.URL, err.Error())
 			server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
@@ -2607,43 +2816,134 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 
-	cmdstring, _, err := server.buildLogicalRestorePreamble()
+	cmdstring, sqlLogBin, err := server.buildLogicalRestorePreamble()
 	if err != nil {
 		return err
 	}
 
-	var usergzfile io.Reader
-	if restoreUser {
-		usergzfile, err = server.ReadMysqldumpUser(backupfile)
-		if err != nil {
-			return fmt.Errorf("Error opening mysql.user file %s", err)
-		}
-
-		clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), usergzfile, fz) //Append mysql.user
-	} else {
-		clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), fz)
+	// mysql.system-all content (INSTALL PLUGIN/CREATE USER/etc.) embedded in the
+	// dump is classified out here and replayed separately through
+	// restoreSystemCatalog instead of being piped blindly into the mysql client
+	// below -- the file-based sibling of JobRejoinMysqldumpFromSource's live-stream
+	// classify/replay model (see doc/implementation/cluster/
+	// SYSTEM_ALL_RESEED_IMPLEMENTATION_STATUS.md). A dump with no system content
+	// (the common case) just produces an empty, discarded artifact and finishes
+	// after phase one below -- there is no separate "is this a --system=all dump"
+	// pre-check driving which code path runs.
+	jobIDSuffix, err := randomHexSuffix(6)
+	if err != nil {
+		return fmt.Errorf("[%s] Failed to generate reseed job id: %s", server.URL, err)
+	}
+	artifactWriter, err := server.newDirectReseedSystemArtifactWriter("mysqldump-"+jobIDSuffix, start)
+	if err != nil {
+		return fmt.Errorf("[%s] Failed to create system-catalogue artifact: %s", server.URL, err)
 	}
 
-	stderr, _ := clientCmd.StdoutPipe()
-	clientCmd.Stderr = clientCmd.Stdout
+	// StdinPipe (rather than Cmd.Stdin = io.MultiReader(...), used before this
+	// change) gives splitdump.ClassifyStream a real io.Writer for its
+	// ApplicationWriter, and means Wait() below reflects only process exit --
+	// the pump goroutine below owns writing to it independently, same reasoning
+	// as JobRejoinMysqldumpFromSource's identical choice.
+	clientStdin, err := clientCmd.StdinPipe()
+	if err != nil {
+		artifactWriter.discard()
+		return fmt.Errorf("[%s] Failed to create mysql client stdin pipe: %s", server.URL, err)
+	}
+
+	// Own the stdout/stderr pipe directly (rather than clientCmd.StdoutPipe())
+	// so Cmd.Wait()'s unconditional close of its own registered pipes on
+	// process exit can't race the stderr-tail drain goroutine below and
+	// truncate the very diagnostic tail a failure needs -- same reasoning as
+	// JobRejoinMysqldumpFromSource's identical pipe ownership.
+	clientOutR, clientOutW, err := os.Pipe()
+	if err != nil {
+		artifactWriter.discard()
+		clientStdin.Close()
+		return fmt.Errorf("[%s] Failed to create mysql client output pipe: %s", server.URL, err)
+	}
+	clientCmd.Stdout = clientOutW
+	clientCmd.Stderr = clientOutW
 
 	if err := clientCmd.Start(); err != nil {
+		artifactWriter.discard()
+		clientStdin.Close()
+		clientOutW.Close()
+		clientOutR.Close()
 		return fmt.Errorf("Can't start mysql client:%s at %s", err, strings.ReplaceAll(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX"))
 	}
+	// The child now holds its own inherited copy of clientOutW -- close ours so
+	// the read end can see EOF once the child exits.
+	clientOutW.Close()
 
+	const stderrTailLines = 20
 	wg := sync.WaitGroup{}
+	var clientTail []string
 	wg.Add(1)
-
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderr, config.ConstLogModBackupStream, config.LvlDbg)
+		defer clientOutR.Close()
+		clientTail = server.copyLogsTail(clientOutR, config.ConstLogModBackupStream, config.LvlDbg, stderrTailLines)
 	}()
 
-	wg.Wait()
+	type reseedPumpResult struct {
+		result       splitdump.ClassifyResult
+		err          error
+		fromClassify bool
+	}
+	pumpResultCh := make(chan reseedPumpResult, 1)
+	go func() {
+		defer clientStdin.Close()
+		result, pumpErr, fromClassify := runReseedMysqldumpPump(clientStdin, cmdstring, fz, artifactWriter)
+		pumpResultCh <- reseedPumpResult{result: result, err: pumpErr, fromClassify: fromClassify}
+	}()
 
-	err = clientCmd.Wait()
-	if err != nil {
-		return fmt.Errorf("Error waiting reseed %s at %s", server.URL, err)
+	// No context/cancel, no stall watchdog: unlike JobRejoinMysqldumpFromSource
+	// (which arbitrates between a live mysqldump subprocess and this mysql
+	// client, either of which can stall the other), there is exactly one
+	// subprocess here fed by a goroutine reading a local file, which cannot
+	// "stall" the way a live network-fed dump can. Sequential Wait() then
+	// wg.Wait() then draining the pump channel is sufficient.
+	clientErr := clientCmd.Wait()
+	wg.Wait()
+	pr := <-pumpResultCh
+
+	if clientErr != nil || pr.err != nil {
+		artifactWriter.discard()
+		msg := reseedMysqldumpFailureMessage(server.URL, clientErr, pr.err, pr.fromClassify, clientTail)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
+		return errors.New(msg)
+	}
+
+	// Phase two: exactly one system-catalogue source is ever replayed, matching
+	// direct reseed's model where the classified artifact is the sole
+	// authority. reseedMysqldumpSystemReplaySource makes that branch decision a
+	// pure, directly testable function rather than inline control flow, so the
+	// single-authority guarantee (restore-user=false always skips regardless of
+	// content; an inline mysql.system-all match always wins over the sidecar,
+	// which is therefore never even consulted) has unit coverage independent of
+	// spawning a real mysql client -- see
+	// doc/implementation/cluster/SYSTEM_ALL_RESEED_IMPLEMENTATION_STATUS.md.
+	switch reseedMysqldumpSystemReplaySource(restoreUser, pr.result.HasSystemContent) {
+	case reseedMysqldumpSystemSourceNone:
+		artifactWriter.discard()
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Logical restore (mysqldump): system replay phase skipped for %s (restore-user disabled)", server.URL)
+
+	case reseedMysqldumpSystemSourceMainDump:
+		if err := server.publishAndReplayReseedMysqldumpSystemArtifact(artifactWriter, pr.result.Metadata, "file:"+backupfile, sqlLogBin); err != nil {
+			return err
+		}
+
+	default: // reseedMysqldumpSystemSourceSidecar
+		// The main dump carried no mysql.system-all content -- expected on
+		// MySQL/Percona, where --system=all is stripped from the dump options
+		// (getDumpParameter, cluster_get.go) -- so mysql.users.sql.gz, if the
+		// backup was taken with backup-split-mysql-user, is the only remaining
+		// user-restore source.
+		artifactWriter.discard()
+		if err := server.replayReseedMysqldumpUserSidecar(backupfile, start, sqlLogBin); err != nil {
+			return err
+		}
 	}
 
 	elapsed := time.Since(start).Round(time.Second)
@@ -2651,25 +2951,314 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	return nil
 }
 
+// reseedMysqldumpSystemReplayConn acquires the connection JobReseedMysqldump's
+// phase two replays the extracted system-catalogue artifact over. Binlog
+// state must match the preamble phase one already sent (SET sql_log_bin=%d,
+// buildLogicalRestorePreamble) -- same branching restoreSplitdumpWithMysql
+// uses for its own connection pool: GetConnNoBinlog for a slave reseed
+// (sqlLogBin==0), a plain pinned connection -- binlog ON -- for a master
+// restore (sqlLogBin==1, server.URL == cluster master), so replicas still
+// receive the replayed system-catalogue statements instead of losing them to
+// an unconditionally-unlogged replay connection.
+func (server *ServerMonitor) reseedMysqldumpSystemReplayConn(ctx context.Context, dbh *sqlx.DB, sqlLogBin int) (*sqlx.Conn, error) {
+	if sqlLogBin == 0 {
+		return server.GetConnNoBinlog(dbh)
+	}
+	return dbh.Connx(ctx)
+}
+
+// reseedMysqldumpSystemSource identifies which system-catalogue source (if
+// any) JobReseedMysqldump's phase two replays.
+type reseedMysqldumpSystemSource int
+
+const (
+	// reseedMysqldumpSystemSourceNone means phase two replays nothing:
+	// restore-user is disabled, so neither an inline mysql.system-all match
+	// nor the mysql.users.sql.gz sidecar is ever consulted, regardless of what
+	// phase one's classify pass found.
+	reseedMysqldumpSystemSourceNone reseedMysqldumpSystemSource = iota
+	// reseedMysqldumpSystemSourceMainDump means the main dump's own classified
+	// mysql.system-all content is the sole authority -- the sidecar, even if
+	// present on disk, is never opened or consulted in this case.
+	reseedMysqldumpSystemSourceMainDump
+	// reseedMysqldumpSystemSourceSidecar means the main dump carried no
+	// mysql.system-all content, so the mysql.users.sql.gz sidecar (if any) is
+	// the only remaining candidate source.
+	reseedMysqldumpSystemSourceSidecar
+)
+
+// reseedMysqldumpSystemReplaySource decides JobReseedMysqldump's phase-two
+// branch: exactly one system-catalogue source is ever replayed, matching
+// direct reseed's single-authority model. Pulled out as a pure function
+// (rather than left as inline control flow) specifically so this decision --
+// restore-user=false always wins over any content found, and an inline
+// mysql.system-all match always wins over the sidecar -- has direct unit
+// coverage without spawning a real mysql client or database connection.
+func reseedMysqldumpSystemReplaySource(restoreUser bool, mainDumpHasSystemContent bool) reseedMysqldumpSystemSource {
+	switch {
+	case !restoreUser:
+		return reseedMysqldumpSystemSourceNone
+	case mainDumpHasSystemContent:
+		return reseedMysqldumpSystemSourceMainDump
+	default:
+		return reseedMysqldumpSystemSourceSidecar
+	}
+}
+
+// runReseedMysqldumpPump writes the restore preamble to appWriter, then
+// classifies dumpReader (the main mysqldump stream) into application SQL
+// (appWriter) and system-catalogue SQL (systemWriter) via
+// splitdump.ClassifyStream. Phase one restores application SQL only --
+// mysql.users.sql.gz, when relevant, is a phase-two-only source handled
+// separately by replayReseedMysqldumpUserSidecar, never injected here, so
+// there is exactly one authority for system/user SQL per restore (see
+// JobReseedMysqldump). Factored out of JobReseedMysqldump's pump goroutine so
+// the classify/dispatch logic can be tested with bytes.Buffer/strings.Reader
+// fakes instead of a real mysql subprocess and gzip file.
+//
+// fromClassify reports whether a non-nil error originated inside
+// ClassifyStream itself (system extraction) rather than while writing the
+// preamble beforehand (application restore) -- callers use this to pick the
+// right reseedStage for the returned error.
+func runReseedMysqldumpPump(appWriter io.Writer, cmdstring string, dumpReader io.Reader, systemWriter io.Writer) (result splitdump.ClassifyResult, err error, fromClassify bool) {
+	if _, err := io.WriteString(appWriter, cmdstring); err != nil {
+		return splitdump.ClassifyResult{}, fmt.Errorf("writing restore preamble to mysql client stdin: %w", err), false
+	}
+	result, err = splitdump.ClassifyStream(dumpReader, splitdump.ClassifyOptions{
+		ApplicationWriter: appWriter,
+		SystemWriter:      systemWriter,
+	})
+	if err != nil {
+		return result, fmt.Errorf("classifying mysqldump output into application/system SQL: %w", err), true
+	}
+	return result, nil, false
+}
+
+// publishAndReplayReseedMysqldumpSystemArtifact is JobReseedMysqldump's sole
+// phase-two replay path, shared by both possible system-catalogue sources:
+// the classified main-dump artifact (mysql.system-all content found inline)
+// and the mysql.users.sql.gz sidecar fallback (see
+// replayReseedMysqldumpUserSidecar) -- whichever one phase one determined is
+// the single authority for this restore. Reusing one publish/state/replay
+// path for both keeps retryability, diagnostics, and artifact-state tracking
+// identical regardless of which source produced the content, rather than
+// growing a second, unaudited replay path for the fallback case.
+func (server *ServerMonitor) publishAndReplayReseedMysqldumpSystemArtifact(artifactWriter *directReseedSystemArtifactWriter, meta splitdump.Metadata, sourceServer string, sqlLogBin int) error {
+	cluster := server.ClusterGroup
+
+	finalDir, publishErr := artifactWriter.publish(meta, directReseedArtifactExtra{
+		SourceServer:          sourceServer,
+		DestinationServer:     server.URL,
+		DestinationFamily:     server.DBVersion.Flavor,
+		DestinationMajorMinor: directReseedServerMajorMinor(server.DBVersion),
+		BoundaryFormat:        "v1-eof-bounded",
+		ArtifactState:         directReseedArtifactStatePublished,
+	})
+	if publishErr != nil {
+		msg := fmt.Sprintf("%s: publish artifact for %s: %s", reseedStageSystemExtraction, server.URL, publishErr)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
+		return errors.New(msg)
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (mysqldump): replaying system catalogue on %s", server.URL)
+	// Mark in-progress before executing any SQL -- if we can't durably
+	// record that replay is starting, we must not proceed to run
+	// statements whose completion state we then couldn't reliably track
+	// either.
+	if err := setDirectReseedArtifactState(finalDir, directReseedArtifactStateReplayInProgress); err != nil {
+		msg := fmt.Sprintf("%s: record replay-in-progress state for artifact %s: %s", reseedStageSystemCatalogReplay, finalDir, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
+		return errors.New(msg)
+	}
+
+	progressed, replayErr := func() (bool, error) {
+		dbh, connErr := server.GetNewDBConn()
+		if connErr != nil {
+			return false, connErr
+		}
+		defer dbh.Close()
+		conn, connErr := server.reseedMysqldumpSystemReplayConn(context.Background(), dbh, sqlLogBin)
+		if connErr != nil {
+			return false, connErr
+		}
+		defer conn.Close()
+		return server.restoreSystemCatalog(context.Background(), conn, filepath.Join(finalDir, directReseedSystemArtifactName))
+	}()
+
+	if replayErr != nil {
+		// A failure before any statement committed is safe to retry from
+		// the beginning; a failure after at least one commit is not, since
+		// most --system=all statement classes besides INSTALL PLUGIN are
+		// not proven replay-idempotent.
+		failState := directReseedArtifactStateReplayFailed
+		if !progressed {
+			failState = directReseedArtifactStateReplayFailedSafe
+		}
+		if stateErr := setDirectReseedArtifactState(finalDir, failState); stateErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Failed to record artifact state %s for %s after replay failure: %s", failState, finalDir, stateErr)
+		}
+		msg := fmt.Sprintf("%s: %s: %s", reseedStageSystemCatalogReplay, server.URL, replayErr)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
+		return errors.New(msg)
+	}
+	if err := setDirectReseedArtifactState(finalDir, directReseedArtifactStateReplaySucceeded); err != nil {
+		// The DB replay itself succeeded, but we can't durably prove it --
+		// an artifact whose recorded state doesn't reflect reality is a
+		// retry-safety hazard, so this is surfaced as a job failure rather
+		// than silently proceeding.
+		msg := fmt.Sprintf("%s: replay succeeded but failed to record terminal state for artifact %s: %s", reseedStageSystemCatalogReplay, finalDir, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
+		return errors.New(msg)
+	}
+	return nil
+}
+
+// replayReseedMysqldumpUserSidecar is JobReseedMysqldump's phase-two fallback:
+// called only when restore-user is enabled and the main dump carried no
+// mysql.system-all content (so nothing was published from phase one), it
+// looks for the separate mysql.users.sql.gz sidecar produced by
+// backup-split-mysql-user and, if present, classifies and replays it through
+// the exact same publish/state/replay path as the main-dump artifact
+// (publishAndReplayReseedMysqldumpSystemArtifact) -- it is never injected
+// into phase one, so it can never be a second, concurrent source of
+// system/user SQL alongside a classified main-dump artifact. A missing
+// sidecar is a no-op, not a failure: it means the backup simply has no
+// user-restore source available (e.g. it wasn't taken with
+// backup-split-mysql-user), which JobReseedMysqldump's caller already
+// tolerates for a dump with no mysql.system-all content either.
+func (server *ServerMonitor) replayReseedMysqldumpUserSidecar(backupfile string, start time.Time, sqlLogBin int) error {
+	cluster := server.ClusterGroup
+
+	jobIDSuffix, err := randomHexSuffix(6)
+	if err != nil {
+		return fmt.Errorf("[%s] Failed to generate reseed job id: %s", server.URL, err)
+	}
+	sidecarArtifactWriter, err := server.newDirectReseedSystemArtifactWriter("mysqldump-user-"+jobIDSuffix, start)
+	if err != nil {
+		return fmt.Errorf("[%s] Failed to create system-catalogue artifact: %s", server.URL, err)
+	}
+
+	result, ok, classifyErr := server.classifyReseedMysqldumpUserSidecar(backupfile, sidecarArtifactWriter)
+	if classifyErr != nil {
+		sidecarArtifactWriter.discard()
+		if errors.Is(classifyErr, os.ErrNotExist) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+				"Logical restore (mysqldump): no system-catalogue content and no mysql.users.sql.gz sidecar found for %s; system replay phase skipped", server.URL)
+			return nil
+		}
+		msg := fmt.Sprintf("%s: %s: %s", reseedStageSystemExtraction, server.URL, classifyErr)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
+		return errors.New(msg)
+	}
+	if !ok {
+		sidecarArtifactWriter.discard()
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Logical restore (mysqldump): mysql.users.sql.gz sidecar for %s contained no system-catalogue content; system replay phase skipped", server.URL)
+		return nil
+	}
+
+	return server.publishAndReplayReseedMysqldumpSystemArtifact(sidecarArtifactWriter, result.Metadata, "file:"+mysqldumpUserSidecarPath(backupfile), sqlLogBin)
+}
+
+// classifyReseedMysqldumpUserSidecar opens the mysql.users.sql.gz sidecar (if
+// any) next to backupfile and classifies it into systemWriter, the same
+// splitdump.ClassifyStream pass runReseedMysqldumpPump uses for the main
+// dump -- the sidecar is a raw mysqldump --system=user stream, not
+// pre-classified, so dump preamble/comment lines are discarded rather than
+// corrupting the system artifact. ok reports whether the sidecar both exists
+// and produced system content; a missing sidecar is reported as an
+// os.ErrNotExist-wrapping error (ok=false) so the caller can tell "no source
+// available" apart from a genuine I/O or classify failure. Split out of
+// replayReseedMysqldumpUserSidecar so the classify/skip decision is testable
+// without a live database connection (publishAndReplayReseedMysqldumpSystemArtifact,
+// unlike this function, calls GetNewDBConn).
+func (server *ServerMonitor) classifyReseedMysqldumpUserSidecar(backupfile string, systemWriter io.Writer) (result splitdump.ClassifyResult, ok bool, err error) {
+	sidecarReader, err := server.ReadMysqldumpUser(backupfile)
+	if err != nil {
+		return splitdump.ClassifyResult{}, false, err
+	}
+	result, err = splitdump.ClassifyStream(sidecarReader, splitdump.ClassifyOptions{
+		ApplicationWriter: io.Discard,
+		SystemWriter:      systemWriter,
+	})
+	if err != nil {
+		return result, false, err
+	}
+	return result, result.HasSystemContent, nil
+}
+
+// reseedMysqldumpFailureMessage attributes a JobReseedMysqldump failure to the
+// stage that caused it. Unlike reseedFailureMessage (JobRejoinMysqldumpFromSource's
+// sibling, which arbitrates between two concurrent subprocesses racing each
+// other), there is only one subprocess here -- the mysql client -- fed by a
+// single pump goroutine reading a local file, so a nonzero client exit is
+// always the authoritative signal: a concurrent pump error in that case is
+// almost always collateral (a broken pipe from writing into a stdin the
+// client already closed by dying), not an independent root cause.
+func reseedMysqldumpFailureMessage(serverURL string, clientErr, pumpErr error, fromClassify bool, clientTail []string) string {
+	if clientErr != nil {
+		msg := fmt.Sprintf("%s: mysql client on %s: %s", reseedStageApplicationRestore, serverURL, clientErr)
+		if len(clientTail) > 0 {
+			msg += " | stderr: " + strings.Join(clientTail, " / ")
+		}
+		return msg
+	}
+	stage := reseedStageApplicationRestore
+	if fromClassify {
+		stage = reseedStageSystemExtraction
+	}
+	return fmt.Sprintf("%s: %s: %s", stage, serverURL, pumpErr)
+}
+
+// mysqldumpUserSidecarPath returns the path JobBackupMysqldumpUser writes and
+// ReadMysqldumpUser/replayReseedMysqldumpUserSidecar read: the mysqldump
+// --system=user sidecar produced alongside backupfile when
+// backup-split-mysql-user is enabled.
+func mysqldumpUserSidecarPath(backupfile string) string {
+	return filepath.Join(filepath.Dir(backupfile), "mysql.users.sql.gz")
+}
+
+// hasMysqldumpUserSidecar reports whether the mysql.users.sql.gz sidecar
+// exists next to backupfile, without opening or reading it -- a cheap
+// existence probe for preflight messaging
+// (assessLogicalReseedUserRestoreAvailability), reusing the exact path
+// ReadMysqldumpUser/replayReseedMysqldumpUserSidecar consult at restore time
+// so preflight and actual restore never disagree about where to look.
+func hasMysqldumpUserSidecar(backupfile string) (bool, error) {
+	_, err := os.Stat(mysqldumpUserSidecarPath(backupfile))
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+// ReadMysqldumpUser returns the decompressed mysql.users.sql.gz sidecar next
+// to backupfile. A missing directory or sidecar file is reported as an error
+// wrapping os.ErrNotExist so replayReseedMysqldumpUserSidecar can tell "no
+// sidecar available" (a tolerated no-op) apart from a genuine I/O failure.
 func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, error) {
 	cluster := server.ClusterGroup
 	var err error
 
 	dir := filepath.Dir(backupfile)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return nil, fmt.Errorf("Directory %s does not exist", dir)
+		return nil, fmt.Errorf("%w: directory %s does not exist", os.ErrNotExist, dir)
 	}
 
-	userpath := filepath.Join(dir, "mysql.user.sql.gz")
+	userpath := mysqldumpUserSidecarPath(backupfile)
 	if _, err := os.Stat(userpath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("File %s does not exist", userpath)
+		return nil, fmt.Errorf("%w: file %s does not exist", os.ErrNotExist, userpath)
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Opening mysql.user file %s", userpath)
 
-	gzfile, err := os.Open(backupfile)
+	gzfile, err := os.Open(userpath)
 	if err != nil {
-		return nil, fmt.Errorf("[%s] Failed opening backup file in backup server for reseed:  %s ", server.URL, err)
+		return nil, fmt.Errorf("[%s] Failed opening mysql.user file in backup server for reseed:  %s ", server.URL, err)
 	}
 
 	// Use configurable parallel blocks for better performance
@@ -5304,7 +5893,6 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	backupType := cluster.Conf.BackupLogicalType
 	payloadBackupPath := ""
 	splitUser := false
-	splitUserSet := false
 	splitUserOverride := false
 	skipMetadata := false
 	isPITR := server.PointInTimeMeta.IsInPITR
@@ -5334,7 +5922,6 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 			}
 			if parsed, ok := parseBool(payload["split_user"]); ok {
 				splitUser = parsed
-				splitUserSet = true
 			}
 			if parsed, ok := parseBool(payload["split_user_override"]); ok {
 				splitUserOverride = parsed
@@ -5469,10 +6056,16 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	}
 
 	meta := snapshotLogicalBackupMeta(source)
-	if !splitUserSet && meta != nil {
-		splitUser = meta.SplitUser
+	var splitUserOverridePtr *bool
+	if splitUserOverride {
+		splitUserOverridePtr = &splitUser
 	}
-	restoreUser := cluster.Conf.BackupRestoreMysqlUser && splitUser
+	// Re-resolved from fresh meta (not trusted from the payload's stored
+	// split_user value) so a reseed prepared earlier and processed later
+	// re-validates trust at execution time rather than inheriting whatever
+	// prepare time computed -- metadata or the source server can have changed
+	// in between (see resolveLogicalReseedUserRestore).
+	restoreUser, splitUser, userRestoreAssessment := resolveLogicalReseedUserRestore(cluster, backupType, backupfile, meta, splitUserOverridePtr)
 
 	// Set replication master to current master if not PITR
 	if !isPITR {
@@ -5498,6 +6091,12 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 			"Using split-user override=%t for reseed logical backup from path %s on %s", splitUser, backupfile, server.URL)
 	}
+	// userRestoreAssessment was already resolved above (alongside
+	// splitUser/restoreUser) from the same fresh meta -- re-derived at
+	// execution start rather than parsed back out of the payload, so a reseed
+	// prepared earlier and processed later still tells the same story now,
+	// not just at prepare time (see resolveLogicalReseedUserRestore).
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical reseed user/system restore for %s: %s", server.URL, userRestoreAssessment.Message)
 
 	var err error
 	if backupType == config.ConstBackupLogicalTypeMysqldump {
