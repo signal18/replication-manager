@@ -48,7 +48,7 @@ var errJobCanceledByUser = errors.New("job canceled by user")
 // "not currently reseeding" bail-out so callers can tell it apart from a real
 // mid-flight failure. This specific bail fires whenever HasReseedingState is
 // already false when the function is entered -- including the case where a
-// terminal-job reconciliation (JobsReconcileTerminalSQL) already ran
+// terminal-job reconciliation (JobsReconcileSQL) already ran
 // AfterJobProcess for this task and cleared the flag on a job that finished
 // successfully. Treating that case the same as a genuine failure would relabel
 // an already-finished job as JobStateHalted in the runtime cache.
@@ -313,6 +313,17 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 		return err
 	}
 
+	// Stamp the phase as soon as the task is queued, not just once
+	// WaitAndSendSST reaches it (which can be a monitor tick later, dispatched
+	// off the WARN0074 resolved edge in StateProcessing) -- otherwise
+	// GetReseedProgress reports InProgress with no phase/bytes/line for that
+	// whole window, and the modal falls back to a generic "in progress · 0s".
+	// Deliberately phase-only: NOT calling beginReseedProgress here too, since
+	// WaitAndSendSST's sending_sst transition already calls it once the SST
+	// send actually starts, which would reset reseedStart a second time and
+	// make the elapsed counter jump backward when the phase changes.
+	server.setReseedPhase(ReseedPhaseWaitingReceiver)
+
 	// Set replication master to current master if not PITR
 	if !server.PointInTimeMeta.IsInPITR {
 		logs, err := server.StopSlave()
@@ -420,6 +431,10 @@ func (server *ServerMonitor) JobReseedPhysicalBackupWithPayload(backtype, backup
 		return err
 	}
 
+	// See the matching setReseedPhase call in JobReseedPhysicalBackup for why
+	// this is stamped here rather than left to WaitAndSendSST alone.
+	server.setReseedPhase(ReseedPhaseWaitingReceiver)
+
 	// Set replication master to current master if not PITR
 	if !server.PointInTimeMeta.IsInPITR {
 		logs, err := server.StopSlave()
@@ -501,6 +516,10 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 		}
 		return err
 	}
+
+	// See the matching setReseedPhase call in JobReseedPhysicalBackup for why
+	// this is stamped here rather than left to WaitAndSendSST alone.
+	server.setReseedPhase(ReseedPhaseWaitingReceiver)
 
 	logs, err := server.StopSlave()
 	if err != nil {
@@ -2011,7 +2030,8 @@ func parseCreateUserAccountRest(rest string) (user string, host string, tail str
 // parseCreateUserToken extracts one quoted-or-bare identifier (a user or
 // host name) from the front of s, unquoted, and returns what's left of s
 // immediately after it. A doubled quote character inside a quoted identifier
-// (''/""/``) is the standard SQL escape for a literal quote and is decoded,
+// (two single quotes / two double quotes / two backticks) is the standard SQL
+// escape for a literal quote and is decoded,
 // not treated as the closing quote; backslash-escaping is not handled (dump
 // output that relies on it fails this parse, which fails the CREATE USER
 // rewrite/matching safely -- see isCreateUserStatement's caller, which

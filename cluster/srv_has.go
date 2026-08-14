@@ -52,7 +52,7 @@ func (server *ServerMonitor) HasJobsRefreshTTLExpired(ttl time.Duration) bool {
 	return time.Since(lastAttempt) >= ttl
 }
 
-// HasTerminalJobsReconcileTTLExpired gates JobsReconcileTerminalSQL. It is
+// HasTerminalJobsReconcileTTLExpired gates JobsReconcileSQL. It is
 // deliberately tracked separately from lastJobsRefreshAttempt (used by the
 // dashboard-poll-triggered JobsRefreshEntries): that path only refreshes the
 // JobResults cache and never runs AfterJobProcess, so sharing one timestamp

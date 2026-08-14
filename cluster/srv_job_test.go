@@ -535,7 +535,7 @@ func TestProcessReseedLogical_UnsupportedType_DoesNotCreateRunningTask(t *testin
 
 // TestProcessReseedPhysical_NotReseeding_ReturnsSentinel guards the
 // monitoring-scheduler=false + scheduler-jobs-mode=sql fix: once a terminal
-// job reconciliation (JobsReconcileTerminalSQL) has already run
+// job reconciliation (JobsReconcileSQL) has already run
 // AfterJobProcess for a finished reseed and cleared IsReseeding, a late/stale
 // WARN0074 resolve calling ProcessReseedPhysical again must be distinguishable
 // from a genuine failure, so the cluster.go call site can skip relabeling the
@@ -587,7 +587,7 @@ func TestProcessFlashbackPhysical_NotReseeding_ReturnsSentinel(t *testing.T) {
 	}
 }
 
-// TestJobsReconcileTerminalSQL_ThrottlesRepeatedAttempts guards the
+// TestJobsReconcileSQL_ThrottlesRepeatedAttempts guards the
 // monitoring-load regression flagged in review: without a throttle, this
 // helper would run a full SQL scan (JobsCheckFinished + JobsCheckErrors +
 // JobsUpdateEntries) on every single monitor tick once
@@ -596,13 +596,13 @@ func TestProcessFlashbackPhysical_NotReseeding_ReturnsSentinel(t *testing.T) {
 // short-circuited -- even when the attempt itself fails (e.g. no connection
 // pool), or a persistently failing server would retry every tick and defeat
 // the throttle entirely.
-func TestJobsReconcileTerminalSQL_ThrottlesRepeatedAttempts(t *testing.T) {
+func TestJobsReconcileSQL_ThrottlesRepeatedAttempts(t *testing.T) {
 	_, server := newTestRuntimeOnlyClusterServer(t, "reconcile-cluster", "target", "3307")
 
 	// server.Conn is nil in this fixture, so the first call is expected to
 	// attempt and fail fast with "no connection pool" -- but it must still
 	// mark the throttle.
-	if err := server.JobsReconcileTerminalSQL(); err == nil {
+	if err := server.JobsReconcileSQL(); err == nil {
 		t.Fatal("expected first call to attempt and fail (no connection pool)")
 	}
 	if server.HasTerminalJobsReconcileTTLExpired(terminalJobsReconcileMinInterval) {
@@ -611,26 +611,67 @@ func TestJobsReconcileTerminalSQL_ThrottlesRepeatedAttempts(t *testing.T) {
 
 	// A second call within the TTL window must short-circuit as a silent
 	// no-op instead of attempting (and failing) again.
-	if err := server.JobsReconcileTerminalSQL(); err != nil {
+	if err := server.JobsReconcileSQL(); err != nil {
 		t.Fatalf("expected throttled call to no-op, got: %v", err)
 	}
 }
 
-// TestJobsReconcileTerminalSQL_RetriesAfterTTLExpires ensures the throttle
+// TestJobsReconcileSQL_RetriesAfterTTLExpires ensures the throttle
 // added above is not permanent: once the interval elapses, reconciliation
 // attempts again instead of wedging silently forever.
-func TestJobsReconcileTerminalSQL_RetriesAfterTTLExpires(t *testing.T) {
+func TestJobsReconcileSQL_RetriesAfterTTLExpires(t *testing.T) {
 	_, server := newTestRuntimeOnlyClusterServer(t, "reconcile-cluster", "target", "3307")
 
-	if err := server.JobsReconcileTerminalSQL(); err == nil {
+	if err := server.JobsReconcileSQL(); err == nil {
 		t.Fatal("expected first call to attempt and fail (no connection pool)")
 	}
 
 	// Simulate TTL expiry by backdating the last attempt.
 	server.MarkTerminalJobsReconcileAttempt(time.Now().Add(-2 * terminalJobsReconcileMinInterval))
 
-	if err := server.JobsReconcileTerminalSQL(); err == nil {
+	if err := server.JobsReconcileSQL(); err == nil {
 		t.Fatal("expected reconciliation to attempt again once the TTL has expired")
+	}
+}
+
+// TestJobsReconcileSQL_BypassesThrottleWhileReseeding guards the explicit ask
+// from review: once a reseed/flashback is actively in flight, reconciliation
+// must run every tick -- not held to the idle-server throttle -- so its
+// SST phase/bytes/rate and eventual terminal cleanup stay timely instead of
+// lagging up to terminalJobsReconcileMinInterval behind.
+func TestJobsReconcileSQL_BypassesThrottleWhileReseeding(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "reconcile-cluster", "target", "3307")
+	server.SetInReseedBackup("reseedmariabackup")
+
+	// server.Conn is nil, so each call fails fast -- but the throttle must
+	// never get marked while a reseed is active, unlike the idle case in
+	// TestJobsReconcileSQL_ThrottlesRepeatedAttempts.
+	if err := server.JobsReconcileSQL(); err == nil {
+		t.Fatal("expected the call to attempt and fail (no connection pool)")
+	}
+	if !server.HasTerminalJobsReconcileTTLExpired(terminalJobsReconcileMinInterval) {
+		t.Fatal("expected the throttle to stay unmarked (bypassed) while a reseed is active")
+	}
+	// A second immediate call must attempt again too, not be short-circuited.
+	if err := server.JobsReconcileSQL(); err == nil {
+		t.Fatal("expected a second immediate call to also attempt (throttle bypassed), not short-circuit")
+	}
+}
+
+// TestJobsReconcileSQL_BypassesThrottleWhileBackupInProgress is the backup
+// counterpart of TestJobsReconcileSQL_BypassesThrottleWhileReseeding: an
+// active backup (cluster.IsInBackup()) must get the same every-tick treatment
+// as an active reseed, per the same "explicitly invoked work isn't limited by
+// the scheduler-off throttle" principle.
+func TestJobsReconcileSQL_BypassesThrottleWhileBackupInProgress(t *testing.T) {
+	cluster, server := newTestRuntimeOnlyClusterServer(t, "reconcile-cluster", "target", "3307")
+	cluster.InPhysicalBackup = true
+
+	if err := server.JobsReconcileSQL(); err == nil {
+		t.Fatal("expected the call to attempt and fail (no connection pool)")
+	}
+	if !server.HasTerminalJobsReconcileTTLExpired(terminalJobsReconcileMinInterval) {
+		t.Fatal("expected the throttle to stay unmarked (bypassed) while a backup is in progress")
 	}
 }
 

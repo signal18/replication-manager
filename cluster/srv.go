@@ -1255,12 +1255,19 @@ func (server *ServerMonitor) Refresh() error {
 		if cluster.Conf.MonitorScheduler {
 			server.JobsCheckStates()
 			server.JobsCheckRunning()
-		} else {
-			if cluster.Conf.SchedulerJobsMode == "sql" {
-				if err := server.JobsReconcileTerminalSQL(); err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Terminal job reconciliation skipped on %s: %s", server.URL, err)
-				}
+		} else if cluster.Conf.SchedulerJobsMode == "sql" {
+			// SQL mode's job lifecycle is driven entirely by dbjobs_new.sh writing
+			// to the jobs table -- that's its only interface with repman, it has
+			// no other channel to report through. So even with the scheduler off,
+			// this reads that table directly (JobsCheckRunning) rather than
+			// falling back to jobsCheckRunningFromMemory()'s in-memory Done-only
+			// heuristic, which has no notion of SQL state and left WARN0074 stuck
+			// open for a task's entire lifetime instead of resolving when dbjobs
+			// actually picks it up -- see JobsReconcileSQL's doc comment.
+			if err := server.JobsReconcileSQL(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job reconciliation skipped on %s: %s", server.URL, err)
 			}
+		} else {
 			server.jobsCheckRunningFromMemory()
 		}
 
