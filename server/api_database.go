@@ -5284,6 +5284,12 @@ func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter
 			// via TrySetInReseedBackup's "already reseeding" guard.
 			node.FinishReseedJobState(taskname, "job-finished")
 		}
+		// Mirrors AfterJobProcess's SQL-mode completion (cluster/srv_job_backup.go):
+		// API mode has no terminal-job SQL reconciliation to set the backup
+		// cookie from, so it needs the same call here instead. Without it, the
+		// backup silently vanishes from the list on the next restart -- see
+		// MarkBackupPhysicalDone's doc comment for the full mechanism.
+		node.MarkBackupPhysicalDone(taskname)
 		node.JobsUpdateState(taskname, result, state, 1)
 	case "error":
 		if physicalRestoreJobTasks[taskname] {

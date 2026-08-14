@@ -284,6 +284,41 @@ func (server *ServerMonitor) FinishReseedJobState(task, reason string) {
 	}
 }
 
+// MarkBackupPhysicalDone finishes a completed plain physical backup task
+// (task is "xtrabackup" or "mariabackup", not a reseed/flashback name):
+// mirrors the AfterJobProcess case above (SQL mode's terminal reconciliation)
+// by setting the tool-specific backup cookie and stamping Completed=true.
+//
+// JobFinishReceiveFile already wrote the .meta.json file and set
+// Completed=true the moment the SST stream finished receiving -- that part is
+// mode-agnostic and happens before this is ever called. But the *cookie* is
+// what FetchLastBackupMetadata (cluster/srv_bck.go, gated on
+// HasBackupPhysicalCookie) requires to reload a physical backup into
+// LastBackupMeta.Physical after a restart. SQL mode sets it inline via
+// AfterJobProcess/JobsReconcileSQL; API mode has no jobs table to reconcile
+// from, so its job-state callback (handlerMuxServerJobState,
+// server/api_database.go) calls this directly on "done" instead. Without it,
+// a backup taken in API mode is fully usable in the running process but
+// silently disappears from the backup list on the next restart.
+//
+// A no-op for any task name other than the two plain physical backup types
+// (including reseed/flashback names, and unknown tasks) -- callers can call
+// this unconditionally from a shared completion path without an extra
+// taskname check.
+func (server *ServerMonitor) MarkBackupPhysicalDone(task string) {
+	switch task {
+	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
+	default:
+		return
+	}
+	if server.LastBackupMeta.Physical != nil && !server.LastBackupMeta.Physical.IsAdhoc() {
+		server.SetBackupPhysicalCookie(task)
+	}
+	if server.LastBackupMeta.Physical != nil {
+		server.LastBackupMeta.Physical.Completed = true
+	}
+}
+
 func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions) error {
 	if server == nil {
 		return nil

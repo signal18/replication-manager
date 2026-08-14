@@ -1922,3 +1922,72 @@ func TestFinishReseedJobState_ClearsResticReseedCookie(t *testing.T) {
 		t.Fatalf("expected reseeding state to be cleared, got %q", server.IsReseeding)
 	}
 }
+
+// TestMarkBackupPhysicalDone_SetsCookieForRegularBackup guards the API-mode
+// "backup disappears after restart" bug: JobFinishReceiveFile writes the
+// .meta.json file and stamps Completed=true the moment the SST stream
+// finishes, mode-agnostically, but FetchLastBackupMetadata (cluster/srv_bck.go)
+// only reloads it after a restart if HasBackupPhysicalCookie() is true. SQL
+// mode sets that cookie inline via AfterJobProcess; API mode has no jobs
+// table to reconcile from, so MarkBackupPhysicalDone must be called directly
+// off the job-state "done" callback (server/api_database.go) instead.
+func TestMarkBackupPhysicalDone_SetsCookieForRegularBackup(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "backup-cluster", "target", "3307")
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
+		BackupLine: backupmgr.BackupLineDefault,
+	}
+
+	server.MarkBackupPhysicalDone("mariabackup")
+
+	if !server.HasBackupMariabackupCookie() {
+		t.Fatal("expected the mariabackup backup cookie to be set")
+	}
+	if !server.HasBackupPhysicalCookie() {
+		t.Fatal("expected HasBackupPhysicalCookie to see the newly set cookie")
+	}
+	if !server.LastBackupMeta.Physical.Completed {
+		t.Fatal("expected LastBackupMeta.Physical.Completed to be stamped true")
+	}
+}
+
+// TestMarkBackupPhysicalDone_SkipsCookieForAdhocBackup mirrors
+// AfterJobProcess's own gate: an ad-hoc backup must not become the
+// cookie-tracked "last" backup (that pointer feeds default-backup-line reseed
+// flows), even though it's still marked Completed.
+func TestMarkBackupPhysicalDone_SkipsCookieForAdhocBackup(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "backup-cluster", "target", "3307")
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
+		BackupLine: backupmgr.BackupLineAdhoc,
+	}
+
+	server.MarkBackupPhysicalDone("mariabackup")
+
+	if server.HasBackupMariabackupCookie() {
+		t.Fatal("expected no backup cookie to be set for an ad-hoc backup")
+	}
+	if !server.LastBackupMeta.Physical.Completed {
+		t.Fatal("expected LastBackupMeta.Physical.Completed to still be stamped true")
+	}
+}
+
+// TestMarkBackupPhysicalDone_NoopForOtherTasks ensures the shared completion
+// call site in handlerMuxServerJobState (which calls this unconditionally,
+// for every task name) never sets a backup cookie for a reseed/flashback or
+// unrelated task.
+func TestMarkBackupPhysicalDone_NoopForOtherTasks(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "backup-cluster", "target", "3307")
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
+		BackupLine: backupmgr.BackupLineDefault,
+	}
+
+	for _, task := range []string{"reseedmariabackup", "reseedxtrabackup", "flashbackmariabackup", "errorlog", ""} {
+		server.MarkBackupPhysicalDone(task)
+	}
+
+	if server.HasBackupPhysicalCookie() {
+		t.Fatal("expected no backup cookie to be set for non-backup task names")
+	}
+	if server.LastBackupMeta.Physical.Completed {
+		t.Fatal("expected Completed to stay false when no matching task name was passed")
+	}
+}
