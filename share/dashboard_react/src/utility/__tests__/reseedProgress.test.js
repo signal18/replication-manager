@@ -14,6 +14,7 @@ import {
   formatElapsed,
   formatRate,
   formatRateLine,
+  formatReseedPhase,
 } from '../reseedProgress.js'
 
 let passed = 0
@@ -132,6 +133,28 @@ function assert(condition, description) {
   assert(formatElapsed(192) === '3m12s', '3m12s')
   assert(formatElapsed(3600 + 23 * 60 + 10) === '1h23m', '1h23m (drops seconds at hour scale)')
   assert(formatElapsed(-5) === '0s', 'negative clamps to 0s')
+}
+
+// ─── formatReseedPhase ────────────────────────────────────────────────────────
+{
+  assert(
+    formatReseedPhase('waiting_receiver') === 'Waiting for destination receiver',
+    'waiting_receiver → display label'
+  )
+  assert(
+    formatReseedPhase('sending_sst') === 'Sending backup to destination',
+    'sending_sst → display label'
+  )
+  assert(
+    formatReseedPhase('applying_backup') === 'Applying physical backup on destination',
+    'applying_backup → display label'
+  )
+  assert(formatReseedPhase('') === '', 'empty phase (unset, or a path that doesn\'t track it) → ""')
+  assert(formatReseedPhase(undefined) === '', 'undefined phase → ""')
+  assert(
+    formatReseedPhase('some_future_phase') === '',
+    'unrecognized phase falls back to "" rather than the raw string'
+  )
 }
 
 console.log(`\nreseedProgress: ${passed} passed, ${failed} failed`)

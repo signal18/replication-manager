@@ -533,6 +533,248 @@ func TestProcessReseedLogical_UnsupportedType_DoesNotCreateRunningTask(t *testin
 	}
 }
 
+// TestProcessReseedPhysical_NotReseeding_ReturnsSentinel guards the
+// monitoring-scheduler=false + scheduler-jobs-mode=sql fix: once a terminal
+// job reconciliation (JobsReconcileSQL) has already run
+// AfterJobProcess for a finished reseed and cleared IsReseeding, a late/stale
+// WARN0074 resolve calling ProcessReseedPhysical again must be distinguishable
+// from a genuine failure, so the cluster.go call site can skip relabeling the
+// already-finished job as JobStateHalted.
+func TestProcessReseedPhysical_NotReseeding_ReturnsSentinel(t *testing.T) {
+	cluster, server := newTestRuntimeOnlyClusterServer(t, "reseed-cluster", "target", "3307")
+	cluster.master = &ServerMonitor{
+		Id:           "master",
+		Host:         "master",
+		Port:         "3306",
+		URL:          "master:3306",
+		ClusterGroup: cluster,
+	}
+
+	task := "reseed" + cluster.Conf.BackupPhysicalType
+	// Deliberately not calling server.SetInReseedBackup(task): this is the
+	// state after AfterJobProcess already ran for a finished job.
+
+	err := server.ProcessReseedPhysical(task)
+	if err == nil {
+		t.Fatal("expected ProcessReseedPhysical to reject a server that is not reseeding")
+	}
+	if !errors.Is(err, errServerNotReseeding) {
+		t.Fatalf("expected errServerNotReseeding, got: %v", err)
+	}
+}
+
+// TestProcessFlashbackPhysical_NotReseeding_ReturnsSentinel is the flashback
+// counterpart of TestProcessReseedPhysical_NotReseeding_ReturnsSentinel; the
+// WARN0076 call site in cluster.go has the identical Halted-relabeling risk.
+func TestProcessFlashbackPhysical_NotReseeding_ReturnsSentinel(t *testing.T) {
+	cluster, server := newTestRuntimeOnlyClusterServer(t, "flashback-cluster", "target", "3307")
+	cluster.master = &ServerMonitor{
+		Id:           "master",
+		Host:         "master",
+		Port:         "3306",
+		URL:          "master:3306",
+		ClusterGroup: cluster,
+	}
+
+	task := "flashback" + cluster.Conf.BackupPhysicalType
+
+	err := server.ProcessFlashbackPhysical(task)
+	if err == nil {
+		t.Fatal("expected ProcessFlashbackPhysical to reject a server that is not reseeding")
+	}
+	if !errors.Is(err, errServerNotReseeding) {
+		t.Fatalf("expected errServerNotReseeding, got: %v", err)
+	}
+}
+
+// TestJobsReconcileSQL_ThrottlesRepeatedAttempts guards the
+// monitoring-load regression flagged in review: without a throttle, this
+// helper would run a full SQL scan (JobsCheckFinished + JobsCheckErrors +
+// JobsUpdateEntries) on every single monitor tick once
+// monitoring-scheduler=false + scheduler-jobs-mode=sql, undoing the point of
+// turning the scheduler off. The attempt must be marked -- and further calls
+// short-circuited -- even when the attempt itself fails (e.g. no connection
+// pool), or a persistently failing server would retry every tick and defeat
+// the throttle entirely.
+func TestJobsReconcileSQL_ThrottlesRepeatedAttempts(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "reconcile-cluster", "target", "3307")
+
+	// server.Conn is nil in this fixture, so the first call is expected to
+	// attempt and fail fast with "no connection pool" -- but it must still
+	// mark the throttle.
+	if err := server.JobsReconcileSQL(); err == nil {
+		t.Fatal("expected first call to attempt and fail (no connection pool)")
+	}
+	if server.HasTerminalJobsReconcileTTLExpired(terminalJobsReconcileMinInterval) {
+		t.Fatal("expected the attempt to be marked, throttling further calls within the TTL")
+	}
+
+	// A second call within the TTL window must short-circuit as a silent
+	// no-op instead of attempting (and failing) again.
+	if err := server.JobsReconcileSQL(); err != nil {
+		t.Fatalf("expected throttled call to no-op, got: %v", err)
+	}
+}
+
+// TestJobsReconcileSQL_RetriesAfterTTLExpires ensures the throttle
+// added above is not permanent: once the interval elapses, reconciliation
+// attempts again instead of wedging silently forever.
+func TestJobsReconcileSQL_RetriesAfterTTLExpires(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "reconcile-cluster", "target", "3307")
+
+	if err := server.JobsReconcileSQL(); err == nil {
+		t.Fatal("expected first call to attempt and fail (no connection pool)")
+	}
+
+	// Simulate TTL expiry by backdating the last attempt.
+	server.MarkTerminalJobsReconcileAttempt(time.Now().Add(-2 * terminalJobsReconcileMinInterval))
+
+	if err := server.JobsReconcileSQL(); err == nil {
+		t.Fatal("expected reconciliation to attempt again once the TTL has expired")
+	}
+}
+
+// TestJobsReconcileSQL_BypassesThrottleWhileReseeding guards the explicit ask
+// from review: once a reseed/flashback is actively in flight, reconciliation
+// must run every tick -- not held to the idle-server throttle -- so its
+// SST phase/bytes/rate and eventual terminal cleanup stay timely instead of
+// lagging up to terminalJobsReconcileMinInterval behind.
+func TestJobsReconcileSQL_BypassesThrottleWhileReseeding(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "reconcile-cluster", "target", "3307")
+	server.SetInReseedBackup("reseedmariabackup")
+
+	// server.Conn is nil, so each call fails fast -- but the throttle must
+	// never get marked while a reseed is active, unlike the idle case in
+	// TestJobsReconcileSQL_ThrottlesRepeatedAttempts.
+	if err := server.JobsReconcileSQL(); err == nil {
+		t.Fatal("expected the call to attempt and fail (no connection pool)")
+	}
+	if !server.HasTerminalJobsReconcileTTLExpired(terminalJobsReconcileMinInterval) {
+		t.Fatal("expected the throttle to stay unmarked (bypassed) while a reseed is active")
+	}
+	// A second immediate call must attempt again too, not be short-circuited.
+	if err := server.JobsReconcileSQL(); err == nil {
+		t.Fatal("expected a second immediate call to also attempt (throttle bypassed), not short-circuit")
+	}
+}
+
+// TestJobsReconcileSQL_BypassesThrottleWhileBackupInProgress is the backup
+// counterpart of TestJobsReconcileSQL_BypassesThrottleWhileReseeding: an
+// active backup (cluster.IsInBackup()) must get the same every-tick treatment
+// as an active reseed, per the same "explicitly invoked work isn't limited by
+// the scheduler-off throttle" principle.
+func TestJobsReconcileSQL_BypassesThrottleWhileBackupInProgress(t *testing.T) {
+	cluster, server := newTestRuntimeOnlyClusterServer(t, "reconcile-cluster", "target", "3307")
+	cluster.InPhysicalBackup = true
+
+	if err := server.JobsReconcileSQL(); err == nil {
+		t.Fatal("expected the call to attempt and fail (no connection pool)")
+	}
+	if !server.HasTerminalJobsReconcileTTLExpired(terminalJobsReconcileMinInterval) {
+		t.Fatal("expected the throttle to stay unmarked (bypassed) while a backup is in progress")
+	}
+}
+
+// TestJobsCheckRunningFromMemory_RunningTaskDoesNotReopenWarnState guards the
+// API-mode counterpart of the bug JobsReconcileSQL's doc comment describes
+// for SQL mode: a task already picked up by dbjobs (State == JobStateRunning)
+// must not keep re-opening its WARN state every tick, since
+// ProcessReseedPhysical/ProcessFlashbackPhysical (cluster.go's
+// StateProcessing) only fire on that WARN's open->resolved edge -- and that's
+// what actually streams the backup to the target. Keeping it open the whole
+// time means it never resolves until the task finishes on its own, which it
+// can't do without repman having streamed it the backup first.
+func TestJobsCheckRunningFromMemory_RunningTaskDoesNotReopenWarnState(t *testing.T) {
+	cluster, server := newTestRuntimeOnlyClusterServer(t, "reconcile-cluster", "target", "3307")
+	cluster.Conf.SchedulerJobsMode = "api"
+
+	server.JobResults.Store("reseedmariabackup", &config.Task{
+		Task:  "reseedmariabackup",
+		State: JobStateRunning,
+		Done:  0,
+	})
+
+	if err := server.jobsCheckRunningFromMemory(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, s := range cluster.StateMachine.GetOpenStates() {
+		if s.ErrKey == "WARN0074" {
+			t.Fatal("expected WARN0074 to stay closed for a task already picked up by dbjobs (State == JobStateRunning)")
+		}
+	}
+
+	// An Available task (not yet picked up) must still open the WARN state --
+	// this is the signal ProcessReseedPhysical eventually resolves off of.
+	server.JobResults.Store("reseedxtrabackup", &config.Task{
+		Task:  "reseedxtrabackup",
+		State: JobStateAvailable,
+		Done:  0,
+	})
+	if err := server.jobsCheckRunningFromMemory(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, s := range cluster.StateMachine.GetOpenStates() {
+		if s.ErrKey == "WARN0074" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected WARN0074 to open for a still-Available task")
+	}
+}
+
+// TestWaitAndSendSSTReady_APIMode guards the handoff immediately after
+// WARN0074 resolves: WaitAndSendSST/WaitAndSendSSTStream poll
+// waitAndSendSSTReady in a loop before starting the SST send. In SQL mode
+// that polls a replication_manager_schema.jobs row dbjobs_new.sh writes
+// state=2 (JobStateHalted) into once it's opened its receiver. API mode has
+// no jobs table for dbjobs to write that into at all -- it reports the same
+// "ready to receive" signal through the job-state HTTP callback's "waiting"
+// case (handlerMuxServerJobState, server/api_database.go), which
+// JobsUpdateState records as JobStateHalted in JobResults instead. Without
+// checking JobResults in API mode, this would issue a SQL query against a
+// row that can never exist and spin through the whole retry loop until it
+// times out, even though dbjobs already signaled readiness.
+func TestWaitAndSendSSTReady_APIMode(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "sst-cluster", "target", "3307")
+	server.ClusterGroup.Conf.SchedulerJobsMode = "api"
+
+	ready, err := server.waitAndSendSSTReady("reseedmariabackup")
+	if err != nil {
+		t.Fatalf("unexpected error with no JobResults entry yet: %v", err)
+	}
+	if ready {
+		t.Fatal("expected not ready: no JobResults entry for the task yet")
+	}
+
+	server.JobResults.Store("reseedmariabackup", &config.Task{
+		Task:  "reseedmariabackup",
+		State: JobStateRunning,
+		Done:  0,
+	})
+	ready, err = server.waitAndSendSSTReady("reseedmariabackup")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ready {
+		t.Fatal("expected not ready: task is Running (dispatched), not yet Halted (waiting for SST)")
+	}
+
+	server.JobResults.Store("reseedmariabackup", &config.Task{
+		Task:  "reseedmariabackup",
+		State: JobStateHalted,
+		Done:  0,
+	})
+	ready, err = server.waitAndSendSSTReady("reseedmariabackup")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ready {
+		t.Fatal("expected ready: dbjobs reported \"waiting\", recorded as JobStateHalted in JobResults")
+	}
+}
+
 // TestReseedFromParentCluster_UnsupportedType_DoesNotCreateRunningTask guards
 // the cluster_staging.go call site where the regression lived: an unsupported
 // parent logical backup type must not stamp a runtime-only task as processing
@@ -1496,5 +1738,256 @@ func TestJobBackupDBLog_SQLMode_StillOpensReceiver(t *testing.T) {
 
 	if len(added) != 1 {
 		t.Fatalf("SQL mode should still pre-open exactly one SST receiver, got %d new (ports %v)", len(added), added)
+	}
+}
+
+// TestPhysicalBackupCookie_QueueMariabackup_OnlyMariabackupNeedsFires is the
+// core regression for the xtrabackup/mariabackup cookie split: dbjobs_new.sh
+// polls CheckTaskNeeded("xtrabackup") before CheckTaskNeeded("mariabackup")
+// (JOBS array order in share/scripts/dbjobs_new.sh). Before the split, both
+// task names shared one cookie, so the xtrabackup poll could claim a task
+// that was actually queued as mariabackup. Queuing mariabackup here must
+// leave the xtrabackup "needs" check false and the mariabackup one true.
+func TestPhysicalBackupCookie_QueueMariabackup_OnlyMariabackupNeedsFires(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+
+	if _, err := server.JobInsertTask(string(config.ConstTaskMB), "0", "monitor-host"); err != nil {
+		t.Fatalf("JobInsertTask(mariabackup) failed: %v", err)
+	}
+
+	if needed, err := server.CheckTaskNeeded(string(config.ConstTaskXB)); err != nil || needed {
+		t.Fatalf("CheckTaskNeeded(xtrabackup) = (%v, %v), want (false, nil) after queuing mariabackup", needed, err)
+	}
+
+	needed, err := server.CheckTaskNeeded(string(config.ConstTaskMB))
+	if err != nil || !needed {
+		t.Fatalf("CheckTaskNeeded(mariabackup) = (%v, %v), want (true, nil)", needed, err)
+	}
+
+	// The cookie is consumed on first read: a second poll must not re-fire.
+	if needed, err := server.CheckTaskNeeded(string(config.ConstTaskMB)); err != nil || needed {
+		t.Fatalf("CheckTaskNeeded(mariabackup) second poll = (%v, %v), want (false, nil)", needed, err)
+	}
+}
+
+// TestPhysicalBackupCookie_QueueXtrabackup_OnlyXtrabackupNeedsFires is the
+// mirror image: queuing xtrabackup must not make the mariabackup poll fire.
+func TestPhysicalBackupCookie_QueueXtrabackup_OnlyXtrabackupNeedsFires(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+
+	if _, err := server.JobInsertTask(string(config.ConstTaskXB), "0", "monitor-host"); err != nil {
+		t.Fatalf("JobInsertTask(xtrabackup) failed: %v", err)
+	}
+
+	if needed, err := server.CheckTaskNeeded(string(config.ConstTaskMB)); err != nil || needed {
+		t.Fatalf("CheckTaskNeeded(mariabackup) = (%v, %v), want (false, nil) after queuing xtrabackup", needed, err)
+	}
+
+	needed, err := server.CheckTaskNeeded(string(config.ConstTaskXB))
+	if err != nil || !needed {
+		t.Fatalf("CheckTaskNeeded(xtrabackup) = (%v, %v), want (true, nil)", needed, err)
+	}
+}
+
+// TestPhysicalBackupCookie_QueueClearsStaleSiblingCookie guards against a
+// leftover cookie from an earlier run (or a different tool that was
+// previously configured) surviving to steal the next dispatch. Before this
+// fix, a stale cookie_waitxtrabackup left over from any prior state would
+// still be consumed by dbjobs_new.sh's xtrabackup poll -- which runs before
+// the mariabackup poll -- even though the newly queued task is mariabackup.
+func TestPhysicalBackupCookie_QueueClearsStaleSiblingCookie(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+
+	// Simulate a stale cookie left behind by an earlier xtrabackup dispatch
+	// that was never consumed (e.g. the node was down, or the tool was
+	// switched before dbjobs polled).
+	if err := server.SetWaitXtrabackupCookie(); err != nil {
+		t.Fatalf("failed to seed stale xtrabackup cookie: %v", err)
+	}
+
+	if _, err := server.JobInsertTask(string(config.ConstTaskMB), "0", "monitor-host"); err != nil {
+		t.Fatalf("JobInsertTask(mariabackup) failed: %v", err)
+	}
+
+	if server.HasWaitXtrabackupCookie() {
+		t.Fatal("expected stale sibling xtrabackup cookie to be cleared when queuing mariabackup")
+	}
+	if !server.HasWaitMariabackupCookie() {
+		t.Fatal("expected mariabackup cookie to be set")
+	}
+
+	// The stale cookie must not survive to be picked up by dbjobs' xtrabackup
+	// poll, which runs before the mariabackup poll.
+	if needed, err := server.CheckTaskNeeded(string(config.ConstTaskXB)); err != nil || needed {
+		t.Fatalf("CheckTaskNeeded(xtrabackup) = (%v, %v), want (false, nil)", needed, err)
+	}
+}
+
+// TestPhysicalBackupCookie_QueueClearsLegacySharedCookie guards against the
+// pre-split "cookie_waitphysicalbackup" artifact (shared by both tools)
+// surviving on a node upgraded mid-cycle. Nothing reads that key anymore,
+// but queuing a physical backup should still sweep it away.
+func TestPhysicalBackupCookie_QueueClearsLegacySharedCookie(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+
+	if err := server.createCookie("cookie_waitphysicalbackup"); err != nil {
+		t.Fatalf("failed to seed legacy shared cookie: %v", err)
+	}
+
+	if _, err := server.JobInsertTask(string(config.ConstTaskMB), "0", "monitor-host"); err != nil {
+		t.Fatalf("JobInsertTask(mariabackup) failed: %v", err)
+	}
+
+	if server.hasCookie("cookie_waitphysicalbackup") {
+		t.Fatal("expected legacy shared cookie to be cleared when queuing a physical backup")
+	}
+}
+
+// TestPhysicalBackupCookie_ReconcileClearsLegacySharedCookie covers the
+// second cleanup path: restart reconciliation (delTaskCookie, driven by
+// ReconcileRestoredAPIJobs) should sweep the legacy shared cookie immediately
+// rather than leaving it on disk until the next physical backup is queued.
+func TestPhysicalBackupCookie_ReconcileClearsLegacySharedCookie(t *testing.T) {
+	server := newTestServerForAPIJobs(t)
+	task := string(config.ConstTaskMB)
+
+	if err := server.createCookie("cookie_waitphysicalbackup"); err != nil {
+		t.Fatalf("failed to seed legacy shared cookie: %v", err)
+	}
+	if err := server.SetWaitMariabackupCookie(); err != nil {
+		t.Fatalf("failed to seed mariabackup cookie: %v", err)
+	}
+	server.JobResults.Set(task, &config.Task{Task: task, State: JobStateAvailable, Done: 0, Start: 100})
+
+	server.ReconcileRestoredAPIJobs()
+
+	if server.hasCookie("cookie_waitphysicalbackup") {
+		t.Fatal("expected reconciliation to clear the legacy shared cookie")
+	}
+	if server.HasWaitMariabackupCookie() {
+		t.Fatal("expected reconciliation to clear the reconciled task's own cookie")
+	}
+}
+
+// TestFinishReseedJobState_ClearsReseedingState guards the API-mode "stuck
+// reseeding" bug: handlerMuxServerJobState (server/api_database.go) has no
+// SQL jobs table to reconcile a terminal physical reseed/flashback task from
+// (that's what SQL mode's AfterJobProcess/JobsCheckErrors do), so it must
+// call FinishReseedJobState directly on both its "done" and "error" branches.
+// Without this, TrySetInReseedBackup's armed state never releases and every
+// later reseed attempt on this server is rejected as "already reseeding".
+func TestFinishReseedJobState_ClearsReseedingState(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "reseed-cluster", "target", "3307")
+	task := "reseedmariabackup"
+
+	if ok, _ := server.TrySetInReseedBackup(task); !ok {
+		t.Fatal("failed to arm reseeding state")
+	}
+	if !server.HasReseedingState(task) {
+		t.Fatal("expected reseeding state to be armed")
+	}
+
+	server.FinishReseedJobState(task, "job-finished")
+
+	if server.HasAnyReseedingState() {
+		t.Fatalf("expected reseeding state to be cleared, got %q", server.IsReseeding)
+	}
+	// The flag must be free for a new attempt, not just cleared for this task.
+	if ok, current := server.TrySetInReseedBackup(task); !ok {
+		t.Fatalf("expected a new reseed to be armable after cleanup, blocked by %q", current)
+	}
+}
+
+// TestFinishReseedJobState_ClearsResticReseedCookie mirrors the SQL-mode
+// success/error paths' restic reseed cookie cleanup (AfterJobProcess,
+// JobsCheckErrors), which FinishReseedJobState exists to reproduce for API
+// mode.
+func TestFinishReseedJobState_ClearsResticReseedCookie(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "reseed-cluster", "target", "3307")
+	task := "reseedmariabackup"
+
+	if err := server.SetWaitResticReseedCookie(); err != nil {
+		t.Fatalf("failed to seed restic reseed cookie: %v", err)
+	}
+	if ok, _ := server.TrySetInReseedBackup(task); !ok {
+		t.Fatal("failed to arm reseeding state")
+	}
+
+	server.FinishReseedJobState(task, "job-error")
+
+	if server.HasWaitResticReseedCookie() {
+		t.Fatal("expected restic reseed cookie to be cleared")
+	}
+	if server.HasAnyReseedingState() {
+		t.Fatalf("expected reseeding state to be cleared, got %q", server.IsReseeding)
+	}
+}
+
+// TestMarkBackupPhysicalDone_SetsCookieForRegularBackup guards the API-mode
+// "backup disappears after restart" bug: JobFinishReceiveFile writes the
+// .meta.json file and stamps Completed=true the moment the SST stream
+// finishes, mode-agnostically, but FetchLastBackupMetadata (cluster/srv_bck.go)
+// only reloads it after a restart if HasBackupPhysicalCookie() is true. SQL
+// mode sets that cookie inline via AfterJobProcess; API mode has no jobs
+// table to reconcile from, so MarkBackupPhysicalDone must be called directly
+// off the job-state "done" callback (server/api_database.go) instead.
+func TestMarkBackupPhysicalDone_SetsCookieForRegularBackup(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "backup-cluster", "target", "3307")
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
+		BackupLine: backupmgr.BackupLineDefault,
+	}
+
+	server.MarkBackupPhysicalDone("mariabackup")
+
+	if !server.HasBackupMariabackupCookie() {
+		t.Fatal("expected the mariabackup backup cookie to be set")
+	}
+	if !server.HasBackupPhysicalCookie() {
+		t.Fatal("expected HasBackupPhysicalCookie to see the newly set cookie")
+	}
+	if !server.LastBackupMeta.Physical.Completed {
+		t.Fatal("expected LastBackupMeta.Physical.Completed to be stamped true")
+	}
+}
+
+// TestMarkBackupPhysicalDone_SkipsCookieForAdhocBackup mirrors
+// AfterJobProcess's own gate: an ad-hoc backup must not become the
+// cookie-tracked "last" backup (that pointer feeds default-backup-line reseed
+// flows), even though it's still marked Completed.
+func TestMarkBackupPhysicalDone_SkipsCookieForAdhocBackup(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "backup-cluster", "target", "3307")
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
+		BackupLine: backupmgr.BackupLineAdhoc,
+	}
+
+	server.MarkBackupPhysicalDone("mariabackup")
+
+	if server.HasBackupMariabackupCookie() {
+		t.Fatal("expected no backup cookie to be set for an ad-hoc backup")
+	}
+	if !server.LastBackupMeta.Physical.Completed {
+		t.Fatal("expected LastBackupMeta.Physical.Completed to still be stamped true")
+	}
+}
+
+// TestMarkBackupPhysicalDone_NoopForOtherTasks ensures the shared completion
+// call site in handlerMuxServerJobState (which calls this unconditionally,
+// for every task name) never sets a backup cookie for a reseed/flashback or
+// unrelated task.
+func TestMarkBackupPhysicalDone_NoopForOtherTasks(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "backup-cluster", "target", "3307")
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
+		BackupLine: backupmgr.BackupLineDefault,
+	}
+
+	for _, task := range []string{"reseedmariabackup", "reseedxtrabackup", "flashbackmariabackup", "errorlog", ""} {
+		server.MarkBackupPhysicalDone(task)
+	}
+
+	if server.HasBackupPhysicalCookie() {
+		t.Fatal("expected no backup cookie to be set for non-backup task names")
+	}
+	if server.LastBackupMeta.Physical.Completed {
+		t.Fatal("expected Completed to stay false when no matching task name was passed")
 	}
 }

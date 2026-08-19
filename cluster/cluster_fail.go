@@ -22,6 +22,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 // MasterFailover triggers a leader change and returns the new master URL when single possible leader
@@ -434,6 +435,47 @@ func (cluster *Cluster) pointSlaveToMasterWithMode(sl *ServerMonitor, mode strin
 	changemasteropt.Mode = mode
 
 	return dbhelper.ChangeMaster(sl.Conn, changemasteropt, sl.DBVersion)
+}
+
+// pointSlaveToMasterAutoDetect picks the GTID mode for CHANGE MASTER/CHANGE
+// REPLICATION SOURCE from the target's own vendor rather than hardcoding
+// "SLAVE_POS" -- that mode emits MASTER_USE_GTID=SLAVE_POS, a MariaDB-only
+// clause that MySQL/Percona rejects outright, so calling
+// pointSlaveToMasterWithMode(sl, "SLAVE_POS") unconditionally breaks the
+// CHANGE MASTER step on a MySQL/Percona target before a physical
+// reseed/flashback ever starts streaming. Mirrors the mode selection already
+// used for logical reseed/flashback below in this file.
+func (cluster *Cluster) pointSlaveToMasterAutoDetect(sl *ServerMonitor) (string, error) {
+	switch changeMasterStrategyFor(sl.DBVersion, sl.HasMySQLGTID()) {
+	case changeMasterAutoPosition:
+		return cluster.pointSlaveToMasterWithMode(sl, "MASTER_AUTO_POSITION")
+	case changeMasterPositional:
+		return cluster.pointSlaveToMasterPositional(sl)
+	default:
+		return cluster.pointSlaveToMasterWithMode(sl, "SLAVE_POS")
+	}
+}
+
+type changeMasterStrategy int
+
+const (
+	changeMasterSlavePos changeMasterStrategy = iota
+	changeMasterAutoPosition
+	changeMasterPositional
+)
+
+// changeMasterStrategyFor picks the GTID mode based on vendor, mirroring the
+// logical reseed/flashback gating elsewhere in this file: MySQL/Percona use
+// MASTER_AUTO_POSITION when GTID is available and positional replication
+// otherwise, since SLAVE_POS is a MariaDB-only clause MySQL/Percona reject.
+func changeMasterStrategyFor(v *version.Version, hasGTID bool) changeMasterStrategy {
+	if v != nil && v.IsMySQLOrPercona() {
+		if hasGTID {
+			return changeMasterAutoPosition
+		}
+		return changeMasterPositional
+	}
+	return changeMasterSlavePos
 }
 
 func (cluster *Cluster) pointSlaveToMasterPositional(sl *ServerMonitor) (string, error) {

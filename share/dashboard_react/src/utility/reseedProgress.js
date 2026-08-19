@@ -4,7 +4,14 @@
 // structured progress the backend attaches to /api/clusters/{name}/topology/servers
 // as `server.reseedProgress` (absent when idle). Shape:
 //   { inProgress, fromRejoin, task, backup, tool, bytes, total, percent,
-//     startedUnix, elapsedSecs, rateBytesSec, recentRateBytesSec, recentRateReady, line }
+//     startedUnix, elapsedSecs, rateBytesSec, recentRateBytesSec, recentRateReady, line,
+//     phase }
+// `phase` is set only for physical reseed/flashback (the SST send/receive path) --
+// one of 'waiting_receiver' / 'sending_sst' / 'applying_backup', "" for reseed paths
+// that don't track it (logical, splitdump, direct-stream). It has no byte/rate
+// numbers behind it yet (see formatReseedPhase) -- physical reseed doesn't wire
+// through the byte counter the other methods use, so this is a text-only signal for
+// now, not a substitute for the bar/bytes shown when reseedHasBar/reseedHasBytes.
 // rateBytesSec is a lifetime average (stable, but lags a real slowdown/speedup);
 // recentRateBytesSec is a windowed rate over the last few ticks (noisier, reflects
 // current throughput), valid only once recentRateReady is true (enough ticks sampled).
@@ -76,6 +83,21 @@ export const formatRateLine = (rp) => {
   const recent = `${formatBytes(rp.recentRateBytesSec)}/s now`
   return avg === 'measuring…' ? `${recent} · ${avg}` : `${recent} · ${avg} avg`
 }
+
+// reseedPhaseLabels maps the backend's ReseedPhase* constants (cluster/restore_progress.go)
+// to a display label. Keep in sync with that file's ReseedPhaseWaitingReceiver /
+// ReseedPhaseSendingSST / ReseedPhaseApplyingBackup string values.
+const reseedPhaseLabels = {
+  waiting_receiver: 'Waiting for destination receiver',
+  sending_sst: 'Sending backup to destination',
+  applying_backup: 'Applying physical backup on destination',
+}
+
+// formatReseedPhase(phase) → a display label, or "" for an unset/unrecognized phase
+// (idle, or a reseed path — logical/splitdump/direct-stream — that doesn't track
+// phase). Unrecognized values fall back to "" rather than the raw string so an older
+// dashboard build never renders a raw enum value if the backend adds a phase later.
+export const formatReseedPhase = (phase) => reseedPhaseLabels[phase] || ''
 
 // formatElapsed(seconds) → "1h23m" / "3m12s" / "45s".
 export const formatElapsed = (secs) => {

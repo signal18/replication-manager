@@ -238,12 +238,14 @@ type ServerMonitor struct {
 	jobsAPIHousekeepingDone     bool // true after schema ensured + jobs table dropped in API mode
 	NeedRefreshJobs             bool
 	lastJobsRefreshAttempt      time.Time
+	lastReconcileAttempt        time.Time
 	PointInTimeMeta             backupmgr.PointInTimeMeta
 	BinaryLogDir                string
 	BinaryLogName               string
 	DBDataDir                   string
 	LastConfigUpdate            config.LastConfigUpdate `json:"lastConfigUpdate"`
 	LastBackupMeta              ServerBackupMeta        `json:"lastBackupMeta"`
+	LastPhysicalRestoreMeta     *PhysicalRestoreMeta    `json:"lastPhysicalRestoreMeta,omitempty"`
 	IsNeedPathCheck             bool
 	HasConfigPathChanged        bool
 	HasConfigDiff               bool         `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config
@@ -262,6 +264,7 @@ type ServerMonitor struct {
 	reseedTotal                 atomic.Int64 // total compressed backup file size (0 = unknown)
 	reseedStart                 atomic.Int64 // unix-nanos the current restore started (for MB/s)
 	reseedRateWindow            atomic.Value // []reseedRateSample: last few per-tick (bytes,time) samples, for a windowed "recent" rate distinct from the lifetime average (reseedBytes/reseedStart) — see restore_progress.go
+	reseedPhase                 atomic.Value // string: one of the ReseedPhase* constants (restore_progress.go), physical reseed/flashback only; empty for paths that don't set it
 	logicalReseedDispatching    atomic.Bool  // claimed for the duration of an in-flight launchLogicalReseed call, so repeated StateProcessing ticks over the same open WARN0075 can't enter ProcessReseedLogical concurrently
 	// Lock ordering (to prevent deadlocks):
 	// 1. Cluster.stateMutex (highest)
@@ -1253,6 +1256,18 @@ func (server *ServerMonitor) Refresh() error {
 		if cluster.Conf.MonitorScheduler {
 			server.JobsCheckStates()
 			server.JobsCheckRunning()
+		} else if cluster.Conf.SchedulerJobsMode == "sql" {
+			// SQL mode's job lifecycle is driven entirely by dbjobs_new.sh writing
+			// to the jobs table -- that's its only interface with repman, it has
+			// no other channel to report through. So even with the scheduler off,
+			// this reads that table directly (JobsCheckRunning) rather than
+			// falling back to jobsCheckRunningFromMemory()'s in-memory Done-only
+			// heuristic, which has no notion of SQL state and left WARN0074 stuck
+			// open for a task's entire lifetime instead of resolving when dbjobs
+			// actually picks it up -- see JobsReconcileSQL's doc comment.
+			if err := server.JobsReconcileSQL(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job reconciliation skipped on %s: %s", server.URL, err)
+			}
 		} else {
 			server.jobsCheckRunningFromMemory()
 		}

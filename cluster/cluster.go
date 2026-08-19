@@ -1316,7 +1316,16 @@ func (cluster *Cluster) StateProcessing() {
 
 				err := servertoreseed.ProcessReseedPhysical(task)
 				if err != nil {
-					servertoreseed.JobsUpdateState(task, err.Error(), JobStateHalted, 1)
+					// errServerNotReseeding means the reseed flag was already clear when
+					// ProcessReseedPhysical was entered -- most commonly because a
+					// terminal-job reconciliation already ran AfterJobProcess for this
+					// task on a job that finished successfully. Marking a finished job
+					// Halted here would relabel a success as a failure in the runtime
+					// cache, so skip the state write for that case only; any other
+					// error is a genuine failure and still gets halted.
+					if !errors.Is(err, errServerNotReseeding) {
+						servertoreseed.JobsUpdateState(task, err.Error(), JobStateHalted, 1)
+					}
 					if servertoreseed.HasReseedingState(task) {
 						servertoreseed.SetInReseedBackup("")
 					}
@@ -1334,7 +1343,10 @@ func (cluster *Cluster) StateProcessing() {
 				task := "flashback" + cluster.Conf.BackupPhysicalType
 				err := servertoreseed.ProcessFlashbackPhysical(task)
 				if err != nil {
-					servertoreseed.JobsUpdateState(task, err.Error(), JobStateHalted, 1)
+					// See the matching errServerNotReseeding check under WARN0074 above.
+					if !errors.Is(err, errServerNotReseeding) {
+						servertoreseed.JobsUpdateState(task, err.Error(), JobStateHalted, 1)
+					}
 					if servertoreseed.HasReseedingState(task) {
 						servertoreseed.SetInReseedBackup("")
 					}
@@ -1359,7 +1371,7 @@ func (cluster *Cluster) StateProcessing() {
 			if s.ErrKey == "WARN0112" {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have physical backup")
 				for _, srv := range cluster.Servers {
-					if srv.HasWaitPhysicalBackupCookie() {
+					if srv.HasWaitXtrabackupCookie() || srv.HasWaitMariabackupCookie() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for physical backup", srv.URL)
 						cluster.trackTickGoroutine(func() {
 							err := srv.JobReseedPhysicalBackup("default")

@@ -620,9 +620,14 @@ func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 	// Remote tasks only — logical tasks (mysqldump, mydumper, analyze) are
 	// executed directly by replication-manager and must not be dispatched to
 	// the dbjobs script to avoid double execution.
-	case config.ConstTaskXB, config.ConstTaskMB:
-		if server.HasWaitPhysicalBackupCookie() {
-			server.DelWaitPhysicalBackupCookie()
+	case config.ConstTaskXB:
+		if server.HasWaitXtrabackupCookie() {
+			server.DelWaitXtrabackupCookie()
+			return true, nil
+		}
+	case config.ConstTaskMB:
+		if server.HasWaitMariabackupCookie() {
+			server.DelWaitMariabackupCookie()
 			return true, nil
 		}
 	case config.ConstTaskOptimize:

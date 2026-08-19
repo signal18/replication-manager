@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	gzip "github.com/klauspost/pgzip"
@@ -515,14 +516,80 @@ func (sst *SST) stream_copy_to_restic() <-chan int {
 	return sync_channel
 }
 
-func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, uncompress bool) error {
+// SSTProgressSink is a caller-supplied destination for an in-flight SST
+// send's byte/total tracking. nil means "don't track" -- the SST send family
+// (SSTRunSender and everything it calls) has zero knowledge of what a sink is
+// ultimately backing; it only ever calls AddBytes/SetTotal on whatever it was
+// handed. These functions are NOT reseed-only -- UpgradeJobsScript
+// (srv_job.go) and the dummy-config sender (srv_cnf.go) also call
+// SSTRunSender for unrelated transfers. Gating on an ambient signal like
+// sv.IsReseeding wouldn't work: a reseed can legitimately be in progress on a
+// server AT THE SAME TIME as one of those unrelated sends fires, so
+// IsReseeding!="" would be true for both and couldn't tell them apart -- it
+// would let the unrelated transfer overwrite the real reseed's counters
+// mid-flight. Only the caller knows which case it is, so only the caller can
+// decide: WaitAndSendSST/WaitAndSendSSTStream pass a sink backed by
+// server.reseedBytes/reseedTotal; everyone else passes nil.
+//
+// A plain *atomic.Int64 for bytes alone isn't quite enough: the SST layer
+// also decides *whether* a total is trustworthy (raw file send: yes, exact
+// on-disk size; decompress-then-send: no, decompressed bytes sent never
+// matches the compressed file size; stream send: only when not decompressing
+// on the fly) -- that logic stays here, so the sink needs a place for both.
+type SSTProgressSink struct {
+	bytes *atomic.Int64
+	total *atomic.Int64
+}
+
+// newReseedProgressSink builds the sink WaitAndSendSST/WaitAndSendSSTStream
+// pass, backed directly by the server's reseed progress counters (the same
+// fields ReseedProgressView/GetReseedProgress read).
+func newReseedProgressSink(sv *ServerMonitor) *SSTProgressSink {
+	return &SSTProgressSink{bytes: &sv.reseedBytes, total: &sv.reseedTotal}
+}
+
+// AddBytes records n more bytes sent. Safe to call on a nil sink (no-op).
+func (s *SSTProgressSink) AddBytes(n int64) {
+	if s == nil || s.bytes == nil {
+		return
+	}
+	s.bytes.Add(n)
+}
+
+// SetTotal records the transfer's total size once the SST layer has decided
+// it's trustworthy for this send path (see the type doc comment). Safe to
+// call on a nil sink (no-op); total<=0 is treated as "still unknown" and
+// left untouched rather than stored.
+func (s *SSTProgressSink) SetTotal(total int64) {
+	if s == nil || s.total == nil || total <= 0 {
+		return
+	}
+	s.total.Store(total)
+}
+
+// sstProgressWriter wraps w so each successful Write's byte count reaches
+// sink.AddBytes -- a no-op when sink is nil, so callers never need to branch
+// on whether progress is being tracked; they just always wrap and the sink
+// itself decides whether that's a real write or a discard.
+type sstProgressWriter struct {
+	w    io.Writer
+	sink *SSTProgressSink
+}
+
+func (p *sstProgressWriter) Write(b []byte) (int, error) {
+	n, err := p.w.Write(b)
+	p.sink.AddBytes(int64(n))
+	return n, err
+}
+
+func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, uncompress bool, progress *SSTProgressSink) error {
 	var err error
 	port, _ := strconv.Atoi(sv.SSTPort)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST Reseed to port %s server %s", sv.SSTPort, sv.Host)
 
 	if cluster.Conf.SchedulerReceiverUseSSL {
-		return cluster.SSTRunSenderSSL(backupfile, sv)
+		return cluster.SSTRunSenderSSL(backupfile, sv, progress)
 	}
 
 	client, err := net.Dial("tcp", net.JoinHostPort(sv.Host, fmt.Sprintf("%d", port)))
@@ -532,9 +599,9 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, uncom
 	defer client.Close()
 
 	if strings.HasSuffix(backupfile, "gz") && uncompress {
-		err = cluster.SSTRunSendGzip(client, backupfile, sv)
+		err = cluster.SSTRunSendGzip(client, backupfile, sv, progress)
 	} else {
-		err = cluster.SSTRunSendFile(client, backupfile, sv)
+		err = cluster.SSTRunSendFile(client, backupfile, sv, progress)
 	}
 
 	if err != nil {
@@ -546,14 +613,14 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, uncom
 	return nil
 }
 
-func (cluster *Cluster) SSTRunSenderStream(sourceName string, opener SSTStreamOpener, sv *ServerMonitor, uncompress bool) error {
+func (cluster *Cluster) SSTRunSenderStream(sourceName string, opener SSTStreamOpener, sv *ServerMonitor, uncompress bool, progress *SSTProgressSink) error {
 	var err error
 	port, _ := strconv.Atoi(sv.SSTPort)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST Reseed stream to port %s server %s", sv.SSTPort, sv.Host)
 
 	if cluster.Conf.SchedulerReceiverUseSSL {
-		return cluster.SSTRunSenderStreamSSL(sourceName, opener, sv, uncompress)
+		return cluster.SSTRunSenderStreamSSL(sourceName, opener, sv, uncompress, progress)
 	}
 
 	client, err := net.Dial("tcp", net.JoinHostPort(sv.Host, fmt.Sprintf("%d", port)))
@@ -562,7 +629,7 @@ func (cluster *Cluster) SSTRunSenderStream(sourceName string, opener SSTStreamOp
 	}
 	defer client.Close()
 
-	if err = cluster.sstSendStream(client, sourceName, opener, sv, uncompress); err != nil {
+	if err = cluster.sstSendStream(client, sourceName, opener, sv, uncompress, progress); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Backup stream failed to send, closing connection!")
 		return fmt.Errorf("Error sending SST stream to server %s: %s ", sv.Host, err)
 	}
@@ -571,7 +638,7 @@ func (cluster *Cluster) SSTRunSenderStream(sourceName string, opener SSTStreamOp
 	return nil
 }
 
-func (cluster *Cluster) SSTRunSenderStreamSSL(sourceName string, opener SSTStreamOpener, sv *ServerMonitor, uncompress bool) error {
+func (cluster *Cluster) SSTRunSenderStreamSSL(sourceName string, opener SSTStreamOpener, sv *ServerMonitor, uncompress bool, progress *SSTProgressSink) error {
 	var (
 		client *tls.Conn
 		err    error
@@ -584,7 +651,7 @@ func (cluster *Cluster) SSTRunSenderStreamSSL(sourceName string, opener SSTStrea
 	}
 	defer client.Close()
 
-	if err = cluster.sstSendStream(client, sourceName, opener, sv, uncompress); err != nil {
+	if err = cluster.sstSendStream(client, sourceName, opener, sv, uncompress, progress); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Backup stream failed to send via SSL, closing connection!")
 		return fmt.Errorf("Error sending SST stream to server %s: %s ", sv.Host, err)
 	}
@@ -593,7 +660,7 @@ func (cluster *Cluster) SSTRunSenderStreamSSL(sourceName string, opener SSTStrea
 	return nil
 }
 
-func (cluster *Cluster) sstSendStream(client net.Conn, sourceName string, opener SSTStreamOpener, sv *ServerMonitor, uncompress bool) error {
+func (cluster *Cluster) sstSendStream(client net.Conn, sourceName string, opener SSTStreamOpener, sv *ServerMonitor, uncompress bool, progress *SSTProgressSink) error {
 	reader, expectedSize, err := opener()
 	if err != nil {
 		return fmt.Errorf("SST stream for %s failed to open source: %s", sourceName, err)
@@ -624,8 +691,18 @@ func (cluster *Cluster) sstSendStream(client net.Conn, sourceName string, opener
 	}
 	buffer := make([]byte, bufSize)
 
+	// expectedSize is only a trustworthy total when not decompressing on the
+	// fly: with uncompress=true, bytes actually sent (decompressed) will never
+	// match the source's expected/compressed size (see the mismatch check
+	// below, which is deliberately skipped in that case for the same reason).
+	// No-op when progress is nil.
+	if !uncompress && expectedSize > 0 {
+		progress.SetTotal(expectedSize)
+	}
+	dest := &sstProgressWriter{w: client, sink: progress}
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST streaming source: %s to node: %s port: %s", sourceName, sv.Host, sv.SSTPort)
-	bytesSent, err := io.CopyBuffer(client, streamReader, buffer)
+	bytesSent, err := io.CopyBuffer(dest, streamReader, buffer)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST stream failed to write: %s", err)
 		return err
@@ -646,7 +723,7 @@ func (cluster *Cluster) sstSendStream(client net.Conn, sourceName string, opener
 	return nil
 }
 
-func (cluster *Cluster) SSTRunSendGzip(client net.Conn, backupfile string, sv *ServerMonitor) error {
+func (cluster *Cluster) SSTRunSendGzip(client net.Conn, backupfile string, sv *ServerMonitor, progress *SSTProgressSink) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST sending file: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
 	file, err := os.Open(backupfile)
 	if err != nil {
@@ -658,6 +735,11 @@ func (cluster *Cluster) SSTRunSendGzip(client net.Conn, backupfile string, sv *S
 	var total uint64
 
 	defer file.Close()
+
+	// Total is never set on progress here: this path decompresses on the fly,
+	// so bytes actually sent (decompressed) never matches the compressed
+	// file's on-disk size -- see SSTRunSendFile for why a raw send can set a
+	// trustworthy total but this can't.
 
 	// Use configurable parallel blocks for better performance
 	// For SST/reseed operations, use higher default (16) for speed, matching original behavior
@@ -681,6 +763,7 @@ func (cluster *Cluster) SSTRunSendGzip(client net.Conn, backupfile string, sv *S
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to write chunk at position %d: %v", total, err)
 			} else {
 				total = total + uint64(bts)
+				progress.AddBytes(int64(bts))
 			}
 		}
 		if err == io.EOF {
@@ -692,16 +775,23 @@ func (cluster *Cluster) SSTRunSendGzip(client net.Conn, backupfile string, sv *S
 	return nil
 }
 
-func (cluster *Cluster) SSTRunSendFile(client net.Conn, backupfile string, sv *ServerMonitor) error {
+func (cluster *Cluster) SSTRunSendFile(client net.Conn, backupfile string, sv *ServerMonitor, progress *SSTProgressSink) error {
 	file, err := os.Open(backupfile)
 	if os.IsNotExist(err) && cluster.Conf.CompressBackups {
 		backupfile = strings.Replace(backupfile, "xbtream", "gz", 1)
-		return cluster.SSTRunSendGzip(client, backupfile, sv)
+		return cluster.SSTRunSendGzip(client, backupfile, sv, progress)
 	}
 	if err != nil {
 		return fmt.Errorf("SST to server %s failed to open backup file: %w", sv.URL, err)
 	}
 	defer file.Close()
+
+	// Sent here means the file's bytes go over the wire unmodified (no
+	// decompress-then-send, unlike SSTRunSendGzip), so the on-disk size is a
+	// trustworthy total for the progress bar. No-op when progress is nil.
+	if fi, err := file.Stat(); err == nil {
+		progress.SetTotal(fi.Size())
+	}
 
 	bufSize := cluster.Conf.SSTSendBuffer
 	readaheadDepth := 4 // number of chunks to prefetch
@@ -747,6 +837,7 @@ func (cluster *Cluster) SSTRunSendFile(client net.Conn, backupfile string, sv *S
 				return err
 			}
 			total += uint64(n)
+			progress.AddBytes(int64(n))
 
 		case err := <-errCh:
 			return fmt.Errorf("read error: %w", err)
@@ -754,7 +845,7 @@ func (cluster *Cluster) SSTRunSendFile(client net.Conn, backupfile string, sv *S
 	}
 }
 
-func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor) error {
+func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor, progress *SSTProgressSink) error {
 	var (
 		client *tls.Conn
 		err    error
@@ -768,9 +859,9 @@ func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor) er
 	defer client.Close()
 
 	if strings.HasSuffix(backupfile, "gz") {
-		err = cluster.SSTRunSendGzip(client, backupfile, sv)
+		err = cluster.SSTRunSendGzip(client, backupfile, sv, progress)
 	} else {
-		err = cluster.SSTRunSendFile(client, backupfile, sv)
+		err = cluster.SSTRunSendFile(client, backupfile, sv, progress)
 	}
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Backup failed to send, closing connection!")

@@ -53,6 +53,31 @@ type ReseedProgress struct {
 	Tool   string
 }
 
+// Physical reseed/flashback phase labels for ReseedProgressView.Phase. Set by
+// WaitAndSendSST/WaitAndSendSSTStream (srv_job_backup.go) as the SST lifecycle
+// advances; not set by the logical/splitdump/direct-stream reseed paths, which
+// have no equivalent wait-for-receiver/send/apply split.
+const (
+	ReseedPhaseWaitingReceiver = "waiting_receiver" // armed, waiting for the DB-side receiver (dbjobs pauseJob, SQL job state=2)
+	ReseedPhaseSendingSST      = "sending_sst"      // state=2 seen, actively streaming the backup
+	ReseedPhaseApplyingBackup  = "applying_backup"  // SST send finished; dbjobs is preparing/restoring, not yet terminal
+)
+
+// setReseedPhase records the current physical reseed/flashback phase. Only
+// meaningful while the server is reseeding; cleared unconditionally by
+// SetInReseedBackup (both arming and clearing) so a stale phase from a prior
+// reseed can never leak into the next one or linger once idle.
+func (server *ServerMonitor) setReseedPhase(phase string) {
+	server.reseedPhase.Store(phase)
+}
+
+// getReseedPhase returns the current physical reseed/flashback phase, or ""
+// if none is set (idle, or a reseed path that doesn't track phase).
+func (server *ServerMonitor) getReseedPhase() string {
+	p, _ := server.reseedPhase.Load().(string)
+	return p
+}
+
 // countingReader tallies raw bytes streamed through a restore. It counts the
 // COMPRESSED input (no decompression accounting yet), so the state reads
 // "<streamed> streamed out of <compressed total>".
@@ -230,6 +255,7 @@ type ReseedProgressView struct {
 	RecentRateBytesSec int64  `json:"recentRateBytesSec"` // windowed rate spanning the oldest-to-newest sample currently held (~(reseedRateWindowSize-1) * monitoring-ticker) — noisier, reflects current throughput
 	RecentRateReady    bool   `json:"recentRateReady"`    // true once enough ticks have been sampled for RecentRateBytesSec to be meaningful
 	Line               string `json:"line"`               // the human progress line
+	Phase              string `json:"phase"`              // one of the ReseedPhase* constants; "" if not tracked for this reseed path
 }
 
 // GetReseedProgress returns a snapshot of the server's in-flight restore, or nil
@@ -242,7 +268,7 @@ func (server *ServerMonitor) GetReseedProgress() *ReseedProgressView {
 	if task == "" && !fromRejoin {
 		return nil
 	}
-	v := &ReseedProgressView{InProgress: task != "", FromRejoin: fromRejoin, Task: task, Percent: -1}
+	v := &ReseedProgressView{InProgress: task != "", FromRejoin: fromRejoin, Task: task, Percent: -1, Phase: server.getReseedPhase()}
 	info, _ := server.reseedInfo.Load().(*ReseedProgress)
 	startNanos := server.reseedStart.Load()
 	if info != nil {

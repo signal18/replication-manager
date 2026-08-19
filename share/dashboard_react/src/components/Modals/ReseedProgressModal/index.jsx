@@ -8,11 +8,15 @@ import {
   formatBytes,
   formatElapsed,
   formatRateLine,
+  formatReseedPhase,
 } from '../../../utility/reseedProgress'
 
 // ReseedProgressModal shows every server currently being reseeded/rejoined with a
 // live progress bar (byte-instrumented methods) or an indeterminate timer + the
-// generic "started T" line (methods without byte counting). The panel landing each
+// generic "started T" line (methods without byte counting). Physical SST reseed/
+// flashback additionally carries a phase label (rp.phase, e.g. "sending_sst"),
+// shown alongside whichever of the two the row already has -- phase and
+// bytes/rate are independent signals, not alternatives. The panel landing each
 // reseed's true outcome at completion is the visible proof the rejoin reconcile works.
 function ReseedProgressModal({ isOpen, closeModal, servers }) {
   const active = getActiveReseeds(servers)
@@ -23,6 +27,7 @@ function ReseedProgressModal({ isOpen, closeModal, servers }) {
       {active.map((rp) => {
         const hasBar = reseedHasBar(rp)
         const hasBytes = reseedHasBytes(rp)
+        const phaseLabel = formatReseedPhase(rp.phase)
         return (
           <Box key={rp.url} borderWidth='1px' borderRadius='md' p={3}>
             <Flex justify='space-between' align='center' mb={2}>
@@ -44,6 +49,7 @@ function ReseedProgressModal({ isOpen, closeModal, servers }) {
                   borderRadius='md'
                 />
                 <Text fontSize='sm' mt={1}>
+                  {phaseLabel && `${phaseLabel} · `}
                   {formatBytes(rp.bytes)} / {formatBytes(rp.total)} ({rp.percent}%)
                   {` · ${formatRateLine(rp)}`}
                   {` · ${formatElapsed(rp.elapsedSecs)}`}
@@ -55,10 +61,13 @@ function ReseedProgressModal({ isOpen, closeModal, servers }) {
                 <Text fontSize='sm' mt={1}>
                   {hasBytes ? (
                     <>
+                      {phaseLabel && `${phaseLabel} · `}
                       {formatBytes(rp.bytes)} streamed
                       {` · ${formatRateLine(rp)}`}
                       {` · ${formatElapsed(rp.elapsedSecs)}`}
                     </>
+                  ) : phaseLabel ? (
+                    `${phaseLabel} · ${formatElapsed(rp.elapsedSecs)}`
                   ) : (
                     rp.line || `in progress · ${formatElapsed(rp.elapsedSecs)}`
                   )}

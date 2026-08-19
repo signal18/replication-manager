@@ -40,9 +40,244 @@ import (
 	river "github.com/signal18/replication-manager/utils/river"
 	"github.com/signal18/replication-manager/utils/splitdump"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 var errJobCanceledByUser = errors.New("job canceled by user")
+
+// PhysicalRestoreMeta is the structured result partialRestore()
+// (share/scripts/dbjobs_new.sh) reports back through the jobs table's
+// payload column once a hot physical restore finishes: the GTID/binlog
+// position it confirmed on the destination from the prepared backup's own
+// info files. Shell only extracts and reports this -- resetting the binlog
+// and applying the GTID is done here (applyPhysicalRestoreGTID), using
+// repman's own vendor/version detection rather than a self-reported label.
+type PhysicalRestoreMeta struct {
+	Vendor     string `json:"vendor"`
+	GTID       string `json:"gtid"`
+	BinLogFile string `json:"binLogFile"`
+	BinLogPos  string `json:"binLogPos"`
+}
+
+// fetchPhysicalRestoreMeta reads back the structured restore metadata
+// partialRestore() wrote into this job's payload column. Returns (nil, nil)
+// when the job left no payload (older dbjobs_new.sh, or nothing to report).
+func (server *ServerMonitor) fetchPhysicalRestoreMeta(conn *sqlx.Conn, id int64) (*PhysicalRestoreMeta, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), JobTimeout)
+	defer cancel()
+	var payload string
+	if err := conn.QueryRowxContext(ctx, "SELECT COALESCE(payload,'') FROM replication_manager_schema.jobs WHERE id=?", id).Scan(&payload); err != nil {
+		return nil, err
+	}
+	payload = strings.TrimSpace(payload)
+	if payload == "" {
+		return nil, nil
+	}
+	var meta PhysicalRestoreMeta
+	if err := json.Unmarshal([]byte(payload), &meta); err != nil {
+		return nil, err
+	}
+	return &meta, nil
+}
+
+// RecoverPhysicalRestore is the vendor/topology-aware post-restore recovery
+// owner shared by both job-completion transports: SQL mode's AfterJobProcess
+// (fed from the jobs table's payload column) and API mode's
+// handlerMuxServerJobState (server/api_database.go, fed from the job-state
+// HTTP callback's "restore" field). Whichever transport a deployment uses,
+// this is the one place that resets/applies GTID, restarts channels, and
+// gates on topology -- callers only differ in how they report the outcome
+// (jobs table vs HTTP/in-memory job state).
+//
+// Returns a non-empty warning (not an error) when recovery partially
+// succeeded -- the managed channel is back, but extra channels were left
+// stopped for operator review. A non-nil error means recovery did not
+// complete: nothing was silently half-applied beyond what's stated.
+// SetLastPhysicalRestoreMeta records restoreMeta as the server's most recent
+// physical restore, under the same lock AfterJobProcess uses for SQL mode.
+// Exported so API mode's job-state callback (handlerMuxServerJobState,
+// server/api_database.go) can mirror that assignment -- it has no jobs table
+// row to read the metadata back from, only the payload already decoded off
+// the request body.
+func (server *ServerMonitor) SetLastPhysicalRestoreMeta(restoreMeta *PhysicalRestoreMeta) {
+	if restoreMeta == nil {
+		return
+	}
+	server.backupMetaMutex.Lock()
+	server.LastPhysicalRestoreMeta = restoreMeta
+	server.backupMetaMutex.Unlock()
+}
+
+func (server *ServerMonitor) RecoverPhysicalRestore(restoreMeta *PhysicalRestoreMeta) (string, error) {
+	cluster := server.ClusterGroup
+	if server.PointInTimeMeta.IsInPITR {
+		return "", nil
+	}
+
+	hasGTID, isPositional := physicalRestoreRecoveryMode(server.DBVersion, restoreMeta)
+	isMultiSource := len(server.Replications) > 1
+
+	// Relay topology stays fully blocked: a relay's risk is a downstream
+	// dependent's continuity, a different problem from a multi-source
+	// server's own recovery below, and not yet solved. Only gates when
+	// there is an actual GTID or restore-confirmed binlog position to
+	// apply -- a restore reporting neither (older dbjobs_new.sh, or none
+	// found in the backup) still restarts channels as before.
+	if (hasGTID || isPositional) && server.IsRelay {
+		return "", fmt.Errorf("physical restore recovery blocked on %s: server is a relay (other servers replicate from it) -- automatic recovery not supported, manual review required", server.URL)
+	}
+
+	// Reset the binlog and apply the restore-confirmed GTID position before
+	// any channel restarts below -- a channel started against the wrong (or
+	// absent) GTID baseline would either replicate a gap or fail outright.
+	if err := server.applyPhysicalRestoreGTID(restoreMeta); err != nil {
+		return "", err
+	}
+
+	// Non-GTID MySQL/Percona: re-point the managed channel at the binlog
+	// file/position the restore itself confirmed, rather than leaving it on
+	// whatever pointSlaveToMasterAutoDetect's positional branch computed
+	// before the restore from the pre-restore data.
+	if isPositional {
+		if err := server.applyPhysicalRestorePositional(restoreMeta); err != nil {
+			return "", err
+		}
+	}
+
+	// Restart every channel by its real ConnectionName, symmetric with
+	// StopAllSlaves() in JobReseedPhysicalBackup/JobFlashbackPhysicalBackup
+	// -- except on a multi-source server with a GTID position or restore-
+	// confirmed binlog position that was just applied: that only re-points
+	// this server's managed channel
+	// (server.ReplicationSourceName == cluster.Conf.MasterConn), not every
+	// channel's own upstream source, so only the managed channel is
+	// auto-restarted here. Extra channels are left stopped rather than
+	// resumed against a baseline that may no longer match their own source
+	// -- managed-channel-first recovery; merged multi-source recovery is a
+	// later milestone.
+	var slaveStartErrs []string
+	var pausedChannels []string
+	for _, rep := range server.Replications {
+		channel := rep.ConnectionName.String
+		if (hasGTID || isPositional) && isMultiSource && channel != server.ReplicationSourceName {
+			label := channel
+			if label == "" {
+				label = "<default>"
+			}
+			pausedChannels = append(pausedChannels, fmt.Sprintf("%s (source %s:%s)", label, rep.MasterHost.String, rep.MasterPort.String))
+			continue
+		}
+		if _, err := server.StartSlaveChannel(channel); err != nil {
+			slaveStartErrs = append(slaveStartErrs, fmt.Sprintf("%s: %s", channel, err.Error()))
+		}
+	}
+	if len(slaveStartErrs) > 0 {
+		return "", errors.New(strings.Join(slaveStartErrs, "; "))
+	}
+
+	if len(pausedChannels) == 0 {
+		return "", nil
+	}
+	warning := fmt.Sprintf("managed channel recovered; extra replication source(s) left stopped for operator review (restore recovery only re-points this server's managed channel): %s", strings.Join(pausedChannels, ", "))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "%s on %s", warning, server.URL)
+	return warning, nil
+}
+
+// applyPhysicalRestoreGTID resets the binlog and applies the GTID position a
+// completed hot physical restore confirmed, before the caller restarts
+// replication channels: MariaDB resets then sets gtid_slave_pos, MySQL/Percona
+// GTID resets then sets GTID_PURGED. The vendor gate matches
+// pointSlaveToMasterAutoDetect's (IsMySQLOrPercona(), any version) rather than
+// the logical splitdump restore's >5.7 gate elsewhere in this file --
+// GTID_PURGED exists on MySQL/Percona 5.6 too, and this path already routes
+// 5.6+GTID targets through MASTER_AUTO_POSITION before restore, so GTID
+// recovery after restore must accept them as well. A target without GTID
+// replication enabled (HasMySQLGTID false on a non-MariaDB server, e.g.
+// GTID_MODE=OFF) is left untouched -- setting GTID_PURGED there would just
+// error.
+// physicalRestoreRecoveryMode decides how RecoverPhysicalRestore should
+// re-point replication after a hot physical restore: hasGTID when the
+// restore confirmed a GTID position (applyPhysicalRestoreGTID handles it),
+// isPositional when it's a non-GTID MySQL/Percona target with both a
+// restore-confirmed binlog file AND position instead (applyPhysicalRestorePositional
+// handles it) -- requiring both, not just the file, matters because
+// dbhelper.ChangeMaster emits "MASTER_LOG_POS=" verbatim from whatever
+// Logpos it's given, so a blank BinLogPos would otherwise produce invalid
+// SQL rather than falling back cleanly. MariaDB and any restore reporting
+// neither get false/false -- recovery then just restarts channels as before
+// this function existed. A nil v (DBVersion not yet populated) is never
+// MySQL/Percona, so it takes the same false/false path as MariaDB rather
+// than panicking.
+func physicalRestoreRecoveryMode(v *version.Version, meta *PhysicalRestoreMeta) (hasGTID, isPositional bool) {
+	hasGTID = meta != nil && meta.GTID != ""
+	isPositional = meta != nil && !hasGTID && meta.BinLogFile != "" && meta.BinLogPos != "" && v != nil && v.IsMySQLOrPercona()
+	return hasGTID, isPositional
+}
+
+func (server *ServerMonitor) applyPhysicalRestoreGTID(meta *PhysicalRestoreMeta) error {
+	if meta == nil || meta.GTID == "" {
+		return nil
+	}
+	gtidValue := strings.ReplaceAll(meta.GTID, "'", "''")
+	switch {
+	case server.IsMariaDB():
+		if logs, err := server.ResetMaster(); err != nil {
+			return fmt.Errorf("reset binlog before GTID apply: %s (%s)", err, logs)
+		}
+		if err := server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+gtidValue+"'", time.Second); err != nil {
+			return fmt.Errorf("apply gtid_slave_pos: %s", err)
+		}
+	case server.HasMySQLGTID() && server.DBVersion != nil && server.DBVersion.IsMySQLOrPercona():
+		if logs, err := server.ResetMaster(); err != nil {
+			return fmt.Errorf("reset binlog before GTID apply: %s (%s)", err, logs)
+		}
+		if err := server.ExecQueryNoBinLog("SET @@GLOBAL.GTID_PURGED='"+gtidValue+"'", time.Second); err != nil {
+			return fmt.Errorf("apply GTID_PURGED: %s", err)
+		}
+	}
+	return nil
+}
+
+// applyPhysicalRestorePositional re-points the managed replication channel at
+// the binlog file/position the restore itself confirmed (from
+// mariadb_backup_binlog_info/xtrabackup_binlog_info, via
+// share/scripts/dbjobs_new.sh's partialRestore()), for a MySQL/Percona target
+// with no GTID to recover through applyPhysicalRestoreGTID. Without this, a
+// non-GTID MySQL/Percona target keeps whatever CHANGE MASTER coordinates
+// pointSlaveToMasterAutoDetect's positional branch computed *before* the
+// restore from pseudo-GTID matching on the pre-restore data -- stale
+// coordinates once the restore has replaced that data with the backup's
+// snapshot. A no-op when the restore reported no positional metadata (older
+// dbjobs_new.sh, or none found in the backup): recovery then falls back to
+// whatever CHANGE MASTER state the pre-restore setup already left in place,
+// same as before this function existed.
+func (server *ServerMonitor) applyPhysicalRestorePositional(meta *PhysicalRestoreMeta) error {
+	if meta == nil || meta.BinLogFile == "" {
+		return nil
+	}
+	cluster := server.ClusterGroup
+	if cluster.master == nil {
+		return fmt.Errorf("apply restore-confirmed binlog position: no master known for %s", server.URL)
+	}
+	changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, cluster.master, server.IsDelayed)
+	changemasteropt.Logfile = meta.BinLogFile
+	changemasteropt.Logpos = meta.BinLogPos
+	changemasteropt.Mode = "POSITIONAL"
+	if _, err := dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion); err != nil {
+		return fmt.Errorf("apply restore-confirmed binlog position: %s", err)
+	}
+	return nil
+}
+
+// errServerNotReseeding marks ProcessReseedPhysical/ProcessFlashbackPhysical's
+// "not currently reseeding" bail-out so callers can tell it apart from a real
+// mid-flight failure. This specific bail fires whenever HasReseedingState is
+// already false when the function is entered -- including the case where a
+// terminal-job reconciliation (JobsReconcileSQL) already ran
+// AfterJobProcess for this task and cleared the flag on a job that finished
+// successfully. Treating that case the same as a genuine failure would relabel
+// an already-finished job as JobStateHalted in the runtime cache.
+var errServerNotReseeding = errors.New("server is not in reseeding state")
 
 func (server *ServerMonitor) JobBackupPhysical() error {
 	return server.JobBackupPhysicalWithOptions(BackupRunOptions{})
@@ -79,20 +314,102 @@ func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error
 		if server.HasReseedingState(task.task) {
 			defer server.SetInReseedBackup("")
 		}
-		if !server.PointInTimeMeta.IsInPITR {
-			if _, err := server.StartSlave(); err != nil {
-				errStr = err.Error()
-				// Only set as failed if no error connection
-				if server.Conn != nil {
-					// Set state as 6 to differ post-job error with in-job error (code: 5)
-					server.ConnExecQueryWithTimeout(conn, JobTimeout, fmt.Sprintf(query, "\n"+errStr, JobStateErrorAfter, task.id))
-				}
-				return err
-			}
+		var restoreMeta *PhysicalRestoreMeta
+		if meta, err := server.fetchPhysicalRestoreMeta(conn, task.id); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg,
+				"No structured restore metadata for job %d (%s) on %s: %s", task.id, task.task, server.URL, err)
+		} else if meta != nil {
+			restoreMeta = meta
+			server.backupMetaMutex.Lock()
+			server.LastPhysicalRestoreMeta = meta
+			server.backupMetaMutex.Unlock()
 		}
+		warning, err := server.RecoverPhysicalRestore(restoreMeta)
+		if err != nil {
+			errStr = err.Error()
+			if server.Conn != nil {
+				// Set state as 6 to differ post-job error with in-job error (code: 5)
+				server.ConnExecQueryWithTimeout(conn, JobTimeout, fmt.Sprintf(query, "\n"+errStr, JobStateErrorAfter, task.id))
+			}
+			return errors.New(errStr)
+		}
+		errStr = warning
 	}
 	server.ConnExecQueryWithTimeout(conn, JobTimeout, fmt.Sprintf(query, errStr, JobStateSuccess, task.id))
 	return nil
+}
+
+// FinishReseedJobState clears the reseeding-in-progress flag and any leftover
+// restic reseed cookie for a physical reseed/flashback task that just reached
+// a terminal state (done or error). AfterJobProcess above (SQL mode's success
+// path) and JobsCheckErrors (SQL mode's error path, cluster/srv_job.go) both
+// do this inline via JobsReconcileSQL polling the jobs table -- API mode has
+// no such table to reconcile from, so its job-state callback
+// (handlerMuxServerJobState, server/api_database.go) calls this directly
+// instead, on both its "done" and "error" branches. Exported because that
+// callback lives in package server, not cluster.
+func (server *ServerMonitor) FinishReseedJobState(task, reason string) {
+	cluster := server.ClusterGroup
+	if server.HasWaitResticReseedCookie() {
+		if err := server.DelWaitResticReseedCookie(); err != nil {
+			if cluster != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn,
+					"Failed to clear restic reseed cookie after %s for %s on %s: %s", reason, task, server.URL, err)
+			}
+		}
+	}
+	server.cleanupResticReseedForTask(task, reason)
+	if server.HasReseedingState(task) {
+		server.SetInReseedBackup("")
+	}
+}
+
+// MarkBackupPhysicalDone finishes a completed plain physical backup task
+// (task is "xtrabackup" or "mariabackup", not a reseed/flashback name):
+// mirrors the AfterJobProcess case above (SQL mode's terminal reconciliation)
+// by setting the tool-specific backup cookie and stamping Completed=true.
+//
+// JobFinishReceiveFile already wrote the .meta.json file and set
+// Completed=true the moment the SST stream finished receiving -- that part is
+// mode-agnostic and happens before this is ever called. But the *cookie* is
+// what FetchLastBackupMetadata (cluster/srv_bck.go, gated on
+// HasBackupPhysicalCookie) requires to reload a physical backup into
+// LastBackupMeta.Physical after a restart. SQL mode sets it inline via
+// AfterJobProcess/JobsReconcileSQL; API mode has no jobs table to reconcile
+// from, so its job-state callback (handlerMuxServerJobState,
+// server/api_database.go) calls this directly on "done" instead. Without it,
+// a backup taken in API mode is fully usable in the running process but
+// silently disappears from the backup list on the next restart.
+//
+// A no-op for any task name other than the two plain physical backup types
+// (including reseed/flashback names, and unknown tasks) -- callers can call
+// this unconditionally from a shared completion path without an extra
+// taskname check.
+func (server *ServerMonitor) MarkBackupPhysicalDone(task string) {
+	switch task {
+	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
+	default:
+		return
+	}
+
+	// LastBackupMeta.Physical is shared with the restic completion goroutine
+	// (UpdateBackupMetadataWithRestic) and, since this can now also run from
+	// the API job-state HTTP handler, must go through the same mutex that
+	// guards it there rather than the plain field access this used to be.
+	server.backupMetaMutex.Lock()
+	physical := server.LastBackupMeta.Physical
+	isAdhoc := physical != nil && physical.IsAdhoc()
+	server.backupMetaMutex.Unlock()
+
+	if physical != nil && !isAdhoc {
+		server.SetBackupPhysicalCookie(task)
+	}
+
+	server.backupMetaMutex.Lock()
+	if server.LastBackupMeta.Physical != nil {
+		server.LastBackupMeta.Physical.Completed = true
+	}
+	server.backupMetaMutex.Unlock()
 }
 
 func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions) error {
@@ -267,8 +584,9 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 		return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
 	}
 
-	//Delete wait physical backup cookie
-	server.DelWaitPhysicalBackupCookie()
+	//Delete wait physical backup cookie (either tool, whichever was pending)
+	server.DelWaitXtrabackupCookie()
+	server.DelWaitMariabackupCookie()
 
 	task := "reseed" + backtype
 	if ok, currentTask := server.TrySetInReseedBackup(task); !ok {
@@ -303,14 +621,30 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 		return err
 	}
 
-	// Set replication master to current master if not PITR
+	// Stamp the phase as soon as the task is queued, not just once
+	// WaitAndSendSST reaches it (which can be a monitor tick later, dispatched
+	// off the WARN0074 resolved edge in StateProcessing) -- otherwise
+	// GetReseedProgress reports InProgress with no phase/bytes/line for that
+	// whole window, and the modal falls back to a generic "in progress · 0s".
+	// Deliberately phase-only: NOT calling beginReseedProgress here too, since
+	// WaitAndSendSST's sending_sst transition already calls it once the SST
+	// send actually starts, which would reset reseedStart a second time and
+	// make the elapsed counter jump backward when the phase changes.
+	server.setReseedPhase(ReseedPhaseWaitingReceiver)
+
+	// Set replication master to current master if not PITR. Stop every
+	// channel (not just the managed one) before the hot partial-restore
+	// window opens: partialRestore() pivots tablespaces into a live mysqld,
+	// so any other channel left running would keep applying writes into the
+	// same datadir while it's being restored. Symmetric with the restart
+	// loop in AfterJobProcess.
 	if !server.PointInTimeMeta.IsInPITR {
-		logs, err := server.StopSlave()
+		logs, err := server.StopAllSlaves()
 		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 
-		logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+		logs, err = cluster.pointSlaveToMasterAutoDetect(server)
 		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", backtype, server.URL, err)
 			return err
@@ -353,8 +687,9 @@ func (server *ServerMonitor) JobReseedPhysicalBackupWithPayload(backtype, backup
 		return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
 	}
 
-	//Delete wait physical backup cookie
-	server.DelWaitPhysicalBackupCookie()
+	//Delete wait physical backup cookie (either tool, whichever was pending)
+	server.DelWaitXtrabackupCookie()
+	server.DelWaitMariabackupCookie()
 
 	task := "reseed" + backtype
 	if ok, currentTask := server.TrySetInReseedBackup(task); !ok {
@@ -410,14 +745,20 @@ func (server *ServerMonitor) JobReseedPhysicalBackupWithPayload(backtype, backup
 		return err
 	}
 
-	// Set replication master to current master if not PITR
+	// See the matching setReseedPhase call in JobReseedPhysicalBackup for why
+	// this is stamped here rather than left to WaitAndSendSST alone.
+	server.setReseedPhase(ReseedPhaseWaitingReceiver)
+
+	// Set replication master to current master if not PITR. Stop every
+	// channel (not just the managed one) before the hot partial-restore
+	// window opens -- see the matching comment in JobReseedPhysicalBackup.
 	if !server.PointInTimeMeta.IsInPITR {
-		logs, err := server.StopSlave()
+		logs, err := server.StopAllSlaves()
 		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 
-		logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+		logs, err = cluster.pointSlaveToMasterAutoDetect(server)
 		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", backtype, server.URL, err)
 			return err
@@ -474,8 +815,9 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 		}
 	}
 
-	//Delete wait physical backup cookie
-	server.DelWaitPhysicalBackupCookie()
+	//Delete wait physical backup cookie (either tool, whichever was pending)
+	server.DelWaitXtrabackupCookie()
+	server.DelWaitMariabackupCookie()
 
 	task := "flashback" + cluster.Conf.BackupPhysicalType
 	if ok, currentTask := server.TrySetInReseedBackup(task); !ok {
@@ -492,12 +834,19 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 		return err
 	}
 
-	logs, err := server.StopSlave()
+	// See the matching setReseedPhase call in JobReseedPhysicalBackup for why
+	// this is stamped here rather than left to WaitAndSendSST alone.
+	server.setReseedPhase(ReseedPhaseWaitingReceiver)
+
+	// Stop every channel (not just the managed one) before the hot
+	// partial-restore window opens -- see the matching comment in
+	// JobReseedPhysicalBackup.
+	logs, err := server.StopAllSlaves()
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 	}
 
-	logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+	logs, err = cluster.pointSlaveToMasterAutoDetect(server)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Flashback can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 		if server.HasReseedingState(task) {
@@ -2001,7 +2350,8 @@ func parseCreateUserAccountRest(rest string) (user string, host string, tail str
 // parseCreateUserToken extracts one quoted-or-bare identifier (a user or
 // host name) from the front of s, unquoted, and returns what's left of s
 // immediately after it. A doubled quote character inside a quoted identifier
-// (''/""/``) is the standard SQL escape for a literal quote and is decoded,
+// (two single quotes / two double quotes / two backticks) is the standard SQL
+// escape for a literal quote and is decoded,
 // not treated as the closing quote; backslash-escaping is not handled (dump
 // output that relies on it fails this parse, which fails the CREATE USER
 // rewrite/matching safely -- see isCreateUserStatement's caller, which
@@ -5756,6 +6106,44 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge 
 	return errors.New("Wrong configuration for Backup Binlog Method!")
 }
 
+// waitAndSendSSTReady reports whether the target has signaled it's ready to
+// receive the SST stream, checked once per WaitAndSendSST/WaitAndSendSSTStream
+// retry-loop iteration.
+//
+// SQL mode: dbjobs_new.sh's only interface with repman is writing state=2
+// (JobStateHalted) into this server's own replication_manager_schema.jobs
+// row once it's opened its receiver and is blocked on accept -- so this
+// polls that row via GetJobCount, exactly as before.
+//
+// API mode has no jobs table at all: dbjobs reports the same "ready to
+// receive" signal through the job-state HTTP callback instead
+// (handlerMuxServerJobState's "waiting" case, server/api_database.go),
+// which JobsUpdateState records as JobStateHalted in the in-memory
+// JobResults cache and, per jobsUpdateState's runtimeOnly path, never
+// writes to SQL in this mode. Polling GetJobCount there would query a jobs
+// row that can never exist, so this checks JobResults instead -- without
+// it, the sender spins through the whole retry loop and times out even
+// though dbjobs already signaled readiness.
+func (server *ServerMonitor) waitAndSendSSTReady(task string) (bool, error) {
+	cluster := server.ClusterGroup
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		t := server.JobResults.Get(task)
+		return t != nil && t.State == JobStateHalted, nil
+	}
+
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return false, fmt.Errorf("Error connecting to %s: %s", server.URL, err)
+	}
+	defer conn.Close()
+
+	count, err := server.GetJobCount(conn, task, JobStateHalted)
+	if err != nil {
+		return false, fmt.Errorf("Error getting task on %s: %s", server.URL, err)
+	}
+	return count > 0, nil
+}
+
 func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncompress bool, loop int) error {
 	cluster := server.ClusterGroup
 
@@ -5767,29 +6155,34 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 		return fmt.Errorf("No connection pool on %s", server.URL)
 	}
 
+	server.setReseedPhase(ReseedPhaseWaitingReceiver)
+
 	// Use iterative loop instead of recursion to avoid stack buildup
 	maxLoop := cluster.Conf.SSTWaitMaxLoop
 	retryDelay := time.Second * time.Duration(cluster.Conf.SSTWaitRetryDelay)
 
 	for attempt := loop; attempt < maxLoop; attempt++ {
-		conn, err := server.GetConnNoBinlog(server.Conn)
+		ready, err := server.waitAndSendSSTReady(task)
 		if err != nil {
-			return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
+			return err
 		}
 
-		count, err := server.GetJobCount(conn, task, 2)
-		conn.Close()
-		if err != nil {
-			return fmt.Errorf("Error getting task on %s: %s", server.URL, err)
-		}
-
-		// Check if job is ready (state=2 means JobStateHalted, waiting for SST)
-		if count > 0 {
-			server.JobsUpdateState(task, "processing", 1, 0)
+		// Check if job is ready (state=2/JobStateHalted, waiting for SST --
+		// SQL row in SQL mode, JobResults entry in API mode)
+		if ready {
+			server.JobsUpdateState(task, "processing", JobStateRunning, 0)
+			server.setReseedPhase(ReseedPhaseSendingSST)
+			// Total is 0 (unknown) here: whether it's trustworthy depends on which
+			// sender path actually runs (raw file send vs. decompress-then-send),
+			// decided inside SSTRunSender/SSTRunSendFile. SSTRunSendFile fills it
+			// in once it knows the on-disk file size; the gzip-decompress path
+			// leaves it 0, since bytes sent (decompressed) don't match the
+			// compressed file size on disk.
+			server.beginReseedProgress(&ReseedProgress{Backup: filename, Tool: cluster.Conf.BackupPhysicalType}, 0)
 			go func() {
 				sendStart := time.Now()
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST send for %s started at %s (file: %s)", task, sendStart.Format(time.RFC3339), filename)
-				err := cluster.SSTRunSender(filename, server, uncompress)
+				err := cluster.SSTRunSender(filename, server, uncompress, newReseedProgressSink(server))
 				elapsed := time.Since(sendStart).Round(time.Second)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST send for %s failed after %s: %s", task, elapsed, err.Error())
@@ -5797,9 +6190,10 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 					// it finds done=0/state=5 rows, runs restic-cookie/mount cleanup
 					// for reseed/flashback task names, then marks done=1 with End set.
 					// Marking done=1 here would hide the row from that cleanup.
-					server.JobsUpdateState(task, err.Error(), 5, 0)
+					server.JobsUpdateState(task, err.Error(), JobStateErrorExec, 0)
 					return
 				}
+				server.setReseedPhase(ReseedPhaseApplyingBackup)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST send for %s completed in %s (started at %s)", task, elapsed, sendStart.Format(time.RFC3339))
 			}()
 			return nil
@@ -5812,7 +6206,7 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 	}
 
 	// done=0: see JobsCheckErrors ownership note above.
-	server.JobsUpdateState(task, "Waiting more than max loop", 5, 0)
+	server.JobsUpdateState(task, "Waiting more than max loop", JobStateErrorExec, 0)
 	server.SetNeedRefreshJobs(true)
 	return errors.New("Error: waiting for " + task + " more than max loop.")
 }
@@ -5836,6 +6230,8 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 		return fmt.Errorf("No connection pool on %s", server.URL)
 	}
 
+	server.setReseedPhase(ReseedPhaseWaitingReceiver)
+
 	// Use iterative loop instead of recursion to avoid stack buildup
 	// and ensure responsive context cancellation
 	maxLoop := cluster.Conf.SSTWaitMaxLoop
@@ -5847,36 +6243,38 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 			return fmt.Errorf("SST stream canceled: %w", err)
 		}
 
-		conn, err := server.GetConnNoBinlog(server.Conn)
+		ready, err := server.waitAndSendSSTReady(task)
 		if err != nil {
-			return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
+			return err
 		}
 
-		count, err := server.GetJobCount(conn, task, 2)
-		conn.Close()
-		if err != nil {
-			return fmt.Errorf("Error getting task on %s: %s", server.URL, err)
-		}
-
-		// Check if job is ready (state=2 means JobStateHalted, waiting for SST)
-		if count > 0 {
-			server.JobsUpdateState(task, "processing", 1, 0)
+		// Check if job is ready (state=2/JobStateHalted, waiting for SST --
+		// SQL row in SQL mode, JobResults entry in API mode)
+		if ready {
+			server.JobsUpdateState(task, "processing", JobStateRunning, 0)
+			server.setReseedPhase(ReseedPhaseSendingSST)
+			// Total is 0 (unknown) here for the same reason as WaitAndSendSST:
+			// sstSendStream fills it in from the opener's expectedSize, but only
+			// when not decompressing on the fly (uncompress=true means bytes sent
+			// won't match the source's expected/compressed size).
+			server.beginReseedProgress(&ReseedProgress{Backup: sourceName, Tool: cluster.Conf.BackupPhysicalType}, 0)
 			go func() {
 				sendStart := time.Now()
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST stream send for %s started at %s (source: %s)", task, sendStart.Format(time.RFC3339), sourceName)
 				if err := ctx.Err(); err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST stream for %s canceled before start: %s", task, err)
 					// done=0: see JobsCheckErrors ownership note in WaitAndSendSST.
-					server.JobsUpdateState(task, err.Error(), 5, 0)
+					server.JobsUpdateState(task, err.Error(), JobStateErrorExec, 0)
 					return
 				}
-				err = cluster.SSTRunSenderStream(sourceName, opener, server, uncompress)
+				err = cluster.SSTRunSenderStream(sourceName, opener, server, uncompress, newReseedProgressSink(server))
 				elapsed := time.Since(sendStart).Round(time.Second)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST stream send for %s failed after %s: %s", task, elapsed, err.Error())
-					server.JobsUpdateState(task, err.Error(), 5, 0)
+					server.JobsUpdateState(task, err.Error(), JobStateErrorExec, 0)
 					return
 				}
+				server.setReseedPhase(ReseedPhaseApplyingBackup)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST stream send for %s completed in %s (started at %s)", task, elapsed, sendStart.Format(time.RFC3339))
 			}()
 			return nil
@@ -5891,7 +6289,7 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 		}
 	}
 
-	server.JobsUpdateState(task, "Waiting more than max loop", 5, 0)
+	server.JobsUpdateState(task, "Waiting more than max loop", JobStateErrorExec, 0)
 	server.SetNeedRefreshJobs(true)
 	return errors.New("Error: waiting for " + task + " more than max loop.")
 }
@@ -6189,7 +6587,7 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 
 	//Prevent multiple reseed
 	if !server.HasReseedingState(task) {
-		return fmt.Errorf("Server is not in %s state", task)
+		return fmt.Errorf("Server is not in %s state: %w", task, errServerNotReseeding)
 	}
 
 	if master == nil {
@@ -6331,7 +6729,7 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 
 	//Prevent multiple reseed
 	if !server.HasReseedingState(task) {
-		return errors.New("Server is not in physical flashback state")
+		return fmt.Errorf("Server is not in physical flashback state: %w", errServerNotReseeding)
 	}
 
 	if master == nil {

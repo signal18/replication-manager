@@ -60,6 +60,11 @@ var (
 // Timeout for getting job records
 var JobTimeout time.Duration = time.Second
 
+// terminalJobsReconcileMinInterval throttles JobsReconcileSQL, matching
+// the interval cluster_job.go's jobsAPIDBRefreshMinInterval already uses for the
+// same monitoring-scheduler=false condition on the dashboard-read path.
+const terminalJobsReconcileMinInterval = 5 * time.Second
+
 func (server *ServerMonitor) JobRun() {
 
 }
@@ -556,9 +561,21 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 // otherwise the dbjobs script would also attempt to run them.
 func (server *ServerMonitor) setTaskCookie(task string) error {
 	switch config.TaskName(task) {
-	// Physical backup — dbjobs runs xtrabackup/mariabackup on DB host
-	case config.ConstTaskXB, config.ConstTaskMB:
-		return server.SetWaitPhysicalBackupCookie()
+	// Physical backup — dbjobs runs xtrabackup/mariabackup on DB host. Each
+	// tool gets its own cookie so dbjobs_new.sh's fixed poll order (xtrabackup
+	// checked before mariabackup) can't claim a mariabackup task as xtrabackup.
+	// Clear the sibling tool's cookie (and the old pre-split shared one) first:
+	// a stale leftover from a previous run or a pre-upgrade install could
+	// otherwise still be picked up by the poll for the *other* tool before its
+	// own cookie is ever checked.
+	case config.ConstTaskXB:
+		server.DelWaitMariabackupCookie()
+		server.delLegacyPhysicalBackupCookie()
+		return server.SetWaitXtrabackupCookie()
+	case config.ConstTaskMB:
+		server.DelWaitXtrabackupCookie()
+		server.delLegacyPhysicalBackupCookie()
+		return server.SetWaitMariabackupCookie()
 	// Optimize — dbjobs runs mysqlcheck on DB host
 	case config.ConstTaskOptimize:
 		return server.SetWaitOptimizeCookie()
@@ -603,8 +620,15 @@ func (server *ServerMonitor) setTaskCookie(task string) error {
 // terminal state we just recorded.
 func (server *ServerMonitor) delTaskCookie(task string) error {
 	switch config.TaskName(task) {
-	case config.ConstTaskXB, config.ConstTaskMB:
-		return server.DelWaitPhysicalBackupCookie()
+	// Also clears the old pre-split shared cookie here, not just on the next
+	// setTaskCookie: reconciliation should leave the datadir fully clean
+	// immediately rather than waiting for the next physical backup dispatch.
+	case config.ConstTaskXB:
+		server.delLegacyPhysicalBackupCookie()
+		return server.DelWaitXtrabackupCookie()
+	case config.ConstTaskMB:
+		server.delLegacyPhysicalBackupCookie()
+		return server.DelWaitMariabackupCookie()
 	case config.ConstTaskOptimize:
 		return server.DelWaitOptimizeCookie()
 	case config.ConstTaskRestart:
@@ -819,12 +843,25 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 
 // jobsCheckRunningFromMemory scans JobResults for pending tasks in API mode
 // and sets the same WARN states as the SQL-based JobsCheckRunning.
+//
+// Mirrors JobsCheckRunning's GetTasksByState(Conn, JobStateAvailable) filter
+// by also skipping any task no longer in JobStateAvailable, not just Done
+// ones. Without this, a task that dbjobs has already picked up (State ==
+// JobStateRunning, reported via the "processing" job-state callback) keeps
+// re-opening its WARN state every tick until Done -- so the WARN never has
+// an open->resolved edge until the task finishes on its own. For physical
+// reseed/flashback (WARN0074/WARN0076), ProcessReseedPhysical/
+// ProcessFlashbackPhysical (cluster.go's StateProcessing) only fire on that
+// resolved edge, and that's what actually streams the backup to the target
+// -- so the target sits on a blocking receive waiting for a stream repman
+// never starts sending. Same root cause JobsReconcileSQL's doc comment
+// describes for the SQL-mode fallback; it was fixed there but not here.
 func (server *ServerMonitor) jobsCheckRunningFromMemory() error {
 	cluster := server.ClusterGroup
 	server.JobResults.Range(func(k, v any) bool {
 		t := v.(*config.Task)
-		if t.Done == 1 {
-			return true // skip completed
+		if t.Done == 1 || t.State != JobStateAvailable {
+			return true // skip completed or already picked up by dbjobs
 		}
 		switch config.TaskName(t.Task) {
 		case config.ConstTaskOptimize:
@@ -1232,6 +1269,110 @@ func (server *ServerMonitor) JobsCheckStates() error {
 	}
 
 	return nil
+}
+
+// JobsReconcileSQL drives the SQL jobs table directly for the
+// monitoring-scheduler=false + scheduler-jobs-mode=sql combination, standing
+// in for the two SQL-based checks the monitor loop otherwise only runs when
+// MonitorScheduler is true (JobsCheckRunning, JobsCheckFinished/JobsCheckErrors
+// via JobsCheckStates):
+//
+//   - JobsCheckRunning(): queries GetTasksByState(Conn, JobStateAvailable) and
+//     opens WARN0074/etc for tasks currently Available. This is the piece that
+//     was missing before: the previous scheduler-off fallback,
+//     jobsCheckRunningFromMemory(), decides purely from the in-memory
+//     JobResults cache's Done flag, with no notion of SQL state at all -- so
+//     WARN0074 stayed open continuously for the task's entire lifetime instead
+//     of resolving the moment dbjobs picks it up (state Available -> Processing,
+//     the SQL-side signal dbjobs_new.sh writes and the only interface it has
+//     with repman -- it has no other channel to report through). Since
+//     ProcessReseedPhysical (the code that actually dials out and streams the
+//     backup) only ever fires on that resolved edge (cluster.go's
+//     StateProcessing), the old fallback meant it could never fire before the
+//     task was already fully finished by dbjobs on its own -- reliably too
+//     late to matter, since dbjobs is sitting on a blocking socket accept
+//     waiting for repman to connect.
+//   - JobsCheckFinished()/JobsCheckErrors(): a job dbjobs already finished on
+//     disk (done=1/state=3 in SQL) reaches AfterJobProcess() (channel-aware
+//     server.StartSlave() post-processing) and JobResults gets synced from SQL
+//     truth, without which WARN0074 also never correctly resolves and stays
+//     stuck open.
+//
+// Deliberately narrower than JobsCheckStates(): it skips JobsCheckPending(),
+// whose scheduler/down-style cancellation semantics assume the scheduler is
+// actively driving dispatch. Running that with the scheduler off risks
+// cancelling a job dbjobs is still legitimately processing.
+//
+// Throttled to terminalJobsReconcileMinInterval: unlike JobsCheckStates()
+// (only ever called when MonitorScheduler is true, where a SQL scan on every
+// tick is an accepted, expected cost), this runs on the scheduler-off path
+// that previously did zero SQL work per tick -- an unthrottled call here,
+// including JobsCheckFinished()'s conditional 3s flush-wait, would be a real
+// monitoring-load regression for that mode. The attempt is marked
+// unconditionally as soon as the TTL gate passes, before any of the checks
+// below, so a persistent failure (e.g. no connection pool) still can't retry
+// on every tick and defeat the throttle.
+//
+// The throttle is bypassed entirely while a reseed/flashback or backup is
+// actively in flight (server.IsReseeding set, or cluster.IsInBackup()):
+// those are foreground, time-sensitive, actively-watched operations that
+// should be reconciled every tick -- what MonitorScheduler=true gives for
+// free -- not held to the general idle-server SQL-load throttle, which
+// exists to protect servers with nothing happening, not ones mid-operation.
+func (server *ServerMonitor) JobsReconcileSQL() error {
+	cluster := server.ClusterGroup
+
+	active := server.HasAnyReseedingState() || cluster.IsInBackup()
+	if !active {
+		if !server.HasTerminalJobsReconcileTTLExpired(terminalJobsReconcileMinInterval) {
+			return nil
+		}
+		server.MarkTerminalJobsReconcileAttempt(time.Now())
+	}
+
+	if cluster.IsInFailover() || cluster.InRollingRestart {
+		return nil
+	}
+	if server.IsDown() {
+		return nil
+	}
+	if server.Conn == nil {
+		return fmt.Errorf("No connection pool on %s", server.URL)
+	}
+
+	if !server.TryStartLoadingJobList() {
+		return errors.New("Waiting for previous update")
+	}
+	defer server.SetLoadingJobList(false)
+
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
+	}
+	defer conn.Close()
+
+	master := cluster.GetMaster()
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
+		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
+		return nil
+	}
+
+	// JobsCheckRunning opens its own connection internally (it's shared with
+	// the MonitorScheduler=true path, which never has one of these already
+	// open) rather than reusing conn above -- a second short-lived connection
+	// acquisition within this same throttled pass, not worth a signature
+	// change to a function scheduler-on mode also depends on as-is.
+	if err := server.JobsCheckRunning(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job reconciliation (running) on %s: %s", server.URL, err)
+	}
+	if err := server.JobsCheckFinished(conn); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job reconciliation (finished) on %s: %s", server.URL, err)
+	}
+	if err := server.JobsCheckErrors(conn); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job reconciliation (errors) on %s: %s", server.URL, err)
+	}
+
+	return server.JobsUpdateEntries(conn)
 }
 
 func (server *ServerMonitor) JobsCheckFinished(conn *sqlx.Conn) error {
@@ -1658,7 +1799,11 @@ func (server *ServerMonitor) UpgradeJobsScript() error {
 	cluster := server.ClusterGroup
 	defer cluster.LogPanicToFile("jobs-upgrade")
 
-	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server, true)
+	// progress=nil: this is a jobs-script upgrade transfer, not a reseed --
+	// see SSTProgressSink's doc comment for why it must not write reseed
+	// progress counters (could corrupt an unrelated reseed in progress on
+	// this same server).
+	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server, true, nil)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "dbjobs_new file does not exist on %s, retrying later", server.Name)
