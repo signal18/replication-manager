@@ -62,6 +62,12 @@ var tests = []string{
 	"testSetDualActive",
 	"testSplitBrainNoWinner",
 	"testMasterNil",
+	// testStagingRecoverNoReadOnly is intentionally not in this list: it
+	// requires topology-staging=true and a resolvable staging-server-host,
+	// which most clusters don't have. Including it here would make it run
+	// (and hard-FAIL, since this framework has no "skip" result) as part of
+	// "ALL" on every non-staging cluster. Run it explicitly by name instead:
+	// --test=testStagingRecoverNoReadOnly
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigPersistBackupOption",
 	"testConfigCookiePushBasic",
