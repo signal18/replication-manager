@@ -20,6 +20,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 	"github.com/sirupsen/logrus"
 )
 
@@ -1018,6 +1019,36 @@ func TestSetLastPhysicalRestoreMeta(t *testing.T) {
 	server.SetLastPhysicalRestoreMeta(nil)
 	if server.LastPhysicalRestoreMeta != meta {
 		t.Fatalf("LastPhysicalRestoreMeta was cleared by a nil call: got %+v, want %+v", server.LastPhysicalRestoreMeta, meta)
+	}
+}
+
+func TestPhysicalRestoreRecoveryMode(t *testing.T) {
+	tests := []struct {
+		name             string
+		v                *version.Version
+		meta             *PhysicalRestoreMeta
+		wantHasGTID      bool
+		wantIsPositional bool
+	}{
+		{"nil meta", &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}, nil, false, false},
+		{"MySQL 8.0 with GTID", &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}, &PhysicalRestoreMeta{GTID: "1-2-3", BinLogFile: "mysql-bin.000001", BinLogPos: "456"}, true, false},
+		{"MySQL 5.6 without GTID but with binlog position", &version.Version{Flavor: "MySQL", Major: 5, Minor: 6}, &PhysicalRestoreMeta{BinLogFile: "mysql-bin.000001", BinLogPos: "456"}, false, true},
+		{"Percona 5.6 without GTID but with binlog position", &version.Version{Flavor: "Percona", Major: 5, Minor: 6}, &PhysicalRestoreMeta{BinLogFile: "mysql-bin.000001", BinLogPos: "456"}, false, true},
+		{"MySQL without GTID and without binlog position", &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}, &PhysicalRestoreMeta{}, false, false},
+		{"MariaDB without GTID but with binlog position stays non-positional", &version.Version{Flavor: "MariaDB", Major: 10, Minor: 3}, &PhysicalRestoreMeta{BinLogFile: "mysql-bin.000001", BinLogPos: "456"}, false, false},
+		{"nil version with binlog position", nil, &PhysicalRestoreMeta{BinLogFile: "mysql-bin.000001", BinLogPos: "456"}, false, false},
+		{"MySQL without GTID, binlog file but no position", &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}, &PhysicalRestoreMeta{BinLogFile: "mysql-bin.000001"}, false, false},
+		{"MySQL without GTID, binlog position but no file", &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}, &PhysicalRestoreMeta{BinLogPos: "456"}, false, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hasGTID, isPositional := physicalRestoreRecoveryMode(tt.v, tt.meta)
+			if hasGTID != tt.wantHasGTID || isPositional != tt.wantIsPositional {
+				t.Fatalf("physicalRestoreRecoveryMode(%+v, %+v) = (%v, %v), want (%v, %v)",
+					tt.v, tt.meta, hasGTID, isPositional, tt.wantHasGTID, tt.wantIsPositional)
+			}
+		})
 	}
 }
 

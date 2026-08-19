@@ -40,6 +40,7 @@ import (
 	river "github.com/signal18/replication-manager/utils/river"
 	"github.com/signal18/replication-manager/utils/splitdump"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 var errJobCanceledByUser = errors.New("job canceled by user")
@@ -113,17 +114,17 @@ func (server *ServerMonitor) RecoverPhysicalRestore(restoreMeta *PhysicalRestore
 		return "", nil
 	}
 
-	hasGTID := restoreMeta != nil && restoreMeta.GTID != ""
+	hasGTID, isPositional := physicalRestoreRecoveryMode(server.DBVersion, restoreMeta)
 	isMultiSource := len(server.Replications) > 1
 
 	// Relay topology stays fully blocked: a relay's risk is a downstream
 	// dependent's continuity, a different problem from a multi-source
 	// server's own recovery below, and not yet solved. Only gates when
-	// there is an actual GTID to apply -- a restore with no reported GTID
-	// (older dbjobs_new.sh, or none found in the backup) still restarts
-	// channels as before.
-	if hasGTID && server.IsRelay {
-		return "", fmt.Errorf("physical restore GTID recovery blocked on %s: server is a relay (other servers replicate from it) -- automatic recovery not supported, manual review required", server.URL)
+	// there is an actual GTID or restore-confirmed binlog position to
+	// apply -- a restore reporting neither (older dbjobs_new.sh, or none
+	// found in the backup) still restarts channels as before.
+	if (hasGTID || isPositional) && server.IsRelay {
+		return "", fmt.Errorf("physical restore recovery blocked on %s: server is a relay (other servers replicate from it) -- automatic recovery not supported, manual review required", server.URL)
 	}
 
 	// Reset the binlog and apply the restore-confirmed GTID position before
@@ -133,22 +134,32 @@ func (server *ServerMonitor) RecoverPhysicalRestore(restoreMeta *PhysicalRestore
 		return "", err
 	}
 
+	// Non-GTID MySQL/Percona: re-point the managed channel at the binlog
+	// file/position the restore itself confirmed, rather than leaving it on
+	// whatever pointSlaveToMasterAutoDetect's positional branch computed
+	// before the restore from the pre-restore data.
+	if isPositional {
+		if err := server.applyPhysicalRestorePositional(restoreMeta); err != nil {
+			return "", err
+		}
+	}
+
 	// Restart every channel by its real ConnectionName, symmetric with
 	// StopAllSlaves() in JobReseedPhysicalBackup/JobFlashbackPhysicalBackup
-	// -- except on a multi-source server with a GTID position that was just
-	// applied: the reset above (RESET MASTER / RESET BINARY LOGS AND GTIDS)
-	// clears this server's whole shared GTID/binlog history, not just the
-	// managed channel's, so only the managed channel
-	// (server.ReplicationSourceName == cluster.Conf.MasterConn) is
+	// -- except on a multi-source server with a GTID position or restore-
+	// confirmed binlog position that was just applied: that only re-points
+	// this server's managed channel
+	// (server.ReplicationSourceName == cluster.Conf.MasterConn), not every
+	// channel's own upstream source, so only the managed channel is
 	// auto-restarted here. Extra channels are left stopped rather than
-	// resumed against a GTID baseline that may no longer match their own
-	// source -- managed-channel-first recovery; merged multi-source GTID
-	// recovery is a later milestone.
+	// resumed against a baseline that may no longer match their own source
+	// -- managed-channel-first recovery; merged multi-source recovery is a
+	// later milestone.
 	var slaveStartErrs []string
 	var pausedChannels []string
 	for _, rep := range server.Replications {
 		channel := rep.ConnectionName.String
-		if hasGTID && isMultiSource && channel != server.ReplicationSourceName {
+		if (hasGTID || isPositional) && isMultiSource && channel != server.ReplicationSourceName {
 			label := channel
 			if label == "" {
 				label = "<default>"
@@ -167,19 +178,42 @@ func (server *ServerMonitor) RecoverPhysicalRestore(restoreMeta *PhysicalRestore
 	if len(pausedChannels) == 0 {
 		return "", nil
 	}
-	warning := fmt.Sprintf("managed channel recovered; extra replication source(s) left stopped for operator review (GTID reset during recovery affects this server's shared GTID state): %s", strings.Join(pausedChannels, ", "))
+	warning := fmt.Sprintf("managed channel recovered; extra replication source(s) left stopped for operator review (restore recovery only re-points this server's managed channel): %s", strings.Join(pausedChannels, ", "))
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "%s on %s", warning, server.URL)
 	return warning, nil
 }
 
 // applyPhysicalRestoreGTID resets the binlog and applies the GTID position a
 // completed hot physical restore confirmed, before the caller restarts
-// replication channels. Vendor/version branching mirrors the logical
-// splitdump restore GTID-apply switch elsewhere in this file: MariaDB resets
-// then sets gtid_slave_pos, MySQL/Percona GTID resets then sets GTID_PURGED.
-// A target without GTID replication enabled (HasMySQLGTID false on a
-// non-MariaDB server, e.g. GTID_MODE=OFF) is left untouched -- setting
-// GTID_PURGED there would just error.
+// replication channels: MariaDB resets then sets gtid_slave_pos, MySQL/Percona
+// GTID resets then sets GTID_PURGED. The vendor gate matches
+// pointSlaveToMasterAutoDetect's (IsMySQLOrPercona(), any version) rather than
+// the logical splitdump restore's >5.7 gate elsewhere in this file --
+// GTID_PURGED exists on MySQL/Percona 5.6 too, and this path already routes
+// 5.6+GTID targets through MASTER_AUTO_POSITION before restore, so GTID
+// recovery after restore must accept them as well. A target without GTID
+// replication enabled (HasMySQLGTID false on a non-MariaDB server, e.g.
+// GTID_MODE=OFF) is left untouched -- setting GTID_PURGED there would just
+// error.
+// physicalRestoreRecoveryMode decides how RecoverPhysicalRestore should
+// re-point replication after a hot physical restore: hasGTID when the
+// restore confirmed a GTID position (applyPhysicalRestoreGTID handles it),
+// isPositional when it's a non-GTID MySQL/Percona target with both a
+// restore-confirmed binlog file AND position instead (applyPhysicalRestorePositional
+// handles it) -- requiring both, not just the file, matters because
+// dbhelper.ChangeMaster emits "MASTER_LOG_POS=" verbatim from whatever
+// Logpos it's given, so a blank BinLogPos would otherwise produce invalid
+// SQL rather than falling back cleanly. MariaDB and any restore reporting
+// neither get false/false -- recovery then just restarts channels as before
+// this function existed. A nil v (DBVersion not yet populated) is never
+// MySQL/Percona, so it takes the same false/false path as MariaDB rather
+// than panicking.
+func physicalRestoreRecoveryMode(v *version.Version, meta *PhysicalRestoreMeta) (hasGTID, isPositional bool) {
+	hasGTID = meta != nil && meta.GTID != ""
+	isPositional = meta != nil && !hasGTID && meta.BinLogFile != "" && meta.BinLogPos != "" && v != nil && v.IsMySQLOrPercona()
+	return hasGTID, isPositional
+}
+
 func (server *ServerMonitor) applyPhysicalRestoreGTID(meta *PhysicalRestoreMeta) error {
 	if meta == nil || meta.GTID == "" {
 		return nil
@@ -193,13 +227,44 @@ func (server *ServerMonitor) applyPhysicalRestoreGTID(meta *PhysicalRestoreMeta)
 		if err := server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+gtidValue+"'", time.Second); err != nil {
 			return fmt.Errorf("apply gtid_slave_pos: %s", err)
 		}
-	case server.HasMySQLGTID() && server.DBVersion.IsMySQLOrPerconaGreater57():
+	case server.HasMySQLGTID() && server.DBVersion != nil && server.DBVersion.IsMySQLOrPercona():
 		if logs, err := server.ResetMaster(); err != nil {
 			return fmt.Errorf("reset binlog before GTID apply: %s (%s)", err, logs)
 		}
 		if err := server.ExecQueryNoBinLog("SET @@GLOBAL.GTID_PURGED='"+gtidValue+"'", time.Second); err != nil {
 			return fmt.Errorf("apply GTID_PURGED: %s", err)
 		}
+	}
+	return nil
+}
+
+// applyPhysicalRestorePositional re-points the managed replication channel at
+// the binlog file/position the restore itself confirmed (from
+// mariadb_backup_binlog_info/xtrabackup_binlog_info, via
+// share/scripts/dbjobs_new.sh's partialRestore()), for a MySQL/Percona target
+// with no GTID to recover through applyPhysicalRestoreGTID. Without this, a
+// non-GTID MySQL/Percona target keeps whatever CHANGE MASTER coordinates
+// pointSlaveToMasterAutoDetect's positional branch computed *before* the
+// restore from pseudo-GTID matching on the pre-restore data -- stale
+// coordinates once the restore has replaced that data with the backup's
+// snapshot. A no-op when the restore reported no positional metadata (older
+// dbjobs_new.sh, or none found in the backup): recovery then falls back to
+// whatever CHANGE MASTER state the pre-restore setup already left in place,
+// same as before this function existed.
+func (server *ServerMonitor) applyPhysicalRestorePositional(meta *PhysicalRestoreMeta) error {
+	if meta == nil || meta.BinLogFile == "" {
+		return nil
+	}
+	cluster := server.ClusterGroup
+	if cluster.master == nil {
+		return fmt.Errorf("apply restore-confirmed binlog position: no master known for %s", server.URL)
+	}
+	changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, cluster.master, server.IsDelayed)
+	changemasteropt.Logfile = meta.BinLogFile
+	changemasteropt.Logpos = meta.BinLogPos
+	changemasteropt.Mode = "POSITIONAL"
+	if _, err := dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion); err != nil {
+		return fmt.Errorf("apply restore-confirmed binlog position: %s", err)
 	}
 	return nil
 }
