@@ -5269,6 +5269,7 @@ func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
 					"Could not parse restore metadata in job-state body for %s on %s: %s", taskname, node.URL, err)
 			}
+			node.SetLastPhysicalRestoreMeta(body.Restore)
 			if warning, err := node.RecoverPhysicalRestore(body.Restore); err != nil {
 				result = "completed: " + err.Error()
 				state = cluster.JobStateErrorAfter

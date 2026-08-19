@@ -92,6 +92,21 @@ func (server *ServerMonitor) fetchPhysicalRestoreMeta(conn *sqlx.Conn, id int64)
 // succeeded -- the managed channel is back, but extra channels were left
 // stopped for operator review. A non-nil error means recovery did not
 // complete: nothing was silently half-applied beyond what's stated.
+// SetLastPhysicalRestoreMeta records restoreMeta as the server's most recent
+// physical restore, under the same lock AfterJobProcess uses for SQL mode.
+// Exported so API mode's job-state callback (handlerMuxServerJobState,
+// server/api_database.go) can mirror that assignment -- it has no jobs table
+// row to read the metadata back from, only the payload already decoded off
+// the request body.
+func (server *ServerMonitor) SetLastPhysicalRestoreMeta(restoreMeta *PhysicalRestoreMeta) {
+	if restoreMeta == nil {
+		return
+	}
+	server.backupMetaMutex.Lock()
+	server.LastPhysicalRestoreMeta = restoreMeta
+	server.backupMetaMutex.Unlock()
+}
+
 func (server *ServerMonitor) RecoverPhysicalRestore(restoreMeta *PhysicalRestoreMeta) (string, error) {
 	cluster := server.ClusterGroup
 	if server.PointInTimeMeta.IsInPITR {
@@ -311,12 +326,25 @@ func (server *ServerMonitor) MarkBackupPhysicalDone(task string) {
 	default:
 		return
 	}
-	if server.LastBackupMeta.Physical != nil && !server.LastBackupMeta.Physical.IsAdhoc() {
+
+	// LastBackupMeta.Physical is shared with the restic completion goroutine
+	// (UpdateBackupMetadataWithRestic) and, since this can now also run from
+	// the API job-state HTTP handler, must go through the same mutex that
+	// guards it there rather than the plain field access this used to be.
+	server.backupMetaMutex.Lock()
+	physical := server.LastBackupMeta.Physical
+	isAdhoc := physical != nil && physical.IsAdhoc()
+	server.backupMetaMutex.Unlock()
+
+	if physical != nil && !isAdhoc {
 		server.SetBackupPhysicalCookie(task)
 	}
+
+	server.backupMetaMutex.Lock()
 	if server.LastBackupMeta.Physical != nil {
 		server.LastBackupMeta.Physical.Completed = true
 	}
+	server.backupMetaMutex.Unlock()
 }
 
 func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions) error {

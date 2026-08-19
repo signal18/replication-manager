@@ -1003,3 +1003,61 @@ func newTestClusterServer(t *testing.T) (*Cluster, *ServerMonitor) {
 func boolPtr(b bool) *bool {
 	return &b
 }
+
+func TestSetLastPhysicalRestoreMeta(t *testing.T) {
+	server := &ServerMonitor{}
+
+	meta := &PhysicalRestoreMeta{Vendor: "MySQL", GTID: "1-2-3", BinLogFile: "mysql-bin.000001", BinLogPos: "456"}
+	server.SetLastPhysicalRestoreMeta(meta)
+	if server.LastPhysicalRestoreMeta != meta {
+		t.Fatalf("LastPhysicalRestoreMeta = %+v, want %+v", server.LastPhysicalRestoreMeta, meta)
+	}
+
+	// A nil restoreMeta (e.g. unparseable API-mode payload) must not clobber
+	// a previously recorded restore.
+	server.SetLastPhysicalRestoreMeta(nil)
+	if server.LastPhysicalRestoreMeta != meta {
+		t.Fatalf("LastPhysicalRestoreMeta was cleared by a nil call: got %+v, want %+v", server.LastPhysicalRestoreMeta, meta)
+	}
+}
+
+// TestMarkBackupPhysicalDoneRaceWithResticUpdate reproduces the concurrency
+// window described in review of the API-mode physical restore path:
+// MarkBackupPhysicalDone is now called from the API job-state HTTP handler
+// (server/api_database.go), and can run concurrently with the restic
+// completion goroutine's UpdateBackupMetadataWithRestic (srv_bck.go), both of
+// which read/mutate the same server.LastBackupMeta.Physical. Run with -race;
+// before MarkBackupPhysicalDone took backupMetaMutex, this reliably reported
+// a data race.
+func TestMarkBackupPhysicalDoneRaceWithResticUpdate(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	server.Datadir = t.TempDir()
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
+		BackupTool: config.ConstBackupPhysicalTypeMariaBackup,
+		BackupLine: backupmgr.BackupLineDefault,
+	}
+	cluster.ResticManager = backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			server.MarkBackupPhysicalDone(config.ConstBackupPhysicalTypeMariaBackup)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			server.UpdateBackupMetadataWithRestic(backupmgr.BackupMethodPhysical, "snap-id")
+		}
+	}()
+	wg.Wait()
+
+	if !server.LastBackupMeta.Physical.Completed {
+		t.Fatalf("expected LastBackupMeta.Physical.Completed=true after MarkBackupPhysicalDone")
+	}
+	if server.LastBackupMeta.Physical.ResticSnapshotID != "snap-id" {
+		t.Fatalf("ResticSnapshotID = %q, want %q", server.LastBackupMeta.Physical.ResticSnapshotID, "snap-id")
+	}
+}
