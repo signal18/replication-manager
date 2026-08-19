@@ -200,6 +200,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testMasterNil" {
 			res = regtest.TestMasterNil(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testStagingRecoverNoReadOnly" {
+			res = regtest.TestStagingRecoverNoReadOnly(cl, test.ConfigFile, &test)
+		}
 		test.Result = regtest.GetTestResultLabel(res)
 		if testExp == "SUITE" {
 			cl.CloseTestCluster(test.ConfigFile, &test)
