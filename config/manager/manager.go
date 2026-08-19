@@ -667,6 +667,7 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []
 	cm.AddPullToGitignore(conf)
 	cm.AddTempDirToGitignore(conf)
 	cm.AddConfigSyncToGitignore(conf)
+	cm.AddDataDirsToGitignore(conf)
 
 	cm.logger.Infof("none", config.ConstLogModGit, "Pushing All Configs To Git")
 
@@ -1130,6 +1131,65 @@ func (cm *ConfigManager) RefreshGitMetadata(conf *config.Config) error {
 }
 
 // Ensures ".pull/" is in .gitignore.
+// ensureGitignoreLines appends each pattern to WorkingDir/.gitignore if not
+// already present (idempotent, order-preserving). Shared by the AddXToGitignore
+// helpers so a new exclusion is one line, not another 45-line copy (T2).
+func (cm *ConfigManager) ensureGitignoreLines(conf *config.Config, patterns []string) {
+	gitignoreFile := conf.WorkingDir + "/.gitignore"
+
+	existing := make(map[string]bool)
+	if data, err := os.ReadFile(gitignoreFile); err == nil {
+		for _, l := range strings.Split(string(data), "\n") {
+			existing[strings.TrimSpace(l)] = true
+		}
+	} else if !os.IsNotExist(err) {
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error reading .gitignore: %v", err)
+		return
+	}
+
+	file, err := os.OpenFile(gitignoreFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error opening .gitignore: %v", err)
+		return
+	}
+	defer file.Close()
+
+	for _, p := range patterns {
+		if existing[p] {
+			continue
+		}
+		if _, err := file.WriteString(p + "\n"); err != nil {
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error appending to .gitignore: %v", err)
+			return
+		}
+		existing[p] = true
+	}
+}
+
+// AddDataDirsToGitignore excludes the runtime data/backup/log/cert bulk that
+// lives inside the git WorkingDir. WorkingDir doubles as the data dir, and
+// go-git's add/status walks + hashes every untracked file not covered by
+// .gitignore — with tens of GB of backups/graphite/logs present, each config
+// push spends minutes hashing bulk data before committing a few KB of config
+// (GWARN013@gitsync flaps; risks starving the monitor). Excluding them keeps
+// go-git's worktree scan cheap. Non-destructive: nothing is deleted, only left
+// out of the config sync. Cert/key material must not be in the config git in
+// cleartext anyway (F9/F10). See issue #1712.
+func (cm *ConfigManager) AddDataDirsToGitignore(conf *config.Config) {
+	cm.ensureGitignoreLines(conf, []string{
+		"backups/",       // top-level backup catalog
+		"*/backup/",      // per-cluster backup dir (<cluster>/backup)
+		"graphite/",      // embedded carbon whisper DB
+		"*.log",          // repman + maintenance logs
+		"goroutine.txt",  // debug goroutine dumps
+		".cache/",        // top-level cache
+		"*/.cache/",      // per-cluster caches
+		"*.pem",          // TLS certs/keys — never in config git cleartext
+		"*.p12",
+		"*.p12-cert.pem",
+	})
+}
+
 func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 	gitignoreFile := conf.WorkingDir + "/.gitignore"
 	lineToAdd := ".pull/"
