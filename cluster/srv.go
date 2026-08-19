@@ -418,6 +418,22 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	return server, err
 }
 
+// IsActiveStagingServer reports whether server is the currently configured staging
+// standalone for this cluster. cluster.Conf.StagingServerHost is the single source of
+// truth for which server that is: SetStagingServer() is the only place that assigns
+// cluster.StagingServer, and it always keeps StagingServerHost in sync with it. The live
+// pointer itself is only populated once topology discovery has run (cluster_topo.go), so
+// it can be nil right after a restart or briefly stale after staging-server-host changes
+// via a live config reload - going straight to config avoids depending on it here.
+func (cluster *Cluster) IsActiveStagingServer(server *ServerMonitor) bool {
+	if !cluster.Conf.TopologyStaging {
+		return false
+	}
+
+	stagingSrv := cluster.GetStagingServerFromConfig()
+	return stagingSrv != nil && stagingSrv.Id == server.Id
+}
+
 func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	cluster := server.ClusterGroup
 	defer wg.Done()
@@ -586,10 +602,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	if errss == sql.ErrNoRows || noChannel {
 		// If we have no replication channel found
 		// This is either a master or a standalone server
-		isStagingServer := false
-		if cluster.Conf.TopologyStaging && cluster.StagingServer != nil && cluster.StagingServer.Id == server.Id {
-			isStagingServer = true
-		}
+		isStagingServer := cluster.IsActiveStagingServer(server)
 
 		if server.PrevState == stateFailed || server.PrevState == stateErrorAuth /*|| server.PrevState == stateSuspect*/ {
 			// If we reached this stage with a previously failed server, reintroduce it as unconnected server.master
