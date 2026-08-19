@@ -964,6 +964,10 @@ type Config struct {
 	Cloud18OpenDbops                       bool                   `mapstructure:"cloud18-open-dbops"  toml:"cloud18-open-dbops" json:"cloud18OpenDbops"`
 	Cloud18SubscribedDbops                 bool                   `mapstructure:"cloud18-subscribed-dbops"  toml:"cloud18-subscribed-dbops" json:"cloud18SubscribedDbops"`
 	Cloud18SubscriptionPlan                string                 `scope:"server" mapstructure:"cloud18-subscription-plan" toml:"cloud18-subscription-plan" json:"cloud18SubscriptionPlan"`
+	// Cloud18LicenseFile, when set, is the single switch for offline-license mode:
+	// the instance sources its plan from this signed file instead of the CRM (for
+	// air-gapped/PCI instances). Empty = normal online CRM path.
+	Cloud18LicenseFile                     string                 `scope:"server" mapstructure:"cloud18-license-file" toml:"cloud18-license-file" json:"cloud18LicenseFile"`
 	Cloud18PeerHealthMode                  string                 `scope:"server" mapstructure:"cloud18-peer-health-mode" toml:"cloud18-peer-health-mode" json:"cloud18PeerHealthMode"`
 	Cloud18DisablePeers                    bool                   `scope:"server" mapstructure:"cloud18-disable-peers" toml:"cloud18-disable-peers" json:"cloud18DisablePeers"`
 	Cloud18DisableForSale                  bool                   `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`

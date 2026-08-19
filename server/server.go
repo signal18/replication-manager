@@ -1180,6 +1180,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.Cloud18DisableForSale, "cloud18-disable-for-sale", false, "Hide clusters for sale from marketplace (paid plans only)")
 	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
 	flags.StringVar(&conf.Cloud18SubscriptionPlan, "cloud18-subscription-plan", "free", "Cloud18 subscription plan code (validated by CRM)")
+	flags.StringVar(&conf.Cloud18LicenseFile, "cloud18-license-file", "", "Path to a signed offline license (license.json; detached signature license.sig alongside). When set, the instance sources its Cloud18 plan from this file instead of the CRM — for air-gapped/PCI instances. Verified with plugin-signing-public-key. Empty = normal online CRM path")
 	flags.StringVar(&conf.Cloud18CrmApiUrl, "cloud18-crm-api-url", "https://api.crm.ovh-fr-2.signal18.cloud18.io", "Cloud18 CRM API base URL used for cluster registration")
 	flags.IntVar(&conf.Cloud18ApplicationCredits, "cloud18-application-credits", 2, "Cloud18 application credits(1 core 4G Ram 8G Disk)")
 	flags.IntVar(&conf.Cloud18ApplicationCreditsPrice, "cloud18-application-credits-price", 20, "Cloud18 application credits price in Eur")
@@ -2016,13 +2017,21 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	repman.PeerManager.SetInterval(repman.Conf.Cloud18HealthRefreshInterval)
 
 	if init_git {
-		// Sync the CRM's current plan for this URI so a node booting with cloud18
-		// already set (e.g. a copied config, or a second node registering against
-		// an already-subscribed URI) doesn't stay stuck on a stale local plan.
-		// Must run after *repman.Conf = conf above, since it persists directly onto
-		// repman.Conf — any earlier and this assignment would clobber it back to
-		// the stale pre-sync value. Best-effort: see syncSubscriptionPlanFromCRM.
-		repman.syncSubscriptionPlanFromCRM()
+		if repman.Conf.Cloud18LicenseFile != "" {
+			// Air-gapped / PCI: no internet to reach the CRM. Source the plan from
+			// the signed offline license instead (verified against the embedded
+			// plugin-signing public key, identity-bound to this instance). Soft:
+			// on any failure the plan stays at its default (free) with a WARN.
+			repman.loadOfflineLicensePlan()
+		} else {
+			// Sync the CRM's current plan for this URI so a node booting with cloud18
+			// already set (e.g. a copied config, or a second node registering against
+			// an already-subscribed URI) doesn't stay stuck on a stale local plan.
+			// Must run after *repman.Conf = conf above, since it persists directly onto
+			// repman.Conf — any earlier and this assignment would clobber it back to
+			// the stale pre-sync value. Best-effort: see syncSubscriptionPlanFromCRM.
+			repman.syncSubscriptionPlanFromCRM()
+		}
 	}
 }
 
