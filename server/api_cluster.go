@@ -40,6 +40,7 @@ import (
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/splitdump"
 )
 
@@ -5298,14 +5299,32 @@ func (repman *ReplicationManager) handlerMuxLog(w http.ResponseWriter, r *http.R
 }
 
 // handlerMuxWebLog handles the retrieval of cluster logs by type.
+//
+// Plain requests return the in-memory ring buffer for the given type (or all
+// types). Adding ?since= and/or ?until= (RFC3339) switches "general"/"task"
+// to a bounded scan of on-disk log history instead — see
+// doc/implementation/utils/s18log/LOG_HISTORY_READER.md — additionally
+// filterable by ?level=, ?module=, ?text=, ?limit=. Other log types
+// (security, workload, ddl, schema, variable-change, sysbench) aren't
+// history-backed: their loggers write to separate files without the
+// cluster/module tags needed to reconstruct entries, so a since/until on
+// those (or with no logType at all) is a 400, not a silently-empty result.
+//
 // @Summary Retrieve cluster logs by type
-// @Description Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, schema, variable-change, sysbench. Without logType returns all logs.
+// @Description Returns cluster logs for the specified type (in-memory buffer), or — for general/task with ?since=/?until= — a bounded scan of on-disk log history. Available types: general, task, security, workload, ddl, schema, variable-change, sysbench. Without logType returns all logs.
 // @Tags ClusterTopology
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param logType path string false "Log type: general, task, security, workload, ddl, schema, variable-change, sysbench"
+// @Param since query string false "RFC3339 lower time bound; presence switches general/task to on-disk history"
+// @Param until query string false "RFC3339 upper time bound; presence switches general/task to on-disk history"
+// @Param level query string false "History mode only: comma-separated level buckets ERR,WARN,INFO,DBG"
+// @Param module query string false "History mode only: comma-separated module tags, e.g. sql,proxy"
+// @Param text query string false "History mode only: substring filter on message text"
+// @Param limit query int false "History mode only: max lines returned (server-clamped)"
 // @Success 200 {object} map[string]interface{} "Log data"
+// @Failure 400 {string} string "logType has no on-disk history"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found"
 // @Router /api/clusters/{clusterName}/topology/logs/{logType} [get]
@@ -5327,8 +5346,29 @@ func (repman *ReplicationManager) handlerMuxWebLog(w http.ResponseWriter, r *htt
 		return
 	}
 
+	logType, hasLogType := vars["logType"]
+
 	var logs any
-	if logType, ok := vars["logType"]; ok {
+	if isLogHistoryRequest(r) {
+		if !hasLogType || (logType != "general" && logType != "task") {
+			http.Error(w, "log history requires logType=general or logType=task", http.StatusBadRequest)
+			return
+		}
+		if !repman.Conf.LogHistoryEnable {
+			http.Error(w, "Log history is disabled (log-history-enable=false)", http.StatusForbidden)
+			return
+		}
+		msgs, truncated, err := repman.readLogHistory(r, cl.Name, logType)
+		if err != nil {
+			if errors.Is(err, errInvalidLogHistoryRange) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			http.Error(w, "Error reading log history: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		logs = &s18log.HttpLog{Buffer: msgs, Len: len(msgs), Truncated: truncated}
+	} else if hasLogType {
 		logs = cl.GetWebLogsByType(logType)
 	} else {
 		logs = cl.GetAllWebLogs()

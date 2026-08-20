@@ -255,6 +255,7 @@ func (cluster *Cluster) AddUser(userform UserForm, delegator string, reloadACL b
 			Level:     config.LvlInfo,
 			Timestamp: time.Now().Format("2006/01/02 15:04:05"),
 			Text:      msg,
+			Module:    config.ConstLogModUncategorized,
 		})
 		if cluster.SecurityLogrus != nil {
 			cluster.SecurityLogrus.WithField("user", user).WithField("delegator", delegator).Info(msg)
@@ -336,6 +337,7 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 			Level:     config.LvlInfo,
 			Timestamp: time.Now().Format("2006/01/02 15:04:05"),
 			Text:      msg,
+			Module:    config.ConstLogModUncategorized,
 		})
 		if cluster.SecurityLogrus != nil {
 			cluster.SecurityLogrus.WithField("user", user).WithField("delegator", delegator).Info(msg)
@@ -376,6 +378,7 @@ func (cluster *Cluster) DropUser(userform UserForm, reloadACL bool) error {
 			Level:     config.LvlInfo,
 			Timestamp: time.Now().Format("2006/01/02 15:04:05"),
 			Text:      msg,
+			Module:    config.ConstLogModUncategorized,
 		})
 		if cluster.SecurityLogrus != nil {
 			cluster.SecurityLogrus.WithField("user", user).Info(msg)

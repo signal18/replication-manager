@@ -389,6 +389,7 @@ func (cluster *Cluster) logUserGrantAssignment(u APIUser) {
 		Level:     config.LvlInfo,
 		Timestamp: time.Now().Format("2006/01/02 15:04:05"),
 		Text:      msg,
+		Module:    config.ConstLogModUncategorized,
 	})
 
 	if cluster.SecurityLogrus != nil {

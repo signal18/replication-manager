@@ -9,11 +9,13 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,6 +40,8 @@ type globalLogsSnapshot struct {
 	Buffer []s18log.HttpMessage `json:"buffer"`
 	Len    int                  `json:"len"`
 	Line   int                  `json:"line"`
+	// Truncated is only ever true for a history response (see HttpLog.Truncated).
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // globalLogsResponse is the JSON payload for GET /api/global/http-logs.
@@ -49,13 +53,29 @@ type globalLogsResponse struct {
 
 // handlerMuxGlobalLogs returns server-level logs from repman.Logs.
 //
+// Plain requests return the in-memory ring buffer (fast, fixed cost — what
+// the GUI polls). Adding ?since= and/or ?until= (RFC3339) switches to a
+// bounded scan of the on-disk log file and its rotated backups instead — see
+// doc/implementation/utils/s18log/LOG_HISTORY_READER.md — additionally
+// filterable by ?level=, ?module=, ?text=, ?limit=. This is deliberately
+// opt-in via since/until rather than a separate route: those params are
+// never sent by the live-polling path, so the disk-scan cost can't leak onto
+// the hot path (F2).
+//
 // @Summary Get global logs
-// @Description Returns server-level log entries from the ReplicationManager in-memory ring buffer.
+// @Description Returns server-level log entries from the in-memory ring buffer, or — with ?since=/?until= — a bounded scan of on-disk log history.
 // @Tags Global
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param since query string false "RFC3339 lower time bound; presence switches to on-disk history"
+// @Param until query string false "RFC3339 upper time bound; presence switches to on-disk history"
+// @Param level query string false "History mode only: comma-separated level buckets ERR,WARN,INFO,DBG"
+// @Param module query string false "History mode only: comma-separated module tags, e.g. sql,proxy"
+// @Param text query string false "History mode only: substring filter on message text"
+// @Param limit query int false "History mode only: max lines returned (server-clamped)"
 // @Success 200 {object} globalLogsResponse
 // @Failure 401 {string} string "Unauthorized"
+// @Failure 403 {string} string "Forbidden"
 // @Router /api/global/http-logs [get]
 func (repman *ReplicationManager) handlerMuxGlobalLogs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -65,25 +85,58 @@ func (repman *ReplicationManager) handlerMuxGlobalLogs(w http.ResponseWriter, r 
 		return
 	}
 
-	repman.GlobalLogs.L.Lock()
-	raw := make([]s18log.HttpMessage, len(repman.GlobalLogs.Buffer))
-	copy(raw, repman.GlobalLogs.Buffer)
-	logLen := repman.GlobalLogs.Len
-	logLine := repman.GlobalLogs.Line
-	repman.GlobalLogs.L.Unlock()
+	var buf []s18log.HttpMessage
+	var truncated bool
+	// bufLen/bufLine default to the live ring buffer's fixed capacity/cursor
+	// (unchanged, existing meaning for the live path); the history branch
+	// below overrides bufLen to the actual returned count, matching what
+	// handlerMuxWebLog's HttpLog{Len: len(msgs)} already does for per-cluster
+	// history — both history responses should mean the same thing by "len".
+	bufLen := repman.GlobalLogs.Len
+	bufLine := repman.GlobalLogs.Line
+	if isLogHistoryRequest(r) {
+		if !repman.Conf.LogHistoryEnable {
+			http.Error(w, "Log history is disabled (log-history-enable=false)", http.StatusForbidden)
+			return
+		}
+		// Group: GroupNone, not "" (no filter) — the live path this mirrors
+		// (repman.GlobalLogs, populated only by server/server_log.go's
+		// LogModuleWithFieldsPrintf with Group: "none") is server-only.
+		// "" would additionally return every cluster's history rows, which
+		// the live /api/global/http-logs response never does.
+		msgs, tr, err := repman.readLogHistory(r, s18log.GroupNone, "")
+		if err != nil {
+			if errors.Is(err, errInvalidLogHistoryRange) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			http.Error(w, "Error reading log history: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		buf = msgs
+		truncated = tr
+		bufLen = len(msgs)
+		bufLine = 0
+	} else {
+		repman.GlobalLogs.L.Lock()
+		raw := make([]s18log.HttpMessage, len(repman.GlobalLogs.Buffer))
+		copy(raw, repman.GlobalLogs.Buffer)
+		repman.GlobalLogs.L.Unlock()
 
-	buf := make([]s18log.HttpMessage, 0, len(raw))
-	for _, msg := range raw {
-		if msg.Timestamp != "" {
-			buf = append(buf, msg)
+		buf = make([]s18log.HttpMessage, 0, len(raw))
+		for _, msg := range raw {
+			if msg.Timestamp != "" {
+				buf = append(buf, msg)
+			}
 		}
 	}
 
 	resp := globalLogsResponse{
 		General: globalLogsSnapshot{
-			Buffer: buf,
-			Len:    logLen,
-			Line:   logLine,
+			Buffer:    buf,
+			Len:       bufLen,
+			Line:      bufLine,
+			Truncated: truncated,
 		},
 	}
 
@@ -95,6 +148,106 @@ func (repman *ReplicationManager) handlerMuxGlobalLogs(w http.ResponseWriter, r 
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(out)
+}
+
+// isLogHistoryRequest reports whether r asks for on-disk log history rather
+// than the live in-memory buffer — see handlerMuxGlobalLogs / handlerMuxWebLog.
+func isLogHistoryRequest(r *http.Request) bool {
+	q := r.URL.Query()
+	return q.Get("since") != "" || q.Get("until") != ""
+}
+
+// errInvalidLogHistoryRange is returned by readLogHistory when since/until is
+// present but not valid RFC3339 — callers map it to a 400 rather than
+// treating the unparsed value as "no bound" (which would silently widen the
+// scan instead of rejecting the request).
+var errInvalidLogHistoryRange = errors.New("since/until must be RFC3339 (e.g. 2006-01-02T15:04:05Z)")
+
+// readLogHistory runs a bounded scan of the on-disk log file (and its
+// rotated backups) via s18log.ReadHistoryFiles, using the request's
+// level/module/text/since/until/limit query params (parsed the same way
+// regardless of which endpoint called this). group scopes results to one
+// cluster ("" = no filter across cluster tags — callers that need the
+// server-only view must pass s18log.GroupNone explicitly, see
+// handlerMuxGlobalLogs). logType, when "general" or "task", additionally
+// restricts to the same general/task split the live per-cluster buffers use
+// (config.IsTaskLogModule) — passed through as HistoryQuery.TaskSplit so the
+// reader applies it before its Limit cutoff, not after (post-filtering an
+// already limit-capped result could return far fewer than Limit task rows
+// when general-log volume dominates the scanned window).
+//
+// Scans both repman.Conf.LogFile and its "-maintenance" sibling
+// (maintenanceLogPath): cluster.LogModuleWithFieldsPrintf routes
+// maintenance-adjacent modules (ConstLogModMaintenance/Task/Restic/SST/
+// BackupStream/Purge) to a dedicated MaintenanceLogrus logger that writes
+// the maintenance file instead of the main one, and both the "general" and
+// "task" splits straddle that boundary — see s18log.ReadHistoryFiles and
+// doc/implementation/utils/s18log/LOG_HISTORY_READER.md.
+func (repman *ReplicationManager) readLogHistory(r *http.Request, group, logType string) ([]s18log.HttpMessage, bool, error) {
+	q := r.URL.Query()
+
+	levels := map[string]bool{}
+	if raw := q.Get("level"); raw != "" {
+		for _, l := range strings.Split(raw, ",") {
+			if l = strings.ToUpper(strings.TrimSpace(l)); l != "" {
+				levels[l] = true
+			}
+		}
+	}
+
+	modules := map[int]bool{}
+	if raw := q.Get("module"); raw != "" {
+		for _, m := range strings.Split(raw, ",") {
+			if m = strings.TrimSpace(m); m != "" {
+				modules[config.ModuleFromTag(m)] = true
+			}
+		}
+	}
+
+	limit := repman.Conf.LogHistoryMaxLines
+	if raw := q.Get("limit"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 && n < limit {
+			limit = n
+		}
+	}
+
+	var since, until time.Time
+	if raw := q.Get("since"); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, false, errInvalidLogHistoryRange
+		}
+		since = t
+	}
+	if raw := q.Get("until"); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, false, errInvalidLogHistoryRange
+		}
+		until = t
+	}
+
+	files := []string{repman.Conf.LogFile}
+	if repman.Conf.LogFile != "" {
+		files = append(files, maintenanceLogPath(repman.Conf.LogFile))
+	}
+
+	result, err := s18log.ReadHistoryFiles(files, s18log.HistoryQuery{
+		Group:        group,
+		Levels:       levels,
+		Modules:      modules,
+		TaskSplit:    logType,
+		Text:         q.Get("text"),
+		Since:        since,
+		Until:        until,
+		Limit:        limit,
+		MaxScanBytes: int64(repman.Conf.LogHistoryMaxScanBytes),
+		MaxFiles:     repman.Conf.LogHistoryMaxFiles,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return result.Messages, result.Truncated, nil
 }
 
 // globalAlertsResponse is the JSON payload for GET /api/global/alerts.

@@ -2332,6 +2332,27 @@ func (repman *ReplicationManager) LimitPrivileges() {
 			// Compatibility with old version, for files with root level permission in workingdir
 			misc.ChownR(repman.Conf.WorkingDir, uidInt, gidInt)
 
+			// repman.Conf.LogFile (and its derived security/workload/schema/
+			// maintenance siblings) live outside WorkingDir by default, so the
+			// chown above never reaches them. Their write fds, opened while
+			// still root, keep working across the Setuid/Setgid below — but any
+			// fresh open (e.g. the log-history API re-reading them) re-checks
+			// permissions under the target user and fails with "permission
+			// denied" unless ownership is also transferred here.
+			if repman.Conf.LogFile != "" {
+				for _, lf := range []string{
+					repman.Conf.LogFile,
+					securityLogPath(repman.Conf.LogFile),
+					workloadLogPath(repman.Conf.LogFile),
+					schemaLogPath(repman.Conf.LogFile),
+					maintenanceLogPath(repman.Conf.LogFile),
+				} {
+					if err := s18log.ChownHistoryFiles(lf, uidInt, gidInt); err != nil {
+						repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not chown log file %s to %s: %v", lf, targetUser.Username, err)
+					}
+				}
+			}
+
 			// Set GID (Group ID)
 			err = syscall.Setgid(gidInt)
 			if err != nil {
@@ -2527,7 +2548,18 @@ func (repman *ReplicationManager) Run() error {
 			MaxAge:     repman.Conf.LogRotateMaxAge,
 			Level:      config.ToLogrusLevel(repman.Conf.LogFileLevel),
 			Formatter: &log.TextFormatter{
-				DisableColors:   true,
+				DisableColors: true,
+				// Same zoneless format as every other log file this process
+				// writes (security/workload/schema/maintenance/graphite,
+				// below) and as origin/develop always used here. This file is
+				// also the only one ReadHistory (utils/s18log/history.go)
+				// parses back for the GUI's log-history Since/Until
+				// filtering — see historyTimestampLayoutLegacy there. A
+				// zoneless layout parses as a fictional-but-consistent UTC on
+				// both this side and the picker's query bound (see
+				// datetimeLocalToRFC3339 in Logs/index.jsx), so relative
+				// ordering/filtering is correct without needing to know or
+				// carry the server's real offset.
 				TimestampFormat: "2006-01-02 15:04:05",
 				FullTimestamp:   true,
 			},

@@ -158,6 +158,10 @@ type Config struct {
 	LogRotateMaxSize                          int                          `mapstructure:"log-rotate-max-size" toml:"log-rotate-max-size" json:"logRotateMaxSize"`
 	LogRotateMaxBackup                        int                          `mapstructure:"log-rotate-max-backup" toml:"log-rotate-max-backup" json:"logRotateMaxBackup"`
 	LogRotateMaxAge                           int                          `mapstructure:"log-rotate-max-age" toml:"log-rotate-max-age" json:"logRotateMaxAge"`
+	LogHistoryEnable                          bool                         `mapstructure:"log-history-enable" toml:"log-history-enable" json:"logHistoryEnable"`
+	LogHistoryMaxScanBytes                    int                          `mapstructure:"log-history-max-scan-bytes" toml:"log-history-max-scan-bytes" json:"logHistoryMaxScanBytes"`
+	LogHistoryMaxLines                        int                          `mapstructure:"log-history-max-lines" toml:"log-history-max-lines" json:"logHistoryMaxLines"`
+	LogHistoryMaxFiles                        int                          `mapstructure:"log-history-max-files" toml:"log-history-max-files" json:"logHistoryMaxFiles"`
 	DBLogRotate                               bool                         `mapstructure:"db-log-rotate" toml:"db-log-rotate" json:"dbLogRotate"`
 	DBLogOnBackupStorage                      bool                         `mapstructure:"db-log-on-backup-storage" toml:"db-log-on-backup-storage" json:"dbLogOnBackupStorage"`
 	DBLogRotateMaxSize                        int                          `mapstructure:"db-log-rotate-max-size" toml:"db-log-rotate-max-size" json:"dbLogRotateMaxSize"`
@@ -1498,6 +1502,13 @@ const (
 	// when configured so operational noise does not pollute the HA main log.
 	ConstLogModMaintenance = 31
 	ConstLogModArbitration = 32
+	// ConstLogModUncategorized marks an HttpMessage whose producer has no
+	// module concept at all (e.g. a hand-rolled buffer write that bypasses
+	// LogModulePrintf/LogModuleWithFieldsPrintf entirely). Deliberately
+	// distinct from ConstLogModGeneral (0): a real general/HA message and
+	// "we never classified this" must not collapse into the same filter
+	// bucket in the GUI log viewer.
+	ConstLogModUncategorized = -1
 )
 
 /*
@@ -3327,8 +3338,100 @@ func GetTagsForLog(module int) string {
 		return "maintenance"
 	case ConstLogModArbitration:
 		return "arbitration"
+	case ConstLogModUncategorized:
+		return "uncategorized"
 	}
 	return ""
+}
+
+// ModuleFromTag is the mechanical inverse of GetTagsForLog: it recovers the
+// module id from the tag string written to a log line's `module=` field (used
+// when reconstructing HttpMessage entries read back from on-disk log history,
+// where only the tag survives, not the original int). An unrecognized or
+// empty tag returns ConstLogModUncategorized rather than ConstLogModGeneral,
+// matching GetTagsForLog's own "no real module info" sentinel.
+func ModuleFromTag(tag string) int {
+	switch tag {
+	case "general":
+		return ConstLogModGeneral
+	case "election":
+		return ConstLogModWriterElection
+	case "sst":
+		return ConstLogModSST
+	case "heartbeat":
+		return ConstLogModHeartBeat
+	case "conf":
+		return ConstLogModConfigLoad
+	case "git":
+		return ConstLogModGit
+	case "support":
+		return ConstLogModSupport
+	case "backup":
+		return ConstLogModBackupStream
+	case "orchestrator":
+		return ConstLogModOrchestrator
+	case "vault":
+		return ConstLogModVault
+	case "topology":
+		return ConstLogModTopology
+	case "proxy":
+		return ConstLogModProxy
+	case "proxysql":
+		return ConstLogModProxySQL
+	case "haproxy":
+		return ConstLogModHAProxy
+	case "prxjanitor":
+		return ConstLogModProxyJanitor
+	case "maxscale":
+		return ConstLogModMaxscale
+	case "graphite":
+		return ConstLogModGraphite
+	case "purge":
+		return ConstLogModPurge
+	case "job":
+		return ConstLogModTask
+	case "externalscript":
+		return ConstLogModExternalScript
+	case "stats":
+		return ConstLogModStats
+	case "sql":
+		return ConstLogModSQL
+	case "app":
+		return ConstLogModApp
+	case "restic":
+		return ConstLogModRestic
+	case "mailer":
+		return ConstLogModMailer
+	case "errorlog":
+		return ConstLogModDbErrors
+	case "slowquery":
+		return ConstLogModDbSlowquery
+	case "optimize":
+		return ConstLogModDbOptimize
+	case "auditlog":
+		return ConstLogModDbAudit
+	case "plugin":
+		return ConstLogModPlugin
+	case "maintenance":
+		return ConstLogModMaintenance
+	case "arbitration":
+		return ConstLogModArbitration
+	}
+	return ConstLogModUncategorized
+}
+
+// IsTaskLogModule reports whether module lands in a cluster's "task" HttpLog
+// buffer rather than its "general" one. Mirrors the classification switch in
+// cluster.LogModuleWithFieldsPrintf (cluster/cluster_log.go) — kept here too
+// so the on-disk log-history API can reconstruct the same general/task split
+// for a module id read back from a log line, without cluster/ needing to
+// export the buffer-selection logic itself. Keep in sync with that switch.
+func IsTaskLogModule(module int) bool {
+	switch module {
+	case ConstLogModTask, ConstLogModSST, ConstLogModBackupStream, ConstLogModDbErrors, ConstLogModDbSqlErrors, ConstLogModDbSlowquery, ConstLogModDbOptimize, ConstLogModDbAudit, ConstLogModRestic:
+		return true
+	}
+	return false
 }
 
 // If task is about backup and reseed, it will use log backup stream else will use log task
