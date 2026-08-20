@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useSelector } from 'react-redux'
 import { Box, Flex, Text, Divider, Spinner, Button } from '@chakra-ui/react'
 import Card from '../../components/Card'
@@ -6,10 +6,11 @@ import Gauge from '../../components/Gauge'
 import TagPill from '../../components/TagPill'
 import { useTheme } from '../../ThemeProvider'
 import styles from './styles.module.scss'
-import Logs from '../Dashboard/components/Logs'
+import Logs, { unwrapHistoryResponse } from '../Dashboard/components/Logs'
 import AccordionComponent from '../../components/AccordionComponent'
 import AlertModal from '../../components/Modals/AlertModal'
 import GlobalJobsBody from './GlobalJobs'
+import { globalClustersService } from '../../services/globalClustersService'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -236,9 +237,25 @@ function ProcessCard({ proc, isDesktop }) {
 
 export function GlobalLogs() {
   const logs = useSelector((state) => state.globalClusters.globalLogs?.general)
+  const baseURL = useSelector((state) => state?.auth?.baseURL)
+  const onLoadOlder = useCallback(
+    async (params) => {
+      const res = await globalClustersService.getGlobalLogHistory(params, baseURL)
+      return unwrapHistoryResponse(res, (d) => d?.general)
+    },
+    [baseURL]
+  )
+  // Keyed on baseURL: Logs holds local history/timeRangeActive state that
+  // must not survive a peer switch onto the same mounted component instance.
   return (
     <Box className={styles.logContainer}>
-      <Logs logs={logs?.buffer} searchable={true} isScrollable={true} />
+      <Logs
+        key={`global-${baseURL || 'local'}`}
+        logs={logs?.buffer}
+        searchable={true}
+        isScrollable={true}
+        onLoadOlder={onLoadOlder}
+      />
     </Box>
   )
 }
