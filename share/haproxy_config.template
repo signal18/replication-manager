@@ -177,3 +177,20 @@ backend {{.Name}}
 
 
 ### END GENERATED SECTION ###
+
+# Placed last, after every static section above: HAProxy gives each proxy
+# its initial settings from "the latest defaults section that appears
+# before" it, so a defaults section placed anywhere earlier -- even named,
+# even otherwise unreferenced -- silently becomes the implicit defaults for
+# every proxy that follows it (confirmed live: with this section placed
+# before "listen stats", its own "maxconn" value, not the "defaults" block
+# above's, showed up in "listen stats" and the generated frontend's "show
+# stat" row). Being last guarantees nothing here or in a future reload ever
+# implicitly inherits from it; only "add backend ... from dyn_defaults ..."
+# (runtime API, HAProxy 3.4+) references it, explicitly, by name.
+defaults dyn_defaults
+   mode tcp
+   balance leastconn
+   timeout connect 5000ms
+   timeout client 50000s
+   timeout server 50000s
