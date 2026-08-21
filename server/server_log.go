@@ -78,6 +78,7 @@ func (repman *ReplicationManager) LogModuleWithFieldsPrintf(forcingLog bool, mod
 				Level:     level,
 				Timestamp: stamp,
 				Text:      fmt.Sprintf(httpformat, args...),
+				Module:    module,
 			}
 			line = repman.Logs.Add(msg)
 			repman.GlobalLogs.Add(msg)
@@ -200,6 +201,7 @@ func (repman *ReplicationManager) UpdateFileHookLogLevel(hook *s18log.RotateFile
 			Level:     "INFO",
 			Timestamp: stamp,
 			Text:      text,
+			Module:    config.ConstLogModConfigLoad,
 		}
 
 		for _, cl := range repman.Clusters {

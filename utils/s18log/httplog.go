@@ -22,7 +22,13 @@ type HttpLog struct {
 	Buffer []HttpMessage `json:"buffer"`
 	Len    int           `json:"len"`
 	Line   int           `json:"line"`
-	L      sync.Mutex    `json:"-"`
+	// Truncated is only ever set on a one-off HttpLog built from a
+	// s18log.ReadHistory result (see server/api_global.go's readLogHistory);
+	// the live ring buffers never set it, so it never appears in their JSON
+	// output. true means a bound (bytes/files) was hit before the on-disk
+	// scan was exhausted — the response may be missing older matches.
+	Truncated bool       `json:"truncated,omitempty"`
+	L         sync.Mutex `json:"-"`
 }
 
 // Log message

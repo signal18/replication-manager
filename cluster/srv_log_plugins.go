@@ -271,6 +271,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 						Level:     "WARN",
 						Timestamp: time.Now().Format("2006/01/02 15:04:05"),
 						Text:      fmt.Sprintf("[%s] %s %s: %s", p.Name(), f.ErrKey, server.URL, f.Description),
+						Module:    config.ConstLogModPlugin,
 					})
 					if cluster.SecurityLogrus != nil {
 						cluster.SecurityLogrus.WithFields(fields).Warn(f.Description)
@@ -287,6 +288,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 						Level:     "WARN",
 						Timestamp: time.Now().Format("2006/01/02 15:04:05"),
 						Text:      fmt.Sprintf("[%s] %s %s: %s", p.Name(), f.ErrKey, server.URL, f.Description),
+						Module:    config.ConstLogModPlugin,
 					})
 					if cluster.WorkloadLogrus != nil {
 						cluster.WorkloadLogrus.WithFields(fields).Warn(f.Description)
@@ -302,6 +304,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 						Level:     "WARN",
 						Timestamp: time.Now().Format("2006/01/02 15:04:05"),
 						Text:      fmt.Sprintf("[%s] %s %s: %s", p.Name(), f.ErrKey, server.URL, f.Description),
+						Module:    config.ConstLogModPlugin,
 					})
 					if cluster.SchemaLogrus != nil {
 						cluster.SchemaLogrus.WithFields(fields).Warn(f.Description)

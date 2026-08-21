@@ -248,6 +248,13 @@ function Home() {
       }
       if (globalTabsRef.current[selectedTabRef.current] === 'Dashboard') {
         if (!isPaused) {
+          // Same "10x less often" monitor poll as the other tabs above/below —
+          // without it, anything reading state.globalClusters.monitor (e.g.
+          // the global-logs history-enabled gate) never refreshes while the
+          // user stays parked on this tab.
+          if (intervalTickerRef.current % 10 === 0) {
+            dispatch(getMonitoredData({}))
+          }
           dispatch(getGlobalAlerts({}))
           dispatch(getGlobalMetrics({}))
           dispatch(getGlobalLogs({}))

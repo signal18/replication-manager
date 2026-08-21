@@ -5,6 +5,7 @@ export const clusterService = {
   getClusterData,
   getClusterAlerts,
   getClusterLogs,
+  getClusterLogHistory,
   getClusterMaster,
   getClusterServers,
   getClusterProxies,
@@ -232,6 +233,14 @@ function getClusterProxies(clusterName, baseURL) {
 
 function getClusterLogs(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/topology/http-logs`)
+}
+
+// getClusterLogHistory reads on-disk log history (beyond the in-memory ring
+// buffer) for logType ('general' or 'task' - the only history-backed types,
+// see server/api_cluster.go's handlerMuxWebLog) by adding since/until to the
+// same typed endpoint. params: { since, until, level, module, text, limit }.
+function getClusterLogHistory(clusterName, logType, params, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/topology/logs/${logType}`, params)
 }
 
 function getClusterCertificates(clusterName, baseURL) {
