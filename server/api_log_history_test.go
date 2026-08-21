@@ -7,7 +7,10 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
@@ -57,5 +60,40 @@ func TestReadLogHistory_ValidRFC3339RangeIsAccepted(t *testing.T) {
 	}
 	if len(msgs) != 0 {
 		t.Fatalf("expected no messages (no log file written in this test), got %+v", msgs)
+	}
+}
+
+// TestReadLogHistory_QueryLimitAppliesWhenConfigMaxLinesIsZero guards against
+// LogHistoryMaxLines=0 (the documented "use the package default" sentinel —
+// reachable via /actions/clear/{settingName}, not just an unconfigured
+// field) silently disabling the caller's own ?limit=. Before the fix, the
+// local `limit` var was read directly from a possibly-0 config value and
+// then used as the clamp ceiling (`n > 0 && n < limit`), which is never true
+// when limit is 0 — so every ?limit= request was ignored and every request
+// fell through to the much larger package default (5000) instead of the
+// caller's smaller requested page size.
+func TestReadLogHistory_QueryLimitAppliesWhenConfigMaxLinesIsZero(t *testing.T) {
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "repman.log")
+
+	var content string
+	for i := 0; i < 10; i++ {
+		content += fmt.Sprintf(`time="2024-01-01 10:00:%02d" level=info msg="line %d" cluster=none type=log module=general`+"\n", i, i)
+	}
+	if err := os.WriteFile(logFile, []byte(content), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	repman := &ReplicationManager{
+		Conf: &config.Config{WorkingDir: dir, LogFile: logFile, LogHistoryMaxLines: 0},
+	}
+
+	req := httptest.NewRequest("GET", "/x?limit=3", nil)
+	msgs, _, err := repman.readLogHistory(req, "", "")
+	if err != nil {
+		t.Fatalf("readLogHistory: %v", err)
+	}
+	if len(msgs) != 3 {
+		t.Fatalf("expected ?limit=3 to be honored (got %d messages), config LogHistoryMaxLines=0 must not disable the caller's limit", len(msgs))
 	}
 }

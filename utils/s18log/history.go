@@ -114,10 +114,20 @@ type historyFile struct {
 	recency time.Time
 }
 
-// lumberjackBackupRE matches backup filenames produced by
-// s18log.NewRotateFileHook (gopkg.in/natefinch/lumberjack.v2, Compress:true):
-// "{prefix}-{2006-01-02T15-04-05.000}{ext}" and the gzip'd "{...}{ext}.gz".
-var lumberjackBackupRE = regexp.MustCompile(`^(.+)-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3})(\.[^.]+)(\.gz)?$`)
+// lumberjackBackupRE builds the regexp matching backup filenames produced by
+// s18log.NewRotateFileHook (gopkg.in/natefinch/lumberjack.v2, Compress:true)
+// for a specific base log file: "{prefix}-{2006-01-02T15-04-05.000}{ext}" and
+// the gzip'd "{...}{ext}.gz". ext is taken as a literal (not a generic
+// "any extension" capture group) because lumberjack's own backupName omits
+// the extension entirely when the configured log file has none (e.g.
+// log-file = /var/log/repman) — the backup is "{prefix}-{timestamp}" or
+// "{prefix}-{timestamp}.gz" with no dot before ".gz". A generic optional
+// "(\.[^.]+)?" extension group would then be ambiguous with the trailing
+// ".gz" itself (both start with a dot), so ext must be pinned to the known,
+// literal value for this base file rather than re-derived from the pattern.
+func lumberjackBackupRE(ext string) *regexp.Regexp {
+	return regexp.MustCompile(`^(.+)-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3})` + regexp.QuoteMeta(ext) + `(\.gz)?$`)
+}
 
 const lumberjackBackupTimeFormat = "2006-01-02T15-04-05.000"
 
@@ -129,6 +139,7 @@ func listHistoryFiles(baseLogFile string) ([]historyFile, error) {
 	base := filepath.Base(baseLogFile)
 	ext := filepath.Ext(base)
 	prefix := strings.TrimSuffix(base, ext)
+	backupRE := lumberjackBackupRE(ext)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -154,8 +165,8 @@ func listHistoryFiles(baseLogFile string) ([]historyFile, error) {
 			}
 			continue
 		}
-		m := lumberjackBackupRE.FindStringSubmatch(name)
-		if m == nil || m[1] != prefix || m[3] != ext {
+		m := backupRE.FindStringSubmatch(name)
+		if m == nil || m[1] != prefix {
 			continue
 		}
 		t, err := time.Parse(lumberjackBackupTimeFormat, m[2])
@@ -164,7 +175,7 @@ func listHistoryFiles(baseLogFile string) ([]historyFile, error) {
 		}
 		backups = append(backups, historyFile{
 			path:    filepath.Join(dir, name),
-			gzip:    m[4] == ".gz",
+			gzip:    m[3] == ".gz",
 			recency: t,
 		})
 	}

@@ -2864,7 +2864,7 @@ func (cluster *Cluster) MonitorVariablesChange() {
 				Level:     "INFO",
 				Timestamp: time.Now().Format("2006-01-02 15:04:05"),
 				Text:      fmt.Sprintf("Server %s: %d variable(s) changed\n%s", srv.URL, changeCount, diffStr),
-				Module:    config.ConstLogModGeneral,
+				Module:    config.ConstLogModUncategorized,
 			})
 			cluster.BashScriptVariableChange(srv.URL, diffStr)
 		}
@@ -2942,7 +2942,7 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 				Level:     "INFO",
 				Timestamp: time.Now().Format("2006-01-02 15:04:05"),
 				Text:      fmt.Sprintf("Server %s: %s %s.%s\n%s", cmaster.URL, changeType, t.TableSchema, t.TableName, diff),
-				Module:    config.ConstLogModGeneral,
+				Module:    config.ConstLogModUncategorized,
 			})
 			cluster.BashScriptSchemaChange(cmaster.URL, t.TableSchema, t.TableName, changeType, oldCols, t.TableColumns)
 		}
@@ -2993,7 +2993,7 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 				Level:     "INFO",
 				Timestamp: time.Now().Format("2006-01-02 15:04:05"),
 				Text:      fmt.Sprintf("Server %s: dropped %s\n%s", cmaster.URL, fqn, diff),
-				Module:    config.ConstLogModGeneral,
+				Module:    config.ConstLogModUncategorized,
 			})
 			cluster.BashScriptSchemaChange(cmaster.URL, oldT.TableSchema, oldT.TableName, "dropped", oldT.TableColumns, nil)
 		}

@@ -169,6 +169,32 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 	}
 }
 
+// parseLogHistoryBound parses a log-history-max-* setting value. Per T18
+// (see utils/s18log/history.go's HistoryQuery doc comment), 0 is a
+// meaningful "use the package default bound" value, not an error — but
+// strconv.Atoi silently maps any unparseable string to 0 too, which would
+// let a typo'd request (e.g. "not-a-number") report success while actually
+// resetting the bound to its default instead of applying what was asked.
+// An empty value is treated as that same 0/default sentinel rather than
+// rejected: /api/clusters/settings/actions/clear/{settingName} routes to
+// this same handler with no settingValue var, so value is "" here on clear
+// (handlerMuxSetGlobalSettings) — clearing one of these settings must still
+// work, not start failing because "" doesn't parse as an int.
+func parseLogHistoryBound(name, value string) (int, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, fmt.Errorf("invalid integer value for %s: %q", name, value)
+	}
+	if parsed < 0 {
+		return 0, fmt.Errorf("%s must be >= 0 (0 = use default)", name)
+	}
+	return parsed, nil
+}
+
 func (repman *ReplicationManager) setRepmanSetting(name string, value string) error {
 	var isactive = strings.ToLower(value) == "on"
 	var v int
@@ -445,6 +471,35 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		val, _ := strconv.Atoi(value)
 		repman.Conf.LogHeartbeatLevel = val
 		repman.Conf.ImmuableFlagMap["log-level-heartbeat"] = val
+	case "log-history-enable":
+		if value == "" {
+			// Clearing (/actions/clear/{settingName} routes here with no
+			// settingValue, so value is "") must revert to the flag's actual
+			// default — server_cmd.go: log-history-enable defaults to true —
+			// not to isactive's "on" check, which reads "" as false and would
+			// make "clear" mean "disable" instead of "restore the default".
+			repman.Conf.LogHistoryEnable = true
+		} else {
+			repman.Conf.LogHistoryEnable = isactive
+		}
+	case "log-history-max-scan-bytes":
+		val, err := parseLogHistoryBound(name, value)
+		if err != nil {
+			return err
+		}
+		repman.Conf.LogHistoryMaxScanBytes = val
+	case "log-history-max-lines":
+		val, err := parseLogHistoryBound(name, value)
+		if err != nil {
+			return err
+		}
+		repman.Conf.LogHistoryMaxLines = val
+	case "log-history-max-files":
+		val, err := parseLogHistoryBound(name, value)
+		if err != nil {
+			return err
+		}
+		repman.Conf.LogHistoryMaxFiles = val
 	case "mail-smtp-addr":
 		repman.Conf.SetMailSmtpAddr(value)
 		repman.Mailer.UpdateAddress(value)
@@ -578,6 +633,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.ImmuableFlagMap["log-heartbeat"] = repman.Conf.LogHeartbeat
 	case "monitoring-log-api-login":
 		repman.Conf.MonitoringLogAPILogin = !repman.Conf.MonitoringLogAPILogin
+	case "log-history-enable":
+		repman.Conf.LogHistoryEnable = !repman.Conf.LogHistoryEnable
 	case "cloud18-disable-peers":
 		// scope:"server" — persisted to default.toml by SaveDynamic (value != default),
 		// which is merged back at startup. NOT ImmuableFlagMap (immutable.toml is never read).

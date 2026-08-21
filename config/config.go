@@ -158,10 +158,10 @@ type Config struct {
 	LogRotateMaxSize                          int                          `mapstructure:"log-rotate-max-size" toml:"log-rotate-max-size" json:"logRotateMaxSize"`
 	LogRotateMaxBackup                        int                          `mapstructure:"log-rotate-max-backup" toml:"log-rotate-max-backup" json:"logRotateMaxBackup"`
 	LogRotateMaxAge                           int                          `mapstructure:"log-rotate-max-age" toml:"log-rotate-max-age" json:"logRotateMaxAge"`
-	LogHistoryEnable                          bool                         `mapstructure:"log-history-enable" toml:"log-history-enable" json:"logHistoryEnable"`
-	LogHistoryMaxScanBytes                    int                          `mapstructure:"log-history-max-scan-bytes" toml:"log-history-max-scan-bytes" json:"logHistoryMaxScanBytes"`
-	LogHistoryMaxLines                        int                          `mapstructure:"log-history-max-lines" toml:"log-history-max-lines" json:"logHistoryMaxLines"`
-	LogHistoryMaxFiles                        int                          `mapstructure:"log-history-max-files" toml:"log-history-max-files" json:"logHistoryMaxFiles"`
+	LogHistoryEnable                          bool                         `scope:"server" mapstructure:"log-history-enable" toml:"log-history-enable" json:"logHistoryEnable"`
+	LogHistoryMaxScanBytes                    int                          `scope:"server" mapstructure:"log-history-max-scan-bytes" toml:"log-history-max-scan-bytes" json:"logHistoryMaxScanBytes"`
+	LogHistoryMaxLines                        int                          `scope:"server" mapstructure:"log-history-max-lines" toml:"log-history-max-lines" json:"logHistoryMaxLines"`
+	LogHistoryMaxFiles                        int                          `scope:"server" mapstructure:"log-history-max-files" toml:"log-history-max-files" json:"logHistoryMaxFiles"`
 	DBLogRotate                               bool                         `mapstructure:"db-log-rotate" toml:"db-log-rotate" json:"dbLogRotate"`
 	DBLogOnBackupStorage                      bool                         `mapstructure:"db-log-on-backup-storage" toml:"db-log-on-backup-storage" json:"dbLogOnBackupStorage"`
 	DBLogRotateMaxSize                        int                          `mapstructure:"db-log-rotate-max-size" toml:"db-log-rotate-max-size" json:"dbLogRotateMaxSize"`
@@ -3332,6 +3332,8 @@ func GetTagsForLog(module int) string {
 		return "optimize"
 	case ConstLogModDbAudit:
 		return "auditlog"
+	case ConstLogModDbSqlErrors:
+		return "sqlerrorlog"
 	case ConstLogModPlugin:
 		return "plugin"
 	case ConstLogModMaintenance:
@@ -3410,6 +3412,8 @@ func ModuleFromTag(tag string) int {
 		return ConstLogModDbOptimize
 	case "auditlog":
 		return ConstLogModDbAudit
+	case "sqlerrorlog":
+		return ConstLogModDbSqlErrors
 	case "plugin":
 		return ConstLogModPlugin
 	case "maintenance":
@@ -3510,6 +3514,8 @@ func GetIndexFromModuleName(module string) int {
 		return ConstLogModDbOptimize
 	case ConstLogNameDbAuditlog:
 		return ConstLogModDbAudit
+	case ConstLogNameDbSqlError:
+		return ConstLogModDbSqlErrors
 	case ConstLogNamePlugin:
 		return ConstLogModPlugin
 	case ConstLogNameArbitration:

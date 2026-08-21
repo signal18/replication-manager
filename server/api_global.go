@@ -204,7 +204,18 @@ func (repman *ReplicationManager) readLogHistory(r *http.Request, group, logType
 		}
 	}
 
-	limit := repman.Conf.LogHistoryMaxLines
+	// LogHistoryMaxLines 0 means "use the package default" (T18 — see
+	// HistoryQuery's doc comment, and now reachable in practice via
+	// /actions/clear/{settingName}, not just an unconfigured field) — resolve
+	// that before using it as the clamp ceiling below, or a 0 config makes
+	// `n < limit` false for every positive n and silently ignores the
+	// caller's ?limit=, always falling back to the (much larger) default
+	// instead of a smaller requested page size.
+	maxLines := repman.Conf.LogHistoryMaxLines
+	if maxLines <= 0 {
+		maxLines = s18log.DefaultHistoryMaxLines
+	}
+	limit := maxLines
 	if raw := q.Get("limit"); raw != "" {
 		if n, err := strconv.Atoi(raw); err == nil && n > 0 && n < limit {
 			limit = n

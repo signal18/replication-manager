@@ -5,6 +5,8 @@ import styles from './styles.module.scss'
 import NotFound from '../../../../components/NotFound'
 import { useSelector } from 'react-redux'
 import { clusterService } from '../../../../services/clusterService'
+import { globalClustersService } from '../../../../services/globalClustersService'
+import { isAutoReloadPaused } from '../../../../utility/autoReloadPause'
 
 // Buffer Level values aren't limited to the 4 canonical uppercase constants
 // (INFO/WARN/ERROR/DEBUG) — real call sites also emit TEST/BENCH/ALERT/ALERTOK/
@@ -102,6 +104,7 @@ const MODULE_TAGS = {
   26: 'slowquery',
   27: 'optimize',
   28: 'auditlog',
+  29: 'sqlerrorlog',
   30: 'plugin',
   31: 'maintenance',
   32: 'arbitration',
@@ -719,10 +722,97 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
   )
 }
 
+// Server-scoped (config.LogHistoryEnable has no per-cluster override — see
+// doc/implementation/utils/s18log/LOG_HISTORY_READER.md), so the source of
+// truth is a monitor config, not anything cluster-specific. But history
+// requests for a peer go to that peer's API (baseURL, see getClusterLogHistory/
+// getGlobalLogHistory below) while state.globalClusters.monitor is always
+// fetched from the LOCAL server (getMonitoredData is called with no baseURL —
+// see globalClustersSlice.js) — reusing it here regardless of baseURL would
+// gate the peer's history controls on the wrong server's setting. So: when
+// baseURL is empty (viewing local), reuse the already-fetched local monitor
+// state; when it points at a peer, fetch that peer's own /monitor directly
+// (same ad hoc getApi(baseURL) pattern PeerClusterList uses for other
+// peer-scoped data) rather than trusting the local value. Defaults to
+// disabled (hidden controls) while the peer fetch is in flight or if it
+// fails — a control that's briefly missing is much better than one that's
+// shown and then 403s.
+export function useLogHistoryEnabled(baseURL) {
+  const localEnabled = useSelector((state) => state.globalClusters.monitor?.config?.logHistoryEnable)
+  // Same knob Pages/Home/index.jsx's own polling effect reads (state.cluster.
+  // refreshInterval, in seconds; <= 0 means the user turned auto-refresh
+  // off). Reusing it — instead of a cadence of our own — means "refresh
+  // off" actually stops this poll too, and a cadence the user changes is
+  // picked up here as well.
+  const refreshInterval = useSelector((state) => state.cluster.refreshInterval)
+  const [peerEnabled, setPeerEnabled] = useState(false)
+
+  useEffect(() => {
+    if (!baseURL) return
+    let cancelled = false
+
+    const fetchPeerHistoryEnabled = () => {
+      globalClustersService
+        .getMonitoredData(baseURL)
+        .then(({ data }) => {
+          if (!cancelled) setPeerEnabled(!!data?.config?.logHistoryEnable)
+        })
+        .catch(() => {
+          if (!cancelled) setPeerEnabled(false)
+        })
+    }
+
+    // Reset before the first fetch for THIS baseURL resolves — otherwise a
+    // switch from a peer with history enabled to one without it would keep
+    // returning the old peer's `true` (stale state.peerEnabled) for as long
+    // as the new fetch is in flight, briefly showing controls the new peer
+    // will 403 on.
+    setPeerEnabled(false)
+    fetchPeerHistoryEnabled()
+
+    // localEnabled (state.globalClusters.monitor) is kept fresh by the
+    // app-wide poll in Pages/Home/index.jsx's callServices (dispatches
+    // getMonitoredData every 10 ticks of refreshInterval — see its comment
+    // there). That poll always omits baseURL, i.e. local only, so it never
+    // reaches a peer's monitor data — without a poll of our own here, a
+    // log-history-enable flip on the peer mid-session would never be picked
+    // up while this component stays mounted. Mirror that same "10x less
+    // often" cadence rather than invent a different one — and skip setting
+    // up the interval at all when refreshInterval <= 0, matching how
+    // callServices' own effect (Pages/Home/index.jsx) treats that value as
+    // "auto-refresh is off", not "poll anyway on some default cadence".
+    //
+    // Respect the same pause/auto-reload gate callServices' own polling
+    // honors (isAutoReloadPaused — user-paused, or a menu/modal lock held).
+    // Logs is keyed on historyEnabled (see GeneralLogs/TaskLogs/GlobalLogs
+    // below), so a value flip remounts it and drops local history/filter
+    // state — exactly what "paused"/"refresh off" promise won't happen.
+    // Only the recurring poll is gated, not the initial fetch above: that
+    // one establishes whether to show the controls at all for this peer in
+    // the first place (equivalent to any other "load on mount" fetch
+    // elsewhere in the app, which callServices' gates never covered either).
+    let intervalId
+    if (refreshInterval > 0) {
+      intervalId = setInterval(() => {
+        if (isAutoReloadPaused()) return
+        fetchPeerHistoryEnabled()
+      }, refreshInterval * 10 * 1000)
+    }
+
+    return () => {
+      cancelled = true
+      clearInterval(intervalId)
+    }
+  }, [baseURL, refreshInterval])
+
+  return baseURL ? peerEnabled : !!localEnabled
+}
+
 export const GeneralLogs = ({ className }) => {
   const logs = useSelector((state) => state.cluster.clusterLogs.general)
   const clusterName = useSelector((state) => state.cluster.clusterData?.name)
   const baseURL = useSelector((state) => state?.auth?.baseURL)
+  const historyEnabled = useLogHistoryEnabled(baseURL)
   const onLoadOlder = useCallback(
     async (params) => {
       const res = await clusterService.getClusterLogHistory(clusterName, 'general', params, baseURL)
@@ -730,17 +820,21 @@ export const GeneralLogs = ({ className }) => {
     },
     [clusterName, baseURL]
   )
-  // Keyed on source (baseURL + clusterName), not a bare "general": Logs holds
-  // local history/timeRangeActive state that must not survive a cluster or
-  // peer switch onto the same mounted component instance, or fetched history
-  // from the old source leaks into the new source's live view.
+  // Keyed on source (baseURL + clusterName) AND historyEnabled, not a bare
+  // "general": Logs holds local history/timeRangeActive state that must not
+  // survive a cluster or peer switch onto the same mounted component
+  // instance (or fetched history from the old source leaks into the new
+  // source's live view), and must not survive log-history-enable flipping
+  // off mid-session either (or previously fetched on-disk history rows the
+  // backend would now reject stay visible after the controls that fetched
+  // them disappear).
   return (
     <Logs
-      key={`general-${baseURL || 'local'}-${clusterName || ''}`}
+      key={`general-${baseURL || 'local'}-${clusterName || ''}-${historyEnabled ? 'h1' : 'h0'}`}
       logs={logs?.buffer}
       className={className}
       searchable={true}
-      onLoadOlder={clusterName ? onLoadOlder : undefined}
+      onLoadOlder={clusterName && historyEnabled ? onLoadOlder : undefined}
     />
   )
 }
@@ -749,6 +843,7 @@ export const TaskLogs = ({ className }) => {
   const taskLogs = useSelector((state) => state.cluster.clusterLogs.task)
   const clusterName = useSelector((state) => state.cluster.clusterData?.name)
   const baseURL = useSelector((state) => state?.auth?.baseURL)
+  const historyEnabled = useLogHistoryEnabled(baseURL)
   const onLoadOlder = useCallback(
     async (params) => {
       const res = await clusterService.getClusterLogHistory(clusterName, 'task', params, baseURL)
@@ -758,11 +853,11 @@ export const TaskLogs = ({ className }) => {
   )
   return (
     <Logs
-      key={`task-${baseURL || 'local'}-${clusterName || ''}`}
+      key={`task-${baseURL || 'local'}-${clusterName || ''}-${historyEnabled ? 'h1' : 'h0'}`}
       logs={taskLogs?.buffer}
       className={className}
       searchable={true}
-      onLoadOlder={clusterName ? onLoadOlder : undefined}
+      onLoadOlder={clusterName && historyEnabled ? onLoadOlder : undefined}
     />
   )
 }

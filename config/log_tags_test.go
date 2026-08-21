@@ -43,11 +43,7 @@ func TestGetTagsForLog(t *testing.T) {
 		{ConstLogModPlugin, "plugin"},
 		{ConstLogModMaintenance, "maintenance"},
 		{ConstLogModArbitration, "arbitration"},
-		// ConstLogModDbSqlErrors has no case in GetTagsForLog (known gap,
-		// tracked but not fixed here — nothing currently passes it as a
-		// module argument, see doc/implementation/utils/s18log/
-		// LOG_HISTORY_READER.md).
-		{ConstLogModDbSqlErrors, ""},
+		{ConstLogModDbSqlErrors, "sqlerrorlog"},
 		{ConstLogModUncategorized, "uncategorized"},
 	}
 
@@ -95,6 +91,7 @@ func TestModuleFromTag(t *testing.T) {
 		{ConstLogModDbSlowquery, "slowquery"},
 		{ConstLogModDbOptimize, "optimize"},
 		{ConstLogModDbAudit, "auditlog"},
+		{ConstLogModDbSqlErrors, "sqlerrorlog"},
 		{ConstLogModPlugin, "plugin"},
 		{ConstLogModMaintenance, "maintenance"},
 		{ConstLogModArbitration, "arbitration"},

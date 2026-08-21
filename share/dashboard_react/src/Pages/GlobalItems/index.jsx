@@ -6,7 +6,7 @@ import Gauge from '../../components/Gauge'
 import TagPill from '../../components/TagPill'
 import { useTheme } from '../../ThemeProvider'
 import styles from './styles.module.scss'
-import Logs, { unwrapHistoryResponse } from '../Dashboard/components/Logs'
+import Logs, { unwrapHistoryResponse, useLogHistoryEnabled } from '../Dashboard/components/Logs'
 import AccordionComponent from '../../components/AccordionComponent'
 import AlertModal from '../../components/Modals/AlertModal'
 import GlobalJobsBody from './GlobalJobs'
@@ -238,6 +238,7 @@ function ProcessCard({ proc, isDesktop }) {
 export function GlobalLogs() {
   const logs = useSelector((state) => state.globalClusters.globalLogs?.general)
   const baseURL = useSelector((state) => state?.auth?.baseURL)
+  const historyEnabled = useLogHistoryEnabled(baseURL)
   const onLoadOlder = useCallback(
     async (params) => {
       const res = await globalClustersService.getGlobalLogHistory(params, baseURL)
@@ -245,16 +246,19 @@ export function GlobalLogs() {
     },
     [baseURL]
   )
-  // Keyed on baseURL: Logs holds local history/timeRangeActive state that
-  // must not survive a peer switch onto the same mounted component instance.
+  // Keyed on baseURL AND historyEnabled: Logs holds local history/
+  // timeRangeActive state that must not survive a peer switch onto the same
+  // mounted component instance, nor survive log-history-enable flipping off
+  // mid-session (stale on-disk history rows must not linger once the
+  // controls that fetched them disappear).
   return (
     <Box className={styles.logContainer}>
       <Logs
-        key={`global-${baseURL || 'local'}`}
+        key={`global-${baseURL || 'local'}-${historyEnabled ? 'h1' : 'h0'}`}
         logs={logs?.buffer}
         searchable={true}
         isScrollable={true}
-        onLoadOlder={onLoadOlder}
+        onLoadOlder={historyEnabled ? onLoadOlder : undefined}
       />
     </Box>
   )

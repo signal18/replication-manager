@@ -448,6 +448,52 @@ func TestReadHistory_MissingFileIsEmptyNotError(t *testing.T) {
 	}
 }
 
+// TestListHistoryFiles_ExtensionlessBaseFindsBackups guards against a
+// regex regression where lumberjackBackupRE required a mandatory dot
+// extension in the backup filename. A log-file configured with no extension
+// (e.g. log-file = /var/log/repman) rotates to "repman-{timestamp}" and
+// "repman-{timestamp}.gz" (lumberjack's backupName omits the extension
+// segment entirely when there is none) — those must still be discovered,
+// not just the active file.
+func TestListHistoryFiles_ExtensionlessBaseFindsBackups(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "repman")
+
+	mustWriteFile(t, filepath.Join(dir, "repman-2024-01-02T00-00-00.000"), "plain backup\n")
+	mustWriteGzipFile(t, filepath.Join(dir, "repman-2024-01-01T00-00-00.000.gz"), "gzip backup\n")
+	mustWriteFile(t, base, "active\n")
+
+	files, err := listHistoryFiles(base)
+	if err != nil {
+		t.Fatalf("listHistoryFiles: %v", err)
+	}
+	if len(files) != 3 {
+		t.Fatalf("expected 2 backups + active file, got %d: %+v", len(files), files)
+	}
+
+	var sawPlainBackup, sawGzipBackup bool
+	for _, f := range files {
+		switch filepath.Base(f.path) {
+		case "repman-2024-01-02T00-00-00.000":
+			sawPlainBackup = true
+			if f.gzip {
+				t.Errorf("plain backup misclassified as gzip: %+v", f)
+			}
+		case "repman-2024-01-01T00-00-00.000.gz":
+			sawGzipBackup = true
+			if !f.gzip {
+				t.Errorf("gzip backup misclassified as plain: %+v", f)
+			}
+		}
+	}
+	if !sawPlainBackup {
+		t.Error("plain extensionless backup not discovered")
+	}
+	if !sawGzipBackup {
+		t.Error("gzip extensionless backup not discovered")
+	}
+}
+
 // TestChownHistoryFiles_CoversActiveAndBackups guards the privilege-drop fix
 // (server.go's root -> --user Setuid/Setgid path): ChownHistoryFiles must
 // walk the active file AND every rotated backup found by listHistoryFiles,
