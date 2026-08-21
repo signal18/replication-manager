@@ -197,27 +197,18 @@ const LogRow = memo(
 // toHistoryTimestamp converts a displayed log Timestamp into the RFC3339
 // shape the since/until query params expect (server/api_global.go parses
 // them with time.Parse(time.RFC3339, ...)). Every log file this server
-// writes now (main/security/workload/schema/maintenance, live buffer) uses
-// the same zoneless wall-clock format, either "YYYY/MM/DD HH:MM:SS" or
+// writes (main/security/workload/schema/maintenance, live buffer) uses the
+// same zoneless wall-clock format, either "YYYY/MM/DD HH:MM:SS" or
 // "YYYY-MM-DD HH:MM:SS" (call sites disagree on separator) — normalized here
 // and labeled "Z" for a valid RFC3339 string. Since the backend parses that
 // same zoneless shape as a (fictional but consistent) UTC instant on both the
 // stored side and the query side — see datetimeLocalToRFC3339 below — the
 // "Z" label is not asserting anything about a real timezone, just satisfying
 // RFC3339's syntax; relative ordering/filtering is correct regardless of what
-// the server's actual zone is. The offset branch below exists only for
-// backward compatibility with already-rotated files written before
-// server/server.go's main-log formatter briefly carried a real "+HHMM"
-// offset — those age out on their own via log-rotate-max-age.
+// the server's actual zone is.
 function toHistoryTimestamp(ts) {
   if (!ts) return null
-  const normalized = ts.replace(/\//g, '-').replace(' ', 'T')
-  const offset = normalized.match(/^(.*T\d{2}:\d{2}:\d{2})\s*([+-]\d{2})(\d{2})$/)
-  if (offset) {
-    const [, base, offsetHours, offsetMinutes] = offset
-    return `${base}${offsetHours}:${offsetMinutes}`
-  }
-  return normalized + 'Z'
+  return ts.replace(/\//g, '-').replace(' ', 'T') + 'Z'
 }
 
 // datetimeLocalToRFC3339 converts an <input type="datetime-local"> value
@@ -318,6 +309,20 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
   // the user lands back at the newest row instead of staying scrolled deep
   // into history that's no longer even in the DOM.
   const scrollRef = useRef(null)
+  // Generation counter for in-flight history fetches. handleLoadOlder and
+  // handleApplyRange each capture the current value before awaiting
+  // onLoadOlder; the filter-reset effect below and handleClearRange bump it
+  // whenever they invalidate `history` out from under a pending fetch. If the
+  // token has moved on by the time the await resolves, the response was
+  // fetched under filters/range that no longer apply — its buffer must be
+  // discarded instead of written into `history` via a stale closure. Every
+  // invalidation site also clears loadingHistory itself (not left for the
+  // abandoned fetch's `finally` to do), so the controls unblock immediately
+  // instead of staying wedged until a request that may never resolve gets
+  // around to it; the `finally` blocks below only clear loadingHistory for
+  // their own still-current token, so they can't stomp on a newer request
+  // started after that invalidation.
+  const requestTokenRef = useRef(0)
 
   const logsData = useMemo(() => {
     if (timeRangeActive) return history
@@ -354,6 +359,11 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
   // to refill under the new scope. Does not touch sinceInput/untilInput so
   // "Apply range" can be re-clicked with the same window under new filters.
   useEffect(() => {
+    // Bump the token before clearing state: a Load older/Apply range request
+    // already in flight was fetched under the filters we're about to discard,
+    // so its eventual resolution must not repopulate `history` from a stale
+    // closure. See requestTokenRef's declaration above.
+    requestTokenRef.current += 1
     setHistory([])
     setHistoryExhausted(false)
     setHistoryTruncated(false)
@@ -363,6 +373,14 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
     setRangeExtended(false)
     setRangeUpperTruncated(false)
     setOldestFetchedCursor(null)
+    // Also unblock the controls immediately rather than leaving them
+    // disabled until the now-abandoned fetch happens to settle (it may
+    // never, if the request hangs): handleLoadOlder/handleApplyRange guard
+    // on loadingHistory and their `finally` blocks only clear it for their
+    // own still-current token, so without this the "Load older"/"Apply
+    // range" buttons would stay wedged for as long as that stale request
+    // takes to resolve.
+    setLoadingHistory(false)
   }, [search, levelFilter, deselectedModules])
 
   // Shared level/module/text filter params for both "Load older" and a
@@ -373,14 +391,27 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
   // ones" here, computed fresh off the current presentModules on every call
   // rather than a snapshot frozen at the moment of the first toggle — same
   // reasoning as toggleModule below.
+  // module= is an allow-list, so if deselectedModules covers every entry in
+  // presentModules, the allow-list computed below is empty — params.module
+  // is deliberately left unset in that case (not '') rather than fetched as
+  // "show nothing": presentModules only reflects modules already *seen*, and
+  // toggleModule's deny-list contract requires a module the user has never
+  // seen/clicked to stay discoverable (e.g. one that only appears further
+  // back in on-disk history than anything currently loaded). Short-circuiting
+  // the fetch here would make such a module permanently unreachable. Omitting
+  // params.module instead fetches unfiltered by module — the client-side
+  // deny-list filter in `data`'s useMemo above still hides every
+  // currently-known deselected module from the table, while any not-yet-seen
+  // module in the response passes through untouched, same as it would for a
+  // partial deselection.
   const buildFilterParams = useCallback(() => {
     const params = {}
     if (levelFilter.size < LEVEL_ORDER.length + 1) params.level = [...levelFilter].join(',')
     if (deselectedModules.size > 0) {
-      params.module = presentModules
-        .filter((m) => !deselectedModules.has(m))
-        .map((m) => moduleTag(m))
-        .join(',')
+      const allowedModules = presentModules.filter((m) => !deselectedModules.has(m))
+      if (allowedModules.length > 0) {
+        params.module = allowedModules.map((m) => moduleTag(m)).join(',')
+      }
     }
     if (search) params.text = search
     return params
@@ -426,11 +457,13 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
     const oldest = oldestFetchedCursor ?? logsData[logsData.length - 1]?.timestamp
     if (!oldest) return
 
+    const token = ++requestTokenRef.current
     setLoadingHistory(true)
     setHistoryError(null)
     try {
       const params = { ...buildFilterParams(), until: toHistoryTimestamp(oldest), limit: HISTORY_PAGE_LIMIT }
       const { buffer, truncated } = await onLoadOlder(params)
+      if (requestTokenRef.current !== token) return // filters/range changed mid-flight — discard this stale result
       if (buffer.length === 0) {
         setHistoryExhausted(true)
         setHistoryTruncated(truncated)
@@ -477,9 +510,15 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
         setHistoryTruncated(truncated || capTrimmed)
       }
     } catch (err) {
-      setHistoryError(err?.message || 'Failed to load older logs')
+      if (requestTokenRef.current === token) setHistoryError(err?.message || 'Failed to load older logs')
     } finally {
-      setLoadingHistory(false)
+      // Only clear for this request's own token: an invalidation (filter
+      // change / "Back to live") already flips loadingHistory back to false
+      // itself, immediately, precisely so the controls aren't wedged waiting
+      // on this now-abandoned fetch — see those call sites. If a newer
+      // request has since started (its own token is now current), clearing
+      // unconditionally here would incorrectly stop ITS spinner instead.
+      if (requestTokenRef.current === token) setLoadingHistory(false)
     }
   }, [
     onLoadOlder,
@@ -496,6 +535,7 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
   const handleApplyRange = useCallback(async () => {
     if (!onLoadOlder || loadingHistory || (!sinceInput && !untilInput)) return
 
+    const token = ++requestTokenRef.current
     setLoadingHistory(true)
     setHistoryError(null)
     try {
@@ -509,6 +549,7 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
       if (untilInput) params.until = datetimeLocalToRFC3339(untilInput)
 
       const { buffer: rawBuffer, truncated: serverTruncated } = await onLoadOlder(params)
+      if (requestTokenRef.current !== token) return // filters/range changed mid-flight — discard this stale result
       const { list: buffer, trimmed: capTrimmed } = capHistoryKeepingNewest(rawBuffer)
       const truncated = serverTruncated || capTrimmed
       setHistory(buffer)
@@ -534,13 +575,18 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
       setRangeExtended(false)
       setRangeUpperTruncated(false)
     } catch (err) {
-      setHistoryError(err?.message || 'Failed to load history for that range')
+      if (requestTokenRef.current === token) setHistoryError(err?.message || 'Failed to load history for that range')
     } finally {
-      setLoadingHistory(false)
+      // Only clear for this request's own token — see the matching comment
+      // in handleLoadOlder's finally block.
+      if (requestTokenRef.current === token) setLoadingHistory(false)
     }
   }, [onLoadOlder, loadingHistory, sinceInput, untilInput, buildFilterParams, capHistoryKeepingNewest])
 
   const handleClearRange = useCallback(() => {
+    // Invalidate any Load older/Apply range request in flight — see
+    // requestTokenRef's declaration above.
+    requestTokenRef.current += 1
     setSinceInput('')
     setUntilInput('')
     setHistoryTruncated(false)
@@ -552,6 +598,10 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
     setRangeExtended(false)
     setRangeUpperTruncated(false)
     setOldestFetchedCursor(null)
+    // Unblock the controls immediately — see the matching comment in the
+    // filter-reset effect above; the same "otherwise wedged until an
+    // abandoned fetch settles" reasoning applies here too.
+    setLoadingHistory(false)
     if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [])
 

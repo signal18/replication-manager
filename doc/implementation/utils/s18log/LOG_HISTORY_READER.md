@@ -188,36 +188,14 @@ The main history-backed log file writes timestamps as:
 `2006-01-02 15:04:05`
 
 The same zoneless format every other log file this server writes uses
-(`security`/`workload`/`schema`/`maintenance`, the graphite API log,
-`origin/develop`'s main log before this feature existed at all) and the same
-format the live in-memory buffer uses (`cluster/cluster_log.go`,
+(`security`/`workload`/`schema`/`maintenance`, the graphite API log) and the
+same format the live in-memory buffer uses (`cluster/cluster_log.go`,
 `time.Now().Format(...)`, no `.UTC()` call — this is the server's real local
 time with the zone dropped from the text, not a claim that the server runs in
-UTC). No log file this project writes carries a real numeric offset.
+UTC). No log file this project writes carries a real numeric offset, and none
+ever has.
 
-An earlier version of this feature (commit `d3e337a01`) had the main log file
-write `2006-01-02 15:04:05 -0700` instead, specifically so `since`/`until`
-filtering could parse a real offset. That was reverted: it made the main log
-file inconsistent with every other log file for no benefit, once the
-consequence of *not* having a real offset was understood (see "Why the
-zoneless format is still correct" below) — matching `-0700` was solving a
-problem the reader design doesn't actually have.
-
-### Reader compatibility
-
-`parseHistoryTimestamp` supports two layouts, for robustness rather than
-because either is currently written:
-
-1. offset-aware: `2006-01-02 15:04:05 -0700`
-2. zoneless: `2006-01-02 15:04:05`
-
-Only the zoneless layout is written today. The offset-aware layout exists
-purely so any file rotated during the (now-reverted) window when
-`d3e337a01` was live keeps parsing until it ages out via
-`log-rotate-max-age` — it costs nothing to keep and removing it would only
-make old files unreadable sooner than they'd otherwise age out on their own.
-
-### Why the zoneless format is still correct for since/until filtering
+### Why the zoneless format is correct for since/until filtering
 
 `time.Parse` on a layout with no offset verb defaults the result's location
 to UTC — this is Go's standard behavior, not something this package adds. The
@@ -241,38 +219,30 @@ written log format currently carries) — but nothing in this feature needs
 that; it only needs consistent relative ordering between stored lines and
 query bounds, which the zoneless convention provides for free.
 
-### Mixed-format transition window
-
-The one remaining case where a file can contain both zoneless and
-offset-aware lines is a rotated file left over from the `d3e337a01` window
-(now reverted). `parseHistoryTimestamp` reports both whether parsing
-succeeded and whether it used the offset-aware layout; `scanHistoryFile`'s
-ascending-order early-exit on `Until` only fires on the latter, since an
-offset-aware line's parsed instant is a real UTC instant while a zoneless
-line's is only a consistent label — the two aren't guaranteed to sort
-correctly relative to each other within one mixed file. This has no
-practical effect going forward (no new lines are offset-aware) and existing
-mixed files age out on their own.
+This zoneless label is consistent for comparing one stored line against one
+query bound, but it does **not** make timestamps monotonically increasing
+within a file: a DST fall-back, an NTP correction, or a manual clock change
+can make a later-written line parse to an earlier wall-clock value than one
+written before it. So `scanHistoryFile` cannot stop scanning as soon as it
+sees a line `>= Until` — a genuinely-in-range line can still follow it on
+disk after such a clock step — and evaluates every line individually
+instead. This is a real (if narrow) cost: a tight `MaxScanBytes` budget can
+still be spent scanning lines past the requested window, since there is no
+early-exit to skip them.
 
 ### Frontend conversion
 
 `toHistoryTimestamp` in `Logs/index.jsx` normalizes a displayed timestamp
-into the RFC3339 shape `since`/`until` expect. It preserves a real offset
-when a row happens to have one (backward compatibility with the `d3e337a01`
-window, mirroring the reader's own fallback above) and otherwise labels the
-zoneless string `"Z"` — the same consistent-not-real-UTC convention described
-above. `datetimeLocalToRFC3339` does the same for the picker's own digits,
-with no branching at all: there is nothing to detect, guess, or wait for.
+into the RFC3339 shape `since`/`until` expect by labeling the zoneless string
+`"Z"` — the same consistent-not-real-UTC convention described above.
+`datetimeLocalToRFC3339` does the same for the picker's own digits: there is
+nothing to detect, guess, or wait for on either side.
 
 ### Display: raw value, no conversion
 
 Every row — live or history — renders `log.timestamp` exactly as received,
 matching `origin/develop`'s `Logs` component (which has never parsed,
-formatted, or stripped anything from a log timestamp). An earlier version of
-this feature stripped a history row's offset before display so it would
-visually match zone-less live rows; that's no longer needed since no row
-carries an offset to strip, and matches the project's existing "don't process
-what the server already formatted for you" convention.
+formatted, or stripped anything from a log timestamp).
 
 ## Privilege-drop file ownership
 
@@ -444,7 +414,7 @@ The following are intentionally left out of this change:
   means there is no way to recover a log line's true real-world instant from
   the file alone. That's an accepted, pre-existing limitation of the whole
   logging system, not something specific to history browsing — see "Why the
-  zoneless format is still correct for since/until filtering" above for why
+  zoneless format is correct for since/until filtering" above for why
   `ReadHistory`'s `since`/`until` filtering doesn't actually need one.
 - Timestamps render exactly as the backend sends them, for every row, live or
   history — matching `origin/develop`'s `Logs` component, which has never
@@ -452,10 +422,5 @@ The following are intentionally left out of this change:
   `datetimeLocalToRFC3339` is equally simple: the picker's own digits, labeled
   `"Z"`, no branching, no state to learn first — always usable, and correct
   by construction per the zoneless-parses-as-UTC convention both sides share.
-  Two earlier, more complex designs were tried and reverted during this
-  feature's development (offset-stripping before display, then a real
-  numeric-offset-based picker requiring the user to fetch history first) —
-  both were solving a problem that doesn't exist once the reader's own
-  zoneless-comparison behavior is understood; neither is needed.
 - User-facing documentation on `docs.signal18.io` is still required separately
   from this implementation note.

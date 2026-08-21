@@ -73,9 +73,9 @@ func setupHistoryFixture(t *testing.T) string {
 func mustParseTime(t *testing.T, s string) time.Time {
 	t.Helper()
 	// Delegates to parseHistoryTimestamp (not a direct time.Parse) so tests
-	// exercise the exact same layout-plus-legacy-fallback logic production
-	// code uses, rather than a copy that could silently drift from it.
-	ts, ok, _ := parseHistoryTimestamp(s)
+	// exercise the exact same layout production code uses, rather than a
+	// copy that could silently drift from it.
+	ts, ok := parseHistoryTimestamp(s)
 	if !ok {
 		t.Fatalf("parse time %q", s)
 	}
@@ -219,72 +219,37 @@ func TestReadHistory_SinceUntil(t *testing.T) {
 	}
 }
 
-// TestReadHistory_TimezoneOffsetIsRespected guards the actual point of
-// historyTimestampLayout carrying an offset: a since/until comparison must
-// be correct by true instant, not by naively comparing wall-clock digits —
-// otherwise "since/until" is only ever correct when the browser reading it
-// happens to share the server's timezone.
-func TestReadHistory_TimezoneOffsetIsRespected(t *testing.T) {
+// TestReadHistory_UntilDoesNotStopScanningEarly guards against reintroducing
+// an early-exit on Until: historyTimestampLayout is a plain local wall-clock
+// string with no offset, so a DST fall-back / clock step can make a
+// later-written line parse earlier than one before it (see
+// parseHistoryTimestamp's doc comment). A line past Until must therefore be
+// skipped individually, not used to stop scanning the rest of the file, or a
+// later-on-disk, genuinely-in-range line right after it would be missed.
+func TestReadHistory_UntilDoesNotStopScanningEarly(t *testing.T) {
 	dir := t.TempDir()
 	base := filepath.Join(dir, "repman.log")
 
-	// 09:00 UTC+7 (offset-aware) is 02:00 UTC — earlier than a naive digit
-	// comparison against "03:00" (no offset, legacy/UTC-labeled) would
-	// suggest. If parsing ignored the offset, this line would wrongly look
-	// like it's *after* a q.Until of "03:00 UTC" and get excluded.
-	mustWriteFile(t, base, writeLine("2024-01-01 09:00:00 +0700", "info", "offset aware line", "none", "general"))
+	// Simulates a clock stepping backward mid-file (DST fall-back, NTP
+	// correction, ...): 02:55 is written, then the clock steps back and
+	// 02:05 is written after it on disk. With q.Until=02:30, the first line
+	// (02:55) is on-or-past Until and must be excluded, but the second
+	// (02:05) is genuinely before Until and must still be found — an
+	// early-exit triggered by the first line would wrongly miss it.
+	mustWriteFile(t, base,
+		writeLine("2024-01-01 02:55:00", "info", "before clock step", "none", "general")+
+			writeLine("2024-01-01 02:05:00", "info", "after clock step", "none", "general"),
+	)
 
 	res, err := ReadHistory(base, HistoryQuery{
 		Limit: 100,
-		Until: mustParseTime(t, "2024-01-01 03:00:00"), // legacy layout -> UTC
+		Until: mustParseTime(t, "2024-01-01 02:30:00"),
 	})
 	if err != nil {
 		t.Fatalf("ReadHistory: %v", err)
 	}
-	if len(res.Messages) != 1 || res.Messages[0].Text != "offset aware line" {
-		t.Fatalf("expected the +0700 line (true instant 02:00 UTC) to be included under until=03:00 UTC, got %+v", res.Messages)
-	}
-}
-
-// TestReadHistory_MixedLegacyAndExactTimestampsInOneFile guards the format
-// transition itself: a server restart to pick up the offset-aware
-// TimestampFormat does not rotate the active log file, so for one rotation
-// window a single file can contain legacy (zone-less) lines followed by
-// exact (offset-aware) ones. On an east-of-UTC server, a legacy line's
-// mislabeled-as-UTC parse is artificially LATER than its true value, which
-// can make it look like it's already past Until — the early-exit in
-// scanHistoryFile must not trust that to stop scanning, or it would skip a
-// later, genuinely-in-range exact line.
-func TestReadHistory_MixedLegacyAndExactTimestampsInOneFile(t *testing.T) {
-	dir := t.TempDir()
-	base := filepath.Join(dir, "repman.log")
-
-	// Legacy line: no offset, so it parses as (mislabeled) 08:55:00 UTC —
-	// already past a q.Until of 03:00:00 UTC, even though this server's real
-	// offset (+0700, per the exact line right after it) means its true
-	// instant was 01:55:00 UTC — genuinely before Until.
-	legacy := writeLine("2024-01-01 08:55:00", "info", "legacy line before restart", "none", "general")
-	// Exact line, written after the restart that picked up the new format:
-	// true instant 02:05:00 UTC — also genuinely before Until.
-	exact := writeLine("2024-01-01 09:05:00 +0700", "info", "exact line after restart", "none", "general")
-	mustWriteFile(t, base, legacy+exact)
-
-	res, err := ReadHistory(base, HistoryQuery{
-		Limit: 100,
-		Until: mustParseTime(t, "2024-01-01 03:00:00"), // legacy layout -> UTC
-	})
-	if err != nil {
-		t.Fatalf("ReadHistory: %v", err)
-	}
-
-	found := false
-	for _, m := range res.Messages {
-		if m.Text == "exact line after restart" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("expected the exact line to survive scanning past the earlier (mislabeled-later) legacy line, got %+v", res.Messages)
+	if len(res.Messages) != 1 || res.Messages[0].Text != "after clock step" {
+		t.Fatalf("expected only the line genuinely before Until (past the earlier, later-on-disk line), got %+v", res.Messages)
 	}
 }
 

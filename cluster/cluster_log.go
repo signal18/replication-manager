@@ -398,15 +398,13 @@ func (cluster *Cluster) LogTaskPrintDebug(forcingLog bool, module int, key strin
 				Module:    module,
 			}
 			line = cluster.htlog.Add(msg)
-			switch module {
-			case config.ConstLogModTask, config.ConstLogModSST, config.ConstLogModBackupStream:
+			if config.IsTaskLogModule(module) {
 				if line2, ok := cluster.debugLineMap[key]; ok {
 					cluster.LogTask.Update(line2, msg)
 				} else {
 					cluster.debugLineMap[key] = cluster.LogTask.Add(msg)
 				}
-
-			default:
+			} else {
 				if line2, ok := cluster.debugLineMap[key]; ok {
 					cluster.Log.Update(line2, msg)
 				} else {

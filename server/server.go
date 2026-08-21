@@ -2557,9 +2557,9 @@ func (repman *ReplicationManager) Run() error {
 				// below) and as origin/develop always used here. This file is
 				// also the only one ReadHistory (utils/s18log/history.go)
 				// parses back for the GUI's log-history Since/Until
-				// filtering — see historyTimestampLayoutLegacy there. A
-				// zoneless layout parses as a fictional-but-consistent UTC on
-				// both this side and the picker's query bound (see
+				// filtering — see historyTimestampLayout there. A zoneless
+				// layout parses as a fictional-but-consistent UTC on both
+				// this side and the picker's query bound (see
 				// datetimeLocalToRFC3339 in Logs/index.jsx), so relative
 				// ordering/filtering is correct without needing to know or
 				// carry the server's real offset.

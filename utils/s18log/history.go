@@ -375,48 +375,27 @@ func buildHttpMessage(fields map[string]string) (HttpMessage, bool) {
 	}, true
 }
 
-// historyTimestampLayout matches the main log file's Formatter.TimestampFormat
-// (server/server.go, the only NewRotateFileHook call site ReadHistory ever
-// scans — see the Scope cut in doc/implementation/utils/s18log/
-// LOG_HISTORY_READER.md). Carries the numeric UTC offset so a since/until
-// comparison is correct regardless of what timezone the browser reading it is
-// in — a bare wall-clock string is ambiguous the instant server and browser
-// timezones differ.
-const historyTimestampLayout = "2006-01-02 15:04:05 -0700"
+// historyTimestampLayout matches every log file this project writes
+// (server/server.go's NewRotateFileHook TimestampFormat — the only file
+// ReadHistory scans — and every other log file besides; none carry a real
+// numeric offset). time.Parse defaults a zone-less layout's result to UTC,
+// which is a consistent label rather than the server's true offset;
+// since/until filtering only needs that label applied identically to stored
+// lines and query bounds, not a real instant — see "Why the zoneless format
+// is still correct for since/until filtering" in
+// doc/implementation/utils/s18log/LOG_HISTORY_READER.md.
+const historyTimestampLayout = "2006-01-02 15:04:05"
 
-// historyTimestampLayoutLegacy has no offset — how every log file wrote
-// timestamps before historyTimestampLayout gained one. Rotated files written
-// before that change won't parse against the new layout; falling back here
-// keeps them readable during the transition (they age out on their own via
-// log-rotate-max-age). time.Parse defaults a zone-less layout's result to
-// UTC, which is wrong (it's actually the server's local time) but matches
-// this package's pre-existing behavior for that data — no regression, just
-// not yet correct for files old enough to predate the fix.
-const historyTimestampLayoutLegacy = "2006-01-02 15:04:05"
-
-// parseHistoryTimestamp parses s and reports whether the parse succeeded, and
-// separately whether it succeeded via the *exact* (offset-aware) layout as
-// opposed to the legacy fallback. That second bool matters beyond just
-// "is this value precise": an active log file can, for exactly one rotation
-// window per server upgrade, contain legacy lines followed by exact ones —
-// restarting the process to pick up the new TimestampFormat does not itself
-// rotate the file, so old (pre-upgrade) and new (post-upgrade) lines can
-// share one file until it next rotates on size. Within that mixed file, the
-// *parsed* legacy values (mislabeled UTC — see historyTimestampLayoutLegacy)
-// are not guaranteed to stay chronologically ascending relative to the exact
-// values that follow them on disk: on a server west of UTC a legacy line can
-// parse *later* than a genuinely later exact line; east of UTC (as here) it
-// can parse *earlier*. scanHistoryFile's ascending-order early-exit on Until
-// is only sound when every value it's comparing is trustworthy — see its
-// use of the second return value.
-func parseHistoryTimestamp(s string) (t time.Time, ok bool, exact bool) {
-	if t, err := time.Parse(historyTimestampLayout, s); err == nil {
-		return t, true, true
-	}
-	if t, err := time.Parse(historyTimestampLayoutLegacy, s); err == nil {
-		return t, true, false
-	}
-	return time.Time{}, false, false
+// parseHistoryTimestamp parses s using historyTimestampLayout, the one
+// layout every log line this package reads was written in — see its doc
+// comment. The parsed value is a consistent label, not a true instant (see
+// historyTimestampLayout), and specifically not a monotonic one: a DST
+// fall-back, NTP correction, or manual clock change can make a
+// later-written line parse earlier than one before it. scanHistoryFile
+// relies on that not holding — see its own comment where it uses this.
+func parseHistoryTimestamp(s string) (t time.Time, ok bool) {
+	t, err := time.Parse(historyTimestampLayout, s)
+	return t, err == nil
 }
 
 // ReadHistory scans baseLogFile and its rotated backups for lines matching q,
@@ -653,26 +632,26 @@ func scanHistoryFile(f historyFile, q HistoryQuery, limit int, maxScanBytes int6
 			continue
 		}
 
-		ts, hasTS, exactTS := parseHistoryTimestamp(msg.Timestamp)
+		ts, hasTS := parseHistoryTimestamp(msg.Timestamp)
 		if !q.Until.IsZero() && hasTS && !ts.Before(q.Until) {
 			// Until is exclusive (ts < Until, not <=): callers page backwards
 			// with until=<oldest row already shown>, and an inclusive bound
 			// would re-return that exact row on every subsequent page. This
-			// line itself is always excluded on its own value, exact or not
-			// — that matches pre-existing (already-accepted) legacy-line
-			// imprecision, same as Since below.
+			// line itself is always excluded on its own value, same as Since
+			// below.
 			//
-			// Whether to stop scanning entirely is a separate question:
-			// "ascending within-file order, nothing further can be < Until
-			// either" only holds when THIS value is trustworthy. A legacy
-			// (mislabeled-UTC) value earlier on disk isn't guaranteed to
-			// stay <= later exact values once a file straddles the format
-			// transition (see parseHistoryTimestamp) — breaking here on a
-			// legacy line could skip real matches that follow it. Only
-			// short-circuit the rest of the file when exact.
-			if exactTS {
-				break
-			}
+			// Deliberately `continue`, not `break`: historyTimestampLayout is
+			// a plain local wall-clock string with no offset and no monotonic
+			// component (see its doc comment), so "append-only" does NOT
+			// imply parsed values only increase within a file — a DST
+			// fall-back, an NTP correction, or a manual clock adjustment can
+			// all make a later-written line parse to an earlier wall-clock
+			// value than one before it. Breaking here on the first row that
+			// looks past Until could skip real matches that follow it after
+			// such a step. There is no way to distinguish "genuinely past
+			// Until" from "clock stepped backward" without a real offset,
+			// which no log file this project writes carries — so every line
+			// must still be scanned individually.
 			continue
 		}
 		if !q.Since.IsZero() && hasTS && ts.Before(q.Since) {
