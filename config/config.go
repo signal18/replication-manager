@@ -3272,78 +3272,81 @@ type JobEntries struct {
 	Servers map[string]ServerTaskList `json:"servers"`
 }
 
-func GetTagsForLog(module int) string {
-	switch module {
-	case ConstLogModGeneral:
-		return "general"
-	case ConstLogModWriterElection:
-		return "election"
-	case ConstLogModSST:
-		return "sst"
-	case ConstLogModHeartBeat:
-		return "heartbeat"
-	case ConstLogModConfigLoad:
-		return "conf"
-	case ConstLogModGit:
-		return "git"
-	case ConstLogModSupport:
-		return "support"
-	case ConstLogModBackupStream:
-		return "backup"
-	case ConstLogModOrchestrator:
-		return "orchestrator"
-	case ConstLogModVault:
-		return "vault"
-	case ConstLogModTopology:
-		return "topology"
-	case ConstLogModProxy:
-		return "proxy"
-	case ConstLogModProxySQL:
-		return "proxysql"
-	case ConstLogModHAProxy:
-		return "haproxy"
-	case ConstLogModProxyJanitor:
-		return "prxjanitor"
-	case ConstLogModMaxscale:
-		return "maxscale"
-	case ConstLogModGraphite:
-		return "graphite"
-	case ConstLogModPurge:
-		return "purge"
-	case ConstLogModTask:
-		return "job"
-	case ConstLogModExternalScript:
-		return "externalscript"
-	case ConstLogModStats:
-		return "stats"
-	case ConstLogModSQL:
-		return "sql"
-	case ConstLogModApp:
-		return "app"
-	case ConstLogModRestic:
-		return "restic"
-	case ConstLogModMailer:
-		return "mailer"
-	case ConstLogModDbErrors:
-		return "errorlog"
-	case ConstLogModDbSlowquery:
-		return "slowquery"
-	case ConstLogModDbOptimize:
-		return "optimize"
-	case ConstLogModDbAudit:
-		return "auditlog"
-	case ConstLogModDbSqlErrors:
-		return "sqlerrorlog"
-	case ConstLogModPlugin:
-		return "plugin"
-	case ConstLogModMaintenance:
-		return "maintenance"
-	case ConstLogModArbitration:
-		return "arbitration"
-	case ConstLogModUncategorized:
-		return "uncategorized"
+// logModuleTagEntry is one row of the canonical module<->tag table:
+// logModuleTagTable. GetTagsForLog, ModuleFromTag, and IsTaskLogModule are
+// all derived from it (via the lookup maps built in init() below) instead of
+// each being its own independently hand-maintained switch — that used to
+// mean four places (this pair, cluster.LogModuleWithFieldsPrintf's
+// task/general routing switch, and this same pair's test cases) had to be
+// kept in sync by comment alone, and did in fact drift (a module added here
+// without a matching case in GetTagsForLog/ModuleFromTag/IsTaskLogModule —
+// see config/log_tags_test.go's completeness test, which exists specifically
+// to catch that class of gap next time).
+type logModuleTagEntry struct {
+	module int
+	tag    string
+	// isTask: true routes to a cluster's "task" HttpLog buffer rather than
+	// "general" — see IsTaskLogModule and cluster.LogModuleWithFieldsPrintf
+	// (cluster/cluster_log.go), which now calls IsTaskLogModule directly
+	// instead of duplicating this list as its own switch.
+	isTask bool
+}
+
+var logModuleTagTable = []logModuleTagEntry{
+	{ConstLogModGeneral, "general", false},
+	{ConstLogModWriterElection, "election", false},
+	{ConstLogModSST, "sst", true},
+	{ConstLogModHeartBeat, "heartbeat", false},
+	{ConstLogModConfigLoad, "conf", false},
+	{ConstLogModGit, "git", false},
+	{ConstLogModSupport, "support", false},
+	{ConstLogModBackupStream, "backup", true},
+	{ConstLogModOrchestrator, "orchestrator", false},
+	{ConstLogModVault, "vault", false},
+	{ConstLogModTopology, "topology", false},
+	{ConstLogModProxy, "proxy", false},
+	{ConstLogModProxySQL, "proxysql", false},
+	{ConstLogModHAProxy, "haproxy", false},
+	{ConstLogModProxyJanitor, "prxjanitor", false},
+	{ConstLogModMaxscale, "maxscale", false},
+	{ConstLogModGraphite, "graphite", false},
+	{ConstLogModPurge, "purge", false},
+	{ConstLogModTask, "job", true},
+	{ConstLogModExternalScript, "externalscript", false},
+	{ConstLogModStats, "stats", false},
+	{ConstLogModSQL, "sql", false},
+	{ConstLogModApp, "app", false},
+	{ConstLogModRestic, "restic", true},
+	{ConstLogModMailer, "mailer", false},
+	{ConstLogModDbErrors, "errorlog", true},
+	{ConstLogModDbSlowquery, "slowquery", true},
+	{ConstLogModDbOptimize, "optimize", true},
+	{ConstLogModDbAudit, "auditlog", true},
+	{ConstLogModDbSqlErrors, "sqlerrorlog", true},
+	{ConstLogModPlugin, "plugin", false},
+	{ConstLogModMaintenance, "maintenance", false},
+	{ConstLogModArbitration, "arbitration", false},
+	{ConstLogModUncategorized, "uncategorized", false},
+}
+
+var (
+	logModuleToTag  = make(map[int]string, len(logModuleTagTable))
+	logTagToModule  = make(map[string]int, len(logModuleTagTable))
+	logModuleIsTask = make(map[int]bool, len(logModuleTagTable))
+)
+
+func init() {
+	for _, e := range logModuleTagTable {
+		logModuleToTag[e.module] = e.tag
+		logTagToModule[e.tag] = e.module
+		logModuleIsTask[e.module] = e.isTask
 	}
-	return ""
+}
+
+// GetTagsForLog returns the short tag written to a log line's `module=`
+// field for module, or "" if module has no entry in logModuleTagTable.
+func GetTagsForLog(module int) string {
+	return logModuleToTag[module]
 }
 
 // ModuleFromTag is the mechanical inverse of GetTagsForLog: it recovers the
@@ -3353,89 +3356,19 @@ func GetTagsForLog(module int) string {
 // empty tag returns ConstLogModUncategorized rather than ConstLogModGeneral,
 // matching GetTagsForLog's own "no real module info" sentinel.
 func ModuleFromTag(tag string) int {
-	switch tag {
-	case "general":
-		return ConstLogModGeneral
-	case "election":
-		return ConstLogModWriterElection
-	case "sst":
-		return ConstLogModSST
-	case "heartbeat":
-		return ConstLogModHeartBeat
-	case "conf":
-		return ConstLogModConfigLoad
-	case "git":
-		return ConstLogModGit
-	case "support":
-		return ConstLogModSupport
-	case "backup":
-		return ConstLogModBackupStream
-	case "orchestrator":
-		return ConstLogModOrchestrator
-	case "vault":
-		return ConstLogModVault
-	case "topology":
-		return ConstLogModTopology
-	case "proxy":
-		return ConstLogModProxy
-	case "proxysql":
-		return ConstLogModProxySQL
-	case "haproxy":
-		return ConstLogModHAProxy
-	case "prxjanitor":
-		return ConstLogModProxyJanitor
-	case "maxscale":
-		return ConstLogModMaxscale
-	case "graphite":
-		return ConstLogModGraphite
-	case "purge":
-		return ConstLogModPurge
-	case "job":
-		return ConstLogModTask
-	case "externalscript":
-		return ConstLogModExternalScript
-	case "stats":
-		return ConstLogModStats
-	case "sql":
-		return ConstLogModSQL
-	case "app":
-		return ConstLogModApp
-	case "restic":
-		return ConstLogModRestic
-	case "mailer":
-		return ConstLogModMailer
-	case "errorlog":
-		return ConstLogModDbErrors
-	case "slowquery":
-		return ConstLogModDbSlowquery
-	case "optimize":
-		return ConstLogModDbOptimize
-	case "auditlog":
-		return ConstLogModDbAudit
-	case "sqlerrorlog":
-		return ConstLogModDbSqlErrors
-	case "plugin":
-		return ConstLogModPlugin
-	case "maintenance":
-		return ConstLogModMaintenance
-	case "arbitration":
-		return ConstLogModArbitration
+	if m, ok := logTagToModule[tag]; ok {
+		return m
 	}
 	return ConstLogModUncategorized
 }
 
 // IsTaskLogModule reports whether module lands in a cluster's "task" HttpLog
-// buffer rather than its "general" one. Mirrors the classification switch in
-// cluster.LogModuleWithFieldsPrintf (cluster/cluster_log.go) — kept here too
-// so the on-disk log-history API can reconstruct the same general/task split
-// for a module id read back from a log line, without cluster/ needing to
-// export the buffer-selection logic itself. Keep in sync with that switch.
+// buffer rather than its "general" one — used both by
+// cluster.LogModuleWithFieldsPrintf (cluster/cluster_log.go) directly, and by
+// the on-disk log-history API to reconstruct the same general/task split for
+// a module id read back from a log line.
 func IsTaskLogModule(module int) bool {
-	switch module {
-	case ConstLogModTask, ConstLogModSST, ConstLogModBackupStream, ConstLogModDbErrors, ConstLogModDbSqlErrors, ConstLogModDbSlowquery, ConstLogModDbOptimize, ConstLogModDbAudit, ConstLogModRestic:
-		return true
-	}
-	return false
+	return logModuleIsTask[module]
 }
 
 // If task is about backup and reseed, it will use log backup stream else will use log task

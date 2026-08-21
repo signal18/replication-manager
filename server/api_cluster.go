@@ -5354,17 +5354,8 @@ func (repman *ReplicationManager) handlerMuxWebLog(w http.ResponseWriter, r *htt
 			http.Error(w, "log history requires logType=general or logType=task", http.StatusBadRequest)
 			return
 		}
-		if !repman.Conf.LogHistoryEnable {
-			http.Error(w, "Log history is disabled (log-history-enable=false)", http.StatusForbidden)
-			return
-		}
-		msgs, truncated, err := repman.readLogHistory(r, cl.Name, logType)
-		if err != nil {
-			if errors.Is(err, errInvalidLogHistoryRange) {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			http.Error(w, "Error reading log history: "+err.Error(), http.StatusInternalServerError)
+		msgs, truncated, ok := repman.serveLogHistory(w, r, cl.Name, logType)
+		if !ok {
 			return
 		}
 		logs = &s18log.HttpLog{Buffer: msgs, Len: len(msgs), Truncated: truncated}

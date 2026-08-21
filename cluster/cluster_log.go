@@ -222,10 +222,9 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 				Module:    module,
 			}
 			line = cluster.htlog.Add(msg)
-			switch module {
-			case config.ConstLogModTask, config.ConstLogModSST, config.ConstLogModBackupStream, config.ConstLogModDbErrors, config.ConstLogModDbSqlErrors, config.ConstLogModDbSlowquery, config.ConstLogModDbOptimize, config.ConstLogModDbAudit, config.ConstLogModRestic:
+			if config.IsTaskLogModule(module) {
 				cluster.LogTask.Add(msg)
-			default:
+			} else {
 				cluster.Log.Add(msg)
 			}
 		}

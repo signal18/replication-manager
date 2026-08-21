@@ -95,22 +95,13 @@ func (repman *ReplicationManager) handlerMuxGlobalLogs(w http.ResponseWriter, r 
 	bufLen := repman.GlobalLogs.Len
 	bufLine := repman.GlobalLogs.Line
 	if isLogHistoryRequest(r) {
-		if !repman.Conf.LogHistoryEnable {
-			http.Error(w, "Log history is disabled (log-history-enable=false)", http.StatusForbidden)
-			return
-		}
 		// Group: GroupNone, not "" (no filter) — the live path this mirrors
 		// (repman.GlobalLogs, populated only by server/server_log.go's
 		// LogModuleWithFieldsPrintf with Group: "none") is server-only.
 		// "" would additionally return every cluster's history rows, which
 		// the live /api/global/http-logs response never does.
-		msgs, tr, err := repman.readLogHistory(r, s18log.GroupNone, "")
-		if err != nil {
-			if errors.Is(err, errInvalidLogHistoryRange) {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			http.Error(w, "Error reading log history: "+err.Error(), http.StatusInternalServerError)
+		msgs, tr, ok := repman.serveLogHistory(w, r, s18log.GroupNone, "")
+		if !ok {
 			return
 		}
 		buf = msgs
@@ -259,6 +250,33 @@ func (repman *ReplicationManager) readLogHistory(r *http.Request, group, logType
 		return nil, false, err
 	}
 	return result.Messages, result.Truncated, nil
+}
+
+// serveLogHistory wraps readLogHistory for handlers that serve it over HTTP
+// (handlerMuxGlobalLogs and handlerMuxWebLog), so both map the same three
+// outcomes to the same three statuses in one place instead of each
+// hand-duplicating this mapping around the shared readLogHistory call:
+//   - log history disabled (log-history-enable=false) -> 403
+//   - invalid since/until (errInvalidLogHistoryRange)  -> 400
+//   - any other read failure                           -> 500
+//
+// ok is false exactly when a response has already been written to w; callers
+// must return immediately without writing anything else in that case.
+func (repman *ReplicationManager) serveLogHistory(w http.ResponseWriter, r *http.Request, group, logType string) (msgs []s18log.HttpMessage, truncated bool, ok bool) {
+	if !repman.Conf.LogHistoryEnable {
+		http.Error(w, "Log history is disabled (log-history-enable=false)", http.StatusForbidden)
+		return nil, false, false
+	}
+	msgs, truncated, err := repman.readLogHistory(r, group, logType)
+	if err != nil {
+		if errors.Is(err, errInvalidLogHistoryRange) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, "Error reading log history: "+err.Error(), http.StatusInternalServerError)
+		}
+		return nil, false, false
+	}
+	return msgs, truncated, true
 }
 
 // globalAlertsResponse is the JSON payload for GET /api/global/alerts.
