@@ -136,11 +136,6 @@ const lumberjackBackupTimeFormat = "2006-01-02T15-04-05.000"
 // last.
 func listHistoryFiles(baseLogFile string) ([]historyFile, error) {
 	dir := filepath.Dir(baseLogFile)
-	base := filepath.Base(baseLogFile)
-	ext := filepath.Ext(base)
-	prefix := strings.TrimSuffix(base, ext)
-	backupRE := lumberjackBackupRE(ext)
-
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -148,6 +143,21 @@ func listHistoryFiles(baseLogFile string) ([]historyFile, error) {
 		}
 		return nil, err
 	}
+	return matchHistoryFiles(baseLogFile, entries), nil
+}
+
+// matchHistoryFiles is listHistoryFiles' matching/sorting logic, factored
+// out to take an already-read directory listing instead of calling
+// os.ReadDir itself — see ChownHistoryFilesBatch, which reads a shared
+// directory once and matches several sibling base log files (main/security/
+// workload/schema/maintenance) against that one listing instead of each
+// independently re-reading the same directory.
+func matchHistoryFiles(baseLogFile string, entries []os.DirEntry) []historyFile {
+	dir := filepath.Dir(baseLogFile)
+	base := filepath.Base(baseLogFile)
+	ext := filepath.Ext(base)
+	prefix := strings.TrimSuffix(base, ext)
+	backupRE := lumberjackBackupRE(ext)
 
 	var backups []historyFile
 	haveActive := false
@@ -187,7 +197,7 @@ func listHistoryFiles(baseLogFile string) ([]historyFile, error) {
 	if haveActive {
 		files = append(files, historyFile{path: baseLogFile, recency: activeModTime})
 	}
-	return files, nil
+	return files
 }
 
 // ChownHistoryFiles transfers ownership of baseLogFile and its rotated
@@ -207,6 +217,57 @@ func ChownHistoryFiles(baseLogFile string, uid, gid int) error {
 	if err != nil {
 		return err
 	}
+	return chownFiles(files, uid, gid)
+}
+
+// ChownHistoryFilesBatch is ChownHistoryFiles extended to several base log
+// files at once (server.go's LimitPrivileges: the main log plus its
+// security/workload/schema/maintenance siblings, all conventionally in the
+// same directory). Base log files sharing a directory have that directory's
+// os.ReadDir done exactly once and matched against each of them, instead of
+// each calling ChownHistoryFiles independently and re-reading the same
+// directory listing once per sibling. Best-effort per file, same as
+// ChownHistoryFiles: continues past a single failed/missing file/directory
+// and returns the first error, if any.
+func ChownHistoryFilesBatch(baseLogFiles []string, uid, gid int) error {
+	byDir := make(map[string][]string)
+	var dirOrder []string
+	for _, base := range baseLogFiles {
+		if base == "" {
+			continue
+		}
+		dir := filepath.Dir(base)
+		if _, ok := byDir[dir]; !ok {
+			dirOrder = append(dirOrder, dir)
+		}
+		byDir[dir] = append(byDir[dir], base)
+	}
+
+	var firstErr error
+	for _, dir := range dirOrder {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		for _, base := range byDir[dir] {
+			if err := chownFiles(matchHistoryFiles(base, entries), uid, gid); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
+}
+
+// chownFiles is the shared best-effort chown loop behind ChownHistoryFiles
+// and ChownHistoryFilesBatch: continues past a single failed/missing file
+// and returns the first error, if any, rather than aborting the whole batch.
+func chownFiles(files []historyFile, uid, gid int) error {
 	var firstErr error
 	for _, f := range files {
 		if err := os.Chown(f.path, uid, gid); err != nil && !os.IsNotExist(err) && firstErr == nil {
@@ -428,20 +489,23 @@ func scanFileList(files []historyFile, q HistoryQuery) (HistoryResult, error) {
 		}
 		res.ScannedFiles++
 
-		fileMatches, hitBudget, err := scanHistoryFile(f, q, limit, maxScanBytes, &scannedBytes)
+		// Only ask this file's scan for as many matches as result can still
+		// take, not the full request limit — scanHistoryFile already caps
+		// its own per-file result to this count (ring buffer, see below), so
+		// once earlier files have filled most of `limit`, a busy later file
+		// does proportionally less buffering/eviction work instead of always
+		// tracking up to the full limit before being trimmed down here.
+		needed := limit - len(result)
+		fileMatches, hitBudget, err := scanHistoryFile(f, q, needed, maxScanBytes, &scannedBytes)
 		if err != nil {
 			return res, err
 		}
 
-		// fileMatches is ascending (oldest-of-file first); keep only the
-		// most recent `needed` of them and merge newest-first into result.
-		needed := limit - len(result)
-		take := fileMatches
-		if len(take) > needed {
-			take = take[len(take)-needed:]
-		}
-		for i := len(take) - 1; i >= 0; i-- {
-			result = append(result, take[i])
+		// fileMatches is ascending (oldest-of-file first) and already capped
+		// to at most `needed` entries by scanHistoryFile — merge newest-first
+		// into result directly, no further trimming needed here.
+		for i := len(fileMatches) - 1; i >= 0; i-- {
+			result = append(result, fileMatches[i])
 		}
 
 		if hitBudget {
@@ -507,7 +571,17 @@ func ReadHistoryFiles(baseLogFiles []string, q HistoryQuery) (HistoryResult, err
 // entries (dropping the oldest-so-far as new matches arrive — valid here
 // because within one file ascending insertion order IS chronological order).
 // hitBudget reports whether the global byte budget was exhausted mid-file.
+//
+// Capping is a fixed-size ring buffer (matches[ring] + ringNext), not a
+// slice shifted left by one on every match past limit: once full, each new
+// match is one O(1) overwrite instead of an O(limit) copy — the difference
+// between a file with far more matches than limit costing O(matches) total
+// vs. O((matches-limit)·limit). The ring is unwrapped back into chronological
+// order once, in finalize(), rather than kept sorted on every insert.
 func scanHistoryFile(f historyFile, q HistoryQuery, limit int, maxScanBytes int64, scannedBytes *int64) (matches []HttpMessage, hitBudget bool, err error) {
+	if limit <= 0 {
+		limit = 1
+	}
 	file, err := os.Open(f.path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -548,12 +622,26 @@ func scanHistoryFile(f historyFile, q HistoryQuery, limit int, maxScanBytes int6
 
 	textLower := strings.ToLower(q.Text)
 	matches = make([]HttpMessage, 0, min(limit, 256))
+	ringNext := 0 // next write index once len(matches) == limit; the ring's oldest slot
+
+	// finalize unwraps the ring back into ascending (chronological) order —
+	// the contract callers rely on (scanFileList merges newest-first off the
+	// END of this slice). A no-op unless the ring actually wrapped.
+	finalize := func() []HttpMessage {
+		if len(matches) < limit || ringNext == 0 {
+			return matches
+		}
+		rotated := make([]HttpMessage, limit)
+		n := copy(rotated, matches[ringNext:])
+		copy(rotated[n:], matches[:ringNext])
+		return rotated
+	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		*scannedBytes += int64(len(line)) + 1
 		if *scannedBytes >= maxScanBytes {
-			return matches, true, nil
+			return finalize(), true, nil
 		}
 
 		fields, ok := parseLogfmtLine(line)
@@ -606,10 +694,11 @@ func scanHistoryFile(f historyFile, q HistoryQuery, limit int, maxScanBytes int6
 			continue
 		}
 
-		matches = append(matches, msg)
-		if len(matches) > limit {
-			copy(matches, matches[1:])
-			matches = matches[:len(matches)-1]
+		if len(matches) < limit {
+			matches = append(matches, msg)
+		} else {
+			matches[ringNext] = msg
+			ringNext = (ringNext + 1) % limit
 		}
 	}
 	if scanner.Err() != nil {
@@ -620,7 +709,7 @@ func scanHistoryFile(f historyFile, q HistoryQuery, limit int, maxScanBytes int6
 		// partial file as if it were complete, but without failing the
 		// whole request over one bad file (F8: less broken beats
 		// completely broken).
-		return matches, true, nil
+		return finalize(), true, nil
 	}
-	return matches, false, nil
+	return finalize(), false, nil
 }

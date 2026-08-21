@@ -255,7 +255,12 @@ export function unwrapHistoryResponse({ data, status }, pick) {
 function Logs({ logs, className, searchable = false, isScrollable = true, onLoadOlder }) {
   const [search, setSearch] = useState('')
   const [levelFilter, setLevelFilter] = useState(ALL_LEVEL_BUCKETS)
-  const [moduleFilter, setModuleFilter] = useState(null) // null = show all modules
+  // Deny-list, not an allow-list snapshot: modules the user explicitly
+  // hid, by id — see toggleModule below for why this shape matters (an
+  // allow-list seeded from "whatever's visible right now" would silently
+  // keep excluding a module that only shows up later, e.g. after "Load
+  // older" surfaces one nothing in the live view ever had).
+  const [deselectedModules, setDeselectedModules] = useState(() => new Set())
   const [history, setHistory] = useState([]) // rows fetched via "Load older" or a time-range query
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [historyExhausted, setHistoryExhausted] = useState(false)
@@ -330,10 +335,10 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
       logsData.filter((x) => {
         if (!x.text.toLowerCase().includes(search.toLowerCase())) return false
         if (!levelFilter.has(bucketForLevel(x.level))) return false
-        if (moduleFilter && !moduleFilter.has(x.module ?? -1)) return false
+        if (deselectedModules.has(x.module ?? -1)) return false
         return true
       }),
-    [logsData, search, levelFilter, moduleFilter]
+    [logsData, search, levelFilter, deselectedModules]
   )
 
   const rows = useMemo(() => keyedRows(data), [data])
@@ -358,18 +363,28 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
     setRangeExtended(false)
     setRangeUpperTruncated(false)
     setOldestFetchedCursor(null)
-  }, [search, levelFilter, moduleFilter])
+  }, [search, levelFilter, deselectedModules])
 
   // Shared level/module/text filter params for both "Load older" and a
   // time-range query, so a history fetch always respects whatever the user
-  // currently has narrowed the live view down to.
+  // currently has narrowed the live view down to. The server's module=
+  // param is an allow-list (no exclusion support), so deselectedModules is
+  // translated into "every currently-known module except the deselected
+  // ones" here, computed fresh off the current presentModules on every call
+  // rather than a snapshot frozen at the moment of the first toggle — same
+  // reasoning as toggleModule below.
   const buildFilterParams = useCallback(() => {
     const params = {}
     if (levelFilter.size < LEVEL_ORDER.length + 1) params.level = [...levelFilter].join(',')
-    if (moduleFilter) params.module = [...moduleFilter].map((m) => moduleTag(m)).join(',')
+    if (deselectedModules.size > 0) {
+      params.module = presentModules
+        .filter((m) => !deselectedModules.has(m))
+        .map((m) => moduleTag(m))
+        .join(',')
+    }
     if (search) params.text = search
     return params
-  }, [levelFilter, moduleFilter, search])
+  }, [levelFilter, deselectedModules, presentModules, search])
 
   // Two capping directions for two different situations — using the wrong
   // one for either is a real bug, not a style choice:
@@ -553,17 +568,24 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
     })
   }
 
+  // Toggles mod's own membership in the deny-list directly — no seeding from
+  // presentModules. Seeding from "whatever's visible right now" (the
+  // previous allow-list design) meant every module NOT currently visible
+  // silently became excluded the moment the user deselected any other
+  // module — including one that only shows up later via "Load older"/"Apply
+  // range" surfacing a module never seen live, which the user never chose to
+  // exclude. A deny-list only ever contains modules explicitly clicked, so a
+  // module id it has never heard of always passes through.
   const toggleModule = (mod) => {
-    setModuleFilter((prev) => {
-      const base = prev ?? new Set(presentModules)
-      const next = new Set(base)
+    setDeselectedModules((prev) => {
+      const next = new Set(prev)
       if (next.has(mod)) next.delete(mod)
       else next.add(mod)
       return next
     })
   }
 
-  const isModuleChecked = (mod) => moduleFilter === null || moduleFilter.has(mod)
+  const isModuleChecked = (mod) => !deselectedModules.has(mod)
 
   return (
     <Box
@@ -592,8 +614,13 @@ function Logs({ logs, className, searchable = false, isScrollable = true, onLoad
               </HStack>
               {presentModules.length > 1 && (
                 <Menu closeOnSelect={false}>
-                  <MenuButton as={Button} size='sm'>
-                    Module
+                  {/* Surfaces that a module filter is narrowing the view at
+                      all — deselecting one module used to leave no visible
+                      trace once it, and any module not yet seen live, quietly
+                      dropped out of the list with nothing pointing back at
+                      this menu as the reason why. */}
+                  <MenuButton as={Button} size='sm' colorScheme={deselectedModules.size > 0 ? 'blue' : 'gray'}>
+                    Module{deselectedModules.size > 0 ? ` (${deselectedModules.size} hidden)` : ''}
                   </MenuButton>
                   <MenuList maxH='300px' overflowY='auto'>
                     {presentModules.map((mod) => (

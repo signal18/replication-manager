@@ -2340,16 +2340,19 @@ func (repman *ReplicationManager) LimitPrivileges() {
 			// permissions under the target user and fails with "permission
 			// denied" unless ownership is also transferred here.
 			if repman.Conf.LogFile != "" {
-				for _, lf := range []string{
+				// All five siblings live in the same directory, so this reads
+				// it once and matches all five against that one listing —
+				// see ChownHistoryFilesBatch — instead of each of the five
+				// ChownHistoryFiles calls this replaced independently
+				// re-reading that same directory.
+				if err := s18log.ChownHistoryFilesBatch([]string{
 					repman.Conf.LogFile,
 					securityLogPath(repman.Conf.LogFile),
 					workloadLogPath(repman.Conf.LogFile),
 					schemaLogPath(repman.Conf.LogFile),
 					maintenanceLogPath(repman.Conf.LogFile),
-				} {
-					if err := s18log.ChownHistoryFiles(lf, uidInt, gidInt); err != nil {
-						repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not chown log file %s to %s: %v", lf, targetUser.Username, err)
-					}
+				}, uidInt, gidInt); err != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not chown log history files to %s: %v", targetUser.Username, err)
 				}
 			}
 

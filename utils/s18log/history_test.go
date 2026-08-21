@@ -404,6 +404,48 @@ func TestReadHistory_CorruptGzipBackupTruncatesInsteadOfLookingComplete(t *testi
 	}
 }
 
+// TestReadHistory_LimitRingBufferMultipleWraps stresses scanHistoryFile's
+// ring-buffer cap (replacing an O(limit) copy-and-shift per excess match)
+// with a single file holding many more matches than Limit, forcing the ring
+// to wrap several full times over — not just the single partial wrap the
+// smaller fixtures elsewhere happen to exercise. Verifies the result is
+// still exactly the newest `limit` messages, in correct ascending-then-
+// reversed (newest-first) order, i.e. the ring's unwrap-to-chronological-
+// order step (finalize in scanHistoryFile) is correct across wraps.
+func TestReadHistory_LimitRingBufferMultipleWraps(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "repman.log")
+
+	const total = 27
+	const limit = 4
+	var content string
+	for i := 0; i < total; i++ {
+		content += writeLine(fmt.Sprintf("2024-01-01 10:00:%02d", i), "info", fmt.Sprintf("line %d", i), "none", "general")
+	}
+	mustWriteFile(t, base, content)
+
+	res, err := ReadHistory(base, HistoryQuery{Limit: limit})
+	if err != nil {
+		t.Fatalf("ReadHistory: %v", err)
+	}
+	if len(res.Messages) != limit {
+		t.Fatalf("expected exactly %d messages, got %d", limit, len(res.Messages))
+	}
+	// Newest-first: line 26, 25, 24, 23.
+	for i := 0; i < limit; i++ {
+		want := fmt.Sprintf("line %d", total-1-i)
+		if res.Messages[i].Text != want {
+			t.Errorf("index %d: expected %q, got %q", i, want, res.Messages[i].Text)
+		}
+	}
+	// Not asserting res.Truncated here: a single file whose in-file match
+	// count alone exceeds Limit doesn't currently set Truncated (scanFileList
+	// only sets it from a budget/file-count cutoff or a subsequent file being
+	// skipped, not from scanHistoryFile's own ring-buffer eviction) — a
+	// pre-existing gap, unchanged by this ring-buffer rewrite, not something
+	// this test is about.
+}
+
 func TestReadHistory_MaxFilesTruncates(t *testing.T) {
 	base := setupHistoryFixture(t)
 	res, err := ReadHistory(base, HistoryQuery{Limit: 100, MaxFiles: 1})
@@ -539,6 +581,67 @@ func TestChownHistoryFiles_MissingFileIsNotAnError(t *testing.T) {
 	dir := t.TempDir()
 	if err := ChownHistoryFiles(filepath.Join(dir, "does-not-exist.log"), os.Getuid(), os.Getgid()); err != nil {
 		t.Fatalf("expected no error when there's nothing to chown, got %v", err)
+	}
+}
+
+// TestChownHistoryFilesBatch_CoversAllSiblings guards server.go's
+// LimitPrivileges use (main/security/workload/schema/maintenance log
+// siblings, one ChownHistoryFilesBatch call instead of five independent
+// ChownHistoryFiles calls each re-reading the same directory): every
+// candidate file for every base log file passed in must still get chowned,
+// not just the first base's or only the active files.
+func TestChownHistoryFilesBatch_CoversAllSiblings(t *testing.T) {
+	dir := t.TempDir()
+
+	mainBase := filepath.Join(dir, "repman.log")
+	mustWriteFile(t, filepath.Join(dir, "repman-2024-01-01T00-00-00.000.log"), "main backup\n")
+	mustWriteFile(t, mainBase, "main active\n")
+
+	securityBase := filepath.Join(dir, "repman-security.log")
+	mustWriteFile(t, filepath.Join(dir, "repman-security-2024-01-01T00-00-00.000.log"), "security backup\n")
+	mustWriteFile(t, securityBase, "security active\n")
+
+	var want []string
+	for _, base := range []string{mainBase, securityBase} {
+		files, err := listHistoryFiles(base)
+		if err != nil {
+			t.Fatalf("listHistoryFiles(%s): %v", base, err)
+		}
+		if len(files) != 2 { // 1 backup + active, per base
+			t.Fatalf("test fixture assumption changed for %s: expected 2 candidate files, got %d: %+v", base, len(files), files)
+		}
+		for _, f := range files {
+			want = append(want, f.path)
+		}
+	}
+
+	if err := ChownHistoryFilesBatch([]string{mainBase, securityBase}, os.Getuid(), os.Getgid()); err != nil {
+		t.Fatalf("ChownHistoryFilesBatch: %v", err)
+	}
+
+	for _, path := range want {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s after ChownHistoryFilesBatch: %v", path, err)
+		}
+		st, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			t.Fatalf("unexpected Sys() type for %s", path)
+		}
+		if int(st.Uid) != os.Getuid() || int(st.Gid) != os.Getgid() {
+			t.Errorf("%s: expected owner %d:%d, got %d:%d", path, os.Getuid(), os.Getgid(), st.Uid, st.Gid)
+		}
+	}
+}
+
+func TestChownHistoryFilesBatch_MissingDirIsNotAnError(t *testing.T) {
+	dir := t.TempDir()
+	missingDir := filepath.Join(dir, "does-not-exist")
+	if err := ChownHistoryFilesBatch([]string{
+		filepath.Join(missingDir, "a.log"),
+		filepath.Join(missingDir, "b.log"),
+	}, os.Getuid(), os.Getgid()); err != nil {
+		t.Fatalf("expected no error when the directory doesn't exist, got %v", err)
 	}
 }
 
