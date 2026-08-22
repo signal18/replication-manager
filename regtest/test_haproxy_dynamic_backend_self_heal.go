@@ -63,12 +63,14 @@ func rowAtRuntime(haRuntime haproxy.Runtime, pool, name string) (status, addr st
 // this change)" section for why this exists as a separate scenario rather
 // than folding into the unit tests.
 //
-// Deliberately not in the default `tests` list (regtest/regtest.go) alongside
-// testStagingRecoverNoReadOnly, for the same reason: most clusters don't run
-// HAProxy in runtimeapi mode with the dynamic-backends flag on, and this
-// framework has no "skip" result, so including it there would hard-FAIL "ALL"
-// on every cluster that isn't specifically set up for it. Run it explicitly:
-// --test=testHaproxyDynamicBackendSelfHeal.
+// Listed in the default `tests` list (regtest/regtest.go) so it's selectable
+// in the dashboard's Regression Tests dropdown -- unlike
+// testStagingRecoverNoReadOnly, which stays excluded there. Accepted
+// trade-off: most clusters don't run HAProxy in runtimeapi mode with the
+// dynamic-backends flag on, and this framework has no "skip" result, so
+// --test=ALL / the /tests/actions/run/all route will hard-FAIL this one on
+// any cluster that isn't specifically set up for it. Run it individually via
+// --test=testHaproxyDynamicBackendSelfHeal (or the dropdown) instead.
 //
 // This scenario deliberately breaks real runtime state (deletes/mispoints
 // real HAProxy server rows via the same router/haproxy.Runtime commands

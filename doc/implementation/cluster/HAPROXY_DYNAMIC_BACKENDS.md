@@ -14,11 +14,20 @@ frontends still reference them statically.
 Off by default (`haproxy-runtime-dynamic-backends`, bool, default `false`):
 this is a new feature, so per T14 it ships with an explicit opt-in rather
 than changing `develop`'s existing behavior for anyone who doesn't ask for
-it. No dedicated GUI control was added; the existing generic config surface
-already exposes every `config.Config` field. With the flag off, `runtimeapi`
-mode where server naming doesn't match (see below), `standby` mode, or
-HAProxy < 3.4, self-heal never runs and behavior is exactly what it was
-before this feature.
+it. With the flag off, `runtimeapi` mode where server naming doesn't match
+(see below), `standby` mode, or HAProxy < 3.4, self-heal never runs and
+behavior is exactly what it was before this feature.
+
+**GUI**: a toggle lives in the dashboard's Proxy Settings
+(`share/dashboard_react/src/Pages/Settings/ProxySettings.jsx`, "HAProxy
+Dynamic Backend Self-Heal"), wired through the existing generic
+`/settings/actions/switch/{settingName}` (and `.../set/{settingName}/{state}`)
+API — `switchClusterSettings`/`setClusterSetting` in `server/api_cluster.go`
+dispatch to `cluster.SwitchHaproxyRuntimeDynamicBackends()`
+(`cluster/cluster_tgl.go`), the same per-setting-name dispatch pattern every
+other cluster boolean setting uses; no new ACL rule was needed since
+`/settings/actions/switch` is already grant-gated by URL prefix, not by
+individual setting name.
 
 The generated config (`share/haproxy_config.template`, OpenSVC's
 `proxy_cnf_haproxy_runtime_api`) gained a second, separate `defaults

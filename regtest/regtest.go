@@ -69,10 +69,15 @@ var tests = []string{
 	// "ALL" on every non-staging cluster. Run it explicitly by name instead:
 	// --test=testStagingRecoverNoReadOnly
 	//
-	// testHaproxyDynamicBackendSelfHeal is excluded for the same reason: it
-	// requires haproxy-runtime-dynamic-backends=true and haproxy-mode=
-	// runtimeapi, which most clusters don't have configured. Run it
-	// explicitly: --test=testHaproxyDynamicBackendSelfHeal
+	// testHaproxyDynamicBackendSelfHeal is included despite the same
+	// prerequisite-config caveat (haproxy-runtime-dynamic-backends=true,
+	// haproxy-mode=runtimeapi) so it's selectable in the dashboard's
+	// Regression Tests dropdown (populated from GetTests(), same list as
+	// this one). Accepted trade-off: --test=ALL / the /tests/actions/run/all
+	// route will now also hard-FAIL this one on any cluster that isn't
+	// configured for it, same as every other test in this list already
+	// assumes a specific topology/config.
+	"testHaproxyDynamicBackendSelfHeal",
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigPersistBackupOption",
 	"testConfigCookiePushBasic",

@@ -434,6 +434,10 @@ func (cluster *Cluster) SwitchMdbsProxy() {
 func (cluster *Cluster) SwitchHaProxy() {
 	cluster.Conf.HaproxyOn = !cluster.Conf.HaproxyOn
 }
+
+func (cluster *Cluster) SwitchHaproxyRuntimeDynamicBackends() {
+	cluster.Conf.HaproxyRuntimeDynamicBackends = !cluster.Conf.HaproxyRuntimeDynamicBackends
+}
 func (cluster *Cluster) SwitchMaxscaleProxy() {
 	cluster.Conf.MxsOn = !cluster.Conf.MxsOn
 }

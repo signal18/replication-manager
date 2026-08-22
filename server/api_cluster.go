@@ -2739,6 +2739,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchProxyServersReadOnMasterNoSlave()
 	case "proxy-servers-backend-compression":
 		mycluster.SwitchProxyServersBackendCompression()
+	case "haproxy-runtime-dynamic-backends":
+		mycluster.SwitchHaproxyRuntimeDynamicBackends()
 	case "database-heartbeat":
 		mycluster.SwitchTraffic()
 	case "database-heartbeat-staging":
@@ -4428,6 +4430,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
 	case "proxy-servers-backend-compression":
 		mycluster.Conf.PRXServersBackendCompression = applyIsActive(mycluster.Conf.PRXServersBackendCompression, isactive)
+	case "haproxy-runtime-dynamic-backends":
+		mycluster.Conf.HaproxyRuntimeDynamicBackends = applyIsActive(mycluster.Conf.HaproxyRuntimeDynamicBackends, isactive)
 	case "database-heartbeat":
 		mycluster.Conf.TestInjectTraffic = applyIsActive(mycluster.Conf.TestInjectTraffic, isactive)
 	case "database-heartbeat-staging":
