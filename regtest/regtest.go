@@ -68,6 +68,11 @@ var tests = []string{
 	// (and hard-FAIL, since this framework has no "skip" result) as part of
 	// "ALL" on every non-staging cluster. Run it explicitly by name instead:
 	// --test=testStagingRecoverNoReadOnly
+	//
+	// testHaproxyDynamicBackendSelfHeal is excluded for the same reason: it
+	// requires haproxy-runtime-dynamic-backends=true and haproxy-mode=
+	// runtimeapi, which most clusters don't have configured. Run it
+	// explicitly: --test=testHaproxyDynamicBackendSelfHeal
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigPersistBackupOption",
 	"testConfigCookiePushBasic",
