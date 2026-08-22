@@ -95,12 +95,16 @@ read-only check before its result is trusted (see below).
 branch, whether each backend's `BACKEND` summary row was present at all
 (`sawWriteBackend`/`sawReadBackend`), whether the write backend's `leader`
 server row was present (`sawWriteLeader`), and every svname seen under the
-read backend (`readSvnamesSeen`). After that loop, `selfHealDynamicBackends`
-runs only if `HaproxyRuntimeDynamicBackends` is `true` and
+read backend (`readSvnamesSeen`). After that loop, `Refresh()` calls
+`selfHealDynamicBackends` only if `HaproxyRuntimeDynamicBackends` is `true`,
+`HaproxyMode == "runtimeapi"`, the proxy isn't a staging proxy, and
 `hasDynamicBackendSupport()` (HAProxy >= 3.4, parsed from `show version` via
-`utils/version`) -- `&&` short-circuits, so with the flag off `show version`
-is never even queried. `selfHealDynamicBackends` itself then early-returns
-unless `HaproxyMode == "runtimeapi"`:
+`utils/version`) -- `&&` short-circuits left to right, so a cluster with the
+flag on but running standby/dataplaneapi mode (or a staging proxy) skips the
+`show version` round trip too, not just the backend/server self-heal itself.
+`selfHealDynamicBackends` still re-checks both conditions on entry as its own
+guard -- redundant today since `Refresh()` is its only caller, but cheap
+insurance against a future call site adding it without both checks:
 
 1. **Write backend missing** → `addDynamicBackend` (`AddBackend` +
    `PublishBackend`, verified via `backendPublishedAtRuntime`).
@@ -201,6 +205,24 @@ the row (its own `del server` rejected with CLI text) leaves a `"leader"`
 row behind at `"MAINT"` that every later pass would then treat as
 "already handled" — contradicting its own "will keep retrying" log line and
 leaving writes blackholed indefinitely after one transient double-failure.
+
+Unlike the read side, `sawWriteLeader` deliberately has no
+`GetServerFromName`+literal-IP stale-address cross-check of its own. A
+healthy-but-stale `"leader"` row (status `"UP"`, address pointing at a
+decommissioned or since-demoted host) is already corrected on the same
+`Refresh()` pass by pre-existing, non-self-heal code: the main parse loop's
+"Detecting wrong master" block looks the row's *current* address up via
+`GetServerFromURL`, and — for an address matching no known server at all —
+the `!foundMasterInStat` fallback at the end of `Refresh()`. Both call
+`SetMaster`, which issues a live `set server .../leader addr ... port ...`
+unconditionally, on every pass, regardless of
+`HaproxyRuntimeDynamicBackends` or `sawWriteLeader`. That command can safely
+update an *existing* row's address without a cutover — the read side has no
+equivalent, since `addDynamicServer`'s `AddServer` refuses to touch an
+existing row's address at all (see above), which is exactly why read
+self-heal has to detect and flag staleness itself instead.
+`TestHaproxySelfHealWriteLeaderStaleAddressFixedByExistingMasterCheck` pins
+this down.
 
 **Same-pass visibility, not a one-pass lag.** Both the ordinary replica loop
 and the master's own read-row check funnel a successful heal through the

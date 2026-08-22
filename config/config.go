@@ -450,7 +450,7 @@ type Config struct {
 	HaproxyStagingPort                        string                       `mapstructure:"haproxy-staging-port"  toml:"haproxy-staging-port" json:"haproxyStagingPort"`
 	HaproxyStagingBind                        string                       `mapstructure:"haproxy-staging-bind" toml:"haproxy-staging-bind" json:"haproxyStagingBind"`
 	HaproxyStagingBackend                     string                       `mapstructure:"haproxy-staging-backend" toml:"haproxy-staging-backend" json:"haproxyStagingBackend"`
-	HaproxyRuntimeDynamicBackends              bool                        `mapstructure:"haproxy-runtime-dynamic-backends" toml:"haproxy-runtime-dynamic-backends" json:"haproxyRuntimeDynamicBackends"`
+	HaproxyRuntimeDynamicBackends             bool                         `mapstructure:"haproxy-runtime-dynamic-backends" toml:"haproxy-runtime-dynamic-backends" json:"haproxyRuntimeDynamicBackends"`
 	ProxysqlOn                                bool                         `mapstructure:"proxysql" toml:"proxysql" json:"proxysql"`
 	ProxysqlDebug                             bool                         `mapstructure:"proxysql-debug" toml:"proxysql-debug" json:"proxysqlDebug"`
 	ProxysqlLogLevel                          int                          `mapstructure:"log-level-proxysql" toml:"log-level-proxysql" json:"proxysqlLogLevel"`

@@ -585,8 +585,8 @@ type dynServerState struct {
 
 type fakeHaproxyState struct {
 	statResponse string
-	version      string // "show version" response; hasDynamicBackendSupport fetches this fresh on every Refresh() pass rather than trusting proxy.Version
-	dynBackends  map[string]bool // name -> published: a backend gets a "show stat" BACKEND row with status "UP (UNPUB)" as soon as "add backend" succeeds, before "publish backend" drops the "(UNPUB)" suffix
+	version      string                               // "show version" response; hasDynamicBackendSupport fetches this fresh on every Refresh() pass rather than trusting proxy.Version
+	dynBackends  map[string]bool                      // name -> published: a backend gets a "show stat" BACKEND row with status "UP (UNPUB)" as soon as "add backend" succeeds, before "publish backend" drops the "(UNPUB)" suffix
 	dynServers   map[string]map[string]dynServerState // pool -> svname -> {status, addr}
 }
 
@@ -1891,6 +1891,12 @@ func TestHaproxySelfHealSkipsStagingProxy(t *testing.T) {
 		if strings.HasPrefix(cmd, "add backend") || strings.HasPrefix(cmd, "publish backend") || strings.HasPrefix(cmd, "add server") {
 			t.Errorf("Refresh() commands = %v, did not want any dynamic-backend self-heal command on a staging proxy (found %q)", commands(), cmd)
 		}
+		// Same as standby mode: Refresh() checks staging itself before ever
+		// calling hasDynamicBackendSupport, so a staging proxy shouldn't pay
+		// for the "show version" round trip every pass either.
+		if strings.HasPrefix(cmd, "show version") {
+			t.Errorf("Refresh() commands = %v, did not want a \"show version\" probe on a staging proxy (found %q)", commands(), cmd)
+		}
 	}
 }
 
@@ -2087,6 +2093,64 @@ func TestHaproxySelfHealCleansUpPartiallyHealedLeader(t *testing.T) {
 	}
 	if delIdx >= 0 && delIdx <= enableIdx {
 		t.Errorf("Refresh() commands = %v, want the cleanup delete (index %d) after the failed enable (index %d)", cmds, delIdx, enableIdx)
+	}
+}
+
+// TestHaproxySelfHealWriteLeaderStaleAddressFixedByExistingMasterCheck
+// reproduces a "leader" row that reports a healthy status ("UP") but at a
+// stale address -- here, the previous master's address, left behind by a
+// failover that never got a chance to update it live. writeLeaderRowHealthy
+// alone can't catch this (the row genuinely is "UP"), so sawWriteLeader is
+// true and selfHealDynamicBackends' own write-leader branch (gated on
+// !sawWriteLeader) does nothing here, unlike the read side's
+// GetServerFromName+literal-IP cross-check.
+//
+// That's fine: this address gets corrected by a separate, pre-existing
+// mechanism that runs on every Refresh() pass regardless of
+// HaproxyRuntimeDynamicBackends -- the same "show stat" parse loop looks up
+// the row's *current* address via GetServerFromURL, and (finding it belongs
+// to a known server that isn't the master) calls SetMaster, which issues a
+// live "set server .../leader addr ... port ..." -- a command that, unlike
+// AddServer, can safely update an existing row's address without a cutover.
+// This test pins that behavior down so a future change can't silently drop
+// it without a self-heal test noticing.
+func TestHaproxySelfHealWriteLeaderStaleAddressFixedByExistingMasterCheck(t *testing.T) {
+	cluster, _, _ := newSelfHealTestCluster(t)
+	defer cleanupTestCluster(t, cluster)
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "BACKEND", "UP", ""),
+		// Stale: "leader" is healthy but still points at slave1's address
+		// (127.0.0.1:3307), not the current master's (127.0.0.1:3306).
+		haproxyStatRow("service_write", "leader", "UP", "127.0.0.1:3307"),
+		haproxyStatRow("service_read", "BACKEND", "UP", ""),
+		haproxyStatRow("service_read", "master1", "DRAIN", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, commands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.4.0-test",
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	cmds := commands()
+	wantFix := "set server service_write/leader addr 127.0.0.1 port 3306"
+	if cmdIndex(cmds, wantFix) < 0 {
+		t.Fatalf("Refresh() commands = %v, want %q (the stale leader address fixed via SetMaster)", cmds, wantFix)
+	}
+	for _, cmd := range cmds {
+		if strings.HasPrefix(cmd, "add server service_write/leader") {
+			t.Errorf("Refresh() commands = %v, did not want self-heal to attempt adding \"leader\" while its row is already present and reports healthy (found %q)", cmds, cmd)
+		}
 	}
 }
 
@@ -2334,6 +2398,13 @@ func TestHaproxySelfHealSkipsStandbyMode(t *testing.T) {
 		if strings.HasPrefix(cmd, "add backend") || strings.HasPrefix(cmd, "publish backend") ||
 			strings.HasPrefix(cmd, "add server") || strings.HasPrefix(cmd, "del server") {
 			t.Errorf("Refresh() commands = %v, did not want any dynamic-backend self-heal command in standby mode (found %q)", commands(), cmd)
+		}
+		// Refresh() checks HaproxyMode/staging itself before ever calling
+		// hasDynamicBackendSupport, so standby mode -- which selfHealDynamicBackends
+		// would just no-op on anyway -- shouldn't pay for the "show version"
+		// round trip every pass either.
+		if strings.HasPrefix(cmd, "show version") {
+			t.Errorf("Refresh() commands = %v, did not want a \"show version\" probe in standby mode (found %q)", commands(), cmd)
 		}
 	}
 }

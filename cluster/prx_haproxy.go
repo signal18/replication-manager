@@ -371,6 +371,20 @@ func (proxy *HaproxyProxy) Refresh() error {
 				// failed cleanupFailedDynamicServer delete, left behind.
 				// Without this, sawWriteLeader would see the leftover row
 				// as "already handled" and never retry it.
+				//
+				// Deliberately no GetServerFromName+literal-IP stale-address
+				// cross-check here, unlike readSvnamesUnhealthy below: a
+				// stale-but-healthy "leader" row is already corrected on this
+				// same pass by the "Detecting wrong master" block a few lines
+				// down (or, if the address matches no known server at all, by
+				// the !foundMasterInStat fallback at the end of Refresh()) --
+				// both call SetMaster, which issues a live "set server
+				// .../leader addr ... port ..." unconditionally on every pass,
+				// regardless of HaproxyRuntimeDynamicBackends or
+				// sawWriteLeader. The read side has no equivalent: addDynamicServer's
+				// AddServer can't update an existing row's address at all, so
+				// self-heal has to detect read-row staleness itself. See
+				// TestHaproxySelfHealWriteLeaderStaleAddressFixedByExistingMasterCheck.
 				sawWriteLeader = writeLeaderRowHealthy(line[17])
 			}
 			host := line[73]
@@ -567,7 +581,13 @@ func (proxy *HaproxyProxy) Refresh() error {
 		}
 	}
 
-	if cluster.Conf.HaproxyRuntimeDynamicBackends && proxy.hasDynamicBackendSupport(&haRuntime) {
+	// The mode/staging checks below duplicate selfHealDynamicBackends' own
+	// early returns -- deliberately, so a cluster with the flag on but
+	// running standby/dataplaneapi mode (or a staging proxy) skips the "show
+	// version" round trip below too, instead of paying for it every
+	// Refresh() pass just to reach a no-op.
+	if cluster.Conf.HaproxyRuntimeDynamicBackends && cluster.Conf.HaproxyMode == "runtimeapi" &&
+		!(cluster.Conf.TopologyStaging && proxy.IsInStaging()) && proxy.hasDynamicBackendSupport(&haRuntime) {
 		proxy.selfHealDynamicBackends(&haRuntime, sawWriteBackend, sawReadBackend, sawWriteLeader, readSvnamesSeen, readSvnamesUnhealthy)
 	}
 
@@ -878,16 +898,16 @@ func (proxy *HaproxyProxy) serverExistsAtRuntime(haRuntime *haproxy.Runtime, poo
 // parse overwrites these with the row's actual figures.
 func (proxy *HaproxyProxy) upsertHealedReadRow(svname, host, port, clusterState string) {
 	healed := Backend{
-		Host:           host,
-		Port:           port,
-		Status:         clusterState,
-		Svname:         svname,
+		Host:   host,
+		Port:   port,
+		Status: clusterState,
+		Svname: svname,
 		// net.JoinHostPort, not a bare "+":"+" concatenation: matches the
 		// bracketed form real "show stat" rows report an IPv6 address in
 		// (line[73], used verbatim as PrxName elsewhere in this file), so
 		// this synthetic entry's PrxName stays consistent with what the very
 		// next Refresh() pass's real parse would show for the same server.
-		PrxName: net.JoinHostPort(host, port),
+		PrxName:        net.JoinHostPort(host, port),
 		PrxStatus:      "UP",
 		PrxConnections: "0",
 		PrxByteIn:      "0",
