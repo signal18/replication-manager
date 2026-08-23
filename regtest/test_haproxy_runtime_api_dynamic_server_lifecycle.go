@@ -30,10 +30,16 @@ import (
 // Both halves poll for the cluster's own background monitor loop to react
 // (this test never calls Refresh() itself):
 //
-//  1. Add path: drain and delete a replica's read-backend entry (one
-//     currently UP, not just slaves[0]) directly via the Runtime API, then
-//     poll until it reappears AND reaches UP — not merely present, which
-//     would miss a row stuck in MAINT/DRAIN.
+//  1. Add path: marks maintenance on a replica (one currently UP, not just
+//     slaves[0]) through repman's own ServerMonitor.SetMaintenance() —
+//     not the raw Runtime API — so cluster.Servers stays consistent with
+//     what HAProxy reports; otherwise Refresh()'s own MAINT-correction
+//     logic sees an externally-applied MAINT on a server it still
+//     considers healthy and races it back to ready before this test's own
+//     deletion (via the Runtime API, since there's no production trigger
+//     for deleting an active member) can complete. Clears maintenance
+//     afterward and polls until the row reappears AND reaches UP — not
+//     merely present, which would miss a row stuck in MAINT/DRAIN.
 //  2. Remove path: add a synthetic "ghost" server via the Runtime API, then
 //     poll until it's drained and removed.
 //
@@ -110,35 +116,77 @@ func (regtest *RegTest) TestHaproxyRuntimeAPIDynamicServerLifecycle(cl *cluster.
 	// this one.
 	originalBootstrap := cl.Conf.HaproxyAPIBootstrapServers
 	defer func() {
+		// Best-effort safety net: if this test failed partway through,
+		// don't leave the cluster's real read backend degraded for
+		// whatever runs next. First, make sure repman's own view is
+		// consistent (clears maintenance if a failure path above left it
+		// set) and give the cluster's own monitor loop a chance to
+		// reconcile normally — that's gated on HaproxyAPIBootstrapServers,
+		// so it must stay enabled until this either succeeds or we give up
+		// on it, not be restored to its original (possibly false) value
+		// first.
+		if slave.IsMaintenance {
+			slave.DelMaintenance()
+		}
+		restored := haproxyWaitFor(30*time.Second, func() bool {
+			stat, err := haRuntime.ApiCmd("show stat")
+			if err != nil {
+				return false
+			}
+			status, ok := haproxyStatServerStatus(stat, readBackend, slave.Id)
+			return ok && status == "UP"
+		})
 		cl.Conf.HaproxyAPIBootstrapServers = originalBootstrap
+		if restored {
+			return
+		}
 
-		// Best-effort safety net: if this test failed partway through and
-		// left the slave's entry deleted, don't leave the cluster's real
-		// read backend degraded for whatever runs next. Restores it
-		// directly via the Runtime API rather than relying on the
-		// cluster's own monitor loop — that loop only self-heals while
-		// HaproxyAPIBootstrapServers is enabled, which is about to be
-		// restored to its original (possibly false) value above.
+		// Fall back to repairing it directly via the Runtime API — this
+		// doesn't depend on HaproxyAPIBootstrapServers or the monitor loop,
+		// so it's safe to run after the flag above has been restored.
+		logf(config.LvlWarn, "TEST haproxy-runtime-lifecycle: cleanup could not confirm %s/%s reached UP via repman's own reconciliation, falling back to direct Runtime API repair", readBackend, slave.Id)
 		if !restoreReadBackendServer(haRuntime, readBackend, slave.Id, slave.Host, slave.Port, logf, 30*time.Second) {
 			logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: cleanup could not restore %s/%s within 30s; it may remain missing or half-configured in the read backend", readBackend, slave.Id)
 		}
 	}()
 	cl.Conf.HaproxyAPIBootstrapServers = true
 
-	// --- Add path: drain + delete a real replica's entry, then wait for
-	// the cluster's own monitor loop to re-add and ready it. ---
-	if res, err := haRuntime.SetMaintenance(slave.Id, readBackend); err != nil || strings.TrimSpace(res) != "" {
-		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL could not drain %s/%s ahead of deletion: err=%v res=%q", readBackend, slave.Id, err, res)
+	// --- Add path: mark maintenance through repman's own API — this keeps
+	// cluster.Servers consistent with what HAProxy reports, so Refresh()'s
+	// MAINT-correction logic (which exists to auto-heal externally-applied
+	// MAINT on a server repman still considers healthy) doesn't race the
+	// staging below and flip it back to ready before deletion completes. ---
+	slave.SetMaintenance()
+	if !haproxyWaitFor(10*time.Second, func() bool {
+		stat, err := haRuntime.ApiCmd("show stat")
+		if err != nil {
+			return false
+		}
+		status, ok := haproxyStatServerStatus(stat, readBackend, slave.Id)
+		return ok && status == "MAINT"
+	}) {
+		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL could not confirm %s/%s reached MAINT via repman's own maintenance API ahead of deletion", readBackend, slave.Id)
+		slave.DelMaintenance()
 		return false
 	}
+	// There's no production trigger for deleting an active cluster member's
+	// row (only reconcileReadBackendServers' removal path, which never
+	// touches servers still in cluster.Servers) — this is test-only
+	// staging, so it goes through the Runtime API directly.
 	if !haproxyWaitFor(20*time.Second, func() bool {
 		res, err := haRuntime.DelServer(readBackend, slave.Id)
 		return err == nil && strings.TrimSpace(res) == ""
 	}) {
 		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL could not delete %s/%s to stage the add-path test (it may still have active connections)", readBackend, slave.Id)
+		slave.DelMaintenance()
 		return false
 	}
 	logf("TEST", "haproxy-runtime-lifecycle: removed %s/%s directly via the Runtime API, waiting for the cluster's monitor loop to re-add it", readBackend, slave.Id)
+
+	// Clear maintenance so reconcileReadBackendServers' add branch (gated on
+	// !server.IsMaintenance) picks this server up as missing on its next
+	// Refresh() pass.
+	slave.DelMaintenance()
 
 	if !haproxyWaitFor(30*time.Second, func() bool {
 		stat, err := haRuntime.ApiCmd("show stat")

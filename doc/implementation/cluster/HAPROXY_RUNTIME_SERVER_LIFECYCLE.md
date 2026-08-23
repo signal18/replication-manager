@@ -169,30 +169,49 @@ add and remove paths against a cluster's real, live HAProxy proxy:
 
 - Picks the first replica currently `UP` in the read backend (not just
   `slaves[0]`, which may be one the backend intentionally excludes or
-  hasn't promoted), drains+deletes its entry, and polls until the cluster's
-  own monitor loop both re-adds it and promotes it back to `UP` — starting
-  from `UP` makes that assertion meaningful instead of a false failure on a
-  replica that was never expected to serve traffic.
+  hasn't promoted) — starting from `UP` makes the later "did it come back
+  UP" assertion meaningful instead of a false failure on a replica that was
+  never expected to serve traffic.
+- Marks that replica's maintenance through repman's own
+  `ServerMonitor.SetMaintenance()` / `DelMaintenance()`, not a raw Runtime
+  API `set server ... state maint` call. This is load-bearing, not
+  stylistic: a raw Runtime API call changes HAProxy's state without
+  touching `cluster.Servers`, and `Refresh()` has its own MAINT-correction
+  block (`!srv.IsMaintenance && line[17] == "MAINT"` → `SetReady`) that
+  exists precisely to auto-heal an externally-applied MAINT on a server
+  repman still considers healthy. Running that raw call was found in
+  practice to race this correction: repman flipped the row back to ready
+  mid-test, so the subsequent `DelServer` failed (still had traffic) with
+  the generic "may still have active connections" message masking the real
+  cause. Going through `SetMaintenance()`/`DelMaintenance()` keeps
+  `cluster.Servers` and HAProxy in agreement, so that correction block
+  never fires, and `reconcileReadBackendServers`'s own per-server loop also
+  skips a server with `IsMaintenance == true`, so production reconciliation
+  doesn't contend for the row either. Deleting the row itself still goes
+  through the Runtime API directly — there's no production trigger for
+  removing an active cluster member, only for one no longer in
+  `cluster.Servers`.
+- Clears maintenance and polls until the cluster's own monitor loop both
+  re-adds the row and promotes it back to `UP` — not merely present, which
+  would miss it stuck in MAINT/DRAIN.
 - Adds a synthetic unknown entry and polls for the same loop to drain and
   remove it.
-- On teardown, `restoreReadBackendServer` ensures the targeted replica's row
-  is usable again: on a passing run it's already `UP` (the monitor loop
-  promoted it during the add-path assertion above), which is left alone —
-  forcing an already-healthy `UP` row through `SetDrain` just to observe a
-  `DRAIN` state would actively degrade it. Repair only applies to states
-  this test's own calls could have produced: the row missing entirely,
-  stuck in `MAINT`, or `DRAIN` with an empty `check_status` (confirming
-  `EnableHealth` actually activated checks, not just that the command
-  returned no error). A present row in any other status — e.g. `DOWN` from
-  a real, unrelated failure during the test window — is left untouched and
-  reported as not restored rather than rewritten, since that state isn't
-  something this cleanup caused. Entirely through direct Runtime API calls:
-  it does not rely on the cluster's own monitor loop or on
-  `HaproxyAPIBootstrapServers` staying enabled, since that flag is restored
-  to its original (possibly `false`) value in the same deferred cleanup and
-  the monitor loop only self-heals while it's on. When repair is needed, it
-  retries `AddServer -> SetDrain -> EnableHealth` (skipping `AddServer` when
-  the row already exists, so a row stuck in `MAINT` is reconfigured in place
+- On teardown: if a failure path left maintenance set, clears it, then
+  waits (with `HaproxyAPIBootstrapServers` still enabled — restoring it to
+  a possibly `false` original value first would starve the very
+  reconciliation this wait depends on) for the row to reach `UP` through
+  the cluster's own monitor loop, the same mechanism production actually
+  uses. Only if that doesn't confirm within budget does it restore the
+  flag and fall back to `restoreReadBackendServer`, a self-contained
+  direct-Runtime-API repair that doesn't depend on the flag or monitor loop
+  at all. `restoreReadBackendServer` treats an already-`UP` row as done
+  (never forces it backward through `SetDrain`), repairs only states this
+  test's own calls could produce (missing, `MAINT`, or `DRAIN` without an
+  active `check_status` confirming `EnableHealth` truly took), and leaves
+  any other status (e.g. `DOWN` from an unrelated real failure) untouched
+  rather than rewriting state it didn't cause. It retries
+  `AddServer -> SetDrain -> EnableHealth` (skipping `AddServer` when the
+  row already exists, so a row stuck in `MAINT` is reconfigured in place
   rather than rejected as a duplicate), rolling back with `SetMaintenance` +
   `DelServer` and retrying from scratch if either post-add step fails, until
   fully confirmed or a 30s budget elapses. This is a bounded best-effort
