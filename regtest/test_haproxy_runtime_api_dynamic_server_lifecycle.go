@@ -30,15 +30,20 @@ import (
 // Both halves poll for the cluster's own background monitor loop to react
 // (this test never calls Refresh() itself):
 //
-//  1. Add path: marks maintenance on a replica (one currently UP, not just
-//     slaves[0]) through repman's own ServerMonitor.SetMaintenance() —
-//     not the raw Runtime API — so cluster.Servers stays consistent with
-//     what HAProxy reports; otherwise Refresh()'s own MAINT-correction
-//     logic sees an externally-applied MAINT on a server it still
-//     considers healthy and races it back to ready before this test's own
-//     deletion (via the Runtime API, since there's no production trigger
-//     for deleting an active member) can complete. Clears maintenance
-//     afterward and polls until the row reappears AND reaches UP — not
+//  1. Add path: marks maintenance on a replica (one currently UP with no
+//     current connections when available, not just slaves[0] — an actively
+//     busy replica may never drain within this test's bounded window
+//     through no fault of the feature) through repman's own
+//     ServerMonitor.SetMaintenance() — not the raw Runtime API — so
+//     cluster.Servers stays consistent with what HAProxy reports;
+//     otherwise Refresh()'s own MAINT-correction logic sees an
+//     externally-applied MAINT on a server it still considers healthy and
+//     races it back to ready before this test's own deletion (via the
+//     Runtime API, since there's no production trigger for deleting an
+//     active member — WaitSrvRemovable first when the HAProxy version
+//     supports it, mirroring production's own removal sequence) can
+//     complete. Clears maintenance afterward and polls until the row
+//     reappears AND reaches UP — not
 //     merely present, which would miss a row stuck in MAINT/DRAIN.
 //  2. Remove path: add a synthetic "ghost" server via the Runtime API, then
 //     poll until it's drained and removed.
@@ -94,18 +99,32 @@ func (regtest *RegTest) TestHaproxyRuntimeAPIDynamicServerLifecycle(cl *cluster.
 	// hasn't promoted (maintenance, DRAIN, DOWN, ignored); pick one that's
 	// currently UP so the later "did it come back UP" assertion reflects the
 	// lifecycle feature working, not a replica that was never expected to
-	// serve traffic in the first place.
+	// serve traffic in the first place. Among UP replicas, prefer one with
+	// zero current connections: DelServer (and, below 3.0, its own retry
+	// loop) requires the row to be idle, and an UP replica actively serving
+	// real traffic may never drain within this test's bounded window
+	// through no fault of the feature under test.
 	initialStat, err := haRuntime.ApiCmd("show stat")
 	if err != nil {
 		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL could not read read backend %s state: %s", readBackend, err)
 		return false
 	}
-	var slave *cluster.ServerMonitor
+	var slave, upBusySlave *cluster.ServerMonitor
 	for _, s := range slaves {
-		if status, ok := haproxyStatServerStatus(initialStat, readBackend, s.Id); ok && status == "UP" {
+		status, ok := haproxyStatServerStatus(initialStat, readBackend, s.Id)
+		if !ok || status != "UP" {
+			continue
+		}
+		if conns, ok := haproxyStatServerConnections(initialStat, readBackend, s.Id); ok && conns == "0" {
 			slave = s
 			break
 		}
+		if upBusySlave == nil {
+			upBusySlave = s
+		}
+	}
+	if slave == nil {
+		slave = upBusySlave
 	}
 	if slave == nil {
 		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL no replica is currently UP in read backend %s to test the add path against", readBackend)
@@ -172,7 +191,15 @@ func (regtest *RegTest) TestHaproxyRuntimeAPIDynamicServerLifecycle(cl *cluster.
 	// There's no production trigger for deleting an active cluster member's
 	// row (only reconcileReadBackendServers' removal path, which never
 	// touches servers still in cluster.Servers) — this is test-only
-	// staging, so it goes through the Runtime API directly.
+	// staging, so it goes through the Runtime API directly. Mirrors
+	// production's own removal sequence (removeReadBackendServer): wait for
+	// the row to become removable before deleting, on versions that support
+	// it, rather than only retrying DelServer blind.
+	if haVersion.GreaterEqual("3.0") {
+		if res, err := haRuntime.WaitSrvRemovable(readBackend, slave.Id, 15*time.Second); err != nil || strings.TrimSpace(res) != "" {
+			logf(config.LvlWarn, "TEST haproxy-runtime-lifecycle: %s/%s did not report removable within 15s, attempting delete anyway: err=%v res=%q", readBackend, slave.Id, err, res)
+		}
+	}
 	if !haproxyWaitFor(20*time.Second, func() bool {
 		res, err := haRuntime.DelServer(readBackend, slave.Id)
 		return err == nil && strings.TrimSpace(res) == ""
@@ -347,4 +374,25 @@ func haproxyStatServerStatus(statOutput, backend, svname string) (string, bool) 
 func haproxyStatHasServer(statOutput, backend, svname string) bool {
 	_, _, found := haproxyStatServerFields(statOutput, backend, svname)
 	return found
+}
+
+// haproxyStatServerConnections returns the current-connections field
+// (column 6 / index 5 — the same field prx_haproxy.go's Refresh() reports
+// as Backend.PrxConnections) of a "show stat" pxname/svname row, and
+// whether the row was found at all.
+func haproxyStatServerConnections(statOutput, backend, svname string) (string, bool) {
+	for _, line := range strings.Split(statOutput, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Split(line, ",")
+		if len(fields) < 6 {
+			continue
+		}
+		if strings.EqualFold(fields[0], backend) && fields[1] == svname {
+			return fields[5], true
+		}
+	}
+	return "", false
 }

@@ -167,11 +167,15 @@ covered indirectly via the cluster-level tests instead.
 also what populates the dashboard's regression-test dropdown) exercises the
 add and remove paths against a cluster's real, live HAProxy proxy:
 
-- Picks the first replica currently `UP` in the read backend (not just
-  `slaves[0]`, which may be one the backend intentionally excludes or
-  hasn't promoted) — starting from `UP` makes the later "did it come back
-  UP" assertion meaningful instead of a false failure on a replica that was
-  never expected to serve traffic.
+- Picks a replica currently `UP` in the read backend (not just `slaves[0]`,
+  which may be one the backend intentionally excludes or hasn't promoted)
+  — starting from `UP` makes the later "did it come back UP" assertion
+  meaningful instead of a false failure on a replica that was never
+  expected to serve traffic. Among `UP` replicas, prefers one with zero
+  current connections: `DelServer` requires the row to be idle, and a busy
+  replica actively serving real traffic may never drain within this test's
+  bounded window through no fault of the feature under test; falls back to
+  any `UP` replica if none are currently idle.
 - Marks that replica's maintenance through repman's own
   `ServerMonitor.SetMaintenance()` / `DelMaintenance()`, not a raw Runtime
   API `set server ... state maint` call. This is load-bearing, not
@@ -180,17 +184,20 @@ add and remove paths against a cluster's real, live HAProxy proxy:
   block (`!srv.IsMaintenance && line[17] == "MAINT"` → `SetReady`) that
   exists precisely to auto-heal an externally-applied MAINT on a server
   repman still considers healthy. Running that raw call was found in
-  practice to race this correction: repman flipped the row back to ready
-  mid-test, so the subsequent `DelServer` failed (still had traffic) with
-  the generic "may still have active connections" message masking the real
-  cause. Going through `SetMaintenance()`/`DelMaintenance()` keeps
-  `cluster.Servers` and HAProxy in agreement, so that correction block
-  never fires, and `reconcileReadBackendServers`'s own per-server loop also
-  skips a server with `IsMaintenance == true`, so production reconciliation
-  doesn't contend for the row either. Deleting the row itself still goes
-  through the Runtime API directly — there's no production trigger for
-  removing an active cluster member, only for one no longer in
-  `cluster.Servers`.
+  practice (against a real dev cluster) to race this correction: repman
+  flipped the row back to ready mid-test, so the subsequent `DelServer`
+  failed (still had traffic) with the generic "may still have active
+  connections" message masking the real cause. Going through
+  `SetMaintenance()`/`DelMaintenance()` keeps `cluster.Servers` and HAProxy
+  in agreement, so that correction block never fires, and
+  `reconcileReadBackendServers`'s own per-server loop also skips a server
+  with `IsMaintenance == true`, so production reconciliation doesn't
+  contend for the row either. Deleting the row itself still goes through
+  the Runtime API directly — there's no production trigger for removing an
+  active cluster member, only for one no longer in `cluster.Servers` — and
+  calls `WaitSrvRemovable` first when the HAProxy version supports it
+  (>= 3.0), mirroring production's own `removeReadBackendServer` sequence
+  rather than only retrying `DelServer` blind.
 - Clears maintenance and polls until the cluster's own monitor loop both
   re-adds the row and promotes it back to `UP` — not merely present, which
   would miss it stuck in MAINT/DRAIN.
