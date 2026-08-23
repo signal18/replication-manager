@@ -447,6 +447,7 @@ type Config struct {
 	HaproxyBinaryPath                         string                       `mapstructure:"haproxy-binary-path" toml:"haproxy-binary-path" json:"haproxyBinaryPath"`
 	HaproxyAPIReadBackend                     string                       `mapstructure:"haproxy-api-read-backend"  toml:"haproxy-api-read-backend" json:"haproxyAPIReadBackend"`
 	HaproxyAPIWriteBackend                    string                       `mapstructure:"haproxy-api-write-backend"  toml:"haproxy-api-write-backend" json:"haproxyAPIWriteBackend"`
+	HaproxyAPIBootstrapServers                bool                         `mapstructure:"haproxy-api-bootstrap-servers" toml:"haproxy-api-bootstrap-servers" json:"haproxyAPIBootstrapServers"`
 	HaproxyStagingPort                        string                       `mapstructure:"haproxy-staging-port"  toml:"haproxy-staging-port" json:"haproxyStagingPort"`
 	HaproxyStagingBind                        string                       `mapstructure:"haproxy-staging-bind" toml:"haproxy-staging-bind" json:"haproxyStagingBind"`
 	HaproxyStagingBackend                     string                       `mapstructure:"haproxy-staging-backend" toml:"haproxy-staging-backend" json:"haproxyStagingBackend"`

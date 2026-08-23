@@ -2733,6 +2733,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchProxysqlBootstrap()
 	case "proxysql":
 		mycluster.SwitchProxySQL()
+	case "haproxy-api-bootstrap-servers":
+		mycluster.SwitchHaproxyAPIBootstrapServers()
 	case "proxy-servers-read-on-master":
 		mycluster.SwitchProxyServersReadOnMaster()
 	case "proxy-servers-read-on-master-no-slave":
@@ -4416,6 +4418,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProxysqlBootstrapHG = applyIsActive(mycluster.Conf.ProxysqlBootstrapHG, isactive)
 	case "proxysql-bootstrap", "proxysql-bootstrap-servers":
 		mycluster.Conf.ProxysqlBootstrap = applyIsActive(mycluster.Conf.ProxysqlBootstrap, isactive)
+	case "haproxy-api-bootstrap-servers":
+		mycluster.Conf.HaproxyAPIBootstrapServers = applyIsActive(mycluster.Conf.HaproxyAPIBootstrapServers, isactive)
 	case "proxysql-bootstrap-query-rules":
 		mycluster.Conf.ProxysqlBootstrapQueryRules = applyIsActive(mycluster.Conf.ProxysqlBootstrapQueryRules, isactive)
 	case "proxysql":

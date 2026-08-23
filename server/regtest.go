@@ -284,6 +284,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped" {
 			res = regtest.TestDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testHaproxyRuntimeAPIDynamicServerLifecycle" {
+			res = regtest.TestHaproxyRuntimeAPIDynamicServerLifecycle(cl, test.ConfigFile, &test)
+		}
 
 		test.Result = regtest.GetTestResultLabel(res)
 		if testExp == "SUITE" {

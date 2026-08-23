@@ -1678,6 +1678,8 @@ definitions:
         type: string
       haproxy:
         type: boolean
+      haproxyAPIBootstrapServers:
+        type: boolean
       haproxyAPIPort:
         type: integer
       haproxyAPIReadBackend:
