@@ -17,6 +17,53 @@ import (
 	"github.com/signal18/replication-manager/utils/version"
 )
 
+// haproxyAddServerSuccessMsg / haproxyDelServerSuccessMsg /
+// haproxyWaitSrvRemovableSuccessMsg mirror the same-named unexported
+// constants in cluster/prx_haproxy.go: unlike every other admin Runtime API
+// command this file calls (SetMaintenance, SetDrain, EnableHealth), "add
+// server", "del server", and "wait ... srv-removable" all reply with a
+// non-empty confirmation text even on success — "New server registered.",
+// "Server deleted.", and "Done." respectively (verified by hand against
+// haproxy:3.0; a genuinely-not-removable "wait" reliably replies "Failed."
+// instead). This file's original pattern, "err == nil && res == \"\"",
+// shared with cluster/prx_haproxy.go's now-fixed haproxyCmdFailed,
+// misreports every successful call to these three commands as a failure.
+// For "del server" specifically this surfaced as this test failing to
+// stage its own delete ("could not delete ... it may still have active
+// connections") even though the row had already been removed, immediately
+// followed by an unrelated "No such server" error from the cluster's own
+// monitor loop trying to promote the now-gone row to ready from its last
+// pre-deletion snapshot.
+const (
+	haproxyAddServerSuccessMsg        = "New server registered."
+	haproxyDelServerSuccessMsg        = "Server deleted."
+	haproxyWaitSrvRemovableSuccessMsg = "Done."
+)
+
+// haproxyAddServerFailed/haproxyDelServerFailed/haproxyWaitSrvRemovableFailed
+// report whether an AddServer/DelServer/WaitSrvRemovable response indicates
+// a real failure — see the success-message constants above.
+func haproxyAddServerFailed(res string, err error) bool {
+	if err != nil {
+		return true
+	}
+	return !strings.HasPrefix(strings.TrimSpace(res), haproxyAddServerSuccessMsg)
+}
+
+func haproxyDelServerFailed(res string, err error) bool {
+	if err != nil {
+		return true
+	}
+	return !strings.HasPrefix(strings.TrimSpace(res), haproxyDelServerSuccessMsg)
+}
+
+func haproxyWaitSrvRemovableFailed(res string, err error) bool {
+	if err != nil {
+		return true
+	}
+	return !strings.HasPrefix(strings.TrimSpace(res), haproxyWaitSrvRemovableSuccessMsg)
+}
+
 // TestHaproxyRuntimeAPIDynamicServerLifecycle exercises issue #1724 Phase 1
 // (dynamic HAProxy read-backend server lifecycle) against the cluster's
 // real, live HAProxy proxy and process.
@@ -214,13 +261,13 @@ func (regtest *RegTest) TestHaproxyRuntimeAPIDynamicServerLifecycle(cl *cluster.
 	// the row to become removable before deleting, on versions that support
 	// it, rather than only retrying DelServer blind.
 	if haVersion.GreaterEqual("3.0") {
-		if res, err := haRuntime.WaitSrvRemovable(readBackend, slave.Id, 15*time.Second); err != nil || strings.TrimSpace(res) != "" {
+		if res, err := haRuntime.WaitSrvRemovable(readBackend, slave.Id, 15*time.Second); haproxyWaitSrvRemovableFailed(res, err) {
 			logf(config.LvlWarn, "TEST haproxy-runtime-lifecycle: %s/%s did not report removable within 15s, attempting delete anyway: err=%v res=%q", readBackend, slave.Id, err, res)
 		}
 	}
 	if !haproxyWaitFor(20*time.Second, func() bool {
 		res, err := haRuntime.DelServer(readBackend, slave.Id)
-		return err == nil && strings.TrimSpace(res) == ""
+		return !haproxyDelServerFailed(res, err)
 	}) {
 		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL could not delete %s/%s to stage the add-path test (it may still have active connections)", readBackend, slave.Id)
 		slave.DelMaintenance()
@@ -254,7 +301,7 @@ func (regtest *RegTest) TestHaproxyRuntimeAPIDynamicServerLifecycle(cl *cluster.
 	// --- Remove path: add a synthetic entry the cluster doesn't know
 	// about, then wait for the monitor loop to drain and remove it. ---
 	ghostName := "regtest_ghost_" + strconv.FormatInt(time.Now().Unix(), 10)
-	if res, err := haRuntime.AddServer(readBackend, ghostName, "127.0.0.1", "1", "check"); err != nil || strings.TrimSpace(res) != "" {
+	if res, err := haRuntime.AddServer(readBackend, ghostName, "127.0.0.1", "1", "check"); haproxyAddServerFailed(res, err) {
 		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL could not add synthetic ghost server %s/%s: err=%v res=%q", readBackend, ghostName, err, res)
 		return false
 	}
@@ -319,7 +366,7 @@ func restoreReadBackendServer(haRuntime haproxy.Runtime, pool, svname, host, por
 		}
 
 		if !present {
-			if res, err := haRuntime.AddServer(pool, svname, host, port, "check"); err != nil || strings.TrimSpace(res) != "" {
+			if res, err := haRuntime.AddServer(pool, svname, host, port, "check"); haproxyAddServerFailed(res, err) {
 				logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: cleanup could not re-add %s/%s, retrying: err=%v res=%q", pool, svname, err, res)
 				time.Sleep(1 * time.Second)
 				continue

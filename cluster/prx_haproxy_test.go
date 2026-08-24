@@ -1041,6 +1041,139 @@ func TestHaproxyReconcileRemovesStaleServer(t *testing.T) {
 	}
 }
 
+// TestHaproxyReconcileDelServerSuccessResponseNotMisreported pins a second
+// real bug found running this branch live against HAProxy 3.0, the DelServer
+// counterpart to TestHaproxyReconcileAddServerSuccessResponseCompletesSequence:
+// "del server" also replies with a non-empty confirmation on success
+// ("Server deleted.") unlike SetMaintenance/WaitSrvRemovable/SetDrain/
+// EnableHealth. Routing that response through the generic haproxyCmdFailed
+// misreported every successful stale-server removal as a failure ("HAProxy
+// could not remove server ...: Server deleted.") even though the server was
+// actually gone — confusing, and would have kept a removed-but-not-yet-
+// reconciled svname eligible for another (also misreported) attempt next
+// pass instead of just disappearing from "show stat" as it should.
+// startFakeHaproxy's default empty-body response happens to be correct for
+// SetMaintenance/WaitSrvRemovable, which is why this needs its own fake
+// server using the real HAProxy text, same as the AddServer test above.
+func TestHaproxyReconcileDelServerSuccessResponseNotMisreported(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case strings.HasPrefix(cmd, "del server"):
+					// The real HAProxy Runtime API success text (verified
+					// by hand against haproxy:3.0) — non-empty despite
+					// success.
+					c.Write([]byte("Server deleted.\n\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	mu.Lock()
+	gotCommands := append([]string(nil), commands...)
+	mu.Unlock()
+
+	wantDel := "del server service_read/decommissioned1"
+	if cmdIndex(gotCommands, wantDel) < 0 {
+		t.Errorf("Refresh() commands = %v, want to contain %q", gotCommands, wantDel)
+	}
+
+	// The bug's symptom was a misleading error log on genuine success, not a
+	// functional retry loop, so assert on the thing that actually matters:
+	// this svname must not be marked non-purgeable (that's reserved for
+	// haproxyNonPurgeableServerMsg specifically — "Server deleted." isn't
+	// that message, and misreading a plain success as any kind of failure
+	// here would be its own bug).
+	if proxy.isNonPurgeableReadServer("decommissioned1") {
+		t.Errorf("decommissioned1 marked non-purgeable after a successful delete response, want not marked")
+	}
+}
+
+// TestHaproxySetStateLogLevelDowngradesNoSuchServer pins a fourth real
+// issue found running this branch live: setReadBackendMaintenance's
+// SetReady call raced ServerMonitor.DelMaintenance() (called synchronously,
+// independent of the monitor loop's own tick) against the read-backend row
+// actually being deleted moments earlier — genuinely absent, not a
+// misreported success like the Add/Del/WaitSrvRemovable cases above — and
+// HAProxy correctly replied "No such server." That's an expected,
+// self-correcting race (nothing to set ready on; the next Refresh() pass
+// reconciles it either way), not an operational problem, but it was logged
+// at LvlErr — indistinguishable from a real failure to anyone reading the
+// log, which is exactly what prompted this downgrade.
+func TestHaproxySetStateLogLevelDowngradesNoSuchServer(t *testing.T) {
+	if got := haproxySetStateLogLevel("No such server.\n\n"); got != config.LvlDbg {
+		t.Errorf("haproxySetStateLogLevel(%q) = %q, want %q", "No such server.\n\n", got, config.LvlDbg)
+	}
+	if got := haproxySetStateLogLevel("Failed.\n\n"); got != config.LvlErr {
+		t.Errorf("haproxySetStateLogLevel(%q) = %q, want %q (a real failure must still alarm)", "Failed.\n\n", got, config.LvlErr)
+	}
+}
+
 // TestHaproxyReconcileRemovesStaleServerWithoutWaitBelowVersion3 covers the
 // removal fallback below HAProxy 3.0, where "wait srv-removable" doesn't
 // exist: removal must skip straight from drain to DelServer.
@@ -2194,6 +2327,135 @@ func TestHaproxyReconcileAddServerErrorResponseStopsEnable(t *testing.T) {
 	}
 	if cmdIndex(gotCommands, "enable health service_read/slave1") >= 0 {
 		t.Errorf("Refresh() commands = %v, want no enable health after a failed add server", gotCommands)
+	}
+}
+
+// TestHaproxyReconcileAddServerSuccessResponseCompletesSequence pins the fix
+// for a real bug found running this branch against a live HAProxy 3.0
+// container: "add server" replies with a non-empty confirmation on success
+// ("New server registered.") unlike every other admin command reconciled
+// here, which reply with an empty body. Routing that response through the
+// generic haproxyCmdFailed (any non-empty body = error) misclassified every
+// successful add as a failure — SetDrain/EnableHealth
+// (completeOrRollbackPendingAdd) never ran, so the newly added server sat
+// in HAProxy fully live (not MAINT/DRAIN) with health checks permanently
+// disabled ("no check" in "show stat"), while repman itself kept retrying
+// "add server" every pass and logging "Already exists a server with the
+// same name in backend." forever. startFakeHaproxy's default empty-body
+// response for every non-"show stat" command happens to be correct for
+// every other command, which is why no earlier test caught this — this one
+// uses the real HAProxy success text instead.
+func TestHaproxyReconcileAddServerSuccessResponseCompletesSequence(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case strings.HasPrefix(cmd, "add server"):
+					// The real HAProxy Runtime API success text (verified by
+					// hand against haproxy:3.0) — non-empty despite success.
+					c.Write([]byte("New server registered.\n\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	mu.Lock()
+	gotCommands := append([]string(nil), commands...)
+	mu.Unlock()
+
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check"
+	wantDrain := "set server service_read/slave1 state drain"
+	wantHealth := "enable health service_read/slave1"
+	for _, want := range []string{wantAdd, wantDrain, wantHealth} {
+		if cmdIndex(gotCommands, want) < 0 {
+			t.Errorf("Refresh() commands = %v, want to contain %q (add succeeded, sequence must complete)", gotCommands, want)
+		}
+	}
+
+	// The bug retried "add server" every pass because it never recognized
+	// success; confirm this single Refresh() pass issues it only once.
+	addCount := 0
+	for _, c := range gotCommands {
+		if c == wantAdd {
+			addCount++
+		}
+	}
+	if addCount != 1 {
+		t.Errorf("Refresh() issued %q %d times, want exactly once", wantAdd, addCount)
+	}
+
+	if proxy.isPendingReadServer("slave1") {
+		t.Errorf("slave1 still marked pending after a successful add+drain+enable-health sequence")
 	}
 }
 

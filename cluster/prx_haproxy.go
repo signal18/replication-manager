@@ -96,6 +96,49 @@ func (proxy *HaproxyProxy) isPendingReadServer(svname string) bool {
 // crash or incorrect behavior.
 const haproxyNonPurgeableServerMsg = "other configuration elements pointing to it"
 
+// haproxyNoSuchServerMsg is HAProxy's response when a Runtime API command
+// targets a read-backend svname that doesn't currently exist. Seen live on
+// setReadBackendMaintenance's SetReady call: ServerMonitor.DelMaintenance()
+// synchronously notifies every proxy via SetMaintenance (this file's
+// interface implementation), independent of the monitor loop's own
+// Refresh() tick — svname there comes from GetReadBackendDetail, a snapshot
+// as fresh as the last completed Refresh() but no fresher. If the row was
+// removed (by reconcileReadBackendServers' own stale-entry cleanup, an
+// operator, or — as in the regtest — a direct Runtime API delete) after
+// that snapshot was taken but before this call runs, HAProxy correctly
+// reports "No such server." — logSetStateIfFailed treats this as
+// LvlDbg rather than LvlErr: there being nothing to promote to ready/maint
+// is not an operational problem worth alarming over, and the next
+// Refresh() pass reconciles the row's existence (or lack of it) fully
+// regardless.
+const haproxyNoSuchServerMsg = "No such server."
+
+// logSetStateIfFailed is haproxyCmdFailed's logging counterpart for the
+// simple "set server ... state maint/ready" calls in
+// setReadBackendMaintenance: the command genuinely does reply empty on
+// success (unlike AddServer/DelServer/WaitSrvRemovable — see those
+// constants above), so haproxyCmdFailed's rule is correct here; the only
+// adjustment needed is the log level for haproxyNoSuchServerMsg specifically.
+func logSetStateIfFailed(cluster *Cluster, action string, res string, err error) bool {
+	msg, failed := haproxyCmdFailed(err, res)
+	if !failed {
+		return false
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, haproxySetStateLogLevel(msg), "HAProxy %s: %s", action, msg)
+	return true
+}
+
+// haproxySetStateLogLevel picks the log severity for a failed "set server
+// ... state maint/ready" call: LvlDbg for haproxyNoSuchServerMsg (see its
+// doc comment — this is an expected, self-correcting race, not an
+// operational problem), LvlErr for anything else.
+func haproxySetStateLogLevel(msg string) string {
+	if strings.Contains(msg, haproxyNoSuchServerMsg) {
+		return config.LvlDbg
+	}
+	return config.LvlErr
+}
+
 func (proxy *HaproxyProxy) markNonPurgeableReadServer(svname string) {
 	proxy.Lock.Lock()
 	defer proxy.Lock.Unlock()
@@ -736,6 +779,9 @@ const haproxySrvRemovableWait = 2 * time.Second
 // HAProxy's admin-level server commands return no output on success; any
 // non-empty response body is an error message even though the TCP round
 // trip itself succeeded (err == nil), so callers must check both.
+//
+// This holds for every mutation command in this file EXCEPT "add server" —
+// see addServerFailed, which has its own success text to check instead.
 func haproxyCmdFailed(err error, res string) (string, bool) {
 	if err != nil {
 		return err.Error(), true
@@ -744,6 +790,103 @@ func haproxyCmdFailed(err error, res string) (string, bool) {
 		return msg, true
 	}
 	return "", false
+}
+
+// haproxyAddServerSuccessMsg is the confirmation text HAProxy's Runtime API
+// replies with when "add server" succeeds — unlike every other admin server
+// command in this file (SetMaintenance, SetDrain, EnableHealth, DelServer,
+// WaitSrvRemovable, SetServerAddr/FQDN), which reply with an empty body on
+// success, making haproxyCmdFailed's "any non-empty response is an error"
+// rule wrong for this one command. Verified by hand against a real HAProxy
+// 3.0 Runtime API socket (`add server service_read/x 1.2.3.4:3306 check` ->
+// "New server registered.\n\n"); routing AddServer's response through
+// haproxyCmdFailed instead misclassified every successful add as a failure,
+// which meant SetDrain/EnableHealth (completeOrRollbackPendingAdd) never
+// ran for it — a server added this way went live in the read backend with
+// health checks never enabled, not the drain-then-eligibility-checked path
+// the rest of this file's add sequence is designed around. No fake-server
+// unit test caught this because startFakeHaproxy replies to every command
+// other than "show stat" with an empty body, which happens to be correct
+// for every command except this one; see
+// TestHaproxyReconcileAddServerSuccessResponseCompletesSequence, which uses
+// a custom fake server that replies with the real HAProxy text instead.
+const haproxyAddServerSuccessMsg = "New server registered."
+
+// addServerFailed is haproxyCmdFailed's counterpart for "add server" calls
+// specifically — see haproxyAddServerSuccessMsg for why it can't share
+// haproxyCmdFailed's empty-body-means-success rule.
+func addServerFailed(err error, res string) (string, bool) {
+	if err != nil {
+		return err.Error(), true
+	}
+	if strings.HasPrefix(strings.TrimSpace(res), haproxyAddServerSuccessMsg) {
+		return "", false
+	}
+	return haproxyCmdFailed(err, res)
+}
+
+// haproxyDelServerSuccessMsg is "del server"'s success confirmation text —
+// the same non-empty-on-success oddity as haproxyAddServerSuccessMsg, and
+// just as easy to miss: found live, against this same haproxy-fr container,
+// when reconcileReadBackendServers's own DelServer call (verified by hand:
+// `del server service_read/x` -> "Server deleted.\n\n") kept getting logged
+// as a failure ("HAProxy could not remove server ...: Server deleted.")
+// even though the removal had genuinely succeeded. A stale/decommissioned
+// entry that's actually gone doesn't reappear next pass regardless (its row
+// is simply absent from the next "show stat"), so this didn't block
+// anything — but it did produce a confusing, wrong error log for every
+// single successful removal, and would have gone on to poison
+// isNonPurgeableReadServer's next-attempt tracking (a call that "fails"
+// with the empty-body check leaves the svname eligible for another attempt
+// next pass, generating the same false error indefinitely) had a real
+// stale entry ever been reconciled with this bug still in place.
+const haproxyDelServerSuccessMsg = "Server deleted."
+
+// delServerFailed is haproxyCmdFailed's counterpart for "del server" calls —
+// see haproxyDelServerSuccessMsg for why it can't share haproxyCmdFailed's
+// empty-body-means-success rule. Note this only covers the DelServer call
+// itself: SetMaintenance/WaitSrvRemovable/SetDrain/EnableHealth in the same
+// removal sequence really do reply empty on success, so they keep using
+// haproxyCmdFailed via logIfFailed.
+func delServerFailed(err error, res string) (string, bool) {
+	if err != nil {
+		return err.Error(), true
+	}
+	if strings.HasPrefix(strings.TrimSpace(res), haproxyDelServerSuccessMsg) {
+		return "", false
+	}
+	return haproxyCmdFailed(err, res)
+}
+
+// haproxyWaitSrvRemovableSuccessMsg is "wait ... srv-removable"'s success
+// text — a third instance of the same non-empty-on-success pattern as
+// haproxyAddServerSuccessMsg/haproxyDelServerSuccessMsg, verified by hand
+// against haproxy:3.0: draining a server (state drain, not maint) and
+// waiting reliably replies "Failed.\n\n" (genuinely not removable — DRAIN
+// alone isn't enough, only MAINT is), while putting it in maint first
+// reliably replies "Done.\n\n" before the timeout. Both are non-empty, so
+// routing either through haproxyCmdFailed reports 100% of calls as
+// failures — including every real success — which is far worse than the
+// AddServer/DelServer cases: this specific misreport ("HAProxy server X did
+// not become removable: Done.") looks exactly like a genuine, worrying
+// failure to anyone reading the log, when the server did in fact become
+// removable exactly as expected.
+const haproxyWaitSrvRemovableSuccessMsg = "Done."
+
+// waitSrvRemovableFailed is haproxyCmdFailed's counterpart for "wait ...
+// srv-removable" — see haproxyWaitSrvRemovableSuccessMsg. Unlike
+// addServerFailed/delServerFailed, a "false" result here (genuinely not yet
+// removable, e.g. "Failed.\n\n") isn't a bug to fix around: DelServer is
+// attempted right after regardless, and simply fails/retries next pass if
+// the server truly isn't idle yet.
+func waitSrvRemovableFailed(err error, res string) (string, bool) {
+	if err != nil {
+		return err.Error(), true
+	}
+	if strings.HasPrefix(strings.TrimSpace(res), haproxyWaitSrvRemovableSuccessMsg) {
+		return "", false
+	}
+	return haproxyCmdFailed(err, res)
 }
 
 // reconcileReadBackendServers brings the HAProxy read backend's runtime
@@ -798,8 +941,20 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 	// logIfFailed runs a Runtime API call and logs+reports whether it
 	// failed, either at the transport level or via a non-empty response
 	// body (HAProxy's admin server commands return no output on success).
+	// Do not use this for AddServer's response — see logAddServerIfFailed.
 	logIfFailed := func(action string, res string, err error) bool {
 		msg, failed := haproxyCmdFailed(err, res)
+		if failed {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy %s: %s", action, msg)
+		}
+		return failed
+	}
+
+	// logAddServerIfFailed is logIfFailed's counterpart for "add server"
+	// calls, which reply with a non-empty confirmation on success unlike
+	// every other command here — see haproxyAddServerSuccessMsg.
+	logAddServerIfFailed := func(action string, res string, err error) bool {
+		msg, failed := addServerFailed(err, res)
 		if failed {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy %s: %s", action, msg)
 		}
@@ -826,7 +981,7 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy adding server %s to read backend %s via Runtime API", server.URL, pool)
 
 			res, err := haRuntime.AddServer(pool, server.Id, server.Host, server.Port, "check")
-			if logIfFailed(fmt.Sprintf("could not add server %s to read backend %s", server.URL, pool), res, err) {
+			if logAddServerIfFailed(fmt.Sprintf("could not add server %s to read backend %s", server.URL, pool), res, err) {
 				continue
 			}
 
@@ -1021,14 +1176,20 @@ func (proxy *HaproxyProxy) removeReadBackendServer(haRuntime haproxy.Runtime, po
 	// 2.6/2.8, verified). Below that, skip straight to DelServer.
 	if proxy.supportsWaitRemovable() {
 		res, err = haRuntime.WaitSrvRemovable(pool, svname, haproxySrvRemovableWait)
-		logIfFailed(fmt.Sprintf("server %s in backend %s did not become removable", svname, pool), res, err)
+		if msg, failed := waitSrvRemovableFailed(err, res); failed {
+			proxy.ClusterGroup.LogModulePrintf(proxy.ClusterGroup.Conf.Verbose, config.ConstLogModHAProxy, config.LvlWarn, "HAProxy server %s in backend %s did not become removable: %s", svname, pool, msg)
+		}
 	}
 
 	res, err = haRuntime.DelServer(pool, svname)
 	if strings.Contains(res, haproxyNonPurgeableServerMsg) {
 		proxy.markNonPurgeableReadServer(svname)
 	}
-	return !logIfFailed(fmt.Sprintf("could not remove server %s from backend %s", svname, pool), res, err)
+	msg, failed := delServerFailed(err, res)
+	if failed {
+		proxy.ClusterGroup.LogModulePrintf(proxy.ClusterGroup.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy could not remove server %s from backend %s: %s", svname, pool, msg)
+	}
+	return !failed
 }
 
 func (cluster *Cluster) setMaintenanceHaproxy(pr *Proxy, server *ServerMonitor) {
@@ -1084,9 +1245,8 @@ func (proxy *HaproxyProxy) setReadBackendMaintenance(server *ServerMonitor) bool
 	if server.IsMaintenance {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy set server %s/%s state maint ", server.Id, cluster.Conf.HaproxyAPIReadBackend)
 		res, err := haRuntime.SetMaintenance(svname, cluster.Conf.HaproxyAPIReadBackend)
-		if msg, failed := haproxyCmdFailed(err, res); failed {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy can not set maintenance %s backend %s : %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, msg)
-		} else {
+		action := fmt.Sprintf("can not set maintenance %s backend %s", server.URL, cluster.Conf.HaproxyAPIReadBackend)
+		if !logSetStateIfFailed(cluster, action, res, err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "HAProxy set maintenance %s backend %s result: %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, res)
 			readBackendOK = true
 		}
@@ -1095,9 +1255,8 @@ func (proxy *HaproxyProxy) setReadBackendMaintenance(server *ServerMonitor) bool
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy set server %s/%s state ready ", server.Id, cluster.Conf.HaproxyAPIReadBackend)
 		res, err := haRuntime.SetReady(svname, cluster.Conf.HaproxyAPIReadBackend)
-		if msg, failed := haproxyCmdFailed(err, res); failed {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy can not set ready %s backend %s : %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, msg)
-		} else {
+		action := fmt.Sprintf("can not set ready %s backend %s", server.URL, cluster.Conf.HaproxyAPIReadBackend)
+		if !logSetStateIfFailed(cluster, action, res, err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "HAProxy set ready %s backend %s result: %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, res)
 			readBackendOK = true
 		}
