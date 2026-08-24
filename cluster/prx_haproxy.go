@@ -474,6 +474,16 @@ func (proxy *HaproxyProxy) Refresh() error {
 					PrxByteIn:      line[8],
 					PrxByteOut:     line[9],
 					PrxLatency:     line[61], //ttime: average session time in ms over the 1024 last requests
+					// PrxHostgroup is ProxySQL-shaped (a hostgroup id), but the
+					// dashboard's Proxies table already renders it generically
+					// as "ID Group" — HAProxy has no hostgroup concept, so this
+					// reuses that column for the backend/pool name instead of
+					// leaving it blank. line[0] (pxname), not
+					// cluster.Conf.HaproxyAPIWriteBackend: every other field
+					// here comes straight from this stat row, and the match
+					// above is case-insensitive (EqualFold), so the live value
+					// isn't even guaranteed to be byte-identical to config.
+					PrxHostgroup: line[0],
 				}
 
 				if bkw.PrxName != "" {
@@ -554,6 +564,10 @@ func (proxy *HaproxyProxy) Refresh() error {
 					PrxByteIn:      line[8],
 					PrxByteOut:     line[9],
 					PrxLatency:     line[61],
+					// See the write-backend Backend{} above for why this reuses
+					// PrxHostgroup for the pool name, and why it's line[0]
+					// rather than cluster.Conf.HaproxyAPIReadBackend.
+					PrxHostgroup: line[0],
 				}
 
 				proxy.BackendsRead = append(proxy.BackendsRead, bkr)
