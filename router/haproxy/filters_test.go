@@ -18,6 +18,7 @@ const (
 )
 
 func TestFilters_ParseFilter(t *testing.T) {
+	requireFixtures(t)
 
 	fakeRoute := "my_route"
 
@@ -73,7 +74,7 @@ func TestFilters_ParseFilterCondition(t *testing.T) {
 
 	for i, condition := range tests {
 		if result, negate := parseFilterCondition(condition.Input); result != condition.ExpectedString || negate != condition.ExpectedNegate {
-			t.Errorf("Failed to correctly parse filter condition %d. Got %s but expected %s with negate %s", (i + 1), result, condition.ExpectedString, condition.ExpectedNegate)
+			t.Errorf("Failed to correctly parse filter condition %d. Got %s but expected %s with negate %v", (i + 1), result, condition.ExpectedString, condition.ExpectedNegate)
 		}
 	}
 }
