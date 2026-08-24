@@ -29,18 +29,23 @@ func auditMsg(ts, operation, sql string) s18log.HttpMessage {
 	}
 }
 
+// parseLogTimestamp treats zone-less strings as UTC (matching how MariaDB
+// prints them by default), so these helpers must format in UTC too —
+// formatting in local time would make the tests fail (or pass by accident)
+// depending on the machine's timezone offset from UTC.
+
 func recentAuditTS() string {
-	return time.Now().Add(-10 * time.Minute).Format("2006-01-02 15:04:05")
+	return time.Now().UTC().Add(-10 * time.Minute).Format("2006-01-02 15:04:05")
 }
 
 func baselineAuditTS() string {
 	// Within the baseline window (between 1h and 24h ago)
-	return time.Now().Add(-6 * time.Hour).Format("2006-01-02 15:04:05")
+	return time.Now().UTC().Add(-6 * time.Hour).Format("2006-01-02 15:04:05")
 }
 
 func oldAuditTS() string {
 	// Outside both windows
-	return time.Now().Add(-48 * time.Hour).Format("2006-01-02 15:04:05")
+	return time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02 15:04:05")
 }
 
 // ---- parseAuditEntry --------------------------------------------------------
