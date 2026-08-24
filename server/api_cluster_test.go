@@ -211,6 +211,65 @@ func TestSetClusterSetting_GraphiteMetricsQueueLimit_IndependentPerCluster(t *te
 	}
 }
 
+// TestSwitchClusterSetting_HaproxyAPIBootstrapServers and
+// TestSetClusterSetting_HaproxyAPIBootstrapServers guard the two independent
+// dispatch tables the "haproxy-api-bootstrap-servers" setting must be
+// registered in: switchClusterSettings (the flip-only
+// .../settings/actions/switch/{settingName} route) and setClusterSetting
+// (the explicit-state .../settings/actions/switch/{settingName}/{on|off}
+// route). A review pass found the setting present in the former but missing
+// from the latter — the flip route worked while the explicit on/off route
+// would have returned "Setting Not Found" / "Setting not found" errors.
+// These two tests exercise the real dispatchers (not the underlying
+// Cluster.SwitchHaproxyAPIBootstrapServers()/config field directly), the
+// same way TestSetClusterSetting_GraphiteMetricsQueueLimit guards
+// graphite-metrics-queue-limit above.
+func TestSwitchClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.HaproxyAPIBootstrapServers = false
+
+	if err := repman.switchClusterSettings(cl, "haproxy-api-bootstrap-servers"); err != nil {
+		t.Fatalf("switchClusterSettings(haproxy-api-bootstrap-servers): unexpected error: %v", err)
+	}
+	if !cl.Conf.HaproxyAPIBootstrapServers {
+		t.Fatalf("expected HaproxyAPIBootstrapServers=true after first switch, got false")
+	}
+
+	if err := repman.switchClusterSettings(cl, "haproxy-api-bootstrap-servers"); err != nil {
+		t.Fatalf("switchClusterSettings(haproxy-api-bootstrap-servers) second call: unexpected error: %v", err)
+	}
+	if cl.Conf.HaproxyAPIBootstrapServers {
+		t.Fatalf("expected HaproxyAPIBootstrapServers=false after second switch, got true")
+	}
+}
+
+func TestSetClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.HaproxyAPIBootstrapServers = false
+
+	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "on"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "on"): unexpected error: %v`, err)
+	}
+	if !cl.Conf.HaproxyAPIBootstrapServers {
+		t.Fatalf("expected HaproxyAPIBootstrapServers=true after explicit \"on\", got false")
+	}
+
+	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "off"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "off"): unexpected error: %v`, err)
+	}
+	if cl.Conf.HaproxyAPIBootstrapServers {
+		t.Fatalf("expected HaproxyAPIBootstrapServers=false after explicit \"off\", got true")
+	}
+}
+
 func TestNormalizeCompressionOverride(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -24453,6 +24453,9 @@ const docTemplate = `{
                 "haproxy": {
                     "type": "boolean"
                 },
+                "haproxyAPIBootstrapServers": {
+                    "type": "boolean"
+                },
                 "haproxyAPIPort": {
                     "type": "integer"
                 },

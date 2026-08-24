@@ -14504,6 +14504,7 @@ Status: Internal Server Error
 | graphiteWhitelist | boolean| `bool` |  | |  |  |
 | graphiteWhitelistTemplate | string| `string` |  | |  |  |
 | haproxy | boolean| `bool` |  | |  |  |
+| haproxyAPIBootstrapServers | boolean| `bool` |  | |  |  |
 | haproxyAPIPort | integer| `int64` |  | |  |  |
 | haproxyAPIReadBackend | string| `string` |  | |  |  |
 | haproxyAPIWriteBackend | string| `string` |  | |  |  |

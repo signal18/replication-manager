@@ -100,6 +100,7 @@ var tests = []string{
 	"testDirectReseedSystemAllRetainsArtifactOnPhaseTwoFailure",
 	"testDirectReseedSystemAllSplitUserSingleAuthority",
 	"testDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped",
+	"testHaproxyRuntimeAPIDynamicServerLifecycle",
 }
 
 const recoverTime = 8

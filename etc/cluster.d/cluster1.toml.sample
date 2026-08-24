@@ -368,6 +368,10 @@ replication-credential = "root:mariadb"
 
 # haproxy-api-read-backend = "service_read"
 # haproxy-api-write-backend = "service_write"
+## Add/remove cluster servers in the read backend at runtime via the Runtime
+## API instead of requiring a reload (requires haproxy-mode = "runtimeapi"
+## and HAProxy >= 2.6)
+# haproxy-api-bootstrap-servers = false
 # haproxy-debug = true
 # haproxy-ip-read-bind = "0.0.0.0"
 # haproxy-ip-write-bind = "0.0.0.0"
@@ -376,6 +380,9 @@ replication-credential = "root:mariadb"
 # haproxy-stat-port = 1988
 # haproxy-user = "admin"
 
+# Note: this default image is HAProxy 2.4, below the >= 2.6 that
+# haproxy-api-bootstrap-servers above requires — bump the tag if you enable
+# that setting, otherwise it stays silently inactive on this image.
 # prov-proxy-docker-haproxy-img = "haproxytech/haproxy-alpine:2.4"
 # slapos-haproxy-partitions = ""
 
