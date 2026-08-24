@@ -119,21 +119,51 @@ const haproxyNoSuchServerMsg = "No such server."
 // success (unlike AddServer/DelServer/WaitSrvRemovable — see those
 // constants above), so haproxyCmdFailed's rule is correct here; the only
 // adjustment needed is the log level for haproxyNoSuchServerMsg specifically.
-func logSetStateIfFailed(cluster *Cluster, action string, res string, err error) bool {
+func logSetStateIfFailed(proxy *HaproxyProxy, action string, res string, err error) bool {
+	cluster := proxy.ClusterGroup
 	msg, failed := haproxyCmdFailed(err, res)
 	if !failed {
 		return false
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, haproxySetStateLogLevel(msg), "HAProxy %s: %s", action, msg)
+	level := haproxySetStateLogLevel(msg, proxy.reconcileReadBackendServersActive())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, level, "HAProxy %s: %s", action, msg)
 	return true
+}
+
+// reconcileReadBackendServersActive reports whether reconcileReadBackendServers
+// is actually reconciling missing members right now — mirrors every
+// condition that function itself checks before attempting an add, not just
+// cluster.Conf.HaproxyAPIBootstrapServers: the version/mode gate at its top
+// (unsupported HAProxy version, or haproxy-mode != "runtimeapi", and it
+// no-ops entirely) and skipAddingMembers (proxy.HasDNS(), and the add
+// branch specifically is skipped even though removal still runs). All
+// four must hold for a missing/renamed read-backend row to actually get
+// re-added on the next pass — see haproxySetStateLogLevel, the reason this
+// exists.
+func (proxy *HaproxyProxy) reconcileReadBackendServersActive() bool {
+	cluster := proxy.ClusterGroup
+	return cluster.Conf.HaproxyAPIBootstrapServers &&
+		proxy.supportsDynamicServers() &&
+		cluster.Conf.HaproxyMode == "runtimeapi" &&
+		!proxy.HasDNS()
 }
 
 // haproxySetStateLogLevel picks the log severity for a failed "set server
 // ... state maint/ready" call: LvlDbg for haproxyNoSuchServerMsg (see its
 // doc comment — this is an expected, self-correcting race, not an
-// operational problem), LvlErr for anything else.
-func haproxySetStateLogLevel(msg string) string {
-	if strings.Contains(msg, haproxyNoSuchServerMsg) {
+// operational problem) — but only when reconciliationActive is true (see
+// HaproxyProxy.reconcileReadBackendServersActive). The "self-correcting"
+// premise is that a missing/renamed row gets re-added on the next
+// Refresh() pass; without that actually happening — bootstrap-servers off
+// (the default), an unsupported HAProxy version, haproxy-mode !=
+// "runtimeapi", or a resolver-backed config where adds are intentionally
+// skipped — nothing corrects a persistent mismatch (wrong
+// haproxy-api-read-backend name, a hand-edited config, an svname that will
+// never exist), and downgrading that to LvlDbg would silently remove the
+// only error-visibility signal an operator in any of those cases had for
+// it. LvlErr in all other cases.
+func haproxySetStateLogLevel(msg string, reconciliationActive bool) string {
+	if reconciliationActive && strings.Contains(msg, haproxyNoSuchServerMsg) {
 		return config.LvlDbg
 	}
 	return config.LvlErr
@@ -426,6 +456,18 @@ func (proxy *HaproxyProxy) Refresh() error {
 	// reconcileReadBackendServers can detect a server that kept its repman
 	// Id but changed address (re-IP/re-provisioning).
 	readBackendAddrBySvname := make(map[string]string)
+	// readBackendStatusBySvname records the raw status column ("MAINT",
+	// "DRAIN", "UP", ...) HAProxy currently reports for each read-backend
+	// svname, so reconcileReadBackendServers can tell a stale svname it
+	// already knows is non-purgeable (isNonPurgeableReadServer) is ALSO
+	// already sitting in MAINT from this same "show stat" call — at zero
+	// extra Runtime API cost — and skip re-issuing SetMaintenance on it
+	// every single pass. Without this, a persistently non-purgeable stale
+	// entry (a real, ongoing condition — see WARN0209) got a redundant but
+	// full-cost SetMaintenance round trip every pass forever, scaling
+	// linearly with how many such entries exist and reintroducing the
+	// unbounded-pass-time risk haproxyReconcileBudget exists to prevent.
+	readBackendStatusBySvname := make(map[string]string)
 	for {
 		line, error := reader.Read()
 		if error == io.EOF {
@@ -522,6 +564,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 		if strings.EqualFold(line[0], cluster.Conf.HaproxyAPIReadBackend) {
 			if line[1] != "" {
 				readBackendSvnames[line[1]] = true
+				readBackendStatusBySvname[line[1]] = line[17]
 				if h, p, splitErr := net.SplitHostPort(line[73]); splitErr == nil {
 					// JoinHostPort re-brackets h for IPv6 (SplitHostPort
 					// returns it unbracketed) so this matches expectedAddr's
@@ -709,7 +752,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 
 	}
 
-	proxy.reconcileReadBackendServers(haRuntime, readBackendSvnames, readBackendAddrBySvname)
+	proxy.reconcileReadBackendServers(haRuntime, readBackendSvnames, readBackendAddrBySvname, readBackendStatusBySvname)
 
 	return nil
 }
@@ -788,6 +831,32 @@ func (proxy *HaproxyProxy) supportsWaitRemovable() bool {
 // haproxy.Runtime.WaitSrvRemovable) is set higher than this so we observe
 // the actual result rather than racing our own read timeout.
 const haproxySrvRemovableWait = 2 * time.Second
+
+// haproxyReconcileBudget bounds how long reconcileReadBackendServers spends
+// on non-safety-critical Runtime API work per Refresh() pass — AddServer,
+// the pending-add retry, and WaitSrvRemovable/DelServer inside
+// removeReadBackendServer — so a batch of missing/stale servers can't
+// stall the monitoring tick this runs inside of (cluster/prx.go's
+// wg.Wait()), violating DEVELOPMENT_LAWS.md's F2-F4 invariant.
+//
+// It deliberately does NOT bound two calls that are safety-critical for
+// correct traffic routing: SetMaintenance (draining a stale server not yet
+// confirmed MAINT) and SetServerAddr (correcting a changed address —
+// otherwise HAProxy keeps routing to the old one, possibly a reassigned,
+// unrelated host). Both always run regardless of budget; see the removal
+// loop and address-update branch below. So pass time isn't strictly capped
+// when many servers need first-time draining/correction at once — an
+// explicit tradeoff (traffic correctness over a hard ceiling), not an
+// oversight. The redundant-drain skip (confirmed-MAINT, already
+// non-purgeable) is what actually keeps the ongoing case bounded.
+//
+// Work this budget does cover, if not reached before the deadline, is
+// simply retried next pass — see deadlineHit and WARN0210.
+//
+// A var, not a const: TestHaproxyReconcileBudgetDefersExcessWork shrinks it
+// (save/restore) to exercise the deadline-exhaustion path without a real
+// multi-second sleep.
+var haproxyReconcileBudget = 10 * time.Second
 
 // haproxyCmdFailed reports whether a Runtime API mutation command failed.
 // HAProxy's admin-level server commands return no output on success; any
@@ -915,7 +984,11 @@ func waitSrvRemovableFailed(err error, res string) (string, bool) {
 // since those are exactly the stale entries that need removing).
 // addrBySvname is the raw host:port HAProxy has on file for each svname,
 // used to detect a server that changed address under the same Id.
-func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime, knownToHaproxy map[string]bool, addrBySvname map[string]string) {
+// statusBySvname is the raw status column ("MAINT", "DRAIN", "UP", ...)
+// HAProxy has on file for each svname this same pass, used to skip a
+// redundant SetMaintenance round trip for a svname already known
+// non-purgeable AND already confirmed drained — see removeReadBackendServer.
+func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime, knownToHaproxy map[string]bool, addrBySvname map[string]string, statusBySvname map[string]string) {
 	cluster := proxy.ClusterGroup
 	if !cluster.Conf.HaproxyAPIBootstrapServers || !proxy.supportsDynamicServers() {
 		return
@@ -975,12 +1048,32 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 		return failed
 	}
 
+	// Built as its own pass, before any Runtime API work below, so it's
+	// always complete for every cluster.Servers entry regardless of the
+	// budget check further down — the removal loop's "is this svname still
+	// a real cluster member" test depends on it covering all of them, not
+	// just however many the add loop reached before its deadline.
 	knownToCluster := make(map[string]bool, len(cluster.Servers))
 	for _, server := range cluster.Servers {
 		if server == nil {
 			continue
 		}
 		knownToCluster[server.Id] = true
+	}
+
+	// See haproxyReconcileBudget. Each loop gets its own deadline, not one
+	// shared between them — a shared deadline let a sustained add/update
+	// backlog (which always runs first) consume the whole budget every
+	// pass, starving the removal loop's safety-critical drain indefinitely.
+	// This fixes that starvation; it doesn't itself cap total pass time —
+	// see haproxyReconcileBudget's doc comment.
+	deadlineHit := false
+	addDeadline := time.Now().Add(haproxyReconcileBudget)
+
+	for _, server := range cluster.Servers {
+		if server == nil {
+			continue
+		}
 
 		if server.IsMaintenance {
 			continue
@@ -988,7 +1081,16 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 
 		if !knownToHaproxy[server.Id] {
 			if skipAddingMembers {
+				// Not gated on addDeadline: WARN0209's count must reflect
+				// every currently-skipped server regardless of budget, or
+				// it could under-report and resolve while still unadded.
 				skippedAdds++
+				continue
+			}
+			if time.Now().After(addDeadline) {
+				// Only the Runtime API call is gated; cheap accounting
+				// elsewhere in this loop still runs regardless.
+				deadlineHit = true
 				continue
 			}
 
@@ -1015,8 +1117,12 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 			// next pass sees it as a normal DRAIN entry and applies the
 			// same eligibility logic as any other server, once
 			// pendingReadServers is cleared below.
-			if proxy.completeOrRollbackPendingAdd(haRuntime, pool, server.URL, server.Id, logIfFailed) {
+			done, exceeded := proxy.completeOrRollbackPendingAdd(haRuntime, pool, server.URL, server.Id, addDeadline, logIfFailed)
+			if done {
 				proxy.unmarkPendingReadServer(server.Id)
+			}
+			if exceeded {
+				deadlineHit = true
 			}
 			continue
 		}
@@ -1027,8 +1133,16 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 		// removal; stays pending, and therefore out of service, until one
 		// succeeds.
 		if proxy.isPendingReadServer(server.Id) {
-			if proxy.completeOrRollbackPendingAdd(haRuntime, pool, server.URL, server.Id, logIfFailed) {
+			if time.Now().After(addDeadline) {
+				deadlineHit = true
+				continue
+			}
+			done, exceeded := proxy.completeOrRollbackPendingAdd(haRuntime, pool, server.URL, server.Id, addDeadline, logIfFailed)
+			if done {
 				proxy.unmarkPendingReadServer(server.Id)
+			}
+			if exceeded {
+				deadlineHit = true
 			}
 			continue
 		}
@@ -1050,6 +1164,10 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 			// this comparison isn't permanently mismatched for IPv6.
 			expectedAddr := net.JoinHostPort(misc.Unbracket(server.Host), server.Port)
 			if actualAddr, ok := addrBySvname[server.Id]; ok && actualAddr != "" && actualAddr != expectedAddr {
+				// Not deadline-gated, like SetMaintenance below: HAProxy
+				// keeps routing to actualAddr (possibly a reassigned,
+				// unrelated host) until this lands — see
+				// haproxyReconcileBudget's doc comment.
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy server %s address changed from %s to %s, updating backend %s via Runtime API", server.Id, actualAddr, expectedAddr, pool)
 				res, err := haRuntime.SetServerAddr(pool, server.Id, server.Host, server.Port)
 				logIfFailed(fmt.Sprintf("could not update address for server %s in backend %s", server.Id, pool), res, err)
@@ -1087,24 +1205,46 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 	// precondition and fails safely (non-empty response, caught by
 	// logIfFailed) if that isn't met, so a stale entry that can't be
 	// removed yet is simply retried on the next Refresh() pass.
+	//
+	// Its own deadline, not addDeadline — see the comment above addDeadline
+	// for why sharing one between the two loops let a sustained add
+	// backlog starve this one, the safety-critical half, indefinitely.
+	removeDeadline := time.Now().Add(haproxyReconcileBudget)
 	for svname := range knownToHaproxy {
 		if knownToCluster[svname] {
 			continue
 		}
 
-		// Only logged while still actively trying to fully remove this
-		// svname — once it's known non-purgeable, removeReadBackendServer
-		// keeps re-draining it every pass (safety-critical, see its doc
-		// comment) but that's a silent no-op repeated indefinitely, not
-		// worth an INFO line every monitoring-ticker; WARN0209 below
-		// already reports the ongoing count.
-		if proxy.isNonPurgeableReadServer(svname) {
+		// Not gated on the deadline check below — same reasoning as
+		// skippedAdds above.
+		nonPurgeable := proxy.isNonPurgeableReadServer(svname)
+		if nonPurgeable {
 			skippedRemoves++
-		} else {
+
+			// Already known non-purgeable and this pass's own "show stat"
+			// (zero extra cost) confirms it's still MAINT: nothing to do.
+			// Otherwise a redundant SetMaintenance round trip every pass,
+			// forever, scaling with how many such entries exist — WARN0209
+			// is an ongoing condition, not a one-off. Only skips on a
+			// confirmed MAINT status, not merely non-purgeable: if
+			// something re-armed it, this falls through and re-drains.
+			if statusBySvname[svname] == "MAINT" {
+				continue
+			}
+		}
+
+		// Not deadline-gated: SetMaintenance (inside removeReadBackendServer)
+		// always runs for a svname not already confirmed drained — see
+		// haproxyReconcileBudget's doc comment for why.
+		if !nonPurgeable {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy draining stale server %s from read backend %s via Runtime API", svname, pool)
 		}
-		if proxy.removeReadBackendServer(haRuntime, pool, svname, logIfFailed) {
+		removedNow, exceeded := proxy.removeReadBackendServer(haRuntime, pool, svname, removeDeadline, logIfFailed)
+		if removedNow {
 			proxy.unmarkPendingReadServer(svname)
+		}
+		if exceeded {
+			deadlineHit = true
 		}
 	}
 
@@ -1119,6 +1259,20 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 			ErrFrom: "HAPROXY",
 		})
 	}
+
+	// See haproxyReconcileBudget. Same OPENED/RESOLV dedup as WARN0209.
+	// deadlineHit only ever covers genuinely deferrable work — AddServer,
+	// the pending-add retry (pendingReadServers keeps it out of traffic),
+	// and WaitSrvRemovable/DelServer (already drained) — since
+	// SetMaintenance and SetServerAddr are never deadline-gated. Hence
+	// LvlInfo, not LvlWarn: normal operation under load.
+	if deadlineHit {
+		cluster.SetState("WARN0210", state.State{
+			ErrType: config.LvlInfo,
+			ErrDesc: fmt.Sprintf(clusterError["WARN0210"], pool, haproxyReconcileBudget),
+			ErrFrom: "HAPROXY",
+		})
+	}
 }
 
 // completeOrRollbackPendingAdd finishes the SetDrain/EnableHealth half of a
@@ -1126,19 +1280,37 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 // step is harmless). If either still fails, it removes the server instead
 // of leaving it half-configured for the eligibility logic to find.
 //
-// Returns true when it's safe to call unmarkPendingReadServer: either the
-// sequence completed, or the server was removed (and will be re-added fresh
-// next pass). Returns false when neither happened — the caller must leave
-// it pending.
-func (proxy *HaproxyProxy) completeOrRollbackPendingAdd(haRuntime haproxy.Runtime, pool string, url string, svname string, logIfFailed func(action string, res string, err error) bool) bool {
+// Returns done=true when it's safe to call unmarkPendingReadServer: either
+// the sequence completed, or the server was removed (and will be re-added
+// fresh next pass). Returns done=false when neither happened — the caller
+// must leave it pending.
+//
+// deadline is addDeadline (this function's only caller is the add/update
+// loop), checked between each of this function's own Runtime API calls,
+// not just once by the caller — otherwise the last server processed in a
+// pass could run all of SetDrain/EnableHealth/rollback to completion
+// regardless of budget. The rollback removeReadBackendServer call below
+// reuses this same addDeadline rather than removeDeadline, since it's
+// unwinding a failed add, not the general stale-removal loop.
+// deadlineExceeded=true means this stopped early — the caller must still
+// count it towards WARN0210 even as the last server processed this pass.
+func (proxy *HaproxyProxy) completeOrRollbackPendingAdd(haRuntime haproxy.Runtime, pool string, url string, svname string, deadline time.Time, logIfFailed func(action string, res string, err error) bool) (done bool, deadlineExceeded bool) {
 	res, err := haRuntime.SetDrain(svname, pool)
 	drainFailed := logIfFailed(fmt.Sprintf("could not drain newly added server %s in backend %s", url, pool), res, err)
+
+	if time.Now().After(deadline) {
+		return false, true
+	}
 
 	res, err = haRuntime.EnableHealth(pool, svname)
 	healthFailed := logIfFailed(fmt.Sprintf("could not enable health checks for server %s in backend %s", url, pool), res, err)
 
 	if !drainFailed && !healthFailed {
-		return true
+		return true, false
+	}
+
+	if time.Now().After(deadline) {
+		return false, true
 	}
 
 	// Either step failing would otherwise leave the server half-configured
@@ -1147,12 +1319,16 @@ func (proxy *HaproxyProxy) completeOrRollbackPendingAdd(haRuntime haproxy.Runtim
 	// the next pass either re-adds it fresh or retries via
 	// pendingReadServers.
 	proxy.ClusterGroup.LogModulePrintf(proxy.ClusterGroup.Conf.Verbose, config.ConstLogModHAProxy, config.LvlWarn, "HAProxy add sequence for server %s in backend %s did not complete (drain failed=%v, enable health failed=%v); removing it via Runtime API rather than leaving it half-configured", url, pool, drainFailed, healthFailed)
-	if proxy.removeReadBackendServer(haRuntime, pool, svname, logIfFailed) {
-		return true
+	removed, removeDeadlineExceeded := proxy.removeReadBackendServer(haRuntime, pool, svname, deadline, logIfFailed)
+	if removed {
+		return true, removeDeadlineExceeded
+	}
+	if removeDeadlineExceeded {
+		return false, true
 	}
 
 	proxy.ClusterGroup.LogModulePrintf(proxy.ClusterGroup.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy could not remove server %s from backend %s after its add sequence failed; it remains blocked from serving read traffic until this succeeds", url, pool)
-	return false
+	return false, false
 }
 
 // removeReadBackendServer drains, optionally waits for, and deletes a read
@@ -1163,27 +1339,32 @@ func (proxy *HaproxyProxy) completeOrRollbackPendingAdd(haRuntime haproxy.Runtim
 // reconcileReadBackendServers for why leaving it half-configured is unsafe
 // rather than merely incomplete.
 //
-// Draining always runs, even for a svname already known non-purgeable
-// (isNonPurgeableReadServer): it's what actually stops read traffic from
-// reaching this server and never fails because of "resolvers" or any other
-// config element blocking deletion, so there's no reason to skip it.
-// WaitSrvRemovable/DelServer are skipped once a svname is known
-// non-purgeable — retrying them every pass would only repeat a call HAProxy
-// has already told us will fail (and log an error every time, unbounded).
-// If DelServer's response matches haproxyNonPurgeableServerMsg for the
-// first time, this marks the svname so future passes skip straight past
-// it. That mark is per svname, not proxy-wide (unlike skipAddingMembers):
-// an entry that reached the read backend via a runtime "add server" call
-// never has "resolvers" attached, so it stays genuinely removable even on
-// a proxy.HasDNS() == true proxy.
-func (proxy *HaproxyProxy) removeReadBackendServer(haRuntime haproxy.Runtime, pool string, svname string, logIfFailed func(action string, res string, err error) bool) bool {
+// Draining always runs, even for a svname already known non-purgeable: it's
+// what stops read traffic reaching this server, and is never deadline-gated
+// (see haproxyReconcileBudget). WaitSrvRemovable/DelServer are skipped once
+// a svname is known non-purgeable, to avoid retrying a call HAProxy has
+// already told us will fail. If DelServer's response matches
+// haproxyNonPurgeableServerMsg for the first time, this marks the svname
+// (per svname, not proxy-wide: a runtime-added entry never has "resolvers"
+// attached, so it stays removable even on a proxy.HasDNS() proxy).
+//
+// deadline is removeDeadline (its own, separate from the add/update loop's
+// addDeadline — see reconcileReadBackendServers), checked after
+// SetMaintenance, before WaitSrvRemovable/DelServer. deadlineExceeded=true
+// means this stopped early rather than genuinely failed; the caller must
+// still count it towards WARN0210 even as the last server processed.
+func (proxy *HaproxyProxy) removeReadBackendServer(haRuntime haproxy.Runtime, pool string, svname string, deadline time.Time, logIfFailed func(action string, res string, err error) bool) (removed bool, deadlineExceeded bool) {
 	res, err := haRuntime.SetMaintenance(svname, pool)
 	if logIfFailed(fmt.Sprintf("could not drain server %s in backend %s for removal", svname, pool), res, err) {
-		return false
+		return false, false
 	}
 
 	if proxy.isNonPurgeableReadServer(svname) {
-		return false
+		return false, false
+	}
+
+	if time.Now().After(deadline) {
+		return false, true
 	}
 
 	// "wait srv-removable" needs HAProxy >= 3.0 ("Unknown command" on
@@ -1192,6 +1373,9 @@ func (proxy *HaproxyProxy) removeReadBackendServer(haRuntime haproxy.Runtime, po
 		res, err = haRuntime.WaitSrvRemovable(pool, svname, haproxySrvRemovableWait)
 		if msg, failed := waitSrvRemovableFailed(err, res); failed {
 			proxy.ClusterGroup.LogModulePrintf(proxy.ClusterGroup.Conf.Verbose, config.ConstLogModHAProxy, config.LvlWarn, "HAProxy server %s in backend %s did not become removable: %s", svname, pool, msg)
+		}
+		if time.Now().After(deadline) {
+			return false, true
 		}
 	}
 
@@ -1203,7 +1387,7 @@ func (proxy *HaproxyProxy) removeReadBackendServer(haRuntime haproxy.Runtime, po
 	if failed {
 		proxy.ClusterGroup.LogModulePrintf(proxy.ClusterGroup.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy could not remove server %s from backend %s: %s", svname, pool, msg)
 	}
-	return !failed
+	return !failed, false
 }
 
 func (cluster *Cluster) setMaintenanceHaproxy(pr *Proxy, server *ServerMonitor) {
@@ -1260,7 +1444,7 @@ func (proxy *HaproxyProxy) setReadBackendMaintenance(server *ServerMonitor) bool
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy set server %s/%s state maint ", server.Id, cluster.Conf.HaproxyAPIReadBackend)
 		res, err := haRuntime.SetMaintenance(svname, cluster.Conf.HaproxyAPIReadBackend)
 		action := fmt.Sprintf("can not set maintenance %s backend %s", server.URL, cluster.Conf.HaproxyAPIReadBackend)
-		if !logSetStateIfFailed(cluster, action, res, err) {
+		if !logSetStateIfFailed(proxy, action, res, err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "HAProxy set maintenance %s backend %s result: %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, res)
 			readBackendOK = true
 		}
@@ -1270,7 +1454,7 @@ func (proxy *HaproxyProxy) setReadBackendMaintenance(server *ServerMonitor) bool
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy set server %s/%s state ready ", server.Id, cluster.Conf.HaproxyAPIReadBackend)
 		res, err := haRuntime.SetReady(svname, cluster.Conf.HaproxyAPIReadBackend)
 		action := fmt.Sprintf("can not set ready %s backend %s", server.URL, cluster.Conf.HaproxyAPIReadBackend)
-		if !logSetStateIfFailed(cluster, action, res, err) {
+		if !logSetStateIfFailed(proxy, action, res, err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "HAProxy set ready %s backend %s result: %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, res)
 			readBackendOK = true
 		}

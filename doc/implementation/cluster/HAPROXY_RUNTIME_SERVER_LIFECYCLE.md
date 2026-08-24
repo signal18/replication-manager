@@ -18,10 +18,11 @@ the HAProxy Runtime API.
 - **Phase 2** (dynamic *backend* lifecycle, HAProxy 3.4+) and **Phase 3**
   (post-reload reconciliation of runtime-only objects) are not implemented —
   see Follow-up.
-- No regtest-suite Docker coverage exists yet for this scenario. The command
-  sequences below were validated by hand against real `haproxy:2.4/2.6/2.8/3.0`
-  containers; unit tests using a fake TCP Runtime API listener pin the
-  resulting behavior in CI.
+- `testHaproxyRuntimeAPIDynamicServerLifecycle` has run against a real
+  `haproxy:3.0` container and a live cluster and passed — see Tests below.
+  The command sequences were also validated by hand against real
+  `haproxy:2.4/2.6/2.8/3.0` containers; unit tests using a fake TCP Runtime
+  API listener pin the resulting behavior in CI.
 
 ## Gating
 
@@ -41,14 +42,19 @@ Three conditions must all hold, or `reconcileReadBackendServers()` is a no-op:
 A narrower check, `supportsWaitRemovable()` (HAProxy >= 3.0), separately
 gates the `wait ... srv-removable` step inside removal — see below.
 
-A fourth condition, `proxy.HasDNS()`, gates membership *changes* specifically
-(add-missing and remove-stale, not the whole function — see below).
+A fourth condition, `proxy.HasDNS()`, blanket-gates *adding* a missing member
+specifically (not the whole function — see below). Removing a stale member is
+NOT gated on `HasDNS()`: it's learned reactively, per svname, from HAProxy's
+own refusal (`isNonPurgeableReadServer`) — see "Servers HAProxy refuses to
+delete" below for why a blanket gate there would be both wrong (an entry
+added at runtime is still deletable even when `HasDNS()` is true) and unsafe
+(it would also skip the safety-critical drain).
 
 ## Runtime API wrapper (`router/haproxy/runtime_api.go`)
 
 - `AddServer(pool, name, host, port, opts)` → `add server <pool>/<name> <host>:<port> [opts]`
 - `DelServer(pool, name)` → `del server <pool>/<name>`
-- `EnableHealth` / `DisableHealth(pool, name)` → `enable|disable health <pool>/<name>`
+- `EnableHealth(pool, name)` → `enable health <pool>/<name>`
 - `SetServerAddr(pool, name, host, port)` → `set server <pool>/<name> addr <host> port <port>`,
   dispatching to `SetServerFQDN` (`... fqdn ...`) when `host` isn't a literal
   IP, the same way `SetMaster`/`SetMasterFQDN` do for the write backend's
@@ -141,7 +147,7 @@ Failed. This server cannot be removed at runtime due to other configuration
 elements pointing to it.
 ```
 
-This was discovered against a real dev cluster (`dev2`, OpenSVC-orchestrated,
+This was discovered against a real dev cluster (OpenSVC-orchestrated,
 `haproxy-mode=runtimeapi`): `testHaproxyRuntimeAPIDynamicServerLifecycle`
 failed staging its add-path test because `DelServer` on an existing,
 config-bootstrapped replica hit exactly this error — surfaced generically as
@@ -214,6 +220,76 @@ The write backend uses a single fixed runtime slot (`leader`, via
 `SetMaster`/`SetMasterFQDN`) with no per-server membership, so this
 reconciliation only applies to the read backend.
 
+### Per-pass time budget (`haproxyReconcileBudget`)
+
+`reconcileReadBackendServers` runs inside the goroutine
+`cluster.refreshProxies`'s `wg.Wait()` blocks the monitoring tick on, and
+every Runtime API call is sequential (up to `ApiReadTimeout`, 5s, each; up
+to 7s for `WaitSrvRemovable`). Unbounded, a batch of stale/missing servers
+could stall the whole tick — a `DEVELOPMENT_LAWS.md` F2-F4 violation.
+`haproxyReconcileBudget` (10s, a `var` so tests can shrink it) bounds this,
+but only for *non-safety-critical* work: `AddServer`, the pending-add
+retry, and `WaitSrvRemovable`/`DelServer`.
+
+**Not bounded, by explicit production-safety decision:** `SetMaintenance`
+(draining a stale server) and `SetServerAddr` (correcting a changed
+address) always run regardless of budget — HAProxy keeps routing to the
+old address/server otherwise, possibly a reassigned, unrelated host. So
+pass time isn't strictly capped when many servers need first-time
+draining/correction at once. The redundant-drain skip (below) is what
+keeps the *ongoing* case bounded; there's no equivalent for address
+correction since a persistent mismatch isn't an expected steady state.
+
+**Two independent deadlines** (`addDeadline`, `removeDeadline`), not one
+shared: sharing let a sustained add/update backlog (which always runs
+first) starve the removal loop's drain indefinitely. Each loop now gets
+its own full budget every pass.
+
+**Checked inside the helpers too** (`completeOrRollbackPendingAdd`,
+`removeReadBackendServer`), not just once by the caller — otherwise the
+last server in a pass could run a helper's remaining calls to completion
+regardless of budget. Both return `deadlineExceeded bool` so the caller
+sets `deadlineHit`/fires `WARN0210` even when that happens on the last
+server, where no later loop iteration would catch it.
+
+**Cheap accounting is never deadline-gated** (`knownToCluster`,
+`skippedAdds`/`skippedRemoves`) — only the actual API call is skipped.
+Getting this wrong once caused a real bug: gating the non-purgeable check
+too let a pass under-count and resolve `WARN0209` while svnames were still
+unresolved.
+
+**Redundant-drain skip:** a svname already known non-purgeable, whose
+status this same `show stat` call (`readBackendStatusBySvname`, zero extra
+cost) already confirms `MAINT`, skips `removeReadBackendServer` entirely —
+otherwise a persistent `WARN0209` backlog costs a full round trip per
+entry, forever. Falls through to re-drain if status reads anything else
+(something re-armed it).
+
+**`WARN0210`** (`OPENED`/`RESOLV` dedup like `WARN0209`) fires when a pass
+deferred budget-gated work. Since drain/address-correction are never
+deferred, everything it can report *is* safe — hence `LvlInfo` and "safe,
+no action needed".
+
+### `haproxySetStateLogLevel` and `reconcileReadBackendServersActive`
+
+The `No such server.` downgrade — `setReadBackendMaintenance`'s
+`SetMaintenance`/`SetReady` calls, not `DelServer` (a different message,
+see "Servers HAProxy refuses to delete" above) — is gated on
+`HaproxyProxy.reconcileReadBackendServersActive()`, not just
+`cluster.Conf.HaproxyAPIBootstrapServers` alone (a second code-review
+finding: the flag being on doesn't mean reconciliation is actually
+running). Its premise — a missing/renamed row is an expected,
+self-correcting race — only holds when a missing row would actually get
+re-added on the next pass, which needs every one of: bootstrap-servers on,
+`supportsDynamicServers()` (HAProxy >= 2.6), `haproxy-mode == "runtimeapi"`,
+and `!proxy.HasDNS()` (the add branch specifically is skipped on a
+resolver-backed proxy, even though removal still runs — see "Servers
+HAProxy refuses to delete"). Missing any one of these, a *persistent*
+mismatch (wrong `haproxy-api-read-backend` name, a hand-edited config, an
+unsupported HAProxy version, an svname that will never exist) has nothing
+to correct it, and downgrading that to `LvlDbg` would silently remove the
+only error-visibility signal an operator in any of those cases had for it.
+
 ## Config / API / GUI surface
 
 - Flag: `--haproxy-api-bootstrap-servers` (`HaproxyProxy.AddFlags`).
@@ -243,7 +319,57 @@ HAProxy has no actual reason to refuse), and
 fake server returns the non-purgeable message for `DelServer`; asserts pass
 1 attempts the full `SetMaintenance`/`WaitSrvRemovable`/`DelServer`
 sequence and marks the svname, pass 2 still re-issues `SetMaintenance` but
-skips `WaitSrvRemovable`/`DelServer`).
+skips `WaitSrvRemovable`/`DelServer`). Success-response misclassification
+(found running this branch live, all three fixed the same way — a
+`haproxy*SuccessMsg` constant checked before falling back to
+`haproxyCmdFailed`): `TestHaproxyReconcileAddServerSuccessResponseCompletesSequence`
+(`AddServer`'s `"New server registered."`),
+`TestHaproxyReconcileDelServerSuccessResponseNotMisreported` (`DelServer`'s
+`"Server deleted."`), and the plain unit test
+`TestHaproxySetStateLogLevelDowngradesNoSuchServer`, which also pins that
+the `"No such server."` downgrade requires reconciliation to actually be
+active (`false` case; see `TestHaproxyReconcileReadBackendServersActiveRequiresAllConditions`
+below for the full condition). Budget (all from code review, not live
+testing): `TestHaproxyReconcileBudgetDefersExcessWork` forces
+`haproxyReconcileBudget` to an already-elapsed deadline (deterministic, no
+real sleep) and asserts the add side defers entirely (no `AddServer`) while
+the removal side still drains (`SetMaintenance`) but not as far as
+`WaitSrvRemovable`/`DelServer`, `WARN0209`'s count still includes a
+pre-marked non-purgeable svname the budget-gated loop never reached,
+`WARN0210` fires, and the deferred add completes on the very next pass once
+the budget is restored.
+`TestHaproxyReconcileBudgetCheckedInsideHelpers` uses a fake server that
+delays its `SetDrain` response so the budget elapses *during*
+`completeOrRollbackPendingAdd` itself (not just between per-server loop
+iterations) and asserts `EnableHealth` is never called and `WARN0210`
+still fires even though the affected server is the only — and therefore
+last — one processed that pass, so no later loop iteration's own check
+could have set it instead.
+`TestHaproxyReconcileRemovalDeadlineIsIndependentOfAddDeadline` delays
+`AddServer`'s response long enough to exhaust the (deliberately tiny)
+budget entirely within the add loop, then asserts a stale svname still
+gets `SetMaintenance` — removal has its own deadline, not one already
+spent by add/update.
+`TestHaproxyReconcileAddressCorrectionIgnoresBudget` forces the budget to
+an already-elapsed deadline and asserts `SetServerAddr` still fires
+anyway, and that `WARN0210` does NOT fire — address correction is
+safety-critical (see "Removal drain and address correction are
+prioritized over the budget" above) and never contributes to
+`deadlineHit`.
+`TestHaproxyReconcileSkipsRedundantDrainForConfirmedMaintNonPurgeableServer`
+covers the redundant-drain-skip fix across two passes: pass 1 (fake
+server reports `decommissioned1` as `UP`) runs the full sequence and marks
+it non-purgeable, same as `TestHaproxyReconcileMarksServerNonPurgeableAfterDelServerRefusal`;
+pass 2 changes the fake server's `show stat` response to report `MAINT`
+for it, and asserts no `SetMaintenance`/`WaitSrvRemovable`/`DelServer` call
+at all — `TestHaproxyReconcileMarksServerNonPurgeableAfterDelServerRefusal`
+itself always reports `UP`, so it never exercises this skip and still
+correctly asserts `SetMaintenance` keeps retrying.
+`TestHaproxyReconcileReadBackendServersActiveRequiresAllConditions` is a
+table test over `reconcileReadBackendServersActive`'s four conditions
+(bootstrap-servers, HAProxy version, haproxy-mode, `HasDNS()`), each
+toggled independently to confirm any one of them alone is enough to make
+it report `false`.
 
 `server/api_cluster_test.go` covers both switch-endpoint dispatchers for
 `haproxy-api-bootstrap-servers` (flip and explicit on/off).
@@ -319,9 +445,12 @@ add and remove paths against a cluster's real, live HAProxy proxy:
 
 Requires `haproxy-mode=runtimeapi` and a real HAProxy >= 2.6 already
 attached; fails with a specific reason otherwise (same tradeoff as
-`testStagingRecoverNoReadOnly`). Built and vetted, but not yet executed
-against a real Docker cluster in this environment — running it for real is
-what's left to close the regtest requirement.
+`testStagingRecoverNoReadOnly`). Run against a real `haproxy:3.0` container
+fronting a live 3-node cluster: result `PASS` — both the add path (drain,
+stage a direct-API delete, confirm the monitor loop re-adds and promotes
+to `UP`) and the remove path (synthetic ghost server drained and removed)
+completed against real HAProxy, closing the T13 regtest gate for this
+feature.
 
 ## Follow-up (not in this change)
 
@@ -333,5 +462,3 @@ what's left to close the regtest requirement.
 - Address reconciliation for FQDN-configured members: needs a `resolvers`
   section in the generated read-backend config plus the svname→FQDN mapping
   `Refresh()` already builds for its own DNS lookups.
-- Run `testHaproxyRuntimeAPIDynamicServerLifecycle` against a real Docker
-  regtest topology to close the T13 gate.

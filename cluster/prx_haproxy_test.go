@@ -12,8 +12,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/router/haproxy"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -1166,11 +1168,615 @@ func TestHaproxyReconcileDelServerSuccessResponseNotMisreported(t *testing.T) {
 // at LvlErr — indistinguishable from a real failure to anyone reading the
 // log, which is exactly what prompted this downgrade.
 func TestHaproxySetStateLogLevelDowngradesNoSuchServer(t *testing.T) {
-	if got := haproxySetStateLogLevel("No such server.\n\n"); got != config.LvlDbg {
-		t.Errorf("haproxySetStateLogLevel(%q) = %q, want %q", "No such server.\n\n", got, config.LvlDbg)
+	if got := haproxySetStateLogLevel("No such server.\n\n", true); got != config.LvlDbg {
+		t.Errorf("haproxySetStateLogLevel(%q, true) = %q, want %q", "No such server.\n\n", got, config.LvlDbg)
 	}
-	if got := haproxySetStateLogLevel("Failed.\n\n"); got != config.LvlErr {
-		t.Errorf("haproxySetStateLogLevel(%q) = %q, want %q (a real failure must still alarm)", "Failed.\n\n", got, config.LvlErr)
+	if got := haproxySetStateLogLevel("Failed.\n\n", true); got != config.LvlErr {
+		t.Errorf("haproxySetStateLogLevel(%q, true) = %q, want %q (a real failure must still alarm)", "Failed.\n\n", got, config.LvlErr)
+	}
+	// Without reconcileReadBackendServers actively running
+	// (HaproxyAPIBootstrapServers off, the default), nothing corrects a
+	// persistent "No such server" mismatch — it must stay LvlErr, not be
+	// silently downgraded, or anyone not using the new feature loses their
+	// only error-visibility signal for it.
+	if got := haproxySetStateLogLevel("No such server.\n\n", false); got != config.LvlErr {
+		t.Errorf("haproxySetStateLogLevel(%q, false) = %q, want %q (nothing self-corrects this when reconciliation is off)", "No such server.\n\n", got, config.LvlErr)
+	}
+}
+
+// TestHaproxyReconcileReadBackendServersActiveRequiresAllConditions pins a
+// code-review finding: reconcileReadBackendServersActive (and therefore
+// haproxySetStateLogLevel's "No such server" downgrade) originally checked
+// only cluster.Conf.HaproxyAPIBootstrapServers, but reconcileReadBackendServers
+// itself also no-ops for an unsupported HAProxy version or a non-runtimeapi
+// haproxy-mode, and separately skips just the add branch on a resolver-backed
+// (HasDNS()) proxy — any one of those means a missing/renamed read-backend
+// row is NOT actually self-correcting, so the "No such server" downgrade's
+// premise doesn't hold. All four conditions must hold for
+// reconcileReadBackendServersActive to report true.
+func TestHaproxyReconcileReadBackendServersActiveRequiresAllConditions(t *testing.T) {
+	newBaseCluster := func(t *testing.T) *Cluster {
+		cluster := setupTestCluster(t, 1)
+		cluster.StateMachine = new(state.StateMachine)
+		cluster.StateMachine.Init()
+		cluster.Conf = &config.Config{
+			HaproxyAPIWriteBackend:     "service_write",
+			HaproxyAPIReadBackend:      "service_read",
+			HaproxyOn:                  true,
+			HaproxyAPIBootstrapServers: true,
+			HaproxyMode:                "runtimeapi",
+		}
+		return cluster
+	}
+
+	tests := []struct {
+		name    string
+		mutate  func(cluster *Cluster, proxy *HaproxyProxy)
+		want    bool
+		explain string
+	}{
+		{
+			name:    "all conditions hold",
+			mutate:  func(cluster *Cluster, proxy *HaproxyProxy) {},
+			want:    true,
+			explain: "baseline: bootstrap on, supported version, runtimeapi, no DNS",
+		},
+		{
+			name: "bootstrap-servers off (the default)",
+			mutate: func(cluster *Cluster, proxy *HaproxyProxy) {
+				cluster.Conf.HaproxyAPIBootstrapServers = false
+			},
+			want: false,
+		},
+		{
+			name: "HAProxy version below 2.6",
+			mutate: func(cluster *Cluster, proxy *HaproxyProxy) {
+				proxy.Version = "HAProxy version 2.4.0-1 2021/01/01"
+			},
+			want:    false,
+			explain: "reconcileReadBackendServers' own version gate no-ops the whole function",
+		},
+		{
+			name: "haproxy-mode != runtimeapi",
+			mutate: func(cluster *Cluster, proxy *HaproxyProxy) {
+				cluster.Conf.HaproxyMode = "standby"
+			},
+			want:    false,
+			explain: "reconcileReadBackendServers' own mode gate no-ops the whole function",
+		},
+		{
+			name: "resolver-backed proxy (HasDNS)",
+			mutate: func(cluster *Cluster, proxy *HaproxyProxy) {
+				cluster.Configurator.ProxyTags = []string{"dns"}
+			},
+			want:    false,
+			explain: "skipAddingMembers skips exactly the add branch that would self-correct a missing row",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := newBaseCluster(t)
+			defer cleanupTestCluster(t, cluster)
+
+			proxy := &HaproxyProxy{Proxy: Proxy{
+				ClusterGroup: cluster,
+				Host:         "127.0.0.1",
+				Port:         "1999",
+				Datadir:      t.TempDir(),
+				Version:      "HAProxy version 3.0.26-1 2024/05/01",
+			}}
+
+			tt.mutate(cluster, proxy)
+
+			if got := proxy.reconcileReadBackendServersActive(); got != tt.want {
+				t.Errorf("reconcileReadBackendServersActive() = %v, want %v (%s)", got, tt.want, tt.explain)
+			}
+		})
+	}
+}
+
+// TestHaproxyReconcileBudgetDefersExcessWork pins the fix for a code-review
+// finding: reconcileReadBackendServers used to issue every stale/missing
+// server's Runtime API calls (SetMaintenance -> WaitSrvRemovable ->
+// DelServer, or AddServer -> SetDrain -> EnableHealth) fully sequentially
+// with no bound, and it runs inside the same goroutine cluster.refreshProxies
+// wg.Wait()s on before the rest of the monitoring tick proceeds — a pass
+// with several stale/missing servers could stall the whole cluster's
+// monitoring tick by multiples of a single Runtime API round trip,
+// delaying failover/switchover detection (DEVELOPMENT_LAWS.md F2-F4).
+// haproxyReconcileBudget now bounds this: forced here to an
+// already-elapsed deadline (deterministic, no reliance on real elapsed
+// time — avoids a flaky sleep-based test) to confirm the add side is
+// deferred entirely, but the removal side's safety-critical drain
+// (SetMaintenance) is NOT — only WaitSrvRemovable/DelServer are — then
+// restored to confirm the deferred add work isn't lost, just picked up on
+// the very next pass. See also
+// TestHaproxyReconcileRemovalDeadlineIsIndependentOfAddDeadline for why
+// drain can't be deadline-gated the same way AddServer is.
+func TestHaproxyReconcileBudgetDefersExcessWork(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 is missing from HAProxy's stat output — would normally trigger
+	// AddServer, must be deferred instead while the budget is exhausted.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+
+	// decommissioned2 is pre-marked non-purgeable, as if a previous pass
+	// already learned this from HAProxy's own refusal — its skippedRemoves
+	// accounting (and therefore WARN0209) must stay accurate regardless of
+	// budget, not just for entries the budget-gated loop actually reaches
+	// (map iteration order is randomized, so which stale svnames get
+	// reached before an exhausted budget varies pass to pass).
+	proxy.markNonPurgeableReadServer("decommissioned2")
+	knownToHaproxyWithGhost := map[string]bool{"decommissioned1": true, "decommissioned2": true}
+
+	origBudget := haproxyReconcileBudget
+	haproxyReconcileBudget = -1 * time.Second // already elapsed before the function even starts
+	defer func() { haproxyReconcileBudget = origBudget }()
+
+	// reconcileReadBackendServers directly, not Refresh(): decommissioned2
+	// isn't a real "show stat" row (it doesn't need to be — its only role
+	// here is to already be marked non-purgeable), so driving this through
+	// Refresh()'s own stat-parsing would require fabricating a matching row
+	// for no benefit.
+	haRuntime := haproxy.Runtime{Host: host, Port: port}
+	proxy.Version = "HAProxy version 3.0.26-1 2024/05/01"
+	proxy.reconcileReadBackendServers(haRuntime, knownToHaproxyWithGhost, map[string]string{}, map[string]string{})
+
+	commands := getCommands()
+	// The add side defers entirely (no AddServer attempt at all).
+	if cmdIndex(commands, "add server service_read/slave1 127.0.0.1:3307 check") >= 0 {
+		t.Errorf("Refresh() commands = %v, want no add server while the reconcile budget is already exhausted", commands)
+	}
+	// The removal side still drains decommissioned1 — SetMaintenance is
+	// never deadline-gated (see removeReadBackendServer's doc comment) —
+	// but does NOT get as far as WaitSrvRemovable/DelServer, which are.
+	if cmdIndex(commands, "set server service_read/decommissioned1 state maint") < 0 {
+		t.Errorf("Refresh() commands = %v, want set maint for decommissioned1 even while the budget is exhausted (drain must never be skipped)", commands)
+	}
+	for _, unwanted := range []string{
+		"wait 2000 srv-removable service_read/decommissioned1",
+		"del server service_read/decommissioned1",
+	} {
+		if cmdIndex(commands, unwanted) >= 0 {
+			t.Errorf("Refresh() commands = %v, want no %q while the reconcile budget is already exhausted", commands, unwanted)
+		}
+	}
+
+	if !cluster.StateMachine.CurState.Search("WARN0209") {
+		t.Errorf("expected WARN0209 to still be reported this pass (decommissioned2's non-purgeable skip must be counted regardless of budget)")
+	}
+	if !cluster.StateMachine.CurState.Search("WARN0210") {
+		t.Errorf("expected WARN0210 to be reported when the reconcile budget is exhausted mid-pass")
+	}
+
+	// Restore the budget and confirm the deferred add isn't lost — it
+	// completes on the very next pass.
+	haproxyReconcileBudget = origBudget
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+	commands = getCommands()
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check"
+	if cmdIndex(commands, wantAdd) < 0 {
+		t.Errorf("Refresh() commands = %v, want to contain %q once the budget is available again (deferred work must not be lost)", commands, wantAdd)
+	}
+}
+
+// TestHaproxyReconcileBudgetCheckedInsideHelpers pins a second, more subtle
+// half of the same code-review finding as TestHaproxyReconcileBudgetDefersExcessWork:
+// the budget must be checked *between* completeOrRollbackPendingAdd's own
+// Runtime API calls (SetDrain, then EnableHealth), not just once by the
+// caller before entering the helper — a single server whose SetDrain call
+// alone consumes the whole remaining budget (a slow/wedged Runtime API
+// socket, exactly the scenario haproxyReconcileBudget exists for) must not
+// then also run EnableHealth past the deadline. The fake server here
+// deliberately delays its SetDrain response so the budget genuinely elapses
+// *during* the helper call, not just between per-server loop iterations —
+// and asserts WARN0210 still fires even though this is the only server in
+// the pass, so no later loop iteration's own deadline check could have set
+// deadlineHit instead.
+func TestHaproxyReconcileBudgetCheckedInsideHelpers(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	const drainDelay = 40 * time.Millisecond
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case strings.HasPrefix(cmd, "add server"):
+					c.Write([]byte("New server registered.\n\n"))
+				case cmd == "set server service_read/slave1 state drain":
+					// Long enough to reliably outlast the budget below,
+					// short enough this test still runs fast.
+					time.Sleep(drainDelay)
+					c.Write([]byte("\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+
+	origBudget := haproxyReconcileBudget
+	// Comfortably longer than the cheap setup work before the add branch
+	// (so the OUTER per-server check still passes normally) but much
+	// shorter than drainDelay, so the budget is only exceeded partway
+	// through completeOrRollbackPendingAdd itself.
+	haproxyReconcileBudget = 5 * time.Millisecond
+	defer func() { haproxyReconcileBudget = origBudget }()
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	mu.Lock()
+	gotCommands := append([]string(nil), commands...)
+	mu.Unlock()
+
+	// Confirm the test actually reached the code path it claims to be
+	// exercising, not just that EnableHealth happens to be absent for some
+	// unrelated reason (e.g. AddServer or SetDrain never being reached at
+	// all would also produce no "enable health" call).
+	for _, want := range []string{
+		"add server service_read/slave1 127.0.0.1:3307 check",
+		"set server service_read/slave1 state drain",
+	} {
+		if cmdIndex(gotCommands, want) < 0 {
+			t.Fatalf("Refresh() commands = %v, want to contain %q (test setup didn't reach the point this test needs to exercise)", gotCommands, want)
+		}
+	}
+
+	if cmdIndex(gotCommands, "enable health service_read/slave1") >= 0 {
+		t.Errorf("Refresh() commands = %v, want no enable health call once the budget elapsed during the preceding SetDrain call", gotCommands)
+	}
+	if !cluster.StateMachine.CurState.Search("WARN0210") {
+		t.Errorf("expected WARN0210 to be reported even though slave1 was the only (and therefore last) server processed this pass")
+	}
+}
+
+// TestHaproxyReconcileRemovalDeadlineIsIndependentOfAddDeadline pins the
+// core fix for a code-review finding: reconcileReadBackendServers used to
+// share a single deadline between the add/update loop and the removal
+// loop. Since add/update always runs first, a sustained add backlog could
+// consume the entire shared budget every single pass, leaving removal's
+// WaitSrvRemovable/DelServer zero time, indefinitely.
+//
+// This asserts on WaitSrvRemovable/DelServer specifically, not
+// SetMaintenance: SetMaintenance is never deadline-gated at all (see
+// removeReadBackendServer), so its presence alone can't distinguish "removal
+// has its own fresh deadline" from "removal isn't deadline-gated in this
+// area either" — a weaker claim this test doesn't intend to make. If
+// removeDeadline instead inherited a deadline already exhausted by the add
+// loop's slow AddServer call, the internal check right after SetMaintenance
+// (see removeReadBackendServer) would trip immediately and skip
+// WaitSrvRemovable/DelServer entirely; asserting they're both reached is
+// what actually distinguishes a fresh deadline from a stale, inherited one.
+// The fake server delays slave1's AddServer response long enough to exhaust
+// a deliberately tiny haproxyReconcileBudget entirely within the add loop
+// before the removal loop even starts.
+func TestHaproxyReconcileRemovalDeadlineIsIndependentOfAddDeadline(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	// decommissioned1 is stale (no matching cluster.Servers entry) —
+	// removal work, competing with slave1's add work for budget.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	const addDelay = 40 * time.Millisecond
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case strings.HasPrefix(cmd, "add server"):
+					// Long enough that addDeadline is fully spent before
+					// the add loop even finishes with slave1, let alone
+					// before the removal loop starts.
+					time.Sleep(addDelay)
+					c.Write([]byte("New server registered.\n\n"))
+				case cmd == "set server service_read/decommissioned1 state maint":
+					c.Write([]byte("\n"))
+				case cmd == "wait 2000 srv-removable service_read/decommissioned1":
+					c.Write([]byte("Done.\n\n"))
+				case cmd == "del server service_read/decommissioned1":
+					c.Write([]byte("Server deleted.\n\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		// >= 3.0, so WaitSrvRemovable is part of the sequence this test
+		// needs to observe.
+		Version: "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+
+	origBudget := haproxyReconcileBudget
+	// Shorter than addDelay, so addDeadline is exhausted entirely within
+	// the add loop's single AddServer call. Comfortably longer than the
+	// fake server's near-instant responses to the removal-loop commands,
+	// so removeDeadline (if genuinely fresh) has time to complete them.
+	haproxyReconcileBudget = 5 * time.Millisecond
+	defer func() { haproxyReconcileBudget = origBudget }()
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	mu.Lock()
+	gotCommands := append([]string(nil), commands...)
+	mu.Unlock()
+
+	// Confirm the add loop actually reached AddServer (and therefore spent
+	// its budget on the slow response) before drawing any conclusion from
+	// the removal loop's behavior.
+	if cmdIndex(gotCommands, "add server service_read/slave1 127.0.0.1:3307 check") < 0 {
+		t.Fatalf("Refresh() commands = %v, want to contain the add attempt for slave1 (test setup didn't reach the point this test needs to exercise)", gotCommands)
+	}
+
+	for _, want := range []string{
+		"set server service_read/decommissioned1 state maint",
+		"wait 2000 srv-removable service_read/decommissioned1",
+		"del server service_read/decommissioned1",
+	} {
+		if cmdIndex(gotCommands, want) < 0 {
+			t.Errorf("Refresh() commands = %v, want to contain %q — removeDeadline must be its own fresh deadline, not one already exhausted by the add loop's slow AddServer call", gotCommands, want)
+		}
+	}
+}
+
+// TestHaproxyReconcileAddressCorrectionIgnoresBudget pins an explicit
+// production-safety decision made after code review: correcting a
+// backend's address is safety-critical, the same class as draining a
+// stale server, and is therefore never deadline-gated — not deferred to a
+// later pass like AddServer/WaitSrvRemovable/DelServer are. HAProxy keeps
+// routing read traffic to the *previous* address until SetServerAddr
+// lands; after a re-IP/reprovision that address may be unreachable
+// (self-limiting via health checks) or, worse, may have been reassigned to
+// a completely different host — traffic silently reaching the wrong
+// target. This forces the reconcile budget to an already-elapsed deadline
+// and asserts the address update still happens anyway, and that WARN0210
+// does NOT fire at all: address correction never contributes to
+// deadlineHit, so with no other missing/stale servers in this test, there
+// is nothing left for WARN0210 to report.
+func TestHaproxyReconcileAddressCorrectionIgnoresBudget(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 kept its Id but was reprovisioned onto a new address; HAProxy
+	// still has the old one on file — the address-update branch, not add
+	// or remove.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3399"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+
+	origBudget := haproxyReconcileBudget
+	haproxyReconcileBudget = -1 * time.Second // already elapsed before the function even starts
+	defer func() { haproxyReconcileBudget = origBudget }()
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	if cmdIndex(commands, "set server service_read/slave1 addr 127.0.0.1 port 3399") < 0 {
+		t.Errorf("Refresh() commands = %v, want the address update to still happen even though the reconcile budget is already exhausted — SetServerAddr is safety-critical and must never be deferred", commands)
+	}
+
+	// This proxy has no other missing/stale servers, so if WARN0210 fires
+	// at all it can only be because the address-update branch wrongly
+	// contributed to deadlineHit.
+	for _, s := range *cluster.StateMachine.CurState {
+		if s.ErrKey == "WARN0210" {
+			t.Errorf("WARN0210 fired (%q) even though address correction is not supposed to be deadline-gated", s.ErrDesc)
+		}
 	}
 }
 
@@ -1852,11 +2458,140 @@ func TestHaproxyReconcileMarksServerNonPurgeableAfterDelServerRefusal(t *testing
 	mu.Unlock()
 
 	if cmdIndex(pass2, wantMaint) < 0 {
-		t.Errorf("Refresh() [pass 2] commands = %v, want to still contain %q (draining must keep retrying even for a known non-purgeable server)", pass2, wantMaint)
+		t.Errorf("Refresh() [pass 2] commands = %v, want to still contain %q (this fake server always reports decommissioned1 as \"UP\", never \"MAINT\", so draining must keep retrying — see TestHaproxyReconcileSkipsRedundantDrainForConfirmedMaintNonPurgeableServer for the case where HAProxy confirms MAINT)", pass2, wantMaint)
 	}
 	for _, unwanted := range []string{wantWait, wantDel} {
 		if cmdIndex(pass2, unwanted) >= 0 {
 			t.Errorf("Refresh() [pass 2] commands = %v, want no %q once decommissioned1 is known non-purgeable", pass2, unwanted)
+		}
+	}
+}
+
+// TestHaproxyReconcileSkipsRedundantDrainForConfirmedMaintNonPurgeableServer
+// pins the fix for a code-review finding: removeReadBackendServer always
+// issued SetMaintenance unconditionally, even for a svname already known
+// non-purgeable from a previous pass. Once WARN0209 becomes a persistent,
+// ongoing condition (several stale entries HAProxy will never let go of —
+// exactly what it exists to report), that meant a full Runtime API round
+// trip per such entry, every pass, forever — scaling linearly with count
+// and reintroducing the unbounded-pass-time risk haproxyReconcileBudget
+// exists to prevent, for this one case the per-pass deadline check can't
+// help with (SetMaintenance runs before any deadline check). The fix reads
+// this same pass's own "show stat" status for the svname (zero extra
+// Runtime API cost, already fetched) and skips the redundant call only
+// when it's already non-purgeable AND already confirmed MAINT — otherwise
+// (see the test above) it still re-drains, in case something external
+// re-armed it.
+func TestHaproxyReconcileSkipsRedundantDrainForConfirmedMaintNonPurgeableServer(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	var mu sync.Mutex
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				resp := statResponse
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(resp))
+				case cmd == "del server service_read/decommissioned1":
+					c.Write([]byte("Failed. This server cannot be removed at runtime due to other configuration elements pointing to it.\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+
+	// Pass 1: decommissioned1 reports UP, gets the full drain/wait/delete
+	// sequence, DelServer refuses, and it's marked non-purgeable.
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() [pass 1] error = %v", err)
+	}
+	if !proxy.isNonPurgeableReadServer("decommissioned1") {
+		t.Fatalf("after Refresh() [pass 1], expected decommissioned1 to be marked non-purgeable")
+	}
+
+	// Pass 2: HAProxy now confirms decommissioned1 is actually sitting in
+	// MAINT (as pass 1's own SetMaintenance call would genuinely leave it,
+	// unlike the always-"UP" fake server in the test above) — the
+	// redundant SetMaintenance call must be skipped entirely.
+	mu.Lock()
+	statResponse = strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "MAINT", "127.0.0.1:9999"),
+	}, "\n")
+	commands = nil
+	mu.Unlock()
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() [pass 2] error = %v", err)
+	}
+
+	mu.Lock()
+	pass2 := append([]string(nil), commands...)
+	mu.Unlock()
+
+	for _, unwanted := range []string{
+		"set server service_read/decommissioned1 state maint",
+		"wait 2000 srv-removable service_read/decommissioned1",
+		"del server service_read/decommissioned1",
+	} {
+		if cmdIndex(pass2, unwanted) >= 0 {
+			t.Errorf("Refresh() [pass 2] commands = %v, want no %q once HAProxy's own \"show stat\" confirms decommissioned1 is already MAINT and non-purgeable", pass2, unwanted)
 		}
 	}
 }

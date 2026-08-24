@@ -107,11 +107,6 @@ func (r *Runtime) EnableHealth(pool string, name string) (string, error) {
 	return r.ApiCmd("enable health " + pool + "/" + name)
 }
 
-// DisableHealth deactivates health checks on a server.
-func (r *Runtime) DisableHealth(pool string, name string) (string, error) {
-	return r.ApiCmd("disable health " + pool + "/" + name)
-}
-
 // SetServerAddr changes an existing server's runtime address/port, on
 // statically configured or dynamically added servers alike. host may be an
 // IP or an FQDN, dispatching to "addr" or "fqdn" the same way
