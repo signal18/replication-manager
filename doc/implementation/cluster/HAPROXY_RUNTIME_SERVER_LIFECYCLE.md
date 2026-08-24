@@ -41,6 +41,9 @@ Three conditions must all hold, or `reconcileReadBackendServers()` is a no-op:
 A narrower check, `supportsWaitRemovable()` (HAProxy >= 3.0), separately
 gates the `wait ... srv-removable` step inside removal — see below.
 
+A fourth condition, `proxy.HasDNS()`, gates membership *changes* specifically
+(add-missing and remove-stale, not the whole function — see below).
+
 ## Runtime API wrapper (`router/haproxy/runtime_api.go`)
 
 - `AddServer(pool, name, host, port, opts)` → `add server <pool>/<name> <host>:<port> [opts]`
@@ -114,10 +117,89 @@ never be treated as `service_read`).
   `proxy.HasDNS()`) is both correct and doesn't skip valid IP-based updates
   behind a DNS-named proxy or under OpenSVC/Kubernetes.
 - **Removes** a stale svname (no matching `cluster.Servers[].Id`):
-  `SetMaintenance` → (if `supportsWaitRemovable()`) `WaitSrvRemovable` →
-  `DelServer`. Deletion isn't restricted to dynamically-added servers —
-  verified against real HAProxy that a statically-bootstrapped entry
-  deletes the same way, once drained and idle.
+  `SetMaintenance` → (if not already known non-purgeable) (if
+  `supportsWaitRemovable()`) `WaitSrvRemovable` → `DelServer`. Deletion isn't
+  restricted to dynamically-added servers in general — verified against real
+  HAProxy that a statically-bootstrapped entry deletes the same way, once
+  drained and idle — **except** when the entry carries a `resolvers` clause,
+  or any other configuration element HAProxy refuses to delete around (see
+  below). `SetMaintenance` (the drain) always runs regardless — it's what
+  actually stops read traffic from reaching the stale entry, and never fails
+  for this reason.
+
+### Servers HAProxy refuses to delete ("non-purgeable")
+
+`GetConfigProxyModule` (`cluster/prx_get.go`) appends `resolvers dns` to
+every bootstrapped read-backend server line whenever `proxy.HasDNS()` is
+true (proxy host isn't a literal IP, an explicit `dns` proxy tag, or an
+OpenSVC/Kubernetes orchestrator). HAProxy treats that as another
+configuration element pointing at the server, and its Runtime API refuses to
+delete such a server:
+
+```
+Failed. This server cannot be removed at runtime due to other configuration
+elements pointing to it.
+```
+
+This was discovered against a real dev cluster (`dev2`, OpenSVC-orchestrated,
+`haproxy-mode=runtimeapi`): `testHaproxyRuntimeAPIDynamicServerLifecycle`
+failed staging its add-path test because `DelServer` on an existing,
+config-bootstrapped replica hit exactly this error — surfaced generically as
+"it may still have active connections", which is misleading for this cause.
+The "verified against real HAProxy" claim above for unrestricted deletion
+was tested without a `resolvers`-bearing config; it doesn't hold once one is
+attached.
+
+**Add path — blanket-skipped via `proxy.HasDNS()`.** A runtime `add server`
+call can't attach `resolvers` either, so an entry added that way would
+silently stop tracking DNS changes — worse than not adding it. Since not
+adding a member only costs it being temporarily excluded from the dynamic
+read backend (never a traffic-safety issue), `reconcileReadBackendServers`
+blanket-skips the add-missing branch whenever `proxy.HasDNS()` is true
+(`skipAddingMembers` in the code) — no need to try-and-learn per server here.
+
+**Remove path — learned reactively per svname, not gated on
+`proxy.HasDNS()`.** Blanket-skipping removal the same way would also skip
+`SetMaintenance` (drain), which is safety-critical and never blocked by
+`resolvers` — doing that would leave a decommissioned node able to keep
+serving live read traffic indefinitely. It's also imprecise: an entry that
+reached the read backend via a runtime `add server` call never has
+`resolvers` attached, so it stays genuinely deletable even when
+`proxy.HasDNS()` is true for the proxy as a whole — a proxy-wide skip would
+block removing it too, for no reason. Instead, `HaproxyProxy` tracks
+`nonPurgeableReadServers` (mirroring the existing `pendingReadServers`
+pattern): `removeReadBackendServer` always issues `SetMaintenance`; if the
+svname isn't yet known non-purgeable, it also runs
+`WaitSrvRemovable`/`DelServer` as before, and if `DelServer`'s response
+contains the message text above (`haproxyNonPurgeableServerMsg`), marks the
+svname via `markNonPurgeableReadServer` so later passes skip straight past
+`WaitSrvRemovable`/`DelServer` for it (drain keeps re-running every pass
+regardless). This is learned from HAProxy's own answer, not guessed from
+config-generation heuristics, so it's correct even for a hand-written or
+externally-managed `haproxy.cfg` repman never generated — `proxy.HasDNS()`
+alone can't see that.
+
+**Log volume.** Both skip conditions are persistent (they hold for as long
+as `proxy.HasDNS()` is true, or a svname stays marked non-purgeable), so
+logging them with a plain `LogModulePrintf` per server per `Refresh()` tick
+would repeat unbounded once per `monitoring-ticker`. Skips are counted per
+pass instead and reported once via `cluster.SetState` (`WARN0209`), which
+only logs on the `OPENED`/`RESOLV` transition (`utils/state`'s
+`OldState`/`CurState` diff) — not every tick. The per-stale-server `LvlInfo`
+"draining stale server" line is similarly suppressed once a svname is known
+non-purgeable (it would otherwise repeat every tick for a permanently-stuck
+entry too); `WARN0209` already reports the ongoing count.
+
+Address reconciliation for IP-based members is unaffected by either skip —
+that path never adds or removes anything (see
+`TestHaproxyReconcileUpdatesChangedAddressForIPServerBehindDNSProxy`).
+
+`testHaproxyRuntimeAPIDynamicServerLifecycle` checks `proxy.HasDNS()` up
+front and fails immediately with a specific reason if it's true, instead of
+staging the doomed delete of an existing member and surfacing the generic
+"active connections" message — the regtest only ever deletes an
+already-bootstrapped member (never a runtime-added one), so `HasDNS()` alone
+is an accurate predictor there even though it isn't in general.
 
 `Refresh()`'s own maintenance-correction blocks (repman/HAProxy disagreeing
 on MAINT state) call `setReadBackendMaintenance(server) bool` and only
@@ -152,7 +234,16 @@ replica, version/mode gating, stale-entry removal (with and without `wait`),
 address reconciliation (IPv4, IPv6, DNS-gated skip, IP-behind-DNS-proxy),
 overlapping backend-name exclusion, add-sequence rollback (drain failure,
 health failure, and rollback-itself-fails staying blocked), error-response
-handling, and IPv6 Runtime API endpoint dialing.
+handling, and IPv6 Runtime API endpoint dialing. Non-purgeable handling:
+`TestHaproxyReconcileSkipsAddingMembersOnDNSCluster` (add-missing stays
+blanket-skipped on `HasDNS()`), `TestHaproxyReconcileStillDrainsStaleServerOnDNSCluster`
+(removal — drain and delete are both still attempted on `HasDNS()` when
+HAProxy has no actual reason to refuse), and
+`TestHaproxyReconcileMarksServerNonPurgeableAfterDelServerRefusal` (a custom
+fake server returns the non-purgeable message for `DelServer`; asserts pass
+1 attempts the full `SetMaintenance`/`WaitSrvRemovable`/`DelServer`
+sequence and marks the svname, pass 2 still re-issues `SetMaintenance` but
+skips `WaitSrvRemovable`/`DelServer`).
 
 `server/api_cluster_test.go` covers both switch-endpoint dispatchers for
 `haproxy-api-bootstrap-servers` (flip and explicit on/off).

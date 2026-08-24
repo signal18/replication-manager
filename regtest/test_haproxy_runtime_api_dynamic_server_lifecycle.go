@@ -57,11 +57,13 @@ func (regtest *RegTest) TestHaproxyRuntimeAPIDynamicServerLifecycle(cl *cluster.
 
 	var proxyHost, proxyPort string
 	haproxyAttached := false
+	haproxyDNS := false
 	for _, pri := range cl.Proxies {
 		if pri.GetType() == config.ConstProxyHaproxy {
 			proxyHost = pri.GetHost()
 			proxyPort = pri.GetPort()
 			haproxyAttached = true
+			haproxyDNS = pri.HasDNS()
 			break
 		}
 	}
@@ -72,6 +74,22 @@ func (regtest *RegTest) TestHaproxyRuntimeAPIDynamicServerLifecycle(cl *cluster.
 
 	if cl.Conf.HaproxyMode != "runtimeapi" {
 		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL cluster haproxy-mode=%q, this feature requires \"runtimeapi\"", cl.Conf.HaproxyMode)
+		return false
+	}
+
+	// Dynamic membership (add/remove) is unsupported on a resolver-backed
+	// HAProxy config: GetConfigProxyModule attaches "resolvers dns" to every
+	// bootstrapped read-backend server line whenever proxy.HasDNS() is true
+	// (FQDN proxy host, an explicit "dns" proxy tag, or an OpenSVC/
+	// Kubernetes orchestrator), and real HAProxy refuses "del server" on
+	// such a server at runtime ("This server cannot be removed at runtime
+	// due to other configuration elements pointing to it") — see
+	// reconcileReadBackendServers in cluster/prx_haproxy.go, which skips the
+	// same add/remove work for the same reason. Fail here with that
+	// specific reason instead of staging the delete below and surfacing the
+	// generic, misleading "may still have active connections" message.
+	if haproxyDNS {
+		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL dynamic server lifecycle unsupported on resolver-backed HAProxy config (HasDNS=true) — HAProxy refuses runtime deletion of servers configured with \"resolvers\"")
 		return false
 	}
 

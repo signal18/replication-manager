@@ -1461,6 +1461,273 @@ func TestHaproxyReconcileUpdatesChangedAddressForIPServerBehindDNSProxy(t *testi
 	}
 }
 
+// TestHaproxyReconcileSkipsAddingMembersOnDNSCluster confirms that
+// add-missing (unlike address reconciliation, and unlike stale removal — see
+// TestHaproxyReconcileStillDrainsStaleServerOnDNSCluster and
+// TestHaproxyReconcileMarksServerNonPurgeableAfterDelServerRefusal) is
+// skipped entirely when proxy.HasDNS() is true: GetConfigProxyModule appends
+// "resolvers dns" to every bootstrapped read-backend server line in that
+// case, but a runtime "add server" call can't attach "resolvers" itself, so
+// an entry added that way would silently stop tracking DNS changes — worse
+// than not adding it.
+func TestHaproxyReconcileSkipsAddingMembersOnDNSCluster(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+	// Forces proxy.HasDNS() == true, same as the other DNS-gated tests above.
+	cluster.Configurator.ProxyTags = []string{"dns"}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 is missing from HAProxy's stat output — would normally trigger
+	// AddServer, must not be attempted here.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+
+	if !proxy.HasDNS() {
+		t.Fatalf("test setup error: expected proxy.HasDNS() to be true")
+	}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check"
+	if cmdIndex(commands, wantAdd) >= 0 {
+		t.Errorf("Refresh() commands = %v, want no %q on a resolver-backed (HasDNS) cluster", commands, wantAdd)
+	}
+}
+
+// TestHaproxyReconcileStillDrainsStaleServerOnDNSCluster confirms that
+// removal of a stale read-backend entry is NOT blanket-skipped on a
+// proxy.HasDNS() == true cluster the way adding a missing member is (see
+// TestHaproxyReconcileSkipsAddingMembersOnDNSCluster): draining
+// (SetMaintenance) never touches "resolvers" and always succeeds regardless
+// of DNS config, and it's the safety-critical half of removal — the part
+// that actually stops read traffic from reaching a decommissioned node.
+// Skipping it here would leave a decommissioned node serving live read
+// traffic indefinitely. Deletion is also still attempted (not
+// proxy-wide-skipped): the fake server below has no reason to refuse it,
+// unlike TestHaproxyReconcileMarksServerNonPurgeableAfterDelServerRefusal.
+func TestHaproxyReconcileStillDrainsStaleServerOnDNSCluster(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+	cluster.Configurator.ProxyTags = []string{"dns"}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+
+	if !proxy.HasDNS() {
+		t.Fatalf("test setup error: expected proxy.HasDNS() to be true")
+	}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	wantMaint := "set server service_read/decommissioned1 state maint"
+	wantDel := "del server service_read/decommissioned1"
+	for _, want := range []string{wantMaint, wantDel} {
+		if cmdIndex(commands, want) < 0 {
+			t.Errorf("Refresh() commands = %v, want to contain %q even though proxy.HasDNS() is true (only adding new members is DNS-gated, not removing stale ones)", commands, want)
+		}
+	}
+}
+
+// TestHaproxyReconcileMarksServerNonPurgeableAfterDelServerRefusal confirms
+// that once HAProxy's Runtime API refuses "del server" with its
+// non-purgeable message (e.g. because the entry carries a "resolvers"
+// clause — see haproxyNonPurgeableServerMsg), reconcileReadBackendServers
+// stops retrying DelServer/WaitSrvRemovable for that svname on later passes,
+// while still re-issuing SetMaintenance every pass (the safety-critical
+// part — see TestHaproxyReconcileStillDrainsStaleServerOnDNSCluster).
+func TestHaproxyReconcileMarksServerNonPurgeableAfterDelServerRefusal(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case cmd == "del server service_read/decommissioned1":
+					c.Write([]byte("Failed. This server cannot be removed at runtime due to other configuration elements pointing to it.\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() [pass 1] error = %v", err)
+	}
+
+	mu.Lock()
+	pass1 := append([]string(nil), commands...)
+	commands = nil
+	mu.Unlock()
+
+	wantMaint := "set server service_read/decommissioned1 state maint"
+	wantWait := "wait 2000 srv-removable service_read/decommissioned1"
+	wantDel := "del server service_read/decommissioned1"
+	for _, want := range []string{wantMaint, wantWait, wantDel} {
+		if cmdIndex(pass1, want) < 0 {
+			t.Errorf("Refresh() [pass 1] commands = %v, want to contain %q", pass1, want)
+		}
+	}
+
+	if !proxy.isNonPurgeableReadServer("decommissioned1") {
+		t.Fatalf("after Refresh() [pass 1], expected decommissioned1 to be marked non-purgeable")
+	}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() [pass 2] error = %v", err)
+	}
+
+	mu.Lock()
+	pass2 := append([]string(nil), commands...)
+	mu.Unlock()
+
+	if cmdIndex(pass2, wantMaint) < 0 {
+		t.Errorf("Refresh() [pass 2] commands = %v, want to still contain %q (draining must keep retrying even for a known non-purgeable server)", pass2, wantMaint)
+	}
+	for _, unwanted := range []string{wantWait, wantDel} {
+		if cmdIndex(pass2, unwanted) >= 0 {
+			t.Errorf("Refresh() [pass 2] commands = %v, want no %q once decommissioned1 is known non-purgeable", pass2, unwanted)
+		}
+	}
+}
+
 // TestHaproxyReconcileRollsBackServerWhenDrainFailsAfterAdd confirms that if
 // AddServer succeeds but SetDrain fails, the server is removed via the
 // Runtime API (not left behind still in MAINT) so the add sequence retries

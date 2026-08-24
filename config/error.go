@@ -289,6 +289,7 @@ var ClusterError = map[string]string{
 	"WARN0206":   "Log plugin %s rejected: %s",
 	"WARN0207":   "Plugin signature verification skipped: %s",
 	"WARN0208":   "Self-healed runaway collected DB log %s (%s): moved aside and reclaimed; compressed sample kept at %s",
+	"WARN0209":   "HAProxy read backend %s: %d server(s) not added (resolver-backed HAProxy config does not support dynamic add via Runtime API) and %d stale server(s) drained but not deleted (HAProxy Runtime API reports them non-purgeable, e.g. a \"resolvers\" clause) — reload HAProxy to fully clear these",
 	// CINF: cluster observability statuses (INFO, state-as-tag) — each domain
 	// state machine always explains why it may have nothing to report.
 	"CINF0001":  "%s reporting limited: instance not registered on Cloud18",

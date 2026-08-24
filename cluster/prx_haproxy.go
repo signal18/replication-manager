@@ -50,6 +50,18 @@ type HaproxyProxy struct {
 	// server to ready — otherwise the generic eligibility logic could bring
 	// an unmonitored server into service. Guarded by Lock (embedded Proxy).
 	pendingReadServers map[string]bool
+	// nonPurgeableReadServers tracks read-backend svnames HAProxy itself has
+	// already told us it will never "del server" (its Runtime API response
+	// contains haproxyNonPurgeableServerMsg — e.g. a "resolvers" clause on
+	// that server line, config-generated or hand-written). Learned
+	// reactively from HAProxy's own answer rather than guessed from
+	// proxy.HasDNS(), so it also catches externally-managed haproxy.cfg
+	// files repman didn't generate. Once marked, reconcileReadBackendServers
+	// skips retrying DelServer on it (a config reload is required to change
+	// that server's non-purgeable status, and this process has no signal
+	// for one happening, so the mark is never cleared automatically).
+	// Guarded by Lock (embedded Proxy).
+	nonPurgeableReadServers map[string]bool
 }
 
 func (proxy *HaproxyProxy) markPendingReadServer(svname string) {
@@ -71,6 +83,32 @@ func (proxy *HaproxyProxy) isPendingReadServer(svname string) bool {
 	proxy.Lock.Lock()
 	defer proxy.Lock.Unlock()
 	return proxy.pendingReadServers[svname]
+}
+
+// haproxyNonPurgeableServerMsg is the distinctive substring of HAProxy's
+// Runtime API refusal to "del server" a server another configuration
+// element still references (a "resolvers" clause being the case repman can
+// itself produce — see GetConfigProxyModule — but not the only possible
+// one). Matched case-sensitively against the exact wording HAProxy 2.6-3.0
+// use; if a future HAProxy version rewords it, the practical effect is just
+// that markNonPurgeableReadServer never triggers and DelServer is retried
+// every pass as before (logIfFailed already logs each failure), not a
+// crash or incorrect behavior.
+const haproxyNonPurgeableServerMsg = "other configuration elements pointing to it"
+
+func (proxy *HaproxyProxy) markNonPurgeableReadServer(svname string) {
+	proxy.Lock.Lock()
+	defer proxy.Lock.Unlock()
+	if proxy.nonPurgeableReadServers == nil {
+		proxy.nonPurgeableReadServers = make(map[string]bool)
+	}
+	proxy.nonPurgeableReadServers[svname] = true
+}
+
+func (proxy *HaproxyProxy) isNonPurgeableReadServer(svname string) bool {
+	proxy.Lock.Lock()
+	defer proxy.Lock.Unlock()
+	return proxy.nonPurgeableReadServers[svname]
 }
 
 func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *HaproxyProxy {
@@ -734,6 +772,29 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 	}
 	pool := cluster.Conf.HaproxyAPIReadBackend
 
+	// Adding a new member is unsupported on a resolver-backed config:
+	// GetConfigProxyModule appends "resolvers dns" to every bootstrapped
+	// server line whenever proxy.HasDNS() is true, but a runtime "add
+	// server" call can't attach "resolvers" itself — an entry added that
+	// way would silently stop tracking DNS changes, worse than not adding
+	// it. This is a blanket, proxy-level skip (unlike removal below): it
+	// costs nothing but leaving a replica temporarily out of the dynamic
+	// read backend, never a traffic-safety issue, so it's fine to be
+	// conservative here rather than try every add and learn reactively.
+	// Address updates for IP-based members (below, in the per-server loop)
+	// are unaffected — they neither add nor remove anything.
+	skipAddingMembers := proxy.HasDNS()
+	// skippedAdds/skippedRemoves count this pass's skips for a single
+	// summary SetState call below, rather than logging per server every
+	// Refresh() tick: both conditions are persistent for as long as they
+	// hold (proxy.HasDNS() for adds; a svname HAProxy has already told us
+	// is non-purgeable, for removes), so a per-item LogModulePrintf here
+	// would otherwise repeat unbounded once per monitoring-ticker for as
+	// long as the server stays missing/stale — SetState instead only logs
+	// on the OPENED/RESOLV transition (see cluster.SetState /
+	// StateMachine.AddState).
+	skippedAdds, skippedRemoves := 0, 0
+
 	// logIfFailed runs a Runtime API call and logs+reports whether it
 	// failed, either at the transport level or via a non-empty response
 	// body (HAProxy's admin server commands return no output on success).
@@ -757,6 +818,11 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 		}
 
 		if !knownToHaproxy[server.Id] {
+			if skipAddingMembers {
+				skippedAdds++
+				continue
+			}
+
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy adding server %s to read backend %s via Runtime API", server.URL, pool)
 
 			res, err := haRuntime.AddServer(pool, server.Id, server.Host, server.Port, "check")
@@ -828,19 +894,61 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 	// a dynamically added one, provided it's drained and idle first — there
 	// is no dynamic-only restriction in practice for repman's generated
 	// config (tcp mode, "balance leastconn", no per-server "track"
-	// references). DelServer itself enforces the "no active/idle
-	// connections" precondition and fails safely (non-empty response,
-	// caught by logIfFailed) if that isn't met, so a stale entry that can't
-	// be removed yet is simply retried on the next Refresh() pass.
+	// references), UNLESS the entry carries a "resolvers" clause (or any
+	// other element HAProxy considers a reason to refuse "del server" —
+	// see haproxyNonPurgeableServerMsg / isNonPurgeableReadServer above).
+	//
+	// Deliberately NOT gated on skipAddingMembers (proxy.HasDNS()) the
+	// way the add branch above is: draining (SetMaintenance, inside
+	// removeReadBackendServer) never touches "resolvers" and always
+	// succeeds regardless of DNS config, and it's the safety-critical half
+	// of removal — it's what actually stops read traffic from reaching a
+	// decommissioned node. Skipping it here on a DNS-backed proxy would
+	// leave a decommissioned node serving live read traffic indefinitely,
+	// which is worse than the log noise this fix set out to reduce. Only
+	// the deletion step is genuinely blocked by "resolvers", and even that
+	// isn't proxy-wide: an entry added at runtime never gets "resolvers"
+	// attached (Runtime API "add server" can't specify it), so it stays
+	// deletable. proxy.isNonPurgeableReadServer, checked inside
+	// removeReadBackendServer, is learned per svname from HAProxy's own
+	// refusal rather than guessed from HasDNS(), so it doesn't
+	// over-suppress a stale entry that's actually still removable.
+	//
+	// DelServer itself enforces the "no active/idle connections"
+	// precondition and fails safely (non-empty response, caught by
+	// logIfFailed) if that isn't met, so a stale entry that can't be
+	// removed yet is simply retried on the next Refresh() pass.
 	for svname := range knownToHaproxy {
 		if knownToCluster[svname] {
 			continue
 		}
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy draining stale server %s from read backend %s via Runtime API", svname, pool)
+		// Only logged while still actively trying to fully remove this
+		// svname — once it's known non-purgeable, removeReadBackendServer
+		// keeps re-draining it every pass (safety-critical, see its doc
+		// comment) but that's a silent no-op repeated indefinitely, not
+		// worth an INFO line every monitoring-ticker; WARN0209 below
+		// already reports the ongoing count.
+		if proxy.isNonPurgeableReadServer(svname) {
+			skippedRemoves++
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy draining stale server %s from read backend %s via Runtime API", svname, pool)
+		}
 		if proxy.removeReadBackendServer(haRuntime, pool, svname, logIfFailed) {
 			proxy.unmarkPendingReadServer(svname)
 		}
+	}
+
+	// One deduped state per pool per pass: opens once while any add/remove
+	// stays skipped, resolves automatically once none do (see
+	// skippedAdds/skippedRemoves comment above for why this isn't a plain
+	// LogModulePrintf).
+	if skippedAdds > 0 || skippedRemoves > 0 {
+		cluster.SetState("WARN0209", state.State{
+			ErrType: config.LvlWarn,
+			ErrDesc: fmt.Sprintf(clusterError["WARN0209"], pool, skippedAdds, skippedRemoves),
+			ErrFrom: "HAPROXY",
+		})
 	}
 }
 
@@ -885,9 +993,27 @@ func (proxy *HaproxyProxy) completeOrRollbackPendingAdd(haRuntime haproxy.Runtim
 // the add sequence (SetDrain/EnableHealth) failed — see the add path in
 // reconcileReadBackendServers for why leaving it half-configured is unsafe
 // rather than merely incomplete.
+//
+// Draining always runs, even for a svname already known non-purgeable
+// (isNonPurgeableReadServer): it's what actually stops read traffic from
+// reaching this server and never fails because of "resolvers" or any other
+// config element blocking deletion, so there's no reason to skip it.
+// WaitSrvRemovable/DelServer are skipped once a svname is known
+// non-purgeable — retrying them every pass would only repeat a call HAProxy
+// has already told us will fail (and log an error every time, unbounded).
+// If DelServer's response matches haproxyNonPurgeableServerMsg for the
+// first time, this marks the svname so future passes skip straight past
+// it. That mark is per svname, not proxy-wide (unlike skipAddingMembers):
+// an entry that reached the read backend via a runtime "add server" call
+// never has "resolvers" attached, so it stays genuinely removable even on
+// a proxy.HasDNS() == true proxy.
 func (proxy *HaproxyProxy) removeReadBackendServer(haRuntime haproxy.Runtime, pool string, svname string, logIfFailed func(action string, res string, err error) bool) bool {
 	res, err := haRuntime.SetMaintenance(svname, pool)
 	if logIfFailed(fmt.Sprintf("could not drain server %s in backend %s for removal", svname, pool), res, err) {
+		return false
+	}
+
+	if proxy.isNonPurgeableReadServer(svname) {
 		return false
 	}
 
@@ -899,6 +1025,9 @@ func (proxy *HaproxyProxy) removeReadBackendServer(haRuntime haproxy.Runtime, po
 	}
 
 	res, err = haRuntime.DelServer(pool, svname)
+	if strings.Contains(res, haproxyNonPurgeableServerMsg) {
+		proxy.markNonPurgeableReadServer(svname)
+	}
 	return !logIfFailed(fmt.Sprintf("could not remove server %s from backend %s", svname, pool), res, err)
 }
 
