@@ -209,15 +209,15 @@ require (
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/labstack/echo/v4 v4.13.4 // indirect
-	github.com/labstack/gommon v0.4.2 // indirect
+	github.com/labstack/echo/v4 v4.15.3 // indirect
+	github.com/labstack/gommon v0.5.0 // indirect
 	github.com/mailru/easyjson v0.9.1 // indirect
 	github.com/mattermost/go-i18n v1.11.1-0.20211013152124-5c415071e404 // indirect
 	github.com/mattermost/ldap v0.0.0-20231116144001-0f480c025956 // indirect
 	github.com/mattermost/logr/v2 v2.0.22 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-ieproxy v0.0.1 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/mattn/go-sqlite3 v2.0.3+incompatible // indirect
 	github.com/micro/mdns v0.1.0 // indirect
 	github.com/mitchellh/hashstructure v1.0.0 // indirect
@@ -290,7 +290,7 @@ require (
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/term v0.44.0 // indirect
 	golang.org/x/text v0.39.0 // indirect
-	golang.org/x/time v0.12.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.47.0 // indirect
 	google.golang.org/genproto v0.0.0-20230530153820-e85fd2cbaebc // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
