@@ -240,6 +240,41 @@ func TestK8SUnprovisionProxy_NotFoundIsIdempotent(t *testing.T) {
 	}
 }
 
+// --- Database Deployment builder ---
+//
+// k8sDatabaseDeployment is a pure builder (no API calls, no ServerMonitor
+// methods invoked), so the placement fix — NodeSelector, not NodeName,
+// which is what actually made WaitForFirstConsumer PVC binding work — can
+// be asserted directly without a fake clientset or a live cluster.
+
+func TestK8SDatabaseDeployment_UsesNodeSelectorNotNodeName(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDbImg = "mariadb:10.11"
+	s := &ServerMonitor{Name: "db1", Port: "3306", Pass: "secret"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+
+	if dep.Spec.Template.Spec.NodeName != "" {
+		t.Fatalf("expected NodeName to be unset (placement must go through NodeSelector, not NodeName, or WaitForFirstConsumer PVC binding breaks again), got %q", dep.Spec.Template.Spec.NodeName)
+	}
+	got := dep.Spec.Template.Spec.NodeSelector["kubernetes.io/hostname"]
+	if got != "node-a" {
+		t.Fatalf("expected NodeSelector kubernetes.io/hostname=node-a, got %q", got)
+	}
+}
+
+func TestK8SDatabaseDeployment_NodeSelectorTracksHostnameLabelArgument(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a-label")
+
+	got := dep.Spec.Template.Spec.NodeSelector["kubernetes.io/hostname"]
+	if got != "node-a-label" {
+		t.Fatalf("expected NodeSelector to use the passed-in hostname label, got %q", got)
+	}
+}
+
 // --- Namespace ensure ---
 
 func TestK8SEnsureNamespace_AlreadyExistsDoesNotPanic(t *testing.T) {

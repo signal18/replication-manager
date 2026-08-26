@@ -28,6 +28,98 @@ func (cluster *Cluster) k8sEnsureNamespace(client kubernetes.Interface, name str
 	}
 }
 
+// k8sDatabaseDeployment is a pure builder — no API calls, no ServerMonitor
+// methods invoked — so the Deployment's placement/selector/env can be
+// asserted directly in tests. In particular NodeSelector, not
+// Spec.NodeName: NodeName bypasses the scheduler entirely, which means a
+// WaitForFirstConsumer StorageClass (the default for most dynamic
+// provisioners) never binds the PVC, since that only happens during
+// scheduling. NodeSelector pins the pod to the same node while still going
+// through the scheduler.
+func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHostnameLabel string) *appsv1.Deployment {
+	// No auth header: 403s if api-credentials-secure-config is enabled.
+	cmd := []string{
+		"sh", "-c",
+		"wget -qO- http://" + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + "/api/clusters/" + cluster.Name + "/servers/" + s.Name + "/" + s.Port + "/config|tar xzvf - -C /data",
+	}
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: s.Name,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: int32Ptr(1),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "repication-manager",
+					"tag": s.Name,
+				},
+			},
+			Template: apiv1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "repication-manager",
+						"tag": s.Name,
+					},
+				},
+				Spec: apiv1.PodSpec{
+					Hostname: s.Name,
+					NodeSelector: map[string]string{
+						"kubernetes.io/hostname": nodeHostnameLabel,
+					},
+					InitContainers: []apiv1.Container{
+						{
+							Name:    s.Name + "-init",
+							Image:   "alpine",
+							Command: cmd,
+							VolumeMounts: []apiv1.VolumeMount{
+								{
+									Name:      s.Name + "-persistent-storage",
+									MountPath: "/data",
+								},
+							},
+						},
+					},
+					Containers: []apiv1.Container{
+						{
+							Name:  s.Name,
+							Image: cluster.Conf.ProvDbImg,
+							Ports: []apiv1.ContainerPort{
+								{
+									Name:          "mysql",
+									Protocol:      apiv1.ProtocolTCP,
+									ContainerPort: int32(port),
+								},
+							},
+							Env: []apiv1.EnvVar{
+								{
+									Name:  "MYSQL_ROOT_PASSWORD",
+									Value: s.Pass,
+								},
+							},
+							VolumeMounts: []apiv1.VolumeMount{
+								{
+									Name:      s.Name + "-persistent-storage",
+									MountPath: "/var/lib/mysql",
+								},
+							},
+						},
+					},
+					Volumes: []apiv1.Volume{
+						{
+							Name: s.Name + "-persistent-storage",
+							VolumeSource: apiv1.VolumeSource{
+								PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{
+									ClaimName: cluster.Name + "-" + s.Name + "-claim",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 
 	client, err := cluster.K8SConnectAPI()
@@ -159,93 +251,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		return
 	}
 	nodeHostnameLabel := cluster.k8sHostnameLabel(agent.HostName)
-	// No auth header: 403s if api-credentials-secure-config is enabled.
-	cmd := []string{
-		"sh", "-c",
-		"wget -qO- http://" + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + "/api/clusters/" + cluster.Name + "/servers/" + s.Name + "/" + s.Port + "/config|tar xzvf - -C /data",
-	}
-	deployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: s.Name,
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: int32Ptr(1),
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": "repication-manager",
-					"tag": s.Name,
-				},
-			},
-			Template: apiv1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app": "repication-manager",
-						"tag": s.Name,
-					},
-				},
-				Spec: apiv1.PodSpec{
-					Hostname: s.Name,
-					// NodeSelector, not NodeName: NodeName bypasses the scheduler
-					// entirely, which means a WaitForFirstConsumer StorageClass
-					// (the default for most dynamic provisioners) never binds the
-					// PVC, since that only happens during scheduling. NodeSelector
-					// pins the pod to the same node while still going through the
-					// scheduler.
-					NodeSelector: map[string]string{
-						"kubernetes.io/hostname": nodeHostnameLabel,
-					},
-					InitContainers: []apiv1.Container{
-						{
-							Name:    s.Name + "-init",
-							Image:   "alpine",
-							Command: cmd,
-							VolumeMounts: []apiv1.VolumeMount{
-								{
-									Name:      s.Name + "-persistent-storage",
-									MountPath: "/data",
-								},
-							},
-						},
-					},
-					Containers: []apiv1.Container{
-						{
-							Name:  s.Name,
-							Image: cluster.Conf.ProvDbImg,
-							Ports: []apiv1.ContainerPort{
-								{
-									Name:          "mysql",
-									Protocol:      apiv1.ProtocolTCP,
-									ContainerPort: int32(port),
-								},
-							},
-							Env: []apiv1.EnvVar{
-								{
-									Name:  "MYSQL_ROOT_PASSWORD",
-									Value: s.Pass,
-								},
-							},
-							VolumeMounts: []apiv1.VolumeMount{
-								{
-									Name:      s.Name + "-persistent-storage",
-									MountPath: "/var/lib/mysql",
-								},
-							},
-						},
-					},
-					Volumes: []apiv1.Volume{
-						{
-							Name: s.Name + "-persistent-storage",
-							VolumeSource: apiv1.VolumeSource{
-								PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{
-									ClaimName: cluster.Name + "-" + s.Name + "-claim",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+	deployment := cluster.k8sDatabaseDeployment(s, port, nodeHostnameLabel)
 
 	// Create Deployment
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Creating Kubernetes deployment...")
