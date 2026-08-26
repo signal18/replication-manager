@@ -2,15 +2,31 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strconv"
 
 	"github.com/signal18/replication-manager/config"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
+
+// Never fatal: a least-privilege RBAC setup may grant no verb at all on the
+// cluster-scoped "namespaces" resource, so Create() can be Forbidden even when
+// the namespace already exists and provisioning would otherwise succeed. A
+// genuinely missing namespace still surfaces below, at the PVC/Deployment/
+// Service creates that actually need it.
+func (cluster *Cluster) k8sEnsureNamespace(client kubernetes.Interface, name string) {
+	namespace := &apiv1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	_, err := client.CoreV1().Namespaces().Create(context.TODO(), namespace, metav1.CreateOptions{})
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Cannot create namespace %s ", err)
+	}
+}
 
 func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 
@@ -20,11 +36,11 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		cluster.errorChan <- err
 		return
 	}
-	namespace := &apiv1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: cluster.Name}}
-	_, err = client.CoreV1().Namespaces().Create(context.TODO(), namespace, metav1.CreateOptions{})
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot create namespace %s ", err)
+	if cluster.Conf.APISecureConfig {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+			"api-credentials-secure-config is enabled: the Kubernetes DB init-container config fetch sends no credentials and will get HTTP 403, so %s will not bootstrap", s.Name)
 	}
+	cluster.k8sEnsureNamespace(client, cluster.Name)
 
 	/*
 			apiVersion: v1
@@ -92,48 +108,62 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		},
 	}
 	pvcresult, pvcerr := persistentVolumeClaims.Create(context.TODO(), pvc, metav1.CreateOptions{})
-	if pvcerr != nil {
+	if pvcerr != nil && !apierrors.IsAlreadyExists(pvcerr) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot deploy Kubernetes pvc %s ", pvcerr)
+		cluster.errorChan <- pvcerr
+		return
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes physical volume claim %q.\n", pvcresult.GetObjectMeta().GetName())
+	if pvcerr == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes physical volume claim %q.\n", pvcresult.GetObjectMeta().GetName())
+	}
 
+	// Not mounted or consumed by the Deployment below (bootstrap is the HTTP
+	// init-container fetch further down) — best-effort only.
 	s.GetDatabaseConfig()
 	data, err := os.ReadFile(s.Datadir + "/config.tar.gz")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Provision can not found file %s ", s.Datadir+"/config.tar.gz")
-	}
+	} else {
+		configMapName := s.Name + "-config-map"
+		configMap := apiv1.ConfigMap{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ConfigMap",
+				APIVersion: "v1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      configMapName,
+				Namespace: cluster.Name,
+			},
+			BinaryData: map[string][]byte{
+				"config.tar.gz": data,
+			},
+		}
 
-	configMapName := s.Name + "-config-map"
-	configMap := apiv1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ConfigMap",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      configMapName,
-			Namespace: cluster.Name,
-		},
-		BinaryData: map[string][]byte{
-			"config.tar.gz": data,
-		},
-	}
-
-	//var cm *apiv1.ConfigMap
-	_, err = client.CoreV1().ConfigMaps(cluster.Name).Create(context.TODO(), &configMap, metav1.CreateOptions{})
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision config map  %s ", err)
+		_, cmerr := client.CoreV1().ConfigMaps(cluster.Name).Create(context.TODO(), &configMap, metav1.CreateOptions{})
+		if cmerr != nil && !apierrors.IsAlreadyExists(cmerr) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision config map  %s ", cmerr)
+		}
 	}
 	deploymentsClient := client.AppsV1().Deployments(cluster.Name)
 
-	port, _ := strconv.Atoi(s.Port)
+	port, err := strconv.Atoi(s.Port)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Invalid database port %s: %s ", s.Port, err)
+		cluster.errorChan <- err
+		return
+	}
 	agent, err := cluster.GetDatabaseAgent(s)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision database  %s ", err)
 		cluster.errorChan <- err
 		return
 	}
-	var cmd []string
-	cmd = append(cmd, "sh -c 'wget -qO- http://"+cluster.Conf.MonitorAddress+":"+cluster.Conf.HttpPort+"/api/clusters/"+cluster.Name+"/servers/"+s.Name+"/"+s.Port+"/config|tar xzvf - -C /data'")
+	nodeHostnameLabel := cluster.k8sHostnameLabel(agent.HostName)
+	// No auth header: 403s if api-credentials-secure-config is enabled.
+	cmd := []string{
+		"sh", "-c",
+		"wget -qO- http://" + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + "/api/clusters/" + cluster.Name + "/servers/" + s.Name + "/" + s.Port + "/config|tar xzvf - -C /data",
+	}
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: s.Name,
@@ -155,7 +185,15 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 				},
 				Spec: apiv1.PodSpec{
 					Hostname: s.Name,
-					NodeName: agent.HostName,
+					// NodeSelector, not NodeName: NodeName bypasses the scheduler
+					// entirely, which means a WaitForFirstConsumer StorageClass
+					// (the default for most dynamic provisioners) never binds the
+					// PVC, since that only happens during scheduling. NodeSelector
+					// pins the pod to the same node while still going through the
+					// scheduler.
+					NodeSelector: map[string]string{
+						"kubernetes.io/hostname": nodeHostnameLabel,
+					},
 					InitContainers: []apiv1.Container{
 						{
 							Name:    s.Name + "-init",
@@ -212,10 +250,14 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	// Create Deployment
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Creating Kubernetes deployment...")
 	result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
-	if err != nil {
+	if err != nil && !apierrors.IsAlreadyExists(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot deploy Kubernetes deployment %s ", err)
+		cluster.errorChan <- err
+		return
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes deployment %q.\n", result.GetObjectMeta().GetName())
+	if err == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes deployment %q.\n", result.GetObjectMeta().GetName())
+	}
 	servicesClient := client.CoreV1().Services(cluster.Name)
 
 	service := &apiv1.Service{
@@ -239,50 +281,91 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Creating service...")
 	result2, err2 := servicesClient.Create(context.TODO(), service, metav1.CreateOptions{})
-	if err2 != nil {
+	if err2 != nil && !apierrors.IsAlreadyExists(err2) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot deploy Kubernetes service %s ", err2)
 		cluster.errorChan <- err2
 		return
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes service %s.\n", result2.GetObjectMeta().GetName())
+	if err2 == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes service %s.\n", result2.GetObjectMeta().GetName())
+	}
 	cluster.errorChan <- nil
 }
 
+// No scale-to-zero/drain semantic exists for the Deployment; an explicit
+// error here (not silent nil) makes RestartDatabaseService fail fast instead
+// of timing out in WaitDatabaseFailed for a stop that never happened.
 func (cluster *Cluster) K8SStopDatabaseService(s *ServerMonitor) error {
+	return errors.New("stop is not supported for the kubernetes orchestrator")
+}
+
+// No real start/scale-up exists either; this only confirms the Deployment is
+// present with a non-zero desired replica count before reporting success.
+func (cluster *Cluster) k8sStartDatabaseServiceWithClient(client kubernetes.Interface, name string) error {
+	dep, err := client.AppsV1().Deployments(cluster.Name).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil && apierrors.IsNotFound(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot start database %s: deployment not found: %s ", name, err)
+		return err
+	}
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot start database %s: %s ", name, err)
+		return err
+	}
+	if dep.Spec.Replicas == nil || *dep.Spec.Replicas == 0 {
+		err := errors.New("database deployment " + name + " is scaled to zero and kubernetes start does not scale it back up")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot start database %s: %s ", name, err)
+		return err
+	}
 	return nil
 }
 
 func (cluster *Cluster) K8SStartDatabaseService(s *ServerMonitor) error {
-	return nil
+	client, err := cluster.K8SConnectAPI()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
+		return err
+	}
+	return cluster.k8sStartDatabaseServiceWithClient(client, s.Name)
 }
 
+// ConfigMap, PVC and Namespace are intentionally retained — PVC deletion is
+// destructive and retention semantics are an open question.
+func (cluster *Cluster) k8sUnprovisionDatabaseServiceWithClient(client kubernetes.Interface, name string) error {
+	deletePolicy := metav1.DeletePropagationForeground
+	var firstErr error
+
+	deploymentsClient := client.AppsV1().Deployments(cluster.Name)
+	if err := deploymentsClient.Delete(context.TODO(), name, metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}); err != nil && !apierrors.IsNotFound(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot delete Kubernetes deployment %s %s ", name, err)
+		firstErr = err
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Deleted Kubernetes deployment %s.", name)
+	}
+
+	servicesClient := client.CoreV1().Services(cluster.Name)
+	if err := servicesClient.Delete(context.TODO(), name, metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}); err != nil && !apierrors.IsNotFound(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot delete Kubernetes service %s %s ", name, err)
+		if firstErr == nil {
+			firstErr = err
+		}
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Deleted Kubernetes service %s.", name)
+	}
+
+	return firstErr
+}
+
+// Exactly one value is ever sent on cluster.errorChan.
 func (cluster *Cluster) K8SUnprovisionDatabaseService(s *ServerMonitor) {
 	client, err := cluster.K8SConnectAPI()
-	deploymentsClient := client.AppsV1().Deployments(cluster.Name)
-
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
 		cluster.errorChan <- err
 		return
 	}
-
-	deletePolicy := metav1.DeletePropagationForeground
-	if err := deploymentsClient.Delete(context.TODO(), s.Name, metav1.DeleteOptions{
-		PropagationPolicy: &deletePolicy,
-	}); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot delete Kubernetes deployment %s %s ", s.Name, err)
-		cluster.errorChan <- err
-	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Deleted Kubernetes deployment %s.", s.Name)
-	servicesClient := client.CoreV1().Services(cluster.Name)
-	if err := servicesClient.Delete(context.TODO(), s.Name, metav1.DeleteOptions{
-		PropagationPolicy: &deletePolicy,
-	}); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot delete Kubernetes service %s %s ", s.Name, err)
-		cluster.errorChan <- err
-	}
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Deleted Kubernetes service %s.", s.Name)
-	cluster.errorChan <- nil
-
+	cluster.errorChan <- cluster.k8sUnprovisionDatabaseServiceWithClient(client, s.Name)
 }
