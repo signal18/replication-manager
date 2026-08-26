@@ -240,7 +240,38 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 	// reconfigured. Only sent when actually required: embedding a real
 	// credential in every Deployment spec regardless of whether the
 	// endpoint enforces auth would be needless exposure.
-	authority := cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
+	//
+	// HTTPS on api-port (10005) when the API server is actually running:
+	// api.go's apiserver() registers the exact same unprotected routes
+	// (config, static binary) as http.go's httpserver(), and always
+	// terminates TLS -- a generated self-signed cert when
+	// monitoring-ssl-cert isn't set, same as every other orchestrator's
+	// bootstrap fetch already does (REPLICATION_MANAGER_URL in
+	// prov_opensvc.go, prov_onpremise_db.go, cluster_get.go all use
+	// "https://"+MonitorAddress+":"+APIPort). --no-check-certificate matches
+	// those callers' wget invocations for the same reason: the cert is
+	// self-signed, so there's no CA for the init container to validate
+	// against, and pinning/distributing that generated cert is out of scope
+	// here (#1497).
+	//
+	// api-server is a real, independently-togglable flag (api-server,
+	// default true) -- a deployment with api-server=false and
+	// http-server=true has nothing listening on api-port at all, which
+	// would previously have worked fine over plain HTTP on http-port
+	// (httpserver() registers the identical routes). Falling back to that
+	// combination when the API server is disabled preserves that config
+	// instead of silently breaking it: the init container's wget would
+	// otherwise hang on an unanswered connection with no error to surface
+	// (confirmed live in the same failure shape when a Service didn't route
+	// to the right port at all).
+	scheme := "https"
+	noCheckCert := " --no-check-certificate"
+	authority := cluster.Conf.MonitorAddress + ":" + cluster.Conf.APIPort
+	if !cluster.Conf.ApiServ {
+		scheme = "http"
+		noCheckCert = ""
+		authority = cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
+	}
 	authHeader := ""
 	if cluster.Conf.APISecureConfig {
 		adminPass := "repman"
@@ -290,10 +321,10 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 	cmd := []string{
 		"sh", "-c",
 		"mkdir -p /tmp/cfg /docker-entrypoint-initdb.d " + systemDirs +
-			" && wget -qO-" + authHeader + " http://" + authority + "/api/clusters/" + cluster.Name + "/servers/" + serverPath + "/" + s.Port + "/config | tar xzf - -C /tmp/cfg" +
+			" && wget" + noCheckCert + " -qO-" + authHeader + " " + scheme + "://" + authority + "/api/clusters/" + cluster.Name + "/servers/" + serverPath + "/" + s.Port + "/config | tar xzf - -C /tmp/cfg" +
 			" && cp /tmp/cfg/etc/mysql/conf.d/*.cnf /etc/mysql/conf.d/ 2>/dev/null" +
 			" && cp -r /tmp/cfg/init/. /docker-entrypoint-initdb.d/ 2>/dev/null" +
-			" && wget -qO /docker-entrypoint-initdb.d/replication-manager-cli http://" + authority + "/static/configurator/bin/replication-manager-cli" +
+			" && wget" + noCheckCert + " -qO /docker-entrypoint-initdb.d/replication-manager-cli " + scheme + "://" + authority + "/static/configurator/bin/replication-manager-cli" +
 			" && chmod +x /docker-entrypoint-initdb.d/replication-manager-cli /docker-entrypoint-initdb.d/dbjobs_new /docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm 2>/dev/null",
 	}
 	// Subdomain/role label are gated on prov-net-cni so a cluster that

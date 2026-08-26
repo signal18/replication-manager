@@ -18,7 +18,7 @@ import Errors from '../Errors'
 import ServerAudit from '../ServerAudit'
 import PFSInstruments from '../PFSInstruments'
 
-function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode, user, selectedDBServer, variableMode, toggleVariableMode, onNavigateToPFSInstruments, onNavigateToVariables, variablesSearchFilter }) {
+function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode, user, selectedDBServer, variableMode, toggleVariableMode, onNavigateToPFSInstruments, onNavigateToVariables, variablesSearchFilter, orchestrator }) {
   const [currentTab, setCurrentTab] = useState('')
 
   const {
@@ -100,8 +100,8 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
           user={user}
           selectedDBServer={selectedDBServer}
         />
-      ) : currentTab === 'opensvc' ? (
-        <ServiceOpenSvc clusterName={clusterName} type="db" id={dbId} />
+      ) : currentTab === 'serviceconfig' ? (
+        <ServiceOpenSvc clusterName={clusterName} type="db" id={dbId} orchestrator={orchestrator} />
       ) : currentTab === 'metadata' ? (
         <MetadataLocks clusterName={clusterName} dbId={dbId} selectedDBServer={selectedDBServer} />
       ) : currentTab === 'resptime' ? (

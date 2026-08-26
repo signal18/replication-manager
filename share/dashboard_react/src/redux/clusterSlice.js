@@ -120,6 +120,15 @@ const fulfilledHandlers = {
 
 const handleDatabaseServiceFulfilled = (state, action) => {
   const { serviceName } = action.meta.arg
+  // service/{orchestrator} is dynamic (opensvc, kube, ...) -- matched by
+  // prefix rather than a case per orchestrator. Holds raw OpenSVC service
+  // config text, or a { deployment, service, pvc, pods } object of live
+  // Kubernetes manifest YAML for Kubernetes-orchestrated clusters (#1497
+  // gap 6, server/api_database.go's buildDatabaseServiceConfigResponse).
+  if (serviceName?.startsWith('service/')) {
+    state.database.serviceOpensvc = action.payload.data
+    return
+  }
   switch (serviceName) {
     case 'processlist':
       state.database.processList = action.payload.data
@@ -152,9 +161,6 @@ const handleDatabaseServiceFulfilled = (state, action) => {
       break
     case 'variables':
       state.database.variables = action.payload.status == 200 ? action.payload.data : []
-      break
-    case 'service-opensvc':
-      state.database.serviceOpensvc = action.payload.data
       break
     case 'meta-data-locks':
       state.database.metadataLocks = action.payload.data

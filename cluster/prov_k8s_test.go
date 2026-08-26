@@ -719,7 +719,7 @@ func TestK8SDatabaseDeployment_ConfigFetchUsesBasicAuthHeader(t *testing.T) {
 	cluster.Conf.APISecureConfig = true
 	cluster.APIUsers = map[string]APIUser{"admin": {User: "admin", Password: "s3cr3t"}}
 	cluster.Conf.MonitorAddress = "127.0.0.1"
-	cluster.Conf.HttpPort = "10005"
+	cluster.Conf.APIPort = "10005"
 	s := &ServerMonitor{Name: "db1", Port: "3306"}
 
 	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
@@ -741,7 +741,7 @@ func TestK8SDatabaseDeployment_ConfigFetchAuthSafeWithShellMetacharacters(t *tes
 	cluster.Conf.APISecureConfig = true
 	cluster.APIUsers = map[string]APIUser{"admin": {User: "admin", Password: `p"$(rm -rf /)"\`}}
 	cluster.Conf.MonitorAddress = "127.0.0.1"
-	cluster.Conf.HttpPort = "10005"
+	cluster.Conf.APIPort = "10005"
 	s := &ServerMonitor{Name: "db1", Port: "3306"}
 
 	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
@@ -761,7 +761,7 @@ func TestK8SDatabaseDeployment_ConfigFetchFallsBackToDefaultAdminPassword(t *tes
 	cluster := newTestCluster("k8stest")
 	cluster.Conf.APISecureConfig = true
 	cluster.Conf.MonitorAddress = "127.0.0.1"
-	cluster.Conf.HttpPort = "10005"
+	cluster.Conf.APIPort = "10005"
 	s := &ServerMonitor{Name: "db1", Port: "3306"}
 
 	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
@@ -784,7 +784,7 @@ func TestK8SDatabaseDeployment_ConfigFetchIgnoresNonAdminUsers(t *testing.T) {
 		"dba":   {User: "dba", Password: "dba-pass"},
 	}
 	cluster.Conf.MonitorAddress = "127.0.0.1"
-	cluster.Conf.HttpPort = "10005"
+	cluster.Conf.APIPort = "10005"
 	s := &ServerMonitor{Name: "db1", Port: "3306"}
 
 	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
@@ -807,7 +807,7 @@ func TestK8SDatabaseDeployment_ConfigFetchNoAuthHeaderWhenSecureConfigOff(t *tes
 	cluster.Conf.APISecureConfig = false
 	cluster.APIUsers = map[string]APIUser{"admin": {User: "admin", Password: "s3cr3t"}}
 	cluster.Conf.MonitorAddress = "127.0.0.1"
-	cluster.Conf.HttpPort = "10005"
+	cluster.Conf.APIPort = "10005"
 	s := &ServerMonitor{Name: "db1", Port: "3306"}
 
 	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
@@ -830,7 +830,7 @@ func TestK8SDatabaseDeployment_ConfigFetchURLMatchesServerHost(t *testing.T) {
 	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
 	cluster.Conf.ProvOrchestratorCluster = "cluster.local"
 	cluster.Conf.MonitorAddress = "127.0.0.1"
-	cluster.Conf.HttpPort = "10005"
+	cluster.Conf.APIPort = "10005"
 	s := &ServerMonitor{Name: "clustera-0", Port: "3306"}
 
 	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
@@ -846,7 +846,7 @@ func TestK8SDatabaseDeployment_ConfigFetchURLStaysBareWhenProvNetCNIDisabled(t *
 	cluster := newTestCluster("k8stest")
 	cluster.Conf.ProvNetCNI = false
 	cluster.Conf.MonitorAddress = "127.0.0.1"
-	cluster.Conf.HttpPort = "10005"
+	cluster.Conf.APIPort = "10005"
 	s := &ServerMonitor{Name: "db1", Port: "3306"}
 
 	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
@@ -855,6 +855,72 @@ func TestK8SDatabaseDeployment_ConfigFetchURLStaysBareWhenProvNetCNIDisabled(t *
 	wantPath := "/servers/db1/3306/config"
 	if !strings.Contains(cmd, wantPath) {
 		t.Fatalf("expected the bare short name in the request path when prov-net-cni is off, got: %s", cmd)
+	}
+}
+// The config-bootstrap and replication-manager-cli fetches must use HTTPS
+// on api-port (10005, api.go's apiserver()), not HTTP on http-port (10001,
+// http.go's httpserver()) -- both routers register the same unprotected
+// routes, but only api.go always terminates TLS. --no-check-certificate is
+// required alongside it: the cert is self-signed (a generated temp cert
+// when monitoring-ssl-cert isn't set), matching every other orchestrator's
+// bootstrap fetch in this codebase (prov_opensvc.go, prov_onpremise_db.go).
+// This is conditional on api-server actually being enabled -- see
+// TestK8SDatabaseDeployment_ConfigFetchFallsBackToHTTPWhenAPIServerDisabled.
+func TestK8SDatabaseDeployment_ConfigFetchUsesHTTPSOnAPIPort(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.MonitorAddress = "127.0.0.1"
+	cluster.Conf.APIPort = "10005"
+	cluster.Conf.HttpPort = "10001"
+	cluster.Conf.ApiServ = true
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	cmd := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+
+	if !strings.Contains(cmd, "https://127.0.0.1:10005/api/clusters/") {
+		t.Fatalf("expected the config fetch to use https:// on api-port 10005, got: %s", cmd)
+	}
+	if !strings.Contains(cmd, "https://127.0.0.1:10005/static/configurator/bin/replication-manager-cli") {
+		t.Fatalf("expected the replication-manager-cli fetch to use https:// on api-port 10005, got: %s", cmd)
+	}
+	if strings.Contains(cmd, ":10001") {
+		t.Fatalf("expected http-port (10001) to never appear in the init container command, got: %s", cmd)
+	}
+	if strings.Count(cmd, "--no-check-certificate") != 2 {
+		t.Fatalf("expected both wget calls to pass --no-check-certificate for the self-signed cert, got: %s", cmd)
+	}
+}
+
+// api-server (default true) is independently togglable from http-server --
+// a deployment with api-server=false has nothing listening on api-port at
+// all, which used to work fine over plain HTTP on http-port before the
+// HTTPS switch (httpserver() registers the identical routes). Falling back
+// to that combination preserves it instead of silently hanging the init
+// container on an unanswered connection with no error surfaced (found via
+// code review, not yet hit live -- this session's live clusters always run
+// with the api-server default of true).
+func TestK8SDatabaseDeployment_ConfigFetchFallsBackToHTTPWhenAPIServerDisabled(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.MonitorAddress = "127.0.0.1"
+	cluster.Conf.APIPort = "10005"
+	cluster.Conf.HttpPort = "10001"
+	cluster.Conf.ApiServ = false
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	cmd := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+
+	if !strings.Contains(cmd, "http://127.0.0.1:10001/api/clusters/") {
+		t.Fatalf("expected the config fetch to fall back to http:// on http-port 10001, got: %s", cmd)
+	}
+	if !strings.Contains(cmd, "http://127.0.0.1:10001/static/configurator/bin/replication-manager-cli") {
+		t.Fatalf("expected the replication-manager-cli fetch to fall back to http:// on http-port 10001, got: %s", cmd)
+	}
+	if strings.Contains(cmd, ":10005") {
+		t.Fatalf("expected api-port (10005) to never appear in the init container command when api-server is disabled, got: %s", cmd)
+	}
+	if strings.Contains(cmd, "--no-check-certificate") {
+		t.Fatalf("expected no --no-check-certificate flag for the plain-HTTP fallback, got: %s", cmd)
 	}
 }
 
@@ -894,7 +960,7 @@ func TestK8SDatabaseDeployment_InitContainerCreatesJobsDatadir(t *testing.T) {
 func TestK8SDatabaseDeployment_InitContainerPopulatesDbjobsVolume(t *testing.T) {
 	cluster := newTestCluster("k8stest")
 	cluster.Conf.MonitorAddress = "127.0.0.1"
-	cluster.Conf.HttpPort = "10005"
+	cluster.Conf.APIPort = "10005"
 	s := &ServerMonitor{Name: "db1", Port: "3306"}
 
 	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")

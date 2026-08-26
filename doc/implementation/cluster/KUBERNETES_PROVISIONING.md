@@ -1,12 +1,13 @@
 # Kubernetes native provisioning
 
-Covers `cluster/prov_k8s.go`, `cluster/prov_k8s_db.go`, `cluster/prov_k8s_prx.go`.
-Broader feature work tracked in issue #1497: HTTPS bootstrap, GUI manifest
-view, and proxy-type-aware image selection remain open. Secrets, image pull
-policy, StorageClass selection, and the dbjobs sidecar are implemented and
-verified live against both deployment models (see "Secrets, image pull
-policy, and storage class" and "dbjobs sidecar" below) — repman running
-outside the cluster (Model A) and repman running as an in-cluster Deployment
+Covers `cluster/prov_k8s.go`, `cluster/prov_k8s_db.go`, `cluster/prov_k8s_prx.go`,
+`cluster/prov_k8s_manifest.go`. Broader feature work tracked in issue #1497:
+proxy-type-aware image selection remains open. Secrets, image pull policy,
+StorageClass selection, the dbjobs sidecar, HTTPS config bootstrap, and a
+live manifest view are implemented and verified live against both deployment
+models (see "Secrets, image pull policy, and storage class", "dbjobs
+sidecar", "Bootstrap", and "Manifest view" below) — repman running outside
+the cluster (Model A) and repman running as an in-cluster Deployment
 (Model B), the latter requiring both an RBAC grant beyond what an
 earlier-written `ClusterRole` may have and, separately, `monitoring-address`
 set explicitly to a stable Service DNS name rather than left at its
@@ -52,11 +53,40 @@ switch statements, not through the `DatabaseOrchetrator` interface in
 
 ### Bootstrap
 
-The init container fetches the DB config over HTTP:
+The init container fetches the DB config over HTTPS, on `api-port` (10005,
+`api.go`'s `apiserver()`), not `http-port` (10001, `http.go`'s
+`httpserver()`) — both routers register the exact same unprotected routes
+(config fetch, static binary), but only `api.go` always terminates TLS. This
+matches every other orchestrator's own bootstrap fetch in this codebase
+(`REPLICATION_MANAGER_URL` in `prov_opensvc.go`, `prov_onpremise_db.go`,
+`cluster_get.go` all use `"https://"+MonitorAddress+":"+APIPort`); Kubernetes
+was the one outlier still on plain HTTP (#1497 gap 5, fixed):
 
 ```
-wget -qO- --header="Authorization: Basic <base64(user:pass)>" http://<monitoring-address>:<http-port>/api/clusters/<cluster>/servers/<server>/<port>/config | tar xzf - -C /tmp/cfg
+wget --no-check-certificate -qO- --header="Authorization: Basic <base64(user:pass)>" https://<monitoring-address>:<api-port>/api/clusters/<cluster>/servers/<server>/<port>/config | tar xzf - -C /tmp/cfg
 ```
+
+`--no-check-certificate` is required alongside the switch: the cert is
+self-signed (a generated temp cert when `monitoring-ssl-cert` isn't set), so
+there's no CA for the init container to validate against — same reasoning
+as `prov_opensvc.go`/`prov_onpremise_db.go`'s own `wget` calls, which have
+always used it for the same reason.
+
+**Falls back to plain HTTP on `http-port` when `api-server=false`**: `api-server`
+(default `true`) independently gates whether `apiserver()` — and therefore
+anything listening on `api-port` at all — starts (`server/server.go`). A
+deployment with `api-server=false` and `http-server=true` (both togglable
+independently; `httpserver()` registers the identical unprotected routes)
+would otherwise have nothing to connect to on `api-port`, silently breaking
+bootstrap that worked before this HTTPS switch — the `wget` would hang on
+an unanswered connection with no error surfaced. `k8sDatabaseDeployment`
+checks `cluster.Conf.ApiServ` and builds the command against
+`http://<monitoring-address>:<http-port>` with no `--no-check-certificate`
+in that case instead — tested in
+`TestK8SDatabaseDeployment_ConfigFetchFallsBackToHTTPWhenAPIServerDisabled`
+(`cluster/prov_k8s_test.go`), found via code review before it was hit live
+(every live cluster this feature was verified against runs with the
+`api-server` default of `true`).
 
 handled by `handlerMuxServersPortConfig` (`server/api_database.go`). Only
 `etc/mysql/conf.d/*.cnf` is copied in (MariaDB's `!includedir` is
@@ -82,10 +112,10 @@ mirroring OpenSVC's moduleset directory resources.
   `api-credentials-secure-config=true` and `admin` lacks the grant.
 - **Residual risk**: base64 is encoding, not encryption — anyone able to
   read the Deployment spec (`kubectl get deploy -o yaml`, RBAC permitting)
-  can recover the credential, and it still travels over plaintext HTTP.
-  Acceptable interim state; a real fix (Kubernetes `Secret` +
-  `secretKeyRef`, HTTPS) is tracked under #1497.
-- **HTTP, not HTTPS**, unlike OpenSVC's bootstrap path (tracked under #1497).
+  can recover the credential. It now travels over TLS (self-signed, so
+  passive network observation is defeated but active MITM isn't without
+  pinning the generated cert — out of scope here, same residual-risk
+  posture every other orchestrator's own bootstrap fetch already accepts).
 - **`<monitoring-address>` must be a stable address for in-cluster (Model B)
   deployments**: `monitoring-address` defaults to `localhost`, which triggers
   `resolveHostIp()` (`server/server.go`) to auto-detect and bake in repman's
@@ -105,6 +135,19 @@ mirroring OpenSVC's moduleset directory resources.
   left at the `localhost` default — the Service's ClusterIP is stable across
   pod reschedules even though the pod IP behind it isn't. No code change
   needed; this is purely a deployment-config requirement for Model B.
+- **The in-cluster Service must expose `api-port` (10005), not just
+  `http-port`**: since the HTTPS switch above, bootstrap always targets
+  `api-port` — a Model B Service manifest built before that switch (this
+  session's own example included) may only forward `http-port` (10001,
+  used for the pre-existing NodePort/dashboard access), leaving nothing
+  routing traffic to 10005 at all. Confirmed live: an otherwise-correct
+  bootstrap command (right DNS name, right port, `--no-check-certificate`)
+  hung indefinitely with no init container log output at all — not a
+  `wget` error, a plain unanswered TCP connection, since nothing was
+  listening on the Service side for that port. Fixed by adding a second
+  port to the Service (`kubectl patch svc repman-incluster --type=json
+  -p='[{"op":"add","path":"/spec/ports/-","value":{"name":"https","port":10005,"targetPort":10005,"protocol":"TCP"}}]'`);
+  any Model B deployment manifest must declare both ports going forward.
 
 ### Unprovisioning
 
@@ -295,6 +338,76 @@ functionality (DB connectivity, `.system/jobs` cleanup) is confirmed
 working regardless; this status-reporting channel (and, untested, the
 same mechanism backup streaming likely uses) is the open piece.
 
+### Manifest view
+
+#1497 gap 6: OpenSVC has `GetDatabaseServiceConfig` (above) to show what
+repman would push, but Kubernetes had no equivalent GUI visibility at all
+into the Deployment/PVC/Service/pod state actually running. Rather than add
+a second route, the existing single-server manifest/config view was
+generalized: `GET /api/clusters/{clusterName}/servers/{serverName}/service/{orchestrator}`
+(`handlerMuxGetDatabaseServiceConfig`, `server/api_database.go`) is now keyed
+by a dynamic `{orchestrator}` path segment instead of the literal
+`service-opensvc` it used to be — the same route serves both orchestrators'
+views rather than one route per orchestrator, since only one is ever
+relevant for a given cluster. The `{orchestrator}` segment must match the
+cluster's actually-configured orchestrator (`cluster.GetOrchestrator()`) —
+repman's own config is authoritative over what a caller requests, not the
+other way around; a mismatch is a 400. The branching itself is factored
+into `buildDatabaseServiceConfigResponse`, kept separate from the HTTP
+handler specifically so it's testable without a real JWT
+(`IsValidClusterACL` has no bypass) — `server/api_database_test.go`.
+
+`databaseACLRules` (`cluster/cluster_acl_rules.go`) gates this route by
+`strings.Contains` against a literal URL segment, independently of the
+handler's own logic — renaming the route from `/service-opensvc` to
+`/service/{orchestrator}` without updating that rule silently 403s every
+caller regardless of grants, since the ACL layer runs *before* the
+handler's own orchestrator switch and never reaches it. Found only via a
+live JWT-authenticated request (not by `buildDatabaseServiceConfigResponse`'s
+own tests, which deliberately bypass `IsValidClusterACL` to avoid needing a
+real JWT) — fixed by updating the rule to the `/service/` prefix, which
+matches every orchestrator's segment; regression-tested directly in
+`cluster/cluster_acl_test.go` (`TestIsURLPassACLDatabaseServiceRoute`).
+
+Unlike `GetDatabaseServiceConfig`'s locally-regenerated OpenSVC template,
+`K8SGetDatabaseManifests` (`cluster/prov_k8s_manifest.go`) fetches every
+section *live* from the Kubernetes API — Deployment, Service, PVC, and the
+server's pods (by the same `app=repication-manager,tag=<server>` label
+selector `k8sDatabaseDeployment` sets) — since PVC binding status and pod
+state only exist live; a static builder-function re-render (as OpenSVC's
+view effectively is) can't show either. Each object is marshaled to YAML
+(`sigs.k8s.io/yaml`, respecting the same JSON tags client-go itself uses)
+with `TypeMeta` filled in explicitly (`Get`/`List` through a typed client
+clears it) and `ManagedFields` stripped (noise, not useful to a human
+reader). A resource that doesn't exist yet (e.g. no PVC because
+provisioning failed before that step) renders as a `# <error>` YAML comment
+in its own section rather than failing the whole response — same
+"`*FromClient` testable + public live-connecting wrapper" split as
+`k8sStorageClassesFromClient`/`K8SGetStorageClasses`, tested against the
+fake clientset in `cluster/prov_k8s_manifest_test.go`.
+
+Model B's ClusterRole needs `get, list` on the core `pods` resource for the
+pod section — a rule set written before this feature existed won't have it.
+Confirmed live: without it, the pods section renders the exact Forbidden
+error as its YAML comment (the same "error surfaces per-section, not as a
+500" behavior covers this case too) rather than failing the whole response
+— visibly correct behavior even under a missing grant, but still worth
+granting for the feature to actually show pod state.
+
+Response shape differs by orchestrator and is Content-Type-discriminated:
+OpenSVC keeps returning raw text (unchanged); Kubernetes returns
+`{deployment, service, pvc, pods}` as `application/json`, each value being
+one YAML string. GUI-side, `ServiceOpenSvc` (component name predates this
+generalization, kept as-is —
+`share/dashboard_react/src/Pages/ClusterDB/components/ServiceOpenSvc`)
+renders the Kubernetes case as four labeled sections instead of one text
+blob, dispatching to `service/${orchestrator}` (the cluster's own
+`config.provOrchestrator`, never hardcoded) rather than the old literal
+`service-opensvc` service name. The "Service Config" tab (renamed from
+"Service OpenSVC") is only shown when the cluster's orchestrator actually
+has a view to offer (`opensvc` or `kube`) — every other orchestrator gets
+an empty body from this route, so showing the tab would be dead UX.
+
 ## Proxy provisioning
 
 `K8SProvisionProxyService()` creates only a Deployment — no Namespace ensure
@@ -472,8 +585,6 @@ Kubernetes-orchestrated scenarios.
   DBs or proxies.
 - No proxy Service exposure, and no Kubernetes proxy support beyond
   ProxySQL.
-- Config bootstrap is HTTP, not HTTPS (Basic Auth-authenticated, see
-  "Bootstrap" above).
 - Per-pod DNS (`prov-net-cni`) covers DB pods only — no equivalent for
   proxies yet (see "Per-pod DNS" above).
 - A `<cluster>-deployment` left over from before per-proxy Deployment
