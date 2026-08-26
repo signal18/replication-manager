@@ -92,6 +92,7 @@ var tests = []string{
 	"testResticReseedXtrabackup",
 	"testResticReseedMariabackup",
 	"testOpenSVCUpgradeWarnRecovery",
+	"testK8SProvisionSchedulerVolumeBinding",
 	"testSchemaPlugin",
 	"testGraphiteMetricsQueueBound",
 	"testDirectReseedSystemAllEmptyDestination",
