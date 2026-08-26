@@ -374,9 +374,13 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		server.SourceClusterName = cluster.Name
 	}
 
-	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
-		// OpenSVC and Sharding proxy monitoring
-		url = server.Name + server.Domain + ":3306"
+	if server.Domain != "" {
+		// server.Domain comes from GetDomain()/GetDomainHeadCluster()
+		// (cluster_get.go), which already gates per orchestrator -- an empty
+		// Domain here means "don't qualify this name". server.Port, not a
+		// hardcoded "3306": a server can run on a non-default port, and it
+		// was already parsed from the original url two lines above.
+		url = server.Name + server.Domain + ":" + server.Port
 	}
 	var sid uint64
 	//will be overide in Refresh with show variables server_id, used for provisionning configurator for server_id

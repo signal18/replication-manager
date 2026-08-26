@@ -48,32 +48,85 @@ switch statements, not through the `DatabaseOrchetrator` interface in
 The init container fetches the DB config over HTTP:
 
 ```
-wget -qO- http://<monitoring-address>:<http-port>/api/clusters/<cluster>/servers/<server>/<port>/config | tar xzvf - -C /data
+wget -qO- --header="Authorization: Basic <base64(user:pass)>" http://<monitoring-address>:<http-port>/api/clusters/<cluster>/servers/<server>/<port>/config | tar xzf - -C /tmp/cfg
 ```
 
-handled by `handlerMuxServersPortConfig` (`server/api_database.go`). This is
-the only wired bootstrap mechanism; the ConfigMap above is not part of it.
+handled by `handlerMuxServersPortConfig` (`server/api_database.go`). Only
+`etc/mysql/conf.d/*.cnf` is copied in (MariaDB's `!includedir` is
+non-recursive); the init container also pre-creates
+`.system/{tmp,logs,repl,innodb/undo,innodb/redo,aria}` under the datadir,
+mirroring OpenSVC's moduleset directory resources.
 
-Limitations:
-
-- **No authentication.** If `api-credentials-secure-config=true`, the
-  endpoint requires a valid ACL/JWT via `IsValidClusterACL` and the init
-  container sends none, so it gets HTTP 403 and the DB never bootstraps.
-  `K8SProvisionDatabaseService()` logs a warning up front when this
-  combination is detected, since provisioning itself (Namespace/PVC/
-  Deployment/Service) still succeeds while the pod never bootstraps. Fixing
-  the incompatibility needs a credential injected into the pod (e.g. a
-  Kubernetes Secret plus an `Authorization` header) — tracked under #1497.
-- **HTTP, not HTTPS**, unlike the equivalent OpenSVC bootstrap path (also
-  tracked under #1497).
+- **Authentication**: only sent when `api-credentials-secure-config=true` —
+  the endpoint doesn't enforce auth otherwise, so embedding a real
+  credential in every Deployment spec regardless would be needless
+  exposure. When sent, it's a base64-encoded `Authorization: Basic` header
+  via `wget --header`, computed in Go — not interpolated as raw
+  `user:pass@host` userinfo into the `sh -c` string, since that would let
+  shell metacharacters in the password be interpreted by the init
+  container's shell. Uses the `admin` user specifically — the same
+  fixed-account convention every other bootstrap credential injection in
+  this codebase already uses (`GetExecEnv`, OpenSVC's secrets injection,
+  onpremise env exports), not "whichever `api-credentials` entry is
+  configured first," which may lack the `db-config-flag` grant `/config`
+  requires. Falls back to the documented default password `repman` if
+  `admin` hasn't been reconfigured — matches `api-credentials`' own CLI
+  default. `K8SProvisionDatabaseService()` logs a warning up front if
+  `api-credentials-secure-config=true` and `admin` lacks the grant.
+- **Residual risk**: base64 is encoding, not encryption — anyone able to
+  read the Deployment spec (`kubectl get deploy -o yaml`, RBAC permitting)
+  can recover the credential, and it still travels over plaintext HTTP.
+  Acceptable interim state; a real fix (Kubernetes `Secret` +
+  `secretKeyRef`, HTTPS) is tracked under #1497.
+- **HTTP, not HTTPS**, unlike OpenSVC's bootstrap path (tracked under #1497).
 
 ### Unprovisioning
 
 `K8SUnprovisionDatabaseService()` deletes the Deployment and Service, both
 idempotent via `apierrors.IsNotFound`. ConfigMap, PVC, and Namespace are
 retained — PVC deletion is destructive and Namespace/ConfigMap
-retention-vs-deletion semantics are an open question. Exactly one value is
-sent on `cluster.errorChan`.
+retention-vs-deletion semantics are an open question. The shared headless
+Service (below), if created, is not deleted by any single server's
+unprovision, since it's shared across every DB pod in the namespace. Exactly
+one value is sent on `cluster.errorChan`.
+
+### Per-pod DNS (`prov-net-cni`)
+
+The per-server `Service` (`ClusterIP`, named `s.Name`) that's always created
+resolves to a **virtual IP**, reachable only from inside the cluster —
+confirmed live: DNS resolved fine, but the MySQL connect failed (errno 115)
+from a replication-manager process running outside the cluster. Fine for a
+replication-manager Pod in the same namespace as the DB pods; not for one
+running externally.
+
+`prov-net-cni` — the same flag OpenSVC already uses for its own domain
+suffix — opts a Kubernetes cluster into a real, routable per-pod address
+instead. When on:
+
+- Every DB pod gets `role=db` added to its labels, and `Hostname`/`Subdomain: db`
+  on its Pod spec.
+- A shared headless `Service` (`ClusterIP: None`, name `db`) selects on
+  `app=repication-manager,role=db`.
+- That combination makes CoreDNS publish `<server>.db.<namespace>.svc.<cluster-domain>`
+  pointing at the pod's current real IP (live, not a snapshot).
+  `<cluster-domain>` is `prov-orchestrator-cluster`, falling back to
+  `cluster.local`.
+
+`cluster.GetDomain()`/`GetDomainHeadCluster()` (`cluster/cluster_get.go`)
+build this suffix and feed `server.Host`/`server.Domain` everywhere a server
+address is built (topology discovery, `AddChildServers`, proxies), not just
+at provision time. Each orchestrator branch checks its own type explicitly,
+so the shared flag can never leak a domain suffix meant for the other one
+(or a third orchestrator inheriting it from `[DEFAULT]`).
+
+With the flag off, Deployments/Services are byte-identical to before this
+mechanism existed. The Service selector and pod labels are defined in two
+places and must agree — `TestK8SDatabaseDeployment_PodLabelsSatisfyHeadlessServiceSelector`
+covers that.
+
+Proxy pods aren't part of this (no `role` label, so excluded from the `db`
+Service by construction) — they have no Service of any kind yet; a
+`role=proxy` follow-up is natural but not built (#1497).
 
 ## Proxy provisioning
 
@@ -252,7 +305,10 @@ Kubernetes-orchestrated scenarios.
   DBs or proxies.
 - No proxy Service exposure, and no Kubernetes proxy support beyond
   ProxySQL.
-- Config bootstrap is HTTP-only, unauthenticated.
+- Config bootstrap is HTTP, not HTTPS (Basic Auth-authenticated, see
+  "Bootstrap" above).
+- Per-pod DNS (`prov-net-cni`) covers DB pods only — no equivalent for
+  proxies yet (see "Per-pod DNS" above).
 - A `<cluster>-deployment` left over from before per-proxy Deployment
   naming requires manual operator cleanup (see "Legacy deployment name"
   above); repman only warns about it, since automatic cleanup can't prove

@@ -2,6 +2,8 @@ package cluster
 
 import (
 	"context"
+	"encoding/base64"
+	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
@@ -416,5 +418,377 @@ func TestK8SUnprovisionDatabase_GenuineDeleteFailurePropagates(t *testing.T) {
 	err := cluster.k8sUnprovisionDatabaseServiceWithClient(client, "db1")
 	if err == nil {
 		t.Fatal("expected the genuine deployment-delete failure to be reported, not swallowed")
+	}
+}
+
+// --- Container port ---
+//
+// No HostPort: reachability comes from the headless-service DNS record.
+
+func TestK8SDatabaseDeployment_NoHostPortBinding(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+
+	ports := dep.Spec.Template.Spec.Containers[0].Ports
+	if len(ports) != 1 {
+		t.Fatalf("expected exactly one container port, got %d", len(ports))
+	}
+	if ports[0].HostPort != 0 {
+		t.Fatalf("expected no HostPort binding (DNS is the only reachability path now), got %d", ports[0].HostPort)
+	}
+	if ports[0].ContainerPort != 3306 {
+		t.Fatalf("expected ContainerPort to track the port argument, got %d", ports[0].ContainerPort)
+	}
+}
+
+// --- Config-bootstrap Basic Auth (init container) ---
+//
+// Credentials are sent as a base64 Authorization header for the "admin"
+// user -- the same fixed-account convention every other bootstrap
+// credential injection in this codebase uses (GetExecEnv, OpenSVC's
+// secrets injection, onpremise env exports), not "whichever api-credentials
+// entry is configured first" (which may lack the grant /config requires).
+// Only sent when api-credentials-secure-config actually requires it.
+
+func TestK8SDatabaseDeployment_ConfigFetchUsesBasicAuthHeader(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.APISecureConfig = true
+	cluster.APIUsers = map[string]APIUser{"admin": {User: "admin", Password: "s3cr3t"}}
+	cluster.Conf.MonitorAddress = "127.0.0.1"
+	cluster.Conf.HttpPort = "10005"
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	cmd := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+
+	if strings.Contains(cmd, "admin:s3cr3t") || strings.Contains(cmd, "admin:s3cr3t@") {
+		t.Fatalf("expected credentials to never appear in cleartext in the init container command, got: %s", cmd)
+	}
+	wantHeader := "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("admin:s3cr3t"))
+	if !strings.Contains(cmd, wantHeader) {
+		t.Fatalf("expected the base64-encoded Basic Auth header %q in the init container command, got: %s", wantHeader, cmd)
+	}
+}
+
+// A credential with shell metacharacters must not change what the shell
+// actually executes.
+func TestK8SDatabaseDeployment_ConfigFetchAuthSafeWithShellMetacharacters(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.APISecureConfig = true
+	cluster.APIUsers = map[string]APIUser{"admin": {User: "admin", Password: `p"$(rm -rf /)"\`}}
+	cluster.Conf.MonitorAddress = "127.0.0.1"
+	cluster.Conf.HttpPort = "10005"
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	cmd := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+
+	for _, meta := range []string{"$(", "`", "\"$", ";rm"} {
+		if strings.Contains(cmd, meta) {
+			t.Fatalf("expected no raw shell metacharacter sequence %q from the credential to reach the command, got: %s", meta, cmd)
+		}
+	}
+}
+
+// No admin user configured falls back to the documented default password
+// "repman" -- matching api-credentials' own CLI default ("admin:repman"),
+// never silently skipping auth when secure-config requires it.
+func TestK8SDatabaseDeployment_ConfigFetchFallsBackToDefaultAdminPassword(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.APISecureConfig = true
+	cluster.Conf.MonitorAddress = "127.0.0.1"
+	cluster.Conf.HttpPort = "10005"
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	cmd := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+
+	wantHeader := "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("admin:repman"))
+	if !strings.Contains(cmd, wantHeader) {
+		t.Fatalf("expected the default admin:repman header %q, got: %s", wantHeader, cmd)
+	}
+}
+
+// A non-admin api-credentials entry, even a differently-privileged one
+// configured alongside admin, must never end up in the bootstrap header --
+// only the admin user's own password is ever used.
+func TestK8SDatabaseDeployment_ConfigFetchIgnoresNonAdminUsers(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.APISecureConfig = true
+	cluster.APIUsers = map[string]APIUser{
+		"admin": {User: "admin", Password: "admin-pass"},
+		"dba":   {User: "dba", Password: "dba-pass"},
+	}
+	cluster.Conf.MonitorAddress = "127.0.0.1"
+	cluster.Conf.HttpPort = "10005"
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	cmd := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+
+	wantHeader := "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("admin:admin-pass"))
+	if !strings.Contains(cmd, wantHeader) {
+		t.Fatalf("expected the admin user's own header %q, got: %s", wantHeader, cmd)
+	}
+	if strings.Contains(cmd, "dba-pass") {
+		t.Fatalf("expected the dba user's credential to never be used, got: %s", cmd)
+	}
+}
+
+// api-credentials-secure-config off means the endpoint doesn't enforce auth
+// at all -- embedding a real admin credential in every Deployment spec
+// regardless would be needless exposure, so no header should be sent.
+func TestK8SDatabaseDeployment_ConfigFetchNoAuthHeaderWhenSecureConfigOff(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.APISecureConfig = false
+	cluster.APIUsers = map[string]APIUser{"admin": {User: "admin", Password: "s3cr3t"}}
+	cluster.Conf.MonitorAddress = "127.0.0.1"
+	cluster.Conf.HttpPort = "10005"
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	cmd := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+
+	if strings.Contains(cmd, "Authorization") || strings.Contains(cmd, "s3cr3t") {
+		t.Fatalf("expected no Authorization header when api-credentials-secure-config is off, got: %s", cmd)
+	}
+}
+
+// GetServerFromURL (cluster_get.go), which handlerMuxServersPortConfig uses
+// to resolve the init container's request, matches only server.Host -- the
+// domain-qualified name when prov-net-cni is on -- never the bare s.Name.
+// The request path must match what GetServerFromURL actually looks for, or
+// every config fetch 500s ("No server") on a freshly (re)provisioned pod
+// (confirmed live: this exact mismatch broke clusterin's bootstrap).
+func TestK8SDatabaseDeployment_ConfigFetchURLMatchesServerHost(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cluster.Conf.ProvOrchestratorCluster = "cluster.local"
+	cluster.Conf.MonitorAddress = "127.0.0.1"
+	cluster.Conf.HttpPort = "10005"
+	s := &ServerMonitor{Name: "clustera-0", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	cmd := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+
+	wantPath := "/servers/clustera-0.db.clustera.svc.cluster.local/3306/config"
+	if !strings.Contains(cmd, wantPath) {
+		t.Fatalf("expected the request path to use the domain-qualified name %q (matching server.Host), got: %s", wantPath, cmd)
+	}
+}
+
+func TestK8SDatabaseDeployment_ConfigFetchURLStaysBareWhenProvNetCNIDisabled(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvNetCNI = false
+	cluster.Conf.MonitorAddress = "127.0.0.1"
+	cluster.Conf.HttpPort = "10005"
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	cmd := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+
+	wantPath := "/servers/db1/3306/config"
+	if !strings.Contains(cmd, wantPath) {
+		t.Fatalf("expected the bare short name in the request path when prov-net-cni is off, got: %s", cmd)
+	}
+}
+
+// --- Headless Service DNS (per-pod names that follow pod recreation) ---
+
+func TestK8SDatabaseDeployment_SubdomainMatchesHeadlessServiceName(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvNetCNI = true
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+
+	got := dep.Spec.Template.Spec.Subdomain
+	want := k8sHeadlessServiceName
+	if got != want {
+		t.Fatalf("expected Pod Subdomain to match the headless service name %q, got %q", want, got)
+	}
+}
+
+// prov-net-cni gates the whole mechanism; disabled must stay byte-identical
+// to before.
+func TestK8SDatabaseDeployment_NoSubdomainWhenProvNetCNIDisabled(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvNetCNI = false
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+
+	if got := dep.Spec.Template.Spec.Subdomain; got != "" {
+		t.Fatalf("expected no Subdomain when prov-net-cni is disabled, got %q", got)
+	}
+}
+
+// The Service selector and pod labels are defined in two places -- assert
+// they agree, or the Service silently gets zero endpoints.
+func TestK8SDatabaseDeployment_PodLabelsSatisfyHeadlessServiceSelector(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvNetCNI = true
+	cluster.k8sEnsureHeadlessService(client, 3306)
+	svc, err := client.CoreV1().Services("k8stest").Get(context.TODO(), k8sHeadlessServiceName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	podLabels := dep.Spec.Template.ObjectMeta.Labels
+
+	for k, want := range svc.Spec.Selector {
+		if got := podLabels[k]; got != want {
+			t.Fatalf("headless Service selects %s=%q, but DB pod is labeled %s=%q -- Service would get zero endpoints", k, want, k, got)
+		}
+	}
+}
+
+func TestK8SEnsureHeadlessService_CreatesClusterIPNone(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+
+	cluster.k8sEnsureHeadlessService(client, 3306)
+
+	svc, err := client.CoreV1().Services("k8stest").Get(context.TODO(), k8sHeadlessServiceName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected the headless service to have been created, got error: %s", err)
+	}
+	if svc.Spec.ClusterIP != apiv1.ClusterIPNone {
+		t.Fatalf("expected ClusterIP %q (headless), got %q", apiv1.ClusterIPNone, svc.Spec.ClusterIP)
+	}
+}
+
+func TestK8SEnsureHeadlessService_AlreadyExistsDoesNotPanic(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	client := fake.NewSimpleClientset(&apiv1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: k8sHeadlessServiceName, Namespace: "k8stest"},
+	})
+
+	cluster.k8sEnsureHeadlessService(client, 3306)
+}
+
+func TestK8SEnsureHeadlessService_SelectsEveryDBPodNotJustOneServer(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+
+	cluster.k8sEnsureHeadlessService(client, 3306)
+
+	svc, err := client.CoreV1().Services("k8stest").Get(context.TODO(), k8sHeadlessServiceName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if _, ok := svc.Spec.Selector["tag"]; ok {
+		t.Fatal("expected the headless service to select on \"app\" alone, not a per-server \"tag\" -- a per-server tag would mean only one server's pod ever gets a published DNS record")
+	}
+	if svc.Spec.Selector["app"] != "repication-manager" {
+		t.Fatalf("expected selector app=repication-manager, got %q", svc.Spec.Selector["app"])
+	}
+}
+
+// --- Cluster DNS domain (prov-orchestrator-cluster) ---
+
+func TestK8SClusterDomain_UsesConfiguredValue(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvOrchestratorCluster = "k8s.internal"
+
+	if got := k8sClusterDomain(cluster); got != "k8s.internal" {
+		t.Fatalf("expected the configured prov-orchestrator-cluster value, got %q", got)
+	}
+}
+
+func TestK8SClusterDomain_FallsBackWhenUnset(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvOrchestratorCluster = ""
+
+	if got := k8sClusterDomain(cluster); got != "cluster.local" {
+		t.Fatalf("expected the Kubernetes default cluster.local when unset, got %q", got)
+	}
+}
+
+// "local" is prov-orchestrator-cluster's own CLI default (server/server.go)
+// -- an OpenSVC-oriented value, never a real Kubernetes --cluster-domain --
+// so a cluster that never touched this flag must still get "cluster.local",
+// not a malformed ".svc.local" CoreDNS can't resolve.
+func TestK8SClusterDomain_FallsBackWhenLiteralCLIDefault(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvOrchestratorCluster = "local"
+
+	if got := k8sClusterDomain(cluster); got != "cluster.local" {
+		t.Fatalf("expected the CLI default \"local\" to fall back to cluster.local, got %q", got)
+	}
+}
+
+// --- GetDomain (cluster_get.go): Kubernetes routes through the headless
+// Service, OpenSVC keeps its original plain-namespace shape ---
+
+func TestGetDomain_KubernetesRoutesThroughHeadlessService(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cluster.Conf.ProvOrchestratorCluster = "cluster.local"
+
+	got := cluster.GetDomain()
+	want := ".db.clustera.svc.cluster.local"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
+func TestGetDomain_KubernetesTracksNonDefaultClusterDomain(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cluster.Conf.ProvOrchestratorCluster = "k8s.internal"
+
+	got := cluster.GetDomain()
+	want := ".db.clustera.svc.k8s.internal"
+	if got != want {
+		t.Fatalf("expected the domain to track the configured cluster domain, got %q (want %q)", got, want)
+	}
+}
+
+func TestGetDomain_OpenSVCUnaffectedByKubernetesChange(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	cluster.Conf.ProvOrchestratorCluster = "signal18.id"
+
+	got := cluster.GetDomain()
+	want := ".clustera.svc.signal18.id"
+	if got != want {
+		t.Fatalf("expected OpenSVC's plain-namespace shape to be untouched, got %q (want %q)", got, want)
+	}
+}
+
+// prov-net-cni set in [DEFAULT] must not leak a domain for a cluster whose
+// orchestrator isn't OpenSVC.
+func TestGetDomain_OnPremiseIgnoresProvNetCNI(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorOnPremise
+	cluster.Conf.ProvOrchestratorCluster = "signal18.id"
+
+	if got := cluster.GetDomain(); got != "" {
+		t.Fatalf("expected prov-net-cni to have no effect on a non-OpenSVC orchestrator, got %q", got)
+	}
+}
+
+func TestGetDomainHeadCluster_KubernetesRoutesThroughParentsHeadlessService(t *testing.T) {
+	cluster := newTestCluster("clustera-child")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cluster.Conf.ProvOrchestratorCluster = "cluster.local"
+	cluster.Conf.ClusterHead = "clustera"
+
+	got := cluster.GetDomainHeadCluster()
+	want := ".db.clustera.svc.cluster.local"
+	if got != want {
+		t.Fatalf("expected the parent's own headless service name, got %q (want %q)", got, want)
 	}
 }

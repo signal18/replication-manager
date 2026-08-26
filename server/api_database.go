@@ -3501,7 +3501,16 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if mycluster.Conf.APISecureConfig {
-			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			valid, _ := repman.IsValidClusterACL(r, mycluster)
+			if !valid {
+				// Orchestrator-driven bootstrap (e.g. the K8s init-container
+				// wget in cluster/prov_k8s_db.go) has no JWT to send, only
+				// the HTTP Basic Auth it sends as an Authorization header.
+				if u, p, ok := r.BasicAuth(); ok {
+					valid = mycluster.IsValidACL(u, p, r.URL.Path, "password")
+				}
+			}
+			if !valid {
 				http.Error(w, "No valid ACL", http.StatusForbidden)
 				return
 			}
