@@ -247,6 +247,73 @@ func TestSwitchClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	}
 }
 
+// Confirms prov-kube-image-force-pull actually reaches setClusterSetting's
+// switch (GUI dispatches switchSetting for it, OrchestratorDbVM.jsx) --
+// wiring a GUI control without a matching case here means the toggle
+// renders but silently never persists.
+func TestSwitchClusterSetting_ProvKubeImageForcePull(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.ProvKubeImageForcePull = false
+
+	if err := repman.switchClusterSettings(cl, "prov-kube-image-force-pull"); err != nil {
+		t.Fatalf("switchClusterSettings(prov-kube-image-force-pull): unexpected error: %v", err)
+	}
+	if !cl.Conf.ProvKubeImageForcePull {
+		t.Fatalf("expected ProvKubeImageForcePull=true after first switch, got false")
+	}
+
+	if err := repman.switchClusterSettings(cl, "prov-kube-image-force-pull"); err != nil {
+		t.Fatalf("switchClusterSettings(prov-kube-image-force-pull) second call: unexpected error: %v", err)
+	}
+	if cl.Conf.ProvKubeImageForcePull {
+		t.Fatalf("expected ProvKubeImageForcePull=false after second switch, got true")
+	}
+}
+
+func TestSetClusterSetting_ProvKubeImageForcePull(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.ProvKubeImageForcePull = false
+
+	if err := repman.setClusterSetting(cl, "prov-kube-image-force-pull", "on"); err != nil {
+		t.Fatalf(`setClusterSetting(prov-kube-image-force-pull, "on"): unexpected error: %v`, err)
+	}
+	if !cl.Conf.ProvKubeImageForcePull {
+		t.Fatalf("expected ProvKubeImageForcePull=true after explicit \"on\", got false")
+	}
+
+	if err := repman.setClusterSetting(cl, "prov-kube-image-force-pull", "off"); err != nil {
+		t.Fatalf(`setClusterSetting(prov-kube-image-force-pull, "off"): unexpected error: %v`, err)
+	}
+	if cl.Conf.ProvKubeImageForcePull {
+		t.Fatalf("expected ProvKubeImageForcePull=false after explicit \"off\", got true")
+	}
+}
+
+// Confirms prov-kube-storage-class (GUI dispatches setSetting for it,
+// OrchestratorDbVM.jsx) actually reaches SetProvKubeStorageClass through
+// setClusterSetting's switch.
+func TestSetClusterSetting_ProvKubeStorageClass(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	if err := repman.setClusterSetting(cl, "prov-kube-storage-class", "fast-ssd"); err != nil {
+		t.Fatalf(`setClusterSetting(prov-kube-storage-class, "fast-ssd"): unexpected error: %v`, err)
+	}
+	if cl.Conf.ProvKubeStorageClass != "fast-ssd" {
+		t.Fatalf("expected ProvKubeStorageClass %q, got %q", "fast-ssd", cl.Conf.ProvKubeStorageClass)
+	}
+}
+
 func TestSetClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	cl := newTestClusterForAPI(t)
 	cl.Conf.Secrets = make(map[string]config.Secret)

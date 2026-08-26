@@ -588,6 +588,21 @@ func (cluster *Cluster) RestartDatabaseService(server *ServerMonitor, node strin
 		return err
 	}
 
+	// Kubernetes has no scale-to-zero/drain semantic (K8SStopDatabaseService
+	// always errors), so the generic stop→wait→start dance below can never
+	// work for it -- a rolling pod replacement (the same mechanism that
+	// makes prov-kube-image-force-pull's ImagePullPolicy: Always actually
+	// take effect on demand) is the equivalent operation instead.
+	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+		err = cluster.K8SForceRepullDatabaseService(server)
+		if err == nil {
+			server.DelRestartContainerCookie()
+			server.RestartNode = ""
+			server.RestartRid = ""
+		}
+		return err
+	}
+
 	// Generic restart: stop → wait failed → start
 	// This allows pre-stop hooks (e.g. innodb_fast_shutdown=0 before upgrade)
 	// and post-stop hooks (e.g. redo log relocation) between the two phases.

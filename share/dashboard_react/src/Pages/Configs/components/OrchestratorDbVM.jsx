@@ -6,6 +6,7 @@ import TableType2 from '../../../components/TableType2'
 import parentStyles from '../styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
 import { setSetting, switchSetting } from '../../../redux/settingsSlice'
+import { getKubeStorageClasses } from '../../../redux/clusterSlice'
 import { convertObjectToArrayForDropdown } from '../../../utility/common'
 import RMSwitch from '../../../components/RMSwitch'
 
@@ -14,6 +15,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
   const {
     globalClusters: { monitor }
   } = useSelector((state) => state)
+  const kubeStorageClasses = useSelector((state) => state.cluster?.kubeStorageClasses || [])
   const [serviceVMs, setServiceVMs] = useState([])
 
   useEffect(() => {
@@ -21,6 +23,12 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       setServiceVMs(convertObjectToArrayForDropdown(monitor.serviceVM))
     }
   }, [monitor?.serviceVM])
+
+  useEffect(() => {
+    if (selectedCluster?.name && selectedCluster?.config?.provOrchestrator === 'kube') {
+      dispatch(getKubeStorageClasses({ clusterName: selectedCluster.name }))
+    }
+  }, [selectedCluster?.name, selectedCluster?.config?.provOrchestrator])
 
   const dataObject = [
     {
@@ -74,6 +82,39 @@ function OrchestratorDbVM({ selectedCluster, user }) {
         />
       )
     },
+    selectedCluster?.config?.provOrchestrator === 'kube' && {
+      key: 'Kubernetes Storage Class',
+      value: (
+        <Dropdown
+          className={parentStyles.dropdown}
+          options={kubeStorageClasses}
+          selectedValue={selectedCluster?.config?.provKubeStorageClass}
+          confirmTitle={`Confirm change Kubernetes storage class to `}
+          onChange={(value) => {
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'prov-kube-storage-class',
+                value: value
+              })
+            )
+          }}
+        />
+      )
+    },
+    selectedCluster?.config?.provOrchestrator === 'kube' && {
+      key: 'Kubernetes Force Image Pull',
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.provKubeImageForcePull}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for prov-kube-image-force-pull?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-kube-image-force-pull' }))
+          }
+        />
+      )
+    },
     {
       key: 'Provisioning Private Docker Daemon',
       value: (
@@ -100,7 +141,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
         />
       )
     }
-  ]
+  ].filter(Boolean)
   return (
     <VStack>
       <TableType2 dataArray={dataObject} className={parentStyles.table} />

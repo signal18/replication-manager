@@ -102,6 +102,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterOpenSVCPoolList)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/kube-storage-classes", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterKubeStorageClassList)),
+	))
+
 	//PROTECTED ENDPOINTS FOR CLUSTERS ACTIONS
 	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -2749,6 +2754,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchTestMode()
 	case "prov-net-cni":
 		mycluster.SwitchProvNetCNI()
+	case "prov-kube-image-force-pull":
+		mycluster.Conf.ProvKubeImageForcePull = !mycluster.Conf.ProvKubeImageForcePull
 	case "prov-db-config":
 		mycluster.Conf.ProvDBConfig = !mycluster.Conf.ProvDBConfig
 	case "prov-db-config-preserve":
@@ -3650,6 +3657,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetProvNetCniCluster(value)
 	case "prov-orchestrator-cluster":
 		mycluster.SetProvOrchestratorCluster(value)
+	case "prov-kube-storage-class":
+		mycluster.SetProvKubeStorageClass(value)
 	case "prov-db-disk-size":
 		mycluster.SetDBDiskSize(value)
 	case "prov-db-cpu-cores":
@@ -4440,6 +4449,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Test = applyIsActive(mycluster.Conf.Test, isactive)
 	case "prov-net-cni":
 		mycluster.Conf.ProvNetCNI = applyIsActive(mycluster.Conf.ProvNetCNI, isactive)
+	case "prov-kube-image-force-pull":
+		mycluster.Conf.ProvKubeImageForcePull = applyIsActive(mycluster.Conf.ProvKubeImageForcePull, isactive)
 	case "prov-db-config":
 		mycluster.Conf.ProvDBConfig = applyIsActive(mycluster.Conf.ProvDBConfig, isactive)
 	case "prov-db-config-preserve":
@@ -9320,6 +9331,50 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCPoolList(w http.Respon
 				continue
 			}
 			options = append(options, PoolOption{Value: pool.Name, Name: pool.Name, Shared: pool.Shared})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(options); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: %s", err)
+		}
+	} else {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxClusterKubeStorageClassList lists the Kubernetes cluster's
+// available StorageClasses, for the provisioning GUI's storage-class
+// dropdown (prov-kube-storage-class) -- Kubernetes' equivalent of
+// handlerMuxClusterOpenSVCPoolList's disk-pool list.
+// @Summary List available Kubernetes StorageClasses
+// @Description Lists the Kubernetes cluster's available StorageClasses.
+// @Tags Database
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} PoolOption "Kubernetes StorageClass list fetched"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "Error getting Kubernetes storage class list"
+// @Router /api/clusters/{clusterName}/kube-storage-classes [get]
+func (repman *ReplicationManager) handlerMuxClusterKubeStorageClassList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+
+		names, err := mycluster.K8SGetStorageClasses()
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting Kubernetes storage class list: %s", err)
+			http.Error(w, "Error getting Kubernetes storage class list: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		options := make([]PoolOption, 0, len(names))
+		for _, name := range names {
+			options = append(options, PoolOption{Value: name, Name: name})
 		}
 
 		w.Header().Set("Content-Type", "application/json")

@@ -2485,6 +2485,10 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 // @Failure 404 {string} string "Cluster Not Found or Server Not Found"
 // @Failure 501 {string} string "Orchestrator not supported"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/actions/restart [post]
+func restartSupportedForOrchestrator(orchestrator string) bool {
+	return orchestrator == config.ConstOrchestratorOpenSVC || orchestrator == config.ConstOrchestratorKubernetes
+}
+
 func (repman *ReplicationManager) handlerMuxServerRestart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
@@ -2502,9 +2506,17 @@ func (repman *ReplicationManager) handlerMuxServerRestart(w http.ResponseWriter,
 		return
 	}
 
-	if mycluster.GetOrchestrator() != "opensvc" {
+	// CheckRestartContainerCookies (cluster_chk.go), the monitoring-loop
+	// consumer of the cookie this handler sets below, already dispatches
+	// generically through RestartDatabaseService (cluster/prov.go) with no
+	// orchestrator gate of its own -- RestartDatabaseService has had a
+	// Kubernetes branch since #1497's image-pull-policy work, but this
+	// handler blocking Kubernetes here meant the cookie never got set, so
+	// that branch was never actually reachable through the API (confirmed
+	// live: a genuine gap, not by design).
+	if !restartSupportedForOrchestrator(mycluster.GetOrchestrator()) {
 		w.WriteHeader(http.StatusNotImplemented)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Restart is only supported for OpenSVC orchestrator"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Restart is only supported for OpenSVC and Kubernetes orchestrators"})
 		return
 	}
 

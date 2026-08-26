@@ -13,6 +13,7 @@ export const clusterService = {
   getTopProcess,
   getOpenSVCStats,
   getOpenSVCPools,
+  getKubeStorageClasses,
   getBackups,
   getBackupStats,
   deleteBackup,
@@ -257,6 +258,10 @@ function getOpenSVCStats(clusterName, baseURL) {
 
 function getOpenSVCPools(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/opensvc-pools`)
+}
+
+function getKubeStorageClasses(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/kube-storage-classes`)
 }
 
 function getBackups(clusterName, baseURL) {

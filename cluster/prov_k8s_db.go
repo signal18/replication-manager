@@ -3,9 +3,11 @@ package cluster
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	appsv1 "k8s.io/api/apps/v1"
@@ -13,6 +15,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -55,6 +58,135 @@ func k8sClusterDomain(cluster *Cluster) string {
 		return cluster.Conf.ProvOrchestratorCluster
 	}
 	return "cluster.local"
+}
+
+// k8sImagePullPolicy mirrors opensvc-image-force-pull's exact semantic
+// (prov_opensvc_db.go) for Kubernetes: PullAlways when the flag is set,
+// otherwise an explicit PullIfNotPresent rather than leaving the field
+// unset -- the K8s implicit default already differs by tag (Always for
+// ":latest", IfNotPresent otherwise), which is surprising/undocumented
+// behavior; being explicit here means redeploying with the same non-latest
+// tag never silently skips a genuinely updated image without this flag.
+func k8sImagePullPolicy(cluster *Cluster) apiv1.PullPolicy {
+	if cluster.Conf.ProvKubeImageForcePull {
+		return apiv1.PullAlways
+	}
+	return apiv1.PullIfNotPresent
+}
+
+// k8sSecretKeyRootPassword is the key MYSQL_ROOT_PASSWORD is stored under in
+// each server's own Secret (k8sSecretName) -- one Secret per server, not
+// shared, since each server can have its own password.
+const k8sSecretKeyRootPassword = "MYSQL_ROOT_PASSWORD"
+
+func k8sSecretName(s *ServerMonitor) string {
+	return s.Name + "-secret"
+}
+
+// k8sEnsureDatabaseSecret creates or updates the Secret holding
+// MYSQL_ROOT_PASSWORD, referenced by the container via SecretKeyRef rather
+// than a raw Env value -- a raw value would put the password in cleartext
+// in the Deployment spec (kubectl get deploy -o yaml, RBAC permitting), the
+// same class of exposure the config-bootstrap Basic Auth header was fixed
+// to avoid. Update (not just create-if-missing): password rotation must
+// take effect on the next pod restart, not silently keep the old one -- a
+// merge Patch, not Update with a freshly-constructed object: Update()
+// requires the current resourceVersion for optimistic concurrency, which a
+// fresh object never has, so it would be rejected by a real API server
+// (the fake clientset used in tests doesn't enforce this, so that gap
+// wasn't test-visible). A merge patch needs no resourceVersion at all.
+func (cluster *Cluster) k8sEnsureDatabaseSecret(client kubernetes.Interface, s *ServerMonitor) error {
+	secretsClient := client.CoreV1().Secrets(cluster.Name)
+	secret := &apiv1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: k8sSecretName(s),
+		},
+		Type: apiv1.SecretTypeOpaque,
+		StringData: map[string]string{
+			k8sSecretKeyRootPassword: s.Pass,
+		},
+	}
+	_, err := secretsClient.Create(context.TODO(), secret, metav1.CreateOptions{})
+	if apierrors.IsAlreadyExists(err) {
+		// json.Marshal, not manual string concatenation: a password can
+		// contain arbitrary characters, and Go's own quoting syntax
+		// (strconv.Quote) isn't guaranteed identical to JSON's.
+		patch, marshalErr := json.Marshal(struct {
+			StringData map[string]string `json:"stringData"`
+		}{StringData: map[string]string{k8sSecretKeyRootPassword: s.Pass}})
+		if marshalErr != nil {
+			return marshalErr
+		}
+		_, err = secretsClient.Patch(context.TODO(), k8sSecretName(s), ktypes.MergePatchType, patch, metav1.PatchOptions{})
+	}
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot provision Kubernetes secret %s ", err)
+	}
+	return err
+}
+
+// k8sDatabasePVC is a pure builder for the database PVC, following
+// k8sDatabaseDeployment's own "no API calls" convention so it can be
+// asserted directly in tests. StorageClassName is a *string in the K8s API
+// specifically to distinguish "use the cluster's default StorageClass" (nil)
+// from "use no StorageClass, static pre-bound PV matching only" (a pointer
+// to ""), so prov-kube-storage-class empty must stay nil, not "". Size comes
+// from prov-db-disk-size (e.g. "20G"), already used by every other
+// orchestrator for the same purpose, not the 1Gi that was hardcoded here
+// before -- a size that never matched what the operator actually asked for.
+func (cluster *Cluster) k8sDatabasePVC(s *ServerMonitor) *apiv1.PersistentVolumeClaim {
+	size, err := resource.ParseQuantity(cluster.Conf.ProvDisk)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+			"Cannot parse prov-db-disk-size %q, falling back to the default 20G: %s ", cluster.Conf.ProvDisk, err)
+		size = resource.MustParse("20G")
+	}
+	pvc := &apiv1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: cluster.Name + "-" + s.Name + "-claim",
+		},
+		Spec: apiv1.PersistentVolumeClaimSpec{
+			AccessModes: []apiv1.PersistentVolumeAccessMode{
+				apiv1.ReadWriteOnce,
+			},
+			Resources: apiv1.VolumeResourceRequirements{
+				Requests: apiv1.ResourceList{
+					apiv1.ResourceName(apiv1.ResourceStorage): size,
+				},
+			},
+		},
+	}
+	if cluster.Conf.ProvKubeStorageClass != "" {
+		storageClass := cluster.Conf.ProvKubeStorageClass
+		pvc.Spec.StorageClassName = &storageClass
+	}
+	return pvc
+}
+
+// k8sStorageClassesFromClient lists the cluster's available StorageClass
+// names, for the provisioning GUI's dropdown (see prov-kube-storage-class) --
+// same "*FromClient testable + public live-connecting wrapper" split as
+// k8sNodesFromClient/K8SGetNodes (prov_k8s.go).
+func (cluster *Cluster) k8sStorageClassesFromClient(client kubernetes.Interface) ([]string, error) {
+	scs, err := client.StorageV1().StorageClasses().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot list Kubernetes storage classes %s ", err)
+		return nil, err
+	}
+	names := make([]string, 0, len(scs.Items))
+	for _, sc := range scs.Items {
+		names = append(names, sc.Name)
+	}
+	return names, nil
+}
+
+func (cluster *Cluster) K8SGetStorageClasses() ([]string, error) {
+	client, err := cluster.K8SConnectAPI()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
+		return nil, err
+	}
+	return cluster.k8sStorageClassesFromClient(client)
 }
 
 // k8sEnsureHeadlessService creates the shared headless Service if it doesn't
@@ -122,18 +254,47 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 	// log/binlog/tmp/innodb/aria paths at ./.system/... under the datadir,
 	// which mariadbd needs pre-created (OpenSVC's moduleset does this as
 	// explicit directory resources; nothing analogous exists for K8s).
+	// .system/jobs (JOBS_DATADIR) is where the dbjobs sidecar's launcher
+	// script (dbjobs_launcher_with_sigterm) cleans up stale *.run
+	// directories on every cycle -- confirmed live: missing this one made
+	// cleanup_run_dirs fail immediately on startup. Hardcoded, matching the
+	// other paths here, rather than calling s.GetJobDatadir(): that method
+	// dereferences s.ClusterGroup.Configurator with no nil check, which
+	// would violate this function's own "pure builder, no ServerMonitor
+	// methods" contract and panic on a bare *ServerMonitor (confirmed via a
+	// test). Matches GetJobDatadir()'s own Kubernetes-path result unless
+	// the "nosplitpath" db-tag is set, which would use
+	// /var/lib/replication-manager-jobs instead -- not handled here.
 	systemDirs := "/var/lib/mysql/.system/tmp /var/lib/mysql/.system/logs " +
 		"/var/lib/mysql/.system/repl /var/lib/mysql/.system/innodb/undo " +
-		"/var/lib/mysql/.system/innodb/redo /var/lib/mysql/.system/aria"
+		"/var/lib/mysql/.system/innodb/redo /var/lib/mysql/.system/aria " +
+		"/var/lib/mysql/.system/jobs"
 	// GetServerFromURL (cluster_get.go), which handlerMuxServersPortConfig
 	// uses to resolve the {serverName} path segment, matches only
 	// server.Host -- the domain-qualified name when prov-net-cni is on, not
 	// the bare s.Name. Using s.Name here alone would 500 ("No server") on
 	// every fetch once the flag is enabled, since it would never match.
 	serverPath := s.Name + cluster.GetDomain()
+	// The fetched archive's root is repman's own Datadir/init (confirmed via
+	// configurator.TarGz's caller, configurator.go) -- so its "init/" entry
+	// (dbjobs_new, dbjobs_launcher_with_sigterm, already fully resolved
+	// server-side: GenerateDatabaseConfig substitutes every %%ENV:...%%
+	// placeholder, including JOBS_DATADIR, before the archive is built, so
+	// nothing needs to be templated again here) is copied into a shared
+	// volume the dbjobs sidecar mounts at /docker-entrypoint-initdb.d,
+	// matching OpenSVC's own mount path for the same purpose
+	// (OpenSVCGetJobsContainerSection, prov_opensvc_db.go). No auth on the
+	// replication-manager-cli fetch: /static/ is a plain, unauthenticated
+	// file server (server/http.go), the same as OpenSVC's own bootstrap
+	// script fetching it.
 	cmd := []string{
 		"sh", "-c",
-		"mkdir -p /tmp/cfg " + systemDirs + " && wget -qO-" + authHeader + " http://" + authority + "/api/clusters/" + cluster.Name + "/servers/" + serverPath + "/" + s.Port + "/config | tar xzf - -C /tmp/cfg && cp /tmp/cfg/etc/mysql/conf.d/*.cnf /etc/mysql/conf.d/ 2>/dev/null",
+		"mkdir -p /tmp/cfg /docker-entrypoint-initdb.d " + systemDirs +
+			" && wget -qO-" + authHeader + " http://" + authority + "/api/clusters/" + cluster.Name + "/servers/" + serverPath + "/" + s.Port + "/config | tar xzf - -C /tmp/cfg" +
+			" && cp /tmp/cfg/etc/mysql/conf.d/*.cnf /etc/mysql/conf.d/ 2>/dev/null" +
+			" && cp -r /tmp/cfg/init/. /docker-entrypoint-initdb.d/ 2>/dev/null" +
+			" && wget -qO /docker-entrypoint-initdb.d/replication-manager-cli http://" + authority + "/static/configurator/bin/replication-manager-cli" +
+			" && chmod +x /docker-entrypoint-initdb.d/replication-manager-cli /docker-entrypoint-initdb.d/dbjobs_new /docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm 2>/dev/null",
 	}
 	// Subdomain/role label are gated on prov-net-cni so a cluster that
 	// hasn't opted in gets byte-identical Deployments to before; the role
@@ -185,13 +346,18 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 									Name:      s.Name + "-persistent-storage",
 									MountPath: "/var/lib/mysql",
 								},
+								{
+									Name:      s.Name + "-init",
+									MountPath: "/docker-entrypoint-initdb.d",
+								},
 							},
 						},
 					},
 					Containers: []apiv1.Container{
 						{
-							Name:  s.Name,
-							Image: cluster.Conf.ProvDbImg,
+							Name:            s.Name,
+							Image:           cluster.Conf.ProvDbImg,
+							ImagePullPolicy: k8sImagePullPolicy(cluster),
 							Ports: []apiv1.ContainerPort{
 								{
 									Name:          "mysql",
@@ -201,8 +367,13 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 							},
 							Env: []apiv1.EnvVar{
 								{
-									Name:  "MYSQL_ROOT_PASSWORD",
-									Value: s.Pass,
+									Name: "MYSQL_ROOT_PASSWORD",
+									ValueFrom: &apiv1.EnvVarSource{
+										SecretKeyRef: &apiv1.SecretKeySelector{
+											LocalObjectReference: apiv1.LocalObjectReference{Name: k8sSecretName(s)},
+											Key:                  k8sSecretKeyRootPassword,
+										},
+									},
 								},
 							},
 							VolumeMounts: []apiv1.VolumeMount{
@@ -216,6 +387,44 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 								},
 							},
 						},
+						// dbjobs sidecar: runs backups/optimize/config-refresh via
+						// share/scripts/dbjobs_new.sh, fetched pre-resolved (every
+						// %%ENV:...%% placeholder, including JOBS_DATADIR, already
+						// substituted server-side by GenerateDatabaseConfig) as part
+						// of the same config archive the init container already
+						// fetches -- see the init container's Command above.
+						// Same pod as the DB container, so no netns/socket sharing
+						// is needed the way OpenSVC's own jobs container
+						// (OpenSVCGetJobsContainerSection, prov_opensvc_db.go) needs:
+						// Kubernetes pods share network by default, and the script
+						// connects over TCP (DB_CONN_PARAMETERS uses -h$MYSQL_SERVER,
+						// server.Host), not a local socket.
+						{
+							Name:    s.Name + "-dbjobs",
+							Image:   cluster.Conf.ProvDbImg,
+							Command: []string{"/bin/bash", "/docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm"},
+							Env: []apiv1.EnvVar{
+								{
+									Name: "MYSQL_ROOT_PASSWORD",
+									ValueFrom: &apiv1.EnvVarSource{
+										SecretKeyRef: &apiv1.SecretKeySelector{
+											LocalObjectReference: apiv1.LocalObjectReference{Name: k8sSecretName(s)},
+											Key:                  k8sSecretKeyRootPassword,
+										},
+									},
+								},
+							},
+							VolumeMounts: []apiv1.VolumeMount{
+								{
+									Name:      s.Name + "-persistent-storage",
+									MountPath: "/var/lib/mysql",
+								},
+								{
+									Name:      s.Name + "-init",
+									MountPath: "/docker-entrypoint-initdb.d",
+								},
+							},
+						},
 					},
 					Volumes: []apiv1.Volume{
 						{
@@ -224,6 +433,16 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 								PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{
 									ClaimName: cluster.Name + "-" + s.Name + "-claim",
 								},
+							},
+						},
+						{
+							// dbjobs_new/dbjobs_launcher_with_sigterm/replication-manager-cli,
+							// populated by the init container, consumed by the dbjobs
+							// sidecar -- not the data PVC, since like -conf it's
+							// regenerated by the init container on every pod start.
+							Name: s.Name + "-init",
+							VolumeSource: apiv1.VolumeSource{
+								EmptyDir: &apiv1.EmptyDirVolumeSource{},
 							},
 						},
 						{
@@ -258,6 +477,10 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		}
 	}
 	cluster.k8sEnsureNamespace(client, cluster.Name)
+	if err := cluster.k8sEnsureDatabaseSecret(client, s); err != nil {
+		cluster.errorChan <- err
+		return
+	}
 
 	/*
 			apiVersion: v1
@@ -309,21 +532,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlInfo, "Created Kubernetes physical volume %q.\n", pvresult.GetObjectMeta().GetName())
 	*/
 	persistentVolumeClaims := client.CoreV1().PersistentVolumeClaims(cluster.Name)
-	pvc := &apiv1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: cluster.Name + "-" + s.Name + "-claim",
-		},
-		Spec: apiv1.PersistentVolumeClaimSpec{
-			AccessModes: []apiv1.PersistentVolumeAccessMode{
-				apiv1.ReadWriteOnce,
-			},
-			Resources: apiv1.VolumeResourceRequirements{
-				Requests: apiv1.ResourceList{
-					apiv1.ResourceName(apiv1.ResourceStorage): resource.MustParse("1Gi"),
-				},
-			},
-		},
-	}
+	pvc := cluster.k8sDatabasePVC(s)
 	pvcresult, pvcerr := persistentVolumeClaims.Create(context.TODO(), pvc, metav1.CreateOptions{})
 	if pvcerr != nil && !apierrors.IsAlreadyExists(pvcerr) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot deploy Kubernetes pvc %s ", pvcerr)
@@ -463,6 +672,44 @@ func (cluster *Cluster) K8SStartDatabaseService(s *ServerMonitor) error {
 		return err
 	}
 	return cluster.k8sStartDatabaseServiceWithClient(client, s.Name)
+}
+
+// k8sForceRepullDatabaseServiceWithClient triggers a rolling pod
+// replacement the same way `kubectl rollout restart` does -- patching the
+// pod template's own restartedAt annotation, which the Deployment
+// controller treats as a spec change and rolls out even though nothing
+// else differs. The container's ImagePullPolicy is patched in the same
+// call, to the *current* prov-kube-image-force-pull value: the Deployment
+// object itself only ever gets ImagePullPolicy at creation time
+// (k8sDatabaseDeployment), so toggling the setting later would otherwise
+// have no effect on an already-provisioned server -- IfNotPresent, in
+// particular, would then keep skipping the re-pull this action exists to
+// force. name (both the Deployment and its DB container's name, s.Name) is
+// a Kubernetes object name -- restricted to [a-z0-9-], so, like the pull
+// policy (one of two fixed constants), it can't contain characters that
+// need JSON escaping, unlike the password in k8sEnsureDatabaseSecret.
+// StrategicMergePatchType's containers[].name merge key targets that one
+// container without needing its other fields. Not Update(): same
+// resourceVersion problem as k8sEnsureDatabaseSecret had.
+func (cluster *Cluster) k8sForceRepullDatabaseServiceWithClient(client kubernetes.Interface, name string) error {
+	patch := []byte(`{"spec":{"template":{` +
+		`"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"` + time.Now().Format(time.RFC3339) + `"}},` +
+		`"spec":{"containers":[{"name":"` + name + `","imagePullPolicy":"` + string(k8sImagePullPolicy(cluster)) + `"}]}` +
+		`}}}`)
+	_, err := client.AppsV1().Deployments(cluster.Name).Patch(context.TODO(), name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot force image re-pull for %s: %s ", name, err)
+	}
+	return err
+}
+
+func (cluster *Cluster) K8SForceRepullDatabaseService(s *ServerMonitor) error {
+	client, err := cluster.K8SConnectAPI()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
+		return err
+	}
+	return cluster.k8sForceRepullDatabaseServiceWithClient(client, s.Name)
 }
 
 // ConfigMap, PVC and Namespace are intentionally retained — PVC deletion is

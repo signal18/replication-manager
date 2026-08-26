@@ -83,6 +83,30 @@ func TestHandlerMuxServersPortConfig_NoAuthAtAllFailsACL(t *testing.T) {
 	}
 }
 
+// handlerMuxServerRestart gated Kubernetes out entirely (hardcoded to
+// OpenSVC only), even though RestartDatabaseService (cluster/prov.go) has
+// had a working Kubernetes branch since #1497's image-pull-policy work --
+// confirmed live: that branch was never actually reachable through the API
+// because this gate blocked the handler from ever setting the restart
+// cookie CheckRestartContainerCookies (cluster_chk.go) consumes.
+func TestRestartSupportedForOrchestrator(t *testing.T) {
+	tests := []struct {
+		orchestrator string
+		want         bool
+	}{
+		{config.ConstOrchestratorOpenSVC, true},
+		{config.ConstOrchestratorKubernetes, true},
+		{config.ConstOrchestratorOnPremise, false},
+		{config.ConstOrchestratorLocalhost, false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := restartSupportedForOrchestrator(tt.orchestrator); got != tt.want {
+			t.Errorf("restartSupportedForOrchestrator(%q) = %v, want %v", tt.orchestrator, got, tt.want)
+		}
+	}
+}
+
 // api-credentials-secure-config off bypasses the ACL gate entirely,
 // regardless of any credential -- matches the K8s init-container's own
 // behavior of sending no Authorization header at all in that case

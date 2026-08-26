@@ -9,6 +9,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -297,6 +298,171 @@ func TestK8SEnsureNamespace_ForbiddenDoesNotBlockProvisioning(t *testing.T) {
 	cluster.k8sEnsureNamespace(client, "k8stest")
 }
 
+// --- Database Secret (MYSQL_ROOT_PASSWORD, not a raw Env value) ---
+
+func TestK8SEnsureDatabaseSecret_CreatesSecretWithPassword(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	s := &ServerMonitor{Name: "db1", Pass: "s3cr3t"}
+
+	if err := cluster.k8sEnsureDatabaseSecret(client, s); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	secret, err := client.CoreV1().Secrets("k8stest").Get(context.TODO(), k8sSecretName(s), metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected the secret to have been created, got error: %s", err)
+	}
+	if secret.StringData[k8sSecretKeyRootPassword] != "s3cr3t" {
+		t.Fatalf("expected MYSQL_ROOT_PASSWORD %q, got %q", "s3cr3t", secret.StringData[k8sSecretKeyRootPassword])
+	}
+}
+
+// Password rotation must take effect on the next pod restart, not silently
+// keep whatever was there before.
+func TestK8SEnsureDatabaseSecret_UpdatesExistingSecret(t *testing.T) {
+	s := &ServerMonitor{Name: "db1", Pass: "new-pass"}
+	client := fake.NewSimpleClientset(&apiv1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: k8sSecretName(s), Namespace: "k8stest"},
+		StringData: map[string]string{k8sSecretKeyRootPassword: "old-pass"},
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sEnsureDatabaseSecret(client, s); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	secret, err := client.CoreV1().Secrets("k8stest").Get(context.TODO(), k8sSecretName(s), metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if secret.StringData[k8sSecretKeyRootPassword] != "new-pass" {
+		t.Fatalf("expected the rotated password %q, got %q", "new-pass", secret.StringData[k8sSecretKeyRootPassword])
+	}
+}
+
+// The Deployment must reference the Secret via SecretKeyRef, never embed
+// the password as a raw Env value -- that would put it in cleartext in the
+// Deployment spec (kubectl get deploy -o yaml, RBAC permitting).
+func TestK8SDatabaseDeployment_RootPasswordUsesSecretKeyRefNotRawValue(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	s := &ServerMonitor{Name: "db1", Port: "3306", Pass: "s3cr3t"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	env := dep.Spec.Template.Spec.Containers[0].Env
+
+	var found *apiv1.EnvVar
+	for i := range env {
+		if env[i].Name == "MYSQL_ROOT_PASSWORD" {
+			found = &env[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("expected a MYSQL_ROOT_PASSWORD env var")
+	}
+	if found.Value != "" {
+		t.Fatalf("expected no raw Value (password must come from the Secret), got %q", found.Value)
+	}
+	if found.ValueFrom == nil || found.ValueFrom.SecretKeyRef == nil {
+		t.Fatal("expected MYSQL_ROOT_PASSWORD to be sourced from a SecretKeyRef")
+	}
+	if found.ValueFrom.SecretKeyRef.Name != k8sSecretName(s) {
+		t.Fatalf("expected SecretKeyRef to name %q, got %q", k8sSecretName(s), found.ValueFrom.SecretKeyRef.Name)
+	}
+	if found.ValueFrom.SecretKeyRef.Key != k8sSecretKeyRootPassword {
+		t.Fatalf("expected SecretKeyRef key %q, got %q", k8sSecretKeyRootPassword, found.ValueFrom.SecretKeyRef.Key)
+	}
+}
+
+// --- Database PVC (size, StorageClass) ---
+
+func TestK8SDatabasePVC_UsesProvDiskSize(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDisk = "20G"
+	s := &ServerMonitor{Name: "db1"}
+
+	pvc := cluster.k8sDatabasePVC(s)
+
+	got := pvc.Spec.Resources.Requests[apiv1.ResourceStorage]
+	want := resource.MustParse("20G")
+	if got.Cmp(want) != 0 {
+		t.Fatalf("expected storage request %s, got %s", want.String(), got.String())
+	}
+}
+
+func TestK8SDatabasePVC_FallsBackToDefaultSizeWhenUnparseable(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDisk = "not-a-size"
+	s := &ServerMonitor{Name: "db1"}
+
+	pvc := cluster.k8sDatabasePVC(s)
+
+	got := pvc.Spec.Resources.Requests[apiv1.ResourceStorage]
+	want := resource.MustParse("20G")
+	if got.Cmp(want) != 0 {
+		t.Fatalf("expected the fallback to match prov-db-disk-size's own default (20G), got %s", got.String())
+	}
+}
+
+// StorageClassName is a *string in the K8s API specifically to distinguish
+// "use the cluster's default StorageClass" (nil) from "use no StorageClass"
+// (a pointer to "") -- prov-kube-storage-class unset must stay nil, not a
+// pointer to an empty string, or PVC binding would behave differently than
+// leaving the field alone.
+func TestK8SDatabasePVC_NoStorageClassNameWhenUnset(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	s := &ServerMonitor{Name: "db1"}
+
+	pvc := cluster.k8sDatabasePVC(s)
+
+	if pvc.Spec.StorageClassName != nil {
+		t.Fatalf("expected a nil StorageClassName (use cluster default), got %q", *pvc.Spec.StorageClassName)
+	}
+}
+
+func TestK8SDatabasePVC_UsesConfiguredStorageClass(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvKubeStorageClass = "fast-ssd"
+	s := &ServerMonitor{Name: "db1"}
+
+	pvc := cluster.k8sDatabasePVC(s)
+
+	if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName != "fast-ssd" {
+		t.Fatalf("expected StorageClassName \"fast-ssd\", got %v", pvc.Spec.StorageClassName)
+	}
+}
+
+// --- StorageClass listing (provisioning GUI dropdown) ---
+
+func TestK8SStorageClassesFromClient_ListsNames(t *testing.T) {
+	client := fake.NewSimpleClientset(
+		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: "standard"}},
+		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: "fast-ssd"}},
+	)
+	cluster := newTestCluster("k8stest")
+
+	names, err := cluster.k8sStorageClassesFromClient(client)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if len(names) != 2 {
+		t.Fatalf("expected 2 storage classes, got %d: %v", len(names), names)
+	}
+}
+
+func TestK8SStorageClassesFromClient_EmptyClusterReturnsEmptyNotNilError(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+
+	names, err := cluster.k8sStorageClassesFromClient(client)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if len(names) != 0 {
+		t.Fatalf("expected no storage classes, got %v", names)
+	}
+}
+
 // --- Legacy proxy deployment: left alone, only warned about ---
 
 func TestK8SProvisionProxy_DoesNotTouchLegacyDeployment(t *testing.T) {
@@ -380,6 +546,102 @@ func TestK8SStartDatabase_RunningDeploymentSucceeds(t *testing.T) {
 	cluster := newTestCluster("k8stest")
 	if err := cluster.k8sStartDatabaseServiceWithClient(client, "db1"); err != nil {
 		t.Fatalf("unexpected error: %s", err)
+	}
+}
+
+// --- Image pull policy (prov-kube-image-force-pull) ---
+
+func TestK8SImagePullPolicy_AlwaysWhenForcePullSet(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvKubeImageForcePull = true
+
+	if got := k8sImagePullPolicy(cluster); got != apiv1.PullAlways {
+		t.Fatalf("expected PullAlways, got %q", got)
+	}
+}
+
+func TestK8SImagePullPolicy_ExplicitIfNotPresentByDefault(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvKubeImageForcePull = false
+
+	if got := k8sImagePullPolicy(cluster); got != apiv1.PullIfNotPresent {
+		t.Fatalf("expected an explicit PullIfNotPresent, got %q", got)
+	}
+}
+
+func TestK8SDatabaseDeployment_ContainerUsesConfiguredPullPolicy(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvKubeImageForcePull = true
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+
+	if got := dep.Spec.Template.Spec.Containers[0].ImagePullPolicy; got != apiv1.PullAlways {
+		t.Fatalf("expected the database container to use PullAlways, got %q", got)
+	}
+}
+
+// --- Force image re-pull action (rolling restart via annotation patch) ---
+
+func TestK8SForceRepullDatabaseService_PatchesRestartedAtAnnotation(t *testing.T) {
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sForceRepullDatabaseServiceWithClient(client, "db1"); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), "db1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if _, ok := dep.Spec.Template.ObjectMeta.Annotations["kubectl.kubernetes.io/restartedAt"]; !ok {
+		t.Fatal("expected the pod template to be annotated with kubectl.kubernetes.io/restartedAt")
+	}
+}
+
+// The Deployment object only ever gets ImagePullPolicy at creation time
+// (k8sDatabaseDeployment) -- toggling prov-kube-image-force-pull afterward
+// must still reach an already-provisioned server's Deployment through this
+// action, or the setting would silently do nothing until a full
+// reprovision.
+func TestK8SForceRepullDatabaseService_PatchesImagePullPolicyToCurrentSetting(t *testing.T) {
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec: appsv1.DeploymentSpec{
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "db1", ImagePullPolicy: apiv1.PullIfNotPresent},
+					},
+				},
+			},
+		},
+	})
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvKubeImageForcePull = true
+
+	if err := cluster.k8sForceRepullDatabaseServiceWithClient(client, "db1"); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), "db1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if got := dep.Spec.Template.Spec.Containers[0].ImagePullPolicy; got != apiv1.PullAlways {
+		t.Fatalf("expected ImagePullPolicy to be patched to PullAlways, got %q", got)
+	}
+}
+
+func TestK8SForceRepullDatabaseService_MissingDeploymentIsError(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sForceRepullDatabaseServiceWithClient(client, "db1"); err == nil {
+		t.Fatal("expected an error when the deployment doesn't exist, got nil")
 	}
 }
 
@@ -593,6 +855,153 @@ func TestK8SDatabaseDeployment_ConfigFetchURLStaysBareWhenProvNetCNIDisabled(t *
 	wantPath := "/servers/db1/3306/config"
 	if !strings.Contains(cmd, wantPath) {
 		t.Fatalf("expected the bare short name in the request path when prov-net-cni is off, got: %s", cmd)
+	}
+}
+
+// --- dbjobs sidecar (backups/optimize/config-refresh) ---
+
+// The init container's fetched archive root is repman's own Datadir/init
+// (configurator.TarGz's caller, cluster/configurator/configurator.go), so
+// its "init/" entry -- dbjobs_new, dbjobs_launcher_with_sigterm, already
+// fully resolved server-side, no runtime templating needed -- must be
+// copied into the shared volume the sidecar reads from, and
+// replication-manager-cli fetched separately (it isn't part of the config
+// archive, same as OpenSVC's own bootstrap script fetches it separately).
+// k8sDatabaseDeployment must stay callable with a bare *ServerMonitor (no
+// ClusterGroup) -- its own doc comment promises "no ServerMonitor methods
+// invoked" specifically so it stays testable this way. Confirmed live: an
+// earlier version called s.GetJobDatadir(), which dereferences
+// s.ClusterGroup.Configurator with no nil check, and panicked here.
+func TestK8SDatabaseDeployment_PureBuilderDoesNotPanicOnBareServerMonitor(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	_ = cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+}
+
+func TestK8SDatabaseDeployment_InitContainerCreatesJobsDatadir(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	cmd := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+
+	if !strings.Contains(cmd, "/var/lib/mysql/.system/jobs") {
+		t.Fatalf("expected the init container to pre-create .system/jobs (JOBS_DATADIR), got: %s", cmd)
+	}
+}
+
+func TestK8SDatabaseDeployment_InitContainerPopulatesDbjobsVolume(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.MonitorAddress = "127.0.0.1"
+	cluster.Conf.HttpPort = "10005"
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	cmd := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+
+	for _, want := range []string{
+		"cp -r /tmp/cfg/init/. /docker-entrypoint-initdb.d/",
+		"/static/configurator/bin/replication-manager-cli",
+		"chmod +x /docker-entrypoint-initdb.d/replication-manager-cli",
+	} {
+		if !strings.Contains(cmd, want) {
+			t.Fatalf("expected the init container command to contain %q, got: %s", want, cmd)
+		}
+	}
+}
+
+func TestK8SDatabaseDeployment_InitContainerMountsDbjobsVolume(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+
+	found := false
+	for _, vm := range dep.Spec.Template.Spec.InitContainers[0].VolumeMounts {
+		if vm.Name == "db1-init" && vm.MountPath == "/docker-entrypoint-initdb.d" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected the init container to mount db1-init at /docker-entrypoint-initdb.d")
+	}
+}
+
+func TestK8SDatabaseDeployment_DbjobsSidecarPresent(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDbImg = "mariadb:10.11"
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+
+	containers := dep.Spec.Template.Spec.Containers
+	if len(containers) != 2 {
+		t.Fatalf("expected the DB container plus one dbjobs sidecar, got %d containers", len(containers))
+	}
+	sidecar := containers[1]
+	if sidecar.Name != "db1-dbjobs" {
+		t.Fatalf("expected the sidecar name %q, got %q", "db1-dbjobs", sidecar.Name)
+	}
+	if sidecar.Image != "mariadb:10.11" {
+		t.Fatalf("expected the sidecar to share the DB image %q, got %q", "mariadb:10.11", sidecar.Image)
+	}
+	wantCmd := []string{"/bin/bash", "/docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm"}
+	if len(sidecar.Command) != len(wantCmd) || sidecar.Command[0] != wantCmd[0] || sidecar.Command[1] != wantCmd[1] {
+		t.Fatalf("expected command %v, got %v", wantCmd, sidecar.Command)
+	}
+}
+
+// dbjobs_new.sh reads $MYSQL_ROOT_PASSWORD (a real runtime env var, not a
+// %%ENV:...%% template placeholder) -- must come from the same Secret as
+// the DB container, never a raw Value.
+func TestK8SDatabaseDeployment_DbjobsSidecarUsesSecretForRootPassword(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	s := &ServerMonitor{Name: "db1", Port: "3306", Pass: "s3cr3t"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	sidecar := dep.Spec.Template.Spec.Containers[1]
+
+	var found *apiv1.EnvVar
+	for i := range sidecar.Env {
+		if sidecar.Env[i].Name == "MYSQL_ROOT_PASSWORD" {
+			found = &sidecar.Env[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("expected a MYSQL_ROOT_PASSWORD env var on the dbjobs sidecar")
+	}
+	if found.Value != "" {
+		t.Fatalf("expected no raw Value, got %q", found.Value)
+	}
+	if found.ValueFrom == nil || found.ValueFrom.SecretKeyRef == nil || found.ValueFrom.SecretKeyRef.Name != k8sSecretName(s) {
+		t.Fatal("expected MYSQL_ROOT_PASSWORD sourced from the same per-server Secret as the DB container")
+	}
+}
+
+// dbjobs_new.sh does raw filesystem operations directly against $DATADIR
+// (e.g. moving restored .ibd files into place), so the sidecar needs the
+// same persistent-storage volume the DB container writes to -- ReadWriteOnce
+// restricts a PVC to one node, not one container, and every container here
+// is in the same pod (so the same node) by construction.
+func TestK8SDatabaseDeployment_DbjobsSidecarMountsDataAndInitVolumes(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+	sidecar := dep.Spec.Template.Spec.Containers[1]
+
+	wantMounts := map[string]string{
+		"db1-persistent-storage": "/var/lib/mysql",
+		"db1-init":               "/docker-entrypoint-initdb.d",
+	}
+	if len(sidecar.VolumeMounts) != len(wantMounts) {
+		t.Fatalf("expected %d volume mounts, got %d: %v", len(wantMounts), len(sidecar.VolumeMounts), sidecar.VolumeMounts)
+	}
+	for _, vm := range sidecar.VolumeMounts {
+		if wantMounts[vm.Name] != vm.MountPath {
+			t.Fatalf("unexpected mount %s at %s", vm.Name, vm.MountPath)
+		}
 	}
 }
 
