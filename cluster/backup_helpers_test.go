@@ -1000,11 +1000,6 @@ func newTestClusterServer(t *testing.T) (*Cluster, *ServerMonitor) {
 	return cluster, server
 }
 
-// Helper function
-func boolPtr(b bool) *bool {
-	return &b
-}
-
 func TestSetLastPhysicalRestoreMeta(t *testing.T) {
 	server := &ServerMonitor{}
 

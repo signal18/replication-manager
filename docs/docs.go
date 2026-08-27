@@ -6354,6 +6354,47 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/kube-storage-classes": {
+            "get": {
+                "description": "Lists the Kubernetes cluster's available StorageClasses.",
+                "tags": [
+                    "Database"
+                ],
+                "summary": "List available Kubernetes StorageClasses",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Kubernetes StorageClass list fetched",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/server.PoolOption"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"Error getting Kubernetes storage class list",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/need-rolling-reprov": {
             "get": {
                 "description": "Checks if a specified cluster needs a rolling reprovision.",
@@ -14002,16 +14043,16 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/service-opensvc": {
+        "/api/clusters/{clusterName}/servers/{serverName}/service/{orchestrator}": {
             "get": {
-                "description": "Retrieves the database service configuration of a specified server within a cluster.",
+                "description": "Retrieves the database service configuration or live manifests of a specified server within a cluster: raw OpenSVC service config text, or live Kubernetes manifests as JSON.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Database"
                 ],
-                "summary": "Get database service configuration of a server",
+                "summary": "Get database service/manifest view of a server",
                 "parameters": [
                     {
                         "type": "string",
@@ -14034,11 +14075,24 @@ const docTemplate = `{
                         "name": "serverName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Orchestrator (must match the cluster's configured orchestrator)",
+                        "name": "orchestrator",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "Database service configuration retrieved successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Orchestrator does not match cluster configuration",
                         "schema": {
                             "type": "string"
                         }
@@ -18914,7 +18968,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/topology/http-logs": {
             "get": {
-                "description": "Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, variable-change, sysbench. Without logType returns all logs.",
+                "description": "Returns cluster logs for the specified type (in-memory buffer), or — for general/task with ?since=/?until= — a bounded scan of on-disk log history. Available types: general, task, security, workload, ddl, schema, variable-change, sysbench. Without logType returns all logs.",
                 "produces": [
                     "application/json"
                 ],
@@ -18938,6 +18992,42 @@ const docTemplate = `{
                         "name": "clusterName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 lower time bound; presence switches general/task to on-disk history",
+                        "name": "since",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 upper time bound; presence switches general/task to on-disk history",
+                        "name": "until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated level buckets ERR,WARN,INFO,DBG",
+                        "name": "level",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated module tags, e.g. sql,proxy",
+                        "name": "module",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: substring filter on message text",
+                        "name": "text",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "History mode only: max lines returned (server-clamped)",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -18946,6 +19036,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "logType has no on-disk history",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "403": {
@@ -18965,7 +19061,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/topology/http-logs/{logType}": {
             "get": {
-                "description": "Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, variable-change, sysbench. Without logType returns all logs.",
+                "description": "Returns cluster logs for the specified type (in-memory buffer), or — for general/task with ?since=/?until= — a bounded scan of on-disk log history. Available types: general, task, security, workload, ddl, schema, variable-change, sysbench. Without logType returns all logs.",
                 "produces": [
                     "application/json"
                 ],
@@ -18992,9 +19088,45 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Log type: general, task, security, workload, ddl, variable-change, sysbench",
+                        "description": "Log type: general, task, security, workload, ddl, schema, variable-change, sysbench",
                         "name": "logType",
                         "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 lower time bound; presence switches general/task to on-disk history",
+                        "name": "since",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 upper time bound; presence switches general/task to on-disk history",
+                        "name": "until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated level buckets ERR,WARN,INFO,DBG",
+                        "name": "level",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated module tags, e.g. sql,proxy",
+                        "name": "module",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: substring filter on message text",
+                        "name": "text",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "History mode only: max lines returned (server-clamped)",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -19003,6 +19135,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "logType has no on-disk history",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "403": {
@@ -19068,7 +19206,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/topology/logs/{logType}": {
             "get": {
-                "description": "Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, variable-change, sysbench. Without logType returns all logs.",
+                "description": "Returns cluster logs for the specified type (in-memory buffer), or — for general/task with ?since=/?until= — a bounded scan of on-disk log history. Available types: general, task, security, workload, ddl, schema, variable-change, sysbench. Without logType returns all logs.",
                 "produces": [
                     "application/json"
                 ],
@@ -19095,9 +19233,45 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Log type: general, task, security, workload, ddl, variable-change, sysbench",
+                        "description": "Log type: general, task, security, workload, ddl, schema, variable-change, sysbench",
                         "name": "logType",
                         "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 lower time bound; presence switches general/task to on-disk history",
+                        "name": "since",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 upper time bound; presence switches general/task to on-disk history",
+                        "name": "until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated level buckets ERR,WARN,INFO,DBG",
+                        "name": "level",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated module tags, e.g. sql,proxy",
+                        "name": "module",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: substring filter on message text",
+                        "name": "text",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "History mode only: max lines returned (server-clamped)",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -19106,6 +19280,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "logType has no on-disk history",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "403": {
@@ -20092,7 +20272,7 @@ const docTemplate = `{
         },
         "/api/global/http-logs": {
             "get": {
-                "description": "Returns server-level log entries from the ReplicationManager in-memory ring buffer.",
+                "description": "Returns server-level log entries from the in-memory ring buffer, or — with ?since=/?until= — a bounded scan of on-disk log history.",
                 "produces": [
                     "application/json"
                 ],
@@ -20108,6 +20288,42 @@ const docTemplate = `{
                         "name": "Authorization",
                         "in": "header",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 lower time bound; presence switches to on-disk history",
+                        "name": "since",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 upper time bound; presence switches to on-disk history",
+                        "name": "until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated level buckets ERR,WARN,INFO,DBG",
+                        "name": "level",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated module tags, e.g. sql,proxy",
+                        "name": "module",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: substring filter on message text",
+                        "name": "text",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "History mode only: max lines returned (server-clamped)",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -20115,6 +20331,48 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/server.globalLogsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/global/jobs": {
+            "get": {
+                "description": "Returns running and recently completed DB jobs, and current Restic tasks, across all clusters.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Get global jobs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.globalJobsResponse"
                         }
                     },
                     "401": {
@@ -22934,6 +23192,19 @@ const docTemplate = `{
                 "isHashingTemplate": {
                     "type": "boolean"
                 },
+                "lastRefreshDurationMs": {
+                    "type": "integer"
+                },
+                "lastRefreshEnd": {
+                    "type": "string"
+                },
+                "lastRefreshError": {
+                    "type": "string"
+                },
+                "lastRefreshStart": {
+                    "description": "Per-app refresh freshness (cluster-level AppRefreshLast* on Cluster\nonly shows batch-wide timing, not which app is actually slow). Set\nvia SetRefreshInProgress/SetRefreshResult under app.Mutex -- read\nthem the same way (App.Lock()/Unlock(), or GetAppAPIView) rather than\ndirectly: these are read from a different goroutine than the one\nthat writes them (maybeRefreshAppsAsync's worker vs. any status/API\nreader).",
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -22942,6 +23213,9 @@ const docTemplate = `{
                 },
                 "prevState": {
                     "type": "string"
+                },
+                "refreshInProgress": {
+                    "type": "boolean"
                 },
                 "routeStatus": {
                     "type": "array",
@@ -23197,10 +23471,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "config-init": {
-                    "$ref": "#/definitions/config.Config"
+                    "$ref": "#/definitions/github_com_signal18_replication-manager_config.Config"
                 },
                 "config-test": {
-                    "$ref": "#/definitions/config.Config"
+                    "$ref": "#/definitions/github_com_signal18_replication-manager_config.Config"
                 },
                 "name": {
                     "type": "string"
@@ -23339,7 +23613,356 @@ const docTemplate = `{
                 }
             }
         },
-        "config.Config": {
+        "config.Deployment": {
+            "type": "object",
+            "properties": {
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.PathMapping"
+                    }
+                },
+                "primaryRoute": {
+                    "$ref": "#/definitions/config.Route"
+                },
+                "routes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.Route"
+                    }
+                },
+                "storages": {
+                    "$ref": "#/definitions/config.StorageMapping"
+                },
+                "variables": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.VariableMapping"
+                    }
+                }
+            }
+        },
+        "config.GitClone": {
+            "type": "object",
+            "properties": {
+                "branch": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "pass": {
+                    "type": "string"
+                },
+                "repo": {
+                    "type": "string"
+                },
+                "timeout": {
+                    "type": "integer"
+                },
+                "user": {
+                    "type": "string"
+                },
+                "volumedir": {
+                    "type": "string"
+                },
+                "volumename": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.PathMapping": {
+            "type": "object",
+            "properties": {
+                "dockerpath": {
+                    "type": "string"
+                },
+                "level": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "parentname": {
+                    "type": "string"
+                },
+                "srcname": {
+                    "type": "string"
+                },
+                "srcpath": {
+                    "type": "string"
+                },
+                "srctype": {
+                    "$ref": "#/definitions/config.SourceType"
+                },
+                "volumename": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.Route": {
+            "type": "object",
+            "properties": {
+                "cname": {
+                    "description": "Existing host-route fields kept for backward compatibility.",
+                    "type": "string"
+                },
+                "destPort": {
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "Explicit source/destination fields.",
+                    "type": "string"
+                },
+                "monitor": {
+                    "description": "Optional per-route monitoring customization.  Nil means no monitor block\nwas configured; legacy routes keep nil so no defaults are injected.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.RouteMonitor"
+                        }
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "string"
+                },
+                "primary": {
+                    "type": "boolean"
+                },
+                "protocol": {
+                    "type": "string"
+                },
+                "sourcePort": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.RouteMonitor": {
+            "type": "object",
+            "properties": {
+                "authSecretVar": {
+                    "type": "string"
+                },
+                "authType": {
+                    "type": "string"
+                },
+                "authUser": {
+                    "type": "string"
+                },
+                "expectStatus": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.RouteStatus": {
+            "type": "object",
+            "properties": {
+                "cname": {
+                    "description": "Existing host-route fields kept for backward compatibility.",
+                    "type": "string"
+                },
+                "destPort": {
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "Explicit source/destination fields.",
+                    "type": "string"
+                },
+                "monitor": {
+                    "description": "Optional per-route monitoring customization.  Nil means no monitor block\nwas configured; legacy routes keep nil so no defaults are injected.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.RouteMonitor"
+                        }
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "string"
+                },
+                "primary": {
+                    "type": "boolean"
+                },
+                "protocol": {
+                    "type": "string"
+                },
+                "sourcePort": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.S3Mount": {
+            "type": "object",
+            "properties": {
+                "accesskey": {
+                    "type": "string"
+                },
+                "bucket": {
+                    "type": "string"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "mountdir": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "providerName": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "secretkey": {
+                    "type": "string"
+                },
+                "volumedir": {
+                    "type": "string"
+                },
+                "volumename": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.ServerTaskList": {
+            "type": "object",
+            "properties": {
+                "serverUrl": {
+                    "type": "string"
+                },
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.Task"
+                    }
+                }
+            }
+        },
+        "config.SourceType": {
+            "type": "string",
+            "enum": [
+                "volume",
+                "git",
+                "s3"
+            ],
+            "x-enum-varnames": [
+                "SourceVolume",
+                "SourceGit",
+                "SourceS3"
+            ]
+        },
+        "config.StorageMapping": {
+            "type": "object",
+            "properties": {
+                "gitClones": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.GitClone"
+                    }
+                },
+                "s3Mounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.S3Mount"
+                    }
+                },
+                "volumes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.Volume"
+                    }
+                }
+            }
+        },
+        "config.Task": {
+            "type": "object",
+            "properties": {
+                "done": {
+                    "type": "integer"
+                },
+                "end": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "payload": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "result": {
+                    "type": "string"
+                },
+                "server": {
+                    "type": "string"
+                },
+                "start": {
+                    "type": "integer"
+                },
+                "state": {
+                    "type": "integer"
+                },
+                "task": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.VariableMapping": {
+            "type": "object",
+            "properties": {
+                "conditional": {
+                    "description": "This is used to set the variable value only if the agent matches",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.AgentVariable"
+                    }
+                },
+                "locked": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.Volume": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "poolname": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "string"
+                },
+                "volumedir": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_signal18_replication-manager_config.Config": {
             "type": "object",
             "properties": {
                 "ExternalScript": {
@@ -23497,6 +24120,9 @@ const docTemplate = `{
                 },
                 "arbitratorBindAddress": {
                     "type": "string"
+                },
+                "arbitratorConnectTimeout": {
+                    "type": "integer"
                 },
                 "arbitratorDriver": {
                     "type": "string"
@@ -23909,6 +24535,9 @@ const docTemplate = `{
                 "backupStreamingRegion": {
                     "type": "string"
                 },
+                "backupWriteStallTimeout": {
+                    "type": "integer"
+                },
                 "binlogCopyMode": {
                     "type": "string"
                 },
@@ -24056,6 +24685,10 @@ const docTemplate = `{
                 "cloud18InfraPublicBandwidth": {
                     "type": "number"
                 },
+                "cloud18LicenseFile": {
+                    "description": "Cloud18LicenseFile, when set, is the single switch for offline-license mode:\nthe instance sources its plan from this signed file instead of the CRM (for\nair-gapped/PCI instances). Empty = normal online CRM path.",
+                    "type": "string"
+                },
                 "cloud18MonthlyDbopsCost": {
                     "type": "number"
                 },
@@ -24152,6 +24785,21 @@ const docTemplate = `{
                 "compressBackupsPhysical": {
                     "type": "string"
                 },
+                "dbLogOnBackupStorage": {
+                    "type": "boolean"
+                },
+                "dbLogRotate": {
+                    "type": "boolean"
+                },
+                "dbLogRotateMaxAge": {
+                    "type": "integer"
+                },
+                "dbLogRotateMaxBackup": {
+                    "type": "integer"
+                },
+                "dbLogRotateMaxSize": {
+                    "type": "integer"
+                },
                 "dbServersBackupHosts": {
                     "type": "string"
                 },
@@ -24163,6 +24811,9 @@ const docTemplate = `{
                 },
                 "dbServersCredential": {
                     "type": "string"
+                },
+                "dbServersDnsTimeout": {
+                    "type": "integer"
                 },
                 "dbServersExecTimeout": {
                     "type": "integer"
@@ -24444,6 +25095,9 @@ const docTemplate = `{
                 "graphiteMetrics": {
                     "type": "boolean"
                 },
+                "graphiteMetricsQueueLimit": {
+                    "type": "integer"
+                },
                 "graphiteWhitelist": {
                     "type": "boolean"
                 },
@@ -24610,6 +25264,18 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "logHeartbeatLevel": {
+                    "type": "integer"
+                },
+                "logHistoryEnable": {
+                    "type": "boolean"
+                },
+                "logHistoryMaxFiles": {
+                    "type": "integer"
+                },
+                "logHistoryMaxLines": {
+                    "type": "integer"
+                },
+                "logHistoryMaxScanBytes": {
                     "type": "integer"
                 },
                 "logLevel": {
@@ -24938,7 +25604,13 @@ const docTemplate = `{
                 "monitoringPerformanceSchemaQueriesExplainPurgePeriod": {
                     "type": "integer"
                 },
+                "monitoringPerformanceSchemaQueriesInterval": {
+                    "type": "integer"
+                },
                 "monitoringPerformanceSchemaQueriesPeriod": {
+                    "type": "integer"
+                },
+                "monitoringPfsSnapshotRetentionDays": {
                     "type": "integer"
                 },
                 "monitoringPlugins": {
@@ -25408,6 +26080,12 @@ const docTemplate = `{
                 },
                 "provEventTimeout": {
                     "type": "integer"
+                },
+                "provKubeImageForcePull": {
+                    "type": "boolean"
+                },
+                "provKubeStorageClass": {
+                    "type": "string"
                 },
                 "provNetCni": {
                     "type": "boolean"
@@ -26111,355 +26789,6 @@ const docTemplate = `{
                 }
             }
         },
-        "config.Deployment": {
-            "type": "object",
-            "properties": {
-                "paths": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.PathMapping"
-                    }
-                },
-                "primaryRoute": {
-                    "$ref": "#/definitions/config.Route"
-                },
-                "routes": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.Route"
-                    }
-                },
-                "storages": {
-                    "$ref": "#/definitions/config.StorageMapping"
-                },
-                "variables": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.VariableMapping"
-                    }
-                }
-            }
-        },
-        "config.GitClone": {
-            "type": "object",
-            "properties": {
-                "branch": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "pass": {
-                    "type": "string"
-                },
-                "repo": {
-                    "type": "string"
-                },
-                "timeout": {
-                    "type": "integer"
-                },
-                "user": {
-                    "type": "string"
-                },
-                "volumedir": {
-                    "type": "string"
-                },
-                "volumename": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.PathMapping": {
-            "type": "object",
-            "properties": {
-                "dockerpath": {
-                    "type": "string"
-                },
-                "level": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "parentname": {
-                    "type": "string"
-                },
-                "srcname": {
-                    "type": "string"
-                },
-                "srcpath": {
-                    "type": "string"
-                },
-                "srctype": {
-                    "$ref": "#/definitions/config.SourceType"
-                },
-                "volumename": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.Route": {
-            "type": "object",
-            "properties": {
-                "cname": {
-                    "description": "Existing host-route fields kept for backward compatibility.",
-                    "type": "string"
-                },
-                "destPort": {
-                    "type": "string"
-                },
-                "mode": {
-                    "description": "Explicit source/destination fields.",
-                    "type": "string"
-                },
-                "monitor": {
-                    "description": "Optional per-route monitoring customization.  Nil means no monitor block\nwas configured; legacy routes keep nil so no defaults are injected.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.RouteMonitor"
-                        }
-                    ]
-                },
-                "name": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "string"
-                },
-                "primary": {
-                    "type": "boolean"
-                },
-                "protocol": {
-                    "type": "string"
-                },
-                "sourcePort": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.RouteMonitor": {
-            "type": "object",
-            "properties": {
-                "authSecretVar": {
-                    "type": "string"
-                },
-                "authType": {
-                    "type": "string"
-                },
-                "authUser": {
-                    "type": "string"
-                },
-                "expectStatus": {
-                    "type": "string"
-                },
-                "path": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.RouteStatus": {
-            "type": "object",
-            "properties": {
-                "cname": {
-                    "description": "Existing host-route fields kept for backward compatibility.",
-                    "type": "string"
-                },
-                "destPort": {
-                    "type": "string"
-                },
-                "mode": {
-                    "description": "Explicit source/destination fields.",
-                    "type": "string"
-                },
-                "monitor": {
-                    "description": "Optional per-route monitoring customization.  Nil means no monitor block\nwas configured; legacy routes keep nil so no defaults are injected.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.RouteMonitor"
-                        }
-                    ]
-                },
-                "name": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "string"
-                },
-                "primary": {
-                    "type": "boolean"
-                },
-                "protocol": {
-                    "type": "string"
-                },
-                "sourcePort": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.S3Mount": {
-            "type": "object",
-            "properties": {
-                "accesskey": {
-                    "type": "string"
-                },
-                "bucket": {
-                    "type": "string"
-                },
-                "endpoint": {
-                    "type": "string"
-                },
-                "mountdir": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "providerName": {
-                    "type": "string"
-                },
-                "region": {
-                    "type": "string"
-                },
-                "secretkey": {
-                    "type": "string"
-                },
-                "volumedir": {
-                    "type": "string"
-                },
-                "volumename": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.ServerTaskList": {
-            "type": "object",
-            "properties": {
-                "serverUrl": {
-                    "type": "string"
-                },
-                "tasks": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.Task"
-                    }
-                }
-            }
-        },
-        "config.SourceType": {
-            "type": "string",
-            "enum": [
-                "volume",
-                "git",
-                "s3"
-            ],
-            "x-enum-varnames": [
-                "SourceVolume",
-                "SourceGit",
-                "SourceS3"
-            ]
-        },
-        "config.StorageMapping": {
-            "type": "object",
-            "properties": {
-                "gitClones": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.GitClone"
-                    }
-                },
-                "s3Mounts": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.S3Mount"
-                    }
-                },
-                "volumes": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.Volume"
-                    }
-                }
-            }
-        },
-        "config.Task": {
-            "type": "object",
-            "properties": {
-                "done": {
-                    "type": "integer"
-                },
-                "end": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "payload": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "integer"
-                },
-                "result": {
-                    "type": "string"
-                },
-                "server": {
-                    "type": "string"
-                },
-                "start": {
-                    "type": "integer"
-                },
-                "state": {
-                    "type": "integer"
-                },
-                "task": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.VariableMapping": {
-            "type": "object",
-            "properties": {
-                "conditional": {
-                    "description": "This is used to set the variable value only if the agent matches",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.AgentVariable"
-                    }
-                },
-                "locked": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                },
-                "value": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.Volume": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string"
-                },
-                "poolname": {
-                    "type": "string"
-                },
-                "size": {
-                    "type": "string"
-                },
-                "volumedir": {
-                    "type": "string"
-                }
-            }
-        },
         "mailer.Email": {
             "type": "object",
             "properties": {
@@ -26679,6 +27008,9 @@ const docTemplate = `{
         "peer.PeerCluster": {
             "type": "object",
             "properties": {
+                "activePassiveStatus": {
+                    "type": "string"
+                },
                 "api-credentials-acl-allow": {
                     "type": "string"
                 },
@@ -26792,6 +27124,13 @@ const docTemplate = `{
                 "cluster-name": {
                     "type": "string"
                 },
+                "dbServers": {
+                    "type": "integer"
+                },
+                "directUpdate": {
+                    "description": "last successful direct /api/clusters enrichment",
+                    "type": "string"
+                },
                 "isDown": {
                     "type": "boolean"
                 },
@@ -26806,6 +27145,9 @@ const docTemplate = `{
                 },
                 "lastUpdate": {
                     "type": "string"
+                },
+                "monitoringPause": {
+                    "type": "boolean"
                 },
                 "prov-db-cpu-cores": {
                     "type": "string",
@@ -26829,7 +27171,17 @@ const docTemplate = `{
                 "prov-service-plan": {
                     "type": "string"
                 },
+                "proxyServers": {
+                    "type": "integer"
+                },
                 "repmgrVersion": {
+                    "type": "string"
+                },
+                "topology": {
+                    "description": "Live monitoring fields — populated by the direct /api/clusters fetch from the\npeer (auto-connect to fleet), NOT present in the BO peer.json catalog. They stay\nempty until a successful direct connection enriches the row, and are preserved\nacross peer.json BatchUpdateClusters (which would otherwise reset them).",
+                    "type": "string"
+                },
+                "uptime": {
                     "type": "string"
                 }
             }
@@ -27264,6 +27616,72 @@ const docTemplate = `{
                 }
             }
         },
+        "server.globalClusterResticTask": {
+            "type": "object",
+            "properties": {
+                "clusterName": {
+                    "type": "string"
+                },
+                "currentTask": {
+                    "$ref": "#/definitions/backupmgr.ResticTaskState"
+                }
+            }
+        },
+        "server.globalJobEntry": {
+            "type": "object",
+            "properties": {
+                "clusterName": {
+                    "type": "string"
+                },
+                "end": {
+                    "type": "integer"
+                },
+                "result": {
+                    "type": "string"
+                },
+                "serverId": {
+                    "type": "string"
+                },
+                "serverUrl": {
+                    "type": "string"
+                },
+                "start": {
+                    "type": "integer"
+                },
+                "state": {
+                    "type": "integer"
+                },
+                "stateLabel": {
+                    "type": "string"
+                },
+                "task": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.globalJobsResponse": {
+            "type": "object",
+            "properties": {
+                "recentCompletedJobs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.globalJobEntry"
+                    }
+                },
+                "resticCurrentTasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.globalClusterResticTask"
+                    }
+                },
+                "runningJobs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.globalJobEntry"
+                    }
+                }
+            }
+        },
         "server.globalLogsResponse": {
             "type": "object",
             "properties": {
@@ -27286,6 +27704,10 @@ const docTemplate = `{
                 },
                 "line": {
                     "type": "integer"
+                },
+                "truncated": {
+                    "description": "Truncated is only ever true for a history response (see HttpLog.Truncated).",
+                    "type": "boolean"
                 }
             }
         },

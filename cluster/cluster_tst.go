@@ -646,6 +646,42 @@ func (cluster *Cluster) StartDatabaseWaitRejoin(server *ServerMonitor) error {
 	return err
 }
 
+// K8SRestartDatabaseServiceWaitRejoin mirrors StartDatabaseWaitRejoin's
+// synchronization contract (spawn WaitRejoin, prime the need-config-fetch
+// cookie, wait for rejoin completion) but drives the actual restart via
+// K8SRestartDatabaseService (a rolling pod replacement) instead of the
+// generic StartDatabaseService, which Kubernetes has no equivalent of
+// (K8SStopDatabaseService always errors, so nothing ever puts a server in a
+// stopped state StartDatabaseService could resume from). WaitRejoin's own
+// completion signal (rejoinCond) is fired purely from repman's monitoring
+// loop observing a server's PrevState==stateFailed transition back to a
+// working state (srv.go, srv_rejoin.go) -- orchestrator-agnostic, so it
+// fires correctly here too, the same as for OpenSVC/onpremise. Used by
+// RollingRestart's Kubernetes branch: WaitDatabaseStart alone (raw
+// connectivity) is not equivalent -- it doesn't wait for repman to actually
+// confirm the server rejoined the replication topology.
+func (cluster *Cluster) K8SRestartDatabaseServiceWaitRejoin(server *ServerMonitor) error {
+	wg2 := new(sync.WaitGroup)
+	wg2.Add(1)
+	go cluster.WaitRejoin(wg2)
+
+	if cluster.Conf.ProvDbStartFetchConfig && server.HasNoConfigFetchCookie() {
+		server.DelNoConfigFetchCookie()
+	} else if !cluster.Conf.ProvDbStartFetchConfig && !server.HasNoConfigFetchCookie() {
+		server.SetNoConfigFetchCookie()
+	}
+
+	err := cluster.K8SRestartDatabaseService(server)
+	if err == nil {
+		// Positive confirmation the pod was genuinely replaced -- see
+		// k8sWaitRolloutCompleteWithClient (prov_k8s_db.go) for why this is
+		// needed in addition to (not instead of) the WaitRejoin wait below.
+		err = cluster.K8SWaitRolloutComplete(server)
+	}
+	wg2.Wait()
+	return err
+}
+
 func (cluster *Cluster) DelayAllSlaves() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "Stopping slaves, injecting data & long transaction")
 	for _, s := range cluster.slaves {
