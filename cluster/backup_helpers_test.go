@@ -574,6 +574,8 @@ func TestResolveMysqldumpDestNoSplitdump(t *testing.T) {
 	}
 }
 
+func boolPtr(b bool) *bool { return &b }
+
 func TestShouldRunRestic(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -998,11 +1000,6 @@ func newTestClusterServer(t *testing.T) (*Cluster, *ServerMonitor) {
 	}
 	cluster.Servers = serverList{server}
 	return cluster, server
-}
-
-// Helper function
-func boolPtr(b bool) *bool {
-	return &b
 }
 
 func TestSetLastPhysicalRestoreMeta(t *testing.T) {

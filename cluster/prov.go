@@ -16,6 +16,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
+	"k8s.io/client-go/kubernetes"
 )
 
 // Constants for restart RID validation
@@ -588,11 +589,10 @@ func (cluster *Cluster) RestartDatabaseService(server *ServerMonitor, node strin
 		return err
 	}
 
-	// Kubernetes has no scale-to-zero/drain semantic (K8SStopDatabaseService
-	// always errors), so the generic stop→wait→start dance below can never
-	// work for it -- a rolling pod replacement (the same mechanism that
-	// makes prov-kube-image-force-pull's ImagePullPolicy: Always actually
-	// take effect on demand) is the equivalent operation instead.
+	// A rolling pod replacement (the same mechanism that makes
+	// prov-kube-image-force-pull's ImagePullPolicy: Always actually take
+	// effect on demand) is lighter than a full stop/start cycle for a
+	// plain restart.
 	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
 		err = cluster.K8SForceRepullDatabaseService(server)
 		if err == nil {
@@ -1029,14 +1029,36 @@ func (cluster *Cluster) GetAgentInOrchetrator(name string) (Agent, error) {
 }
 
 func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
-	if cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
 		svc := cluster.OpenSVCConnect()
 		err := svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", password)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
 		}
+	case config.ConstOrchestratorKubernetes:
+		client, err := cluster.K8SConnectAPI()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Cannot init Kubernetes client API %s ", err)
+			return err
+		}
+		cluster.k8sRotatePasswordsWithClient(client, password)
 	}
 	return nil
+}
+
+// k8sRotatePasswordsWithClient patches the cluster's shared Secret
+// (k8sEnsureDatabaseSecret) with the freshly rotated password -- one Secret
+// for the whole cluster, matching OpenSVC's own single secret store, so a
+// single patch here covers every server's Deployment. Without it, the
+// dbjobs sidecar (which reads MYSQL_ROOT_PASSWORD as a live credential)
+// would keep authenticating with the pre-rotation password indefinitely,
+// and a future from-scratch reprovision would seed a fresh datadir with the
+// wrong initial root password.
+func (cluster *Cluster) k8sRotatePasswordsWithClient(client kubernetes.Interface, password string) {
+	if err := cluster.k8sEnsureDatabaseSecret(client, password); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Cannot update Kubernetes secret: %s ", err)
+	}
 }
 
 func (cluster *Cluster) ReloadOpenSVCDaemonNodeStats() error {

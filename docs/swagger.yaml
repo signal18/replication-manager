@@ -658,12 +658,30 @@ definitions:
         type: string
       isHashingTemplate:
         type: boolean
+      lastRefreshDurationMs:
+        type: integer
+      lastRefreshEnd:
+        type: string
+      lastRefreshError:
+        type: string
+      lastRefreshStart:
+        description: |-
+          Per-app refresh freshness (cluster-level AppRefreshLast* on Cluster
+          only shows batch-wide timing, not which app is actually slow). Set
+          via SetRefreshInProgress/SetRefreshResult under app.Mutex -- read
+          them the same way (App.Lock()/Unlock(), or GetAppAPIView) rather than
+          directly: these are read from a different goroutine than the one
+          that writes them (maybeRefreshAppsAsync's worker vs. any status/API
+          reader).
+        type: string
       name:
         type: string
       port:
         type: string
       prevState:
         type: string
+      refreshInProgress:
+        type: boolean
       routeStatus:
         items:
           $ref: '#/definitions/config.RouteStatus'
@@ -834,9 +852,9 @@ definitions:
       config-file:
         type: string
       config-init:
-        $ref: '#/definitions/config.Config'
+        $ref: '#/definitions/github_com_signal18_replication-manager_config.Config'
       config-test:
-        $ref: '#/definitions/config.Config'
+        $ref: '#/definitions/github_com_signal18_replication-manager_config.Config'
       name:
         type: string
       result:
@@ -931,7 +949,240 @@ definitions:
       provAppTemplate:
         type: string
     type: object
-  config.Config:
+  config.Deployment:
+    properties:
+      paths:
+        items:
+          $ref: '#/definitions/config.PathMapping'
+        type: array
+      primaryRoute:
+        $ref: '#/definitions/config.Route'
+      routes:
+        items:
+          $ref: '#/definitions/config.Route'
+        type: array
+      storages:
+        $ref: '#/definitions/config.StorageMapping'
+      variables:
+        items:
+          $ref: '#/definitions/config.VariableMapping'
+        type: array
+    type: object
+  config.GitClone:
+    properties:
+      branch:
+        type: string
+      name:
+        type: string
+      pass:
+        type: string
+      repo:
+        type: string
+      timeout:
+        type: integer
+      user:
+        type: string
+      volumedir:
+        type: string
+      volumename:
+        type: string
+    type: object
+  config.PathMapping:
+    properties:
+      dockerpath:
+        type: string
+      level:
+        type: integer
+      name:
+        type: string
+      parentname:
+        type: string
+      srcname:
+        type: string
+      srcpath:
+        type: string
+      srctype:
+        $ref: '#/definitions/config.SourceType'
+      volumename:
+        type: string
+    type: object
+  config.Route:
+    properties:
+      cname:
+        description: Existing host-route fields kept for backward compatibility.
+        type: string
+      destPort:
+        type: string
+      mode:
+        description: Explicit source/destination fields.
+        type: string
+      monitor:
+        allOf:
+        - $ref: '#/definitions/config.RouteMonitor'
+        description: |-
+          Optional per-route monitoring customization.  Nil means no monitor block
+          was configured; legacy routes keep nil so no defaults are injected.
+      name:
+        type: string
+      port:
+        type: string
+      primary:
+        type: boolean
+      protocol:
+        type: string
+      sourcePort:
+        type: string
+    type: object
+  config.RouteMonitor:
+    properties:
+      authSecretVar:
+        type: string
+      authType:
+        type: string
+      authUser:
+        type: string
+      expectStatus:
+        type: string
+      path:
+        type: string
+    type: object
+  config.RouteStatus:
+    properties:
+      cname:
+        description: Existing host-route fields kept for backward compatibility.
+        type: string
+      destPort:
+        type: string
+      mode:
+        description: Explicit source/destination fields.
+        type: string
+      monitor:
+        allOf:
+        - $ref: '#/definitions/config.RouteMonitor'
+        description: |-
+          Optional per-route monitoring customization.  Nil means no monitor block
+          was configured; legacy routes keep nil so no defaults are injected.
+      name:
+        type: string
+      port:
+        type: string
+      primary:
+        type: boolean
+      protocol:
+        type: string
+      sourcePort:
+        type: string
+      status:
+        type: string
+    type: object
+  config.S3Mount:
+    properties:
+      accesskey:
+        type: string
+      bucket:
+        type: string
+      endpoint:
+        type: string
+      mountdir:
+        type: string
+      name:
+        type: string
+      providerName:
+        type: string
+      region:
+        type: string
+      secretkey:
+        type: string
+      volumedir:
+        type: string
+      volumename:
+        type: string
+    type: object
+  config.ServerTaskList:
+    properties:
+      serverUrl:
+        type: string
+      tasks:
+        items:
+          $ref: '#/definitions/config.Task'
+        type: array
+    type: object
+  config.SourceType:
+    enum:
+    - volume
+    - git
+    - s3
+    type: string
+    x-enum-varnames:
+    - SourceVolume
+    - SourceGit
+    - SourceS3
+  config.StorageMapping:
+    properties:
+      gitClones:
+        items:
+          $ref: '#/definitions/config.GitClone'
+        type: array
+      s3Mounts:
+        items:
+          $ref: '#/definitions/config.S3Mount'
+        type: array
+      volumes:
+        items:
+          $ref: '#/definitions/config.Volume'
+        type: array
+    type: object
+  config.Task:
+    properties:
+      done:
+        type: integer
+      end:
+        type: integer
+      id:
+        type: integer
+      payload:
+        type: string
+      port:
+        type: integer
+      result:
+        type: string
+      server:
+        type: string
+      start:
+        type: integer
+      state:
+        type: integer
+      task:
+        type: string
+    type: object
+  config.VariableMapping:
+    properties:
+      conditional:
+        description: This is used to set the variable value only if the agent matches
+        items:
+          $ref: '#/definitions/config.AgentVariable'
+        type: array
+      locked:
+        type: boolean
+      name:
+        type: string
+      type:
+        type: string
+      value:
+        type: string
+    type: object
+  config.Volume:
+    properties:
+      name:
+        type: string
+      poolname:
+        type: string
+      size:
+        type: string
+      volumedir:
+        type: string
+    type: object
+  github_com_signal18_replication-manager_config.Config:
     properties:
       ExternalScript:
         type: boolean
@@ -1037,6 +1288,8 @@ definitions:
         type: integer
       arbitratorBindAddress:
         type: string
+      arbitratorConnectTimeout:
+        type: integer
       arbitratorDriver:
         type: string
       arbitratorUriCheck:
@@ -1315,6 +1568,8 @@ definitions:
         type: string
       backupStreamingRegion:
         type: string
+      backupWriteStallTimeout:
+        type: integer
       binlogCopyMode:
         type: string
       binlogCopyScript:
@@ -1413,6 +1668,12 @@ definitions:
         type: string
       cloud18InfraPublicBandwidth:
         type: number
+      cloud18LicenseFile:
+        description: |-
+          Cloud18LicenseFile, when set, is the single switch for offline-license mode:
+          the instance sources its plan from this signed file instead of the CRM (for
+          air-gapped/PCI instances). Empty = normal online CRM path.
+        type: string
       cloud18MonthlyDbopsCost:
         type: number
       cloud18MonthlyExternalDbopsCost:
@@ -1477,6 +1738,16 @@ definitions:
         type: integer
       compressBackupsPhysical:
         type: string
+      dbLogOnBackupStorage:
+        type: boolean
+      dbLogRotate:
+        type: boolean
+      dbLogRotateMaxAge:
+        type: integer
+      dbLogRotateMaxBackup:
+        type: integer
+      dbLogRotateMaxSize:
+        type: integer
       dbServersBackupHosts:
         type: string
       dbServersBindAddress:
@@ -1485,6 +1756,8 @@ definitions:
         type: integer
       dbServersCredential:
         type: string
+      dbServersDnsTimeout:
+        type: integer
       dbServersExecTimeout:
         type: integer
       dbServersHosts:
@@ -1672,6 +1945,8 @@ definitions:
         type: boolean
       graphiteMetrics:
         type: boolean
+      graphiteMetricsQueueLimit:
+        type: integer
       graphiteWhitelist:
         type: boolean
       graphiteWhitelistTemplate:
@@ -1783,6 +2058,14 @@ definitions:
       logHeartbeat:
         type: boolean
       logHeartbeatLevel:
+        type: integer
+      logHistoryEnable:
+        type: boolean
+      logHistoryMaxFiles:
+        type: integer
+      logHistoryMaxLines:
+        type: integer
+      logHistoryMaxScanBytes:
         type: integer
       logLevel:
         type: integer
@@ -2002,7 +2285,11 @@ definitions:
         type: integer
       monitoringPerformanceSchemaQueriesExplainPurgePeriod:
         type: integer
+      monitoringPerformanceSchemaQueriesInterval:
+        type: integer
       monitoringPerformanceSchemaQueriesPeriod:
+        type: integer
+      monitoringPfsSnapshotRetentionDays:
         type: integer
       monitoringPlugins:
         type: boolean
@@ -2316,6 +2603,10 @@ definitions:
         type: string
       provEventTimeout:
         type: integer
+      provKubeImageForcePull:
+        type: boolean
+      provKubeStorageClass:
+        type: string
       provNetCni:
         type: boolean
       provNetCniCluster:
@@ -2784,239 +3075,6 @@ definitions:
       withTarball:
         type: string
     type: object
-  config.Deployment:
-    properties:
-      paths:
-        items:
-          $ref: '#/definitions/config.PathMapping'
-        type: array
-      primaryRoute:
-        $ref: '#/definitions/config.Route'
-      routes:
-        items:
-          $ref: '#/definitions/config.Route'
-        type: array
-      storages:
-        $ref: '#/definitions/config.StorageMapping'
-      variables:
-        items:
-          $ref: '#/definitions/config.VariableMapping'
-        type: array
-    type: object
-  config.GitClone:
-    properties:
-      branch:
-        type: string
-      name:
-        type: string
-      pass:
-        type: string
-      repo:
-        type: string
-      timeout:
-        type: integer
-      user:
-        type: string
-      volumedir:
-        type: string
-      volumename:
-        type: string
-    type: object
-  config.PathMapping:
-    properties:
-      dockerpath:
-        type: string
-      level:
-        type: integer
-      name:
-        type: string
-      parentname:
-        type: string
-      srcname:
-        type: string
-      srcpath:
-        type: string
-      srctype:
-        $ref: '#/definitions/config.SourceType'
-      volumename:
-        type: string
-    type: object
-  config.Route:
-    properties:
-      cname:
-        description: Existing host-route fields kept for backward compatibility.
-        type: string
-      destPort:
-        type: string
-      mode:
-        description: Explicit source/destination fields.
-        type: string
-      monitor:
-        allOf:
-        - $ref: '#/definitions/config.RouteMonitor'
-        description: |-
-          Optional per-route monitoring customization.  Nil means no monitor block
-          was configured; legacy routes keep nil so no defaults are injected.
-      name:
-        type: string
-      port:
-        type: string
-      primary:
-        type: boolean
-      protocol:
-        type: string
-      sourcePort:
-        type: string
-    type: object
-  config.RouteMonitor:
-    properties:
-      authSecretVar:
-        type: string
-      authType:
-        type: string
-      authUser:
-        type: string
-      expectStatus:
-        type: string
-      path:
-        type: string
-    type: object
-  config.RouteStatus:
-    properties:
-      cname:
-        description: Existing host-route fields kept for backward compatibility.
-        type: string
-      destPort:
-        type: string
-      mode:
-        description: Explicit source/destination fields.
-        type: string
-      monitor:
-        allOf:
-        - $ref: '#/definitions/config.RouteMonitor'
-        description: |-
-          Optional per-route monitoring customization.  Nil means no monitor block
-          was configured; legacy routes keep nil so no defaults are injected.
-      name:
-        type: string
-      port:
-        type: string
-      primary:
-        type: boolean
-      protocol:
-        type: string
-      sourcePort:
-        type: string
-      status:
-        type: string
-    type: object
-  config.S3Mount:
-    properties:
-      accesskey:
-        type: string
-      bucket:
-        type: string
-      endpoint:
-        type: string
-      mountdir:
-        type: string
-      name:
-        type: string
-      providerName:
-        type: string
-      region:
-        type: string
-      secretkey:
-        type: string
-      volumedir:
-        type: string
-      volumename:
-        type: string
-    type: object
-  config.ServerTaskList:
-    properties:
-      serverUrl:
-        type: string
-      tasks:
-        items:
-          $ref: '#/definitions/config.Task'
-        type: array
-    type: object
-  config.SourceType:
-    enum:
-    - volume
-    - git
-    - s3
-    type: string
-    x-enum-varnames:
-    - SourceVolume
-    - SourceGit
-    - SourceS3
-  config.StorageMapping:
-    properties:
-      gitClones:
-        items:
-          $ref: '#/definitions/config.GitClone'
-        type: array
-      s3Mounts:
-        items:
-          $ref: '#/definitions/config.S3Mount'
-        type: array
-      volumes:
-        items:
-          $ref: '#/definitions/config.Volume'
-        type: array
-    type: object
-  config.Task:
-    properties:
-      done:
-        type: integer
-      end:
-        type: integer
-      id:
-        type: integer
-      payload:
-        type: string
-      port:
-        type: integer
-      result:
-        type: string
-      server:
-        type: string
-      start:
-        type: integer
-      state:
-        type: integer
-      task:
-        type: string
-    type: object
-  config.VariableMapping:
-    properties:
-      conditional:
-        description: This is used to set the variable value only if the agent matches
-        items:
-          $ref: '#/definitions/config.AgentVariable'
-        type: array
-      locked:
-        type: boolean
-      name:
-        type: string
-      type:
-        type: string
-      value:
-        type: string
-    type: object
-  config.Volume:
-    properties:
-      name:
-        type: string
-      poolname:
-        type: string
-      size:
-        type: string
-      volumedir:
-        type: string
-    type: object
   mailer.Email:
     properties:
       attachments:
@@ -3161,6 +3219,8 @@ definitions:
     type: object
   peer.PeerCluster:
     properties:
+      activePassiveStatus:
+        type: string
       api-credentials-acl-allow:
         type: string
       api-credentials-acl-allow-external:
@@ -3241,6 +3301,11 @@ definitions:
         type: string
       cluster-name:
         type: string
+      dbServers:
+        type: integer
+      directUpdate:
+        description: last successful direct /api/clusters enrichment
+        type: string
       isDown:
         type: boolean
       isFailable:
@@ -3251,6 +3316,8 @@ definitions:
         type: boolean
       lastUpdate:
         type: string
+      monitoringPause:
+        type: boolean
       prov-db-cpu-cores:
         example: "0"
         type: string
@@ -3267,7 +3334,18 @@ definitions:
         type: string
       prov-service-plan:
         type: string
+      proxyServers:
+        type: integer
       repmgrVersion:
+        type: string
+      topology:
+        description: |-
+          Live monitoring fields — populated by the direct /api/clusters fetch from the
+          peer (auto-connect to fleet), NOT present in the BO peer.json catalog. They stay
+          empty until a successful direct connection enriches the row, and are preserved
+          across peer.json BatchUpdateClusters (which would otherwise reset them).
+        type: string
+      uptime:
         type: string
     type: object
   peer.PeerHealth:
@@ -3549,6 +3627,49 @@ definitions:
           $ref: '#/definitions/state.StateHttp'
         type: array
     type: object
+  server.globalClusterResticTask:
+    properties:
+      clusterName:
+        type: string
+      currentTask:
+        $ref: '#/definitions/backupmgr.ResticTaskState'
+    type: object
+  server.globalJobEntry:
+    properties:
+      clusterName:
+        type: string
+      end:
+        type: integer
+      result:
+        type: string
+      serverId:
+        type: string
+      serverUrl:
+        type: string
+      start:
+        type: integer
+      state:
+        type: integer
+      stateLabel:
+        type: string
+      task:
+        type: string
+    type: object
+  server.globalJobsResponse:
+    properties:
+      recentCompletedJobs:
+        items:
+          $ref: '#/definitions/server.globalJobEntry'
+        type: array
+      resticCurrentTasks:
+        items:
+          $ref: '#/definitions/server.globalClusterResticTask'
+        type: array
+      runningJobs:
+        items:
+          $ref: '#/definitions/server.globalJobEntry'
+        type: array
+    type: object
   server.globalLogsResponse:
     properties:
       general:
@@ -3564,6 +3685,9 @@ definitions:
         type: integer
       line:
         type: integer
+      truncated:
+        description: Truncated is only ever true for a history response (see HttpLog.Truncated).
+        type: boolean
     type: object
   server.globalMetricsHostInfo:
     properties:
@@ -7753,6 +7877,33 @@ paths:
       summary: Check Cluster Log Level
       tags:
       - ClusterLogging
+  /api/clusters/{clusterName}/kube-storage-classes:
+    get:
+      description: Lists the Kubernetes cluster's available StorageClasses.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Kubernetes StorageClass list fetched
+          schema:
+            items:
+              $ref: '#/definitions/server.PoolOption'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "Error getting Kubernetes storage class list
+          schema:
+            type: string
+      summary: List available Kubernetes StorageClasses
+      tags:
+      - Database
   /api/clusters/{clusterName}/need-rolling-reprov:
     get:
       description: Checks if a specified cluster needs a rolling reprovision.
@@ -14316,10 +14467,11 @@ paths:
       summary: Secret login
       tags:
       - Database
-  /api/clusters/{clusterName}/servers/{serverName}/service-opensvc:
+  /api/clusters/{clusterName}/servers/{serverName}/service/{orchestrator}:
     get:
-      description: Retrieves the database service configuration of a specified server
-        within a cluster.
+      description: 'Retrieves the database service configuration or live manifests
+        of a specified server within a cluster: raw OpenSVC service config text, or
+        live Kubernetes manifests as JSON.'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -14337,11 +14489,20 @@ paths:
         name: serverName
         required: true
         type: string
+      - description: Orchestrator (must match the cluster's configured orchestrator)
+        in: path
+        name: orchestrator
+        required: true
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: Database service configuration retrieved successfully
+          schema:
+            type: string
+        "400":
+          description: Orchestrator does not match cluster configuration
           schema:
             type: string
         "403":
@@ -14352,7 +14513,7 @@ paths:
           description: Cluster Not Found" or "Server Not Found
           schema:
             type: string
-      summary: Get database service configuration of a server
+      summary: Get database service/manifest view of a server
       tags:
       - Database
   /api/clusters/{clusterName}/servers/{serverName}/slow-queries:
@@ -16413,9 +16574,10 @@ paths:
   /api/clusters/{clusterName}/topology/http-logs:
     get:
       deprecated: true
-      description: 'Returns cluster logs for the specified type. Available types:
-        general, task, security, workload, ddl, variable-change, sysbench. Without
-        logType returns all logs.'
+      description: 'Returns cluster logs for the specified type (in-memory buffer),
+        or — for general/task with ?since=/?until= — a bounded scan of on-disk log
+        history. Available types: general, task, security, workload, ddl, schema,
+        variable-change, sysbench. Without logType returns all logs.'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -16428,6 +16590,32 @@ paths:
         name: clusterName
         required: true
         type: string
+      - description: RFC3339 lower time bound; presence switches general/task to on-disk
+          history
+        in: query
+        name: since
+        type: string
+      - description: RFC3339 upper time bound; presence switches general/task to on-disk
+          history
+        in: query
+        name: until
+        type: string
+      - description: 'History mode only: comma-separated level buckets ERR,WARN,INFO,DBG'
+        in: query
+        name: level
+        type: string
+      - description: 'History mode only: comma-separated module tags, e.g. sql,proxy'
+        in: query
+        name: module
+        type: string
+      - description: 'History mode only: substring filter on message text'
+        in: query
+        name: text
+        type: string
+      - description: 'History mode only: max lines returned (server-clamped)'
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
@@ -16436,6 +16624,10 @@ paths:
           schema:
             additionalProperties: true
             type: object
+        "400":
+          description: logType has no on-disk history
+          schema:
+            type: string
         "403":
           description: No valid ACL
           schema:
@@ -16450,9 +16642,10 @@ paths:
   /api/clusters/{clusterName}/topology/http-logs/{logType}:
     get:
       deprecated: true
-      description: 'Returns cluster logs for the specified type. Available types:
-        general, task, security, workload, ddl, variable-change, sysbench. Without
-        logType returns all logs.'
+      description: 'Returns cluster logs for the specified type (in-memory buffer),
+        or — for general/task with ?since=/?until= — a bounded scan of on-disk log
+        history. Available types: general, task, security, workload, ddl, schema,
+        variable-change, sysbench. Without logType returns all logs.'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -16465,11 +16658,37 @@ paths:
         name: clusterName
         required: true
         type: string
-      - description: 'Log type: general, task, security, workload, ddl, variable-change,
+      - description: 'Log type: general, task, security, workload, ddl, schema, variable-change,
           sysbench'
         in: path
         name: logType
         type: string
+      - description: RFC3339 lower time bound; presence switches general/task to on-disk
+          history
+        in: query
+        name: since
+        type: string
+      - description: RFC3339 upper time bound; presence switches general/task to on-disk
+          history
+        in: query
+        name: until
+        type: string
+      - description: 'History mode only: comma-separated level buckets ERR,WARN,INFO,DBG'
+        in: query
+        name: level
+        type: string
+      - description: 'History mode only: comma-separated module tags, e.g. sql,proxy'
+        in: query
+        name: module
+        type: string
+      - description: 'History mode only: substring filter on message text'
+        in: query
+        name: text
+        type: string
+      - description: 'History mode only: max lines returned (server-clamped)'
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
@@ -16478,6 +16697,10 @@ paths:
           schema:
             additionalProperties: true
             type: object
+        "400":
+          description: logType has no on-disk history
+          schema:
+            type: string
         "403":
           description: No valid ACL
           schema:
@@ -16523,9 +16746,10 @@ paths:
   /api/clusters/{clusterName}/topology/logs/{logType}:
     get:
       deprecated: true
-      description: 'Returns cluster logs for the specified type. Available types:
-        general, task, security, workload, ddl, variable-change, sysbench. Without
-        logType returns all logs.'
+      description: 'Returns cluster logs for the specified type (in-memory buffer),
+        or — for general/task with ?since=/?until= — a bounded scan of on-disk log
+        history. Available types: general, task, security, workload, ddl, schema,
+        variable-change, sysbench. Without logType returns all logs.'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -16538,11 +16762,37 @@ paths:
         name: clusterName
         required: true
         type: string
-      - description: 'Log type: general, task, security, workload, ddl, variable-change,
+      - description: 'Log type: general, task, security, workload, ddl, schema, variable-change,
           sysbench'
         in: path
         name: logType
         type: string
+      - description: RFC3339 lower time bound; presence switches general/task to on-disk
+          history
+        in: query
+        name: since
+        type: string
+      - description: RFC3339 upper time bound; presence switches general/task to on-disk
+          history
+        in: query
+        name: until
+        type: string
+      - description: 'History mode only: comma-separated level buckets ERR,WARN,INFO,DBG'
+        in: query
+        name: level
+        type: string
+      - description: 'History mode only: comma-separated module tags, e.g. sql,proxy'
+        in: query
+        name: module
+        type: string
+      - description: 'History mode only: substring filter on message text'
+        in: query
+        name: text
+        type: string
+      - description: 'History mode only: max lines returned (server-clamped)'
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
@@ -16551,6 +16801,10 @@ paths:
           schema:
             additionalProperties: true
             type: object
+        "400":
+          description: logType has no on-disk history
+          schema:
+            type: string
         "403":
           description: No valid ACL
           schema:
@@ -17599,8 +17853,61 @@ paths:
       - Global
   /api/global/http-logs:
     get:
-      description: Returns server-level log entries from the ReplicationManager in-memory
-        ring buffer.
+      description: Returns server-level log entries from the in-memory ring buffer,
+        or — with ?since=/?until= — a bounded scan of on-disk log history.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: RFC3339 lower time bound; presence switches to on-disk history
+        in: query
+        name: since
+        type: string
+      - description: RFC3339 upper time bound; presence switches to on-disk history
+        in: query
+        name: until
+        type: string
+      - description: 'History mode only: comma-separated level buckets ERR,WARN,INFO,DBG'
+        in: query
+        name: level
+        type: string
+      - description: 'History mode only: comma-separated module tags, e.g. sql,proxy'
+        in: query
+        name: module
+        type: string
+      - description: 'History mode only: substring filter on message text'
+        in: query
+        name: text
+        type: string
+      - description: 'History mode only: max lines returned (server-clamped)'
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.globalLogsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+      summary: Get global logs
+      tags:
+      - Global
+  /api/global/jobs:
+    get:
+      description: Returns running and recently completed DB jobs, and current Restic
+        tasks, across all clusters.
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -17614,12 +17921,12 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/server.globalLogsResponse'
+            $ref: '#/definitions/server.globalJobsResponse'
         "401":
           description: Unauthorized
           schema:
             type: string
-      summary: Get global logs
+      summary: Get global jobs
       tags:
       - Global
   /api/global/metrics:

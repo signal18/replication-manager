@@ -1,24 +1,19 @@
 # Kubernetes native provisioning
 
 Covers `cluster/prov_k8s.go`, `cluster/prov_k8s_db.go`, `cluster/prov_k8s_prx.go`,
-`cluster/prov_k8s_manifest.go`. Broader feature work tracked in issue #1497:
-proxy-type-aware image selection remains open. Secrets, image pull policy,
-StorageClass selection, the dbjobs sidecar, HTTPS config bootstrap, and a
-live manifest view are implemented and verified live against both deployment
-models (see "Secrets, image pull policy, and storage class", "dbjobs
-sidecar", "Bootstrap", and "Manifest view" below) — repman running outside
-the cluster (Model A) and repman running as an in-cluster Deployment
-(Model B), the latter requiring both an RBAC grant beyond what an
-earlier-written `ClusterRole` may have and, separately, `monitoring-address`
-set explicitly to a stable Service DNS name rather than left at its
-pod-IP-autodetecting default (see "Bootstrap" below).
+`cluster/prov_k8s_manifest.go`. Broader feature tracking in issue #1497.
+
+Verified against two deployment models: repman running outside the cluster
+(Model A) and repman running as an in-cluster Deployment (Model B). Model B
+needs extra RBAC grants and a stable `monitoring-address` — see "Bootstrap"
+and "Secrets, image pull policy, and storage class" below.
 
 ## Dispatch
 
 Orchestrator selection is `cluster.GetOrchestrator()` → `cluster.Conf.ProvOrchestrator`.
 Dispatch to the `K8S*` functions happens in `cluster/prov.go`'s per-operation
 switch statements, not through the `DatabaseOrchetrator` interface in
-`cluster/orchestrator.go` (that interface is not used for the Kubernetes path).
+`cluster/orchestrator.go`.
 
 ## Database provisioning
 
@@ -26,399 +21,452 @@ switch statements, not through the `DatabaseOrchetrator` interface in
 
 1. Connect to the API (`K8SConnectAPI()`).
 2. Best-effort ensure Namespace `cluster.Name`. A `Create()` failure other
-   than `AlreadyExists` is logged but never fatal on its own — some clusters
-   pre-create the namespace and grant repman only namespaced-resource
-   permissions, not `namespaces/create` or `namespaces/get`, so `Create()`
-   can legitimately return `Forbidden` even when the namespace already
-   exists. A namespace that genuinely doesn't exist surfaces as a real error
-   at the next step instead.
-3. Create PVC `<cluster>-<server>-claim`, 1Gi, `ReadWriteOnce`, no
-   StorageClass. `AlreadyExists` is idempotent; any other error is fatal.
-4. Generate DB config (`s.GetDatabaseConfig()`) and read
-   `<server-datadir>/config.tar.gz`.
-5. Best-effort create a ConfigMap `<server>-config-map` containing that
-   archive. It is not mounted or otherwise consumed by the Deployment created
-   in step 7 — its fate (mount it for real bootstrap, or remove it) is an
-   open question, so it is never treated as required for provisioning to
-   succeed.
-6. Resolve the Kubernetes node via `cluster.GetDatabaseAgent(s)`. Failure is
+   than `AlreadyExists` is logged but not fatal — some clusters pre-create
+   the namespace and grant repman only namespaced-resource permissions, so
+   `Create()` can legitimately return `Forbidden` even when the namespace
+   already exists. A namespace that genuinely doesn't exist surfaces as a
+   real error at the next step.
+3. Create PVC `<cluster>-<server>-claim` (`k8sDatabasePVC`), `ReadWriteOnce`,
+   sized from `prov-db-disk-size` (falls back to `20G` if unparseable).
+   `AlreadyExists` is idempotent; any other error is fatal.
+4. No config priming here. `config.tar.gz` is generated on demand by the
+   live endpoint the init container's own `wget` hits
+   (`handlerMuxServersPortConfig`, `server/api_database.go`); the durable
+   fallback copy lives on the server's own PVC (`k8sConfPersistSubPath`/
+   `k8sInitPersistSubPath`, see "Bootstrap" below), not in any object repman
+   writes.
+5. Resolve the Kubernetes node via `cluster.GetDatabaseAgent(s)`. Failure is
    fatal.
-7. Create the Deployment (1 replica, pinned to that node via a
+6. Create the Deployment (1 replica, pinned to that node via a
    `NodeSelector` on `kubernetes.io/hostname`, an `alpine` init container,
    the main DB container, PVC-backed volume). `AlreadyExists` is idempotent;
-   any other error is fatal and skips the
-   Service step.
-8. Create the Service (ClusterIP, same port). `AlreadyExists` is idempotent.
-9. Exactly one value is sent on `cluster.errorChan`.
+   any other error is fatal and skips the Service step.
+7. Create the Service (ClusterIP, same port). `AlreadyExists` is idempotent.
+8. Exactly one value is sent on `cluster.errorChan`.
 
 ### Bootstrap
 
 The init container fetches the DB config over HTTPS, on `api-port` (10005,
 `api.go`'s `apiserver()`), not `http-port` (10001, `http.go`'s
-`httpserver()`) — both routers register the exact same unprotected routes
-(config fetch, static binary), but only `api.go` always terminates TLS. This
-matches every other orchestrator's own bootstrap fetch in this codebase
-(`REPLICATION_MANAGER_URL` in `prov_opensvc.go`, `prov_onpremise_db.go`,
-`cluster_get.go` all use `"https://"+MonitorAddress+":"+APIPort`); Kubernetes
-was the one outlier still on plain HTTP (#1497 gap 5, fixed):
+`httpserver()`) — both routers register the same unprotected routes, but
+only `api.go` always terminates TLS. This matches every other orchestrator's
+bootstrap fetch in this codebase (`prov_opensvc.go`, `prov_onpremise_db.go`,
+`cluster_get.go` all use `"https://"+MonitorAddress+":"+APIPort`).
 
 ```
-wget --no-check-certificate -qO- --header="Authorization: Basic <base64(user:pass)>" https://<monitoring-address>:<api-port>/api/clusters/<cluster>/servers/<server>/<port>/config | tar xzf - -C /tmp/cfg
+wget --no-check-certificate -T 8 -qO /tmp/config.tar.gz --header="Authorization: Basic <base64(user:pass)>" https://<monitoring-address>:<api-port>/api/clusters/<cluster>/servers/<server>/<port>/config
 ```
 
-`--no-check-certificate` is required alongside the switch: the cert is
-self-signed (a generated temp cert when `monitoring-ssl-cert` isn't set), so
-there's no CA for the init container to validate against — same reasoning
-as `prov_opensvc.go`/`prov_onpremise_db.go`'s own `wget` calls, which have
-always used it for the same reason.
+**Bounded and persisted, mirroring OpenSVC's own bootstrap mechanism**
+(`OpenSVCGetInitContainerSection`, `prov_opensvc_db.go`;
+`share/dashboard/static/configurator/opensvc/bootstrap`): the fetch is
+bounded by a timeout, writes into a *persistent* volume, and only
+clear-and-replaces what's already there on a verified-successful fetch —
+never on failure.
 
-**Falls back to plain HTTP on `http-port` when `api-server=false`**: `api-server`
-(default `true`) independently gates whether `apiserver()` — and therefore
-anything listening on `api-port` at all — starts (`server/server.go`). A
-deployment with `api-server=false` and `http-server=true` (both togglable
-independently; `httpserver()` registers the identical unprotected routes)
-would otherwise have nothing to connect to on `api-port`, silently breaking
-bootstrap that worked before this HTTPS switch — the `wget` would hang on
-an unanswered connection with no error surfaced. `k8sDatabaseDeployment`
-checks `cluster.Conf.ApiServ` and builds the command against
+- `/etc/mysql/conf.d` and `/docker-entrypoint-initdb.d` are `subPath`
+  mounts of the same PVC that backs `/var/lib/mysql`
+  (`k8sConfPersistSubPath` = `.system/conf.d`, `k8sInitPersistSubPath` =
+  `.system/init`, under the same repman-reserved `.system/` subtree
+  `systemDirs` uses), not separate `emptyDir`s. This mirrors OpenSVC's own
+  `{name}/etc/mysql` and `{name}/init`, both part of the same service
+  volume as its data dir.
+- `-T 8`, not the GNU-style `--timeout=8 --tries=2` long forms: `-T SEC` is
+  the flag busybox's own `wget --help` documents, and bounds both the
+  connect and read phases.
+- Clear-and-replace only happens inside a verified-successful fetch *and*
+  extract:
+
+```
+if wget -T 8 -qO /tmp/config.tar.gz ...; then
+  if tar xzf /tmp/config.tar.gz -C /tmp/cfg; then
+    rm -f /etc/mysql/conf.d/*.cnf
+    find /docker-entrypoint-initdb.d -mindepth 1 ! -name replication-manager-cli -delete
+    cp /tmp/cfg/etc/mysql/conf.d/*.cnf /etc/mysql/conf.d/
+    cp -r /tmp/cfg/init/. /docker-entrypoint-initdb.d/
+  fi
+fi
+```
+
+The `init` clear excludes `replication-manager-cli` so the config refresh
+above can't destroy an independently-cached CLI binary.
+
+**Only `mkdir`'s own exit status can fail the init container.** Kubernetes
+init containers have no equivalent of OpenSVC's `optional=true` (a
+nonzero-exit init container here always blocks the pod), so the same
+never-blocks-the-database effect is built by hand: `mkdir`'s exit status is
+captured into `MKDIR_STATUS` immediately, everything after it is
+unconditional (`;`-joined, no `&&`), ending with `exit "$MKDIR_STATUS"`:
+
+```
+mkdir -p /tmp/cfg /docker-entrypoint-initdb.d <systemDirs>
+MKDIR_STATUS=$?
+<fetch/extract/apply, entirely best-effort>
+wget -T 8 -qO /tmp/replication-manager-cli.new ... && cp /tmp/replication-manager-cli.new /docker-entrypoint-initdb.d/replication-manager-cli
+chmod +x /docker-entrypoint-initdb.d/replication-manager-cli ... 2>/dev/null
+exit "$MKDIR_STATUS"
+```
+
+**`replication-manager-cli` is cached defensively.** It's fetched from a
+separate, unauthenticated `/static/...` endpoint, independent of the config
+fetch. It's written to `/tmp/replication-manager-cli.new` first and only
+`cp`'d into place on confirmed `wget` success — busybox `wget -O` has no
+atomic rename, so a connection truncated mid-transfer (not just a failed
+connect) leaves partial bytes at the destination despite the nonzero exit,
+which would otherwise silently corrupt a previously-good cached CLI.
+Covered by `TestK8SDatabaseDeployment_SuccessfulConfigApplyPreservesCLIWhenItsOwnFetchFails`
+and `TestK8SDatabaseDeployment_TruncatedCLIDownloadDoesNotCorruptCachedCLI`.
+
+`prov-db-start-fetch-config` gates the fetch/extract/apply block via a live
+`need-config-fetch` check, mirroring OpenSVC's own bootstrap gate exactly
+(`share/dashboard/static/configurator/opensvc/bootstrap`,
+`handlerMuxServerNeedConfigFetch`/`server/api_database.go`,
+`CheckNeedConfigFetch`/`cluster/srv_chk.go`): the init container `wget`s
+`.../need-config-fetch` first; the server evaluates the flag live and
+returns HTTP 200 (fetch) or 500 (skip), which `wget`'s own exit status
+turns into the outer `if` gate. The decision is not baked into the
+Deployment spec at build time, so toggling the flag takes effect on the
+pod's very next restart, no reprovision needed. An unreachable repman fails
+the `need-config-fetch` call the same way a 500 does, so it's skipped the
+same way — this call is bounded by the same `-T 8` as the other two, unlike
+OpenSVC's own (unbounded) version of it, since here it runs inside a
+regular init container that a hang would block. The
+`replication-manager-cli` fetch is independent of this flag and always
+attempted. There's no separate cache object to order against — the
+persisted `conf.d`/`init` themselves are the cache.
+
+If nothing has ever been persisted (first boot, repman unreachable) and the
+fetch fails or is skipped, `/etc/mysql/conf.d` and `/docker-entrypoint-initdb.d`
+stay empty — `mariadbd` starts with the image's bare defaults rather than
+failing the init container, matching OpenSVC's own `optional=true` behavior.
+The dbjobs sidecar (see below) degrades the same way via its own guard.
+
+This only takes effect once the Deployment is rebuilt: `k8sDatabaseDeployment`
+is a pure builder invoked by `K8SProvisionDatabaseService`/`InitDatabaseService`
+— explicit provision/reprovision, not an ordinary pod restart (crash,
+eviction, `kubectl delete pod`, `kubectl rollout restart`,
+`K8SForceRepullDatabaseService`), which just recreates the pod from whatever
+spec is already baked into the Deployment. A server provisioned under an
+older repman build keeps its old `emptyDir`-based spec until its next
+provision/reprovision. Kubernetes creates a missing subPath directory on an
+existing PVC automatically, so no migration step is needed.
+
+`--no-check-certificate` is required: the cert is self-signed (a generated
+temp cert when `monitoring-ssl-cert` isn't set) — same reasoning as
+`prov_opensvc.go`/`prov_onpremise_db.go`'s own `wget` calls.
+
+**Falls back to plain HTTP on `http-port` when `api-server=false`**:
+`api-server` (default `true`) independently gates whether `apiserver()`
+starts. A deployment with `api-server=false` and `http-server=true` would
+otherwise hang the `wget` against a port nothing is listening on.
+`k8sDatabaseDeployment` checks `cluster.Conf.ApiServ` and builds against
 `http://<monitoring-address>:<http-port>` with no `--no-check-certificate`
-in that case instead — tested in
-`TestK8SDatabaseDeployment_ConfigFetchFallsBackToHTTPWhenAPIServerDisabled`
-(`cluster/prov_k8s_test.go`), found via code review before it was hit live
-(every live cluster this feature was verified against runs with the
-`api-server` default of `true`).
+in that case — see `TestK8SDatabaseDeployment_ConfigFetchFallsBackToHTTPWhenAPIServerDisabled`.
 
-handled by `handlerMuxServersPortConfig` (`server/api_database.go`). Only
-`etc/mysql/conf.d/*.cnf` is copied in (MariaDB's `!includedir` is
-non-recursive); the init container also pre-creates
-`.system/{tmp,logs,repl,innodb/undo,innodb/redo,aria}` under the datadir,
-mirroring OpenSVC's moduleset directory resources.
+The config archive is served by `handlerMuxServersPortConfig`
+(`server/api_database.go`). Only `etc/mysql/conf.d/*.cnf` is copied in
+(MariaDB's `!includedir` is non-recursive); the init container also
+pre-creates `.system/{tmp,logs,repl,innodb/undo,innodb/redo,aria}` under the
+datadir, mirroring OpenSVC's moduleset directory resources.
 
-- **Authentication**: only sent when `api-credentials-secure-config=true` —
-  the endpoint doesn't enforce auth otherwise, so embedding a real
-  credential in every Deployment spec regardless would be needless
-  exposure. When sent, it's a base64-encoded `Authorization: Basic` header
-  via `wget --header`, computed in Go — not interpolated as raw
-  `user:pass@host` userinfo into the `sh -c` string, since that would let
-  shell metacharacters in the password be interpreted by the init
-  container's shell. Uses the `admin` user specifically — the same
+- **Authentication**: sent only when `api-credentials-secure-config=true`,
+  as a base64-encoded `Authorization: Basic` header. The value itself lives
+  in the cluster's shared Secret (`k8sSecretKeyAPIAuthHeader` =
+  `REPMAN_AUTH_HEADER`, alongside `MYSQL_ROOT_PASSWORD` on the same
+  `<cluster>-secret`), referenced by the init container via an env var
+  (`$REPMAN_AUTH_HEADER`) rather than baked as literal text into the
+  Deployment's own `command` array — matching OpenSVC's own
+  `REPLICATION_MANAGER_PASSWORD` secret (`CreateSecretKeyValueV2`,
+  `prov_opensvc.go`) instead of leaving the credential recoverable from a
+  plain `kubectl get deploy -o yaml`. Uses the `admin` user — the same
   fixed-account convention every other bootstrap credential injection in
-  this codebase already uses (`GetExecEnv`, OpenSVC's secrets injection,
-  onpremise env exports), not "whichever `api-credentials` entry is
-  configured first," which may lack the `db-config-flag` grant `/config`
-  requires. Falls back to the documented default password `repman` if
-  `admin` hasn't been reconfigured — matches `api-credentials`' own CLI
-  default. `K8SProvisionDatabaseService()` logs a warning up front if
-  `api-credentials-secure-config=true` and `admin` lacks the grant.
+  this codebase uses. Falls back to the documented default password
+  `repman` if `admin` hasn't been reconfigured. `K8SProvisionDatabaseService()`
+  warns up front if `api-credentials-secure-config=true` and `admin` lacks
+  the grant, and separately patches the auth-header Secret key right after
+  the root-password one.
+- **Goes stale on an `api-credentials` change**: the Secret key is only
+  ever written by `K8SProvisionDatabaseService()` (provision/reprovision) —
+  if the admin password changes afterward (only possible via a repman
+  restart with a new `--api-credentials` value; there's no live
+  settings-API path for it, a `scope:"server"` value), an
+  already-provisioned server's init container keeps sending the old value
+  until its next reprovision. This isn't a Kubernetes-specific gap: OpenSVC
+  has the identical characteristic — `REPLICATION_MANAGER_PASSWORD` is
+  written to OpenSVC's own secret store only from
+  `OpenSVCProvisionDatabaseV2`/`V3` (via `OpenSVCCreateMaps`), never on a
+  credential change either. Kept consistent with that existing behavior
+  rather than special-cased.
 - **Residual risk**: base64 is encoding, not encryption — anyone able to
-  read the Deployment spec (`kubectl get deploy -o yaml`, RBAC permitting)
-  can recover the credential. It now travels over TLS (self-signed, so
-  passive network observation is defeated but active MITM isn't without
-  pinning the generated cert — out of scope here, same residual-risk
-  posture every other orchestrator's own bootstrap fetch already accepts).
-- **`<monitoring-address>` must be a stable address for in-cluster (Model B)
-  deployments**: `monitoring-address` defaults to `localhost`, which triggers
-  `resolveHostIp()` (`server/server.go`) to auto-detect and bake in repman's
-  *own current pod IP* at process startup. That's fine for repman running
-  outside Kubernetes (Model A), but for repman running as an in-cluster
-  Deployment, the pod IP is not stable — any reschedule of repman's own pod
-  (rollout, eviction, node drain, crash) changes it, silently breaking the
-  bootstrap `wget` for every *already-provisioned* DB Deployment (their init
-  container command has the old IP baked in verbatim; only Deployments built
-  *after* the change get the new one). Confirmed live: after redeploying
-  `repman-incluster`'s binary via a pod delete/recreate, an existing DB's
-  restart action still succeeded (image-pull-policy/`restartedAt` patch), but
-  the new pod's init container failed with `wget: can't connect to remote
-  host (<old pod IP>): Host is unreachable`. Fix: set `monitoring-address`
-  explicitly in the in-cluster deployment's config to repman's own Service
-  DNS name (e.g. `repman-incluster.repman-system.svc.cluster.local`), not
-  left at the `localhost` default — the Service's ClusterIP is stable across
-  pod reschedules even though the pod IP behind it isn't. No code change
-  needed; this is purely a deployment-config requirement for Model B.
-- **The in-cluster Service must expose `api-port` (10005), not just
-  `http-port`**: since the HTTPS switch above, bootstrap always targets
-  `api-port` — a Model B Service manifest built before that switch (this
-  session's own example included) may only forward `http-port` (10001,
-  used for the pre-existing NodePort/dashboard access), leaving nothing
-  routing traffic to 10005 at all. Confirmed live: an otherwise-correct
-  bootstrap command (right DNS name, right port, `--no-check-certificate`)
-  hung indefinitely with no init container log output at all — not a
-  `wget` error, a plain unanswered TCP connection, since nothing was
-  listening on the Service side for that port. Fixed by adding a second
-  port to the Service (`kubectl patch svc repman-incluster --type=json
-  -p='[{"op":"add","path":"/spec/ports/-","value":{"name":"https","port":10005,"targetPort":10005,"protocol":"TCP"}}]'`);
-  any Model B deployment manifest must declare both ports going forward.
+  read the Secret (RBAC permitting) can recover the credential; unlike the
+  Deployment spec, `secrets` is a resource many clusters gate more tightly.
+  It travels over TLS (self-signed, so passive observation is defeated but
+  not an active MITM without cert pinning) — same residual-risk posture as
+  every other orchestrator's bootstrap fetch.
+- **`<monitoring-address>` must be stable for Model B**: `monitoring-address`
+  defaults to `localhost`, which triggers `resolveHostIp()` to auto-detect
+  and bake in repman's own current pod IP at process startup. For an
+  in-cluster repman Deployment that IP isn't stable — any reschedule of
+  repman's own pod silently breaks bootstrap for every already-provisioned
+  DB Deployment (their init container command has the old IP baked in
+  verbatim). Fix: set `monitoring-address` explicitly to repman's own
+  Service DNS name (e.g. `repman-incluster.repman-system.svc.cluster.local`).
+  No code change needed — purely a deployment-config requirement.
+- **With `api-server=true` (the default), the in-cluster Service must
+  expose `api-port` (10005), not just `http-port`**: a Model B Service
+  manifest built before the HTTPS switch may only forward `http-port`
+  (10001), leaving bootstrap hanging on an unanswered connection with no
+  init container log output. A Model B manifest must declare `api-port`
+  in that case (`http-port` alone is enough only when `api-server=false`,
+  per the HTTP fallback above).
 
 ### Unprovisioning
 
 `K8SUnprovisionDatabaseService()` deletes the Deployment and Service, both
-idempotent via `apierrors.IsNotFound`. ConfigMap, PVC, and Namespace are
-retained — PVC deletion is destructive and Namespace/ConfigMap
-retention-vs-deletion semantics are an open question. The shared headless
-Service (below), if created, is not deleted by any single server's
-unprovision, since it's shared across every DB pod in the namespace. Exactly
-one value is sent on `cluster.errorChan`.
+idempotent via `apierrors.IsNotFound`. PVC and Namespace are retained — PVC
+deletion is destructive (it would also destroy the persisted `conf.d`/`init`
+subPaths, see "Bootstrap" above) and Namespace retention-vs-deletion
+semantics are an open question. The shared headless Service (below), if
+created, is not deleted by any single server's unprovision, since it's
+shared across every DB pod in the namespace. Exactly one value is sent on
+`cluster.errorChan`.
 
 ### Per-pod DNS (`prov-net-cni`)
 
 The per-server `Service` (`ClusterIP`, named `s.Name`) that's always created
-resolves to a **virtual IP**, reachable only from inside the cluster —
-confirmed live: DNS resolved fine, but the MySQL connect failed (errno 115)
-from a replication-manager process running outside the cluster. Fine for a
-replication-manager Pod in the same namespace as the DB pods; not for one
+resolves to a virtual IP, reachable only from inside the cluster — fine for
+a replication-manager Pod in the same namespace as the DB pods, not for one
 running externally.
 
-`prov-net-cni` — the same flag OpenSVC already uses for its own domain
-suffix — opts a Kubernetes cluster into a real, routable per-pod address
-instead. When on:
+`prov-net-cni` — the same flag OpenSVC uses for its own domain suffix —
+opts a Kubernetes cluster into a real, routable per-pod address instead.
+When on:
 
 - Every DB pod gets `role=db` added to its labels, and `Hostname`/`Subdomain: db`
   on its Pod spec.
 - A shared headless `Service` (`ClusterIP: None`, name `db`) selects on
   `app=repication-manager,role=db`.
 - That combination makes CoreDNS publish `<server>.db.<namespace>.svc.<cluster-domain>`
-  pointing at the pod's current real IP (live, not a snapshot).
-  `<cluster-domain>` is `prov-orchestrator-cluster`, falling back to
-  `cluster.local`.
+  pointing at the pod's current real IP. `<cluster-domain>` is
+  `prov-orchestrator-cluster`, falling back to `cluster.local`.
 
 `cluster.GetDomain()`/`GetDomainHeadCluster()` (`cluster/cluster_get.go`)
 build this suffix and feed `server.Host`/`server.Domain` everywhere a server
-address is built (topology discovery, `AddChildServers`, proxies), not just
-at provision time. Each orchestrator branch checks its own type explicitly,
-so the shared flag can never leak a domain suffix meant for the other one
-(or a third orchestrator inheriting it from `[DEFAULT]`).
+address is built, not just at provision time. Each orchestrator branch
+checks its own type explicitly, so the flag can't leak a domain suffix
+meant for another orchestrator.
 
 With the flag off, Deployments/Services are byte-identical to before this
 mechanism existed. The Service selector and pod labels are defined in two
-places and must agree — `TestK8SDatabaseDeployment_PodLabelsSatisfyHeadlessServiceSelector`
-covers that.
+places and must agree — covered by
+`TestK8SDatabaseDeployment_PodLabelsSatisfyHeadlessServiceSelector`.
 
-Proxy pods aren't part of this (no `role` label, so excluded from the `db`
-Service by construction) — they have no Service of any kind yet; a
-`role=proxy` follow-up is natural but not built (#1497).
+Proxy pods aren't part of this (no `role` label) — a `role=proxy` follow-up
+is natural but not built (#1497).
 
 ### Secrets, image pull policy, and storage class
 
-`MYSQL_ROOT_PASSWORD` is not embedded as a raw `Env` value: `K8SProvisionDatabaseService()`
-creates (or updates, on password rotation) a `Secret` named `<server>-secret`
-holding it, and the container references it via `SecretKeyRef`
-(`k8sEnsureDatabaseSecret`, `k8sSecretName`, `prov_k8s_db.go`) — the same
-"don't put the credential in cleartext in an object anyone with `kubectl get
--o yaml` and RBAC read access can see" reasoning as the config-bootstrap
-Basic Auth header. The update path is a merge `Patch`, not `Update()` with a
-freshly-constructed object: `Update()` requires the current
-`resourceVersion` for optimistic concurrency, which a fresh object never
-has, so it would be rejected by a real API server (a gap the fake clientset
-used in tests doesn't enforce, so it wasn't test-visible) — confirmed live
-against the `kind` cluster: a merge patch changing the value bumps
-`resourceVersion` correctly with no `resourceVersion` supplied in the
-request. Like the ConfigMap/PVC, the Secret is retained on unprovision, not
-deleted.
+`MYSQL_ROOT_PASSWORD` is not embedded as a raw `Env` value:
+`K8SProvisionDatabaseService()` creates (or updates) one Secret shared by
+the whole cluster (`k8sClusterSecretName` = `<cluster>-secret`) holding it
+(and, when `api-credentials-secure-config` is on, the bootstrap auth-header
+value alongside it — see "Bootstrap" above), and every server's containers
+reference it via `SecretKeyRef` (`k8sPatchSecretValues`,
+`k8sEnsureDatabaseSecret`, `k8sClusterSecretName`). One Secret for the whole
+cluster, not one per server: every server in a replication topology shares
+the same root credential (`RotatePasswords()` generates and applies exactly
+one), matching OpenSVC's own single cluster-wide secret store rather than
+duplicating the same value once per server-scoped object. The update path
+is a merge `Patch`, not `Update()` with a freshly-constructed object —
+`Update()` requires the current `resourceVersion`, which a fresh object
+never has; a merge `Patch` also leaves any other key already on the Secret
+untouched. Like the PVC, the Secret is retained on unprovision.
+
+`ProvisionRotatePasswords()` (`cluster/prov.go`) has a Kubernetes branch
+(`k8sRotatePasswordsWithClient`) that patches the cluster's shared Secret
+with the freshly rotated password — a single patch covers every server's
+Deployment, since they all reference the same Secret. Before this branch
+existed, Kubernetes fell through this function as a silent no-op: the
+database's own live password already changes immediately regardless
+(`RotatePasswords()`, `cluster/cluster_sec.go`, applies it via a direct SQL
+`SetUserPassword` over the existing connection, no restart involved), but
+the Secret object itself would stay stale forever — breaking the dbjobs
+sidecar's own authentication (it reads `MYSQL_ROOT_PASSWORD` as a live
+credential) and seeding the wrong initial root password into any future
+from-scratch reprovision.
+
+If the Secret patch itself fails (e.g. a transient Kubernetes API error),
+`k8sRotatePasswordsWithClient` only logs it — `ProvisionRotatePasswords()`
+still returns `nil` to its caller. This matches the OpenSVC branch
+immediately above it exactly (log-and-continue, no propagated error), which
+in turn matches `RotatePasswords()`'s own general pattern of logging
+failures from individual sub-steps rather than aborting the whole rotation.
+Kept consistent with that existing behavior rather than special-cased for
+Kubernetes.
 
 `prov-kube-image-force-pull` (bool, off by default) sets the database
 container's `ImagePullPolicy` — `Always` when on, an explicit
-`IfNotPresent` when off (`k8sImagePullPolicy`). Explicit rather than left
-unset: Kubernetes' own implicit default already varies by tag (`Always` for
-`:latest`, `IfNotPresent` otherwise), which is surprising behavior to rely
-on implicitly.
+`IfNotPresent` when off (`k8sImagePullPolicy`), rather than relying on
+Kubernetes' own implicit tag-dependent default.
 
 `k8sDatabaseDeployment` only sets `ImagePullPolicy` at creation time, so
 toggling this setting has no effect on an already-provisioned server on its
 own — `K8SForceRepullDatabaseService` (`k8sForceRepullDatabaseServiceWithClient`)
-patches both the pod template's `restartedAt` annotation (a
-`kubectl rollout restart`-style trigger) *and* the container's
-`ImagePullPolicy`, to the current config value, in the same call, so an
-existing Deployment actually picks up a changed setting. `RestartDatabaseService`
+patches both the pod template's `restartedAt` annotation and the
+container's `ImagePullPolicy` in the same call. `RestartDatabaseService`
 (`cluster/prov.go`, API `/actions/restart`) routes to it for Kubernetes
-instead of the generic `Stop → WaitDatabaseFailed → Start`, which always
-failed for Kubernetes (`K8SStopDatabaseService` has no scale-to-zero/drain
-semantic).
+instead of the generic `Stop → WaitDatabaseFailed → Start` — not because
+that path can't work (see "Database start/stop lifecycle" below), but
+because it's lighter, with no explicit scale-to-0 step.
 
 The API handler for that route (`handlerMuxServerRestart`,
 `server/api_database.go`) originally hardcoded `orchestrator == "opensvc"`
-and rejected everything else with 501 — meaning the Kubernetes branch above,
-despite existing and being unit-tested, was never actually reachable
-through the API: the handler never let a Kubernetes server's restart cookie
-get set, so `CheckRestartContainerCookies` (`cluster_chk.go`, the
-monitoring-loop consumer that calls `RestartDatabaseService`) never had
-anything to process. Found only by testing the real HTTP path end-to-end,
-not by unit tests or by testing the Go dispatch logic in isolation — fixed
-by extracting the check into `restartSupportedForOrchestrator()` and adding
-Kubernetes to it. Confirmed live: `/actions/restart` now returns "Restart
-queued successfully" for a Kubernetes server, and the resulting Deployment
-shows both the patched `ImagePullPolicy` and the new `restartedAt`
-annotation. Confirmed live on both deployment models — Model A (repman outside
-the cluster) and Model B (repman itself running as an in-cluster Deployment,
-`repman-incluster`). Model B additionally needs its ServiceAccount's
-`ClusterRole` to actually grant the verbs this phase of work added calls
-for: `patch` on `apps/deployments` (for the restart/repull path above) and
-`get, list, create, patch` on the core `secrets` resource (for
-`k8sEnsureDatabaseSecret`'s create-then-patch-on-rotate pattern) — an
-RBAC rule set written before these existed won't have them. Confirmed live:
-before granting `patch` on `deployments`, `/actions/restart` against a
-Kubernetes server returned a queued-success response but then failed
-server-side with `deployments.apps "<server>" is forbidden: ... cannot patch
-resource "deployments"`, invisible to the API caller (the async cookie
-mechanism only logs the failure, `CheckRestartContainerCookies` in
-`cluster_chk.go`) — visible only by checking `repman-incluster`'s own pod
-logs.
+and rejected everything else with 501, so the Kubernetes branch above was
+never reachable through the API despite being unit-tested. Fixed by
+extracting the check into `restartSupportedForOrchestrator()` and adding
+Kubernetes to it.
 
-The PVC (`k8sDatabasePVC`) uses `prov-db-disk-size` (already used by every
-other orchestrator for the same purpose — previously hardcoded to `1Gi`
-here, ignoring whatever the operator actually configured) and an optional
+Model B additionally needs its ServiceAccount's `ClusterRole` to grant
+`patch` on `apps/deployments` (restart/repull path) and `get, list, create,
+patch` on the core `secrets` resource (`k8sEnsureDatabaseSecret`'s
+create-then-patch-on-rotate pattern) — an RBAC rule set written before
+these existed won't have them.
+
+The current design (see "Bootstrap" above) makes no ConfigMap API calls at
+all — the persisted `conf.d`/`init` subPaths live on the PVC every
+`ClusterRole` here already needs `persistentvolumeclaims` access for, so no
+`configmaps` grant is required.
+
+The PVC (`k8sDatabasePVC`) uses `prov-db-disk-size` and an optional
 `prov-kube-storage-class`, left unset (`nil`, not a pointer to `""`) to use
-the cluster's default StorageClass when not configured — the K8s API
-distinguishes those two states. `K8SGetStorageClasses()` lists the
-cluster's available StorageClasses for the provisioning GUI's dropdown
-(`/api/clusters/{clusterName}/kube-storage-classes`, mirroring
-`opensvc-pools`' existing disk-pool-list pattern).
+the cluster's default StorageClass when not configured.
+`K8SGetStorageClasses()` lists the cluster's available StorageClasses for
+the provisioning GUI's dropdown
+(`/api/clusters/{clusterName}/kube-storage-classes`).
 
 ### dbjobs sidecar
 
 A second container, `<server>-dbjobs`, runs `share/scripts/dbjobs_new.sh`
 (backups, optimize, config refresh, log collection) — the same image as the
-DB container (`cluster.Conf.ProvDbImg`, matching OpenSVC's own jobs
-container), invoked as `/bin/bash /docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm`.
+DB container, matching OpenSVC's own jobs container. Its `Command` is a
+guarded shell wrapper, not a bare exec:
 
-The script arrives pre-resolved: the init container's fetched config
-archive's root is repman's own `Datadir/init` (confirmed via
-`configurator.TarGz`'s caller, `cluster/configurator/configurator.go`), and
-every `%%ENV:...%%` placeholder in it — including `JOBS_DATADIR`
-(`GetJobDatadir()`) — is already substituted server-side by
-`GenerateDatabaseConfig` before the archive is built, so nothing needs
-runtime templating. The init container now additionally copies that
-`init/` entry into a new shared `emptyDir` (`<server>-init`, mounted at
-`/docker-entrypoint-initdb.d` in both the init container and the sidecar)
-and separately fetches `replication-manager-cli` from
-`/static/configurator/bin/replication-manager-cli` (a plain,
-unauthenticated static file server — not part of the config archive, same
-as how OpenSVC's own bootstrap script fetches it).
+```
+if [ -f /docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm ]; then
+  exec /bin/bash /docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm
+else
+  echo 'dbjobs_launcher_with_sigterm not found -- no config has ever been successfully persisted for this server; idling until the next pod restart' >&2
+  exec sleep infinity
+fi
+```
 
-The sidecar mounts the same persistent-storage PVC as the DB container
-(`/var/lib/mysql`) alongside `-init`: `dbjobs_new.sh` does raw filesystem
-operations directly against `$DATADIR` (e.g. moving restored `.ibd` files
-into place during a physical-restore job), so it needs to see the exact
-data directory the DB container writes to. `ReadWriteOnce` restricts a PVC
-to one *node*, not one container — every container here is in the same
-pod, so the same node, by construction. `MYSQL_ROOT_PASSWORD` comes from
-the same per-server `Secret` as the DB container (the script reads it as a
-real runtime `$MYSQL_ROOT_PASSWORD`, not a `%%ENV:...%%` placeholder). No
-new gating flag: OpenSVC creates its own jobs container unconditionally
-(`OpenSVCGetJobsContainerSection`, `prov_opensvc_db.go`), so this matches
-that for parity.
+**Why the guard.** On a server that has never had a successful config fetch
+persist anything, `/docker-entrypoint-initdb.d` is empty — `mariadbd`
+degrades gracefully (see "Bootstrap" above), but this sidecar would
+otherwise exec a launcher script that doesn't exist, crash-looping
+indefinitely even though the database is fine. The guard idles instead
+until the pod's next restart. Covered by
+`TestK8SDatabaseDeployment_DbjobsSidecarIdlesInsteadOfCrashingWhenLauncherMissing`.
+
+The script arrives pre-resolved: the fetched config archive's root is
+repman's own `Datadir/init`, and every `%%ENV:...%%` placeholder in it —
+including `JOBS_DATADIR` (`GetJobDatadir()`) — is already substituted
+server-side by `GenerateDatabaseConfig` before the archive is built. The
+init container copies that `init/` entry into the PVC's `.system/init`
+subPath (mounted at `/docker-entrypoint-initdb.d` in both the init
+container and the sidecar) and separately fetches
+`replication-manager-cli` from `/static/configurator/bin/replication-manager-cli`
+(unauthenticated static file, not part of the config archive).
+
+That CLI fetch is best-effort: `dbjobs_new.sh` has no `set -e` and tolerates
+the CLI being unavailable, so the init script joins the CLI fetch and the
+trailing `chmod +x` calls with `;`, not `&&`. Neither command's exit code
+affects the init container's own result — that's fixed by `MKDIR_STATUS`
+(see "Bootstrap" above). Covered by
+`TestK8SDatabaseDeployment_CLIFetchFailureDoesNotFailInitContainer`.
+
+The sidecar mounts the same PVC as the DB container (`/var/lib/mysql`, plus
+the `.system/init` subPath): `dbjobs_new.sh` does raw filesystem operations
+directly against `$DATADIR` (e.g. moving restored `.ibd` files during a
+physical restore), so it needs to see the exact data directory the DB
+container writes to. `MYSQL_ROOT_PASSWORD` comes from the same per-server
+Secret as the DB container. No gating flag — OpenSVC creates its own jobs
+container unconditionally, so this matches for parity.
 
 `.system/jobs` (`JOBS_DATADIR`) is pre-created by the init container
-alongside the other `.system/*` paths — confirmed live: without it,
-`cleanup_run_dirs` (the launcher's first action every cycle) fails
-immediately. It's a hardcoded literal here, not a call to
-`s.GetJobDatadir()`: that method dereferences
-`s.ClusterGroup.Configurator` with no nil check, which would violate
-`k8sDatabaseDeployment`'s own "pure builder, no ServerMonitor methods"
-contract and panic on a bare `*ServerMonitor` (confirmed via a test) — it
-matches `GetJobDatadir()`'s own Kubernetes-path result unless the
-`nosplitpath` db-tag is set, which isn't handled here.
+alongside the other `.system/*` paths — without it, `cleanup_run_dirs` (the
+launcher's first action every cycle) fails immediately. It's a hardcoded
+literal here, not a call to `s.GetJobDatadir()`, which dereferences
+`s.ClusterGroup.Configurator` with no nil check and would violate
+`k8sDatabaseDeployment`'s "pure builder, no ServerMonitor methods"
+contract; it matches `GetJobDatadir()`'s own Kubernetes-path result unless
+the `nosplitpath` db-tag is set, which isn't handled here.
 
-**Verified live**: the sidecar starts, the fetched script is correctly
-resolved (real host/port/user baked in, matching what the DB container
-actually is), it connects to the database successfully and repeats on its
-~60s schedule, and `.system/jobs` cleanup runs without error.
-
-**Known limitation, not yet resolved**: `dbjobs_new.sh` streams routine
-status/log lines back to repman over a `socat`-based channel
-(`send_lines_to_api`) on every cycle, using a receiver address/port
-repman allocates dynamically per call. Live testing (Model A: repman
-outside the cluster) got "connection refused" on that specific
-port — the packet reaches repman's host fine (the same address the
-config-bootstrap fetch already uses successfully), but nothing was
-listening on the dynamically-allocated port at that moment. This is
-pre-existing `dbjobs_new.sh`/repman receiver-port allocation machinery,
-not something this session's changes touch, and needs deeper
-investigation into that allocation path — not yet done. Core job
-functionality (DB connectivity, `.system/jobs` cleanup) is confirmed
-working regardless; this status-reporting channel (and, untested, the
-same mechanism backup streaming likely uses) is the open piece.
+**Known limitation.** `dbjobs_new.sh` streams routine status/log lines back
+to repman over a `socat`-based channel (`send_lines_to_api`) on every
+cycle, using a dynamically-allocated receiver port. Live testing (Model A)
+got "connection refused" on that port — nothing was listening at that
+moment. This is pre-existing `dbjobs_new.sh`/receiver-port allocation
+machinery, not touched by this feature, and needs further investigation.
+Core job functionality (DB connectivity, `.system/jobs` cleanup) works
+regardless.
 
 ### Manifest view
 
-#1497 gap 6: OpenSVC has `GetDatabaseServiceConfig` (above) to show what
-repman would push, but Kubernetes had no equivalent GUI visibility at all
-into the Deployment/PVC/Service/pod state actually running. Rather than add
-a second route, the existing single-server manifest/config view was
-generalized: `GET /api/clusters/{clusterName}/servers/{serverName}/service/{orchestrator}`
-(`handlerMuxGetDatabaseServiceConfig`, `server/api_database.go`) is now keyed
-by a dynamic `{orchestrator}` path segment instead of the literal
-`service-opensvc` it used to be — the same route serves both orchestrators'
-views rather than one route per orchestrator, since only one is ever
-relevant for a given cluster. The `{orchestrator}` segment must match the
-cluster's actually-configured orchestrator (`cluster.GetOrchestrator()`) —
-repman's own config is authoritative over what a caller requests, not the
-other way around; a mismatch is a 400. The branching itself is factored
-into `buildDatabaseServiceConfigResponse`, kept separate from the HTTP
-handler specifically so it's testable without a real JWT
-(`IsValidClusterACL` has no bypass) — `server/api_database_test.go`.
+#1497 gap 6: Kubernetes had no GUI visibility into the live
+Deployment/PVC/Service/pod state. The existing single-server manifest view
+was generalized: `GET /api/clusters/{clusterName}/servers/{serverName}/service/{orchestrator}`
+(`handlerMuxGetDatabaseServiceConfig`, `server/api_database.go`) is now
+keyed by a dynamic `{orchestrator}` path segment instead of the literal
+`service-opensvc` it used to be. The `{orchestrator}` segment must match
+the cluster's actually-configured orchestrator (`cluster.GetOrchestrator()`)
+— a mismatch is a 400. The branching is factored into
+`buildDatabaseServiceConfigResponse`, testable without a real JWT
+(`server/api_database_test.go`).
 
 `databaseACLRules` (`cluster/cluster_acl_rules.go`) gates this route by
 `strings.Contains` against a literal URL segment, independently of the
-handler's own logic — renaming the route from `/service-opensvc` to
-`/service/{orchestrator}` without updating that rule silently 403s every
-caller regardless of grants, since the ACL layer runs *before* the
-handler's own orchestrator switch and never reaches it. Found only via a
-live JWT-authenticated request (not by `buildDatabaseServiceConfigResponse`'s
-own tests, which deliberately bypass `IsValidClusterACL` to avoid needing a
-real JWT) — fixed by updating the rule to the `/service/` prefix, which
-matches every orchestrator's segment; regression-tested directly in
-`cluster/cluster_acl_test.go` (`TestIsURLPassACLDatabaseServiceRoute`).
+handler's own logic — the rule was updated to the `/service/` prefix so it
+matches every orchestrator's segment (regression-tested in
+`cluster/cluster_acl_test.go`, `TestIsURLPassACLDatabaseServiceRoute`).
 
 Unlike `GetDatabaseServiceConfig`'s locally-regenerated OpenSVC template,
 `K8SGetDatabaseManifests` (`cluster/prov_k8s_manifest.go`) fetches every
 section *live* from the Kubernetes API — Deployment, Service, PVC, and the
 server's pods (by the same `app=repication-manager,tag=<server>` label
 selector `k8sDatabaseDeployment` sets) — since PVC binding status and pod
-state only exist live; a static builder-function re-render (as OpenSVC's
-view effectively is) can't show either. Each object is marshaled to YAML
-(`sigs.k8s.io/yaml`, respecting the same JSON tags client-go itself uses)
-with `TypeMeta` filled in explicitly (`Get`/`List` through a typed client
-clears it) and `ManagedFields` stripped (noise, not useful to a human
-reader). A resource that doesn't exist yet (e.g. no PVC because
-provisioning failed before that step) renders as a `# <error>` YAML comment
-in its own section rather than failing the whole response — same
-"`*FromClient` testable + public live-connecting wrapper" split as
-`k8sStorageClassesFromClient`/`K8SGetStorageClasses`, tested against the
+state only exist live. Each object is marshaled to YAML (`sigs.k8s.io/yaml`)
+with `TypeMeta` filled in explicitly and `ManagedFields` stripped. A
+resource that doesn't exist yet renders as a `# <error>` YAML comment in
+its own section rather than failing the whole response, tested against the
 fake clientset in `cluster/prov_k8s_manifest_test.go`.
 
 Model B's ClusterRole needs `get, list` on the core `pods` resource for the
-pod section — a rule set written before this feature existed won't have it.
-Confirmed live: without it, the pods section renders the exact Forbidden
-error as its YAML comment (the same "error surfaces per-section, not as a
-500" behavior covers this case too) rather than failing the whole response
-— visibly correct behavior even under a missing grant, but still worth
-granting for the feature to actually show pod state.
+pod section; without it, that section renders the Forbidden error as its
+own YAML comment rather than failing the whole response.
 
 Response shape differs by orchestrator and is Content-Type-discriminated:
-OpenSVC keeps returning raw text (unchanged); Kubernetes returns
+OpenSVC returns raw text (unchanged); Kubernetes returns
 `{deployment, service, pvc, pods}` as `application/json`, each value being
-one YAML string. GUI-side, `ServiceOpenSvc` (component name predates this
-generalization, kept as-is —
-`share/dashboard_react/src/Pages/ClusterDB/components/ServiceOpenSvc`)
-renders the Kubernetes case as four labeled sections instead of one text
-blob, dispatching to `service/${orchestrator}` (the cluster's own
-`config.provOrchestrator`, never hardcoded) rather than the old literal
-`service-opensvc` service name. The "Service Config" tab (renamed from
-"Service OpenSVC") is only shown when the cluster's orchestrator actually
-has a view to offer (`opensvc` or `kube`) — every other orchestrator gets
-an empty body from this route, so showing the tab would be dead UX.
+one YAML string. GUI-side, `ServiceOpenSvc`
+(`share/dashboard_react/src/Pages/ClusterDB/components/ServiceOpenSvc`,
+component name predates this generalization) renders the Kubernetes case as
+four labeled sections, dispatching to `service/${orchestrator}` (the
+cluster's own `config.provOrchestrator`). The "Service Config" tab is only
+shown when the cluster's orchestrator has a view to offer (`opensvc` or
+`kube`).
 
 ## Proxy provisioning
 
-`K8SProvisionProxyService()` creates only a Deployment — no Namespace ensure
-(it relies on one already existing from DB provisioning in the same
-cluster), no Service, no config bootstrap, no ConfigMap. It unconditionally
-uses `cluster.Conf.ProvProxProxysqlImg` regardless of the proxy's actual
-type, so Kubernetes proxy provisioning today only really supports ProxySQL.
+`K8SProvisionProxyService()` creates only a Deployment — no Namespace
+ensure (relies on one already existing from DB provisioning), no Service,
+no config bootstrap. It unconditionally uses `cluster.Conf.ProvProxProxysqlImg`
+regardless of the proxy's actual type, so Kubernetes proxy provisioning
+today only really supports ProxySQL.
 
 The Deployment name and selector are unique per proxy
-(`<cluster>-<proxy-name>-deployment`, label `tag: <proxy-name>`), so multiple
-proxies in the same cluster don't collide.
+(`<cluster>-<proxy-name>-deployment`, label `tag: <proxy-name>`), so
+multiple proxies in the same cluster don't collide.
 
 `K8SUnprovisionProxyService()` deletes that Deployment, idempotent via
 `apierrors.IsNotFound`.
@@ -429,103 +477,156 @@ Clusters provisioned before per-proxy naming existed have a single
 `<cluster>-deployment` shared across every proxy, with selector
 `app: repication-manager` only (no `tag`). That selector label-matches new
 per-proxy Deployments' pods too (Kubernetes selector matching only requires
-the specified labels to be present; extra labels don't exclude a match), so
-a lingering legacy Deployment is not fully inert alongside new ones.
+the specified labels to be present), so a lingering legacy Deployment isn't
+fully inert alongside new ones.
 
-It is not automatically deleted: a single proxy's provision or unprovision
+It is not automatically deleted: a single proxy's provision/unprovision
 call has no way to prove the legacy Deployment belongs to that proxy rather
-than a different, not-yet-migrated one in the same cluster. Deleting it from
-a single-proxy-scoped operation could take down an unrelated proxy still
-running under the old scheme.
-
-Both `K8SProvisionProxyService()` and `K8SUnprovisionProxyService()` call
+than a different, not-yet-migrated one in the same cluster. Both
+`K8SProvisionProxyService()` and `K8SUnprovisionProxyService()` call
 `k8sWarnIfLegacyProxyDeploymentExists()` — a read-only `Get()` check that
-logs a warning if the legacy Deployment is still present, so its existence
-is visible rather than silent. Once every proxy in a cluster has been
-reprovisioned under the new per-proxy name, an operator should manually
-delete the leftover Deployment if
-`kubectl get deployment <cluster>-deployment -n <cluster>` still shows one.
+logs a warning if it's still present. An operator should manually delete it
+once every proxy in a cluster has been reprovisioned under the new name.
 
 ### Start/stop
 
-`K8SStartProxyService`/`K8SStopProxyService` return explicit "not supported"
-errors; no lifecycle is implemented.
+`K8SStartProxyService`/`K8SStopProxyService` return explicit "not
+supported" errors; no lifecycle is implemented.
 
 ## Node discovery
 
 `K8SGetNodes()` propagates a `List()` failure and does not index
-`Status.Addresses[0]` unguarded — a node with no reported addresses no
-longer panics the caller. `Agent.HostName` is the node's API object name
-(`node.Name`), used to match operator-supplied `prov-db-agents` entries via
-`GetAgentInOrchetrator` — that must stay `node.Name`, since that's what an
-operator reads from `kubectl get nodes` and writes into config.
+`Status.Addresses[0]` unguarded. `Agent.HostName` is the node's API object
+name (`node.Name`), used to match operator-supplied `prov-db-agents`
+entries via `GetAgentInOrchetrator`.
 
 Node pinning uses a `NodeSelector` on `kubernetes.io/hostname`, not
-`Spec.NodeName`. `NodeName` bypasses the scheduler entirely, and
+`Spec.NodeName`: `NodeName` bypasses the scheduler entirely, and
 `WaitForFirstConsumer` volume binding — the default mode for most dynamic
 provisioners, including `kind`'s local-path-provisioner and typical cloud
-CSI drivers — only runs during scheduling. Verified against a live 3-node
-`kind` cluster: with `NodeName`, the PVC stayed `Pending` indefinitely (no
-`Scheduled` event ever appeared) and the pod never left `Init:0/1`; with
-`NodeSelector`, the pod went through `default-scheduler` normally, the PVC
-bound immediately, and the pod reached `Running`.
+CSI drivers — only runs during scheduling. With `NodeName`, a PVC stays
+`Pending` indefinitely and the pod never leaves `Init:0/1`; with
+`NodeSelector`, the pod schedules normally and the PVC binds.
 
-`node.Name` is not guaranteed to equal the node's `kubernetes.io/hostname`
-label value (they usually match, but nothing enforces it — a node can be
-relabeled, or registered with a `--hostname-override` that diverges from its
-metadata name). `k8sNodesFromClient()` captures each node's
-`kubernetes.io/hostname` label value during the same `nodes/list` call
-`K8SGetNodes` already needs, caching it by `node.Name` on the `Cluster`
+`node.Name` isn't guaranteed to equal the node's `kubernetes.io/hostname`
+label value. `k8sNodesFromClient()` captures each node's
+`kubernetes.io/hostname` label during the same `nodes/list` call
+`K8SGetNodes` already needs, caching it by `node.Name`
 (`k8sNodeHostnameLabels`, guarded by `k8sNodeHostnameLabelsMu`).
 `k8sHostnameLabel()` reads that cache when building the Deployment's
 `NodeSelector`, falling back to `node.Name` if the label was empty or the
-node was never seen. This resolves the mismatch case without any per-node
-`nodes/get` call — a least-privilege RBAC setup that grants only
-`nodes/list` still gets correct placement.
+node was never seen — resolves the mismatch without any per-node
+`nodes/get` call.
 
-Because pinning now goes through the scheduler instead of bypassing it, the
-target node must actually be schedulable under normal scheduler predicates:
-taints without a matching toleration, or any other predicate that would
-reject the pod, now block provisioning where a raw `NodeName` assignment
-previously would not have. No tolerations are added — the assumption is that
-nodes listed in `prov-db-agents` are meant to run database pods and are
-schedulable in the ordinary sense; a tainted or otherwise cordoned node in
-that list will leave the pod `Pending`.
+Because pinning goes through the scheduler, the target node must be
+schedulable under normal scheduler predicates — a taint without a matching
+toleration now blocks provisioning where a raw `NodeName` assignment
+previously wouldn't have. No tolerations are added; nodes listed in
+`prov-db-agents` are assumed schedulable.
 
 ## Database start/stop lifecycle
 
-`K8SStopDatabaseService()` returns an explicit
-`"stop is not supported for the kubernetes orchestrator"` error; there is no
-scale-to-zero/drain semantic for the Deployment.
-
-`K8SStartDatabaseService()` has no real start/scale-up either, but it does
-`Get()` the Deployment and returns an explicit error if it is missing or has
-a desired replica count of zero — it only reports success if the Deployment
-exists with a non-zero desired replica count. This is a state check, not a
-health check, and never scales anything up.
+`K8SStopDatabaseService()`/`K8SStartDatabaseService()` do a real
+scale-to-0/scale-to-1 cycle (`k8sStopDatabaseServiceWithClient`/
+`k8sStartDatabaseServiceWithClient`, `prov_k8s_db.go`): Stop patches
+`spec.replicas` to `0` (the pod fully terminates, PVC detaches — a genuine
+stop, not a no-op), Start patches it back to `1` (idempotent — patching to
+`1` when already at `1` is a harmless no-op, since Start is called
+unconditionally by some callers regardless of whether a prior Stop actually
+ran). Start always creates a brand-new pod when scaling up from `0`, so it
+re-runs the init container exactly like a restart does — Stop then Start
+ends up with the same freshly-configured result as
+`K8SRestartDatabaseService`, just via an explicit, deliberate scale-to-0
+step (pod fully down between the two calls) instead of a rolling
+replacement. Neither path is actually zero-downtime here: this is a
+single-replica Deployment on a `ReadWriteOnce` PVC with no
+recreate/availability guarantee in the spec, so the new pod can't come up
+until the old one releases the volume regardless of which mechanism
+triggers it — the rolling replacement is lighter (no explicit scale-to-0,
+Deployment/PVC stay attached throughout), not a stronger availability
+guarantee.
 
 `RestartDatabaseService` (`cluster/prov.go`) has a Kubernetes-specific
-branch that no longer routes through `Stop → WaitDatabaseFailed → Start` at
-all — it calls `K8SForceRepullDatabaseService` directly (see "Secrets,
-image pull policy, and storage class" above), a rolling pod replacement via
-annotation patch, which works with the Deployment model instead of fighting
-it. `StopDatabaseServiceClean`, `RollingUpgrade`, the scheduler
-rolling-restart path, and the security-fix rolling-restart path still
-dispatch through the generic stop lifecycle with no orchestrator-aware
-gating, so they still fail fast with an explicit error for Kubernetes —
-only the specific `RestartDatabaseService` path was fixed here. A real
-scale-based start/stop pair, and extending the rolling-replacement approach
-to those other paths, remains deferred under #1497.
+branch that calls `K8SForceRepullDatabaseService` directly (see "Secrets,
+image pull policy, and storage class" above) instead of routing through
+`Stop → WaitDatabaseFailed → Start`. It deliberately also re-asserts
+`prov-kube-image-force-pull`'s current `ImagePullPolicy` on every call —
+documented, intentional behavior for this single-server, operator-initiated
+action (`/actions/restart`).
+
+`RollingRestart` (`cluster/cluster_roll.go`) has an equivalent Kubernetes
+branch at each of its two stop/wait/start sequences (per slave, and the old
+master), but calls `K8SRestartDatabaseServiceWaitRejoin`
+(`cluster/cluster_tst.go`) instead of `StopDatabaseService →
+WaitDatabaseFailed → StartDatabaseWaitRejoin`. `K8SStopDatabaseService`/
+`K8SStartDatabaseService` do work (see "Database start/stop lifecycle"
+below), but that generic dance is heavier than needed for a plain restart —
+an explicit scale-to-0 step, not needed here.
+`K8SRestartDatabaseServiceWaitRejoin` mirrors `StartDatabaseWaitRejoin`'s
+own synchronization contract exactly — spawn `WaitRejoin` first, prime the
+`need-config-fetch` cookie, then drive the actual restart and wait for
+`WaitRejoin`'s completion signal — but calls `K8SRestartDatabaseService` (a
+rolling pod replacement, patching only the `restartedAt` annotation, never
+`ImagePullPolicy`) instead of the generic `StartDatabaseService`. A plain
+raw-connectivity wait (`WaitDatabaseStart`) is not equivalent and was
+tried first, then corrected: it doesn't wait for repman to actually confirm
+the server rejoined the replication topology, which `WaitRejoin`'s
+`rejoinCond` signal does — fired from `srv.go`/`srv_rejoin.go` purely on a
+`PrevState == stateFailed` transition observed by repman's own monitoring
+loop, orchestrator-agnostic, so it fires correctly for Kubernetes too.
+
+`rejoinCond` alone is not sufficient, though: it only fires when
+`rejoinSlave`/`RejoinMaster` actually run, which requires
+`PrevState == stateFailed` at reconnect. `RollingRestart` puts every server
+into Maintenance mode before restarting it (for every orchestrator, not
+just Kubernetes), and a clean, fast pod replacement — nothing for
+replication to actively rejoin — can go straight from Suspect back to
+healthy without ever registering as Failed, in which case `WaitRejoin`
+just spuriously times out (no error, matches OpenSVC/onpremise's own
+`StartDatabaseWaitRejoin`, which has the identical characteristic). That
+timeout is harmless for correctness — `SwitchOver()` runs unconditionally
+afterward regardless of whether `WaitRejoin` got a real signal — but it
+gave no way to tell "restart genuinely happened, just no rejoin needed"
+apart from "the rollout silently never happened at all" (image pull
+failure, scheduling problem, PVC attach issue): both cases left
+`WaitRejoin` to time out with no error either way.
+`K8SRestartDatabaseServiceWaitRejoin` closes that gap with
+`K8SWaitRolloutComplete` (`k8sWaitRolloutCompleteWithClient`,
+`prov_k8s_db.go`) immediately after triggering the restart: it polls the
+Deployment for the same condition `kubectl rollout status` checks
+(`ObservedGeneration`, `UpdatedReplicas`, `ReadyReplicas`, `Replicas` all
+caught up) and returns a real error on timeout (90s) if the rollout itself
+never completes — independent of, and faster than, whatever `WaitRejoin`
+does or doesn't observe.
+
+Deliberately *not* `RestartDatabaseService`/`K8SForceRepullDatabaseService`
+for the underlying restart step: `RollingRestart` is often triggered on a
+schedule (`scheduler-rolling-restart`) or in bulk, and a restart must never
+also change what image gets pulled — only an explicit upgrade action
+should do that. This single function backs every trigger of a rolling
+restart — the `scheduler-rolling-restart` cron, the security-fix
+rolling-restart path (`cluster_sec_fix.go`), and the manual API/gRPC
+actions — so all of them now work for Kubernetes, not just
+`/actions/restart`, and none of them silently re-pull an image.
+`RollingReprov` was already fine (unprovisions and reprovisions each server
+rather than stopping/starting it, so it never hit the unsupported stop
+path) — and does still pick up the current image, since it goes through the
+full Deployment rebuild.
+
+`StopDatabaseServiceClean` and `RollingUpgrade` still dispatch through the
+generic stop lifecycle with no orchestrator-aware gating, so a Kubernetes
+version/image upgrade via `RollingUpgrade` still fails fast — not fixed
+here, since it's a materially different operation (clean shutdown ahead of
+an actual binary swap, not just a restart) that needs its own Kubernetes
+handling. A real scale-based start/stop pair remains deferred under #1497.
 
 ## Idempotency and error propagation
 
-Namespace/PVC/ConfigMap/Deployment/Service create paths distinguish
+Namespace/PVC/Deployment/Service create paths distinguish
 `apierrors.IsAlreadyExists` from genuine failures via typed classification,
-not string matching. For PVC, ConfigMap (best-effort either way),
-Deployment, and Service, a genuine failure stops the provisioning flow and
-reports the error. Namespace is the one exception (see above) and stays
-best-effort/non-fatal, since a `Create()` failure there can't reliably be
-classified from this code alone. All delete paths use
+not string matching. For PVC, Deployment, and Service, a genuine failure
+stops the provisioning flow and reports the error. Namespace is the one
+exception (see above) and stays best-effort/non-fatal. All delete paths use
 `apierrors.IsNotFound` the same way. Every `K8S*ProvisionService`/
 `K8S*UnprovisionService` function sends exactly one value on
 `cluster.errorChan`.
@@ -535,88 +636,97 @@ returns an explicit error and aborts instead of silently defaulting to
 port `0`.
 
 **`AlreadyExists` means create-only idempotent, not reconciled to the
-current desired spec.** Treating it as success never diffs or patches the
-existing object — it only avoids a spurious failure on a second provision.
-An existing Deployment/Service/PVC with an outdated spec (e.g. from an older
-repman version) is not corrected by reprovisioning; `Create()` returns
-`AlreadyExists`, that is treated as success, and the stale object is left
-as-is. Spec reconciliation (diff + `Update()`/`Patch()`) is not implemented.
-The interim remediation for a stale object is manual: delete it and let the
-next provision recreate it correctly.
+current desired spec.** An existing Deployment/Service/PVC with an outdated
+spec is not corrected by reprovisioning — `Create()` returns
+`AlreadyExists`, treated as success, and the stale object is left as-is.
+Spec reconciliation (diff + `Update()`/`Patch()`) is not implemented; the
+interim remediation is manual deletion and recreation.
 
 ## Testing
 
 Focused unit tests in `cluster/prov_k8s_test.go`, using
 `k8s.io/client-go/kubernetes/fake`, cover: node-address safety, node-list
-error propagation, proxy naming uniqueness and non-collision between two
-proxies, invalid-port rejection, `AlreadyExists`/`NotFound` idempotency on
-provisioning and unprovisioning, namespace-ensure never blocking on a
-`Create()` failure, the legacy proxy Deployment being left untouched by both
-provision and unprovision, `K8SStartDatabaseService`'s state check, and
-`k8sHostnameLabel()`'s cached label-vs-node-name resolution (matching label,
-missing label, uncached node).
+error propagation, proxy naming uniqueness, invalid-port rejection,
+`AlreadyExists`/`NotFound` idempotency, namespace-ensure never blocking on
+a `Create()` failure, the legacy proxy Deployment being left untouched,
+`K8SStartDatabaseService`'s state check, `k8sHostnameLabel()`'s cached
+label-vs-node-name resolution, and the bootstrap/dbjobs shell logic
+(exercised through a real `sh`, not just asserted from the generated
+command's text shape) — see "Bootstrap" and "dbjobs sidecar" above for the
+specific test names.
 
 The provisioning/unprovisioning logic is split into
 `kubernetes.Interface`-parameterized helpers (e.g.
 `k8sProvisionProxyServiceWithClient`, `k8sUnprovisionDatabaseServiceWithClient`,
 `k8sNodesFromClient`) so a fake clientset can exercise them; the public
-`K8S*` methods are thin live-connection wrappers. `K8SConnectAPI()`'s
-concrete `*kubernetes.Clientset` return type and kubeconfig source are
-unchanged.
+`K8S*` methods are thin live-connection wrappers.
 
-Manually verified against a live 3-node `kind` cluster: DB provision (Namespace/
-PVC/Deployment/Service creation, node scheduling, PVC binding, config
-bootstrap via the init container, MariaDB startup), stop (explicit error,
-pod left untouched), start (state check passes against the running
-Deployment), and unprovision (Deployment/Service deleted, PVC/ConfigMap
-retained) all behaved as documented above.
+Manually verified against a live `kind` cluster, both deployment models: DB
+provision (Namespace/PVC/Deployment/Service creation, node scheduling, PVC
+binding, config bootstrap, MariaDB startup), stop/start, unprovision, the
+outage-fallback path (repman unreachable at pod restart — persisted config
+applied unchanged, init container exits `0`), `/actions/restart` on
+Kubernetes, and RBAC gaps (`secrets`/`deployments`/`pods` patch and list
+grants). Not covered by a live pass: the "nothing ever persisted" first-boot
+case and a corrupt-tarball download — both only unit-tested.
 
-No Kubernetes-capable regtest/CI harness exists in this repository, so this
-verification is not repeatable/automated — it does not substitute for real
-CI integration coverage. Closing that gap requires provisioning a
+No Kubernetes-capable regtest/CI harness exists in this repository, so none
+of the above is repeatable/automated — it does not substitute for real CI
+integration coverage. Closing that gap requires provisioning a
 kind/minikube-style cluster in CI and extending `regtest/` with
 Kubernetes-orchestrated scenarios.
 
 ## Known limitations
 
-- ConfigMap fate (mount it for real bootstrap, or remove it) is undecided.
+- The persisted config can go stale: it's only refreshed on a successful
+  live fetch, so a config change with no restart since leaves the
+  persisted copy out of date. Matches OpenSVC's own bootstrap staleness
+  characteristics.
+- The bootstrap auth-header Secret key (`REPMAN_AUTH_HEADER`, see
+  "Bootstrap" above) goes stale the same way if `api-credentials` changes
+  without a reprovision — matches OpenSVC's own `REPLICATION_MANAGER_PASSWORD`
+  secret, which has the identical characteristic.
+- A server never successfully provisioned gets no benefit from this
+  mechanism during an outage — `mariadbd` starts with the image's bare
+  defaults and the dbjobs sidecar idles, matching OpenSVC's
+  `optional=true` behavior.
+- No real K8s-capable regtest/CI coverage for the outage-fallback path.
 - PVC and Namespace deletion semantics on unprovision are undecided.
-- No real start/stop lifecycle (e.g. Deployment scale 0/1) for Kubernetes
-  DBs or proxies.
+- No real start/stop lifecycle for Kubernetes proxies (DBs have one now —
+  see "Database start/stop lifecycle" above).
 - No proxy Service exposure, and no Kubernetes proxy support beyond
   ProxySQL.
-- Per-pod DNS (`prov-net-cni`) covers DB pods only — no equivalent for
-  proxies yet (see "Per-pod DNS" above).
+- Per-pod DNS (`prov-net-cni`) covers DB pods only, not proxies.
 - A `<cluster>-deployment` left over from before per-proxy Deployment
   naming requires manual operator cleanup (see "Legacy deployment name"
-  above); repman only warns about it, since automatic cleanup can't prove
-  ownership from a single-proxy-scoped operation.
-- `AlreadyExists` does not reconcile an existing object's spec (see
-  "Idempotency and error propagation" above).
+  above).
+- `AlreadyExists` does not reconcile an existing object's spec.
 - Kubernetes provisioning code compiles regardless of `WithOpenSVC`, but
   `--kube-config` and the `kube` orchestrator default are only
   registered/exposed when `WithOpenSVC=="ON"` — `kube-config` remains
   settable via TOML/env in any build regardless.
 - `K8SStopDatabaseService`/`K8SStartDatabaseService` returning a real error
-  (instead of always `nil`) does not by itself surface that error to
-  callers: `cluster/prov.go`'s `StopDatabaseService`/`StartDatabaseService`
-  run `StopDatabaseScript`/`StartDatabaseScript` unconditionally regardless
-  of the orchestrator result, and `server/api_database.go`'s stop/start
-  handlers discard the returned error entirely. This is the same for every
-  orchestrator, not Kubernetes-specific, and predates this change — not
-  fixed here, since it would mean changing the generic `prov.go` contract
-  and multiple API handlers shared by all orchestrators.
-- `RestartDatabaseService` (API `/actions/restart`) now has a Kubernetes
-  branch that triggers a rolling pod replacement (the same mechanism
-  `prov-kube-image-force-pull` relies on) instead of the generic
-  `Stop → WaitDatabaseFailed → Start`, which always failed for Kubernetes
-  (`K8SStopDatabaseService` has no scale-to-zero/drain semantic and
-  unconditionally errors). `RollingUpgrade` (`handlerMuxRollingAction`, the
-  scheduler, the dashboard) still dispatches with no orchestrator-aware
-  gating and still hits that same unsupported stop lifecycle via
-  `StopDatabaseServiceClean` — same pre-existing, cross-orchestrator gap,
-  not fixed here. `RollingReprov` is different: it unprovisions and
-  reprovisions each server rather than stopping/starting it, so it never
-  hit the unsupported stop path in the first place.
+  does not by itself surface that error to callers:
+  `StopDatabaseService`/`StartDatabaseService` (`cluster/prov.go`) run
+  `StopDatabaseScript`/`StartDatabaseScript` unconditionally regardless of
+  the orchestrator result, and the API stop/start handlers discard the
+  returned error entirely. Same for every orchestrator, not
+  Kubernetes-specific, and not fixed here.
+- `RollingUpgrade` (`handlerMuxRollingAction`, the scheduler, the
+  dashboard) no longer hits an unsupported stop lifecycle for Kubernetes —
+  `StopDatabaseServiceClean` now goes through the real
+  `K8SStopDatabaseService`/`K8SStartDatabaseService` scale cycle — but it's
+  still not a genuine upgrade there: `UpdateDatabaseServiceConfig` (the
+  step that would force a fresh image pull) is OpenSVC-only
+  (`cluster/prov.go`, defaults to a no-op for every other orchestrator),
+  and nothing in `RollingUpgrade` ever patches the Deployment's `image:`
+  field. Mechanically it would now stop and restart every server with the
+  same image, not actually upgrade it — not audited further here, since
+  fixing it needs its own Kubernetes-specific image-pull step (mirroring
+  what `K8SForceRepullDatabaseService` already does for `/actions/restart`)
+  and a survey of the rest of the function for other OpenSVC-only
+  assumptions. `RollingReprov` is different: it unprovisions and
+  reprovisions each server rather than stopping/starting it, so it always
+  picks up the current image regardless.
 
 All of the above require a design decision and are tracked under issue #1497.

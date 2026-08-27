@@ -165,31 +165,49 @@ func (cluster *Cluster) RollingRestart() error {
 				time.Sleep(time.Second)
 			}
 
-			err := cluster.StopDatabaseService(slave)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.URL, err)
-				if maintenanceEnabled {
-					slave.SwitchMaintenance()
+			// K8SRestartDatabaseServiceWaitRejoin (cluster_tst.go) is
+			// lighter than the generic stop->wait failed->start dance
+			// below. Not RestartDatabaseService/K8SForceRepullDatabaseService
+			// either: this is a scheduled/bulk restart
+			// (scheduler-rolling-restart), and silently re-asserting the
+			// image-pull-policy setting on every scheduled restart would
+			// be a surprising side effect.
+			if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+				err := cluster.K8SRestartDatabaseServiceWaitRejoin(slave)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
+					if maintenanceEnabled {
+						slave.SwitchMaintenance()
+					}
+					return err
 				}
-				return err
-			}
+			} else {
+				err := cluster.StopDatabaseService(slave)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.URL, err)
+					if maintenanceEnabled {
+						slave.SwitchMaintenance()
+					}
+					return err
+				}
 
-			err = cluster.WaitDatabaseFailed(slave)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling stop slave does not transit Failed %s %s", slave.URL, err)
-				if maintenanceEnabled {
-					slave.SwitchMaintenance()
+				err = cluster.WaitDatabaseFailed(slave)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling stop slave does not transit Failed %s %s", slave.URL, err)
+					if maintenanceEnabled {
+						slave.SwitchMaintenance()
+					}
+					return err
 				}
-				return err
-			}
 
-			err = cluster.StartDatabaseWaitRejoin(slave)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
-				if maintenanceEnabled {
-					slave.SwitchMaintenance()
+				err = cluster.StartDatabaseWaitRejoin(slave)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
+					if maintenanceEnabled {
+						slave.SwitchMaintenance()
+					}
+					return err
 				}
-				return err
 			}
 		}
 		currentMaster := cluster.GetMaster()
@@ -229,29 +247,43 @@ func (cluster *Cluster) RollingRestart() error {
 		}
 		time.Sleep(time.Second)
 	}
-	err := cluster.StopDatabaseService(master)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master stop failed %s %s", master.URL, err)
-		if maintenanceEnabled {
-			master.SwitchMaintenance()
+	// See the matching Kubernetes branch in the slave loop above for why
+	// this uses the lighter K8SRestartDatabaseServiceWaitRejoin instead of
+	// the generic stop->wait failed->start dance (or RestartDatabaseService).
+	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+		err := cluster.K8SRestartDatabaseServiceWaitRejoin(master)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not restart %s %s", master.URL, err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
+			return err
 		}
-		return err
-	}
-	err = cluster.WaitDatabaseFailed(master)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not transit suspect %s %s", master.URL, err)
-		if maintenanceEnabled {
-			master.SwitchMaintenance()
+	} else {
+		err := cluster.StopDatabaseService(master)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master stop failed %s %s", master.URL, err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
+			return err
 		}
-		return err
-	}
-	err = cluster.StartDatabaseWaitRejoin(master)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not restart %s %s", master.URL, err)
-		if maintenanceEnabled {
-			master.SwitchMaintenance()
+		err = cluster.WaitDatabaseFailed(master)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not transit suspect %s %s", master.URL, err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
+			return err
 		}
-		return err
+		err = cluster.StartDatabaseWaitRejoin(master)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not restart %s %s", master.URL, err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
+			return err
+		}
 	}
 	master.WaitSyncToMaster(cluster.master)
 	if maintenanceEnabled {
