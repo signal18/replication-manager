@@ -315,9 +315,9 @@ own — `K8SForceRepullDatabaseService` (`k8sForceRepullDatabaseServiceWithClien
 patches both the pod template's `restartedAt` annotation and the
 container's `ImagePullPolicy` in the same call. `RestartDatabaseService`
 (`cluster/prov.go`, API `/actions/restart`) routes to it for Kubernetes
-instead of the generic `Stop → WaitDatabaseFailed → Start`, which always
-fails for Kubernetes (`K8SStopDatabaseService` has no scale-to-zero/drain
-semantic).
+instead of the generic `Stop → WaitDatabaseFailed → Start` — not because
+that path can't work (see "Database start/stop lifecycle" below), but
+because it's lighter, with no explicit scale-to-0 step.
 
 The API handler for that route (`handlerMuxServerRestart`,
 `server/api_database.go`) originally hardcoded `orchestrator == "opensvc"`

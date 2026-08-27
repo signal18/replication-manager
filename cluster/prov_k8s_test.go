@@ -785,6 +785,39 @@ func TestK8SWaitRolloutComplete_MissingDeploymentIsError(t *testing.T) {
 	}
 }
 
+// A transient Get error (API server hiccup, rate limiting) must be
+// retried like "not yet rolled out", not treated as fatal the way a
+// genuine NotFound is.
+func TestK8SWaitRolloutComplete_RetriesOnTransientGetError(t *testing.T) {
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest", Generation: 1},
+		Spec:       appsv1.DeploymentSpec{Replicas: int32Ptr(1)},
+		Status: appsv1.DeploymentStatus{
+			ObservedGeneration: 1,
+			UpdatedReplicas:    1,
+			ReadyReplicas:      1,
+			Replicas:           1,
+		},
+	}
+	client := fake.NewSimpleClientset(dep)
+	failuresLeft := 2
+	client.PrependReactor("get", "deployments", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if failuresLeft > 0 {
+			failuresLeft--
+			return true, nil, apierrors.NewServiceUnavailable("transient")
+		}
+		return false, nil, nil
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sWaitRolloutCompleteWithClient(client, "db1", time.Second, 5*time.Millisecond); err != nil {
+		t.Fatalf("expected transient errors to be retried until success, got: %s", err)
+	}
+	if failuresLeft != 0 {
+		t.Fatalf("expected all injected transient errors to have been consumed, %d remaining", failuresLeft)
+	}
+}
+
 // --- Force image re-pull action (rolling restart via annotation patch) ---
 
 func TestK8SForceRepullDatabaseService_PatchesRestartedAtAnnotation(t *testing.T) {

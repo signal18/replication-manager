@@ -729,7 +729,15 @@ func (cluster *Cluster) k8sWaitRolloutCompleteWithClient(client kubernetes.Inter
 	for {
 		dep, err := deploymentsClient.Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
-			return err
+			// NotFound fails fast -- the Deployment genuinely doesn't
+			// exist, retrying won't change that. Any other error (a
+			// transient API server hiccup, rate limiting) is retried like
+			// "not yet rolled out" instead of aborting the whole wait.
+			if apierrors.IsNotFound(err) || time.Now().After(deadline) {
+				return err
+			}
+			time.Sleep(pollInterval)
+			continue
 		}
 		wantReplicas := int32(1)
 		if dep.Spec.Replicas != nil {

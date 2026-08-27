@@ -574,6 +574,8 @@ func TestResolveMysqldumpDestNoSplitdump(t *testing.T) {
 	}
 }
 
+func boolPtr(b bool) *bool { return &b }
+
 func TestShouldRunRestic(t *testing.T) {
 	tests := []struct {
 		name             string
