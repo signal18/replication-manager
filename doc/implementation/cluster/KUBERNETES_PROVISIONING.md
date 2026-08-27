@@ -526,13 +526,25 @@ previously wouldn't have. No tolerations are added; nodes listed in
 
 ## Database start/stop lifecycle
 
-`K8SStopDatabaseService()` returns an explicit "stop is not supported for
-the kubernetes orchestrator" error; there is no scale-to-zero/drain
-semantic for the Deployment.
-
-`K8SStartDatabaseService()` has no real start/scale-up either, but does
-`Get()` the Deployment and returns an explicit error if it's missing or has
-a desired replica count of zero. This is a state check, not a health check.
+`K8SStopDatabaseService()`/`K8SStartDatabaseService()` do a real
+scale-to-0/scale-to-1 cycle (`k8sStopDatabaseServiceWithClient`/
+`k8sStartDatabaseServiceWithClient`, `prov_k8s_db.go`): Stop patches
+`spec.replicas` to `0` (the pod fully terminates, PVC detaches — a genuine
+stop, not a no-op), Start patches it back to `1` (idempotent — patching to
+`1` when already at `1` is a harmless no-op, since Start is called
+unconditionally by some callers regardless of whether a prior Stop actually
+ran). Start always creates a brand-new pod when scaling up from `0`, so it
+re-runs the init container exactly like a restart does — Stop then Start
+ends up with the same freshly-configured result as
+`K8SRestartDatabaseService`, just via an explicit, deliberate scale-to-0
+step (pod fully down between the two calls) instead of a rolling
+replacement. Neither path is actually zero-downtime here: this is a
+single-replica Deployment on a `ReadWriteOnce` PVC with no
+recreate/availability guarantee in the spec, so the new pod can't come up
+until the old one releases the volume regardless of which mechanism
+triggers it — the rolling replacement is lighter (no explicit scale-to-0,
+Deployment/PVC stay attached throughout), not a stronger availability
+guarantee.
 
 `RestartDatabaseService` (`cluster/prov.go`) has a Kubernetes-specific
 branch that calls `K8SForceRepullDatabaseService` directly (see "Secrets,
@@ -546,8 +558,10 @@ action (`/actions/restart`).
 branch at each of its two stop/wait/start sequences (per slave, and the old
 master), but calls `K8SRestartDatabaseServiceWaitRejoin`
 (`cluster/cluster_tst.go`) instead of `StopDatabaseService →
-WaitDatabaseFailed → StartDatabaseWaitRejoin`, which can never work for
-Kubernetes (`K8SStopDatabaseService` always errors).
+WaitDatabaseFailed → StartDatabaseWaitRejoin`. `K8SStopDatabaseService`/
+`K8SStartDatabaseService` do work (see "Database start/stop lifecycle"
+below), but that generic dance is heavier than needed for a plain restart —
+an explicit scale-to-0 step, not needed here.
 `K8SRestartDatabaseServiceWaitRejoin` mirrors `StartDatabaseWaitRejoin`'s
 own synchronization contract exactly — spawn `WaitRejoin` first, prime the
 `need-config-fetch` cookie, then drive the actual restart and wait for
@@ -678,8 +692,8 @@ Kubernetes-orchestrated scenarios.
   `optional=true` behavior.
 - No real K8s-capable regtest/CI coverage for the outage-fallback path.
 - PVC and Namespace deletion semantics on unprovision are undecided.
-- No real start/stop lifecycle (e.g. Deployment scale 0/1) for Kubernetes
-  DBs or proxies.
+- No real start/stop lifecycle for Kubernetes proxies (DBs have one now —
+  see "Database start/stop lifecycle" above).
 - No proxy Service exposure, and no Kubernetes proxy support beyond
   ProxySQL.
 - Per-pod DNS (`prov-net-cni`) covers DB pods only, not proxies.
@@ -699,10 +713,20 @@ Kubernetes-orchestrated scenarios.
   returned error entirely. Same for every orchestrator, not
   Kubernetes-specific, and not fixed here.
 - `RollingUpgrade` (`handlerMuxRollingAction`, the scheduler, the
-  dashboard) still dispatches with no orchestrator-aware gating and still
-  hits the unsupported stop lifecycle via `StopDatabaseServiceClean` —
-  same pre-existing, cross-orchestrator gap. `RollingReprov` is
-  different: it unprovisions and reprovisions each server rather than
-  stopping/starting it, so it never hits the unsupported stop path.
+  dashboard) no longer hits an unsupported stop lifecycle for Kubernetes —
+  `StopDatabaseServiceClean` now goes through the real
+  `K8SStopDatabaseService`/`K8SStartDatabaseService` scale cycle — but it's
+  still not a genuine upgrade there: `UpdateDatabaseServiceConfig` (the
+  step that would force a fresh image pull) is OpenSVC-only
+  (`cluster/prov.go`, defaults to a no-op for every other orchestrator),
+  and nothing in `RollingUpgrade` ever patches the Deployment's `image:`
+  field. Mechanically it would now stop and restart every server with the
+  same image, not actually upgrade it — not audited further here, since
+  fixing it needs its own Kubernetes-specific image-pull step (mirroring
+  what `K8SForceRepullDatabaseService` already does for `/actions/restart`)
+  and a survey of the rest of the function for other OpenSVC-only
+  assumptions. `RollingReprov` is different: it unprovisions and
+  reprovisions each server rather than stopping/starting it, so it always
+  picks up the current image regardless.
 
 All of the above require a design decision and are tracked under issue #1497.

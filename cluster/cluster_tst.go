@@ -648,18 +648,17 @@ func (cluster *Cluster) StartDatabaseWaitRejoin(server *ServerMonitor) error {
 
 // K8SRestartDatabaseServiceWaitRejoin mirrors StartDatabaseWaitRejoin's
 // synchronization contract (spawn WaitRejoin, prime the need-config-fetch
-// cookie, wait for rejoin completion) but drives the actual restart via
-// K8SRestartDatabaseService (a rolling pod replacement) instead of the
-// generic StartDatabaseService, which Kubernetes has no equivalent of
-// (K8SStopDatabaseService always errors, so nothing ever puts a server in a
-// stopped state StartDatabaseService could resume from). WaitRejoin's own
-// completion signal (rejoinCond) is fired purely from repman's monitoring
-// loop observing a server's PrevState==stateFailed transition back to a
-// working state (srv.go, srv_rejoin.go) -- orchestrator-agnostic, so it
-// fires correctly here too, the same as for OpenSVC/onpremise. Used by
-// RollingRestart's Kubernetes branch: WaitDatabaseStart alone (raw
-// connectivity) is not equivalent -- it doesn't wait for repman to actually
-// confirm the server rejoined the replication topology.
+// cookie, wait for rejoin completion) but drives the restart via
+// K8SRestartDatabaseService -- lighter than the generic
+// StopDatabaseService -> WaitDatabaseFailed -> StartDatabaseService dance
+// (no explicit scale-to-0 step), though not actually zero-downtime: single
+// replica on a ReadWriteOnce PVC means the new pod can't come up until the
+// old one releases the volume either way. WaitRejoin's completion signal
+// (rejoinCond) fires from repman's monitoring loop observing
+// PrevState==stateFailed (srv.go, srv_rejoin.go) -- orchestrator-agnostic,
+// so it fires correctly here too. WaitDatabaseStart alone (raw
+// connectivity) isn't equivalent -- it doesn't confirm the server actually
+// rejoined the replication topology.
 func (cluster *Cluster) K8SRestartDatabaseServiceWaitRejoin(server *ServerMonitor) error {
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)

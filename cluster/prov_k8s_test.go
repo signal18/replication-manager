@@ -534,48 +534,86 @@ func TestK8SWarnIfLegacyProxyDeployment_AbsentIsSilentNoOp(t *testing.T) {
 	cluster.k8sWarnIfLegacyProxyDeploymentExists(client)
 }
 
-// --- Database start: verify state instead of blindly reporting success ---
+// --- Database stop/start: a real scale-to-0/scale-to-1 cycle ---
+//
+// Stop then Start ends up with the same freshly-configured pod as
+// K8SRestartDatabaseService, just via a genuine downtime window instead of
+// a rolling replacement -- see k8sStopDatabaseServiceWithClient and
+// k8sStartDatabaseServiceWithClient (prov_k8s_db.go).
 
-func TestK8SStartDatabase_MissingDeploymentIsError(t *testing.T) {
-	client := fake.NewSimpleClientset()
-	cluster := newTestCluster("k8stest")
-	if err := cluster.k8sStartDatabaseServiceWithClient(client, "db1"); err == nil {
-		t.Fatal("expected an error when the deployment to start does not exist, not a silent success")
-	}
-}
-
-func TestK8SStartDatabase_ScaledToZeroIsError(t *testing.T) {
-	zero := int32(0)
-	client := fake.NewSimpleClientset(&appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
-		Spec:       appsv1.DeploymentSpec{Replicas: &zero},
-	})
-	cluster := newTestCluster("k8stest")
-	if err := cluster.k8sStartDatabaseServiceWithClient(client, "db1"); err == nil {
-		t.Fatal("expected an error when the deployment is scaled to zero, not a silent success")
-	}
-}
-
-func TestK8SStartDatabase_GenuineGetErrorPropagates(t *testing.T) {
-	client := fake.NewSimpleClientset()
-	client.PrependReactor("get", "deployments", func(action k8stesting.Action) (bool, runtime.Object, error) {
-		return true, nil, apierrors.NewForbidden(appsv1.Resource("deployments"), "db1", context.DeadlineExceeded)
-	})
-	cluster := newTestCluster("k8stest")
-	if err := cluster.k8sStartDatabaseServiceWithClient(client, "db1"); err == nil {
-		t.Fatal("expected a genuine (non-NotFound) Get error to propagate")
-	}
-}
-
-func TestK8SStartDatabase_RunningDeploymentSucceeds(t *testing.T) {
+func TestK8SStopDatabase_ScalesReplicasToZero(t *testing.T) {
 	one := int32(1)
 	client := fake.NewSimpleClientset(&appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
 		Spec:       appsv1.DeploymentSpec{Replicas: &one},
 	})
 	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStopDatabaseServiceWithClient(client, "db1"); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), "db1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if dep.Spec.Replicas == nil || *dep.Spec.Replicas != 0 {
+		t.Fatalf("expected replicas to be patched to 0, got %v", dep.Spec.Replicas)
+	}
+}
+
+func TestK8SStopDatabase_MissingDeploymentIsError(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStopDatabaseServiceWithClient(client, "db1"); err == nil {
+		t.Fatal("expected an error when the deployment to stop does not exist")
+	}
+}
+
+func TestK8SStartDatabase_ScalesReplicasToOne(t *testing.T) {
+	zero := int32(0)
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec:       appsv1.DeploymentSpec{Replicas: &zero},
+	})
+	cluster := newTestCluster("k8stest")
+
 	if err := cluster.k8sStartDatabaseServiceWithClient(client, "db1"); err != nil {
 		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), "db1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if dep.Spec.Replicas == nil || *dep.Spec.Replicas != 1 {
+		t.Fatalf("expected replicas to be patched back to 1, got %v", dep.Spec.Replicas)
+	}
+}
+
+// Patching replicas to 1 when already at 1 must be a harmless no-op, not
+// an error -- Start is called unconditionally by K8SRestartDatabaseService's
+// callers regardless of whether the server was actually stopped first.
+func TestK8SStartDatabase_AlreadyRunningIsNoOp(t *testing.T) {
+	one := int32(1)
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec:       appsv1.DeploymentSpec{Replicas: &one},
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStartDatabaseServiceWithClient(client, "db1"); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+}
+
+func TestK8SStartDatabase_MissingDeploymentIsError(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStartDatabaseServiceWithClient(client, "db1"); err == nil {
+		t.Fatal("expected an error when the deployment to start does not exist")
 	}
 }
 

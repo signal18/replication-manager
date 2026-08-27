@@ -165,22 +165,13 @@ func (cluster *Cluster) RollingRestart() error {
 				time.Sleep(time.Second)
 			}
 
-			// K8SStopDatabaseService always errors (Kubernetes has no
-			// scale-to-zero/drain semantic), so the generic stop->wait
-			// failed->start dance below can never work here.
-			// K8SRestartDatabaseServiceWaitRejoin mirrors
-			// StartDatabaseWaitRejoin's own synchronization contract (wait
-			// for WaitRejoin's completion signal, not just raw
-			// connectivity) while driving the restart via a rolling pod
-			// replacement, which re-runs the init container -- matching
-			// OpenSVC's own rolling/single restart, which re-runs its
-			// bootstrap container too. Not
-			// RestartDatabaseService/K8SForceRepullDatabaseService: this is
-			// a scheduled/bulk restart (scheduler-rolling-restart), and
-			// silently re-asserting the image-pull-policy setting on every
-			// scheduled restart would be a surprising side effect -- a
-			// restart must never also pull a different image, only an
-			// upgrade action does that.
+			// K8SRestartDatabaseServiceWaitRejoin (cluster_tst.go) is
+			// lighter than the generic stop->wait failed->start dance
+			// below. Not RestartDatabaseService/K8SForceRepullDatabaseService
+			// either: this is a scheduled/bulk restart
+			// (scheduler-rolling-restart), and silently re-asserting the
+			// image-pull-policy setting on every scheduled restart would
+			// be a surprising side effect.
 			if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
 				err := cluster.K8SRestartDatabaseServiceWaitRejoin(slave)
 				if err != nil {
@@ -257,9 +248,8 @@ func (cluster *Cluster) RollingRestart() error {
 		time.Sleep(time.Second)
 	}
 	// See the matching Kubernetes branch in the slave loop above for why
-	// the generic stop->wait failed->start dance can't work here, and why
-	// this uses K8SRestartDatabaseServiceWaitRejoin, not
-	// RestartDatabaseService.
+	// this uses the lighter K8SRestartDatabaseServiceWaitRejoin instead of
+	// the generic stop->wait failed->start dance (or RestartDatabaseService).
 	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
 		err := cluster.K8SRestartDatabaseServiceWaitRejoin(master)
 		if err != nil {

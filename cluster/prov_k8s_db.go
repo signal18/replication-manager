@@ -646,31 +646,38 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	cluster.errorChan <- nil
 }
 
-// No scale-to-zero/drain semantic exists for the Deployment; an explicit
-// error here (not silent nil) makes RestartDatabaseService fail fast instead
-// of timing out in WaitDatabaseFailed for a stop that never happened.
-func (cluster *Cluster) K8SStopDatabaseService(s *ServerMonitor) error {
-	return errors.New("stop is not supported for the kubernetes orchestrator")
+// k8sStopDatabaseServiceWithClient scales the Deployment to 0 replicas --
+// a genuine stop, not a no-op. Not a Delete of the Deployment itself, so
+// K8SStartDatabaseService can bring it back with a plain scale-up.
+func (cluster *Cluster) k8sStopDatabaseServiceWithClient(client kubernetes.Interface, name string) error {
+	patch := []byte(`{"spec":{"replicas":0}}`)
+	_, err := client.AppsV1().Deployments(cluster.Name).Patch(context.TODO(), name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot stop database %s: %s ", name, err)
+	}
+	return err
 }
 
-// No real start/scale-up exists either; this only confirms the Deployment is
-// present with a non-zero desired replica count before reporting success.
-func (cluster *Cluster) k8sStartDatabaseServiceWithClient(client kubernetes.Interface, name string) error {
-	dep, err := client.AppsV1().Deployments(cluster.Name).Get(context.TODO(), name, metav1.GetOptions{})
-	if err != nil && apierrors.IsNotFound(err) {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot start database %s: deployment not found: %s ", name, err)
+func (cluster *Cluster) K8SStopDatabaseService(s *ServerMonitor) error {
+	client, err := cluster.K8SConnectAPI()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
 		return err
 	}
+	return cluster.k8sStopDatabaseServiceWithClient(client, s.Name)
+}
+
+// k8sStartDatabaseServiceWithClient scales the Deployment to 1 replica --
+// idempotent (a no-op if already at 1, since Start is called
+// unconditionally regardless of whether Stop actually ran). Creates a
+// brand new pod when scaling up from 0, re-running the init container.
+func (cluster *Cluster) k8sStartDatabaseServiceWithClient(client kubernetes.Interface, name string) error {
+	patch := []byte(`{"spec":{"replicas":1}}`)
+	_, err := client.AppsV1().Deployments(cluster.Name).Patch(context.TODO(), name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot start database %s: %s ", name, err)
-		return err
 	}
-	if dep.Spec.Replicas == nil || *dep.Spec.Replicas == 0 {
-		err := errors.New("database deployment " + name + " is scaled to zero and kubernetes start does not scale it back up")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot start database %s: %s ", name, err)
-		return err
-	}
-	return nil
+	return err
 }
 
 func (cluster *Cluster) K8SStartDatabaseService(s *ServerMonitor) error {
@@ -683,15 +690,10 @@ func (cluster *Cluster) K8SStartDatabaseService(s *ServerMonitor) error {
 }
 
 // k8sRestartDatabaseServiceWithClient triggers a rolling pod replacement
-// like `kubectl rollout restart`, by patching only the pod template's
-// restartedAt annotation -- nothing else. A plain restart must never also
-// change what image gets pulled: that's what k8sForceRepullDatabaseService
-// (below) and prov-kube-image-force-pull are for. Used by RollingRestart
-// (cluster/cluster_roll.go), which is often triggered on a schedule
-// (scheduler-rolling-restart) -- silently re-asserting a force-pull policy
-// on every scheduled restart would be a surprising side effect, unlike
-// /actions/restart, a single deliberate operator action where that's
-// documented, intentional behavior (see k8sForceRepullDatabaseService).
+// like `kubectl rollout restart`, patching only the restartedAt annotation
+// -- unlike k8sForceRepullDatabaseServiceWithClient, never ImagePullPolicy:
+// a plain restart (used by RollingRestart, often on a schedule) must never
+// silently re-pull a different image.
 func (cluster *Cluster) k8sRestartDatabaseServiceWithClient(client kubernetes.Interface, name string) error {
 	patch := []byte(`{"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"` + time.Now().Format(time.RFC3339) + `"}}}}}`)
 	_, err := client.AppsV1().Deployments(cluster.Name).Patch(context.TODO(), name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
@@ -714,21 +716,13 @@ const k8sRolloutCompleteTimeout = 90 * time.Second
 const k8sRolloutPollInterval = 2 * time.Second
 
 // k8sWaitRolloutCompleteWithClient polls the Deployment until the rolling
-// replacement triggered by k8sRestartDatabaseServiceWithClient (or
-// k8sForceRepullDatabaseServiceWithClient) actually completes -- the same
-// condition `kubectl rollout status` checks: the controller has observed
-// the spec change and the new pod is Ready -- or returns an error on
-// timeout. A positive confirmation the pod was genuinely replaced is
-// needed here specifically: WaitRejoin's own completion signal
-// (K8SRestartDatabaseServiceWaitRejoin, cluster/cluster_tst.go) only fires
-// when repman's monitoring loop happens to observe a
-// PrevState==stateFailed transition, which a clean rollout with nothing
-// for replication to actively rejoin may never trigger. Without this
-// check, a genuinely stalled rollout (image pull failure, scheduling
-// problem, PVC attach issue) is indistinguishable from a fast, successful
-// one -- both would otherwise just leave WaitRejoin to time out with no
-// error either way, so a failed restart could silently be treated as
-// successful.
+// replacement genuinely completes -- the same condition `kubectl rollout
+// status` checks -- or returns an error on timeout. Needed because
+// WaitRejoin's own signal (K8SRestartDatabaseServiceWaitRejoin,
+// cluster/cluster_tst.go) only fires on a PrevState==stateFailed
+// transition, which a clean rollout may never trigger: without this check
+// a stalled rollout (image pull failure, scheduling problem, PVC attach
+// issue) is indistinguishable from a fast successful one.
 func (cluster *Cluster) k8sWaitRolloutCompleteWithClient(client kubernetes.Interface, name string, timeout, pollInterval time.Duration) error {
 	deploymentsClient := client.AppsV1().Deployments(cluster.Name)
 	deadline := time.Now().Add(timeout)

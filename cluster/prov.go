@@ -589,11 +589,10 @@ func (cluster *Cluster) RestartDatabaseService(server *ServerMonitor, node strin
 		return err
 	}
 
-	// Kubernetes has no scale-to-zero/drain semantic (K8SStopDatabaseService
-	// always errors), so the generic stop→wait→start dance below can never
-	// work for it -- a rolling pod replacement (the same mechanism that
-	// makes prov-kube-image-force-pull's ImagePullPolicy: Always actually
-	// take effect on demand) is the equivalent operation instead.
+	// A rolling pod replacement (the same mechanism that makes
+	// prov-kube-image-force-pull's ImagePullPolicy: Always actually take
+	// effect on demand) is lighter than a full stop/start cycle for a
+	// plain restart.
 	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
 		err = cluster.K8SForceRepullDatabaseService(server)
 		if err == nil {
