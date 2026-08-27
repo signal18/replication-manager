@@ -1577,6 +1577,15 @@ func (cluster *Cluster) SetProvOrchestratorCluster(value string) error {
 	return nil
 }
 
+// SetProvKubeStorageClass only affects the PVC built for a server's *next*
+// (re)provision (k8sDatabasePVC, prov_k8s_db.go), same as SetDBDiskSize --
+// so it needs the DB reprov cookie, not the proxy one.
+func (cluster *Cluster) SetProvKubeStorageClass(value string) error {
+	cluster.Conf.ProvKubeStorageClass = value
+	cluster.SetDBReprovCookie()
+	return nil
+}
+
 func (cluster *Cluster) SetProvDbAgents(value string) error {
 	cluster.Conf.ProvAgents = value
 	return nil

@@ -319,8 +319,24 @@ func (cluster *Cluster) GetMysqlServerBinaryPath() string {
 	return fmt.Sprintf("%sd", cluster.Conf.BackupMysqlclientPath) // Add d to the end of the path (mysql to mysqld, mariadb to mariadbd)
 }
 
+// GetDomain returns the DNS suffix appended to a server's short s.Name to
+// build its connectable address (server.Domain / server.Host), gated on
+// prov-net-cni for both orchestrators. OpenSVC's CNI-published
+// ".<namespace>.svc.<domain>" resolves to a real, routable address;
+// Kubernetes' equivalent bare Service name resolves to a virtual,
+// in-cluster-only ClusterIP, so Kubernetes instead routes through a headless
+// Service (k8sHeadlessServiceName) for a real per-pod address. Each branch
+// checks its own orchestrator explicitly so the flag can never leak a
+// domain for a cluster using the other orchestrator (or a third one
+// inheriting the flag from [DEFAULT]).
 func (cluster *Cluster) GetDomain() string {
-	if cluster.Conf.ProvNetCNI {
+	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+		if cluster.Conf.ProvNetCNI {
+			return "." + k8sHeadlessServiceName + "." + cluster.Name + ".svc." + k8sClusterDomain(cluster)
+		}
+		return ""
+	}
+	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 		return "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 	}
 	return ""
@@ -330,8 +346,16 @@ func (cluster *Cluster) GetOrchestrator() string {
 	return cluster.Conf.ProvOrchestrator
 }
 
+// GetDomainHeadCluster is GetDomain for a child cluster resolving its
+// parent (cluster.Conf.ClusterHead).
 func (cluster *Cluster) GetDomainHeadCluster() string {
-	if cluster.Conf.ProvNetCNI {
+	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+		if cluster.Conf.ProvNetCNI {
+			return "." + k8sHeadlessServiceName + "." + cluster.Conf.ClusterHead + ".svc." + k8sClusterDomain(cluster)
+		}
+		return ""
+	}
+	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 		return "." + cluster.Conf.ClusterHead + ".svc." + cluster.Conf.ProvOrchestratorCluster
 	}
 	return ""

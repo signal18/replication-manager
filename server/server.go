@@ -1264,6 +1264,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvSSLKey, "prov-tls-server-key", "", "server TLS key")
 		flags.BoolVar(&conf.ProvNetCNI, "prov-net-cni", false, "Networking use CNI")
 		flags.StringVar(&conf.ProvNetCNICluster, "prov-net-cni-cluster", "default", "Name of of the OpenSVC network")
+		flags.BoolVar(&conf.ProvKubeImageForcePull, "prov-kube-image-force-pull", false, "Kubernetes only: force ImagePullPolicy=Always on the database container instead of the default IfNotPresent")
+		flags.StringVar(&conf.ProvKubeStorageClass, "prov-kube-storage-class", "", "Kubernetes only: StorageClass for the database PVC (empty uses the cluster's default StorageClass)")
 		flags.StringVar(&conf.ProvNetDockerRunArgs, "prov-net-docker-run-args", "--sysctl net.ipv4.tcp_tw_reuse=1 --sysctl net.core.somaxconn=1024  --sysctl net.ipv4.tcp_fin_timeout=10", "Additional docker run arguments for netns container")
 		flags.BoolVar(&conf.ProvDockerDaemonPrivate, "prov-docker-daemon-private", true, "Use global or private registry per service")
 		flags.StringVar(&conf.ProvDBCompliance, "prov-db-compliance", "", "Path of compliance file for DB configuration")

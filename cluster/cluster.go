@@ -388,6 +388,11 @@ type Cluster struct {
 	opensvcPoolInfoCache   []opensvc.PoolInfo `json:"-"`
 	opensvcPoolInfoCacheAt time.Time          `json:"-"`
 	opensvcPoolInfoCacheMu sync.RWMutex       `json:"-"`
+	// k8sNodeHostnameLabels caches node.Name -> the node's "kubernetes.io/hostname"
+	// label value, captured during K8SGetNodes' nodes/list so Kubernetes
+	// Deployment NodeSelector placement doesn't need a per-node nodes/get call.
+	k8sNodeHostnameLabels   map[string]string `json:"-"`
+	k8sNodeHostnameLabelsMu sync.RWMutex      `json:"-"`
 	// Per-cluster preserved variables (replaces ProvDBConfigPreserveVars mechanism)
 	preservedVars               map[string]string          `json:"-"`
 	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}

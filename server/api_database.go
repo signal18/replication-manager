@@ -265,7 +265,7 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerMasterStatus)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/service-opensvc", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/service/{orchestrator}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetDatabaseServiceConfig)),
 	))
@@ -2485,6 +2485,10 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 // @Failure 404 {string} string "Cluster Not Found or Server Not Found"
 // @Failure 501 {string} string "Orchestrator not supported"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/actions/restart [post]
+func restartSupportedForOrchestrator(orchestrator string) bool {
+	return orchestrator == config.ConstOrchestratorOpenSVC || orchestrator == config.ConstOrchestratorKubernetes
+}
+
 func (repman *ReplicationManager) handlerMuxServerRestart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
@@ -2502,9 +2506,17 @@ func (repman *ReplicationManager) handlerMuxServerRestart(w http.ResponseWriter,
 		return
 	}
 
-	if mycluster.GetOrchestrator() != "opensvc" {
+	// CheckRestartContainerCookies (cluster_chk.go), the monitoring-loop
+	// consumer of the cookie this handler sets below, already dispatches
+	// generically through RestartDatabaseService (cluster/prov.go) with no
+	// orchestrator gate of its own -- RestartDatabaseService has had a
+	// Kubernetes branch since #1497's image-pull-policy work, but this
+	// handler blocking Kubernetes here meant the cookie never got set, so
+	// that branch was never actually reachable through the API (confirmed
+	// live: a genuine gap, not by design).
+	if !restartSupportedForOrchestrator(mycluster.GetOrchestrator()) {
 		w.WriteHeader(http.StatusNotImplemented)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Restart is only supported for OpenSVC orchestrator"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Restart is only supported for OpenSVC and Kubernetes orchestrators"})
 		return
 	}
 
@@ -3501,7 +3513,16 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if mycluster.Conf.APISecureConfig {
-			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			valid, _ := repman.IsValidClusterACL(r, mycluster)
+			if !valid {
+				// Orchestrator-driven bootstrap (e.g. the K8s init-container
+				// wget in cluster/prov_k8s_db.go) has no JWT to send, only
+				// the HTTP Basic Auth it sends as an Authorization header.
+				if u, p, ok := r.BasicAuth(); ok {
+					valid = mycluster.IsValidACL(u, p, r.URL.Path, "password")
+				}
+			}
+			if !valid {
 				http.Error(w, "No valid ACL", http.StatusForbidden)
 				return
 			}
@@ -4557,44 +4578,80 @@ func (repman *ReplicationManager) handlerMuxSetInnoDBMonitor(w http.ResponseWrit
 	}
 }
 
-// handlerMuxGetDatabaseServiceConfig handles the HTTP request to get the database service configuration of a specific server within a cluster.
-// @Summary Get database service configuration of a server
-// @Description Retrieves the database service configuration of a specified server within a cluster.
+// handlerMuxGetDatabaseServiceConfig handles the HTTP request to get the
+// database service/manifest view of a specific server within a cluster --
+// one route shared by every orchestrator that has such a view, keyed by a
+// {orchestrator} path segment rather than one hardcoded route name per
+// orchestrator (the route used to be literally "service-opensvc", which
+// would have been misleading to also serve Kubernetes content under).
+// OpenSVC returns the raw service config text it would push
+// (GetDatabaseServiceConfig, prov_opensvc_db.go); Kubernetes has no
+// equivalent single "service config" object, so it returns the live
+// Deployment/Service/PVC/Pod manifests as JSON instead
+// (K8SGetDatabaseManifests, #1497 gap 6) -- Content-Type is set
+// accordingly so the caller can tell which shape it got. The path segment
+// must match the cluster's actual configured orchestrator (repman's own
+// config is always authoritative over what a caller requests) -- a
+// mismatch is a 400, not a silent fall-through to whichever branch the
+// caller asked for.
+// @Summary Get database service/manifest view of a server
+// @Description Retrieves the database service configuration or live manifests of a specified server within a cluster: raw OpenSVC service config text, or live Kubernetes manifests as JSON.
 // @Tags Database
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
+// @Param orchestrator path string true "Orchestrator (must match the cluster's configured orchestrator)"
 // @Success 200 {string} string "Database service configuration retrieved successfully"
+// @Failure 400 {string} string "Orchestrator does not match cluster configuration"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/service-opensvc [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/service/{orchestrator} [get]
 func (repman *ReplicationManager) handlerMuxGetDatabaseServiceConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", http.StatusForbidden)
-			return
-		}
-
-		if mycluster.Conf.ProvOrchestrator != "opensvc" {
-			w.Write([]byte(""))
-			return
-		}
-
-		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil {
-			res := mycluster.GetDatabaseServiceConfig(node)
-			w.Write(res)
-		} else {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("503 -Not a Valid Server!"))
-		}
-	} else {
+	if mycluster == nil {
 		http.Error(w, "No cluster", 500)
 		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	status, contentType, body := buildDatabaseServiceConfigResponse(mycluster, vars["serverName"], vars["orchestrator"])
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	w.WriteHeader(status)
+	w.Write(body)
+}
+
+// buildDatabaseServiceConfigResponse is handlerMuxGetDatabaseServiceConfig's
+// orchestrator switch, factored out so it's directly testable without a
+// real JWT (IsValidClusterACL requires one, with no bypass -- matching
+// buildS3ProviderReferencesResponse's "business logic separate from the
+// ACL-gated handler" pattern, api_cluster.go).
+func buildDatabaseServiceConfigResponse(mycluster *cluster.Cluster, serverName, orchestrator string) (status int, contentType string, body []byte) {
+	if orchestrator != mycluster.GetOrchestrator() {
+		return http.StatusBadRequest, "", []byte("Orchestrator does not match cluster configuration")
+	}
+	switch mycluster.GetOrchestrator() {
+	case config.ConstOrchestratorKubernetes:
+		node := mycluster.GetServerFromName(serverName)
+		if node == nil {
+			return http.StatusInternalServerError, "", []byte("503 -Not a Valid Server!")
+		}
+		b, _ := json.Marshal(mycluster.K8SGetDatabaseManifests(node))
+		return http.StatusOK, "application/json", b
+	case config.ConstOrchestratorOpenSVC:
+		node := mycluster.GetServerFromName(serverName)
+		if node == nil {
+			return http.StatusInternalServerError, "", []byte("503 -Not a Valid Server!")
+		}
+		return http.StatusOK, "", mycluster.GetDatabaseServiceConfig(node)
+	default:
+		return http.StatusOK, "", []byte("")
 	}
 }
 

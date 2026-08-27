@@ -683,6 +683,8 @@ type Config struct {
 	ProvSSLKeyUUID                            string                       `mapstructure:"prov-tls-server-key-uuid" toml:"-" json:"-"`
 	ProvNetCNI                                bool                         `mapstructure:"prov-net-cni" toml:"prov-net-cni" json:"provNetCni"`
 	ProvNetCNICluster                         string                       `mapstructure:"prov-net-cni-cluster" toml:"prov-net-cni-cluster" json:"provNetCniCluster"`
+	ProvKubeImageForcePull                    bool                         `mapstructure:"prov-kube-image-force-pull" toml:"prov-kube-image-force-pull" json:"provKubeImageForcePull"`
+	ProvKubeStorageClass                      string                       `mapstructure:"prov-kube-storage-class" toml:"prov-kube-storage-class" json:"provKubeStorageClass"`
 	ProvNetDockerRunArgs                      string                       `mapstructure:"prov-net-docker-run-args" toml:"prov-net-docker-run-args" json:"provNetDockerRunArgs"`
 	ProvDockerDaemonPrivate                   bool                         `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
 	ProvServicePlan                           string                       `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`
