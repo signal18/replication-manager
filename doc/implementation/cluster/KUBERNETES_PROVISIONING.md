@@ -613,12 +613,90 @@ rather than stopping/starting it, so it never hit the unsupported stop
 path) — and does still pick up the current image, since it goes through the
 full Deployment rebuild.
 
-`StopDatabaseServiceClean` and `RollingUpgrade` still dispatch through the
-generic stop lifecycle with no orchestrator-aware gating, so a Kubernetes
-version/image upgrade via `RollingUpgrade` still fails fast — not fixed
-here, since it's a materially different operation (clean shutdown ahead of
-an actual binary swap, not just a restart) that needs its own Kubernetes
-handling. A real scale-based start/stop pair remains deferred under #1497.
+`StopDatabaseServiceClean` dispatches through the generic stop lifecycle
+(`K8SStopDatabaseService`, same scale-to-0 path as a plain stop) with no
+extra Kubernetes-specific gating, since a clean shutdown ahead of a version
+swap doesn't need anything beyond what stop already does.
+
+`RollingUpgrade` (`cluster/cluster_roll.go`) now has a Kubernetes-specific
+`UpdateDatabaseServiceConfig` implementation — see "Rolling upgrade: image
+update" below — that actually changes the image Kubernetes pulls, instead of
+only restarting pods on the pre-existing spec.
+
+### Rolling upgrade: image update
+
+`UpdateDatabaseServiceConfig` (`cluster/prov.go`) now has a Kubernetes branch,
+`K8SUpdateDatabaseServiceConfig` (`k8sUpdateDatabaseServiceConfigWithClient`,
+`prov_k8s_db.go`), alongside the pre-existing OpenSVC one. It fetches the live
+Deployment and patches `cluster.Conf.ProvDbImg` onto the main DB container
+(named like the Deployment) and, if present, the `<name>-dbjobs` sidecar —
+both driven by `forcePull`: `true` patches `PullAlways` unconditionally (the
+pull phase of an upgrade), `false` restores the steady-state
+`k8sImagePullPolicy` (`prov-kube-image-force-pull`). Only container names
+already present on the live Deployment are included in the patch — a
+strategic merge patch treats `containers` as a merge-by-name list, so
+patching an absent name would otherwise create a new, incomplete container
+(missing command, volume mounts, env) rather than erroring. The main DB
+container is required and its absence is a hard error; an older Deployment
+provisioned before the dbjobs sidecar existed is patched on just the main
+container.
+
+OpenSVC and Kubernetes need opposite ordering around this call, because their
+service-config models behave differently once written: OpenSVC's is inert
+until the container's next start, so `RollingUpgrade` can call
+`UpdateDatabaseServiceConfig` before stopping a server and let the
+stop→start cycle pick up the change. Kubernetes' Deployment patch is instead
+something the controller can act on right away — patching it while the pod
+is still live would race the controller's own rollout against
+`RollingUpgrade`'s own explicit stop. `rollingUpgradeStopUpdateStart`
+(`cluster/cluster_roll.go`) branches on orchestrator to place the update
+call after `WaitDatabaseFailed` and before `StartDatabaseWaitRejoin` for
+Kubernetes, and before the stop for everything else — so on Kubernetes the
+Deployment is always patched while scaled to 0, and the subsequent
+`StartDatabaseWaitRejoin` scale-to-1 is what actually creates a pod running
+the new image.
+
+Deliberately *not* reusing `K8SForceRepullDatabaseService` for this: that
+function backs plain restarts (`RollingRestart`, `/actions/restart`) and must
+never change what image gets pulled, so it stays restart-only. Rolling
+upgrade's image-change behavior is isolated to `RollingUpgrade` via
+`UpdateDatabaseServiceConfig` instead.
+
+The scale-to-0 precondition is enforced inside
+`k8sUpdateDatabaseServiceConfigWithClient` itself, not just documented on the
+caller: it re-fetches `dep.Spec.Replicas` and refuses to patch (nil or
+non-zero both refused — nil is apps/v1's own "default to 1", not "unset,
+assume safe") rather than trusting every future call site to only invoke it
+post-stop. `rollingUpgradeStopUpdateStart` therefore surfaces this as a real
+error already, but the check protects any other caller that might reuse the
+helper later.
+
+A failed Kubernetes patch's fatality depends on which of the two phases
+`RollingUpgrade` is in, keyed off `forcePull` (not the `phase` string, which
+is log-only): in the **pull** phase (`forcePull=true`) the patch *is* the
+image change, so `rollingUpgradeStopUpdateStart` aborts and returns the
+error (unwinding `RollingUpgrade`, maintenance included) rather than
+proceeding to `StartDatabaseWaitRejoin` on the unchanged image — letting it
+slide there would silently defeat the whole point of this feature by
+starting the server back up on the same image while `RollingUpgrade` reports
+success. In the **clean** phase (`forcePull=false`) the server was already
+upgraded by the preceding pull phase, and this patch only restores the
+steady-state pull policy — a failure there is cleanup drift, not an upgrade
+failure, so it's logged as a warning ("cleanup incomplete … Deployment still
+forced to PullAlways") and the server is started anyway: leaving it down
+over a policy-cleanup failure would cost cluster capacity for no correctness
+benefit. OpenSVC keeps its pre-existing best-effort log-only behavior in
+both phases — its push runs before the stop, so a failure there just means
+"still on the old image", a state the stop/start cycle was going to produce
+anyway.
+
+Not yet covered: the single-server `/actions/upgrade` path
+(`server/api_database.go`) still falls through `UpgradeDatabaseService`
+(`cluster/prov.go`) to a plain `StartDatabaseService` for container
+orchestrators, which does not call `UpdateDatabaseServiceConfig` and so does
+not pick up a changed `prov-db-docker-img` outside of `RollingUpgrade`. Left
+as a follow-up rather than folded in here, since it shares the OpenSVC
+container-orchestrator upgrade path and deserves its own review.
 
 ## Idempotency and error propagation
 
@@ -650,10 +728,16 @@ error propagation, proxy naming uniqueness, invalid-port rejection,
 `AlreadyExists`/`NotFound` idempotency, namespace-ensure never blocking on
 a `Create()` failure, the legacy proxy Deployment being left untouched,
 `K8SStartDatabaseService`'s state check, `k8sHostnameLabel()`'s cached
-label-vs-node-name resolution, and the bootstrap/dbjobs shell logic
+label-vs-node-name resolution, the bootstrap/dbjobs shell logic
 (exercised through a real `sh`, not just asserted from the generated
-command's text shape) — see "Bootstrap" and "dbjobs sidecar" above for the
-specific test names.
+command's text shape), and `k8sUpdateDatabaseServiceConfigWithClient`'s
+image/pull-policy patch (main container, dbjobs sidecar when present, a
+missing sidecar not producing a bogus container, `forcePull` overriding
+`prov-kube-image-force-pull`, the missing-Deployment and
+missing-main-container error paths, and the enforced scale-to-0 precondition
+rejecting both a non-zero and a nil `Replicas`) — see "Bootstrap", "dbjobs
+sidecar", and "Rolling upgrade: image update" above for the specific test
+names.
 
 The provisioning/unprovisioning logic is split into
 `kubernetes.Interface`-parameterized helpers (e.g.
@@ -713,19 +797,17 @@ Kubernetes-orchestrated scenarios.
   returned error entirely. Same for every orchestrator, not
   Kubernetes-specific, and not fixed here.
 - `RollingUpgrade` (`handlerMuxRollingAction`, the scheduler, the
-  dashboard) no longer hits an unsupported stop lifecycle for Kubernetes —
-  `StopDatabaseServiceClean` now goes through the real
-  `K8SStopDatabaseService`/`K8SStartDatabaseService` scale cycle — but it's
-  still not a genuine upgrade there: `UpdateDatabaseServiceConfig` (the
-  step that would force a fresh image pull) is OpenSVC-only
-  (`cluster/prov.go`, defaults to a no-op for every other orchestrator),
-  and nothing in `RollingUpgrade` ever patches the Deployment's `image:`
-  field. Mechanically it would now stop and restart every server with the
-  same image, not actually upgrade it — not audited further here, since
-  fixing it needs its own Kubernetes-specific image-pull step (mirroring
-  what `K8SForceRepullDatabaseService` already does for `/actions/restart`)
-  and a survey of the rest of the function for other OpenSVC-only
-  assumptions. `RollingReprov` is different: it unprovisions and
+  dashboard) now performs a genuine image upgrade on Kubernetes: it goes
+  through the real `K8SStopDatabaseService`/`K8SStartDatabaseService` scale
+  cycle, and `UpdateDatabaseServiceConfig` (`cluster/prov.go`) has a
+  Kubernetes branch (`K8SUpdateDatabaseServiceConfig`, `prov_k8s_db.go`)
+  that patches `cluster.Conf.ProvDbImg` onto the Deployment's main DB
+  container and dbjobs sidecar — see "Rolling upgrade: image update" above
+  for the ordering that keeps this safe against the Deployment controller's
+  own rollout. The single-server `/actions/upgrade` path
+  (`server/api_database.go`) is not covered by this and still does not pick
+  up a changed `prov-db-docker-img` for container orchestrators — tracked as
+  a follow-up. `RollingReprov` was already fine: it unprovisions and
   reprovisions each server rather than stopping/starting it, so it always
   picks up the current image regardless.
 

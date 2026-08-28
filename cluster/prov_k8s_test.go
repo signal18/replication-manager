@@ -882,6 +882,258 @@ func TestK8SForceRepullDatabaseService_MissingDeploymentIsError(t *testing.T) {
 	}
 }
 
+// --- Rolling upgrade: database image + pull policy update ---
+//
+// K8SUpdateDatabaseServiceConfig / k8sUpdateDatabaseServiceConfigWithClient
+// is what makes RollingUpgrade (cluster/cluster_roll.go) actually change the
+// running database image on Kubernetes, instead of only restarting pods on
+// the existing spec like K8SForceRepullDatabaseService above.
+
+func TestK8SUpdateDatabaseServiceConfig_PatchesMainContainerImage(t *testing.T) {
+	zero := int32(0)
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &zero,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "db1", Image: "mariadb:10.6"},
+					},
+				},
+			},
+		},
+	})
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDbImg = "mariadb:10.11"
+
+	if err := cluster.k8sUpdateDatabaseServiceConfigWithClient(client, "db1", false); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), "db1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if got := dep.Spec.Template.Spec.Containers[0].Image; got != "mariadb:10.11" {
+		t.Fatalf("expected main container image to be patched to mariadb:10.11, got %q", got)
+	}
+}
+
+func TestK8SUpdateDatabaseServiceConfig_PatchesDbjobsSidecarImageWhenPresent(t *testing.T) {
+	zero := int32(0)
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &zero,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "db1", Image: "mariadb:10.6"},
+						{Name: "db1-dbjobs", Image: "mariadb:10.6"},
+					},
+				},
+			},
+		},
+	})
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDbImg = "mariadb:10.11"
+
+	if err := cluster.k8sUpdateDatabaseServiceConfigWithClient(client, "db1", false); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), "db1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if len(dep.Spec.Template.Spec.Containers) != 2 {
+		t.Fatalf("expected exactly 2 containers (no bogus container created), got %d", len(dep.Spec.Template.Spec.Containers))
+	}
+	for _, c := range dep.Spec.Template.Spec.Containers {
+		if c.Image != "mariadb:10.11" {
+			t.Fatalf("expected container %s image to be patched to mariadb:10.11, got %q", c.Name, c.Image)
+		}
+	}
+}
+
+// A missing sidecar (an older Deployment provisioned before it existed) must
+// not produce a bogus, incomplete container entry -- strategic merge patches
+// treat "containers" as merge-by-name, so patching a name absent from the
+// live Deployment would otherwise create a container missing its command,
+// volume mounts, and env.
+func TestK8SUpdateDatabaseServiceConfig_MissingSidecarDoesNotCreateBogusContainer(t *testing.T) {
+	zero := int32(0)
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &zero,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "db1", Image: "mariadb:10.6"},
+					},
+				},
+			},
+		},
+	})
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDbImg = "mariadb:10.11"
+
+	if err := cluster.k8sUpdateDatabaseServiceConfigWithClient(client, "db1", false); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), "db1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if len(dep.Spec.Template.Spec.Containers) != 1 {
+		t.Fatalf("expected exactly 1 container, got %d: %v", len(dep.Spec.Template.Spec.Containers), dep.Spec.Template.Spec.Containers)
+	}
+}
+
+func TestK8SUpdateDatabaseServiceConfig_ForcePullTruePatchesPullAlwaysEvenWhenConfigDisabled(t *testing.T) {
+	zero := int32(0)
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &zero,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "db1", ImagePullPolicy: apiv1.PullIfNotPresent},
+					},
+				},
+			},
+		},
+	})
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvKubeImageForcePull = false
+
+	if err := cluster.k8sUpdateDatabaseServiceConfigWithClient(client, "db1", true); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), "db1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if got := dep.Spec.Template.Spec.Containers[0].ImagePullPolicy; got != apiv1.PullAlways {
+		t.Fatalf("expected forcePull=true to patch PullAlways regardless of prov-kube-image-force-pull, got %q", got)
+	}
+}
+
+func TestK8SUpdateDatabaseServiceConfig_ForcePullFalseRestoresSteadyStatePolicy(t *testing.T) {
+	zero := int32(0)
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &zero,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "db1", ImagePullPolicy: apiv1.PullAlways},
+					},
+				},
+			},
+		},
+	})
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvKubeImageForcePull = false
+
+	if err := cluster.k8sUpdateDatabaseServiceConfigWithClient(client, "db1", false); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), "db1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if got := dep.Spec.Template.Spec.Containers[0].ImagePullPolicy; got != apiv1.PullIfNotPresent {
+		t.Fatalf("expected forcePull=false to restore the configured steady-state policy PullIfNotPresent, got %q", got)
+	}
+}
+
+func TestK8SUpdateDatabaseServiceConfig_MissingDeploymentIsError(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sUpdateDatabaseServiceConfigWithClient(client, "db1", false); err == nil {
+		t.Fatal("expected an error when the deployment does not exist, got nil")
+	}
+}
+
+func TestK8SUpdateDatabaseServiceConfig_MissingMainContainerIsError(t *testing.T) {
+	zero := int32(0)
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &zero,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "some-other-container", Image: "mariadb:10.6"},
+					},
+				},
+			},
+		},
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sUpdateDatabaseServiceConfigWithClient(client, "db1", false); err == nil {
+		t.Fatal("expected an error when the main database container is missing, got nil")
+	}
+}
+
+// Patching while pods may still be live would race the Deployment
+// controller's own rollout against RollingUpgrade's explicit stop/start
+// (see the ordering comment on rollingUpgradeStopUpdateStart,
+// cluster/cluster_roll.go) -- refused unconditionally, not just documented.
+func TestK8SUpdateDatabaseServiceConfig_NotScaledToZeroIsError(t *testing.T) {
+	one := int32(1)
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &one,
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "db1", Image: "mariadb:10.6"},
+					},
+				},
+			},
+		},
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sUpdateDatabaseServiceConfigWithClient(client, "db1", false); err == nil {
+		t.Fatal("expected an error when the deployment is not scaled to 0 replicas, got nil")
+	}
+}
+
+// A nil Replicas is apps/v1's own "default to 1" case -- must be treated the
+// same as an explicit non-zero value, not as "unset, assume safe".
+func TestK8SUpdateDatabaseServiceConfig_NilReplicasIsError(t *testing.T) {
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec: appsv1.DeploymentSpec{
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "db1", Image: "mariadb:10.6"},
+					},
+				},
+			},
+		},
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sUpdateDatabaseServiceConfigWithClient(client, "db1", false); err == nil {
+		t.Fatal("expected an error when Replicas is nil (apps/v1 defaults to 1), got nil")
+	}
+}
+
 // --- Database unprovisioning ---
 
 func TestK8SUnprovisionDatabase_DeletesDeploymentAndService(t *testing.T) {

@@ -408,6 +408,8 @@ func (cluster *Cluster) UpdateDatabaseServiceConfig(server *ServerMonitor, force
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		return cluster.OpenSVCUpdateDatabaseServiceConfig(server, forcePull)
+	case config.ConstOrchestratorKubernetes:
+		return cluster.K8SUpdateDatabaseServiceConfig(server, forcePull)
 	default:
 		return nil
 	}

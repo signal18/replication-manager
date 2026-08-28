@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -791,6 +792,134 @@ func (cluster *Cluster) K8SForceRepullDatabaseService(s *ServerMonitor) error {
 		return err
 	}
 	return cluster.k8sForceRepullDatabaseServiceWithClient(client, s.Name)
+}
+
+// k8sUpdateDatabaseServiceConfigWithClient patches the Deployment's pod
+// template so the main DB container (named exactly like the Deployment) and,
+// if present, its dbjobs sidecar (named "<deployment>-dbjobs",
+// k8sDatabaseDeployment) both track cluster.Conf.ProvDbImg -- the Kubernetes
+// counterpart of OpenSVCUpdateDatabaseServiceConfig, used by
+// RollingUpgrade (cluster/cluster_roll.go) to actually change the running
+// image instead of only restarting the existing spec.
+//
+// forcePull=true patches PullAlways regardless of prov-kube-image-force-pull,
+// so the upgrade's pull phase re-fetches the tag even when it was already
+// cached locally under a different digest; forcePull=false restores the
+// steady-state k8sImagePullPolicy.
+//
+// The Deployment is fetched first and only container names already present
+// are included in the patch: a strategic merge patch treats "containers" as
+// a merge-by-name list, so patching a name that doesn't exist would create a
+// new, incomplete container (missing command, volume mounts, env) rather
+// than erroring. The main DB container is required; an older Deployment
+// without the dbjobs sidecar is patched on just the main container.
+//
+// Refuses to patch unless the Deployment is already scaled to 0 replicas
+// (enforced below, not just documented on the exported wrapper) -- patching
+// a live pod's image would race the Deployment controller's own rollout
+// against the caller's explicit stop/start.
+func (cluster *Cluster) k8sUpdateDatabaseServiceConfigWithClient(client kubernetes.Interface, name string, forcePull bool) error {
+	deploymentsClient := client.AppsV1().Deployments(cluster.Name)
+	dep, err := deploymentsClient.Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot fetch Kubernetes deployment %s: %s ", name, err)
+		return err
+	}
+
+	// Enforced, not just documented: a nil Replicas is apps/v1's "default to
+	// 1" case, so both nil and any non-zero value mean pods may still be
+	// live. Patching the image while live would race the Deployment
+	// controller's own rollout against the caller's explicit stop/start
+	// (RollingUpgrade, cluster/cluster_roll.go) -- refusing here turns that
+	// precondition into a guarantee instead of relying on every future
+	// caller to remember it.
+	if dep.Spec.Replicas == nil || *dep.Spec.Replicas != 0 {
+		replicas := "nil"
+		if dep.Spec.Replicas != nil {
+			replicas = strconv.Itoa(int(*dep.Spec.Replicas))
+		}
+		err := fmt.Errorf("deployment %s is not scaled to 0 replicas (replicas=%s): refusing to patch database image while pods may be live", name, replicas)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
+		return err
+	}
+
+	jobsName := name + "-dbjobs"
+	hasMain := false
+	hasJobs := false
+	for _, c := range dep.Spec.Template.Spec.Containers {
+		switch c.Name {
+		case name:
+			hasMain = true
+		case jobsName:
+			hasJobs = true
+		}
+	}
+	if !hasMain {
+		err := fmt.Errorf("deployment %s has no container named %s: cannot update database image", name, name)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
+		return err
+	}
+
+	pullPolicy := k8sImagePullPolicy(cluster)
+	if forcePull {
+		pullPolicy = apiv1.PullAlways
+	}
+	image := cluster.Conf.ProvDbImg
+
+	container := func(cname string) map[string]interface{} {
+		return map[string]interface{}{
+			"name":            cname,
+			"image":           image,
+			"imagePullPolicy": pullPolicy,
+		}
+	}
+	containers := []map[string]interface{}{container(name)}
+	if hasJobs {
+		containers = append(containers, container(jobsName))
+	}
+
+	// Plain nested maps, not a named Go struct: StrategicMergePatchType's
+	// merge-by-name semantics on the "containers" list only need name/image/
+	// imagePullPolicy present -- a struct would either omit unrelated
+	// Container fields as their JSON zero values (fine for MergePatchType,
+	// but silently wrong for a *strategic* merge, which instead relies on
+	// the caller sending exactly the fields meant to change) or require
+	// pointer fields to make the omission explicit. Maps sidestep the
+	// question entirely.
+	patch, err := json.Marshal(map[string]interface{}{
+		"spec": map[string]interface{}{
+			"template": map[string]interface{}{
+				"spec": map[string]interface{}{
+					"containers": containers,
+				},
+			},
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = deploymentsClient.Patch(context.TODO(), name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot update database image for %s: %s ", name, err)
+	}
+	return err
+}
+
+// K8SUpdateDatabaseServiceConfig is the Kubernetes implementation of
+// UpdateDatabaseServiceConfig (cluster/prov.go). Errors, including "not
+// scaled to 0", if called while the Deployment still has live pods (see the
+// Kubernetes ordering in RollingUpgrade, cluster/cluster_roll.go): patching
+// the pod template at that point would race the Deployment controller's own
+// rollout against the caller's explicit stop/start, unlike OpenSVC where a
+// service-config update is inert until the next container start.
+func (cluster *Cluster) K8SUpdateDatabaseServiceConfig(s *ServerMonitor, forcePull bool) error {
+	client, err := cluster.K8SConnectAPI()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
+		return err
+	}
+	return cluster.k8sUpdateDatabaseServiceConfigWithClient(client, s.Name, forcePull)
 }
 
 // PVC and Namespace are intentionally retained — PVC deletion is
