@@ -490,8 +490,19 @@ once every proxy in a cluster has been reprovisioned under the new name.
 
 ### Start/stop
 
-`K8SStartProxyService`/`K8SStopProxyService` return explicit "not
-supported" errors; no lifecycle is implemented.
+`K8SStopProxyService()`/`K8SStartProxyService()`
+(`k8sStopProxyServiceWithClient`/`k8sStartProxyServiceWithClient`,
+`cluster/prov_k8s_prx.go`) do the same scale-to-0/scale-to-1 cycle as the
+database lifecycle above (see "Database start/stop lifecycle"), against the
+per-proxy Deployment (`k8sProxyDeploymentName`). Both patches are idempotent
+no-ops when already at the target replica count, and both operate purely by
+name — they never auto-provision a missing Deployment, and never touch the
+legacy shared `<cluster>-deployment`.
+
+This phase intentionally stops at replica scaling: no proxy Service
+exposure, no rollout-wait/restart helper, and no change to the API
+handlers, which still discard the returned error (see "Idempotency and
+error propagation" below).
 
 ## Node discovery
 
@@ -754,6 +765,14 @@ Kubernetes, and RBAC gaps (`secrets`/`deployments`/`pods` patch and list
 grants). Not covered by a live pass: the "nothing ever persisted" first-boot
 case and a corrupt-tarball download — both only unit-tested.
 
+Proxy stop/start (see "Start/stop" above) was separately live-verified on a
+running `kind` cluster (3 workers, a `clusterin` namespace already monitored
+with `prov-orchestrator=kube`): provisioned a `proxysql` proxy through the
+real HTTP API, confirmed `stop` scales `clusterin-proxysql1-deployment` to 0
+and the pod terminates, `start` scales it back to 1 and a fresh pod comes up
+Running, and a manually-added stand-in legacy `clusterin-deployment` (same
+shared `app: repication-manager` selector) was left untouched by both calls.
+
 No Kubernetes-capable regtest/CI harness exists in this repository, so none
 of the above is repeatable/automated — it does not substitute for real CI
 integration coverage. Closing that gap requires provisioning a
@@ -776,8 +795,6 @@ Kubernetes-orchestrated scenarios.
   `optional=true` behavior.
 - No real K8s-capable regtest/CI coverage for the outage-fallback path.
 - PVC and Namespace deletion semantics on unprovision are undecided.
-- No real start/stop lifecycle for Kubernetes proxies (DBs have one now —
-  see "Database start/stop lifecycle" above).
 - No proxy Service exposure, and no Kubernetes proxy support beyond
   ProxySQL.
 - Per-pod DNS (`prov-net-cni`) covers DB pods only, not proxies.
@@ -789,11 +806,12 @@ Kubernetes-orchestrated scenarios.
   `--kube-config` and the `kube` orchestrator default are only
   registered/exposed when `WithOpenSVC=="ON"` — `kube-config` remains
   settable via TOML/env in any build regardless.
-- `K8SStopDatabaseService`/`K8SStartDatabaseService` returning a real error
-  does not by itself surface that error to callers:
-  `StopDatabaseService`/`StartDatabaseService` (`cluster/prov.go`) run
-  `StopDatabaseScript`/`StartDatabaseScript` unconditionally regardless of
-  the orchestrator result, and the API stop/start handlers discard the
+- `K8SStopDatabaseService`/`K8SStartDatabaseService` and
+  `K8SStopProxyService`/`K8SStartProxyService` returning a real error does
+  not by itself surface that error to callers:
+  `StopDatabaseService`/`StartDatabaseService`/`StopProxyService`/`StartProxyService`
+  (`cluster/prov.go`) run their `*Script` hooks unconditionally regardless
+  of the orchestrator result, and the API stop/start handlers discard the
   returned error entirely. Same for every orchestrator, not
   Kubernetes-specific, and not fixed here.
 - `RollingUpgrade` (`handlerMuxRollingAction`, the scheduler, the

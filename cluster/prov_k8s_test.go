@@ -617,6 +617,136 @@ func TestK8SStartDatabase_MissingDeploymentIsError(t *testing.T) {
 	}
 }
 
+// --- Proxy stop/start: same scale-to-0/scale-to-1 pattern as the database
+// lifecycle above (k8sStopProxyServiceWithClient/
+// k8sStartProxyServiceWithClient, prov_k8s_prx.go), keyed by the per-proxy
+// Deployment name (k8sProxyDeploymentName), never the legacy shared
+// <cluster>-deployment.
+
+func TestK8SStopProxy_ScalesReplicasToZero(t *testing.T) {
+	one := int32(1)
+	name := k8sProxyDeploymentName("k8stest", "proxysql1")
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "k8stest"},
+		Spec:       appsv1.DeploymentSpec{Replicas: &one},
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStopProxyServiceWithClient(client, name); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if dep.Spec.Replicas == nil || *dep.Spec.Replicas != 0 {
+		t.Fatalf("expected replicas to be patched to 0, got %v", dep.Spec.Replicas)
+	}
+}
+
+func TestK8SStopProxy_MissingDeploymentIsError(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStopProxyServiceWithClient(client, k8sProxyDeploymentName("k8stest", "proxysql1")); err == nil {
+		t.Fatal("expected an error when the proxy deployment to stop does not exist")
+	}
+}
+
+// Patching replicas to 0 when already at 0 must be a harmless no-op.
+func TestK8SStopProxy_AlreadyStoppedIsNoOp(t *testing.T) {
+	zero := int32(0)
+	name := k8sProxyDeploymentName("k8stest", "proxysql1")
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "k8stest"},
+		Spec:       appsv1.DeploymentSpec{Replicas: &zero},
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStopProxyServiceWithClient(client, name); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+}
+
+func TestK8SStartProxy_ScalesReplicasToOne(t *testing.T) {
+	zero := int32(0)
+	name := k8sProxyDeploymentName("k8stest", "proxysql1")
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "k8stest"},
+		Spec:       appsv1.DeploymentSpec{Replicas: &zero},
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStartProxyServiceWithClient(client, name); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if dep.Spec.Replicas == nil || *dep.Spec.Replicas != 1 {
+		t.Fatalf("expected replicas to be patched back to 1, got %v", dep.Spec.Replicas)
+	}
+}
+
+func TestK8SStartProxy_MissingDeploymentIsError(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStartProxyServiceWithClient(client, k8sProxyDeploymentName("k8stest", "proxysql1")); err == nil {
+		t.Fatal("expected an error when the proxy deployment to start does not exist")
+	}
+}
+
+// Patching replicas to 1 when already at 1 must be a harmless no-op -- Start
+// is called unconditionally regardless of whether Stop actually ran.
+func TestK8SStartProxy_AlreadyRunningIsNoOp(t *testing.T) {
+	one := int32(1)
+	name := k8sProxyDeploymentName("k8stest", "proxysql1")
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "k8stest"},
+		Spec:       appsv1.DeploymentSpec{Replicas: &one},
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStartProxyServiceWithClient(client, name); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+}
+
+// Stop/start on a proxy must never touch the legacy shared
+// <cluster>-deployment, even though it also carries the shared "app"
+// selector -- a single proxy's lifecycle call has no way to prove the
+// legacy Deployment belongs to it rather than a different, not-yet-migrated
+// proxy in the same cluster.
+func TestK8SStopStartProxy_DoesNotTouchLegacyDeployment(t *testing.T) {
+	legacyName := k8sLegacyProxyDeploymentName("k8stest")
+	one := int32(1)
+	name := k8sProxyDeploymentName("k8stest", "proxysql1")
+	client := fake.NewSimpleClientset(
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "k8stest"}, Spec: appsv1.DeploymentSpec{Replicas: &one}},
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: legacyName, Namespace: "k8stest"}, Spec: appsv1.DeploymentSpec{Replicas: &one}},
+	)
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStopProxyServiceWithClient(client, name); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if err := cluster.k8sStartProxyServiceWithClient(client, name); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	legacy, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), legacyName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if legacy.Spec.Replicas == nil || *legacy.Spec.Replicas != 1 {
+		t.Fatalf("expected the legacy deployment's replicas to be left untouched at 1, got %v", legacy.Spec.Replicas)
+	}
+}
+
 // --- Image pull policy (prov-kube-image-force-pull) ---
 
 func TestK8SImagePullPolicy_AlwaysWhenForcePullSet(t *testing.T) {

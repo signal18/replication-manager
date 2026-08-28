@@ -2,7 +2,6 @@ package cluster
 
 import (
 	"context"
-	"errors"
 	"strconv"
 
 	"github.com/signal18/replication-manager/config"
@@ -10,6 +9,7 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -137,9 +137,52 @@ func (cluster *Cluster) K8SUnprovisionProxyService(prx DatabaseProxy) {
 	cluster.errorChan <- cluster.k8sUnprovisionProxyServiceWithClient(clientset, prx)
 }
 
-func (cluster *Cluster) K8SStartProxyService(server DatabaseProxy) error {
-	return errors.New("Can't start proxy")
+// k8sStopProxyServiceWithClient scales the per-proxy Deployment to 0
+// replicas -- same scale-to-0 pattern as k8sStopDatabaseServiceWithClient
+// (prov_k8s_db.go), never the shared legacy Deployment
+// (k8sLegacyProxyDeploymentName).
+func (cluster *Cluster) k8sStopProxyServiceWithClient(client kubernetes.Interface, name string) error {
+	patch := []byte(`{"spec":{"replicas":0}}`)
+	_, err := client.AppsV1().Deployments(cluster.Name).Patch(context.TODO(), name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot stop proxy %s: %s ", name, err)
+	}
+	return err
 }
+
+// K8SStopProxyService is the Kubernetes implementation of StopProxyService
+// (cluster/prov.go). Does not auto-provision a missing Deployment, and never
+// touches the legacy shared <cluster>-deployment.
 func (cluster *Cluster) K8SStopProxyService(server DatabaseProxy) error {
-	return errors.New("Can't stop proxy")
+	client, err := cluster.K8SConnectAPI()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
+		return err
+	}
+	return cluster.k8sStopProxyServiceWithClient(client, k8sProxyDeploymentName(cluster.Name, server.GetName()))
+}
+
+// k8sStartProxyServiceWithClient scales the per-proxy Deployment back to 1
+// replica -- idempotent, same as k8sStartDatabaseServiceWithClient
+// (prov_k8s_db.go): a no-op if already at 1, since Start is called
+// unconditionally regardless of whether Stop actually ran.
+func (cluster *Cluster) k8sStartProxyServiceWithClient(client kubernetes.Interface, name string) error {
+	patch := []byte(`{"spec":{"replicas":1}}`)
+	_, err := client.AppsV1().Deployments(cluster.Name).Patch(context.TODO(), name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot start proxy %s: %s ", name, err)
+	}
+	return err
+}
+
+// K8SStartProxyService is the Kubernetes implementation of StartProxyService
+// (cluster/prov.go). Does not auto-provision a missing Deployment, and never
+// touches the legacy shared <cluster>-deployment.
+func (cluster *Cluster) K8SStartProxyService(server DatabaseProxy) error {
+	client, err := cluster.K8SConnectAPI()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
+		return err
+	}
+	return cluster.k8sStartProxyServiceWithClient(client, k8sProxyDeploymentName(cluster.Name, server.GetName()))
 }
