@@ -655,10 +655,16 @@ exits `0` immediately, which Kubernetes reports as the container completing
 successfully rather than crashing, and restarts it in a loop with no error
 logged.
 
-**Two moduleset bugs, both pre-existing and shared with OpenSVC (not
-Kubernetes-specific), were fixed alongside this**
-(`share/opensvc/moduleset_mariadb.svc.mrm.proxy.json`, applied by
-`GenerateProxyConfig` identically for every orchestrator):
+**Two bugs were fixed in this repo's embedded default moduleset**
+(`share/opensvc/moduleset_mariadb.svc.mrm.proxy.json`,
+`share.EmbededDbModuleFS`) — the copy any deployment uses unless it has
+back-office-pushed compliance content overriding it (`PluginDataDir`,
+`ReloadComplianceFromDataDir`, `cluster/configurator/configurator.go`). A
+fresh `kind` cluster with no BO push falls back to this embedded default, so
+that's what Kubernetes testing exercised and what these fixes target. A
+managed OpenSVC deployment with its own BO-pushed compliance file is a
+*different* moduleset entirely, not modified here — do not assume it has
+(or had) either bug just because the embedded default did.
 
 - `proxy_cnf_checkmaster`/`proxy_cnf_checkslave` were missing the
   `# %%ENV:GENLINE%%` placeholder the DB moduleset's own script template
@@ -671,9 +677,9 @@ Kubernetes-specific), were fixed alongside this**
 - `haproxy_check.cfg`'s `global` section only ever bound a local `stats
   socket /tmp/admin.sock`, never a TCP one — so `HaproxyProxy.Refresh()`'s
   `ApiCmd("show stat")` (`cluster/prx_haproxy.go`) could never reach it, and
-  the proxy always reported `Failed` at the cluster level regardless of
-  orchestrator. `haproxy.cfg` (`runtimeapi`) already binds both a local
-  socket *and* `stats socket %%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_ADMIN%%
+  a proxy running this config always reported `Failed` at the cluster
+  level. `haproxy.cfg` (`runtimeapi`) already binds both a local socket
+  *and* `stats socket %%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_ADMIN%%
   level admin expose-fd listeners`; `haproxy_check.cfg` was simply missing
   the second line. Fixed by adding it — haproxy supports multiple `stats
   socket` lines in `global`, so this doesn't disturb the Unix-socket-based
@@ -697,6 +703,43 @@ to a known `ServerMonitor` at all — are gated behind
 Regression tests: `TestHaproxyRefreshSkipsSetMasterInStandbyMode`,
 `TestHaproxyRefreshSkipsSetMasterFallbackInStandbyMode`
 (`cluster/prx_haproxy_test.go`).
+
+**`Refresh()` never mutates HAProxy state for `haproxy-mode=standby` — it
+only reports.** Per the documented definition of the two modes
+(docs.signal18.io, "Routing / HAProxy"): `standby` "operate[s] a local
+HAProxy instance via config generation and triggering start/stop/reload via
+socket," while `runtimeapi` "uses the tcp runtime api of HAProxy to modify
+some route to master and backend state according to replication status."
+Only `runtimeapi` is a Runtime-API-driven mode; `standby`'s only mechanism
+for propagating a topology change is a full config regeneration plus
+reload, already implemented in `Init()`/`Failover()`/
+`setReadBackendMaintenance()` (`cluster/prx_haproxy.go`, pre-existing,
+gated on `HaproxyMode == "standby"` there). An earlier version of this
+write-backend section added a `SetDrain`/`SetReady` "backstop" here in
+`Refresh()` for standby mode, to compensate for `checkmaster`'s
+external-check possibly going stale — reasonable-looking on its own, but
+inconsistent with what `standby` actually means: `Refresh()` should never
+issue a Runtime API state change for it at all, full stop. Removed;
+`Refresh()`'s write-backend section for standby mode is now purely
+`proxy.BackendsWrite = append(...)`, the same read used to populate the
+dashboard. Regression test:
+`TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode` — asserts no
+`set server service_write/...` command is ever sent in standby mode, even
+when a non-master row is left `UP`.
+
+This leaves the write side inconsistent with the *read* side on purpose,
+for now: the pre-existing read-backend reconciliation (the
+`srv.State == stateSlaveErr` drain, the staging/same-pass `SetReady`/
+`SetDrain` calls, `cluster/prx_haproxy.go` from roughly line 660 onward)
+was never gated to `runtimeapi` either, and by this same definition
+shouldn't be running for standby mode. That's pre-existing code, untouched
+here, and a separate, larger change — tracked in "Known limitations" below
+rather than folded into this pass.
+
+Proxies are never touched before topology resolves for a given tick: the
+monitor loop's Phase 1 (`cluster.TopologyDiscover`, `cluster/cluster.go`) is
+a hard `wg.Wait()` barrier before Phase 2 (`refreshProxies`, which calls
+`Refresh()`) runs, for every orchestrator.
 
 OpenSVC's own HAProxy provisioning (`OpenSVCGetHaproxyContainerSection`,
 `GetHaproxyTemplate`, `prov_opensvc_haproxy.go`) fetches and applies the
@@ -995,9 +1038,10 @@ real `sh`, not just asserted from the command's text shape),
 `k8sUpdateDatabaseServiceConfigWithClient`'s image/pull-policy patch,
 ProxySQL's PVC/mount/bootstrap/SSL-path builders, HAProxy's
 PVC/mount/bootstrap/standby-command builders, and `HaproxyProxy.Refresh()`'s
-`SetMaster` gating in both call sites
+`SetMaster` gating and write-backend mode isolation
 (`TestHaproxyRefreshSkipsSetMasterInStandbyMode`,
-`TestHaproxyRefreshSkipsSetMasterFallbackInStandbyMode`).
+`TestHaproxyRefreshSkipsSetMasterFallbackInStandbyMode`,
+`TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode`).
 
 The provisioning/unprovisioning logic is split into
 `kubernetes.Interface`-parameterized helpers (e.g.
@@ -1078,10 +1122,24 @@ Kubernetes-orchestrated scenarios.
   running, and report `ProxyRunning` at the cluster level; `standby`'s
   `checkmaster`/`checkslave` external checks execute and correctly report
   master vs. replica status. See "Persistent storage and config bootstrap
-  (HAProxy)" above for the fixes involved — three of the four (the
-  shebang-header ordering, the missing TCP `stats socket`, and the ungated
-  `SetMaster` call) were shared, orchestrator-agnostic bugs, not
-  Kubernetes-specific ones.
+  (HAProxy)" above for the fixes involved. The `SetMaster` gating
+  (`Refresh()` must never issue write-backend Runtime API commands in
+  `standby` mode, only in `runtimeapi`) is a fix to shared,
+  orchestrator-agnostic Go code (`cluster/prx_haproxy.go`), applied for
+  every orchestrator. The shebang-header ordering and missing TCP
+  `stats socket` were bugs in this repo's *embedded default* compliance
+  moduleset specifically — a managed OpenSVC deployment with its own
+  back-office-pushed compliance content is a different moduleset, not
+  necessarily affected either way.
+- `Refresh()`'s read-backend reconciliation (the `srv.State == stateSlaveErr`
+  drain, the staging/same-pass `SetReady`/`SetDrain` calls,
+  `cluster/prx_haproxy.go`) is pre-existing code that, like the write-backend
+  logic before this pass, was never gated to `runtimeapi` mode — per the
+  documented mode definitions (docs.signal18.io, "Routing / HAProxy"),
+  `standby` should never have `Refresh()` issue Runtime API mutations at
+  all, only `Init()`/`Failover()`'s full config regen + reload. Left
+  untouched here; bringing the read side in line with the write side's new
+  behavior is a separate, larger follow-up.
 - The persisted ProxySQL/HAProxy config can go stale the same way the
   database config can (see the first bullet above): it's only refreshed on
   a successful fetch at pod start, gated by `prov-proxy-start-fetch-config`,

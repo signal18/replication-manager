@@ -9,6 +9,8 @@ package cluster
 import (
 	"bufio"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -665,6 +667,183 @@ func TestHaproxyRefreshSkipsSetMasterFallbackInStandbyMode(t *testing.T) {
 			t.Fatalf("Refresh() sent %q from the !foundMasterInStat fallback in haproxy-mode=standby, which has no \"leader\" alias to address (all commands: %v)", c, getCommands())
 		}
 	}
+}
+
+// TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode: standby mode
+// propagates topology exclusively through Init()/Failover() (full config
+// regen + reload); Refresh() must never issue a write-backend Runtime API
+// command, even when a non-master row is left UP (checkmaster failed to
+// exclude it, matching a real production symptom) -- correcting that is
+// checkmaster's job or a full Init() regen, not Refresh()'s.
+func TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	// checkmaster failed to exclude the replica: both rows report UP in
+	// service_write, matching the live screenshot that prompted this fix.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_write", "server2", "UP", "127.0.0.1:3307"),
+		haproxyStatRow("service_read", "server1", "DOWN", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server2", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	for _, c := range getCommands() {
+		if strings.HasPrefix(c, "set server "+cluster.Conf.HaproxyAPIWriteBackend+"/") {
+			t.Fatalf("Refresh() sent %q in haproxy-mode=standby -- write-backend state must only ever change via Init()/Failover(), never from Refresh() (all commands: %v)", c, getCommands())
+		}
+	}
+
+	if len(proxy.BackendsWrite) != 2 {
+		t.Fatalf("expected Refresh() to still report both write-backend rows for the dashboard, got %d: %+v", len(proxy.BackendsWrite), proxy.BackendsWrite)
+	}
+}
+
+// TestHaproxyInitPopulatesWriteBackendWithLeaderOnly guards against a
+// long-standing gap in Init() -- the only place haproxy-mode=standby ever
+// reconciles topology, since Failover() just calls Init() again. Its server
+// loop only ever called AddServer for the read backend; the write backend
+// was created but never populated by this function at all (true since at
+// least v3.1.40). Whatever ended up in the write backend at initial
+// provisioning (e.g. every server, via the OpenSVC moduleset's unconditional
+// standby-mode server list) then stayed there forever, since no later
+// Init()/Failover() call ever added the new leader or removed a server that
+// lost leadership -- exactly matching the production symptom of replicas
+// (including ones in SLAVE_ERROR) staying UP in the write group.
+func TestHaproxyInitPopulatesWriteBackendWithLeaderOnly(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmpl := `{{range .Backends}}
+backend {{.Name}}
+{{range .Servers}}    server {{.Name}} {{.Host}}:{{.Port}}
+{{end}}
+{{end}}`
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), []byte(tmpl), 0644); err != nil {
+		t.Fatalf("failed to write test haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "ahmad_write",
+		HaproxyAPIReadBackend:  "ahmad_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+		ShareDir:               shareDir,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "server2"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+
+	proxy.Init()
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	content := string(rendered)
+
+	writeSection := haproxyBackendSection(t, content, "ahmad_write")
+	if !strings.Contains(writeSection, "server server1 127.0.0.1:3306") {
+		t.Fatalf("write backend does not contain the leader, want it present:\n%s", writeSection)
+	}
+	if strings.Contains(writeSection, "server server2 ") {
+		t.Fatalf("write backend contains the non-leader replica -- Init() must only ever route writes to the current leader:\n%s", writeSection)
+	}
+
+	readSection := haproxyBackendSection(t, content, "ahmad_read")
+	if !strings.Contains(readSection, "server server1 127.0.0.1:3306") || !strings.Contains(readSection, "server server2 127.0.0.1:3307") {
+		t.Fatalf("read backend should still list both servers, unchanged behavior:\n%s", readSection)
+	}
+}
+
+// haproxyBackendSection extracts the text of a single "backend <name>" block
+// from a rendered haproxy.cfg, up to (but not including) the next "backend "
+// line.
+func haproxyBackendSection(t *testing.T, content, name string) string {
+	t.Helper()
+	marker := "backend " + name + "\n"
+	idx := strings.Index(content, marker)
+	if idx == -1 {
+		t.Fatalf("rendered config does not contain backend %q:\n%s", name, content)
+	}
+	rest := content[idx+len(marker):]
+	if next := strings.Index(rest, "backend "); next != -1 {
+		rest = rest[:next]
+	}
+	return rest
 }
 
 // startFakeHaproxy starts a TCP listener that answers "show stat" with

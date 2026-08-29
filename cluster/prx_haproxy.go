@@ -311,15 +311,38 @@ func (proxy *HaproxyProxy) Init() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy failed to add backend for "+cluster.Conf.HaproxyAPIReadBackend)
 	}
 
-	//var checksum64 string
-	//	crcHost := crc64.MakeTable(crc64.ECMA)
+	// addServerTo builds this iteration's server entry fresh and adds it to
+	// backend, logging (not failing) on error -- kept as one place so the
+	// read and write backends below can't drift into different server
+	// details for the same server.
+	addServerTo := func(backend string, server *ServerMonitor, port int) error {
+		return haConfig.AddServer(backend, &haproxy.ServerDetail{
+			Name: server.Id, Host: server.Host, Port: port,
+			Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000,
+		})
+	}
+
 	for _, server := range cluster.Servers {
-		if !server.IsMaintenance {
-			p, _ := strconv.Atoi(server.Port)
-			//		checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(server.Host+":"+server.Port), crcHost))
-			s := haproxy.ServerDetail{Name: server.Id, Host: server.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
-			if err := haConfig.AddServer(cluster.Conf.HaproxyAPIReadBackend, &s); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server in HAProxy for "+cluster.Conf.HaproxyAPIReadBackend)
+		if server.IsMaintenance {
+			continue
+		}
+		p, _ := strconv.Atoi(server.Port)
+
+		if err := addServerTo(cluster.Conf.HaproxyAPIReadBackend, server, p); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server in HAProxy for "+cluster.Conf.HaproxyAPIReadBackend)
+		}
+
+		// Failover()/switchover for haproxy-mode=standby only ever calls
+		// Init() again -- there's no Runtime API patch step afterward -- so
+		// this is the one place write-backend membership can track topology
+		// at all. Delete-then-add keeps it idempotent across repeated
+		// Init() calls on an unchanged leader, and actually drops a server
+		// that just lost leadership instead of leaving it (and any
+		// never-added replica) stuck UP in the write group.
+		haConfig.DeleteServer(cluster.Conf.HaproxyAPIWriteBackend, server.Id)
+		if server.IsLeader() {
+			if err := addServerTo(cluster.Conf.HaproxyAPIWriteBackend, server, p); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server in HAProxy for "+cluster.Conf.HaproxyAPIWriteBackend)
 			}
 		}
 	}
@@ -518,6 +541,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 					Host:           srv.Host,
 					Port:           srv.Port,
 					Status:         srv.State,
+					Svname:         line[1],
 					PrxName:        line[73],
 					PrxStatus:      line[17],
 					PrxConnections: line[5],
@@ -540,9 +564,14 @@ func (proxy *HaproxyProxy) Refresh() error {
 					foundMasterInStat = true
 					proxy.BackendsWrite = append(proxy.BackendsWrite, bkw)
 
-					// SetMaster addresses a "leader" server that only exists in
-					// runtimeapi mode's config; standby lists every server
-					// statically and relies on checkmaster/checkslave instead.
+					// Runtime API write-backend mutation is runtimeapi-only.
+					// standby propagates topology exclusively through
+					// Init()/Failover() (full config regen + reload, see
+					// setReadBackendMaintenance/Failover) -- Refresh() only
+					// reports status for standby, it never patches state, so
+					// there's no dependency here on checkmaster's external-check
+					// working, and no separate Runtime-API-vs-Init() path to
+					// keep in sync.
 					if cluster.Conf.HaproxyMode == "runtimeapi" {
 						if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
 							if !srv.IsStandAlone() {
