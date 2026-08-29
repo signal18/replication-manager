@@ -225,6 +225,7 @@ func TestHaproxyRefreshMasterFallbackSamePass(t *testing.T) {
 		HaproxyAPIWriteBackend: "service_write",
 		HaproxyAPIReadBackend:  "service_read",
 		HaproxyOn:              true,
+		HaproxyMode:            "runtimeapi",
 	}
 	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
 
@@ -333,6 +334,7 @@ func TestHaproxyRefreshMasterDrainSamePass(t *testing.T) {
 		HaproxyAPIWriteBackend: "service_write",
 		HaproxyAPIReadBackend:  "service_read",
 		HaproxyOn:              true,
+		HaproxyMode:            "runtimeapi",
 	}
 	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
 
@@ -442,6 +444,7 @@ func TestHaproxyRefreshMasterStaleMaintSamePass(t *testing.T) {
 		HaproxyAPIWriteBackend: "service_write",
 		HaproxyAPIReadBackend:  "service_read",
 		HaproxyOn:              true,
+		HaproxyMode:            "runtimeapi",
 	}
 	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
 
@@ -738,6 +741,83 @@ func TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode(t *testing.T) {
 
 	if len(proxy.BackendsWrite) != 2 {
 		t.Fatalf("expected Refresh() to still report both write-backend rows for the dashboard, got %d: %+v", len(proxy.BackendsWrite), proxy.BackendsWrite)
+	}
+}
+
+// TestHaproxyRefreshNeverMutatesReadBackendInStandbyMode is
+// TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode's read-backend
+// counterpart. The read-backend mutation logic (broken-replication drain,
+// valid-replication ready, master-reader reconciliation) predates the
+// write-backend fix and was left unconditional -- the same architectural
+// bug, just on the other backend: standby relies on checkslave's own
+// external-check (option external-check, HAProxy's own health check
+// against repman's /slave-status API) to control read-backend membership,
+// so a competing Runtime API SetDrain/SetReady from Refresh() would race
+// against checkslave's independent polling instead of deferring to it.
+func TestHaproxyRefreshNeverMutatesReadBackendInStandbyMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 broke replication but checkslave's external-check hasn't
+	// excluded it yet (or is momentarily lagging) -- HAProxy still reports
+	// it UP. In haproxy-mode=runtimeapi this would trigger a SetDrain; in
+	// standby, Refresh() must leave it alone entirely.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlaveErr
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server2", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	for _, c := range getCommands() {
+		if strings.HasPrefix(c, "set server "+cluster.Conf.HaproxyAPIReadBackend+"/") {
+			t.Fatalf("Refresh() sent %q in haproxy-mode=standby -- read-backend state must be left to checkslave's external-check, never touched by Refresh() (all commands: %v)", c, getCommands())
+		}
+	}
+
+	if len(proxy.BackendsRead) != 2 {
+		t.Fatalf("expected Refresh() to still report both read-backend rows for the dashboard, got %d: %+v", len(proxy.BackendsRead), proxy.BackendsRead)
 	}
 }
 
