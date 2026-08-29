@@ -329,7 +329,7 @@ func (proxy *HaproxyProxy) Init() {
 		p, _ := strconv.Atoi(server.Port)
 
 		if err := addServerTo(cluster.Conf.HaproxyAPIReadBackend, server, p); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server in HAProxy for "+cluster.Conf.HaproxyAPIReadBackend)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server %s to HAProxy backend %s: %s", server.Id, cluster.Conf.HaproxyAPIReadBackend, err)
 		}
 
 		// Failover()/switchover for haproxy-mode=standby only ever calls
@@ -342,7 +342,7 @@ func (proxy *HaproxyProxy) Init() {
 		haConfig.DeleteServer(cluster.Conf.HaproxyAPIWriteBackend, server.Id)
 		if server.IsLeader() {
 			if err := addServerTo(cluster.Conf.HaproxyAPIWriteBackend, server, p); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server in HAProxy for "+cluster.Conf.HaproxyAPIWriteBackend)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server %s to HAProxy backend %s: %s", server.Id, cluster.Conf.HaproxyAPIWriteBackend, err)
 			}
 		}
 	}
