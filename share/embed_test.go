@@ -133,3 +133,39 @@ func TestOpenSVCHaproxyModulesetChecksAllowForkUnderThreads(t *testing.T) {
 		t.Errorf("moduleset_mariadb.svc.mrm.proxy.json contains %q %d times, want 1 (proxy_cnf_haproxy's global section, right after \"external-check\") -- without it, a multi-threaded HAProxy worker can't fork checkmaster/checkslave and every check fails with SOCKERR", insecureForkWanted, got)
 	}
 }
+
+// TestOpenSVCHaproxyModulesetStandbyBackendsUseConfiguredNames guards
+// against proxy_cnf_haproxy (haproxy_check.cfg, haproxy-mode=standby)
+// hardcoding its frontend/backend names as literal "service_write"/
+// "service_read" instead of the %%ENV:SERVERS_HAPROXY_WRITE_BACKEND%%/
+// %%ENV:SERVERS_HAPROXY_READ_BACKEND%% placeholders (cluster/prx_get.go),
+// which resolve to cluster.Conf.HaproxyAPIWriteBackend/HaproxyAPIReadBackend.
+// proxy_cnf_haproxy_runtime_api already uses these placeholders; standby
+// silently ignoring a custom backend name is the same class of drift this
+// whole file's earlier regressions came from -- Refresh() (cluster/
+// prx_haproxy.go) matches "show stat" rows against the *configured* backend
+// name, so a mismatch here leaves the dashboard's write/read groups
+// permanently empty even though HAProxy itself is behaving correctly.
+func TestOpenSVCHaproxyModulesetStandbyBackendsUseConfiguredNames(t *testing.T) {
+	data, err := EmbededDbModuleFS.ReadFile("opensvc/moduleset_mariadb.svc.mrm.proxy.json")
+	if err != nil {
+		t.Fatalf("could not read embedded moduleset_mariadb.svc.mrm.proxy.json: %s", err)
+	}
+	content := string(data)
+
+	for _, hardcoded := range []string{"backend service_write", "backend service_read", "default_backend service_write", "default_backend service_read"} {
+		if strings.Contains(content, hardcoded) {
+			t.Errorf("moduleset_mariadb.svc.mrm.proxy.json still contains %q -- proxy_cnf_haproxy must use %%%%ENV:SERVERS_HAPROXY_WRITE_BACKEND%%%%/%%%%ENV:SERVERS_HAPROXY_READ_BACKEND%%%% like proxy_cnf_haproxy_runtime_api does, not a hardcoded name", hardcoded)
+		}
+	}
+
+	for _, placeholder := range []string{"%%ENV:SERVERS_HAPROXY_WRITE_BACKEND%%", "%%ENV:SERVERS_HAPROXY_READ_BACKEND%%"} {
+		// Each placeholder must appear (at least) twice in proxy_cnf_haproxy
+		// alone: once in "default_backend ..." and once in "backend ...".
+		// proxy_cnf_haproxy_runtime_api also uses both placeholders, so the
+		// total across the whole file is (at least) 4 each.
+		if got := strings.Count(content, placeholder); got < 4 {
+			t.Errorf("moduleset_mariadb.svc.mrm.proxy.json contains %q only %d times, want at least 4 (2 in proxy_cnf_haproxy_runtime_api, 2 in proxy_cnf_haproxy)", placeholder, got)
+		}
+	}
+}
