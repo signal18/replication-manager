@@ -458,18 +458,48 @@ shown when the cluster's orchestrator has a view to offer (`opensvc` or
 
 ## Proxy provisioning
 
-`K8SProvisionProxyService()` creates only a Deployment — no Namespace
-ensure (relies on one already existing from DB provisioning), no Service,
-no config bootstrap. It unconditionally uses `cluster.Conf.ProvProxProxysqlImg`
-regardless of the proxy's actual type, so Kubernetes proxy provisioning
-today only really supports ProxySQL.
+`K8SProvisionProxyService()` creates a Deployment and a Service, both
+type-aware: `k8sProxyDeployment()`/`k8sProxyService()`
+(`cluster/prov_k8s_prx.go`) route through `k8sProxyImage()`/
+`k8sProxyContainerPorts()`/`k8sProxyServicePorts()`, which switch on
+`prx.GetType()`. **Only ProxySQL (`config.ConstProxySqlproxy`) is
+implemented.** Every other proxy family — HAProxy, MaxScale, Sphinx,
+ShardProxy, external, janitor, MyProxy — gets an explicit error instead of
+silently being deployed as `ProvProxProxysqlImg` under its own name; the
+pre-Phase-3 behavior did the latter, which looked provisioned while running
+the wrong software entirely. The Deployment is never even attempted for an
+unsupported type, since `k8sProxyDeployment()` returns the error before any
+API call.
+
+For ProxySQL, both the container and the Service expose two ports, not just
+one: `prx.GetPort()` (named `admin`, ProxySQL's admin/configuration
+interface) and `prx.GetWritePort()` (named `sql`, the actual SQL traffic
+port applications connect through). Exposing only `GetPort()` — the
+pre-Phase-3 behavior — meant the SQL port was never reachable through
+Kubernetes at all.
 
 The Deployment name and selector are unique per proxy
 (`<cluster>-<proxy-name>-deployment`, label `tag: <proxy-name>`), so
-multiple proxies in the same cluster don't collide.
+multiple proxies in the same cluster don't collide. The Service is named
+after the proxy itself (`k8sProxyServiceName()` = `prx.GetName()`, not the
+Deployment's cluster-prefixed form) — this matches the in-cluster DNS host
+`prov-net-cni` already bakes into proxy constructors
+(`NewProxySQLProxy`, `cluster/prx_proxysql.go`):
+`<proxy-name>.<namespace>.svc.<cluster-domain>` only resolves if the
+Service is named exactly `prx.GetName()`. Its selector matches the
+Deployment's own pod labels exactly, so it only ever routes to this proxy's
+one pod.
 
-`K8SUnprovisionProxyService()` deletes that Deployment, idempotent via
-`apierrors.IsNotFound`.
+There is still no Namespace ensure (relies on one already existing from DB
+provisioning) and no config bootstrap/ConfigMap: a provisioned ProxySQL pod
+starts on the image's own baked-in default config (admin on `6032`, SQL
+listener on `6033`), not a repman-generated one wired to the cluster's
+actual backend servers — see "Known limitations" below.
+
+`K8SUnprovisionProxyService()` deletes both the Deployment and the Service,
+idempotent via `apierrors.IsNotFound` for each independently (mirroring
+`k8sUnprovisionDatabaseServiceWithClient`'s `firstErr` pattern — a Service
+delete failure doesn't stop the Deployment delete from being attempted).
 
 ### Legacy deployment name
 
@@ -736,8 +766,15 @@ interim remediation is manual deletion and recreation.
 Focused unit tests in `cluster/prov_k8s_test.go`, using
 `k8s.io/client-go/kubernetes/fake`, cover: node-address safety, node-list
 error propagation, proxy naming uniqueness, invalid-port rejection,
-`AlreadyExists`/`NotFound` idempotency, namespace-ensure never blocking on
-a `Create()` failure, the legacy proxy Deployment being left untouched,
+`AlreadyExists`/`NotFound` idempotency (for both the proxy Deployment and
+its Service independently), namespace-ensure never blocking on a
+`Create()` failure, the legacy proxy Deployment being left untouched,
+the ProxySQL Deployment/Service using `ProvProxProxysqlImg` and exposing
+both the `admin` (`GetPort()`) and `sql` (`GetWritePort()`) ports rather
+than only the admin one, an unsupported proxy type erroring before either
+object is created, Service deletion on unprovision, and
+`NewProxySQLProxy`'s Kubernetes-only `"local"` → `cluster.local` host
+fallback with OpenSVC left unaffected (see below),
 `K8SStartDatabaseService`'s state check, `k8sHostnameLabel()`'s cached
 label-vs-node-name resolution, the bootstrap/dbjobs shell logic
 (exercised through a real `sh`, not just asserted from the generated
@@ -773,6 +810,48 @@ and the pod terminates, `start` scales it back to 1 and a fresh pod comes up
 Running, and a manually-added stand-in legacy `clusterin-deployment` (same
 shared `app: repication-manager` selector) was left untouched by both calls.
 
+Proxy Service exposure and type-awareness (see "Proxy provisioning" above)
+were live-verified on the same cluster: a fresh `proxysql` provision created
+a Deployment with `admin`/`sql` container ports `6032`/`6033` and a matching
+`proxysql1` Service (`ClusterIP`, same two ports); the ProxySQL pod reached
+`Running`; `stop`/`start` left the Service's `ClusterIP` unchanged
+throughout; `unprovision` deleted both the Deployment and the Service; and a
+`haproxy` proxy added to the same cluster's config was rejected at
+provision time with `Cannot build Kubernetes proxy deployment: Kubernetes
+proxy provisioning does not support proxy type "haproxy" yet (only
+"proxysql" is implemented)` in the server log, with no Deployment or
+Service created for it.
+
+This pass also surfaced and fixed a pre-existing host-resolution bug:
+`NewProxySQLProxy` (`cluster/prx_proxysql.go`) built its `host` from
+`conf.ProvOrchestratorCluster` unconditionally, so under that setting's own
+CLI default (the literal string `"local"`) the computed host was
+`proxysql1.clusterin.svc.local` — one `.svc.` segment short of the real
+Service DNS name `proxysql1.clusterin.svc.cluster.local` — even though the
+Service itself resolved correctly under its real name. `NewProxySQLProxy`
+now branches on `cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes`
+and reuses `k8sClusterDomain()` (`prov_k8s_db.go`) for that case, the same
+`"local"` → `cluster.local` fallback `GetDomain()`/`GetDomainHeadCluster()`
+(`cluster_get.go`) already apply on the database side; OpenSVC keeps the
+raw, unfallback-ed value exactly as before. Covered by
+`TestNewProxySQLProxy_KubernetesFallsBackToClusterLocalWhenUnset/
+_KubernetesFallsBackWhenLiteralCLIDefault/_KubernetesTracksConfiguredClusterDomain/
+_KubernetesHeadCluster/_OpenSVCUnaffectedByKubernetesFallback`
+(`cluster/prov_k8s_test.go`) and re-verified live: after the fix, the
+cluster's `proxysql1` proxy reported `host:
+"proxysql1.clusterin.svc.cluster.local"`, which resolved via CoreDNS to the
+Service's `ClusterIP`, and the connection error changed from a DNS lookup
+failure to ProxySQL's own `admin` user being restricted to local
+connections — a separate, pre-existing config-bootstrap limitation (see
+"Known limitations" below), not a DNS problem anymore. The same
+`conf.ProvOrchestratorCluster`-without-fallback pattern exists in every
+other proxy constructor (HAProxy, MaxScale, ProxyJanitor,
+MariadbShardProxy, Sphinx, Consul, MyProxy) and in `app.go`, but those
+weren't part of what broke or was fixed here — ProxySQL is the only proxy
+family Kubernetes can currently provision (see "Proxy provisioning"
+above), so it's the only one this pass could actually reproduce and verify
+live.
+
 No Kubernetes-capable regtest/CI harness exists in this repository, so none
 of the above is repeatable/automated — it does not substitute for real CI
 integration coverage. Closing that gap requires provisioning a
@@ -795,8 +874,19 @@ Kubernetes-orchestrated scenarios.
   `optional=true` behavior.
 - No real K8s-capable regtest/CI coverage for the outage-fallback path.
 - PVC and Namespace deletion semantics on unprovision are undecided.
-- No proxy Service exposure, and no Kubernetes proxy support beyond
-  ProxySQL.
+- No Kubernetes proxy support beyond ProxySQL — HAProxy, MaxScale, Sphinx,
+  ShardProxy, and other families return an explicit provisioning error
+  rather than silently deploying as ProxySQL.
+- A provisioned ProxySQL pod has no config bootstrap: it runs on the
+  image's own baked-in default config, not a repman-generated one wired to
+  the cluster's actual backend servers/hostgroups. The Service and both
+  ports (`admin`, `sql`) exist and are reachable, but the proxy itself
+  isn't yet functionally wired into the cluster until this is built —
+  reusing `proxy.GetProxyConfig()` and the existing config-tarball fetch
+  route (`server/api_database.go`), analogous to the DB init-container
+  bootstrap, is the natural next step.
+- No Kubernetes proxy manifest view (the DB-only `K8SGetDatabaseManifests`,
+  see "Manifest view" above, has no proxy equivalent).
 - Per-pod DNS (`prov-net-cni`) covers DB pods only, not proxies.
 - A `<cluster>-deployment` left over from before per-proxy Deployment
   naming requires manual operator cleanup (see "Legacy deployment name"

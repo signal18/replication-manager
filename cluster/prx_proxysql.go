@@ -36,10 +36,24 @@ func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxyS
 	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSProxySQLPartitions, conf.ProxysqlHostsIPV6, conf.ProxysqlJanitorWeights)
 
 	if conf.ProvNetCNI {
+		// Kubernetes uses k8sClusterDomain's "local" (prov-orchestrator-cluster's
+		// own CLI default, OpenSVC-oriented, not a real cluster domain) ->
+		// "cluster.local" fallback, matching how GetDomain()/GetDomainHeadCluster()
+		// (cluster_get.go) and k8sDatabaseDeployment already resolve the DB side's
+		// equivalent suffix -- without it, a cluster that never set
+		// prov-orchestrator-cluster explicitly gets a host ending in ".svc.local",
+		// one ".svc." segment short of the real Service DNS name
+		// ".svc.cluster.local", and CoreDNS never resolves it. Other orchestrators
+		// (OpenSVC) keep the raw value unchanged: they don't share Kubernetes'
+		// CoreDNS default and have never had this fallback.
+		domain := conf.ProvOrchestratorCluster
+		if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+			domain = k8sClusterDomain(cluster)
+		}
 		if conf.ClusterHead == "" {
-			prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+			prx.Host = prx.Host + "." + cluster.Name + ".svc." + domain
 		} else {
-			prx.Host = prx.Host + "." + conf.ClusterHead + ".svc." + conf.ProvOrchestratorCluster
+			prx.Host = prx.Host + "." + conf.ClusterHead + ".svc." + domain
 		}
 	}
 
