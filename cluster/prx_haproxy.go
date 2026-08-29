@@ -314,12 +314,19 @@ func (proxy *HaproxyProxy) Init() {
 	// addServerTo builds this iteration's server entry fresh and adds it to
 	// backend, logging (not failing) on error -- kept as one place so the
 	// read and write backends below can't drift into different server
-	// details for the same server.
+	// details for the same server. AddServer returns *haproxy.Error, not
+	// the error interface -- returning it directly here would wrap a nil
+	// *Error in a non-nil error interface (Go's classic typed-nil trap),
+	// making every call look like a failure even on success. The explicit
+	// nil check below avoids that.
 	addServerTo := func(backend string, server *ServerMonitor, port int) error {
-		return haConfig.AddServer(backend, &haproxy.ServerDetail{
+		if err := haConfig.AddServer(backend, &haproxy.ServerDetail{
 			Name: server.Id, Host: server.Host, Port: port,
 			Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000,
-		})
+		}); err != nil {
+			return err
+		}
+		return nil
 	}
 
 	for _, server := range cluster.Servers {

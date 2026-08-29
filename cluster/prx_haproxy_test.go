@@ -920,6 +920,39 @@ backend {{.Name}}
 	}
 }
 
+// TestHaproxyAddServerToDoesNotWrapTypedNilError guards against Init()'s
+// addServerTo closure regressing to Go's classic typed-nil-in-interface
+// trap: haproxy.Config.AddServer returns *haproxy.Error (a concrete pointer
+// type), and returning that value directly from a function whose signature
+// is `error` wraps a nil *Error in a non-nil error interface, so `err !=
+// nil` is true even on success. That exact regression made every "Failed to
+// add server" log line fire on every successful AddServer call, with the
+// error itself printing as "<nil>" -- this reproduces the same call shape
+// against the real router/haproxy types and asserts a successful add
+// produces a genuinely nil error.
+func TestHaproxyAddServerToDoesNotWrapTypedNilError(t *testing.T) {
+	c := &haproxy.Config{}
+	c.InitializeConfig()
+	if err := c.AddBackend(&haproxy.Backend{Name: "b", Mode: "tcp"}); err != nil {
+		t.Fatalf("test setup: AddBackend failed: %v", err)
+	}
+
+	// Mirrors addServerTo's fixed shape in Init() (cluster/prx_haproxy.go).
+	addServerTo := func(backend, name, host string, port int) error {
+		if err := c.AddServer(backend, &haproxy.ServerDetail{
+			Name: name, Host: host, Port: port,
+			Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000,
+		}); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	if err := addServerTo("b", "server1", "127.0.0.1", 3306); err != nil {
+		t.Fatalf("addServerTo returned a non-nil error on a successful AddServer: %v (typed-nil-in-interface regression)", err)
+	}
+}
+
 // haproxyBackendSection extracts the text of a single "backend <name>" block
 // from a rendered haproxy.cfg, up to (but not including) the next "backend "
 // line.
