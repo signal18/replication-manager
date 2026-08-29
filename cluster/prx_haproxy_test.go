@@ -541,6 +541,132 @@ func TestHaproxyRefreshMasterStaleMaintSamePass(t *testing.T) {
 	}
 }
 
+// TestHaproxyRefreshSkipsSetMasterInStandbyMode: standby mode lists every
+// server in the write backend (GetConfigProxyModule), not just the master
+// under a "leader" alias, so a non-master row must not trigger SetMaster.
+func TestHaproxyRefreshSkipsSetMasterInStandbyMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	// Every server appears in service_write (standby's actual config shape),
+	// not just the master.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_write", "server2", "DOWN", "127.0.0.1:3307"),
+		haproxyStatRow("service_read", "server1", "DOWN", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server2", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	for _, c := range getCommands() {
+		if strings.HasPrefix(c, "set server "+cluster.Conf.HaproxyAPIWriteBackend+"/leader") {
+			t.Fatalf("Refresh() sent %q in haproxy-mode=standby, which has no \"leader\" alias to address (all commands: %v)", c, getCommands())
+		}
+	}
+}
+
+// TestHaproxyRefreshSkipsSetMasterFallbackInStandbyMode covers Refresh()'s
+// second SetMaster call site, the "!foundMasterInStat" fallback: it fires
+// when no write-backend row resolves to a known ServerMonitor at all.
+func TestHaproxyRefreshSkipsSetMasterFallbackInStandbyMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	// No rows for service_write at all -- foundMasterInStat stays false,
+	// forcing the fallback branch regardless of resolution logic.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_read", "server1", "DOWN", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server2", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	for _, c := range getCommands() {
+		if strings.HasPrefix(c, "set server "+cluster.Conf.HaproxyAPIWriteBackend+"/leader") {
+			t.Fatalf("Refresh() sent %q from the !foundMasterInStat fallback in haproxy-mode=standby, which has no \"leader\" alias to address (all commands: %v)", c, getCommands())
+		}
+	}
+}
+
 // startFakeHaproxy starts a TCP listener that answers "show stat" with
 // statResponse and otherwise just records the command it received (no
 // response body), mirroring how HAProxy's Runtime API accepts a command with

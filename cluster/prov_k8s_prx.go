@@ -15,47 +15,41 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// Unique per proxy instance: a shared name/selector would collide across
-// proxies in the same cluster.
 func k8sProxyDeploymentName(clusterName, proxyName string) string {
 	return clusterName + "-" + proxyName + "-deployment"
 }
 
-// Shared cluster-wide across every proxy — never auto-deleted, since no
-// single-proxy-scoped operation can prove it belongs to that proxy rather
-// than a different, not-yet-migrated one in the same cluster.
+// k8sLegacyProxyDeploymentName is the pre-per-proxy-naming shared Deployment;
+// never auto-deleted since no single proxy can prove it owns it.
 func k8sLegacyProxyDeploymentName(clusterName string) string {
 	return clusterName + "-deployment"
 }
 
-// The per-proxy Service is named after the proxy itself, not
-// k8sProxyDeploymentName's cluster-prefixed form: proxy constructors
-// (NewProxySQLProxy, prx_proxysql.go) already build the prov-net-cni
-// in-cluster DNS host as "<proxy-name>.<namespace>.svc.<cluster-domain>",
-// which only resolves if the Service is named exactly prx.GetName().
+// Must equal prx.GetName(): proxy constructors build the prov-net-cni DNS
+// host as "<proxy-name>.<namespace>.svc.<cluster-domain>".
 func k8sProxyServiceName(prx DatabaseProxy) string {
 	return prx.GetName()
 }
 
-// k8sProxyImage is type-aware: only ProxySQL is implemented today. Every
-// other proxy family returns an explicit error instead of silently
-// deploying ProvProxProxysqlImg under a different type's name, which would
-// look provisioned while running the wrong software entirely.
+var k8sSupportedProxyTypes = []string{config.ConstProxySqlproxy, config.ConstProxyHaproxy}
+
+func k8sUnsupportedProxyTypeErr(proxyType string) error {
+	return fmt.Errorf("Kubernetes proxy provisioning does not support proxy type %q yet (only %q are implemented)", proxyType, k8sSupportedProxyTypes)
+}
+
 func (cluster *Cluster) k8sProxyImage(prx DatabaseProxy) (string, error) {
 	switch prx.GetType() {
 	case config.ConstProxySqlproxy:
 		return cluster.Conf.ProvProxProxysqlImg, nil
+	case config.ConstProxyHaproxy:
+		return cluster.Conf.ProvProxHaproxyImg, nil
 	default:
-		return "", fmt.Errorf("Kubernetes proxy provisioning does not support proxy type %q yet (only %q is implemented)", prx.GetType(), config.ConstProxySqlproxy)
+		return "", k8sUnsupportedProxyTypeErr(prx.GetType())
 	}
 }
 
-// k8sProxyContainerPorts is type-aware, matching k8sProxyImage: ProxySQL
-// exposes both its admin interface (prx.GetPort(), used for
-// hostgroup/backend configuration) and its SQL traffic interface
-// (prx.GetWritePort(), what clients actually connect to) -- GetPort() alone
-// (the pre-Phase-3 behavior) only ever exposed the admin port, never the
-// port applications need.
+// HaproxyStatPort isn't carried on the DatabaseProxy interface, so it's read
+// via prx.GetCluster().Conf instead.
 func k8sProxyContainerPorts(prx DatabaseProxy) ([]apiv1.ContainerPort, error) {
 	switch prx.GetType() {
 	case config.ConstProxySqlproxy:
@@ -67,15 +61,22 @@ func k8sProxyContainerPorts(prx DatabaseProxy) ([]apiv1.ContainerPort, error) {
 			{Name: "admin", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(adminPort)},
 			{Name: "sql", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(prx.GetWritePort())},
 		}, nil
+	case config.ConstProxyHaproxy:
+		adminPort, err := strconv.Atoi(prx.GetPort())
+		if err != nil {
+			return nil, fmt.Errorf("invalid HAProxy runtime API port %q: %s", prx.GetPort(), err)
+		}
+		return []apiv1.ContainerPort{
+			{Name: "admin", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(adminPort)},
+			{Name: "write", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(prx.GetWritePort())},
+			{Name: "read", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(prx.GetReadPort())},
+			{Name: "stat", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(prx.GetCluster().Conf.HaproxyStatPort)},
+		}, nil
 	default:
-		return nil, fmt.Errorf("Kubernetes proxy provisioning does not support proxy type %q yet (only %q is implemented)", prx.GetType(), config.ConstProxySqlproxy)
+		return nil, k8sUnsupportedProxyTypeErr(prx.GetType())
 	}
 }
 
-// k8sProxyServicePorts mirrors k8sProxyContainerPorts -- the Service must
-// expose the same admin/sql ports the container actually listens on.
-// TargetPort is left unset: it defaults to Port, which already matches the
-// container's own port numbers here.
 func k8sProxyServicePorts(prx DatabaseProxy) ([]apiv1.ServicePort, error) {
 	switch prx.GetType() {
 	case config.ConstProxySqlproxy:
@@ -87,24 +88,33 @@ func k8sProxyServicePorts(prx DatabaseProxy) ([]apiv1.ServicePort, error) {
 			{Name: "admin", Protocol: apiv1.ProtocolTCP, Port: int32(adminPort)},
 			{Name: "sql", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetWritePort())},
 		}, nil
+	case config.ConstProxyHaproxy:
+		adminPort, err := strconv.Atoi(prx.GetPort())
+		if err != nil {
+			return nil, fmt.Errorf("invalid HAProxy runtime API port %q: %s", prx.GetPort(), err)
+		}
+		return []apiv1.ServicePort{
+			{Name: "admin", Protocol: apiv1.ProtocolTCP, Port: int32(adminPort)},
+			{Name: "write", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetWritePort())},
+			{Name: "read", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetReadPort())},
+			{Name: "stat", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetCluster().Conf.HaproxyStatPort)},
+		}, nil
 	default:
-		return nil, fmt.Errorf("Kubernetes proxy provisioning does not support proxy type %q yet (only %q is implemented)", prx.GetType(), config.ConstProxySqlproxy)
+		return nil, k8sUnsupportedProxyTypeErr(prx.GetType())
 	}
 }
 
-// k8sProxyPVCName is the name of the PersistentVolumeClaim backing a
-// ProxySQL proxy's config and data directories -- one PVC per proxy,
-// mirroring k8sDatabasePVC's one-PVC-per-server model (prov_k8s_db.go).
-// Retained on unprovision (k8sUnprovisionProxyServiceWithClient): PVC
-// deletion is destructive, same rationale as the database PVC.
+// k8sProxyTypeHasPersistentStorage reports whether prx's type gets a PVC, a
+// bootstrap init container, and a custom startup command.
+func k8sProxyTypeHasPersistentStorage(proxyType string) bool {
+	return proxyType == config.ConstProxySqlproxy || proxyType == config.ConstProxyHaproxy
+}
+
 func k8sProxyPVCName(clusterName, proxyName string) string {
 	return clusterName + "-" + proxyName + "-claim"
 }
 
-// k8sProxyPVC is a pure builder, directly testable -- mirrors
-// k8sDatabasePVC (prov_k8s_db.go) but sized from prov-proxy-disk-size
-// (ProvProxDisk) instead of prov-db-disk-size, and its own default
-// fallback (also 20G, matching that flag's own CLI default).
+// Sized from prov-proxy-disk-size, falling back to 20G if unparseable.
 func (cluster *Cluster) k8sProxyPVC(prx DatabaseProxy) *apiv1.PersistentVolumeClaim {
 	size, err := resource.ParseQuantity(cluster.Conf.ProvProxDisk)
 	if err != nil {
@@ -134,37 +144,27 @@ func (cluster *Cluster) k8sProxyPVC(prx DatabaseProxy) *apiv1.PersistentVolumeCl
 	return pvc
 }
 
-// k8sProxyConfPersistSubPath is a subPath mount of the proxy's own PVC for
-// /etc/proxysql, alongside the same PVC's full mount at /var/lib/proxysql --
-// same persisted-not-emptyDir rationale as k8sConfPersistSubPath
-// (prov_k8s_db.go): a failed config fetch still has the last successful
-// boot's config to fall back to, instead of starting from nothing.
+// k8sProxyConfPersistSubPath is a subPath mount for /etc/proxysql, alongside
+// the PVC's full mount at /var/lib/proxysql, so a failed config fetch still
+// has the last successful boot's config to fall back to.
 const k8sProxyConfPersistSubPath = ".system/etc-proxysql"
 
-// k8sProxySSLPersistSubPath is a third subPath mount, at /etc/ssl. The
-// generated proxysql.cnf's ssl_p2s_cert/ssl_p2s_key/ssl_p2s_ca directives
-// (mariadb.svc.mrm.proxy.cnf.proxysql.default/.readwritesplit,
-// share/opensvc/moduleset_mariadb.svc.mrm.proxy.json) are built from
-// "%%ENV:SVC_CONF_ENV_CONFDIR%%/ssl/...", and GetConfigConfigdir()
-// (prx_get.go) resolves CONFDIR to the bare "/etc" for Kubernetes (as it
-// does for every non-SlapOS orchestrator) -- so the config that's actually
-// applied expects those three certs at /etc/ssl/*.pem, not at
-// /etc/proxysql/ssl/*.pem, which is where GenerateProxyConfig
-// (cluster/configurator/configurator.go) stages them in the fetched
-// tarball. A dedicated subPath, not folded into k8sProxyConfPersistSubPath,
-// so it can be mounted at /etc/ssl without also relocating proxysql.cnf
-// itself out of /etc/proxysql.
+// k8sProxySSLPersistSubPath mounts /etc/ssl separately from
+// k8sProxyConfPersistSubPath: proxysql.cnf's ssl_p2s_* directives resolve
+// CONFDIR to "/etc" on Kubernetes, so the certs must land at /etc/ssl/*.pem,
+// not the /etc/proxysql/ssl/*.pem path GenerateProxyConfig stages them at.
 const k8sProxySSLPersistSubPath = ".system/etc-ssl-proxysql"
 
-// k8sProxyBootstrapCommand builds the init container's fetch-and-apply
-// command and env for ProxySQL. Mirrors k8sDatabaseDeployment's own DB
-// bootstrap (prov_k8s_db.go) almost exactly -- same scheme/auth resolution,
-// the same bounded wget calls, the same need-config-fetch gate -- but
-// targets the proxy's own admin endpoint instead of a database server's,
-// and applies the fetched tarball's etc/proxysql/proxysql.cnf and data/*.pem
-// (GenerateProxyConfig, cluster/configurator/configurator.go) into the
-// ProxySQL-specific persistent paths instead of MariaDB's.
-func k8sProxyBootstrapCommand(cluster *Cluster, prx DatabaseProxy) ([]string, []apiv1.EnvVar) {
+// k8sHaproxyConfPersistSubPath mounts /usr/local/etc/haproxy, where the
+// haproxytech/haproxy-alpine image's default entrypoint reads haproxy.cfg
+// from. HAProxy's SSL certs are staged under etc/haproxy/ssl/ in the
+// tarball, inside this same directory, so no second SSL mount is needed.
+const k8sHaproxyConfPersistSubPath = ".system/etc-haproxy"
+
+// k8sProxyFetchConfigCmds builds the need-fetch/remote-fetch wget commands
+// shared by every proxy family's bootstrap init container; only what each
+// family does with the fetched tarball differs.
+func k8sProxyFetchConfigCmds(cluster *Cluster, prx DatabaseProxy) (needFetchCmd string, remoteFetchCmd string, initEnv []apiv1.EnvVar) {
 	scheme := "https"
 	noCheckCert := " --no-check-certificate"
 	authority := cluster.Conf.MonitorAddress + ":" + cluster.Conf.APIPort
@@ -179,49 +179,11 @@ func k8sProxyBootstrapCommand(cluster *Cluster, prx DatabaseProxy) ([]string, []
 		authHeader = " --header=\"Authorization: Basic $" + k8sSecretKeyAPIAuthHeader + "\""
 	}
 
-	// prx.GetHost()/prx.GetPort() -- not prx.GetName() -- because
-	// GetProxyFromURL (cluster/cluster_get.go), which the server-side
-	// /config and /need-config-fetch handlers use to resolve the target
-	// (server/api_database.go handlerMuxServersPortConfig,
-	// handlerMuxServerNeedConfigFetch), matches on exactly that pair.
-	remoteFetchCmd := "wget" + noCheckCert + " -T 8 -qO /tmp/config.tar.gz" + authHeader + " " + scheme + "://" + authority + "/api/clusters/" + cluster.Name + "/servers/" + prx.GetHost() + "/" + prx.GetPort() + "/config"
-	needFetchCmd := "wget" + noCheckCert + " -T 8 -qO /dev/null" + authHeader + " " + scheme + "://" + authority + "/api/clusters/" + cluster.Name + "/servers/" + prx.GetHost() + "/" + prx.GetPort() + "/need-config-fetch"
+	// GetProxyFromURL resolves by host+port, not name, so the fetch target
+	// must use those too.
+	remoteFetchCmd = "wget" + noCheckCert + " -T 8 -qO /tmp/config.tar.gz" + authHeader + " " + scheme + "://" + authority + "/api/clusters/" + cluster.Name + "/servers/" + prx.GetHost() + "/" + prx.GetPort() + "/config"
+	needFetchCmd = "wget" + noCheckCert + " -T 8 -qO /dev/null" + authHeader + " " + scheme + "://" + authority + "/api/clusters/" + cluster.Name + "/servers/" + prx.GetHost() + "/" + prx.GetPort() + "/need-config-fetch"
 
-	// Mirrors k8sDatabaseDeployment's own applyConfig: fetch into a scratch
-	// dir, and only on a successful fetch *and* extract does the persisted
-	// config/data actually get replaced -- any failure leaves the last
-	// successful boot's config untouched.
-	applyConfig := "if " + needFetchCmd + " 2>/dev/null; then " +
-		"if " + remoteFetchCmd + " 2>/dev/null; then " +
-		"if tar xzf /tmp/config.tar.gz -C /tmp/cfg 2>/dev/null; then " +
-		"cp /tmp/cfg/etc/proxysql/proxysql.cnf /etc/proxysql/proxysql.cnf 2>/dev/null; " +
-		"cp /tmp/cfg/data/*.pem /var/lib/proxysql/ 2>/dev/null; " +
-		// GenerateProxyConfig stages the p2s SSL certs under
-		// etc/proxysql/ssl/ in the tarball, but the generated cnf's own
-		// ssl_p2s_cert/ssl_p2s_key/ssl_p2s_ca directives reference
-		// /etc/ssl/*.pem (CONFDIR="/etc" + "/ssl") -- copied here to the
-		// path the config actually expects, not the tarball's own staging
-		// path. A no-op (empty source glob) when have_ssl is off and the
-		// tarball has no etc/proxysql/ssl/ directory at all.
-		"cp /tmp/cfg/etc/proxysql/ssl/*.pem /etc/ssl/ 2>/dev/null; " +
-		"fi; fi; fi"
-
-	// MKDIR_STATUS is the only thing that determines this container's exit
-	// code -- same rationale as k8sDatabaseDeployment: a Kubernetes init
-	// container has no "optional" resource flag, so everything after mkdir
-	// is unconditional and best-effort by construction instead.
-	cmd := []string{
-		"sh", "-c",
-		"mkdir -p /tmp/cfg /etc/proxysql /var/lib/proxysql /etc/ssl ; MKDIR_STATUS=$? ; " +
-			applyConfig +
-			" ; exit \"$MKDIR_STATUS\"",
-	}
-
-	// initEnv is nil unless a Basic Auth header is actually needed, so a
-	// cluster with api-credentials-secure-config off gets a byte-identical
-	// init container to before this credential moved into a Secret --
-	// matches k8sDatabaseDeployment's own initEnv handling.
-	var initEnv []apiv1.EnvVar
 	if authHeaderValue != "" {
 		initEnv = []apiv1.EnvVar{
 			{
@@ -235,18 +197,65 @@ func k8sProxyBootstrapCommand(cluster *Cluster, prx DatabaseProxy) ([]string, []
 			},
 		}
 	}
+	return
+}
+
+// k8sProxyBootstrapCommand builds the init container's fetch-and-apply
+// command for ProxySQL: only on a successful fetch and extract does the
+// persisted config/data get replaced, so a failure leaves the last
+// successful boot's config untouched.
+func k8sProxyBootstrapCommand(cluster *Cluster, prx DatabaseProxy) ([]string, []apiv1.EnvVar) {
+	needFetchCmd, remoteFetchCmd, initEnv := k8sProxyFetchConfigCmds(cluster, prx)
+
+	applyConfig := "if " + needFetchCmd + " 2>/dev/null; then " +
+		"if " + remoteFetchCmd + " 2>/dev/null; then " +
+		"if tar xzf /tmp/config.tar.gz -C /tmp/cfg 2>/dev/null; then " +
+		"cp /tmp/cfg/etc/proxysql/proxysql.cnf /etc/proxysql/proxysql.cnf 2>/dev/null; " +
+		"cp /tmp/cfg/data/*.pem /var/lib/proxysql/ 2>/dev/null; " +
+		// proxysql.cnf's ssl_p2s_* directives expect /etc/ssl/*.pem, not the
+		// tarball's etc/proxysql/ssl/ staging path.
+		"cp /tmp/cfg/etc/proxysql/ssl/*.pem /etc/ssl/ 2>/dev/null; " +
+		"fi; fi; fi"
+
+	cmd := []string{
+		"sh", "-c",
+		"mkdir -p /tmp/cfg /etc/proxysql /var/lib/proxysql /etc/ssl ; MKDIR_STATUS=$? ; " +
+			applyConfig +
+			" ; exit \"$MKDIR_STATUS\"",
+	}
 	return cmd, initEnv
 }
 
-// k8sProxyDeployment is a pure builder (no API calls), like
-// k8sDatabaseDeployment -- directly testable, and returns before any
-// Kubernetes object is touched when the proxy type isn't supported.
-//
-// Persistent storage, the config/data bootstrap init container, and the
-// explicit startup command are ProxySQL-specific (gated on prx.GetType()),
-// matching the same type gate k8sProxyImage/k8sProxyContainerPorts already
-// enforce: a future proxy family needs its own paths and bootstrap logic,
-// not an assumption that ProxySQL's apply here unchanged.
+// k8sHaproxyBootstrapCommand copies the fetched tarball's etc/haproxy/ tree
+// and init/checkmaster, init/checkslave into the persistent mount, chmod'd
+// executable. checkmaster/checkslave land under /usr/local/etc/haproxy here,
+// not at /usr/bin -- for haproxy-mode=standby, k8sProxyDeployment's
+// container.Command copies them into /usr/bin from there before exec'ing
+// haproxy, since Kubernetes has no safe subPath mount to a single file that
+// doesn't already exist in the image.
+func k8sHaproxyBootstrapCommand(cluster *Cluster, prx DatabaseProxy) ([]string, []apiv1.EnvVar) {
+	needFetchCmd, remoteFetchCmd, initEnv := k8sProxyFetchConfigCmds(cluster, prx)
+
+	applyConfig := "if " + needFetchCmd + " 2>/dev/null; then " +
+		"if " + remoteFetchCmd + " 2>/dev/null; then " +
+		"if tar xzf /tmp/config.tar.gz -C /tmp/cfg 2>/dev/null; then " +
+		"cp -r /tmp/cfg/etc/haproxy/. /usr/local/etc/haproxy/ 2>/dev/null; " +
+		"cp /tmp/cfg/init/checkmaster /usr/local/etc/haproxy/checkmaster 2>/dev/null; " +
+		"cp /tmp/cfg/init/checkslave /usr/local/etc/haproxy/checkslave 2>/dev/null; " +
+		"chmod +x /usr/local/etc/haproxy/checkmaster /usr/local/etc/haproxy/checkslave 2>/dev/null; " +
+		"fi; fi; fi"
+
+	cmd := []string{
+		"sh", "-c",
+		"mkdir -p /tmp/cfg /usr/local/etc/haproxy ; MKDIR_STATUS=$? ; " +
+			applyConfig +
+			" ; exit \"$MKDIR_STATUS\"",
+	}
+	return cmd, initEnv
+}
+
+// k8sProxyDeployment is a pure builder, returning before any Kubernetes
+// object is touched when the proxy type isn't supported.
 func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deployment, error) {
 	image, err := cluster.k8sProxyImage(prx)
 	if err != nil {
@@ -266,7 +275,7 @@ func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deploymen
 	var initContainers []apiv1.Container
 	var volumes []apiv1.Volume
 
-	if prx.GetType() == config.ConstProxySqlproxy {
+	if k8sProxyTypeHasPersistentStorage(prx.GetType()) {
 		volumeName := prx.GetName() + "-persistent-storage"
 		volumes = []apiv1.Volume{
 			{
@@ -278,38 +287,61 @@ func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deploymen
 				},
 			},
 		}
-		mounts := []apiv1.VolumeMount{
-			{
-				Name:      volumeName,
-				MountPath: "/var/lib/proxysql",
-			},
-			{
-				// SubPath, not emptyDir: matches k8sDatabaseDeployment's own
-				// /etc/mysql/conf.d subPath mount off the same PVC as the
-				// data directory.
-				Name:      volumeName,
-				MountPath: "/etc/proxysql",
-				SubPath:   k8sProxyConfPersistSubPath,
-			},
-			{
-				// Where the generated proxysql.cnf's ssl_p2s_* directives
-				// actually look (see k8sProxySSLPersistSubPath) -- a
-				// separate subPath so mounting it doesn't also relocate
-				// proxysql.cnf itself out of /etc/proxysql.
-				Name:      volumeName,
-				MountPath: "/etc/ssl",
-				SubPath:   k8sProxySSLPersistSubPath,
-			},
-		}
-		container.VolumeMounts = mounts
-		// --initial: re-derive ProxySQL's on-disk SQLite admin database from
-		// proxysql.cnf on every start, matching OpenSVC's own run_command
-		// (OpenSVCGetProxysqlContainerSection, prov_opensvc_proxysql.go) --
-		// otherwise a stale /var/lib/proxysql/proxysql.db from a previous
-		// boot would take precedence over the freshly fetched config.
-		container.Command = []string{"proxysql", "--initial", "-f", "-c", "/etc/proxysql/proxysql.cnf"}
 
-		initCmd, initEnv := k8sProxyBootstrapCommand(cluster, prx)
+		var mounts []apiv1.VolumeMount
+		var initCmd []string
+		var initEnv []apiv1.EnvVar
+
+		switch prx.GetType() {
+		case config.ConstProxySqlproxy:
+			mounts = []apiv1.VolumeMount{
+				{
+					Name:      volumeName,
+					MountPath: "/var/lib/proxysql",
+				},
+				{
+					Name:      volumeName,
+					MountPath: "/etc/proxysql",
+					SubPath:   k8sProxyConfPersistSubPath,
+				},
+				{
+					Name:      volumeName,
+					MountPath: "/etc/ssl",
+					SubPath:   k8sProxySSLPersistSubPath,
+				},
+			}
+			// --initial re-derives ProxySQL's SQLite admin database from
+			// proxysql.cnf on every start, so a stale proxysql.db from a
+			// previous boot never takes precedence over the fetched config.
+			container.Command = []string{"proxysql", "--initial", "-f", "-c", "/etc/proxysql/proxysql.cnf"}
+			initCmd, initEnv = k8sProxyBootstrapCommand(cluster, prx)
+		case config.ConstProxyHaproxy:
+			mounts = []apiv1.VolumeMount{
+				{
+					Name:      volumeName,
+					MountPath: "/usr/local/etc/haproxy",
+					SubPath:   k8sHaproxyConfPersistSubPath,
+				},
+			}
+			// runtimeapi (the default) needs no Command override: the image's
+			// own entrypoint already runs "haproxy -W -db -f .../haproxy.cfg".
+			// standby needs an explicit one: it copies checkmaster/checkslave
+			// into /usr/bin (see k8sHaproxyBootstrapCommand) and must pass
+			// "-db" itself, since haproxy_check.cfg's "daemon" directive
+			// otherwise backgrounds the process and PID 1 exits 0 immediately.
+			if cluster.Conf.HaproxyMode == "standby" {
+				container.Command = []string{
+					"sh", "-c",
+					"cp /usr/local/etc/haproxy/checkmaster /usr/bin/checkmaster 2>/dev/null; " +
+						"cp /usr/local/etc/haproxy/checkslave /usr/bin/checkslave 2>/dev/null; " +
+						"chmod +x /usr/bin/checkmaster /usr/bin/checkslave 2>/dev/null; " +
+						"exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg",
+				}
+			}
+			initCmd, initEnv = k8sHaproxyBootstrapCommand(cluster, prx)
+		}
+
+		container.VolumeMounts = mounts
 		initContainers = []apiv1.Container{
 			{
 				Name:         prx.GetName() + "-init",
@@ -350,9 +382,6 @@ func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deploymen
 	}, nil
 }
 
-// k8sProxyService is a pure builder mirroring k8sProxyDeployment. Selector
-// matches the Deployment's own pod labels exactly, so the Service only ever
-// routes to this proxy's own pod, never another proxy's.
 func (cluster *Cluster) k8sProxyService(prx DatabaseProxy) (*apiv1.Service, error) {
 	ports, err := k8sProxyServicePorts(prx)
 	if err != nil {
@@ -372,10 +401,9 @@ func (cluster *Cluster) k8sProxyService(prx DatabaseProxy) (*apiv1.Service, erro
 	}, nil
 }
 
-// Read-only: never deletes, only warns. Its selector ("app: repication-manager"
-// only) label-matches new per-proxy Deployments' pods too, and a proxy that
-// never migrated off it would otherwise look successfully unprovisioned while
-// still running. See doc/implementation/cluster/KUBERNETES_PROVISIONING.md.
+// k8sWarnIfLegacyProxyDeploymentExists never deletes, only warns: its
+// selector also label-matches new per-proxy Deployments' pods, so no
+// single-proxy operation can prove it's safe to remove.
 func (cluster *Cluster) k8sWarnIfLegacyProxyDeploymentExists(client kubernetes.Interface) {
 	name := k8sLegacyProxyDeploymentName(cluster.Name)
 	if _, err := client.AppsV1().Deployments(cluster.Name).Get(context.TODO(), name, metav1.GetOptions{}); err == nil {
@@ -385,14 +413,9 @@ func (cluster *Cluster) k8sWarnIfLegacyProxyDeploymentExists(client kubernetes.I
 }
 
 // k8sProvisionProxyServiceWithClient creates the per-proxy Deployment and
-// its Service, and for ProxySQL, the PVC and (if api-credentials-secure-config
-// is enabled) the shared auth-header Secret key its init container's
-// bootstrap fetch needs. Type-aware via k8sProxyDeployment/k8sProxyService:
-// an unsupported proxy type errors out before any object is touched, so a
-// failed provision never leaves a half-created Deployment-without-Service
-// (or vice versa) for an unsupported type. No Namespace ensure (relies on
-// one already existing from DB provisioning) -- see
-// doc/implementation/cluster/KUBERNETES_PROVISIONING.md.
+// Service, and a PVC plus auth-header Secret for types with persistent
+// storage. No Namespace ensure: relies on one already existing from DB
+// provisioning.
 func (cluster *Cluster) k8sProvisionProxyServiceWithClient(client kubernetes.Interface, prx DatabaseProxy) error {
 	cluster.k8sWarnIfLegacyProxyDeploymentExists(client)
 
@@ -402,10 +425,7 @@ func (cluster *Cluster) k8sProvisionProxyServiceWithClient(client kubernetes.Int
 		return err
 	}
 
-	// Only reached once the type is known supported (k8sProxyDeployment
-	// above already errored out for anything else), so this never creates a
-	// PVC for a proxy type that has no Deployment to attach it to.
-	if prx.GetType() == config.ConstProxySqlproxy {
+	if k8sProxyTypeHasPersistentStorage(prx.GetType()) {
 		if authHeaderValue := k8sAPIAuthHeaderValue(cluster); authHeaderValue != "" {
 			if err := cluster.k8sPatchSecretValues(client, map[string]string{k8sSecretKeyAPIAuthHeader: authHeaderValue}); err != nil {
 				return err

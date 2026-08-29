@@ -462,21 +462,26 @@ shown when the cluster's orchestrator has a view to offer (`opensvc` or
 type-aware: `k8sProxyDeployment()`/`k8sProxyService()`
 (`cluster/prov_k8s_prx.go`) route through `k8sProxyImage()`/
 `k8sProxyContainerPorts()`/`k8sProxyServicePorts()`, which switch on
-`prx.GetType()`. **Only ProxySQL (`config.ConstProxySqlproxy`) is
-implemented.** Every other proxy family — HAProxy, MaxScale, Sphinx,
-ShardProxy, external, janitor, MyProxy — gets an explicit error instead of
-silently being deployed as `ProvProxProxysqlImg` under its own name; the
-pre-Phase-3 behavior did the latter, which looked provisioned while running
-the wrong software entirely. The Deployment is never even attempted for an
-unsupported type, since `k8sProxyDeployment()` returns the error before any
-API call.
+`prx.GetType()`. **ProxySQL (`config.ConstProxySqlproxy`) and HAProxy
+(`config.ConstProxyHaproxy`) are implemented** (`k8sSupportedProxyTypes`).
+Every other proxy family — MaxScale, Sphinx, ShardProxy, external, janitor,
+MyProxy — gets an explicit error instead of silently being deployed as
+`ProvProxProxysqlImg`/`ProvProxHaproxyImg` under its own name, which would
+look provisioned while running the wrong software entirely. The Deployment
+is never even attempted for an unsupported type, since `k8sProxyDeployment()`
+returns the error before any API call.
 
 For ProxySQL, both the container and the Service expose two ports, not just
 one: `prx.GetPort()` (named `admin`, ProxySQL's admin/configuration
 interface) and `prx.GetWritePort()` (named `sql`, the actual SQL traffic
-port applications connect through). Exposing only `GetPort()` — the
-pre-Phase-3 behavior — meant the SQL port was never reachable through
-Kubernetes at all.
+port applications connect through). HAProxy exposes four: `prx.GetPort()` (`admin`, the
+runtime API/stats-socket port, `HaproxyAPIPort`), `prx.GetWritePort()`
+(`write`, `HaproxyWritePort`), `prx.GetReadPort()` (`read`,
+`HaproxyReadPort`), and `prx.GetCluster().Conf.HaproxyStatPort` (`stat`,
+the HTML stats page) — `HaproxyStatPort` isn't carried on the
+`DatabaseProxy` interface itself, so it's read straight off the cluster
+config, same as the generated `haproxy.cfg`'s own `listen stats` block
+does.
 
 The Deployment name and selector are unique per proxy
 (`<cluster>-<proxy-name>-deployment`, label `tag: <proxy-name>`), so
@@ -551,10 +556,9 @@ replace-only-on-success pattern as the database side.
 for Kubernetes (as it does for every non-SlapOS orchestrator) — so the
 config that's actually applied expects those three certs at
 `/etc/ssl/*.pem`. `GenerateProxyConfig` stages the p2s certs in the
-fetched tarball at `etc/proxysql/ssl/*.pem`, not `etc/ssl/*.pem` — a
-mismatch caught in review before this slice's first commit. The fix is
-purely in the Kubernetes-specific bootstrap, not the shared moduleset or
-`GetConfigConfigdir()` (both used by OpenSVC too, out of scope here): a
+fetched tarball at `etc/proxysql/ssl/*.pem`, not `etc/ssl/*.pem` — a path
+mismatch fixed purely in the Kubernetes-specific bootstrap, not the shared
+moduleset or `GetConfigConfigdir()` (both used by OpenSVC too): a
 third `subPath` mount off the same PVC (`k8sProxySSLPersistSubPath`,
 `.system/etc-ssl-proxysql`) at `/etc/ssl`, on both the init and main
 container, and the init container's `applyConfig` step additionally copies
@@ -595,11 +599,125 @@ This was checked live, not baked into the Deployment spec at provision
 time: toggling it takes effect on the proxy pod's next restart, exactly
 like the database side.
 
-Persistent storage and bootstrap only apply to ProxySQL today
-(`prx.GetType() == config.ConstProxySqlproxy`), gated the same way as
-`k8sProxyImage()`/`k8sProxyContainerPorts()` — a future proxy family needs
-its own paths and bootstrap logic added explicitly, not an assumption that
-ProxySQL's apply unchanged.
+Persistent storage and bootstrap apply to every type in
+`k8sProxyTypeHasPersistentStorage()` (today: ProxySQL and HAProxy) — the
+per-type mount layout, command, and init-container logic are still switched
+individually on `prx.GetType()` inside `k8sProxyDeployment()`, matching the
+same type gate `k8sProxyImage()`/`k8sProxyContainerPorts()` use — a future
+proxy family needs its own paths and bootstrap logic added explicitly, not
+an assumption that ProxySQL's or HAProxy's apply unchanged.
+
+### Persistent storage and config bootstrap (HAProxy)
+
+Shares `k8sProxyPVC()`/`k8sProxyPVCName()` with ProxySQL, but mounts the PVC
+once, not three times: a single `subPath` (`k8sHaproxyConfPersistSubPath`,
+`.system/etc-haproxy`) at `/usr/local/etc/haproxy` — the path both the
+`haproxytech/haproxy-alpine` image's default entrypoint reads `haproxy.cfg`
+from, and OpenSVC bind-mounts its own generated `etc/haproxy` onto
+(`OpenSVCGetHaproxyContainerSection`, `prov_opensvc_haproxy.go`). No second
+`/etc/ssl` mount is needed: `GenerateProxyConfig` stages HAProxy's p2s certs
+under `etc/haproxy/ssl/` inside that same directory.
+
+`k8sHaproxyBootstrapCommand()` shares fetch mechanics with ProxySQL's via
+`k8sProxyFetchConfigCmds()`. It copies the whole fetched `etc/haproxy/` tree
+(`haproxy.cfg`, `haproxy_check.cfg`, and `ssl/*.pem` when `have_ssl` is on)
+plus `init/checkmaster`/`init/checkslave`, `chmod +x`'d, into the persistent
+mount.
+
+**`haproxy-mode=runtimeapi` (the default):** no container command override.
+The image's own entrypoint runs `haproxy -W -db -f /usr/local/etc/haproxy/haproxy.cfg`,
+exactly the file the init container populates.
+
+**`haproxy-mode=standby`:** needs an explicit `container.Command`, for two
+reasons.
+
+First, `haproxy_check.cfg`'s external-check backends hard-code
+`/usr/bin/checkmaster`/`/usr/bin/checkslave` (matching OpenSVC's own
+individual-file bind mounts, `prov_opensvc_haproxy.go`). Kubernetes has no
+safe equivalent of a single-file mount to a path that doesn't already exist
+in the image (a `subPath` mount there is created as a directory, not a
+file), nor of mounting the whole `/usr/bin`. So the command copies the two
+scripts — already persisted alongside `haproxy.cfg` by the init container —
+into `/usr/bin` in the main container's own writable filesystem before
+exec'ing haproxy against `haproxy_check.cfg`:
+
+```
+cp /usr/local/etc/haproxy/checkmaster /usr/bin/checkmaster 2>/dev/null;
+cp /usr/local/etc/haproxy/checkslave /usr/bin/checkslave 2>/dev/null;
+chmod +x /usr/bin/checkmaster /usr/bin/checkslave 2>/dev/null;
+exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg
+```
+
+Second, `-W -db` is required explicitly: `haproxy_check.cfg`'s `global`
+section sets the `daemon` directive, and without `-db` haproxy forks into
+the background — the exec'd foreground process (this container's PID 1)
+exits `0` immediately, which Kubernetes reports as the container completing
+successfully rather than crashing, and restarts it in a loop with no error
+logged.
+
+**Two moduleset bugs, both pre-existing and shared with OpenSVC (not
+Kubernetes-specific), were fixed alongside this**
+(`share/opensvc/moduleset_mariadb.svc.mrm.proxy.json`, applied by
+`GenerateProxyConfig` identically for every orchestrator):
+
+- `proxy_cnf_checkmaster`/`proxy_cnf_checkslave` were missing the
+  `# %%ENV:GENLINE%%` placeholder the DB moduleset's own script template
+  (`init/dbjobs_new`) uses right after its shebang to opt out of
+  `WriteProxyConfigFile`'s header-prepend. Without it, the generated
+  "Generated by Signal18 replication-manager ..." header lands *before*
+  `#!/bin/sh`, and the kernel refuses to exec the script
+  (`Failed to exec process for external health check: Exec format error`).
+  Fixed by adding the placeholder to both templates.
+- `haproxy_check.cfg`'s `global` section only ever bound a local `stats
+  socket /tmp/admin.sock`, never a TCP one — so `HaproxyProxy.Refresh()`'s
+  `ApiCmd("show stat")` (`cluster/prx_haproxy.go`) could never reach it, and
+  the proxy always reported `Failed` at the cluster level regardless of
+  orchestrator. `haproxy.cfg` (`runtimeapi`) already binds both a local
+  socket *and* `stats socket %%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_ADMIN%%
+  level admin expose-fd listeners`; `haproxy_check.cfg` was simply missing
+  the second line. Fixed by adding it — haproxy supports multiple `stats
+  socket` lines in `global`, so this doesn't disturb the Unix-socket-based
+  `external-check` mechanics.
+
+**`Refresh()`'s write-backend reconciliation is gated to `runtimeapi` mode.**
+Once the TCP socket above lets `ApiCmd` succeed, `Refresh()` also runs logic
+that assumes a server literally named `leader` in the write backend — exactly
+`runtimeapi` mode's design (`GetConfigProxyModule`, `cluster/prx_get.go`,
+only adds `server leader ...` for the current master). `haproxy-mode=standby`'s
+`service_write` backend instead lists every server under generic
+`server1`/`server2`-style names, relying entirely on `checkmaster`'s
+external-check to decide who's eligible for writes, never on repman pushing
+a pointer — so any `SetMaster(cluster.Conf.HaproxyAPIWriteBackend, ...)` call
+(`set server service_write/leader addr ...`) fails with `"No such server"`
+in standby mode. Both call sites in `Refresh()` — the write-backend row
+loop, and the `!foundMasterInStat` fallback that fires when no row resolves
+to a known `ServerMonitor` at all — are gated behind
+`cluster.Conf.HaproxyMode == "runtimeapi"`, mirroring
+`reconcileReadBackendServersActive()`'s existing gate on the read side.
+Regression tests: `TestHaproxyRefreshSkipsSetMasterInStandbyMode`,
+`TestHaproxyRefreshSkipsSetMasterFallbackInStandbyMode`
+(`cluster/prx_haproxy_test.go`).
+
+OpenSVC's own HAProxy provisioning (`OpenSVCGetHaproxyContainerSection`,
+`GetHaproxyTemplate`, `prov_opensvc_haproxy.go`) fetches and applies the
+same `GenerateProxyConfig` tarball via `GetInitContainer()`'s `wget | tar`
+pattern (`prx_get.go`), so standby mode's "list everyone, let
+checkmaster/checkslave filter" write-backend design is shared, not a
+Kubernetes shortcut. A separate, older code path (`HaproxyProxy.Init()`'s
+`haproxy_config.template`/`haConfig.AddServer()`/`Render()`/`Reload()`,
+still in `prx_haproxy.go`) only ever adds servers to the read backend and
+is unrelated to how either orchestrator provisions standby mode today.
+
+`NewHaproxyProxy()` had the same `conf.ProvOrchestratorCluster`-without-fallback
+issue `NewProxySQLProxy` had (see "Testing" below): under `prov-net-cni` it
+built `<proxy-host>.<cluster>.svc.<prov-orchestrator-cluster>`
+unconditionally, so the CLI default `"local"` produced a host one `.svc.`
+segment short of the real Service DNS name. Fixed the same way, scoped to
+Kubernetes only via `k8sClusterDomain()`; OpenSVC keeps the raw value.
+Unlike `NewProxySQLProxy`, it doesn't yet branch on `conf.ClusterHead`.
+
+`prov-proxy-start-fetch-config` applies to HAProxy exactly as it does to
+ProxySQL — the cookie mechanism is proxy-type-agnostic.
 
 ### Legacy deployment name
 
@@ -863,29 +981,23 @@ interim remediation is manual deletion and recreation.
 
 ## Testing
 
-Focused unit tests in `cluster/prov_k8s_test.go`, using
-`k8s.io/client-go/kubernetes/fake`, cover: node-address safety, node-list
-error propagation, proxy naming uniqueness, invalid-port rejection,
-`AlreadyExists`/`NotFound` idempotency (for both the proxy Deployment and
-its Service independently), namespace-ensure never blocking on a
-`Create()` failure, the legacy proxy Deployment being left untouched,
-the ProxySQL Deployment/Service using `ProvProxProxysqlImg` and exposing
-both the `admin` (`GetPort()`) and `sql` (`GetWritePort()`) ports rather
-than only the admin one, an unsupported proxy type erroring before either
-object is created, Service deletion on unprovision, and
-`NewProxySQLProxy`'s Kubernetes-only `"local"` → `cluster.local` host
-fallback with OpenSVC left unaffected (see below),
-`K8SStartDatabaseService`'s state check, `k8sHostnameLabel()`'s cached
-label-vs-node-name resolution, the bootstrap/dbjobs shell logic
-(exercised through a real `sh`, not just asserted from the generated
-command's text shape), and `k8sUpdateDatabaseServiceConfigWithClient`'s
-image/pull-policy patch (main container, dbjobs sidecar when present, a
-missing sidecar not producing a bogus container, `forcePull` overriding
-`prov-kube-image-force-pull`, the missing-Deployment and
-missing-main-container error paths, and the enforced scale-to-0 precondition
-rejecting both a non-zero and a nil `Replicas`) — see "Bootstrap", "dbjobs
-sidecar", and "Rolling upgrade: image update" above for the specific test
-names.
+Unit tests in `cluster/prov_k8s_test.go` (`k8s.io/client-go/kubernetes/fake`)
+and `cluster/prx_haproxy_test.go` cover: node-address safety, node-list error
+propagation, proxy naming uniqueness, invalid-port rejection,
+`AlreadyExists`/`NotFound` idempotency, namespace-ensure non-fatal on
+failure, the legacy proxy Deployment left untouched, ProxySQL/HAProxy image
+and port selection, an unsupported proxy type erroring before any object is
+created, Service deletion on unprovision, `NewProxySQLProxy`/`NewHaproxyProxy`'s
+Kubernetes-only `"local"` → `cluster.local` host fallback with OpenSVC
+unaffected, `K8SStartDatabaseService`'s state check, `k8sHostnameLabel()`'s
+cached label resolution, the bootstrap/dbjobs shell logic (run through a
+real `sh`, not just asserted from the command's text shape),
+`k8sUpdateDatabaseServiceConfigWithClient`'s image/pull-policy patch,
+ProxySQL's PVC/mount/bootstrap/SSL-path builders, HAProxy's
+PVC/mount/bootstrap/standby-command builders, and `HaproxyProxy.Refresh()`'s
+`SetMaster` gating in both call sites
+(`TestHaproxyRefreshSkipsSetMasterInStandbyMode`,
+`TestHaproxyRefreshSkipsSetMasterFallbackInStandbyMode`).
 
 The provisioning/unprovisioning logic is split into
 `kubernetes.Interface`-parameterized helpers (e.g.
@@ -893,121 +1005,48 @@ The provisioning/unprovisioning logic is split into
 `k8sNodesFromClient`) so a fake clientset can exercise them; the public
 `K8S*` methods are thin live-connection wrappers.
 
-Manually verified against a live `kind` cluster, both deployment models: DB
-provision (Namespace/PVC/Deployment/Service creation, node scheduling, PVC
-binding, config bootstrap, MariaDB startup), stop/start, unprovision, the
-outage-fallback path (repman unreachable at pod restart — persisted config
-applied unchanged, init container exits `0`), `/actions/restart` on
-Kubernetes, and RBAC gaps (`secrets`/`deployments`/`pods` patch and list
-grants). Not covered by a live pass: the "nothing ever persisted" first-boot
-case and a corrupt-tarball download — both only unit-tested.
+**Live-verified against a `kind` cluster** (both deployment models for DB; a
+`clusterin` namespace with `prov-orchestrator=kube` for proxies):
 
-Proxy stop/start (see "Start/stop" above) was separately live-verified on a
-running `kind` cluster (3 workers, a `clusterin` namespace already monitored
-with `prov-orchestrator=kube`): provisioned a `proxysql` proxy through the
-real HTTP API, confirmed `stop` scales `clusterin-proxysql1-deployment` to 0
-and the pod terminates, `start` scales it back to 1 and a fresh pod comes up
-Running, and a manually-added stand-in legacy `clusterin-deployment` (same
-shared `app: repication-manager` selector) was left untouched by both calls.
+- **DB**: provision (Namespace/PVC/Deployment/Service, node scheduling, PVC
+  binding, config bootstrap, MariaDB startup), stop/start, unprovision, the
+  outage-fallback path (repman unreachable — persisted config applied
+  unchanged, init container exits `0`), `/actions/restart`, RBAC grants
+  (`secrets`/`deployments`/`pods`). Not live-verified: the first-boot
+  nothing-persisted case and a corrupt-tarball download (unit-tested only).
+- **Proxy lifecycle**: `proxysql` provision/stop/start/unprovision, `admin`/`sql`
+  ports (`6032`/`6033`) reachable through the Service, Service `ClusterIP`
+  stable across stop/start, legacy Deployment left untouched.
+- **ProxySQL bootstrap**: PVC created and bound, config and cert files
+  present at the paths the config references, ports reachable,
+  `prov-proxy-start-fetch-config` toggling the live `need-config-fetch`
+  endpoint, stop/start re-fetching a fresh config, PVC retained on
+  unprovision. The SSL cert path fix verified separately with `have_ssl=true`
+  on: certs land at the paths `proxysql.cnf` references, clean startup, no
+  cert-loading errors.
+- **HAProxy, `runtimeapi` mode**: PVC/Deployment/Service created with the
+  right ports, `haproxy.cfg` fully templated with the real backend servers,
+  config valid (`haproxy -c`), clean startup, `ProxyRunning`, stop/start
+  preserving the persisted config.
+- **HAProxy, `standby` mode**: pod stays `Running` (no restart loop),
+  `checkmaster`/`checkslave` present at `/usr/bin`, executable, and
+  correctly differentiate master/replica via the real
+  `master-status`/`slave-status` routes; `ProxyRunning` at the cluster level
+  after the TCP-socket and `SetMaster`-gating fixes; write/read backend
+  split confirmed via the stats page CSV export.
 
-Proxy Service exposure and type-awareness (see "Proxy provisioning" above)
-were live-verified on the same cluster: a fresh `proxysql` provision created
-a Deployment with `admin`/`sql` container ports `6032`/`6033` and a matching
-`proxysql1` Service (`ClusterIP`, same two ports); the ProxySQL pod reached
-`Running`; `stop`/`start` left the Service's `ClusterIP` unchanged
-throughout; `unprovision` deleted both the Deployment and the Service; and a
-`haproxy` proxy added to the same cluster's config was rejected at
-provision time with `Cannot build Kubernetes proxy deployment: Kubernetes
-proxy provisioning does not support proxy type "haproxy" yet (only
-"proxysql" is implemented)` in the server log, with no Deployment or
-Service created for it.
+Also fixed during this work: `NewProxySQLProxy`/`NewHaproxyProxy` built
+their host from `conf.ProvOrchestratorCluster` unconditionally, so under
+that setting's CLI default (`"local"`) the computed host was one `.svc.`
+segment short of the real Service DNS name — even though the Service itself
+resolved correctly under its real name. Both constructors now route through
+`k8sClusterDomain()` on Kubernetes only; OpenSVC keeps the raw value.
+Live-verified: after the fix, the connection error changed from a DNS
+lookup failure to a separate, pre-existing config-bootstrap limitation (see
+"Known limitations" below), confirming DNS itself was the fix.
 
-This pass also surfaced and fixed a pre-existing host-resolution bug:
-`NewProxySQLProxy` (`cluster/prx_proxysql.go`) built its `host` from
-`conf.ProvOrchestratorCluster` unconditionally, so under that setting's own
-CLI default (the literal string `"local"`) the computed host was
-`proxysql1.clusterin.svc.local` — one `.svc.` segment short of the real
-Service DNS name `proxysql1.clusterin.svc.cluster.local` — even though the
-Service itself resolved correctly under its real name. `NewProxySQLProxy`
-now branches on `cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes`
-and reuses `k8sClusterDomain()` (`prov_k8s_db.go`) for that case, the same
-`"local"` → `cluster.local` fallback `GetDomain()`/`GetDomainHeadCluster()`
-(`cluster_get.go`) already apply on the database side; OpenSVC keeps the
-raw, unfallback-ed value exactly as before. Covered by
-`TestNewProxySQLProxy_KubernetesFallsBackToClusterLocalWhenUnset/
-_KubernetesFallsBackWhenLiteralCLIDefault/_KubernetesTracksConfiguredClusterDomain/
-_KubernetesHeadCluster/_OpenSVCUnaffectedByKubernetesFallback`
-(`cluster/prov_k8s_test.go`) and re-verified live: after the fix, the
-cluster's `proxysql1` proxy reported `host:
-"proxysql1.clusterin.svc.cluster.local"`, which resolved via CoreDNS to the
-Service's `ClusterIP`, and the connection error changed from a DNS lookup
-failure to ProxySQL's own `admin` user being restricted to local
-connections — a separate, pre-existing config-bootstrap limitation (see
-"Known limitations" below), not a DNS problem anymore. The same
-`conf.ProvOrchestratorCluster`-without-fallback pattern exists in every
-other proxy constructor (HAProxy, MaxScale, ProxyJanitor,
-MariadbShardProxy, Sphinx, Consul, MyProxy) and in `app.go`, but those
-weren't part of what broke or was fixed here — ProxySQL is the only proxy
-family Kubernetes can currently provision (see "Proxy provisioning"
-above), so it's the only one this pass could actually reproduce and verify
-live.
-
-ProxySQL persistent storage and config bootstrap (see "Persistent storage
-and config bootstrap (ProxySQL)" above) added unit tests for: the PVC
-builder (size from `prov-proxy-disk-size`, its own 20G fallback when
-unparseable, nil vs. configured `StorageClassName`, per-proxy naming),
-the Deployment's PVC-backed volume and its two mounts (full volume at
-`/var/lib/proxysql`, `subPath` at `/etc/proxysql`), the main container's
-command referencing `/etc/proxysql/proxysql.cnf`, the bootstrap init
-container's presence and bounded (`-T 8`) fetch/need-config-fetch calls
-against the proxy's own host/port, `REPMAN_AUTH_HEADER` using a
-`SecretKeyRef` (never a raw value) when `api-credentials-secure-config` is
-on, an unsupported proxy type getting neither a PVC nor an init container,
-PVC creation and its `AlreadyExists` idempotency on provision, and PVC
-retention on unprovision. `prov-proxy-start-fetch-config` parity added
-tests for `Proxy.CheckNeedConfigFetch()` setting/clearing the no-fetch
-cookie in both directions and `cluster.CheckNeedConfigFetch()` now covering
-`cluster.Proxies`, not just `cluster.Servers`. A follow-up review of this
-slice (before its first commit) found the SSL cert path mismatch described
-above; the fix added `TestK8SProxyDeployment_MountsSSLCertPathConfigExpects`
-(both containers mount `/etc/ssl` on `k8sProxySSLPersistSubPath`, distinct
-from `proxysql.cnf`'s own subPath) and
-`TestK8SProxyDeployment_InitContainerCopiesSSLCertsToConfigExpectedPath`
-(the init command copies from the tarball's `etc/proxysql/ssl/` staging
-path to `/etc/ssl/`).
-
-This was also live-verified end-to-end on the same running `kind` cluster
-(`clusterin` namespace, `prov-orchestrator=kube`): unprovisioning and
-re-provisioning `proxysql1` through the real HTTP API created a 20G PVC
-(`clusterin-proxysql1-claim`, bound under the cluster's default `standard`
-StorageClass) before the Deployment; the pod reached `Running` with the
-init container completing (`exitCode: 0`) and both `/etc/proxysql/proxysql.cnf`
-and the three `proxysql-{ca,cert,key}.pem` files present under
-`/var/lib/proxysql`, matching the config's own `datadir="/var/lib/proxysql"`
-line; both `6032` (admin) and `6033` (sql) were listening in the container
-and reachable through the `proxysql1` Service; toggling
-`prov-proxy-start-fetch-config` off then on changed
-`GET .../servers/proxysql1.clusterin.svc.cluster.local/6032/need-config-fetch`
-from `200` to `500` and back to `200`, confirming the cookie wiring reaches
-the same live endpoint the init container itself calls; a stop/start cycle
-replaced the pod and the init container re-fetched a fresh, newly
-timestamped config (certs persisted unchanged) on the new pod; and
-unprovisioning deleted the Deployment and the Service while the PVC stayed
-`Bound` and untouched throughout.
-
-The SSL cert path fix was separately live-verified on the same cluster with
-`have_ssl` actually on: added the `ssl` proxy tag
-(`POST .../settings/actions/add-proxy-tag/ssl`, confirmed via
-`GET .../clusters/clusterin` → `configurator.proxyServersTags`), then
-reprovisioned `proxysql1`. The regenerated `/etc/proxysql/proxysql.cnf`
-showed `have_ssl=true` with `ssl_p2s_cert`/`ssl_p2s_key`/`ssl_p2s_ca` all
-pointing at `/etc/ssl/*.pem`, and `/etc/ssl/` in the running container held
-`ca-cert.pem`, `client-cert.pem`, and `client-key.pem` (plus
-`server-cert.pem`/`server-key.pem`, harmlessly also copied) — the exact
-three files the config references, at the exact path it references them
-by. The init container exited `0` and the ProxySQL container logs showed
-no SSL/cert-loading errors, reaching `Running` normally. The `ssl` tag and
-proxy were then reverted/reprovisioned back to the pre-test state.
+`haproxy1` is currently provisioned on the shared `kind` cluster in
+`haproxy-mode=runtimeapi`, left running as a working example (not reverted).
 
 No Kubernetes-capable regtest/CI harness exists in this repository, so none
 of the above is repeatable/automated — it does not substitute for real CI
@@ -1030,17 +1069,25 @@ Kubernetes-orchestrated scenarios.
   defaults and the dbjobs sidecar idles, matching OpenSVC's
   `optional=true` behavior.
 - No real K8s-capable regtest/CI coverage for the outage-fallback path.
-- PVC deletion on unprovision is decided (retained, both for databases and
-  for ProxySQL) but Namespace deletion semantics remain undecided.
-- No Kubernetes proxy support beyond ProxySQL — HAProxy, MaxScale, Sphinx,
-  ShardProxy, and other families return an explicit provisioning error
-  rather than silently deploying as ProxySQL.
-- The persisted ProxySQL config can go stale the same way the database
-  config can (see the first bullet above): it's only refreshed on a
-  successful fetch at pod start, gated by `prov-proxy-start-fetch-config`,
+- PVC deletion on unprovision is decided (retained, for databases, ProxySQL,
+  and HAProxy alike) but Namespace deletion semantics remain undecided.
+- No Kubernetes proxy support beyond ProxySQL and HAProxy — MaxScale,
+  Sphinx, ShardProxy, and other families return an explicit provisioning
+  error rather than silently deploying as one of the two supported types.
+- Both HAProxy modes (`runtimeapi` and `standby`) provision, boot, stay
+  running, and report `ProxyRunning` at the cluster level; `standby`'s
+  `checkmaster`/`checkslave` external checks execute and correctly report
+  master vs. replica status. See "Persistent storage and config bootstrap
+  (HAProxy)" above for the fixes involved — three of the four (the
+  shebang-header ordering, the missing TCP `stats socket`, and the ungated
+  `SetMaster` call) were shared, orchestrator-agnostic bugs, not
+  Kubernetes-specific ones.
+- The persisted ProxySQL/HAProxy config can go stale the same way the
+  database config can (see the first bullet above): it's only refreshed on
+  a successful fetch at pod start, gated by `prov-proxy-start-fetch-config`,
   so a config change with no restart since leaves the persisted copy out of
   date. `REPMAN_AUTH_HEADER` also goes stale the same way as the database
-  side if `api-credentials` changes without a reprovision. A ProxySQL pod
+  side if `api-credentials` changes without a reprovision. A proxy pod
   never successfully provisioned gets no benefit from the mechanism during
   an outage, same as the database side.
 - No Kubernetes proxy manifest view (the DB-only `K8SGetDatabaseManifests`,

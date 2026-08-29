@@ -38,6 +38,8 @@ type fakeProxy struct {
 	port      string
 	proxyType string
 	writePort int
+	readPort  int
+	cluster   *Cluster
 }
 
 func (f *fakeProxy) GetName() string { return f.name }
@@ -50,6 +52,16 @@ func (f *fakeProxy) GetHost() string {
 	return f.name
 }
 func (f *fakeProxy) GetWritePort() int { return f.writePort }
+func (f *fakeProxy) GetReadPort() int  { return f.readPort }
+
+// GetCluster falls back to a bare Cluster instead of nil, which would panic
+// on the HAProxy stat-port lookup in k8sProxyContainerPorts.
+func (f *fakeProxy) GetCluster() *Cluster {
+	if f.cluster != nil {
+		return f.cluster
+	}
+	return &Cluster{Conf: &config.Config{}}
+}
 
 // --- K8SGetNodes / node discovery safety ---
 
@@ -355,7 +367,7 @@ func TestK8SProxyDeployment_SQLPortIsNotJustGetPort(t *testing.T) {
 
 func TestK8SProxyImage_UnsupportedTypeReturnsExplicitError(t *testing.T) {
 	cluster := newTestCluster("k8stest")
-	for _, typ := range []string{config.ConstProxyHaproxy, config.ConstProxyMaxscale, config.ConstProxySpider, config.ConstProxySphinx, ""} {
+	for _, typ := range []string{config.ConstProxyMaxscale, config.ConstProxySpider, config.ConstProxySphinx, ""} {
 		prx := &fakeProxy{name: "proxy1", port: "6032", proxyType: typ}
 		if _, err := cluster.k8sProxyImage(prx); err == nil {
 			t.Fatalf("expected an explicit unsupported-type error for proxy type %q, got nil", typ)
@@ -366,20 +378,20 @@ func TestK8SProxyImage_UnsupportedTypeReturnsExplicitError(t *testing.T) {
 func TestK8SProvisionProxy_UnsupportedTypeCreatesNothing(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	cluster := newTestCluster("k8stest")
-	prx := &fakeProxy{name: "haproxy1", port: "6032", proxyType: config.ConstProxyHaproxy}
+	prx := &fakeProxy{name: "maxscale1", port: "6032", proxyType: config.ConstProxyMaxscale}
 
 	err := cluster.k8sProvisionProxyServiceWithClient(client, prx)
 	if err == nil {
 		t.Fatal("expected an explicit error for an unsupported proxy type, not a silent ProxySQL deployment")
 	}
 
-	if _, getErr := client.AppsV1().Deployments("k8stest").Get(context.TODO(), k8sProxyDeploymentName("k8stest", "haproxy1"), metav1.GetOptions{}); getErr == nil {
+	if _, getErr := client.AppsV1().Deployments("k8stest").Get(context.TODO(), k8sProxyDeploymentName("k8stest", "maxscale1"), metav1.GetOptions{}); getErr == nil {
 		t.Fatal("expected no Deployment to be created for an unsupported proxy type")
 	}
-	if _, getErr := client.CoreV1().Services("k8stest").Get(context.TODO(), "haproxy1", metav1.GetOptions{}); getErr == nil {
+	if _, getErr := client.CoreV1().Services("k8stest").Get(context.TODO(), "maxscale1", metav1.GetOptions{}); getErr == nil {
 		t.Fatal("expected no Service to be created for an unsupported proxy type")
 	}
-	if _, getErr := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "haproxy1"), metav1.GetOptions{}); getErr == nil {
+	if _, getErr := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "maxscale1"), metav1.GetOptions{}); getErr == nil {
 		t.Fatal("expected no PVC to be created for an unsupported proxy type")
 	}
 }
@@ -627,7 +639,7 @@ func TestK8SProxyDeployment_InitContainerSecureConfigUsesSecretKeyRef(t *testing
 
 func TestK8SProxyDeployment_NoInitContainerOrVolumesForUnsupportedType(t *testing.T) {
 	cluster := newTestCluster("k8stest")
-	prx := &fakeProxy{name: "haproxy1", port: "6032", proxyType: config.ConstProxyHaproxy}
+	prx := &fakeProxy{name: "maxscale1", port: "6032", proxyType: config.ConstProxyMaxscale}
 
 	if _, err := cluster.k8sProxyDeployment(prx); err == nil {
 		t.Fatal("expected an explicit error for an unsupported proxy type")
@@ -3174,5 +3186,267 @@ func TestK8SDatabaseDeployment_TruncatedCLIDownloadDoesNotCorruptCachedCLI(t *te
 	got, err := os.ReadFile(tmpDir + "/init-out/replication-manager-cli")
 	if err != nil || string(got) != "old-good-cli-binary\n" {
 		t.Fatalf("expected the cached CLI to survive a truncated download untouched, got content %q, err %v", got, err)
+	}
+}
+
+// --- HAProxy K8s provisioning ---
+
+func newTestHaproxyProxy(cluster *Cluster) *fakeProxy {
+	return &fakeProxy{
+		name:      "haproxy1",
+		host:      "haproxy1",
+		port:      "1999",
+		proxyType: config.ConstProxyHaproxy,
+		writePort: 3306,
+		readPort:  3307,
+		cluster:   cluster,
+	}
+}
+
+func TestK8SProxyImage_HaproxyUsesProvProxHaproxyImg(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvProxHaproxyImg = "haproxytech/haproxy-alpine:2.4"
+	prx := newTestHaproxyProxy(cluster)
+
+	image, err := cluster.k8sProxyImage(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if image != "haproxytech/haproxy-alpine:2.4" {
+		t.Fatalf("expected the configured HAProxy image, got %q", image)
+	}
+}
+
+func TestK8SProxyContainerPorts_HaproxyExposesAdminWriteReadStat(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.HaproxyStatPort = 1988
+	prx := newTestHaproxyProxy(cluster)
+
+	ports, err := k8sProxyContainerPorts(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	want := map[string]int32{"admin": 1999, "write": 3306, "read": 3307, "stat": 1988}
+	if len(ports) != len(want) {
+		t.Fatalf("expected %d ports, got %d: %+v", len(want), len(ports), ports)
+	}
+	for _, p := range ports {
+		wp, ok := want[p.Name]
+		if !ok {
+			t.Fatalf("unexpected port name %q in %+v", p.Name, ports)
+		}
+		if p.ContainerPort != wp {
+			t.Fatalf("port %q: expected %d, got %d", p.Name, wp, p.ContainerPort)
+		}
+	}
+}
+
+func TestK8SProxyServicePorts_HaproxyMatchesContainerPorts(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.HaproxyStatPort = 1988
+	prx := newTestHaproxyProxy(cluster)
+
+	ports, err := k8sProxyServicePorts(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	want := map[string]int32{"admin": 1999, "write": 3306, "read": 3307, "stat": 1988}
+	if len(ports) != len(want) {
+		t.Fatalf("expected %d ports, got %d: %+v", len(want), len(ports), ports)
+	}
+	for _, p := range ports {
+		wp, ok := want[p.Name]
+		if !ok {
+			t.Fatalf("unexpected port name %q in %+v", p.Name, ports)
+		}
+		if p.Port != wp {
+			t.Fatalf("port %q: expected %d, got %d", p.Name, wp, p.Port)
+		}
+	}
+}
+
+func TestK8SProxyDeployment_HaproxyMountsConfDirSubPath(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := newTestHaproxyProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	container := dep.Spec.Template.Spec.Containers[0]
+	found := false
+	for _, m := range container.VolumeMounts {
+		if m.MountPath == "/usr/local/etc/haproxy" {
+			found = true
+			if m.SubPath != k8sHaproxyConfPersistSubPath {
+				t.Fatalf("expected subPath %q, got %q", k8sHaproxyConfPersistSubPath, m.SubPath)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected a /usr/local/etc/haproxy mount, got %+v", container.VolumeMounts)
+	}
+}
+
+func TestK8SProxyDeployment_HaproxyNoCommandOverride(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := newTestHaproxyProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	container := dep.Spec.Template.Spec.Containers[0]
+	if container.Command != nil {
+		t.Fatalf("expected no Command override for HAProxy (rely on the image's own entrypoint), got %+v", container.Command)
+	}
+}
+
+func TestK8SProxyDeployment_HaproxyStandbyModePlacesCheckScriptsAndUsesCheckConfig(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.HaproxyMode = "standby"
+	prx := newTestHaproxyProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	container := dep.Spec.Template.Spec.Containers[0]
+	if len(container.Command) < 3 {
+		t.Fatalf("expected a sh -c command for haproxy-mode=standby, got %+v", container.Command)
+	}
+	script := container.Command[2]
+	for _, want := range []string{
+		"cp /usr/local/etc/haproxy/checkmaster /usr/bin/checkmaster",
+		"cp /usr/local/etc/haproxy/checkslave /usr/bin/checkslave",
+		"chmod +x /usr/bin/checkmaster /usr/bin/checkslave",
+		"exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("expected standby-mode command to contain %q, got: %s", want, script)
+		}
+	}
+}
+
+func TestK8SProxyDeployment_HaproxyInitContainerAppliesConfigAndScripts(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := newTestHaproxyProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if len(dep.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatalf("expected exactly one init container, got %d", len(dep.Spec.Template.Spec.InitContainers))
+	}
+	initContainer := dep.Spec.Template.Spec.InitContainers[0]
+	if len(initContainer.Command) < 3 {
+		t.Fatalf("expected a sh -c command, got %+v", initContainer.Command)
+	}
+	script := initContainer.Command[2]
+	for _, want := range []string{
+		"mkdir -p",
+		"/usr/local/etc/haproxy",
+		"cp -r /tmp/cfg/etc/haproxy/. /usr/local/etc/haproxy/",
+		"/tmp/cfg/init/checkmaster",
+		"/tmp/cfg/init/checkslave",
+		"chmod +x",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("expected init command to contain %q, got: %s", want, script)
+		}
+	}
+
+	for _, m := range initContainer.VolumeMounts {
+		if m.MountPath == "/usr/local/etc/haproxy" && m.SubPath != k8sHaproxyConfPersistSubPath {
+			t.Fatalf("expected init container's /usr/local/etc/haproxy mount to share the main container's subPath, got %q", m.SubPath)
+		}
+	}
+}
+
+func TestK8SProvisionProxy_HaproxyCreatesPVC(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := newTestHaproxyProxy(cluster)
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if _, err := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "haproxy1"), metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected a PVC to be created for HAProxy: %s", err)
+	}
+}
+
+func TestK8SUnprovisionProxy_HaproxyRetainsPVC(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := newTestHaproxyProxy(cluster)
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error provisioning: %s", err)
+	}
+	if err := cluster.k8sUnprovisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error unprovisioning: %s", err)
+	}
+
+	if _, err := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "haproxy1"), metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected the PVC to survive unprovision: %s", err)
+	}
+}
+
+func TestNewHaproxyProxy_KubernetesFallsBackToClusterLocalWhenUnset(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cluster.Conf.ProvOrchestratorCluster = "" // never configured, same as the CLI default "local"
+
+	prx := NewHaproxyProxy(0, cluster, "haproxy1")
+	want := "haproxy1.clustera.svc.cluster.local"
+	if prx.Host != want {
+		t.Fatalf("expected %q, got %q", want, prx.Host)
+	}
+}
+
+func TestNewHaproxyProxy_KubernetesFallsBackWhenLiteralCLIDefault(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cluster.Conf.ProvOrchestratorCluster = "local"
+
+	prx := NewHaproxyProxy(0, cluster, "haproxy1")
+	want := "haproxy1.clustera.svc.cluster.local"
+	if prx.Host != want {
+		t.Fatalf("expected the CLI default \"local\" to fall back to cluster.local, got %q (want %q)", prx.Host, want)
+	}
+}
+
+func TestNewHaproxyProxy_KubernetesTracksConfiguredClusterDomain(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cluster.Conf.ProvOrchestratorCluster = "k8s.internal"
+
+	prx := NewHaproxyProxy(0, cluster, "haproxy1")
+	want := "haproxy1.clustera.svc.k8s.internal"
+	if prx.Host != want {
+		t.Fatalf("expected the host to track the configured cluster domain, got %q (want %q)", prx.Host, want)
+	}
+}
+
+func TestNewHaproxyProxy_OpenSVCUnaffectedByKubernetesFallback(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	cluster.Conf.ProvOrchestratorCluster = "local"
+
+	prx := NewHaproxyProxy(0, cluster, "haproxy1")
+	want := "haproxy1.clustera.svc.local"
+	if prx.Host != want {
+		t.Fatalf("expected OpenSVC's raw, unfallback-ed suffix to be untouched, got %q (want %q)", prx.Host, want)
 	}
 }

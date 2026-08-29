@@ -196,7 +196,15 @@ func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *Haproxy
 	prx.Name = proxyHost
 	prx.Host = proxyHost
 	if conf.ProvNetCNI {
-		prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+		// Falls back "local" -> "cluster.local" on Kubernetes, matching
+		// NewProxySQLProxy: prov-orchestrator-cluster's own CLI default
+		// otherwise leaves the host one ".svc." segment short of the real
+		// Service DNS name and CoreDNS never resolves it.
+		domain := conf.ProvOrchestratorCluster
+		if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+			domain = k8sClusterDomain(cluster)
+		}
+		prx.Host = prx.Host + "." + cluster.Name + ".svc." + domain
 	}
 	prx.User = conf.HaproxyUser
 	prx.Pass = cluster.Conf.GetDecryptedValue("haproxy-password")
@@ -532,28 +540,33 @@ func (proxy *HaproxyProxy) Refresh() error {
 					foundMasterInStat = true
 					proxy.BackendsWrite = append(proxy.BackendsWrite, bkw)
 
-					if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
-						if !srv.IsStandAlone() {
-							if stagingsrv != nil {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "[Staging] Detecting wrong master server in haproxy %s fixing it to standalone %s %s", proxy.Host+":"+proxy.Port, stagingsrv.Host, stagingsrv.Port)
-								res, err := haRuntime.SetMaster(cluster.Conf.HaproxyStagingBackend, stagingsrv.Host, stagingsrv.Port)
-								if msg, failed := haproxyCmdFailed(err, res); failed {
-									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, msg, stagingsrv.Host+":"+stagingsrv.Port)
-								} else {
-									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, res, stagingsrv.Host+":"+stagingsrv.Port)
+					// SetMaster addresses a "leader" server that only exists in
+					// runtimeapi mode's config; standby lists every server
+					// statically and relies on checkmaster/checkslave instead.
+					if cluster.Conf.HaproxyMode == "runtimeapi" {
+						if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
+							if !srv.IsStandAlone() {
+								if stagingsrv != nil {
+									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "[Staging] Detecting wrong master server in haproxy %s fixing it to standalone %s %s", proxy.Host+":"+proxy.Port, stagingsrv.Host, stagingsrv.Port)
+									res, err := haRuntime.SetMaster(cluster.Conf.HaproxyStagingBackend, stagingsrv.Host, stagingsrv.Port)
+									if msg, failed := haproxyCmdFailed(err, res); failed {
+										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, msg, stagingsrv.Host+":"+stagingsrv.Port)
+									} else {
+										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, res, stagingsrv.Host+":"+stagingsrv.Port)
+									}
 								}
 							}
-						}
-					} else {
-						if !srv.IsMaster() {
-							master := cluster.GetMaster()
-							if master != nil {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s %s", proxy.Host+":"+proxy.Port, master.Host, master.Port)
-								res, err := haRuntime.SetMaster(cluster.Conf.HaproxyAPIWriteBackend, master.Host, master.Port)
-								if msg, failed := haproxyCmdFailed(err, res); failed {
-									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, msg, master.Host+":"+master.Port)
-								} else {
-									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, res, master.Host+":"+master.Port)
+						} else {
+							if !srv.IsMaster() {
+								master := cluster.GetMaster()
+								if master != nil {
+									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s %s", proxy.Host+":"+proxy.Port, master.Host, master.Port)
+									res, err := haRuntime.SetMaster(cluster.Conf.HaproxyAPIWriteBackend, master.Host, master.Port)
+									if msg, failed := haproxyCmdFailed(err, res); failed {
+										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, msg, master.Host+":"+master.Port)
+									} else {
+										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, res, master.Host+":"+master.Port)
+									}
 								}
 							}
 						}
@@ -728,7 +741,9 @@ func (proxy *HaproxyProxy) Refresh() error {
 			}
 		}
 	}
-	if !foundMasterInStat {
+	// Same runtimeapi-only gate as above: fires when no write-backend row
+	// resolved to a known ServerMonitor at all.
+	if !foundMasterInStat && cluster.Conf.HaproxyMode == "runtimeapi" {
 		if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
 			if stagingsrv != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "[Staging] HAProxy has standalone in cluster but not in haproxy %s fixing it to standalone %s %s", proxy.Host+":"+proxy.Port, stagingsrv.Host, stagingsrv.Port)
