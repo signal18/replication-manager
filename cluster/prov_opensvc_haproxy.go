@@ -28,6 +28,20 @@ func (cluster *Cluster) OpenSVCGetHaproxyContainerSection(server *HaproxyProxy) 
 			svccontainer["run_args"] = "--sysctl net.ipv4.ip_unprivileged_port_start=0 " + server.ClusterGroup.Conf.ProvProxDockerRunArgs
 			svccontainer["volume_mounts"] = `{name}/init/checkslave:/usr/bin/checkslave:rw {name}/init/checkmaster:/usr/bin/checkmaster:rw /etc/localtime:/etc/localtime:ro {name}/etc/haproxy:/usr/local/etc/haproxy:rw`
 		}
+
+		// The image's default entrypoint/CMD always launches haproxy.cfg
+		// (proxy_cnf_haproxy_runtime_api, no external-check), regardless of
+		// haproxy-mode. standby needs haproxy_check.cfg instead -- it's the
+		// one with checkmaster/checkslave wired in via "option
+		// external-check" -- and "-db" since haproxy_check.cfg's "daemon"
+		// directive would otherwise background the process and let PID 1
+		// exit immediately (same reasoning as k8sProxyDeployment's standby
+		// branch, cluster/prov_k8s_prx.go). Mirrors container#02's
+		// entrypoint/command split above.
+		if server.ClusterGroup.Conf.HaproxyMode == "standby" {
+			svccontainer["entrypoint"] = "/bin/sh"
+			svccontainer["command"] = `-c "exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg"`
+		}
 	}
 
 	return svccontainer
