@@ -34,14 +34,21 @@ func newTestCluster(name string) *Cluster {
 type fakeProxy struct {
 	DatabaseProxy
 	name      string
+	host      string
 	port      string
 	proxyType string
 	writePort int
 }
 
-func (f *fakeProxy) GetName() string   { return f.name }
-func (f *fakeProxy) GetPort() string   { return f.port }
-func (f *fakeProxy) GetType() string   { return f.proxyType }
+func (f *fakeProxy) GetName() string { return f.name }
+func (f *fakeProxy) GetPort() string { return f.port }
+func (f *fakeProxy) GetType() string { return f.proxyType }
+func (f *fakeProxy) GetHost() string {
+	if f.host != "" {
+		return f.host
+	}
+	return f.name
+}
 func (f *fakeProxy) GetWritePort() int { return f.writePort }
 
 // --- K8SGetNodes / node discovery safety ---
@@ -371,6 +378,364 @@ func TestK8SProvisionProxy_UnsupportedTypeCreatesNothing(t *testing.T) {
 	}
 	if _, getErr := client.CoreV1().Services("k8stest").Get(context.TODO(), "haproxy1", metav1.GetOptions{}); getErr == nil {
 		t.Fatal("expected no Service to be created for an unsupported proxy type")
+	}
+	if _, getErr := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "haproxy1"), metav1.GetOptions{}); getErr == nil {
+		t.Fatal("expected no PVC to be created for an unsupported proxy type")
+	}
+}
+
+// --- Proxy PVC (Phase 4: ProxySQL persistent storage) ---
+
+func TestK8SProxyPVC_UsesProvProxyDiskSize(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvProxDisk = "10G"
+	prx := &fakeProxy{name: "proxysql1"}
+
+	pvc := cluster.k8sProxyPVC(prx)
+
+	got := pvc.Spec.Resources.Requests[apiv1.ResourceStorage]
+	want := resource.MustParse("10G")
+	if got.Cmp(want) != 0 {
+		t.Fatalf("expected storage request %s, got %s", want.String(), got.String())
+	}
+}
+
+func TestK8SProxyPVC_FallsBackToDefaultSizeWhenUnparseable(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvProxDisk = "not-a-size"
+	prx := &fakeProxy{name: "proxysql1"}
+
+	pvc := cluster.k8sProxyPVC(prx)
+
+	got := pvc.Spec.Resources.Requests[apiv1.ResourceStorage]
+	want := resource.MustParse("20G")
+	if got.Cmp(want) != 0 {
+		t.Fatalf("expected the fallback to match prov-proxy-disk-size's own default (20G), got %s", got.String())
+	}
+}
+
+func TestK8SProxyPVC_NoStorageClassNameWhenUnset(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1"}
+
+	pvc := cluster.k8sProxyPVC(prx)
+
+	if pvc.Spec.StorageClassName != nil {
+		t.Fatalf("expected a nil StorageClassName (use cluster default), got %q", *pvc.Spec.StorageClassName)
+	}
+}
+
+func TestK8SProxyPVC_UsesConfiguredStorageClass(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvKubeStorageClass = "fast-ssd"
+	prx := &fakeProxy{name: "proxysql1"}
+
+	pvc := cluster.k8sProxyPVC(prx)
+
+	if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName != "fast-ssd" {
+		t.Fatalf("expected StorageClassName \"fast-ssd\", got %v", pvc.Spec.StorageClassName)
+	}
+}
+
+func TestK8SProxyPVC_NamePerProxy(t *testing.T) {
+	n1 := k8sProxyPVCName("mycluster", "proxysql1")
+	n2 := k8sProxyPVCName("mycluster", "proxysql2")
+	if n1 == n2 {
+		t.Fatalf("expected distinct PVC names for distinct proxies, got %q for both", n1)
+	}
+}
+
+// --- ProxySQL Deployment: PVC-backed persistent storage and bootstrap
+// init container (Phase 4) ---
+
+func TestK8SProxyDeployment_UsesPVCBackedVolume(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if len(dep.Spec.Template.Spec.Volumes) != 1 {
+		t.Fatalf("expected exactly one volume, got %d: %v", len(dep.Spec.Template.Spec.Volumes), dep.Spec.Template.Spec.Volumes)
+	}
+	vol := dep.Spec.Template.Spec.Volumes[0]
+	if vol.PersistentVolumeClaim == nil || vol.PersistentVolumeClaim.ClaimName != k8sProxyPVCName("k8stest", "proxysql1") {
+		t.Fatalf("expected the volume to reference PVC %q, got %v", k8sProxyPVCName("k8stest", "proxysql1"), vol)
+	}
+}
+
+func TestK8SProxyDeployment_MainContainerMountsDataAndConfigDirs(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	mounts := dep.Spec.Template.Spec.Containers[0].VolumeMounts
+	var hasData, hasConf bool
+	for _, m := range mounts {
+		if m.MountPath == "/var/lib/proxysql" && m.SubPath == "" {
+			hasData = true
+		}
+		if m.MountPath == "/etc/proxysql" && m.SubPath == k8sProxyConfPersistSubPath {
+			hasConf = true
+		}
+	}
+	if !hasData {
+		t.Fatalf("expected a full-volume mount at /var/lib/proxysql, got %v", mounts)
+	}
+	if !hasConf {
+		t.Fatalf("expected a subPath mount at /etc/proxysql (subPath %q), got %v", k8sProxyConfPersistSubPath, mounts)
+	}
+}
+
+// The generated proxysql.cnf's ssl_p2s_cert/ssl_p2s_key/ssl_p2s_ca
+// directives are built from CONFDIR ("/etc" for Kubernetes,
+// GetConfigConfigdir, prx_get.go) + "/ssl/*.pem" -- i.e. /etc/ssl/*.pem --
+// not /etc/proxysql/ssl/*.pem, which is where GenerateProxyConfig
+// (cluster/configurator/configurator.go) actually stages those certs in
+// the fetched tarball. Both the main and init containers must mount
+// /etc/ssl, on its own subPath so it doesn't also relocate proxysql.cnf.
+func TestK8SProxyDeployment_MountsSSLCertPathConfigExpects(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	for _, c := range []apiv1.Container{dep.Spec.Template.Spec.Containers[0], dep.Spec.Template.Spec.InitContainers[0]} {
+		var hasSSL bool
+		for _, m := range c.VolumeMounts {
+			if m.MountPath == "/etc/ssl" {
+				hasSSL = true
+				if m.SubPath != k8sProxySSLPersistSubPath {
+					t.Fatalf("container %q: expected /etc/ssl subPath %q, got %q", c.Name, k8sProxySSLPersistSubPath, m.SubPath)
+				}
+				if m.SubPath == k8sProxyConfPersistSubPath {
+					t.Fatalf("container %q: /etc/ssl must not share proxysql.cnf's own subPath (would relocate proxysql.cnf out of /etc/proxysql)", c.Name)
+				}
+			}
+		}
+		if !hasSSL {
+			t.Fatalf("container %q: expected a mount at /etc/ssl, got %v", c.Name, c.VolumeMounts)
+		}
+	}
+}
+
+// Regression test for a review finding: the init container fetched the
+// tarball and copied proxysql.cnf/data/*.pem, but never copied the p2s SSL
+// certs from the tarball's etc/proxysql/ssl/ staging path to /etc/ssl,
+// where the generated config actually looks for them -- so an SSL-enabled
+// ProxySQL would come up with ssl_p2s_cert/key/ca pointing at files that
+// were never placed there.
+func TestK8SProxyDeployment_InitContainerCopiesSSLCertsToConfigExpectedPath(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", host: "proxysql1.k8stest.svc.cluster.local", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	cmdStr := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+	if !strings.Contains(cmdStr, "cp /tmp/cfg/etc/proxysql/ssl/") {
+		t.Fatalf("expected the init container to copy the tarball's staged SSL certs (etc/proxysql/ssl/), got %q", cmdStr)
+	}
+	if !strings.Contains(cmdStr, "/etc/ssl/") {
+		t.Fatalf("expected the init container to copy SSL certs to /etc/ssl (where ssl_p2s_cert/key/ca in the generated config point), got %q", cmdStr)
+	}
+	if !strings.Contains(cmdStr, "mkdir -p") || !strings.Contains(cmdStr, "/etc/ssl") {
+		t.Fatalf("expected /etc/ssl to be created before use, got %q", cmdStr)
+	}
+}
+
+func TestK8SProxyDeployment_MainContainerCommandPointsToPersistedConfig(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	cmd := dep.Spec.Template.Spec.Containers[0].Command
+	found := false
+	for _, c := range cmd {
+		if c == "/etc/proxysql/proxysql.cnf" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected the container command to reference /etc/proxysql/proxysql.cnf, got %v", cmd)
+	}
+}
+
+func TestK8SProxyDeployment_HasBootstrapInitContainer(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", host: "proxysql1.k8stest.svc.cluster.local", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if len(dep.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatalf("expected exactly one init container, got %d", len(dep.Spec.Template.Spec.InitContainers))
+	}
+	init := dep.Spec.Template.Spec.InitContainers[0]
+	cmdStr := strings.Join(init.Command, " ")
+	if !strings.Contains(cmdStr, "-T 8") {
+		t.Fatalf("expected a bounded (-T 8) wget fetch in the init container command, got %q", cmdStr)
+	}
+	if !strings.Contains(cmdStr, prx.GetHost()+"/"+prx.GetPort()+"/config") {
+		t.Fatalf("expected the init container to fetch from the proxy's own host/port, got %q", cmdStr)
+	}
+	if !strings.Contains(cmdStr, "need-config-fetch") {
+		t.Fatalf("expected the init container to consult need-config-fetch before fetching, got %q", cmdStr)
+	}
+}
+
+func TestK8SProxyDeployment_InitContainerSecureConfigUsesSecretKeyRef(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.APISecureConfig = true
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	init := dep.Spec.Template.Spec.InitContainers[0]
+	var found *apiv1.EnvVar
+	for i := range init.Env {
+		if init.Env[i].Name == k8sSecretKeyAPIAuthHeader {
+			found = &init.Env[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("expected a REPMAN_AUTH_HEADER env var when api-credentials-secure-config is enabled")
+	}
+	if found.Value != "" {
+		t.Fatalf("expected no raw Value (auth header must come from the Secret), got %q", found.Value)
+	}
+	if found.ValueFrom == nil || found.ValueFrom.SecretKeyRef == nil {
+		t.Fatal("expected REPMAN_AUTH_HEADER to be sourced from a SecretKeyRef")
+	}
+	if found.ValueFrom.SecretKeyRef.Name != k8sClusterSecretName("k8stest") {
+		t.Fatalf("expected SecretKeyRef to name %q, got %q", k8sClusterSecretName("k8stest"), found.ValueFrom.SecretKeyRef.Name)
+	}
+}
+
+func TestK8SProxyDeployment_NoInitContainerOrVolumesForUnsupportedType(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "haproxy1", port: "6032", proxyType: config.ConstProxyHaproxy}
+
+	if _, err := cluster.k8sProxyDeployment(prx); err == nil {
+		t.Fatal("expected an explicit error for an unsupported proxy type")
+	}
+}
+
+// --- Proxy provisioning: PVC lifecycle (Phase 4) ---
+
+func TestK8SProvisionProxy_CreatesPVC(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if _, err := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "proxysql1"), metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected a PVC named %q to exist: %s", k8sProxyPVCName("k8stest", "proxysql1"), err)
+	}
+}
+
+func TestK8SProvisionProxy_PVCAlreadyExistsIsIdempotent(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("first provision: unexpected error: %s", err)
+	}
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("second provision (PVC AlreadyExists) should be idempotent, got error: %s", err)
+	}
+}
+
+// Unprovisioning must never destroy the persisted ProxySQL config/data --
+// same retention semantics as the database PVC (prov_k8s_db.go).
+func TestK8SUnprovisionProxy_RetainsPVC(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("provision: unexpected error: %s", err)
+	}
+	if err := cluster.k8sUnprovisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unprovision: unexpected error: %s", err)
+	}
+
+	if _, err := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "proxysql1"), metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected the PVC to be retained after unprovision, got error: %s", err)
+	}
+}
+
+// --- Proxy fetch-config parity (prov-proxy-start-fetch-config) ---
+//
+// Mirrors TestSrvCheckNeedConfigFetch-equivalent DB behavior
+// (srv_chk.go's ServerMonitor.CheckNeedConfigFetch): the cookie state
+// tracks the live config setting, both directions.
+
+func newTestProxyForFetchConfig(cluster *Cluster) *Proxy {
+	// Host and Port must be set: SetDataDir is a no-op ("" Datadir, so
+	// createCookie writes to filesystem root and silently fails) unless
+	// proxy.Host is non-empty.
+	prx := &Proxy{Name: "proxysql1", Host: "proxysql1", Port: "6032", ClusterGroup: cluster}
+	prx.SetDataDir()
+	return prx
+}
+
+func TestProxyCheckNeedConfigFetch_EnabledDropsNoFetchCookie(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.WorkingDir = t.TempDir()
+	cluster.Conf.ProvProxyStartFetchConfig = true
+	prx := newTestProxyForFetchConfig(cluster)
+	prx.SetNoConfigFetchCookie()
+
+	prx.CheckNeedConfigFetch()
+
+	if prx.HasNoConfigFetchCookie() {
+		t.Fatal("expected the no-fetch cookie to be removed once prov-proxy-start-fetch-config is enabled")
+	}
+}
+
+func TestProxyCheckNeedConfigFetch_DisabledSetsNoFetchCookie(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.WorkingDir = t.TempDir()
+	cluster.Conf.ProvProxyStartFetchConfig = false
+	prx := newTestProxyForFetchConfig(cluster)
+
+	prx.CheckNeedConfigFetch()
+
+	if !prx.HasNoConfigFetchCookie() {
+		t.Fatal("expected the no-fetch cookie to be set once prov-proxy-start-fetch-config is disabled")
+	}
+}
+
+func TestClusterCheckNeedConfigFetch_CoversProxiesToo(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.WorkingDir = t.TempDir()
+	cluster.Conf.ProvDbStartFetchConfig = true
+	cluster.Conf.ProvProxyStartFetchConfig = false
+	prx := newTestProxyForFetchConfig(cluster)
+	cluster.Proxies = []DatabaseProxy{prx}
+
+	cluster.CheckNeedConfigFetch()
+
+	if !prx.HasNoConfigFetchCookie() {
+		t.Fatal("expected cluster.CheckNeedConfigFetch to also sync the proxy's no-fetch cookie, not just servers'")
 	}
 }
 

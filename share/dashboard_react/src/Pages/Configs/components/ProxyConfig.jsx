@@ -3,11 +3,12 @@ import styles from '../styles.module.scss'
 import TableType2 from '../../../components/TableType2'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
 import Gauge from '../../../components/Gauge'
+import RMSwitch from '../../../components/RMSwitch'
 import { Flex, HStack, VStack } from '@chakra-ui/react'
 import AddRemovePill from '../../../components/AddRemovePill'
 import { addProxyTag, dropProxyTag } from '../../../redux/configSlice'
 import { useDispatch } from 'react-redux'
-import { setSetting } from '../../../redux/settingsSlice'
+import { setSetting, switchSetting } from '../../../redux/settingsSlice'
 import { convertSize } from '../../../utility/common'
 
 function ProxyConfig({ selectedCluster, user }) {
@@ -36,23 +37,10 @@ function ProxyConfig({ selectedCluster, user }) {
   }
 
   // {
-  //   key: 'Cluster Proxy Start Fetch Config',
-  //   value: (
-  //     <RMSwitch
-  //       isChecked={selectedCluster?.config?.provProxyStartFetchConfig}
-  //       isDisabled={user?.grants['cluster-settings'] == false}
-  //       confirmTitle={'Confirm switch settings for prov-proxy-start-fetch-config?'}
-  //       onChange={() =>
-  //         dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-proxy-start-fetch-config' }))
-  //       }
-  //     />
-  //   )
-  // },
-  // {
   //   key: 'Generate All Proxy Config Files',
   //   value: (
-  //     <RMIconButton icon={HiRefresh} onClick={() => { 
-  //       setConfirmTitle('Confirm generate Proxy Config from configurator settings to monitor datadir?'); 
+  //     <RMIconButton icon={HiRefresh} onClick={() => {
+  //       setConfirmTitle('Confirm generate Proxy Config from configurator settings to monitor datadir?');
   //       setIsConfirmModalOpen(true)
   //       setConfirmHandler(() => () => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'proxy'})))
   //     }} />
@@ -60,6 +48,19 @@ function ProxyConfig({ selectedCluster, user }) {
   // },
 
   const dataObject = [
+    {
+      key: 'Proxy Start Fetch Config',
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.provProxyStartFetchConfig}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for prov-proxy-start-fetch-config?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-proxy-start-fetch-config' }))
+          }
+        />
+      )
+    },
     {
       key: 'Manage Tags',
       value: (

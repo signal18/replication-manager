@@ -168,6 +168,8 @@ type DatabaseProxy interface {
 	HasNoConfigFetchCookie() bool
 	HasDNS() bool
 
+	CheckNeedConfigFetch()
+
 	DelProvisionCookie() error
 	DelUnprovisionCookie() error
 	DelReprovisionCookie() error

@@ -491,15 +491,115 @@ Deployment's own pod labels exactly, so it only ever routes to this proxy's
 one pod.
 
 There is still no Namespace ensure (relies on one already existing from DB
-provisioning) and no config bootstrap/ConfigMap: a provisioned ProxySQL pod
-starts on the image's own baked-in default config (admin on `6032`, SQL
-listener on `6033`), not a repman-generated one wired to the cluster's
-actual backend servers — see "Known limitations" below.
+provisioning) — see "Known limitations" below.
 
 `K8SUnprovisionProxyService()` deletes both the Deployment and the Service,
 idempotent via `apierrors.IsNotFound` for each independently (mirroring
 `k8sUnprovisionDatabaseServiceWithClient`'s `firstErr` pattern — a Service
-delete failure doesn't stop the Deployment delete from being attempted).
+delete failure doesn't stop the Deployment delete from being attempted). The
+PVC (below) is deliberately **not** deleted, same retention rationale as the
+database PVC.
+
+### Persistent storage and config bootstrap (ProxySQL)
+
+A provisioned ProxySQL pod no longer starts on the image's own baked-in
+default config. `k8sProvisionProxyServiceWithClient()` creates a
+per-proxy PVC (`k8sProxyPVC()`, named `<cluster>-<proxy-name>-claim` via
+`k8sProxyPVCName()`), sized from `prov-proxy-disk-size`
+(`cluster.Conf.ProvProxDisk`, same 20G default and StorageClass handling as
+the database PVC — `prov-kube-storage-class`, `*string` so "unset" stays
+`nil` rather than a pointer to `""`). This mirrors `k8sDatabasePVC()`
+(`prov_k8s_db.go`) closely enough that a future proxy family could reuse the
+same builder shape, though today only ProxySQL actually attaches one.
+
+`k8sProxyDeployment()` mounts that PVC twice, matching the database
+Deployment's own split: the full volume at `/var/lib/proxysql` (ProxySQL's
+datadir, matching `GetConfigDatadir()`'s Kubernetes-orchestrator resolution
+so the generated `proxysql.cnf`'s own `datadir=` line agrees with where it's
+actually mounted), and a `subPath` mount (`k8sProxyConfPersistSubPath`,
+`.system/etc-proxysql`) at `/etc/proxysql`. Persisted rather than `emptyDir`
+for the same reason as the database's `conf.d`: a failed config fetch still
+has the last successful boot's config to fall back to.
+
+An init container (`k8sProxyBootstrapCommand()`) fetches and applies that
+config on every pod start, structurally identical to the database init
+container in `k8sDatabaseDeployment()`: same scheme/authority resolution
+(HTTPS on `api-port` with `--no-check-certificate`, falling back to plain
+HTTP on `http-port` when `api-server` is off), same bounded `wget -T 8`
+calls, and the same `need-config-fetch` gate consulted live on every start
+(`prov-proxy-start-fetch-config` — see below). It targets
+`/api/clusters/{cluster}/servers/{prx.GetHost()}/{prx.GetPort()}/config` and
+the matching `need-config-fetch` route — deliberately `prx.GetHost()`/
+`prx.GetPort()`, not `prx.GetName()`, because the server-side handlers
+(`handlerMuxServersPortConfig`, `handlerMuxServerNeedConfigFetch`,
+`server/api_database.go`) resolve the target via `GetProxyFromURL()`
+(`cluster/cluster_get.go`), which matches on exactly that host/port pair.
+Both routes already handled proxies before this phase — `GetProxyConfig()`
+(`cluster/prx_get.go`) calls `Configurator.GenerateProxyConfig()`
+(`cluster/configurator/configurator.go`), which was already wired for every
+orchestrator (OpenSVC included) and needed no changes here. That tarball's
+`etc/proxysql/proxysql.cnf` and `data/*.pem` are copied into the persisted
+mounts on a successful fetch+extract only, same fetch-into-a-scratch-dir,
+replace-only-on-success pattern as the database side.
+
+**SSL cert path (`ssl_p2s_cert`/`ssl_p2s_key`/`ssl_p2s_ca`).** The generated
+`proxysql.cnf` builds these three paths from
+`%%ENV:SVC_CONF_ENV_CONFDIR%%/ssl/...`
+(`share/opensvc/moduleset_mariadb.svc.mrm.proxy.json`, rulesets
+`mariadb.svc.mrm.proxy.cnf.proxysql.default`/`.readwritesplit`), and
+`GetConfigConfigdir()` (`prx_get.go`) resolves `CONFDIR` to the bare `/etc`
+for Kubernetes (as it does for every non-SlapOS orchestrator) — so the
+config that's actually applied expects those three certs at
+`/etc/ssl/*.pem`. `GenerateProxyConfig` stages the p2s certs in the
+fetched tarball at `etc/proxysql/ssl/*.pem`, not `etc/ssl/*.pem` — a
+mismatch caught in review before this slice's first commit. The fix is
+purely in the Kubernetes-specific bootstrap, not the shared moduleset or
+`GetConfigConfigdir()` (both used by OpenSVC too, out of scope here): a
+third `subPath` mount off the same PVC (`k8sProxySSLPersistSubPath`,
+`.system/etc-ssl-proxysql`) at `/etc/ssl`, on both the init and main
+container, and the init container's `applyConfig` step additionally copies
+`/tmp/cfg/etc/proxysql/ssl/*.pem` to `/etc/ssl/` (a no-op when `have_ssl`
+is off and the tarball has no `etc/proxysql/ssl/` directory at all). A
+dedicated subPath, not folded into `k8sProxyConfPersistSubPath`, so
+mounting it doesn't also relocate `proxysql.cnf` itself out of
+`/etc/proxysql`.
+
+The main ProxySQL container's command is set explicitly —
+`proxysql --initial -f -c /etc/proxysql/proxysql.cnf` — matching OpenSVC's
+own `run_command` (`OpenSVCGetProxysqlContainerSection`,
+`prov_opensvc_proxysql.go`). `--initial` re-derives ProxySQL's on-disk
+SQLite admin database from `proxysql.cnf` on every start, so a stale
+`/var/lib/proxysql/proxysql.db` from a previous boot never takes precedence
+over the freshly fetched config.
+
+If `api-credentials-secure-config` is enabled, `k8sProvisionProxyServiceWithClient()`
+ensures the `REPMAN_AUTH_HEADER` key on the cluster's shared Secret
+(`k8sClusterSecretName`, the same Secret the database init container
+already uses) before creating the PVC, and the init container's `wget`
+calls send it as a `SecretKeyRef`-sourced `Authorization: Basic` header —
+never a raw value baked into the Deployment spec.
+
+**`prov-proxy-start-fetch-config`** (`cluster.Conf.ProvProxyStartFetchConfig`)
+is now wired end-to-end, mirroring `prov-db-start-fetch-config`'s existing
+parity: `Proxy.CheckNeedConfigFetch()` (`cluster/prx_chk.go`) sets/clears the
+same `HasNoConfigFetchCookie()`/`SetNoConfigFetchCookie()`/
+`DelNoConfigFetchCookie()` cookie pair `ServerMonitor.CheckNeedConfigFetch()`
+(`srv_chk.go`) already used for databases; `cluster.CheckNeedConfigFetch()`
+(`cluster_chk.go`) now loops `cluster.Proxies` in addition to
+`cluster.Servers`; and the `prov-proxy-start-fetch-config` case in both
+`server/api_cluster.go` setting switches (toggle and explicit
+active/inactive) now exists alongside `prov-db-start-fetch-config`'s. The
+dashboard toggle (`share/dashboard_react/.../ProxyConfig.jsx`) — previously
+commented-out dead code referencing a setting nothing backed — is now live.
+This was checked live, not baked into the Deployment spec at provision
+time: toggling it takes effect on the proxy pod's next restart, exactly
+like the database side.
+
+Persistent storage and bootstrap only apply to ProxySQL today
+(`prx.GetType() == config.ConstProxySqlproxy`), gated the same way as
+`k8sProxyImage()`/`k8sProxyContainerPorts()` — a future proxy family needs
+its own paths and bootstrap logic added explicitly, not an assumption that
+ProxySQL's apply unchanged.
 
 ### Legacy deployment name
 
@@ -852,6 +952,63 @@ family Kubernetes can currently provision (see "Proxy provisioning"
 above), so it's the only one this pass could actually reproduce and verify
 live.
 
+ProxySQL persistent storage and config bootstrap (see "Persistent storage
+and config bootstrap (ProxySQL)" above) added unit tests for: the PVC
+builder (size from `prov-proxy-disk-size`, its own 20G fallback when
+unparseable, nil vs. configured `StorageClassName`, per-proxy naming),
+the Deployment's PVC-backed volume and its two mounts (full volume at
+`/var/lib/proxysql`, `subPath` at `/etc/proxysql`), the main container's
+command referencing `/etc/proxysql/proxysql.cnf`, the bootstrap init
+container's presence and bounded (`-T 8`) fetch/need-config-fetch calls
+against the proxy's own host/port, `REPMAN_AUTH_HEADER` using a
+`SecretKeyRef` (never a raw value) when `api-credentials-secure-config` is
+on, an unsupported proxy type getting neither a PVC nor an init container,
+PVC creation and its `AlreadyExists` idempotency on provision, and PVC
+retention on unprovision. `prov-proxy-start-fetch-config` parity added
+tests for `Proxy.CheckNeedConfigFetch()` setting/clearing the no-fetch
+cookie in both directions and `cluster.CheckNeedConfigFetch()` now covering
+`cluster.Proxies`, not just `cluster.Servers`. A follow-up review of this
+slice (before its first commit) found the SSL cert path mismatch described
+above; the fix added `TestK8SProxyDeployment_MountsSSLCertPathConfigExpects`
+(both containers mount `/etc/ssl` on `k8sProxySSLPersistSubPath`, distinct
+from `proxysql.cnf`'s own subPath) and
+`TestK8SProxyDeployment_InitContainerCopiesSSLCertsToConfigExpectedPath`
+(the init command copies from the tarball's `etc/proxysql/ssl/` staging
+path to `/etc/ssl/`).
+
+This was also live-verified end-to-end on the same running `kind` cluster
+(`clusterin` namespace, `prov-orchestrator=kube`): unprovisioning and
+re-provisioning `proxysql1` through the real HTTP API created a 20G PVC
+(`clusterin-proxysql1-claim`, bound under the cluster's default `standard`
+StorageClass) before the Deployment; the pod reached `Running` with the
+init container completing (`exitCode: 0`) and both `/etc/proxysql/proxysql.cnf`
+and the three `proxysql-{ca,cert,key}.pem` files present under
+`/var/lib/proxysql`, matching the config's own `datadir="/var/lib/proxysql"`
+line; both `6032` (admin) and `6033` (sql) were listening in the container
+and reachable through the `proxysql1` Service; toggling
+`prov-proxy-start-fetch-config` off then on changed
+`GET .../servers/proxysql1.clusterin.svc.cluster.local/6032/need-config-fetch`
+from `200` to `500` and back to `200`, confirming the cookie wiring reaches
+the same live endpoint the init container itself calls; a stop/start cycle
+replaced the pod and the init container re-fetched a fresh, newly
+timestamped config (certs persisted unchanged) on the new pod; and
+unprovisioning deleted the Deployment and the Service while the PVC stayed
+`Bound` and untouched throughout.
+
+The SSL cert path fix was separately live-verified on the same cluster with
+`have_ssl` actually on: added the `ssl` proxy tag
+(`POST .../settings/actions/add-proxy-tag/ssl`, confirmed via
+`GET .../clusters/clusterin` → `configurator.proxyServersTags`), then
+reprovisioned `proxysql1`. The regenerated `/etc/proxysql/proxysql.cnf`
+showed `have_ssl=true` with `ssl_p2s_cert`/`ssl_p2s_key`/`ssl_p2s_ca` all
+pointing at `/etc/ssl/*.pem`, and `/etc/ssl/` in the running container held
+`ca-cert.pem`, `client-cert.pem`, and `client-key.pem` (plus
+`server-cert.pem`/`server-key.pem`, harmlessly also copied) — the exact
+three files the config references, at the exact path it references them
+by. The init container exited `0` and the ProxySQL container logs showed
+no SSL/cert-loading errors, reaching `Running` normally. The `ssl` tag and
+proxy were then reverted/reprovisioned back to the pre-test state.
+
 No Kubernetes-capable regtest/CI harness exists in this repository, so none
 of the above is repeatable/automated — it does not substitute for real CI
 integration coverage. Closing that gap requires provisioning a
@@ -873,18 +1030,19 @@ Kubernetes-orchestrated scenarios.
   defaults and the dbjobs sidecar idles, matching OpenSVC's
   `optional=true` behavior.
 - No real K8s-capable regtest/CI coverage for the outage-fallback path.
-- PVC and Namespace deletion semantics on unprovision are undecided.
+- PVC deletion on unprovision is decided (retained, both for databases and
+  for ProxySQL) but Namespace deletion semantics remain undecided.
 - No Kubernetes proxy support beyond ProxySQL — HAProxy, MaxScale, Sphinx,
   ShardProxy, and other families return an explicit provisioning error
   rather than silently deploying as ProxySQL.
-- A provisioned ProxySQL pod has no config bootstrap: it runs on the
-  image's own baked-in default config, not a repman-generated one wired to
-  the cluster's actual backend servers/hostgroups. The Service and both
-  ports (`admin`, `sql`) exist and are reachable, but the proxy itself
-  isn't yet functionally wired into the cluster until this is built —
-  reusing `proxy.GetProxyConfig()` and the existing config-tarball fetch
-  route (`server/api_database.go`), analogous to the DB init-container
-  bootstrap, is the natural next step.
+- The persisted ProxySQL config can go stale the same way the database
+  config can (see the first bullet above): it's only refreshed on a
+  successful fetch at pod start, gated by `prov-proxy-start-fetch-config`,
+  so a config change with no restart since leaves the persisted copy out of
+  date. `REPMAN_AUTH_HEADER` also goes stale the same way as the database
+  side if `api-credentials` changes without a reprovision. A ProxySQL pod
+  never successfully provisioned gets no benefit from the mechanism during
+  an outage, same as the database side.
 - No Kubernetes proxy manifest view (the DB-only `K8SGetDatabaseManifests`,
   see "Manifest view" above, has no proxy equivalent).
 - Per-pod DNS (`prov-net-cni`) covers DB pods only, not proxies.
