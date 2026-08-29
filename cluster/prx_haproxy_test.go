@@ -829,6 +829,97 @@ backend {{.Name}}
 	}
 }
 
+// TestHaproxyBackendsStateChangeReconcilesWriteBackendInStandbyMode guards
+// against a gap where BackendsStateChange() -- fired on every meaningful
+// server state change (cluster/srv.go), not just an actual failover or
+// switchover -- only ever called Refresh(), which deliberately never
+// mutates the write backend in haproxy-mode=standby. A replica that breaks
+// replication without the master ever changing (e.g. Slave -> SlaveErr,
+// matching a real production incident) never triggered Init() at all under
+// the old code, leaving it stuck in the write backend indefinitely.
+func TestHaproxyBackendsStateChangeReconcilesWriteBackendInStandbyMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmpl := `{{range .Backends}}
+backend {{.Name}}
+{{range .Servers}}    server {{.Name}} {{.Host}}:{{.Port}}
+{{end}}
+{{end}}`
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), []byte(tmpl), 0644); err != nil {
+		t.Fatalf("failed to write test haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "ahmad_write",
+		HaproxyAPIReadBackend:  "ahmad_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+		ShareDir:               shareDir,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// server2 just broke replication -- matches the real incident ("Server
+	// db2 ... state transition from Slave changed to: SlaveErr"). No
+	// failover happened: server1 is still master.
+	slave := cluster.Servers[1]
+	slave.Id = "server2"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlaveErr
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("ahmad_write", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("ahmad_write", "server2", "UP", "127.0.0.1:3307"),
+		haproxyStatRow("ahmad_read", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("ahmad_read", "server2", "DRAIN", "127.0.0.1:3307"),
+	}, "\n")
+	host, port, _ := startFakeHaproxy(t, statResponse)
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+
+	proxy.BackendsStateChange()
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("BackendsStateChange() did not trigger Init() to render a config file: %v", err)
+	}
+	writeSection := haproxyBackendSection(t, string(rendered), "ahmad_write")
+	if !strings.Contains(writeSection, "server server1 127.0.0.1:3306") {
+		t.Fatalf("write backend does not contain the leader:\n%s", writeSection)
+	}
+	if strings.Contains(writeSection, "server server2 ") {
+		t.Fatalf("write backend still contains the server that broke replication -- BackendsStateChange() must reconcile the write backend via Init() even without a failover:\n%s", writeSection)
+	}
+}
+
 // haproxyBackendSection extracts the text of a single "backend <name>" block
 // from a rendered haproxy.cfg, up to (but not including) the next "backend "
 // line.

@@ -1542,6 +1542,19 @@ func (proxy *HaproxyProxy) Failover() {
 
 func (proxy *HaproxyProxy) BackendsStateChange() {
 	proxy.Refresh()
+
+	// Refresh() deliberately never mutates the write backend for
+	// haproxy-mode=standby (see the comment in Init()'s server loop) --
+	// but BackendsStateChange() fires on every meaningful server state
+	// change (cluster/srv.go), not just on an actual failover/switchover.
+	// A replica that breaks replication without the master ever changing
+	// (e.g. Slave -> SlaveErr) would otherwise never trigger Init() at
+	// all, leaving it stuck in the write backend indefinitely. Route this
+	// event through Init() too so it gets reconciled the same way a
+	// leadership change already does.
+	if proxy.ClusterGroup.Conf.HaproxyMode == "standby" {
+		proxy.Init()
+	}
 }
 
 func (proxy *HaproxyProxy) CertificatesReload() error {
