@@ -776,6 +776,7 @@ backend {{.Name}}
 		HaproxyOn:              true,
 		HaproxyMode:            "standby",
 		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
 	}
 
 	master := cluster.Servers[0]
@@ -829,6 +830,91 @@ backend {{.Name}}
 	}
 }
 
+// TestHaproxyInitOnlyDoesLocalWorkForLocalhostOrchestrator guards against
+// Init() building, rendering, and reloading a *local* haproxy.cfg (execing
+// the haproxy binary on THIS host, expecting the rendered config's
+// stats-socket bind address to be reachable here) for orchestrators where
+// HAProxy never runs on the repman host at all -- OpenSVC, Kubernetes, etc.
+// There the real proxy's config reaches its actual container via a
+// completely separate config-fetch tarball path (GetProxyConfig(), called
+// unconditionally earlier in Init() for the one-time bootstrap); none of
+// this function's local rendering is ever read by anything for those
+// orchestrators, and the reload attempt can only ever fail (a live incident
+// showed "cannot bind socket ... Cannot assign requested address" for the
+// remote proxy's own address), doing so on every single state change and
+// flooding the log. Only the Localhost orchestrator -- where Init() is the
+// genuine, documented way to manage a co-located HAProxy process (see
+// cluster/prov_localhost_haproxy.go) -- should do any of this work at all.
+func TestHaproxyInitOnlyDoesLocalWorkForLocalhostOrchestrator(t *testing.T) {
+	newProxy := func(t *testing.T, orchestrator string) (datadir string) {
+		t.Helper()
+		cluster := setupTestCluster(t, 1)
+		cluster.StateMachine = new(state.StateMachine)
+		cluster.StateMachine.Init()
+		cluster.Topology = config.TopoMasterSlave
+
+		shareDir := t.TempDir()
+		tmpl := `{{range .Backends}}
+backend {{.Name}}
+{{range .Servers}}    server {{.Name}} {{.Host}}:{{.Port}}
+{{end}}
+{{end}}`
+		if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), []byte(tmpl), 0644); err != nil {
+			t.Fatalf("failed to write test haproxy_config.template: %v", err)
+		}
+
+		cluster.Conf = &config.Config{
+			HaproxyAPIWriteBackend: "service_write",
+			HaproxyAPIReadBackend:  "service_read",
+			HaproxyOn:              true,
+			HaproxyMode:            "standby",
+			ShareDir:               shareDir,
+			ProvOrchestrator:       orchestrator,
+		}
+
+		master := cluster.Servers[0]
+		master.Id = "server1"
+		master.Host = "127.0.0.1"
+		master.Port = "3306"
+		master.State = stateMaster
+		master.ClusterGroup = cluster
+		cluster.master = master
+
+		datadir = t.TempDir()
+		if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+			t.Fatalf("failed to create datadir/var: %v", err)
+		}
+
+		proxy := &HaproxyProxy{Proxy: Proxy{
+			ClusterGroup: cluster,
+			Datadir:      datadir,
+			Version:      "test",
+		}}
+		proxy.Init()
+		return datadir
+	}
+
+	t.Run("non-localhost orchestrator skips rendering and the local reload", func(t *testing.T) {
+		datadir := newProxy(t, config.ConstOrchestratorOpenSVC)
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.cfg")); !os.IsNotExist(err) {
+			t.Fatalf("expected no rendered haproxy.cfg for a non-localhost orchestrator (Init() must return before Render()), stat err = %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.pid")); !os.IsNotExist(err) {
+			t.Fatalf("expected no pid file for a non-localhost orchestrator (Reload() must be skipped), stat err = %v", err)
+		}
+	})
+
+	t.Run("localhost orchestrator still renders and reloads locally", func(t *testing.T) {
+		datadir := newProxy(t, config.ConstOrchestratorLocalhost)
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.cfg")); err != nil {
+			t.Fatalf("expected a rendered haproxy.cfg for the localhost orchestrator: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.pid")); err != nil {
+			t.Fatalf("expected a pid file for the localhost orchestrator (SetPid() should have run): %v", err)
+		}
+	})
+}
+
 // TestHaproxyBackendsStateChangeReconcilesWriteBackendInStandbyMode guards
 // against a gap where BackendsStateChange() -- fired on every meaningful
 // server state change (cluster/srv.go), not just an actual failover or
@@ -861,6 +947,7 @@ backend {{.Name}}
 		HaproxyOn:              true,
 		HaproxyMode:            "standby",
 		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
 	}
 
 	master := cluster.Servers[0]

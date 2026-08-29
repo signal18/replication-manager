@@ -242,6 +242,21 @@ func (proxy *HaproxyProxy) Init() {
 		proxy.GetProxyConfig()
 		os.Symlink(proxy.Datadir+"/init/data", haproxydatadir)
 	}
+
+	// Everything below builds, renders, and reloads a *local* haproxy.cfg on
+	// this (the repman server's) host -- only meaningful for the Localhost
+	// orchestrator, where HAProxy actually runs co-located with repman.
+	// Every other caller of Init() (setReadBackendMaintenance, Failover,
+	// BackendsStateChange) only ever calls it when haproxy-mode=standby, to
+	// reconcile that local process; LocalhostProvisionHaProxyService is the
+	// only caller that runs regardless of mode, and it's Localhost-only by
+	// definition. For OpenSVC/K8s/etc the real proxy's config instead comes
+	// from the separate config-fetch tarball path (server/api_database.go,
+	// GetProxyConfig() above already covers the one-time bootstrap of that),
+	// so none of the rest has anywhere to go.
+	if cluster.GetOrchestrator() != config.ConstOrchestratorLocalhost {
+		return
+	}
 	//haproxysockFile := "haproxy.stats.sock"
 
 	haproxytemplateFile := "haproxy_config.template"
@@ -358,6 +373,10 @@ func (proxy *HaproxyProxy) Init() {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Could not create haproxy config %s", err)
 	}
+	// Reaching here already implies the Localhost orchestrator (see the
+	// early return above), so haRuntime.Reload()'s exec of a local haproxy
+	// binary against this rendered config's local stats-socket bind address
+	// is meaningful.
 	if cluster.Conf.HaproxyMode == "standby" {
 		if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy set pid %s", err)
