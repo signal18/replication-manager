@@ -72,3 +72,27 @@ func TestOpenSVCProxyModulesetCheckScriptsAndStandbyStatsSocket(t *testing.T) {
 		t.Errorf("moduleset_mariadb.svc.mrm.proxy.json contains %q %d times, want 2 (proxy_cnf_haproxy_runtime_api and proxy_cnf_haproxy) -- without it in proxy_cnf_haproxy, Refresh()'s runtime-API dial can never succeed in haproxy-mode=standby", tcpStatsSocket, got)
 	}
 }
+
+// TestOpenSVCHaproxyModulesetChecksAllowForkUnderThreads guards against a
+// regression where proxy_cnf_haproxy (haproxy_check.cfg, haproxy-mode=
+// standby) declares "option external-check" for checkmaster/checkslave but
+// omits "insecure-fork-wanted" in its global section. HAProxy's nbthread
+// defaults to the host's CPU count (32 in a live incident this guards
+// against), and a multi-threaded worker refuses to fork the external-check
+// subprocess without this directive -- every server then reports
+// check_status=SOCKERR / "Resource temporarily unavailable" (EAGAIN) rather
+// than PROCOK/PROCERR, so nothing ever actually excludes a broken replica
+// from the write group despite the check being configured correctly
+// otherwise.
+func TestOpenSVCHaproxyModulesetChecksAllowForkUnderThreads(t *testing.T) {
+	data, err := EmbededDbModuleFS.ReadFile("opensvc/moduleset_mariadb.svc.mrm.proxy.json")
+	if err != nil {
+		t.Fatalf("could not read embedded moduleset_mariadb.svc.mrm.proxy.json: %s", err)
+	}
+	content := string(data)
+
+	insecureForkWanted := "external-check\\\\n insecure-fork-wanted\\\\n"
+	if got := strings.Count(content, insecureForkWanted); got != 1 {
+		t.Errorf("moduleset_mariadb.svc.mrm.proxy.json contains %q %d times, want 1 (proxy_cnf_haproxy's global section, right after \"external-check\") -- without it, a multi-threaded HAProxy worker can't fork checkmaster/checkslave and every check fails with SOCKERR", insecureForkWanted, got)
+	}
+}
