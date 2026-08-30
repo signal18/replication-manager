@@ -15,6 +15,20 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// k8sDockerParityUlimitShellPrefix returns a shell snippet that caps
+// RLIMIT_NOFILE to plain "docker run"'s own default (soft 1024 / hard
+// 1048576). OpenSVC's proxy containers never set this explicitly -- they get
+// it for free from that same Docker default. Some container runtimes
+// (observed on kind/containerd) instead hand every pod an inflated default
+// (~1 billion), which is harmless for most daemons but makes HAProxy's
+// external-check fork path hang until timeout, since it closes inherited fds
+// up to that limit before exec'ing the check script. Prefixing every proxy
+// container's start command with this keeps behavior identical across
+// orchestrators instead of at the mercy of whatever the runtime defaults to.
+func k8sDockerParityUlimitShellPrefix() string {
+	return "ulimit -Sn 1024; ulimit -Hn 1048576; "
+}
+
 func k8sProxyDeploymentName(clusterName, proxyName string) string {
 	return clusterName + "-" + proxyName + "-deployment"
 }
@@ -313,7 +327,11 @@ func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deploymen
 			// --initial re-derives ProxySQL's SQLite admin database from
 			// proxysql.cnf on every start, so a stale proxysql.db from a
 			// previous boot never takes precedence over the fetched config.
-			container.Command = []string{"proxysql", "--initial", "-f", "-c", "/etc/proxysql/proxysql.cnf"}
+			container.Command = []string{
+				"sh", "-c",
+				k8sDockerParityUlimitShellPrefix() +
+					"exec proxysql --initial -f -c /etc/proxysql/proxysql.cnf",
+			}
 			initCmd, initEnv = k8sProxyBootstrapCommand(cluster, prx)
 		case config.ConstProxyHaproxy:
 			mounts = []apiv1.VolumeMount{
@@ -329,12 +347,31 @@ func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deploymen
 			// into /usr/bin (see k8sHaproxyBootstrapCommand) and must pass
 			// "-db" itself, since haproxy_check.cfg's "daemon" directive
 			// otherwise backgrounds the process and PID 1 exits 0 immediately.
+			// The copy target is /usr/bin because haproxy_check.cfg's
+			// external-check command is a fixed absolute path shared with
+			// OpenSVC (which instead bind-mounts the scripts there, so no
+			// process privilege is needed). Kubernetes has to write into that
+			// same path at container startup instead, which only the image's
+			// default root user can do -- the haproxytech/haproxy-alpine
+			// default image runs as root, but haproxy:<tag> (Debian) drops to
+			// uid 99 (haproxy) via its own USER directive, so RunAsUser=0 is
+			// forced here to make the copy succeed regardless of image choice.
 			if cluster.Conf.HaproxyMode == "standby" {
+				runAsRoot := int64(0)
+				container.SecurityContext = &apiv1.SecurityContext{RunAsUser: &runAsRoot}
 				container.Command = []string{
 					"sh", "-c",
 					"cp /usr/local/etc/haproxy/checkmaster /usr/bin/checkmaster 2>/dev/null; " +
 						"cp /usr/local/etc/haproxy/checkslave /usr/bin/checkslave 2>/dev/null; " +
 						"chmod +x /usr/bin/checkmaster /usr/bin/checkslave 2>/dev/null; " +
+						// HAProxy's external-check fork path closes inherited
+						// fds up to RLIMIT_NOFILE before exec'ing the check
+						// script -- at the inflated default some runtimes
+						// hand pods, that never finishes within any sane
+						// check timeout, so every check reports "External
+						// check timeout" forever without ever reaching the
+						// script. See k8sDockerParityUlimitShellPrefix.
+						k8sDockerParityUlimitShellPrefix() +
 						"exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg",
 				}
 			}

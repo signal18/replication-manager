@@ -574,12 +574,38 @@ func TestK8SProxyDeployment_MainContainerCommandPointsToPersistedConfig(t *testi
 	cmd := dep.Spec.Template.Spec.Containers[0].Command
 	found := false
 	for _, c := range cmd {
-		if c == "/etc/proxysql/proxysql.cnf" {
+		if strings.Contains(c, "/etc/proxysql/proxysql.cnf") {
 			found = true
 		}
 	}
 	if !found {
 		t.Fatalf("expected the container command to reference /etc/proxysql/proxysql.cnf, got %v", cmd)
+	}
+}
+
+func TestK8SProxyDeployment_ProxySQLCommandCapsFileDescriptorLimit(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	cmd := dep.Spec.Template.Spec.Containers[0].Command
+	if len(cmd) < 3 {
+		t.Fatalf("expected a sh -c command, got %+v", cmd)
+	}
+	script := cmd[2]
+	// Matches plain "docker run"'s default (soft 1024 / hard 1048576), which
+	// is what OpenSVC's ProxySQL container gets implicitly -- some container
+	// runtimes (observed on kind/containerd) instead hand pods an inflated
+	// RLIMIT_NOFILE by default, so this keeps behavior identical regardless
+	// of orchestrator.
+	for _, want := range []string{"ulimit -Sn 1024", "ulimit -Hn 1048576", "exec proxysql"} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("expected proxysql command to contain %q, got: %s", want, script)
+		}
 	}
 }
 
@@ -3323,11 +3349,40 @@ func TestK8SProxyDeployment_HaproxyStandbyModePlacesCheckScriptsAndUsesCheckConf
 		"cp /usr/local/etc/haproxy/checkmaster /usr/bin/checkmaster",
 		"cp /usr/local/etc/haproxy/checkslave /usr/bin/checkslave",
 		"chmod +x /usr/bin/checkmaster /usr/bin/checkslave",
+		"ulimit -Sn 1024",
+		"ulimit -Hn 1048576",
 		"exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg",
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("expected standby-mode command to contain %q, got: %s", want, script)
 		}
+	}
+
+	// The copy into /usr/bin only succeeds if the container runs as root:
+	// haproxytech/haproxy-alpine defaults to root, but the official Debian
+	// haproxy:<tag> image drops to uid 99 via its own USER directive, which
+	// would otherwise leave /usr/bin unwritable and the copy a silent no-op.
+	if container.SecurityContext == nil || container.SecurityContext.RunAsUser == nil {
+		t.Fatalf("expected standby-mode container to force RunAsUser=0, got SecurityContext=%+v", container.SecurityContext)
+	}
+	if got := *container.SecurityContext.RunAsUser; got != 0 {
+		t.Fatalf("expected standby-mode container to force RunAsUser=0, got %d", got)
+	}
+}
+
+func TestK8SProxyDeployment_HaproxyRuntimeAPIModeDoesNotForceRoot(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.HaproxyMode = "runtimeapi"
+	prx := newTestHaproxyProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	container := dep.Spec.Template.Spec.Containers[0]
+	if container.SecurityContext != nil {
+		t.Fatalf("expected no SecurityContext override outside standby mode, got %+v", container.SecurityContext)
 	}
 }
 
