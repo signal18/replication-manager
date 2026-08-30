@@ -5,7 +5,13 @@
 // This source code is licensed under the GNU General Public License, version 3.
 
 // maxscale.go
-
+//
+// Talks to MaxScale either over its REST API (HTTP + Basic Auth, UseRest
+// true) or the old MaxAdmin TCP protocol (UseRest false). MaxAdmin was
+// removed from MaxScale itself starting 2.5.0, in favor of the REST API and
+// maxctrl; the REST API predates that (introduced in 2.2). UseRest defaults
+// on (maxscale-rest-api) for that reason, but callers on MaxScale older than
+// 2.2 -- which never had a REST API to speak to -- can still opt out.
 package maxscale
 
 import (
@@ -14,10 +20,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -27,7 +34,13 @@ type MaxScale struct {
 	Port string
 	User string
 	Pass string
-	Conn net.Conn
+
+	// UseRest selects the REST API (true) or the legacy MaxAdmin TCP
+	// protocol (false). Set by the caller before Connect().
+	UseRest bool
+
+	Conn   net.Conn     // MaxAdmin only
+	client *http.Client // REST only
 }
 
 type Server struct {
@@ -55,6 +68,9 @@ type Monitor struct {
 	Status  string
 }
 
+// ServerList/MonitorList cache the last ListServers/ListMonitors call,
+// read back by GetServer/GetMonitor/GetStoppedMonitor. Package-level to
+// match this client's pre-REST behavior; not changed here.
 var ServerList = make([]Server, 0)
 var MonitorList = make([]Monitor, 0)
 
@@ -62,21 +78,149 @@ var ServerMaxinfos = make([]ServerMaxinfo, 0)
 var MonitorMaxinfos = make([]MonitorMaxinfo, 0)
 
 const (
-	maxDefaultPort    = "6603"
-	maxDefaultUser    = "admin"
-	maxDefaultPass    = "mariadb"
-	maxDefaultTimeout = (2 * time.Second)
+	maxDefaultTimeout = 5 * time.Second
 	// Error types
 	ErrorNegotiation = "Incorrect maxscale protocol negotiation"
 	ErrorReader      = "Error reading from buffer"
 )
 
-func (m *MaxScale) Connect() error {
+// --- REST API ---
+
+// restResource is the common shape of a single MaxScale REST API resource
+// (a server or a monitor) under "data". Only the fields actually consumed
+// below are decoded.
+type restResource struct {
+	ID         string `json:"id"`
+	Attributes struct {
+		State      string `json:"state"`
+		Parameters struct {
+			Address string `json:"address"`
+			Port    int    `json:"port"`
+		} `json:"parameters"`
+		Statistics struct {
+			Connections int `json:"connections"`
+		} `json:"statistics"`
+	} `json:"attributes"`
+}
+
+type restList struct {
+	Data []restResource `json:"data"`
+}
+
+func (m *MaxScale) baseURL() string {
+	return "http://" + m.Host + ":" + m.Port + "/v1"
+}
+
+// request performs one REST API call, returning the raw response body. A
+// non-2xx status is reported as an error carrying the response body, since
+// MaxScale's REST API puts the actionable detail there (e.g. "Missing or
+// invalid parameter").
+func (m *MaxScale) request(method, path string, query url.Values) ([]byte, error) {
+	if m.client == nil {
+		m.client = &http.Client{Timeout: maxDefaultTimeout}
+	}
+	u := m.baseURL() + path
+	if len(query) > 0 {
+		u += "?" + query.Encode()
+	}
+	req, err := http.NewRequest(method, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(m.User, m.Pass)
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		return body, fmt.Errorf("MaxScale REST API %s %s returned %d: %s", method, path, resp.StatusCode, string(body))
+	}
+	return body, nil
+}
+
+func (m *MaxScale) connectREST() error {
+	m.client = &http.Client{Timeout: maxDefaultTimeout}
+	if _, err := m.request("GET", "/servers", nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *MaxScale) listServersREST() ([]Server, error) {
+	body, err := m.request("GET", "/servers", nil)
+	if err != nil {
+		return nil, err
+	}
+	var parsed restList
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("could not parse MaxScale servers response: %s", err)
+	}
+	ServerList = make([]Server, 0, len(parsed.Data))
+	for _, r := range parsed.Data {
+		ServerList = append(ServerList, Server{
+			Server:      r.ID,
+			Address:     r.Attributes.Parameters.Address,
+			Port:        strconv.Itoa(r.Attributes.Parameters.Port),
+			Connections: strconv.Itoa(r.Attributes.Statistics.Connections),
+			Status:      r.Attributes.State,
+		})
+	}
+	return ServerList, nil
+}
+
+func (m *MaxScale) listMonitorsREST() ([]Monitor, error) {
+	body, err := m.request("GET", "/monitors", nil)
+	if err != nil {
+		return nil, err
+	}
+	var parsed restList
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("could not parse MaxScale monitors response: %s", err)
+	}
+	MonitorList = make([]Monitor, 0, len(parsed.Data))
+	for _, r := range parsed.Data {
+		MonitorList = append(MonitorList, Monitor{Monitor: r.ID, Status: r.Attributes.State})
+	}
+	return MonitorList, nil
+}
+
+// State values (master, slave, maintenance, running, synced, drain) are
+// identical to MaxAdmin's "set server"/"clear server" commands, confirmed
+// against MaxScale's own Server Resource REST API docs.
+func (m *MaxScale) setServerREST(server, status string) error {
+	_, err := m.request("PUT", "/servers/"+url.PathEscape(server)+"/set", url.Values{"state": {status}})
+	return err
+}
+
+func (m *MaxScale) clearServerREST(server, status string) error {
+	_, err := m.request("PUT", "/servers/"+url.PathEscape(server)+"/clear", url.Values{"state": {status}})
+	return err
+}
+
+func (m *MaxScale) shutdownMonitorREST(monitor string) error {
+	_, err := m.request("PUT", "/monitors/"+url.PathEscape(monitor)+"/stop", nil)
+	return err
+}
+
+func (m *MaxScale) restartMonitorREST(monitor string) error {
+	_, err := m.request("PUT", "/monitors/"+url.PathEscape(monitor)+"/start", nil)
+	return err
+}
+
+// --- MaxAdmin (legacy TCP protocol, MaxScale < 2.5; removed entirely in
+// 2.5+, so UseRest must be false to reach a MaxScale that old) ---
+
+func (m *MaxScale) connectMaxAdmin() error {
 	var err error
-	address := fmt.Sprintf("%s:%s", m.Host, m.Port)
+	address := net.JoinHostPort(m.Host, m.Port)
 	m.Conn, err = net.DialTimeout("tcp", address, maxDefaultTimeout)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Connection failed to address %s", address))
+		return err
 	}
 	reader := bufio.NewReader(m.Conn)
 	buf := make([]byte, 80)
@@ -109,91 +253,31 @@ func (m *MaxScale) Connect() error {
 	return nil
 }
 
-func (m *MaxScale) Close() {
-	if m.Conn != nil {
-		m.Conn.Close()
+func (m *MaxScale) Command(cmd string) error {
+	if m.Conn == nil {
+		return errors.New("Maxscale Connection was close")
 	}
-}
-func (m *MaxScale) GetMaxInfoServers(url string) ([]ServerMaxinfo, error) {
-	client := &http.Client{}
-	// Send the request via a client
-	// Do sends an HTTP request and
-	// returns an HTTP response
-	// Build the request
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		log.Fatal("NewRequest: ", err)
-		return nil, err
+	writer := bufio.NewWriter(m.Conn)
+	var err error
+	if _, err = fmt.Fprint(writer, cmd); err != nil {
+		return err
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal("Do: ", err)
-		return nil, err
+	if writer != nil {
+		err = writer.Flush()
 	}
-
-	// Callers should close resp.Body
-	// when done reading from it
-	// Defer the closing of the body
-	defer resp.Body.Close()
-	monjson, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal("Do: ", err)
-		return nil, err
-	}
-
-	// Use json.Decode for reading streams of JSON data
-	if err := json.Unmarshal(monjson, &ServerMaxinfos); err != nil {
-		log.Println(err)
-	}
-	return ServerMaxinfos, nil
+	return err
 }
 
-func (m *MaxScale) GetMaxInfoMonitors(url string) ([]MonitorMaxinfo, error) {
-	client := &http.Client{}
-
-	// Send the request via a client
-	// Do sends an HTTP request and
-	// returns an HTTP response
-	// Build the request
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		log.Fatal("NewRequest: ", err)
-		return nil, err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal("Do: ", err)
-		return nil, err
-	}
-
-	// Callers should close resp.Body
-	// when done reading from it
-	// Defer the closing of the body
-	defer resp.Body.Close()
-	monjson, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal("Do: ", err)
-		return nil, err
-	}
-
-	// Use json.Decode for reading streams of JSON data
-	if err := json.Unmarshal(monjson, &MonitorMaxinfos); err != nil {
-		log.Println(err)
-	}
-	return MonitorMaxinfos, nil
-}
-
-func (m *MaxScale) ShowServers() ([]byte, error) {
-	m.Command("show serversjson")
+func (m *MaxScale) readUntilOK(buf []byte) ([]byte, error) {
 	reader := bufio.NewReader(m.Conn)
 	var response []byte
-	buf := make([]byte, 80)
 	for {
 		res, err := reader.Read(buf)
 		if err != nil {
+			return response, err
 		}
 		str := string(buf[0:res])
-		if res < 80 && strings.HasSuffix(str, "OK") {
+		if res < len(buf) && strings.HasSuffix(str, "OK") {
 			response = append(response, buf[0:res-2]...)
 			break
 		}
@@ -202,85 +286,179 @@ func (m *MaxScale) ShowServers() ([]byte, error) {
 	return response, nil
 }
 
-func (m *MaxScale) ListServers() ([]Server, error) {
+func (m *MaxScale) ShowServers() ([]byte, error) {
+	m.Command("show serversjson")
+	return m.readUntilOK(make([]byte, 80))
+}
+
+func (m *MaxScale) listServersMaxAdmin() ([]Server, error) {
 	m.Command("list servers")
 	if m.Conn == nil {
 		return nil, errors.New("Tcp Connection close")
 	}
 	ServerList = make([]Server, 0)
-	reader := bufio.NewReader(m.Conn)
-	var response []byte
-	buf := make([]byte, 1024)
-	for {
-		res, err := reader.Read(buf)
-
-		if err != nil {
-			return ServerList, nil
-		}
-		str := string(buf[0:res])
-		//	log.Println(str)
-		if strings.HasSuffix(str, "OK") {
-
-			response = append(response, buf[0:res-2]...)
-			break
-		}
-		response = append(response, buf[0:res]...)
+	response, err := m.readUntilOK(make([]byte, 1024))
+	if err != nil {
+		return ServerList, nil
 	}
 
 	list := strings.Split(string(response), "\n")
-
+	re := regexp.MustCompile(`^([[:graph:]]+)[[:space:]]*\|[[:space:]]*([[:graph:]]+)[[:space:]]*\|[[:space:]]*([0-9]+)[[:space:]]*\|[[:space:]]*([0-9]+)[[:space:]]*\|[[:space:]]*([[:ascii:]]+)*`)
 	for _, line := range list {
-		//log.Println(line)
-		re := regexp.MustCompile(`^([[:graph:]]+)[[:space:]]*\|[[:space:]]*([[:graph:]]+)[[:space:]]*\|[[:space:]]*([0-9]+)[[:space:]]*\|[[:space:]]*([0-9]+)[[:space:]]*\|[[:space:]]*([[:ascii:]]+)*`)
-
 		match := re.FindStringSubmatch(line)
-
-		if len(match) > 0 {
-			if match[0] != "" && match[1] != "Server" {
-
-				item := Server{Server: match[1], Address: match[2], Port: match[3], Connections: match[4], Status: match[5]}
-				ServerList = append(ServerList, item)
-			}
+		if len(match) > 0 && match[0] != "" && match[1] != "Server" {
+			ServerList = append(ServerList, Server{Server: match[1], Address: match[2], Port: match[3], Connections: match[4], Status: match[5]})
 		}
 	}
 	return ServerList, nil
-
 }
 
-func (m *MaxScale) ListMonitors() ([]Monitor, error) {
-	err := m.Command("list monitors")
-	if err != nil {
+func (m *MaxScale) listMonitorsMaxAdmin() ([]Monitor, error) {
+	if err := m.Command("list monitors"); err != nil {
 		return nil, err
 	}
 	MonitorList = make([]Monitor, 0)
-	reader := bufio.NewReader(m.Conn)
-	var response []byte
-	buf := make([]byte, 512)
-	for {
-		res, err := reader.Read(buf)
-		if err != nil {
-			return MonitorList, nil
-		}
-		str := string(buf[0:res])
-		if strings.HasSuffix(str, "OK") {
-			response = append(response, buf[0:res-2]...)
-			break
-		}
-		response = append(response, buf[0:res]...)
+	response, err := m.readUntilOK(make([]byte, 512))
+	if err != nil {
+		return MonitorList, nil
 	}
-	list := strings.Split(string(response), "\n")
 
+	list := strings.Split(string(response), "\n")
+	re := regexp.MustCompile(`^([[:ascii:]]+)*\|[[:space:]]*([[:ascii:]]+)*`)
 	for _, line := range list {
-		re := regexp.MustCompile(`^([[:ascii:]]+)*\|[[:space:]]*([[:ascii:]]+)*`)
 		match := re.FindStringSubmatch(line)
-		if len(match) > 0 {
-			if match[0] != "" && match[1] != "Monitor" {
-				item := Monitor{Monitor: strings.TrimRight(match[1], " "), Status: strings.TrimRight(match[2], " ")}
-				MonitorList = append(MonitorList, item)
-			}
+		if len(match) > 0 && match[0] != "" && match[1] != "Monitor" {
+			MonitorList = append(MonitorList, Monitor{Monitor: strings.TrimRight(match[1], " "), Status: strings.TrimRight(match[2], " ")})
 		}
 	}
 	return MonitorList, nil
+}
+
+func (m *MaxScale) responseMaxAdmin() ([]string, error) {
+	response, err := m.readUntilOK(make([]byte, 512))
+	if err != nil {
+		return nil, errors.New("Failed to read result")
+	}
+	return strings.Split(string(response), "\n"), nil
+}
+
+func (m *MaxScale) setServerMaxAdmin(server, status string) error {
+	err := m.Command("set server " + server + " " + status)
+	if err == nil {
+		_, err = m.responseMaxAdmin()
+	}
+	return err
+}
+
+func (m *MaxScale) clearServerMaxAdmin(server, status string) error {
+	err := m.Command("clear server " + server + " " + status)
+	if err == nil {
+		_, err = m.responseMaxAdmin()
+	}
+	return err
+}
+
+func (m *MaxScale) shutdownMonitorMaxAdmin(monitor string) error {
+	if m.Conn == nil {
+		return errors.New("Connection was close did you lost maxscale")
+	}
+	writer := bufio.NewWriter(m.Conn)
+	if _, err := fmt.Fprintf(writer, "shutdown monitor %c%s%c\n", '"', monitor, '"'); err != nil {
+		return err
+	}
+	return writer.Flush()
+}
+
+func (m *MaxScale) restartMonitorMaxAdmin(monitor string) error {
+	writer := bufio.NewWriter(m.Conn)
+	if _, err := fmt.Fprintf(writer, "restart monitor %c%s%c\n", '"', monitor, '"'); err != nil {
+		return err
+	}
+	return writer.Flush()
+}
+
+// --- public API: dispatches to REST or MaxAdmin per m.UseRest ---
+
+// Connect verifies MaxScale is reachable and the credentials work. REST is
+// stateless (Basic Auth per request, no session); MaxAdmin does its usual
+// TCP handshake.
+func (m *MaxScale) Connect() error {
+	var err error
+	if m.UseRest {
+		err = m.connectREST()
+	} else {
+		err = m.connectMaxAdmin()
+	}
+	if err != nil {
+		return fmt.Errorf("Connection failed to address %s:%s: %s", m.Host, m.Port, err)
+	}
+	return nil
+}
+
+// Close releases the MaxAdmin TCP connection; a no-op for REST, which holds
+// no per-call connection state.
+func (m *MaxScale) Close() {
+	if m.Conn != nil {
+		m.Conn.Close()
+	}
+}
+
+func (m *MaxScale) GetMaxInfoServers(url string) ([]ServerMaxinfo, error) {
+	client := &http.Client{Timeout: maxDefaultTimeout}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	monjson, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(monjson, &ServerMaxinfos); err != nil {
+		return nil, err
+	}
+	return ServerMaxinfos, nil
+}
+
+func (m *MaxScale) GetMaxInfoMonitors(url string) ([]MonitorMaxinfo, error) {
+	client := &http.Client{Timeout: maxDefaultTimeout}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	monjson, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(monjson, &MonitorMaxinfos); err != nil {
+		return nil, err
+	}
+	return MonitorMaxinfos, nil
+}
+
+// ListServers refreshes the package-level ServerList.
+func (m *MaxScale) ListServers() ([]Server, error) {
+	if m.UseRest {
+		return m.listServersREST()
+	}
+	return m.listServersMaxAdmin()
+}
+
+// ListMonitors refreshes the package-level MonitorList.
+func (m *MaxScale) ListMonitors() ([]Monitor, error) {
+	if m.UseRest {
+		return m.listMonitorsREST()
+	}
+	return m.listMonitorsMaxAdmin()
 }
 
 func (m *MaxScale) GetMonitor() string {
@@ -333,7 +511,6 @@ func (m *MaxScale) GetServer(ip string, port string, matchserverport bool) (stri
 
 func (m *MaxScale) GetMaxInfoServer(ip string, port int, matchserverport bool) (string, string, int) {
 	for _, s := range ServerMaxinfos {
-		//	log.Printf("%s,%s", s.Address, ip)
 		if s.Address == ip && s.Port == port {
 			return s.Server, s.Status, s.Connections
 		}
@@ -344,79 +521,45 @@ func (m *MaxScale) GetMaxInfoServer(ip string, port int, matchserverport bool) (
 	return "", "", 0
 }
 
-func (m *MaxScale) Command(cmd string) error {
-	if m.Conn == nil {
-		return errors.New("Maxscale Connection was close")
-	}
-	writer := bufio.NewWriter(m.Conn)
-	var err error
-	if _, err = fmt.Fprint(writer, cmd); err != nil {
-		return err
-	}
-	if writer != nil {
-		err = writer.Flush()
-	}
-	return err
-}
-
+// Response is a no-op under REST: PUT /set, /clear, /stop and /start all
+// report their own success or failure directly (204 vs a REST error), unlike
+// MaxAdmin where a command and reading its response are two separate steps.
 func (m *MaxScale) Response() ([]string, error) {
-
-	reader := bufio.NewReader(m.Conn)
-	var response []byte
-	buf := make([]byte, 512)
-	for {
-		res, err := reader.Read(buf)
-		if err != nil {
-			return nil, errors.New("Failed to read result")
-		}
-		str := string(buf[0:res])
-		if strings.HasSuffix(str, "OK") {
-			response = append(response, buf[0:res-2]...)
-			break
-		}
-		response = append(response, buf[0:res]...)
+	if m.UseRest {
+		return nil, nil
 	}
-	list := strings.Split(string(response), "\n")
-	return list, nil
+	return m.responseMaxAdmin()
 }
 
+// SetServer maps to the old "set server <server> <status>" MaxAdmin command
+// (or its REST equivalent, PUT /v1/servers/:name/set?state=).
 func (m *MaxScale) SetServer(server, status string) error {
-	err := m.Command("set server " + server + " " + status)
-
-	if err == nil {
-		_, err = m.Response()
+	if m.UseRest {
+		return m.setServerREST(server, status)
 	}
-
-	return err
+	return m.setServerMaxAdmin(server, status)
 }
 
+// ClearServer maps to the old "clear server <server> <status>" command.
 func (m *MaxScale) ClearServer(server, status string) error {
-	err := m.Command("clear server " + server + " " + status)
-
-	if err == nil {
-		_, err = m.Response()
+	if m.UseRest {
+		return m.clearServerREST(server, status)
 	}
-
-	return err
+	return m.clearServerMaxAdmin(server, status)
 }
 
+// ShutdownMonitor maps to the old "shutdown monitor "<monitor>"" command.
 func (m *MaxScale) ShutdownMonitor(monitor string) error {
-	if m.Conn == nil {
-		return errors.New("Connection was close did you lost maxscale")
+	if m.UseRest {
+		return m.shutdownMonitorREST(monitor)
 	}
-	writer := bufio.NewWriter(m.Conn)
-	if _, err := fmt.Fprintf(writer, "shutdown monitor %c%s%c\n", '"', monitor, '"'); err != nil {
-		return err
-	}
-	err := writer.Flush()
-	return err
+	return m.shutdownMonitorMaxAdmin(monitor)
 }
 
+// RestartMonitor maps to the old "restart monitor "<monitor>"" command.
 func (m *MaxScale) RestartMonitor(monitor string) error {
-	writer := bufio.NewWriter(m.Conn)
-	if _, err := fmt.Fprintf(writer, "restart monitor %c%s%c\n", '"', monitor, '"'); err != nil {
-		return err
+	if m.UseRest {
+		return m.restartMonitorREST(monitor)
 	}
-	err := writer.Flush()
-	return err
+	return m.restartMonitorMaxAdmin(monitor)
 }

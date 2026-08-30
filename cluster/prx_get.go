@@ -261,6 +261,7 @@ func (proxy *Proxy) GetBaseEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_PORT_RW%%":                   strconv.Itoa(proxy.WritePort),
 		"%%ENV:SVC_CONF_ENV_BIND_RW%%":                   proxy.ClusterGroup.Conf.HaproxyWriteBindIp,
 		"%%ENV:SVC_CONF_ENV_MAXSCALE_MAXINFO_PORT%%":     strconv.Itoa(proxy.ClusterGroup.Conf.MxsMaxinfoPort),
+		"%%ENV:SVC_CONF_ENV_MAXSCALE_REST_PORT%%":        strconv.Itoa(proxy.ClusterGroup.Conf.MxsRestPort),
 		"%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%":             strconv.Itoa(proxy.ReadWritePort),
 		"%%ENV:SVC_CONF_ENV_PORT_BINLOG%%":               strconv.Itoa(proxy.ClusterGroup.Conf.MxsBinlogPort),
 		"%%ENV:SVC_CONF_ENV_PORT_TELNET%%":               proxy.Port,

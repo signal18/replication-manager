@@ -422,6 +422,9 @@ type Config struct {
 	MxsDisableMonitor                         bool                         `mapstructure:"maxscale-disable-monitor" toml:"maxscale-disable-monitor" json:"maxscaleDisableMonitor"`
 	MxsGetInfoMethod                          string                       `mapstructure:"maxscale-get-info-method" toml:"maxscale-get-info-method" json:"maxscaleGetInfoMethod"`
 	MxsServerMatchPort                        bool                         `mapstructure:"maxscale-server-match-port" toml:"maxscale-server-match-port" json:"maxscaleServerMatchPort"`
+	MxsMode                                    string                       `mapstructure:"maxscale-mode" toml:"maxscale-mode" json:"maxscaleMode"`
+	MxsRestApi                                 bool                         `mapstructure:"maxscale-rest-api" toml:"maxscale-rest-api" json:"maxscaleRestApi"`
+	MxsRestPort                                int                          `mapstructure:"maxscale-rest-port" toml:"maxscale-rest-port" json:"maxscaleRestPort"`
 	MxsBinaryPath                             string                       `mapstructure:"maxscale-binary-path" toml:"maxscale-binary-path" json:"maxscalemBinaryPath"`
 	MyproxyOn                                 bool                         `mapstructure:"myproxy" toml:"myproxy" json:"myproxy"`
 	MyproxyDebug                              bool                         `mapstructure:"myproxy-debug" toml:"myproxy-debug" json:"myproxyDebug"`

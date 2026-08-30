@@ -15,16 +15,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-// k8sDockerParityUlimitShellPrefix returns a shell snippet that caps
-// RLIMIT_NOFILE to plain "docker run"'s own default (soft 1024 / hard
-// 1048576). OpenSVC's proxy containers never set this explicitly -- they get
-// it for free from that same Docker default. Some container runtimes
-// (observed on kind/containerd) instead hand every pod an inflated default
-// (~1 billion), which is harmless for most daemons but makes HAProxy's
-// external-check fork path hang until timeout, since it closes inherited fds
-// up to that limit before exec'ing the check script. Prefixing every proxy
-// container's start command with this keeps behavior identical across
-// orchestrators instead of at the mercy of whatever the runtime defaults to.
+// k8sDockerParityUlimitShellPrefix caps RLIMIT_NOFILE to plain "docker
+// run"'s own default (soft 1024 / hard 1048576), which OpenSVC's containers
+// get for free. Some runtimes (observed on kind/containerd) instead hand
+// pods an inflated default (~1 billion), which hangs HAProxy's
+// external-check fork path until timeout.
 func k8sDockerParityUlimitShellPrefix() string {
 	return "ulimit -Sn 1024; ulimit -Hn 1048576; "
 }
@@ -45,10 +40,25 @@ func k8sProxyServiceName(prx DatabaseProxy) string {
 	return prx.GetName()
 }
 
-var k8sSupportedProxyTypes = []string{config.ConstProxySqlproxy, config.ConstProxyHaproxy}
+var k8sSupportedProxyTypes = []string{config.ConstProxySqlproxy, config.ConstProxyHaproxy, config.ConstProxyMaxscale}
 
 func k8sUnsupportedProxyTypeErr(proxyType string) error {
 	return fmt.Errorf("Kubernetes proxy provisioning does not support proxy type %q yet (only %q are implemented)", proxyType, k8sSupportedProxyTypes)
+}
+
+// k8sMaxscaleAdminPort is whichever port repman's own client actually
+// connects on: MxsRestPort under maxscale-rest-api (default), MxsPort (the
+// MaxAdmin "cli" listener) otherwise.
+func k8sMaxscaleAdminPort(prx DatabaseProxy) (int, error) {
+	conf := prx.GetCluster().Conf
+	if conf.MxsRestApi {
+		return conf.MxsRestPort, nil
+	}
+	adminPort, err := strconv.Atoi(prx.GetPort())
+	if err != nil {
+		return 0, fmt.Errorf("invalid MaxScale admin port %q: %s", prx.GetPort(), err)
+	}
+	return adminPort, nil
 }
 
 func (cluster *Cluster) k8sProxyImage(prx DatabaseProxy) (string, error) {
@@ -57,6 +67,8 @@ func (cluster *Cluster) k8sProxyImage(prx DatabaseProxy) (string, error) {
 		return cluster.Conf.ProvProxProxysqlImg, nil
 	case config.ConstProxyHaproxy:
 		return cluster.Conf.ProvProxHaproxyImg, nil
+	case config.ConstProxyMaxscale:
+		return cluster.Conf.ProvProxMaxscaleImg, nil
 	default:
 		return "", k8sUnsupportedProxyTypeErr(prx.GetType())
 	}
@@ -86,6 +98,28 @@ func k8sProxyContainerPorts(prx DatabaseProxy) ([]apiv1.ContainerPort, error) {
 			{Name: "read", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(prx.GetReadPort())},
 			{Name: "stat", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(prx.GetCluster().Conf.HaproxyStatPort)},
 		}, nil
+	case config.ConstProxyMaxscale:
+		// "admin" is whichever port repman's own client actually connects
+		// on -- MxsRestPort (REST API) when maxscale-rest-api is on
+		// (default), MxsPort (the MaxAdmin "cli" listener) when off. No
+		// "read": no listener by default. "binlog" is unconditional: the
+		// binlogrouter service is always generated regardless of
+		// MxsBinlogOn. "maxinfo" is exposed only when repman's own client
+		// is actually configured to use it (maxscale-get-info-method).
+		adminPort, err := k8sMaxscaleAdminPort(prx)
+		if err != nil {
+			return nil, err
+		}
+		ports := []apiv1.ContainerPort{
+			{Name: "admin", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(adminPort)},
+			{Name: "write", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(prx.GetWritePort())},
+			{Name: "rw-split", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(prx.GetReadWritePort())},
+			{Name: "binlog", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(prx.GetCluster().Conf.MxsBinlogPort)},
+		}
+		if prx.GetCluster().Conf.MxsGetInfoMethod == "maxinfo" {
+			ports = append(ports, apiv1.ContainerPort{Name: "maxinfo", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(prx.GetCluster().Conf.MxsMaxinfoPort)})
+		}
+		return ports, nil
 	default:
 		return nil, k8sUnsupportedProxyTypeErr(prx.GetType())
 	}
@@ -113,6 +147,22 @@ func k8sProxyServicePorts(prx DatabaseProxy) ([]apiv1.ServicePort, error) {
 			{Name: "read", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetReadPort())},
 			{Name: "stat", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetCluster().Conf.HaproxyStatPort)},
 		}, nil
+	case config.ConstProxyMaxscale:
+		// See k8sProxyContainerPorts.
+		adminPort, err := k8sMaxscaleAdminPort(prx)
+		if err != nil {
+			return nil, err
+		}
+		ports := []apiv1.ServicePort{
+			{Name: "admin", Protocol: apiv1.ProtocolTCP, Port: int32(adminPort)},
+			{Name: "write", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetWritePort())},
+			{Name: "rw-split", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetReadWritePort())},
+			{Name: "binlog", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetCluster().Conf.MxsBinlogPort)},
+		}
+		if prx.GetCluster().Conf.MxsGetInfoMethod == "maxinfo" {
+			ports = append(ports, apiv1.ServicePort{Name: "maxinfo", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetCluster().Conf.MxsMaxinfoPort)})
+		}
+		return ports, nil
 	default:
 		return nil, k8sUnsupportedProxyTypeErr(prx.GetType())
 	}
@@ -121,7 +171,7 @@ func k8sProxyServicePorts(prx DatabaseProxy) ([]apiv1.ServicePort, error) {
 // k8sProxyTypeHasPersistentStorage reports whether prx's type gets a PVC, a
 // bootstrap init container, and a custom startup command.
 func k8sProxyTypeHasPersistentStorage(proxyType string) bool {
-	return proxyType == config.ConstProxySqlproxy || proxyType == config.ConstProxyHaproxy
+	return proxyType == config.ConstProxySqlproxy || proxyType == config.ConstProxyHaproxy || proxyType == config.ConstProxyMaxscale
 }
 
 func k8sProxyPVCName(clusterName, proxyName string) string {
@@ -174,6 +224,23 @@ const k8sProxySSLPersistSubPath = ".system/etc-ssl-proxysql"
 // from. HAProxy's SSL certs are staged under etc/haproxy/ssl/ in the
 // tarball, inside this same directory, so no second SSL mount is needed.
 const k8sHaproxyConfPersistSubPath = ".system/etc-haproxy"
+
+// k8sMaxscaleConfPersistSubPath persists a whole directory (mounted at
+// k8sMaxscaleConfPersistDir), not /etc/maxscale.cnf directly: a subPath
+// mount straight onto a single, not-yet-existing file fails on kubelet
+// ("not a directory"), the same limitation HAProxy's checkmaster/checkslave
+// hit. The main container's Command copies the persisted file over
+// /etc/maxscale.cnf before exec'ing the real entrypoint.
+const k8sMaxscaleConfPersistSubPath = ".system/etc-maxscale-cnf"
+
+// k8sMaxscaleConfPersistDir is where k8sMaxscaleConfPersistSubPath is
+// mounted; maxscale.cnf lands at k8sMaxscaleConfPersistDir + "/maxscale.cnf".
+const k8sMaxscaleConfPersistDir = "/etc/maxscale-persist"
+
+// k8sMaxscaleCachePersistSubPath persists /var/cache/maxscale: the
+// binlogrouter service is always generated regardless of MxsBinlogOn, so
+// this is always mounted rather than gated on it.
+const k8sMaxscaleCachePersistSubPath = ".system/var-cache-maxscale"
 
 // k8sProxyFetchConfigCmds builds the need-fetch/remote-fetch wget commands
 // shared by every proxy family's bootstrap init container; only what each
@@ -268,6 +335,33 @@ func k8sHaproxyBootstrapCommand(cluster *Cluster, prx DatabaseProxy) ([]string, 
 	return cmd, initEnv
 }
 
+// k8sMaxscaleBootstrapCommand fetches maxscale.cnf into
+// k8sMaxscaleConfPersistDir. No SSL copy step: the generated config never
+// references the ssl/*.pem files GenerateProxyConfig stages for every proxy
+// family, so mounting them here would be dead weight.
+func k8sMaxscaleBootstrapCommand(cluster *Cluster, prx DatabaseProxy) ([]string, []apiv1.EnvVar) {
+	needFetchCmd, remoteFetchCmd, initEnv := k8sProxyFetchConfigCmds(cluster, prx)
+
+	sourceFile := "maxscale.cnf"
+	if cluster.MaxscaleUsesPinloki() {
+		sourceFile = "maxscale-pinloki.cnf"
+	}
+
+	applyConfig := "if " + needFetchCmd + " 2>/dev/null; then " +
+		"if " + remoteFetchCmd + " 2>/dev/null; then " +
+		"if tar xzf /tmp/config.tar.gz -C /tmp/cfg 2>/dev/null; then " +
+		"cp /tmp/cfg/etc/maxscale/" + sourceFile + " " + k8sMaxscaleConfPersistDir + "/maxscale.cnf 2>/dev/null; " +
+		"fi; fi; fi"
+
+	cmd := []string{
+		"sh", "-c",
+		"mkdir -p /tmp/cfg " + k8sMaxscaleConfPersistDir + " /var/cache/maxscale ; MKDIR_STATUS=$? ; " +
+			applyConfig +
+			" ; exit \"$MKDIR_STATUS\"",
+	}
+	return cmd, initEnv
+}
+
 // k8sProxyDeployment is a pure builder, returning before any Kubernetes
 // object is touched when the proxy type isn't supported.
 func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deployment, error) {
@@ -341,21 +435,11 @@ func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deploymen
 					SubPath:   k8sHaproxyConfPersistSubPath,
 				},
 			}
-			// runtimeapi (the default) needs no Command override: the image's
-			// own entrypoint already runs "haproxy -W -db -f .../haproxy.cfg".
-			// standby needs an explicit one: it copies checkmaster/checkslave
-			// into /usr/bin (see k8sHaproxyBootstrapCommand) and must pass
-			// "-db" itself, since haproxy_check.cfg's "daemon" directive
-			// otherwise backgrounds the process and PID 1 exits 0 immediately.
-			// The copy target is /usr/bin because haproxy_check.cfg's
-			// external-check command is a fixed absolute path shared with
-			// OpenSVC (which instead bind-mounts the scripts there, so no
-			// process privilege is needed). Kubernetes has to write into that
-			// same path at container startup instead, which only the image's
-			// default root user can do -- the haproxytech/haproxy-alpine
-			// default image runs as root, but haproxy:<tag> (Debian) drops to
-			// uid 99 (haproxy) via its own USER directive, so RunAsUser=0 is
-			// forced here to make the copy succeed regardless of image choice.
+			// standby needs an explicit Command (checkmaster/checkslave copied
+			// to /usr/bin, "-db" passed explicitly) and RunAsUser=0 (the
+			// Debian haproxy:<tag> image drops to uid 99, unlike
+			// haproxytech/haproxy-alpine's root default) -- see
+			// doc/implementation/cluster/KUBERNETES_PROVISIONING.md.
 			if cluster.Conf.HaproxyMode == "standby" {
 				runAsRoot := int64(0)
 				container.SecurityContext = &apiv1.SecurityContext{RunAsUser: &runAsRoot}
@@ -364,18 +448,47 @@ func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deploymen
 					"cp /usr/local/etc/haproxy/checkmaster /usr/bin/checkmaster 2>/dev/null; " +
 						"cp /usr/local/etc/haproxy/checkslave /usr/bin/checkslave 2>/dev/null; " +
 						"chmod +x /usr/bin/checkmaster /usr/bin/checkslave 2>/dev/null; " +
-						// HAProxy's external-check fork path closes inherited
-						// fds up to RLIMIT_NOFILE before exec'ing the check
-						// script -- at the inflated default some runtimes
-						// hand pods, that never finishes within any sane
-						// check timeout, so every check reports "External
-						// check timeout" forever without ever reaching the
-						// script. See k8sDockerParityUlimitShellPrefix.
 						k8sDockerParityUlimitShellPrefix() +
 						"exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg",
 				}
 			}
 			initCmd, initEnv = k8sHaproxyBootstrapCommand(cluster, prx)
+		case config.ConstProxyMaxscale:
+			mounts = []apiv1.VolumeMount{
+				{
+					Name:      volumeName,
+					MountPath: k8sMaxscaleConfPersistDir,
+					SubPath:   k8sMaxscaleConfPersistSubPath,
+				},
+				{
+					Name:      volumeName,
+					MountPath: "/var/cache/maxscale",
+					SubPath:   k8sMaxscaleCachePersistSubPath,
+				},
+			}
+			// The rsyslogd workaround is pinloki-only: a live-confirmed bug
+			// in mariadb/maxscale:23.08's entrypoint (bare "rsyslogd" never
+			// daemonizes, hanging startup before maxscale-start ever runs;
+			// not needed since MaxScale logs via maxlog, not syslog) that an
+			// older image may not share.
+			if cluster.MaxscaleUsesPinloki() {
+				container.Command = []string{
+					"sh", "-c",
+					"cp " + k8sMaxscaleConfPersistDir + "/maxscale.cnf /etc/maxscale.cnf 2>/dev/null; " +
+						"rm -f /var/run/*.pid; " +
+						"chown -R maxscale:maxscale /var/lib/maxscale; " +
+						"trap '/usr/bin/monit unmonitor all; /usr/bin/maxscale-stop; /usr/bin/monit quit' TERM; " +
+						"maxscale-start && monit -I & " +
+						"wait",
+				}
+			} else {
+				container.Command = []string{
+					"sh", "-c",
+					"cp " + k8sMaxscaleConfPersistDir + "/maxscale.cnf /etc/maxscale.cnf 2>/dev/null; " +
+						"exec /usr/bin/docker-entrypoint.sh /bin/sh -c \"maxscale-start && monit -I\"",
+				}
+			}
+			initCmd, initEnv = k8sMaxscaleBootstrapCommand(cluster, prx)
 		}
 
 		container.VolumeMounts = mounts

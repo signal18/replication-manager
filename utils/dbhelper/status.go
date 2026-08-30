@@ -59,7 +59,7 @@ func MariaDBVersion(server string) int {
 	}
 	re := regexp.MustCompile(`([0-9]+).([0-9]+).([0-9]+)*`)
 	match := re.FindStringSubmatch(server)
-	if len(match[1]) == 0 || len(match[2]) == 0 || len(match[3]) == 0 {
+	if len(match) < 4 || len(match[1]) == 0 || len(match[2]) == 0 || len(match[3]) == 0 {
 		return 0
 	}
 	x, _ := strconv.Atoi(match[1])
@@ -68,12 +68,29 @@ func MariaDBVersion(server string) int {
 	return (x*10000 + y*100 + z)
 }
 
-// GetMaxscaleVersion retrieves MaxScale version
+// GetMaxscaleVersion retrieves MaxScale version. Only the legacy binlogrouter
+// (pre-2.5) recognizes @@maxscale_version -- pinloki doesn't and just echoes
+// the literal text back with no error, so this must never be used to detect
+// a pinloki relay; see IsMaxscalePinloki for that.
 func GetMaxscaleVersion(db *sqlx.DB) (string, error) {
 	var value string
 	value = ""
 	err := db.QueryRowx("Select @@maxscale_version").Scan(&value)
 	return value, err
+}
+
+// IsMaxscalePinloki reports whether db is a pinloki-based MaxScale binlog
+// relay, identified via @@version_comment -- pinloki's own documented
+// self-ID, always the literal string "pinloki" -- since @@maxscale_version
+// (the legacy binlogrouter's identification query) isn't a pinloki
+// pseudo-variable at all.
+func IsMaxscalePinloki(db *sqlx.DB) bool {
+	var value string
+	err := db.QueryRowx("Select @@version_comment").Scan(&value)
+	if err != nil {
+		return false
+	}
+	return value == "pinloki"
 }
 
 // GetStatus retrieves global status variables

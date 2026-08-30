@@ -762,6 +762,142 @@ Unlike `NewProxySQLProxy`, it doesn't yet branch on `conf.ClusterHead`.
 `prov-proxy-start-fetch-config` applies to HAProxy exactly as it does to
 ProxySQL — the cookie mechanism is proxy-type-agnostic.
 
+### Persistent storage and config bootstrap (MaxScale)
+
+Also shares `k8sProxyPVC()`/`k8sProxyPVCName()`. Two `subPath` mounts:
+`k8sMaxscaleConfPersistDir` (`/etc/maxscale-persist`, `.system/etc-maxscale-cnf`)
+and `/var/cache/maxscale` (`.system/var-cache-maxscale`, where the
+binlogrouter service always writes regardless of `maxscale-binlog`). Not a
+direct mount at `/etc/maxscale.cnf`: confirmed live that a `subPath` mount
+onto a single not-yet-existing file fails on kubelet ("not a directory") —
+the same limitation HAProxy's checkmaster/checkslave hit. The container
+command copies the persisted file onto `/etc/maxscale.cnf` before starting
+MaxScale.
+
+**`mariadb/maxscale` ships two incompatible config generations.** MaxScale's
+2.5.0 release removed the `cli`/`debugcli`/`maxinfo` routers (MaxAdmin,
+superseded by the REST API and `maxctrl`), renamed the `passwd=` parameter to
+`password=`, replaced the static binlogrouter (`router_options=server-id=...`)
+with the rewritten `pinloki` implementation
+(`cluster=<monitor>`/`select_master=true`), and moved `readwritesplit`'s
+`master_accept_reads`/`slave_selection_criteria` out of `router_options` into
+top-level parameters. None of this is backward-compatible, and MaxScale's
+version scheme itself changed partway through — semver (`2.4`, `2.5`) to
+calendar-based `YY.MM` (`21.06`, `22.08`, `23.08`...).
+
+`maxscale-mode` (`prx_maxscale.go`) resolves this:
+
+- `legacy` — the original `proxy_cnf_maxscale` moduleset variant
+  (`maxscale.cnf`), unmodified pre-2.5 syntax.
+- `pinloki` — a separate `proxy_cnf_maxscale_pinloki` variant
+  (`maxscale-pinloki.cnf`) targeting 2.5+.
+- `auto` (default) — `Cluster.MaxscaleUsesPinloki()` parses the tag in
+  `prov-proxy-docker-maxscale-img` via `utils/version` and treats any
+  `>= 2.5` as pinloki. Every calendar-versioned major (21+) is numerically
+  far larger than 2, so a plain `GreaterEqual("2.5")` holds correctly across
+  the semver→calendar transition without special-casing it. A registry port
+  (`myregistry.example.com:5000/...`) is never read as a version: the tag is
+  isolated by taking the last `/`-segment first, *then* splitting on `:`. An
+  unparseable tag (`latest`, a custom private-registry name) falls back to
+  legacy — existing users on an old image see no behavior change.
+
+`k8sMaxscaleBootstrapCommand()` fetches whichever variant `maxscale-mode`
+resolves to. No SSL copy step: the generated config never references the
+`ssl/*.pem` files `GenerateProxyConfig` stages for every proxy family.
+
+**Container command** (`k8sProxyDeployment`'s `ConstProxyMaxscale` case)
+also branches on `MaxscaleUsesPinloki()`, independently of which config file
+gets fetched:
+
+- **pinloki**: `mariadb/maxscale:23.08`'s own `docker-entrypoint.sh` calls a
+  bare `rsyslogd` — confirmed live (`bash -x` trace) that this never
+  daemonizes in this environment and hangs the entrypoint forever before it
+  ever reaches `maxscale-start`. MaxScale doesn't need it (it always logs via
+  maxlog, never syslog — "syslog logging is disabled" in every startup log).
+  The command reproduces the rest of the entrypoint's own logic (`chown`,
+  `trap ... TERM` calling `maxscale-stop` for a graceful shutdown, the
+  backgrounded `maxscale-start && monit -I &` + `wait`) without that one
+  call. No final `exec` into `monit`: staying in this shell keeps the trap
+  live for `SIGTERM` on pod termination.
+- **legacy**: no equivalent bug confirmed, so the command execs the image's
+  own `docker-entrypoint.sh` unmodified, after the same config copy step.
+
+Neither mode needs a `RunAsUser` override: `mariadb/maxscale` runs as root by
+default (unlike HAProxy's Debian image).
+
+**Ports**: `admin` is whichever port repman's own client (`router/maxscale`)
+actually connects on — `MxsRestPort` (REST API, default `8989`) when
+`maxscale-rest-api` is on (the default), or `MxsPort` (the MaxAdmin `cli`
+listener, default `6603`) when off. `write` (Write Connection), `rw-split`
+(Read Write Connection), and `binlog` (Replication) have real listeners in
+both config variants; `binlog` stays unconditional since the binlogrouter
+service is always generated. `maxinfo` is exposed (on `MxsMaxinfoPort`) only
+when `maxscale-get-info-method=maxinfo` is actually configured — the legacy
+config variant still generates a `[MaxInfo JSON Listener]` unconditionally,
+but the K8s Service only needs to carry that port when repman's own client
+is set to use it (`k8sMaxscaleAdminPort`'s sibling gating in
+`k8sProxyContainerPorts`/`k8sProxyServicePorts`). No `read` (no listener is
+bound to `MxsReadPort` in either variant). `maxinfo` only ever has a
+listener in the legacy config variant (removed alongside MaxAdmin at 2.5.0,
+same as the pinloki cutoff), so pairing `maxscale-get-info-method=maxinfo`
+with `maxscale-mode=pinloki` is a user configuration error, not a gap in
+this code — the port would be exposed with nothing listening behind it.
+
+**`router/maxscale` speaks either MaxScale's REST API or the old MaxAdmin
+TCP protocol, selected by `maxscale-rest-api`** (`MaxScale.UseRest`, default
+on) — not a one-way migration. The two are genuinely different version
+floors: `maxscale-mode`'s pinloki cutoff is 2.5 (config *syntax*), but the
+REST API itself was introduced earlier, at 2.2 (confirmed against MaxScale's
+own 2.2 changelog — absent from 2.1/2.0). A user's own externally-managed
+MaxScale predating 2.2 never had a REST API to speak to at all, so removing
+MaxAdmin outright (an earlier version of this fix did exactly that) would
+have silently broken anyone still on it. `maxscale-rest-api=false` restores
+the original MaxAdmin-only behavior unchanged.
+
+This mattered in practice, confirmed live: exposing only `admin`=REST-port
+without restoring the client broke repman's *own* monitoring —
+`router/maxscale.Connect()` dials `Host:Port` directly, and once the old
+`cli` listener assumption fell out of the exposed Service ports,
+`Refresh()`/`Init()`/`SetMaintenance()` could no longer reach MaxScale at
+all (`"Could not connect to MaxScale"`, `ERR00018`, in repman's own logs).
+Fixed by keeping both client protocols and giving REST its own dedicated
+port (`MxsRestPort`) instead of reusing `MxsPort`, so the legacy config
+variant can carry *both* the restored `[CLI]`/`[CLI Listener]` (on `MxsPort`)
+and `admin_host`/`admin_port` (on `MxsRestPort`, via a new
+`%%ENV:SVC_CONF_ENV_MAXSCALE_REST_PORT%%` substitution key,
+`cluster/prx_get.go`) without a bind conflict — the pinloki variant carries
+only the latter, since it never had a CLI listener to begin with.
+
+Method signatures (`ListServers`/`ListMonitors`/`SetServer`/`ClearServer`/
+`ShutdownMonitor`/`RestartMonitor`/`GetServer`/`GetMonitor`) are unchanged,
+so `prx_maxscale.go` only needed a new `newMaxscaleClient()` helper (port
+selection + setting `UseRest`) feeding the same call sites, not a rewrite.
+The tunnel path (`proxy.Tunnel`/`TunnelPort`) always forces `UseRest: false`
+regardless of `maxscale-rest-api` — `TunnelPort` is only ever forwarded to
+the MaxAdmin listener (nothing in the codebase re-points it at
+`MxsRestPort`), so an existing tunneled setup keeps working unchanged under
+the new REST-by-default behavior instead of trying to speak REST over a
+tunnel that was only ever wired for MaxAdmin's TCP protocol.
+State values (`master`, `slave`, `maintenance`, `running`, `synced`,
+`drain`) are identical between MaxAdmin's `set server`/`clear server` and
+the REST API's `PUT /v1/servers/:name/set|clear?state=`.
+`GetMaxInfoServers`/`GetMaxInfoMonitors` (the separate, still-supported
+`maxscale-get-info-method=maxinfo` opt-in) are untouched either way.
+Package-level `ServerList`/`MonitorList` caching is unchanged from the
+original client. Unit tests cover both paths: `httptest.NewServer` fakes the
+REST API, a small hand-rolled TCP server (byte-exact 4/8-byte handshake
+prompts, `...OK`-terminated command/response framing) fakes MaxAdmin —
+`router/maxscale/maxscale_test.go`. The original tests required a real,
+reachable MaxScale instance and were not runnable in this environment.
+
+`GetPodDockerMaxscaleTemplate()` (`prov_opensvc_maxscale.go`, the legacy
+`ProvOpensvcUseCollectorAPI` path — not what a modern OpenSVC deployment
+uses) had the same hardcoded `maxscale.cnf` filename; fixed to select the
+same way `OpenSVCGetMaxscaleContainerSection()` does.
+
+`NewMaxscaleProxy()` had the same `conf.ProvOrchestratorCluster`-without-fallback
+issue as HAProxy/ProxySQL; fixed the same way via `k8sClusterDomain()`.
+
 ### Legacy deployment name
 
 Clusters provisioned before per-proxy naming existed have a single
@@ -1037,11 +1173,16 @@ cached label resolution, the bootstrap/dbjobs shell logic (run through a
 real `sh`, not just asserted from the command's text shape),
 `k8sUpdateDatabaseServiceConfigWithClient`'s image/pull-policy patch,
 ProxySQL's PVC/mount/bootstrap/SSL-path builders, HAProxy's
-PVC/mount/bootstrap/standby-command builders, and `HaproxyProxy.Refresh()`'s
+PVC/mount/bootstrap/standby-command builders, `HaproxyProxy.Refresh()`'s
 `SetMaster` gating and write-backend mode isolation
 (`TestHaproxyRefreshSkipsSetMasterInStandbyMode`,
 `TestHaproxyRefreshSkipsSetMasterFallbackInStandbyMode`,
-`TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode`).
+`TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode`), and MaxScale's
+image/port selection, PVC/mount/bootstrap builders, legacy-vs-pinloki
+command selection, and `MaxscaleUsesPinloki()`'s auto-detection (calendar
+vs. semver tags, unparseable-tag fallback, registry-port-not-mistaken-for-tag).
+`router/maxscale/maxscale_test.go` covers both the REST and MaxAdmin client
+paths against fake servers.
 
 The provisioning/unprovisioning logic is split into
 `kubernetes.Interface`-parameterized helpers (e.g.
@@ -1078,6 +1219,20 @@ The provisioning/unprovisioning logic is split into
   `master-status`/`slave-status` routes; `ProxyRunning` at the cluster level
   after the TCP-socket and `SetMaster`-gating fixes; write/read backend
   split confirmed via the stats page CSV export.
+- **MaxScale, `pinloki` mode** (`mariadb/maxscale:23.08`, both explicit
+  `maxscale-mode=pinloki` and unset `auto` detecting it from the tag),
+  `maxscale-rest-api` at its default (on): PVC/Deployment/Service created
+  with the right ports, config lands with correct substitutions,
+  `mariadbmon` correctly detects master/replica (`maxctrl list servers`),
+  write/rw-split/binlog listeners all bound. Most importantly: **repman's
+  own `Refresh()` successfully reaches MaxScale through the REST API on
+  `MxsRestPort` (8989)** — confirmed via the absence of `ERR00018`/"Could
+  not connect to MaxScale" in repman's logs after the port and client
+  fixes, and directly replicating repman's exact request
+  (`curl -u admin:mariadb http://<service>:8989/v1/servers`) from inside
+  the cluster. `maxscale-rest-api=false` (MaxAdmin fallback) is unit-tested
+  (`router/maxscale/maxscale_test.go`) but not live-verified — no MaxScale
+  older than 2.5 was available to test the restored legacy protocol against.
 
 Also fixed during this work: `NewProxySQLProxy`/`NewHaproxyProxy` built
 their host from `conf.ProvOrchestratorCluster` unconditionally, so under
@@ -1115,9 +1270,25 @@ Kubernetes-orchestrated scenarios.
 - No real K8s-capable regtest/CI coverage for the outage-fallback path.
 - PVC deletion on unprovision is decided (retained, for databases, ProxySQL,
   and HAProxy alike) but Namespace deletion semantics remain undecided.
-- No Kubernetes proxy support beyond ProxySQL and HAProxy — MaxScale,
+- No Kubernetes proxy support beyond ProxySQL, HAProxy, and MaxScale —
   Sphinx, ShardProxy, and other families return an explicit provisioning
-  error rather than silently deploying as one of the two supported types.
+  error rather than silently deploying as one of the supported types.
+- MaxScale's `legacy`-mode rsyslogd-hang workaround (see "Persistent storage
+  and config bootstrap (MaxScale)" above) is Kubernetes-only, live-verified
+  only in `pinloki` mode against `mariadb/maxscale:23.08` on `kind`. The
+  OpenSVC side of the same fix (`GetPodDockerMaxscaleTemplate`,
+  `OpenSVCGetMaxscaleContainerSection`) has not been live-tested — no OpenSVC
+  environment was available.
+- `maxscale-get-info-method=maxinfo` is a separate opt-in, untouched by the
+  `maxscale-rest-api` client selection. The K8s Service now carries the
+  `maxinfo` port when it's configured (unit-tested), but it's untested
+  against modern MaxScale: the `maxinfo`/`httpd` protocol it depends on was
+  also removed at 2.5.0, alongside MaxAdmin, and only the `legacy` moduleset
+  variant ever generates a `[MaxInfo JSON Listener]` — pairing this with
+  `maxscale-mode=pinloki` exposes a port nothing listens on.
+- `maxscale-rest-api=false` (MaxAdmin fallback, for MaxScale < 2.2) is
+  unit-tested against a fake TCP server but not live-verified against a real
+  pre-2.2 MaxScale instance — none was available in this environment.
 - Both HAProxy modes (`runtimeapi` and `standby`) provision, boot, stay
   running, and report `ProxyRunning` at the cluster level; `standby`'s
   `checkmaster`/`checkslave` external checks execute and correctly report

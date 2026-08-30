@@ -21,11 +21,17 @@ func (cluster *Cluster) OpenSVCGetMaxscaleContainerSection(server *MaxscaleProxy
 		svccontainer["image"] = "{env.maxscale_img}"
 		svccontainer["rm"] = "true"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		// See Cluster.MaxscaleUsesPinloki: selects which generated file gets
+		// mounted at /etc/maxscale.cnf.
+		sourceFile := "maxscale.cnf"
+		if server.ClusterGroup.MaxscaleUsesPinloki() {
+			sourceFile = "maxscale-pinloki.cnf"
+		}
 		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
 			svccontainer["run_args"] = `-v {env.base_dir}/pod01/etc/maxscale:/etc/maxscale.d:rw ` + server.ClusterGroup.Conf.ProvProxDockerRunArgs
 		} else {
 			svccontainer["run_args"] = server.ClusterGroup.Conf.ProvProxDockerRunArgs
-			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/etc/maxscale/maxscale.cnf:/etc/maxscale.cnf:rw`
+			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/etc/maxscale/` + sourceFile + `:/etc/maxscale.cnf:rw`
 		}
 	}
 	return svccontainer
@@ -60,6 +66,11 @@ orchestrate = start
 func (cluster *Cluster) GetPodDockerMaxscaleTemplate(collector opensvc.Collector, pod string) string {
 	var vm string
 	if collector.ProvProxMicroSrv == "docker" {
+		// See OpenSVCGetMaxscaleContainerSection.
+		sourceFile := "maxscale.cnf"
+		if cluster.MaxscaleUsesPinloki() {
+			sourceFile = "maxscale-pinloki.cnf"
+		}
 		vm = vm + `
 [container#00` + pod + `]
 type = docker
@@ -74,7 +85,7 @@ run_image = {env.maxscale_img}
 rm = true
 netns = container#00` + pod + `
 run_args = -v /etc/localtime:/etc/localtime:ro
-    	     -v {env.base_dir}/pod` + pod + `/etc/maxscale.cnf:/etc/maxscale.cnf:rw
+		-v {env.base_dir}/pod` + pod + `/etc/maxscale/` + sourceFile + `:/etc/maxscale.cnf:rw
 `
 		if dockerMinusRm {
 			vm = vm + ` --rm
