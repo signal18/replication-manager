@@ -633,6 +633,7 @@ type Config struct {
 	ProvDBDockerTmpfsSize                     string                       `measurement:"M,bytes" mapstructure:"prov-db-docker-tmpfs-size" toml:"prov-db-docker-tmpfs-size" json:"provDbDockerTmpfsSize"`
 	ProvDBDockerRunArgs                       string                       `mapstructure:"prov-db-docker-run-args" toml:"prov-db-docker-run-args" json:"provDbDockerRunArgs"`
 	ProvDBDockerRunArgsLimit                  bool                         `mapstructure:"prov-db-docker-run-args-limit" toml:"prov-db-docker-run-args-limit" json:"provDbDockerRunArgsLimit"`
+	ProvDBDockerJemallocPreload               string                       `mapstructure:"prov-db-docker-jemalloc-preload" toml:"prov-db-docker-jemalloc-preload" json:"provDbDockerJemallocPreload"`
 	ProvDBJobsDockerRunArgs                   string                       `mapstructure:"prov-db-jobs-docker-run-args" toml:"prov-db-jobs-docker-run-args" json:"provDbJobsDockerRunArgs"`
 	ProvDatadirVersion                        string                       `mapstructure:"prov-db-datadir-version" toml:"prov-db-datadir-version" json:"provDbDatadirVersion"`
 	ProvDBLoadSQL                             string                       `mapstructure:"prov-db-load-sql" toml:"prov-db-load-sql" json:"provDbLoadSql"`

@@ -577,7 +577,7 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["#command"] = "gdb -ex r -ex thread apply all bt -frame-arguments all full --args mariadbd"
 		svccontainer["##docker_image"] = "quay.io/mariadb-foundation/mariadb-debug:10.11-mdev-33798-knielsen-pkgtest"
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/mysql-files:/var/lib/mysql-files:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
-		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
+		svccontainer["environment"] = server.OpenSVCGetDBContainerEnvironment()
 		if server.ClusterGroup.Conf.ProvOpensvcImageForcePull {
 			svccontainer["image_pull_policy"] = "always"
 		}
@@ -591,6 +591,28 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		}
 	}
 	return svccontainer
+}
+
+// OpenSVCGetDBContainerEnvironment builds the container#db environment line.
+// Allocator tuning (#1749): preload jemalloc, which returns freed pages to the
+// kernel instead of accumulating fragmented glibc arenas inside the cgroup.
+// The preload value (soname or path) comes from configuration so the library
+// version follows the image, never the code; a bare soname lets ld.so resolve
+// it on any architecture, and when the image does not ship the library the
+// loader only logs a warning and glibc stays, capped by MALLOC_ARENA_MAX
+// derived from prov-cores (the same value that produces the cgroup --cpus):
+// arena count scales with the real parallelism the container can run, not
+// with memory or connection count.
+func (server *ServerMonitor) OpenSVCGetDBContainerEnvironment() string {
+	env := "MYSQL_INITDB_SKIP_TZINFO=yes"
+	if preload := server.ClusterGroup.Conf.ProvDBDockerJemallocPreload; preload != "" {
+		arenas, err := strconv.Atoi(server.ClusterGroup.Conf.ProvCores)
+		if err != nil || arenas < 1 {
+			arenas = 2
+		}
+		env += " LD_PRELOAD=" + preload + " MALLOC_ARENA_MAX=" + strconv.Itoa(arenas)
+	}
+	return env
 }
 
 func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string {
