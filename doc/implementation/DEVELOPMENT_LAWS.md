@@ -231,6 +231,19 @@ This is T2 (don't reimplement what already exists) at the repository level, and
 it pairs with T9→T10 — the issue is where you discover the branch/PR that already
 exists before you open a duplicate.
 
+**T21. NEVER hand-edit the OpenSVC modulesets — they are generated exports and
+the collector is the reference.** `share/opensvc/moduleset_*.json` are exports
+of the OpenSVC collector's compliance rulesets: to change a config template,
+update the ruleset variable ON the collector (UI or
+`SetRulesetVariableValue`), then export and copy the JSON into `share/`. A code
+change that needs a template change ships only the Go getter and the
+`%%ENV:...%%` placeholder wiring (inert until the ruleset references it), plus a
+PR section giving the exact ruleset text to apply on the collector — see PR
+#1753 for the pattern. Instances pick updated modulesets up through the
+enterprise-compliance plugin (`prov-auto-update-compliance`, preserved variables
+never overwritten). A hand-edited share JSON diverges from the reference and is
+overwritten at the next export.
+
 ---
 
 *Precedence: functional laws outrank technical laws; the perpetual-monitoring
