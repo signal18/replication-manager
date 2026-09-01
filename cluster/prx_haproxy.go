@@ -398,6 +398,52 @@ func (proxy *HaproxyProxy) Init() {
 		return nil
 	}
 
+	// The leader needs the same proxy-servers-read-on-master / -no-slave
+	// gate runtimeapi's masterShouldBeReader() applies in Refresh(), or
+	// standby would always list the leader as a reader regardless of those
+	// settings. Mirrors masterShouldBeReader()'s own
+	// cluster.HasNoValidSlave() || !<available reader> shape, with the
+	// second term computed fresh from this same pass's live cluster.Servers
+	// instead of reusing proxy.HasAvailableReader(): that reads
+	// proxy.BackendsRead, which only Refresh() populates -- empty/stale on
+	// the very first Init() at provisioning, before any Refresh() has ever
+	// run, which would wrongly count as "no reader available" and add the
+	// leader even with a healthy replica already up.
+	//
+	// cluster.HasNoValidSlave() itself IS still consulted (unlike an earlier
+	// version of this fix that dropped it entirely): it returns true
+	// unconditionally for config.TopoActivePassive regardless of the
+	// passive node's own state (cluster/cluster_has.go), which is exactly
+	// what TestHaproxyMasterShouldBeReader's "no-slave fallback with
+	// active-passive topology" case already locks in for masterShouldBeReader()
+	// -- dropping it would have made standby exclude the leader in
+	// active-passive whenever the passive node merely looked replication-healthy,
+	// diverging from runtimeapi's documented behavior for that topology.
+	//
+	// standbyReadIneligible (not hasBrokenReplicationForRead() alone) is used
+	// for both this fresh-reader check and the per-server skip below:
+	// hasBrokenReplicationForRead()'s SlaveErr/RelayErr/... set doesn't cover
+	// Failed/Suspect/ErrorAuth (IsDown()), so a Failed replica would
+	// otherwise count as a "valid" reader here (excluding the leader) while
+	// still being rendered into the read backend itself -- runtimeapi
+	// doesn't share this gap because HAProxy's own health check
+	// independently marks such a replica DOWN regardless of repman's
+	// classification, but standby's render has no equivalent live check to
+	// fall back on.
+	hasValidReadSlave := false
+	for _, s := range cluster.Servers {
+		if s.IsMaintenance || s.IsLeader() {
+			continue
+		}
+		if !s.standbyReadIneligible() {
+			hasValidReadSlave = true
+			break
+		}
+	}
+	masterShouldRead := cluster.Configurator.HasProxyReadLeader() ||
+		(cluster.Configurator.HasProxyReadLeaderNoSlave() &&
+			(cluster.HasNoValidSlave() || !hasValidReadSlave))
+
 	for _, server := range cluster.Servers {
 		if server.IsMaintenance {
 			continue
@@ -407,7 +453,8 @@ func (proxy *HaproxyProxy) Init() {
 		// haproxy-mode=standby has neither a Runtime API nor an
 		// external-check to exclude a broken replica after the fact --
 		// Init()'s own config generation is the ONLY mechanism, so a server
-		// with broken replication must simply never be added to the read
+		// that's unfit to read from (standbyReadIneligible: broken
+		// replication or down) must simply never be added to the read
 		// backend in the first place. Mirrors the classification Refresh()
 		// uses to DRAIN the same server under haproxy-mode=runtimeapi (see
 		// the runtimeapi-only gate above), so both modes agree on what
@@ -415,7 +462,8 @@ func (proxy *HaproxyProxy) Init() {
 		// static render (before Runtime API add/del ever runs) still lists
 		// every server for older HAProxy versions that lack dynamic
 		// add/del and can only toggle an existing slot's drain state.
-		skipRead := cluster.Conf.HaproxyMode == "standby" && server.hasBrokenReplicationForRead()
+		skipRead := cluster.Conf.HaproxyMode == "standby" &&
+			(server.standbyReadIneligible() || (server.IsLeader() && !masterShouldRead))
 		if !skipRead {
 			if err := addServerTo(cluster.Conf.HaproxyAPIReadBackend, server, p); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server %s to HAProxy backend %s: %s", server.Id, cluster.Conf.HaproxyAPIReadBackend, err)
@@ -959,6 +1007,22 @@ func (server *ServerMonitor) hasBrokenReplicationForRead() bool {
 		server.State == stateSlaveLate || server.State == stateRelayLate ||
 		server.State == stateWsrepLate || server.State == stateWsrepDonor ||
 		server.IsIgnored()
+}
+
+// standbyReadIneligible is hasBrokenReplicationForRead() broadened with
+// IsDown() (Failed/Suspect/ErrorAuth) for haproxy-mode=standby's read-backend
+// decisions specifically (Init()'s per-server skip and its leader-fallback
+// "is there a valid slave" check). runtimeapi doesn't need this broader set:
+// HAProxy's own health check against the DB port independently marks a
+// Failed/unreachable replica DOWN regardless of repman's own classification,
+// so hasBrokenReplicationForRead() alone is enough for Refresh()'s DRAIN
+// decision there. Standby's render has no equivalent live check to fall
+// back on -- it IS the only mechanism -- so a Failed replica left out of
+// this broader set would otherwise both count as a "valid" reader (wrongly
+// excluding the leader fallback) and still get rendered into the read
+// backend itself.
+func (server *ServerMonitor) standbyReadIneligible() bool {
+	return server.hasBrokenReplicationForRead() || server.IsDown()
 }
 
 // masterShouldBeReader reports whether the master/leader should be a member
