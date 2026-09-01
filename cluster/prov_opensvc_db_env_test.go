@@ -44,6 +44,15 @@ func TestOpenSVCGetDBContainerEnvironment(t *testing.T) {
 		}
 	})
 
+	t.Run("fractional and non-positive cores", func(t *testing.T) {
+		for cores, want := range map[string]string{"0.5": "1", "1.5": "2", "0": "2", "-1": "2"} {
+			s := newServer(&config.Config{ProvDBDockerJemallocPreload: "libjemalloc.so.2", ProvCores: cores})
+			if env := s.OpenSVCGetDBContainerEnvironment(); !strings.Contains(env, "MALLOC_ARENA_MAX="+want) {
+				t.Errorf("prov-cores=%q: environment %q should carry MALLOC_ARENA_MAX=%s", cores, env, want)
+			}
+		}
+	})
+
 	t.Run("empty preload disables both exports", func(t *testing.T) {
 		s := newServer(&config.Config{ProvDBDockerJemallocPreload: "", ProvCores: "2"})
 		env := s.OpenSVCGetDBContainerEnvironment()
