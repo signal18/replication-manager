@@ -3332,9 +3332,9 @@ func TestK8SProxyDeployment_HaproxyNoCommandOverride(t *testing.T) {
 	}
 }
 
-func TestK8SProxyDeployment_HaproxyStandbyModePlacesCheckScriptsAndUsesCheckConfig(t *testing.T) {
+func TestK8SProxyDeployment_HaproxyExternalCheckModePlacesCheckScriptsAndUsesCheckConfig(t *testing.T) {
 	cluster := newTestCluster("k8stest")
-	cluster.Conf.HaproxyMode = "standby"
+	cluster.Conf.HaproxyMode = "externalcheck"
 	prx := newTestHaproxyProxy(cluster)
 
 	dep, err := cluster.k8sProxyDeployment(prx)
@@ -3344,7 +3344,7 @@ func TestK8SProxyDeployment_HaproxyStandbyModePlacesCheckScriptsAndUsesCheckConf
 
 	container := dep.Spec.Template.Spec.Containers[0]
 	if len(container.Command) < 3 {
-		t.Fatalf("expected a sh -c command for haproxy-mode=standby, got %+v", container.Command)
+		t.Fatalf("expected a sh -c command for haproxy-mode=externalcheck, got %+v", container.Command)
 	}
 	script := container.Command[2]
 	for _, want := range []string{
@@ -3356,7 +3356,7 @@ func TestK8SProxyDeployment_HaproxyStandbyModePlacesCheckScriptsAndUsesCheckConf
 		"exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg",
 	} {
 		if !strings.Contains(script, want) {
-			t.Fatalf("expected standby-mode command to contain %q, got: %s", want, script)
+			t.Fatalf("expected externalcheck-mode command to contain %q, got: %s", want, script)
 		}
 	}
 
@@ -3365,10 +3365,10 @@ func TestK8SProxyDeployment_HaproxyStandbyModePlacesCheckScriptsAndUsesCheckConf
 	// haproxy:<tag> image drops to uid 99 via its own USER directive, which
 	// would otherwise leave /usr/bin unwritable and the copy a silent no-op.
 	if container.SecurityContext == nil || container.SecurityContext.RunAsUser == nil {
-		t.Fatalf("expected standby-mode container to force RunAsUser=0, got SecurityContext=%+v", container.SecurityContext)
+		t.Fatalf("expected externalcheck-mode container to force RunAsUser=0, got SecurityContext=%+v", container.SecurityContext)
 	}
 	if got := *container.SecurityContext.RunAsUser; got != 0 {
-		t.Fatalf("expected standby-mode container to force RunAsUser=0, got %d", got)
+		t.Fatalf("expected externalcheck-mode container to force RunAsUser=0, got %d", got)
 	}
 }
 
@@ -3384,7 +3384,26 @@ func TestK8SProxyDeployment_HaproxyRuntimeAPIModeDoesNotForceRoot(t *testing.T) 
 
 	container := dep.Spec.Template.Spec.Containers[0]
 	if container.SecurityContext != nil {
-		t.Fatalf("expected no SecurityContext override outside standby mode, got %+v", container.SecurityContext)
+		t.Fatalf("expected no SecurityContext override outside externalcheck mode, got %+v", container.SecurityContext)
+	}
+}
+
+func TestK8SProxyDeployment_HaproxyStandbyModeNoCommandOverride(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.HaproxyMode = "standby"
+	prx := newTestHaproxyProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	container := dep.Spec.Template.Spec.Containers[0]
+	if container.Command != nil {
+		t.Fatalf("expected no Command override for haproxy-mode=standby (rely on the image's own entrypoint against haproxy.cfg), got %+v", container.Command)
+	}
+	if container.SecurityContext != nil {
+		t.Fatalf("expected no SecurityContext override for haproxy-mode=standby, got %+v", container.SecurityContext)
 	}
 }
 

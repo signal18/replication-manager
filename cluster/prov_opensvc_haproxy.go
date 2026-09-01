@@ -31,14 +31,15 @@ func (cluster *Cluster) OpenSVCGetHaproxyContainerSection(server *HaproxyProxy) 
 
 		// The image's default entrypoint/CMD always launches haproxy.cfg
 		// (proxy_cnf_haproxy_runtime_api, no external-check), regardless of
-		// haproxy-mode. standby needs haproxy_check.cfg instead -- it's the
-		// one with checkmaster/checkslave wired in via "option
+		// haproxy-mode. externalcheck needs haproxy_check.cfg instead -- it's
+		// the one with checkmaster/checkslave wired in via "option
 		// external-check" -- and "-db" since haproxy_check.cfg's "daemon"
 		// directive would otherwise background the process and let PID 1
-		// exit immediately (same reasoning as k8sProxyDeployment's standby
-		// branch, cluster/prov_k8s_prx.go). Mirrors container#02's
-		// entrypoint/command split above.
-		if server.ClusterGroup.Conf.HaproxyMode == "standby" {
+		// exit immediately (same reasoning as k8sProxyDeployment's
+		// externalcheck branch, cluster/prov_k8s_prx.go). Mirrors
+		// container#02's entrypoint/command split above. standby and
+		// runtimeapi both fall through to the image's default entrypoint.
+		if server.ClusterGroup.Conf.HaproxyMode == "externalcheck" {
 			svccontainer["entrypoint"] = "/bin/sh"
 			svccontainer["command"] = `-c "exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg"`
 		}

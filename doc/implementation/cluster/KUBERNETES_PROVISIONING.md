@@ -624,12 +624,27 @@ under `etc/haproxy/ssl/` inside that same directory.
 plus `init/checkmaster`/`init/checkslave`, `chmod +x`'d, into the persistent
 mount.
 
+### HAProxy mode split: `standby` / `externalcheck` / `runtimeapi`
+
+**This section was rewritten after a later pass restored the documented
+four-mode contract** (`docs.signal18.io`, "Routing / HAProxy":
+`standby`/`runtimeapi`/`externalcheck`/`dataplaneapi`). Earlier revisions of
+this doc — and the code they described — used `haproxy-mode=standby` for
+what is now `externalcheck` (the `checkmaster`/`checkslave`/`haproxy_check.cfg`
+behavior below). That was a real, if unintentional, drift from the public
+docs' contract, introduced across several commits on this same branch before
+being caught and split back apart. Anywhere below that still says "standby"
+while describing `checkmaster`/`checkslave`/positional server naming is
+describing what `externalcheck` does today — renamed in place rather than
+left stale, since the underlying behavior (and its `kind`-cluster
+verification) is unchanged, only its mode name is.
+
 **`haproxy-mode=runtimeapi` (the default):** no container command override.
 The image's own entrypoint runs `haproxy -W -db -f /usr/local/etc/haproxy/haproxy.cfg`,
 exactly the file the init container populates.
 
-**`haproxy-mode=standby`:** needs an explicit `container.Command`, for two
-reasons.
+**`haproxy-mode=externalcheck`:** needs an explicit `container.Command`, for
+two reasons.
 
 First, `haproxy_check.cfg`'s external-check backends hard-code
 `/usr/bin/checkmaster`/`/usr/bin/checkslave` (matching OpenSVC's own
@@ -654,6 +669,54 @@ the background — the exec'd foreground process (this container's PID 1)
 exits `0` immediately, which Kubernetes reports as the container completing
 successfully rather than crashing, and restarts it in a loop with no error
 logged.
+
+**`haproxy-mode=standby` never reaches `k8sProxyDeployment()` at all.**
+Unlike the other three modes, standby doesn't run as a Kubernetes-managed
+resource: it's always a repman-local HAProxy process, started/reloaded via
+its own local PID (`HaproxyProxy.Init()`, `cluster/prx_haproxy.go`),
+regardless of which orchestrator the cluster's *databases* are provisioned
+under — "the database might be provisioned anywhere, but standby HAProxy
+needs to be locally set by PID" was the explicit design call. `Init()`'s
+render+reload gate is `cluster.Conf.HaproxyMode != "standby"` (mode only,
+not orchestrator), and a new `proxyServiceOrchestrator()` helper
+(`cluster/prov.go`) overrides every proxy-service dispatch switch
+(`StartProxyService`, `StopProxyService`, `(Un)ProvisionProxyService`) to
+route an HAProxy proxy in standby mode to the `Localhost*` handlers even
+when `cluster.GetOrchestrator()` is Kubernetes or OpenSVC — a database-only
+`proxyServiceOrchestrator()` check, so ProxySQL/MaxScale and every other
+non-standby combination keep following the cluster's own orchestrator
+unchanged. Practically: a cluster with K8s-provisioned databases and
+`haproxy-mode=standby` gets its databases as Deployments/Services as usual,
+but its HAProxy proxy is a process on the repman host itself, with no
+Kubernetes object representing it at all.
+
+One consequence worth calling out explicitly: `NewHaproxyProxy()`
+(`cluster/prx_haproxy.go`) rewrites `prx.Host` into a `<name>.<cluster>.svc.<domain>`
+Kubernetes Service DNS name under `prov-net-cni` — necessary for
+`runtimeapi`/`externalcheck`, which genuinely run as a separate,
+network-reachable resource, but wrong for standby: `Init()` renders that
+same `prx.Host` into `share/haproxy_config.template`'s `stats socket
+ipv4@{{.Host}}:{{.ApiPort}}` line, and a local HAProxy process can't bind a
+Kubernetes Service DNS name. The CNI rewrite is now skipped whenever
+`HaproxyMode == "standby"`, keeping `prx.Host` as whatever locally-reachable
+address was configured via `haproxy-servers` (`127.0.0.1` by default).
+Regression test: `TestNewHaproxyProxyStandbyKeepsLocalHost`
+(`cluster/prx_haproxy_test.go`).
+
+A related gap, not fully closed: on the *Localhost* orchestrator specifically
+(databases also on Localhost, not just the proxy), `LocalhostStartHaProxyService`
+(`cluster/prov_localhost_haproxy.go`) still calls `prx.GetProxyConfig()` and
+`prx.Init()` unconditionally for every HAProxy mode, but `Init()` is now a
+no-op beyond that one-time config-tarball fetch for anything other than
+standby — `runtimeapi`/`externalcheck` were never actually started by repman
+here even before this pass (the reload/start step was already gated to
+`standby` only), so this isn't a new regression, but it is more exposed now
+that the local render also stops. Rather than silently reporting "started"
+while nothing runs, `LocalhostStartHaProxyService` now logs a `LvlWarn`
+explaining the fetched config is left for the operator to start/manage
+themselves. No K8s-capable test covers this combination (Localhost
+orchestrator, non-standby HAProxy) either, live or unit — see "Known
+limitations" below.
 
 **Two bugs were fixed in this repo's embedded default moduleset**
 (`share/opensvc/moduleset_mariadb.svc.mrm.proxy.json`,
@@ -689,41 +752,52 @@ managed OpenSVC deployment with its own BO-pushed compliance file is a
 Once the TCP socket above lets `ApiCmd` succeed, `Refresh()` also runs logic
 that assumes a server literally named `leader` in the write backend — exactly
 `runtimeapi` mode's design (`GetConfigProxyModule`, `cluster/prx_get.go`,
-only adds `server leader ...` for the current master). `haproxy-mode=standby`'s
+only adds `server leader ...` for the current master). `haproxy-mode=externalcheck`'s
 `service_write` backend instead lists every server under generic
 `server1`/`server2`-style names, relying entirely on `checkmaster`'s
 external-check to decide who's eligible for writes, never on repman pushing
 a pointer — so any `SetMaster(cluster.Conf.HaproxyAPIWriteBackend, ...)` call
 (`set server service_write/leader addr ...`) fails with `"No such server"`
-in standby mode. Both call sites in `Refresh()` — the write-backend row
+in externalcheck mode. Both call sites in `Refresh()` — the write-backend row
 loop, and the `!foundMasterInStat` fallback that fires when no row resolves
 to a known `ServerMonitor` at all — are gated behind
 `cluster.Conf.HaproxyMode == "runtimeapi"`, mirroring
-`reconcileReadBackendServersActive()`'s existing gate on the read side.
+`reconcileReadBackendServersActive()`'s existing gate on the read side. This
+same `!= "runtimeapi"` gate also covers `standby` (whose own write backend,
+via `Init()`'s `addServerTo`/`DeleteServer` calls, holds only the current
+leader named by `server.Id` — a different shape again from externalcheck's
+positional list, but equally not `runtimeapi`'s `leader`-alias convention,
+so the gate is correct for it too, just for a different reason).
 Regression tests: `TestHaproxyRefreshSkipsSetMasterInStandbyMode`,
 `TestHaproxyRefreshSkipsSetMasterFallbackInStandbyMode`
 (`cluster/prx_haproxy_test.go`).
 
-**`Refresh()` never mutates HAProxy state for `haproxy-mode=standby` — it
-only reports.** Per the documented definition of the two modes
-(docs.signal18.io, "Routing / HAProxy"): `standby` "operate[s] a local
+**`Refresh()` never mutates HAProxy state for `haproxy-mode=standby` or
+`externalcheck` — it only reports.** Per the documented definition of the
+modes (docs.signal18.io, "Routing / HAProxy"): `standby` "operate[s] a local
 HAProxy instance via config generation and triggering start/stop/reload via
-socket," while `runtimeapi` "uses the tcp runtime api of HAProxy to modify
-some route to master and backend state according to replication status."
-Only `runtimeapi` is a Runtime-API-driven mode; `standby`'s only mechanism
-for propagating a topology change is a full config regeneration plus
-reload, already implemented in `Init()`/`Failover()`/
-`setReadBackendMaintenance()` (`cluster/prx_haproxy.go`, pre-existing,
-gated on `HaproxyMode == "standby"` there). An earlier version of this
-write-backend section added a `SetDrain`/`SetReady` "backstop" here in
-`Refresh()` for standby mode, to compensate for `checkmaster`'s
-external-check possibly going stale — reasonable-looking on its own, but
-inconsistent with what `standby` actually means: `Refresh()` should never
-issue a Runtime API state change for it at all, full stop. Removed;
-`Refresh()`'s write-backend section for standby mode is now purely
-`proxy.BackendsWrite = append(...)`, the same read used to populate the
-dashboard. Regression test:
-`TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode` — asserts no
+socket," `externalcheck` sets "external check script to replication-manager
+and HAProxy config file using external checks" at provisioning time and
+otherwise does nothing, while `runtimeapi` "uses the tcp runtime api of
+HAProxy to modify some route to master and backend state according to
+replication status." Only `runtimeapi` is a Runtime-API-driven mode;
+`standby`'s only mechanism for propagating a topology change is a full
+config regeneration plus reload, implemented in `Init()`/`Failover()`/
+`setReadBackendMaintenance()` (`cluster/prx_haproxy.go`, gated on
+`HaproxyMode == "standby"` there), while `externalcheck` propagates nothing
+at all after provisioning — `checkmaster`/`checkslave` poll repman's HTTP
+handlers directly, so `setReadBackendMaintenance()` has a dedicated
+`externalcheck` branch that returns immediately without an `Init()` call
+or a Runtime API command (unlike standby, which calls `Init()`). An earlier
+version of this write-backend section added a `SetDrain`/`SetReady`
+"backstop" here in `Refresh()` for what was then called standby mode (now
+externalcheck), to compensate for `checkmaster`'s external-check possibly
+going stale — reasonable-looking on its own, but inconsistent with what
+that mode actually means: `Refresh()` should never issue a Runtime API
+state change for it at all, full stop. Removed; `Refresh()`'s write-backend
+section for non-`runtimeapi` modes is now purely `proxy.BackendsWrite =
+append(...)`, the same read used to populate the dashboard. Regression
+test: `TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode` — asserts no
 `set server service_write/...` command is ever sent in standby mode, even
 when a non-master row is left `UP`.
 
@@ -732,9 +806,9 @@ for now: the pre-existing read-backend reconciliation (the
 `srv.State == stateSlaveErr` drain, the staging/same-pass `SetReady`/
 `SetDrain` calls, `cluster/prx_haproxy.go` from roughly line 660 onward)
 was never gated to `runtimeapi` either, and by this same definition
-shouldn't be running for standby mode. That's pre-existing code, untouched
-here, and a separate, larger change — tracked in "Known limitations" below
-rather than folded into this pass.
+shouldn't be running for standby/externalcheck mode. That's pre-existing
+code, untouched here, and a separate, larger change — tracked in "Known
+limitations" below rather than folded into this pass.
 
 Proxies are never touched before topology resolves for a given tick: the
 monitor loop's Phase 1 (`cluster.TopologyDiscover`, `cluster/cluster.go`) is
@@ -744,12 +818,16 @@ a hard `wg.Wait()` barrier before Phase 2 (`refreshProxies`, which calls
 OpenSVC's own HAProxy provisioning (`OpenSVCGetHaproxyContainerSection`,
 `GetHaproxyTemplate`, `prov_opensvc_haproxy.go`) fetches and applies the
 same `GenerateProxyConfig` tarball via `GetInitContainer()`'s `wget | tar`
-pattern (`prx_get.go`), so standby mode's "list everyone, let
-checkmaster/checkslave filter" write-backend design is shared, not a
-Kubernetes shortcut. A separate, older code path (`HaproxyProxy.Init()`'s
-`haproxy_config.template`/`haConfig.AddServer()`/`Render()`/`Reload()`,
-still in `prx_haproxy.go`) only ever adds servers to the read backend and
-is unrelated to how either orchestrator provisions standby mode today.
+pattern (`prx_get.go`), so externalcheck mode's "list everyone, let
+checkmaster/checkslave filter" write-backend design is shared with
+Kubernetes, not a Kubernetes-specific shortcut. `standby` never reaches this
+tarball-based path in either orchestrator: it's routed to the Localhost
+proxy-service handlers instead (`proxyServiceOrchestrator()`, see above),
+and its write backend comes entirely from `HaproxyProxy.Init()`'s
+`haproxy_config.template`/`haConfig.AddServer()`/`Render()`/`Reload()` path
+(`cluster/prx_haproxy.go`) — which, unlike an earlier draft of this
+paragraph claimed, adds the current leader to the write backend too (by
+`server.Id`, delete-then-add each pass), not just to the read backend.
 
 `NewHaproxyProxy()` had the same `conf.ProvOrchestratorCluster`-without-fallback
 issue `NewProxySQLProxy` had (see "Testing" below): under `prov-net-cni` it
@@ -757,7 +835,9 @@ built `<proxy-host>.<cluster>.svc.<prov-orchestrator-cluster>`
 unconditionally, so the CLI default `"local"` produced a host one `.svc.`
 segment short of the real Service DNS name. Fixed the same way, scoped to
 Kubernetes only via `k8sClusterDomain()`; OpenSVC keeps the raw value.
-Unlike `NewProxySQLProxy`, it doesn't yet branch on `conf.ClusterHead`.
+Unlike `NewProxySQLProxy`, it doesn't yet branch on `conf.ClusterHead`. A
+second, later fix to this same rewrite — skipping it entirely for
+`haproxy-mode=standby` — is covered above under "HAProxy mode split".
 
 `prov-proxy-start-fetch-config` applies to HAProxy exactly as it does to
 ProxySQL — the cookie mechanism is proxy-type-agnostic.
@@ -1173,11 +1253,22 @@ cached label resolution, the bootstrap/dbjobs shell logic (run through a
 real `sh`, not just asserted from the command's text shape),
 `k8sUpdateDatabaseServiceConfigWithClient`'s image/pull-policy patch,
 ProxySQL's PVC/mount/bootstrap/SSL-path builders, HAProxy's
-PVC/mount/bootstrap/standby-command builders, `HaproxyProxy.Refresh()`'s
+PVC/mount/bootstrap/externalcheck-command builders
+(`TestK8SProxyDeployment_HaproxyExternalCheckModePlacesCheckScriptsAndUsesCheckConfig`,
+`TestK8SProxyDeployment_HaproxyStandbyModeNoCommandOverride`,
+`TestOpenSVCGetHaproxyContainerSectionExternalCheckRunsCheckConfig`,
+`TestOpenSVCGetHaproxyContainerSectionStandbyUsesImageDefault`), the
+`proxyServiceOrchestrator()` dispatch override that routes standby to the
+Localhost handlers regardless of the cluster's own orchestrator
+(`TestProxyServiceOrchestratorRoutesHaproxyStandbyToLocalhost`,
+`cluster/prov_test.go`), the standby-mode CNI host exemption
+(`TestNewHaproxyProxyStandbyKeepsLocalHost`), `HaproxyProxy.Refresh()`'s
 `SetMaster` gating and write-backend mode isolation
 (`TestHaproxyRefreshSkipsSetMasterInStandbyMode`,
 `TestHaproxyRefreshSkipsSetMasterFallbackInStandbyMode`,
-`TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode`), and MaxScale's
+`TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode`,
+`TestHaproxyRefreshNeverMutatesReadBackendInExternalCheckMode`,
+`TestHaproxySetReadBackendMaintenanceNoOpInExternalCheckMode`), and MaxScale's
 image/port selection, PVC/mount/bootstrap builders, legacy-vs-pinloki
 command selection, and `MaxscaleUsesPinloki()`'s auto-detection (calendar
 vs. semver tags, unparseable-tag fallback, registry-port-not-mistaken-for-tag).
@@ -1213,12 +1304,16 @@ The provisioning/unprovisioning logic is split into
   right ports, `haproxy.cfg` fully templated with the real backend servers,
   config valid (`haproxy -c`), clean startup, `ProxyRunning`, stop/start
   preserving the persisted config.
-- **HAProxy, `standby` mode**: pod stays `Running` (no restart loop),
-  `checkmaster`/`checkslave` present at `/usr/bin`, executable, and
-  correctly differentiate master/replica via the real
-  `master-status`/`slave-status` routes; `ProxyRunning` at the cluster level
-  after the TCP-socket and `SetMaster`-gating fixes; write/read backend
-  split confirmed via the stats page CSV export.
+- **HAProxy, `externalcheck` mode** (called `standby` at the time this was
+  live-verified, before the mode split described above under "HAProxy mode
+  split"; the behavior below is what `externalcheck` does today): pod stays
+  `Running` (no restart loop), `checkmaster`/`checkslave` present at
+  `/usr/bin`, executable, and correctly differentiate master/replica via the
+  real `master-status`/`slave-status` routes; `ProxyRunning` at the cluster
+  level after the TCP-socket and `SetMaster`-gating fixes; write/read
+  backend split confirmed via the stats page CSV export. The now-narrow
+  `standby` (repman-local process, never a K8s object) has **not** been
+  live-verified against a `kind` cluster — see "Known limitations" below.
 - **MaxScale, `pinloki` mode** (`mariadb/maxscale:23.08`, both explicit
   `maxscale-mode=pinloki` and unset `auto` detecting it from the tag),
   `maxscale-rest-api` at its default (on): PVC/Deployment/Service created
@@ -1289,28 +1384,45 @@ Kubernetes-orchestrated scenarios.
 - `maxscale-rest-api=false` (MaxAdmin fallback, for MaxScale < 2.2) is
   unit-tested against a fake TCP server but not live-verified against a real
   pre-2.2 MaxScale instance — none was available in this environment.
-- Both HAProxy modes (`runtimeapi` and `standby`) provision, boot, stay
-  running, and report `ProxyRunning` at the cluster level; `standby`'s
-  `checkmaster`/`checkslave` external checks execute and correctly report
-  master vs. replica status. See "Persistent storage and config bootstrap
-  (HAProxy)" above for the fixes involved. The `SetMaster` gating
-  (`Refresh()` must never issue write-backend Runtime API commands in
-  `standby` mode, only in `runtimeapi`) is a fix to shared,
-  orchestrator-agnostic Go code (`cluster/prx_haproxy.go`), applied for
-  every orchestrator. The shebang-header ordering and missing TCP
-  `stats socket` were bugs in this repo's *embedded default* compliance
-  moduleset specifically — a managed OpenSVC deployment with its own
-  back-office-pushed compliance content is a different moduleset, not
-  necessarily affected either way.
+- Both K8s/OpenSVC-deployed HAProxy modes (`runtimeapi` and `externalcheck`)
+  provision, boot, stay running, and report `ProxyRunning` at the cluster
+  level; `externalcheck`'s `checkmaster`/`checkslave` external checks
+  execute and correctly report master vs. replica status. See "Persistent
+  storage and config bootstrap (HAProxy)" above for the fixes involved. The
+  `SetMaster` gating (`Refresh()` must never issue write-backend Runtime API
+  commands outside `runtimeapi` mode) is a fix to shared, orchestrator-
+  agnostic Go code (`cluster/prx_haproxy.go`), applied for every
+  orchestrator. The shebang-header ordering and missing TCP `stats socket`
+  were bugs in this repo's *embedded default* compliance moduleset
+  specifically — a managed OpenSVC deployment with its own back-office-pushed
+  compliance content is a different moduleset, not necessarily affected
+  either way. **`standby` (the now-narrow, repman-local mode) is not
+  live-verified against `kind`/OpenSVC at all** — since `proxyServiceOrchestrator()`
+  routes it to the Localhost handlers regardless of the cluster's own
+  orchestrator, "verifying standby on Kubernetes" doesn't mean what it used
+  to; what needs live coverage now is a K8s- or OpenSVC-database cluster
+  with `haproxy-mode=standby`, confirming the local process starts on the
+  repman host, binds correctly (`TestNewHaproxyProxyStandbyKeepsLocalHost`
+  is unit-only), and reloads on topology change. Not yet done.
 - `Refresh()`'s read-backend reconciliation (the `srv.State == stateSlaveErr`
   drain, the staging/same-pass `SetReady`/`SetDrain` calls,
   `cluster/prx_haproxy.go`) is pre-existing code that, like the write-backend
   logic before this pass, was never gated to `runtimeapi` mode — per the
   documented mode definitions (docs.signal18.io, "Routing / HAProxy"),
-  `standby` should never have `Refresh()` issue Runtime API mutations at
-  all, only `Init()`/`Failover()`'s full config regen + reload. Left
-  untouched here; bringing the read side in line with the write side's new
-  behavior is a separate, larger follow-up.
+  neither `standby` nor `externalcheck` should have `Refresh()` issue
+  Runtime API mutations at all: `standby` only through `Init()`/`Failover()`'s
+  full config regen + reload, `externalcheck` not at all (checkmaster/
+  checkslave own it entirely). Left untouched here; bringing the read side
+  in line with the write side's behavior is a separate, larger follow-up.
+- The Localhost orchestrator's `LocalhostStartHaProxyService`
+  (`cluster/prov_localhost_haproxy.go`) still calls `prx.Init()`
+  unconditionally for every HAProxy mode when the cluster's *databases* are
+  also on Localhost, but `Init()` no-ops beyond the one-time config-tarball
+  fetch for anything other than `standby`. It now logs a `LvlWarn` instead
+  of silently reporting success; it still doesn't start or manage HAProxy
+  for `runtimeapi`/`externalcheck`/`dataplaneapi` there (pre-existing — see
+  "HAProxy mode split" above). No test — unit or live — covers Localhost
+  orchestrator + non-standby HAProxy.
 - The persisted ProxySQL/HAProxy config can go stale the same way the
   database config can (see the first bullet above): it's only refreshed on
   a successful fetch at pod start, gated by `prov-proxy-start-fetch-config`,

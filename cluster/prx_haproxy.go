@@ -195,7 +195,18 @@ func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *Haproxy
 	prx.ReadWritePort = conf.HaproxyWritePort
 	prx.Name = proxyHost
 	prx.Host = proxyHost
-	if conf.ProvNetCNI {
+	// haproxy-mode=standby always runs co-located with repman (Init(),
+	// cluster/prx_haproxy.go, renders+reloads it via a local PID regardless
+	// of the cluster's own orchestrator) -- prx.Host there must stay
+	// whatever locally-reachable address the operator configured via
+	// haproxy-servers (127.0.0.1 by default), never the CNI-rewritten K8s
+	// Service DNS name below. That rewrite is for runtimeapi/externalcheck,
+	// which genuinely are deployed as a separate orchestrator-managed
+	// resource repman only reaches over the network -- applying it to
+	// standby would have Init() render a "stats socket ipv4@<service
+	// dns>:<port>" bind (share/haproxy_config.template) that the local
+	// HAProxy process can't bind to.
+	if conf.ProvNetCNI && conf.HaproxyMode != "standby" {
 		// Falls back "local" -> "cluster.local" on Kubernetes, matching
 		// NewProxySQLProxy: prov-orchestrator-cluster's own CLI default
 		// otherwise leaves the host one ".svc." segment short of the real
@@ -214,7 +225,7 @@ func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *Haproxy
 
 func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HAProxy on same host")
-	flags.StringVar(&conf.HaproxyMode, "haproxy-mode", "runtimeapi", "HAProxy mode [standby|runtimeapi|dataplaneapi]")
+	flags.StringVar(&conf.HaproxyMode, "haproxy-mode", "runtimeapi", "HAProxy mode [standby|runtimeapi|externalcheck|dataplaneapi]")
 	flags.BoolVar(&conf.HaproxyDebug, "haproxy-debug", true, "Extra info on monitoring backend")
 	flags.IntVar(&conf.HaproxyLogLevel, "log-level-haproxy", 1, "Log level for debug")
 	flags.StringVar(&conf.HaproxyUser, "haproxy-user", "admin", "HAProxy API user")
@@ -244,17 +255,23 @@ func (proxy *HaproxyProxy) Init() {
 	}
 
 	// Everything below builds, renders, and reloads a *local* haproxy.cfg on
-	// this (the repman server's) host -- only meaningful for the Localhost
-	// orchestrator, where HAProxy actually runs co-located with repman.
-	// Every other caller of Init() (setReadBackendMaintenance, Failover,
-	// BackendsStateChange) only ever calls it when haproxy-mode=standby, to
-	// reconcile that local process; LocalhostProvisionHaProxyService is the
-	// only caller that runs regardless of mode, and it's Localhost-only by
-	// definition. For OpenSVC/K8s/etc the real proxy's config instead comes
-	// from the separate config-fetch tarball path (server/api_database.go,
-	// GetProxyConfig() above already covers the one-time bootstrap of that),
-	// so none of the rest has anywhere to go.
-	if cluster.GetOrchestrator() != config.ConstOrchestratorLocalhost {
+	// this (the repman server's) host. haproxy-mode=standby always runs its
+	// HAProxy instance co-located with repman -- started/reloaded via its
+	// local PID -- regardless of which orchestrator the cluster's databases
+	// happen to be provisioned under; prov.go's proxyServiceOrchestrator()
+	// already routes standby's Start/Stop/(Un)ProvisionProxyService calls to
+	// the Localhost* implementations for exactly this reason, so gating on
+	// the *cluster's* orchestrator here (instead of mode) would just make
+	// this fall out of sync with where the proxy service dispatch actually
+	// sends things. Every other mode (runtimeapi, externalcheck,
+	// dataplaneapi) is deployed by the cluster's own orchestrator (K8s
+	// Deployment, OpenSVC service, etc.), so this local render+reload has
+	// nothing to do there; those proxies bootstrap once via the config-fetch
+	// tarball path (server/api_database.go, GetProxyConfig() above already
+	// covers that one-time fetch) and then keep current via runtimeapi's own
+	// Runtime API calls or externalcheck's own check scripts -- never via a
+	// full local re-render.
+	if cluster.Conf.HaproxyMode != "standby" {
 		return
 	}
 	//haproxysockFile := "haproxy.stats.sock"
@@ -1080,9 +1097,15 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 		return
 	}
 	// Read-backend servers are only named after server.Id in "runtimeapi"
-	// mode; the OpenSVC-driven config path (cluster/prx_get.go) names them
-	// positionally ("server1", "server2", ...) in standby/dataplaneapi mode,
-	// where this reconciliation would treat real entries as stale.
+	// mode; the OpenSVC/K8s-driven config path (cluster/prx_get.go) names
+	// them positionally ("server1", "server2", ...) in externalcheck/
+	// dataplaneapi mode, where this reconciliation would treat real entries
+	// as stale. standby never reaches this code at all -- its proxy service
+	// is always dispatched to the Localhost* handlers regardless of the
+	// cluster's own orchestrator (proxyServiceOrchestrator, cluster/prov.go),
+	// and Init() (cluster/prx_haproxy.go) names its own servers by
+	// server.Id too, same as runtimeapi -- but its topology propagation is a
+	// full local re-render/reload, never this Runtime API reconciliation.
 	if cluster.Conf.HaproxyMode != "runtimeapi" {
 		return
 	}
@@ -1507,6 +1530,17 @@ func (proxy *HaproxyProxy) setReadBackendMaintenance(server *ServerMonitor) bool
 		// toggling this one server via the Runtime API — there's no
 		// analogous per-server success signal to report here, so treat it
 		// as not-confirmed rather than assume it landed.
+		return false
+	}
+	if cluster.Conf.HaproxyMode == "externalcheck" {
+		// externalcheck's read-backend eligibility is decided entirely by
+		// checkslave's own external-check polling of repman's HTTP
+		// handlers (docs.signal18.io: "do nothing but when provisioning,
+		// set external check script ... and HAProxy config file using
+		// external checks"). Issuing a Runtime API maint/ready call here
+		// too, the way the runtimeapi branch below does, would race a
+		// second source of truth against checkslave's own decision for
+		// the same server — so this mode intentionally does nothing.
 		return false
 	}
 

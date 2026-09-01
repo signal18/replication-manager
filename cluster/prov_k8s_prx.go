@@ -310,10 +310,12 @@ func k8sProxyBootstrapCommand(cluster *Cluster, prx DatabaseProxy) ([]string, []
 // k8sHaproxyBootstrapCommand copies the fetched tarball's etc/haproxy/ tree
 // and init/checkmaster, init/checkslave into the persistent mount, chmod'd
 // executable. checkmaster/checkslave land under /usr/local/etc/haproxy here,
-// not at /usr/bin -- for haproxy-mode=standby, k8sProxyDeployment's
+// not at /usr/bin -- for haproxy-mode=externalcheck, k8sProxyDeployment's
 // container.Command copies them into /usr/bin from there before exec'ing
 // haproxy, since Kubernetes has no safe subPath mount to a single file that
-// doesn't already exist in the image.
+// doesn't already exist in the image. The scripts are still staged here
+// unconditionally regardless of mode, matching GetProxyConfig()'s tarball,
+// which doesn't vary by haproxy-mode either.
 func k8sHaproxyBootstrapCommand(cluster *Cluster, prx DatabaseProxy) ([]string, []apiv1.EnvVar) {
 	needFetchCmd, remoteFetchCmd, initEnv := k8sProxyFetchConfigCmds(cluster, prx)
 
@@ -435,12 +437,14 @@ func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deploymen
 					SubPath:   k8sHaproxyConfPersistSubPath,
 				},
 			}
-			// standby needs an explicit Command (checkmaster/checkslave copied
-			// to /usr/bin, "-db" passed explicitly) and RunAsUser=0 (the
+			// externalcheck needs an explicit Command (checkmaster/checkslave
+			// copied to /usr/bin, "-db" passed explicitly) and RunAsUser=0 (the
 			// Debian haproxy:<tag> image drops to uid 99, unlike
 			// haproxytech/haproxy-alpine's root default) -- see
-			// doc/implementation/cluster/KUBERNETES_PROVISIONING.md.
-			if cluster.Conf.HaproxyMode == "standby" {
+			// doc/implementation/cluster/KUBERNETES_PROVISIONING.md. standby
+			// and runtimeapi both fall through to the image's default
+			// entrypoint against the fetched haproxy.cfg.
+			if cluster.Conf.HaproxyMode == "externalcheck" {
 				runAsRoot := int64(0)
 				container.SecurityContext = &apiv1.SecurityContext{RunAsUser: &runAsRoot}
 				container.Command = []string{

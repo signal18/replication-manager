@@ -67,6 +67,18 @@ func (cluster *Cluster) LocalhostStopHaProxyService(prx *HaproxyProxy) error {
 
 func (cluster *Cluster) LocalhostStartHaProxyService(prx *HaproxyProxy) error {
 	prx.GetProxyConfig()
+	// Init() only renders+reloads a local HAProxy process for
+	// haproxy-mode=standby; for any other mode (runtimeapi, externalcheck,
+	// dataplaneapi) it's a no-op beyond the tarball bootstrap GetProxyConfig()
+	// just did, and repman never actually starts the HAProxy binary on this
+	// host. On the Localhost orchestrator that means "start" otherwise
+	// reports success without a running process, so surface it instead of
+	// leaving it silent.
+	if cluster.Conf.HaproxyMode != "standby" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlWarn,
+			"HAProxy on the Localhost orchestrator only starts/reloads automatically for haproxy-mode=standby; haproxy-mode=%s leaves the fetched config at %s for you to start/manage HAProxy yourself",
+			cluster.Conf.HaproxyMode, prx.Datadir+"/init")
+	}
 	//init haproxy do start or reload
 	prx.Init()
 	/*mariadbdCmd := exec.Command(cluster.Conf.HaproxyBinaryPath+"/haproxy", "--config="+prx.Datadir+"/init/etc/haproxy.cnf", "--datadir="+prx.Datadir+"/var")
