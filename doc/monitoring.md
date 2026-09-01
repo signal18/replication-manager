@@ -63,6 +63,14 @@ Alerts raised by checks use `SetState()`. For checks that run periodically
 (every N ticks), `PreserveState()` keeps their alerts visible on intermediate
 ticks.
 
+**Contract — every %N-tick check's states MUST be listed in the matching
+`pstatesN` preserve list** (`cluster/cluster.go`). A state raised only every N
+ticks but not preserved flaps open/resolve on every intermediate tick, and each
+cycle fires a notification: an alert storm (10K+/day). Known instances of this
+bug: WARN0190/0191 (rejoin catalog), and WARN0161/0162/0169/0170 (%30 checks,
+2026-09 Slack storm). When a state flaps, check `pstatesN` first. The guard
+test is `TestPstates30_IncludesRejoinCatalogStates`.
+
 ## Split Brain Detection
 
 Split brain detection operates at two levels:
