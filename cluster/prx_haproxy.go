@@ -472,6 +472,21 @@ func (proxy *HaproxyProxy) Init() {
 		(cluster.Configurator.HasProxyReadLeaderNoSlave() &&
 			(cluster.HasNoValidSlave() || !hasValidReadSlave))
 
+	// haproxy-mode=runtimeapi's write backend is a single fixed slot
+	// literally named "leader" -- Refresh()'s SetMaster()/SetMasterFQDN()
+	// repoint it via Runtime API ("set server service_write/leader addr/port
+	// ...") on every leadership change, matching the convention K8s/OpenSVC's
+	// config-fetch tarball already renders (GetConfigProxyModule's own
+	// "server leader ..." line, cluster/prx_get.go). runtimeapiLeaderRendered
+	// tracks whether the loop below found a leader to name it after; if none
+	// did (e.g. this Init() call races leader election on first
+	// provisioning), the fallback after the loop still creates the "leader"
+	// slot with a placeholder address, exactly like GetConfigProxyModule's
+	// own "server leader none:3306 ..." fallback -- so SetMaster() always has
+	// a slot to repoint once discovery completes, instead of failing with
+	// "No such server." forever.
+	runtimeapiLeaderRendered := false
+
 	for _, server := range cluster.Servers {
 		if server.IsMaintenance {
 			continue
@@ -533,6 +548,18 @@ func (proxy *HaproxyProxy) Init() {
 			if err := addServerTo(cluster.Conf.HaproxyAPIWriteBackend, server, p); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server %s to HAProxy backend %s: %s", server.Id, cluster.Conf.HaproxyAPIWriteBackend, err)
 			}
+		} else if cluster.Conf.HaproxyMode == "runtimeapi" {
+			if server.IsLeader() {
+				haConfig.DeleteServer(cluster.Conf.HaproxyAPIWriteBackend, "leader")
+				if err := haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &haproxy.ServerDetail{
+					Name: "leader", Host: server.Host, Port: p,
+					Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000,
+				}); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add leader slot to HAProxy backend %s: %s", cluster.Conf.HaproxyAPIWriteBackend, err)
+				} else {
+					runtimeapiLeaderRendered = true
+				}
+			}
 		} else {
 			haConfig.DeleteServer(cluster.Conf.HaproxyAPIWriteBackend, server.Id)
 			if server.IsLeader() {
@@ -540,6 +567,33 @@ func (proxy *HaproxyProxy) Init() {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server %s to HAProxy backend %s: %s", server.Id, cluster.Conf.HaproxyAPIWriteBackend, err)
 				}
 			}
+		}
+	}
+
+	// Fallback for when no server was resolved as leader during the loop
+	// above (a startup race, or a topology mid-election): the "leader" slot
+	// still needs to exist with SOME address, otherwise SetMaster() finds
+	// nothing to repoint once discovery completes -- the exact bug this
+	// fallback exists to prevent. GetConfigProxyModule's own equivalent
+	// fallback (cluster/prx_get.go) uses the literal hostname "none", but
+	// that's actually a value for HAProxy's separate init-addr *option*, not
+	// a valid hostname on its own -- live-reproduced: HAProxy refuses to even
+	// start ("could not resolve address 'none'") without an accompanying
+	// "init-addr none", which this struct-based renderer has no field for.
+	//
+	// 192.0.2.1 (RFC 5737 TEST-NET-1) is used instead of a real, reachable
+	// address like 127.0.0.1: it's reserved for documentation/testing and
+	// guaranteed never to route to a real service anywhere, so this slot
+	// only ever times out/fails closed until SetMaster() corrects it within
+	// one monitoring tick -- a loopback or other live address risks silently
+	// routing writes to whatever happens to be listening on that host/port
+	// in the window before the real leader is discovered.
+	if cluster.Conf.HaproxyMode == "runtimeapi" && !runtimeapiLeaderRendered {
+		if err := haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &haproxy.ServerDetail{
+			Name: "leader", Host: "192.0.2.1", Port: 3306,
+			Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000,
+		}); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add placeholder leader slot to HAProxy backend %s: %s", cluster.Conf.HaproxyAPIWriteBackend, err)
 		}
 	}
 
