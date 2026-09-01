@@ -248,7 +248,11 @@ that moduleset file (`git diff origin/develop...origin/<branch> -- share/opensvc
 over the open branches): the file is replaced whole at each export, so two
 concurrent branches touching it guarantee a conflict or a silently lost ruleset
 change — coordinate the export order with the other branch's author (T20 at the
-moduleset level).
+moduleset level). Ideally the moduleset export is committed on `develop` itself
+— one lineage for the one reference, mirroring the collector — and a feature
+branch that depends on it cherry-picks that export commit; carrying an export
+inside a feature branch is the exception, and is what triggers the
+concurrent-branch check above.
 
 ---
 
