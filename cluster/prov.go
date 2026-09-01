@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -23,6 +24,27 @@ import (
 const (
 	RestartRidJobsContainer = "container#jobs"
 )
+
+// GetDBAllocatorEnv returns the allocator tuning exported to every provisioned
+// database container, whatever the orchestrator (#1749): the LD_PRELOAD value
+// (prov-db-docker-jemalloc-preload — a soname or path, configuration so the
+// library version follows the image, never the code; empty disables the
+// feature) and MALLOC_ARENA_MAX derived from prov-cores (the same value that
+// produces the cgroup cpu limit): arena count scales with the real
+// parallelism the container can run, not with memory or connection count.
+// When the image lacks the preload library the loader only logs a warning and
+// glibc stays, capped by the derived MALLOC_ARENA_MAX.
+func (cluster *Cluster) GetDBAllocatorEnv() (preload string, arenaMax string) {
+	preload = cluster.Conf.ProvDBDockerJemallocPreload
+	if preload == "" {
+		return "", ""
+	}
+	arenas, err := strconv.Atoi(cluster.Conf.ProvCores)
+	if err != nil || arenas < 1 {
+		arenas = 2
+	}
+	return preload, strconv.Itoa(arenas)
+}
 
 // validateRestartRid validates the resource ID parameter for database restart operations.
 // Only container#jobs is allowed for targeted restarts.

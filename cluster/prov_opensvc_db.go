@@ -593,24 +593,12 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 	return svccontainer
 }
 
-// OpenSVCGetDBContainerEnvironment builds the container#db environment line.
-// Allocator tuning (#1749): preload jemalloc, which returns freed pages to the
-// kernel instead of accumulating fragmented glibc arenas inside the cgroup.
-// The preload value (soname or path) comes from configuration so the library
-// version follows the image, never the code; a bare soname lets ld.so resolve
-// it on any architecture, and when the image does not ship the library the
-// loader only logs a warning and glibc stays, capped by MALLOC_ARENA_MAX
-// derived from prov-cores (the same value that produces the cgroup --cpus):
-// arena count scales with the real parallelism the container can run, not
-// with memory or connection count.
+// OpenSVCGetDBContainerEnvironment builds the container#db environment line,
+// appending the shared allocator tuning (GetDBAllocatorEnv, #1749).
 func (server *ServerMonitor) OpenSVCGetDBContainerEnvironment() string {
 	env := "MYSQL_INITDB_SKIP_TZINFO=yes"
-	if preload := server.ClusterGroup.Conf.ProvDBDockerJemallocPreload; preload != "" {
-		arenas, err := strconv.Atoi(server.ClusterGroup.Conf.ProvCores)
-		if err != nil || arenas < 1 {
-			arenas = 2
-		}
-		env += " LD_PRELOAD=" + preload + " MALLOC_ARENA_MAX=" + strconv.Itoa(arenas)
+	if preload, arenaMax := server.ClusterGroup.GetDBAllocatorEnv(); preload != "" {
+		env += " LD_PRELOAD=" + preload + " MALLOC_ARENA_MAX=" + arenaMax
 	}
 	return env
 }

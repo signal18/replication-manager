@@ -51,4 +51,18 @@ func TestOpenSVCGetDBContainerEnvironment(t *testing.T) {
 			t.Errorf("environment %q should only carry the base entry when disabled", env)
 		}
 	})
+
+	t.Run("k8s helper mirrors the same tuning", func(t *testing.T) {
+		c := new(Cluster)
+		c.Conf = &config.Config{ProvDBDockerJemallocPreload: "libjemalloc.so.2", ProvCores: "2"}
+		env := k8sDBAllocatorEnv(c)
+		if len(env) != 2 || env[0].Name != "LD_PRELOAD" || env[0].Value != "libjemalloc.so.2" ||
+			env[1].Name != "MALLOC_ARENA_MAX" || env[1].Value != "2" {
+			t.Errorf("k8s allocator env %+v should carry LD_PRELOAD and derived MALLOC_ARENA_MAX", env)
+		}
+		c.Conf.ProvDBDockerJemallocPreload = ""
+		if env := k8sDBAllocatorEnv(c); env != nil {
+			t.Errorf("k8s allocator env %+v should be nil when disabled", env)
+		}
+	})
 }
