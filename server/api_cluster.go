@@ -3259,7 +3259,7 @@ var base64LogValueSettings = map[string]struct{}{
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -4278,6 +4278,52 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MasterRetryCount = val
 	case "db-servers-tls-ssl-mode":
 		mycluster.Conf.HostsTlsSslMode = value
+	case "haproxy-mode":
+		switch value {
+		case "standby", "runtimeapi", "externalcheck", "dataplaneapi":
+			mycluster.Conf.HaproxyMode = value
+		default:
+			return fmt.Errorf("invalid value for haproxy-mode: %q, expected one of standby, runtimeapi, externalcheck, dataplaneapi", value)
+		}
+	case "haproxy-write-port", "haproxy-read-port", "haproxy-stat-port", "haproxy-api-port":
+		port, convErr := strconv.Atoi(value)
+		if convErr != nil || port < 1 || port > 65535 {
+			return fmt.Errorf("invalid value for %s: %q, port must be between 1 and 65535", name, value)
+		}
+		switch name {
+		case "haproxy-write-port":
+			mycluster.Conf.HaproxyWritePort = port
+		case "haproxy-read-port":
+			mycluster.Conf.HaproxyReadPort = port
+		case "haproxy-stat-port":
+			mycluster.Conf.HaproxyStatPort = port
+		case "haproxy-api-port":
+			mycluster.Conf.HaproxyAPIPort = port
+		}
+	case "haproxy-ip-write-bind":
+		mycluster.Conf.HaproxyWriteBindIp = value
+	case "haproxy-ip-read-bind":
+		mycluster.Conf.HaproxyReadBindIp = value
+	case "haproxy-binary-path":
+		mycluster.Conf.HaproxyBinaryPath = value
+	case "haproxy-api-read-backend":
+		mycluster.Conf.HaproxyAPIReadBackend = value
+	case "haproxy-api-write-backend":
+		mycluster.Conf.HaproxyAPIWriteBackend = value
+	case "haproxy-staging-backend":
+		mycluster.Conf.HaproxyStagingBackend = value
+	case "haproxy-user":
+		mycluster.Conf.HaproxyUser = value
+	case "haproxy-password":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		mycluster.Conf.HaproxyPassword = string(val)
+		var new_secret config.Secret
+		new_secret.Value = mycluster.Conf.HaproxyPassword
+		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("haproxy-password")
+		mycluster.Conf.Secrets["haproxy-password"] = new_secret
 
 	// Switches
 	case "verbose":

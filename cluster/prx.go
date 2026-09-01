@@ -270,6 +270,17 @@ func (cluster *Cluster) newProxyList() error {
 		}
 	}
 
+	// Mirrors newServerMonitor's server.CheckNeedConfigFetch() call
+	// (cluster/srv.go) -- without this, a cluster started with
+	// prov-proxy-start-fetch-config=false never gets the no-fetch cookie
+	// seeded until an operator later toggles the setting through the API,
+	// leaving proxies free to fetch config on start in the meantime.
+	for _, pr := range cluster.Proxies {
+		if pr != nil {
+			pr.CheckNeedConfigFetch()
+		}
+	}
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "Loaded %d proxies", len(cluster.Proxies))
 
 	return nil

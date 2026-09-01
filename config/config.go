@@ -435,7 +435,7 @@ type Config struct {
 	HaproxyOn                                 bool                         `mapstructure:"haproxy" toml:"haproxy" json:"haproxy"`
 	HaproxyDebug                              bool                         `mapstructure:"haproxy-debug" toml:"haproxy-debug" json:"haproxyDebug"`
 	HaproxyLogLevel                           int                          `mapstructure:"log-level-haproxy" toml:"log-level-haproxy" json:"haproxyLogLevel"`
-	HaproxyUser                               string                       `mapstructure:"haproxy-user" toml:"haproxy-user" json:"haproxylUser"`
+	HaproxyUser                               string                       `mapstructure:"haproxy-user" toml:"haproxy-user" json:"haproxyUser"`
 	HaproxyPassword                           string                       `mapstructure:"haproxy-password" toml:"haproxy-password" json:"haproxyPassword"`
 	HaproxyMode                               string                       `mapstructure:"haproxy-mode" toml:"haproxy-mode" json:"haproxyMode"`
 	HaproxyHosts                              string                       `mapstructure:"haproxy-servers" toml:"haproxy-servers" json:"haproxyServers"`

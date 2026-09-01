@@ -7,9 +7,11 @@
 package cluster
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/opensvc"
 )
 
 // TestOpenSVCGetHaproxyContainerSectionExternalCheckRunsCheckConfig guards
@@ -74,10 +76,13 @@ func TestOpenSVCGetHaproxyContainerSectionRuntimeAPIUsesImageDefault(t *testing.
 	}
 }
 
-// TestOpenSVCGetHaproxyContainerSectionStandbyUsesImageDefault guards against
-// haproxy-mode=standby (now narrowed to "local, statically-rendered config,
-// no external checks" per docs.signal18.io) picking up the externalcheck-only
-// command/entrypoint override.
+// TestOpenSVCGetHaproxyContainerSectionStandbyUsesImageDefault is
+// TestOpenSVCGetHaproxyContainerSectionRuntimeAPIUsesImageDefault's
+// haproxy-mode=standby counterpart: standby (now narrowed to "local,
+// statically-rendered config, no external checks" per docs.signal18.io) has
+// no external check either -- it's Init() (cluster/prx_haproxy.go) deciding
+// read-backend membership from replication state directly -- so it must not
+// get the externalcheck-only override either.
 func TestOpenSVCGetHaproxyContainerSectionStandbyUsesImageDefault(t *testing.T) {
 	cluster := setupTestCluster(t, 1)
 	defer cleanupTestCluster(t, cluster)
@@ -97,5 +102,78 @@ func TestOpenSVCGetHaproxyContainerSectionStandbyUsesImageDefault(t *testing.T) 
 	}
 	if _, ok := section["command"]; ok {
 		t.Fatalf("command should not be set for haproxy-mode=standby, got %q", section["command"])
+	}
+}
+
+// TestGetPodDockerHaproxyTemplateExternalCheckRunsCheckConfig guards against
+// the same regression as
+// TestOpenSVCGetHaproxyContainerSectionExternalCheckRunsCheckConfig above,
+// but on the OTHER OpenSVC HAProxy provisioning path:
+// OpenSVCProvisionProxyService (cluster/prov_opensvc_prx.go) calls
+// OpenSVCGetHaproxyContainerSection only when ProvOpensvcUseCollectorAPI is
+// false; when it's true, provisioning instead goes through
+// GetHaproxyTemplate -> GetPodDockerHaproxyTemplate, which independently
+// builds its own container#20 block and, before this fix, never checked
+// HaproxyMode at all -- so a collector-API deployment could reproduce the
+// exact incident (broken replicas never excluded from the write group) the
+// other function was patched for.
+func TestGetPodDockerHaproxyTemplateExternalCheckRunsCheckConfig(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.Conf = &config.Config{
+		HaproxyMode: "externalcheck",
+	}
+	collector := opensvc.Collector{ProvProxMicroSrv: "docker"}
+
+	vm := cluster.GetPodDockerHaproxyTemplate(collector, "01")
+
+	if !strings.Contains(vm, "entrypoint = /bin/sh") {
+		t.Fatalf("GetPodDockerHaproxyTemplate() does not set entrypoint = /bin/sh for haproxy-mode=externalcheck:\n%s", vm)
+	}
+	wantCmd := `command = -c "exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg"`
+	if !strings.Contains(vm, wantCmd) {
+		t.Fatalf("GetPodDockerHaproxyTemplate() does not contain %q for haproxy-mode=externalcheck:\n%s", wantCmd, vm)
+	}
+}
+
+// TestGetPodDockerHaproxyTemplateRuntimeAPIUsesImageDefault is
+// TestGetPodDockerHaproxyTemplateExternalCheckRunsCheckConfig's runtimeapi
+// counterpart: the externalcheck-only override must not leak into
+// haproxy-mode=runtimeapi, which needs the image's default entrypoint
+// (haproxy.cfg, the file runtimeapi's Runtime API calls actually target).
+func TestGetPodDockerHaproxyTemplateRuntimeAPIUsesImageDefault(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.Conf = &config.Config{
+		HaproxyMode: "runtimeapi",
+	}
+	collector := opensvc.Collector{ProvProxMicroSrv: "docker"}
+
+	vm := cluster.GetPodDockerHaproxyTemplate(collector, "01")
+
+	if strings.Contains(vm, "entrypoint =") || strings.Contains(vm, "command =") {
+		t.Fatalf("GetPodDockerHaproxyTemplate() must not override entrypoint/command for haproxy-mode=runtimeapi:\n%s", vm)
+	}
+}
+
+// TestGetPodDockerHaproxyTemplateStandbyUsesImageDefault is
+// TestGetPodDockerHaproxyTemplateRuntimeAPIUsesImageDefault's
+// haproxy-mode=standby counterpart -- see
+// TestOpenSVCGetHaproxyContainerSectionStandbyUsesImageDefault for why.
+func TestGetPodDockerHaproxyTemplateStandbyUsesImageDefault(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.Conf = &config.Config{
+		HaproxyMode: "standby",
+	}
+	collector := opensvc.Collector{ProvProxMicroSrv: "docker"}
+
+	vm := cluster.GetPodDockerHaproxyTemplate(collector, "01")
+
+	if strings.Contains(vm, "entrypoint =") || strings.Contains(vm, "command =") {
+		t.Fatalf("GetPodDockerHaproxyTemplate() must not override entrypoint/command for haproxy-mode=standby:\n%s", vm)
 	}
 }

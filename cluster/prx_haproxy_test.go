@@ -820,16 +820,17 @@ func TestHaproxyRefreshNeverMutatesWriteBackendInExternalCheckMode(t *testing.T)
 	}
 }
 
-// TestHaproxyRefreshNeverMutatesReadBackendInStandbyMode is
-// TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode's read-backend
-// counterpart. The read-backend mutation logic (broken-replication drain,
-// valid-replication ready, master-reader reconciliation) predates the
-// write-backend fix and was left unconditional -- the same architectural
-// bug, just on the other backend: externalcheck relies on checkslave's own
-// external-check (option external-check, HAProxy's own health check
-// against repman's /slave-status API) to control read-backend membership,
-// so a competing Runtime API SetDrain/SetReady from Refresh() would race
-// against checkslave's independent polling instead of deferring to it.
+// TestHaproxyRefreshNeverMutatesReadBackendInExternalCheckMode is
+// TestHaproxyRefreshNeverMutatesWriteBackendInExternalCheckMode's
+// read-backend counterpart. The read-backend mutation logic
+// (broken-replication drain, valid-replication ready, master-reader
+// reconciliation) predates the write-backend fix and was left
+// unconditional -- the same architectural bug, just on the other backend:
+// externalcheck relies on checkslave's own external-check (option
+// external-check, HAProxy's own health check against repman's
+// /slave-status API) to control read-backend membership, so a competing
+// Runtime API SetDrain/SetReady from Refresh() would race against
+// checkslave's independent polling instead of deferring to it.
 func TestHaproxyRefreshNeverMutatesReadBackendInExternalCheckMode(t *testing.T) {
 	cluster := setupTestCluster(t, 2)
 	defer cleanupTestCluster(t, cluster)
@@ -897,42 +898,77 @@ func TestHaproxyRefreshNeverMutatesReadBackendInExternalCheckMode(t *testing.T) 
 	}
 }
 
-// TestHaproxySetReadBackendMaintenanceNoOpInExternalCheckMode guards the
-// setReadBackendMaintenance branch added alongside the standby/externalcheck
-// mode split: externalcheck must never issue a Runtime API maint/ready call
-// (that's checkslave's own external-check polling of repman's HTTP handlers)
-// nor fall into standby's Init()-driven full reload -- it does neither.
-func TestHaproxySetReadBackendMaintenanceNoOpInExternalCheckMode(t *testing.T) {
-	cluster := setupTestCluster(t, 1)
+// TestHaproxyRefreshNeverMutatesReadBackendInStandbyMode is
+// TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode's read-backend
+// counterpart. standby has no external-check at all (unlike externalcheck's
+// checkslave, see TestHaproxyRefreshNeverMutatesReadBackendInExternalCheckMode
+// above) -- read-backend membership is decided entirely by Init()'s own
+// server loop (skipRead, see hasBrokenReplicationForRead in
+// cluster/prx_haproxy.go), so Refresh() must still never issue a read-backend
+// Runtime API command in standby mode either, the same as externalcheck.
+func TestHaproxyRefreshNeverMutatesReadBackendInStandbyMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
 	defer cleanupTestCluster(t, cluster)
 
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
 	cluster.Conf = &config.Config{
 		HaproxyAPIWriteBackend: "service_write",
 		HaproxyAPIReadBackend:  "service_read",
 		HaproxyOn:              true,
-		HaproxyMode:            "externalcheck",
+		HaproxyMode:            "standby",
 	}
 
-	server := cluster.Servers[0]
-	server.Id = "server1"
-	server.Host = "127.0.0.1"
-	server.Port = "3306"
-	server.ClusterGroup = cluster
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
 
-	host, port, getCommands := startFakeHaproxy(t, "")
+	// slave1 broke replication but Init() hasn't re-rendered since -- HAProxy
+	// still reports it UP. In haproxy-mode=runtimeapi this would trigger a
+	// SetDrain; in standby, Refresh() must leave it alone entirely.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlaveErr
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server2", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
 
 	proxy := &HaproxyProxy{Proxy: Proxy{
 		ClusterGroup: cluster,
 		Host:         host,
 		Port:         port,
 		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
 	}}
 
-	if got := proxy.setReadBackendMaintenance(server); got != false {
-		t.Fatalf("setReadBackendMaintenance() = %v, want false in haproxy-mode=externalcheck", got)
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
 	}
-	if cmds := getCommands(); len(cmds) != 0 {
-		t.Fatalf("setReadBackendMaintenance issued Runtime API commands in haproxy-mode=externalcheck: %v", cmds)
+
+	for _, c := range getCommands() {
+		if strings.HasPrefix(c, "set server "+cluster.Conf.HaproxyAPIReadBackend+"/") {
+			t.Fatalf("Refresh() sent %q in haproxy-mode=standby -- read-backend state must be left to Init()'s own server loop, never touched by Refresh() (all commands: %v)", c, getCommands())
+		}
+	}
+
+	if len(proxy.BackendsRead) != 2 {
+		t.Fatalf("expected Refresh() to still report both read-backend rows for the dashboard, got %d: %+v", len(proxy.BackendsRead), proxy.BackendsRead)
 	}
 }
 
@@ -1025,21 +1061,6 @@ backend {{.Name}}
 	}
 }
 
-// TestHaproxyInitOnlyDoesLocalWorkForLocalhostOrchestrator guards against
-// Init() building, rendering, and reloading a *local* haproxy.cfg (execing
-// the haproxy binary on THIS host, expecting the rendered config's
-// stats-socket bind address to be reachable here) for orchestrators where
-// HAProxy never runs on the repman host at all -- OpenSVC, Kubernetes, etc.
-// There the real proxy's config reaches its actual container via a
-// completely separate config-fetch tarball path (GetProxyConfig(), called
-// unconditionally earlier in Init() for the one-time bootstrap); none of
-// this function's local rendering is ever read by anything for those
-// orchestrators, and the reload attempt can only ever fail (a live incident
-// showed "cannot bind socket ... Cannot assign requested address" for the
-// remote proxy's own address), doing so on every single state change and
-// flooding the log. Only the Localhost orchestrator -- where Init() is the
-// genuine, documented way to manage a co-located HAProxy process (see
-// cluster/prov_localhost_haproxy.go) -- should do any of this work at all.
 // TestNewHaproxyProxyStandbyKeepsLocalHost guards the fix alongside the
 // standby-always-local change: standby's Init() now renders+reloads
 // regardless of the cluster's own orchestrator (prx_haproxy.go, the
@@ -1085,7 +1106,22 @@ func TestNewHaproxyProxyStandbyKeepsLocalHost(t *testing.T) {
 	})
 }
 
-func TestHaproxyInitOnlyDoesLocalWorkInStandbyMode(t *testing.T) {
+// TestHaproxyInitLocalWorkGating guards Init()'s combined gate: it does its
+// local build/render/reload work when EITHER the cluster's orchestrator is
+// Localhost (any haproxy-mode -- externalcheck/runtimeapi included, see
+// TestHaproxyInitWritesLocalhostCheckScriptsInExternalCheckMode and
+// TestHaproxyInitSkipsCheckScriptsInRuntimeAPIMode) OR haproxy-mode=standby
+// (any orchestrator -- standby always runs co-located with repman, see
+// prov.go's proxyServiceOrchestrator()). For every other combination
+// (runtimeapi/externalcheck on a non-Localhost orchestrator), the real
+// proxy's config instead reaches its actual container via the separate
+// config-fetch tarball path (GetProxyConfig(), called unconditionally
+// earlier in Init() for the one-time bootstrap); none of this function's
+// local rendering is ever read by anything there, and the reload attempt
+// can only ever fail (a live incident showed "cannot bind socket ...
+// Cannot assign requested address" for the remote proxy's own address),
+// doing so on every single state change and flooding the log.
+func TestHaproxyInitLocalWorkGating(t *testing.T) {
 	newProxy := func(t *testing.T, orchestrator, haproxyMode string) (datadir string) {
 		t.Helper()
 		cluster := setupTestCluster(t, 1)
@@ -1134,35 +1170,380 @@ backend {{.Name}}
 		return datadir
 	}
 
-	// standby always runs its HAProxy co-located with repman, started/reloaded
-	// via its local PID -- regardless of which orchestrator the cluster's
-	// databases are provisioned under (databases may be on K8s/OpenSVC/etc
-	// while the proxy itself stays local to repman). OpenSVC here stands in
-	// for "any non-Localhost database orchestrator."
-	t.Run("standby mode renders and reloads locally even when the database orchestrator is OpenSVC", func(t *testing.T) {
-		datadir := newProxy(t, config.ConstOrchestratorOpenSVC, "standby")
-		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.cfg")); err != nil {
-			t.Fatalf("expected a rendered haproxy.cfg for haproxy-mode=standby regardless of database orchestrator: %v", err)
+	t.Run("non-localhost orchestrator, runtimeapi mode: skips rendering and the local reload", func(t *testing.T) {
+		datadir := newProxy(t, config.ConstOrchestratorOpenSVC, "runtimeapi")
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.cfg")); !os.IsNotExist(err) {
+			t.Fatalf("expected no rendered haproxy.cfg for a non-localhost orchestrator in runtimeapi mode (Init() must return before Render()), stat err = %v", err)
 		}
-		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.pid")); err != nil {
-			t.Fatalf("expected a pid file for haproxy-mode=standby regardless of database orchestrator (SetPid() should have run): %v", err)
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.pid")); !os.IsNotExist(err) {
+			t.Fatalf("expected no pid file for a non-localhost orchestrator in runtimeapi mode (Reload() must be skipped), stat err = %v", err)
 		}
 	})
 
-	// runtimeapi/externalcheck/dataplaneapi are deployed by the cluster's own
-	// orchestrator and bootstrap once via the config-fetch tarball path
-	// (GetProxyConfig(), still called above regardless of mode) -- Init()'s
-	// local render+reload has nothing to do for them, even on the Localhost
-	// orchestrator.
-	t.Run("non-standby mode skips the local render+reload even on the Localhost orchestrator", func(t *testing.T) {
-		datadir := newProxy(t, config.ConstOrchestratorLocalhost, "runtimeapi")
-		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.cfg")); !os.IsNotExist(err) {
-			t.Fatalf("expected no rendered haproxy.cfg for haproxy-mode=runtimeapi (Init() must return before Render()), stat err = %v", err)
+	t.Run("non-localhost orchestrator, standby mode: still renders and reloads locally", func(t *testing.T) {
+		datadir := newProxy(t, config.ConstOrchestratorOpenSVC, "standby")
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.cfg")); err != nil {
+			t.Fatalf("expected a rendered haproxy.cfg for standby mode even on a non-localhost orchestrator: %v", err)
 		}
-		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.pid")); !os.IsNotExist(err) {
-			t.Fatalf("expected no pid file for haproxy-mode=runtimeapi (Reload() must be skipped), stat err = %v", err)
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.pid")); err != nil {
+			t.Fatalf("expected a pid file for standby mode even on a non-localhost orchestrator (SetPid() should have run): %v", err)
 		}
 	})
+
+	t.Run("localhost orchestrator, standby mode: still renders and reloads locally", func(t *testing.T) {
+		datadir := newProxy(t, config.ConstOrchestratorLocalhost, "standby")
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.cfg")); err != nil {
+			t.Fatalf("expected a rendered haproxy.cfg for the localhost orchestrator: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.pid")); err != nil {
+			t.Fatalf("expected a pid file for the localhost orchestrator (SetPid() should have run): %v", err)
+		}
+	})
+}
+
+// TestHaproxyInitWritesLocalhostCheckScriptsInExternalCheckMode guards
+// against haproxy-mode=externalcheck losing its only broken-replica
+// exclusion mechanism on the Localhost orchestrator. externalcheck relies
+// entirely on HAProxy's own external-check calling back into repman
+// (checkmaster/checkslave wired into haproxy_check.cfg via "option
+// external-check", share/opensvc/moduleset_mariadb.svc.mrm.proxy.json for
+// OpenSVC), never on Refresh()'s Runtime API SetDrain/SetReady (gated to
+// haproxy-mode=runtimeapi only) or on Init()'s own server-state filtering
+// (that's haproxy-mode=standby's mechanism instead, see
+// TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend below).
+// Localhost has no container image to swap, so Init() must instead write
+// equivalent checkmaster/checkslave scripts to proxy.Datadir/init/ and wire
+// them into the rendered haproxy.cfg via the same external-check mechanism,
+// or nothing excludes a broken replica from read/write routing on this
+// orchestrator at all.
+func TestHaproxyInitWritesLocalhostCheckScriptsInExternalCheckMode(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Name = "ahmadcluster"
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "externalcheck",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+		MonitorAddress:         "127.0.0.1",
+		HttpPort:               "10001",
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+	cluster.master = master
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+
+	proxy.Init()
+
+	checkmaster, err := os.ReadFile(filepath.Join(datadir, "init", "checkmaster"))
+	if err != nil {
+		t.Fatalf("Init() did not write a checkmaster script: %v", err)
+	}
+	checkslave, err := os.ReadFile(filepath.Join(datadir, "init", "checkslave"))
+	if err != nil {
+		t.Fatalf("Init() did not write a checkslave script: %v", err)
+	}
+	if info, err := os.Stat(filepath.Join(datadir, "init", "checkmaster")); err != nil || info.Mode().Perm()&0100 == 0 {
+		t.Fatalf("checkmaster must be executable, mode = %v, err = %v", info.Mode(), err)
+	}
+
+	if !strings.Contains(string(checkmaster), "127.0.0.1:10001/clusters/ahmadcluster/servers/$3/$4/master-status") {
+		t.Fatalf("checkmaster does not target this repman's own master-status API:\n%s", checkmaster)
+	}
+	if !strings.Contains(string(checkslave), "127.0.0.1:10001/clusters/ahmadcluster/servers/$3/$4/slave-status") {
+		t.Fatalf("checkslave does not target this repman's own slave-status API:\n%s", checkslave)
+	}
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	content := string(rendered)
+
+	if !strings.Contains(content, "external-check\n") {
+		t.Fatalf("rendered config does not enable the global external-check directive:\n%s", content)
+	}
+	if !strings.Contains(content, "insecure-fork-wanted") {
+		t.Fatalf("rendered config does not enable insecure-fork-wanted -- a multi-threaded worker cannot fork the external-check subprocess without it:\n%s", content)
+	}
+
+	writeSection := haproxyBackendSection(t, content, "service_write")
+	if !strings.Contains(writeSection, "option external-check") || !strings.Contains(writeSection, filepath.Join(datadir, "init", "checkmaster")) {
+		t.Fatalf("write backend does not wire in checkmaster via external-check:\n%s", writeSection)
+	}
+
+	readSection := haproxyBackendSection(t, content, "service_read")
+	if !strings.Contains(readSection, "option external-check") || !strings.Contains(readSection, filepath.Join(datadir, "init", "checkslave")) {
+		t.Fatalf("read backend does not wire in checkslave via external-check:\n%s", readSection)
+	}
+
+	// A correctly-rendered config that nothing ever execs haproxy against is
+	// just as broken as a wrong one -- guard against Init() writing the file
+	// and stopping there for externalcheck on Localhost. SetPid() creates
+	// the pidfile before Reload() attempts to exec the (possibly absent in
+	// this test environment) haproxy binary, so its presence is proof the
+	// reload path was actually reached, independent of whether haproxy
+	// itself is installed here.
+	if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.pid")); err != nil {
+		t.Fatalf("expected a pid file for haproxy-mode=externalcheck on the localhost orchestrator (Init() must exec/reload haproxy, not just render the config): %v", err)
+	}
+}
+
+// TestHaproxyInitSkipsCheckScriptsInRuntimeAPIMode is
+// TestHaproxyInitWritesLocalhostCheckScriptsInExternalCheckMode's runtimeapi
+// counterpart: runtimeapi relies on the Runtime API SetDrain/SetReady calls
+// in Refresh(), not an external-check script, so Init() must not write
+// checkmaster/checkslave or turn on external-check for that mode.
+func TestHaproxyInitSkipsCheckScriptsInRuntimeAPIMode(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "runtimeapi",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+	cluster.master = master
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+
+	proxy.Init()
+
+	if _, err := os.Stat(filepath.Join(datadir, "init", "checkmaster")); !os.IsNotExist(err) {
+		t.Fatalf("expected no checkmaster script for haproxy-mode=runtimeapi, stat err = %v", err)
+	}
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	content := string(rendered)
+	if strings.Contains(content, "external-check") {
+		t.Fatalf("rendered config must not enable external-check for haproxy-mode=runtimeapi:\n%s", content)
+	}
+
+	// Same reasoning as TestHaproxyInitWritesLocalhostCheckScriptsInExternalCheckMode:
+	// a rendered config nothing execs haproxy against is non-functional.
+	// runtimeapi's ongoing updates go through the Runtime API against an
+	// already-running process, so if Init() never starts it in the first
+	// place here, every later Runtime API call has nothing to connect to.
+	if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.pid")); err != nil {
+		t.Fatalf("expected a pid file for haproxy-mode=runtimeapi on the localhost orchestrator (Init() must exec/reload haproxy, not just render the config): %v", err)
+	}
+}
+
+// TestHaproxyInitStandbyDoesNotWriteCheckScripts is
+// TestHaproxyInitWritesLocalhostCheckScriptsInExternalCheckMode's
+// haproxy-mode=standby counterpart: standby has no external check at all --
+// broken-replica exclusion is Init()'s own server-state filtering instead
+// (TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend below), so
+// it must not write checkmaster/checkslave or turn on external-check either.
+func TestHaproxyInitStandbyDoesNotWriteCheckScripts(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+	cluster.master = master
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+
+	proxy.Init()
+
+	if _, err := os.Stat(filepath.Join(datadir, "init", "checkmaster")); !os.IsNotExist(err) {
+		t.Fatalf("expected no checkmaster script for haproxy-mode=standby, stat err = %v", err)
+	}
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	content := string(rendered)
+	if strings.Contains(content, "external-check") {
+		t.Fatalf("rendered config must not enable external-check for haproxy-mode=standby:\n%s", content)
+	}
+}
+
+// TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend guards
+// against haproxy-mode=standby's actual exclusion mechanism: with no Runtime
+// API and no external check to lean on, Init()'s own config generation is
+// the ONLY thing that can keep a broken replica out of the read backend --
+// before this fix, Init()'s read-backend loop added every non-maintenance
+// server unconditionally, regardless of replication state. This mirrors the
+// classification Refresh() uses to DRAIN a server under haproxy-mode=
+// runtimeapi (hasBrokenReplicationForRead, cluster/prx_haproxy.go), so both
+// modes agree on what "broken" means, applied at config-generation time
+// instead of via a runtime command.
+func TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// server2 broke replication -- matches the real incident this whole
+	// family of fixes guards against ("Server db2 ... state transition from
+	// Slave changed to: SlaveErr"). No external check and no Runtime API
+	// exist in standby mode to catch this after the fact.
+	slave := cluster.Servers[1]
+	slave.Id = "server2"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlaveErr
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+
+	proxy.Init()
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	readSection := haproxyBackendSection(t, string(rendered), "service_read")
+	if !strings.Contains(readSection, "server server1 127.0.0.1:3306") {
+		t.Fatalf("read backend does not contain the healthy master:\n%s", readSection)
+	}
+	if strings.Contains(readSection, "server server2 ") {
+		t.Fatalf("read backend contains the replica with broken replication -- Init() must exclude it directly since standby has no other exclusion mechanism:\n%s", readSection)
+	}
 }
 
 // TestHaproxyBackendsStateChangeReconcilesWriteBackendInStandbyMode guards
@@ -1295,13 +1676,18 @@ func TestHaproxyAddServerToDoesNotWrapTypedNilError(t *testing.T) {
 // line.
 func haproxyBackendSection(t *testing.T, content, name string) string {
 	t.Helper()
-	marker := "backend " + name + "\n"
+	// Line-anchored ("\nbackend ", not "backend ") so this doesn't false-match
+	// a "default_backend <name>" line inside a frontend block -- the real
+	// haproxy_config.template renders "default_backend {{.DefaultBackend}}"
+	// in every frontend, and "default_backend x" contains "backend x" as a
+	// plain substring.
+	marker := "\nbackend " + name + "\n"
 	idx := strings.Index(content, marker)
 	if idx == -1 {
 		t.Fatalf("rendered config does not contain backend %q:\n%s", name, content)
 	}
 	rest := content[idx+len(marker):]
-	if next := strings.Index(rest, "backend "); next != -1 {
+	if next := strings.Index(rest, "\nbackend "); next != -1 {
 		rest = rest[:next]
 	}
 	return rest
@@ -4196,5 +4582,46 @@ func TestHaproxyRefreshDoesNotForceStatusWhenMaintenanceCorrectionSkipped(t *tes
 	}
 	if !found {
 		t.Fatalf("test setup error: slave1 not found in proxy.BackendsRead")
+	}
+}
+
+// TestHaproxySetReadBackendMaintenanceNoOpInExternalCheckMode guards the
+// setReadBackendMaintenance branch for haproxy-mode=externalcheck:
+// externalcheck's read-backend eligibility is decided entirely by
+// checkslave's own external-check polling of repman's HTTP handlers, so
+// this must issue neither a Runtime API maint/ready call (that's the
+// runtimeapi branch below it) nor a local Init() re-render (that's
+// standby's branch) -- a plain no-op.
+func TestHaproxySetReadBackendMaintenanceNoOpInExternalCheckMode(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "externalcheck",
+	}
+
+	server := cluster.Servers[0]
+	server.Id = "server1"
+	server.Host = "127.0.0.1"
+	server.Port = "3306"
+	server.ClusterGroup = cluster
+
+	host, port, getCommands := startFakeHaproxy(t, "")
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+	}}
+
+	if got := proxy.setReadBackendMaintenance(server); got != false {
+		t.Fatalf("setReadBackendMaintenance() = %v, want false in haproxy-mode=externalcheck", got)
+	}
+	if cmds := getCommands(); len(cmds) != 0 {
+		t.Fatalf("setReadBackendMaintenance issued Runtime API commands in haproxy-mode=externalcheck: %v", cmds)
 	}
 }
