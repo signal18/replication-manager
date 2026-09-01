@@ -135,6 +135,9 @@ type Cluster struct {
 	InterventionCurrent           *InterventionEntry  `json:"interventionCurrent,omitempty" groups:"web"`
 	InterventionHistory           []InterventionEntry `json:"interventionHistory" groups:"web"`
 	InterventionSuppressedAlerts  int                 `json:"interventionSuppressedAlerts" groups:"web"`
+	alertLogThrottleMu sync.Mutex
+	alertLogLastSent   map[string]time.Time
+	AlertLogThrottled  int `json:"alertLogThrottled" groups:"web"`
 	InterventionPending           *InterventionEntry  `json:"interventionPending,omitempty" groups:"web"`
 	IsRefreshStaging              bool                `json:"isRefreshStaging" groups:"web"`
 	IsNeedStagingChange           bool                `json:"isNeedStagingChange" groups:"web"`

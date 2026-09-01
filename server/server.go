@@ -645,6 +645,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	flags.StringVar(&conf.AlertScript, "alert-script", "", "Path for alerting script server status change")
 	flags.StringVar(&conf.SlackURL, "alert-slack-url", "", "Slack webhook URL to alert")
+	flags.IntVar(&conf.AlertLogThrottle, "alert-log-throttle", 600, "Minimum seconds between two identical ERROR/WARN log lines forwarded to the alert channels (Slack/Teams); 0 disables throttling. States/alerts are never throttled")
 	flags.StringVar(&conf.SlackChannel, "alert-slack-channel", "#support", "Slack channel to alert")
 	flags.StringVar(&conf.SlackUser, "alert-slack-user", "", "Slack user for alert")
 

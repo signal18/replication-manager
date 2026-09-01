@@ -176,6 +176,35 @@ func (cluster *Cluster) sendMsTeams(level string, format string, args ...interfa
 This function is for printing log based on module log level
 set forcingLog = true if you want to force print
 */
+
+// shouldForwardAlertLog is the anti-flood guard for the alert channels
+// (Slack/Teams): a raw ERROR/WARN log line repeated by a hot loop must not
+// storm the channel — persistent conditions belong to the state machine,
+// which alerts once per transition (ALERT/ALERTOK are never throttled).
+// Identical lines (same level + format string, i.e. same call site) are
+// forwarded at most once per alert-log-throttle seconds; suppressed sends
+// increment the suppressed-alerts counter so throttling stays a visible
+// state, never a silent drop. 2026-09: a leftover opensvc orchestrator
+// without its p12 certificate flooded a client Slack at ~8K messages/day.
+func (cluster *Cluster) shouldForwardAlertLog(level, format string) bool {
+	if cluster.Conf == nil || cluster.Conf.AlertLogThrottle <= 0 {
+		return true
+	}
+	key := level + "|" + format
+	now := time.Now()
+	cluster.alertLogThrottleMu.Lock()
+	defer cluster.alertLogThrottleMu.Unlock()
+	if cluster.alertLogLastSent == nil {
+		cluster.alertLogLastSent = make(map[string]time.Time)
+	}
+	if last, ok := cluster.alertLogLastSent[key]; ok && now.Sub(last) < time.Duration(cluster.Conf.AlertLogThrottle)*time.Second {
+		cluster.AlertLogThrottled++
+		return false
+	}
+	cluster.alertLogLastSent[key] = now
+	return true
+}
+
 func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level string, format string, args ...interface{}) int {
 	return cluster.LogModuleWithFieldsPrintf(forcingLog, module, level, nil, format, args...)
 }
@@ -263,11 +292,13 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 			case "ERROR":
 				targetLogger.WithFields(printfields).Errorf(cliformat, args...)
 				if !isMaintenance && !cluster.IsIntervention {
-					if cluster.Conf.SlackURL != "" {
-						cluster.LogSlack.WithFields(slackFields).Errorf(cliformat, args...)
-					}
-					if cluster.Conf.TeamsUrl != "" {
-						go cluster.sendMsTeams(level, format, args...)
+					if cluster.shouldForwardAlertLog(level, cliformat) {
+						if cluster.Conf.SlackURL != "" {
+							cluster.LogSlack.WithFields(slackFields).Errorf(cliformat, args...)
+						}
+						if cluster.Conf.TeamsUrl != "" {
+							go cluster.sendMsTeams(level, format, args...)
+						}
 					}
 				} else if cluster.IsIntervention {
 					cluster.IncrementSuppressedAlerts()
@@ -279,11 +310,13 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 			case "WARN":
 				targetLogger.WithFields(printfields).Warnf(cliformat, args...)
 				if !isMaintenance && !cluster.IsIntervention {
-					if cluster.Conf.SlackURL != "" {
-						cluster.LogSlack.WithFields(slackFields).Warnf(cliformat, args...)
-					}
-					if cluster.Conf.TeamsUrl != "" {
-						go cluster.sendMsTeams(level, format, args...)
+					if cluster.shouldForwardAlertLog(level, cliformat) {
+						if cluster.Conf.SlackURL != "" {
+							cluster.LogSlack.WithFields(slackFields).Warnf(cliformat, args...)
+						}
+						if cluster.Conf.TeamsUrl != "" {
+							go cluster.sendMsTeams(level, format, args...)
+						}
 					}
 				} else if cluster.IsIntervention {
 					cluster.IncrementSuppressedAlerts()

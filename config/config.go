@@ -383,6 +383,7 @@ type Config struct {
 	MailMaxPool                               int                          `scope:"server" mapstructure:"mail-max-pool" toml:"mail-max-pool" json:"mailMaxPool"`
 	MailTimeout                               int                          `scope:"server" mapstructure:"mail-timeout" toml:"mail-timeout" json:"mailTimeout"`
 	SlackURL                                  string                       `mapstructure:"alert-slack-url" toml:"alert-slack-url" json:"alertSlackUrl"`
+	AlertLogThrottle                          int                          `scope:"cluster" mapstructure:"alert-log-throttle" toml:"alert-log-throttle" json:"alertLogThrottle"`
 	SlackChannel                              string                       `mapstructure:"alert-slack-channel" toml:"alert-slack-channel" json:"alertSlackChannel"`
 	SlackUser                                 string                       `mapstructure:"alert-slack-user" toml:"alert-slack-user" json:"alertSlackUser"`
 	PushoverAppToken                          string                       `mapstructure:"alert-pushover-app-token" toml:"alert-pushover-app-token" json:"alertPushoverAppToken"`
