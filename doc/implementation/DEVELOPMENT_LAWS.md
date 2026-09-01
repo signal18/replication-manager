@@ -242,7 +242,13 @@ PR section giving the exact ruleset text to apply on the collector — see PR
 #1753 for the pattern. Instances pick updated modulesets up through the
 enterprise-compliance plugin (`prov-auto-update-compliance`, preserved variables
 never overwritten). A hand-edited share JSON diverges from the reference and is
-overwritten at the next export.
+overwritten at the next export. Additionally, a branch that carries a moduleset
+export MUST first verify that no other active branch or open PR also modifies
+that moduleset file (`git diff origin/develop...origin/<branch> -- share/opensvc/`
+over the open branches): the file is replaced whole at each export, so two
+concurrent branches touching it guarantee a conflict or a silently lost ruleset
+change — coordinate the export order with the other branch's author (T20 at the
+moduleset level).
 
 ---
 
