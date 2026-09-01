@@ -1055,9 +1055,18 @@ backend {{.Name}}
 		t.Fatalf("write backend contains the non-leader replica -- Init() must only ever route writes to the current leader:\n%s", writeSection)
 	}
 
+	// Neither proxy-servers-read-on-master nor -no-slave is set here, and
+	// server2 is a healthy slave (not the no-valid-slave case), so per the
+	// masterShouldBeReader()-equivalent gate Init() now applies to the
+	// leader's own read-backend membership (see
+	// TestHaproxyInitStandbyRespectsReadOnMasterSettings), the leader is
+	// excluded from the read backend -- only the slave belongs there.
 	readSection := haproxyBackendSection(t, content, "ahmad_read")
-	if !strings.Contains(readSection, "server server1 127.0.0.1:3306") || !strings.Contains(readSection, "server server2 127.0.0.1:3307") {
-		t.Fatalf("read backend should still list both servers, unchanged behavior:\n%s", readSection)
+	if strings.Contains(readSection, "server server1 ") {
+		t.Fatalf("read backend contains the leader with no read-on-master setting enabled and a healthy slave present:\n%s", readSection)
+	}
+	if !strings.Contains(readSection, "server server2 127.0.0.1:3307") {
+		t.Fatalf("read backend does not contain the healthy slave:\n%s", readSection)
 	}
 }
 
@@ -1472,6 +1481,16 @@ func TestHaproxyInitStandbyDoesNotWriteCheckScripts(t *testing.T) {
 // runtimeapi (hasBrokenReplicationForRead, cluster/prx_haproxy.go), so both
 // modes agree on what "broken" means, applied at config-generation time
 // instead of via a runtime command.
+//
+// Also guards a second, previously-unchecked gap in the same loop: the
+// leader was always added to the read backend too, regardless of
+// proxy-servers-read-on-master / -no-slave -- a real divergence from
+// runtimeapi's masterShouldBeReader() gate in Refresh(). This cluster's only
+// slave is broken, so the master's presence below exercises the
+// -no-slave fallback specifically (enabled above), not the unconditional
+// proxy-servers-read-on-master path -- see
+// TestHaproxyInitStandbyRespectsReadOnMasterSettings for the read-on-master
+// and "excluded when a healthy slave exists" cases this test doesn't cover.
 func TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend(t *testing.T) {
 	cluster := setupTestCluster(t, 2)
 	defer cleanupTestCluster(t, cluster)
@@ -1497,6 +1516,14 @@ func TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend(t *testing.T
 		ShareDir:               shareDir,
 		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
 	}
+	// Pins the real flag default (server/server.go: proxy-servers-read-on-
+	// master-no-slave defaults to true) that this test's assertion on the
+	// master's own presence below relies on -- config.Config{} above is a
+	// literal, not AddFlags()'s defaults, so it'd otherwise silently read as
+	// false. Read via cluster.Configurator (HasProxyReadLeaderNoSlave()),
+	// not cluster.Conf directly -- see the matching comment in prx_haproxy.go
+	// Init() for why.
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
 
 	master := cluster.Servers[0]
 	master.Id = "server1"
@@ -1508,7 +1535,11 @@ func TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend(t *testing.T
 	// server2 broke replication -- matches the real incident this whole
 	// family of fixes guards against ("Server db2 ... state transition from
 	// Slave changed to: SlaveErr"). No external check and no Runtime API
-	// exist in standby mode to catch this after the fact.
+	// exist in standby mode to catch this after the fact. It's also this
+	// test's only slave, so it doubles as the no-valid-slave case that puts
+	// the master's own read-backend membership below on the
+	// proxy-servers-read-on-master-no-slave fallback rather than the
+	// unconditional proxy-servers-read-on-master path.
 	slave := cluster.Servers[1]
 	slave.Id = "server2"
 	slave.Host = "127.0.0.1"
@@ -1546,6 +1577,172 @@ func TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend(t *testing.T
 	}
 }
 
+// TestHaproxyInitStandbyRespectsReadOnMasterSettings is
+// TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend's
+// counterpart for the leader's own read-backend membership: with a healthy
+// slave available, the leader must be excluded unless proxy-servers-
+// read-on-master is set, mirroring runtimeapi's masterShouldBeReader() gate
+// in Refresh() (cluster/prx_haproxy.go) -- before this fix, standby's Init()
+// added the leader to the read backend unconditionally, ignoring both
+// proxy-servers-read-on-master and proxy-servers-read-on-master-no-slave
+// entirely.
+func TestHaproxyInitStandbyRespectsReadOnMasterSettings(t *testing.T) {
+	tests := []struct {
+		name         string
+		readOnMaster bool
+		noSlave      bool
+		topology     string
+		slaveState   string
+		wantMaster   bool
+		wantSlave    bool
+	}{
+		{
+			name:         "healthy slave, no read-on-master flags: leader excluded",
+			readOnMaster: false,
+			noSlave:      false,
+			topology:     config.TopoMasterSlave,
+			slaveState:   stateSlave,
+			wantMaster:   false,
+			wantSlave:    true,
+		},
+		{
+			name:         "healthy slave, proxy-servers-read-on-master: leader included unconditionally",
+			readOnMaster: true,
+			noSlave:      false,
+			topology:     config.TopoMasterSlave,
+			slaveState:   stateSlave,
+			wantMaster:   true,
+			wantSlave:    true,
+		},
+		{
+			name:         "healthy slave, no-slave fallback only: leader still excluded",
+			readOnMaster: false,
+			noSlave:      true,
+			topology:     config.TopoMasterSlave,
+			slaveState:   stateSlave,
+			wantMaster:   false,
+			wantSlave:    true,
+		},
+		// Regression case: cluster.HasNoValidSlave() (cluster/cluster_has.go)
+		// returns true unconditionally for TopoActivePassive, regardless of
+		// the passive node's own state -- matching
+		// TestHaproxyMasterShouldBeReader's "no-slave fallback with
+		// active-passive topology" case for masterShouldBeReader(). Standby
+		// must honor that same topology-driven fallback, not just its own
+		// live per-server read-eligibility count, or the leader would be
+		// wrongly excluded here purely because the passive node looks
+		// replication-healthy.
+		{
+			name:         "active-passive topology with a healthy passive node: leader included via no-slave fallback",
+			readOnMaster: false,
+			noSlave:      true,
+			topology:     config.TopoActivePassive,
+			slaveState:   stateSlave,
+			wantMaster:   true,
+			wantSlave:    true,
+		},
+		// Regression case: hasBrokenReplicationForRead() alone doesn't cover
+		// Failed/Suspect/ErrorAuth (IsDown(), cluster/srv_has.go), so a
+		// Failed replica must still count as "not a valid alternative
+		// reader" for the leader's own fallback decision (standbyReadIneligible,
+		// used only for that decision) -- otherwise the leader would be
+		// wrongly excluded here, leaving no usable reader at all until
+		// HAProxy's own health check caught up and marked the replica down.
+		// The replica's own read-backend membership is intentionally
+		// unchanged, pre-existing behavior: it's still rendered in (relying
+		// on that same HAProxy health check to drain it, exactly as
+		// hasBrokenReplicationForRead()-excluded states always have) --
+		// this fix is scoped to the leader's read-on-master* decision only,
+		// not to widening what standby excludes for ordinary replicas.
+		{
+			name:         "failed replica: leader falls back as reader, failed replica still rendered (unchanged)",
+			readOnMaster: false,
+			noSlave:      true,
+			topology:     config.TopoMasterSlave,
+			slaveState:   stateFailed,
+			wantMaster:   true,
+			wantSlave:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := setupTestCluster(t, 2)
+			defer cleanupTestCluster(t, cluster)
+
+			cluster.StateMachine = new(state.StateMachine)
+			cluster.StateMachine.Init()
+			cluster.Topology = tt.topology
+
+			shareDir := t.TempDir()
+			tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+			if err != nil {
+				t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+				t.Fatalf("failed to copy haproxy_config.template: %v", err)
+			}
+
+			cluster.Conf = &config.Config{
+				HaproxyAPIWriteBackend: "service_write",
+				HaproxyAPIReadBackend:  "service_read",
+				HaproxyOn:              true,
+				HaproxyMode:            "standby",
+				ShareDir:               shareDir,
+				ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+			}
+			cluster.Configurator.ClusterConfig.PRXServersReadOnMaster = tt.readOnMaster
+			cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = tt.noSlave
+
+			master := cluster.Servers[0]
+			master.Id = "server1"
+			master.Host = "127.0.0.1"
+			master.Port = "3306"
+			master.State = stateMaster
+			master.ClusterGroup = cluster
+
+			slave := cluster.Servers[1]
+			slave.Id = "server2"
+			slave.Host = "127.0.0.1"
+			slave.Port = "3307"
+			slave.State = tt.slaveState
+			slave.IsSlave = true
+			slave.ClusterGroup = cluster
+
+			cluster.master = master
+			cluster.slaves = []*ServerMonitor{slave}
+
+			datadir := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+				t.Fatalf("failed to create datadir/var: %v", err)
+			}
+
+			proxy := &HaproxyProxy{Proxy: Proxy{
+				ClusterGroup: cluster,
+				Datadir:      datadir,
+				Version:      "test",
+			}}
+
+			proxy.Init()
+
+			rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+			if err != nil {
+				t.Fatalf("Init() did not render a config file: %v", err)
+			}
+			readSection := haproxyBackendSection(t, string(rendered), "service_read")
+
+			gotMaster := strings.Contains(readSection, "server server1 127.0.0.1:3306")
+			if gotMaster != tt.wantMaster {
+				t.Fatalf("leader present in read backend = %v, want %v:\n%s", gotMaster, tt.wantMaster, readSection)
+			}
+			gotSlave := strings.Contains(readSection, "server server2 127.0.0.1:3307")
+			if gotSlave != tt.wantSlave {
+				t.Fatalf("slave present in read backend = %v, want %v:\n%s", gotSlave, tt.wantSlave, readSection)
+			}
+		})
+	}
+}
+
 // TestHaproxyBackendsStateChangeReconcilesWriteBackendInStandbyMode guards
 // against a gap where BackendsStateChange() -- fired on every meaningful
 // server state change (cluster/srv.go), not just an actual failover or
@@ -1554,6 +1751,52 @@ func TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend(t *testing.T
 // replication without the master ever changing (e.g. Slave -> SlaveErr,
 // matching a real production incident) never triggered Init() at all under
 // the old code, leaving it stuck in the write backend indefinitely.
+// TestHaproxyShouldRunStandbyInitDebounces guards the debounce contract
+// BackendsStateChange() and Refresh() both rely on to avoid one full HAProxy
+// render+reload per flapping replica per state transition: at most one
+// standby Init() may fire per standbyReloadMinInterval, and a call debounced
+// during that window must leave standbyReloadPending set so a later
+// shouldRunStandbyInit() call (Refresh()'s trailing-edge check, run every
+// monitoring loop pass regardless of further state changes) still applies
+// it -- exercised directly against the two helpers rather than through a
+// real Init() so this doesn't need to spin up an actual HAProxy process or
+// sleep for standbyReloadMinInterval.
+func TestHaproxyShouldRunStandbyInitDebounces(t *testing.T) {
+	proxy := &HaproxyProxy{}
+
+	if !proxy.shouldRunStandbyInit() {
+		t.Fatal("first call should fire immediately (zero-value lastStandbyInit is always outside the cooldown)")
+	}
+	if proxy.hasStandbyReloadPending() {
+		t.Fatal("pending must be false right after a call that fired")
+	}
+
+	if proxy.shouldRunStandbyInit() {
+		t.Fatal("a call within the cooldown window must not fire again")
+	}
+	if !proxy.hasStandbyReloadPending() {
+		t.Fatal("a debounced call must mark standbyReloadPending so a later pass still applies it")
+	}
+
+	if proxy.shouldRunStandbyInit() {
+		t.Fatal("a second call still within the cooldown window must not fire either")
+	}
+	if !proxy.hasStandbyReloadPending() {
+		t.Fatal("pending must stay set across repeated debounced calls")
+	}
+
+	// Simulate the cooldown having elapsed, the way an independent
+	// monitoring-loop Refresh() pass would eventually observe it even with
+	// no further BackendsStateChange() calls.
+	proxy.lastStandbyInit = time.Now().Add(-standbyReloadMinInterval - time.Millisecond)
+	if !proxy.shouldRunStandbyInit() {
+		t.Fatal("a call after the cooldown elapsed must fire and consume the pending mark")
+	}
+	if proxy.hasStandbyReloadPending() {
+		t.Fatal("pending must be cleared once a deferred reload finally fires")
+	}
+}
+
 func TestHaproxyBackendsStateChangeReconcilesWriteBackendInStandbyMode(t *testing.T) {
 	cluster := setupTestCluster(t, 2)
 	defer cleanupTestCluster(t, cluster)

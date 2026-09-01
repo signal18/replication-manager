@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -158,7 +159,16 @@ exit 1
 // /api/-prefixed one.
 func (cluster *Cluster) localhostCheckScriptContent(statusPath string) string {
 	apiAddr := cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
-	return fmt.Sprintf(localhostCheckScriptTemplate, apiAddr, cluster.Name, statusPath)
+	// url.PathEscape, not cluster.Name verbatim: cluster.Name lands inside a
+	// double-quoted shell string in localhostCheckScriptTemplate (the wget
+	// URL and, in the /dev/tcp fallback, an HTTP request line built via
+	// printf). Today it's operator-controlled config, not attacker input,
+	// but PathEscape percent-encodes anything outside URL-path-safe
+	// characters -- including '"', '`', '$', '\' -- so a cluster name with
+	// any of those can't break out of that quoting and inject shell syntax
+	// into a script HAProxy's external-check then executes, if cluster
+	// naming ever becomes less trusted (e.g. self-service creation).
+	return fmt.Sprintf(localhostCheckScriptTemplate, apiAddr, url.PathEscape(cluster.Name), statusPath)
 }
 
 // writeLocalhostHaproxyCheckScripts (re)writes checkmaster/checkslave next
