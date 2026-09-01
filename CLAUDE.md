@@ -517,4 +517,4 @@ When creating new implementation documentation:
 
 **Docker Rootless Permissions**: When running rootless Docker containers, ensure mounted volumes have correct ownership (`chown 1000:1000` or appropriate UID/GID for the `repman` user).
 
-**Environment Variable Conflicts**: If using both TOML config and environment variables, remember that environment variables take precedence over TOML values. Use `replication-manager config-merge` to debug effective configuration.
+**Environment Variable Conflicts**: If using both TOML config and environment variables, remember that environment variables take precedence over TOML values. To inspect the effective configuration, read it from the API (`/api/clusters/{name}` config object). `config-merge` is NOT an inspection tool: it consolidates dynamic-mode changes back into the original config file and OVERWRITES it.
