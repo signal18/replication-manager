@@ -180,6 +180,43 @@ func (configurator *Configurator) GetConfigRocksDBCacheSize() string {
 	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["rocksdb"])), 10)
 }
 
+// GetConfigPFSMemoryMB returns the memory share budgeted to the Performance
+// Schema, from the "pfs" entry of prov-db-memory-shared-pct (default 5 when
+// absent; pfs:0 disables the budget so MariaDB defaults stay untouched).
+func (configurator *Configurator) GetConfigPFSMemoryMB() int64 {
+	usable, err := configurator.getUsableMemoryMB()
+	if err != nil {
+		return 0
+	}
+	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
+	pct, ok := sharedmempcts["pfs"]
+	if !ok {
+		pct = 5
+	}
+	if pct <= 0 {
+		return 0
+	}
+	return usable * int64(pct) / 100
+}
+
+// GetConfigPFSDigestLength derives performance_schema_max_{digest,digest_text,
+// sql_text}_length from the PFS memory budget. The fixed 16384 capture sizing
+// was measured to make P_S preallocate ~727MB at init (history_long consumers
+// with 1000 connections) and OOM small cgroups before InnoDB init (#1749); it
+// is only emitted when the budget affords it, with the MariaDB default (1024)
+// below and an intermediate tier in between.
+func (configurator *Configurator) GetConfigPFSDigestLength() string {
+	budget := configurator.GetConfigPFSMemoryMB()
+	switch {
+	case budget >= 768:
+		return "16384"
+	case budget >= 192:
+		return "4096"
+	default:
+		return "1024"
+	}
+}
+
 func (configurator *Configurator) GetConfigMyISAMKeyBufferSegements() string {
 	value, err := strconv.ParseInt(configurator.GetConfigMyISAMKeyBufferSize(), 10, 64)
 	if err != nil {
