@@ -1446,20 +1446,26 @@ func TestHaproxyInitStandbyRespectsReadOnMasterSettings(t *testing.T) {
 			wantSlave:    true,
 		},
 		// Regression case: hasBrokenReplicationForRead() alone doesn't cover
-		// Failed/Suspect/ErrorAuth (IsDown(), cluster/srv_has.go). Without
-		// standbyReadIneligible()'s broader check, a Failed replica would
-		// both count as a "valid" reader (wrongly excluding the leader
-		// fallback) and still get rendered into the read backend itself --
-		// leaving no usable reader at all once HAProxy's own health check
-		// caught up and marked it down.
+		// Failed/Suspect/ErrorAuth (IsDown(), cluster/srv_has.go), so a
+		// Failed replica must still count as "not a valid alternative
+		// reader" for the leader's own fallback decision (standbyReadIneligible,
+		// used only for that decision) -- otherwise the leader would be
+		// wrongly excluded here, leaving no usable reader at all until
+		// HAProxy's own health check caught up and marked the replica down.
+		// The replica's own read-backend membership is intentionally
+		// unchanged, pre-existing behavior: it's still rendered in (relying
+		// on that same HAProxy health check to drain it, exactly as
+		// hasBrokenReplicationForRead()-excluded states always have) --
+		// this fix is scoped to the leader's read-on-master* decision only,
+		// not to widening what standby excludes for ordinary replicas.
 		{
-			name:         "failed replica: leader falls back as reader, failed replica excluded",
+			name:         "failed replica: leader falls back as reader, failed replica still rendered (unchanged)",
 			readOnMaster: false,
 			noSlave:      true,
 			topology:     config.TopoMasterSlave,
 			slaveState:   stateFailed,
 			wantMaster:   true,
-			wantSlave:    false,
+			wantSlave:    true,
 		},
 	}
 
@@ -1549,6 +1555,52 @@ func TestHaproxyInitStandbyRespectsReadOnMasterSettings(t *testing.T) {
 // replication without the master ever changing (e.g. Slave -> SlaveErr,
 // matching a real production incident) never triggered Init() at all under
 // the old code, leaving it stuck in the write backend indefinitely.
+// TestHaproxyShouldRunStandbyInitDebounces guards the debounce contract
+// BackendsStateChange() and Refresh() both rely on to avoid one full HAProxy
+// render+reload per flapping replica per state transition: at most one
+// standby Init() may fire per standbyReloadMinInterval, and a call debounced
+// during that window must leave standbyReloadPending set so a later
+// shouldRunStandbyInit() call (Refresh()'s trailing-edge check, run every
+// monitoring loop pass regardless of further state changes) still applies
+// it -- exercised directly against the two helpers rather than through a
+// real Init() so this doesn't need to spin up an actual HAProxy process or
+// sleep for standbyReloadMinInterval.
+func TestHaproxyShouldRunStandbyInitDebounces(t *testing.T) {
+	proxy := &HaproxyProxy{}
+
+	if !proxy.shouldRunStandbyInit() {
+		t.Fatal("first call should fire immediately (zero-value lastStandbyInit is always outside the cooldown)")
+	}
+	if proxy.hasStandbyReloadPending() {
+		t.Fatal("pending must be false right after a call that fired")
+	}
+
+	if proxy.shouldRunStandbyInit() {
+		t.Fatal("a call within the cooldown window must not fire again")
+	}
+	if !proxy.hasStandbyReloadPending() {
+		t.Fatal("a debounced call must mark standbyReloadPending so a later pass still applies it")
+	}
+
+	if proxy.shouldRunStandbyInit() {
+		t.Fatal("a second call still within the cooldown window must not fire either")
+	}
+	if !proxy.hasStandbyReloadPending() {
+		t.Fatal("pending must stay set across repeated debounced calls")
+	}
+
+	// Simulate the cooldown having elapsed, the way an independent
+	// monitoring-loop Refresh() pass would eventually observe it even with
+	// no further BackendsStateChange() calls.
+	proxy.lastStandbyInit = time.Now().Add(-standbyReloadMinInterval - time.Millisecond)
+	if !proxy.shouldRunStandbyInit() {
+		t.Fatal("a call after the cooldown elapsed must fire and consume the pending mark")
+	}
+	if proxy.hasStandbyReloadPending() {
+		t.Fatal("pending must be cleared once a deferred reload finally fires")
+	}
+}
+
 func TestHaproxyBackendsStateChangeReconcilesWriteBackendInStandbyMode(t *testing.T) {
 	cluster := setupTestCluster(t, 2)
 	defer cleanupTestCluster(t, cluster)

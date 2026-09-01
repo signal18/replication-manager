@@ -62,7 +62,23 @@ type HaproxyProxy struct {
 	// for one happening, so the mark is never cleared automatically).
 	// Guarded by Lock (embedded Proxy).
 	nonPurgeableReadServers map[string]bool
+	// standbyReloadPending and lastStandbyInit debounce haproxy-mode=standby's
+	// full Init() (render+reload) so a burst of state-change events (many
+	// replicas flapping in the same window) triggers at most one reload per
+	// standbyReloadMinInterval instead of one per event. Guarded by Lock
+	// (embedded Proxy). See BackendsStateChange() and the check at the top
+	// of Refresh() for how the trailing event within a debounce window is
+	// still guaranteed to apply.
+	standbyReloadPending bool
+	lastStandbyInit      time.Time
 }
+
+// standbyReloadMinInterval is the minimum spacing BackendsStateChange()
+// enforces between two standby Init() (render+reload) calls. HAProxy's
+// reload itself is a real process fork/exec, not a free operation, so a
+// cluster with several replicas flapping in the same window (e.g. a brief
+// network blip) must not turn into one reload per replica per transition.
+const standbyReloadMinInterval = 2 * time.Second
 
 func (proxy *HaproxyProxy) markPendingReadServer(svname string) {
 	proxy.Lock.Lock()
@@ -421,15 +437,16 @@ func (proxy *HaproxyProxy) Init() {
 	// diverging from runtimeapi's documented behavior for that topology.
 	//
 	// standbyReadIneligible (not hasBrokenReplicationForRead() alone) is used
-	// for both this fresh-reader check and the per-server skip below:
-	// hasBrokenReplicationForRead()'s SlaveErr/RelayErr/... set doesn't cover
-	// Failed/Suspect/ErrorAuth (IsDown()), so a Failed replica would
-	// otherwise count as a "valid" reader here (excluding the leader) while
-	// still being rendered into the read backend itself -- runtimeapi
-	// doesn't share this gap because HAProxy's own health check
-	// independently marks such a replica DOWN regardless of repman's
-	// classification, but standby's render has no equivalent live check to
-	// fall back on.
+	// for this "is there a valid alternative reader" check specifically --
+	// but deliberately NOT for the per-server skip below, which keeps
+	// hasBrokenReplicationForRead() unchanged from before this fix (see its
+	// comment). hasBrokenReplicationForRead()'s SlaveErr/RelayErr/... set
+	// doesn't cover Failed/Suspect/ErrorAuth (IsDown()), so a Failed replica
+	// would otherwise count as a "valid" reader here and wrongly suppress
+	// the leader's own fallback -- runtimeapi doesn't share this gap because
+	// HAProxy's own health check independently marks such a replica DOWN
+	// regardless of repman's classification, but standby's render has no
+	// equivalent live check to fall back on for this specific decision.
 	hasValidReadSlave := false
 	for _, s := range cluster.Servers {
 		if s.IsMaintenance || s.IsLeader() {
@@ -453,8 +470,7 @@ func (proxy *HaproxyProxy) Init() {
 		// haproxy-mode=standby has neither a Runtime API nor an
 		// external-check to exclude a broken replica after the fact --
 		// Init()'s own config generation is the ONLY mechanism, so a server
-		// that's unfit to read from (standbyReadIneligible: broken
-		// replication or down) must simply never be added to the read
+		// with broken replication must simply never be added to the read
 		// backend in the first place. Mirrors the classification Refresh()
 		// uses to DRAIN the same server under haproxy-mode=runtimeapi (see
 		// the runtimeapi-only gate above), so both modes agree on what
@@ -462,8 +478,18 @@ func (proxy *HaproxyProxy) Init() {
 		// static render (before Runtime API add/del ever runs) still lists
 		// every server for older HAProxy versions that lack dynamic
 		// add/del and can only toggle an existing slot's drain state.
+		//
+		// Deliberately hasBrokenReplicationForRead(), not the broader
+		// standbyReadIneligible() used above for the leader-fallback
+		// decision: a Failed/Suspect/ErrorAuth replica's own read-backend
+		// membership is unchanged, pre-existing behavior (relying on
+		// HAProxy's own health check to drain it, same as it always has) --
+		// only the leader's read-on-master* decision needed the wider
+		// IsDown() check, to correctly treat such a replica as "not a valid
+		// alternative reader" without also changing whether it gets
+		// rendered into the backend itself.
 		skipRead := cluster.Conf.HaproxyMode == "standby" &&
-			(server.standbyReadIneligible() || (server.IsLeader() && !masterShouldRead))
+			(server.hasBrokenReplicationForRead() || (server.IsLeader() && !masterShouldRead))
 		if !skipRead {
 			if err := addServerTo(cluster.Conf.HaproxyAPIReadBackend, server, p); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server %s to HAProxy backend %s: %s", server.Id, cluster.Conf.HaproxyAPIReadBackend, err)
@@ -517,6 +543,18 @@ func (proxy *HaproxyProxy) Init() {
 
 func (proxy *HaproxyProxy) Refresh() error {
 	cluster := proxy.ClusterGroup
+
+	// Trailing edge of BackendsStateChange()'s debounce: a state change that
+	// landed inside standbyReloadMinInterval only marked standbyReloadPending
+	// rather than calling Init() immediately. Refresh() runs continuously via
+	// the monitoring loop regardless of further state changes, so checking
+	// here guarantees that mark is applied within one more pass even if
+	// flapping stops before the cooldown elapses and nothing else ever
+	// retries it.
+	if cluster.Conf.HaproxyMode == "standby" && proxy.hasStandbyReloadPending() && proxy.shouldRunStandbyInit() {
+		proxy.Init()
+	}
+
 	stagingsrv := cluster.StagingServer
 	if stagingsrv == nil {
 		stagingsrv = cluster.SetStandaloneAsStaging()
@@ -1763,9 +1801,52 @@ func (proxy *HaproxyProxy) BackendsStateChange() {
 	// all, leaving it stuck in the write backend indefinitely. Route this
 	// event through Init() too so it gets reconciled the same way a
 	// leadership change already does.
-	if proxy.ClusterGroup.Conf.HaproxyMode == "standby" {
+	//
+	// Debounced (standbyReloadMinInterval) rather than calling Init()
+	// directly: this fires once per server per state transition, so
+	// several replicas flapping in the same window (e.g. a brief network
+	// blip) would otherwise mean one full render+reload per event. A call
+	// that lands inside the cooldown only marks standbyReloadPending --
+	// the check at the top of Refresh() guarantees that mark still gets
+	// applied (within one more Refresh() pass, which the monitoring loop
+	// runs continuously regardless of further state changes) even if
+	// flapping stops before the cooldown elapses and no later
+	// BackendsStateChange() call ever arrives to retry it.
+	if proxy.ClusterGroup.Conf.HaproxyMode != "standby" {
+		return
+	}
+	if proxy.shouldRunStandbyInit() {
 		proxy.Init()
 	}
+}
+
+// shouldRunStandbyInit reports whether a standby Init() (render+reload)
+// should run now, enforcing standbyReloadMinInterval: within the cooldown it
+// returns false and marks standbyReloadPending instead of firing, allowing
+// the caller to skip the reload; once the cooldown has elapsed it clears
+// pending, stamps lastStandbyInit, and returns true. Used identically by
+// BackendsStateChange() (leading edge -- a fresh state-change event) and
+// Refresh() (trailing edge -- consuming a mark a prior call left behind), so
+// both agree on the same cooldown window and neither can race the other into
+// double-firing or losing an update.
+func (proxy *HaproxyProxy) shouldRunStandbyInit() bool {
+	proxy.Lock.Lock()
+	defer proxy.Lock.Unlock()
+	if time.Since(proxy.lastStandbyInit) < standbyReloadMinInterval {
+		proxy.standbyReloadPending = true
+		return false
+	}
+	proxy.lastStandbyInit = time.Now()
+	proxy.standbyReloadPending = false
+	return true
+}
+
+// hasStandbyReloadPending reports whether a prior shouldRunStandbyInit()
+// call was debounced (deferred) rather than fired.
+func (proxy *HaproxyProxy) hasStandbyReloadPending() bool {
+	proxy.Lock.Lock()
+	defer proxy.Lock.Unlock()
+	return proxy.standbyReloadPending
 }
 
 func (proxy *HaproxyProxy) CertificatesReload() error {
