@@ -25164,11 +25164,11 @@ const docTemplate = `{
                 "haproxyStatPort": {
                     "type": "integer"
                 },
+                "haproxyUser": {
+                    "type": "string"
+                },
                 "haproxyWritePort": {
                     "type": "integer"
-                },
-                "haproxylUser": {
-                    "type": "string"
                 },
                 "heartbeatTable": {
                     "type": "boolean"

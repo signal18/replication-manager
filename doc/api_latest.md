@@ -14523,8 +14523,8 @@ Status: Internal Server Error
 | haproxyStagingBind | string| `string` |  | |  |  |
 | haproxyStagingPort | string| `string` |  | |  |  |
 | haproxyStatPort | integer| `int64` |  | |  |  |
+| haproxyUser | string| `string` |  | |  |  |
 | haproxyWritePort | integer| `int64` |  | |  |  |
-| haproxylUser | string| `string` |  | |  |  |
 | heartbeatTable | boolean| `bool` |  | |  |  |
 | http-use-react | boolean| `bool` |  | |  |  |
 | httpAuth | boolean| `bool` |  | |  |  |

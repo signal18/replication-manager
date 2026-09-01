@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -334,6 +335,122 @@ func TestSetClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	}
 	if cl.Conf.HaproxyAPIBootstrapServers {
 		t.Fatalf("expected HaproxyAPIBootstrapServers=false after explicit \"off\", got true")
+	}
+}
+
+// TestSetClusterSetting_HaproxyMode guards the haproxy-mode setter: it must
+// accept every documented mode value and reject anything else, since every
+// HaproxyMode == "..." check throughout cluster/prx_haproxy.go and
+// cluster/prov_opensvc_haproxy.go is a plain string comparison that would
+// silently no-op on an unrecognized value.
+func TestSetClusterSetting_HaproxyMode(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	for _, mode := range []string{"standby", "runtimeapi", "externalcheck", "dataplaneapi"} {
+		if err := repman.setClusterSetting(cl, "haproxy-mode", mode); err != nil {
+			t.Fatalf("setClusterSetting(haproxy-mode, %q): unexpected error: %v", mode, err)
+		}
+		if cl.Conf.HaproxyMode != mode {
+			t.Fatalf("expected HaproxyMode=%q, got %q", mode, cl.Conf.HaproxyMode)
+		}
+	}
+
+	cl.Conf.HaproxyMode = "runtimeapi"
+	if err := repman.setClusterSetting(cl, "haproxy-mode", "bogus"); err == nil {
+		t.Fatalf("setClusterSetting(haproxy-mode, \"bogus\"): expected error, got nil")
+	}
+	if cl.Conf.HaproxyMode != "runtimeapi" {
+		t.Fatalf("expected HaproxyMode to remain %q after rejected value, got %q", "runtimeapi", cl.Conf.HaproxyMode)
+	}
+}
+
+// TestSetClusterSetting_HaproxyPorts guards the four haproxy-*-port setters:
+// valid ports must persist, and out-of-range/non-numeric values must be
+// rejected without mutating the existing port.
+func TestSetClusterSetting_HaproxyPorts(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cases := []struct {
+		setting string
+		get     func() int
+	}{
+		{"haproxy-write-port", func() int { return cl.Conf.HaproxyWritePort }},
+		{"haproxy-read-port", func() int { return cl.Conf.HaproxyReadPort }},
+		{"haproxy-stat-port", func() int { return cl.Conf.HaproxyStatPort }},
+		{"haproxy-api-port", func() int { return cl.Conf.HaproxyAPIPort }},
+	}
+
+	for _, c := range cases {
+		if err := repman.setClusterSetting(cl, c.setting, "4406"); err != nil {
+			t.Fatalf("setClusterSetting(%s, \"4406\"): unexpected error: %v", c.setting, err)
+		}
+		if c.get() != 4406 {
+			t.Fatalf("expected %s=4406, got %d", c.setting, c.get())
+		}
+
+		for _, bad := range []string{"not-a-port", "0", "70000"} {
+			if err := repman.setClusterSetting(cl, c.setting, bad); err == nil {
+				t.Fatalf("setClusterSetting(%s, %q): expected error, got nil", c.setting, bad)
+			}
+			if c.get() != 4406 {
+				t.Fatalf("expected %s to remain 4406 after rejected value %q, got %d", c.setting, bad, c.get())
+			}
+		}
+	}
+}
+
+// TestSetClusterSetting_HaproxyPassword guards the haproxy-password setter:
+// the value arrives base64-encoded (matching the GUI's TextForm/btoa
+// convention for password fields, e.g. mail-smtp-password) and must land in
+// both Conf.HaproxyPassword and the tracked Secrets map so
+// GetDecryptedValue("haproxy-password") reflects it.
+func TestSetClusterSetting_HaproxyPassword(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	encoded := base64.StdEncoding.EncodeToString([]byte("s3cr3t"))
+	if err := repman.setClusterSetting(cl, "haproxy-password", encoded); err != nil {
+		t.Fatalf("setClusterSetting(haproxy-password): unexpected error: %v", err)
+	}
+	if cl.Conf.HaproxyPassword != "s3cr3t" {
+		t.Fatalf("expected HaproxyPassword=%q, got %q", "s3cr3t", cl.Conf.HaproxyPassword)
+	}
+	if got := cl.Conf.GetDecryptedValue("haproxy-password"); got != "s3cr3t" {
+		t.Fatalf("expected GetDecryptedValue(haproxy-password)=%q, got %q", "s3cr3t", got)
+	}
+
+	if err := repman.setClusterSetting(cl, "haproxy-password", "not-valid-base64!!"); err == nil {
+		t.Fatalf("setClusterSetting(haproxy-password, invalid base64): expected error, got nil")
+	}
+}
+
+// TestGetApiChangeLogFormat_HaproxyPasswordRedacted guards F10 (never leak a
+// secret in logs): haproxy-password must hit GetApiChangeLogFormat's redact
+// case, the same way mail-smtp-password/backup-restic-password do, so the
+// "API receive set setting" INFO log setClusterSetting emits never contains
+// the raw or base64-encoded password.
+func TestGetApiChangeLogFormat_HaproxyPasswordRedacted(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString([]byte("s3cr3t"))
+
+	fmtlog, args := GetApiChangeLogFormat("haproxy-password", encoded)
+	if fmtlog != "API receive set setting %s to ****" {
+		t.Fatalf("expected redacted log format, got %q", fmtlog)
+	}
+	if len(args) != 1 || args[0] != "haproxy-password" {
+		t.Fatalf("expected args=[haproxy-password], got %v", args)
+	}
+
+	rendered := fmt.Sprintf(fmtlog, args...)
+	if strings.Contains(rendered, "s3cr3t") || strings.Contains(rendered, encoded) {
+		t.Fatalf("rendered log line leaked the password: %q", rendered)
 	}
 }
 
