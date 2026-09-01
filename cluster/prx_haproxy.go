@@ -195,7 +195,18 @@ func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *Haproxy
 	prx.ReadWritePort = conf.HaproxyWritePort
 	prx.Name = proxyHost
 	prx.Host = proxyHost
-	if conf.ProvNetCNI {
+	// haproxy-mode=standby always runs co-located with repman (Init(),
+	// below, renders+reloads it via a local PID regardless of the cluster's
+	// own orchestrator) -- prx.Host there must stay whatever
+	// locally-reachable address the operator configured via haproxy-servers
+	// (127.0.0.1 by default), never the CNI-rewritten Service DNS name
+	// below. That rewrite is for runtimeapi/externalcheck, which genuinely
+	// are deployed as a separate orchestrator-managed resource repman only
+	// reaches over the network -- applying it to standby would have Init()
+	// render a "stats socket ipv4@<service dns>:<port>" bind
+	// (share/haproxy_config.template) that the local HAProxy process can't
+	// bind to.
+	if conf.ProvNetCNI && conf.HaproxyMode != "standby" {
 		prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
 	}
 	prx.User = conf.HaproxyUser
@@ -206,7 +217,7 @@ func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *Haproxy
 
 func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HAProxy on same host")
-	flags.StringVar(&conf.HaproxyMode, "haproxy-mode", "runtimeapi", "HAProxy mode [standby|runtimeapi|dataplaneapi]")
+	flags.StringVar(&conf.HaproxyMode, "haproxy-mode", "runtimeapi", "HAProxy mode [standby|runtimeapi|externalcheck|dataplaneapi]")
 	flags.BoolVar(&conf.HaproxyDebug, "haproxy-debug", true, "Extra info on monitoring backend")
 	flags.IntVar(&conf.HaproxyLogLevel, "log-level-haproxy", 1, "Log level for debug")
 	flags.StringVar(&conf.HaproxyUser, "haproxy-user", "admin", "HAProxy API user")
@@ -233,6 +244,40 @@ func (proxy *HaproxyProxy) Init() {
 	if _, err := os.Stat(haproxydatadir); os.IsNotExist(err) {
 		proxy.GetProxyConfig()
 		os.Symlink(proxy.Datadir+"/init/data", haproxydatadir)
+	}
+
+	// Everything below builds, renders, and reloads a *local* haproxy.cfg on
+	// this (the repman server's) host. Two independent reasons a mode
+	// reaches this point:
+	//
+	//  - The Localhost orchestrator: HAProxy always runs co-located with
+	//    repman there, for every mode (runtimeapi, externalcheck, standby).
+	//    externalcheck additionally gets its checkmaster/checkslave scripts
+	//    written to proxy.Datadir/init/ and wired into the rendered config
+	//    via external-check (writeLocalhostHaproxyCheckScripts below) --
+	//    Localhost has no container image to swap the way OpenSVC/etc. do,
+	//    so this is externalcheck's only broken-replica exclusion mechanism
+	//    there. runtimeapi still renders a plain config with no check
+	//    scripts; its ongoing state comes from Refresh()'s Runtime API
+	//    calls instead.
+	//  - haproxy-mode=standby specifically, regardless of orchestrator:
+	//    standby always runs its HAProxy instance co-located with repman --
+	//    started/reloaded via its local PID -- even when the cluster's
+	//    databases are provisioned elsewhere (OpenSVC, etc.); prov.go's
+	//    proxyServiceOrchestrator() already routes standby's
+	//    Start/Stop/(Un)ProvisionProxyService calls to the Localhost*
+	//    implementations for exactly this reason.
+	//
+	// Every other mode on a non-Localhost orchestrator (runtimeapi,
+	// externalcheck) is deployed by the cluster's own orchestrator instead,
+	// so this local render+reload has nothing to do there; those proxies
+	// bootstrap once via the config-fetch tarball path
+	// (server/api_database.go, GetProxyConfig() above already covers that
+	// one-time fetch) and then keep current via runtimeapi's own Runtime
+	// API calls or externalcheck's own remote check scripts -- never via a
+	// full local re-render.
+	if cluster.GetOrchestrator() != config.ConstOrchestratorLocalhost && cluster.Conf.HaproxyMode != "standby" {
+		return
 	}
 	//haproxysockFile := "haproxy.stats.sock"
 
@@ -282,7 +327,34 @@ func (proxy *HaproxyProxy) Init() {
 	if result, _ := haConfig.GetFrontend("my_write_frontend"); result.Name != "my_write_frontend" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy failed to add frontend write")
 	}
+	// haproxy-mode=externalcheck: repman does nothing at runtime -- HAProxy's
+	// own external-check calls back into repman's /master-status and
+	// /slave-status APIs to decide backend membership, mirroring OpenSVC's
+	// haproxy_check.cfg (share/opensvc/moduleset_mariadb.svc.mrm.proxy.json).
+	// Localhost has no container image to swap, so the scripts are written
+	// straight to proxy.Datadir/init/ instead. This is distinct from
+	// haproxy-mode=standby, which has no external check either -- standby's
+	// read-backend membership is decided directly by Init()'s server loop
+	// below instead (see the isHaproxyReadEligible filter).
+	var checkmasterPath, checkslavePath string
+	if cluster.Conf.HaproxyMode == "externalcheck" {
+		var err error
+		checkmasterPath, checkslavePath, err = proxy.writeLocalhostHaproxyCheckScripts()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Could not write HAProxy externalcheck scripts: %s", err)
+			checkmasterPath, checkslavePath = "", ""
+		} else {
+			haConfig.ExternalCheck = true
+			haConfig.InsecureForkWanted = true
+		}
+	}
+
 	bew := haproxy.Backend{Name: cluster.Conf.HaproxyAPIWriteBackend, Mode: "tcp"}
+	if checkmasterPath != "" {
+		bew.ExternalCheck = true
+		bew.ExternalCheckPath = "/usr/bin:/bin"
+		bew.ExternalCheckCommand = checkmasterPath
+	}
 	haConfig.AddBackend(&bew)
 
 	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: cluster.Conf.HaproxyAPIReadBackend, BindPort: cluster.Conf.HaproxyReadPort, BindIp: cluster.Conf.HaproxyReadBindIp}
@@ -299,19 +371,68 @@ func (proxy *HaproxyProxy) Init() {
 	/* End add front end */
 
 	ber := haproxy.Backend{Name: cluster.Conf.HaproxyAPIReadBackend, Mode: "tcp"}
+	if checkslavePath != "" {
+		ber.ExternalCheck = true
+		ber.ExternalCheckPath = "/usr/bin:/bin"
+		ber.ExternalCheckCommand = checkslavePath
+	}
 	if err := haConfig.AddBackend(&ber); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy failed to add backend for "+cluster.Conf.HaproxyAPIReadBackend)
 	}
 
-	//var checksum64 string
-	//	crcHost := crc64.MakeTable(crc64.ECMA)
+	// addServerTo builds this iteration's server entry fresh and adds it to
+	// backend, logging (not failing) on error -- kept as one place so the
+	// read and write backends below can't drift into different server
+	// details for the same server. AddServer returns *haproxy.Error, not
+	// the error interface -- returning it directly here would wrap a nil
+	// *Error in a non-nil error interface (Go's classic typed-nil trap),
+	// making every call look like a failure even on success. The explicit
+	// nil check below avoids that.
+	addServerTo := func(backend string, server *ServerMonitor, port int) error {
+		if err := haConfig.AddServer(backend, &haproxy.ServerDetail{
+			Name: server.Id, Host: server.Host, Port: port,
+			Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000,
+		}); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	for _, server := range cluster.Servers {
-		if !server.IsMaintenance {
-			p, _ := strconv.Atoi(server.Port)
-			//		checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(server.Host+":"+server.Port), crcHost))
-			s := haproxy.ServerDetail{Name: server.Id, Host: server.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
-			if err := haConfig.AddServer(cluster.Conf.HaproxyAPIReadBackend, &s); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server in HAProxy for "+cluster.Conf.HaproxyAPIReadBackend)
+		if server.IsMaintenance {
+			continue
+		}
+		p, _ := strconv.Atoi(server.Port)
+
+		// haproxy-mode=standby has neither a Runtime API nor an
+		// external-check to exclude a broken replica after the fact --
+		// Init()'s own config generation is the ONLY mechanism, so a server
+		// with broken replication must simply never be added to the read
+		// backend in the first place. Mirrors the classification Refresh()
+		// uses to DRAIN the same server under haproxy-mode=runtimeapi (see
+		// the runtimeapi-only gate above), so both modes agree on what
+		// "broken" means; scoped to standby only so runtimeapi's own initial
+		// static render (before Runtime API add/del ever runs) still lists
+		// every server for older HAProxy versions that lack dynamic
+		// add/del and can only toggle an existing slot's drain state.
+		skipRead := cluster.Conf.HaproxyMode == "standby" && server.hasBrokenReplicationForRead()
+		if !skipRead {
+			if err := addServerTo(cluster.Conf.HaproxyAPIReadBackend, server, p); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server %s to HAProxy backend %s: %s", server.Id, cluster.Conf.HaproxyAPIReadBackend, err)
+			}
+		}
+
+		// Failover()/switchover for haproxy-mode=standby only ever calls
+		// Init() again -- there's no Runtime API patch step afterward -- so
+		// this is the one place write-backend membership can track topology
+		// at all. Delete-then-add keeps it idempotent across repeated
+		// Init() calls on an unchanged leader, and actually drops a server
+		// that just lost leadership instead of leaving it (and any
+		// never-added replica) stuck UP in the write group.
+		haConfig.DeleteServer(cluster.Conf.HaproxyAPIWriteBackend, server.Id)
+		if server.IsLeader() {
+			if err := addServerTo(cluster.Conf.HaproxyAPIWriteBackend, server, p); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server %s to HAProxy backend %s: %s", server.Id, cluster.Conf.HaproxyAPIWriteBackend, err)
 			}
 		}
 	}
@@ -320,17 +441,29 @@ func (proxy *HaproxyProxy) Init() {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Could not create haproxy config %s", err)
 	}
-	if cluster.Conf.HaproxyMode == "standby" {
-		if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy set pid %s", err)
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy reload config on pid %s", haConfig.PidFile)
-		}
+	// Reaching here already implies either the Localhost orchestrator (any
+	// mode) or haproxy-mode=standby (any orchestrator) -- see the early
+	// return above -- so haRuntime.Reload()'s exec of a local haproxy binary
+	// against this rendered config's local stats-socket bind address is
+	// meaningful in every case that gets this far, not just standby.
+	// Unconditional: externalcheck/runtimeapi on Localhost only ever call
+	// Init() once (at provision/start -- Failover()/BackendsStateChange()/
+	// setReadBackendMaintenance() only route back into Init() for standby),
+	// and that one call is the only thing that ever execs the haproxy
+	// binary at all for those modes on this orchestrator. Gating this on
+	// haproxy-mode=="standby" the way the rest of this function's mode
+	// branches do would leave externalcheck's checkmaster/checkslave wiring
+	// and runtimeapi's config both fully rendered to disk but never actually
+	// read by a running process.
+	if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy set pid %s", err)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy reload config on pid %s", haConfig.PidFile)
+	}
 
-		err = haRuntime.Reload(&haConfig)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Can't reload haproxy config %s", err)
-		}
+	err = haRuntime.Reload(&haConfig)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Can't reload haproxy config %s", err)
 	}
 }
 
@@ -510,6 +643,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 					Host:           srv.Host,
 					Port:           srv.Port,
 					Status:         srv.State,
+					Svname:         line[1],
 					PrxName:        line[73],
 					PrxStatus:      line[17],
 					PrxConnections: line[5],
@@ -532,28 +666,38 @@ func (proxy *HaproxyProxy) Refresh() error {
 					foundMasterInStat = true
 					proxy.BackendsWrite = append(proxy.BackendsWrite, bkw)
 
-					if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
-						if !srv.IsStandAlone() {
-							if stagingsrv != nil {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "[Staging] Detecting wrong master server in haproxy %s fixing it to standalone %s %s", proxy.Host+":"+proxy.Port, stagingsrv.Host, stagingsrv.Port)
-								res, err := haRuntime.SetMaster(cluster.Conf.HaproxyStagingBackend, stagingsrv.Host, stagingsrv.Port)
-								if msg, failed := haproxyCmdFailed(err, res); failed {
-									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, msg, stagingsrv.Host+":"+stagingsrv.Port)
-								} else {
-									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, res, stagingsrv.Host+":"+stagingsrv.Port)
+					// Runtime API write-backend mutation is runtimeapi-only.
+					// standby propagates topology exclusively through
+					// Init()/Failover() (full config regen + reload, see
+					// setReadBackendMaintenance/Failover) -- Refresh() only
+					// reports status for standby, it never patches state, so
+					// there's no dependency here on checkmaster's external-check
+					// working, and no separate Runtime-API-vs-Init() path to
+					// keep in sync.
+					if cluster.Conf.HaproxyMode == "runtimeapi" {
+						if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
+							if !srv.IsStandAlone() {
+								if stagingsrv != nil {
+									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "[Staging] Detecting wrong master server in haproxy %s fixing it to standalone %s %s", proxy.Host+":"+proxy.Port, stagingsrv.Host, stagingsrv.Port)
+									res, err := haRuntime.SetMaster(cluster.Conf.HaproxyStagingBackend, stagingsrv.Host, stagingsrv.Port)
+									if msg, failed := haproxyCmdFailed(err, res); failed {
+										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, msg, stagingsrv.Host+":"+stagingsrv.Port)
+									} else {
+										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, res, stagingsrv.Host+":"+stagingsrv.Port)
+									}
 								}
 							}
-						}
-					} else {
-						if !srv.IsMaster() {
-							master := cluster.GetMaster()
-							if master != nil {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s %s", proxy.Host+":"+proxy.Port, master.Host, master.Port)
-								res, err := haRuntime.SetMaster(cluster.Conf.HaproxyAPIWriteBackend, master.Host, master.Port)
-								if msg, failed := haproxyCmdFailed(err, res); failed {
-									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, msg, master.Host+":"+master.Port)
-								} else {
-									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, res, master.Host+":"+master.Port)
+						} else {
+							if !srv.IsMaster() {
+								master := cluster.GetMaster()
+								if master != nil {
+									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s %s", proxy.Host+":"+proxy.Port, master.Host, master.Port)
+									res, err := haRuntime.SetMaster(cluster.Conf.HaproxyAPIWriteBackend, master.Host, master.Port)
+									if msg, failed := haproxyCmdFailed(err, res); failed {
+										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, msg, master.Host+":"+master.Port)
+									} else {
+										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, res, master.Host+":"+master.Port)
+									}
 								}
 							}
 						}
@@ -615,15 +759,36 @@ func (proxy *HaproxyProxy) Refresh() error {
 
 				proxy.BackendsRead = append(proxy.BackendsRead, bkr)
 
-				if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
-					if stagingsrv != nil {
-						if srv.Id == stagingsrv.Id { // Only activate staging server for read
-							if line[17] == "DRAIN" {
-								if proxy.isPendingReadServer(bkr.Svname) {
-									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlWarn, "HAProxy skipping ready for staging server %s: its Runtime API add sequence never completed successfully", srv.URL)
-								} else {
-									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy staging is DRAIN in haproxy %s for server %s", proxy.Host+":"+proxy.Port, srv.URL)
-									res, err := haRuntime.SetReady(bkr.Svname, cluster.Conf.HaproxyAPIReadBackend)
+				// Runtime API read-backend mutation is runtimeapi-only,
+				// mirroring the write-backend gate above -- standby relies
+				// on checkslave's external-check (option external-check,
+				// HAProxy's own health check against repman's own
+				// /slave-status API) to control read-backend membership.
+				// Refresh() only reports status for standby; issuing a
+				// competing SetDrain/SetReady here would race against
+				// checkslave's own independent polling interval instead of
+				// deferring to it.
+				if cluster.Conf.HaproxyMode == "runtimeapi" {
+					if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
+						if stagingsrv != nil {
+							if srv.Id == stagingsrv.Id { // Only activate staging server for read
+								if line[17] == "DRAIN" {
+									if proxy.isPendingReadServer(bkr.Svname) {
+										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlWarn, "HAProxy skipping ready for staging server %s: its Runtime API add sequence never completed successfully", srv.URL)
+									} else {
+										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy staging is DRAIN in haproxy %s for server %s", proxy.Host+":"+proxy.Port, srv.URL)
+										res, err := haRuntime.SetReady(bkr.Svname, cluster.Conf.HaproxyAPIReadBackend)
+										if msg, failed := haproxyCmdFailed(err, res); failed {
+											cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
+										} else {
+											cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, res, srv.Host+":"+srv.Port)
+										}
+									}
+								}
+							} else { // Deactivate other servers
+								if line[17] == "UP" {
+									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy non-staging backend state is UP in haproxy %s for server %s", proxy.Host+":"+proxy.Port, srv.URL)
+									res, err := haRuntime.SetDrain(bkr.Svname, cluster.Conf.HaproxyAPIReadBackend)
 									if msg, failed := haproxyCmdFailed(err, res); failed {
 										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
 									} else {
@@ -631,48 +796,40 @@ func (proxy *HaproxyProxy) Refresh() error {
 									}
 								}
 							}
-						} else { // Deactivate other servers
-							if line[17] == "UP" {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy non-staging backend state is UP in haproxy %s for server %s", proxy.Host+":"+proxy.Port, srv.URL)
-								res, err := haRuntime.SetDrain(bkr.Svname, cluster.Conf.HaproxyAPIReadBackend)
+						}
+					} else {
+						if (srv.State == stateSlaveErr || srv.State == stateRelayErr || srv.State == stateSlaveLate || srv.State == stateRelayLate || srv.IsIgnored()) && line[17] == "UP" || srv.State == stateWsrepLate || srv.State == stateWsrepDonor {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy detecting broken replication and UP state in haproxy %s drain server %s (%s)", proxy.Host+":"+proxy.Port, srv.Id, srv.URL)
+							res, err := haRuntime.SetDrain(bkr.Svname, cluster.Conf.HaproxyAPIReadBackend)
+							if msg, failed := haproxyCmdFailed(err, res); failed {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
+							} else {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, res, srv.Host+":"+srv.Port)
+								proxy.setLastReadBackendStatus("DRAIN")
+							}
+						}
+						if (srv.State == stateSlave || srv.State == stateRelay || (srv.State == stateWsrep && !srv.IsLeader())) && line[17] == "DRAIN" && !srv.IsIgnored() {
+							if proxy.isPendingReadServer(bkr.Svname) {
+								// A server stuck pending (failed add + failed
+								// rollback) reports DRAIN with otherwise-healthy
+								// replication; without this check it would be
+								// promoted despite health checks possibly never
+								// having been activated.
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlWarn, "HAProxy skipping ready for server %s: its Runtime API add sequence never completed successfully", srv.URL)
+							} else {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy valid replication and DRAIN state in haproxy %s enable traffic on server %s", proxy.Host+":"+proxy.Port, srv.URL)
+								res, err := haRuntime.SetReady(bkr.Svname, cluster.Conf.HaproxyAPIReadBackend)
 								if msg, failed := haproxyCmdFailed(err, res); failed {
 									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
 								} else {
 									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, res, srv.Host+":"+srv.Port)
+									proxy.setLastReadBackendStatus("UP")
 								}
 							}
 						}
 					}
-				} else {
-					if (srv.State == stateSlaveErr || srv.State == stateRelayErr || srv.State == stateSlaveLate || srv.State == stateRelayLate || srv.IsIgnored()) && line[17] == "UP" || srv.State == stateWsrepLate || srv.State == stateWsrepDonor {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy detecting broken replication and UP state in haproxy %s drain server %s (%s)", proxy.Host+":"+proxy.Port, srv.Id, srv.URL)
-						res, err := haRuntime.SetDrain(bkr.Svname, cluster.Conf.HaproxyAPIReadBackend)
-						if msg, failed := haproxyCmdFailed(err, res); failed {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
-						} else {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, res, srv.Host+":"+srv.Port)
-							proxy.setLastReadBackendStatus("DRAIN")
-						}
-					}
-					if (srv.State == stateSlave || srv.State == stateRelay || (srv.State == stateWsrep && !srv.IsLeader())) && line[17] == "DRAIN" && !srv.IsIgnored() {
-						if proxy.isPendingReadServer(bkr.Svname) {
-							// A server stuck pending (failed add + failed
-							// rollback) reports DRAIN with otherwise-healthy
-							// replication; without this check it would be
-							// promoted despite health checks possibly never
-							// having been activated.
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlWarn, "HAProxy skipping ready for server %s: its Runtime API add sequence never completed successfully", srv.URL)
-						} else {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy valid replication and DRAIN state in haproxy %s enable traffic on server %s", proxy.Host+":"+proxy.Port, srv.URL)
-							res, err := haRuntime.SetReady(bkr.Svname, cluster.Conf.HaproxyAPIReadBackend)
-							if msg, failed := haproxyCmdFailed(err, res); failed {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
-							} else {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, res, srv.Host+":"+srv.Port)
-								proxy.setLastReadBackendStatus("UP")
-							}
-						}
-					}
+				}
+				if !(cluster.Conf.TopologyStaging && proxy.IsInStaging()) {
 					if srv.IsMaster() {
 						masterReadFound = true
 						masterReadSvname = bkr.Svname
@@ -705,7 +862,10 @@ func (proxy *HaproxyProxy) Refresh() error {
 			}
 		}
 	}
-	if masterReadFound {
+	// Same runtimeapi-only gate as the per-server loop above: standby
+	// leaves read-backend master-reader reconciliation to checkslave's
+	// external-check, not a competing Runtime API patch here.
+	if masterReadFound && cluster.Conf.HaproxyMode == "runtimeapi" {
 		shouldRead := proxy.masterShouldBeReader()
 		if !shouldRead && masterReadStatus == "UP" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy master is not configured as reader but state is UP in haproxy %s", proxy.Host+":"+proxy.Port)
@@ -728,7 +888,9 @@ func (proxy *HaproxyProxy) Refresh() error {
 			}
 		}
 	}
-	if !foundMasterInStat {
+	// Same runtimeapi-only gate as above: fires when no write-backend row
+	// resolved to a known ServerMonitor at all.
+	if !foundMasterInStat && cluster.Conf.HaproxyMode == "runtimeapi" {
 		if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
 			if stagingsrv != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "[Staging] HAProxy has standalone in cluster but not in haproxy %s fixing it to standalone %s %s", proxy.Host+":"+proxy.Port, stagingsrv.Host, stagingsrv.Port)
@@ -785,6 +947,18 @@ func (proxy *HaproxyProxy) HasAvailableReader() bool {
 		}
 	}
 	return false
+}
+
+// hasBrokenReplicationForRead reports whether server's replication state
+// disqualifies it from the HAProxy read backend -- the same classification
+// Refresh() uses to DRAIN a server under haproxy-mode=runtimeapi (see the
+// runtimeapi-only gate in Refresh()), reused here so Init()'s
+// haproxy-mode=standby config generation excludes it up front instead.
+func (server *ServerMonitor) hasBrokenReplicationForRead() bool {
+	return server.State == stateSlaveErr || server.State == stateRelayErr ||
+		server.State == stateSlaveLate || server.State == stateRelayLate ||
+		server.State == stateWsrepLate || server.State == stateWsrepDonor ||
+		server.IsIgnored()
 }
 
 // masterShouldBeReader reports whether the master/leader should be a member
@@ -995,8 +1169,14 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 	}
 	// Read-backend servers are only named after server.Id in "runtimeapi"
 	// mode; the OpenSVC-driven config path (cluster/prx_get.go) names them
-	// positionally ("server1", "server2", ...) in standby/dataplaneapi mode,
-	// where this reconciliation would treat real entries as stale.
+	// positionally ("server1", "server2", ...) in externalcheck/dataplaneapi
+	// mode, where this reconciliation would treat real entries as stale.
+	// standby never reaches this code at all -- its proxy service is always
+	// dispatched to the Localhost* handlers regardless of the cluster's own
+	// orchestrator (proxyServiceOrchestrator, cluster/prov.go), and Init()
+	// (this file) names its own servers by server.Id too, same as
+	// runtimeapi -- but its topology propagation is a full local
+	// re-render/reload, never this Runtime API reconciliation.
 	if cluster.Conf.HaproxyMode != "runtimeapi" {
 		return
 	}
@@ -1423,6 +1603,17 @@ func (proxy *HaproxyProxy) setReadBackendMaintenance(server *ServerMonitor) bool
 		// as not-confirmed rather than assume it landed.
 		return false
 	}
+	if cluster.Conf.HaproxyMode == "externalcheck" {
+		// externalcheck's read-backend eligibility is decided entirely by
+		// checkslave's own external-check polling of repman's HTTP
+		// handlers (docs.signal18.io: "do nothing but when provisioning,
+		// set external check script ... and HAProxy config file using
+		// external checks"). Issuing a Runtime API maint/ready call here
+		// too, the way the runtimeapi branch below does, would race a
+		// second source of truth against checkslave's own decision for
+		// the same server — so this mode intentionally does nothing.
+		return false
+	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy set maintenance for server %s ", server.URL)
 
@@ -1498,6 +1689,19 @@ func (proxy *HaproxyProxy) Failover() {
 
 func (proxy *HaproxyProxy) BackendsStateChange() {
 	proxy.Refresh()
+
+	// Refresh() deliberately never mutates the write backend for
+	// haproxy-mode=standby (see the comment in Init()'s server loop) --
+	// but BackendsStateChange() fires on every meaningful server state
+	// change (cluster/srv.go), not just on an actual failover/switchover.
+	// A replica that breaks replication without the master ever changing
+	// (e.g. Slave -> SlaveErr) would otherwise never trigger Init() at
+	// all, leaving it stuck in the write backend indefinitely. Route this
+	// event through Init() too so it gets reconciled the same way a
+	// leadership change already does.
+	if proxy.ClusterGroup.Conf.HaproxyMode == "standby" {
+		proxy.Init()
+	}
 }
 
 func (proxy *HaproxyProxy) CertificatesReload() error {

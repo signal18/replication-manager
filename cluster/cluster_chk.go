@@ -1603,6 +1603,15 @@ func (cluster *Cluster) CheckNeedConfigFetch() {
 		}
 		srv.CheckNeedConfigFetch()
 	}
+	for _, prx := range cluster.Proxies {
+		if prx == nil {
+			continue
+		}
+		if prx.IsIgnored() {
+			continue
+		}
+		prx.CheckNeedConfigFetch()
+	}
 }
 
 // CheckDummyConfigSendCookies checks all servers for dummy config send cookies and sends configs
