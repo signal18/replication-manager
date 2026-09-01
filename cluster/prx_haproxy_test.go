@@ -1685,6 +1685,180 @@ backend {{.Name}}
 	}
 }
 
+// TestHaproxyFailoverPopulatesWriteBackendInExternalCheckMode guards against a
+// live-reproduced regression: haproxy-mode=externalcheck's write backend is
+// only ever populated by Init() (Refresh() deliberately never touches it,
+// same as standby -- see the runtimeapi-only gates in Refresh() and the
+// comment in Init()'s server loop), so Failover() -- called on every real
+// failover AND switchover via cluster.failoverProxies() -- must call Init()
+// for externalcheck too, exactly like it already does for standby. Before
+// this fix, Failover() only special-cased "standby", leaving externalcheck's
+// write backend permanently pointed at the old (now demoted/dead) leader
+// after every failover and switchover.
+//
+// This also exercises externalcheck's write-backend shape: every server gets
+// a static entry (mirroring the read backend, and what K8s/OpenSVC already
+// ship via GetConfigProxyModule), not just whoever IsLeader() says is master
+// -- checkmaster's own live poll (option external-check, wired in below)
+// decides which entry actually reports UP, so both the old and new leader
+// stay listed in the rendered config across a failover; only the health
+// state HAProxy reports for each (not exercised by this render-only test)
+// changes.
+func TestHaproxyFailoverPopulatesWriteBackendInExternalCheckMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "externalcheck",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+		MonitorAddress:         "127.0.0.1",
+		HttpPort:               "10001",
+	}
+
+	// server2 was just elected the new leader by a failover/switchover that
+	// already ran -- this is Failover()'s view of the post-election world,
+	// matching what cluster.failoverProxies() calls it with.
+	oldMaster := cluster.Servers[0]
+	oldMaster.Id = "server1"
+	oldMaster.Host = "127.0.0.1"
+	oldMaster.Port = "3306"
+	oldMaster.State = stateSlave
+	oldMaster.IsSlave = true
+	oldMaster.ClusterGroup = cluster
+
+	newMaster := cluster.Servers[1]
+	newMaster.Id = "server2"
+	newMaster.Host = "127.0.0.1"
+	newMaster.Port = "3307"
+	newMaster.State = stateMaster
+	newMaster.ClusterGroup = cluster
+
+	cluster.master = newMaster
+	cluster.slaves = []*ServerMonitor{oldMaster}
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+
+	proxy.Failover()
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Failover() did not trigger Init() to render a config file: %v", err)
+	}
+	writeSection := haproxyBackendSection(t, string(rendered), "service_write")
+	if !strings.Contains(writeSection, "server server2 127.0.0.1:3307") {
+		t.Fatalf("write backend does not contain the newly-elected leader after Failover():\n%s", writeSection)
+	}
+	if !strings.Contains(writeSection, "server server1 127.0.0.1:3306") {
+		t.Fatalf("write backend does not contain the old leader after Failover() -- externalcheck must list every candidate and let checkmaster decide who's UP, not drop non-leaders from the config:\n%s", writeSection)
+	}
+	if !strings.Contains(writeSection, "option external-check") {
+		t.Fatalf("write backend does not wire in checkmaster via external-check, so nothing would ever decide which listed server is actually the write target:\n%s", writeSection)
+	}
+}
+
+// TestHaproxyInitWriteBackendSurvivesUnresolvedLeaderInExternalCheckMode
+// guards the root cause behind
+// TestHaproxyFailoverPopulatesWriteBackendInExternalCheckMode's regression:
+// on a freshly-provisioned cluster, Init() can run before the monitoring
+// loop has ever determined a leader (IsLeader() false for every server,
+// live-reproduced via temporary instrumentation during the investigation
+// that found this). Because externalcheck's write backend now lists every
+// server unconditionally -- the same shape as the read backend -- instead of
+// only whoever IsLeader() says is master, this race can no longer leave the
+// write backend empty: rendering never depends on leader election having
+// resolved at all.
+func TestHaproxyInitWriteBackendSurvivesUnresolvedLeaderInExternalCheckMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "externalcheck",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+		MonitorAddress:         "127.0.0.1",
+		HttpPort:               "10001",
+	}
+
+	// No cluster.master assigned, and no server has State == stateMaster --
+	// IsLeader() is false for both, matching Init()'s very first call on a
+	// cluster the monitoring loop hasn't finished discovering yet.
+	server1 := cluster.Servers[0]
+	server1.Id = "server1"
+	server1.Host = "127.0.0.1"
+	server1.Port = "3306"
+	server1.ClusterGroup = cluster
+
+	server2 := cluster.Servers[1]
+	server2.Id = "server2"
+	server2.Host = "127.0.0.1"
+	server2.Port = "3307"
+	server2.ClusterGroup = cluster
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+
+	proxy.Init()
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	writeSection := haproxyBackendSection(t, string(rendered), "service_write")
+	if !strings.Contains(writeSection, "server server1 127.0.0.1:3306") || !strings.Contains(writeSection, "server server2 127.0.0.1:3307") {
+		t.Fatalf("write backend must list every server even when no leader has been resolved yet -- this is what makes the startup race structurally impossible:\n%s", writeSection)
+	}
+}
+
 // TestHaproxyAddServerToDoesNotWrapTypedNilError guards against Init()'s
 // addServerTo closure regressing to Go's classic typed-nil-in-interface
 // trap: haproxy.Config.AddServer returns *haproxy.Error (a concrete pointer

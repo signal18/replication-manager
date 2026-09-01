@@ -496,17 +496,38 @@ func (proxy *HaproxyProxy) Init() {
 			}
 		}
 
-		// Failover()/switchover for haproxy-mode=standby only ever calls
-		// Init() again -- there's no Runtime API patch step afterward -- so
-		// this is the one place write-backend membership can track topology
-		// at all. Delete-then-add keeps it idempotent across repeated
+		// haproxy-mode=externalcheck's write backend mirrors the read
+		// backend's shape above: every non-maintenance server gets a static
+		// entry, and HAProxy's own external-check (checkmaster, invoked per
+		// server with that server's own address as $3/$4, same as
+		// checkslave above) decides live which one is actually master and
+		// reports it UP -- exactly the mechanism already used for
+		// read-backend eligibility, and exactly what K8s/OpenSVC already
+		// ship (GetConfigProxyModule's per-server "serverN" write-backend
+		// entries, cluster/prx_get.go). Rendering every candidate here
+		// instead of only today's leader closes two gaps at once: a
+		// leadership change no longer needs a re-render at all (checkmaster's
+		// next poll just flips which slot reports UP), and the render can
+		// never race leader election on first provisioning, since inclusion
+		// no longer depends on IsLeader() having resolved yet.
+		//
+		// standby has no external-check at all -- Init() re-render really is
+		// the only mechanism there, hence Failover()/BackendsStateChange()
+		// re-running it -- so it keeps the single up-to-date "leader" entry
+		// instead. Delete-then-add keeps that idempotent across repeated
 		// Init() calls on an unchanged leader, and actually drops a server
 		// that just lost leadership instead of leaving it (and any
 		// never-added replica) stuck UP in the write group.
-		haConfig.DeleteServer(cluster.Conf.HaproxyAPIWriteBackend, server.Id)
-		if server.IsLeader() {
+		if cluster.Conf.HaproxyMode == "externalcheck" {
 			if err := addServerTo(cluster.Conf.HaproxyAPIWriteBackend, server, p); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server %s to HAProxy backend %s: %s", server.Id, cluster.Conf.HaproxyAPIWriteBackend, err)
+			}
+		} else {
+			haConfig.DeleteServer(cluster.Conf.HaproxyAPIWriteBackend, server.Id)
+			if server.IsLeader() {
+				if err := addServerTo(cluster.Conf.HaproxyAPIWriteBackend, server, p); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Failed to add server %s to HAProxy backend %s: %s", server.Id, cluster.Conf.HaproxyAPIWriteBackend, err)
+				}
 			}
 		}
 	}
@@ -550,8 +571,9 @@ func (proxy *HaproxyProxy) Refresh() error {
 	// the monitoring loop regardless of further state changes, so checking
 	// here guarantees that mark is applied within one more pass even if
 	// flapping stops before the cooldown elapses and nothing else ever
-	// retries it.
-	if cluster.Conf.HaproxyMode == "standby" && proxy.hasStandbyReloadPending() && proxy.shouldRunStandbyInit() {
+	// retries it. Covers externalcheck too, for the same reason
+	// BackendsStateChange() does -- see its comment.
+	if (cluster.Conf.HaproxyMode == "standby" || cluster.Conf.HaproxyMode == "externalcheck") && proxy.hasStandbyReloadPending() && proxy.shouldRunStandbyInit() {
 		proxy.Init()
 	}
 
@@ -1784,7 +1806,16 @@ func (proxy *HaproxyProxy) Failover() {
 	if cluster.Conf.HaproxyMode == "runtimeapi" {
 		proxy.Refresh()
 	}
-	if cluster.Conf.HaproxyMode == "standby" {
+	// standby and externalcheck both need Init() here for the same reason:
+	// Refresh() deliberately never mutates the write backend for either mode
+	// (see the runtimeapi-only gates in Refresh() and the comment in Init()'s
+	// server loop), so Init()'s delete-then-add-the-leader pass is the ONLY
+	// place write-backend membership ever tracks a new leader for them. For
+	// externalcheck specifically, without this the old leader is simply left
+	// to fail checkmaster after a failover/switchover while the new leader is
+	// never added at all -- the write backend ends up with zero UP servers,
+	// not just a stale one.
+	if cluster.Conf.HaproxyMode == "standby" || cluster.Conf.HaproxyMode == "externalcheck" {
 		proxy.Init()
 	}
 }
@@ -1793,26 +1824,33 @@ func (proxy *HaproxyProxy) BackendsStateChange() {
 	proxy.Refresh()
 
 	// Refresh() deliberately never mutates the write backend for
-	// haproxy-mode=standby (see the comment in Init()'s server loop) --
-	// but BackendsStateChange() fires on every meaningful server state
-	// change (cluster/srv.go), not just on an actual failover/switchover.
-	// A replica that breaks replication without the master ever changing
-	// (e.g. Slave -> SlaveErr) would otherwise never trigger Init() at
-	// all, leaving it stuck in the write backend indefinitely. Route this
-	// event through Init() too so it gets reconciled the same way a
-	// leadership change already does.
+	// haproxy-mode=standby or externalcheck (see the runtimeapi-only gates in
+	// Refresh() and the comment in Init()'s server loop) -- but
+	// BackendsStateChange() fires on every meaningful server state change
+	// (cluster/srv.go), not just on an actual failover/switchover. A replica
+	// that breaks replication without the master ever changing (e.g. Slave ->
+	// SlaveErr) would otherwise never trigger Init() at all, leaving it stuck
+	// in the write backend indefinitely for standby. For externalcheck, the
+	// same gap is worse: a leader election that completes AFTER this proxy's
+	// initial Init() call (at provisioning, before cluster.Servers even has a
+	// leader) would otherwise leave the write backend with zero servers
+	// forever, since nothing else ever calls Init() again for externalcheck
+	// (Failover() only helps on an actual failover/switchover, not on this
+	// startup race). Route this event through Init() too so both cases get
+	// reconciled the same way a leadership change already does.
 	//
-	// Debounced (standbyReloadMinInterval) rather than calling Init()
-	// directly: this fires once per server per state transition, so
-	// several replicas flapping in the same window (e.g. a brief network
-	// blip) would otherwise mean one full render+reload per event. A call
-	// that lands inside the cooldown only marks standbyReloadPending --
-	// the check at the top of Refresh() guarantees that mark still gets
-	// applied (within one more Refresh() pass, which the monitoring loop
-	// runs continuously regardless of further state changes) even if
-	// flapping stops before the cooldown elapses and no later
-	// BackendsStateChange() call ever arrives to retry it.
-	if proxy.ClusterGroup.Conf.HaproxyMode != "standby" {
+	// Debounced (standbyReloadMinInterval, despite the name also covering
+	// externalcheck here) rather than calling Init() directly: this fires
+	// once per server per state transition, so several replicas flapping in
+	// the same window (e.g. a brief network blip) would otherwise mean one
+	// full render+reload per event. A call that lands inside the cooldown
+	// only marks standbyReloadPending -- the check at the top of Refresh()
+	// guarantees that mark still gets applied (within one more Refresh()
+	// pass, which the monitoring loop runs continuously regardless of
+	// further state changes) even if flapping stops before the cooldown
+	// elapses and no later BackendsStateChange() call ever arrives to retry
+	// it.
+	if proxy.ClusterGroup.Conf.HaproxyMode != "standby" && proxy.ClusterGroup.Conf.HaproxyMode != "externalcheck" {
 		return
 	}
 	if proxy.shouldRunStandbyInit() {

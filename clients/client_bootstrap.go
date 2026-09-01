@@ -26,7 +26,7 @@ var bootstrapCmd = &cobra.Command{
 		cliInit(true)
 
 		if cliBootstrapWithProvisioning == true {
-			urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/actions/services/provision"
+			urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/services/actions/provision"
 			_, err := cliAPICmd(urlpost, nil)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%s", err)
