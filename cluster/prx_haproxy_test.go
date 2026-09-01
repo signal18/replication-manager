@@ -1859,6 +1859,158 @@ func TestHaproxyInitWriteBackendSurvivesUnresolvedLeaderInExternalCheckMode(t *t
 	}
 }
 
+// TestHaproxyInitWriteBackendUsesLeaderAliasInRuntimeAPIMode guards bug #3
+// found during the live Kubernetes test campaign: on the Localhost
+// orchestrator, haproxy-mode=runtimeapi's write backend must name its single
+// entry "leader" -- not the server's real Id -- because Refresh()'s
+// SetMaster()/SetMasterFQDN() repoint it via the Runtime API command
+// "set server service_write/leader addr ... port ...", which can only ever
+// modify an EXISTING server named "leader". Naming it by server.Id (the
+// shape standby correctly uses, since standby has no Runtime API step at
+// all) left that command permanently failing with "No such server." on
+// every real switchover/failover, live-reproduced against a real HAProxy
+// 2.4/3.0/3.4 binary. This mirrors the "leader" placeholder convention
+// K8s/OpenSVC already ship via GetConfigProxyModule (cluster/prx_get.go).
+func TestHaproxyInitWriteBackendUsesLeaderAliasInRuntimeAPIMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "runtimeapi",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+	cluster.master = master
+
+	slave := cluster.Servers[1]
+	slave.Id = "server2"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+
+	proxy.Init()
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	writeSection := haproxyBackendSection(t, string(rendered), "service_write")
+	if !strings.Contains(writeSection, "server leader 127.0.0.1:3306") {
+		t.Fatalf("write backend must name its entry \"leader\" (pointed at the real master), not server1 -- SetMaster() can only repoint an existing \"leader\" slot:\n%s", writeSection)
+	}
+	if strings.Contains(writeSection, "server server1 ") {
+		t.Fatalf("write backend must not name the entry by the server's real Id in runtimeapi mode:\n%s", writeSection)
+	}
+}
+
+// TestHaproxyInitWriteBackendLeaderPlaceholderWhenUnresolvedInRuntimeAPIMode
+// is TestHaproxyInitWriteBackendSurvivesUnresolvedLeaderInExternalCheckMode's
+// runtimeapi counterpart: when Init() runs before any server has been
+// resolved as leader (the same startup race), the "leader" slot must still
+// be created -- with a placeholder address, mirroring
+// GetConfigProxyModule's own "server leader none:3306 ..." fallback -- so a
+// later SetMaster() call has an existing slot to repoint once discovery
+// completes, instead of failing with "No such server." forever.
+func TestHaproxyInitWriteBackendLeaderPlaceholderWhenUnresolvedInRuntimeAPIMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "runtimeapi",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+	}
+
+	// No cluster.master assigned, and no server has State == stateMaster --
+	// IsLeader() is false for both, matching Init()'s very first call on a
+	// cluster the monitoring loop hasn't finished discovering yet.
+	server1 := cluster.Servers[0]
+	server1.Id = "server1"
+	server1.Host = "127.0.0.1"
+	server1.Port = "3306"
+	server1.ClusterGroup = cluster
+
+	server2 := cluster.Servers[1]
+	server2.Id = "server2"
+	server2.Host = "127.0.0.1"
+	server2.Port = "3307"
+	server2.ClusterGroup = cluster
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+
+	proxy.Init()
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	writeSection := haproxyBackendSection(t, string(rendered), "service_write")
+	if !strings.Contains(writeSection, "server leader 192.0.2.1:3306") {
+		t.Fatalf("write backend must still create a placeholder \"leader\" slot when no leader has been resolved yet, so SetMaster() has something to repoint later -- and that placeholder must be a non-routable address (RFC 5737 TEST-NET), never a real reachable one like 127.0.0.1, which risks silently routing writes to whatever is listening there in the meantime:\n%s", writeSection)
+	}
+}
+
 // TestHaproxyAddServerToDoesNotWrapTypedNilError guards against Init()'s
 // addServerTo closure regressing to Go's classic typed-nil-in-interface
 // trap: haproxy.Config.AddServer returns *haproxy.Error (a concrete pointer
