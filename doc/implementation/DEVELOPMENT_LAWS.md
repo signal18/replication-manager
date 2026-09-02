@@ -231,6 +231,29 @@ This is T2 (don't reimplement what already exists) at the repository level, and
 it pairs with T9→T10 — the issue is where you discover the branch/PR that already
 exists before you open a duplicate.
 
+**T21. NEVER hand-edit the OpenSVC modulesets — they are generated exports and
+the collector is the reference.** `share/opensvc/moduleset_*.json` are exports
+of the OpenSVC collector's compliance rulesets: to change a config template,
+update the ruleset variable ON the collector (UI or
+`SetRulesetVariableValue`), then export and copy the JSON into `share/`. A code
+change that needs a template change ships only the Go getter and the
+`%%ENV:...%%` placeholder wiring (inert until the ruleset references it), plus a
+PR section giving the exact ruleset text to apply on the collector — see PR
+#1753 for the pattern. Instances pick updated modulesets up through the
+enterprise-compliance plugin (`prov-auto-update-compliance`, preserved variables
+never overwritten). A hand-edited share JSON diverges from the reference and is
+overwritten at the next export. Additionally, a branch that carries a moduleset
+export MUST first verify that no other active branch or open PR also modifies
+that moduleset file (`git diff origin/develop...origin/<branch> -- share/opensvc/`
+over the open branches): the file is replaced whole at each export, so two
+concurrent branches touching it guarantee a conflict or a silently lost ruleset
+change — coordinate the export order with the other branch's author (T20 at the
+moduleset level). Ideally the moduleset export is committed on `develop` itself
+— one lineage for the one reference, mirroring the collector — and a feature
+branch that depends on it cherry-picks that export commit; carrying an export
+inside a feature branch is the exception, and is what triggers the
+concurrent-branch check above.
+
 ---
 
 *Precedence: functional laws outrank technical laws; the perpetual-monitoring

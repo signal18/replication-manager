@@ -3185,8 +3185,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_log_pfs.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nloose_performance_schema\\nloose_performance_schema_instrument=\\\"events_statements_history_long=ON\\\"\\nperformance_schema_consumer_events_statements_history=ON\\nloose_performance_schema_consumer_events_statements_history_long=ON\\nloose_performance_schema_consumer_events_statements_current=ON \\nloose_performance_schema_max_sql_text_length=16384\\n# MySQL only                                                                                                      \\nloose_performance_schema_max_digest_text_length=16384 \\n\\n[mariadb]\\n# MariaDB 10.0.21+\\nloose_performance_schema_max_digest_length=16384\"}",
-                    "var_updated": "2026-05-29 23:18:03",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_log_pfs.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nloose_performance_schema\\nloose_performance_schema_instrument=\\\"events_statements_history_long=ON\\\"\\nperformance_schema_consumer_events_statements_history=ON\\nloose_performance_schema_consumer_events_statements_history_long=ON\\nloose_performance_schema_consumer_events_statements_current=ON \\nloose_performance_schema_max_sql_text_length=%%ENV:SVC_CONF_ENV_PFS_DIGEST_LENGTH%% \\n# MySQL only                                                                                                      \\nloose_performance_schema_max_digest_text_length=%%ENV:SVC_CONF_ENV_PFS_DIGEST_LENGTH%%  \\n\\n[mariadb]\\n# MariaDB 10.0.21+\\nloose_performance_schema_max_digest_length=%%ENV:SVC_CONF_ENV_PFS_DIGEST_LENGTH%% \"}",
+                    "var_updated": "2026-09-02 09:01:17",
                     "var_name": "db_cnf_log_with_pfs",
                     "id": 5949
                 },
@@ -7864,8 +7864,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/55_no_rep_logslavestatement.cnf\",\"target\":\"../replication-manager.d/no_rep_128krowmaxsize.cnf\"}",
-                    "var_updated": "2026-06-09 12:04:24",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/55_no_rep_128krowmaxsize.cnf\",\"target\":\"../replication-manager.d/no_rep_128krowmaxsize.cnf\"}",
+                    "var_updated": "2026-06-12 10:19:33",
                     "var_name": "db_link_nologwarnings",
                     "id": 6365
                 }

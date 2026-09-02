@@ -2583,7 +2583,11 @@ func TestResticInitRepoWithOptions_ProceedsWhenBucketPreCheckFails(t *testing.T)
 // alerting. HasCatalogBackupForRejoin runs at heartbeats%30==0 and asserts
 // WARN0190/WARN0191, so both must be preserved by pstates30.
 func TestPstates30_IncludesRejoinCatalogStates(t *testing.T) {
-	for _, want := range []string{"WARN0190", "WARN0191"} {
+	// WARN0190/0191: HasCatalogBackupForRejoin. WARN0161/0162:
+	// CheckClusterServiceAgents. WARN0169: CheckOnPremiseSSHKey. WARN0170:
+	// CheckConfiguratorPrerequisites (the 2026-09 client Slack alert storm).
+	// All run only at heartbeats%30==0.
+	for _, want := range []string{"WARN0190", "WARN0191", "WARN0161", "WARN0162", "WARN0169", "WARN0170"} {
 		found := false
 		for _, k := range pstates30 {
 			if k == want {

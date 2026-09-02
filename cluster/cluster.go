@@ -948,6 +948,9 @@ var pstates30 = []string{
 	"WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
 	"WARN0153",             // Job related
 	"WARN0158",             // Job secrets mismatch
+	"WARN0161", "WARN0162", // Service agents (CheckClusterServiceAgents runs %30)
+	"WARN0169",             // On-premise SSH key (CheckOnPremiseSSHKey runs %30)
+	"WARN0170",             // Configurator prerequisites (CheckConfiguratorPrerequisites runs %30)
 	"WARN0190", "WARN0191", // Rejoin catalog (HasCatalogBackupForRejoin runs %30)
 	"CREDIT01", // Credit related
 }

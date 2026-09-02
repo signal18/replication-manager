@@ -43,6 +43,22 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   //console.log("selectedCluster:", selectedCluster);
   const [context, setContext] = useState(null)
 
+  // Scope every graphite target to the servers of the selected cluster.
+  // The carbon metric host is the DB HOSTNAME uppercased with '.' -> '-'
+  // (see cluster/srv_snd.go graphiteHostname). Without this the page used the
+  // bare 'mysql.*' wildcard, so maxSeries/sumSeries aggregated across the WHOLE
+  // fleet and a cluster's graph showed another cluster's numbers (#1756).
+  const carbonHost = (h) =>
+    (h || '').toUpperCase().replace(/[`?()'"<]/g, '-').replace(/\./g, '-').replace(/[ /]/g, '_')
+  const carbonHosts = (selectedCluster?.servers || [])
+    .map((s) => carbonHost(s.host))
+    .filter(Boolean)
+  const hostGlob = carbonHosts.length
+    ? (carbonHosts.length === 1 ? carbonHosts[0] : `{${carbonHosts.join(',')}}`)
+    : '*'
+  const scope = (s) => (typeof s === 'string' ? s.replaceAll('mysql.*', 'mysql.' + hostGlob) : s)
+  const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
+
   useEffect(() => {
   if (typeof window === 'undefined' || !window.cubism) return;
 
@@ -95,7 +111,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           step={selectedStep.value}
           context={context}
           title={'Qps'}
-          target={'perSecond(mysql.*.mysql_global_status_queries)'}
+          target={scope('perSecond(mysql.*.mysql_global_status_queries)')}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
         <Graphite
@@ -104,7 +120,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           step={selectedStep.value}
           context={context}
           title={'Threads'}
-          target={'sumSeries(mysql.*.mysql_global_status_threads_running)'}
+          target={scope('sumSeries(mysql.*.mysql_global_status_threads_running)')}
           maxExtent={1024}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
@@ -114,9 +130,9 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           step={selectedStep.value}
           context={context}
           title={'BytesIn'}
-          target={'perSecond(mysql.*.mysql_global_status_bytes_received)'}
+          target={scope('perSecond(mysql.*.mysql_global_status_bytes_received)')}
           title2={'BytesOut'}
-          target2={'perSecond(mysql.*.mysql_global_status_bytes_sent)'}
+          target2={scope('perSecond(mysql.*.mysql_global_status_bytes_sent)')}
           maxExtent={100000}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
@@ -126,55 +142,55 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           step={selectedStep.value}
           context={context}
           title={'ReplDelay'}
-          target={'sumSeries(mysql.*.mysql_slave_status_seconds_behind_master)'}
+          target={scope('sumSeries(mysql.*.mysql_slave_status_seconds_behind_master)')}
           maxExtent={8000}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
         <ChartLatchTracing
           context={context}
           title={'Mutex'}
-          metricPaths={[
+          metricPaths={scopeAll([
             'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_buf_pool_mutex)',
             'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_buf_dblwr_mutex)',
             'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_fil_system_mutex)',
             'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_flush_list_mutex)',
             'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_lock_wait_mutex)',
             'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_trx_sys_mutex)'
-          ]}
+          ])}
           className={`${styles.graph} ${styles[`width${selectedHour.value}`]}`}
           isVisible={selectedCluster.config.monitoringPerformanceSchemaMutex}
         />
         <ChartLatchTracing
           context={context}
           title={'latch'}
-         metricPaths={[
+         metricPaths={scopeAll([
          'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_btr_search_latch)',
          'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_fil_space_latch)',
          'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_trx_purge_latch)',
          'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_trx_rseg_latch)',
          'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_lock_latch)',
          'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_log_latch)'
-         ]}
+         ])}
           className={`${styles.graph} ${styles[`width${selectedHour.value}`]}`}
           isVisible={selectedCluster.config.monitoringPerformanceSchemaLatch}
         />
         <ChartBarStack
           context={context}
           title={'Memory'}
-          metricPaths={[
+          metricPaths={scopeAll([
             'maxSeries(mysql.*.mysql_global_status_performance_schema_memory)',
             'maxSeries(mysql.*.mysql_global_status_memory_used)',
             'maxSeries(mysql.*.mysql_global_status_innodb_buffer_pool_bytes_data)',
             'maxSeries(mysql.*.mysql_global_status_aria_pagecache_bytes_data)'
-          ]}
+          ])}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
         <ChartMultiMetric
          context={context}
-         metricPaths={[
+         metricPaths={scopeAll([
            'maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
            'averageSeries(mysql.*.mysql_global_variables_innodb_log_file_size)'
-         ]}
+         ])}
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="InnoDB Redo Log Status"
@@ -186,7 +202,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          context={context}
         maxExtent={100000}
          title={'InnodbHistoryListLenght'}
-         target={'maxSeries(mysql.*.engine_innodb_history_list_lenght_inside_innodb)'}
+         target={scope('maxSeries(mysql.*.engine_innodb_history_list_lenght_inside_innodb)')}
          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
        />
        <Graphite
@@ -196,7 +212,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          context={context}
          maxExtent={100000}
          title={'InnodbReadViews'}
-         target={'maxSeries(mysql.*.engine_innodb_read_views_open_inside_innodb)'}
+         target={scope('maxSeries(mysql.*.engine_innodb_read_views_open_inside_innodb)')}
          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
        />
 

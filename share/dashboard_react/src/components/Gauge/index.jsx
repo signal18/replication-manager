@@ -19,7 +19,16 @@ function Gauge({
   handleStepChange,
   isDisabled = false,
 }) {
-  const safeValue = !isFinite(value) || value < minValue ? minValue : value > maxValue ? maxValue : value
+  // Never cap the value the GUI shows: the backend owns the real bounds, so a
+  // value outside the passed [minValue, maxValue] hint means the hint is too
+  // narrow, not that the value should be clamped (a 768 MB instance must read
+  // 768, not the 4096 floor). Widen the arc/slider range to include the real
+  // value instead of clamping it.
+  const numValue = Number(value)
+  const finite = isFinite(numValue)
+  const gaugeMin = finite ? Math.min(minValue, numValue) : minValue
+  const gaugeMax = finite ? Math.max(maxValue, numValue) : maxValue
+  const safeValue = finite ? numValue : minValue
 
   const formatValue = useCallback((v) => {
     if (appendTextToValue === 'MB' && v >= 1024) {
@@ -86,8 +95,8 @@ function Gauge({
     <Flex direction={editable ? 'row' : 'column'} align='center' justify='center' gap={editable ? 2 : 0} className={className}>
       <Flex direction='column' align='center' justify='center'>
         <GaugeComponent
-          minValue={minValue}
-          maxValue={maxValue}
+          minValue={gaugeMin}
+          maxValue={gaugeMax}
           value={safeValue}
           style={gaugeStyle}
           arc={arcConfig}
@@ -108,8 +117,8 @@ function Gauge({
       {editable && (
         <VerticalSlider
           value={safeValue}
-          minValue={minValue}
-          maxValue={maxValue}
+          minValue={gaugeMin}
+          maxValue={gaugeMax}
           step={step}
           formatValue={formatValue}
           handleStepChange={handleStepChange}

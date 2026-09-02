@@ -81,9 +81,18 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 		svc.CertsDERSecret = cluster.Conf.GetDecryptedValue("opensvc-p12-secret")
 		err := svc.LoadCert(cluster.Conf.ProvOpensvcP12Certificate)
 		if err != nil {
+			// Log at Err only on the state transition: WARN0099 carries the
+			// persistent condition and alerts once; re-logging on every
+			// OpenSVCConnect() call floods the alert channels (a missing p12
+			// on a hot loop produced ~8K Slack messages/day, 2026-09).
+			firstFailure := !cluster.failLoadP12Cert
 			cluster.failLoadP12Cert = true
 			cluster.SetState("WARN0099", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0099"], cluster.Conf.ProvOpensvcP12Certificate, err), ErrFrom: "OpenSVC"})
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)
+			if firstFailure {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Cannot load OpenSVC cluster certificate %s ", err)
+			}
 		} else {
 			cluster.failLoadP12Cert = false
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)

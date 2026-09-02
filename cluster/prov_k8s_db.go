@@ -71,6 +71,19 @@ func k8sImagePullPolicy(cluster *Cluster) apiv1.PullPolicy {
 	return apiv1.PullIfNotPresent
 }
 
+// k8sDBAllocatorEnv maps the shared allocator tuning (GetDBAllocatorEnv,
+// #1749) onto the DB container env; nil when the feature is disabled.
+func k8sDBAllocatorEnv(cluster *Cluster) []apiv1.EnvVar {
+	preload, arenaMax := cluster.GetDBAllocatorEnv()
+	if preload == "" {
+		return nil
+	}
+	return []apiv1.EnvVar{
+		{Name: "LD_PRELOAD", Value: preload},
+		{Name: "MALLOC_ARENA_MAX", Value: arenaMax},
+	}
+}
+
 // k8sSecretKeyRootPassword is the key MYSQL_ROOT_PASSWORD is stored under
 // on the cluster's shared Secret. One value for the whole cluster, not
 // per-server: every server in a replication topology shares the same root
@@ -444,7 +457,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 									ContainerPort: int32(port),
 								},
 							},
-							Env: []apiv1.EnvVar{
+							Env: append([]apiv1.EnvVar{
 								{
 									Name: "MYSQL_ROOT_PASSWORD",
 									ValueFrom: &apiv1.EnvVarSource{
@@ -454,7 +467,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 										},
 									},
 								},
-							},
+							}, k8sDBAllocatorEnv(cluster)...),
 							VolumeMounts: []apiv1.VolumeMount{
 								{
 									Name:      s.Name + "-persistent-storage",
