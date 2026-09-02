@@ -118,7 +118,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSettingLock)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/variables/{variableName}/lock", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/configurator/variables/{variableName}/lock", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterVariableLock)),
 	))
