@@ -81,19 +81,23 @@ func (configurator *Configurator) GetConfigReplicationDomain(ClusterName string)
 	return configurator.ClusterConfig.ProvDomain
 }
 
-const memReserveMB int64 = 2048
-
+// getUsableMemoryMB returns the total prov-db-memory in MB. Every share in
+// prov-db-memory-shared-pct is a percentage of this total (single reference,
+// so the shares — caches + threads + pfs + fscache — sum below 100, the
+// remainder being free margin). The "fscache" share is not an engine cache and
+// is not read here: it is held out simply by the engine caches summing to less
+// than 100, leaving that fraction for the reclaimable FS page cache (chiefly
+// the redo log page cache, redo capped at BP/4, plus binlogs, data reads and
+// the tmpfs). This replaced the old fixed 2048MB reserve, absurd at both ends
+// (negative on a 768MB instance, 0.4% on 512GB). The FS cache is not lost
+// memory: the kernel evicts clean pages before any OOM — the anti-spike
+// cushion, since the containers run swap-disabled.
 func (configurator *Configurator) getUsableMemoryMB() (int64, error) {
 	memMB, err := config.ParseUnitMeasurementToInt("M,bytes,required", configurator.ClusterConfig.ProvMem, true)
 	if err != nil {
 		return 0, err
 	}
-	containermem := int64(memMB)
-	usable := containermem - memReserveMB
-	if usable < 0 {
-		usable = 0
-	}
-	return usable, nil
+	return int64(memMB), nil
 }
 
 // minEngineMemMB is the floor for any allocated storage-engine buffer, in MB.
@@ -103,15 +107,30 @@ func (configurator *Configurator) getUsableMemoryMB() (int64, error) {
 // and stopped the DB from booting. Every engine that is allocated memory gets at least this.
 const minEngineMemMB int64 = 128
 
+// largestPow2LE returns the largest power of two not exceeding n (0 for n < 1).
+// All generated buffer sizes are rounded down to a power of two: clean,
+// predictable values, and the round-down also trims memory (safer under a cap).
+func largestPow2LE(n int64) int64 {
+	if n < 1 {
+		return 0
+	}
+	p := int64(1)
+	for p*2 <= n {
+		p *= 2
+	}
+	return p
+}
+
 // engineMemMB returns an engine buffer size in MB from the usable memory and the
-// engine's shared-memory percentage. An enabled engine (pct > 0) never gets less
-// than minEngineMemMB; a disabled engine (pct <= 0) stays at 0 (so we never silently
-// turn on an engine, e.g. the query cache, that is meant to be off).
+// engine's shared-memory percentage, rounded down to a power of two. An enabled
+// engine (pct > 0) never gets less than minEngineMemMB; a disabled engine
+// (pct <= 0) stays at 0 (so we never silently turn on an engine, e.g. the query
+// cache, that is meant to be off).
 func engineMemMB(usableMB, pct int64) int64 {
 	if pct <= 0 {
 		return 0
 	}
-	if v := usableMB * pct / 100; v > minEngineMemMB {
+	if v := largestPow2LE(usableMB * pct / 100); v > minEngineMemMB {
 		return v
 	}
 	return minEngineMemMB
@@ -180,6 +199,43 @@ func (configurator *Configurator) GetConfigRocksDBCacheSize() string {
 	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["rocksdb"])), 10)
 }
 
+// GetConfigPFSMemoryMB returns the memory share budgeted to the Performance
+// Schema, from the "pfs" entry of prov-db-memory-shared-pct (default 5 when
+// absent; pfs:0 disables the budget so MariaDB defaults stay untouched).
+func (configurator *Configurator) GetConfigPFSMemoryMB() int64 {
+	usable, err := configurator.getUsableMemoryMB()
+	if err != nil {
+		return 0
+	}
+	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
+	pct, ok := sharedmempcts["pfs"]
+	if !ok {
+		pct = 5
+	}
+	if pct <= 0 {
+		return 0
+	}
+	return usable * int64(pct) / 100
+}
+
+// GetConfigPFSDigestLength derives performance_schema_max_{digest,digest_text,
+// sql_text}_length from the PFS memory budget. The fixed 16384 capture sizing
+// was measured to make P_S preallocate ~727MB at init (history_long consumers
+// with 1000 connections) and OOM small cgroups before InnoDB init (#1749); it
+// is only emitted when the budget affords it, with the MariaDB default (1024)
+// below and an intermediate tier in between.
+func (configurator *Configurator) GetConfigPFSDigestLength() string {
+	budget := configurator.GetConfigPFSMemoryMB()
+	switch {
+	case budget >= 768:
+		return "16384"
+	case budget >= 192:
+		return "4096"
+	default:
+		return "1024"
+	}
+}
+
 func (configurator *Configurator) GetConfigMyISAMKeyBufferSegements() string {
 	value, err := strconv.ParseInt(configurator.GetConfigMyISAMKeyBufferSize(), 10, 64)
 	if err != nil {
@@ -229,28 +285,39 @@ func (configurator *Configurator) GetConfigInnoDBMaxDirtyPagePctLwm() string {
 	return s10
 }
 
+// redoFloorMB/redoCapMB bound the redo size in MB, both powers of two. The old
+// 1024MB floor produced a redo larger than the whole memory cgroup on small
+// prov-db-memory instances, making crash recovery unaffordable (#1749).
+const redoFloorMB int64 = 128
+const redoCapMB int64 = 16384
+
+// redoPow2MB is largestPow2LE clamped to [redoFloorMB, redoCapMB].
+func redoPow2MB(n int64) int64 {
+	p := largestPow2LE(n)
+	if p < redoFloorMB {
+		p = redoFloorMB
+	}
+	if p > redoCapMB {
+		p = redoCapMB
+	}
+	return p
+}
+
+// GetConfigInnoDBLogFileSize sizes the redo at a power of two around a quarter
+// of the InnoDB buffer pool (BP/4): BP/2 over-allocated the redo (up to 8GB on
+// a 32GB instance), and modern MariaDB/MySQL flushing no longer needs a redo
+// half the buffer pool. Floor 128MB, cap 16GB; the smallredolog tag forces the
+// floor.
 func (configurator *Configurator) GetConfigInnoDBLogFileSize() string {
 	//result in MB
-	var valuemin int64
-	var valuemax int64
-	valuemin = 1024
-	valuemax = 20 * 1024
-	value, err := strconv.ParseInt(configurator.GetConfigInnoDBBPSize(), 10, 64)
-	if err != nil {
-		return "1024"
-	}
-	value = value / 2
-	if value < valuemin {
-		value = valuemin
-	}
-	if value > valuemax {
-		value = valuemax
-	}
 	if configurator.HaveDBTag("smallredolog") {
-		return "128"
+		return strconv.FormatInt(redoFloorMB, 10)
 	}
-	s10 := strconv.FormatInt(value, 10)
-	return s10
+	bp, err := strconv.ParseInt(configurator.GetConfigInnoDBBPSize(), 10, 64)
+	if err != nil {
+		return strconv.FormatInt(redoFloorMB, 10)
+	}
+	return strconv.FormatInt(redoPow2MB(bp/4), 10)
 }
 
 func (configurator *Configurator) GetConfigInnoDBLogBufferSize() string {

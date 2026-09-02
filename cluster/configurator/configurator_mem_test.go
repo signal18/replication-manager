@@ -7,7 +7,7 @@ import (
 func newConfiguratorWithMem(mem string) *Configurator {
 	c := &Configurator{}
 	c.ClusterConfig.ProvMem = mem
-	c.ClusterConfig.ProvMemSharedPct = "threads:16,innodb:55,myisam:10,aria:10,rocksdb:1,tokudb:0,s3:1,archive:1,querycache:0,tidesdb:1"
+	c.ClusterConfig.ProvMemSharedPct = "threads:10,innodb:45,myisam:4,aria:8,rocksdb:1,tokudb:0,s3:1,archive:1,querycache:0,tidesdb:1,pfs:4,fscache:20"
 	c.ClusterConfig.ProvMemThreadedPct = "tmp:70,join:20,sort:10"
 	return c
 }
@@ -19,14 +19,16 @@ func TestGetUsableMemoryMB(t *testing.T) {
 		want    int64
 		wantErr bool
 	}{
-		{"4G default", "4G", 4096 - 2048, false},
-		{"4g lowercase", "4g", 4096 - 2048, false},
-		{"4096M same as 4G", "4096M", 4096 - 2048, false},
-		{"4096m lowercase", "4096m", 4096 - 2048, false},
-		{"4096 bare number", "4096", 4096 - 2048, false},
-		{"8G", "8G", 8192 - 2048, false},
-		{"256M below reserve", "256M", 0, false},
-		{"256 bare below reserve", "256", 0, false},
+		// usable == total memory now; the FS-cache reserve is not subtracted here
+		// (it is held out by the shares summing below 100).
+		{"4G", "4G", 4096, false},
+		{"4g lowercase", "4g", 4096, false},
+		{"4096M same as 4G", "4096M", 4096, false},
+		{"4096m lowercase", "4096m", 4096, false},
+		{"4096 bare number", "4096", 4096, false},
+		{"8G", "8G", 8192, false},
+		{"256M", "256M", 256, false},
+		{"256 bare", "256", 256, false},
 		{"empty required", "", 0, true},
 	}
 
@@ -45,19 +47,19 @@ func TestGetUsableMemoryMB(t *testing.T) {
 }
 
 func TestGetConfigInnoDBBPSize(t *testing.T) {
-	// innodb share is 55% of usable memory
+	// innodb share is 45% of total memory (usable = total), rounded down to a power of two
 	tests := []struct {
 		name string
 		mem  string
 		want string
 	}{
-		{"4G default", "4G", "1126"}, // (4096-2048)*55/100 = 1126
-		{"4g lowercase", "4g", "1126"},
-		{"4096M", "4096M", "1126"},
-		{"4096m lowercase", "4096m", "1126"},
-		{"4096 bare", "4096", "1126"},
-		{"8G", "8G", "3379"},                          // (8192-2048)*55/100 = 3379
-		{"256M below reserve floored", "256M", "128"}, // usable=0 → 0*55/100=0, floored to minEngineMemMB
+		{"4G default", "4G", "1024"}, // pow2(4096*45/100=1843)=1024
+		{"4g lowercase", "4g", "1024"},
+		{"4096M", "4096M", "1024"},
+		{"4096m lowercase", "4096m", "1024"},
+		{"4096 bare", "4096", "1024"},
+		{"8G", "8G", "2048"}, // pow2(8192*45/100=3686)=2048
+		{"256M floored", "256M", "128"}, // pow2(256*45/100=115)=64 -> floor 128
 	}
 
 	for _, tt := range tests {
@@ -82,15 +84,15 @@ func TestGetConfigQueryCacheSizeDisabled(t *testing.T) {
 }
 
 func TestGetConfigMyISAMKeyBufferSize(t *testing.T) {
-	// myisam share is 10% of usable memory
+	// myisam share is 4% of total memory, pow2
 	tests := []struct {
 		name string
 		mem  string
 		want string
 	}{
-		{"4G", "4G", "204"}, // (4096-2048)*10/100 = 204
-		{"4096m", "4096m", "204"},
-		{"8G", "8G", "614"}, // (8192-2048)*10/100 = 614
+		{"4G", "4G", "128"}, // pow2(4096*4/100=163)=128
+		{"4096m", "4096m", "128"},
+		{"8G", "8G", "256"}, // pow2(8192*4/100=327)=256
 	}
 
 	for _, tt := range tests {
@@ -105,14 +107,14 @@ func TestGetConfigMyISAMKeyBufferSize(t *testing.T) {
 }
 
 func TestGetConfigAriaCacheSize(t *testing.T) {
-	// aria share is 10% of usable memory
+	// aria share is 8% of total memory, pow2
 	tests := []struct {
 		name string
 		mem  string
 		want string
 	}{
-		{"4G", "4G", "204"},
-		{"1G below reserve floored", "1G", "128"}, // usable=0 → floored to minEngineMemMB
+		{"4G", "4G", "256"}, // pow2(4096*8/100=327)=256
+		{"1G floored", "1G", "128"}, // pow2(1024*8/100=81)=64 -> floor 128
 	}
 
 	for _, tt := range tests {
