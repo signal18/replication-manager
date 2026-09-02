@@ -76,9 +76,10 @@ func TestOpenSVCProxyModulesetCheckScriptsAndStandbyStatsSocket(t *testing.T) {
 }
 
 // TestOpenSVCProxyModulesetCheckScriptsFallBackToDevTcp guards against
-// checkmaster/checkslave regressing to an unconditional "wget" call, and
-// against the fallback regressing to a bash shebang. Two live incidents
-// drove this, on opposite kinds of images:
+// checkmaster/checkslave regressing to an unconditional "wget" call, against
+// the fallback regressing to a bash shebang, and against bug #6's fixed
+// checkslave target URL regressing back from reader-status to slave-status.
+// Two live incidents drove this, on opposite kinds of images:
 //   - wget isn't present in the official haproxy:3.4 Docker image (Debian
 //     13/trixie, no wget/curl/nc/busybox at all) -- every external-check
 //     then fails with "command not found" (exit 127) for every server
@@ -115,10 +116,16 @@ func TestOpenSVCProxyModulesetCheckScriptsFallBackToDevTcp(t *testing.T) {
 	if !strings.Contains(content, "wget -O - -q ") {
 		t.Errorf("moduleset_mariadb.svc.mrm.proxy.json does not contain a %q call -- wget must still be tried as the primary check mechanism", "wget -O - -q ")
 	}
-	for _, statusPath := range []string{"master-status", "slave-status"} {
-		urlPath := "%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/clusters/%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%/servers/$3/$4/" + statusPath
+	for _, want := range []struct {
+		path string
+		what string
+	}{
+		{path: "master-status", what: "checkmaster must keep polling master-status"},
+		{path: "reader-status", what: "checkslave must poll reader-status after reprovisioning onto bug #6's fix"},
+	} {
+		urlPath := "%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%/clusters/%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%/servers/$3/$4/" + want.path
 		if !strings.Contains(content, urlPath) {
-			t.Errorf("moduleset_mariadb.svc.mrm.proxy.json does not contain %q -- the check's target URL must still be present", urlPath)
+			t.Errorf("moduleset_mariadb.svc.mrm.proxy.json does not contain %q -- %s", urlPath, want.what)
 		}
 	}
 

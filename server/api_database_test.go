@@ -8,6 +8,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 // handlerMuxServersPortConfig's ACL gate: a Bearer JWT is checked first
@@ -234,5 +235,81 @@ func TestHandlerMuxServersPortConfig_SecureConfigOffSkipsACL(t *testing.T) {
 
 	if w.Code == http.StatusForbidden {
 		t.Fatalf("expected api-credentials-secure-config=false to skip the ACL gate entirely, got 403: %s", w.Body.String())
+	}
+}
+
+// handlerMuxServersPortIsReaderStatus is bug #6's fix, wired as a single NEW
+// route ("/reader-status") rather than a change to
+// handlerMuxServersPortIsSlaveStatus's existing "/is-slave"/"/slave-status"
+// routes -- see that handler's doc comment above for why. The master-side
+// no-slave-fallback logic itself (cluster.ShouldServeReadsFromMaster) is
+// exercised directly in cluster/cluster_has_test.go, since node.IsMaster()
+// needs cluster.master/vmaster, both unexported fields this package can't
+// set on a hand-built test cluster. These tests cover what's reachable from
+// here: the route is wired to the right handler, and the (pre-existing,
+// unchanged) slave path behaves identically to
+// handlerMuxServersPortIsSlaveStatus's.
+
+func newTestClusterWithSlave(t *testing.T, healthy bool) *cluster.Cluster {
+	t.Helper()
+	cl := newTestClusterForAPI(t)
+	cl.Status = cluster.ConstMonitorActif
+	cl.StateMachine = new(state.StateMachine)
+	cl.StateMachine.Init()
+	slave := &cluster.ServerMonitor{
+		Id:      "db1",
+		Host:    "127.0.0.1",
+		Port:    "3306",
+		IsSlave: true,
+	}
+	if !healthy {
+		slave.State = "SlaveErr"
+	}
+	slave.ClusterGroup = cl
+	cl.Servers = []*cluster.ServerMonitor{slave}
+	return cl
+}
+
+func TestHandlerMuxServersPortIsReaderStatus_HealthySlaveIs200(t *testing.T) {
+	cl := newTestClusterWithSlave(t, true)
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	req := httptest.NewRequest("GET", "/clusters/"+cl.Name+"/servers/127.0.0.1/3306/reader-status", nil)
+	req = setMuxVars(req, map[string]string{"clusterName": cl.Name, "serverName": "127.0.0.1", "serverPort": "3306"})
+	w := httptest.NewRecorder()
+
+	repman.handlerMuxServersPortIsReaderStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a healthy slave, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandlerMuxServersPortIsReaderStatus_UnknownServerIs503(t *testing.T) {
+	cl := newTestClusterWithSlave(t, true)
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	req := httptest.NewRequest("GET", "/clusters/"+cl.Name+"/servers/10.0.0.9/3306/reader-status", nil)
+	req = setMuxVars(req, map[string]string{"clusterName": cl.Name, "serverName": "10.0.0.9", "serverPort": "3306"})
+	w := httptest.NewRecorder()
+
+	repman.handlerMuxServersPortIsReaderStatus(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for a server not in the cluster, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandlerMuxServersPortIsReaderStatus_NoClusterIs500(t *testing.T) {
+	repman := newTestRepmanWithCluster(t, "unused", newTestClusterForAPI(t))
+
+	req := httptest.NewRequest("GET", "/clusters/does-not-exist/servers/127.0.0.1/3306/reader-status", nil)
+	req = setMuxVars(req, map[string]string{"clusterName": "does-not-exist", "serverName": "127.0.0.1", "serverPort": "3306"})
+	w := httptest.NewRecorder()
+
+	repman.handlerMuxServersPortIsReaderStatus(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for an unknown cluster, got %d: %s", w.Code, w.Body.String())
 	}
 }

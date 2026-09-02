@@ -447,19 +447,18 @@ func (proxy *HaproxyProxy) Init() {
 	// HAProxy's own health check independently marks such a replica DOWN
 	// regardless of repman's classification, but standby's render has no
 	// equivalent live check to fall back on for this specific decision.
-	hasValidReadSlave := false
-	for _, s := range cluster.Servers {
-		if s.IsMaintenance || s.IsLeader() {
-			continue
-		}
-		if !s.standbyReadIneligible() {
-			hasValidReadSlave = true
-			break
-		}
-	}
+	//
+	// HasValidReadSlave() (cluster/cluster_has.go) is the exported home of
+	// this exact loop -- shared, via ShouldServeReadsFromMaster(), with
+	// ServerMonitor.IsValidReaderCheck (srv_has.go), which needs the
+	// identical no-slave-fallback rule for haproxy-mode=externalcheck's
+	// checkslave HTTP handler (reached via the reader-status route, not
+	// slave-status -- see that method's doc comment). Keep this comment
+	// block in sync with ShouldServeReadsFromMaster's doc comment if the
+	// rule ever changes.
 	masterShouldRead := cluster.Configurator.HasProxyReadLeader() ||
 		(cluster.Configurator.HasProxyReadLeaderNoSlave() &&
-			(cluster.HasNoValidSlave() || !hasValidReadSlave))
+			(cluster.HasNoValidSlave() || !cluster.HasValidReadSlave()))
 
 	// haproxy-mode=runtimeapi's write backend is a single fixed slot
 	// literally named "leader" -- Refresh()'s SetMaster()/SetMasterFQDN()

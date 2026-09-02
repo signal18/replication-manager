@@ -137,14 +137,17 @@ exit 1
 `
 
 // localhostCheckScriptContent renders localhostCheckScriptTemplate for one
-// status endpoint ("master-status" or "slave-status") against this
-// cluster's own repman API -- the same address OpenSVC's checkmaster/
-// checkslave reach via %%ENV:SVC_CONF_ENV_MRM_API_ADDR%%
-// (cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort, see
-// cluster/prx_get.go's GetEnv()). The target route is the unauthenticated
-// "/clusters/{name}/servers/{host}/{port}/{status}" compatibility path
-// (server/http.go, "API 2.0 compatibility for external checks"), not the
-// /api/-prefixed one.
+// status endpoint ("master-status" or "reader-status" -- the latter,
+// handlerMuxServersPortIsReaderStatus, replaced "slave-status" for
+// checkslave specifically as bug #6's fix; see that handler's doc comment
+// for why a new route was added instead of changing "slave-status" in
+// place) against this cluster's own repman API -- the same address
+// OpenSVC's checkmaster/checkslave reach via
+// %%ENV:SVC_CONF_ENV_MRM_API_ADDR%% (cluster.Conf.MonitorAddress + ":" +
+// cluster.Conf.HttpPort, see cluster/prx_get.go's GetEnv()). The target
+// route is the unauthenticated "/clusters/{name}/servers/{host}/{port}/{status}"
+// compatibility path (server/http.go, "API 2.0 compatibility for external
+// checks"), not the /api/-prefixed one.
 func (cluster *Cluster) localhostCheckScriptContent(statusPath string) string {
 	apiAddr := cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
 	// url.PathEscape, not cluster.Name verbatim: cluster.Name lands inside a
@@ -179,7 +182,7 @@ func (proxy *HaproxyProxy) writeLocalhostHaproxyCheckScripts() (checkmasterPath,
 	if err := os.WriteFile(checkmasterPath, []byte(cluster.localhostCheckScriptContent("master-status")), 0755); err != nil {
 		return "", "", err
 	}
-	if err := os.WriteFile(checkslavePath, []byte(cluster.localhostCheckScriptContent("slave-status")), 0755); err != nil {
+	if err := os.WriteFile(checkslavePath, []byte(cluster.localhostCheckScriptContent("reader-status")), 0755); err != nil {
 		return "", "", err
 	}
 
