@@ -113,12 +113,12 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSettings)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/settings/{settingName}/lock", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/settings/{settingName}/is-immutable", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSettingLock)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/configurator/variables/{variableName}/lock", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/configurator/variables/{variableName}/is-preserved", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterVariableLock)),
 	))
@@ -2588,7 +2588,7 @@ func (repman *ReplicationManager) handlerMuxClusterTop(w http.ResponseWriter, r 
 // @Success 200 {object} object "{setting, immutable}"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
-// @Router /api/clusters/{clusterName}/settings/{settingName}/lock [get]
+// @Router /api/clusters/{clusterName}/settings/{settingName}/is-immutable [get]
 func (repman *ReplicationManager) handlerMuxClusterSettingLock(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -2627,7 +2627,7 @@ func (repman *ReplicationManager) handlerMuxClusterSettingLock(w http.ResponseWr
 // @Success 200 {object} object "{variable, preserved, servers[]}"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
-// @Router /api/clusters/{clusterName}/configurator/variables/{variableName}/lock [get]
+// @Router /api/clusters/{clusterName}/configurator/variables/{variableName}/is-preserved [get]
 func (repman *ReplicationManager) handlerMuxClusterVariableLock(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
