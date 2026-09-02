@@ -392,6 +392,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitoringSecretVersioningAutoPrune, "monitoring-secret-versioning-auto-prune", false, "Automatically prune tracked secret versions during reconciliation")
 	flags.IntVar(&conf.MonitoringSecretVersioningKeepLast, "monitoring-secret-versioning-keep-last", 0, "Keep only the last N versions per secret key when auto-prune is enabled (0 = unlimited)")
 	flags.Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring interval in seconds")
+	flags.BoolVar(&conf.MonitoringResolveServerIP, "monitoring-resolve-server-ip", true, "Re-resolve a server's hostname to an IP when it reconnects after being down, so haproxy-mode=externalcheck's checkmaster/checkslave server lookups (which HAProxy invokes with a resolved IP, not the configured hostname) stay correct after a server's address changes -- e.g. every pod restart on Kubernetes, where addresses are not stable like they typically are on OpenSVC/Docker. Only triggers on a down-to-up transition, not every tick. Disable if you don't use haproxy-mode=externalcheck and want to skip this DNS lookup entirely")
 
 	//not working so far
 	//flags.StringVar(&conf.TunnelHost, "monitoring-tunnel-host", "", "Bastion host to access to monitor topology via SSH tunnel host:22")

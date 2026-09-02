@@ -77,6 +77,7 @@ type Config struct {
 	MonitoringSecretVersioningAutoPrune       bool                         `mapstructure:"monitoring-secret-versioning-auto-prune" toml:"monitoring-secret-versioning-auto-prune" json:"monitoringSecretVersioningAutoPrune"`
 	MonitoringSecretVersioningKeepLast        int                          `mapstructure:"monitoring-secret-versioning-keep-last" toml:"monitoring-secret-versioning-keep-last" json:"monitoringSecretVersioningKeepLast"`
 	MonitoringTicker                          int64                        `mapstructure:"monitoring-ticker" toml:"monitoring-ticker" json:"monitoringTicker"`
+	MonitoringResolveServerIP                 bool                         `mapstructure:"monitoring-resolve-server-ip" toml:"monitoring-resolve-server-ip" json:"monitoringResolveServerIP"`
 	MonitorWaitRetry                          int64                        `mapstructure:"monitoring-wait-retry" toml:"monitoring-wait-retry" json:"monitoringWaitRetry"`
 	Socket                                    string                       `mapstructure:"monitoring-socket" toml:"monitoring-socket" json:"monitoringSocket"`
 	TunnelHost                                string                       `mapstructure:"monitoring-tunnel-host" toml:"monitoring-tunnel-host" json:"monitoringTunnelHost"`

@@ -831,7 +831,14 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		return
 	}
 
-	// From here we have a new connection
+	// From here we have a new connection. server.State/IsDown() still reflect
+	// the last completed tick's classification here -- none of the state
+	// transition logic below this point has run yet for THIS successful
+	// connection -- so IsDown() is exactly "was this server down as of a
+	// moment ago, and just reconnected".
+	if cluster.Conf.MonitoringResolveServerIP && server.IsDown() {
+		server.refreshResolvedIP()
+	}
 
 	//Without topology we should never declare a server failed
 	if (server.State == stateErrorAuth || server.State == stateFailed) && server.GetCluster().GetTopology() == config.TopoUnknown && server.PrevState != stateSuspect {
@@ -1009,6 +1016,60 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			cluster.backendStateChangeProxies()
 			server.SendAlert()
 		}
+	}
+}
+
+// refreshResolvedIP keeps IP current for GetServerFromURL's IP-based match
+// (server.IP == url / server.IP+":"+server.Port == url, cluster/cluster_get.go).
+// SetCredential() (cluster/srv_set.go) already resolves it via this same
+// dbhelper.CheckHostAddr() call -- but only once, at server setup. Nothing
+// ever refreshed it again afterward, so it went stale the moment a server's
+// real address changed.
+//
+// This matters because haproxy-mode=externalcheck's checkmaster/checkslave
+// scripts are invoked by HAProxy with $3 set to the check's *resolved*
+// server address (HAProxy's own external-check substitution semantics), not
+// the hostname configured in haproxy.cfg -- so the script's callback URL
+// contains a raw IP, and GetServerFromURL needs a current IP to match it
+// against. Live-reproduced against a real Kubernetes Deployment (not even a
+// StatefulSet, so every pod recreation gets a brand-new overlay IP from the
+// CNI pool): after a pod restart, checkmaster/checkslave's lookup for that
+// server started returning "Node not Found" indefinitely, since IP still
+// held whatever SetCredential() resolved at the old address -- HAProxy kept
+// reporting a genuinely healthy server as DOWN (or excluded it from the
+// write backend after a failover). OpenSVC/Docker containers rarely trigger
+// this, since their addresses are typically stable across restarts;
+// Kubernetes Pods are the opposite by design, which is why this was never
+// caught before.
+//
+// Called from Ping() only on a down-to-up transition (server.IsDown() was
+// true a moment ago, and this Ping() just got a working connection) -- not
+// on every tick. A server's address has no reason to change while it stays
+// continuously reachable; the moment that actually matters is exactly a
+// reconnect after an outage, which is also when a Kubernetes pod restart
+// would have handed it a new one. This keeps the DNS lookup rare in a
+// healthy cluster instead of paying it every monitoring-ticker for every
+// server. Also gated by monitoring-resolve-server-ip (default true), for an
+// operator who doesn't use haproxy-mode=externalcheck and wants to skip this
+// lookup entirely even on reconnects.
+//
+// CheckHostAddr itself already short-circuits a literal-IP Host (nothing to
+// resolve) and bounds the lookup with cluster.Conf.DNSTimeout, so a
+// slow/unreachable resolver can't stall Ping(). A resolution failure here is
+// a no-op (best-effort refresh -- must never turn into a new failure mode
+// for Ping() itself, and must never clear a last-known-good IP just because
+// the resolver hiccuped once).
+func (server *ServerMonitor) refreshResolvedIP() {
+	if server.Host == "" {
+		return
+	}
+	cluster := server.ClusterGroup
+	ip, err := dbhelper.CheckHostAddr(server.Host, cluster.Conf.DNSTimeout)
+	if err != nil || ip == "" {
+		return
+	}
+	if ip != server.IP {
+		server.IP = ip
 	}
 }
 

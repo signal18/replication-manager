@@ -359,9 +359,9 @@ protocol=MariaDBBackend
 		} else {
 
 			confhaproxyread += `
-    server server` + strconv.Itoa(i) + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
+    server server` + strconv.Itoa(i) + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + DNS + `  weight 100 maxconn 2000 check inter 1000`
 			confhaproxywrite += `
-    server server` + strconv.Itoa(i) + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
+    server server` + strconv.Itoa(i) + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + DNS + `  weight 100 maxconn 2000 check inter 1000`
 		}
 		UseSSL := "0"
 		if proxy.ClusterGroup.Configurator.HaveDBTag("ssl") {
