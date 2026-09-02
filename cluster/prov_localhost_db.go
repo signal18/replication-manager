@@ -13,12 +13,45 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
 )
+
+// waitLocalhostMysqldStopped polls the pid file mysqld was started with
+// (path/<server.Id>.pid) until the process it names is gone, or returns an
+// error once the timeout elapses. It works off the pid file rather than
+// server.Process because the running mysqld may predate this repman process
+// (e.g. after a repman restart), in which case server.Process is nil even
+// though the server is very much alive.
+func (cluster *Cluster) waitLocalhostMysqldStopped(server *ServerMonitor, path string) error {
+	pidPath := path + "/" + server.Id + ".pid"
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		// No pid file: nothing known to be running, nothing to wait for.
+		return nil
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return nil
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return nil
+	}
+	for i := 0; i < 60; i++ {
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
+			// Process no longer exists.
+			return nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return fmt.Errorf("mysqld (pid %d) did not exit within timeout", pid)
+}
 
 func (cluster *Cluster) LocalhostUnprovisionDatabaseService(server *ServerMonitor) error {
 	cluster.LocalhostStopDatabaseService(server)
@@ -55,25 +88,62 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 
 	out := &bytes.Buffer{}
 	path := server.Datadir + "/var"
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		nofile, _ := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0600)
-		nofile.Close()
+	// Provision is a from-scratch action, so path is always wiped and
+	// recreated empty first -- never merged into. This used to be a
+	// commented-out dead code block (a bare "cp -rp init/data/. path" onto
+	// whatever was already there was the only thing that actually ran),
+	// which made repeated provision attempts non-idempotent: any partial
+	// InnoDB state left behind by an earlier failed attempt (e.g. an
+	// ibdata1 with no matching redo log) survived into the next attempt's
+	// "var" untouched, and InnoDB does not tolerate a half-there system
+	// tablespace -- it aborts instead of completing initialization around
+	// it. Confirmed live: two servers whose "var" carried exactly this kind
+	// of leftover state from earlier failed attempts kept failing
+	// provision with "File ./.system/innodb/redo/ib_logfile0 was not
+	// found" even after the actual bug (missing Dir on the mysql_install_db
+	// exec.Command, see below) was fixed elsewhere in this function --
+	// only wiping "var" first made those same servers provision cleanly.
+	//
+	// Stop first, the same way LocalhostUnprovisionDatabaseService already
+	// does before its own "rm -rf", so re-provisioning a server that's
+	// still actually running stops it cleanly instead of deleting its
+	// datadir out from under a live mariadbd process. A server that isn't
+	// running has no Conn, so Shutdown() no-ops with an error that's fine
+	// to ignore here -- any other error means we believed the server to be
+	// reachable and the shutdown command itself failed, so abort rather
+	// than risk deleting a live datadir.
+	if err := cluster.LocalhostStopDatabaseService(server); err != nil && server.Conn != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Failed to stop database before reprovision on %s: %s", server.URL, err)
+		cluster.errorChan <- err
+		return err
 	}
-
-	/*
-		//os.RemoveAll(path)
-
-		cmd := exec.Command("rm", "-rf", path)
-
-		cmd.Stdout = out
-		err := cmd.Run()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", err)
-			cluster.errorChan <- err
-			return err
-		}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlInfo, "Remove datadir done: %s", out.Bytes())*/
-	server.GetDatabaseConfig()
+	// SHUTDOWN (issued above) only asks mysqld to stop -- it does not wait
+	// for the process to actually exit, so a fixed sleep here was a race:
+	// on a slow shutdown (large InnoDB buffer pool flush, "WAIT FOR ALL
+	// SLAVES" on a busy master, etc.) RemoveAll below could still run while
+	// mysqld was mid-shutdown and still holding/writing the datadir. Poll
+	// the pid file this mysqld was started with instead, and refuse to
+	// touch the datadir if it's still alive after the timeout.
+	if err := cluster.waitLocalhostMysqldStopped(server, path); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Refusing to remove datadir %q on %s: %s", path, server.URL, err)
+		cluster.errorChan <- err
+		return err
+	}
+	if err := os.RemoveAll(path); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Failed to remove existing datadir %q: %s", path, err)
+		cluster.errorChan <- err
+		return err
+	}
+	if err := os.MkdirAll(path, 0755); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Failed to create datadir %q: %s", path, err)
+		cluster.errorChan <- err
+		return err
+	}
+	if err := server.GetDatabaseConfig(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Database config generation failed for %s: %s", server.URL, err)
+		cluster.errorChan <- err
+		return err
+	}
 	///	os.Symlink(server.Datadir+"/init/data", path)
 
 	/*cmd = exec.Command("cp", "-rp", cluster.Conf.ShareDir+"/tests/data"+cluster.Conf.ProvDatadirVersion, path)
@@ -105,10 +175,30 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 		return err
 	}
 	if strings.Contains(version, "mariadb") {
-		sysCmd = exec.Command(cluster.Conf.ProvDBClientBasedir+"/mysql_install_db", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--datadir="+server.Datadir+"/var", "--basedir="+cluster.Conf.ProvDBBinaryBasedir+"/../", "--force")
+		// --auth-root-authentication-method=normal: modern MariaDB packages
+		// (this one included) default mysql_install_db to "socket" auth,
+		// which only seeds root@localhost reachable via the Unix socket as
+		// the matching OS user. This code's own startup-check loop and
+		// bootstrap GRANTs connect over TCP (server.DSN, 127.0.0.1) --
+		// without "normal" here, that TCP connection is refused with
+		// "Host '127.0.0.1' is not allowed to connect to this MariaDB
+		// server" for every server this orchestrator ever provisions.
+		// "normal" restores the historical behavior (password-based
+		// root@localhost/127.0.0.1/::1, empty password here) this code has
+		// always assumed.
+		sysCmd = exec.Command(cluster.Conf.ProvDBClientBasedir+"/mysql_install_db", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--datadir="+server.Datadir+"/var", "--basedir="+cluster.Conf.ProvDBBinaryBasedir+"/../", "--auth-root-authentication-method=normal", "--force")
 	} else {
 		sysCmd = exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--datadir="+server.Datadir+"/var", "--basedir="+cluster.Conf.ProvDBBinaryBasedir+"/../", "--initialize", "--initialize-insecure")
 	}
+	// The generated my.cnf (default_path.cnf) points innodb_data_home_dir,
+	// innodb_log_group_home_dir, tmpdir, log_error, etc. at paths relative to
+	// the server's own datadir ("./.system/..."). Without Dir set here, those
+	// resolve against this repman process's own working directory instead --
+	// InnoDB then looks for (and never finds) its redo log at the wrong
+	// location entirely ("File ./.system/innodb/redo/ib_logfile0 was not
+	// found"), aborting initialization. Confirmed live: same command,
+	// otherwise unchanged, succeeds once Dir is set to the actual datadir.
+	sysCmd.Dir = server.Datadir + "/var"
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", sysCmd.String())
 	sysCmd.Stdout = out
 	err = sysCmd.Run()
@@ -179,6 +269,10 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 		user = "root"
 	}
 	mariadbdCmd := exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.GetDatabaseSocket(), "--user="+user, "--bind-address=0.0.0.0", "--pid_file="+path+"/"+server.Id+".pid")
+	// See LocalhostProvisionDatabaseService's sysCmd.Dir comment: my.cnf's
+	// "./.system/..." relative paths need this process's CWD to be the
+	// server's own datadir, not repman's.
+	mariadbdCmd.Dir = path
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 
@@ -321,6 +415,10 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 	//	mariadbdCmd := exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf --port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.Datadir+"/"+server.Id+".sock", "--user="+usr.Username, "--bind-address=0.0.0.0", "--general_log=1", "--general_log_file="+path+"/"+server.Id+".log", "--pid_file="+path+"/"+server.Id+".pid", "--log-error="+path+"/"+server.Id+".err")
 	time.Sleep(time.Millisecond * 2000)
 	mariadbdCmd := exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.GetDatabaseSocket(), "--user="+usr.Username, "--bind-address=0.0.0.0", "--pid_file="+path+"/"+server.Id+".pid")
+	// See LocalhostProvisionDatabaseService's sysCmd.Dir comment: my.cnf's
+	// "./.system/..." relative paths need this process's CWD to be the
+	// server's own datadir, not repman's.
+	mariadbdCmd.Dir = path
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 
 	var out bytes.Buffer

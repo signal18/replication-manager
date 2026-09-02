@@ -82,7 +82,14 @@ func (cluster *Cluster) LocalhostStartProxyService(pri DatabaseProxy) error {
 		cluster.LocalhostStartProxySQLService(prx)
 	}
 
-	cluster.errorChan <- nil
+	// StartProxyService (cluster/prov.go) -- this function's only caller --
+	// invokes this synchronously and uses the plain return value, unlike
+	// InitProxyService/UnprovisionProxyService's "go func(); err :=
+	// <-cluster.errorChan" pattern. A blocking send on that same shared,
+	// unbuffered channel here had no reader in this call path and hung
+	// every "start proxy" API call forever, rescued only by luck if some
+	// unrelated concurrent goroutine happened to be reading
+	// cluster.errorChan for a different operation at that exact moment.
 	return nil
 }
 
