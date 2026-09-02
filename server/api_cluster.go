@@ -3652,7 +3652,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 		mycluster.Conf.DNSTimeout = val
 	case "prov-service-plan":
-		mycluster.SetServicePlan(value)
+		return mycluster.SetServicePlan(value)
 	case "prov-net-cni-cluster":
 		mycluster.SetProvNetCniCluster(value)
 	case "prov-orchestrator-cluster":
