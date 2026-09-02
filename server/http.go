@@ -303,6 +303,15 @@ func (repman *ReplicationManager) httpserver() {
 	router.Handle("/clusters/{clusterName}/servers/{serverName}/slave-status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersIsSlaveStatus)),
 	))
+	// reader-status (bug #6 fix): a single NEW route, deliberately not a
+	// change to is-slave/slave-status above -- see
+	// handlerMuxServersPortIsReaderStatus's doc comment. Only master-status/
+	// slave-status get an /api/-prefixed alias (legacy); this one doesn't need
+	// one since nothing outside the checkslave script this branch also
+	// controls calls it yet.
+	router.Handle("/clusters/{clusterName}/servers/{serverName}/{serverPort}/reader-status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortIsReaderStatus)),
+	))
 	router.Handle("/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortIsMasterStatus)),
 	))

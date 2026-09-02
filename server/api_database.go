@@ -2899,7 +2899,7 @@ func (repman *ReplicationManager) handlerMuxServersIsMasterStatus(w http.Respons
 			return
 		}*/
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil && !mycluster.IsInFailover() && mycluster.IsActive() && node.IsMaster() && !node.IsDown() && !node.IsMaintenance && !node.IsReadOnly() {
+		if node != nil && mycluster.IsActive() && !mycluster.IsInFailover() && node.IsValidMasterCheck() {
 			w.Write([]byte("200 -Valid Master!"))
 			return
 		} else {
@@ -3375,7 +3375,7 @@ func (repman *ReplicationManager) handlerMuxServersPortIsMasterStatus(w http.Res
 			w.Write([]byte("503 -Node not Found!"))
 			return
 		}
-		if node != nil && !mycluster.IsInFailover() && mycluster.IsActive() && node.IsMaster() && !node.IsDown() && !node.IsMaintenance && !node.IsReadOnly() {
+		if node != nil && mycluster.IsActive() && !mycluster.IsInFailover() && node.IsValidMasterCheck() {
 			w.Write([]byte("200 -Valid Master!"))
 			return
 
@@ -3407,7 +3407,7 @@ func (repman *ReplicationManager) handlerMuxServersIsSlaveStatus(w http.Response
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil && mycluster.IsActive() && !node.IsDown() && !node.IsMaintenance && ((node.IsSlave && !node.HasReplicationIssue()) || (node.IsMaster() && node.ClusterGroup.Conf.PRXServersReadOnMaster)) {
+		if node != nil && mycluster.IsActive() && node.IsValidSlaveCheck() {
 			w.Write([]byte("200 -Valid Slave!"))
 			return
 		} else {
@@ -3440,7 +3440,7 @@ func (repman *ReplicationManager) handlerMuxServersPortIsSlaveStatus(w http.Resp
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
-		if node != nil && mycluster.IsActive() && !node.IsDown() && !node.IsMaintenance && ((node.IsSlave && !node.HasReplicationIssue()) || (node.IsMaster() && node.ClusterGroup.Conf.PRXServersReadOnMaster)) {
+		if node != nil && mycluster.IsActive() && node.IsValidSlaveCheck() {
 			w.Write([]byte("200 -Valid Slave!"))
 			return
 		} else {
@@ -3453,6 +3453,39 @@ func (repman *ReplicationManager) handlerMuxServersPortIsSlaveStatus(w http.Resp
 		http.Error(w, "No cluster", 500)
 		return
 	}
+}
+
+// handlerMuxServersPortIsReaderStatus is bug #6's fix (see
+// HAPROXY_LIVE_K8S_TEST_REPORT.md), added as a NEW route deliberately
+// instead of changing handlerMuxServersPortIsSlaveStatus in place: that
+// handler backs two routes ("/api/.../is-slave" and the unprefixed
+// "/clusters/.../slave-status") that HAProxy's external-check command polls
+// continuously in every already-deployed haproxy-mode=externalcheck cluster.
+// Changing its behavior would silently flip live read-backend membership for
+// any existing deployment that already has proxy-servers-read-on-master-
+// no-slave set (even if that flag has always been a no-op for them until
+// now) the moment the binary is upgraded -- a live, continuously-polled
+// health-check contract is not the place for a surprise behavior change.
+// This route is new, so nothing depends on its old behavior; only a proxy
+// that is (re)provisioned after this fix gets a checkslave script pointed at
+// it (see the moduleset's proxy_cnf_checkslave and
+// localhostCheckScriptContent), making the fix opt-in via reprovisioning
+// rather than an instant flip for already-running proxies. See
+// IsValidReaderCheck for how this differs from IsValidSlaveCheck.
+func (repman *ReplicationManager) handlerMuxServersPortIsReaderStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+	if node != nil && mycluster.IsActive() && node.IsValidReaderCheck() {
+		w.Write([]byte("200 -Valid Read Target!"))
+		return
+	}
+	http.Error(w, "-Not a Valid Read Target!", http.StatusServiceUnavailable)
 }
 
 // handlerMuxServersPortBackup handles the HTTP request to perform a physical backup on a specific server port within a cluster.
@@ -6123,7 +6156,7 @@ func (repman *ReplicationManager) handlerMuxPFSJoinWeightsHistory(w http.Respons
 
 	// Apply optional from/to filters (format: YYYYMMDD_HH).
 	fromStr := strings.TrimSpace(r.URL.Query().Get("from"))
-	toStr   := strings.TrimSpace(r.URL.Query().Get("to"))
+	toStr := strings.TrimSpace(r.URL.Query().Get("to"))
 
 	sort.Strings(matches) // lexicographic == chronological for YYYYMMDD_HH
 
@@ -6189,12 +6222,12 @@ func computeSnapshotWeights(fpath, base, token string) (pfsSnapshotWeights, erro
 
 	// Read all PFSSnapshotEntry lines.
 	type snapshotEntry struct {
-		Timestamp   string  `json:"timestamp"`
-		Digest      string  `json:"digest"`
-		DigestText  string  `json:"digestText"`
-		SchemaName  string  `json:"schemaName"`
-		ExecCount   int64   `json:"execCount"`
-		RowsScanned int64   `json:"rowsScanned"`
+		Timestamp   string `json:"timestamp"`
+		Digest      string `json:"digest"`
+		DigestText  string `json:"digestText"`
+		SchemaName  string `json:"schemaName"`
+		ExecCount   int64  `json:"execCount"`
+		RowsScanned int64  `json:"rowsScanned"`
 	}
 
 	type pairKey struct{ a, b string }
@@ -6301,7 +6334,7 @@ func extractTablesFromDigest(digestText, defaultSchema string) []string {
 	// regexp here (it's already imported in the file but we keep this pure).
 	triggers := []string{"from ", "join ", "update ", "into ", "table "}
 
-	seen  := make(map[string]bool)
+	seen := make(map[string]bool)
 	var out []string
 
 	for _, trigger := range triggers {

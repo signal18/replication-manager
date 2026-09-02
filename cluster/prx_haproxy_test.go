@@ -1290,8 +1290,8 @@ func TestHaproxyInitWritesLocalhostCheckScriptsInExternalCheckMode(t *testing.T)
 	if !strings.Contains(string(checkmaster), "127.0.0.1:10001/clusters/ahmadcluster/servers/$3/$4/master-status") {
 		t.Fatalf("checkmaster does not target this repman's own master-status API:\n%s", checkmaster)
 	}
-	if !strings.Contains(string(checkslave), "127.0.0.1:10001/clusters/ahmadcluster/servers/$3/$4/slave-status") {
-		t.Fatalf("checkslave does not target this repman's own slave-status API:\n%s", checkslave)
+	if !strings.Contains(string(checkslave), "127.0.0.1:10001/clusters/ahmadcluster/servers/$3/$4/reader-status") {
+		t.Fatalf("checkslave does not target this repman's own reader-status API (bug #6 fix -- see handlerMuxServersPortIsReaderStatus):\n%s", checkslave)
 	}
 
 	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))

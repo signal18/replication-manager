@@ -729,6 +729,52 @@ func (server *ServerMonitor) HasReplicationIssue() bool {
 	return true
 }
 
+// IsValidMasterCheck is the shared condition behind every "is this
+// server a valid master" external-check endpoint
+// (handlerMuxServersIsMasterStatus, handlerMuxServersPortIsMasterStatus,
+// server/api_database.go) -- moved here, rather than left as a free
+// function in the server package, since it's purely a function of this
+// server's own state, the same home IsDown/IsMaster/HasReplicationIssue
+// already have. Deliberately does NOT check cluster.IsActive() or
+// cluster.IsInFailover(): both are monitor/cluster-level concerns (is this
+// repman instance the active one for this cluster, is the cluster mid
+// failover right now), not per-server ones -- callers gate on them
+// separately alongside this.
+func (server *ServerMonitor) IsValidMasterCheck() bool {
+	return server.IsMaster() && !server.IsDown() && !server.IsMaintenance && !server.IsReadOnly()
+}
+
+// IsValidSlaveCheck is the shared condition behind the legacy "is this
+// server a valid slave" external-check endpoints
+// (handlerMuxServersIsSlaveStatus, handlerMuxServersPortIsSlaveStatus).
+// Deliberately unchanged/bug-for-bug identical to its pre-existing behavior
+// (only PRXServersReadOnMaster is consulted, never
+// PRXServersReadOnMasterNoSlave -- see bug #6, HAPROXY_LIVE_K8S_TEST_REPORT.md):
+// both routes are polled continuously by every already-deployed
+// haproxy-mode=externalcheck cluster's checkslave script, so this is not the
+// place for a behavior change. IsValidReaderCheck below is the fixed
+// version, reached only via the new reader-status route. Deliberately does
+// NOT check cluster.IsActive() -- see IsValidMasterCheck's doc comment.
+func (server *ServerMonitor) IsValidSlaveCheck() bool {
+	return !server.IsDown() && !server.IsMaintenance &&
+		((server.IsSlave && !server.HasReplicationIssue()) ||
+			(server.IsMaster() && server.ClusterGroup.Conf.PRXServersReadOnMaster))
+}
+
+// IsValidReaderCheck is bug #6's fix: the same shape as
+// IsValidSlaveCheck, but the master branch goes through
+// cluster.ShouldServeReadsFromMaster() (PRXServersReadOnMaster OR the
+// PRXServersReadOnMasterNoSlave fallback) instead of PRXServersReadOnMaster
+// alone. Reached only via handlerMuxServersPortIsReaderStatus's new route,
+// never via slave-status/is-slave -- see that handler's doc comment for why
+// this couldn't just be a change to IsValidSlaveCheck. Deliberately does NOT
+// check cluster.IsActive() -- see IsValidMasterCheck's doc comment.
+func (server *ServerMonitor) IsValidReaderCheck() bool {
+	return !server.IsDown() && !server.IsMaintenance &&
+		((server.IsSlave && !server.HasReplicationIssue()) ||
+			(server.IsMaster() && server.ClusterGroup.ShouldServeReadsFromMaster()))
+}
+
 func (server *ServerMonitor) IsIgnored() bool {
 	return server.Ignored
 }
