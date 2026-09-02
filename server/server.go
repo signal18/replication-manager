@@ -1117,6 +1117,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvProxyStartScript, "prov-proxy-start-script", "", "Proxy start script")
 	flags.StringVar(&conf.ProvDbStopScript, "prov-db-stop-script", "", "Database stop script")
 	flags.StringVar(&conf.ProvProxyStopScript, "prov-proxy-stop-script", "", "Proxy stop script")
+	flags.StringVar(&conf.ProvDbChangePlanScript, "prov-db-change-plan-script", "", "Service-plan (DBU) change gate script; exit non-zero refuses the plan change. Receives all args to reproduce the change.")
 	flags.BoolVar(&conf.ProvDbStartFetchConfig, "prov-db-start-fetch-config", true, "Fetch configuration from configurator on DB start")
 	flags.BoolVar(&conf.ProvProxyStartFetchConfig, "prov-proxy-start-fetch-config", true, "Fetch configuration from configurator on Proxy start")
 

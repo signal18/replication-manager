@@ -1447,12 +1447,18 @@ func (cluster *Cluster) SetServicePlanInfos(theplan string) error {
 }
 
 func (cluster *Cluster) SetServicePlan(theplan string) error {
-	// A pinned (immutable) provisioning spec is a hard lock: since a plan would
-	// move prov-db-memory/cores/disk/iops, refuse the whole plan change while
-	// any of them is pinned. The operator must unpin before switching plans.
-	if !cluster.CanChangePlan() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Service plan change refused for %s: a provisioning parameter is pinned (immutable); unpin it to change the plan", theplan)
-		return errors.New("plan change refused: a provisioning parameter is immutable (pinned)")
+	// Gate the plan change. A client-provided script wins (it receives every
+	// arg to reproduce the change and a non-zero exit refuses it); otherwise the
+	// built-in check refuses when a plan-driven spec is pinned — immutable
+	// (immutable.toml) or preserved (01_preserved.cnf) — since a plan could no
+	// longer move it. The operator must unpin/unpreserve before switching plans.
+	if cluster.Conf.ProvDbChangePlanScript != "" {
+		if err := cluster.ChangePlanScript(cluster.Conf.ProvServicePlan, theplan); err != nil {
+			return err
+		}
+	} else if !cluster.CanChangePlan() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Service plan change refused for %s: a provisioning parameter is pinned (immutable/preserved); unpin it to change the plan", theplan)
+		return errors.New("plan change refused: a provisioning parameter is pinned (immutable/preserved)")
 	}
 	plans := cluster.GetServicePlans()
 
