@@ -8,7 +8,6 @@ package cluster
 
 import (
 	"errors"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -266,13 +265,15 @@ func (cluster *Cluster) ChangePlanScript(fromPlan string, toPlan string) error {
 		}
 	}
 
-	// Credentials go through the environment, never argv (argv is world-visible
-	// in the process list and would leak into logs). Plan + specs stay as args.
+	// The script talks to repman's own API, the same convention as the other
+	// sample scripts (see share/scripts/staging_refresh.sh). GetExecEnv already
+	// builds the standard REPLICATION_MANAGER_URL/USER/PASSWORD/CLUSTER_NAME
+	// (API admin creds + URL) through the environment — never argv, which is
+	// world-visible and would leak into logs. Plan + specs stay as args for
+	// convenience. The script reaches every DB variable through the API, so it
+	// never needs DB hosts or DB credentials.
 	scriptCmd := exec.Command(cluster.Conf.ProvDbChangePlanScript, cluster.Name, fromPlan, toPlan, mem, cores, disk, iops)
-	scriptCmd.Env = append(os.Environ(),
-		"REPLICATION_MANAGER_CLUSTER="+cluster.Name,
-		"REPLICATION_MANAGER_DB_USER="+cluster.GetDbUser(),
-		"REPLICATION_MANAGER_DB_PASSWORD="+cluster.GetDbPass(),
+	scriptCmd.Env = append(cluster.GetExecEnv(),
 		"REPLICATION_MANAGER_FROM_PLAN="+fromPlan,
 		"REPLICATION_MANAGER_TO_PLAN="+toPlan,
 	)
