@@ -50,7 +50,7 @@ func TestGetConfigInnoDBLogFileSize(t *testing.T) {
 		{"4G", "4G", "", "256"},
 		{"8G", "8G", "", "512"},
 		{"16G", "16G", "", "1024"},
-		{"64G", "64G", "", "8192"},
+		{"64G", "64G", "", "4096"},
 		{"512G caps at 16384", "512G", "", "16384"},
 		{"smallredolog tag forces floor", "64G", "smallredolog", "128"},
 	}

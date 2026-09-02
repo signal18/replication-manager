@@ -81,19 +81,23 @@ func (configurator *Configurator) GetConfigReplicationDomain(ClusterName string)
 	return configurator.ClusterConfig.ProvDomain
 }
 
-const memReserveMB int64 = 2048
-
+// getUsableMemoryMB returns the total prov-db-memory in MB. Every share in
+// prov-db-memory-shared-pct is a percentage of this total (single reference,
+// so the shares — caches + threads + pfs + fscache — sum below 100, the
+// remainder being free margin). The "fscache" share is not an engine cache and
+// is not read here: it is held out simply by the engine caches summing to less
+// than 100, leaving that fraction for the reclaimable FS page cache (chiefly
+// the redo log page cache, redo capped at BP/4, plus binlogs, data reads and
+// the tmpfs). This replaced the old fixed 2048MB reserve, absurd at both ends
+// (negative on a 768MB instance, 0.4% on 512GB). The FS cache is not lost
+// memory: the kernel evicts clean pages before any OOM — the anti-spike
+// cushion, since the containers run swap-disabled.
 func (configurator *Configurator) getUsableMemoryMB() (int64, error) {
 	memMB, err := config.ParseUnitMeasurementToInt("M,bytes,required", configurator.ClusterConfig.ProvMem, true)
 	if err != nil {
 		return 0, err
 	}
-	containermem := int64(memMB)
-	usable := containermem - memReserveMB
-	if usable < 0 {
-		usable = 0
-	}
-	return usable, nil
+	return int64(memMB), nil
 }
 
 // minEngineMemMB is the floor for any allocated storage-engine buffer, in MB.
@@ -103,15 +107,30 @@ func (configurator *Configurator) getUsableMemoryMB() (int64, error) {
 // and stopped the DB from booting. Every engine that is allocated memory gets at least this.
 const minEngineMemMB int64 = 128
 
+// largestPow2LE returns the largest power of two not exceeding n (0 for n < 1).
+// All generated buffer sizes are rounded down to a power of two: clean,
+// predictable values, and the round-down also trims memory (safer under a cap).
+func largestPow2LE(n int64) int64 {
+	if n < 1 {
+		return 0
+	}
+	p := int64(1)
+	for p*2 <= n {
+		p *= 2
+	}
+	return p
+}
+
 // engineMemMB returns an engine buffer size in MB from the usable memory and the
-// engine's shared-memory percentage. An enabled engine (pct > 0) never gets less
-// than minEngineMemMB; a disabled engine (pct <= 0) stays at 0 (so we never silently
-// turn on an engine, e.g. the query cache, that is meant to be off).
+// engine's shared-memory percentage, rounded down to a power of two. An enabled
+// engine (pct > 0) never gets less than minEngineMemMB; a disabled engine
+// (pct <= 0) stays at 0 (so we never silently turn on an engine, e.g. the query
+// cache, that is meant to be off).
 func engineMemMB(usableMB, pct int64) int64 {
 	if pct <= 0 {
 		return 0
 	}
-	if v := usableMB * pct / 100; v > minEngineMemMB {
+	if v := largestPow2LE(usableMB * pct / 100); v > minEngineMemMB {
 		return v
 	}
 	return minEngineMemMB
@@ -272,13 +291,11 @@ func (configurator *Configurator) GetConfigInnoDBMaxDirtyPagePctLwm() string {
 const redoFloorMB int64 = 128
 const redoCapMB int64 = 16384
 
-// floorPow2MB returns the largest power of two (in MB) not exceeding n, clamped
-// to [redoFloorMB, redoCapMB]. Powers of two keep the generated redo sizes
-// clean and predictable.
-func floorPow2MB(n int64) int64 {
-	p := redoFloorMB
-	for p*2 <= n {
-		p *= 2
+// redoPow2MB is largestPow2LE clamped to [redoFloorMB, redoCapMB].
+func redoPow2MB(n int64) int64 {
+	p := largestPow2LE(n)
+	if p < redoFloorMB {
+		p = redoFloorMB
 	}
 	if p > redoCapMB {
 		p = redoCapMB
@@ -300,7 +317,7 @@ func (configurator *Configurator) GetConfigInnoDBLogFileSize() string {
 	if err != nil {
 		return strconv.FormatInt(redoFloorMB, 10)
 	}
-	return strconv.FormatInt(floorPow2MB(bp/4), 10)
+	return strconv.FormatInt(redoPow2MB(bp/4), 10)
 }
 
 func (configurator *Configurator) GetConfigInnoDBLogBufferSize() string {
