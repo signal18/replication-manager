@@ -247,6 +247,9 @@ var clusterACLRules = []ACLRule{
 	{"/settings/actions/reload-plan-info", nil, []string{config.GrantClusterSettings}},
 	{"/settings/actions/accept-compliance", nil, []string{config.GrantDBConfigAcceptCompliance, config.GrantProxyConfigAcceptCompliance}},
 	{"/configurator/compliance-diff", nil, []string{config.GrantDBConfigGet}},
+	// Read-only lock-state probes (immutable setting / preserved variable):
+	// /settings/{name}/lock and /configurator/variables/{name}/lock.
+	{"/lock", nil, []string{config.GrantDBConfigGet}},
 	{"/settings/actions/switch", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/set", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/clear", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},

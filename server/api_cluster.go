@@ -2578,6 +2578,17 @@ func (repman *ReplicationManager) handlerMuxClusterTop(w http.ResponseWriter, r 
 // locked (immutable, i.e. pinned in the config file). Name only, no value, so
 // no secret can leak. Lets the GUI show a pin state and a client check before a
 // change (e.g. the service-plan gate).
+// @Summary Report the immutable lock state of a cluster setting
+// @Description Returns whether a config setting is immutable (pinned in the config file). Name only, no value.
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param settingName path string true "Setting name (e.g. prov-db-memory)"
+// @Success 200 {object} object "{setting, immutable}"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/settings/{settingName}/lock [get]
 func (repman *ReplicationManager) handlerMuxClusterSettingLock(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -2606,6 +2617,17 @@ func (repman *ReplicationManager) handlerMuxClusterSettingLock(w http.ResponseWr
 // (preserved, the "agree") across the cluster, looping every server so the
 // per-server exclusions are reflected. `preserved` is true when the variable is
 // preserved on at least one server. Names only, no values.
+// @Summary Report the preserved (pin) lock state of a DB variable across servers
+// @Description Returns whether a DB variable is preserved (the "agree") per server, accounting for per-server exclusions. Names only, no values.
+// @Tags ClusterConfigurator
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param variableName path string true "DB variable name (e.g. innodb_buffer_pool_size)"
+// @Success 200 {object} object "{variable, preserved, servers[]}"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/configurator/variables/{variableName}/lock [get]
 func (repman *ReplicationManager) handlerMuxClusterVariableLock(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
