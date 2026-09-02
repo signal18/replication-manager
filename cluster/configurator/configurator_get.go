@@ -266,28 +266,41 @@ func (configurator *Configurator) GetConfigInnoDBMaxDirtyPagePctLwm() string {
 	return s10
 }
 
+// redoFloorMB/redoCapMB bound the redo size in MB, both powers of two. The old
+// 1024MB floor produced a redo larger than the whole memory cgroup on small
+// prov-db-memory instances, making crash recovery unaffordable (#1749).
+const redoFloorMB int64 = 128
+const redoCapMB int64 = 16384
+
+// floorPow2MB returns the largest power of two (in MB) not exceeding n, clamped
+// to [redoFloorMB, redoCapMB]. Powers of two keep the generated redo sizes
+// clean and predictable.
+func floorPow2MB(n int64) int64 {
+	p := redoFloorMB
+	for p*2 <= n {
+		p *= 2
+	}
+	if p > redoCapMB {
+		p = redoCapMB
+	}
+	return p
+}
+
+// GetConfigInnoDBLogFileSize sizes the redo at a power of two around a quarter
+// of the InnoDB buffer pool (BP/4): BP/2 over-allocated the redo (up to 8GB on
+// a 32GB instance), and modern MariaDB/MySQL flushing no longer needs a redo
+// half the buffer pool. Floor 128MB, cap 16GB; the smallredolog tag forces the
+// floor.
 func (configurator *Configurator) GetConfigInnoDBLogFileSize() string {
 	//result in MB
-	var valuemin int64
-	var valuemax int64
-	valuemin = 1024
-	valuemax = 20 * 1024
-	value, err := strconv.ParseInt(configurator.GetConfigInnoDBBPSize(), 10, 64)
-	if err != nil {
-		return "1024"
-	}
-	value = value / 2
-	if value < valuemin {
-		value = valuemin
-	}
-	if value > valuemax {
-		value = valuemax
-	}
 	if configurator.HaveDBTag("smallredolog") {
-		return "128"
+		return strconv.FormatInt(redoFloorMB, 10)
 	}
-	s10 := strconv.FormatInt(value, 10)
-	return s10
+	bp, err := strconv.ParseInt(configurator.GetConfigInnoDBBPSize(), 10, 64)
+	if err != nil {
+		return strconv.FormatInt(redoFloorMB, 10)
+	}
+	return strconv.FormatInt(floorPow2MB(bp/4), 10)
 }
 
 func (configurator *Configurator) GetConfigInnoDBLogBufferSize() string {

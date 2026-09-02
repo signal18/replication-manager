@@ -37,3 +37,30 @@ func TestGetConfigPFSDigestLength(t *testing.T) {
 		})
 	}
 }
+
+// Redo is sized at a power of two around BP/4, floor 128MB, cap 16GB (#1749).
+func TestGetConfigInnoDBLogFileSize(t *testing.T) {
+	tests := []struct {
+		name string
+		mem  string
+		tag  string
+		want string
+	}{
+		{"768M floors at 128", "768M", "", "128"},
+		{"4G", "4G", "", "256"},
+		{"8G", "8G", "", "512"},
+		{"16G", "16G", "", "1024"},
+		{"64G", "64G", "", "8192"},
+		{"512G caps at 16384", "512G", "", "16384"},
+		{"smallredolog tag forces floor", "64G", "smallredolog", "128"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newConfiguratorWithMem(tt.mem)
+			c.DBTags = []string{tt.tag}
+			if got := c.GetConfigInnoDBLogFileSize(); got != tt.want {
+				t.Errorf("GetConfigInnoDBLogFileSize(mem=%s tag=%q) = %s, want %s", tt.mem, tt.tag, got, tt.want)
+			}
+		})
+	}
+}
