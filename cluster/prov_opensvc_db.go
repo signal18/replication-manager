@@ -577,7 +577,7 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["#command"] = "gdb -ex r -ex thread apply all bt -frame-arguments all full --args mariadbd"
 		svccontainer["##docker_image"] = "quay.io/mariadb-foundation/mariadb-debug:10.11-mdev-33798-knielsen-pkgtest"
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/mysql-files:/var/lib/mysql-files:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
-		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
+		svccontainer["environment"] = server.OpenSVCGetDBContainerEnvironment()
 		if server.ClusterGroup.Conf.ProvOpensvcImageForcePull {
 			svccontainer["image_pull_policy"] = "always"
 		}
@@ -591,6 +591,16 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		}
 	}
 	return svccontainer
+}
+
+// OpenSVCGetDBContainerEnvironment builds the container#db environment line,
+// appending the shared allocator tuning (GetDBAllocatorEnv, #1749).
+func (server *ServerMonitor) OpenSVCGetDBContainerEnvironment() string {
+	env := "MYSQL_INITDB_SKIP_TZINFO=yes"
+	if preload, arenaMax := server.ClusterGroup.GetDBAllocatorEnv(); preload != "" {
+		env += " LD_PRELOAD=" + preload + " MALLOC_ARENA_MAX=" + arenaMax
+	}
+	return env
 }
 
 func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string {

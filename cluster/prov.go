@@ -9,7 +9,9 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -23,6 +25,31 @@ import (
 const (
 	RestartRidJobsContainer = "container#jobs"
 )
+
+// GetProvCoresInt returns prov-cores as a whole number of cores. prov-cores
+// is a float elsewhere (DBU fractions like "0.5" are valid), so fractional
+// values round up to their ceiling; unparseable or non-positive values fall
+// back to 2.
+func (cluster *Cluster) GetProvCoresInt() int {
+	cores, err := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+	if err != nil || cores <= 0 {
+		return 2
+	}
+	return int(math.Ceil(cores))
+}
+
+// GetDBAllocatorEnv returns the allocator tuning exported to every provisioned
+// database container, whatever the orchestrator (#1749). MALLOC_ARENA_MAX
+// derives from prov-cores because arena count scales with the parallelism the
+// cgroup can actually run, not with memory or connection count; an empty
+// preload disables the feature.
+func (cluster *Cluster) GetDBAllocatorEnv() (preload string, arenaMax string) {
+	preload = cluster.Conf.ProvDBDockerJemallocPreload
+	if preload == "" {
+		return "", ""
+	}
+	return preload, strconv.Itoa(cluster.GetProvCoresInt())
+}
 
 // validateRestartRid validates the resource ID parameter for database restart operations.
 // Only container#jobs is allowed for targeted restarts.
