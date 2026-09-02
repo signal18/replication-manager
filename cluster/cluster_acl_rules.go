@@ -251,9 +251,11 @@ var clusterACLRules = []ACLRule{
 	// (config flag pinned in immutable.toml) and
 	// /configurator/variables/{name}/is-preserved (DB var frozen by the
 	// "agree"). Distinctive tokens, so each Contains rule is unambiguous even
-	// though {name} sits mid-path.
-	{"/is-immutable", nil, []string{config.GrantDBConfigGet}},
-	{"/is-preserved", nil, []string{config.GrantDBConfigGet}},
+	// though {name} sits mid-path. "Who can write can read": the read grants
+	// include the get grant AND the matching write grants — a setting spans
+	// cluster/server scope, a preserved var is database config.
+	{"/is-immutable", nil, []string{config.GrantDBConfigGet, config.GrantClusterSettings, config.GrantGlobalSettings}},
+	{"/is-preserved", nil, []string{config.GrantDBConfigGet, config.GrantDBConfigFlag}},
 	{"/settings/actions/switch", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/set", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/clear", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
