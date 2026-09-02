@@ -2384,7 +2384,7 @@ func TestHaproxyReconcileAddsMissingServer(t *testing.T) {
 	}
 
 	commands := getCommands()
-	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check"
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check weight 100"
 	wantDrain := "set server service_read/slave1 state drain"
 	wantHealth := "enable health service_read/slave1"
 
@@ -2464,7 +2464,7 @@ func TestHaproxyReconcileAddsMissingIPv6Server(t *testing.T) {
 	}
 
 	commands := getCommands()
-	wantAdd := "add server service_read/slave1 [2001:db8::1]:3307 check"
+	wantAdd := "add server service_read/slave1 [2001:db8::1]:3307 check weight 100"
 	if cmdIndex(commands, wantAdd) < 0 {
 		t.Errorf("Refresh() commands = %v, want to contain %q", commands, wantAdd)
 	}
@@ -2628,7 +2628,7 @@ func TestHaproxyReconcileSkipsWhenGated(t *testing.T) {
 			}
 
 			commands := getCommands()
-			if cmdIndex(commands, "add server service_read/slave1 127.0.0.1:3307 check") >= 0 {
+			if cmdIndex(commands, "add server service_read/slave1 127.0.0.1:3307 check weight 100") >= 0 {
 				t.Errorf("Refresh() commands = %v, want no add server command when gated off", commands)
 			}
 		})
@@ -2917,11 +2917,13 @@ func TestHaproxySetStateLogLevelDowngradesNoSuchServer(t *testing.T) {
 // haproxySetStateLogLevel's "No such server" downgrade) originally checked
 // only cluster.Conf.HaproxyAPIBootstrapServers, but reconcileReadBackendServers
 // itself also no-ops for an unsupported HAProxy version or a non-runtimeapi
-// haproxy-mode, and separately skips just the add branch on a resolver-backed
-// (HasDNS()) proxy — any one of those means a missing/renamed read-backend
-// row is NOT actually self-correcting, so the "No such server" downgrade's
-// premise doesn't hold. All four conditions must hold for
-// reconcileReadBackendServersActive to report true.
+// haproxy-mode — either one means a missing/renamed read-backend row is NOT
+// actually self-correcting, so the "No such server" downgrade's premise
+// doesn't hold. All conditions here must hold for
+// reconcileReadBackendServersActive to report true. proxy.HasDNS() is
+// deliberately exercised below too, but as a case that must NOT affect the
+// result (see GetConfigProxyModule/RuntimeAPIAddr — runtimeapi is no longer
+// resolver-backed, so a K8s/OpenSVC proxy reconciles the same as any other).
 func TestHaproxyReconcileReadBackendServersActiveRequiresAllConditions(t *testing.T) {
 	newBaseCluster := func(t *testing.T) *Cluster {
 		cluster := setupTestCluster(t, 1)
@@ -2973,12 +2975,12 @@ func TestHaproxyReconcileReadBackendServersActiveRequiresAllConditions(t *testin
 			explain: "reconcileReadBackendServers' own mode gate no-ops the whole function",
 		},
 		{
-			name: "resolver-backed proxy (HasDNS)",
+			name: "resolver-backed proxy (HasDNS) does not affect the result",
 			mutate: func(cluster *Cluster, proxy *HaproxyProxy) {
 				cluster.Configurator.ProxyTags = []string{"dns"}
 			},
-			want:    false,
-			explain: "skipAddingMembers skips exactly the add branch that would self-correct a missing row",
+			want:    true,
+			explain: "runtimeapi's server lines carry no \"resolvers\" clause regardless of proxy.HasDNS(), so a K8s/OpenSVC proxy still self-corrects",
 		},
 	}
 
@@ -3093,11 +3095,11 @@ func TestHaproxyReconcileBudgetDefersExcessWork(t *testing.T) {
 	// for no benefit.
 	haRuntime := haproxy.Runtime{Host: host, Port: port}
 	proxy.Version = "HAProxy version 3.0.26-1 2024/05/01"
-	proxy.reconcileReadBackendServers(haRuntime, knownToHaproxyWithGhost, map[string]string{}, map[string]string{})
+	proxy.reconcileReadBackendServers(haRuntime, knownToHaproxyWithGhost, map[string]string{}, map[string]string{}, map[string]bool{})
 
 	commands := getCommands()
 	// The add side defers entirely (no AddServer attempt at all).
-	if cmdIndex(commands, "add server service_read/slave1 127.0.0.1:3307 check") >= 0 {
+	if cmdIndex(commands, "add server service_read/slave1 127.0.0.1:3307 check weight 100") >= 0 {
 		t.Errorf("Refresh() commands = %v, want no add server while the reconcile budget is already exhausted", commands)
 	}
 	// The removal side still drains decommissioned1 — SetMaintenance is
@@ -3129,7 +3131,7 @@ func TestHaproxyReconcileBudgetDefersExcessWork(t *testing.T) {
 		t.Fatalf("Refresh() error = %v", err)
 	}
 	commands = getCommands()
-	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check"
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check weight 100"
 	if cmdIndex(commands, wantAdd) < 0 {
 		t.Errorf("Refresh() commands = %v, want to contain %q once the budget is available again (deferred work must not be lost)", commands, wantAdd)
 	}
@@ -3254,7 +3256,7 @@ func TestHaproxyReconcileBudgetCheckedInsideHelpers(t *testing.T) {
 	// unrelated reason (e.g. AddServer or SetDrain never being reached at
 	// all would also produce no "enable health" call).
 	for _, want := range []string{
-		"add server service_read/slave1 127.0.0.1:3307 check",
+		"add server service_read/slave1 127.0.0.1:3307 check weight 100",
 		"set server service_read/slave1 state drain",
 	} {
 		if cmdIndex(gotCommands, want) < 0 {
@@ -3404,7 +3406,7 @@ func TestHaproxyReconcileRemovalDeadlineIsIndependentOfAddDeadline(t *testing.T)
 	// Confirm the add loop actually reached AddServer (and therefore spent
 	// its budget on the slow response) before drawing any conclusion from
 	// the removal loop's behavior.
-	if cmdIndex(gotCommands, "add server service_read/slave1 127.0.0.1:3307 check") < 0 {
+	if cmdIndex(gotCommands, "add server service_read/slave1 127.0.0.1:3307 check weight 100") < 0 {
 		t.Fatalf("Refresh() commands = %v, want to contain the add attempt for slave1 (test setup didn't reach the point this test needs to exercise)", gotCommands)
 	}
 
@@ -3636,7 +3638,7 @@ func TestHaproxyReconcileUpdatesChangedAddress(t *testing.T) {
 	if cmdIndex(commands, wantAddrUpdate) < 0 {
 		t.Errorf("Refresh() commands = %v, want to contain %q", commands, wantAddrUpdate)
 	}
-	if cmdIndex(commands, "add server service_read/slave1 127.0.0.1:3399 check") >= 0 {
+	if cmdIndex(commands, "add server service_read/slave1 127.0.0.1:3399 check weight 100") >= 0 {
 		t.Errorf("Refresh() commands = %v, want no add server for an address change on a known Id", commands)
 	}
 }
@@ -3782,6 +3784,12 @@ func TestHaproxyReconcileUpdatesChangedIPv6Address(t *testing.T) {
 // tag also set to prove the skip is due to the server's Host, not merely
 // proxy.HasDNS(). See TestHaproxyReconcileUpdatesChangedAddressForIPServerBehindDNSProxy
 // for the IP-based counterpart.
+// This is now really a special case of the unresolved-address skip (see
+// TestHaproxyReconcileSkipsAddingMemberWithUnresolvedAddress): slave1's Host
+// is an FQDN and its server.IP was never resolved in this synthetic test (no
+// Ping() ran), so ServerMonitor.RuntimeAPIAddr() falls back to the FQDN,
+// which isn't a literal address to reconcile against — not because
+// proxy.HasDNS() is true (that alone no longer gates anything here).
 func TestHaproxyReconcileSkipsAddressUpdateOnDNSCluster(t *testing.T) {
 	cluster := setupTestCluster(t, 2)
 	defer cleanupTestCluster(t, cluster)
@@ -3928,16 +3936,202 @@ func TestHaproxyReconcileUpdatesChangedAddressForIPServerBehindDNSProxy(t *testi
 	}
 }
 
-// TestHaproxyReconcileSkipsAddingMembersOnDNSCluster confirms that
-// add-missing (unlike address reconciliation, and unlike stale removal — see
-// TestHaproxyReconcileStillDrainsStaleServerOnDNSCluster and
-// TestHaproxyReconcileMarksServerNonPurgeableAfterDelServerRefusal) is
-// skipped entirely when proxy.HasDNS() is true: GetConfigProxyModule appends
-// "resolvers dns" to every bootstrapped read-backend server line in that
-// case, but a runtime "add server" call can't attach "resolvers" itself, so
-// an entry added that way would silently stop tracking DNS changes — worse
-// than not adding it.
-func TestHaproxyReconcileSkipsAddingMembersOnDNSCluster(t *testing.T) {
+// TestHaproxyRefreshMatchesRuntimeAPIWriteRowByIPWithoutFQDNTranslation
+// guards a bug found live against a real Kubernetes cluster while fixing
+// Bug 5b/N4: runtimeapi's server lines are never FQDN-configured (see
+// GetConfigProxyModule, cluster/prx_get.go — a real IPv4 placeholder is
+// rendered at config time, corrected to the real resolved IP over the
+// Runtime API), so "show servers state" never returns a usable srv_fqdn for
+// them. Refresh()'s write-backend row matching used to unconditionally
+// translate a "show stat" row's connect IP back to a hostname via that
+// (now-empty) map whenever proxy.HasDNS() was true, which made every
+// runtimeapi write-backend row fail to match on a DNS/K8s/OpenSVC proxy —
+// live-reproduced as an unbroken loop of "HAProxy cannot add leader ...:
+// nothing changed" every monitoring-ticker pass, even though the master's
+// address was already correct. GetServerFromURL already matches a bare IP
+// directly against ServerMonitor.IP, so runtimeapi must skip the
+// translation and match the raw connect IP as-is.
+func TestHaproxyRefreshMatchesRuntimeAPIWriteRowByIPWithoutFQDNTranslation(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyMode:                "runtimeapi",
+		HaproxyAPIBootstrapServers: true,
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+	// Forces proxy.HasDNS() == true, the same way the config generator sees
+	// a K8s/OpenSVC proxy.
+	cluster.Configurator.ProxyTags = []string{"dns"}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "clustera-1.db.clustera.svc.cluster.local"
+	master.IP = "10.244.3.3"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	// "show stat" reports the real resolved connect IP, matching what the
+	// Runtime API already corrected it to (ServerMonitor.RuntimeAPIAddr) —
+	// there is no FQDN anywhere in this response, matching a real
+	// runtimeapi K8s deployment.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "10.244.3.3:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "10.244.3.3:3306"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+
+	if !proxy.HasDNS() {
+		t.Fatalf("test setup error: expected proxy.HasDNS() to be true")
+	}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	// "show servers state" is now called unconditionally whenever
+	// proxy.HasDNS() (ground truth is always fetched fresh — see
+	// resolverBackedPool's doc comment in Refresh()); this fake server
+	// doesn't answer it, so the parsed response is empty and every
+	// backend/svname key correctly comes back "not resolver-backed",
+	// matching this test's actual scenario.
+	for _, c := range commands {
+		if strings.HasPrefix(c, "set server service_write/leader") {
+			t.Errorf("Refresh() commands = %v, want no leader repoint (the write row already matched master1 by IP, nothing to fix)", commands)
+		}
+	}
+
+	if len(proxy.BackendsWrite) != 1 {
+		t.Fatalf("proxy.BackendsWrite = %v, want exactly one entry (the write-backend row must match master1 directly by its connect IP)", proxy.BackendsWrite)
+	}
+}
+
+// TestHaproxyRefreshMatchesRuntimeAPIWriteRowByFQDNWithoutBootstrapFlag is
+// TestHaproxyRefreshMatchesRuntimeAPIWriteRowByIPWithoutFQDNTranslation's
+// counterpart with HaproxyAPIBootstrapServers left at its default (false): a
+// regression found live against a real Kubernetes cluster showed the
+// non-resolver design is scoped to that flag, not to haproxy-mode=="runtimeapi"
+// alone (see GetConfigProxyModule, cluster/prx_get.go, and resolverBackedPool
+// in Refresh(), cluster/prx_haproxy.go — ground truth read fresh from "show
+// servers state" every pass, not a cached read of the flag). Without the
+// flag, runtimeapi's write-backend row matching must keep using the original
+// "show servers state" FQDN translation — the config-time line still carries
+// "resolvers dns", and "show stat"'s address column still isn't a hostname
+// repman can just compare to the FQDN cluster.Servers holds.
+func TestHaproxyRefreshMatchesRuntimeAPIWriteRowByFQDNWithoutBootstrapFlag(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "runtimeapi",
+		// HaproxyAPIBootstrapServers left false (the default).
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+	cluster.Configurator.ProxyTags = []string{"dns"}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "clustera-1.db.clustera.svc.cluster.local"
+	master.IP = "10.244.3.3"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	// "show servers state" is what lets HasDNS() code translate "show
+	// stat"'s reported connect IP back to the FQDN cluster.Servers holds —
+	// exactly the legacy mechanism that must still be exercised here.
+	showServersStateResponse := "1\n# be_id be_name srv_id srv_name srv_addr srv_op_state srv_admin_state srv_uweight srv_iweight srv_time_since_last_change srv_check_status srv_check_result srv_check_health srv_check_state srv_agent_state bk_f_forced_id srv_f_forced_id srv_fqdn srv_port srvrecord srv_use_ssl srv_check_port srv_check_addr srv_agent_addr srv_agent_port\n" +
+		"5 service_write 1 leader 10.244.3.3 2 0 100 100 85 6 3 4 6 0 0 0 clustera-1.db.clustera.svc.cluster.local 3306 - 0 0 - - 0\n"
+	statResponse := haproxyStatRow("service_write", "leader", "UP", "10.244.3.3:3306")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				switch strings.TrimRight(line, "\r\n") {
+				case "show stat":
+					c.Write([]byte(statResponse))
+				case "show servers state":
+					c.Write([]byte(showServersStateResponse))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+
+	if !proxy.HasDNS() {
+		t.Fatalf("test setup error: expected proxy.HasDNS() to be true")
+	}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	if len(proxy.BackendsWrite) != 1 {
+		t.Fatalf("proxy.BackendsWrite = %v, want exactly one entry (the write-backend row must still match master1 via the FQDN translation without the bootstrap flag)", proxy.BackendsWrite)
+	}
+}
+
+// TestHaproxyReconcileAddsMissingMemberOnDNSClusterWhenResolved guards the
+// fix for Bug 5b/N4: add-missing used to be blanket-skipped whenever
+// proxy.HasDNS() was true (any K8s/OpenSVC proxy), because
+// GetConfigProxyModule used to attach "resolvers dns" to every runtimeapi
+// server line, and a runtime "add server" can't attach "resolvers" itself.
+// runtimeapi's server lines no longer carry "resolvers" at all (see
+// GetConfigProxyModule, cluster/prx_get.go) — the proxy being DNS/K8s/OpenSVC
+// no longer matters; only whether this specific server has a resolved
+// literal address (ServerMonitor.RuntimeAPIAddr) does. See
+// TestHaproxyReconcileSkipsAddingMemberWithUnresolvedAddress for the
+// narrower case that's still skipped.
+func TestHaproxyReconcileAddsMissingMemberOnDNSClusterWhenResolved(t *testing.T) {
 	cluster := setupTestCluster(t, 2)
 	defer cleanupTestCluster(t, cluster)
 
@@ -3998,9 +4192,85 @@ func TestHaproxyReconcileSkipsAddingMembersOnDNSCluster(t *testing.T) {
 	}
 
 	commands := getCommands()
-	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check"
-	if cmdIndex(commands, wantAdd) >= 0 {
-		t.Errorf("Refresh() commands = %v, want no %q on a resolver-backed (HasDNS) cluster", commands, wantAdd)
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check weight 100"
+	if cmdIndex(commands, wantAdd) < 0 {
+		t.Errorf("Refresh() commands = %v, want %q even though proxy.HasDNS() is true (slave1's Host is a resolved literal IP)", commands, wantAdd)
+	}
+}
+
+// TestHaproxyReconcileSkipsAddingMemberWithUnresolvedAddress confirms
+// add-missing is still skipped for a server whose address genuinely isn't
+// known yet: an FQDN-configured Host with no resolved server.IP (no
+// successful Ping()/SetCredential() reconnect yet). A Runtime API
+// "add server" call needs a literal IP, not a hostname, since runtimeapi's
+// server lines carry no "resolvers" clause to resolve one against — see
+// ServerMonitor.RuntimeAPIAddr and
+// TestHaproxyReconcileAddsMissingMemberOnDNSClusterWhenResolved for the
+// contrasting case that does now proceed.
+func TestHaproxyReconcileSkipsAddingMemberWithUnresolvedAddress(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+	cluster.Configurator.ProxyTags = []string{"dns"}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 is missing from HAProxy's stat output and configured with an
+	// FQDN Host; server.IP was never resolved (no Ping() ran in this
+	// synthetic test) — there is no literal address to add yet.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "db-slave1.internal"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+	if slave.IP != "" {
+		t.Fatalf("test setup error: expected slave.IP to be unresolved")
+	}
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	for _, c := range commands {
+		if strings.HasPrefix(c, "add server service_read/slave1") {
+			t.Errorf("Refresh() commands = %v, want no add-server for slave1 with an unresolved address, got %q", commands, c)
+		}
 	}
 }
 
@@ -4071,7 +4341,7 @@ func TestHaproxyReconcileStillDrainsStaleServerOnDNSCluster(t *testing.T) {
 	wantDel := "del server service_read/decommissioned1"
 	for _, want := range []string{wantMaint, wantDel} {
 		if cmdIndex(commands, want) < 0 {
-			t.Errorf("Refresh() commands = %v, want to contain %q even though proxy.HasDNS() is true (only adding new members is DNS-gated, not removing stale ones)", commands, want)
+			t.Errorf("Refresh() commands = %v, want to contain %q even though proxy.HasDNS() is true (removing stale entries was never gated on HasDNS(), only on an unresolved address, which doesn't apply here)", commands, want)
 		}
 	}
 }
@@ -4416,7 +4686,7 @@ func TestHaproxyReconcileRollsBackServerWhenDrainFailsAfterAdd(t *testing.T) {
 	gotCommands := append([]string(nil), commands...)
 	mu.Unlock()
 
-	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check"
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check weight 100"
 	wantDrainAttempt := "set server service_read/slave1 state drain"
 	wantRollbackMaint := "set server service_read/slave1 state maint"
 	wantRollbackDel := "del server service_read/slave1"
@@ -4524,7 +4794,7 @@ func TestHaproxyReconcileRollsBackServerWhenEnableHealthFailsAfterAdd(t *testing
 	gotCommands := append([]string(nil), commands...)
 	mu.Unlock()
 
-	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check"
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check weight 100"
 	wantDrain := "set server service_read/slave1 state drain"
 	wantHealthAttempt := "enable health service_read/slave1"
 	wantRollbackMaint := "set server service_read/slave1 state maint"
@@ -4896,7 +5166,7 @@ func TestHaproxyReconcileAddServerSuccessResponseCompletesSequence(t *testing.T)
 	gotCommands := append([]string(nil), commands...)
 	mu.Unlock()
 
-	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check"
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check weight 100"
 	wantDrain := "set server service_read/slave1 state drain"
 	wantHealth := "enable health service_read/slave1"
 	for _, want := range []string{wantAdd, wantDrain, wantHealth} {
@@ -4978,7 +5248,7 @@ func TestHaproxyReconcileSkipsServerInMaintenance(t *testing.T) {
 	}
 
 	commands := getCommands()
-	if cmdIndex(commands, "add server service_read/slave1 127.0.0.1:3307 check") >= 0 {
+	if cmdIndex(commands, "add server service_read/slave1 127.0.0.1:3307 check weight 100") >= 0 {
 		t.Errorf("Refresh() commands = %v, want no add server command for a server in maintenance", commands)
 	}
 }

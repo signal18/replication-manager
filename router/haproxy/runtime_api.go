@@ -50,6 +50,11 @@ func (r *Runtime) GetVersion() (string, error) {
 
 // SetMaster repoints the write backend's "leader" runtime slot at host:port.
 // host may be an IP or an FQDN (dispatches to SetMasterFQDN accordingly).
+// haproxy-mode=runtimeapi callers must pass a resolved IP (see
+// cluster.ServerMonitor.RuntimeAPIAddr), not an FQDN: runtimeapi's static
+// config no longer attaches a "resolvers" section to the "leader" slot, so
+// SetMasterFQDN's runtime "fqdn" command would have nothing to resolve
+// against.
 func (r *Runtime) SetMaster(pool string, host string, port string) (string, error) {
 	host = misc.Unbracket(host)
 	if net.ParseIP(host) == nil {
@@ -111,8 +116,9 @@ func (r *Runtime) EnableHealth(pool string, name string) (string, error) {
 // statically configured or dynamically added servers alike. host may be an
 // IP or an FQDN, dispatching to "addr" or "fqdn" the same way
 // SetMaster/SetMasterFQDN do. "fqdn" additionally requires a "resolvers"
-// section in haproxy.cfg, which repman doesn't generate yet for
-// read-backend members.
+// section in haproxy.cfg. haproxy-mode=runtimeapi callers must pass a
+// resolved IP (see cluster.ServerMonitor.RuntimeAPIAddr), not an FQDN:
+// runtimeapi's read-backend members never carry a "resolvers" clause.
 func (r *Runtime) SetServerAddr(pool string, name string, host string, port string) (string, error) {
 	host = misc.Unbracket(host)
 	if net.ParseIP(host) == nil {

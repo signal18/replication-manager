@@ -68,13 +68,24 @@ func haproxyWaitSrvRemovableFailed(res string, err error) bool {
 // (dynamic HAProxy read-backend server lifecycle) against the cluster's
 // real, live HAProxy proxy and process.
 //
-// Requires haproxy-mode = "runtimeapi" and HAProxy >= 2.6 already attached;
-// enables haproxy-api-bootstrap-servers itself for the run and restores the
-// prior value after (save/restore pattern from TestGraphiteMetricsQueueBound).
-// Fails with a specific reason rather than a false pass if those
-// prerequisites aren't met — this framework has no "skip" result.
+// Requires haproxy-mode = "runtimeapi" and HAProxy >= 2.6 already attached.
+// haproxy-api-bootstrap-servers is read, not forced: on a resolver-backed
+// proxy (HasDNS() == true — an FQDN proxy host, an explicit "dns" proxy tag,
+// or an OpenSVC/Kubernetes orchestrator), GetConfigProxyModule
+// (cluster/prx_get.go) only renders non-resolver, repman-IP-driven server
+// lines when haproxy-api-bootstrap-servers was ALREADY enabled at the
+// cluster's last (re)provision — flipping the in-memory flag mid-test
+// cannot retroactively change already-rendered config, so this test can
+// only validate the dynamic lifecycle on such a proxy if that flag was
+// already on. On a non-resolver-backed proxy (Localhost/Docker, where
+// HasDNS() is always false), the flag can be toggled freely at test time
+// since no resolvers were ever involved either way — this test still
+// enables it itself in that case if it wasn't already
+// (save/restore pattern from TestGraphiteMetricsQueueBound). Fails with a
+// specific reason rather than a false pass if those prerequisites aren't
+// met — this framework has no "skip" result.
 //
-// Both halves poll for the cluster's own background monitor loop to react
+// Three phases poll for the cluster's own background monitor loop to react
 // (this test never calls Refresh() itself):
 //
 //  1. Add path: marks maintenance on a replica (one currently UP with no
@@ -90,9 +101,19 @@ func haproxyWaitSrvRemovableFailed(res string, err error) bool {
 //     active member — WaitSrvRemovable first when the HAProxy version
 //     supports it, mirroring production's own removal sequence) can
 //     complete. Clears maintenance afterward and polls until the row
-//     reappears AND reaches UP — not
-//     merely present, which would miss a row stuck in MAINT/DRAIN.
-//  2. Remove path: add a synthetic "ghost" server via the Runtime API, then
+//     reappears AND reaches UP — not merely present, which would miss a row
+//     stuck in MAINT/DRAIN — and, once UP, asserts its weight came back at
+//     100 (matching every statically-rendered sibling), not the Runtime
+//     API's own default of 1 for a dynamically added server (AddServer now
+//     passes "weight 100" explicitly — see cluster/prx_haproxy.go).
+//  2. Re-IP path: writes a deliberately wrong-but-same-family address for
+//     the same replica directly via the Runtime API (SetServerAddr),
+//     simulating an address drift (e.g. a pod/container restart handing it
+//     a new IP) without needing to actually restart anything, then polls
+//     until the cluster's own monitor loop corrects it back
+//     (reconcileReadBackendServers's address-drift branch,
+//     cluster/prx_haproxy.go).
+//  3. Remove path: add a synthetic "ghost" server via the Runtime API, then
 //     poll until it's drained and removed.
 //
 // Only a replica's read-backend membership is touched, never the write path
@@ -124,19 +145,24 @@ func (regtest *RegTest) TestHaproxyRuntimeAPIDynamicServerLifecycle(cl *cluster.
 		return false
 	}
 
-	// Dynamic membership (add/remove) is unsupported on a resolver-backed
-	// HAProxy config: GetConfigProxyModule attaches "resolvers dns" to every
-	// bootstrapped read-backend server line whenever proxy.HasDNS() is true
-	// (FQDN proxy host, an explicit "dns" proxy tag, or an OpenSVC/
-	// Kubernetes orchestrator), and real HAProxy refuses "del server" on
-	// such a server at runtime ("This server cannot be removed at runtime
-	// due to other configuration elements pointing to it") — see
-	// reconcileReadBackendServers in cluster/prx_haproxy.go, which skips the
-	// same add/remove work for the same reason. Fail here with that
-	// specific reason instead of staging the delete below and surfacing the
-	// generic, misleading "may still have active connections" message.
-	if haproxyDNS {
-		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL dynamic server lifecycle unsupported on resolver-backed HAProxy config (HasDNS=true) — HAProxy refuses runtime deletion of servers configured with \"resolvers\"")
+	// On a resolver-backed proxy (HasDNS()==true), dynamic membership only
+	// works when the LIVE config was already rendered non-resolver-backed —
+	// i.e. haproxy-api-bootstrap-servers was already enabled at this proxy's
+	// last (re)provision (see GetConfigProxyModule, cluster/prx_get.go). The
+	// ground truth for "is this row currently resolver-backed" is
+	// resolverBackedPool, rebuilt fresh from HAProxy's own "show servers
+	// state" on every Refresh() pass (cluster/prx_haproxy.go) — but flipping
+	// the in-memory HaproxyAPIBootstrapServers flag below cannot
+	// retroactively change already-rendered config, so if it's off right
+	// now, this proxy's server lines still carry "resolvers dns" and real
+	// HAProxy will refuse "del server" on them at runtime ("This server
+	// cannot be removed at runtime due to other configuration elements
+	// pointing to it"). Fail here with that specific reason instead of
+	// staging the delete below and surfacing the generic, misleading "may
+	// still have active connections" message.
+	bootstrapAlreadyEnabled := cl.Conf.HaproxyAPIBootstrapServers
+	if haproxyDNS && !bootstrapAlreadyEnabled {
+		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL dynamic server lifecycle needs haproxy-api-bootstrap-servers=true already set for this resolver-backed (HasDNS=true) proxy's config to be non-resolver-backed — it was off at this proxy's last (re)provision, and toggling it now doesn't retroactively re-render the live config")
 		return false
 	}
 
@@ -298,6 +324,52 @@ func (regtest *RegTest) TestHaproxyRuntimeAPIDynamicServerLifecycle(cl *cluster.
 	}
 	logf("TEST", "haproxy-runtime-lifecycle: %s/%s was re-added and reached UP via the monitor loop — add path OK", readBackend, slave.Id)
 
+	// AddServer must pass "weight 100" explicitly (cluster/prx_haproxy.go) so
+	// a dynamically re-added server matches every statically-rendered
+	// sibling, rather than settling for the Runtime API's own default of 1.
+	stat, err := haRuntime.ApiCmd("show stat")
+	if err != nil {
+		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL could not read %s/%s weight after re-add: %s", readBackend, slave.Id, err)
+		return false
+	}
+	if weight, ok := haproxyStatServerWeight(stat, readBackend, slave.Id); !ok || weight != "100" {
+		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL %s/%s came back with weight %q (found=%v), want \"100\"", readBackend, slave.Id, weight, ok)
+		return false
+	}
+
+	// --- Re-IP path: simulate an address drift (e.g. a pod/container
+	// restart handing this replica a new IP) by writing a deliberately
+	// wrong-but-same-family address directly via the Runtime API, then poll
+	// until the cluster's own monitor loop corrects it back to the
+	// replica's real, resolved IP (reconcileReadBackendServers's
+	// address-drift branch, cluster/prx_haproxy.go). This exercises the
+	// plain "set server addr" correction path, which applies regardless of
+	// whether the proxy is resolver-backed -- resolverBackedPool only skips
+	// fqdn-tracked servers, never addr-tracked ones (see
+	// reconcileReadBackendServers in cluster/prx_haproxy.go). ---
+	wrongIP := "203.0.113.99" // TEST-NET-3 (RFC 5737), safely unroutable
+	if strings.Contains(slave.IP, ":") {
+		wrongIP = "2001:db8::99" // documentation-only IPv6 (RFC 3849)
+	}
+	if res, err := haRuntime.SetServerAddr(readBackend, slave.Id, wrongIP, slave.Port); err != nil || strings.TrimSpace(res) != "" {
+		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL could not stage a wrong address on %s/%s to test drift correction: err=%v res=%q", readBackend, slave.Id, err, res)
+		return false
+	}
+	logf("TEST", "haproxy-runtime-lifecycle: staged wrong address %s on %s/%s, waiting for the cluster's monitor loop to correct it back to %s", wrongIP, readBackend, slave.Id, slave.IP)
+
+	if !haproxyWaitFor(30*time.Second, func() bool {
+		showState, err := haRuntime.ApiCmd("show servers state")
+		if err != nil {
+			return false
+		}
+		addr, ok := haproxyServerStateAddr(showState, readBackend, slave.Id)
+		return ok && addr == slave.IP
+	}) {
+		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL %s/%s address was not corrected back to %s by the cluster's own monitor loop within 30s", readBackend, slave.Id, slave.IP)
+		return false
+	}
+	logf("TEST", "haproxy-runtime-lifecycle: %s/%s address was corrected back to %s by the monitor loop — re-IP path OK", readBackend, slave.Id, slave.IP)
+
 	// --- Remove path: add a synthetic entry the cluster doesn't know
 	// about, then wait for the monitor loop to drain and remove it. ---
 	ghostName := "regtest_ghost_" + strconv.FormatInt(time.Now().Unix(), 10)
@@ -439,6 +511,45 @@ func haproxyStatServerStatus(statOutput, backend, svname string) (string, bool) 
 func haproxyStatHasServer(statOutput, backend, svname string) bool {
 	_, _, found := haproxyStatServerFields(statOutput, backend, svname)
 	return found
+}
+
+// haproxyStatServerWeight returns the weight field (column 19 / index 18)
+// of a "show stat" pxname/svname row, and whether the row was found at all.
+func haproxyStatServerWeight(statOutput, backend, svname string) (string, bool) {
+	for _, line := range strings.Split(statOutput, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Split(line, ",")
+		if len(fields) < 19 {
+			continue
+		}
+		if strings.EqualFold(fields[0], backend) && fields[1] == svname {
+			return fields[18], true
+		}
+	}
+	return "", false
+}
+
+// haproxyServerStateAddr returns the srv_addr field (space-separated column
+// 5 / index 4, mirroring cluster/prx_haproxy.go's own "show servers state"
+// parsing) of a be_name/srv_name row, and whether the row was found at all.
+func haproxyServerStateAddr(showStateOutput, backend, svname string) (string, bool) {
+	for _, line := range strings.Split(showStateOutput, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 5 {
+			continue
+		}
+		if fields[1] == backend && fields[3] == svname {
+			return fields[4], true
+		}
+	}
+	return "", false
 }
 
 // haproxyStatServerConnections returns the current-connections field
