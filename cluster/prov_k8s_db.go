@@ -171,6 +171,20 @@ func k8sAPIAuthHeaderValue(cluster *Cluster) string {
 	return base64.StdEncoding.EncodeToString([]byte("admin:" + adminPass))
 }
 
+// k8sDatabasePVCName mirrors k8sProxyPVCName (prov_k8s_prx.go) for the
+// database side.
+func k8sDatabasePVCName(clusterName, serverName string) string {
+	return clusterName + "-" + serverName + "-claim"
+}
+
+// k8sDatabaseVolumeName mirrors k8sProxyVolumeName (prov_k8s_prx.go) for the
+// database side. Just the Pod-internal identifier linking this one Volume to
+// its VolumeMounts -- not a globally-unique object name like the PVC's own
+// (k8sDatabasePVCName), so it doesn't need the cluster name too.
+func k8sDatabaseVolumeName(serverName string) string {
+	return serverName + "-data"
+}
+
 // k8sDatabasePVC is a pure builder, directly testable. StorageClassName is
 // a *string specifically to distinguish "cluster default" (nil) from "no
 // StorageClass" (pointer to ""), so prov-kube-storage-class empty must stay
@@ -184,7 +198,7 @@ func (cluster *Cluster) k8sDatabasePVC(s *ServerMonitor) *apiv1.PersistentVolume
 	}
 	pvc := &apiv1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: cluster.Name + "-" + s.Name + "-claim",
+			Name: k8sDatabasePVCName(cluster.Name, s.Name),
 		},
 		Spec: apiv1.PersistentVolumeClaimSpec{
 			AccessModes: []apiv1.PersistentVolumeAccessMode{
@@ -427,19 +441,19 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 							Env:     initEnv,
 							VolumeMounts: []apiv1.VolumeMount{
 								{
-									Name:      s.Name + "-persistent-storage",
+									Name:      k8sDatabaseVolumeName(s.Name),
 									MountPath: "/var/lib/mysql",
 								},
 								{
 									// SubPath, not emptyDir: matches OpenSVC's own
 									// {name}/etc/mysql (see applyConfig above).
-									Name:      s.Name + "-persistent-storage",
+									Name:      k8sDatabaseVolumeName(s.Name),
 									MountPath: "/etc/mysql/conf.d",
 									SubPath:   k8sConfPersistSubPath,
 								},
 								{
 									// SubPath, matches OpenSVC's {name}/init.
-									Name:      s.Name + "-persistent-storage",
+									Name:      k8sDatabaseVolumeName(s.Name),
 									MountPath: "/docker-entrypoint-initdb.d",
 									SubPath:   k8sInitPersistSubPath,
 								},
@@ -471,11 +485,11 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 							}, k8sDBAllocatorEnv(cluster)...),
 							VolumeMounts: []apiv1.VolumeMount{
 								{
-									Name:      s.Name + "-persistent-storage",
+									Name:      k8sDatabaseVolumeName(s.Name),
 									MountPath: "/var/lib/mysql",
 								},
 								{
-									Name:      s.Name + "-persistent-storage",
+									Name:      k8sDatabaseVolumeName(s.Name),
 									MountPath: "/etc/mysql/conf.d",
 									SubPath:   k8sConfPersistSubPath,
 								},
@@ -518,11 +532,11 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 							},
 							VolumeMounts: []apiv1.VolumeMount{
 								{
-									Name:      s.Name + "-persistent-storage",
+									Name:      k8sDatabaseVolumeName(s.Name),
 									MountPath: "/var/lib/mysql",
 								},
 								{
-									Name:      s.Name + "-persistent-storage",
+									Name:      k8sDatabaseVolumeName(s.Name),
 									MountPath: "/docker-entrypoint-initdb.d",
 									SubPath:   k8sInitPersistSubPath,
 								},
@@ -531,10 +545,10 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 					},
 					Volumes: []apiv1.Volume{
 						{
-							Name: s.Name + "-persistent-storage",
+							Name: k8sDatabaseVolumeName(s.Name),
 							VolumeSource: apiv1.VolumeSource{
 								PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{
-									ClaimName: cluster.Name + "-" + s.Name + "-claim",
+									ClaimName: k8sDatabasePVCName(cluster.Name, s.Name),
 								},
 							},
 						},

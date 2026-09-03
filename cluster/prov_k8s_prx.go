@@ -178,6 +178,14 @@ func k8sProxyPVCName(clusterName, proxyName string) string {
 	return clusterName + "-" + proxyName + "-claim"
 }
 
+// k8sProxyVolumeName mirrors k8sDatabaseVolumeName (prov_k8s_db.go) for the
+// proxy side. Just the Pod-internal identifier linking this one Volume to
+// its VolumeMounts -- not a globally-unique object name like the PVC's own
+// (k8sProxyPVCName), so it doesn't need the cluster name too.
+func k8sProxyVolumeName(proxyName string) string {
+	return proxyName + "-data"
+}
+
 // Sized from prov-proxy-disk-size, falling back to 20G if unparseable.
 func (cluster *Cluster) k8sProxyPVC(prx DatabaseProxy) *apiv1.PersistentVolumeClaim {
 	size, err := resource.ParseQuantity(cluster.Conf.ProvProxDisk)
@@ -364,6 +372,114 @@ func k8sMaxscaleBootstrapCommand(cluster *Cluster, prx DatabaseProxy) ([]string,
 	return cmd, initEnv
 }
 
+// k8sProxysqlContainerSpec fills in ProxySQL's persistent-storage mounts and
+// startup command on container, and returns the bootstrap init container's
+// command/env. See k8sProxyDeployment.
+func k8sProxysqlContainerSpec(cluster *Cluster, prx DatabaseProxy, container *apiv1.Container, volumeName string) (mounts []apiv1.VolumeMount, initCmd []string, initEnv []apiv1.EnvVar) {
+	mounts = []apiv1.VolumeMount{
+		{
+			Name:      volumeName,
+			MountPath: "/var/lib/proxysql",
+		},
+		{
+			Name:      volumeName,
+			MountPath: "/etc/proxysql",
+			SubPath:   k8sProxyConfPersistSubPath,
+		},
+		{
+			Name:      volumeName,
+			MountPath: "/etc/ssl",
+			SubPath:   k8sProxySSLPersistSubPath,
+		},
+	}
+	// --initial re-derives ProxySQL's SQLite admin database from
+	// proxysql.cnf on every start, so a stale proxysql.db from a
+	// previous boot never takes precedence over the fetched config.
+	container.Command = []string{
+		"sh", "-c",
+		k8sDockerParityUlimitShellPrefix() +
+			"exec proxysql --initial -f -c /etc/proxysql/proxysql.cnf",
+	}
+	initCmd, initEnv = k8sProxyBootstrapCommand(cluster, prx)
+	return
+}
+
+// k8sHaproxyContainerSpec fills in HAProxy's persistent-storage mounts and
+// startup command on container, and returns the bootstrap init container's
+// command/env. See k8sProxyDeployment.
+func k8sHaproxyContainerSpec(cluster *Cluster, prx DatabaseProxy, container *apiv1.Container, volumeName string) (mounts []apiv1.VolumeMount, initCmd []string, initEnv []apiv1.EnvVar) {
+	mounts = []apiv1.VolumeMount{
+		{
+			Name:      volumeName,
+			MountPath: "/usr/local/etc/haproxy",
+			SubPath:   k8sHaproxyConfPersistSubPath,
+		},
+	}
+	// externalcheck needs an explicit Command (checkmaster/checkslave
+	// copied to /usr/bin, "-db" passed explicitly) and RunAsUser=0 (the
+	// Debian haproxy:<tag> image drops to uid 99, unlike
+	// haproxytech/haproxy-alpine's root default) -- see
+	// doc/implementation/cluster/KUBERNETES_PROVISIONING.md. standby
+	// and runtimeapi both fall through to the image's default
+	// entrypoint against the fetched haproxy.cfg.
+	if cluster.Conf.HaproxyMode == "externalcheck" {
+		runAsRoot := int64(0)
+		container.SecurityContext = &apiv1.SecurityContext{RunAsUser: &runAsRoot}
+		container.Command = []string{
+			"sh", "-c",
+			"cp /usr/local/etc/haproxy/checkmaster /usr/bin/checkmaster 2>/dev/null; " +
+				"cp /usr/local/etc/haproxy/checkslave /usr/bin/checkslave 2>/dev/null; " +
+				"chmod +x /usr/bin/checkmaster /usr/bin/checkslave 2>/dev/null; " +
+				k8sDockerParityUlimitShellPrefix() +
+				"exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg",
+		}
+	}
+	initCmd, initEnv = k8sHaproxyBootstrapCommand(cluster, prx)
+	return
+}
+
+// k8sMaxscaleContainerSpec fills in MaxScale's persistent-storage mounts and
+// startup command on container, and returns the bootstrap init container's
+// command/env. See k8sProxyDeployment.
+func k8sMaxscaleContainerSpec(cluster *Cluster, prx DatabaseProxy, container *apiv1.Container, volumeName string) (mounts []apiv1.VolumeMount, initCmd []string, initEnv []apiv1.EnvVar) {
+	mounts = []apiv1.VolumeMount{
+		{
+			Name:      volumeName,
+			MountPath: k8sMaxscaleConfPersistDir,
+			SubPath:   k8sMaxscaleConfPersistSubPath,
+		},
+		{
+			Name:      volumeName,
+			MountPath: "/var/cache/maxscale",
+			SubPath:   k8sMaxscaleCachePersistSubPath,
+		},
+	}
+	// The rsyslogd workaround is pinloki-only: a live-confirmed bug
+	// in mariadb/maxscale:23.08's entrypoint (bare "rsyslogd" never
+	// daemonizes, hanging startup before maxscale-start ever runs;
+	// not needed since MaxScale logs via maxlog, not syslog) that an
+	// older image may not share.
+	if cluster.MaxscaleUsesPinloki() {
+		container.Command = []string{
+			"sh", "-c",
+			"cp " + k8sMaxscaleConfPersistDir + "/maxscale.cnf /etc/maxscale.cnf 2>/dev/null; " +
+				"rm -f /var/run/*.pid; " +
+				"chown -R maxscale:maxscale /var/lib/maxscale; " +
+				"trap '/usr/bin/monit unmonitor all; /usr/bin/maxscale-stop; /usr/bin/monit quit' TERM; " +
+				"maxscale-start && monit -I & " +
+				"wait",
+		}
+	} else {
+		container.Command = []string{
+			"sh", "-c",
+			"cp " + k8sMaxscaleConfPersistDir + "/maxscale.cnf /etc/maxscale.cnf 2>/dev/null; " +
+				"exec /usr/bin/docker-entrypoint.sh /bin/sh -c \"maxscale-start && monit -I\"",
+		}
+	}
+	initCmd, initEnv = k8sMaxscaleBootstrapCommand(cluster, prx)
+	return
+}
+
 // k8sProxyDeployment is a pure builder, returning before any Kubernetes
 // object is touched when the proxy type isn't supported.
 func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deployment, error) {
@@ -386,7 +502,7 @@ func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deploymen
 	var volumes []apiv1.Volume
 
 	if k8sProxyTypeHasPersistentStorage(prx.GetType()) {
-		volumeName := prx.GetName() + "-persistent-storage"
+		volumeName := k8sProxyVolumeName(prx.GetName())
 		volumes = []apiv1.Volume{
 			{
 				Name: volumeName,
@@ -404,95 +520,11 @@ func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deploymen
 
 		switch prx.GetType() {
 		case config.ConstProxySqlproxy:
-			mounts = []apiv1.VolumeMount{
-				{
-					Name:      volumeName,
-					MountPath: "/var/lib/proxysql",
-				},
-				{
-					Name:      volumeName,
-					MountPath: "/etc/proxysql",
-					SubPath:   k8sProxyConfPersistSubPath,
-				},
-				{
-					Name:      volumeName,
-					MountPath: "/etc/ssl",
-					SubPath:   k8sProxySSLPersistSubPath,
-				},
-			}
-			// --initial re-derives ProxySQL's SQLite admin database from
-			// proxysql.cnf on every start, so a stale proxysql.db from a
-			// previous boot never takes precedence over the fetched config.
-			container.Command = []string{
-				"sh", "-c",
-				k8sDockerParityUlimitShellPrefix() +
-					"exec proxysql --initial -f -c /etc/proxysql/proxysql.cnf",
-			}
-			initCmd, initEnv = k8sProxyBootstrapCommand(cluster, prx)
+			mounts, initCmd, initEnv = k8sProxysqlContainerSpec(cluster, prx, &container, volumeName)
 		case config.ConstProxyHaproxy:
-			mounts = []apiv1.VolumeMount{
-				{
-					Name:      volumeName,
-					MountPath: "/usr/local/etc/haproxy",
-					SubPath:   k8sHaproxyConfPersistSubPath,
-				},
-			}
-			// externalcheck needs an explicit Command (checkmaster/checkslave
-			// copied to /usr/bin, "-db" passed explicitly) and RunAsUser=0 (the
-			// Debian haproxy:<tag> image drops to uid 99, unlike
-			// haproxytech/haproxy-alpine's root default) -- see
-			// doc/implementation/cluster/KUBERNETES_PROVISIONING.md. standby
-			// and runtimeapi both fall through to the image's default
-			// entrypoint against the fetched haproxy.cfg.
-			if cluster.Conf.HaproxyMode == "externalcheck" {
-				runAsRoot := int64(0)
-				container.SecurityContext = &apiv1.SecurityContext{RunAsUser: &runAsRoot}
-				container.Command = []string{
-					"sh", "-c",
-					"cp /usr/local/etc/haproxy/checkmaster /usr/bin/checkmaster 2>/dev/null; " +
-						"cp /usr/local/etc/haproxy/checkslave /usr/bin/checkslave 2>/dev/null; " +
-						"chmod +x /usr/bin/checkmaster /usr/bin/checkslave 2>/dev/null; " +
-						k8sDockerParityUlimitShellPrefix() +
-						"exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg",
-				}
-			}
-			initCmd, initEnv = k8sHaproxyBootstrapCommand(cluster, prx)
+			mounts, initCmd, initEnv = k8sHaproxyContainerSpec(cluster, prx, &container, volumeName)
 		case config.ConstProxyMaxscale:
-			mounts = []apiv1.VolumeMount{
-				{
-					Name:      volumeName,
-					MountPath: k8sMaxscaleConfPersistDir,
-					SubPath:   k8sMaxscaleConfPersistSubPath,
-				},
-				{
-					Name:      volumeName,
-					MountPath: "/var/cache/maxscale",
-					SubPath:   k8sMaxscaleCachePersistSubPath,
-				},
-			}
-			// The rsyslogd workaround is pinloki-only: a live-confirmed bug
-			// in mariadb/maxscale:23.08's entrypoint (bare "rsyslogd" never
-			// daemonizes, hanging startup before maxscale-start ever runs;
-			// not needed since MaxScale logs via maxlog, not syslog) that an
-			// older image may not share.
-			if cluster.MaxscaleUsesPinloki() {
-				container.Command = []string{
-					"sh", "-c",
-					"cp " + k8sMaxscaleConfPersistDir + "/maxscale.cnf /etc/maxscale.cnf 2>/dev/null; " +
-						"rm -f /var/run/*.pid; " +
-						"chown -R maxscale:maxscale /var/lib/maxscale; " +
-						"trap '/usr/bin/monit unmonitor all; /usr/bin/maxscale-stop; /usr/bin/monit quit' TERM; " +
-						"maxscale-start && monit -I & " +
-						"wait",
-				}
-			} else {
-				container.Command = []string{
-					"sh", "-c",
-					"cp " + k8sMaxscaleConfPersistDir + "/maxscale.cnf /etc/maxscale.cnf 2>/dev/null; " +
-						"exec /usr/bin/docker-entrypoint.sh /bin/sh -c \"maxscale-start && monit -I\"",
-				}
-			}
-			initCmd, initEnv = k8sMaxscaleBootstrapCommand(cluster, prx)
+			mounts, initCmd, initEnv = k8sMaxscaleContainerSpec(cluster, prx, &container, volumeName)
 		}
 
 		container.VolumeMounts = mounts

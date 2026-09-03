@@ -2211,12 +2211,12 @@ func TestK8SDatabaseDeployment_InitContainerMountsDbjobsVolume(t *testing.T) {
 
 	found := false
 	for _, vm := range dep.Spec.Template.Spec.InitContainers[0].VolumeMounts {
-		if vm.Name == "db1-persistent-storage" && vm.MountPath == "/docker-entrypoint-initdb.d" && vm.SubPath == k8sInitPersistSubPath {
+		if vm.Name == "db1-data" && vm.MountPath == "/docker-entrypoint-initdb.d" && vm.SubPath == k8sInitPersistSubPath {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected the init container to mount db1-persistent-storage at /docker-entrypoint-initdb.d via subPath %q", k8sInitPersistSubPath)
+		t.Fatalf("expected the init container to mount db1-data at /docker-entrypoint-initdb.d via subPath %q", k8sInitPersistSubPath)
 	}
 }
 
@@ -2232,8 +2232,8 @@ func TestK8SDatabaseDeployment_ConfMountsAreSubPathsOfPersistentStorage(t *testi
 		t.Helper()
 		for _, vm := range mounts {
 			if vm.MountPath == "/etc/mysql/conf.d" {
-				if vm.Name != "db1-persistent-storage" || vm.SubPath != k8sConfPersistSubPath {
-					t.Fatalf("%s: expected /etc/mysql/conf.d mounted from db1-persistent-storage via subPath %q, got name=%q subPath=%q", where, k8sConfPersistSubPath, vm.Name, vm.SubPath)
+				if vm.Name != "db1-data" || vm.SubPath != k8sConfPersistSubPath {
+					t.Fatalf("%s: expected /etc/mysql/conf.d mounted from db1-data via subPath %q, got name=%q subPath=%q", where, k8sConfPersistSubPath, vm.Name, vm.SubPath)
 				}
 				return
 			}
@@ -2257,8 +2257,8 @@ func TestK8SDatabaseDeployment_OnlyPersistentStorageVolumeExists(t *testing.T) {
 		t.Fatalf("expected exactly one Volume (persistent-storage), got %d: %v", len(dep.Spec.Template.Spec.Volumes), dep.Spec.Template.Spec.Volumes)
 	}
 	v := dep.Spec.Template.Spec.Volumes[0]
-	if v.Name != "db1-persistent-storage" || v.VolumeSource.PersistentVolumeClaim == nil {
-		t.Fatalf("expected the sole volume to be the PVC-backed db1-persistent-storage, got: %+v", v)
+	if v.Name != "db1-data" || v.VolumeSource.PersistentVolumeClaim == nil {
+		t.Fatalf("expected the sole volume to be the PVC-backed db1-data, got: %+v", v)
 	}
 	if v.VolumeSource.ConfigMap != nil {
 		t.Fatal("expected no ConfigMap volume source at all")
@@ -2331,7 +2331,7 @@ func TestK8SDatabaseDeployment_DbjobsSidecarMountsDataAndInitVolumes(t *testing.
 	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
 	sidecar := dep.Spec.Template.Spec.Containers[1]
 
-	// Both mounts come from the same "db1-persistent-storage" Volume now
+	// Both mounts come from the same "db1-data" Volume now
 	// (init via subPath), so a plain name-keyed map can't distinguish them
 	// -- match on (MountPath, SubPath) pairs instead.
 	type wantMount struct {
@@ -2346,8 +2346,8 @@ func TestK8SDatabaseDeployment_DbjobsSidecarMountsDataAndInitVolumes(t *testing.
 		t.Fatalf("expected %d volume mounts, got %d: %v", len(want), len(sidecar.VolumeMounts), sidecar.VolumeMounts)
 	}
 	for _, vm := range sidecar.VolumeMounts {
-		if vm.Name != "db1-persistent-storage" {
-			t.Fatalf("expected every sidecar mount to come from db1-persistent-storage, got %q", vm.Name)
+		if vm.Name != "db1-data" {
+			t.Fatalf("expected every sidecar mount to come from db1-data, got %q", vm.Name)
 		}
 		found := false
 		for _, w := range want {
