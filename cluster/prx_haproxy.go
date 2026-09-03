@@ -234,7 +234,7 @@ func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *Haproxy
 
 func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HAProxy on same host")
-	flags.StringVar(&conf.HaproxyMode, "haproxy-mode", "runtimeapi", "HAProxy mode [standby|runtimeapi|externalcheck|dataplaneapi]")
+	flags.StringVar(&conf.HaproxyMode, "haproxy-mode", "runtimeapi", "HAProxy mode [standby|runtimeapi|externalcheck|dataplaneapi] -- only takes effect on the next (re)provision of the proxy")
 	flags.BoolVar(&conf.HaproxyDebug, "haproxy-debug", true, "Extra info on monitoring backend")
 	flags.IntVar(&conf.HaproxyLogLevel, "log-level-haproxy", 1, "Log level for debug")
 	flags.StringVar(&conf.HaproxyUser, "haproxy-user", "admin", "HAProxy API user")
