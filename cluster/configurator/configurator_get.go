@@ -268,9 +268,21 @@ func (configurator *Configurator) GetConfigSortBufferSize() string {
 }
 
 // GetConfigJoinBufferSpaceLimit caps the total join-buffer memory per query
-// (MariaDB only). Sized at several single join buffers. MB.
+// (MariaDB only). Sized at several single join buffers, hard-capped at 1G. MB.
 func (configurator *Configurator) GetConfigJoinBufferSpaceLimit() string {
-	return strconv.FormatInt(configurator.threadedBufferMB("join", 1)*8, 10)
+	v := configurator.threadedBufferMB("join", 1) * 8
+	if v > 1024 {
+		v = 1024
+	}
+	return strconv.FormatInt(v, 10)
+}
+
+// GetConfigMRRBufferSize is the Multi-Range Read buffer (MariaDB), used by
+// Batched Key Access for modern INDEXED joins — the buffer that effectively
+// replaces join_buffer_size (which now only serves index-less joins). Sized from
+// the same "join" threaded share. MB.
+func (configurator *Configurator) GetConfigMRRBufferSize() string {
+	return strconv.FormatInt(configurator.threadedBufferMB("join", 1), 10)
 }
 
 // GetConfigPFSMemoryMB returns the memory share budgeted to the Performance

@@ -62,6 +62,7 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_JOIN_BUFFER_SIZE%%":                     server.ClusterGroup.Configurator.GetConfigJoinBufferSize(),
 		"%%ENV:SVC_CONF_ENV_SORT_BUFFER_SIZE%%":                     server.ClusterGroup.Configurator.GetConfigSortBufferSize(),
 		"%%ENV:SVC_CONF_ENV_JOIN_BUFFER_SPACE_LIMIT%%":              server.ClusterGroup.Configurator.GetConfigJoinBufferSpaceLimit(),
+		"%%ENV:SVC_CONF_ENV_MRR_BUFFER_SIZE%%":                      server.ClusterGroup.Configurator.GetConfigMRRBufferSize(),
 		"%%ENV:SVC_CONF_ENV_TOKUDB_CACHE_SIZE%%":                    server.ClusterGroup.Configurator.GetConfigTokuDBBufferSize(),
 		"%%ENV:SVC_CONF_ENV_MYISAM_CACHE_SIZE%%":                    server.ClusterGroup.Configurator.GetConfigMyISAMKeyBufferSize(),
 		"%%ENV:SVC_CONF_ENV_MYISAM_CACHE_SEGMENTS%%":                server.ClusterGroup.Configurator.GetConfigMyISAMKeyBufferSegements(),

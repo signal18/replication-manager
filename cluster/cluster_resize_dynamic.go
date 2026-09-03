@@ -235,8 +235,11 @@ func (server *ServerMonitor) resizeMemorySQL(grow bool) []string {
 		fmt.Sprintf("SET GLOBAL sort_buffer_size = %s*1024*1024", cfg.GetConfigSortBufferSize()),
 	}
 	if server.IsMariaDB() {
-		// join_buffer_space_limit (total join memory per query) is MariaDB-only.
-		others = append(others, fmt.Sprintf("SET GLOBAL join_buffer_space_limit = %s*1024*1024", cfg.GetConfigJoinBufferSpaceLimit()))
+		// join_buffer_space_limit (total join memory per query) + mrr_buffer_size
+		// (Multi-Range Read / BKA, the modern indexed-join buffer) are MariaDB-only.
+		others = append(others,
+			fmt.Sprintf("SET GLOBAL join_buffer_space_limit = %s*1024*1024", cfg.GetConfigJoinBufferSpaceLimit()),
+			fmt.Sprintf("SET GLOBAL mrr_buffer_size = %s*1024*1024", cfg.GetConfigMRRBufferSize()))
 		// max_session_mem_used: the native per-session cap (#1749). MariaDB-only —
 		// MySQL/Percona do not have it and would error 1193. 0 = disabled (threads:0
 		// share) — leave MariaDB's unlimited default untouched.
