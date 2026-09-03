@@ -229,6 +229,50 @@ func (configurator *Configurator) GetConfigMaxSessionMemUsedMB() int64 {
 	return sessionMemFloorMB
 }
 
+// getThreadBudgetMB is the memory bucket for per-thread/session buffers: the
+// "threads" share of prov-db-memory-shared-pct. The threaded buffers below split
+// it via prov-db-memory-threaded-pct (tmp/join/sort).
+func (configurator *Configurator) getThreadBudgetMB() int64 {
+	usable, err := configurator.getUsableMemoryMB()
+	if err != nil {
+		return 0
+	}
+	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
+	return usable * int64(sharedmempcts["threads"]) / 100
+}
+
+// threadedBufferMB sizes one per-thread buffer from the thread budget and its
+// prov-db-memory-threaded-pct share, rounded down to a power of two, floored.
+func (configurator *Configurator) threadedBufferMB(key string, floorMB int64) int64 {
+	threadedpcts, _ := configurator.ClusterConfig.GetMemoryPctThreaded()
+	if v := largestPow2LE(configurator.getThreadBudgetMB() * int64(threadedpcts[key]) / 100); v > floorMB {
+		return v
+	}
+	return floorMB
+}
+
+// GetConfigTmpTableSize is the per-thread in-memory temp table size (also used for
+// max_heap_table_size), sized from the "tmp" threaded share. MB.
+func (configurator *Configurator) GetConfigTmpTableSize() string {
+	return strconv.FormatInt(configurator.threadedBufferMB("tmp", 16), 10)
+}
+
+// GetConfigJoinBufferSize is the per-join per-thread buffer, from the "join" share. MB.
+func (configurator *Configurator) GetConfigJoinBufferSize() string {
+	return strconv.FormatInt(configurator.threadedBufferMB("join", 1), 10)
+}
+
+// GetConfigSortBufferSize is the per-sort per-thread buffer, from the "sort" share. MB.
+func (configurator *Configurator) GetConfigSortBufferSize() string {
+	return strconv.FormatInt(configurator.threadedBufferMB("sort", 1), 10)
+}
+
+// GetConfigJoinBufferSpaceLimit caps the total join-buffer memory per query
+// (MariaDB only). Sized at several single join buffers. MB.
+func (configurator *Configurator) GetConfigJoinBufferSpaceLimit() string {
+	return strconv.FormatInt(configurator.threadedBufferMB("join", 1)*8, 10)
+}
+
 // GetConfigPFSMemoryMB returns the memory share budgeted to the Performance
 // Schema, from the "pfs" entry of prov-db-memory-shared-pct (default 5 when
 // absent; pfs:0 disables the budget so MariaDB defaults stay untouched).
