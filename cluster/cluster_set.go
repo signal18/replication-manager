@@ -125,8 +125,18 @@ func (cluster *Cluster) SetDBDiskSize(value string) {
 }
 
 func (cluster *Cluster) SetDBCores(value string) {
+	old := cluster.Conf.ProvCores
 	cluster.Configurator.SetDBCores(value)
 	cluster.Conf.ProvCores = cluster.Configurator.GetConfigDBCores()
+	// Live resize: a core change re-tunes the cores-driven DB variables
+	// (innodb_read_io_threads) via SET GLOBAL. The container cpu cgroup limit
+	// resize (pg_cpus) is a follow-up; for now this only re-tunes the DB side.
+	if cluster.Conf.ProvDBDynamicResource {
+		if cluster.Conf.ProvCores != old {
+			cluster.ResizeDynamicResources(resizeCPU, false)
+		}
+		return
+	}
 	cluster.SetDBReprovCookie()
 }
 
@@ -140,7 +150,7 @@ func (cluster *Cluster) SetDBMemorySize(value string) {
 	if cluster.Conf.ProvDBDynamicResource {
 		newMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
 		if newMB != oldMB { // skip no-op reloads (would re-run the feasibility script for nothing)
-			cluster.ResizeDynamicResources(newMB > oldMB)
+			cluster.ResizeDynamicResources(resizeMemory, newMB > oldMB)
 		}
 		return
 	}
@@ -169,8 +179,17 @@ func (cluster *Cluster) SetTagsFromConfigurator() {
 }
 
 func (cluster *Cluster) SetDBDiskIOPS(value string) {
+	old := cluster.Conf.ProvIops
 	cluster.Configurator.SetDBDiskIOPS(value)
 	cluster.Conf.ProvIops = cluster.Configurator.GetConfigDBDiskIOPS()
+	// Live resize: an iops change re-tunes the iops-driven DB variables
+	// (innodb_io_capacity/_max, innodb_write_io_threads) via SET GLOBAL.
+	if cluster.Conf.ProvDBDynamicResource {
+		if cluster.Conf.ProvIops != old {
+			cluster.ResizeDynamicResources(resizeIO, false)
+		}
+		return
+	}
 	cluster.SetDBRestartCookie()
 }
 

@@ -166,27 +166,27 @@ func (cluster *Cluster) openSVCResize(server *ServerMonitor, grow bool) (bool, e
 	return true, nil
 }
 
-// resizeDynamicResourceSQL builds the SET GLOBAL statements for the
-// resource-driven variables MariaDB accepts at runtime, valued from the
-// configurator % model. Direct path — no config regeneration, no compliance.
-//
-// max_connections is deliberately NOT here: the connection count is client
-// workload, not ours to cap (a client may legitimately hold thousands of idle
-// connections). We size the memory each session/engine may use, never how many
-// sessions the client opens.
-//
-// Ordering is anti-OOM: grow puts the buffer pool LAST (after the cgroup grew),
-// shrink puts it FIRST (freeing memory before the cgroup shrinks).
-func (server *ServerMonitor) resizeDynamicResourceSQL(grow bool) []string {
+// resizeDimension is the provisioned resource that changed; each drives its own
+// SET GLOBALs. A memory change must not re-apply io tuning and vice-versa.
+type resizeDimension int
+
+const (
+	resizeMemory resizeDimension = iota // prov-db-memory
+	resizeIO                            // prov-db-disk-iops
+	resizeCPU                           // prov-db-cpu-cores
+)
+
+// resizeMemorySQL builds the memory-driven SET GLOBALs, valued from the
+// configurator % model. Anti-OOM ordered: grow puts the buffer pool LAST (after
+// the cgroup grew), shrink puts it FIRST (freeing memory before the cgroup
+// shrinks). max_connections is deliberately NOT here: the connection count is
+// client workload, not ours to cap.
+func (server *ServerMonitor) resizeMemorySQL(grow bool) []string {
 	cfg := &server.ClusterGroup.Configurator
 	bufferPool := fmt.Sprintf("SET GLOBAL innodb_buffer_pool_size = %s*1024*1024", cfg.GetConfigInnoDBBPSize())
 
 	others := []string{
 		fmt.Sprintf("SET GLOBAL key_buffer_size = %s*1024*1024", cfg.GetConfigMyISAMKeyBufferSize()),
-		fmt.Sprintf("SET GLOBAL innodb_io_capacity = %s", cfg.GetConfigInnoDBIOCapacity()),
-		fmt.Sprintf("SET GLOBAL innodb_io_capacity_max = %s", cfg.GetConfigInnoDBIOCapacityMax()),
-		fmt.Sprintf("SET GLOBAL innodb_max_dirty_pages_pct = %s", cfg.GetConfigInnoDBMaxDirtyPagePct()),
-		fmt.Sprintf("SET GLOBAL innodb_max_dirty_pages_pct_lwm = %s", cfg.GetConfigInnoDBMaxDirtyPagePctLwm()),
 	}
 	// max_session_mem_used: the native per-session cap (#1749). MariaDB-only —
 	// MySQL/Percona do not have it and would error 1193. 0 = disabled (threads:0
@@ -209,6 +209,36 @@ func (server *ServerMonitor) resizeDynamicResourceSQL(grow bool) []string {
 	return append([]string{bufferPool}, others...)
 }
 
+// resizeIOSQL builds the iops-driven SET GLOBALs. io capacity is settable on both
+// flavors; the InnoDB io threads are dynamic on MariaDB (verified 11.4) but
+// restart-only on MySQL/Percona, hence the MariaDB gate.
+func (server *ServerMonitor) resizeIOSQL() []string {
+	cfg := &server.ClusterGroup.Configurator
+	sql := []string{
+		fmt.Sprintf("SET GLOBAL innodb_io_capacity = %s", cfg.GetConfigInnoDBIOCapacity()),
+		fmt.Sprintf("SET GLOBAL innodb_io_capacity_max = %s", cfg.GetConfigInnoDBIOCapacityMax()),
+		fmt.Sprintf("SET GLOBAL innodb_max_dirty_pages_pct = %s", cfg.GetConfigInnoDBMaxDirtyPagePct()),
+		fmt.Sprintf("SET GLOBAL innodb_max_dirty_pages_pct_lwm = %s", cfg.GetConfigInnoDBMaxDirtyPagePctLwm()),
+	}
+	// innodb_write_io_threads is iops-driven and dynamic on MariaDB (restart-only
+	// on MySQL/Percona, hence the gate). read_io_threads is cores-driven -> CPU;
+	// purge_threads is a fixed constant, so neither belongs here.
+	if server.IsMariaDB() {
+		sql = append(sql, fmt.Sprintf("SET GLOBAL innodb_write_io_threads = %s", cfg.GetConfigInnoDBWriteIoThreads()))
+	}
+	return sql
+}
+
+// resizeCPUSQL builds the cores-driven SET GLOBALs. innodb_read_io_threads is
+// sized from the core count and is dynamic on MariaDB (restart-only on MySQL).
+func (server *ServerMonitor) resizeCPUSQL() []string {
+	cfg := &server.ClusterGroup.Configurator
+	if server.IsMariaDB() {
+		return []string{fmt.Sprintf("SET GLOBAL innodb_read_io_threads = %s", cfg.GetConfigInnoDBReadIoThreads())}
+	}
+	return nil
+}
+
 // ResizeDynamicResources applies a live resource resize to every monitored server,
 // gated by prov-db-dynamic-resource. It sequences the infra resize (orchestrator
 // backend, via resourceResizer) and the DB resize (SET GLOBAL) anti-OOM:
@@ -218,15 +248,35 @@ func (server *ServerMonitor) resizeDynamicResourceSQL(grow bool) []string {
 // On a "no"/"migration" verdict, or when the infra could not resize live, the DB
 // memory is not raised (never OOM). Restart-only SET GLOBALs (error 1238) fall
 // back to a restart cookie.
-func (cluster *Cluster) ResizeDynamicResources(grow bool) {
+func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 	if !cluster.Conf.ProvDBDynamicResource {
 		return
 	}
-	rz := cluster.resourceResizer()
 	for _, server := range cluster.Servers {
 		if server == nil || server.State == stateFailed || server.State == stateUnconn {
 			continue
 		}
+		// IO and CPU tuning are pure DB SET GLOBALs — no cgroup change, no
+		// feasibility gate, no grow/shrink ordering. Restart-only vars fall back
+		// via error 1238. (The cgroup cpu limit resize is a follow-up, like pg_cpu.)
+		if dim != resizeMemory {
+			var sql []string
+			switch dim {
+			case resizeIO:
+				sql = server.resizeIOSQL()
+			case resizeCPU:
+				sql = server.resizeCPUSQL()
+			}
+			if len(sql) > 0 {
+				if _, needRestart := server.ExecScriptSQL(sql); needRestart {
+					server.SetRestartCookie()
+				}
+			}
+			continue
+		}
+
+		// resizeMemory: sequence the infra (cgroup) and the DB memory anti-OOM.
+		rz := cluster.resourceResizer()
 		if grow {
 			switch feas, err := rz.CanResize(server, true); {
 			case err != nil:
@@ -254,11 +304,11 @@ func (cluster *Cluster) ResizeDynamicResources(grow bool) {
 			if !applied {
 				continue // native path scheduled a restart; do not raise DB memory live
 			}
-			if _, needRestart := server.ExecScriptSQL(server.resizeDynamicResourceSQL(true)); needRestart {
+			if _, needRestart := server.ExecScriptSQL(server.resizeMemorySQL(true)); needRestart {
 				server.SetRestartCookie()
 			}
 		} else {
-			if _, needRestart := server.ExecScriptSQL(server.resizeDynamicResourceSQL(false)); needRestart {
+			if _, needRestart := server.ExecScriptSQL(server.resizeMemorySQL(false)); needRestart {
 				server.SetRestartCookie()
 			}
 			if _, err := rz.Resize(server, false); err != nil {
