@@ -49,13 +49,18 @@ func (server *ServerMonitor) resizeDynamicResourceSQL(grow bool) []string {
 		fmt.Sprintf("SET GLOBAL innodb_max_dirty_pages_pct = %s", cfg.GetConfigInnoDBMaxDirtyPagePct()),
 		fmt.Sprintf("SET GLOBAL innodb_max_dirty_pages_pct_lwm = %s", cfg.GetConfigInnoDBMaxDirtyPagePctLwm()),
 	}
-	// max_session_mem_used: the native per-session cap (#1749). 0 = disabled
-	// (threads:0 share) — leave MariaDB's unlimited default untouched.
-	if v := cfg.GetConfigMaxSessionMemUsedMB(); v > 0 {
-		others = append(others, fmt.Sprintf("SET GLOBAL max_session_mem_used = %d*1024*1024", v))
+	// max_session_mem_used: the native per-session cap (#1749). MariaDB-only —
+	// MySQL/Percona do not have it and would error 1193. 0 = disabled (threads:0
+	// share) — leave MariaDB's unlimited default untouched.
+	if server.IsMariaDB() {
+		if v := cfg.GetConfigMaxSessionMemUsedMB(); v > 0 {
+			others = append(others, fmt.Sprintf("SET GLOBAL max_session_mem_used = %d*1024*1024", v))
+		}
 	}
-	// query_cache_size: 0 = off by default, do not silently enable it.
-	if qc := cfg.GetConfigQueryCacheSize(); qc != "0" {
+	// query_cache_size: 0 = off by default (never silently enable it), and the
+	// query cache was removed in MySQL/Percona 8.0, so skip it there.
+	mysql8 := server.IsMySQL() && server.DBVersion != nil && server.DBVersion.Major >= 8
+	if qc := cfg.GetConfigQueryCacheSize(); qc != "0" && !mysql8 {
 		others = append(others, fmt.Sprintf("SET GLOBAL query_cache_size = %s*1024*1024", qc))
 	}
 

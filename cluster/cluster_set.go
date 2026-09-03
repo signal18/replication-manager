@@ -131,8 +131,17 @@ func (cluster *Cluster) SetDBCores(value string) {
 }
 
 func (cluster *Cluster) SetDBMemorySize(value string) {
+	oldMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
 	cluster.Configurator.SetDBMemory(value)
 	cluster.Conf.ProvMem = cluster.Configurator.GetConfigDBMemory()
+	// When live resource resize is enabled, drive it (SET GLOBAL + client
+	// infra hook) instead of a full container recreation. grow is decided from
+	// the memory delta; ResizeDynamicResources no-ops when the feature is off.
+	if cluster.Conf.ProvDBDynamicResource {
+		newMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+		cluster.ResizeDynamicResources(newMB >= oldMB)
+		return
+	}
 	cluster.SetDBReprovCookie()
 }
 
