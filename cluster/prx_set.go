@@ -20,10 +20,16 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
+// SetID hashes the proxy's type in alongside cluster/name/write-port --
+// without it, two different proxy families (e.g. ProxySQL and HAProxy)
+// sharing the same name and write port within one cluster would collide on
+// the exact same Id, and GetProxyFromName (prx_get.go) would silently
+// resolve API actions against whichever one happens to come first in
+// cluster.Proxies instead of the one the caller actually meant.
 func (p *Proxy) SetID() {
 	cluster := p.ClusterGroup
 	p.Id = "px" + strconv.FormatUint(
-		crc64.Checksum([]byte(cluster.Name+p.Name+":"+strconv.Itoa(p.WritePort)), cluster.crcTable),
+		crc64.Checksum([]byte(cluster.Name+p.Type+p.Name+":"+strconv.Itoa(p.WritePort)), cluster.crcTable),
 		10)
 }
 
