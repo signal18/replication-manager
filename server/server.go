@@ -1059,6 +1059,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvCores, "prov-db-cpu-cores", "1", "Number of cpu cores for the micro service VM")
 	flags.BoolVar(&conf.ProvDBConfig, "prov-db-config", WithProvisioning == "ON", "Enable configurator config tracking and deployment to database servers. When false, dbjobs skips config refresh and no config is pushed to databases. Default: true for PRO, false for OSC.")
 	flags.BoolVar(&conf.ProvDBApplyDynamicConfig, "prov-db-apply-dynamic-config", false, "Dynamic database config change")
+	flags.BoolVar(&conf.ProvDBDynamicResource, "prov-db-dynamic-resource", false, "Apply system-resource resizes (prov-db-memory/cpu/io) live via SET GLOBAL instead of a restart, for the dynamically-settable variables (buffer pool, max_session_mem_used, io capacity, ...); off by default")
 	flags.BoolVar(&conf.ProvDBForceWriteConfig, "prov-db-force-write-config", false, "Force write to config files without Signal18 header on provision")
 	flags.BoolVar(&conf.ProvDBConfigPreserve, "prov-db-config-preserve", true, "Preserve values in config files. If set to false, the 99_preserved.cnf will not be copied to the config.tar.gz")
 	flags.StringVar(&conf.ProvDBConfigPreserveVars, "prov-db-config-preserve-vars", "", "List of preserved options separated by semicolon (opt1;opt2=val2;opt3). Allow hard code by adding value e.g. innodb_data_home_dir=/var/lib/mysql")
