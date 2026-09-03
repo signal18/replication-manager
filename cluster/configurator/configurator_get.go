@@ -199,6 +199,36 @@ func (configurator *Configurator) GetConfigRocksDBCacheSize() string {
 	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["rocksdb"])), 10)
 }
 
+// sessionMemFloorMB is the minimum per-session memory ceiling. Below this even
+// ordinary queries (their sort/join/tmp buffers) would fail; on a small VM the
+// cap still protects the instance because a single runaway session is stopped
+// before it OOM-kills the whole container.
+const sessionMemFloorMB int64 = 64
+
+// GetConfigMaxSessionMemUsedMB returns the per-session memory ceiling
+// (MariaDB max_session_mem_used) in MB, driven by the "threads" share of
+// prov-db-memory-shared-pct so it resizes with prov-db-memory / the DBU — the
+// same percentage model as every engine buffer. It is the native MariaDB safety
+// net for small VMs (#1749 item 3): a session that exceeds it is errored instead
+// of OOM-killing the whole instance, without having to rescale every per-thread
+// buffer. A "threads" share of 0 disables the cap (returns 0 -> the template
+// emits MariaDB's unlimited default), so it has its own off-switch.
+func (configurator *Configurator) GetConfigMaxSessionMemUsedMB() int64 {
+	usable, err := configurator.getUsableMemoryMB()
+	if err != nil {
+		return 0
+	}
+	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
+	pct := int64(sharedmempcts["threads"])
+	if pct <= 0 {
+		return 0 // disabled -> unlimited
+	}
+	if v := largestPow2LE(usable * pct / 100); v > sessionMemFloorMB {
+		return v
+	}
+	return sessionMemFloorMB
+}
+
 // GetConfigPFSMemoryMB returns the memory share budgeted to the Performance
 // Schema, from the "pfs" entry of prov-db-memory-shared-pct (default 5 when
 // absent; pfs:0 disables the budget so MariaDB defaults stay untouched).

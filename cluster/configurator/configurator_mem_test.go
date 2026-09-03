@@ -106,6 +106,39 @@ func TestGetConfigMyISAMKeyBufferSize(t *testing.T) {
 	}
 }
 
+func TestGetConfigMaxSessionMemUsedMB(t *testing.T) {
+	// per-session ceiling = "threads" share (10%) of usable memory, pow2, floor 64
+	tests := []struct {
+		name string
+		mem  string
+		want int64
+	}{
+		{"4G", "4G", 256},   // pow2(4096*10/100=409)=256
+		{"8G", "8G", 512},   // pow2(8192*10/100=819)=512
+		{"768M floored", "768M", 64}, // pow2(76)=64
+		{"256M floored", "256M", 64}, // pow2(25)=16 -> floor 64
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newConfiguratorWithMem(tt.mem)
+			if got := c.GetConfigMaxSessionMemUsedMB(); got != tt.want {
+				t.Errorf("GetConfigMaxSessionMemUsedMB(%q) = %d, want %d", tt.mem, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestGetConfigMaxSessionMemUsedDisabled guards the off-switch: a "threads" share
+// of 0 disables the per-session cap (0 -> template emits MariaDB's unlimited
+// default), so the feature can be turned off via prov-db-memory-shared-pct.
+func TestGetConfigMaxSessionMemUsedDisabled(t *testing.T) {
+	c := newConfiguratorWithMem("8G")
+	c.ClusterConfig.ProvMemSharedPct = "threads:0,innodb:45,myisam:4,aria:8,pfs:4,fscache:20"
+	if got := c.GetConfigMaxSessionMemUsedMB(); got != 0 {
+		t.Errorf("GetConfigMaxSessionMemUsedMB(threads:0) = %d, want 0 (disabled)", got)
+	}
+}
+
 func TestGetConfigAriaCacheSize(t *testing.T) {
 	// aria share is 8% of total memory, pow2
 	tests := []struct {
