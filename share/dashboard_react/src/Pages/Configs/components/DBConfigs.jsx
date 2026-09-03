@@ -268,8 +268,8 @@ function DBConfigs({ selectedCluster, user }) {
       )
     },
     {
-      key: 'Apply Dynamic Config',
-      help: h(hDynamicConfig, 'Apply Dynamic Config'),
+      key: 'Apply Dynamic Config On Change Tags',
+      help: h(hDynamicConfig, 'Apply Dynamic Config On Change Tags'),
       value: (
         <RMSwitch
           isChecked={selectedCluster?.config?.provDBApplyDynamicConfig}
@@ -277,6 +277,20 @@ function DBConfigs({ selectedCluster, user }) {
           confirmTitle={'Confirm switch settings for prov-db-apply-dynamic-config?'}
           onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-apply-dynamic-config' }))
+          }
+        />
+      )
+    },
+    {
+      key: 'Apply Dynamic Resource Resize',
+      help: h(hDynamicResource, 'Apply Dynamic Resource Resize'),
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.provDbDynamicResource}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for prov-db-dynamic-resource?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-dynamic-resource' }))
           }
         />
       )
@@ -305,20 +319,6 @@ function DBConfigs({ selectedCluster, user }) {
           confirmTitle={'Confirm switch settings for prov-db-compliance-auto-agree?'}
           onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-compliance-auto-agree' }))
-          }
-        />
-      )
-    },
-    {
-      key: 'Dynamic Resource Resize',
-      help: h(hDynamicResource, 'Dynamic Resource Resize'),
-      value: (
-        <RMSwitch
-          isChecked={selectedCluster?.config?.provDbDynamicResource}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          confirmTitle={'Confirm switch settings for prov-db-dynamic-resource?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-dynamic-resource' }))
           }
         />
       )
