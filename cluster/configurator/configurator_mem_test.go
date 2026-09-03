@@ -58,7 +58,7 @@ func TestGetConfigInnoDBBPSize(t *testing.T) {
 		{"4096M", "4096M", "1024"},
 		{"4096m lowercase", "4096m", "1024"},
 		{"4096 bare", "4096", "1024"},
-		{"8G", "8G", "2048"}, // pow2(8192*45/100=3686)=2048
+		{"8G", "8G", "2048"},            // pow2(8192*45/100=3686)=2048
 		{"256M floored", "256M", "128"}, // pow2(256*45/100=115)=64 -> floor 128
 	}
 
@@ -113,8 +113,8 @@ func TestGetConfigMaxSessionMemUsedMB(t *testing.T) {
 		mem  string
 		want int64
 	}{
-		{"4G", "4G", 256},   // pow2(4096*10/100=409)=256
-		{"8G", "8G", 512},   // pow2(8192*10/100=819)=512
+		{"4G", "4G", 256},            // pow2(4096*10/100=409)=256
+		{"8G", "8G", 512},            // pow2(8192*10/100=819)=512
 		{"768M floored", "768M", 64}, // pow2(76)=64
 		{"256M floored", "256M", 64}, // pow2(25)=16 -> floor 64
 	}
@@ -146,7 +146,7 @@ func TestGetConfigAriaCacheSize(t *testing.T) {
 		mem  string
 		want string
 	}{
-		{"4G", "4G", "256"}, // pow2(4096*8/100=327)=256
+		{"4G", "4G", "256"},         // pow2(4096*8/100=327)=256
 		{"1G floored", "1G", "128"}, // pow2(1024*8/100=81)=64 -> floor 128
 	}
 
@@ -156,6 +156,41 @@ func TestGetConfigAriaCacheSize(t *testing.T) {
 			got := c.GetConfigAriaCacheSize()
 			if got != tt.want {
 				t.Errorf("GetConfigAriaCacheSize(%q) = %q, want %q", tt.mem, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestThreadedBuffers locks the %-driven per-thread buffers (#1765): sized from
+// the "threads" share (10%) of usable memory, split by prov-db-memory-threaded-pct
+// (tmp:70, join:20), rounded down to a power of two.
+func TestThreadedBuffers(t *testing.T) {
+	tests := []struct {
+		name                      string
+		mem                       string
+		tmp, join, joinSpace, mrr string
+	}{
+		// 768M: threadBudget=76 -> tmp=pow2(53)=32, join=pow2(15)=8, space=8*8=64, mrr=8
+		{"768M", "768M", "32", "8", "64", "8"},
+		// 4G: threadBudget=409 -> tmp=pow2(286)=256, join=pow2(81)=64, space=64*8=512, mrr=64
+		{"4G", "4G", "256", "64", "512", "64"},
+		// 64G: join=pow2(1310)=1024, space=1024*8=8192 -> capped at 1024
+		{"64G cap", "64G", "4096", "1024", "1024", "1024"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newConfiguratorWithMem(tt.mem)
+			if got := c.GetConfigTmpTableSize(); got != tt.tmp {
+				t.Errorf("GetConfigTmpTableSize(%q) = %q, want %q", tt.mem, got, tt.tmp)
+			}
+			if got := c.GetConfigJoinBufferSize(); got != tt.join {
+				t.Errorf("GetConfigJoinBufferSize(%q) = %q, want %q", tt.mem, got, tt.join)
+			}
+			if got := c.GetConfigJoinBufferSpaceLimit(); got != tt.joinSpace {
+				t.Errorf("GetConfigJoinBufferSpaceLimit(%q) = %q, want %q", tt.mem, got, tt.joinSpace)
+			}
+			if got := c.GetConfigMRRBufferSize(); got != tt.mrr {
+				t.Errorf("GetConfigMRRBufferSize(%q) = %q, want %q", tt.mem, got, tt.mrr)
 			}
 		})
 	}
