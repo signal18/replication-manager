@@ -296,6 +296,17 @@ func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 }
 
 func (proxy *HaproxyProxy) Init() {
+	// Failover()/setReadBackendMaintenance() call Init() directly, unguarded
+	// by shouldRunStandbyInit()'s debounce; Refresh()/BackendsStateChange()
+	// run on their own goroutine (cluster.refreshProxies) separate from the
+	// failover/maintenance path, so two Init() calls can genuinely run
+	// concurrently. Serialize the whole function: Config.Render()
+	// (router/haproxy/configuration.go) opens haproxy.cfg O_TRUNC with a
+	// direct write, no temp-file-then-rename, so concurrent renders could
+	// otherwise interleave into the same file before either reload fires.
+	proxy.Lock.Lock()
+	defer proxy.Lock.Unlock()
+
 	cluster := proxy.ClusterGroup
 	haproxydatadir := proxy.Datadir + "/var"
 
@@ -490,17 +501,12 @@ func (proxy *HaproxyProxy) Init() {
 	// regardless of repman's classification, but standby's render has no
 	// equivalent live check to fall back on for this specific decision.
 	//
-	// HasValidReadSlave() (cluster/cluster_has.go) is the exported home of
-	// this exact loop -- shared, via ShouldServeReadsFromMaster(), with
-	// ServerMonitor.IsValidReaderCheck (srv_has.go), which needs the
-	// identical no-slave-fallback rule for haproxy-mode=externalcheck's
-	// checkslave HTTP handler (reached via the reader-status route, not
-	// slave-status -- see that method's doc comment). Keep this comment
-	// block in sync with ShouldServeReadsFromMaster's doc comment if the
-	// rule ever changes.
-	masterShouldRead := cluster.Configurator.HasProxyReadLeader() ||
-		(cluster.Configurator.HasProxyReadLeaderNoSlave() &&
-			(cluster.HasNoValidSlave() || !cluster.HasValidReadSlave()))
+	// ShouldServeReadsFromMaster() is the canonical rule, shared with
+	// ServerMonitor.IsValidReaderCheck (srv_has.go) for externalcheck's
+	// checkslave handler -- call it directly rather than re-inlining it
+	// here, so the two can never drift out of sync again (see its own doc
+	// comment for the bug that inline duplication caused before).
+	masterShouldRead := cluster.ShouldServeReadsFromMaster()
 
 	// haproxy-mode=runtimeapi's write backend is a single fixed slot
 	// literally named "leader" -- Refresh()'s SetMaster()/SetMasterFQDN()
