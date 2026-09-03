@@ -347,6 +347,7 @@ type Cluster struct {
 	errorConnectVault                   error                       `json:"-"`
 	SqlErrorLog                         *logsql.Logger              `json:"-"`
 	SqlGeneralLog                       *logsql.Logger              `json:"-"`
+	ResourceResizeLog                   *logsql.Logger              `json:"-"`
 	SstAvailablePorts                   map[string]string           `json:"sstAvailablePorts" groups:"web"`
 	InPhysicalBackup                    bool                        `json:"inPhysicalBackup" groups:"web"`
 	InLogicalBackup                     bool                        `json:"inLogicalBackup" groups:"web"`
@@ -589,6 +590,7 @@ func (cluster *Cluster) InitFromConf() {
 
 	cluster.SqlErrorLog = logsql.New()
 	cluster.SqlGeneralLog = logsql.New()
+	cluster.ResourceResizeLog = logsql.New()
 	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 	cluster.switchoverChan = make(chan bool)
 	// should use buffered channels or it will block
@@ -806,6 +808,24 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.SqlGeneralLog.WithError(err).Error("Can't init general sql log file")
 	}
 	cluster.SqlGeneralLog.AddHook(hookgen)
+
+	// Dedicated rotating resource-resize audit log (JSON, one event per line) — the
+	// paramétré-axis history of live resource changes, pushed to the BO for DBU /
+	// billing reconciliation. Rotated like the sql logs.
+	hookresize, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
+		Filename:   cluster.WorkingDir + "/resource_resize.log",
+		MaxSize:    cluster.Conf.LogRotateMaxSize,
+		MaxBackups: cluster.Conf.LogRotateMaxBackup,
+		MaxAge:     cluster.Conf.LogRotateMaxAge,
+		Level:      logsql.InfoLevel,
+		Formatter: &logsql.JSONFormatter{
+			TimestampFormat: "2006-01-02 15:04:05",
+		},
+	})
+	if err != nil {
+		cluster.ResourceResizeLog.WithError(err).Error("Can't init resource resize log file")
+	}
+	cluster.ResourceResizeLog.AddHook(hookresize)
 
 	if loadErr := cluster.LoadAppConfigs(); loadErr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,

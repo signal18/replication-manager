@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	logsql "github.com/sirupsen/logrus"
 	"gopkg.in/ini.v1"
 )
 
@@ -176,6 +177,46 @@ const (
 	resizeCPU                           // prov-db-cpu-cores
 )
 
+func (dim resizeDimension) String() string {
+	switch dim {
+	case resizeMemory:
+		return "memory"
+	case resizeIO:
+		return "io"
+	case resizeCPU:
+		return "cpu"
+	}
+	return "unknown"
+}
+
+// logResize appends one structured event to the rotating resource_resize.log
+// (JSON, one event per line). It records the paramétré-axis change so that (a) the
+// BO can reconcile it against the DBU (autorisé/facturé), and (b) the workload
+// plugin can decide whether to return the freed resources to the shared pool or
+// reclaim from it (consommé vs autorisé).
+func (cluster *Cluster) logResize(server *ServerMonitor, dim resizeDimension, grow, applied bool, feas ResizeFeasibility, statements []string) {
+	if cluster.ResourceResizeLog == nil {
+		return
+	}
+	dir := "shrink"
+	if grow {
+		dir = "grow"
+	}
+	cluster.ResourceResizeLog.WithFields(logsql.Fields{
+		"cluster":      cluster.Name,
+		"server":       server.URL,
+		"dimension":    dim.String(),
+		"direction":    dir,
+		"applied":      applied,
+		"feasibility":  string(feas),
+		"orchestrator": cluster.GetOrchestrator(),
+		"prov_mem":     cluster.Conf.ProvMem,
+		"prov_cores":   cluster.Conf.ProvCores,
+		"prov_iops":    cluster.Conf.ProvIops,
+		"statements":   statements,
+	}).Info("resource resize")
+}
+
 // resizeMemorySQL builds the memory-driven SET GLOBALs, valued from the
 // configurator % model. Anti-OOM ordered: grow puts the buffer pool LAST (after
 // the cgroup grew), shrink puts it FIRST (freeing memory before the cgroup
@@ -252,6 +293,13 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 	if !cluster.Conf.ProvDBDynamicResource {
 		return
 	}
+	dir := "shrink"
+	if grow {
+		dir = "grow"
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Live resource resize: %s %s (prov-db-dynamic-resource)", dim.String(), dir)
+
 	for _, server := range cluster.Servers {
 		if server == nil || server.State == stateFailed || server.State == stateUnconn {
 			continue
@@ -280,49 +328,63 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 					server.SetRestartCookie()
 				}
 			}
+			cluster.logResize(server, dim, grow, true, ResizeYes, sql)
 			continue
 		}
 
 		// resizeMemory: sequence the infra (cgroup) and the DB memory anti-OOM.
 		rz := cluster.resourceResizer()
 		if grow {
-			switch feas, err := rz.CanResize(server, true); {
-			case err != nil:
+			feas, err := rz.CanResize(server, true)
+			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 					"Resource grow feasibility check failed on %s: %s", server.URL, err)
+				cluster.logResize(server, dim, true, false, feas, nil)
 				continue
-			case feas == ResizeNo:
+			}
+			if feas == ResizeNo {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 					"Resource grow not possible on %s, keeping current size", server.URL)
+				cluster.logResize(server, dim, true, false, feas, nil)
 				continue
-			case feas == ResizeMigration:
+			}
+			if feas == ResizeMigration {
 				// Host lacks capacity: the instance would need relocating. In-place
 				// resize is skipped; migration orchestration + tracked state (T5) is
 				// a follow-up (#1765/#1760 §10).
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 					"Resource grow needs migration on %s (host lacks capacity); in-place skipped", server.URL)
+				cluster.logResize(server, dim, true, false, feas, nil)
 				continue
 			}
 			applied, err := rz.Resize(server, true)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 					"Resource grow on %s failed, keeping current DB memory: %s", server.URL, err)
+				cluster.logResize(server, dim, true, false, feas, nil)
 				continue
 			}
 			if !applied {
-				continue // native path scheduled a restart; do not raise DB memory live
+				cluster.logResize(server, dim, true, false, feas, nil) // native path scheduled a restart
+				continue
 			}
-			if _, needRestart := server.ExecScriptSQL(server.resizeMemorySQL(true)); needRestart {
+			sql := server.resizeMemorySQL(true)
+			if _, needRestart := server.ExecScriptSQL(sql); needRestart {
 				server.SetRestartCookie()
 			}
+			cluster.logResize(server, dim, true, true, feas, sql)
 		} else {
-			if _, needRestart := server.ExecScriptSQL(server.resizeMemorySQL(false)); needRestart {
+			sql := server.resizeMemorySQL(false)
+			if _, needRestart := server.ExecScriptSQL(sql); needRestart {
 				server.SetRestartCookie()
 			}
+			applied := true
 			if _, err := rz.Resize(server, false); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 					"Resource shrink on %s failed: %s", server.URL, err)
+				applied = false
 			}
+			cluster.logResize(server, dim, false, applied, ResizeYes, sql)
 		}
 	}
 }
