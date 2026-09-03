@@ -690,13 +690,25 @@ both phases — its push runs before the stop, so a failure there just means
 "still on the old image", a state the stop/start cycle was going to produce
 anyway.
 
-Not yet covered: the single-server `/actions/upgrade` path
-(`server/api_database.go`) still falls through `UpgradeDatabaseService`
+**Now covered**: the single-server `/actions/upgrade` path
+(`server/api_database.go`) previously fell through `UpgradeDatabaseService`
 (`cluster/prov.go`) to a plain `StartDatabaseService` for container
-orchestrators, which does not call `UpdateDatabaseServiceConfig` and so does
-not pick up a changed `prov-db-docker-img` outside of `RollingUpgrade`. Left
-as a follow-up rather than folded in here, since it shares the OpenSVC
-container-orchestrator upgrade path and deserves its own review.
+orchestrators — no `UpdateDatabaseServiceConfig` call at all, so it never
+picked up a changed `prov-db-docker-img` for OpenSVC or Kubernetes; it just
+stopped and restarted on whatever image was already running. Fixed by
+reusing `rollingUpgradeStopUpdateStart` directly: `UpgradeDatabaseService`'s
+non-OnPremise case now runs the same two-phase pull-then-clean cycle
+`RollingUpgrade` runs per node (`forcePull=true,clean=true` then
+`forcePull=false,clean=false`), so a single-server upgrade gets the identical
+Kubernetes-safe ordering and image-patch behavior described above. The
+handler's own manual `SET GLOBAL innodb_fast_shutdown = 0`/`SHUTDOWN WAIT FOR
+ALL SLAVES` preamble is now OnPremise-only (its ssh upgrade script doesn't
+run that SQL itself) — the container-orchestrator path already gets it for
+free from `StopDatabaseServiceClean` (`rollingUpgradeStopUpdateStart`'s
+`clean=true` stop), which previously duplicated the exact same two
+statements. No direct unit test exists yet for `UpgradeDatabaseService`'s
+orchestration (same live-`kind`-validation gap as `RollingUpgrade` itself,
+noted above).
 
 ## Idempotency and error propagation
 
@@ -790,21 +802,11 @@ Kubernetes-orchestrated scenarios.
   the orchestrator result, and the API stop/start handlers discard the
   returned error entirely. Same for every orchestrator, not
   Kubernetes-specific, and not fixed here.
-- `RollingUpgrade` (`handlerMuxRollingAction`, the scheduler, the
-  dashboard) no longer hits an unsupported stop lifecycle for Kubernetes —
-  `StopDatabaseServiceClean` now goes through the real
-  `K8SStopDatabaseService`/`K8SStartDatabaseService` scale cycle — but it's
-  still not a genuine upgrade there: `UpdateDatabaseServiceConfig` (the
-  step that would force a fresh image pull) is OpenSVC-only
-  (`cluster/prov.go`, defaults to a no-op for every other orchestrator),
-  and nothing in `RollingUpgrade` ever patches the Deployment's `image:`
-  field. Mechanically it would now stop and restart every server with the
-  same image, not actually upgrade it — not audited further here, since
-  fixing it needs its own Kubernetes-specific image-pull step (mirroring
-  what `K8SForceRepullDatabaseService` already does for `/actions/restart`)
-  and a survey of the rest of the function for other OpenSVC-only
-  assumptions. `RollingReprov` is different: it unprovisions and
-  reprovisions each server rather than stopping/starting it, so it always
-  picks up the current image regardless.
+- `RollingUpgrade` and the single-server `/actions/upgrade` path are now
+  genuine upgrades on Kubernetes too — see "Rolling upgrade: image update"
+  above for `K8SUpdateDatabaseServiceConfig`/`rollingUpgradeStopUpdateStart`.
+  `RollingReprov` is different: it unprovisions and reprovisions each server
+  rather than stopping/starting it, so it always picked up the current image
+  regardless, even before this fix.
 
 All of the above require a design decision and are tracked under issue #1497.
