@@ -1605,6 +1605,15 @@ func (cluster *Cluster) SetProvKubeStorageClass(value string) error {
 	return nil
 }
 
+// SetProvKubeProxyStorageClass is SetProvKubeStorageClass's proxy-side
+// counterpart (k8sProxyPVC, prov_k8s_prx.go) -- only affects a proxy's
+// *next* (re)provision, so it needs the proxy reprov cookie, not the DB one.
+func (cluster *Cluster) SetProvKubeProxyStorageClass(value string) error {
+	cluster.Conf.ProvKubeProxyStorageClass = value
+	cluster.SetProxiesReprovCookie()
+	return nil
+}
+
 func (cluster *Cluster) SetProvDbAgents(value string) error {
 	cluster.Conf.ProvAgents = value
 	return nil

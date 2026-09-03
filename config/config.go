@@ -423,9 +423,9 @@ type Config struct {
 	MxsDisableMonitor                         bool                         `mapstructure:"maxscale-disable-monitor" toml:"maxscale-disable-monitor" json:"maxscaleDisableMonitor"`
 	MxsGetInfoMethod                          string                       `mapstructure:"maxscale-get-info-method" toml:"maxscale-get-info-method" json:"maxscaleGetInfoMethod"`
 	MxsServerMatchPort                        bool                         `mapstructure:"maxscale-server-match-port" toml:"maxscale-server-match-port" json:"maxscaleServerMatchPort"`
-	MxsMode                                    string                       `mapstructure:"maxscale-mode" toml:"maxscale-mode" json:"maxscaleMode"`
-	MxsRestApi                                 bool                         `mapstructure:"maxscale-rest-api" toml:"maxscale-rest-api" json:"maxscaleRestApi"`
-	MxsRestPort                                int                          `mapstructure:"maxscale-rest-port" toml:"maxscale-rest-port" json:"maxscaleRestPort"`
+	MxsMode                                   string                       `mapstructure:"maxscale-mode" toml:"maxscale-mode" json:"maxscaleMode"`
+	MxsRestApi                                bool                         `mapstructure:"maxscale-rest-api" toml:"maxscale-rest-api" json:"maxscaleRestApi"`
+	MxsRestPort                               int                          `mapstructure:"maxscale-rest-port" toml:"maxscale-rest-port" json:"maxscaleRestPort"`
 	MxsBinaryPath                             string                       `mapstructure:"maxscale-binary-path" toml:"maxscale-binary-path" json:"maxscalemBinaryPath"`
 	MyproxyOn                                 bool                         `mapstructure:"myproxy" toml:"myproxy" json:"myproxy"`
 	MyproxyDebug                              bool                         `mapstructure:"myproxy-debug" toml:"myproxy-debug" json:"myproxyDebug"`
@@ -690,6 +690,7 @@ type Config struct {
 	ProvNetCNICluster                         string                       `mapstructure:"prov-net-cni-cluster" toml:"prov-net-cni-cluster" json:"provNetCniCluster"`
 	ProvKubeImageForcePull                    bool                         `mapstructure:"prov-kube-image-force-pull" toml:"prov-kube-image-force-pull" json:"provKubeImageForcePull"`
 	ProvKubeStorageClass                      string                       `mapstructure:"prov-kube-storage-class" toml:"prov-kube-storage-class" json:"provKubeStorageClass"`
+	ProvKubeProxyStorageClass                 string                       `mapstructure:"prov-kube-proxy-storage-class" toml:"prov-kube-proxy-storage-class" json:"provKubeProxyStorageClass"`
 	ProvNetDockerRunArgs                      string                       `mapstructure:"prov-net-docker-run-args" toml:"prov-net-docker-run-args" json:"provNetDockerRunArgs"`
 	ProvDockerDaemonPrivate                   bool                         `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
 	ProvServicePlan                           string                       `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`

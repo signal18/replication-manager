@@ -209,8 +209,8 @@ func (cluster *Cluster) k8sProxyPVC(prx DatabaseProxy) *apiv1.PersistentVolumeCl
 			},
 		},
 	}
-	if cluster.Conf.ProvKubeStorageClass != "" {
-		storageClass := cluster.Conf.ProvKubeStorageClass
+	if cluster.Conf.ProvKubeProxyStorageClass != "" {
+		storageClass := cluster.Conf.ProvKubeProxyStorageClass
 		pvc.Spec.StorageClassName = &storageClass
 	}
 	return pvc

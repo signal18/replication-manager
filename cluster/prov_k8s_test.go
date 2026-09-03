@@ -441,7 +441,7 @@ func TestK8SProxyPVC_NoStorageClassNameWhenUnset(t *testing.T) {
 
 func TestK8SProxyPVC_UsesConfiguredStorageClass(t *testing.T) {
 	cluster := newTestCluster("k8stest")
-	cluster.Conf.ProvKubeStorageClass = "fast-ssd"
+	cluster.Conf.ProvKubeProxyStorageClass = "fast-ssd"
 	prx := &fakeProxy{name: "proxysql1"}
 
 	pvc := cluster.k8sProxyPVC(prx)
