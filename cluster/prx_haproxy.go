@@ -906,8 +906,21 @@ func (proxy *HaproxyProxy) Refresh() error {
 									// its own lookup, not writeRowResolverBacked.
 									stagingResolverBacked := resolverBackedPool[cluster.Conf.HaproxyStagingBackend+"/"+line[1]]
 									res, err := haRuntime.SetMaster(cluster.Conf.HaproxyStagingBackend, stagingsrv.RuntimeAPIAddr(stagingResolverBacked), stagingsrv.Port)
-									if msg, failed := haproxyCmdFailed(err, res); failed {
-										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, msg, stagingsrv.Host+":"+stagingsrv.Port)
+									// A real (not misclassified, see setAddrFailed)
+									// failure here is reported via SetState, not a
+									// plain LogModulePrintf: Refresh() runs every
+									// monitoring tick, so a persistent failure
+									// (e.g. HAProxy unreachable) would otherwise log
+									// an identical ERROR line forever. SetState only
+									// logs once, on the OPENED/RESOLV transition —
+									// same dedup as WARN0209/WARN0210 above.
+									if msg, failed := setAddrFailed(err, res); failed {
+										cluster.SetState("ERR00106", state.State{
+											ErrType:   config.LvlErr,
+											ErrDesc:   fmt.Sprintf(clusterError["ERR00106"], proxy.Host+":"+proxy.Port, cluster.Conf.HaproxyStagingBackend, stagingsrv.Host+":"+stagingsrv.Port, msg),
+											ErrFrom:   "HAPROXY",
+											ServerUrl: proxy.Host + ":" + proxy.Port,
+										})
 									} else {
 										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, res, stagingsrv.Host+":"+stagingsrv.Port)
 									}
@@ -919,8 +932,16 @@ func (proxy *HaproxyProxy) Refresh() error {
 								if master != nil {
 									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s %s", proxy.Host+":"+proxy.Port, master.Host, master.Port)
 									res, err := haRuntime.SetMaster(cluster.Conf.HaproxyAPIWriteBackend, master.RuntimeAPIAddr(writeRowResolverBacked), master.Port)
-									if msg, failed := haproxyCmdFailed(err, res); failed {
-										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, msg, master.Host+":"+master.Port)
+									// See the staging branch above for why a real
+									// failure goes through SetState, not a plain
+									// LogModulePrintf.
+									if msg, failed := setAddrFailed(err, res); failed {
+										cluster.SetState("ERR00106", state.State{
+											ErrType:   config.LvlErr,
+											ErrDesc:   fmt.Sprintf(clusterError["ERR00106"], proxy.Host+":"+proxy.Port, cluster.Conf.HaproxyAPIWriteBackend, master.Host+":"+master.Port, msg),
+											ErrFrom:   "HAPROXY",
+											ServerUrl: proxy.Host + ":" + proxy.Port,
+										})
 									} else {
 										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, res, master.Host+":"+master.Port)
 									}
@@ -1131,8 +1152,15 @@ func (proxy *HaproxyProxy) Refresh() error {
 				// mode (see GetConfigProxyModule, cluster/prx_get.go).
 				stagingResolverBacked := resolverBackedPool[cluster.Conf.HaproxyStagingBackend+"/leader"]
 				res, err := haRuntime.SetMaster(cluster.Conf.HaproxyStagingBackend, stagingsrv.RuntimeAPIAddr(stagingResolverBacked), stagingsrv.Port)
-				if msg, failed := haproxyCmdFailed(err, res); failed {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, msg, stagingsrv.Host+":"+stagingsrv.Port)
+				// See the per-row master-fix branch above for why a real
+				// failure goes through SetState, not a plain LogModulePrintf.
+				if msg, failed := setAddrFailed(err, res); failed {
+					cluster.SetState("ERR00106", state.State{
+						ErrType:   config.LvlErr,
+						ErrDesc:   fmt.Sprintf(clusterError["ERR00106"], proxy.Host+":"+proxy.Port, cluster.Conf.HaproxyStagingBackend, stagingsrv.Host+":"+stagingsrv.Port, msg),
+						ErrFrom:   "HAPROXY",
+						ServerUrl: proxy.Host + ":" + proxy.Port,
+					})
 				} else {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, res, stagingsrv.Host+":"+stagingsrv.Port)
 				}
@@ -1143,8 +1171,15 @@ func (proxy *HaproxyProxy) Refresh() error {
 				writeResolverBacked := resolverBackedPool[cluster.Conf.HaproxyAPIWriteBackend+"/leader"]
 				res, err := haRuntime.SetMaster(cluster.Conf.HaproxyAPIWriteBackend, master.RuntimeAPIAddr(writeResolverBacked), master.Port)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy has leader in cluster but not in %s fixing it to master %s return %s", proxy.Host+":"+proxy.Port, master.URL, res)
-				if msg, failed := haproxyCmdFailed(err, res); failed {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy cannot add leader %s in cluster but not in %s : %s", master.URL, proxy.Host+":"+proxy.Port, msg)
+				// See the per-row master-fix branch above for why a real
+				// failure goes through SetState, not a plain LogModulePrintf.
+				if msg, failed := setAddrFailed(err, res); failed {
+					cluster.SetState("ERR00106", state.State{
+						ErrType:   config.LvlErr,
+						ErrDesc:   fmt.Sprintf(clusterError["ERR00106"], proxy.Host+":"+proxy.Port, cluster.Conf.HaproxyAPIWriteBackend, master.URL, msg),
+						ErrFrom:   "HAPROXY",
+						ServerUrl: proxy.Host + ":" + proxy.Port,
+					})
 				}
 			}
 		}
@@ -1305,9 +1340,10 @@ func haproxyCmdFailed(err error, res string) (string, bool) {
 // haproxyAddServerSuccessMsg is the confirmation text HAProxy's Runtime API
 // replies with when "add server" succeeds — unlike every other admin server
 // command in this file (SetMaintenance, SetDrain, EnableHealth, DelServer,
-// WaitSrvRemovable, SetServerAddr/FQDN), which reply with an empty body on
-// success, making haproxyCmdFailed's "any non-empty response is an error"
-// rule wrong for this one command. Verified by hand against a real HAProxy
+// WaitSrvRemovable), which reply with an empty body on success — SetServerAddr/
+// FQDN is a second exception, see setAddrFailed below — making haproxyCmdFailed's
+// "any non-empty response is an error" rule wrong for this one command. Verified
+// by hand against a real HAProxy
 // 3.0 Runtime API socket (`add server service_read/x 1.2.3.4:3306 check` ->
 // "New server registered.\n\n"); routing AddServer's response through
 // haproxyCmdFailed instead misclassified every successful add as a failure,
@@ -1399,6 +1435,95 @@ func waitSrvRemovableFailed(err error, res string) (string, bool) {
 	return haproxyCmdFailed(err, res)
 }
 
+// haproxySetAddrSuccessSubstrings is a fourth instance of the same
+// non-empty-on-success pattern as haproxyAddServerSuccessMsg/
+// haproxyDelServerSuccessMsg/haproxyWaitSrvRemovableSuccessMsg, this time for
+// "set server .../<name> addr ..."/"... fqdn ..." — the command SetMaster,
+// SetMasterFQDN, SetServerAddr and SetServerFQDN all funnel into. Routing
+// these through haproxyCmdFailed misclassified every successful master
+// failover/switchover repoint and every successful read-backend IP
+// reconciliation (reconcileReadBackendServers) as an ERROR, even though the
+// address change genuinely succeeded — exactly the false alarm this was
+// written to fix, first reported from a production log showing "Detecting
+// wrong master server ... fixing it to master" (LvlInfo, correct) directly
+// followed by an HAProxy-logged "IP changed from '10.60.50.67' to
+// '10.60.22.249' by 'stats socket command'" being logged as LvlErr by the
+// code below.
+//
+// Matched with strings.Contains, not HasPrefix: a genuine FQDN change's
+// confirmation text — also taken directly from a production log —
+// is "<pool>/<name> changed its FQDN from 'db1...' to 'db2...' by 'stats
+// socket command'", i.e. it does NOT start with any fixed word; the
+// pool/server name leads the line and varies per call site. An earlier
+// version of this list guessed "FQDN changed from"/"FDQN changed from" as a
+// HasPrefix match, by (wrong) symmetry with the addr case — that guess is
+// structurally unmatchable against the real text and has been replaced with
+// "changed its FQDN from" below.
+//
+// "nothing changed" (the addr no-op case) and "no need to change the FDQN by
+// 'stats socket command'" (the fqdn no-op case, HAProxy's own "FDQN" spelling,
+// not a typo introduced here) were both verified by hand against a real
+// HAProxy 3.0 Runtime API socket (clustera, kind cluster), with no pool/name
+// prefix on either: issuing "set server service_write/leader addr <its
+// current IP> port 3306" and "... fqdn <its current FQDN> port 3306"
+// respectively, each already-correct, replied with this exact non-empty text
+// rather than an empty body. "IP changed from" and "changed its FQDN from"
+// are both taken directly from production logs (genuine address/FQDN
+// changes, not reproduced live here — doing so would have redirected
+// clustera's live write backend to a different address). If a real response
+// turns out to use wording not covered here, it falls through to
+// haproxyCmdFailed's conservative "unknown non-empty response means failure"
+// default below, same as before this fix — no worse than the status quo,
+// just not yet confirmed better.
+//
+// The remaining three entries were found by reading HAProxy's own source
+// (srv_update_addr_port in src/server.c, tags v2.4.0/v2.8.0/v3.0.0/v3.4.0 —
+// the three versions this codebase's HAProxy live-test campaign covers, plus
+// v2.8.0, the last v2.x release, checked separately since it's the version
+// actually shipped as the "stable v2" line), not live/production evidence,
+// after a review turned up that this list was only exercising the exact
+// wording seen so far rather than every path the source can actually take:
+//   - "port changed from" -- the addr command changes port and IP
+//     independently; if only the port differs (IP unchanged), the reply is
+//     "port changed from 'A' to 'B' by '...'" with NO "IP changed from" text
+//     at all, identically on every version checked (2.4/2.8/3.0/3.4) --
+//     SetServerAddr/SetMaster always pass both addr and port together, so
+//     this is real, reachable HAProxy text, not a hypothetical.
+//   - "no need to change the addr" -- HAProxy 2.4 AND 2.8 (confirmed by
+//     reading src/server.c at both tags; the wording changes at the 2.x→3.0
+//     boundary, not within the v2 line) report the addr-unchanged case with
+//     this per-field wording instead of 3.0/3.4's unified "nothing changed"
+//     -- a same-address SetMaster/SetServerAddr call against a 2.x proxy
+//     would otherwise still be misclassified.
+//   - "no need to change the port" -- the v2 line's port-unchanged
+//     counterpart to the addr case above, for the same reason.
+var haproxySetAddrSuccessSubstrings = []string{
+	"nothing changed",
+	"no need to change the addr",
+	"no need to change the port",
+	"no need to change the FDQN",
+	"IP changed from",
+	"port changed from",
+	"changed its FQDN from",
+}
+
+// setAddrFailed is haproxyCmdFailed's counterpart for SetMaster/
+// SetMasterFQDN/SetServerAddr/SetServerFQDN calls — see
+// haproxySetAddrSuccessSubstrings for why it can't share haproxyCmdFailed's
+// empty-body-means-success rule.
+func setAddrFailed(err error, res string) (string, bool) {
+	if err != nil {
+		return err.Error(), true
+	}
+	msg := strings.TrimSpace(res)
+	for _, substr := range haproxySetAddrSuccessSubstrings {
+		if strings.Contains(msg, substr) {
+			return "", false
+		}
+	}
+	return haproxyCmdFailed(err, res)
+}
+
 // reconcileReadBackendServers brings the HAProxy read backend's runtime
 // server membership in line with cluster.Servers via the Runtime API, so
 // that a DB server joining or leaving the cluster does not require an
@@ -1463,6 +1588,8 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 	// failed, either at the transport level or via a non-empty response
 	// body (HAProxy's admin server commands return no output on success).
 	// Do not use this for AddServer's response — see logAddServerIfFailed.
+	// Do not use this for SetServerAddr's response either — see
+	// logSetAddrIfFailed.
 	logIfFailed := func(action string, res string, err error) bool {
 		msg, failed := haproxyCmdFailed(err, res)
 		if failed {
@@ -1478,6 +1605,29 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 		msg, failed := addServerFailed(err, res)
 		if failed {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy %s: %s", action, msg)
+		}
+		return failed
+	}
+
+	// logSetAddrIfFailed is logIfFailed's counterpart for SetServerAddr
+	// calls, which reply with a non-empty confirmation on success (change or
+	// no-op alike) unlike most other commands here — see
+	// haproxySetAddrSuccessSubstrings. A real failure is reported via
+	// SetState, scoped per server (ServerUrl), rather than a plain
+	// LogModulePrintf: this runs once per drifted server every Refresh()
+	// pass, so a persistent failure (e.g. HAProxy unreachable) would
+	// otherwise log an identical ERROR line for that server forever.
+	// SetState only logs once, on the OPENED/RESOLV transition — same
+	// dedup as WARN0209/WARN0210 above.
+	logSetAddrIfFailed := func(serverID, serverURL, res string, err error) bool {
+		msg, failed := setAddrFailed(err, res)
+		if failed {
+			cluster.SetState("ERR00107", state.State{
+				ErrType:   config.LvlErr,
+				ErrDesc:   fmt.Sprintf(clusterError["ERR00107"], proxy.Host+":"+proxy.Port, serverID, pool, msg),
+				ErrFrom:   "HAPROXY",
+				ServerUrl: serverURL,
+			})
 		}
 		return failed
 	}
@@ -1658,7 +1808,7 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 				// haproxyReconcileBudget's doc comment.
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy server %s address changed from %s to %s, updating backend %s via Runtime API", server.Id, actualAddr, expectedAddr, pool)
 				res, err := haRuntime.SetServerAddr(pool, server.Id, addr, server.Port)
-				logIfFailed(fmt.Sprintf("could not update address for server %s in backend %s", server.Id, pool), res, err)
+				logSetAddrIfFailed(server.Id, server.URL, res, err)
 			}
 		}
 	}

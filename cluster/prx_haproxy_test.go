@@ -8,6 +8,8 @@ package cluster
 
 import (
 	"bufio"
+	"bytes"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -19,6 +21,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/haproxy"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/sirupsen/logrus"
 )
 
 func TestHaproxyHasAvailableReader(t *testing.T) {
@@ -5259,5 +5262,354 @@ func TestHaproxySetReadBackendMaintenanceNoOpInExternalCheckMode(t *testing.T) {
 	}
 	if cmds := getCommands(); len(cmds) != 0 {
 		t.Fatalf("setReadBackendMaintenance issued Runtime API commands in haproxy-mode=externalcheck: %v", cmds)
+	}
+}
+
+// TestSetAddrFailedRecognizesRealHaproxySuccessResponses pins the fix for a
+// real bug found from a production repman log: "Detecting wrong master
+// server ... fixing it to master" (LvlInfo, correct) immediately followed by
+// HAProxy's own confirmation for the resulting SetMaster() call being logged
+// as LvlErr, even though the address change genuinely succeeded. SetMaster/
+// SetMasterFQDN/SetServerAddr/SetServerFQDN all reply with non-empty
+// confirmation text on success (change or no-op alike) — unlike most other
+// admin server commands reconciled in this file — so routing that response
+// through the generic haproxyCmdFailed (any non-empty body = error)
+// misclassified every one of them as a failure. See
+// haproxySetAddrSuccessSubstrings for which of these texts are independently
+// live-verified vs. inferred by symmetry.
+func TestSetAddrFailedRecognizesRealHaproxySuccessResponses(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		res        string
+		wantFailed bool
+	}{
+		{
+			name:       "empty response",
+			res:        "",
+			wantFailed: false,
+		},
+		{
+			name:       "addr no-op, live-verified against real HAProxy 3.0 (clustera)",
+			res:        "nothing changed\n\n",
+			wantFailed: false,
+		},
+		{
+			name:       "fqdn no-op, live-verified against real HAProxy 3.0 (clustera) -- HAProxy's own \"FDQN\" spelling, not a typo introduced here",
+			res:        "no need to change the FDQN by 'stats socket command'\n\n",
+			wantFailed: false,
+		},
+		{
+			name:       "addr changed, taken directly from a real production repman log",
+			res:        "IP changed from '10.60.50.67' to '10.60.22.249' by 'stats socket command'\n\n",
+			wantFailed: false,
+		},
+		{
+			// The pool/server name leads the line and varies per call site --
+			// this does NOT start with "FQDN"/"changed", so a HasPrefix match
+			// (an earlier, wrong version of this fix) can never match it
+			// regardless of which literal text is chosen. This exact line,
+			// for a different pool/name than the one below, is taken
+			// directly from a production repman log.
+			name:       "fqdn changed, taken directly from a real production repman log (write backend)",
+			res:        "service_write/leader changed its FQDN from 'db1.example.com' to 'db2.example.com' by 'stats socket command'\n\n",
+			wantFailed: false,
+		},
+		{
+			name:       "fqdn changed, different pool/svname prefix -- proves the match isn't tied to one backend's naming",
+			res:        "service_read/db13592028642871093441 changed its FQDN from 'old.host.example.com' to 'new.host.example.com' by 'stats socket command'\n\n",
+			wantFailed: false,
+		},
+		{
+			// Found reading HAProxy's own source (srv_update_addr_port,
+			// src/server.c) rather than live/production evidence: addr and
+			// port are updated independently, so a port-only change (IP
+			// unchanged) replies with this and no "IP changed from" text at
+			// all -- confirmed identical on HAProxy 2.4/3.0/3.4.
+			// SetServerAddr/SetMaster always pass both addr and port
+			// together, so this is real, reachable text.
+			name:       "port-only change, found in HAProxy source (server.c) across 2.4/2.8/3.0/3.4 -- no \"IP changed from\" text present",
+			res:        "port changed from '3306' to '3307' by 'stats socket command'\n\n",
+			wantFailed: false,
+		},
+		{
+			// HAProxy's whole v2 line (confirmed reading src/server.c at
+			// tags v2.4.0 and v2.8.0, the last v2.x release) reports the
+			// addr-unchanged case with this per-field wording instead of
+			// 3.0/3.4's unified "nothing changed" -- the wording changes at
+			// the 2.x->3.0 boundary, not within the v2 line.
+			name:       "addr no-op, HAProxy v2 line's wording (found in source, not live-tested against a 2.x binary)",
+			res:        "no need to change the addr, no need to change the port by 'stats socket command'\n\n",
+			wantFailed: false,
+		},
+		{
+			name:       "genuine failure must still be reported",
+			res:        "No such server.\n\n",
+			wantFailed: true,
+		},
+		{
+			name:       "transport error must still be reported",
+			err:        errors.New("dial tcp: connection refused"),
+			wantFailed: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, failed := setAddrFailed(tt.err, tt.res)
+			if failed != tt.wantFailed {
+				t.Errorf("setAddrFailed(%v, %q) failed = %v, want %v", tt.err, tt.res, failed, tt.wantFailed)
+			}
+		})
+	}
+}
+
+// TestHaproxyRefreshMasterFixIPChangeNotMisreportedAsError reproduces the
+// exact production scenario that surfaced this bug: HAProxy's write backend
+// still points at the old/wrong server, Refresh() detects it ("Detecting
+// wrong master server ... fixing it to master") and calls SetMaster(), and
+// HAProxy's Runtime API replies with its real, non-empty confirmation text
+// ("IP changed from 'X' to 'Y' by 'stats socket command'", copied verbatim
+// from a production log) rather than an empty body. Before the fix, this
+// non-empty success response was misclassified by haproxyCmdFailed and
+// logged at ERROR despite the correction having genuinely succeeded.
+func TestHaproxyRefreshMasterFixIPChangeNotMisreportedAsError(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+		Verbose:                    true,
+		Daemon:                     true,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	var logBuf bytes.Buffer
+	cluster.Logrus = logrus.New()
+	cluster.Logrus.SetOutput(&logBuf)
+	cluster.Logrus.SetLevel(logrus.DebugLevel)
+	cluster.Logrus.SetFormatter(&logrus.TextFormatter{DisableColors: true, DisableTimestamp: true})
+
+	// HAProxy's write backend currently shows the slave, not the master --
+	// the "wrong master" condition Refresh() must detect and correct.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "slave1", "UP", "127.0.0.1:3307"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case strings.HasPrefix(cmd, "set server service_write/leader addr"):
+					// The real HAProxy Runtime API success text, copied
+					// verbatim from a production repman log -- non-empty
+					// despite success.
+					c.Write([]byte("IP changed from '10.60.50.67' to '10.60.22.249' by 'stats socket command'\n\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	mu.Lock()
+	gotCommands := append([]string(nil), commands...)
+	mu.Unlock()
+
+	wantSetMaster := "set server service_write/leader addr 127.0.0.1 port 3306"
+	if cmdIndex(gotCommands, wantSetMaster) < 0 {
+		t.Fatalf("Refresh() commands = %v, want to contain %q", gotCommands, wantSetMaster)
+	}
+
+	logLines := strings.Split(logBuf.String(), "\n")
+	sawDetecting := false
+	for _, line := range logLines {
+		if strings.Contains(line, "IP changed from") && strings.Contains(line, "level=error") {
+			t.Errorf("a successful HAProxy address change was logged at ERROR: %s", line)
+		}
+		if strings.Contains(line, "Detecting wrong master server") {
+			sawDetecting = true
+			if !strings.Contains(line, "level=info") {
+				t.Errorf("\"Detecting wrong master server\" line not logged at INFO: %s", line)
+			}
+		}
+	}
+	if !sawDetecting {
+		t.Errorf("Refresh() log output = %q, want a \"Detecting wrong master server\" line", logBuf.String())
+	}
+}
+
+// TestHaproxyRefreshGenuineMasterFixFailureRecordedAsStateNotFlooded confirms
+// the companion half of the setAddrFailed fix: a REAL SetMaster failure
+// (HAProxy genuinely refuses the command, e.g. "No such server.") must still
+// be reported -- but through cluster.SetState with a stable key, not a plain
+// LogModulePrintf(LvlErr, ...) call. Refresh() runs on every monitoring
+// tick, so a persistent failure logged directly would repeat forever,
+// identically, once per tick; SetState instead lets the state machine's own
+// OPENED/RESOLV diffing (see cluster.LogPrintAllStates, called once per full
+// monitoring tick, independently of Refresh()) log it exactly once until it
+// resolves. This test only exercises the single Refresh() pass in isolation
+// (no surrounding tick/ClearState loop -- that dedup machinery is
+// StateMachine's own, already covered by utils/state's tests), and pins two
+// things: the failure lands in CurState under "ERR00106" (not silently
+// dropped), and Refresh() itself no longer writes any ERROR-level log line
+// synchronously for it.
+func TestHaproxyRefreshGenuineMasterFixFailureRecordedAsStateNotFlooded(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+		Verbose:                    true,
+		Daemon:                     true,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	var logBuf bytes.Buffer
+	cluster.Logrus = logrus.New()
+	cluster.Logrus.SetOutput(&logBuf)
+	cluster.Logrus.SetLevel(logrus.DebugLevel)
+	cluster.Logrus.SetFormatter(&logrus.TextFormatter{DisableColors: true, DisableTimestamp: true})
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "slave1", "UP", "127.0.0.1:3307"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case strings.HasPrefix(cmd, "set server service_write/leader addr"):
+					// A genuine HAProxy failure -- not one of
+					// haproxySetAddrSuccessSubstrings.
+					c.Write([]byte("No such server.\n\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	found := false
+	for key := range *cluster.StateMachine.CurState {
+		if strings.HasPrefix(key, "ERR00106") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("genuine SetMaster failure was not recorded via SetState(\"ERR00106\", ...); CurState = %v", *cluster.StateMachine.CurState)
+	}
+
+	for _, line := range strings.Split(logBuf.String(), "\n") {
+		if strings.Contains(line, "level=error") {
+			t.Errorf("Refresh() logged an ERROR line directly instead of going through SetState: %s", line)
+		}
 	}
 }
