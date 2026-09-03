@@ -254,8 +254,8 @@ function DBConfigs({ selectedCluster, user }) {
 
   const dataObject = [
     {
-      key: 'Cluster DB Start Fetch Config',
-      help: h(hFetchConfig, 'Fetch Config on Start'),
+      key: 'Pull Config On DB Start',
+      help: h(hFetchConfig, 'Pull Config On DB Start'),
       value: (
         <RMSwitch
           isChecked={selectedCluster?.config?.provDbStartFetchConfig}
