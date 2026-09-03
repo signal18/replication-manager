@@ -139,7 +139,9 @@ func (cluster *Cluster) SetDBMemorySize(value string) {
 	// the memory delta; ResizeDynamicResources no-ops when the feature is off.
 	if cluster.Conf.ProvDBDynamicResource {
 		newMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
-		cluster.ResizeDynamicResources(newMB >= oldMB)
+		if newMB != oldMB { // skip no-op reloads (would re-run the feasibility script for nothing)
+			cluster.ResizeDynamicResources(newMB > oldMB)
+		}
 		return
 	}
 	cluster.SetDBReprovCookie()
