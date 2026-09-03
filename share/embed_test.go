@@ -53,8 +53,8 @@ func TestOpenSVCHaproxyModulesetUsesNonRootSafeSockets(t *testing.T) {
 //     ("Exec format error"). The shebang is deliberately plain sh, not
 //     bash, even though the fallback path below needs bash -- see
 //     TestOpenSVCProxyModulesetCheckScriptsFallBackToDevTcp for why.
-//   - proxy_cnf_haproxy (haproxy_check.cfg, haproxy-mode=standby) must bind a
-//     TCP stats socket, not just the local /tmp/admin.sock one, or
+//   - proxy_cnf_haproxy (haproxy_check.cfg, haproxy-mode=externalcheck) must
+//     bind a TCP stats socket, not just the local /tmp/admin.sock one, or
 //     HaproxyProxy.Refresh()'s ApiCmd("show stat") (cluster/prx_haproxy.go)
 //     can never reach it and the proxy is permanently reported Failed.
 func TestOpenSVCProxyModulesetCheckScriptsAndStandbyStatsSocket(t *testing.T) {
@@ -71,7 +71,7 @@ func TestOpenSVCProxyModulesetCheckScriptsAndStandbyStatsSocket(t *testing.T) {
 
 	tcpStatsSocket := "stats socket %%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_ADMIN%% level admin expose-fd listeners"
 	if got := strings.Count(content, tcpStatsSocket); got != 2 {
-		t.Errorf("moduleset_mariadb.svc.mrm.proxy.json contains %q %d times, want 2 (proxy_cnf_haproxy_runtime_api and proxy_cnf_haproxy) -- without it in proxy_cnf_haproxy, Refresh()'s runtime-API dial can never succeed in haproxy-mode=standby", tcpStatsSocket, got)
+		t.Errorf("moduleset_mariadb.svc.mrm.proxy.json contains %q %d times, want 2 (proxy_cnf_haproxy_runtime_api and proxy_cnf_haproxy) -- without it in proxy_cnf_haproxy, Refresh()'s runtime-API dial can never succeed in haproxy-mode=externalcheck", tcpStatsSocket, got)
 	}
 }
 

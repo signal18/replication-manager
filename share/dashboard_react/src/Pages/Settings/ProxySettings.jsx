@@ -36,6 +36,13 @@ const hHaproxyBinaryPath = `**HAProxy Binary Path**\n\nPath to the HAProxy execu
 const hHaproxyReadBackend = `**HAProxy Read Backend Name**\n\nName of the HAProxy backend pool that holds read servers.\n\nApplied at proxy provisioning/config-render time — reprovision or restart the proxy for a change to take effect.\n\nConfig: \`haproxy-api-read-backend\``
 const hHaproxyWriteBackend = `**HAProxy Write Backend Name**\n\nName of the HAProxy backend pool that holds the write (leader) server.\n\nApplied at proxy provisioning/config-render time — reprovision or restart the proxy for a change to take effect.\n\nConfig: \`haproxy-api-write-backend\``
 const hHaproxyStagingBackend = `**HAProxy Staging Backend Name**\n\nName of the HAProxy backend pool repman repoints to the staging server (via the Runtime API) when topology staging is active.\n\nConfig: \`haproxy-staging-backend\``
+// Client-side pre-checks mirroring what the server actually accepts for these
+// fields (ports: server enforces 1-65535 in setClusterSetting; bind IP/backend
+// name: server accepts any string, these are just sane-input guards).
+const HAPROXY_PORT_PATTERN = '^([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$'
+const HAPROXY_BIND_IP_PATTERN = '^(\\*|(\\d{1,3}\\.){3}\\d{1,3})$'
+const HAPROXY_BACKEND_NAME_PATTERN = '^[a-zA-Z0-9_-]+$'
+
 const hHaproxyUser = `**HAProxy Admin User**\n\nAdmin username configured for HAProxy's stats/admin interface at provisioning time.\n\nApplied at proxy provisioning time — reprovision the proxy for a change to take effect.\n\nConfig: \`haproxy-user\``
 const hHaproxyPassword = `**HAProxy Admin Password**\n\nAdmin password configured for HAProxy's stats/admin interface at provisioning time.\n\nApplied at proxy provisioning time — reprovision the proxy for a change to take effect.\n\nConfig: \`haproxy-password\``
 
@@ -87,22 +94,37 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
     { key: 'ProxySQL Bootstrap Query Rules', help: h(hQR, 'ProxySQL Bootstrap Query Rules'), value: sw('proxysql-bootstrap-query-rules', 'proxysqlBootstrapQueryRules') },
   ], [h, sw])
 
-  const haproxyRows = useMemo(() => [
-    { key: 'HAProxy Mode', help: h(hHaproxyMode, 'HAProxy Mode'), value: (<Dropdown options={[{ name: 'runtimeapi — Runtime API driven (default)', value: 'runtimeapi' }, { name: 'standby — repman-managed, co-located', value: 'standby' }, { name: 'externalcheck — HAProxy external-check', value: 'externalcheck' }, { name: 'dataplaneapi — Data Plane API driven', value: 'dataplaneapi' }]} selectedValue={config?.haproxyMode} confirmTitle={'Confirm haproxy-mode to'} isDisabled={isDisabled} onChange={(val) => dispatch(setSetting({ clusterName, setting: 'haproxy-mode', value: val }))} />) },
-    { key: 'HAProxy Bootstrap Servers', help: h(hHaproxyDynServers, 'HAProxy Bootstrap Servers'), value: sw('haproxy-api-bootstrap-servers', 'haproxyAPIBootstrapServers') },
-    { key: 'HAProxy Write Port', help: h(hHaproxyWritePort, 'HAProxy Write Port'), value: txt('haproxy-write-port', 'haproxyWritePort') },
-    { key: 'HAProxy Read Port', help: h(hHaproxyReadPort, 'HAProxy Read Port'), value: txt('haproxy-read-port', 'haproxyReadPort') },
-    { key: 'HAProxy Stat Port', help: h(hHaproxyStatPort, 'HAProxy Stat Port'), value: txt('haproxy-stat-port', 'haproxyStatPort') },
-    { key: 'HAProxy Runtime API Port', help: h(hHaproxyAPIPort, 'HAProxy Runtime API Port'), value: txt('haproxy-api-port', 'haproxyAPIPort') },
-    { key: 'HAProxy Write Bind IP', help: h(hHaproxyWriteBind, 'HAProxy Write Bind IP'), value: txt('haproxy-ip-write-bind', 'haproxyIpWriteBind') },
-    { key: 'HAProxy Read Bind IP', help: h(hHaproxyReadBind, 'HAProxy Read Bind IP'), value: txt('haproxy-ip-read-bind', 'haproxyIpReadBind') },
-    { key: 'HAProxy Binary Path', help: h(hHaproxyBinaryPath, 'HAProxy Binary Path'), value: txt('haproxy-binary-path', 'haproxyBinaryPath') },
-    { key: 'HAProxy Read Backend Name', help: h(hHaproxyReadBackend, 'HAProxy Read Backend Name'), value: txt('haproxy-api-read-backend', 'haproxyAPIReadBackend') },
-    { key: 'HAProxy Write Backend Name', help: h(hHaproxyWriteBackend, 'HAProxy Write Backend Name'), value: txt('haproxy-api-write-backend', 'haproxyAPIWriteBackend') },
-    { key: 'HAProxy Staging Backend Name', help: h(hHaproxyStagingBackend, 'HAProxy Staging Backend Name'), value: txt('haproxy-staging-backend', 'haproxyStagingBackend') },
-    { key: 'HAProxy Admin User', help: h(hHaproxyUser, 'HAProxy Admin User'), value: txt('haproxy-user', 'haproxyUser') },
-    { key: 'HAProxy Admin Password', help: h(hHaproxyPassword, 'HAProxy Admin Password'), value: (<TextForm type='password' value={config?.haproxyPassword || ''} isDisabled={isDisabled} className={styles.textbox} size='sm' confirmTitle={'Confirm haproxy-password to '} onSave={(v) => dispatch(setSetting({ clusterName, setting: 'haproxy-password', value: btoa(v) }))} />) },
-  ], [h, sw, txt, dispatch, clusterName, isDisabled, config])
+  const haproxyMode = config?.haproxyMode
+
+  const haproxyRows = useMemo(() => {
+    const rows = [
+      { key: 'HAProxy Mode', help: h(hHaproxyMode, 'HAProxy Mode'), value: (<Dropdown options={[{ name: 'runtimeapi — Runtime API driven (default)', value: 'runtimeapi' }, { name: 'standby — repman-managed, co-located', value: 'standby' }, { name: 'externalcheck — HAProxy external-check', value: 'externalcheck' }, { name: 'dataplaneapi — Data Plane API driven', value: 'dataplaneapi' }]} selectedValue={config?.haproxyMode} confirmTitle={'Confirm haproxy-mode to'} isDisabled={isDisabled} onChange={(val) => dispatch(setSetting({ clusterName, setting: 'haproxy-mode', value: val }))} />) },
+    ]
+    // Bootstrap Servers only applies to runtimeapi (see hHaproxyDynServers).
+    if (haproxyMode === 'runtimeapi') {
+      rows.push({ key: 'HAProxy Bootstrap Servers', help: h(hHaproxyDynServers, 'HAProxy Bootstrap Servers'), value: sw('haproxy-api-bootstrap-servers', 'haproxyAPIBootstrapServers') })
+    }
+    rows.push(
+      { key: 'HAProxy Write Port', help: h(hHaproxyWritePort, 'HAProxy Write Port'), value: txt('haproxy-write-port', 'haproxyWritePort', { regexPattern: HAPROXY_PORT_PATTERN }) },
+      { key: 'HAProxy Read Port', help: h(hHaproxyReadPort, 'HAProxy Read Port'), value: txt('haproxy-read-port', 'haproxyReadPort', { regexPattern: HAPROXY_PORT_PATTERN }) },
+      { key: 'HAProxy Stat Port', help: h(hHaproxyStatPort, 'HAProxy Stat Port'), value: txt('haproxy-stat-port', 'haproxyStatPort', { regexPattern: HAPROXY_PORT_PATTERN }) },
+      { key: 'HAProxy Runtime API Port', help: h(hHaproxyAPIPort, 'HAProxy Runtime API Port'), value: txt('haproxy-api-port', 'haproxyAPIPort', { regexPattern: HAPROXY_PORT_PATTERN }) },
+      { key: 'HAProxy Write Bind IP', help: h(hHaproxyWriteBind, 'HAProxy Write Bind IP'), value: txt('haproxy-ip-write-bind', 'haproxyIpWriteBind', { regexPattern: HAPROXY_BIND_IP_PATTERN }) },
+      { key: 'HAProxy Read Bind IP', help: h(hHaproxyReadBind, 'HAProxy Read Bind IP'), value: txt('haproxy-ip-read-bind', 'haproxyIpReadBind', { regexPattern: HAPROXY_BIND_IP_PATTERN }) },
+    )
+    // Binary Path only applies to standby/externalcheck (see hHaproxyBinaryPath).
+    if (haproxyMode === 'standby' || haproxyMode === 'externalcheck') {
+      rows.push({ key: 'HAProxy Binary Path', help: h(hHaproxyBinaryPath, 'HAProxy Binary Path'), value: txt('haproxy-binary-path', 'haproxyBinaryPath') })
+    }
+    rows.push(
+      { key: 'HAProxy Read Backend Name', help: h(hHaproxyReadBackend, 'HAProxy Read Backend Name'), value: txt('haproxy-api-read-backend', 'haproxyAPIReadBackend', { regexPattern: HAPROXY_BACKEND_NAME_PATTERN }) },
+      { key: 'HAProxy Write Backend Name', help: h(hHaproxyWriteBackend, 'HAProxy Write Backend Name'), value: txt('haproxy-api-write-backend', 'haproxyAPIWriteBackend', { regexPattern: HAPROXY_BACKEND_NAME_PATTERN }) },
+      { key: 'HAProxy Staging Backend Name', help: h(hHaproxyStagingBackend, 'HAProxy Staging Backend Name'), value: txt('haproxy-staging-backend', 'haproxyStagingBackend', { regexPattern: HAPROXY_BACKEND_NAME_PATTERN }) },
+      { key: 'HAProxy Admin User', help: h(hHaproxyUser, 'HAProxy Admin User'), value: txt('haproxy-user', 'haproxyUser') },
+      { key: 'HAProxy Admin Password', help: h(hHaproxyPassword, 'HAProxy Admin Password'), value: (<TextForm type='password' value={config?.haproxyPassword || ''} isDisabled={isDisabled} className={styles.textbox} size='sm' confirmTitle={'Confirm haproxy-password to '} onSave={(v) => dispatch(setSetting({ clusterName, setting: 'haproxy-password', value: btoa(v) }))} />) },
+    )
+    return rows
+  }, [h, sw, txt, dispatch, clusterName, isDisabled, config, haproxyMode])
 
   // Proxy-type-specific settings live behind a Tab strip (ProxySQL/HAProxy, styled
   // like Restic's repository-type tabs), nested as the value of one TableType2 row -
