@@ -102,3 +102,32 @@ func TestAutoAgreeValueDeltas(t *testing.T) {
 		}
 	}
 }
+
+// TestUnknownVariableSafety locks in that a variable not recognized by the DB
+// (PreservedSource == "unknown-variable", Preserved set by the unknown detector)
+// is never auto-agreed (would be deployed -> crash) and never auto-dropped
+// (must stay in 03_agreed for manual review).
+func TestUnknownVariableSafety(t *testing.T) {
+	// unknown: Config set, Preserved == Config, source "unknown-variable", no runtime (DB doesn't know it)
+	unknown := mkVarState("some_unknown_var", "1", "", "1", "unknown-variable")
+
+	m1 := NewVariablesMap()
+	m1.Store("some_unknown_var", unknown)
+	if agreed := m1.AutoAgreeValueDeltas(); len(agreed) != 0 {
+		t.Errorf("unknown must never be auto-agreed, got %v", agreed)
+	}
+	if v, _ := m1.Load("some_unknown_var"); v.(*VariableState).Preserved == nil {
+		t.Errorf("unknown Preserved must be kept (routed to agreed for review)")
+	}
+
+	// Even if runtime somehow equals config, DropReconciledAgreed must skip it (source != "")
+	unknown2 := mkVarState("some_unknown_var", "1", "1", "1", "unknown-variable")
+	m2 := NewVariablesMap()
+	m2.Store("some_unknown_var", unknown2)
+	if dropped := m2.DropReconciledAgreed(); len(dropped) != 0 {
+		t.Errorf("unknown must never be auto-dropped, got %v", dropped)
+	}
+	if v, _ := m2.Load("some_unknown_var"); v.(*VariableState).Preserved == nil {
+		t.Errorf("unknown Preserved must survive DropReconciledAgreed")
+	}
+}
