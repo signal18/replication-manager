@@ -1148,12 +1148,12 @@ func (server *ServerMonitor) Refresh() error {
 				}
 
 				// Auto-agree value-differs deltas to the compliance value (opt-in,
-				// prov-auto-agree-compliance — the DB-side counterpart of
+				// prov-db-compliance-auto-agree — the DB-side counterpart of
 				// prov-auto-update-compliance). Runs before the delta is (re)written so
 				// agreed variables route to 03_agreed instead of 02_delta and the DB
 				// adopts them on its next restart. Value-changes only; deprecated /
 				// unknown drops are left for manual review (loose_ hides them, #1495).
-				if cluster.Conf.ProvAutoAgreeCompliance {
+				if cluster.Conf.ProvDBComplianceAutoAgree {
 					if agreed := server.VariablesMap.AutoAgreeValueDeltas(); len(agreed) > 0 {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 							"Auto-agreed %d value-differs delta(s) to compliance on %s: %s", len(agreed), server.URL, strings.Join(agreed, ", "))

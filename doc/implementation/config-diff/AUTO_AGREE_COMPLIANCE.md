@@ -70,7 +70,7 @@ names. **Forced preserves (`PreservedSource != ""`) are never touched.**
 ### 2. `AutoAgreeValueDeltas()` — opt-in auto-agree
 
 The DB-side counterpart of Auto-Update Compliance. When
-`prov-auto-agree-compliance` is enabled, a **value delta** (a variable whose
+`prov-db-compliance-auto-agree` is enabled, a **value delta** (a variable whose
 deployed value differs from the compliance value, not yet preserved/agreed) is
 automatically agreed to the compliance value: `SetPreservedValue(Config)`, which
 routes it to `03_agreed.cnf` and lets the DB adopt it on its next restart.
@@ -131,10 +131,10 @@ rare.
 
 ## Configuration & GUI
 
-- Flag: `prov-auto-agree-compliance` (`config.Config.ProvAutoAgreeCompliance`),
+- Flag: `prov-db-compliance-auto-agree` (`config.Config.ProvDBComplianceAutoAgree`),
   `server/server.go`, **default `false`** (opt-in; T14 off-switch).
-- JSON: `provAutoAgreeCompliance` (exposed in the cluster config object).
-- Switch handler: `server/api_cluster.go` `case "prov-auto-agree-compliance"`.
+- JSON: `provDbComplianceAutoAgree` (exposed in the cluster config object).
+- Switch handler: `server/api_cluster.go` `case "prov-db-compliance-auto-agree"`.
 - GUI: **Configurator tab → "Auto-Agree Compliance"** toggle
   (`share/dashboard_react/src/Pages/Configs/components/DBConfigs.jsx`), beside
   "Auto-Update Compliance", gated on the `cluster-settings` grant (T6, T22).
@@ -147,7 +147,7 @@ They are independent and complementary:
 
 | | Auto-**Update** Compliance | Auto-**Agree** Compliance |
 |---|---|---|
-| Flag | `prov-auto-update-compliance` (default **on**) | `prov-auto-agree-compliance` (default **off**) |
+| Flag | `prov-auto-update-compliance` (default **on**) | `prov-db-compliance-auto-agree` (default **off**) |
 | Side | repman / configurator | database |
 | Action | Accept a new moduleset / binary upgrade and **regenerate** the config | **Agree** value deltas to the compliance value and push to the DB |
 | Touches the running DB? | No | Yes (via `03_agreed` → restart) |
