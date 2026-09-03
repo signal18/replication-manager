@@ -62,6 +62,11 @@ func (server *ServerMonitor) resizeDynamicResourceSQL(grow bool) []string {
 // off-switch prov-db-dynamic-resource: when off, callers keep the reprov/restart
 // path (this is a distinct feature from prov-db-apply-dynamic-config, which
 // drives tag-change SET GLOBALs).
+//
+// The infra resize (cgroup/disk/io) and the DB resize (SET GLOBAL) are sequenced
+// anti-OOM. On GROW the infra must actually grow first — and report that it was
+// POSSIBLE — before we raise the DB memory; if it is not possible we keep the
+// current size (never OOM). On SHRINK we free DB memory first, then shrink infra.
 func (cluster *Cluster) ResizeDynamicResources(grow bool) {
 	if !cluster.Conf.ProvDBDynamicResource {
 		return
@@ -70,11 +75,72 @@ func (cluster *Cluster) ResizeDynamicResources(grow bool) {
 		if server == nil || server.State == stateFailed || server.State == stateUnconn {
 			continue
 		}
-		_, needRestart := server.ExecScriptSQL(server.resizeDynamicResourceSQL(grow))
-		if needRestart {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-				"Dynamic resize on %s hit a restart-only variable, scheduling restart", server.URL)
-			server.SetRestartCookie()
+		if grow {
+			applied, err := cluster.ResizeDatabaseResources(server, true)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+					"Resource grow reported not possible on %s, keeping current DB memory: %s", server.URL, err)
+				continue
+			}
+			if !applied {
+				// Native path could not resize live (restart cookie already set by
+				// ResizeDatabaseResources); do NOT raise DB memory over a cgroup that
+				// has not grown.
+				continue
+			}
+			if _, needRestart := server.ExecScriptSQL(server.resizeDynamicResourceSQL(true)); needRestart {
+				server.SetRestartCookie()
+			}
+		} else {
+			if _, needRestart := server.ExecScriptSQL(server.resizeDynamicResourceSQL(false)); needRestart {
+				server.SetRestartCookie()
+			}
+			if _, err := cluster.ResizeDatabaseResources(server, false); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+					"Resource shrink on %s failed: %s", server.URL, err)
+			}
 		}
 	}
+}
+
+// ResizeDatabaseResources changes the four provisioned resources (mem, cpu, disk,
+// io) of a RUNNING server live and reports whether the resize was POSSIBLE
+// (applied). Dispatch follows the prov.go orchestrator idiom (T7). A client resize
+// script OVERRIDES in every orchestrator case (F7 — every orchestrated action must
+// be client-overridable); its exit status is its feasibility answer (success =
+// possible/applied). With no script, the native per-orchestrator path is used.
+func (cluster *Cluster) ResizeDatabaseResources(server *ServerMonitor, grow bool) (bool, error) {
+	if cluster.Conf.ProvDBDynamicResourceChangeScript != "" {
+		if err := cluster.RunDynamicResourceChangeScript(server, grow); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		return cluster.OpenSVCResizeDatabaseResources(server, grow)
+	case config.ConstOrchestratorKubernetes:
+		// In-place pod resize (K8s 1.27+ InPlacePodVerticalScaling) is not wired
+		// yet; fall back to a restart so the new requests/limits apply on reschedule.
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"K8s live resource resize not wired, scheduling restart on %s", server.URL)
+		server.SetRestartCookie()
+		return false, nil
+	default:
+		server.SetRestartCookie()
+		return false, nil
+	}
+}
+
+// OpenSVCResizeDatabaseResources resizes the container cgroup limits (mem/cpu/io)
+// live through the OpenSVC API. TODO(#1765): wire the exact cgroup keyword through
+// SetServiceConfigKeys once the OpenSVC resource key is confirmed; until then it
+// falls back to a restart so the new limits apply on the next boot rather than
+// risking an OOM on a live grow. Returns (false) so ResizeDynamicResources does
+// not raise DB memory over an un-resized cgroup.
+func (cluster *Cluster) OpenSVCResizeDatabaseResources(server *ServerMonitor, grow bool) (bool, error) {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"OpenSVC live cgroup resize not yet wired, scheduling restart on %s", server.URL)
+	server.SetRestartCookie()
+	return false, nil
 }
