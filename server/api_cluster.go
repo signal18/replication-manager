@@ -2776,6 +2776,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.ProvAutoUpdateCompliance = !mycluster.Conf.ProvAutoUpdateCompliance
 	case "prov-db-compliance-auto-agree":
 		mycluster.Conf.ProvDBComplianceAutoAgree = !mycluster.Conf.ProvDBComplianceAutoAgree
+	case "prov-db-dynamic-resource":
+		mycluster.Conf.ProvDBDynamicResource = !mycluster.Conf.ProvDBDynamicResource
 	case "prov-docker-daemon-private":
 		mycluster.SwitchProvDockerDaemonPrivate()
 	case "prov-object-allow-overwrite":
