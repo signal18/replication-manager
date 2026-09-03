@@ -26,41 +26,51 @@ import ConfigFilesPanel from '../../../components/ConfigFilesPanel'
 import MemoryPctEditor from '../../../components/MemoryPctEditor'
 import { convertSize } from '../../../utility/common'
 
+// DBU_MAX_POW is the largest DBU exponent: 2^9 = 512 DBU.
+const DBU_MAX_POW = 9
+const dbuToPos = (dbu) => Math.max(0, Math.min(DBU_MAX_POW, Math.round(Math.log2(dbu || 1))))
+
 function DBUSlider({ value, isDisabled, onChange }) {
   const [draft, setDraft] = useState(null)
   const [showTooltip, setShowTooltip] = useState(false)
-  const current = draft !== null ? draft : value
+  // The slider runs on the log2 position (0..9) so power-of-two DBU stops
+  // (1,2,4,...,512) are evenly spaced — a linear 1..512 scale squashes the small,
+  // common values against the left. Each stop doubles the resources and maps to a
+  // plan tier.
+  const pos = draft !== null ? draft : dbuToPos(value)
+  const dbu = 2 ** pos
 
-  const formatDBU = useCallback((dbu) => {
-    const mem = dbu * 4096
+  const formatDBU = useCallback((d) => {
+    const mem = d * 4096
     const memLabel = mem >= 1024 ? `${mem / 1024}GB` : `${mem}MB`
-    return `${dbu} DBU — ${dbu} cores, ${memLabel} mem, ${dbu * 40}GB disk, ${dbu * 1000} IO/s`
+    return `${d} DBU — standard rate: ${d} cores · ${memLabel} · ${d * 40}GB disk · ${d * 1000} IO/s`
   }, [])
 
   return (
     <Box w='100%'>
       <Flex justify='space-between' mb={1}>
         <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Database Units (DBU)</Text>
-        <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>{formatDBU(current)}</Text>
+        <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>{formatDBU(dbu)}</Text>
       </Flex>
       <Slider
-        min={1}
-        max={512}
+        min={0}
+        max={DBU_MAX_POW}
         step={1}
-        value={current}
+        value={pos}
         isDisabled={isDisabled}
         onChange={(v) => setDraft(v)}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         onChangeEnd={(v) => {
           setDraft(null)
-          if (v !== value && onChange) onChange(v)
+          const nd = 2 ** v
+          if (nd !== value && onChange) onChange(nd)
         }}
       >
         <SliderTrack h='8px' borderRadius='full' bg='gray.200'>
           <SliderFilledTrack bg='blue.400' />
         </SliderTrack>
-        <Tooltip label={formatDBU(current)} placement='top' isOpen={showTooltip || draft !== null} hasArrow>
+        <Tooltip label={formatDBU(dbu)} placement='top' isOpen={showTooltip || draft !== null} hasArrow>
           <SliderThumb boxSize={5} bg='blue.500' />
         </Tooltip>
       </Slider>
