@@ -7,9 +7,13 @@
 package cluster
 
 import (
+	"bytes"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"gopkg.in/ini.v1"
 )
 
 // ResizeFeasibility is the verdict returned by the can-change feasibility gate
@@ -22,26 +26,161 @@ const (
 	ResizeMigration ResizeFeasibility = "migration" // not in place, needs relocating the instance to a host with capacity
 )
 
+// ResourceResizer is the orchestrator capability to resize a running instance's
+// provisioned resources (mem/cpu/disk/io) live (T7). Each backend implements it;
+// cluster.resourceResizer() selects the right one. A client resize script always
+// overrides the native backend (F7).
+type ResourceResizer interface {
+	// CanResize answers whether the resize is possible: yes (in place), no (keep
+	// current size), or migration (needs relocating the instance).
+	CanResize(server *ServerMonitor, grow bool) (ResizeFeasibility, error)
+	// Resize applies the infra resize live and reports whether it was applied.
+	Resize(server *ServerMonitor, grow bool) (bool, error)
+}
+
+// scriptResizer is the client-overridable backend (F7): used in every
+// orchestrator case when prov-db-dynamic-resource-change-script is set.
+type scriptResizer struct{ cluster *Cluster }
+
+func (r scriptResizer) CanResize(server *ServerMonitor, grow bool) (ResizeFeasibility, error) {
+	return r.cluster.RunDynamicResourceCanChangeScript(server, grow)
+}
+
+func (r scriptResizer) Resize(server *ServerMonitor, grow bool) (bool, error) {
+	if r.cluster.Conf.ProvDBDynamicResourceChangeScript == "" {
+		// No client script set: cannot resize the infra live here — schedule a
+		// restart so the new size applies on the next boot (never grow DB memory
+		// over an un-resized cgroup).
+		r.cluster.LogModulePrintf(r.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"no prov-db-dynamic-resource-change-script set, scheduling restart on %s", server.URL)
+		server.SetRestartCookie()
+		return false, nil
+	}
+	if err := r.cluster.RunDynamicResourceChangeScript(server, grow); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// openSVCResizer resizes the container cgroup live through the OpenSVC PG update
+// API (om3 v3). The client can-change script (if any) still gates feasibility.
+type openSVCResizer struct{ cluster *Cluster }
+
+func (r openSVCResizer) CanResize(server *ServerMonitor, grow bool) (ResizeFeasibility, error) {
+	return r.cluster.RunDynamicResourceCanChangeScript(server, grow)
+}
+
+func (r openSVCResizer) Resize(server *ServerMonitor, grow bool) (bool, error) {
+	return r.cluster.openSVCResize(server, grow)
+}
+
+// restartResizer has no live resize path: it schedules a restart so the new size
+// applies on the next boot (K8s in-place not wired yet, or an orchestrator with
+// no live-resize primitive). Returns applied=false so the DB memory is not raised
+// over a cgroup that has not grown.
+type restartResizer struct {
+	cluster *Cluster
+	reason  string
+}
+
+func (r restartResizer) CanResize(server *ServerMonitor, grow bool) (ResizeFeasibility, error) {
+	return r.cluster.RunDynamicResourceCanChangeScript(server, grow)
+}
+
+func (r restartResizer) Resize(server *ServerMonitor, grow bool) (bool, error) {
+	r.cluster.LogModulePrintf(r.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"%s, scheduling restart on %s", r.reason, server.URL)
+	server.SetRestartCookie()
+	return false, nil
+}
+
+// resourceResizer returns the resizer for this cluster. A client change-script
+// overrides in every orchestrator case (F7); otherwise the native per-orchestrator
+// backend is used, following the prov.go orchestrator idiom (T7).
+func (cluster *Cluster) resourceResizer() ResourceResizer {
+	if cluster.Conf.ProvDBDynamicResourceChangeScript != "" {
+		return scriptResizer{cluster}
+	}
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		return openSVCResizer{cluster}
+	case config.ConstOrchestratorKubernetes, config.ConstOrchestratorOnPremise,
+		config.ConstOrchestratorLocalhost, config.ConstOrchestratorSlapOS:
+		// For now these resize only through the client change-script; scriptResizer
+		// falls back to a restart when no script is set. K8s in-place pod resize
+		// (1.27+) is a follow-up that would get its own backend here.
+		return scriptResizer{cluster}
+	default:
+		return restartResizer{cluster, "no live resource resize for this orchestrator"}
+	}
+}
+
+// openSVCResize writes the process-group (cgroup) memory keyword into the service
+// config and re-applies it live via the om3 PG update API — no restart. Only
+// available on OpenSVC v3 (pg update is a v3 action); on v2 it falls back to a
+// restart. Grow safety is enforced by the caller ordering (infra before the DB
+// memory raise).
+func (cluster *Cluster) openSVCResize(server *ServerMonitor, grow bool) (bool, error) {
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"OpenSVC v2 has no live pg update, scheduling restart on %s", server.URL)
+		server.SetRestartCookie()
+		return false, nil
+	}
+	svcparts := strings.SplitN(server.ServiceName, "/", 3)
+	if len(svcparts) != 3 {
+		return false, fmt.Errorf("invalid service name %q, expected namespace/kind/name", server.ServiceName)
+	}
+	ns, kind, svcname := svcparts[0], svcparts[1], svcparts[2]
+
+	memMB, err := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+	if err != nil {
+		return false, err
+	}
+
+	// 1. Write the PG memory keyword (bytes) into the service config.
+	raw, err := svc.GetObjectConfigFileV3(ns, kind, svcname)
+	if err != nil {
+		return false, err
+	}
+	cfg, err := ini.LoadSources(ini.LoadOptions{IgnoreInlineComment: true}, bytes.NewReader(raw))
+	if err != nil {
+		return false, fmt.Errorf("failed to parse service config for %s: %w", server.ServiceName, err)
+	}
+	cfg.Section("DEFAULT").Key("pg_mem_limit").SetValue(strconv.FormatInt(int64(memMB)*1024*1024, 10))
+	var buf bytes.Buffer
+	if _, err = cfg.WriteTo(&buf); err != nil {
+		return false, err
+	}
+	if _, err = svc.UpdateObjectV3(ns, kind, svcname, buf.Bytes()); err != nil {
+		return false, err
+	}
+
+	// 2. Apply the new cgroup limit live on the running node.
+	if err := svc.PGUpdateInstanceV3(server.Agent, server.ServiceName, ""); err != nil {
+		return false, err
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"OpenSVC live cgroup resize applied on %s (pg_mem_limit=%dMB)", server.URL, memMB)
+	return true, nil
+}
+
 // resizeDynamicResourceSQL builds the SET GLOBAL statements for the
 // resource-driven variables MariaDB accepts at runtime, valued from the
-// configurator % model so they track prov-db-memory / cpu / io. This is the
-// direct path — no config regeneration, no compliance, no cnf reading.
+// configurator % model. Direct path — no config regeneration, no compliance.
 //
 // max_connections is deliberately NOT here: the connection count is client
 // workload, not ours to cap (a client may legitimately hold thousands of idle
 // connections). We size the memory each session/engine may use, never how many
 // sessions the client opens.
 //
-// Ordering is anti-OOM. The cgroup resize itself is external (orchestrator /
-// prov-db-resize-script, #1760); this only drives the in-server SET GLOBAL:
-//   - grow:   buffer pool LAST, after the cgroup has grown, so InnoDB never
-//     claims memory the cgroup does not yet have.
-//   - shrink: buffer pool FIRST, freeing memory before the cgroup shrinks.
+// Ordering is anti-OOM: grow puts the buffer pool LAST (after the cgroup grew),
+// shrink puts it FIRST (freeing memory before the cgroup shrinks).
 func (server *ServerMonitor) resizeDynamicResourceSQL(grow bool) []string {
 	cfg := &server.ClusterGroup.Configurator
 	bufferPool := fmt.Sprintf("SET GLOBAL innodb_buffer_pool_size = %s*1024*1024", cfg.GetConfigInnoDBBPSize())
 
-	// Non-buffer-pool caps: always safe to (re)apply in any direction.
 	others := []string{
 		fmt.Sprintf("SET GLOBAL key_buffer_size = %s*1024*1024", cfg.GetConfigMyISAMKeyBufferSize()),
 		fmt.Sprintf("SET GLOBAL innodb_io_capacity = %s", cfg.GetConfigInnoDBIOCapacity()),
@@ -70,38 +209,50 @@ func (server *ServerMonitor) resizeDynamicResourceSQL(grow bool) []string {
 	return append([]string{bufferPool}, others...)
 }
 
-// ResizeDynamicResources applies the resource-driven SET GLOBAL set live to every
-// monitored server, in anti-OOM order (see resizeDynamicResourceSQL). Restart-only
-// variables report MySQL error 1238 (handled by ExecScriptSQL) and fall back to a
-// restart cookie, so a resize never silently drops them. Gated by its own
-// off-switch prov-db-dynamic-resource: when off, callers keep the reprov/restart
-// path (this is a distinct feature from prov-db-apply-dynamic-config, which
-// drives tag-change SET GLOBALs).
+// ResizeDynamicResources applies a live resource resize to every monitored server,
+// gated by prov-db-dynamic-resource. It sequences the infra resize (orchestrator
+// backend, via resourceResizer) and the DB resize (SET GLOBAL) anti-OOM:
+//   - grow: check feasibility -> infra grow (must report applied) -> raise DB memory
+//   - shrink: lower DB memory first -> infra shrink
 //
-// The infra resize (cgroup/disk/io) and the DB resize (SET GLOBAL) are sequenced
-// anti-OOM. On GROW the infra must actually grow first — and report that it was
-// POSSIBLE — before we raise the DB memory; if it is not possible we keep the
-// current size (never OOM). On SHRINK we free DB memory first, then shrink infra.
+// On a "no"/"migration" verdict, or when the infra could not resize live, the DB
+// memory is not raised (never OOM). Restart-only SET GLOBALs (error 1238) fall
+// back to a restart cookie.
 func (cluster *Cluster) ResizeDynamicResources(grow bool) {
 	if !cluster.Conf.ProvDBDynamicResource {
 		return
 	}
+	rz := cluster.resourceResizer()
 	for _, server := range cluster.Servers {
 		if server == nil || server.State == stateFailed || server.State == stateUnconn {
 			continue
 		}
 		if grow {
-			applied, err := cluster.ResizeDatabaseResources(server, true)
+			switch feas, err := rz.CanResize(server, true); {
+			case err != nil:
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+					"Resource grow feasibility check failed on %s: %s", server.URL, err)
+				continue
+			case feas == ResizeNo:
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+					"Resource grow not possible on %s, keeping current size", server.URL)
+				continue
+			case feas == ResizeMigration:
+				// Host lacks capacity: the instance would need relocating. In-place
+				// resize is skipped; migration orchestration + tracked state (T5) is
+				// a follow-up (#1765/#1760 §10).
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+					"Resource grow needs migration on %s (host lacks capacity); in-place skipped", server.URL)
+				continue
+			}
+			applied, err := rz.Resize(server, true)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-					"Resource grow reported not possible on %s, keeping current DB memory: %s", server.URL, err)
+					"Resource grow on %s failed, keeping current DB memory: %s", server.URL, err)
 				continue
 			}
 			if !applied {
-				// Native path could not resize live (restart cookie already set by
-				// ResizeDatabaseResources); do NOT raise DB memory over a cgroup that
-				// has not grown.
-				continue
+				continue // native path scheduled a restart; do not raise DB memory live
 			}
 			if _, needRestart := server.ExecScriptSQL(server.resizeDynamicResourceSQL(true)); needRestart {
 				server.SetRestartCookie()
@@ -110,69 +261,10 @@ func (cluster *Cluster) ResizeDynamicResources(grow bool) {
 			if _, needRestart := server.ExecScriptSQL(server.resizeDynamicResourceSQL(false)); needRestart {
 				server.SetRestartCookie()
 			}
-			if _, err := cluster.ResizeDatabaseResources(server, false); err != nil {
+			if _, err := rz.Resize(server, false); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 					"Resource shrink on %s failed: %s", server.URL, err)
 			}
 		}
 	}
-}
-
-// ResizeDatabaseResources changes the four provisioned resources (mem, cpu, disk,
-// io) of a RUNNING server live and reports whether the resize was POSSIBLE
-// (applied). Dispatch follows the prov.go orchestrator idiom (T7). A client resize
-// script OVERRIDES in every orchestrator case (F7 — every orchestrated action must
-// be client-overridable); its exit status is its feasibility answer (success =
-// possible/applied). With no script, the native per-orchestrator path is used.
-func (cluster *Cluster) ResizeDatabaseResources(server *ServerMonitor, grow bool) (bool, error) {
-	// Feasibility gate first, in every orchestrator case: is the resize possible?
-	switch feas, err := cluster.RunDynamicResourceCanChangeScript(server, grow); {
-	case err != nil:
-		return false, err
-	case feas == ResizeNo:
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-			"Resource resize reported not possible (no) on %s, keeping current size", server.URL)
-		return false, nil
-	case feas == ResizeMigration:
-		// Not resizable in place: the host lacks capacity and the instance would
-		// need relocating. In-place resize is skipped here; the migration
-		// orchestration + tracked state (T5) is a follow-up (#1765/#1760 §10).
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"Resource resize needs migration on %s (host lacks capacity); in-place resize skipped", server.URL)
-		return false, nil
-	}
-	// ResizeYes: apply. A client change script overrides in every case (F7).
-	if cluster.Conf.ProvDBDynamicResourceChangeScript != "" {
-		if err := cluster.RunDynamicResourceChangeScript(server, grow); err != nil {
-			return false, err
-		}
-		return true, nil
-	}
-	switch cluster.GetOrchestrator() {
-	case config.ConstOrchestratorOpenSVC:
-		return cluster.OpenSVCResizeDatabaseResources(server, grow)
-	case config.ConstOrchestratorKubernetes:
-		// In-place pod resize (K8s 1.27+ InPlacePodVerticalScaling) is not wired
-		// yet; fall back to a restart so the new requests/limits apply on reschedule.
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"K8s live resource resize not wired, scheduling restart on %s", server.URL)
-		server.SetRestartCookie()
-		return false, nil
-	default:
-		server.SetRestartCookie()
-		return false, nil
-	}
-}
-
-// OpenSVCResizeDatabaseResources resizes the container cgroup limits (mem/cpu/io)
-// live through the OpenSVC API. TODO(#1765): wire the exact cgroup keyword through
-// SetServiceConfigKeys once the OpenSVC resource key is confirmed; until then it
-// falls back to a restart so the new limits apply on the next boot rather than
-// risking an OOM on a live grow. Returns (false) so ResizeDynamicResources does
-// not raise DB memory over an un-resized cgroup.
-func (cluster *Cluster) OpenSVCResizeDatabaseResources(server *ServerMonitor, grow bool) (bool, error) {
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-		"OpenSVC live cgroup resize not yet wired, scheduling restart on %s", server.URL)
-	server.SetRestartCookie()
-	return false, nil
 }
