@@ -256,6 +256,14 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 		if server == nil || server.State == stateFailed || server.State == stateUnconn {
 			continue
 		}
+		// The live resize builds MySQL/MariaDB SET GLOBAL statements. PostgreSQL is
+		// a different world (ALTER SYSTEM + pg_reload_conf, and shared_buffers is
+		// restart-only): fall back to a restart so the regenerated config applies.
+		// A live PG backend (work_mem / effective_cache_size) is a follow-up.
+		if server.DBVersion != nil && server.DBVersion.IsPostgreSQL() {
+			server.SetRestartCookie()
+			continue
+		}
 		// IO and CPU tuning are pure DB SET GLOBALs — no cgroup change, no
 		// feasibility gate, no grow/shrink ordering. Restart-only vars fall back
 		// via error 1238. (The cgroup cpu limit resize is a follow-up, like pg_cpu.)
