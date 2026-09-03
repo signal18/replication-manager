@@ -262,11 +262,6 @@ func (configurator *Configurator) GetConfigJoinBufferSize() string {
 	return strconv.FormatInt(configurator.threadedBufferMB("join", 1), 10)
 }
 
-// GetConfigSortBufferSize is the per-sort per-thread buffer, from the "sort" share. MB.
-func (configurator *Configurator) GetConfigSortBufferSize() string {
-	return strconv.FormatInt(configurator.threadedBufferMB("sort", 1), 10)
-}
-
 // GetConfigJoinBufferSpaceLimit caps the total join-buffer memory per query
 // (MariaDB only). Sized at several single join buffers, hard-capped at 1G. MB.
 func (configurator *Configurator) GetConfigJoinBufferSpaceLimit() string {

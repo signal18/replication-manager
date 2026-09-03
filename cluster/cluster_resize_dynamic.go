@@ -232,7 +232,6 @@ func (server *ServerMonitor) resizeMemorySQL(grow bool) []string {
 		fmt.Sprintf("SET GLOBAL tmp_table_size = %s*1024*1024", cfg.GetConfigTmpTableSize()),
 		fmt.Sprintf("SET GLOBAL max_heap_table_size = %s*1024*1024", cfg.GetConfigTmpTableSize()),
 		fmt.Sprintf("SET GLOBAL join_buffer_size = %s*1024*1024", cfg.GetConfigJoinBufferSize()),
-		fmt.Sprintf("SET GLOBAL sort_buffer_size = %s*1024*1024", cfg.GetConfigSortBufferSize()),
 	}
 	if server.IsMariaDB() {
 		// join_buffer_space_limit (total join memory per query) + mrr_buffer_size
