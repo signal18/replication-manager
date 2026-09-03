@@ -73,6 +73,47 @@ type HaproxyProxy struct {
 	lastStandbyInit      time.Time
 }
 
+// bootstrapServersCookiePath records haproxy-api-bootstrap-servers as
+// actually rendered at this proxy's last (re)provision -- persisted to
+// disk (not in-memory) so it survives a repman restart.
+func (proxy *HaproxyProxy) bootstrapServersCookiePath() string {
+	return proxy.Datadir + "/@cookie_bootstrap_servers"
+}
+
+// BootstrapServersEnabled is what this proxy was actually last provisioned
+// with, not the live cluster.Conf.HaproxyAPIBootstrapServers value, which
+// can change without a reprovision. Defaults false when never recorded.
+func (proxy *HaproxyProxy) BootstrapServersEnabled() bool {
+	data, err := os.ReadFile(proxy.bootstrapServersCookiePath())
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(data)) == "on"
+}
+
+// setProvisionedBootstrapServers snapshots the live setting at (re)provision
+// time -- see BootstrapServersEnabled.
+func (proxy *HaproxyProxy) setProvisionedBootstrapServers(enabled bool) {
+	value := "off"
+	if enabled {
+		value = "on"
+	}
+	if err := os.WriteFile(proxy.bootstrapServersCookiePath(), []byte(value), 0644); err != nil {
+		cluster := proxy.ClusterGroup
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "Create bootstrap-servers cookie: %s", err)
+	}
+}
+
+// delProvisionedBootstrapServers clears the snapshot on unprovision, so a
+// later restart doesn't fall back to a stale "last deployed" value for a
+// proxy that no longer exists.
+func (proxy *HaproxyProxy) delProvisionedBootstrapServers() {
+	if err := os.Remove(proxy.bootstrapServersCookiePath()); err != nil {
+		cluster := proxy.ClusterGroup
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "Remove bootstrap-servers cookie: %s", err)
+	}
+}
+
 // standbyReloadMinInterval is the minimum spacing BackendsStateChange()
 // enforces between two standby Init() (render+reload) calls. HAProxy's
 // reload itself is a real process fork/exec, not a free operation, so a
@@ -160,7 +201,7 @@ func logSetStateIfFailed(proxy *HaproxyProxy, action string, res string, err err
 // the next pass — see haproxySetStateLogLevel, the reason this exists.
 func (proxy *HaproxyProxy) reconcileReadBackendServersActive() bool {
 	cluster := proxy.ClusterGroup
-	return cluster.Conf.HaproxyAPIBootstrapServers &&
+	return proxy.BootstrapServersEnabled() &&
 		proxy.supportsDynamicServers() &&
 		cluster.Conf.HaproxyMode == "runtimeapi"
 }
@@ -242,7 +283,7 @@ func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *Haproxy
 
 func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HAProxy on same host")
-	flags.StringVar(&conf.HaproxyMode, "haproxy-mode", "runtimeapi", "HAProxy mode [standby|runtimeapi|externalcheck|dataplaneapi]")
+	flags.StringVar(&conf.HaproxyMode, "haproxy-mode", "runtimeapi", "HAProxy mode [standby|runtimeapi|externalcheck|dataplaneapi] -- only takes effect on the next (re)provision of the proxy")
 	flags.BoolVar(&conf.HaproxyDebug, "haproxy-debug", true, "Extra info on monitoring backend")
 	flags.IntVar(&conf.HaproxyLogLevel, "log-level-haproxy", 1, "Log level for debug")
 	flags.StringVar(&conf.HaproxyUser, "haproxy-user", "admin", "HAProxy API user")
@@ -258,11 +299,22 @@ func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.StringVar(&conf.HaproxyWriteBindIp, "haproxy-ip-write-bind", "0.0.0.0", "HAProxy input bind address for write")
 	flags.StringVar(&conf.HaproxyAPIReadBackend, "haproxy-api-read-backend", "service_read", "HAProxy API backend name used for read")
 	flags.StringVar(&conf.HaproxyAPIWriteBackend, "haproxy-api-write-backend", "service_write", "HAProxy API backend name used for write")
-	flags.BoolVar(&conf.HaproxyAPIBootstrapServers, "haproxy-api-bootstrap-servers", false, "For haproxy-mode=runtimeapi: drive every backend member (read and write) by repman's own resolved server IP over the Runtime API instead of HAProxy's own DNS resolution -- generated server lines carry no \"resolvers\" clause, and adding/removing a cluster server updates the live backend at runtime instead of requiring a reload (requires HAProxy >= 2.6; silently inactive otherwise). Off (the default) keeps runtimeapi resolver-backed, identical to haproxy-mode=externalcheck/standby. Takes effect on the next (re)provision of the proxy, not on a live toggle.")
+	flags.BoolVar(&conf.HaproxyAPIBootstrapServers, "haproxy-api-bootstrap-servers", false, "For haproxy-mode=runtimeapi: drive every backend member (read and write) by repman's own resolved server IP over the Runtime API instead of HAProxy's own DNS resolution -- generated server lines carry no \"resolvers\" clause, and adding/removing a cluster server updates the live backend at runtime instead of requiring a reload (requires HAProxy >= 2.6; silently inactive otherwise). Off (the default) keeps runtimeapi resolver-backed, identical to haproxy-mode=externalcheck/standby. Can be toggled live at any time, but each proxy keeps running its own last-provisioned value until reprovisioned.")
 	flags.StringVar(&conf.HaproxyHostsIPV6, "haproxy-servers-ipv6", "", "HAProxy IPv6 bind address ")
 }
 
 func (proxy *HaproxyProxy) Init() {
+	// Failover()/setReadBackendMaintenance() call Init() directly, unguarded
+	// by shouldRunStandbyInit()'s debounce; Refresh()/BackendsStateChange()
+	// run on their own goroutine (cluster.refreshProxies) separate from the
+	// failover/maintenance path, so two Init() calls can genuinely run
+	// concurrently. Serialize the whole function: Config.Render()
+	// (router/haproxy/configuration.go) opens haproxy.cfg O_TRUNC with a
+	// direct write, no temp-file-then-rename, so concurrent renders could
+	// otherwise interleave into the same file before either reload fires.
+	proxy.Lock.Lock()
+	defer proxy.Lock.Unlock()
+
 	cluster := proxy.ClusterGroup
 	haproxydatadir := proxy.Datadir + "/var"
 
@@ -460,17 +512,12 @@ func (proxy *HaproxyProxy) Init() {
 	// regardless of repman's classification, but standby's render has no
 	// equivalent live check to fall back on for this specific decision.
 	//
-	// HasValidReadSlave() (cluster/cluster_has.go) is the exported home of
-	// this exact loop -- shared, via ShouldServeReadsFromMaster(), with
-	// ServerMonitor.IsValidReaderCheck (srv_has.go), which needs the
-	// identical no-slave-fallback rule for haproxy-mode=externalcheck's
-	// checkslave HTTP handler (reached via the reader-status route, not
-	// slave-status -- see that method's doc comment). Keep this comment
-	// block in sync with ShouldServeReadsFromMaster's doc comment if the
-	// rule ever changes.
-	masterShouldRead := cluster.Configurator.HasProxyReadLeader() ||
-		(cluster.Configurator.HasProxyReadLeaderNoSlave() &&
-			(cluster.HasNoValidSlave() || !cluster.HasValidReadSlave()))
+	// ShouldServeReadsFromMaster() is the canonical rule, shared with
+	// ServerMonitor.IsValidReaderCheck (srv_has.go) for externalcheck's
+	// checkslave handler -- call it directly rather than re-inlining it
+	// here, so the two can never drift out of sync again (see its own doc
+	// comment for the bug that inline duplication caused before).
+	masterShouldRead := cluster.ShouldServeReadsFromMaster()
 
 	// haproxy-mode=runtimeapi's write backend is a single fixed slot
 	// literally named "leader" -- Refresh()'s SetMaster()/SetMasterFQDN()
@@ -598,6 +645,7 @@ func (proxy *HaproxyProxy) Init() {
 	}
 
 	err = haConfig.Render()
+	renderErr := err
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Could not create haproxy config %s", err)
 	}
@@ -624,6 +672,12 @@ func (proxy *HaproxyProxy) Init() {
 	err = haRuntime.Reload(&haConfig)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Can't reload haproxy config %s", err)
+	} else if renderErr == nil {
+		// Only once the new config is both rendered and actually applied --
+		// a reload "succeeding" against a config Render() failed to update
+		// would otherwise flip the cookie while the running HAProxy is
+		// still on the old one.
+		proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
 	}
 }
 
@@ -917,8 +971,21 @@ func (proxy *HaproxyProxy) Refresh() error {
 									// its own lookup, not writeRowResolverBacked.
 									stagingResolverBacked := resolverBackedPool[cluster.Conf.HaproxyStagingBackend+"/"+line[1]]
 									res, err := haRuntime.SetMaster(cluster.Conf.HaproxyStagingBackend, stagingsrv.RuntimeAPIAddr(stagingResolverBacked), stagingsrv.Port)
-									if msg, failed := haproxyCmdFailed(err, res); failed {
-										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, msg, stagingsrv.Host+":"+stagingsrv.Port)
+									// A real (not misclassified, see setAddrFailed)
+									// failure here is reported via SetState, not a
+									// plain LogModulePrintf: Refresh() runs every
+									// monitoring tick, so a persistent failure
+									// (e.g. HAProxy unreachable) would otherwise log
+									// an identical ERROR line forever. SetState only
+									// logs once, on the OPENED/RESOLV transition —
+									// same dedup as WARN0209/WARN0210 above.
+									if msg, failed := setAddrFailed(err, res); failed {
+										cluster.SetState("ERR00106", state.State{
+											ErrType:   config.LvlErr,
+											ErrDesc:   fmt.Sprintf(clusterError["ERR00106"], proxy.Host+":"+proxy.Port, cluster.Conf.HaproxyStagingBackend, stagingsrv.Host+":"+stagingsrv.Port, msg),
+											ErrFrom:   "HAPROXY",
+											ServerUrl: proxy.Host + ":" + proxy.Port,
+										})
 									} else {
 										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, res, stagingsrv.Host+":"+stagingsrv.Port)
 									}
@@ -930,8 +997,16 @@ func (proxy *HaproxyProxy) Refresh() error {
 								if master != nil {
 									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s %s", proxy.Host+":"+proxy.Port, master.Host, master.Port)
 									res, err := haRuntime.SetMaster(cluster.Conf.HaproxyAPIWriteBackend, master.RuntimeAPIAddr(writeRowResolverBacked), master.Port)
-									if msg, failed := haproxyCmdFailed(err, res); failed {
-										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, msg, master.Host+":"+master.Port)
+									// See the staging branch above for why a real
+									// failure goes through SetState, not a plain
+									// LogModulePrintf.
+									if msg, failed := setAddrFailed(err, res); failed {
+										cluster.SetState("ERR00106", state.State{
+											ErrType:   config.LvlErr,
+											ErrDesc:   fmt.Sprintf(clusterError["ERR00106"], proxy.Host+":"+proxy.Port, cluster.Conf.HaproxyAPIWriteBackend, master.Host+":"+master.Port, msg),
+											ErrFrom:   "HAPROXY",
+											ServerUrl: proxy.Host + ":" + proxy.Port,
+										})
 									} else {
 										cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, res, master.Host+":"+master.Port)
 									}
@@ -1142,8 +1217,15 @@ func (proxy *HaproxyProxy) Refresh() error {
 				// mode (see GetConfigProxyModule, cluster/prx_get.go).
 				stagingResolverBacked := resolverBackedPool[cluster.Conf.HaproxyStagingBackend+"/leader"]
 				res, err := haRuntime.SetMaster(cluster.Conf.HaproxyStagingBackend, stagingsrv.RuntimeAPIAddr(stagingResolverBacked), stagingsrv.Port)
-				if msg, failed := haproxyCmdFailed(err, res); failed {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, msg, stagingsrv.Host+":"+stagingsrv.Port)
+				// See the per-row master-fix branch above for why a real
+				// failure goes through SetState, not a plain LogModulePrintf.
+				if msg, failed := setAddrFailed(err, res); failed {
+					cluster.SetState("ERR00106", state.State{
+						ErrType:   config.LvlErr,
+						ErrDesc:   fmt.Sprintf(clusterError["ERR00106"], proxy.Host+":"+proxy.Port, cluster.Conf.HaproxyStagingBackend, stagingsrv.Host+":"+stagingsrv.Port, msg),
+						ErrFrom:   "HAPROXY",
+						ServerUrl: proxy.Host + ":" + proxy.Port,
+					})
 				} else {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, res, stagingsrv.Host+":"+stagingsrv.Port)
 				}
@@ -1154,8 +1236,15 @@ func (proxy *HaproxyProxy) Refresh() error {
 				writeResolverBacked := resolverBackedPool[cluster.Conf.HaproxyAPIWriteBackend+"/leader"]
 				res, err := haRuntime.SetMaster(cluster.Conf.HaproxyAPIWriteBackend, master.RuntimeAPIAddr(writeResolverBacked), master.Port)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy has leader in cluster but not in %s fixing it to master %s return %s", proxy.Host+":"+proxy.Port, master.URL, res)
-				if msg, failed := haproxyCmdFailed(err, res); failed {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy cannot add leader %s in cluster but not in %s : %s", master.URL, proxy.Host+":"+proxy.Port, msg)
+				// See the per-row master-fix branch above for why a real
+				// failure goes through SetState, not a plain LogModulePrintf.
+				if msg, failed := setAddrFailed(err, res); failed {
+					cluster.SetState("ERR00106", state.State{
+						ErrType:   config.LvlErr,
+						ErrDesc:   fmt.Sprintf(clusterError["ERR00106"], proxy.Host+":"+proxy.Port, cluster.Conf.HaproxyAPIWriteBackend, master.URL, msg),
+						ErrFrom:   "HAPROXY",
+						ServerUrl: proxy.Host + ":" + proxy.Port,
+					})
 				}
 			}
 		}
@@ -1316,9 +1405,10 @@ func haproxyCmdFailed(err error, res string) (string, bool) {
 // haproxyAddServerSuccessMsg is the confirmation text HAProxy's Runtime API
 // replies with when "add server" succeeds — unlike every other admin server
 // command in this file (SetMaintenance, SetDrain, EnableHealth, DelServer,
-// WaitSrvRemovable, SetServerAddr/FQDN), which reply with an empty body on
-// success, making haproxyCmdFailed's "any non-empty response is an error"
-// rule wrong for this one command. Verified by hand against a real HAProxy
+// WaitSrvRemovable), which reply with an empty body on success — SetServerAddr/
+// FQDN is a second exception, see setAddrFailed below — making haproxyCmdFailed's
+// "any non-empty response is an error" rule wrong for this one command. Verified
+// by hand against a real HAProxy
 // 3.0 Runtime API socket (`add server service_read/x 1.2.3.4:3306 check` ->
 // "New server registered.\n\n"); routing AddServer's response through
 // haproxyCmdFailed instead misclassified every successful add as a failure,
@@ -1410,6 +1500,51 @@ func waitSrvRemovableFailed(err error, res string) (string, bool) {
 	return haproxyCmdFailed(err, res)
 }
 
+// haproxySetAddrSuccessSubstrings is a fourth instance of the same
+// non-empty-on-success pattern as haproxyAddServerSuccessMsg/
+// haproxyDelServerSuccessMsg/haproxyWaitSrvRemovableSuccessMsg, for
+// SetMaster/SetMasterFQDN/SetServerAddr/SetServerFQDN's "set server ...
+// addr/fqdn ..." calls -- routing these through haproxyCmdFailed
+// misclassified every successful master repoint/read-backend IP fix as an
+// ERROR. Matched with strings.Contains, not HasPrefix: the FQDN-changed
+// text is "<pool>/<name> changed its FQDN from ... by '...'" -- the
+// pool/server name leads the line, so no fixed-word prefix works.
+//
+// Provenance: "nothing changed"/"no need to change the FDQN" (HAProxy's own
+// spelling) and "IP changed from"/"changed its FQDN from" are verified
+// against real HAProxy 3.0 output or production logs. "port changed from"
+// and the "no need to change the addr/port" pair (HAProxy's v2.x wording,
+// pre-3.0, for the same no-op case as "nothing changed") were found by
+// reading HAProxy's own source (srv_update_addr_port, src/server.c) across
+// 2.4/2.8/3.0/3.4, not live-verified. Unmatched text still falls through to
+// haproxyCmdFailed's default (unknown non-empty response = failure).
+var haproxySetAddrSuccessSubstrings = []string{
+	"nothing changed",
+	"no need to change the addr",
+	"no need to change the port",
+	"no need to change the FDQN",
+	"IP changed from",
+	"port changed from",
+	"changed its FQDN from",
+}
+
+// setAddrFailed is haproxyCmdFailed's counterpart for SetMaster/
+// SetMasterFQDN/SetServerAddr/SetServerFQDN calls — see
+// haproxySetAddrSuccessSubstrings for why it can't share haproxyCmdFailed's
+// empty-body-means-success rule.
+func setAddrFailed(err error, res string) (string, bool) {
+	if err != nil {
+		return err.Error(), true
+	}
+	msg := strings.TrimSpace(res)
+	for _, substr := range haproxySetAddrSuccessSubstrings {
+		if strings.Contains(msg, substr) {
+			return "", false
+		}
+	}
+	return haproxyCmdFailed(err, res)
+}
+
 // reconcileReadBackendServers brings the HAProxy read backend's runtime
 // server membership in line with cluster.Servers via the Runtime API, so
 // that a DB server joining or leaving the cluster does not require an
@@ -1431,7 +1566,7 @@ func waitSrvRemovableFailed(err error, res string) (string, bool) {
 // resolver-tracked — see its doc comment above, in Refresh().
 func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime, knownToHaproxy map[string]bool, addrBySvname map[string]string, statusBySvname map[string]string, resolverBackedPool map[string]bool) {
 	cluster := proxy.ClusterGroup
-	if !cluster.Conf.HaproxyAPIBootstrapServers || !proxy.supportsDynamicServers() {
+	if !proxy.BootstrapServersEnabled() || !proxy.supportsDynamicServers() {
 		return
 	}
 	// Read-backend servers are only named after server.Id in "runtimeapi"
@@ -1474,6 +1609,8 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 	// failed, either at the transport level or via a non-empty response
 	// body (HAProxy's admin server commands return no output on success).
 	// Do not use this for AddServer's response — see logAddServerIfFailed.
+	// Do not use this for SetServerAddr's response either — see
+	// logSetAddrIfFailed.
 	logIfFailed := func(action string, res string, err error) bool {
 		msg, failed := haproxyCmdFailed(err, res)
 		if failed {
@@ -1489,6 +1626,23 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 		msg, failed := addServerFailed(err, res)
 		if failed {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy %s: %s", action, msg)
+		}
+		return failed
+	}
+
+	// logSetAddrIfFailed is logIfFailed's counterpart for SetServerAddr --
+	// see haproxySetAddrSuccessSubstrings. A real failure goes through
+	// SetState (scoped per server) instead of a plain log so a persistent
+	// failure logs once per OPENED/RESOLV transition, not every pass.
+	logSetAddrIfFailed := func(serverID, serverURL, res string, err error) bool {
+		msg, failed := setAddrFailed(err, res)
+		if failed {
+			cluster.SetState("ERR00107", state.State{
+				ErrType:   config.LvlErr,
+				ErrDesc:   fmt.Sprintf(clusterError["ERR00107"], proxy.Host+":"+proxy.Port, serverID, pool, msg),
+				ErrFrom:   "HAPROXY",
+				ServerUrl: serverURL,
+			})
 		}
 		return failed
 	}
@@ -1669,7 +1823,7 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 				// haproxyReconcileBudget's doc comment.
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy server %s address changed from %s to %s, updating backend %s via Runtime API", server.Id, actualAddr, expectedAddr, pool)
 				res, err := haRuntime.SetServerAddr(pool, server.Id, addr, server.Port)
-				logIfFailed(fmt.Sprintf("could not update address for server %s in backend %s", server.Id, pool), res, err)
+				logSetAddrIfFailed(server.Id, server.URL, res, err)
 			}
 		}
 	}

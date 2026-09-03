@@ -492,6 +492,23 @@ func (cluster *Cluster) HasRequestProxiesReprov() bool {
 	return false
 }
 
+// HasProvisionedHaproxy reports whether any HAProxy proxy has already been
+// provisioned -- scoped to type "haproxy" specifically, not any proxy
+// (ProxySQL/MaxScale/... provisioned in the same cluster must not block an
+// HAProxy-only setting). Refresh() (cluster/prx_haproxy.go) reads settings
+// like HaproxyMode/HaproxyAPIBootstrapServers live every monitoring tick, so
+// changing them while a proxy is already deployed would alter its
+// reconciliation behavior immediately, ahead of the deployed config being
+// regenerated to match -- callers use this to refuse that live change.
+func (cluster *Cluster) HasProvisionedHaproxy() bool {
+	for _, p := range cluster.Proxies {
+		if p != nil && p.GetType() == config.ConstProxyHaproxy && p.HasProvisionCookie() {
+			return true
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) HasRequestAppReprov() bool {
 	for _, a := range cluster.Apps {
 		if a != nil {

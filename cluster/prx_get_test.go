@@ -7,6 +7,8 @@
 package cluster
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -322,4 +324,72 @@ func TestGetConfigProxyModuleOmitsDNSWhenProxyHasNoDNS(t *testing.T) {
 	if strings.Contains(write, "resolvers") {
 		t.Errorf("write backend = %q, want no resolvers clause when proxy.HasDNS() is false", write)
 	}
+}
+
+// TestModulesetHaproxyExternalcheckDefinesResolversDNS pins the other half
+// of TestGetConfigProxyModuleAppendsDNSForNonRuntimeAPIModes' invariant:
+// GetConfigProxyModule appends "resolvers dns" to every server line for
+// externalcheck/standby whenever proxy.HasDNS() is true (always true for
+// OpenSVC, prx_has.go) -- but that reference is only valid HAProxy config
+// if a "resolvers dns { ... }" section is actually DEFINED somewhere in the
+// same file. externalcheck on OpenSVC runs haproxy_check.cfg, rendered
+// from the moduleset's "proxy_cnf_haproxy" entry (prov_opensvc_haproxy.go),
+// not the image-default "proxy_cnf_haproxy_runtime_api" (haproxy.cfg) --
+// the two are separate templates, and only the section definition
+// (%%ENV:SVC_CONF_HAPROXY_DNS%%, substituted by GetConfigProxyDNS) lets the
+// server-line references above resolve to something real. Without it in
+// "proxy_cnf_haproxy" too, HAProxy refuses to start at all ("unknown
+// resolvers 'dns'") on every OpenSVC externalcheck deployment.
+func TestModulesetHaproxyExternalcheckDefinesResolversDNS(t *testing.T) {
+	fmtStr := moduleValueFmt(t, "proxy_cnf_haproxy")
+	if !strings.Contains(fmtStr, "%%ENV:SVC_CONF_HAPROXY_DNS%%") {
+		t.Errorf(`moduleset entry "proxy_cnf_haproxy" (haproxy_check.cfg, externalcheck) does not define %%%%ENV:SVC_CONF_HAPROXY_DNS%%%% -- server lines referencing "resolvers dns" (see GetConfigProxyModule) would have nothing to resolve against, and HAProxy refuses to start`)
+	}
+
+	// Regression guard for the sibling entry this was modeled after.
+	runtimeAPIFmt := moduleValueFmt(t, "proxy_cnf_haproxy_runtime_api")
+	if !strings.Contains(runtimeAPIFmt, "%%ENV:SVC_CONF_HAPROXY_DNS%%") {
+		t.Errorf(`moduleset entry "proxy_cnf_haproxy_runtime_api" (haproxy.cfg, standby/image-default) no longer defines %%%%ENV:SVC_CONF_HAPROXY_DNS%%%%`)
+	}
+}
+
+// moduleValueFmt loads share/opensvc/moduleset_mariadb.svc.mrm.proxy.json
+// and returns the "fmt" field of the named variable's (JSON-encoded string)
+// var_value -- fatal if the file, the variable, or that field can't be
+// found/parsed.
+func moduleValueFmt(t *testing.T, varName string) string {
+	t.Helper()
+	data, err := os.ReadFile("../share/opensvc/moduleset_mariadb.svc.mrm.proxy.json")
+	if err != nil {
+		t.Fatalf("failed to read moduleset_mariadb.svc.mrm.proxy.json: %v", err)
+	}
+
+	var doc struct {
+		Rulesets []struct {
+			Variables []struct {
+				VarName  string `json:"var_name"`
+				VarValue string `json:"var_value"`
+			} `json:"variables"`
+		} `json:"rulesets"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("failed to parse moduleset_mariadb.svc.mrm.proxy.json: %v", err)
+	}
+
+	for _, rs := range doc.Rulesets {
+		for _, v := range rs.Variables {
+			if v.VarName != varName {
+				continue
+			}
+			var value struct {
+				Fmt string `json:"fmt"`
+			}
+			if err := json.Unmarshal([]byte(v.VarValue), &value); err != nil {
+				t.Fatalf("failed to parse var_value for %q: %v", varName, err)
+			}
+			return value.Fmt
+		}
+	}
+	t.Fatalf("moduleset variable %q not found", varName)
+	return ""
 }

@@ -1395,12 +1395,31 @@ func (cluster *Cluster) SetServicePlanInfos(theplan string) error {
 		if plan.Plan == theplan {
 
 			cluster.Conf.ProvServicePlan = theplan
-			cluster.SetDBCores(strconv.Itoa(plan.DbCores))
-			cluster.SetDBMemorySize(strconv.Itoa(plan.DbMemory))
-			cluster.SetDBDiskSize(strconv.Itoa(plan.DbDataSize))
-			cluster.SetDBDiskIOPS(strconv.Itoa(plan.DbIops))
-			cluster.SetProxyCores(strconv.Itoa(plan.PrxCores))
-			cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize))
+
+			// Provisioning specs are guarded by immutability: a value the
+			// operator has pinned (present in ImmuableFlagMap / immutable.toml)
+			// is a hard lock that attaching or refreshing a service plan must
+			// NOT overwrite. Without this, a plan attach pushed the plan tier
+			// onto prov-db-memory etc.; the immutable-flag reapply then reverted
+			// the Conf side but not the Configurator side, leaving the GUI
+			// showing the plan value (e.g. 4G) while provisioning used the
+			// pinned value (e.g. 768M). To move a pinned spec the operator must
+			// first unpin it. Pricing/SLA/infra descriptors below are plan
+			// metadata, not resource knobs, so they always follow the plan.
+			applyPlanSpec := func(flag string, apply func()) {
+				if cluster.IsVariableImmutable(flag) {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+						"Service plan %s: keeping pinned %s, plan value not applied (variable is immutable)", theplan, flag)
+					return
+				}
+				apply()
+			}
+			applyPlanSpec("prov-db-cpu-cores", func() { cluster.SetDBCores(strconv.Itoa(plan.DbCores)) })
+			applyPlanSpec("prov-db-memory", func() { cluster.SetDBMemorySize(strconv.Itoa(plan.DbMemory)) })
+			applyPlanSpec("prov-db-disk-size", func() { cluster.SetDBDiskSize(strconv.Itoa(plan.DbDataSize)) })
+			applyPlanSpec("prov-db-disk-iops", func() { cluster.SetDBDiskIOPS(strconv.Itoa(plan.DbIops)) })
+			applyPlanSpec("prov-proxy-cpu-cores", func() { cluster.SetProxyCores(strconv.Itoa(plan.PrxCores)) })
+			applyPlanSpec("prov-proxy-disk-size", func() { cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize)) })
 			cluster.SetCloud18MonthlyInfraCost(plan.InfraCost)
 			cluster.SetCloud18MonthlyLicenseCost(plan.LicenceCost)
 			cluster.SetCloud18MonthlySysopsCost(plan.SysCost)

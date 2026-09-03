@@ -232,12 +232,16 @@ func TestSwitchClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
 	cl.Conf.HaproxyAPIBootstrapServers = false
+	prx := newTestProxyForReprov(t, cl)
 
 	if err := repman.switchClusterSettings(cl, "haproxy-api-bootstrap-servers"); err != nil {
 		t.Fatalf("switchClusterSettings(haproxy-api-bootstrap-servers): unexpected error: %v", err)
 	}
 	if !cl.Conf.HaproxyAPIBootstrapServers {
 		t.Fatalf("expected HaproxyAPIBootstrapServers=true after first switch, got false")
+	}
+	if !prx.HasReprovCookie() {
+		t.Fatalf("expected proxy reprov cookie after switching haproxy-api-bootstrap-servers, got none")
 	}
 
 	if err := repman.switchClusterSettings(cl, "haproxy-api-bootstrap-servers"); err != nil {
@@ -322,12 +326,19 @@ func TestSetClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
 	cl.Conf.HaproxyAPIBootstrapServers = false
+	prx := newTestProxyForReprov(t, cl)
 
 	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "on"); err != nil {
 		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "on"): unexpected error: %v`, err)
 	}
 	if !cl.Conf.HaproxyAPIBootstrapServers {
 		t.Fatalf("expected HaproxyAPIBootstrapServers=true after explicit \"on\", got false")
+	}
+	if !prx.HasReprovCookie() {
+		t.Fatalf("expected proxy reprov cookie after haproxy-api-bootstrap-servers \"on\", got none")
+	}
+	if !cl.HasRequestProxiesReprov() {
+		t.Fatalf("expected cluster.HasRequestProxiesReprov()=true after haproxy-api-bootstrap-servers \"on\"")
 	}
 
 	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "off"); err != nil {
@@ -338,16 +349,52 @@ func TestSetClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	}
 }
 
+// Unlike haproxy-mode, changing haproxy-api-bootstrap-servers live is always
+// allowed, even while provisioned under runtimeapi: each proxy retains its
+// own last-provisioned value (HaproxyProxy.BootstrapServersEnabled).
+func TestSetClusterSetting_HaproxyAPIBootstrapServers_AllowedWhileProvisioned(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.HaproxyMode = "runtimeapi"
+	cl.Conf.HaproxyAPIBootstrapServers = false
+	prx := newTestProxyForReprov(t, cl)
+	prx.SetProvisionCookie()
+
+	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "on"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "on") while provisioned: unexpected error: %v`, err)
+	}
+	if !cl.Conf.HaproxyAPIBootstrapServers {
+		t.Fatalf("expected HaproxyAPIBootstrapServers=true after change")
+	}
+	if !prx.HasReprovCookie() {
+		t.Fatalf("expected proxy reprov cookie after the change, got none")
+	}
+
+	// Re-setting the same value is a no-op and must not mark reprov again.
+	prx.DelReprovisionCookie()
+	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "on"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "on") (no-op): unexpected error: %v`, err)
+	}
+	if prx.HasReprovCookie() {
+		t.Fatalf("expected no reprov cookie after a no-op haproxy-api-bootstrap-servers set, got one")
+	}
+}
+
 // TestSetClusterSetting_HaproxyMode guards the haproxy-mode setter: it must
 // accept every documented mode value and reject anything else, since every
 // HaproxyMode == "..." check throughout cluster/prx_haproxy.go and
 // cluster/prov_opensvc_haproxy.go is a plain string comparison that would
-// silently no-op on an unrecognized value.
+// silently no-op on an unrecognized value. Not provisioned yet, so every
+// mode change (including standby) is freely allowed.
 func TestSetClusterSetting_HaproxyMode(t *testing.T) {
 	cl := newTestClusterForAPI(t)
 	cl.Conf.Secrets = make(map[string]config.Secret)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+	prx := newTestProxyForReprov(t, cl)
 
 	for _, mode := range []string{"standby", "runtimeapi", "externalcheck", "dataplaneapi"} {
 		if err := repman.setClusterSetting(cl, "haproxy-mode", mode); err != nil {
@@ -357,6 +404,9 @@ func TestSetClusterSetting_HaproxyMode(t *testing.T) {
 			t.Fatalf("expected HaproxyMode=%q, got %q", mode, cl.Conf.HaproxyMode)
 		}
 	}
+	if !prx.HasReprovCookie() {
+		t.Fatalf("expected proxy reprov cookie after a valid haproxy-mode change, got none")
+	}
 
 	cl.Conf.HaproxyMode = "runtimeapi"
 	if err := repman.setClusterSetting(cl, "haproxy-mode", "bogus"); err == nil {
@@ -364,6 +414,56 @@ func TestSetClusterSetting_HaproxyMode(t *testing.T) {
 	}
 	if cl.Conf.HaproxyMode != "runtimeapi" {
 		t.Fatalf("expected HaproxyMode to remain %q after rejected value, got %q", "runtimeapi", cl.Conf.HaproxyMode)
+	}
+}
+
+// Any haproxy-mode change must be refused while a proxy is provisioned.
+func TestSetClusterSetting_HaproxyMode_BlockedWhileProvisioned(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.HaproxyMode = "runtimeapi"
+	prx := newTestProxyForReprov(t, cl)
+	prx.SetProvisionCookie()
+
+	if err := repman.setClusterSetting(cl, "haproxy-mode", "externalcheck"); err == nil {
+		t.Fatalf(`setClusterSetting(haproxy-mode, "externalcheck"): expected error while provisioned, got nil`)
+	}
+	if cl.Conf.HaproxyMode != "runtimeapi" {
+		t.Fatalf("expected HaproxyMode to remain %q after rejected change, got %q", "runtimeapi", cl.Conf.HaproxyMode)
+	}
+
+	// Re-setting the same value is a no-op: must still be allowed, and must
+	// not mark the proxy for reprov -- nothing actually changed.
+	if err := repman.setClusterSetting(cl, "haproxy-mode", "runtimeapi"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-mode, "runtimeapi") (no-op): unexpected error: %v`, err)
+	}
+	if prx.HasReprovCookie() {
+		t.Fatalf("expected no reprov cookie after a no-op haproxy-mode set, got one")
+	}
+}
+
+// A ProxySQL/other proxy being provisioned must not block an HAProxy-only
+// setting -- HasProvisionedHaproxy is scoped to type "haproxy".
+func TestSetClusterSetting_HaproxyMode_IgnoresOtherProxyTypes(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.HaproxyMode = "runtimeapi"
+	proxysql := &cluster.ProxySQLProxy{Proxy: cluster.Proxy{
+		ClusterGroup: cl,
+		Datadir:      t.TempDir(),
+		Type:         config.ConstProxySqlproxy,
+	}}
+	cl.Proxies = append(cl.Proxies, proxysql)
+	proxysql.SetProvisionCookie()
+
+	if err := repman.setClusterSetting(cl, "haproxy-mode", "externalcheck"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-mode, "externalcheck") with only a provisioned ProxySQL: unexpected error: %v`, err)
 	}
 }
 
@@ -597,6 +697,19 @@ func newTestClusterForAPI(t *testing.T) *cluster.Cluster {
 		Name:       name,
 		WorkingDir: workingDir,
 	}
+}
+
+// newTestProxyForReprov appends a proxy with a writable Datadir (cookies are
+// marker files under it) so a test can assert on its reprov cookie.
+func newTestProxyForReprov(t *testing.T, cl *cluster.Cluster) *cluster.HaproxyProxy {
+	t.Helper()
+	prx := &cluster.HaproxyProxy{Proxy: cluster.Proxy{
+		ClusterGroup: cl,
+		Datadir:      t.TempDir(),
+		Type:         config.ConstProxyHaproxy,
+	}}
+	cl.Proxies = append(cl.Proxies, prx)
+	return prx
 }
 
 // TestBuildClusterAPIPayload_ClusterS3ProvidersPresent verifies that

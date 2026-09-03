@@ -273,6 +273,11 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 	cluster.StateMachine.RemoveFailoverState()
 	if err == nil {
 		prx.SetProvisionCookie()
+		// Snapshot the live bootstrap-servers setting onto this proxy --
+		// see HaproxyProxy.BootstrapServersEnabled.
+		if hprx, ok := prx.(*HaproxyProxy); ok {
+			hprx.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+		}
 	} else {
 		return err
 	}
@@ -352,6 +357,9 @@ func (cluster *Cluster) Unprovision() error {
 			prx.DelProvisionCookie()
 			prx.DelRestartCookie()
 			prx.DelReprovisionCookie()
+			if hprx, ok := prx.(*HaproxyProxy); ok {
+				hprx.delProvisionedBootstrapServers()
+			}
 		}
 	}
 
@@ -418,6 +426,9 @@ func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
 		prx.DelProvisionCookie()
 		prx.DelReprovisionCookie()
 		prx.DelRestartCookie()
+		if hprx, ok := prx.(*HaproxyProxy); ok {
+			hprx.delProvisionedBootstrapServers()
+		}
 	}
 	return err
 }
@@ -585,8 +596,34 @@ func (cluster *Cluster) StartProxyService(server DatabaseProxy) error {
 	cluster.StartProxyScript(server)
 	if err == nil {
 		server.DelRestartCookie()
+		if startReappliesProxyConfig(server, cluster.proxyServiceOrchestrator(server)) {
+			server.DelReprovisionCookie()
+		}
 	}
 	return err
+}
+
+// startReappliesProxyConfig reports whether a successful start on this
+// orchestrator actually reapplies the proxy's current config, so it
+// satisfies whatever set the reprov cookie -- NOT true for every start path:
+//   - Localhost always regenerates+applies unconditionally
+//     (GetProxyConfig+Init(), see LocalhostStart{HaProxy,ProxySQL}Service).
+//   - OpenSVC/Kubernetes "start" re-triggers the container's own
+//     init/entrypoint config fetch, but only when
+//     prov-proxy-start-fetch-config is actually enabled for this proxy
+//     (mirrors CheckNeedConfigFetch's condition).
+//   - OnPremise (plain "systemctl start ...") and SlapOS (a no-op beyond
+//     SetWaitStartCookie) never reapply config on start, regardless of
+//     prov-proxy-start-fetch-config.
+func startReappliesProxyConfig(server DatabaseProxy, orchestrator string) bool {
+	switch orchestrator {
+	case config.ConstOrchestratorLocalhost:
+		return true
+	case config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes:
+		return !server.HasNoConfigFetchCookie()
+	default:
+		return false
+	}
 }
 
 func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {

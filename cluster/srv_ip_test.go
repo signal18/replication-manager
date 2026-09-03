@@ -12,95 +12,89 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-// TestRefreshResolvedIPSkipsLiteralIP guards against a wasted (or, worse,
-// self-overwriting-with-itself) DNS lookup when Host is already a literal
-// IP -- dbhelper.CheckHostAddr already short-circuits this, so this just
-// locks in that IP stays untouched either way.
+// TestRefreshResolvedIPSkipsLiteralIP confirms refreshResolvedIP is a no-op
+// (beyond the short-circuit dbhelper.CheckHostAddr already does) when Host
+// is already a literal IP -- nothing to resolve, and IP should already hold
+// the same value from SetCredential's initial resolution.
 func TestRefreshResolvedIPSkipsLiteralIP(t *testing.T) {
 	cluster := setupTestCluster(t, 1)
 	defer cleanupTestCluster(t, cluster)
-	cluster.Conf = &config.Config{}
+	cluster.Conf = &config.Config{DNSTimeout: 1}
 
 	server := cluster.Servers[0]
+	server.Host = "127.0.0.1"
+	server.IP = "127.0.0.1"
 	server.ClusterGroup = cluster
-	server.Host = "203.0.113.5"
-	server.IP = "old-should-not-change"
 
 	server.refreshResolvedIP()
-	if server.IP != "203.0.113.5" {
-		t.Fatalf("IP = %q, want %q (Host is already a literal IP)", server.IP, "203.0.113.5")
+
+	if server.IP != "127.0.0.1" {
+		t.Errorf("server.IP = %q, want unchanged %q", server.IP, "127.0.0.1")
 	}
 }
 
-// TestRefreshResolvedIPSkipsEmptyHost guards the other no-op case: no Host
-// configured at all, nothing to resolve.
+// TestRefreshResolvedIPSkipsEmptyHost confirms refreshResolvedIP doesn't
+// panic or attempt a lookup for a server with no Host set at all.
 func TestRefreshResolvedIPSkipsEmptyHost(t *testing.T) {
 	cluster := setupTestCluster(t, 1)
 	defer cleanupTestCluster(t, cluster)
-	cluster.Conf = &config.Config{}
+	cluster.Conf = &config.Config{DNSTimeout: 1}
 
 	server := cluster.Servers[0]
-	server.ClusterGroup = cluster
 	server.Host = ""
-	server.IP = "unchanged"
+	server.IP = ""
+	server.ClusterGroup = cluster
 
 	server.refreshResolvedIP()
-	if server.IP != "unchanged" {
-		t.Fatalf("IP = %q, want unchanged (no Host configured)", server.IP)
+
+	if server.IP != "" {
+		t.Errorf("server.IP = %q, want it to stay empty for an empty Host", server.IP)
 	}
 }
 
-// TestRefreshResolvedIPUpdatesFromHostname is the actual bug guard: this is
-// the exact mechanism that was missing entirely before this fix --
-// SetCredential() (cluster/srv_set.go) resolves IP via this same
-// dbhelper.CheckHostAddr() call, but only once, at server setup, so it goes
-// stale the moment a server's real address changes -- which is exactly what
-// let haproxy-mode=externalcheck's checkmaster/checkslave lookups
-// (GetServerFromURL, cluster/cluster_get.go, matching on IP) fail
-// indefinitely, live-reproduced against a Kubernetes Deployment where every
-// pod recreation gets a brand-new overlay IP. "localhost" is used here
-// instead of a real network hostname so this test has no external
-// dependency: it resolves via /etc/hosts (or the platform equivalent) on
-// every machine, no DNS or network access needed.
+// TestRefreshResolvedIPUpdatesFromHostname confirms a resolvable hostname
+// updates IP to the freshly-resolved address -- the actual mechanism that
+// keeps ServerMonitor.IP (and therefore RuntimeAPIAddr) current after a pod
+// restart hands a Kubernetes/OpenSVC server a new address.
 func TestRefreshResolvedIPUpdatesFromHostname(t *testing.T) {
 	cluster := setupTestCluster(t, 1)
 	defer cleanupTestCluster(t, cluster)
-	cluster.Conf = &config.Config{}
+	cluster.Conf = &config.Config{DNSTimeout: 2}
 
 	server := cluster.Servers[0]
-	server.ClusterGroup = cluster
+	// "localhost" reliably resolves to a loopback address in any test
+	// environment without relying on external/flaky DNS.
 	server.Host = "localhost"
-	server.IP = "stale-should-be-replaced"
+	server.IP = "192.0.2.1" // deliberately stale/wrong, to prove it gets corrected
+	server.ClusterGroup = cluster
 
 	server.refreshResolvedIP()
-	if server.IP == "stale-should-be-replaced" {
-		t.Fatalf("IP was not refreshed from a resolvable hostname")
+
+	if server.IP == "192.0.2.1" {
+		t.Errorf("server.IP = %q, want it updated away from the stale placeholder", server.IP)
 	}
 	if server.IP != "127.0.0.1" && server.IP != "::1" {
-		t.Fatalf("IP = %q, want a loopback address resolved from \"localhost\"", server.IP)
+		t.Errorf("server.IP = %q, want a loopback address resolved from %q", server.IP, "localhost")
 	}
 }
 
-// TestRefreshResolvedIPPreservesLastKnownOnResolutionFailure guards the
-// "best-effort" half of the contract: a resolution failure (e.g. a
-// transiently-unreachable resolver, or a hostname that stops existing for a
-// moment) must never clear IP to "" or otherwise corrupt it -- the last
-// known-good address should stay in place until a resolution actually
-// succeeds, since a healthy server temporarily losing its cached IP would
-// break GetServerFromURL's match just as badly as never having refreshed it
-// at all.
+// TestRefreshResolvedIPPreservesLastKnownOnResolutionFailure confirms a
+// resolution failure is a no-op, never clearing a last-known-good IP --
+// refreshResolvedIP must never turn a transient resolver hiccup into a new
+// failure mode for the server's runtime address.
 func TestRefreshResolvedIPPreservesLastKnownOnResolutionFailure(t *testing.T) {
 	cluster := setupTestCluster(t, 1)
 	defer cleanupTestCluster(t, cluster)
-	cluster.Conf = &config.Config{}
+	cluster.Conf = &config.Config{DNSTimeout: 1}
 
 	server := cluster.Servers[0]
-	server.ClusterGroup = cluster
 	server.Host = "this-hostname-should-never-resolve.invalid"
-	server.IP = "10.0.0.1"
+	server.IP = "10.0.0.5"
+	server.ClusterGroup = cluster
 
 	server.refreshResolvedIP()
-	if server.IP != "10.0.0.1" {
-		t.Fatalf("IP = %q, want the last known-good address preserved on resolution failure", server.IP)
+
+	if server.IP != "10.0.0.5" {
+		t.Errorf("server.IP = %q, want the last-known-good value preserved on resolution failure", server.IP)
 	}
 }

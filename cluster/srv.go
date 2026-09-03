@@ -840,6 +840,15 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		server.refreshResolvedIP()
 	}
 
+	// Down-to-up transition: server.State here still reflects the previous
+	// tick (nothing below has mutated it yet), so IsDown() correctly means
+	// "was down a moment ago, and this Ping() just got a working
+	// connection" -- see refreshResolvedIP's doc comment for why this is
+	// exactly the transition that matters.
+	if cluster.Conf.MonitoringResolveServerIP && server.IsDown() {
+		server.refreshResolvedIP()
+	}
+
 	//Without topology we should never declare a server failed
 	if (server.State == stateErrorAuth || server.State == stateFailed) && server.GetCluster().GetTopology() == config.TopoUnknown && server.PrevState != stateSuspect {
 		server.SetState(stateSuspect)
