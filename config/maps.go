@@ -1147,10 +1147,38 @@ func (m *VariablesMap) SetRuntimeValue(varname string, value string) {
 	}
 }
 
-func (m *VariablesMap) SetRuntimeValues(strmap map[string]string) {
+// SetRuntimeValues applies the live DB variable values and returns how many
+// actually changed since the previous tick. Callers gate per-tick reconciliation
+// work (DropReconciledAgreed) on a non-zero return: a variable can only become
+// reconciled (Runtime == Config) when its runtime value moves, so in the steady
+// state — runtime identical tick to tick — the drop walk is skipped entirely.
+func (m *VariablesMap) SetRuntimeValues(strmap map[string]string) int {
+	changed := 0
 	for k, v := range strmap {
-		m.SetRuntimeValue(k, v)
+		lowervarname := strings.ToLower(k)
+		state, ok := m.Load(lowervarname)
+		if !ok {
+			ns := NewVariableState(lowervarname)
+			ns.SetRuntimeValue(v)
+			m.Store(lowervarname, ns)
+			changed++
+			continue
+		}
+		vs := state.(*VariableState)
+		before := ""
+		if vs.Runtime != nil {
+			before = vs.Runtime.String()
+		}
+		vs.SetRuntimeValue(v)
+		after := ""
+		if vs.Runtime != nil {
+			after = vs.Runtime.String()
+		}
+		if before != after {
+			changed++
+		}
 	}
+	return changed
 }
 
 func (m *VariablesMap) SetConfigValue(varname string, value string) {

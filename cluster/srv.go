@@ -1103,7 +1103,7 @@ func (server *ServerMonitor) Refresh() error {
 
 		vars, _, err = dbhelper.GetVariablesCase(server.Conn, server.DBVersion, "LOWER")
 		server.SensitiveVariables = config.FromNormalStringMap(server.SensitiveVariables, vars)
-		server.VariablesMap.SetRuntimeValues(vars)
+		runtimeChanged := server.VariablesMap.SetRuntimeValues(vars)
 		if err != nil {
 			return nil
 		}
@@ -1112,13 +1112,17 @@ func (server *ServerMonitor) Refresh() error {
 		// previously agreed variable (03_agreed.cnf) has served its purpose — it
 		// only existed to hold a value until the DB restarted with the compliance
 		// value. Drop it so it stops showing as a pending diff. Operator-forced
-		// preserves (PreservedSource != "") are never touched.
-		if dropped := server.VariablesMap.DropReconciledAgreed(); len(dropped) > 0 {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-				"Dropped %d reconciled agreed variable(s) on %s: %s", len(dropped), server.URL, strings.Join(dropped, ", "))
-			if err := server.WritePreservedVariables(); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-					"Failed to rewrite agreed variables after drop for %s: %s", server.URL, err)
+		// preserves (PreservedSource != "") are never touched. Gated on a runtime
+		// change: reconciliation can only appear when a runtime value moved, so the
+		// steady state (runtime unchanged tick to tick) skips this walk entirely.
+		if runtimeChanged > 0 {
+			if dropped := server.VariablesMap.DropReconciledAgreed(); len(dropped) > 0 {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+					"Dropped %d reconciled agreed variable(s) on %s: %s", len(dropped), server.URL, strings.Join(dropped, ", "))
+				if err := server.WritePreservedVariables(); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+						"Failed to rewrite agreed variables after drop for %s: %s", server.URL, err)
+				}
 			}
 		}
 
