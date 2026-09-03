@@ -463,6 +463,8 @@ func (cluster *Cluster) UpdateDatabaseServiceConfig(server *ServerMonitor, force
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		return cluster.OpenSVCUpdateDatabaseServiceConfig(server, forcePull)
+	case config.ConstOrchestratorKubernetes:
+		return cluster.K8SUpdateDatabaseServiceConfig(server, forcePull)
 	default:
 		return nil
 	}
@@ -475,10 +477,19 @@ func (cluster *Cluster) UpgradeDatabaseService(server *ServerMonitor) error {
 	case config.ConstOrchestratorOnPremise:
 		err = cluster.OnPremiseUpgradeDatabaseService(server)
 	default:
-		// For container orchestrators (OpenSVC, K8S), the image tag change handles
-		// the binary upgrade. The upgrade script is only needed for on-premise.
-		// Fall back to a regular start which pulls the new container image.
-		err = cluster.StartDatabaseService(server)
+		// Same two-phase pull/clean cycle RollingUpgrade (cluster_roll.go) runs
+		// per node, applied here to a single server via the shared
+		// rollingUpgradeStopUpdateStart helper: phase 1 pushes the currently
+		// configured image (forcePull, so a mutable/already-cached tag is
+		// still re-pulled) and restarts on it via a clean shutdown (safe for a
+		// major-version upgrade); phase 2 restores the steady-state pull
+		// policy. Previously this branch just called StartDatabaseService with
+		// no config update at all -- a restart on the unchanged image,
+		// silently upgrading nothing on OpenSVC/Kubernetes.
+		if err = cluster.rollingUpgradeStopUpdateStart(server, true, true, "pull"); err != nil {
+			return err
+		}
+		err = cluster.rollingUpgradeStopUpdateStart(server, false, false, "clean")
 	}
 	if err == nil {
 		server.SetConfigRefreshCookie()

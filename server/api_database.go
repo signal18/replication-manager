@@ -2600,49 +2600,13 @@ func (repman *ReplicationManager) handlerMuxServerUpgrade(w http.ResponseWriter,
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Upgrading database server %s", node.URL)
 
-		// Set innodb_fast_shutdown=0 while the DB is still running (needed for
-		// major version upgrades). The package manager stop won't set this.
-		if node.Conn != nil {
-			if _, err := node.Conn.Exec("SET GLOBAL innodb_fast_shutdown = 0"); err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-					"Failed to set innodb_fast_shutdown=0 on %s: %s", node.URL, err)
-			}
-			// For masters: wait for all slaves before the upgrade script stops the service
-			if node.IsMaster() && node.DBVersion.IsMariaDB() && node.DBVersion.Major >= 10 && node.DBVersion.Minor >= 4 {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-					"Master %s: issuing SHUTDOWN WAIT FOR ALL SLAVES before upgrade", node.URL)
-				if _, err := node.Conn.Exec("SHUTDOWN WAIT FOR ALL SLAVES"); err != nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-						"SHUTDOWN WAIT FOR ALL SLAVES failed on %s: %s", node.URL, err)
-				}
-			}
-		}
-
-		// Run the upgrade — on-premise scripts handle stop+upgrade+start internally.
-		// Container orchestrators need explicit stop first.
-		if mycluster.GetOrchestrator() == config.ConstOrchestratorOnPremise {
-			if err := mycluster.UpgradeDatabaseService(node); err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-					"Upgrade failed for %s: %s", node.URL, err)
-				return
-			}
-		} else {
-			// Container path: explicit stop then upgrade (start with new image)
-			if err := mycluster.StopDatabaseService(node); err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-					"Upgrade stop failed for %s: %s", node.URL, err)
-				return
-			}
-			if err := mycluster.WaitDatabaseFailed(node); err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-					"Upgrade wait-failed for %s: %s", node.URL, err)
-				return
-			}
-			if err := mycluster.UpgradeDatabaseService(node); err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-					"Upgrade failed for %s: %s", node.URL, err)
-				return
-			}
+		// UpgradeDatabaseService (cluster/prov.go) owns every orchestrator-specific
+		// step itself, OnPremise's SQL preamble included -- nothing left to do here
+		// but trigger it and report the result.
+		if err := mycluster.UpgradeDatabaseService(node); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Upgrade failed for %s: %s", node.URL, err)
+			return
 		}
 
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
