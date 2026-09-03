@@ -1108,6 +1108,20 @@ func (server *ServerMonitor) Refresh() error {
 			return nil
 		}
 
+		// Once the DB actually runs the compliance value (Runtime == Config), a
+		// previously agreed variable (03_agreed.cnf) has served its purpose — it
+		// only existed to hold a value until the DB restarted with the compliance
+		// value. Drop it so it stops showing as a pending diff. Operator-forced
+		// preserves (PreservedSource != "") are never touched.
+		if dropped := server.VariablesMap.DropReconciledAgreed(); len(dropped) > 0 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Dropped %d reconciled agreed variable(s) on %s: %s", len(dropped), server.URL, strings.Join(dropped, ", "))
+			if err := server.WritePreservedVariables(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"Failed to rewrite agreed variables after drop for %s: %s", server.URL, err)
+			}
+		}
+
 		// Update HasConfigDiff flag to indicate if there are differences between deployed and generated config
 		server.HasConfigDiff = server.VariablesMap.HasDifferences()
 

@@ -1056,6 +1056,38 @@ func (m *VariablesMap) EmptyPreservedValues() {
 	})
 }
 
+// DropReconciledAgreed drops the agreed (03_agreed.cnf) marking of every variable
+// the DB now actually runs at the compliance (Config) value: the agree has served
+// its purpose (it only exists to hold a value "until the DB is restarted with the
+// compliance value"), so once Runtime == Config it must be cleared to avoid a
+// phantom pending diff. It NEVER touches operator-forced values: only agreed ones
+// (Preserved set with an empty PreservedSource) are considered — server-specific
+// or cluster-level preserved values (PreservedSource != "") are left untouched.
+// Returns the names of the variables whose agree was dropped.
+func (m *VariablesMap) DropReconciledAgreed() []string {
+	var dropped []string
+	m.Range(func(key, value any) bool {
+		state, ok := value.(*VariableState)
+		if !ok {
+			return true
+		}
+		// Only agreed values: Preserved set, no explicit preserve source.
+		if state.Preserved == nil || state.PreservedSource != "" {
+			return true
+		}
+		// Need both the runtime value and the compliance value to compare.
+		if state.Runtime == nil || state.Config == nil {
+			return true
+		}
+		if state.Runtime.String() == state.Config.String() {
+			state.UnsetPreservedValue()
+			dropped = append(dropped, state.VariableName)
+		}
+		return true
+	})
+	return dropped
+}
+
 func (m *VariablesMap) SetDeployedValue(varname string, value string) {
 	lowerVarName := strings.ToLower(varname)
 	if state, ok := m.Load(lowerVarName); ok {
