@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 	"sync"
@@ -69,6 +70,57 @@ func (cluster *Cluster) ProvisionDatabaseScript(server *ServerMonitor) error {
 		return err
 	}
 	return nil
+}
+
+// RunDynamicResourceCanChangeScript runs the client-overridable feasibility gate
+// prov-db-dynamic-resource-can-change-script BEFORE any live resize. It prints its
+// verdict on stdout — "yes" (resize possible in place), "no" (not possible, keep
+// current size), or "migration" (not in place, the instance must be relocated to a
+// host with capacity). Empty script means always "yes". Same env contract as the
+// change script (resource values + direction via env, creds via GetExecEnv).
+func (cluster *Cluster) RunDynamicResourceCanChangeScript(server *ServerMonitor, grow bool) (ResizeFeasibility, error) {
+	if cluster.Conf.ProvDBDynamicResourceCanChangeScript == "" {
+		return ResizeYes, nil
+	}
+	direction := "shrink"
+	if grow {
+		direction = "grow"
+	}
+	cfg := &cluster.Configurator
+	scriptCmd := exec.Command(cluster.Conf.ProvDBDynamicResourceCanChangeScript, misc.Unbracket(server.Host), server.Port, direction, cluster.Name)
+	scriptCmd.Env = append(cluster.GetExecEnv(),
+		"REPMAN_RESIZE_DIRECTION="+direction,
+		"REPMAN_PROV_DB_MEMORY="+cfg.GetConfigDBMemory(),
+		"REPMAN_PROV_DB_CORES="+cfg.GetConfigDBCores(),
+		"REPMAN_PROV_DB_DISK_SIZE="+cfg.GetConfigDBDisk(),
+		"REPMAN_PROV_DB_DISK_IOPS="+cfg.GetConfigDBDiskIOPS(),
+		"REPMAN_SERVER_HOST="+misc.Unbracket(server.Host),
+		"REPMAN_SERVER_PORT="+server.Port,
+	)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Dynamic resource can-change check (%s) on %s", direction, server.URL)
+
+	out, err := scriptCmd.Output()
+	verdict := ""
+	for _, line := range strings.Split(string(out), "\n") {
+		if t := strings.TrimSpace(strings.ToLower(line)); t != "" {
+			verdict = t // keep the last non-empty stdout line as the verdict
+		}
+	}
+	switch ResizeFeasibility(verdict) {
+	case ResizeYes:
+		return ResizeYes, nil
+	case ResizeMigration:
+		return ResizeMigration, nil
+	case ResizeNo:
+		return ResizeNo, nil
+	}
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+			"can-change check failed on %s: %s", server.URL, err)
+		return ResizeNo, err
+	}
+	return ResizeNo, fmt.Errorf("can-change script returned an unrecognized verdict %q (expected yes/no/migration)", verdict)
 }
 
 // RunDynamicResourceChangeScript calls the client-overridable

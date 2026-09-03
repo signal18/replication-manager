@@ -12,6 +12,16 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
+// ResizeFeasibility is the verdict returned by the can-change feasibility gate
+// (prov-db-dynamic-resource-can-change-script) before any live resize is applied.
+type ResizeFeasibility string
+
+const (
+	ResizeYes       ResizeFeasibility = "yes"       // resize possible in place
+	ResizeNo        ResizeFeasibility = "no"        // not possible, keep current size
+	ResizeMigration ResizeFeasibility = "migration" // not in place, needs relocating the instance to a host with capacity
+)
+
 // resizeDynamicResourceSQL builds the SET GLOBAL statements for the
 // resource-driven variables MariaDB accepts at runtime, valued from the
 // configurator % model so they track prov-db-memory / cpu / io. This is the
@@ -110,6 +120,23 @@ func (cluster *Cluster) ResizeDynamicResources(grow bool) {
 // be client-overridable); its exit status is its feasibility answer (success =
 // possible/applied). With no script, the native per-orchestrator path is used.
 func (cluster *Cluster) ResizeDatabaseResources(server *ServerMonitor, grow bool) (bool, error) {
+	// Feasibility gate first, in every orchestrator case: is the resize possible?
+	switch feas, err := cluster.RunDynamicResourceCanChangeScript(server, grow); {
+	case err != nil:
+		return false, err
+	case feas == ResizeNo:
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+			"Resource resize reported not possible (no) on %s, keeping current size", server.URL)
+		return false, nil
+	case feas == ResizeMigration:
+		// Not resizable in place: the host lacks capacity and the instance would
+		// need relocating. In-place resize is skipped here; the migration
+		// orchestration + tracked state (T5) is a follow-up (#1765/#1760 §10).
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"Resource resize needs migration on %s (host lacks capacity); in-place resize skipped", server.URL)
+		return false, nil
+	}
+	// ResizeYes: apply. A client change script overrides in every case (F7).
 	if cluster.Conf.ProvDBDynamicResourceChangeScript != "" {
 		if err := cluster.RunDynamicResourceChangeScript(server, grow); err != nil {
 			return false, err

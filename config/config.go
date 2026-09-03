@@ -593,6 +593,7 @@ type Config struct {
 	ProvOrchestratorCluster                   string                       `mapstructure:"prov-orchestrator-cluster" toml:"prov-orchestrator-cluster" json:"provOrchestratorCluster"`
 	ProvDBApplyDynamicConfig                  bool                         `mapstructure:"prov-db-apply-dynamic-config" toml:"prov-db-apply-dynamic-config" json:"provDBApplyDynamicConfig"`
 	ProvDBDynamicResource                     bool                         `mapstructure:"prov-db-dynamic-resource" toml:"prov-db-dynamic-resource" json:"provDbDynamicResource"`
+	ProvDBDynamicResourceCanChangeScript      string                       `mapstructure:"prov-db-dynamic-resource-can-change-script" toml:"prov-db-dynamic-resource-can-change-script" json:"provDbDynamicResourceCanChangeScript"`
 	ProvDBDynamicResourceChangeScript         string                       `mapstructure:"prov-db-dynamic-resource-change-script" toml:"prov-db-dynamic-resource-change-script" json:"provDbDynamicResourceChangeScript"`
 	ProvDBConfig                              bool                         `mapstructure:"prov-db-config" toml:"prov-db-config" json:"provDbConfig"`
 	ProvDBForceWriteConfig                    bool                         `mapstructure:"prov-db-force-write-config" toml:"prov-db-force-write-config" json:"provDBForceWriteConfig"`
