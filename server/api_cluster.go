@@ -2595,7 +2595,11 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			if value == "" {
 				err := repman.switchClusterSettings(mycluster, setting)
 				if err != nil {
-					http.Error(w, "Setting Not Found", http.StatusNotImplemented)
+					if err.Error() == "setting not found" {
+						http.Error(w, "Setting Not Found", http.StatusNotImplemented)
+						return
+					}
+					http.Error(w, fmt.Sprintf("Failed to switch value for %s: %s", setting, err.Error()), http.StatusBadRequest)
 					return
 				}
 			} else {
@@ -2762,6 +2766,9 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.ProvDBConfigPreserve = !mycluster.Conf.ProvDBConfigPreserve
 	case "prov-db-start-fetch-config":
 		mycluster.Conf.ProvDbStartFetchConfig = !mycluster.Conf.ProvDbStartFetchConfig
+		mycluster.CheckNeedConfigFetch()
+	case "prov-proxy-start-fetch-config":
+		mycluster.Conf.ProvProxyStartFetchConfig = !mycluster.Conf.ProvProxyStartFetchConfig
 		mycluster.CheckNeedConfigFetch()
 	case "prov-db-apply-dynamic-config":
 		mycluster.SwitchDBApplyDynamicConfig()
@@ -3256,7 +3263,7 @@ var base64LogValueSettings = map[string]struct{}{
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -4275,6 +4282,60 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MasterRetryCount = val
 	case "db-servers-tls-ssl-mode":
 		mycluster.Conf.HostsTlsSslMode = value
+	case "haproxy-mode":
+		switch value {
+		case "standby", "runtimeapi", "externalcheck", "dataplaneapi":
+			// Refresh() reads HaproxyMode live every tick, so changing it while provisioned would drift from the deployed config.
+			changed := value != mycluster.Conf.HaproxyMode
+			if changed && mycluster.HasProvisionedHaproxy() {
+				return fmt.Errorf("haproxy-mode: cannot change from %q to %q while a proxy is already provisioned -- unprovision it, then change this and provision again", mycluster.Conf.HaproxyMode, value)
+			}
+			mycluster.Conf.HaproxyMode = value
+			if changed {
+				mycluster.SetProxiesReprovCookie()
+			}
+		default:
+			return fmt.Errorf("invalid value for haproxy-mode: %q, expected one of standby, runtimeapi, externalcheck, dataplaneapi", value)
+		}
+	case "haproxy-write-port", "haproxy-read-port", "haproxy-stat-port", "haproxy-api-port":
+		port, convErr := strconv.Atoi(value)
+		if convErr != nil || port < 1 || port > 65535 {
+			return fmt.Errorf("invalid value for %s: %q, port must be between 1 and 65535", name, value)
+		}
+		switch name {
+		case "haproxy-write-port":
+			mycluster.Conf.HaproxyWritePort = port
+		case "haproxy-read-port":
+			mycluster.Conf.HaproxyReadPort = port
+		case "haproxy-stat-port":
+			mycluster.Conf.HaproxyStatPort = port
+		case "haproxy-api-port":
+			mycluster.Conf.HaproxyAPIPort = port
+		}
+	case "haproxy-ip-write-bind":
+		mycluster.Conf.HaproxyWriteBindIp = value
+	case "haproxy-ip-read-bind":
+		mycluster.Conf.HaproxyReadBindIp = value
+	case "haproxy-binary-path":
+		mycluster.Conf.HaproxyBinaryPath = value
+	case "haproxy-api-read-backend":
+		mycluster.Conf.HaproxyAPIReadBackend = value
+	case "haproxy-api-write-backend":
+		mycluster.Conf.HaproxyAPIWriteBackend = value
+	case "haproxy-staging-backend":
+		mycluster.Conf.HaproxyStagingBackend = value
+	case "haproxy-user":
+		mycluster.Conf.HaproxyUser = value
+	case "haproxy-password":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		mycluster.Conf.HaproxyPassword = string(val)
+		var new_secret config.Secret
+		new_secret.Value = mycluster.Conf.HaproxyPassword
+		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("haproxy-password")
+		mycluster.Conf.Secrets["haproxy-password"] = new_secret
 
 	// Switches
 	case "verbose":
@@ -4428,7 +4489,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "proxysql-bootstrap", "proxysql-bootstrap-servers":
 		mycluster.Conf.ProxysqlBootstrap = applyIsActive(mycluster.Conf.ProxysqlBootstrap, isactive)
 	case "haproxy-api-bootstrap-servers":
-		mycluster.Conf.HaproxyAPIBootstrapServers = applyIsActive(mycluster.Conf.HaproxyAPIBootstrapServers, isactive)
+		newValue := applyIsActive(mycluster.Conf.HaproxyAPIBootstrapServers, isactive)
+		changed := newValue != mycluster.Conf.HaproxyAPIBootstrapServers
+		mycluster.Conf.HaproxyAPIBootstrapServers = newValue
+		if changed {
+			mycluster.SetProxiesReprovCookie()
+		}
 	case "proxysql-bootstrap-query-rules":
 		mycluster.Conf.ProxysqlBootstrapQueryRules = applyIsActive(mycluster.Conf.ProxysqlBootstrapQueryRules, isactive)
 	case "proxysql":
@@ -4457,6 +4523,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProvDBConfigPreserve = applyIsActive(mycluster.Conf.ProvDBConfigPreserve, isactive)
 	case "prov-db-start-fetch-config":
 		mycluster.Conf.ProvDbStartFetchConfig = applyIsActive(mycluster.Conf.ProvDbStartFetchConfig, isactive)
+		mycluster.CheckNeedConfigFetch()
+	case "prov-proxy-start-fetch-config":
+		mycluster.Conf.ProvProxyStartFetchConfig = applyIsActive(mycluster.Conf.ProvProxyStartFetchConfig, isactive)
 		mycluster.CheckNeedConfigFetch()
 	case "prov-db-apply-dynamic-config":
 		mycluster.Conf.ProvDBApplyDynamicConfig = applyIsActive(mycluster.Conf.ProvDBApplyDynamicConfig, isactive)

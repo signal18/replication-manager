@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -231,12 +232,16 @@ func TestSwitchClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
 	cl.Conf.HaproxyAPIBootstrapServers = false
+	prx := newTestProxyForReprov(t, cl)
 
 	if err := repman.switchClusterSettings(cl, "haproxy-api-bootstrap-servers"); err != nil {
 		t.Fatalf("switchClusterSettings(haproxy-api-bootstrap-servers): unexpected error: %v", err)
 	}
 	if !cl.Conf.HaproxyAPIBootstrapServers {
 		t.Fatalf("expected HaproxyAPIBootstrapServers=true after first switch, got false")
+	}
+	if !prx.HasReprovCookie() {
+		t.Fatalf("expected proxy reprov cookie after switching haproxy-api-bootstrap-servers, got none")
 	}
 
 	if err := repman.switchClusterSettings(cl, "haproxy-api-bootstrap-servers"); err != nil {
@@ -321,6 +326,7 @@ func TestSetClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
 	cl.Conf.HaproxyAPIBootstrapServers = false
+	prx := newTestProxyForReprov(t, cl)
 
 	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "on"); err != nil {
 		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "on"): unexpected error: %v`, err)
@@ -328,12 +334,223 @@ func TestSetClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	if !cl.Conf.HaproxyAPIBootstrapServers {
 		t.Fatalf("expected HaproxyAPIBootstrapServers=true after explicit \"on\", got false")
 	}
+	if !prx.HasReprovCookie() {
+		t.Fatalf("expected proxy reprov cookie after haproxy-api-bootstrap-servers \"on\", got none")
+	}
+	if !cl.HasRequestProxiesReprov() {
+		t.Fatalf("expected cluster.HasRequestProxiesReprov()=true after haproxy-api-bootstrap-servers \"on\"")
+	}
 
 	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "off"); err != nil {
 		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "off"): unexpected error: %v`, err)
 	}
 	if cl.Conf.HaproxyAPIBootstrapServers {
 		t.Fatalf("expected HaproxyAPIBootstrapServers=false after explicit \"off\", got true")
+	}
+}
+
+// Unlike haproxy-mode, changing haproxy-api-bootstrap-servers live is always
+// allowed, even while provisioned under runtimeapi: each proxy retains its
+// own last-provisioned value (HaproxyProxy.BootstrapServersEnabled).
+func TestSetClusterSetting_HaproxyAPIBootstrapServers_AllowedWhileProvisioned(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.HaproxyMode = "runtimeapi"
+	cl.Conf.HaproxyAPIBootstrapServers = false
+	prx := newTestProxyForReprov(t, cl)
+	prx.SetProvisionCookie()
+
+	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "on"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "on") while provisioned: unexpected error: %v`, err)
+	}
+	if !cl.Conf.HaproxyAPIBootstrapServers {
+		t.Fatalf("expected HaproxyAPIBootstrapServers=true after change")
+	}
+	if !prx.HasReprovCookie() {
+		t.Fatalf("expected proxy reprov cookie after the change, got none")
+	}
+
+	// Re-setting the same value is a no-op and must not mark reprov again.
+	prx.DelReprovisionCookie()
+	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "on"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "on") (no-op): unexpected error: %v`, err)
+	}
+	if prx.HasReprovCookie() {
+		t.Fatalf("expected no reprov cookie after a no-op haproxy-api-bootstrap-servers set, got one")
+	}
+}
+
+// TestSetClusterSetting_HaproxyMode guards the haproxy-mode setter: it must
+// accept every documented mode value and reject anything else, since every
+// HaproxyMode == "..." check throughout cluster/prx_haproxy.go and
+// cluster/prov_opensvc_haproxy.go is a plain string comparison that would
+// silently no-op on an unrecognized value. Not provisioned yet, so every
+// mode change (including standby) is freely allowed.
+func TestSetClusterSetting_HaproxyMode(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+	prx := newTestProxyForReprov(t, cl)
+
+	for _, mode := range []string{"standby", "runtimeapi", "externalcheck", "dataplaneapi"} {
+		if err := repman.setClusterSetting(cl, "haproxy-mode", mode); err != nil {
+			t.Fatalf("setClusterSetting(haproxy-mode, %q): unexpected error: %v", mode, err)
+		}
+		if cl.Conf.HaproxyMode != mode {
+			t.Fatalf("expected HaproxyMode=%q, got %q", mode, cl.Conf.HaproxyMode)
+		}
+	}
+	if !prx.HasReprovCookie() {
+		t.Fatalf("expected proxy reprov cookie after a valid haproxy-mode change, got none")
+	}
+
+	cl.Conf.HaproxyMode = "runtimeapi"
+	if err := repman.setClusterSetting(cl, "haproxy-mode", "bogus"); err == nil {
+		t.Fatalf("setClusterSetting(haproxy-mode, \"bogus\"): expected error, got nil")
+	}
+	if cl.Conf.HaproxyMode != "runtimeapi" {
+		t.Fatalf("expected HaproxyMode to remain %q after rejected value, got %q", "runtimeapi", cl.Conf.HaproxyMode)
+	}
+}
+
+// Any haproxy-mode change must be refused while a proxy is provisioned.
+func TestSetClusterSetting_HaproxyMode_BlockedWhileProvisioned(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.HaproxyMode = "runtimeapi"
+	prx := newTestProxyForReprov(t, cl)
+	prx.SetProvisionCookie()
+
+	if err := repman.setClusterSetting(cl, "haproxy-mode", "externalcheck"); err == nil {
+		t.Fatalf(`setClusterSetting(haproxy-mode, "externalcheck"): expected error while provisioned, got nil`)
+	}
+	if cl.Conf.HaproxyMode != "runtimeapi" {
+		t.Fatalf("expected HaproxyMode to remain %q after rejected change, got %q", "runtimeapi", cl.Conf.HaproxyMode)
+	}
+
+	// Re-setting the same value is a no-op: must still be allowed, and must
+	// not mark the proxy for reprov -- nothing actually changed.
+	if err := repman.setClusterSetting(cl, "haproxy-mode", "runtimeapi"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-mode, "runtimeapi") (no-op): unexpected error: %v`, err)
+	}
+	if prx.HasReprovCookie() {
+		t.Fatalf("expected no reprov cookie after a no-op haproxy-mode set, got one")
+	}
+}
+
+// A ProxySQL/other proxy being provisioned must not block an HAProxy-only
+// setting -- HasProvisionedHaproxy is scoped to type "haproxy".
+func TestSetClusterSetting_HaproxyMode_IgnoresOtherProxyTypes(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.HaproxyMode = "runtimeapi"
+	proxysql := &cluster.ProxySQLProxy{Proxy: cluster.Proxy{
+		ClusterGroup: cl,
+		Datadir:      t.TempDir(),
+		Type:         config.ConstProxySqlproxy,
+	}}
+	cl.Proxies = append(cl.Proxies, proxysql)
+	proxysql.SetProvisionCookie()
+
+	if err := repman.setClusterSetting(cl, "haproxy-mode", "externalcheck"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-mode, "externalcheck") with only a provisioned ProxySQL: unexpected error: %v`, err)
+	}
+}
+
+// TestSetClusterSetting_HaproxyPorts guards the four haproxy-*-port setters:
+// valid ports must persist, and out-of-range/non-numeric values must be
+// rejected without mutating the existing port.
+func TestSetClusterSetting_HaproxyPorts(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cases := []struct {
+		setting string
+		get     func() int
+	}{
+		{"haproxy-write-port", func() int { return cl.Conf.HaproxyWritePort }},
+		{"haproxy-read-port", func() int { return cl.Conf.HaproxyReadPort }},
+		{"haproxy-stat-port", func() int { return cl.Conf.HaproxyStatPort }},
+		{"haproxy-api-port", func() int { return cl.Conf.HaproxyAPIPort }},
+	}
+
+	for _, c := range cases {
+		if err := repman.setClusterSetting(cl, c.setting, "4406"); err != nil {
+			t.Fatalf("setClusterSetting(%s, \"4406\"): unexpected error: %v", c.setting, err)
+		}
+		if c.get() != 4406 {
+			t.Fatalf("expected %s=4406, got %d", c.setting, c.get())
+		}
+
+		for _, bad := range []string{"not-a-port", "0", "70000"} {
+			if err := repman.setClusterSetting(cl, c.setting, bad); err == nil {
+				t.Fatalf("setClusterSetting(%s, %q): expected error, got nil", c.setting, bad)
+			}
+			if c.get() != 4406 {
+				t.Fatalf("expected %s to remain 4406 after rejected value %q, got %d", c.setting, bad, c.get())
+			}
+		}
+	}
+}
+
+// TestSetClusterSetting_HaproxyPassword guards the haproxy-password setter:
+// the value arrives base64-encoded (matching the GUI's TextForm/btoa
+// convention for password fields, e.g. mail-smtp-password) and must land in
+// both Conf.HaproxyPassword and the tracked Secrets map so
+// GetDecryptedValue("haproxy-password") reflects it.
+func TestSetClusterSetting_HaproxyPassword(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	encoded := base64.StdEncoding.EncodeToString([]byte("s3cr3t"))
+	if err := repman.setClusterSetting(cl, "haproxy-password", encoded); err != nil {
+		t.Fatalf("setClusterSetting(haproxy-password): unexpected error: %v", err)
+	}
+	if cl.Conf.HaproxyPassword != "s3cr3t" {
+		t.Fatalf("expected HaproxyPassword=%q, got %q", "s3cr3t", cl.Conf.HaproxyPassword)
+	}
+	if got := cl.Conf.GetDecryptedValue("haproxy-password"); got != "s3cr3t" {
+		t.Fatalf("expected GetDecryptedValue(haproxy-password)=%q, got %q", "s3cr3t", got)
+	}
+
+	if err := repman.setClusterSetting(cl, "haproxy-password", "not-valid-base64!!"); err == nil {
+		t.Fatalf("setClusterSetting(haproxy-password, invalid base64): expected error, got nil")
+	}
+}
+
+// TestGetApiChangeLogFormat_HaproxyPasswordRedacted guards F10 (never leak a
+// secret in logs): haproxy-password must hit GetApiChangeLogFormat's redact
+// case, the same way mail-smtp-password/backup-restic-password do, so the
+// "API receive set setting" INFO log setClusterSetting emits never contains
+// the raw or base64-encoded password.
+func TestGetApiChangeLogFormat_HaproxyPasswordRedacted(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString([]byte("s3cr3t"))
+
+	fmtlog, args := GetApiChangeLogFormat("haproxy-password", encoded)
+	if fmtlog != "API receive set setting %s to ****" {
+		t.Fatalf("expected redacted log format, got %q", fmtlog)
+	}
+	if len(args) != 1 || args[0] != "haproxy-password" {
+		t.Fatalf("expected args=[haproxy-password], got %v", args)
+	}
+
+	rendered := fmt.Sprintf(fmtlog, args...)
+	if strings.Contains(rendered, "s3cr3t") || strings.Contains(rendered, encoded) {
+		t.Fatalf("rendered log line leaked the password: %q", rendered)
 	}
 }
 
@@ -480,6 +697,19 @@ func newTestClusterForAPI(t *testing.T) *cluster.Cluster {
 		Name:       name,
 		WorkingDir: workingDir,
 	}
+}
+
+// newTestProxyForReprov appends a proxy with a writable Datadir (cookies are
+// marker files under it) so a test can assert on its reprov cookie.
+func newTestProxyForReprov(t *testing.T, cl *cluster.Cluster) *cluster.HaproxyProxy {
+	t.Helper()
+	prx := &cluster.HaproxyProxy{Proxy: cluster.Proxy{
+		ClusterGroup: cl,
+		Datadir:      t.TempDir(),
+		Type:         config.ConstProxyHaproxy,
+	}}
+	cl.Proxies = append(cl.Proxies, prx)
+	return prx
 }
 
 // TestBuildClusterAPIPayload_ClusterS3ProvidersPresent verifies that

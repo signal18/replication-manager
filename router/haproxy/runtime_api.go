@@ -50,6 +50,11 @@ func (r *Runtime) GetVersion() (string, error) {
 
 // SetMaster repoints the write backend's "leader" runtime slot at host:port.
 // host may be an IP or an FQDN (dispatches to SetMasterFQDN accordingly).
+// haproxy-mode=runtimeapi callers must pass a resolved IP (see
+// cluster.ServerMonitor.RuntimeAPIAddr), not an FQDN: runtimeapi's static
+// config no longer attaches a "resolvers" section to the "leader" slot, so
+// SetMasterFQDN's runtime "fqdn" command would have nothing to resolve
+// against.
 func (r *Runtime) SetMaster(pool string, host string, port string) (string, error) {
 	host = misc.Unbracket(host)
 	if net.ParseIP(host) == nil {
@@ -60,6 +65,18 @@ func (r *Runtime) SetMaster(pool string, host string, port string) (string, erro
 
 // SetMasterFQDN repoints the write backend's "leader" runtime slot at an
 // FQDN, for HAProxy configs using DNS-based server resolution.
+//
+// The trailing "port <port>" is accepted here purely for signature symmetry
+// with SetMaster's addr path -- HAProxy's Runtime API "set server .../fqdn"
+// sub-command takes no port argument at all (confirmed reading
+// cli_parse_set_server in HAProxy's own src/server.c at tags v2.4.0/v2.8.0/
+// v3.0.0/v3.4.0: the fqdn branch only ever reads args[3]/args[4], never the
+// "port"/<port> tokens that would land in args[5]/args[6]) and live-verified
+// harmless against a real HAProxy 3.0 socket (clustera, kind cluster):
+// issuing this exact command with a trailing "port 3306" replied with the
+// normal "no need to change the FDQN by 'stats socket command'" confirmation,
+// not a parse error. A resolver-backed server's port comes from its static
+// "server" line, not this command.
 func (r *Runtime) SetMasterFQDN(pool string, host string, port string) (string, error) {
 	return r.ApiCmd("set server " + pool + "/leader fqdn " + host + " port " + port)
 }
@@ -111,8 +128,9 @@ func (r *Runtime) EnableHealth(pool string, name string) (string, error) {
 // statically configured or dynamically added servers alike. host may be an
 // IP or an FQDN, dispatching to "addr" or "fqdn" the same way
 // SetMaster/SetMasterFQDN do. "fqdn" additionally requires a "resolvers"
-// section in haproxy.cfg, which repman doesn't generate yet for
-// read-backend members.
+// section in haproxy.cfg. haproxy-mode=runtimeapi callers must pass a
+// resolved IP (see cluster.ServerMonitor.RuntimeAPIAddr), not an FQDN:
+// runtimeapi's read-backend members never carry a "resolvers" clause.
 func (r *Runtime) SetServerAddr(pool string, name string, host string, port string) (string, error) {
 	host = misc.Unbracket(host)
 	if net.ParseIP(host) == nil {
@@ -122,7 +140,9 @@ func (r *Runtime) SetServerAddr(pool string, name string, host string, port stri
 }
 
 // SetServerFQDN changes an existing server's runtime FQDN/port. See
-// SetServerAddr for the "resolvers" prerequisite this depends on.
+// SetServerAddr for the "resolvers" prerequisite this depends on, and
+// SetMasterFQDN for why the trailing "port" is harmlessly ignored by
+// HAProxy's fqdn command.
 func (r *Runtime) SetServerFQDN(pool string, name string, host string, port string) (string, error) {
 	return r.ApiCmd("set server " + pool + "/" + name + " fqdn " + host + " port " + port)
 }

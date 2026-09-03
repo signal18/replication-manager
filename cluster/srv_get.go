@@ -219,6 +219,49 @@ func (server *ServerMonitor) GetBindAddress() string {
 	return "0.0.0.0"
 }
 
+// RuntimeAPIAddr returns the address haproxy-mode=runtimeapi's write-path
+// SetMaster calls (cluster/prx_haproxy.go) should drive this server's
+// HAProxy Runtime API "leader" entry with.
+//
+// resolverBacked must come from ground truth -- HAProxy's own "show servers
+// state" reporting a non-empty srv_fqdn for the specific backend/svname
+// being addressed right now (built fresh every Refresh() pass into
+// resolverBackedPool, cluster/prx_haproxy.go) -- not from reading
+// cluster.Conf.HaproxyAPIBootstrapServers directly. That flag only decides
+// what GetConfigProxyModule (cluster/prx_get.go) renders at this proxy's
+// NEXT (re)provision; it can be toggled live at any time
+// (SwitchHaproxyAPIBootstrapServers, the settings API) with no reprovision
+// required to take effect on the flag itself, so a caller that trusted it
+// directly here could tell this function to return an IP for an entry that
+// (until reprovisioned) still has no "resolvers" clause to dispatch an
+// "addr" update against, or an FQDN for one that no longer has "resolvers"
+// attached at all -- either way, the wrong dispatch form for what's
+// actually deployed. Reading fresh ground truth every call removes that
+// drift window entirely: there is nothing captured to go stale.
+//
+// When resolverBacked is true, server.Host is returned unconditionally:
+// HAProxy's Runtime API "set server ... addr" dispatches to the plain
+// address form for a literal IP, which would bypass the "fqdn" form callers
+// need for a resolver-backed FQDN entry (SetMaster/SetServerAddr in
+// router/haproxy/runtime_api.go already make that IP-vs-FQDN dispatch
+// decision from whatever host string they're given).
+//
+// When resolverBacked is false, server.IP is used when it's been resolved
+// (kept current by refreshResolvedIP on reconnect, or by SetCredential's
+// initial resolution at server setup), falling back to server.Host for the
+// brief window before either has run once: such an entry's config-time line
+// has no "resolvers" clause to fall back on, so HAProxy has no way to
+// re-resolve an FQDN on its own for it.
+func (server *ServerMonitor) RuntimeAPIAddr(resolverBacked bool) string {
+	if resolverBacked {
+		return server.Host
+	}
+	if server.IP != "" {
+		return server.IP
+	}
+	return server.Host
+}
+
 func (server *ServerMonitor) IsReplicationUsingGtidStrict() bool {
 	if server.IsMariaDB() {
 		if server.Variables.Get("GTID_STRICT_MODE") == "ON" {

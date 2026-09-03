@@ -126,6 +126,8 @@ var ClusterError = map[string]string{
 	"ERR00103":  "Skip slave in election %s data diverge in checksum",
 	"ERR00104":  "Arbitration split-brain resolution refused: instance not registered with a support or partner subscription",
 	"ERR00105":  "Cluster is in standby mode — failover, switchover, rejoin and maintenance disabled",
+	"ERR00106":  "HAProxy %s could not repoint write backend %s to master %s: %s",
+	"ERR00107":  "HAProxy %s could not update address for server %s in backend %s: %s",
 	"WARN0022":  "Rejoining standalone server %s to master %s",
 	"WARN0023":  "Number of failed master ping has been reached",
 	"WARN0045":  "Provision task is in queue",

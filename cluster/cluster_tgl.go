@@ -437,6 +437,7 @@ func (cluster *Cluster) SwitchHaProxy() {
 
 func (cluster *Cluster) SwitchHaproxyAPIBootstrapServers() {
 	cluster.Conf.HaproxyAPIBootstrapServers = !cluster.Conf.HaproxyAPIBootstrapServers
+	cluster.SetProxiesReprovCookie()
 }
 func (cluster *Cluster) SwitchMaxscaleProxy() {
 	cluster.Conf.MxsOn = !cluster.Conf.MxsOn

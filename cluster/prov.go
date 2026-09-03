@@ -170,7 +170,7 @@ func (cluster *Cluster) ProvisionServices() error {
 		return err
 	}
 	for _, prx := range cluster.Proxies {
-		switch cluster.GetOrchestrator() {
+		switch cluster.proxyServiceOrchestrator(prx) {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCProvisionProxyService(prx)
 		case config.ConstOrchestratorKubernetes:
@@ -236,8 +236,25 @@ func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 	return nil
 }
 
+// proxyServiceOrchestrator returns config.ConstOrchestratorLocalhost when prx
+// is HAProxy running haproxy-mode=standby, and cluster.GetOrchestrator()
+// otherwise. Databases may be provisioned under any orchestrator, but
+// standby always runs a repman-local HAProxy instance started/reloaded via
+// its own local PID (HaproxyProxy.Init(), cluster/prx_haproxy.go) -- there's
+// no remote equivalent, so the proxy-service dispatch switches below must
+// route standby to the Localhost* implementations regardless of where the
+// cluster's databases actually live. Only used for proxy-service dispatch;
+// database dispatch is unaffected and keeps calling cluster.GetOrchestrator()
+// directly.
+func (cluster *Cluster) proxyServiceOrchestrator(prx DatabaseProxy) string {
+	if prx.GetType() == config.ConstProxyHaproxy && cluster.Conf.HaproxyMode == "standby" {
+		return config.ConstOrchestratorLocalhost
+	}
+	return cluster.GetOrchestrator()
+}
+
 func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
-	switch cluster.GetOrchestrator() {
+	switch cluster.proxyServiceOrchestrator(prx) {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCProvisionProxyService(prx)
 	case config.ConstOrchestratorKubernetes:
@@ -256,6 +273,11 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 	cluster.StateMachine.RemoveFailoverState()
 	if err == nil {
 		prx.SetProvisionCookie()
+		// Snapshot the live bootstrap-servers setting onto this proxy --
+		// see HaproxyProxy.BootstrapServersEnabled.
+		if hprx, ok := prx.(*HaproxyProxy); ok {
+			hprx.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+		}
 	} else {
 		return err
 	}
@@ -305,7 +327,7 @@ func (cluster *Cluster) Unprovision() error {
 			if !ok {
 				continue
 			}*/
-		switch cluster.GetOrchestrator() {
+		switch cluster.proxyServiceOrchestrator(prx) {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCUnprovisionProxyService(prx)
 		case config.ConstOrchestratorKubernetes:
@@ -335,6 +357,9 @@ func (cluster *Cluster) Unprovision() error {
 			prx.DelProvisionCookie()
 			prx.DelRestartCookie()
 			prx.DelReprovisionCookie()
+			if hprx, ok := prx.(*HaproxyProxy); ok {
+				hprx.delProvisionedBootstrapServers()
+			}
 		}
 	}
 
@@ -382,7 +407,7 @@ func (cluster *Cluster) Unprovision() error {
 }
 
 func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
-	switch cluster.GetOrchestrator() {
+	switch cluster.proxyServiceOrchestrator(prx) {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCUnprovisionProxyService(prx)
 	case config.ConstOrchestratorKubernetes:
@@ -401,6 +426,9 @@ func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
 		prx.DelProvisionCookie()
 		prx.DelReprovisionCookie()
 		prx.DelRestartCookie()
+		if hprx, ok := prx.(*HaproxyProxy); ok {
+			hprx.delProvisionedBootstrapServers()
+		}
 	}
 	return err
 }
@@ -525,7 +553,7 @@ func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stopping Proxy service %s", cluster.Name+"/svc/"+server.GetName())
 	var err error
 
-	switch cluster.GetOrchestrator() {
+	switch cluster.proxyServiceOrchestrator(server) {
 	case config.ConstOrchestratorOpenSVC:
 		err = cluster.OpenSVCStopProxyService(server)
 	case config.ConstOrchestratorKubernetes:
@@ -549,7 +577,7 @@ func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
 func (cluster *Cluster) StartProxyService(server DatabaseProxy) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting Proxy service %s", cluster.Name+"/svc/"+server.GetName())
 	var err error
-	switch cluster.GetOrchestrator() {
+	switch cluster.proxyServiceOrchestrator(server) {
 	case config.ConstOrchestratorOpenSVC:
 		err = cluster.OpenSVCStartProxyService(server)
 	case config.ConstOrchestratorKubernetes:
@@ -566,8 +594,34 @@ func (cluster *Cluster) StartProxyService(server DatabaseProxy) error {
 	cluster.StartProxyScript(server)
 	if err == nil {
 		server.DelRestartCookie()
+		if startReappliesProxyConfig(server, cluster.proxyServiceOrchestrator(server)) {
+			server.DelReprovisionCookie()
+		}
 	}
 	return err
+}
+
+// startReappliesProxyConfig reports whether a successful start on this
+// orchestrator actually reapplies the proxy's current config, so it
+// satisfies whatever set the reprov cookie -- NOT true for every start path:
+//   - Localhost always regenerates+applies unconditionally
+//     (GetProxyConfig+Init(), see LocalhostStart{HaProxy,ProxySQL}Service).
+//   - OpenSVC/Kubernetes "start" re-triggers the container's own
+//     init/entrypoint config fetch, but only when
+//     prov-proxy-start-fetch-config is actually enabled for this proxy
+//     (mirrors CheckNeedConfigFetch's condition).
+//   - OnPremise (plain "systemctl start ...") and SlapOS (a no-op beyond
+//     SetWaitStartCookie) never reapply config on start, regardless of
+//     prov-proxy-start-fetch-config.
+func startReappliesProxyConfig(server DatabaseProxy, orchestrator string) bool {
+	switch orchestrator {
+	case config.ConstOrchestratorLocalhost:
+		return true
+	case config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes:
+		return !server.HasNoConfigFetchCookie()
+	default:
+		return false
+	}
 }
 
 func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {

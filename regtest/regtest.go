@@ -103,6 +103,7 @@ var tests = []string{
 	"testDirectReseedSystemAllSplitUserSingleAuthority",
 	"testDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped",
 	"testHaproxyRuntimeAPIDynamicServerLifecycle",
+	"testProxyReadBackendReconciliation",
 }
 
 const recoverTime = 8

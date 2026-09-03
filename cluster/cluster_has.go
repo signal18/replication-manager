@@ -140,6 +140,47 @@ func (cluster *Cluster) HasNoValidSlave() bool {
 	return false
 }
 
+// HasValidReadSlave reports whether at least one non-leader, non-maintenance
+// server in the cluster is currently eligible to serve reads. This is the
+// exact "is there a valid alternative reader" computation
+// prx_haproxy.go's masterShouldRead (standby/runtimeapi) uses for its
+// proxy-servers-read-on-master-no-slave fallback -- exported here so
+// ShouldServeReadsFromMaster() (used by haproxy-mode=externalcheck's
+// IsValidReaderCheck, srv_has.go) can apply the identical rule.
+func (cluster *Cluster) HasValidReadSlave() bool {
+	for _, s := range cluster.Servers {
+		if s.IsMaintenance || s.IsLeader() {
+			continue
+		}
+		if !s.standbyReadIneligible() {
+			return true
+		}
+	}
+	return false
+}
+
+// ShouldServeReadsFromMaster is the single canonical answer to "should the
+// master/leader be a member of the read backend": always when
+// proxy-servers-read-on-master is set, or as a fallback
+// (proxy-servers-read-on-master-no-slave) when there is no other valid
+// alternative reader right now. Used by both prx_haproxy.go's Init()
+// (standby's read-backend render) and ServerMonitor.IsValidReaderCheck
+// (srv_has.go, externalcheck's checkslave HTTP handler, reached via the
+// reader-status route) so the no-slave fallback behaves identically across
+// modes -- before this existed, the externalcheck handler had its own inline
+// check that only consulted PRXServersReadOnMaster and never
+// PRXServersReadOnMasterNoSlave at all (bug #6,
+// HAPROXY_LIVE_K8S_TEST_REPORT.md), so a cluster with every slave down and
+// the no-slave flag on took its entire read backend offline instead of
+// falling back to the master.
+func (cluster *Cluster) ShouldServeReadsFromMaster() bool {
+	if cluster.Configurator.HasProxyReadLeader() {
+		return true
+	}
+	return cluster.Configurator.HasProxyReadLeaderNoSlave() &&
+		(cluster.HasNoValidSlave() || !cluster.HasValidReadSlave())
+}
+
 func (cluster *Cluster) IsProvisioned() bool {
 	cluster.Lock()
 	defer cluster.Unlock()
@@ -446,6 +487,23 @@ func (cluster *Cluster) HasRequestProxiesReprov() bool {
 			if p.HasReprovCookie() {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// HasProvisionedHaproxy reports whether any HAProxy proxy has already been
+// provisioned -- scoped to type "haproxy" specifically, not any proxy
+// (ProxySQL/MaxScale/... provisioned in the same cluster must not block an
+// HAProxy-only setting). Refresh() (cluster/prx_haproxy.go) reads settings
+// like HaproxyMode/HaproxyAPIBootstrapServers live every monitoring tick, so
+// changing them while a proxy is already deployed would alter its
+// reconciliation behavior immediately, ahead of the deployed config being
+// regenerated to match -- callers use this to refuse that live change.
+func (cluster *Cluster) HasProvisionedHaproxy() bool {
+	for _, p := range cluster.Proxies {
+		if p != nil && p.GetType() == config.ConstProxyHaproxy && p.HasProvisionCookie() {
+			return true
 		}
 	}
 	return false
