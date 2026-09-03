@@ -1136,6 +1136,23 @@ func (server *ServerMonitor) Refresh() error {
 					"Failed to reload preserved variables for %s: %s", server.URL, err)
 			}
 
+			// Auto-agree value-differs deltas to the compliance value (opt-in,
+			// prov-auto-agree-compliance — the DB-side counterpart of
+			// prov-auto-update-compliance). Runs before the delta is (re)written so
+			// agreed variables route to 03_agreed instead of 02_delta and the DB
+			// adopts them on its next restart. Value-changes only; deprecated /
+			// unknown drops are left for manual review (loose_ hides them, #1495).
+			if cluster.Conf.ProvAutoAgreeCompliance {
+				if agreed := server.VariablesMap.AutoAgreeValueDeltas(); len(agreed) > 0 {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+						"Auto-agreed %d value-differs delta(s) to compliance on %s: %s", len(agreed), server.URL, strings.Join(agreed, ", "))
+					if err := server.WritePreservedVariables(); err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+							"Failed to write agreed variables after auto-agree for %s: %s", server.URL, err)
+					}
+				}
+			}
+
 			// Refresh delta variables file whenever runtime values are updated
 			// This ensures 02_delta.cnf stays in sync with current deployed state
 			if err := server.WriteDeltaVariables(); err != nil {

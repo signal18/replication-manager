@@ -54,3 +54,51 @@ func TestDropReconciledAgreed(t *testing.T) {
 	assertPreserved("forced", false)           // kept: server-specific forced
 	assertPreserved("forced_cluster", false)   // kept: cluster-level forced
 }
+
+func mkVarDeployed(name, cfg, deployed, preserved string, dropped bool) *VariableState {
+	v := NewVariableState(name)
+	if cfg != "" {
+		v.SetConfigValue(cfg)
+	}
+	if deployed != "" {
+		v.SetDeployedValue(deployed)
+	}
+	if preserved != "" {
+		v.SetPreservedValue(preserved)
+	}
+	v.Dropped = dropped
+	return v
+}
+
+func TestAutoAgreeValueDeltas(t *testing.T) {
+	m := NewVariablesMap()
+	// value-differs (config known, deployed != config, not preserved/dropped) -> agreed to config
+	m.Store("value_differs", mkVarDeployed("value_differs", "4096", "16384", "", false))
+	// no-config (Config nil) -> NOT agreed (deprecated/unknown, manual review)
+	m.Store("no_config", mkVarDeployed("no_config", "", "16384", "", false))
+	// already preserved -> untouched
+	m.Store("already", mkVarDeployed("already", "4096", "16384", "16384", false))
+	// dropped -> NOT agreed
+	m.Store("dropped", mkVarDeployed("dropped", "4096", "16384", "", true))
+	// deployed == config (no diff) -> NOT agreed
+	m.Store("equal", mkVarDeployed("equal", "4096", "4096", "", false))
+
+	agreed := m.AutoAgreeValueDeltas()
+
+	if len(agreed) != 1 || agreed[0] != "value_differs" {
+		t.Fatalf("expected only [value_differs] agreed, got %v", agreed)
+	}
+	// value_differs now has Preserved == Config (agreed)
+	v, _ := m.Load("value_differs")
+	vs := v.(*VariableState)
+	if vs.Preserved == nil || vs.Preserved.String() != "4096" {
+		t.Errorf("value_differs: expected Preserved=4096 (config), got %v", vs.Preserved)
+	}
+	// no_config, dropped, equal untouched (no Preserved set by us)
+	for _, k := range []string{"no_config", "dropped", "equal"} {
+		v, _ := m.Load(k)
+		if v.(*VariableState).Preserved != nil {
+			t.Errorf("%s: should not have been agreed", k)
+		}
+	}
+}

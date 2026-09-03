@@ -1088,6 +1088,37 @@ func (m *VariablesMap) DropReconciledAgreed() []string {
 	return dropped
 }
 
+// AutoAgreeValueDeltas agrees every value-differs delta to the compliance
+// (Config) value: a known variable (Config != nil) whose deployed value differs
+// from Config and is neither preserved nor dropped. Agreeing sets Preserved =
+// Config, which routes it to 03_agreed.cnf so the DB adopts the compliance value
+// on its next restart (and DropReconciledAgreed clears it afterwards). Scoped to
+// value-differs only: no-config / dropped variables are left for manual review
+// (loose_ hides deprecation — see #1495). Returns the agreed variable names.
+func (m *VariablesMap) AutoAgreeValueDeltas() []string {
+	var agreed []string
+	m.Range(func(key, value any) bool {
+		state, ok := value.(*VariableState)
+		if !ok {
+			return true
+		}
+		// Skip anything already decided (preserved/agreed) or an accepted drop.
+		if state.Preserved != nil || state.Dropped {
+			return true
+		}
+		// Value-differs only: needs both a compliance value and a deployed value.
+		if state.Config == nil || state.Deployed == nil {
+			return true
+		}
+		if state.Deployed.String() != state.Config.String() {
+			state.SetPreservedValue(state.Config.String())
+			agreed = append(agreed, state.VariableName)
+		}
+		return true
+	})
+	return agreed
+}
+
 func (m *VariablesMap) SetDeployedValue(varname string, value string) {
 	lowerVarName := strings.ToLower(varname)
 	if state, ok := m.Load(lowerVarName); ok {
