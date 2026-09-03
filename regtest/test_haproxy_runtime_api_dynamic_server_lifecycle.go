@@ -124,18 +124,16 @@ func (regtest *RegTest) TestHaproxyRuntimeAPIDynamicServerLifecycle(cl *cluster.
 	}
 
 	var proxyHost, proxyPort string
-	haproxyAttached := false
-	haproxyDNS := false
+	var hprx *cluster.HaproxyProxy
 	for _, pri := range cl.Proxies {
 		if pri.GetType() == config.ConstProxyHaproxy {
 			proxyHost = pri.GetHost()
 			proxyPort = pri.GetPort()
-			haproxyAttached = true
-			haproxyDNS = pri.HasDNS()
+			hprx, _ = pri.(*cluster.HaproxyProxy)
 			break
 		}
 	}
-	if !haproxyAttached {
+	if hprx == nil {
 		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL no HAProxy proxy attached to this cluster (requires haproxy=true)")
 		return false
 	}
@@ -145,24 +143,19 @@ func (regtest *RegTest) TestHaproxyRuntimeAPIDynamicServerLifecycle(cl *cluster.
 		return false
 	}
 
-	// On a resolver-backed proxy (HasDNS()==true), dynamic membership only
-	// works when the LIVE config was already rendered non-resolver-backed —
-	// i.e. haproxy-api-bootstrap-servers was already enabled at this proxy's
-	// last (re)provision (see GetConfigProxyModule, cluster/prx_get.go). The
-	// ground truth for "is this row currently resolver-backed" is
-	// resolverBackedPool, rebuilt fresh from HAProxy's own "show servers
-	// state" on every Refresh() pass (cluster/prx_haproxy.go) — but flipping
-	// the in-memory HaproxyAPIBootstrapServers flag below cannot
-	// retroactively change already-rendered config, so if it's off right
-	// now, this proxy's server lines still carry "resolvers dns" and real
-	// HAProxy will refuse "del server" on them at runtime ("This server
-	// cannot be removed at runtime due to other configuration elements
-	// pointing to it"). Fail here with that specific reason instead of
-	// staging the delete below and surfacing the generic, misleading "may
-	// still have active connections" message.
-	bootstrapAlreadyEnabled := cl.Conf.HaproxyAPIBootstrapServers
-	if haproxyDNS && !bootstrapAlreadyEnabled {
-		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL dynamic server lifecycle needs haproxy-api-bootstrap-servers=true already set for this resolver-backed (HasDNS=true) proxy's config to be non-resolver-backed — it was off at this proxy's last (re)provision, and toggling it now doesn't retroactively re-render the live config")
+	// Dynamic membership only works when this proxy's deployed config was
+	// actually rendered with bootstrap-servers on (BootstrapServersEnabled
+	// -- what it was last (re)provisioned with, not the live
+	// haproxy-api-bootstrap-servers flag, which can be toggled without a
+	// reprovision and would then no longer match what's really deployed).
+	// If it's off, resolver-backed server lines are still "resolvers
+	// dns"-attached and HAProxy refuses "del server" on them at runtime
+	// ("This server cannot be removed at runtime due to other
+	// configuration elements pointing to it"). Fail here with that specific
+	// reason instead of staging the delete below and surfacing the
+	// generic, misleading "may still have active connections" message.
+	if !hprx.BootstrapServersEnabled() {
+		logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: FAIL this proxy was not last (re)provisioned with haproxy-api-bootstrap-servers=true -- reprovision it with the flag enabled before running this test")
 		return false
 	}
 
@@ -222,19 +215,12 @@ func (regtest *RegTest) TestHaproxyRuntimeAPIDynamicServerLifecycle(cl *cluster.
 		return false
 	}
 
-	// Save and restore: this cluster keeps running other scenarios after
-	// this one.
-	originalBootstrap := cl.Conf.HaproxyAPIBootstrapServers
+	// Best-effort cleanup if this test fails partway through: clear any
+	// maintenance a failure path above left set, and give the cluster's own
+	// monitor loop a chance to reconcile normally -- gated on
+	// hprx.BootstrapServersEnabled(), already confirmed true above, not the
+	// live flag, so no save/restore of it is needed here.
 	defer func() {
-		// Best-effort safety net: if this test failed partway through,
-		// don't leave the cluster's real read backend degraded for
-		// whatever runs next. First, make sure repman's own view is
-		// consistent (clears maintenance if a failure path above left it
-		// set) and give the cluster's own monitor loop a chance to
-		// reconcile normally — that's gated on HaproxyAPIBootstrapServers,
-		// so it must stay enabled until this either succeeds or we give up
-		// on it, not be restored to its original (possibly false) value
-		// first.
 		if slave.IsMaintenance {
 			slave.DelMaintenance()
 		}
@@ -246,20 +232,16 @@ func (regtest *RegTest) TestHaproxyRuntimeAPIDynamicServerLifecycle(cl *cluster.
 			status, ok := haproxyStatServerStatus(stat, readBackend, slave.Id)
 			return ok && status == "UP"
 		})
-		cl.Conf.HaproxyAPIBootstrapServers = originalBootstrap
 		if restored {
 			return
 		}
 
-		// Fall back to repairing it directly via the Runtime API — this
-		// doesn't depend on HaproxyAPIBootstrapServers or the monitor loop,
-		// so it's safe to run after the flag above has been restored.
+		// Fall back to repairing it directly via the Runtime API.
 		logf(config.LvlWarn, "TEST haproxy-runtime-lifecycle: cleanup could not confirm %s/%s reached UP via repman's own reconciliation, falling back to direct Runtime API repair", readBackend, slave.Id)
 		if !restoreReadBackendServer(haRuntime, readBackend, slave.Id, slave.Host, slave.Port, logf, 30*time.Second) {
 			logf(config.LvlErr, "TEST haproxy-runtime-lifecycle: cleanup could not restore %s/%s within 30s; it may remain missing or half-configured in the read backend", readBackend, slave.Id)
 		}
 	}()
-	cl.Conf.HaproxyAPIBootstrapServers = true
 
 	// --- Add path: mark maintenance through repman's own API — this keeps
 	// cluster.Servers consistent with what HAProxy reports, so Refresh()'s

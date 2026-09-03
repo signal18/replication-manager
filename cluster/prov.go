@@ -273,6 +273,11 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 	cluster.StateMachine.RemoveFailoverState()
 	if err == nil {
 		prx.SetProvisionCookie()
+		// Snapshot the live bootstrap-servers setting onto this proxy --
+		// see HaproxyProxy.BootstrapServersEnabled.
+		if hprx, ok := prx.(*HaproxyProxy); ok {
+			hprx.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+		}
 	} else {
 		return err
 	}
@@ -352,6 +357,9 @@ func (cluster *Cluster) Unprovision() error {
 			prx.DelProvisionCookie()
 			prx.DelRestartCookie()
 			prx.DelReprovisionCookie()
+			if hprx, ok := prx.(*HaproxyProxy); ok {
+				hprx.delProvisionedBootstrapServers()
+			}
 		}
 	}
 
@@ -418,6 +426,9 @@ func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
 		prx.DelProvisionCookie()
 		prx.DelReprovisionCookie()
 		prx.DelRestartCookie()
+		if hprx, ok := prx.(*HaproxyProxy); ok {
+			hprx.delProvisionedBootstrapServers()
+		}
 	}
 	return err
 }

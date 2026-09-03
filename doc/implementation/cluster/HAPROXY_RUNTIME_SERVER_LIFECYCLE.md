@@ -28,7 +28,11 @@ the HAProxy Runtime API.
 
 Three conditions must all hold, or `reconcileReadBackendServers()` is a no-op:
 
-- `haproxy-api-bootstrap-servers` config flag (default `false`).
+- `HaproxyProxy.BootstrapServersEnabled()` -- what this proxy was actually
+  last (re)provisioned with (persisted per-proxy, default `false`), not the
+  live `haproxy-api-bootstrap-servers` config flag directly: that can be
+  toggled at any time without a reprovision, so trusting it here would
+  reconcile against a proxy whose deployed config doesn't match yet.
 - HAProxy **>= 2.6** (`supportsDynamicServers()`). 2.4/2.5 require an
   `experimental-mode on` prefix and reject the `check` keyword on `add
   server` outright, so a server added there would carry no health-check

@@ -73,6 +73,47 @@ type HaproxyProxy struct {
 	lastStandbyInit      time.Time
 }
 
+// bootstrapServersCookiePath records haproxy-api-bootstrap-servers as
+// actually rendered at this proxy's last (re)provision -- persisted to
+// disk (not in-memory) so it survives a repman restart.
+func (proxy *HaproxyProxy) bootstrapServersCookiePath() string {
+	return proxy.Datadir + "/@cookie_bootstrap_servers"
+}
+
+// BootstrapServersEnabled is what this proxy was actually last provisioned
+// with, not the live cluster.Conf.HaproxyAPIBootstrapServers value, which
+// can change without a reprovision. Defaults false when never recorded.
+func (proxy *HaproxyProxy) BootstrapServersEnabled() bool {
+	data, err := os.ReadFile(proxy.bootstrapServersCookiePath())
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(data)) == "on"
+}
+
+// setProvisionedBootstrapServers snapshots the live setting at (re)provision
+// time -- see BootstrapServersEnabled.
+func (proxy *HaproxyProxy) setProvisionedBootstrapServers(enabled bool) {
+	value := "off"
+	if enabled {
+		value = "on"
+	}
+	if err := os.WriteFile(proxy.bootstrapServersCookiePath(), []byte(value), 0644); err != nil {
+		cluster := proxy.ClusterGroup
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "Create bootstrap-servers cookie: %s", err)
+	}
+}
+
+// delProvisionedBootstrapServers clears the snapshot on unprovision, so a
+// later restart doesn't fall back to a stale "last deployed" value for a
+// proxy that no longer exists.
+func (proxy *HaproxyProxy) delProvisionedBootstrapServers() {
+	if err := os.Remove(proxy.bootstrapServersCookiePath()); err != nil {
+		cluster := proxy.ClusterGroup
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "Remove bootstrap-servers cookie: %s", err)
+	}
+}
+
 // standbyReloadMinInterval is the minimum spacing BackendsStateChange()
 // enforces between two standby Init() (render+reload) calls. HAProxy's
 // reload itself is a real process fork/exec, not a free operation, so a
@@ -160,7 +201,7 @@ func logSetStateIfFailed(proxy *HaproxyProxy, action string, res string, err err
 // the next pass — see haproxySetStateLogLevel, the reason this exists.
 func (proxy *HaproxyProxy) reconcileReadBackendServersActive() bool {
 	cluster := proxy.ClusterGroup
-	return cluster.Conf.HaproxyAPIBootstrapServers &&
+	return proxy.BootstrapServersEnabled() &&
 		proxy.supportsDynamicServers() &&
 		cluster.Conf.HaproxyMode == "runtimeapi"
 }
@@ -250,7 +291,7 @@ func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.StringVar(&conf.HaproxyWriteBindIp, "haproxy-ip-write-bind", "0.0.0.0", "HAProxy input bind address for write")
 	flags.StringVar(&conf.HaproxyAPIReadBackend, "haproxy-api-read-backend", "service_read", "HAProxy API backend name used for read")
 	flags.StringVar(&conf.HaproxyAPIWriteBackend, "haproxy-api-write-backend", "service_write", "HAProxy API backend name used for write")
-	flags.BoolVar(&conf.HaproxyAPIBootstrapServers, "haproxy-api-bootstrap-servers", false, "For haproxy-mode=runtimeapi: drive every backend member (read and write) by repman's own resolved server IP over the Runtime API instead of HAProxy's own DNS resolution -- generated server lines carry no \"resolvers\" clause, and adding/removing a cluster server updates the live backend at runtime instead of requiring a reload (requires HAProxy >= 2.6; silently inactive otherwise). Off (the default) keeps runtimeapi resolver-backed, identical to haproxy-mode=externalcheck/standby. Takes effect on the next (re)provision of the proxy, not on a live toggle.")
+	flags.BoolVar(&conf.HaproxyAPIBootstrapServers, "haproxy-api-bootstrap-servers", false, "For haproxy-mode=runtimeapi: drive every backend member (read and write) by repman's own resolved server IP over the Runtime API instead of HAProxy's own DNS resolution -- generated server lines carry no \"resolvers\" clause, and adding/removing a cluster server updates the live backend at runtime instead of requiring a reload (requires HAProxy >= 2.6; silently inactive otherwise). Off (the default) keeps runtimeapi resolver-backed, identical to haproxy-mode=externalcheck/standby. Can be toggled live at any time, but each proxy keeps running its own last-provisioned value until reprovisioned.")
 	flags.StringVar(&conf.HaproxyHostsIPV6, "haproxy-servers-ipv6", "", "HAProxy IPv6 bind address ")
 }
 
@@ -587,6 +628,7 @@ func (proxy *HaproxyProxy) Init() {
 	}
 
 	err = haConfig.Render()
+	renderErr := err
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Could not create haproxy config %s", err)
 	}
@@ -613,6 +655,12 @@ func (proxy *HaproxyProxy) Init() {
 	err = haRuntime.Reload(&haConfig)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "Can't reload haproxy config %s", err)
+	} else if renderErr == nil {
+		// Only once the new config is both rendered and actually applied --
+		// a reload "succeeding" against a config Render() failed to update
+		// would otherwise flip the cookie while the running HAProxy is
+		// still on the old one.
+		proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
 	}
 }
 
@@ -1437,66 +1485,22 @@ func waitSrvRemovableFailed(err error, res string) (string, bool) {
 
 // haproxySetAddrSuccessSubstrings is a fourth instance of the same
 // non-empty-on-success pattern as haproxyAddServerSuccessMsg/
-// haproxyDelServerSuccessMsg/haproxyWaitSrvRemovableSuccessMsg, this time for
-// "set server .../<name> addr ..."/"... fqdn ..." — the command SetMaster,
-// SetMasterFQDN, SetServerAddr and SetServerFQDN all funnel into. Routing
-// these through haproxyCmdFailed misclassified every successful master
-// failover/switchover repoint and every successful read-backend IP
-// reconciliation (reconcileReadBackendServers) as an ERROR, even though the
-// address change genuinely succeeded — exactly the false alarm this was
-// written to fix, first reported from a production log showing "Detecting
-// wrong master server ... fixing it to master" (LvlInfo, correct) directly
-// followed by an HAProxy-logged "IP changed from '10.60.50.67' to
-// '10.60.22.249' by 'stats socket command'" being logged as LvlErr by the
-// code below.
+// haproxyDelServerSuccessMsg/haproxyWaitSrvRemovableSuccessMsg, for
+// SetMaster/SetMasterFQDN/SetServerAddr/SetServerFQDN's "set server ...
+// addr/fqdn ..." calls -- routing these through haproxyCmdFailed
+// misclassified every successful master repoint/read-backend IP fix as an
+// ERROR. Matched with strings.Contains, not HasPrefix: the FQDN-changed
+// text is "<pool>/<name> changed its FQDN from ... by '...'" -- the
+// pool/server name leads the line, so no fixed-word prefix works.
 //
-// Matched with strings.Contains, not HasPrefix: a genuine FQDN change's
-// confirmation text — also taken directly from a production log —
-// is "<pool>/<name> changed its FQDN from 'db1...' to 'db2...' by 'stats
-// socket command'", i.e. it does NOT start with any fixed word; the
-// pool/server name leads the line and varies per call site. An earlier
-// version of this list guessed "FQDN changed from"/"FDQN changed from" as a
-// HasPrefix match, by (wrong) symmetry with the addr case — that guess is
-// structurally unmatchable against the real text and has been replaced with
-// "changed its FQDN from" below.
-//
-// "nothing changed" (the addr no-op case) and "no need to change the FDQN by
-// 'stats socket command'" (the fqdn no-op case, HAProxy's own "FDQN" spelling,
-// not a typo introduced here) were both verified by hand against a real
-// HAProxy 3.0 Runtime API socket (clustera, kind cluster), with no pool/name
-// prefix on either: issuing "set server service_write/leader addr <its
-// current IP> port 3306" and "... fqdn <its current FQDN> port 3306"
-// respectively, each already-correct, replied with this exact non-empty text
-// rather than an empty body. "IP changed from" and "changed its FQDN from"
-// are both taken directly from production logs (genuine address/FQDN
-// changes, not reproduced live here — doing so would have redirected
-// clustera's live write backend to a different address). If a real response
-// turns out to use wording not covered here, it falls through to
-// haproxyCmdFailed's conservative "unknown non-empty response means failure"
-// default below, same as before this fix — no worse than the status quo,
-// just not yet confirmed better.
-//
-// The remaining three entries were found by reading HAProxy's own source
-// (srv_update_addr_port in src/server.c, tags v2.4.0/v2.8.0/v3.0.0/v3.4.0 —
-// the three versions this codebase's HAProxy live-test campaign covers, plus
-// v2.8.0, the last v2.x release, checked separately since it's the version
-// actually shipped as the "stable v2" line), not live/production evidence,
-// after a review turned up that this list was only exercising the exact
-// wording seen so far rather than every path the source can actually take:
-//   - "port changed from" -- the addr command changes port and IP
-//     independently; if only the port differs (IP unchanged), the reply is
-//     "port changed from 'A' to 'B' by '...'" with NO "IP changed from" text
-//     at all, identically on every version checked (2.4/2.8/3.0/3.4) --
-//     SetServerAddr/SetMaster always pass both addr and port together, so
-//     this is real, reachable HAProxy text, not a hypothetical.
-//   - "no need to change the addr" -- HAProxy 2.4 AND 2.8 (confirmed by
-//     reading src/server.c at both tags; the wording changes at the 2.x→3.0
-//     boundary, not within the v2 line) report the addr-unchanged case with
-//     this per-field wording instead of 3.0/3.4's unified "nothing changed"
-//     -- a same-address SetMaster/SetServerAddr call against a 2.x proxy
-//     would otherwise still be misclassified.
-//   - "no need to change the port" -- the v2 line's port-unchanged
-//     counterpart to the addr case above, for the same reason.
+// Provenance: "nothing changed"/"no need to change the FDQN" (HAProxy's own
+// spelling) and "IP changed from"/"changed its FQDN from" are verified
+// against real HAProxy 3.0 output or production logs. "port changed from"
+// and the "no need to change the addr/port" pair (HAProxy's v2.x wording,
+// pre-3.0, for the same no-op case as "nothing changed") were found by
+// reading HAProxy's own source (srv_update_addr_port, src/server.c) across
+// 2.4/2.8/3.0/3.4, not live-verified. Unmatched text still falls through to
+// haproxyCmdFailed's default (unknown non-empty response = failure).
 var haproxySetAddrSuccessSubstrings = []string{
 	"nothing changed",
 	"no need to change the addr",
@@ -1545,7 +1549,7 @@ func setAddrFailed(err error, res string) (string, bool) {
 // resolver-tracked — see its doc comment above, in Refresh().
 func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime, knownToHaproxy map[string]bool, addrBySvname map[string]string, statusBySvname map[string]string, resolverBackedPool map[string]bool) {
 	cluster := proxy.ClusterGroup
-	if !cluster.Conf.HaproxyAPIBootstrapServers || !proxy.supportsDynamicServers() {
+	if !proxy.BootstrapServersEnabled() || !proxy.supportsDynamicServers() {
 		return
 	}
 	// Read-backend servers are only named after server.Id in "runtimeapi"
@@ -1609,16 +1613,10 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 		return failed
 	}
 
-	// logSetAddrIfFailed is logIfFailed's counterpart for SetServerAddr
-	// calls, which reply with a non-empty confirmation on success (change or
-	// no-op alike) unlike most other commands here — see
-	// haproxySetAddrSuccessSubstrings. A real failure is reported via
-	// SetState, scoped per server (ServerUrl), rather than a plain
-	// LogModulePrintf: this runs once per drifted server every Refresh()
-	// pass, so a persistent failure (e.g. HAProxy unreachable) would
-	// otherwise log an identical ERROR line for that server forever.
-	// SetState only logs once, on the OPENED/RESOLV transition — same
-	// dedup as WARN0209/WARN0210 above.
+	// logSetAddrIfFailed is logIfFailed's counterpart for SetServerAddr --
+	// see haproxySetAddrSuccessSubstrings. A real failure goes through
+	// SetState (scoped per server) instead of a plain log so a persistent
+	// failure logs once per OPENED/RESOLV transition, not every pass.
 	logSetAddrIfFailed := func(serverID, serverURL, res string, err error) bool {
 		msg, failed := setAddrFailed(err, res)
 		if failed {

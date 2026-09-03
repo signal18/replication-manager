@@ -7,7 +7,6 @@
 package cluster
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -436,15 +435,9 @@ func (cluster *Cluster) SwitchHaProxy() {
 	cluster.Conf.HaproxyOn = !cluster.Conf.HaproxyOn
 }
 
-func (cluster *Cluster) SwitchHaproxyAPIBootstrapServers() error {
-	// See setClusterSetting's "haproxy-api-bootstrap-servers" case
-	// (server/api_cluster.go) for why this is refused here.
-	if cluster.Conf.HaproxyMode == "runtimeapi" && cluster.HasProvisionedHaproxy() {
-		return fmt.Errorf("haproxy-api-bootstrap-servers: cannot change while haproxy-mode=runtimeapi and a proxy is already provisioned -- unprovision it, then change this and provision again")
-	}
+func (cluster *Cluster) SwitchHaproxyAPIBootstrapServers() {
 	cluster.Conf.HaproxyAPIBootstrapServers = !cluster.Conf.HaproxyAPIBootstrapServers
 	cluster.SetProxiesReprovCookie()
-	return nil
 }
 func (cluster *Cluster) SwitchMaxscaleProxy() {
 	cluster.Conf.MxsOn = !cluster.Conf.MxsOn

@@ -2743,9 +2743,7 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	case "proxysql":
 		mycluster.SwitchProxySQL()
 	case "haproxy-api-bootstrap-servers":
-		if err := mycluster.SwitchHaproxyAPIBootstrapServers(); err != nil {
-			return err
-		}
+		mycluster.SwitchHaproxyAPIBootstrapServers()
 	case "proxy-servers-read-on-master":
 		mycluster.SwitchProxyServersReadOnMaster()
 	case "proxy-servers-read-on-master-no-slave":
@@ -4287,10 +4285,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "haproxy-mode":
 		switch value {
 		case "standby", "runtimeapi", "externalcheck", "dataplaneapi":
-			// Refresh() reads HaproxyMode live every tick, so changing it
-			// while a proxy is already provisioned would alter live
-			// reconciliation behavior before the deployed config is
-			// regenerated to match.
+			// Refresh() reads HaproxyMode live every tick, so changing it while provisioned would drift from the deployed config.
 			changed := value != mycluster.Conf.HaproxyMode
 			if changed && mycluster.HasProvisionedHaproxy() {
 				return fmt.Errorf("haproxy-mode: cannot change from %q to %q while a proxy is already provisioned -- unprovision it, then change this and provision again", mycluster.Conf.HaproxyMode, value)
@@ -4496,13 +4491,6 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "haproxy-api-bootstrap-servers":
 		newValue := applyIsActive(mycluster.Conf.HaproxyAPIBootstrapServers, isactive)
 		changed := newValue != mycluster.Conf.HaproxyAPIBootstrapServers
-		// Only live-active under haproxy-mode=runtimeapi
-		// (reconcileReadBackendServersActive, cluster/prx_haproxy.go), so
-		// only refuse the change there -- otherwise it's genuinely inert
-		// until the cluster later switches to runtimeapi and provisions.
-		if changed && mycluster.Conf.HaproxyMode == "runtimeapi" && mycluster.HasProvisionedHaproxy() {
-			return fmt.Errorf("haproxy-api-bootstrap-servers: cannot change while haproxy-mode=runtimeapi and a proxy is already provisioned -- unprovision it, then change this and provision again")
-		}
 		mycluster.Conf.HaproxyAPIBootstrapServers = newValue
 		if changed {
 			mycluster.SetProxiesReprovCookie()

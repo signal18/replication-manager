@@ -252,29 +252,6 @@ func TestSwitchClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	}
 }
 
-// The toggle route must surface the real validation error, not the generic
-// "setting not found" text handlerMuxSwitchSettings maps to HTTP 501
-// ("Setting Not Found") -- a blocked-while-provisioned error is a known
-// setting rejecting a specific state change, not an unknown setting name.
-func TestSwitchClusterSetting_HaproxyAPIBootstrapServers_BlockedWhileProvisionedSurfacesRealError(t *testing.T) {
-	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
-	cl.ConfigManager = newConfigManagerForTest()
-	repman := newTestRepmanWithCluster(t, cl.Name, cl)
-
-	cl.Conf.HaproxyMode = "runtimeapi"
-	prx := newTestProxyForReprov(t, cl)
-	prx.SetProvisionCookie()
-
-	err := repman.switchClusterSettings(cl, "haproxy-api-bootstrap-servers")
-	if err == nil {
-		t.Fatalf("switchClusterSettings(haproxy-api-bootstrap-servers): expected error while provisioned, got nil")
-	}
-	if err.Error() == "setting not found" {
-		t.Fatalf(`switchClusterSettings returned the generic "setting not found" error instead of the real validation message: %v`, err)
-	}
-}
-
 // Confirms prov-kube-image-force-pull actually reaches setClusterSetting's
 // switch (GUI dispatches switchSetting for it, OrchestratorDbVM.jsx) --
 // wiring a GUI control without a matching case here means the toggle
@@ -372,10 +349,10 @@ func TestSetClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	}
 }
 
-// Once an HAProxy proxy is actually provisioned under haproxy-mode=runtimeapi,
-// Refresh() reads HaproxyAPIBootstrapServers live every tick, so flipping it
-// must be refused until the proxy is unprovisioned.
-func TestSetClusterSetting_HaproxyAPIBootstrapServers_BlockedWhileProvisioned(t *testing.T) {
+// Unlike haproxy-mode, changing haproxy-api-bootstrap-servers live is always
+// allowed, even while provisioned under runtimeapi: each proxy retains its
+// own last-provisioned value (HaproxyProxy.BootstrapServersEnabled).
+func TestSetClusterSetting_HaproxyAPIBootstrapServers_AllowedWhileProvisioned(t *testing.T) {
 	cl := newTestClusterForAPI(t)
 	cl.Conf.Secrets = make(map[string]config.Secret)
 	cl.ConfigManager = newConfigManagerForTest()
@@ -386,29 +363,20 @@ func TestSetClusterSetting_HaproxyAPIBootstrapServers_BlockedWhileProvisioned(t 
 	prx := newTestProxyForReprov(t, cl)
 	prx.SetProvisionCookie()
 
-	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "on"); err == nil {
-		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "on"): expected error while provisioned, got nil`)
-	}
-	if cl.Conf.HaproxyAPIBootstrapServers {
-		t.Fatalf("expected HaproxyAPIBootstrapServers to remain false after rejected change")
-	}
-
-	// Not runtimeapi: genuinely inert live, so allowed even while provisioned.
-	cl.Conf.HaproxyMode = "externalcheck"
 	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "on"); err != nil {
-		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "on") under externalcheck: unexpected error: %v`, err)
+		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "on") while provisioned: unexpected error: %v`, err)
+	}
+	if !cl.Conf.HaproxyAPIBootstrapServers {
+		t.Fatalf("expected HaproxyAPIBootstrapServers=true after change")
+	}
+	if !prx.HasReprovCookie() {
+		t.Fatalf("expected proxy reprov cookie after the change, got none")
 	}
 
-	// Re-setting the same value under runtimeapi is a no-op: must still be
-	// allowed even while provisioned, and must not mark the proxy for
-	// reprov -- nothing actually changed. DelReprovisionCookie clears the
-	// cookie the earlier (legitimate) externalcheck change above left
-	// behind, so this assertion isn't tripped by unrelated prior state.
-	cl.Conf.HaproxyMode = "runtimeapi"
-	cl.Conf.HaproxyAPIBootstrapServers = false
+	// Re-setting the same value is a no-op and must not mark reprov again.
 	prx.DelReprovisionCookie()
-	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "off"); err != nil {
-		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "off") (no-op): unexpected error: %v`, err)
+	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "on"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "on") (no-op): unexpected error: %v`, err)
 	}
 	if prx.HasReprovCookie() {
 		t.Fatalf("expected no reprov cookie after a no-op haproxy-api-bootstrap-servers set, got one")
@@ -449,9 +417,7 @@ func TestSetClusterSetting_HaproxyMode(t *testing.T) {
 	}
 }
 
-// Once an HAProxy proxy is actually provisioned, Refresh() reads HaproxyMode
-// live every tick, so any change must be refused regardless of which
-// mode/orchestrator is involved -- not just the standby boundary.
+// Any haproxy-mode change must be refused while a proxy is provisioned.
 func TestSetClusterSetting_HaproxyMode_BlockedWhileProvisioned(t *testing.T) {
 	cl := newTestClusterForAPI(t)
 	cl.Conf.Secrets = make(map[string]config.Secret)
