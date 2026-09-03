@@ -1174,6 +1174,11 @@ func (server *ServerMonitor) Refresh() error {
 				// Clear the flag after processing
 				server.VariablesMap.ClearDeployedChanged()
 			}
+		} else {
+			// Config tracking off (prov-db-config): clear the drift pill so the GUI
+			// (hasConfigDiff) reflects the live off-state — surfaced as CINF0003 —
+			// instead of a value frozen from when tracking was last on.
+			server.HasConfigDiff = false
 		}
 
 		if server.IsNeedPathCheck {
