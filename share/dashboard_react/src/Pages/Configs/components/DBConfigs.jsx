@@ -248,6 +248,7 @@ function DBConfigs({ selectedCluster, user }) {
   const hDynamicConfig = `**Apply Dynamic Config**\n\nWhen enabled, replication-manager applies configuration changes dynamically using \`SET GLOBAL\` statements without requiring a database restart.\n\nOnly variables that support dynamic changes are applied this way. Variables requiring a restart are written to the config file for the next restart.\n\nConfig: \`prov-db-apply-dynamic-config\``
   const hRefreshConfig = `**Refresh Variables and DB Config**\n\nRegenerates the configuration files for all database servers in this cluster from the compliance module and the current tag selection.\n\nThis rebuilds the config tarball at \`{datadir}/config.tar.gz\` with all tag-specific cnf files merged with preserved variables and defaults.`
   const hAutoUpdateCompliance = `**Auto-Update Compliance**\n\nThe compliance module contains replication-manager's best practices for database and proxy configuration. It defines which variables are set for each configuration tag.\n\nWhen enabled (default), compliance updates from the back office or new replication-manager releases are **applied automatically**. Your preserved variables are never overwritten — they always take priority over compliance defaults.\n\nWhen disabled, a warning (WARN0168) is raised when new compliance is available. You can review the changes (added, removed, or modified tags) and accept when ready. This is recommended for production environments where you want to review best practice changes before they take effect.\n\nConfig: \`prov-auto-update-compliance\``
+  const hAutoAgreeCompliance = `**Auto-Agree Compliance**\n\nControls what happens to a config **delta** — a variable whose value on the database differs from the compliance value — that is neither preserved (operator-forced) nor already agreed.\n\nWhen **disabled (default)**, every value delta waits for a manual review and agree in the config editor before it is written to the database. Recommended for production.\n\nWhen **enabled**, a value delta is automatically agreed to the compliance value (written to \`03_agreed.cnf\` and pushed to the database). Scoped to **value changes only** — variables that are dropped, deprecated, or not recognized by the database are **never** auto-agreed and always stay for manual review (they would crash the database on restart).\n\nIndependent of Auto-Update Compliance: that one regenerates the config from a new module (repman side), this one applies value deltas to the running database (DB side).\n\nConfig: \`prov-db-compliance-auto-agree\``
 
   const dataObject = [
     {
@@ -288,6 +289,20 @@ function DBConfigs({ selectedCluster, user }) {
           confirmTitle={'Confirm switch settings for prov-auto-update-compliance?'}
           onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-auto-update-compliance' }))
+          }
+        />
+      )
+    },
+    {
+      key: 'Auto-Agree Compliance',
+      help: h(hAutoAgreeCompliance, 'Auto-Agree Compliance'),
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.provDbComplianceAutoAgree}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for prov-db-compliance-auto-agree?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-compliance-auto-agree' }))
           }
         />
       )
