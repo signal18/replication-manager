@@ -512,7 +512,7 @@ func (collector *Collector) ListConfigKeysV3(namespace, service string) ([]strin
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
 	defer cancel()
-	resp, err := client.GetObjectDataKeys(ctx, apiv3.InPathNamespace(namespace), "cfg", apiv3.InPathName(service), collector.RequestCloserV3())
+	resp, err := client.GetObjectDataKeys(ctx, apiv3.InPathNamespace(namespace), "cfg", apiv3.InPathName(service), nil, collector.RequestCloserV3())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list cfg keys for %s/%s: %w", namespace, service, err)
 	}
@@ -662,6 +662,39 @@ func (collector *Collector) StartInstanceV3(node, svc string) error {
 
 	_, err := collector.handleInstanceActionV3(node, svcparts[0], svcparts[1], svcparts[2], "start", nil)
 	return err
+}
+
+// PGUpdateInstanceV3 re-applies the process-group (cgroup) limits of a running
+// instance live via `om instance pg update` — no restart. Use it after changing
+// the container's mem/cpu keywords in the service config to grow/shrink the live
+// cgroup. rid optionally targets a single resource (e.g. "container#db"); empty
+// applies to the whole instance.
+func (collector *Collector) PGUpdateInstanceV3(node, svc, rid string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+
+	params := &apiv3.PostInstanceActionPGUpdateParams{}
+	if rid != "" {
+		r := apiv3.InQueryRid(rid)
+		params.Rid = &r
+	}
+	resp, err := client.PostInstanceActionPGUpdate(ctx, node, svcparts[0], apiv3.Kind(svcparts[1]), svcparts[2], params, collector.RequestCloserV3())
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("pg update failed on %s (%s): status %d", node, svc, resp.StatusCode)
+	}
+	return nil
 }
 
 func (collector *Collector) StopServiceV3(cluster, svc string) error {

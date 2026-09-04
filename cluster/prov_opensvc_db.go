@@ -614,6 +614,17 @@ func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string 
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 		svccontainer["run_args"] = server.ClusterGroup.Conf.ProvDBJobsDockerRunArgs
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/jobs:/var/lib/replication-manager-jobs:rw {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw {name}-sec/:/credentials`
+		if server.ClusterGroup.Conf.MonitoringSystemResources {
+			// Bind ONLY this service's pg cgroup slice read-only into the jobs
+			// container at /svc-cgroup, so the system-units sensor reads the
+			// whole-service memory.current/cpu.stat/io.stat. Least privilege: the
+			// sidecar sees only its own service's cgroup -- unlike --cgroupns=host,
+			// which would expose the whole node's cgroup tree (every co-tenant on a
+			// shared host). {namespace}/{svcname} are substituted by OpenSVC like
+			// {name} above. On by default; the flag is the off-switch (T14) if a
+			// bad bind blocks container start on an unexpected cgroup layout.
+			svccontainer["volume_mounts"] += " /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"
+		}
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
 		svccontainer["command"] = "/docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm"
 		svccontainer["entrypoint"] = "/bin/bash"

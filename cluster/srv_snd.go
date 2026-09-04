@@ -90,6 +90,21 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 			}
 		}
 	}
+
+	// DBU (Database Unit) consumed — computed by repman from the system-level
+	// sensor push (cgroup + df) in handlerMuxServerDBUConsumed. Emitted
+	// unconditionally like the slave-status block above (a first-class signal,
+	// not whitelist-gated), one value per monitor loop. dbu is the pivot = the
+	// peak DBU of the last period; the per-axis values show which one binds
+	// (the biggest contributor is server.DBUConsumed.Binding, kept in the JSON).
+	if r := server.DBUConsumed; r != nil {
+		ts := time.Now().Unix()
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu", hostname), strconv.FormatFloat(r.Dbu, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu_cpu", hostname), strconv.FormatFloat(r.DbuCpu, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu_mem", hostname), strconv.FormatFloat(r.DbuMem, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu_io", hostname), strconv.FormatFloat(r.DbuIo, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu_disk", hostname), strconv.FormatFloat(r.DbuDisk, 'f', 4, 64), ts))
+	}
 	return metrics
 }
 

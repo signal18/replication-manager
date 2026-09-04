@@ -218,6 +218,7 @@ type ServerMonitor struct {
 	BinaryLogPurgeBefore        int64                       `json:"binaryLogPurgeBefore"`
 	MaxSlowQueryTimestamp       int64                       `json:"maxSlowQueryTimestamp"`
 	WorkLoad                    *config.WorkLoadsMap        `json:"workLoad"`
+	DBUConsumed                 *DBUReading                 `json:"dbuConsumed"`
 	DelayStat                   *ServerDelayStat            `json:"delayStat"`
 	SlaveVariables              SlaveVariables              `json:"slaveVariables"`
 	IsReseeding                 string                      `json:"isReseeding"`
@@ -249,6 +250,7 @@ type ServerMonitor struct {
 	IsNeedPathCheck             bool
 	HasConfigPathChanged        bool
 	HasConfigDiff               bool         `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config
+	PendingCgroupShrink         bool         `json:"-"`             // a memory live-shrink lowered the buffer pool and is waiting for the async InnoDB resize to complete before shrinking the cgroup (anti-OOM)
 	RestartNode                 string       // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
 	RestartRid                  string       // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
 	jobMutex                    sync.Mutex   // protects IsRunningJobs flag
@@ -1197,6 +1199,10 @@ func (server *ServerMonitor) Refresh() error {
 				server.VariablesMap.ClearDeployedChanged()
 			}
 		}
+
+		// Phase 2 of a live memory shrink: once the async buffer-pool resize has
+		// completed, shrink the cgroup (no-op / single comparison otherwise).
+		cluster.completePendingCgroupShrink(server)
 
 		if server.IsNeedPathCheck {
 			server.CheckDBConfigPath()

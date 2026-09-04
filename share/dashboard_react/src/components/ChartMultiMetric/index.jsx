@@ -227,6 +227,32 @@ function ChartMultiMetric({
     // Validate data
     const allData = Object.values(dataMap).flatMap(item => item.data);
     if (!allData.length) {
+      // No data yet: still render the SVG + title (and a "No data" note) so the
+      // empty graph stays identifiable instead of showing as an unlabelled empty
+      // box (e.g. metrics not produced yet, or performance_schema disabled).
+      d3.select(container).selectAll('svg').remove();
+      const emptySvg = d3.select(container).append('svg')
+        .attr('width', '100%')
+        .attr('height', height)
+        .style('background', themeColors.background)
+        .style('border-radius', '8px');
+      emptySvg.append('text')
+        .attr('x', 60)
+        .attr('y', 20)
+        .attr('class', theme === 'dark' ? 'dark-theme-title' : '')
+        .style('fill', themeColors.titleColor)
+        .style('font-size', '16px')
+        .style('font-weight', '600')
+        .style('dominant-baseline', 'middle')
+        .text(title);
+      emptySvg.append('text')
+        .attr('x', '50%')
+        .attr('y', height / 2)
+        .attr('text-anchor', 'middle')
+        .style('fill', themeColors.titleColor)
+        .style('font-size', '13px')
+        .style('opacity', 0.6)
+        .text('No data');
       isDrawingRef.current = false;
       return;
     }

@@ -26,41 +26,51 @@ import ConfigFilesPanel from '../../../components/ConfigFilesPanel'
 import MemoryPctEditor from '../../../components/MemoryPctEditor'
 import { convertSize } from '../../../utility/common'
 
+// DBU_MAX_POW is the largest DBU exponent: 2^9 = 512 DBU.
+const DBU_MAX_POW = 9
+const dbuToPos = (dbu) => Math.max(0, Math.min(DBU_MAX_POW, Math.round(Math.log2(dbu || 1))))
+
 function DBUSlider({ value, isDisabled, onChange }) {
   const [draft, setDraft] = useState(null)
   const [showTooltip, setShowTooltip] = useState(false)
-  const current = draft !== null ? draft : value
+  // The slider runs on the log2 position (0..9) so power-of-two DBU stops
+  // (1,2,4,...,512) are evenly spaced — a linear 1..512 scale squashes the small,
+  // common values against the left. Each stop doubles the resources and maps to a
+  // plan tier.
+  const pos = draft !== null ? draft : dbuToPos(value)
+  const dbu = 2 ** pos
 
-  const formatDBU = useCallback((dbu) => {
-    const mem = dbu * 4096
+  const formatDBU = useCallback((d) => {
+    const mem = d * 4096
     const memLabel = mem >= 1024 ? `${mem / 1024}GB` : `${mem}MB`
-    return `${dbu} DBU — ${dbu} cores, ${memLabel} mem, ${dbu * 40}GB disk, ${dbu * 1000} IO/s`
+    return `${d} DBU — standard rate: ${d} cores · ${memLabel} · ${d * 40}GB disk · ${d * 1000} IO/s`
   }, [])
 
   return (
     <Box w='100%'>
       <Flex justify='space-between' mb={1}>
         <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Database Units (DBU)</Text>
-        <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>{formatDBU(current)}</Text>
+        <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>{formatDBU(dbu)}</Text>
       </Flex>
       <Slider
-        min={1}
-        max={512}
+        min={0}
+        max={DBU_MAX_POW}
         step={1}
-        value={current}
+        value={pos}
         isDisabled={isDisabled}
         onChange={(v) => setDraft(v)}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         onChangeEnd={(v) => {
           setDraft(null)
-          if (v !== value && onChange) onChange(v)
+          const nd = 2 ** v
+          if (nd !== value && onChange) onChange(nd)
         }}
       >
         <SliderTrack h='8px' borderRadius='full' bg='gray.200'>
           <SliderFilledTrack bg='blue.400' />
         </SliderTrack>
-        <Tooltip label={formatDBU(current)} placement='top' isOpen={showTooltip || draft !== null} hasArrow>
+        <Tooltip label={formatDBU(dbu)} placement='top' isOpen={showTooltip || draft !== null} hasArrow>
           <SliderThumb boxSize={5} bg='blue.500' />
         </Tooltip>
       </Slider>
@@ -250,10 +260,12 @@ function DBConfigs({ selectedCluster, user }) {
   const hAutoUpdateCompliance = `**Auto-Update Compliance**\n\nThe compliance module contains replication-manager's best practices for database and proxy configuration. It defines which variables are set for each configuration tag.\n\nWhen enabled (default), compliance updates from the back office or new replication-manager releases are **applied automatically**. Your preserved variables are never overwritten — they always take priority over compliance defaults.\n\nWhen disabled, a warning (WARN0168) is raised when new compliance is available. You can review the changes (added, removed, or modified tags) and accept when ready. This is recommended for production environments where you want to review best practice changes before they take effect.\n\nConfig: \`prov-auto-update-compliance\``
   const hAutoAgreeCompliance = `**Auto-Agree Compliance**\n\nControls what happens to a config **delta** — a variable whose value on the database differs from the compliance value — that is neither preserved (operator-forced) nor already agreed.\n\nWhen **disabled (default)**, every value delta waits for a manual review and agree in the config editor before it is written to the database. Recommended for production.\n\nWhen **enabled**, a value delta is automatically agreed to the compliance value (written to \`03_agreed.cnf\` and pushed to the database). Scoped to **value changes only** — variables that are dropped, deprecated, or not recognized by the database are **never** auto-agreed and always stay for manual review (they would crash the database on restart).\n\nIndependent of Auto-Update Compliance: that one regenerates the config from a new module (repman side), this one applies value deltas to the running database (DB side).\n\nConfig: \`prov-db-compliance-auto-agree\``
 
+  const hDynamicResource = `**Dynamic Resource Resize**\n\nWhen enabled, a change to the provisioned memory (\`prov-db-memory\`, e.g. from a DBU/plan resize) is applied to the **running** database live instead of a full restart: the buffer pool and other dynamically-settable variables via \`SET GLOBAL\`, and the container cgroup via the orchestrator (OpenSVC \`pg update\`) or a client hook. Restart-only variables still schedule a restart. \`max_connections\` is never touched (client workload).\n\nTwo optional client hooks refine it: \`prov-db-dynamic-resource-can-change-script\` (feasibility — prints yes / no / migration) runs first, and \`prov-db-dynamic-resource-change-script\` (does the infra resize, overrides the native path in every orchestrator case).\n\nOff by default.\n\nConfig: \`prov-db-dynamic-resource\``
+
   const dataObject = [
     {
-      key: 'Cluster DB Start Fetch Config',
-      help: h(hFetchConfig, 'Fetch Config on Start'),
+      key: 'Pull Config On DB Start',
+      help: h(hFetchConfig, 'Pull Config On DB Start'),
       value: (
         <RMSwitch
           isChecked={selectedCluster?.config?.provDbStartFetchConfig}
@@ -266,8 +278,8 @@ function DBConfigs({ selectedCluster, user }) {
       )
     },
     {
-      key: 'Apply Dynamic Config',
-      help: h(hDynamicConfig, 'Apply Dynamic Config'),
+      key: 'Apply Dynamic Config On Change Tags',
+      help: h(hDynamicConfig, 'Apply Dynamic Config On Change Tags'),
       value: (
         <RMSwitch
           isChecked={selectedCluster?.config?.provDBApplyDynamicConfig}
@@ -275,6 +287,20 @@ function DBConfigs({ selectedCluster, user }) {
           confirmTitle={'Confirm switch settings for prov-db-apply-dynamic-config?'}
           onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-apply-dynamic-config' }))
+          }
+        />
+      )
+    },
+    {
+      key: 'Apply Dynamic Resource Resize',
+      help: h(hDynamicResource, 'Apply Dynamic Resource Resize'),
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.provDbDynamicResource}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for prov-db-dynamic-resource?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-dynamic-resource' }))
           }
         />
       )
