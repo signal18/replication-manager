@@ -3295,9 +3295,22 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 	}
 }
 
+// AddProxy registers a new proxy. Id is only hashed from cluster/name/write-port
+// (SetID, prx_set.go), so two different proxy families sharing the same
+// address and write port would hash to the same Id -- blocked here rather
+// than allowing GetProxyFromName (prx_get.go) to later resolve API actions
+// against whichever one happens to come first in cluster.Proxies.
 func (c *Cluster) AddProxy(prx DatabaseProxy) {
 	prx.SetCluster(c)
 	prx.SetID()
+	for _, existing := range c.Proxies {
+		if existing.GetId() == prx.GetId() {
+			c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Refusing to add proxy %s %s:%d: Id collides with already-registered proxy %s %s:%d -- use distinct addresses or write ports",
+				prx.GetType(), prx.GetName(), prx.GetWritePort(), existing.GetType(), existing.GetName(), existing.GetWritePort())
+			return
+		}
+	}
 	prx.SetDataDir()
 	prx.SetServiceName(c.Name)
 	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New proxy monitored %s: %s:%s", prx.GetType(), prx.GetHost(), prx.GetPort())

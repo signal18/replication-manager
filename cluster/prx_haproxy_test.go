@@ -683,9 +683,10 @@ func TestHaproxyRefreshSkipsSetMasterFallbackInStandbyMode(t *testing.T) {
 // TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode: standby mode
 // propagates topology exclusively through Init()/Failover() (full config
 // regen + reload); Refresh() must never issue a write-backend Runtime API
-// command, even when a non-master row is left UP (checkmaster failed to
-// exclude it, matching a real production symptom) -- correcting that is
-// checkmaster's job or a full Init() regen, not Refresh()'s.
+// command, even when a non-master row is left UP -- standby has no active
+// health check of its own (unlike externalcheck's checkmaster), so a stale
+// row only ever gets corrected by the next full Init() regen, never by
+// Refresh().
 func TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode(t *testing.T) {
 	cluster := setupTestCluster(t, 2)
 	defer cleanupTestCluster(t, cluster)
@@ -718,8 +719,9 @@ func TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode(t *testing.T) {
 	cluster.master = master
 	cluster.slaves = []*ServerMonitor{slave}
 
-	// checkmaster failed to exclude the replica: both rows report UP in
-	// service_write, matching the live screenshot that prompted this fix.
+	// standby has no active health check, so both rows report UP in
+	// service_write regardless of who's actually leader, matching the live
+	// screenshot that prompted this fix.
 	statResponse := strings.Join([]string{
 		haproxyStatRow("service_write", "server1", "UP", "127.0.0.1:3306"),
 		haproxyStatRow("service_write", "server2", "UP", "127.0.0.1:3307"),
@@ -753,17 +755,15 @@ func TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode(t *testing.T) {
 	}
 }
 
-// TestHaproxyRefreshNeverMutatesReadBackendInStandbyMode is
-// TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode's read-backend
-// counterpart. The read-backend mutation logic (broken-replication drain,
-// valid-replication ready, master-reader reconciliation) predates the
-// write-backend fix and was left unconditional -- the same architectural
-// bug, just on the other backend: standby relies on checkslave's own
-// external-check (option external-check, HAProxy's own health check
-// against repman's /slave-status API) to control read-backend membership,
-// so a competing Runtime API SetDrain/SetReady from Refresh() would race
-// against checkslave's independent polling instead of deferring to it.
-func TestHaproxyRefreshNeverMutatesReadBackendInStandbyMode(t *testing.T) {
+// TestHaproxyRefreshNeverMutatesWriteBackendInExternalCheckMode is
+// TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode's externalcheck
+// counterpart: both write-backend gates in Refresh() (the row loop and the
+// !foundMasterInStat fallback) are `== "runtimeapi"`, not `!= "standby"`, so
+// externalcheck must be independently verified to never issue a
+// write-backend Runtime API command either -- checkmaster's own
+// external-check polling of repman's HTTP handlers owns that decision, not
+// Refresh().
+func TestHaproxyRefreshNeverMutatesWriteBackendInExternalCheckMode(t *testing.T) {
 	cluster := setupTestCluster(t, 2)
 	defer cleanupTestCluster(t, cluster)
 
@@ -774,7 +774,84 @@ func TestHaproxyRefreshNeverMutatesReadBackendInStandbyMode(t *testing.T) {
 		HaproxyAPIWriteBackend: "service_write",
 		HaproxyAPIReadBackend:  "service_read",
 		HaproxyOn:              true,
-		HaproxyMode:            "standby",
+		HaproxyMode:            "externalcheck",
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	// checkmaster hasn't excluded the stale replica yet (or is momentarily
+	// lagging) -- both rows report UP in service_write.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_write", "server2", "UP", "127.0.0.1:3307"),
+		haproxyStatRow("service_read", "server1", "DOWN", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server2", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	for _, c := range getCommands() {
+		if strings.HasPrefix(c, "set server "+cluster.Conf.HaproxyAPIWriteBackend+"/") {
+			t.Fatalf("Refresh() sent %q in haproxy-mode=externalcheck -- write-backend state must be left to checkmaster's external-check, never touched by Refresh() (all commands: %v)", c, getCommands())
+		}
+	}
+
+	if len(proxy.BackendsWrite) != 2 {
+		t.Fatalf("expected Refresh() to still report both write-backend rows for the dashboard, got %d: %+v", len(proxy.BackendsWrite), proxy.BackendsWrite)
+	}
+}
+
+// TestHaproxyRefreshNeverMutatesReadBackendInExternalCheckMode is
+// TestHaproxyRefreshNeverMutatesWriteBackendInExternalCheckMode's
+// read-backend counterpart. The read-backend mutation logic
+// (broken-replication drain, valid-replication ready, master-reader
+// reconciliation) predates the write-backend fix and was left
+// unconditional -- the same architectural bug, just on the other backend:
+// externalcheck relies on checkslave's own external-check (option
+// external-check, HAProxy's own health check against repman's
+// /slave-status API) to control read-backend membership, so a competing
+// Runtime API SetDrain/SetReady from Refresh() would race against
+// checkslave's independent polling instead of deferring to it.
+func TestHaproxyRefreshNeverMutatesReadBackendInExternalCheckMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "externalcheck",
 	}
 
 	master := cluster.Servers[0]
@@ -787,7 +864,7 @@ func TestHaproxyRefreshNeverMutatesReadBackendInStandbyMode(t *testing.T) {
 	// slave1 broke replication but checkslave's external-check hasn't
 	// excluded it yet (or is momentarily lagging) -- HAProxy still reports
 	// it UP. In haproxy-mode=runtimeapi this would trigger a SetDrain; in
-	// standby, Refresh() must leave it alone entirely.
+	// externalcheck, Refresh() must leave it alone entirely.
 	slave := cluster.Servers[1]
 	slave.Id = "slave1"
 	slave.Host = "127.0.0.1"
@@ -822,7 +899,81 @@ func TestHaproxyRefreshNeverMutatesReadBackendInStandbyMode(t *testing.T) {
 
 	for _, c := range getCommands() {
 		if strings.HasPrefix(c, "set server "+cluster.Conf.HaproxyAPIReadBackend+"/") {
-			t.Fatalf("Refresh() sent %q in haproxy-mode=standby -- read-backend state must be left to checkslave's external-check, never touched by Refresh() (all commands: %v)", c, getCommands())
+			t.Fatalf("Refresh() sent %q in haproxy-mode=externalcheck -- read-backend state must be left to checkslave's external-check, never touched by Refresh() (all commands: %v)", c, getCommands())
+		}
+	}
+
+	if len(proxy.BackendsRead) != 2 {
+		t.Fatalf("expected Refresh() to still report both read-backend rows for the dashboard, got %d: %+v", len(proxy.BackendsRead), proxy.BackendsRead)
+	}
+}
+
+// TestHaproxyRefreshNeverMutatesReadBackendInStandbyMode is
+// TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode's read-backend
+// counterpart. standby has no external-check at all (unlike externalcheck's
+// checkslave, see TestHaproxyRefreshNeverMutatesReadBackendInExternalCheckMode
+// above) -- read-backend membership is decided entirely by Init()'s own
+// server loop (skipRead, see hasBrokenReplicationForRead in
+// cluster/prx_haproxy.go), so Refresh() must still never issue a read-backend
+// Runtime API command in standby mode either, the same as externalcheck.
+func TestHaproxyRefreshNeverMutatesReadBackendInStandbyMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 broke replication but Init() hasn't re-rendered since -- HAProxy
+	// still reports it UP. In haproxy-mode=runtimeapi this would trigger a
+	// SetDrain; in standby, Refresh() must leave it alone entirely.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlaveErr
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server2", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	for _, c := range getCommands() {
+		if strings.HasPrefix(c, "set server "+cluster.Conf.HaproxyAPIReadBackend+"/") {
+			t.Fatalf("Refresh() sent %q in haproxy-mode=standby -- read-backend state must be left to Init()'s own server loop, never touched by Refresh() (all commands: %v)", c, getCommands())
 		}
 	}
 
@@ -928,6 +1079,51 @@ backend {{.Name}}
 	if !strings.Contains(readSection, "server server2 127.0.0.1:3307") {
 		t.Fatalf("read backend does not contain the healthy slave:\n%s", readSection)
 	}
+}
+
+// TestNewHaproxyProxyStandbyKeepsLocalHost guards the fix alongside the
+// standby-always-local change: standby's Init() now renders+reloads
+// regardless of the cluster's own orchestrator (prx_haproxy.go, the
+// HaproxyMode != "standby" gate), so if NewHaproxyProxy still rewrote
+// prx.Host into a CNI Service DNS name for standby, Init() would render
+// "stats socket ipv4@<service dns>:<port>" (share/haproxy_config.template)
+// and the local HAProxy process could never bind it. runtimeapi/externalcheck
+// genuinely run as a separate orchestrator-managed resource repman only
+// reaches over the network, so they must keep the CNI rewrite.
+func TestNewHaproxyProxyStandbyKeepsLocalHost(t *testing.T) {
+	newProxy := func(t *testing.T, haproxyMode string) *HaproxyProxy {
+		t.Helper()
+		cluster := newTestCluster("cnitest")
+		cluster.Conf.ProvNetCNI = true
+		cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+		cluster.Conf.ProvOrchestratorCluster = "local"
+		cluster.Conf.HaproxyMode = haproxyMode
+		cluster.Conf.HaproxyAPIPort = 1999
+		return NewHaproxyProxy(0, cluster, "haproxy1")
+	}
+
+	t.Run("standby keeps the plain configured host", func(t *testing.T) {
+		prx := newProxy(t, "standby")
+		if prx.Host != "haproxy1" {
+			t.Fatalf("Host = %q, want %q (standby must stay locally bindable, not CNI-rewritten)", prx.Host, "haproxy1")
+		}
+	})
+
+	t.Run("runtimeapi still gets the CNI Service DNS rewrite", func(t *testing.T) {
+		prx := newProxy(t, "runtimeapi")
+		want := "haproxy1.cnitest.svc.cluster.local"
+		if prx.Host != want {
+			t.Fatalf("Host = %q, want %q", prx.Host, want)
+		}
+	})
+
+	t.Run("externalcheck still gets the CNI Service DNS rewrite", func(t *testing.T) {
+		prx := newProxy(t, "externalcheck")
+		want := "haproxy1.cnitest.svc.cluster.local"
+		if prx.Host != want {
+			t.Fatalf("Host = %q, want %q", prx.Host, want)
+		}
+	})
 }
 
 // TestHaproxyInitLocalWorkGating guards Init()'s combined gate: it does its
@@ -2390,8 +2586,15 @@ func TestHaproxyReconcileSkipsWhenGated(t *testing.T) {
 		{name: "flag disabled", bootstrapOn: false, version: "HAProxy version 2.8.5-1 2023/09/01", haproxyMode: "runtimeapi"},
 		{name: "version too old", bootstrapOn: true, version: "HAProxy version 2.0.14-1 2020/06/01", haproxyMode: "runtimeapi"},
 		{name: "version 2.4 (below the gate)", bootstrapOn: true, version: "HAProxy version 2.4.36-1 2024/01/01", haproxyMode: "runtimeapi"},
-		// standby mode names servers positionally, not by server.Id.
+		// reconcileReadBackendServers is gated to haproxy-mode=runtimeapi only
+		// (cluster/prx_haproxy.go); standby and externalcheck must both skip
+		// it regardless of why -- externalcheck's config names servers
+		// positionally ("server1", "server2", ...), while standby names them
+		// by server.Id via Init() but never reaches this Runtime API
+		// reconciliation at all (its own topology propagation is a full
+		// local config re-render/reload, not a per-server Runtime API call).
 		{name: "haproxy-mode standby", bootstrapOn: true, version: "HAProxy version 2.8.5-1 2023/09/01", haproxyMode: "standby"},
+		{name: "haproxy-mode externalcheck", bootstrapOn: true, version: "HAProxy version 2.8.5-1 2023/09/01", haproxyMode: "externalcheck"},
 	}
 
 	for _, tt := range tests {
