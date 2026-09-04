@@ -214,6 +214,47 @@ func TestK8SProvisionProxy_InvalidPort(t *testing.T) {
 	}
 }
 
+// TestK8SProvisionProxy_DottedNameInvalidForService guards a real gap:
+// Kubernetes Service names must be a single RFC 1035 label (no dots),
+// stricter than the RFC 1123 subdomain Deployment/PVC names accept (dots
+// allowed) -- so a literal IP address or dotted hostname in
+// haproxy-servers/proxysql-servers (a normal, pre-existing config on
+// non-Kubernetes orchestrators) must fail clearly up front, not leave a
+// Deployment/PVC provisioned with no Service after an opaque Kubernetes API
+// validation error on the Service Create() call.
+func TestK8SProvisionProxy_DottedNameInvalidForService(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "10.0.0.5", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	err := cluster.k8sProvisionProxyServiceWithClient(client, prx)
+	if err == nil {
+		t.Fatal("expected an explicit error for a dotted proxy name invalid as a Kubernetes Service name, got nil")
+	}
+
+	if _, getErr := client.AppsV1().Deployments("k8stest").Get(context.TODO(), k8sProxyDeploymentName("k8stest", "10.0.0.5"), metav1.GetOptions{}); getErr == nil {
+		t.Fatal("expected no Deployment to be created when the name fails Service validation")
+	}
+	if _, getErr := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "10.0.0.5"), metav1.GetOptions{}); getErr == nil {
+		t.Fatal("expected no PVC to be created when the name fails Service validation")
+	}
+}
+
+// TestK8SProvisionProxy_PlainNameValidForService is the counterpart: an
+// ordinary, dot-free hostname must still provision normally.
+func TestK8SProvisionProxy_PlainNameValidForService(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error provisioning a plain hostname proxy: %s", err)
+	}
+	if _, err := client.CoreV1().Services("k8stest").Get(context.TODO(), "proxysql1", metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected the Service to be created: %s", err)
+	}
+}
+
 // TestK8SProvisionProxy_EnsuresNamespaceOnFreshCluster guards direct proxy
 // provisioning (handlerMuxProxyProvision, server/api_proxy.go) into a
 // cluster/namespace where DB provisioning never ran -- k8sEnsureNamespace

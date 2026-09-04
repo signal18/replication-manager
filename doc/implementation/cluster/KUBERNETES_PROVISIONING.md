@@ -407,6 +407,26 @@ Service is named after the proxy itself (`k8sProxyServiceName()` =
 `prov-net-cni`'s `<proxy>.<namespace>.svc.<cluster-domain>` DNS (baked into
 `NewProxySQLProxy`/`NewHaproxyProxy`) to actually resolve.
 
+Because it's used unchanged as a Service name, `prx.GetName()` (the raw
+`haproxy-servers`/`proxysql-servers` entry) is held to Kubernetes' actual
+Service constraint — a single RFC 1035 label (lowercase alphanumeric or
+`-`, starting with a letter, no dots) — which is *stricter* than the RFC
+1123 subdomain the Deployment/PVC names accept (dots allowed). This never
+applied to proxies before this PR: provisioning only ever built a
+Deployment (no Service), and the DB side's equivalent
+(`k8sHeadlessServiceName`) is a constant, not derived from a per-server
+host string. A literal IP address or dotted hostname — a normal,
+pre-existing config on non-Kubernetes orchestrators — is invalid here.
+`k8sProxyServiceNameErrs` (`validation.IsDNS1035Label`) checks this up
+front in `k8sProvisionProxyServiceWithClient`, before any `Create()` call,
+failing with an explicit error (`ERR00110`, `config/error.go`) instead of
+leaving a Deployment/PVC provisioned with no Service after an opaque
+Kubernetes API validation error. The name can only be validated, not
+silently sanitized to something DNS-1035-safe: `k8sProxyServiceName` must
+equal `prx.GetName()` unchanged for the `prov-net-cni` DNS host derivation
+above to resolve, so sanitizing it here would just move the mismatch
+somewhere harder to see.
+
 All three names key on proxy *name* alone, never type — so "unique per
 proxy" only holds if names are unique across the whole cluster regardless
 of type. Two different-type proxies sharing a name but configured with

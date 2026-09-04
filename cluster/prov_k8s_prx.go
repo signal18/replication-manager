@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
@@ -13,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -39,6 +41,27 @@ func k8sLegacyProxyDeploymentName(clusterName string) string {
 // host as "<proxy-name>.<namespace>.svc.<cluster-domain>".
 func k8sProxyServiceName(prx DatabaseProxy) string {
 	return prx.GetName()
+}
+
+// k8sProxyServiceNameErrs validates prx's name against Kubernetes' actual
+// Service name constraint (RFC 1035 label: lowercase alphanumeric or '-',
+// starting with a letter, no dots) -- stricter than the RFC 1123 subdomain
+// Deployment/PVC names accept, which does allow dots. Before this PR, proxy
+// provisioning only ever built a Deployment (no Service) and the DB side's
+// equivalent (k8sHeadlessServiceName, prov_k8s_db.go) is a constant, not
+// derived from a per-server host string, so this constraint never applied
+// to a proxy's *-servers entry before. k8sProxyServiceName must equal
+// prx.GetName() unchanged for prov-net-cni's DNS host derivation
+// (NewProxySQLProxy/NewHaproxyProxy) to resolve, so an invalid name can
+// only be reported here, not silently sanitized to a different value that
+// would then disagree with that DNS host. Checked up front in
+// k8sProvisionProxyServiceWithClient, before any Create() call, so a
+// literal IP address or dotted hostname in haproxy-servers/proxysql-servers
+// (a normal, pre-existing config on non-Kubernetes orchestrators) fails
+// clearly instead of leaving a Deployment/PVC provisioned with no Service
+// after an opaque Kubernetes API validation error.
+func k8sProxyServiceNameErrs(prx DatabaseProxy) []string {
+	return validation.IsDNS1035Label(prx.GetName())
 }
 
 // k8sProxyTypeLabel records which proxy type owns a Deployment/Service/PVC,
@@ -586,6 +609,15 @@ func (cluster *Cluster) k8sWarnIfLegacyProxyDeploymentExists(client kubernetes.I
 // the Deployment/Service names collide and must fail loudly instead of
 // treating the second proxy's Create() calls as an idempotent AlreadyExists.
 func (cluster *Cluster) k8sProvisionProxyServiceWithClient(client kubernetes.Interface, prx DatabaseProxy) error {
+	if errs := k8sProxyServiceNameErrs(prx); len(errs) > 0 {
+		err := fmt.Errorf(clusterError["ERR00110"], prx.GetName(), strings.Join(errs, "; "))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
+		if cluster.StateMachine != nil {
+			cluster.StateMachine.AddState("ERR00110", state.State{ErrType: "ERROR", ErrDesc: err.Error(), ErrFrom: "PROXY", ServerUrl: prx.GetName()})
+		}
+		return err
+	}
+
 	cluster.k8sEnsureNamespace(client, cluster.Name)
 
 	collision, err := cluster.k8sProxyNameOwnedByDifferentType(client, prx)
