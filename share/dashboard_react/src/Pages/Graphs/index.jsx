@@ -188,6 +188,19 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         <ChartMultiMetric
          context={context}
          metricPaths={scopeAll([
+           'maxSeries(mysql.*.dbu)',
+           'maxSeries(mysql.*.dbu_cpu)',
+           'maxSeries(mysql.*.dbu_mem)',
+           'maxSeries(mysql.*.dbu_io)',
+           'maxSeries(mysql.*.dbu_disk)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Consumed DBU (pivot + per-axis: cpu/mem/io/disk)"
+       />
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
            'maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
            'averageSeries(mysql.*.mysql_global_variables_innodb_log_file_size)'
          ])}
