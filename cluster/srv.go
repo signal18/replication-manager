@@ -1112,34 +1112,77 @@ func (server *ServerMonitor) Refresh() error {
 
 		vars, _, err = dbhelper.GetVariablesCase(server.Conn, server.DBVersion, "LOWER")
 		server.SensitiveVariables = config.FromNormalStringMap(server.SensitiveVariables, vars)
-		server.VariablesMap.SetRuntimeValues(vars)
 		if err != nil {
 			return nil
 		}
 
-		// Update HasConfigDiff flag to indicate if there are differences between deployed and generated config
-		server.HasConfigDiff = server.VariablesMap.HasDifferences()
+		// Configurator config-diff / compliance tracking. Gated by prov-db-config,
+		// the master switch for configurator config tracking: when the client turns
+		// it off, the monitor does no per-tick variable diff, reconcile-drop, or
+		// delta/agree work (T14 off-switch, F2 no monitor burden). SensitiveVariables
+		// above stays ungated — DATADIR/PID_FILE/LOG_ERROR feed jobs regardless.
+		if cluster.Conf.ProvDBConfig {
+			runtimeChanged := server.VariablesMap.SetRuntimeValues(vars)
 
-		// Check if deployed config file was reloaded externally
-		// If so, re-read preserved variables to sync with any changes
-		if server.VariablesMap.HasDeployedChanged() {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-				"Deployed config changed for %s, reloading preserved variables", server.URL)
-
-			if err := server.ReadPreservedVariables(); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-					"Failed to reload preserved variables for %s: %s", server.URL, err)
+			// Once the DB actually runs the compliance value (Runtime == Config), a
+			// previously agreed variable (03_agreed.cnf) has served its purpose — it
+			// only existed to hold a value until the DB restarted with the compliance
+			// value. Drop it so it stops showing as a pending diff. Operator-forced
+			// preserves (PreservedSource != "") are never touched. Gated on a runtime
+			// change: reconciliation can only appear when a runtime value moved, so the
+			// steady state (runtime unchanged tick to tick) skips this walk entirely.
+			if runtimeChanged > 0 {
+				if dropped := server.VariablesMap.DropReconciledAgreed(); len(dropped) > 0 {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+						"Dropped %d reconciled agreed variable(s) on %s: %s", len(dropped), server.URL, strings.Join(dropped, ", "))
+					if err := server.WritePreservedVariables(); err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+							"Failed to rewrite agreed variables after drop for %s: %s", server.URL, err)
+					}
+				}
 			}
 
-			// Refresh delta variables file whenever runtime values are updated
-			// This ensures 02_delta.cnf stays in sync with current deployed state
-			if err := server.WriteDeltaVariables(); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-					"Failed to refresh delta variables for %s: %s", server.URL, err)
-			}
+			// Update HasConfigDiff flag to indicate if there are differences between deployed and generated config
+			server.HasConfigDiff = server.VariablesMap.HasDifferences()
 
-			// Clear the flag after processing
-			server.VariablesMap.ClearDeployedChanged()
+			// Check if deployed config file was reloaded externally
+			// If so, re-read preserved variables to sync with any changes
+			if server.VariablesMap.HasDeployedChanged() {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+					"Deployed config changed for %s, reloading preserved variables", server.URL)
+
+				if err := server.ReadPreservedVariables(); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+						"Failed to reload preserved variables for %s: %s", server.URL, err)
+				}
+
+				// Auto-agree value-differs deltas to the compliance value (opt-in,
+				// prov-db-compliance-auto-agree — the DB-side counterpart of
+				// prov-auto-update-compliance). Runs before the delta is (re)written so
+				// agreed variables route to 03_agreed instead of 02_delta and the DB
+				// adopts them on its next restart. Value-changes only; deprecated /
+				// unknown drops are left for manual review (loose_ hides them, #1495).
+				if cluster.Conf.ProvDBComplianceAutoAgree {
+					if agreed := server.VariablesMap.AutoAgreeValueDeltas(); len(agreed) > 0 {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+							"Auto-agreed %d value-differs delta(s) to compliance on %s: %s", len(agreed), server.URL, strings.Join(agreed, ", "))
+						if err := server.WritePreservedVariables(); err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+								"Failed to write agreed variables after auto-agree for %s: %s", server.URL, err)
+						}
+					}
+				}
+
+				// Refresh delta variables file whenever runtime values are updated
+				// This ensures 02_delta.cnf stays in sync with current deployed state
+				if err := server.WriteDeltaVariables(); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+						"Failed to refresh delta variables for %s: %s", server.URL, err)
+				}
+
+				// Clear the flag after processing
+				server.VariablesMap.ClearDeployedChanged()
+			}
 		}
 
 		if server.IsNeedPathCheck {
