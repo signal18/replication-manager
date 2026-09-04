@@ -299,12 +299,12 @@ func (server *ServerMonitor) resizeCPUSQL() []string {
 // memory is not raised (never OOM). Restart-only SET GLOBALs (error 1238) fall
 // back to a restart cookie.
 func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
-	// Live resize only engages in the plan-driven model: a service plan is the
-	// authorized envelope that lets resources move (3-axis: autorisé). With no
-	// plan, resources are fixed/immutable and we must not touch them — the
-	// existing reprov/restart model applies. prov-db-dynamic-resource is the
-	// separate opt-in off-switch (T14) on top of that precondition.
-	if !cluster.Conf.ProvDBDynamicResource || cluster.Conf.ProvServicePlan == "" {
+	// Live resize is gated only by its own opt-in toggle (T14): when
+	// prov-db-dynamic-resource is on, a resource change is applied live
+	// (SET GLOBAL + orchestrator/script feasibility) instead of a container
+	// recreation — with or without a service plan. The plan is only a
+	// provisioning bootstrap and does not authorize/gate the resize.
+	if !cluster.Conf.ProvDBDynamicResource {
 		return
 	}
 	dir := "shrink"
