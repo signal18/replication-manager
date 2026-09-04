@@ -131,6 +131,7 @@ var ClusterError = map[string]string{
 	"ERR00108":  "Proxy %s %s not registered: Id collides with already-registered proxy %s %s -- use a distinct address or write port",
 	"ERR00109":  "Proxy %s %s not provisioned: Kubernetes %s %q already belongs to a %s proxy in this cluster (Deployment/Service/PVC names are keyed on name alone, not type) -- %s",
 	"ERR00110":  "Proxy %s not provisioned: name is not a valid Kubernetes Service name (RFC 1035 label -- lowercase alphanumeric or '-', starting with a letter, no dots): %s",
+	"ERR00111":  "MaxScale %s could not live-patch master_accept_reads on %s: %s",
 	"WARN0022":  "Rejoining standalone server %s to master %s",
 	"WARN0023":  "Number of failed master ping has been reached",
 	"WARN0045":  "Provision task is in queue",
@@ -296,6 +297,7 @@ var ClusterError = map[string]string{
 	"WARN0208":   "Self-healed runaway collected DB log %s (%s): moved aside and reclaimed; compressed sample kept at %s",
 	"WARN0209":   "HAProxy read backend %s: %d server(s) not added (DNS-based config) and %d not removed (HAProxy Runtime API refuses); reload HAProxy to apply",
 	"WARN0210":   "HAProxy read backend %s: catching up on add/remove cleanup over multiple monitoring passes (%s budget each) — safe, no action needed",
+	"WARN0211":   "MaxScale proxy %s: maxscale-get-info-method=maxinfo requested but MaxScale >= 2.5 (pinloki) drops the maxinfo plugin -- falling back to the REST/MaxAdmin path instead of erroring against a port nothing listens on",
 	// CINF: cluster observability statuses (INFO, state-as-tag) — each domain
 	// state machine always explains why it may have nothing to report.
 	"CINF0001":  "%s reporting limited: instance not registered on Cloud18",

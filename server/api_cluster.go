@@ -2744,6 +2744,18 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchProxySQL()
 	case "haproxy-api-bootstrap-servers":
 		mycluster.SwitchHaproxyAPIBootstrapServers()
+	case "maxscale":
+		mycluster.SwitchMaxscaleProxy()
+	case "maxscale-rest-api":
+		mycluster.SwitchMaxscaleRestApi()
+	case "maxscale-disable-monitor":
+		mycluster.SwitchMaxscaleDisableMonitor()
+	case "maxscale-server-match-port":
+		mycluster.SwitchMaxscaleServerMatchPort()
+	case "maxscale-binlog":
+		mycluster.SwitchMaxscaleBinlog()
+	case "failover-falsepositive-maxscale":
+		mycluster.SwitchFailoverFalsePositiveMaxscale()
 	case "proxy-servers-read-on-master":
 		mycluster.SwitchProxyServersReadOnMaster()
 	case "proxy-servers-read-on-master-no-slave":
@@ -4341,6 +4353,50 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("haproxy-password")
 		mycluster.Conf.Secrets["haproxy-password"] = new_secret
 
+	case "maxscale-mode":
+		switch value {
+		case "auto", "legacy", "pinloki":
+			changed := value != mycluster.Conf.MxsMode
+			mycluster.Conf.MxsMode = value
+			if changed {
+				mycluster.SetProxiesReprovCookie()
+			}
+		default:
+			return fmt.Errorf("invalid value for maxscale-mode: %q, expected one of auto, legacy, pinloki", value)
+		}
+	case "maxscale-get-info-method":
+		switch value {
+		case "maxadmin", "maxinfo":
+			mycluster.Conf.MxsGetInfoMethod = value
+		default:
+			return fmt.Errorf("invalid value for maxscale-get-info-method: %q, expected one of maxadmin, maxinfo", value)
+		}
+	case "maxscale-servers":
+		mycluster.Conf.MxsHost = value
+	case "maxscale-port":
+		port, convErr := strconv.Atoi(value)
+		if convErr != nil || port < 1 || port > 65535 {
+			return fmt.Errorf("invalid value for maxscale-port: %q, port must be between 1 and 65535", value)
+		}
+		mycluster.Conf.MxsPort = value
+	case "maxscale-rest-port", "maxscale-write-port", "maxscale-read-port", "maxscale-read-write-port", "maxscale-binlog-port":
+		port, convErr := strconv.Atoi(value)
+		if convErr != nil || port < 1 || port > 65535 {
+			return fmt.Errorf("invalid value for %s: %q, port must be between 1 and 65535", name, value)
+		}
+		switch name {
+		case "maxscale-rest-port":
+			mycluster.Conf.MxsRestPort = port
+		case "maxscale-write-port":
+			mycluster.Conf.MxsWritePort = port
+		case "maxscale-read-port":
+			mycluster.Conf.MxsReadPort = port
+		case "maxscale-read-write-port":
+			mycluster.Conf.MxsReadWritePort = port
+		case "maxscale-binlog-port":
+			mycluster.Conf.MxsBinlogPort = port
+		}
+
 	// Switches
 	case "verbose":
 		mycluster.Conf.Verbose = applyIsActive(mycluster.Conf.Verbose, isactive)
@@ -4506,9 +4562,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "proxy-servers-read-on-master":
 		mycluster.Conf.PRXServersReadOnMaster = applyIsActive(mycluster.Conf.PRXServersReadOnMaster, isactive)
 		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
+		mycluster.PushMaxscaleReadOnMaster()
 	case "proxy-servers-read-on-master-no-slave":
 		mycluster.Conf.PRXServersReadOnMasterNoSlave = applyIsActive(mycluster.Conf.PRXServersReadOnMasterNoSlave, isactive)
 		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
+		mycluster.PushMaxscaleReadOnMaster()
 	case "proxy-servers-backend-compression":
 		mycluster.Conf.PRXServersBackendCompression = applyIsActive(mycluster.Conf.PRXServersBackendCompression, isactive)
 	case "database-heartbeat":

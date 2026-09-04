@@ -58,7 +58,11 @@ func TestMariaDBVersion(t *testing.T) {
 		{"MySQL 8.0.32", "8.0.32", 80032},
 		{"MySQL 5.7.40", "5.7.40", 50740},
 		{"empty string", "", 0},
-		// Note: function doesn't handle invalid formats gracefully (deprecated function)
+		// Regression for a panic (index out of range [1] with length 0):
+		// pinloki's binlogrouter doesn't recognize @@maxscale_version and
+		// echoes the literal query text back instead of erroring, which
+		// leaves the version regex with no digits to match at all.
+		{"unparseable text, no digits", "@@maxscale_version", 0},
 	}
 
 	for _, tt := range tests {
@@ -69,6 +73,37 @@ func TestMariaDBVersion(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsMaxscalePinloki(t *testing.T) {
+	t.Run("version_comment is pinloki", func(t *testing.T) {
+		db, mock := mockDB(t, "mysql")
+		rows := sqlmock.NewRows([]string{"@@version_comment"}).AddRow("pinloki")
+		mock.ExpectQuery("Select @@version_comment").WillReturnRows(rows)
+
+		if !IsMaxscalePinloki(db) {
+			t.Errorf("expected true for version_comment = pinloki")
+		}
+	})
+
+	t.Run("version_comment is a real MariaDB build", func(t *testing.T) {
+		db, mock := mockDB(t, "mysql")
+		rows := sqlmock.NewRows([]string{"@@version_comment"}).AddRow("mariadb.org binary distribution")
+		mock.ExpectQuery("Select @@version_comment").WillReturnRows(rows)
+
+		if IsMaxscalePinloki(db) {
+			t.Errorf("expected false for a real backend's version_comment")
+		}
+	})
+
+	t.Run("query errors", func(t *testing.T) {
+		db, mock := mockDB(t, "mysql")
+		mock.ExpectQuery("Select @@version_comment").WillReturnError(errors.New("connection refused"))
+
+		if IsMaxscalePinloki(db) {
+			t.Errorf("expected false on query error")
+		}
+	})
 }
 
 func TestGetDBVersion_Integration(t *testing.T) {

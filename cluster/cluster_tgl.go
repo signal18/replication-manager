@@ -416,11 +416,13 @@ func (cluster *Cluster) SwitchProxyServersBackendCompression() {
 func (cluster *Cluster) SwitchProxyServersReadOnMaster() {
 	cluster.Conf.PRXServersReadOnMaster = !cluster.Conf.PRXServersReadOnMaster
 	cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
+	cluster.PushMaxscaleReadOnMaster()
 }
 
 func (cluster *Cluster) SwitchProxyServersReadOnMasterNoSlave() {
 	cluster.Conf.PRXServersReadOnMasterNoSlave = !cluster.Conf.PRXServersReadOnMasterNoSlave
 	cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
+	cluster.PushMaxscaleReadOnMaster()
 }
 
 func (cluster *Cluster) SwitchProxySQL() {
@@ -441,6 +443,26 @@ func (cluster *Cluster) SwitchHaproxyAPIBootstrapServers() {
 }
 func (cluster *Cluster) SwitchMaxscaleProxy() {
 	cluster.Conf.MxsOn = !cluster.Conf.MxsOn
+}
+
+func (cluster *Cluster) SwitchMaxscaleRestApi() {
+	cluster.Conf.MxsRestApi = !cluster.Conf.MxsRestApi
+}
+
+func (cluster *Cluster) SwitchMaxscaleDisableMonitor() {
+	cluster.Conf.MxsDisableMonitor = !cluster.Conf.MxsDisableMonitor
+}
+
+func (cluster *Cluster) SwitchMaxscaleServerMatchPort() {
+	cluster.Conf.MxsServerMatchPort = !cluster.Conf.MxsServerMatchPort
+}
+
+func (cluster *Cluster) SwitchMaxscaleBinlog() {
+	cluster.Conf.MxsBinlogOn = !cluster.Conf.MxsBinlogOn
+}
+
+func (cluster *Cluster) SwitchFailoverFalsePositiveMaxscale() {
+	cluster.Conf.CheckFalsePositiveMaxscale = !cluster.Conf.CheckFalsePositiveMaxscale
 }
 
 func (cluster *Cluster) SwitchMyProxy() {
