@@ -419,12 +419,9 @@ func (proxy *MaxscaleProxy) BackendsStateChange() {
 }
 
 // SetMaintenance pushes server's maintenance flag to MaxScale. Deliberately
-// does not require an elected master first: maintenance is per-server
-// quarantine state (e.g. to pull a broken replica out of rotation), which
-// can matter during failover/all-down windows precisely when there's no
-// master -- neither HaproxyProxy.SetMaintenance nor
-// ProxySQLProxy.SetMaintenance gate on GetMaster() either (ProxySQL once
-// had the same guard, commented out).
+// does not require an elected master: quarantining a broken replica can
+// matter most during a failover/all-down window. HaproxyProxy and
+// ProxySQLProxy's SetMaintenance don't gate on GetMaster() either.
 func (pr *MaxscaleProxy) SetMaintenance(server *ServerMonitor) {
 	cluster := pr.ClusterGroup
 	if !cluster.Conf.MxsOn {

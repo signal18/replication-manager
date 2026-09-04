@@ -8,6 +8,7 @@ package maxscale
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -184,6 +185,157 @@ func TestListMonitors_ParsesRESTResponseAndFindsRunningMonitor(t *testing.T) {
 	}
 }
 
+// --- Regression: server/monitor caches must be per-instance, not shared ---
+// These caches used to be package globals; a multi-cluster repman running
+// two MaxScale-backed clusters would clobber each other's cached servers.
+
+func TestListServers_CacheIsPerInstanceNotShared(t *testing.T) {
+	m1, mux1 := newTestServer(t)
+	mux1.HandleFunc("/v1/servers", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, map[string]any{
+			"data": []map[string]any{
+				{"id": "cluster1-server1", "attributes": map[string]any{"state": "Master, Running", "parameters": map[string]any{"address": "10.0.1.1", "port": 3306}, "statistics": map[string]any{"connections": 1}}},
+			},
+		})
+	})
+
+	m2, mux2 := newTestServer(t)
+	mux2.HandleFunc("/v1/servers", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, map[string]any{
+			"data": []map[string]any{
+				{"id": "cluster2-server1", "attributes": map[string]any{"state": "Slave, Running", "parameters": map[string]any{"address": "10.0.2.1", "port": 3306}, "statistics": map[string]any{"connections": 2}}},
+			},
+		})
+	})
+
+	if _, err := m1.ListServers(); err != nil {
+		t.Fatalf("m1.ListServers: %s", err)
+	}
+	if _, err := m2.ListServers(); err != nil {
+		t.Fatalf("m2.ListServers: %s", err)
+	}
+
+	if name, _, _ := m1.GetServer("10.0.1.1", "3306", true); name != "cluster1-server1" {
+		t.Fatalf("expected m1 to see its own server, got %q", name)
+	}
+	if name, _, _ := m2.GetServer("10.0.2.1", "3306", true); name != "cluster2-server1" {
+		t.Fatalf("expected m2 to see its own server, got %q", name)
+	}
+	if name, _, _ := m1.GetServer("10.0.2.1", "3306", true); name != "" {
+		t.Fatalf("expected m1's cache to be isolated from m2's, but it saw %q", name)
+	}
+	if name, _, _ := m2.GetServer("10.0.1.1", "3306", true); name != "" {
+		t.Fatalf("expected m2's cache to be isolated from m1's, but it saw %q", name)
+	}
+}
+
+func TestListMonitors_CacheIsPerInstanceNotShared(t *testing.T) {
+	m1, mux1 := newTestServer(t)
+	mux1.HandleFunc("/v1/monitors", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, map[string]any{
+			"data": []map[string]any{{"id": "cluster1-monitor", "attributes": map[string]any{"state": "Running"}}},
+		})
+	})
+
+	m2, mux2 := newTestServer(t)
+	mux2.HandleFunc("/v1/monitors", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, map[string]any{
+			"data": []map[string]any{{"id": "cluster2-monitor", "attributes": map[string]any{"state": "Stopped"}}},
+		})
+	})
+
+	if _, err := m1.ListMonitors(); err != nil {
+		t.Fatalf("m1.ListMonitors: %s", err)
+	}
+	if _, err := m2.ListMonitors(); err != nil {
+		t.Fatalf("m2.ListMonitors: %s", err)
+	}
+
+	if got := m1.GetMonitor(); got != "cluster1-monitor" {
+		t.Fatalf("expected m1 to see its own running monitor, got %q", got)
+	}
+	if got := m2.GetStoppedMonitor(); got != "cluster2-monitor" {
+		t.Fatalf("expected m2 to see its own stopped monitor, got %q", got)
+	}
+	if got := m1.GetStoppedMonitor(); got != "" {
+		t.Fatalf("expected m1's cache to be isolated from m2's, but it saw stopped monitor %q", got)
+	}
+	if got := m2.GetMonitor(); got != "" {
+		t.Fatalf("expected m2's cache to be isolated from m1's, but it saw running monitor %q", got)
+	}
+}
+
+func TestGetMaxInfoServers_CacheIsPerInstanceNotShared(t *testing.T) {
+	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, []map[string]any{
+			{"Server": "cluster1-server1", "Address": "10.0.1.1", "Port": 3306, "Connections": 1, "Status": "Master, Running"},
+		})
+	}))
+	defer srv1.Close()
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, []map[string]any{
+			{"Server": "cluster2-server1", "Address": "10.0.2.1", "Port": 3306, "Connections": 2, "Status": "Slave, Running"},
+		})
+	}))
+	defer srv2.Close()
+
+	m1 := &MaxScale{UseRest: true}
+	m2 := &MaxScale{UseRest: true}
+
+	if _, err := m1.GetMaxInfoServers(srv1.URL); err != nil {
+		t.Fatalf("m1.GetMaxInfoServers: %s", err)
+	}
+	if _, err := m2.GetMaxInfoServers(srv2.URL); err != nil {
+		t.Fatalf("m2.GetMaxInfoServers: %s", err)
+	}
+
+	if name, _, _ := m1.GetMaxInfoServer("10.0.1.1", 3306, true); name != "cluster1-server1" {
+		t.Fatalf("expected m1 to see its own server, got %q", name)
+	}
+	if name, _, _ := m2.GetMaxInfoServer("10.0.2.1", 3306, true); name != "cluster2-server1" {
+		t.Fatalf("expected m2 to see its own server, got %q", name)
+	}
+	if name, _, _ := m1.GetMaxInfoServer("10.0.2.1", 3306, true); name != "" {
+		t.Fatalf("expected m1's maxinfo cache to be isolated from m2's, but it saw %q", name)
+	}
+}
+
+// Same isolation guarantee under concurrency -- run with -race to catch the
+// old shared-global data race directly.
+func TestListServers_ConcurrentInstancesDoNotRace(t *testing.T) {
+	const n = 20
+	done := make(chan error, n)
+	for i := 0; i < n; i++ {
+		i := i
+		go func() {
+			m, mux := newTestServer(t)
+			id := fmt.Sprintf("server-%d", i)
+			addr := fmt.Sprintf("10.0.%d.1", i)
+			mux.HandleFunc("/v1/servers", func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(t, w, map[string]any{
+					"data": []map[string]any{
+						{"id": id, "attributes": map[string]any{"state": "Running", "parameters": map[string]any{"address": addr, "port": 3306}, "statistics": map[string]any{"connections": 0}}},
+					},
+				})
+			})
+			if _, err := m.ListServers(); err != nil {
+				done <- fmt.Errorf("goroutine %d: ListServers: %w", i, err)
+				return
+			}
+			if name, _, _ := m.GetServer(addr, "3306", true); name != id {
+				done <- fmt.Errorf("goroutine %d: expected to see its own server %q, got %q", i, id, name)
+				return
+			}
+			done <- nil
+		}()
+	}
+	for i := 0; i < n; i++ {
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}
+}
+
 func TestSetServer_SendsStateAsQueryParamToSetEndpoint(t *testing.T) {
 	m, mux := newTestServer(t)
 	var gotMethod, gotPath, gotState string
@@ -344,6 +496,16 @@ func TestRestartMonitor_PutsStartEndpoint(t *testing.T) {
 	}
 }
 
+// Regression: restartMonitorMaxAdmin lacked shutdownMonitorMaxAdmin's
+// nil-Conn guard, so a nil m.Conn panicked on Write instead of erroring.
+func TestRestartMonitor_MaxAdminReturnsErrorRatherThanPanicOnNilConn(t *testing.T) {
+	m := &MaxScale{UseRest: false}
+	err := m.RestartMonitor("mysql-monitor")
+	if err == nil {
+		t.Fatal("expected an error for a nil MaxAdmin connection, got nil")
+	}
+}
+
 func TestSetServer_EscapesServerNameInPath(t *testing.T) {
 	m, mux := newTestServer(t)
 	var gotEscapedPath, gotDecodedPath string
@@ -403,13 +565,9 @@ func TestConnect_MaxAdminFailsWhenUnreachable(t *testing.T) {
 	}
 }
 
-// Regression: connectMaxAdmin() used to leave m.Conn open on every handshake
-// failure past the initial dial, relying on the caller to Close() it -- but
-// several callers (e.g. SetMaintenance) treat a Connect() error as nothing
-// to clean up and return without calling Close(), leaking the socket. A
-// closed conn is confirmed here by a subsequent Write failing: Close() on a
-// net.Conn always makes later local Write/Read calls on that same conn
-// return "use of closed network connection", regardless of remote state.
+// Regression: connectMaxAdmin() used to leave m.Conn open on a handshake
+// failure, leaking the socket since callers don't Close() on a Connect()
+// error. Confirmed here by a subsequent Write failing on the closed conn.
 func TestConnect_MaxAdminClosesConnectionOnAuthFailure(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -519,12 +677,9 @@ func TestSetServer_MaxAdminSendsCommandAndReadsResponse(t *testing.T) {
 	}
 }
 
-// callWithTimeout runs fn and fails the test if it doesn't return within d,
-// instead of hanging until the whole test binary times out. Used by the
-// readUntilOK boundary regressions below, where the bug under test is an
-// infinite read loop. t.Cleanup on the pipe conns used by those tests
-// unblocks any leftover blocked Read once the test returns, so a failure
-// here doesn't leak the goroutine for the rest of the run.
+// callWithTimeout fails the test if fn doesn't return within d, instead of
+// hanging until the test binary times out -- the readUntilOK regressions
+// below test for an infinite read loop.
 func callWithTimeout(t *testing.T, d time.Duration, fn func() error) error {
 	t.Helper()
 	done := make(chan error, 1)
@@ -538,18 +693,13 @@ func callWithTimeout(t *testing.T, d time.Duration, fn func() error) error {
 	}
 }
 
-// newFakeMaxAdminPipe wires m.Conn directly to one end of an in-memory
-// net.Pipe(), with a goroutine serving the other end via handleCommand.
-// Unlike newFakeMaxAdminServer's real TCP socket, net.Pipe has no internal
-// buffering: a Read call whose buffer is at least as large as the pending
-// Write is guaranteed to consume that Write's bytes in one shot, with no
-// dependency on OS/kernel delivery timing. That determinism matters for the
-// exact-buffer-boundary regressions below, which need a single Read to
-// return precisely len(buf) bytes -- over a real TCP loopback socket the
-// kernel is free to split delivery across multiple reads, which would let a
-// reintroduced bug slip through as a short read and pass anyway.
-// Skips the login handshake entirely: ListServers/ListMonitors/SetServer
-// only ever use m.Conn directly and never re-run Connect().
+// newFakeMaxAdminPipe wires m.Conn to an in-memory net.Pipe() end served by
+// a goroutine via handleCommand. Unlike a real TCP socket, net.Pipe
+// guarantees a Read consumes a same-size-or-larger pending Write in one
+// shot -- needed so the exact-buffer-boundary regressions below get a
+// deterministic single Read of precisely len(buf) bytes, not one that
+// depends on OS delivery timing. Skips the login handshake: the methods
+// under test here only use m.Conn directly, never Connect().
 func newFakeMaxAdminPipe(t *testing.T, handleCommand func(cmd string) string) *MaxScale {
 	t.Helper()
 	client, server := net.Pipe()
@@ -574,13 +724,9 @@ func newFakeMaxAdminPipe(t *testing.T, handleCommand func(cmd string) string) *M
 	return &MaxScale{Conn: client, User: "admin", Pass: "mariadb", UseRest: false}
 }
 
-// Regression: readUntilOK() centralized every MaxAdmin reader behind one loop
-// that only recognized the trailing "OK" on a short read (res < len(buf)) --
-// the guard ShowServers() alone used historically. ListServers() never had
-// that guard, so a reply whose total length (body + "OK") lands exactly on
-// the 1024-byte read buffer used here would fill the buffer completely on
-// the first Read and hang forever waiting for a short read that never
-// arrives. Sized to hit that boundary exactly.
+// Regression: strict=true would hang here forever, since a reply exactly
+// 1024 bytes never produces the short read it requires. Sized to hit that
+// boundary exactly.
 func TestListServers_MaxAdminHandlesReplyExactlyAtBufferBoundary(t *testing.T) {
 	const bufSize = 1024
 	header := "Server | Address | Port | Connections | Status\n"
@@ -610,8 +756,7 @@ func TestListServers_MaxAdminHandlesReplyExactlyAtBufferBoundary(t *testing.T) {
 	}
 }
 
-// Regression: same readUntilOK() boundary issue as above, but for
-// ListMonitors(), sized to the 512-byte buffer it reads with.
+// Same boundary regression, sized to ListMonitors()'s 512-byte buffer.
 func TestListMonitors_MaxAdminHandlesReplyExactlyAtBufferBoundary(t *testing.T) {
 	const bufSize = 512
 	row := "MySQL-Monitor | Running\n"
@@ -640,10 +785,8 @@ func TestListMonitors_MaxAdminHandlesReplyExactlyAtBufferBoundary(t *testing.T) 
 	}
 }
 
-// Regression: same readUntilOK() boundary issue as above, but for the
-// command Response() path (exercised here via SetServer(), its only public
-// MaxAdmin caller), sized to the 512-byte buffer responseMaxAdmin() reads
-// with.
+// Same boundary regression for the Response() path, exercised here via
+// SetServer(), its only public MaxAdmin caller.
 func TestSetServer_MaxAdminHandlesReplyExactlyAtBufferBoundary(t *testing.T) {
 	const bufSize = 512
 	body := strings.Repeat("#", bufSize-2)

@@ -293,18 +293,16 @@ func (proxy *Proxy) GetConfigProxySQLReadOnMaster() string {
 	return "0"
 }
 
-// GetConfigMaxscaleReadOnMaster drives Read-Write-Connection-Router's/
-// rw-split-router's master_accept_reads in the moduleset's static
-// maxscale.cnf template -- the readwritesplit equivalent of ProxySQL's
-// monitor_writer_is_also_reader above, same proxy-servers-read-on-master
-// tag, same cross-proxy policy. Uses the same 1/0 literal as ProxySQL: this
-// is a plain text substitution into an ini-style config file, and MaxScale's
-// own parser accepts 1/0 for boolean parameters just as well as true/false
-// (confirmed by this moduleset's own pre-existing legacy value, which was
-// master_accept_reads=1 before this policy became dynamic) -- so there's no
-// reason to diverge from the established convention here. This is distinct
-// from SetMasterAcceptReads's live REST PATCH, which requires a real JSON
-// bool since the REST API is strongly typed, unlike this text template.
+// GetConfigMaxscaleReadOnMaster drives master_accept_reads in the moduleset's
+// static maxscale.cnf template, using the same 1/0 literal and
+// proxy-servers-read-on-master tag as ProxySQL's equivalent above (MaxScale's
+// parser accepts 1/0 for booleans same as true/false).
+//
+// NOT fully equivalent to the live behavior: this only mirrors the always-on
+// flag. It ignores proxy-servers-read-on-master-no-slave, which
+// cluster.ShouldServeReadsFromMaster() (cluster_has.go) also folds in as a
+// live, topology-dependent fallback -- something a static template value
+// can't represent.
 func (proxy *Proxy) GetConfigMaxscaleReadOnMaster() string {
 	return proxy.GetConfigProxySQLReadOnMaster()
 }

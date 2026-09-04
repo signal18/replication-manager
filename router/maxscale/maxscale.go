@@ -42,6 +42,15 @@ type MaxScale struct {
 
 	Conn   net.Conn     // MaxAdmin only
 	client *http.Client // REST only
+
+	// Cache of the last List*/GetMaxInfo* call, read back by the matching
+	// Get* methods. Instance-scoped, not package-level: each cluster has its
+	// own MaxScale client and its own monitoring goroutine, so a shared
+	// global here would let one cluster clobber another's cached servers.
+	serverList      []Server
+	monitorList     []Monitor
+	serverMaxinfos  []ServerMaxinfo
+	monitorMaxinfos []MonitorMaxinfo
 }
 
 type Server struct {
@@ -68,15 +77,6 @@ type Monitor struct {
 	Monitor string
 	Status  string
 }
-
-// ServerList/MonitorList cache the last ListServers/ListMonitors call,
-// read back by GetServer/GetMonitor/GetStoppedMonitor. Package-level to
-// match this client's pre-REST behavior; not changed here.
-var ServerList = make([]Server, 0)
-var MonitorList = make([]Monitor, 0)
-
-var ServerMaxinfos = make([]ServerMaxinfo, 0)
-var MonitorMaxinfos = make([]MonitorMaxinfo, 0)
 
 const (
 	maxDefaultTimeout = 5 * time.Second
@@ -209,9 +209,9 @@ func (m *MaxScale) listServersREST() ([]Server, error) {
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("could not parse MaxScale servers response: %s", err)
 	}
-	ServerList = make([]Server, 0, len(parsed.Data))
+	m.serverList = make([]Server, 0, len(parsed.Data))
 	for _, r := range parsed.Data {
-		ServerList = append(ServerList, Server{
+		m.serverList = append(m.serverList, Server{
 			Server:      r.ID,
 			Address:     r.Attributes.Parameters.Address,
 			Port:        strconv.Itoa(r.Attributes.Parameters.Port),
@@ -219,7 +219,7 @@ func (m *MaxScale) listServersREST() ([]Server, error) {
 			Status:      r.Attributes.State,
 		})
 	}
-	return ServerList, nil
+	return m.serverList, nil
 }
 
 func (m *MaxScale) listMonitorsREST() ([]Monitor, error) {
@@ -231,11 +231,11 @@ func (m *MaxScale) listMonitorsREST() ([]Monitor, error) {
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("could not parse MaxScale monitors response: %s", err)
 	}
-	MonitorList = make([]Monitor, 0, len(parsed.Data))
+	m.monitorList = make([]Monitor, 0, len(parsed.Data))
 	for _, r := range parsed.Data {
-		MonitorList = append(MonitorList, Monitor{Monitor: r.ID, Status: r.Attributes.State})
+		m.monitorList = append(m.monitorList, Monitor{Monitor: r.ID, Status: r.Attributes.State})
 	}
-	return MonitorList, nil
+	return m.monitorList, nil
 }
 
 // State values (master, slave, maintenance, running, synced, drain) are
@@ -264,11 +264,9 @@ func (m *MaxScale) restartMonitorREST(monitor string) error {
 // --- MaxAdmin (legacy TCP protocol, MaxScale < 2.5; removed entirely in
 // 2.5+, so UseRest must be false to reach a MaxScale that old) ---
 
-// connectMaxAdmin dials and completes the MaxAdmin login handshake. Every
-// failure after the dial succeeds closes m.Conn before returning: callers
-// (e.g. SetMaintenance) treat a Connect() error as "nothing to clean up" and
-// return without calling Close(), so a half-completed handshake left open
-// here would otherwise leak the socket.
+// connectMaxAdmin dials and completes the MaxAdmin login handshake, closing
+// m.Conn on any failure past the dial -- callers don't Close() on a
+// Connect() error, so a half-open handshake would otherwise leak the socket.
 func (m *MaxScale) connectMaxAdmin() error {
 	var err error
 	address := net.JoinHostPort(m.Host, m.Port)
@@ -329,21 +327,14 @@ func (m *MaxScale) Command(cmd string) error {
 }
 
 // readUntilOK reads from m.Conn until a chunk ends in "OK", which MaxAdmin
-// appends to every reply. strict additionally requires that chunk to be a
-// short read (res < len(buf)), to avoid mistaking a coincidental "OK" inside
-// a full buffer for the actual terminator:
-//   - ShowServers passes strict=true -- it alone used this short-read
-//     termination historically.
-//   - ListServers, ListMonitors, and Response pass strict=false -- they must
-//     accept "OK" even when it lands exactly on the read buffer's boundary
-//     (512/1024 bytes), or they hang forever waiting for a short read that
-//     will never come.
-//
-// strict=false still carries the old MaxAdmin framing's inherent ambiguity:
-// a non-final chunk that happens to end in "OK" is indistinguishable from
-// the real terminator and ends the read early. Pre-existing behavior
-// (restored here, not introduced by strict), and not fixable without a
-// proper length- or delimiter-based framing the protocol doesn't offer.
+// appends to every reply. strict also requires a short read (res < len(buf)),
+// so a full buffer that happens to end in "OK" isn't mistaken for the
+// terminator: ShowServers passes true (its historical behavior); ListServers,
+// ListMonitors, and Response pass false, since they must still terminate
+// when "OK" lands exactly on the buffer boundary. Even with strict=false, a
+// non-final chunk ending in "OK" is indistinguishable from the real
+// terminator -- a pre-existing MaxAdmin framing limitation, not one strict
+// introduces or can fix.
 func (m *MaxScale) readUntilOK(buf []byte, strict bool) ([]byte, error) {
 	reader := bufio.NewReader(m.Conn)
 	var response []byte
@@ -372,10 +363,10 @@ func (m *MaxScale) listServersMaxAdmin() ([]Server, error) {
 	if m.Conn == nil {
 		return nil, errors.New("Tcp Connection close")
 	}
-	ServerList = make([]Server, 0)
+	m.serverList = make([]Server, 0)
 	response, err := m.readUntilOK(make([]byte, 1024), false)
 	if err != nil {
-		return ServerList, nil
+		return m.serverList, nil
 	}
 
 	list := strings.Split(string(response), "\n")
@@ -383,20 +374,20 @@ func (m *MaxScale) listServersMaxAdmin() ([]Server, error) {
 	for _, line := range list {
 		match := re.FindStringSubmatch(line)
 		if len(match) > 0 && match[0] != "" && match[1] != "Server" {
-			ServerList = append(ServerList, Server{Server: match[1], Address: match[2], Port: match[3], Connections: match[4], Status: match[5]})
+			m.serverList = append(m.serverList, Server{Server: match[1], Address: match[2], Port: match[3], Connections: match[4], Status: match[5]})
 		}
 	}
-	return ServerList, nil
+	return m.serverList, nil
 }
 
 func (m *MaxScale) listMonitorsMaxAdmin() ([]Monitor, error) {
 	if err := m.Command("list monitors"); err != nil {
 		return nil, err
 	}
-	MonitorList = make([]Monitor, 0)
+	m.monitorList = make([]Monitor, 0)
 	response, err := m.readUntilOK(make([]byte, 512), false)
 	if err != nil {
-		return MonitorList, nil
+		return m.monitorList, nil
 	}
 
 	list := strings.Split(string(response), "\n")
@@ -404,10 +395,10 @@ func (m *MaxScale) listMonitorsMaxAdmin() ([]Monitor, error) {
 	for _, line := range list {
 		match := re.FindStringSubmatch(line)
 		if len(match) > 0 && match[0] != "" && match[1] != "Monitor" {
-			MonitorList = append(MonitorList, Monitor{Monitor: strings.TrimRight(match[1], " "), Status: strings.TrimRight(match[2], " ")})
+			m.monitorList = append(m.monitorList, Monitor{Monitor: strings.TrimRight(match[1], " "), Status: strings.TrimRight(match[2], " ")})
 		}
 	}
-	return MonitorList, nil
+	return m.monitorList, nil
 }
 
 func (m *MaxScale) responseMaxAdmin() ([]string, error) {
@@ -446,6 +437,9 @@ func (m *MaxScale) shutdownMonitorMaxAdmin(monitor string) error {
 }
 
 func (m *MaxScale) restartMonitorMaxAdmin(monitor string) error {
+	if m.Conn == nil {
+		return errors.New("Connection was close did you lost maxscale")
+	}
 	writer := bufio.NewWriter(m.Conn)
 	if _, err := fmt.Fprintf(writer, "restart monitor %c%s%c\n", '"', monitor, '"'); err != nil {
 		return err
@@ -494,10 +488,10 @@ func (m *MaxScale) GetMaxInfoServers(url string) ([]ServerMaxinfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(monjson, &ServerMaxinfos); err != nil {
+	if err := json.Unmarshal(monjson, &m.serverMaxinfos); err != nil {
 		return nil, err
 	}
-	return ServerMaxinfos, nil
+	return m.serverMaxinfos, nil
 }
 
 func (m *MaxScale) GetMaxInfoMonitors(url string) ([]MonitorMaxinfo, error) {
@@ -515,13 +509,13 @@ func (m *MaxScale) GetMaxInfoMonitors(url string) ([]MonitorMaxinfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(monjson, &MonitorMaxinfos); err != nil {
+	if err := json.Unmarshal(monjson, &m.monitorMaxinfos); err != nil {
 		return nil, err
 	}
-	return MonitorMaxinfos, nil
+	return m.monitorMaxinfos, nil
 }
 
-// ListServers refreshes the package-level ServerList.
+// ListServers refreshes this instance's server cache.
 func (m *MaxScale) ListServers() ([]Server, error) {
 	if m.UseRest {
 		return m.listServersREST()
@@ -529,7 +523,7 @@ func (m *MaxScale) ListServers() ([]Server, error) {
 	return m.listServersMaxAdmin()
 }
 
-// ListMonitors refreshes the package-level MonitorList.
+// ListMonitors refreshes this instance's monitor cache.
 func (m *MaxScale) ListMonitors() ([]Monitor, error) {
 	if m.UseRest {
 		return m.listMonitorsREST()
@@ -538,7 +532,7 @@ func (m *MaxScale) ListMonitors() ([]Monitor, error) {
 }
 
 func (m *MaxScale) GetMonitor() string {
-	for _, s := range MonitorList {
+	for _, s := range m.monitorList {
 		if s.Status == "Running" {
 			return s.Monitor
 		}
@@ -547,7 +541,7 @@ func (m *MaxScale) GetMonitor() string {
 }
 
 func (m *MaxScale) GetStoppedMonitor() string {
-	for _, s := range MonitorList {
+	for _, s := range m.monitorList {
 		if s.Status == "Stopped" {
 			return s.Monitor
 		}
@@ -556,7 +550,7 @@ func (m *MaxScale) GetStoppedMonitor() string {
 }
 
 func (m *MaxScale) GetMaxInfoMonitor() string {
-	for _, s := range MonitorMaxinfos {
+	for _, s := range m.monitorMaxinfos {
 		if s.Status == "Running" {
 			return s.Monitor
 		}
@@ -565,7 +559,7 @@ func (m *MaxScale) GetMaxInfoMonitor() string {
 }
 
 func (m *MaxScale) GetMaxInfoStoppedMonitor() string {
-	for _, s := range MonitorMaxinfos {
+	for _, s := range m.monitorMaxinfos {
 		if s.Status == "Stopped" {
 			return s.Monitor
 		}
@@ -574,7 +568,7 @@ func (m *MaxScale) GetMaxInfoStoppedMonitor() string {
 }
 
 func (m *MaxScale) GetServer(ip string, port string, matchserverport bool) (string, string, string) {
-	for _, s := range ServerList {
+	for _, s := range m.serverList {
 		if s.Address == ip && s.Port == port {
 			return s.Server, s.Status, s.Connections
 		}
@@ -586,7 +580,7 @@ func (m *MaxScale) GetServer(ip string, port string, matchserverport bool) (stri
 }
 
 func (m *MaxScale) GetMaxInfoServer(ip string, port int, matchserverport bool) (string, string, int) {
-	for _, s := range ServerMaxinfos {
+	for _, s := range m.serverMaxinfos {
 		if s.Address == ip && s.Port == port {
 			return s.Server, s.Status, s.Connections
 		}
