@@ -416,11 +416,13 @@ func (cluster *Cluster) SwitchProxyServersBackendCompression() {
 func (cluster *Cluster) SwitchProxyServersReadOnMaster() {
 	cluster.Conf.PRXServersReadOnMaster = !cluster.Conf.PRXServersReadOnMaster
 	cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
+	cluster.PushMaxscaleReadOnMaster()
 }
 
 func (cluster *Cluster) SwitchProxyServersReadOnMasterNoSlave() {
 	cluster.Conf.PRXServersReadOnMasterNoSlave = !cluster.Conf.PRXServersReadOnMasterNoSlave
 	cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
+	cluster.PushMaxscaleReadOnMaster()
 }
 
 func (cluster *Cluster) SwitchProxySQL() {

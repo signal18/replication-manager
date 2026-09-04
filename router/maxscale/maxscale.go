@@ -16,6 +16,7 @@ package maxscale
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -141,6 +142,54 @@ func (m *MaxScale) request(method, path string, query url.Values) ([]byte, error
 		return body, fmt.Errorf("MaxScale REST API %s %s returned %d: %s", method, path, resp.StatusCode, string(body))
 	}
 	return body, nil
+}
+
+// requestJSON is like request but sends a JSON request body -- needed for
+// PATCH calls that modify parameters, which request (GET/PUT/DELETE with no
+// body) can't express.
+func (m *MaxScale) requestJSON(method, path string, body []byte) ([]byte, error) {
+	if m.client == nil {
+		m.client = &http.Client{Timeout: maxDefaultTimeout}
+	}
+	req, err := http.NewRequest(method, m.baseURL()+path, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth(m.User, m.Pass)
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		return respBody, fmt.Errorf("MaxScale REST API %s %s returned %d: %s", method, path, resp.StatusCode, string(respBody))
+	}
+	return respBody, nil
+}
+
+// setServiceParamBoolREST maps to PATCH /v1/services/:name, which MaxScale
+// applies live to a running router with no restart required for parameters
+// documented "Dynamic: Yes" (master_accept_reads among them) -- confirmed
+// live against MaxScale 2.4.10: PATCH returns 204 and a subsequent GET
+// reflects the new value immediately.
+func (m *MaxScale) setServiceParamBoolREST(service, param string, value bool) error {
+	body, err := json.Marshal(map[string]any{
+		"data": map[string]any{
+			"attributes": map[string]any{
+				"parameters": map[string]any{param: value},
+			},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	_, err = m.requestJSON("PATCH", "/services/"+url.PathEscape(service), body)
+	return err
 }
 
 func (m *MaxScale) connectREST() error {
@@ -546,6 +595,17 @@ func (m *MaxScale) ClearServer(server, status string) error {
 		return m.clearServerREST(server, status)
 	}
 	return m.clearServerMaxAdmin(server, status)
+}
+
+// SetMasterAcceptReads live-patches a readwritesplit service's
+// master_accept_reads parameter (REST only -- MaxAdmin never exposed runtime
+// parameter changes the way maxctrl/REST do, and MaxAdmin-only MaxScale
+// predates 2.2, before REST existed at all).
+func (m *MaxScale) SetMasterAcceptReads(service string, enabled bool) error {
+	if !m.UseRest {
+		return errors.New("master_accept_reads can only be live-patched over the REST API")
+	}
+	return m.setServiceParamBoolREST(service, "master_accept_reads", enabled)
 }
 
 // ShutdownMonitor maps to the old "shutdown monitor "<monitor>"" command.

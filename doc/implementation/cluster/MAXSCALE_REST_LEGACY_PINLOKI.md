@@ -8,7 +8,12 @@ future native K8s MaxScale proxy provisioning. Also records the legacy
 `proxy_cnf_maxscale` collector ruleset fix (T21) — **already applied to the
 collector and live in `share/opensvc/moduleset_mariadb.svc.mrm.proxy.json`
 as of this writing**, re-verified end to end after the export — see
-"Collector companion: legacy `proxy_cnf_maxscale` ruleset fix".
+"Collector companion: legacy `proxy_cnf_maxscale` ruleset fix". Also covers
+the dashboard's WRITE/READ group correctness (`BackendsWrite`/`BackendsRead`
+in `Refresh()`), the live REST push for `proxy-servers-read-on-master`, and a
+MaxScale REST API limitation around per-listener traffic stats — see "GUI
+write/read groups...", "`proxy-servers-read-on-master` now drives MaxScale
+too, live", and "GUI connection/byte stats are per-server totals" below.
 
 ## Two independent version boundaries
 
@@ -307,6 +312,111 @@ errors on any of them (previously present on every one), all services
 (`rw-split-router`/`write-router`/`replication`) report `Started` via REST.
 `clusterin` untouched throughout.
 
+## GUI write/read groups must reflect actual routing eligibility, not the full server list
+
+`cluster/prx_maxscale.go`'s `Refresh()` used to push every cluster server into
+`proxy.BackendsWrite` unconditionally, and never touched `proxy.BackendsRead`
+at all. The dashboard renders `BackendsWrite`/`BackendsRead` as the proxy's
+WRITE/READ groups, so this showed slaves alongside the master under WRITE in
+the live GUI — misleading, since `Write-Connection-Router` (`readconnroute` +
+`router_options=master`) only ever routes to whichever server MaxScale
+currently reports as `Master`; the full `servers=` list is just the candidate
+pool a post-failover master needs to already be known to.
+
+Fixed by filtering on the server's own MaxScale-reported role
+(`bke.PrxStatus`, from `GET /v1/servers`'s `attributes.state`) rather than
+repman's topology (`server.IsMaster()`): `BackendsWrite` now only includes a
+server whose `PrxStatus` contains `"Master"`. This is a deliberate choice —
+using MaxScale's own live state instead of repman's belief means drift
+between MaxScale's monitor and repman's topology stays visible in the GUI
+instead of being papered over.
+
+`BackendsRead` now includes every server whose `PrxStatus` contains `"Slave"`,
+plus the master when `cluster.ShouldServeReadsFromMaster()` is true (see next
+section) — matching `Read-Write-Connection-Router`'s `readwritesplit` +
+`master_accept_reads` behavior, where the master is either excluded from
+normal read distribution or a live read target, never filtered to a single
+server the way the write group is.
+
+## `proxy-servers-read-on-master` now drives MaxScale too, live
+
+`master_accept_reads` (readwritesplit's parameter controlling whether the
+primary serves reads) was hardcoded per-variant in the moduleset
+(`master_accept_reads=1` legacy, `=true` pinloki) — disconnected from
+`proxy-servers-read-on-master` / `-no-slave`, the existing cross-proxy policy
+ProxySQL (`monitor_writer_is_also_reader`) and HAProxy
+(`IsValidReaderCheck()`/`ShouldServeReadsFromMaster()`) already honor.
+
+Two parts to the fix:
+
+1. **Static default**: `cluster/prx_get.go`'s `GetBaseEnv()` now resolves
+   `%%ENV:SVC_CONF_ENV_MAXSCALE_READ_ON_MASTER%%` via
+   `GetConfigMaxscaleReadOnMaster()`, which just delegates to
+   `GetConfigProxySQLReadOnMaster()` (same `IsFilterInProxyTags` check,
+   same `"1"`/`"0"` literal — MaxScale's ini parser accepts `1`/`0` for
+   booleans exactly as well as `true`/`false`, confirmed by the moduleset's
+   own pre-existing legacy value having been `1`; no reason to introduce a
+   second literal convention). All 6 `master_accept_reads=` occurrences in
+   the moduleset now reference this env var instead of a hardcoded value.
+2. **Live push**: `master_accept_reads` is documented "Dynamic: Yes" and
+   confirmed live (`PATCH /v1/services/:name` → `204`, effective
+   immediately, no restart — verified against the real `maxscale2410` pod,
+   both via raw REST and through the actual `router/maxscale` Go client over
+   a port-forward). `MaxscaleProxy.PushMasterAcceptReads()` PATCHes the
+   read-write router (`Read-Write-Connection-Router` legacy /
+   `rw-split-router` pinloki) to `cluster.ShouldServeReadsFromMaster()`, and
+   `Cluster.PushMaxscaleReadOnMaster()` calls it on every MaxScale proxy.
+
+   **Deliberately not called from `Refresh()`** — that runs every monitoring
+   tick, and PATCHing MaxScale on every single tick forever (even when
+   nothing changed) would needlessly flood its admin API. Instead it's
+   called only from the points that actually change the setting:
+   `SwitchProxyServersReadOnMaster()` / `SwitchProxyServersReadOnMasterNoSlave()`
+   (`cluster/cluster_tgl.go`) and the equivalent direct-assignment cases in
+   `setClusterSetting` (`server/api_cluster.go`, `proxy-servers-read-on-master`
+   / `-no-slave`) — both mutation paths exist and neither called the other,
+   so both needed the push added. `ERR00111` reports a failed push without
+   failing the caller.
+
+   REST only: MaxAdmin never exposed runtime parameter changes the way
+   maxctrl/REST do, so `SetMasterAcceptReads` errors out cleanly if
+   `UseRest` is false rather than attempting anything.
+
+   Separately confirmed live: MaxScale persists any REST/maxctrl-changed
+   parameter to `/var/lib/maxscale/maxscale.cnf.d/<service>.cnf`, which
+   **overrides** `/etc/maxscale.cnf` on every future restart (the pod's own
+   startup script copies `/etc/maxscale-persist/maxscale.cnf` →
+   `/etc/maxscale.cnf` first, then MaxScale itself layers `.cnf.d/` on top
+   at boot). So a live push is sticky across restarts, not just until the
+   next one — good for consistency, but means the static config file alone
+   no longer tells the full story of what a given proxy is actually doing
+   once any live push has happened to it.
+
+## GUI connection/byte stats are per-server totals, not per-listener
+
+`bke.PrxConnections`/`PrxByteIn`/`PrxByteOut` in `Refresh()` all come from a
+single `m.GetServer()` call per server per tick, which maps to
+`GET /v1/servers/:name`'s `statistics.connections` (and byte counters) —
+one aggregate number per server, not broken down by which service/listener
+those connections came through (confirmed against MaxScale's own REST API
+schema docs). A server like the master can be a backend for
+`Write-Connection-Router` (3306), `Read-Write-Connection-Router` (3308), and
+`Replication` (3310) simultaneously; that single count sums traffic across
+all of them.
+
+Since the same `bke` (built once) gets appended to both `BackendsWrite` and
+`BackendsRead` whenever a server qualifies for both groups (e.g. the master,
+when `ShouldServeReadsFromMaster()` is true), the dashboard's WRITE and READ
+rows for that server show **identical** connection/byte figures — this is
+not "writes on this row, reads on that row," it's "total traffic to this
+backend server across every MaxScale service," duplicated per group the
+server belongs to. Unlike ProxySQL (`GetStatsForHostWrite`/
+`GetStatsForHostRead` — genuinely separate per-hostgroup queries) or HAProxy
+(distinct frontend/backend stats), MaxScale's REST API has no per-listener
+connection breakdown to query in the first place — this is a MaxScale API
+limitation, not a repman bug, and there is no fix available short of
+MaxScale exposing per-listener server stats itself.
+
 ## Config delivery on Kubernetes: pod recreation, not process restart
 
 The official `mariadb/maxscale` image (confirmed on both 2.4.10-1 and
@@ -429,6 +539,14 @@ each variable's `fmt` value on the collector (confirmed provenance: this
 moduleset is ours, not a hand-edit divergence). The `%%ENV:...%%`
 placeholders are literal — the collector substitutes them at export/
 provision time, same as every other value in this file.
+
+**Superseded since this snapshot**: `server_id=999` is now
+`server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%` (see "`binlogrouter`'s `server_id`
+was hardcoded to 999" above) and `master_accept_reads=1`/`=true` is now
+`master_accept_reads=%%ENV:SVC_CONF_ENV_MAXSCALE_READ_ON_MASTER%%` (see
+"`proxy-servers-read-on-master` now drives MaxScale too, live" above). The
+blocks below are a historical snapshot of the state at the time each was
+captured, not the current moduleset content.
 
 ### `proxy_cnf_maxscale`, id 6007 (`module=mariadbmon`)
 

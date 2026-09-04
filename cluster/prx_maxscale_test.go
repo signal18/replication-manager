@@ -1,10 +1,13 @@
 package cluster
 
 import (
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/utils/state"
@@ -360,12 +363,13 @@ func TestMaxscaleRefresh_BackendsWrite_OnlyIncludesReportedMaster(t *testing.T) 
 	}
 }
 
-// Regression: Read-Write-Connection-Router (readwritesplit, master_accept_reads=1)
-// distributes reads across every Running server, master included -- unlike the
-// write group, there is no single "the reader". Confirms Refresh() populates
-// BackendsRead with the full Running candidate pool rather than leaving it
-// empty (as it did before this fix) or filtering it down like the write group.
-func TestMaxscaleRefresh_BackendsRead_IncludesAllRunningServers(t *testing.T) {
+// Regression: Read-Write-Connection-Router (readwritesplit, master_accept_reads=0
+// in the moduleset -- master excluded from normal read distribution, matching
+// the write group's master-only exclusivity and the ProxySQL/HAProxy
+// convention of disjoint writer/reader groups). Confirms Refresh() populates
+// BackendsRead with only the Slave-role servers, excluding both the master
+// and any down/unreachable server.
+func TestMaxscaleRefresh_BackendsRead_ExcludesMasterAndDownServers(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && r.URL.Path == "/v1/servers":
@@ -391,17 +395,164 @@ func TestMaxscaleRefresh_BackendsRead_IncludesAllRunningServers(t *testing.T) {
 		t.Fatalf("Refresh() returned an error: %s", err)
 	}
 
+	if len(prx.BackendsRead) != 1 {
+		t.Fatalf("expected exactly 1 backend in the read group (the Slave), got %d: %+v", len(prx.BackendsRead), prx.BackendsRead)
+	}
+	if prx.BackendsRead[0].Host != "db2" {
+		t.Fatalf("expected the read group's only member to be the Slave (db2), got %s", prx.BackendsRead[0].Host)
+	}
+}
+
+// Regression: the read group must follow the same cross-proxy
+// proxy-servers-read-on-master policy ProxySQL/HAProxy already honor
+// (cluster.ShouldServeReadsFromMaster()), not a MaxScale-only hardcoded
+// rule. Confirms that with the policy enabled, the master is included in
+// BackendsRead alongside the slave.
+func TestMaxscaleRefresh_BackendsRead_IncludesMasterWhenReadOnMasterPolicyEnabled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/v1/servers":
+			w.Write([]byte(`{"data":[
+				{"id":"server1","type":"servers","attributes":{"state":"Master, Running","parameters":{"address":"db1","port":3306},"statistics":{"connections":1}}},
+				{"id":"server2","type":"servers","attributes":{"state":"Slave, Running","parameters":{"address":"db2","port":3306},"statistics":{"connections":0}}}
+			]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	cluster, prx := newTestMaxscaleInitCluster(t, "mxs-refresh-read-group-policy", srv)
+	cluster.Conf.PRXServersReadOnMaster = true
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMaster = true
+	db1 := &ServerMonitor{Id: "db1", Host: "db1", Port: "3306", URL: "db1:3306", ClusterGroup: cluster, State: stateMaster}
+	db2 := &ServerMonitor{Id: "db2", Host: "db2", Port: "3306", URL: "db2:3306", ClusterGroup: cluster, State: stateSlave}
+	cluster.master = db1
+	cluster.Servers = []*ServerMonitor{db1, db2}
+
+	if err := prx.Refresh(); err != nil {
+		t.Fatalf("Refresh() returned an error: %s", err)
+	}
+
 	if len(prx.BackendsRead) != 2 {
-		t.Fatalf("expected 2 backends in the read group (both Running servers, master included), got %d: %+v", len(prx.BackendsRead), prx.BackendsRead)
+		t.Fatalf("expected 2 backends in the read group (master included, per proxy-servers-read-on-master), got %d: %+v", len(prx.BackendsRead), prx.BackendsRead)
 	}
-	gotHosts := map[string]bool{}
-	for _, b := range prx.BackendsRead {
-		gotHosts[b.Host] = true
+}
+
+// Regression: master_accept_reads is documented "Dynamic: Yes" and
+// live-verified (PATCH /v1/services/:name -> 204, effective immediately, no
+// pod restart). This must NOT be pushed from Refresh(), which runs every
+// monitoring tick -- that would PATCH MaxScale needlessly forever, even when
+// nothing changed ("flooding"). Instead PushMasterAcceptReads() is called
+// only from the proxy-servers-read-on-master setting/switch handlers, which
+// only fire when the setting actually changes. Confirms PushMasterAcceptReads
+// sends the PATCH with the expected boolean body, and that a plain Refresh()
+// call does NOT trigger any PATCH.
+func TestMaxscalePushMasterAcceptReads_PatchesReadWriteRouterOnly(t *testing.T) {
+	var patchCount int
+	var gotPatchPath string
+	var gotPatchBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/v1/servers":
+			w.Write([]byte(`{"data":[]}`))
+		case r.Method == "PATCH" && strings.HasPrefix(r.URL.Path, "/v1/services/"):
+			patchCount++
+			gotPatchPath = r.URL.Path
+			json.NewDecoder(r.Body).Decode(&gotPatchBody)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	cluster, prx := newTestMaxscaleInitCluster(t, "mxs-push-read-on-master", srv)
+	cluster.Conf.PRXServersReadOnMaster = true
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMaster = true
+	cluster.Servers = nil
+
+	if err := prx.Refresh(); err != nil {
+		t.Fatalf("Refresh() returned an error: %s", err)
 	}
-	if !gotHosts["db1"] || !gotHosts["db2"] {
-		t.Fatalf("expected read group to include both db1 (Master, Running) and db2 (Slave, Running), got %+v", prx.BackendsRead)
+	if patchCount != 0 {
+		t.Fatalf("expected Refresh() alone to never PATCH master_accept_reads (would flood every monitoring tick), got %d PATCH calls", patchCount)
 	}
-	if gotHosts["db3"] {
-		t.Fatalf("expected read group to exclude db3 (Down), got %+v", prx.BackendsRead)
+
+	prx.PushMasterAcceptReads()
+
+	if patchCount != 1 {
+		t.Fatalf("expected exactly 1 PATCH from PushMasterAcceptReads(), got %d", patchCount)
+	}
+	if gotPatchPath != "/v1/services/Read-Write-Connection-Router" {
+		t.Fatalf("expected a PATCH to /v1/services/Read-Write-Connection-Router, got %q", gotPatchPath)
+	}
+	data, _ := gotPatchBody["data"].(map[string]any)
+	attrs, _ := data["attributes"].(map[string]any)
+	params, _ := attrs["parameters"].(map[string]any)
+	if params["master_accept_reads"] != true {
+		t.Fatalf("expected master_accept_reads: true in the PATCH body, got %+v", gotPatchBody)
+	}
+}
+
+// --- Moduleset: master_accept_reads and server_id must stay dynamic in every maxscale.cnf variant ---
+
+// Regression: master_accept_reads was hardcoded per-variant (=1 legacy,
+// =true pinloki) and server_id was hardcoded to 999 in every variant --
+// both fixed to reference %%ENV:...%% placeholders resolved by
+// GetConfigMaxscaleReadOnMaster()/GetBaseEnv() at config-generation time.
+// This reads the real moduleset file (not a copy) and checks every one of
+// the 6 maxscale.cnf template variants (proxy_cnf_maxscale x3 legacy
+// monitor modules, proxy_cnf_maxscale_pinloki x3) so a future hand-edit or
+// bad collector export reverting one variant back to a hardcoded literal
+// fails this test instead of silently shipping.
+func TestModulesetMaxscaleTemplates_UseDynamicReadOnMasterAndServerID(t *testing.T) {
+	data, err := os.ReadFile("../share/opensvc/moduleset_mariadb.svc.mrm.proxy.json")
+	if err != nil {
+		t.Fatalf("failed to read moduleset_mariadb.svc.mrm.proxy.json: %v", err)
+	}
+
+	var doc struct {
+		Rulesets []struct {
+			Variables []struct {
+				VarName  string `json:"var_name"`
+				VarValue string `json:"var_value"`
+			} `json:"variables"`
+		} `json:"rulesets"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("failed to parse moduleset_mariadb.svc.mrm.proxy.json: %v", err)
+	}
+
+	const readOnMasterPlaceholder = "master_accept_reads=%%ENV:SVC_CONF_ENV_MAXSCALE_READ_ON_MASTER%%"
+	const serverIDPlaceholder = "server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%"
+
+	found := 0
+	for _, rs := range doc.Rulesets {
+		for _, v := range rs.Variables {
+			if v.VarName != "proxy_cnf_maxscale" && v.VarName != "proxy_cnf_maxscale_pinloki" {
+				continue
+			}
+			var value struct {
+				Fmt string `json:"fmt"`
+			}
+			if err := json.Unmarshal([]byte(v.VarValue), &value); err != nil {
+				t.Fatalf("failed to parse var_value for %q: %v", v.VarName, err)
+			}
+			found++
+
+			if !strings.Contains(value.Fmt, readOnMasterPlaceholder) {
+				t.Errorf("%s variant #%d: missing %q -- master_accept_reads may be hardcoded again", v.VarName, found, readOnMasterPlaceholder)
+			}
+			if !strings.Contains(value.Fmt, serverIDPlaceholder) {
+				t.Errorf("%s variant #%d: missing %q -- server_id may be hardcoded again", v.VarName, found, serverIDPlaceholder)
+			}
+			if strings.Contains(value.Fmt, "server_id=999") {
+				t.Errorf("%s variant #%d: still contains the hardcoded server_id=999 collision bug", v.VarName, found)
+			}
+		}
+	}
+	if found != 6 {
+		t.Fatalf("expected 6 maxscale.cnf template variants (3 legacy monitor modules + 3 pinloki), found %d", found)
 	}
 }

@@ -4562,9 +4562,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "proxy-servers-read-on-master":
 		mycluster.Conf.PRXServersReadOnMaster = applyIsActive(mycluster.Conf.PRXServersReadOnMaster, isactive)
 		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
+		mycluster.PushMaxscaleReadOnMaster()
 	case "proxy-servers-read-on-master-no-slave":
 		mycluster.Conf.PRXServersReadOnMasterNoSlave = applyIsActive(mycluster.Conf.PRXServersReadOnMasterNoSlave, isactive)
 		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
+		mycluster.PushMaxscaleReadOnMaster()
 	case "proxy-servers-backend-compression":
 		mycluster.Conf.PRXServersBackendCompression = applyIsActive(mycluster.Conf.PRXServersBackendCompression, isactive)
 	case "database-heartbeat":

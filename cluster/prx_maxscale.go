@@ -170,6 +170,7 @@ func (proxy *MaxscaleProxy) Refresh() error {
 			cluster.StateMachine.CopyOldStateFromUnknowServer(proxy.Name)
 			return err
 		}
+		defer m.Close()
 	}
 	proxy.BackendsWrite = nil
 	proxy.BackendsRead = nil
@@ -222,17 +223,65 @@ func (proxy *MaxscaleProxy) Refresh() error {
 		if strings.Contains(bke.PrxStatus, "Master") {
 			proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
 		}
-		// Read-Write-Connection-Router uses router=readwritesplit with
-		// master_accept_reads=1: reads are distributed across every server
-		// MaxScale currently considers Running -- slaves normally, but the
-		// master too when needed -- so the read group mirrors that full
-		// candidate pool rather than being filtered down to one server.
-		if strings.Contains(bke.PrxStatus, "Running") {
+		// Read-Write-Connection-Router's master_accept_reads is driven by
+		// GetConfigMaxscaleReadOnMaster(), the same proxy-servers-read-on-master
+		// tag ProxySQL and HAProxy already honor (see IsValidReaderCheck() /
+		// ShouldServeReadsFromMaster()) -- not a hardcoded moduleset default.
+		// Mirror that same cross-proxy policy here instead of a fixed
+		// slave-only or master-included rule, so the GUI's read group tracks
+		// whatever this cluster is actually configured to do. When the
+		// policy excludes the master, it remains MaxScale's own undocumented,
+		// unconfigurable emergency fallback if every replica is down -- no
+		// per-server state distinguishes that from a healthy master, so it
+		// can't be reflected here either way.
+		isMasterRole := strings.Contains(bke.PrxStatus, "Master")
+		isSlaveRole := strings.Contains(bke.PrxStatus, "Slave")
+		if isSlaveRole || (isMasterRole && cluster.ShouldServeReadsFromMaster()) {
 			proxy.BackendsRead = append(proxy.BackendsRead, bke)
 		}
 	}
-	m.Close()
 	return nil
+}
+
+// PushMasterAcceptReads live-patches master_accept_reads on this proxy's
+// read-write router to match cluster.ShouldServeReadsFromMaster() --
+// master_accept_reads is documented "Dynamic: Yes" and live-verified
+// (PATCH /v1/services/:name -> 204, GET reflects it immediately, no pod
+// restart needed). Called from the proxy-servers-read-on-master /
+// -no-slave setting/switch handlers, not from Refresh(): those handlers only
+// fire when the setting actually changes, whereas Refresh() runs every
+// monitoring tick and would PATCH MaxScale needlessly on every single one.
+// REST only: MaxAdmin never exposed runtime parameter changes.
+func (proxy *MaxscaleProxy) PushMasterAcceptReads() {
+	cluster := proxy.ClusterGroup
+	if !cluster.Conf.MxsOn || !cluster.Conf.MxsRestApi {
+		return
+	}
+	m := proxy.newMaxscaleClient()
+	if err := m.Connect(); err != nil {
+		return
+	}
+	defer m.Close()
+	rwService := "Read-Write-Connection-Router"
+	if cluster.MaxscaleUsesPinloki() {
+		rwService = "rw-split-router"
+	}
+	if err := m.SetMasterAcceptReads(rwService, cluster.ShouldServeReadsFromMaster()); err != nil {
+		cluster.SetState("ERR00111", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00111"], proxy.Name, rwService, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
+	}
+}
+
+// PushMaxscaleReadOnMaster live-patches master_accept_reads on every
+// MaxScale proxy monitored by this cluster. See
+// MaxscaleProxy.PushMasterAcceptReads for why this is called from the
+// proxy-servers-read-on-master setting handlers instead of every
+// monitoring tick.
+func (cluster *Cluster) PushMaxscaleReadOnMaster() {
+	for _, p := range cluster.Proxies {
+		if mxs, ok := p.(*MaxscaleProxy); ok {
+			mxs.PushMasterAcceptReads()
+		}
+	}
 }
 
 func (cluster *Cluster) initMaxscale(proxy DatabaseProxy) {

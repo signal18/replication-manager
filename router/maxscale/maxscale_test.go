@@ -235,6 +235,83 @@ func TestSetServer_ReturnsErrorOnBadRequest(t *testing.T) {
 	}
 }
 
+func TestSetMasterAcceptReads_SendsPatchWithJSONBooleanBody(t *testing.T) {
+	m, mux := newTestServer(t)
+	var gotMethod, gotPath, gotContentType string
+	var gotBody map[string]any
+	mux.HandleFunc("/v1/services/Read-Write-Connection-Router", func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotContentType = r.Header.Get("Content-Type")
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	if err := m.SetMasterAcceptReads("Read-Write-Connection-Router", true); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if gotMethod != "PATCH" {
+		t.Fatalf("expected PATCH, got %s", gotMethod)
+	}
+	if gotPath != "/v1/services/Read-Write-Connection-Router" {
+		t.Fatalf("expected the Read-Write-Connection-Router service endpoint, got %s", gotPath)
+	}
+	if gotContentType != "application/json" {
+		t.Fatalf("expected Content-Type: application/json, got %q", gotContentType)
+	}
+	data, _ := gotBody["data"].(map[string]any)
+	attrs, _ := data["attributes"].(map[string]any)
+	params, _ := attrs["parameters"].(map[string]any)
+	// A real JSON boolean, not the string "true" -- MaxScale's REST API is
+	// strongly typed, unlike the ini-style config file where "1"/"true" are
+	// interchangeable text.
+	if v, ok := params["master_accept_reads"].(bool); !ok || v != true {
+		t.Fatalf("expected master_accept_reads: true (JSON bool) in the PATCH body, got %+v (%T)", params["master_accept_reads"], params["master_accept_reads"])
+	}
+}
+
+func TestSetMasterAcceptReads_EscapesServiceNameInPath(t *testing.T) {
+	m, mux := newTestServer(t)
+	var gotPath string
+	mux.HandleFunc("/v1/services/write-router", func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	})
+	if err := m.SetMasterAcceptReads("write-router", false); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if gotPath != "/v1/services/write-router" {
+		t.Fatalf("expected /v1/services/write-router, got %s", gotPath)
+	}
+}
+
+func TestSetMasterAcceptReads_ReturnsErrorOnBadRequest(t *testing.T) {
+	m, mux := newTestServer(t)
+	mux.HandleFunc("/v1/services/Read-Write-Connection-Router", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"errors":[{"detail":"Unknown parameter"}]}`))
+	})
+	if err := m.SetMasterAcceptReads("Read-Write-Connection-Router", true); err == nil {
+		t.Fatal("expected an error when the REST API rejects the PATCH")
+	}
+}
+
+// Regression: master_accept_reads can only be live-patched over the REST
+// API -- MaxAdmin (MaxScale < 2.5, no REST at all) never exposed runtime
+// parameter changes the way maxctrl/REST do. Confirms SetMasterAcceptReads
+// fails fast with a clear error instead of attempting a MaxAdmin command
+// that doesn't exist.
+func TestSetMasterAcceptReads_ReturnsErrorWhenNotUsingRest(t *testing.T) {
+	m := &MaxScale{Host: "127.0.0.1", Port: "6603", User: "admin", Pass: "mariadb", UseRest: false}
+	err := m.SetMasterAcceptReads("Read-Write-Connection-Router", true)
+	if err == nil {
+		t.Fatal("expected an error when UseRest is false")
+	}
+	if !strings.Contains(err.Error(), "REST API") {
+		t.Fatalf("expected the error to explain this requires the REST API, got: %s", err)
+	}
+}
+
 func TestShutdownMonitor_PutsStopEndpoint(t *testing.T) {
 	m, mux := newTestServer(t)
 	var gotMethod, gotPath string

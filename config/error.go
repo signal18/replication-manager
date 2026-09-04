@@ -131,6 +131,7 @@ var ClusterError = map[string]string{
 	"ERR00108":  "Proxy %s %s not registered: Id collides with already-registered proxy %s %s -- use a distinct address or write port",
 	"ERR00109":  "Proxy %s %s not provisioned: Kubernetes %s %q already belongs to a %s proxy in this cluster (Deployment/Service/PVC names are keyed on name alone, not type) -- %s",
 	"ERR00110":  "Proxy %s not provisioned: name is not a valid Kubernetes Service name (RFC 1035 label -- lowercase alphanumeric or '-', starting with a letter, no dots): %s",
+	"ERR00111":  "MaxScale %s could not live-patch master_accept_reads on %s: %s",
 	"WARN0022":  "Rejoining standalone server %s to master %s",
 	"WARN0023":  "Number of failed master ping has been reached",
 	"WARN0045":  "Provision task is in queue",
