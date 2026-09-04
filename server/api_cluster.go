@@ -113,6 +113,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSettings)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/settings/{settingName}/is-immutable", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSettingLock)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/configurator/variables/{variableName}/is-preserved", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterVariableLock)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/plugins", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterPlugins)),
@@ -2564,6 +2574,105 @@ func (repman *ReplicationManager) handlerMuxClusterTop(w http.ResponseWriter, r 
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/settings/actions/switch/{settingName} [post]
 // @Router /api/clusters/{clusterName}/settings/actions/switch/{settingName}/{state} [post]
+// handlerMuxClusterSettingLock reports whether a single cluster setting is
+// locked (immutable, i.e. pinned in the config file). Name only, no value, so
+// no secret can leak. Lets the GUI show a pin state and a client check before a
+// change (e.g. the service-plan gate).
+// @Summary Report the immutable lock state of a cluster setting
+// @Description Returns whether a config setting is immutable (pinned in the config file). Name only, no value.
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param settingName path string true "Setting name (e.g. prov-db-memory)"
+// @Success 200 {object} object "{setting, immutable}"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/settings/{settingName}/is-immutable [get]
+func (repman *ReplicationManager) handlerMuxClusterSettingLock(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	setting := vars["settingName"]
+	resp := struct {
+		Setting   string `json:"setting"`
+		Immutable bool   `json:"immutable"`
+	}{
+		Setting:   setting,
+		Immutable: mycluster.IsVariableImmutable(setting),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// handlerMuxClusterVariableLock reports whether a DB variable is pinned
+// (preserved, the "agree") across the cluster, looping every server so the
+// per-server exclusions are reflected. `preserved` is true when the variable is
+// preserved on at least one server. Names only, no values.
+// @Summary Report the preserved (pin) lock state of a DB variable across servers
+// @Description Returns whether a DB variable is preserved (the "agree") per server, accounting for per-server exclusions. Names only, no values.
+// @Tags ClusterConfigurator
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param variableName path string true "DB variable name (e.g. innodb_buffer_pool_size)"
+// @Success 200 {object} object "{variable, preserved, servers[]}"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/configurator/variables/{variableName}/is-preserved [get]
+func (repman *ReplicationManager) handlerMuxClusterVariableLock(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	variable := vars["variableName"]
+	clusterPreserved := mycluster.IsVariablePreserved(variable)
+
+	type serverLock struct {
+		Server    string `json:"server"`
+		Preserved bool   `json:"preserved"`
+	}
+	servers := []serverLock{}
+	anyPreserved := false
+	for _, node := range mycluster.GetServers() {
+		if node == nil {
+			continue
+		}
+		p := clusterPreserved && !mycluster.IsServerExcludedFromPreservedVar(variable, node.Id)
+		if p {
+			anyPreserved = true
+		}
+		servers = append(servers, serverLock{Server: node.Name, Preserved: p})
+	}
+
+	resp := struct {
+		Variable  string       `json:"variable"`
+		Preserved bool         `json:"preserved"`
+		Servers   []serverLock `json:"servers"`
+	}{
+		Variable:  variable,
+		Preserved: anyPreserved,
+		Servers:   servers,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
 func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter, r *http.Request) {
 	var value string
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -3661,7 +3770,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 		mycluster.Conf.DNSTimeout = val
 	case "prov-service-plan":
-		mycluster.SetServicePlan(value)
+		return mycluster.SetServicePlan(value)
 	case "prov-net-cni-cluster":
 		mycluster.SetProvNetCniCluster(value)
 	case "prov-orchestrator-cluster":

@@ -704,6 +704,50 @@ func (cluster *Cluster) IsVariableServerLevel(v string) bool {
 	return ok
 }
 
+// planDrivenProvFlags are the provisioning specs a service plan (DBU) drives.
+var planDrivenProvFlags = []string{
+	"prov-db-cpu-cores",
+	"prov-db-memory",
+	"prov-db-disk-size",
+	"prov-db-disk-iops",
+	"prov-proxy-cpu-cores",
+	"prov-proxy-disk-size",
+}
+
+// planDrivenDBVars are the DB variables a service plan (DBU) drives through the
+// configurator. If the operator has preserved any of them (the "agree", pinning
+// it to its running value), a plan change can no longer move it, so it must be
+// refused just like an immutable prov flag.
+var planDrivenDBVars = []string{
+	"innodb_buffer_pool_size",    // prov-db-memory
+	"key_buffer_size",            // prov-db-memory (myisam)
+	"aria_pagecache_buffer_size", // prov-db-memory (aria)
+	"innodb_io_capacity",         // prov-db-disk-iops
+	"innodb_io_capacity_max",     // prov-db-disk-iops
+	"innodb_read_io_threads",     // prov-db-cpu-cores
+	"innodb_write_io_threads",    // prov-db-cpu-cores
+	"innodb_purge_threads",       // prov-db-cpu-cores
+}
+
+// CanChangePlan reports whether a service-plan (DBU) change may be applied. It
+// returns false when the operator has pinned any plan-driven spec so the plan
+// could no longer move it — either a provisioning flag made immutable
+// (immutable.toml) or a driven DB variable preserved (the "agree",
+// 01_preserved.cnf). The whole plan change is refused until the operator unpins.
+func (cluster *Cluster) CanChangePlan() bool {
+	for _, f := range planDrivenProvFlags {
+		if cluster.IsVariableImmutable(f) {
+			return false
+		}
+	}
+	for _, v := range planDrivenDBVars {
+		if cluster.IsVariablePreserved(v) {
+			return false
+		}
+	}
+	return true
+}
+
 func (cluster *Cluster) IsInBackup() bool {
 	return cluster.InPhysicalBackup || cluster.InLogicalBackup || cluster.InBinlogBackup || cluster.IsInResticBackup()
 }
