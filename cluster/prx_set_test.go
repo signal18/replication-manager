@@ -60,3 +60,28 @@ func TestAddProxy_BlocksIdCollision(t *testing.T) {
 		t.Fatalf("expected the first-registered proxy (haproxy) to win, got %q", cluster.Proxies[0].GetType())
 	}
 }
+
+// TestAddProxy_AllowsSameNameDifferentTypeOnDistinctPorts guards against
+// over-blocking: AddProxy must NOT reject two different-type proxies that
+// happen to share a name as long as their write ports differ (a normal,
+// valid setup -- e.g. HAProxy and ProxySQL colocated on the same host,
+// which must run on different ports to coexist at all). An earlier version
+// of this guard also compared Name alone and wrongly rejected this case;
+// the actual Kubernetes/OpenSVC object-name collision that setup can cause
+// is now caught at the orchestrator layer instead
+// (k8sProxyNameOwnedByDifferentType, prov_k8s_prx.go), which has the
+// context AddProxy doesn't to know whether it's actually going to collide.
+func TestAddProxy_AllowsSameNameDifferentTypeOnDistinctPorts(t *testing.T) {
+	cluster := &Cluster{Name: "clustera", Conf: &config.Config{}}
+	cluster.crcTable = crc64.MakeTable(crc64.ECMA)
+
+	haproxy := &Proxy{Type: config.ConstProxyHaproxy, Name: "127.0.0.1", WritePort: 3306}
+	proxysql := &Proxy{Type: config.ConstProxySqlproxy, Name: "127.0.0.1", WritePort: 6033}
+
+	cluster.AddProxy(haproxy)
+	cluster.AddProxy(proxysql)
+
+	if len(cluster.Proxies) != 2 {
+		t.Fatalf("expected both proxies to register (same name, distinct write ports is valid), got %d proxies registered", len(cluster.Proxies))
+	}
+}

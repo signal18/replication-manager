@@ -277,6 +277,141 @@ func TestK8SProvisionProxy_TwoProxiesDoNotCollide(t *testing.T) {
 	}
 }
 
+// TestK8SProvisionProxy_RefusesNameOwnedByDifferentType guards the case
+// TestK8SProvisionProxy_TwoProxiesDoNotCollide doesn't cover: AddProxy
+// (cluster.go) deliberately allows two different-type proxies to share a
+// name (valid outside Kubernetes, e.g. same host / different write ports),
+// so it's this function's job to refuse provisioning the second one rather
+// than letting its Deployment/Service Create() calls come back
+// AlreadyExists and get treated as an idempotent success -- which would
+// silently leave the second proxy type with no running Pod at all.
+func TestK8SProvisionProxy_RefusesNameOwnedByDifferentType(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	haproxy := &fakeProxy{name: "colocated", port: "1999", proxyType: config.ConstProxyHaproxy, writePort: 3306}
+	proxysql := &fakeProxy{name: "colocated", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, haproxy); err != nil {
+		t.Fatalf("provision haproxy: unexpected error: %s", err)
+	}
+	err := cluster.k8sProvisionProxyServiceWithClient(client, proxysql)
+	if err == nil {
+		t.Fatal("expected an explicit error provisioning a ProxySQL proxy whose name is already owned by an HAProxy Deployment/Service, got nil")
+	}
+	if !strings.Contains(err.Error(), "Deployment") || !strings.Contains(err.Error(), "unprovision") {
+		t.Fatalf("expected the error to name the colliding object kind (Deployment) and advise unprovisioning the live proxy, got: %s", err)
+	}
+
+	list, err := client.AppsV1().Deployments("k8stest").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error listing deployments: %s", err)
+	}
+	if len(list.Items) != 1 {
+		t.Fatalf("expected the second (colliding) proxy's deployment to never be created, got %d deployments", len(list.Items))
+	}
+}
+
+// TestK8SProvisionProxy_UnlabeledExistingDeploymentIsNotDetectedAsCollision
+// documents a known, accepted gap in k8sProxyNameOwnedByDifferentType
+// (prov_k8s_prx.go): detection is label-only (k8sProxyTypeLabel), so a
+// pre-existing Deployment with a colliding name but no label -- e.g. one an
+// operator created directly, since this per-proxy naming scheme has no
+// earlier history that ever shipped without the label -- passes through
+// undetected, and the second proxy's Create() falls through to the normal
+// AlreadyExists-is-idempotent path. Deliberately not "fixed" by inferring
+// ownership from the container image instead: an image is expected to
+// legitimately differ across a same-type reprovision after a version bump,
+// so that inference would misfire as a false-positive collision on an
+// ordinary upgrade. If this test ever starts failing because the guard
+// grew smarter, that's fine -- update this comment, not just the assertion.
+func TestK8SProvisionProxy_UnlabeledExistingDeploymentIsNotDetectedAsCollision(t *testing.T) {
+	existing := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      k8sProxyDeploymentName("k8stest", "colocated"),
+			Namespace: "k8stest",
+			// No proxy-type label -- simulates a Deployment this code did
+			// not create.
+		},
+	}
+	client := fake.NewSimpleClientset(existing)
+	cluster := newTestCluster("k8stest")
+	proxysql := &fakeProxy{name: "colocated", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, proxysql); err != nil {
+		t.Fatalf("expected the unlabeled pre-existing Deployment to be silently treated as this proxy's own (known limitation), got error: %s", err)
+	}
+}
+
+// TestK8SProvisionProxy_NonNotFoundGetErrorFailsLoudly guards the other half
+// of the same collision check: a Get() failure that isn't NotFound (RBAC, a
+// transient API error, ...) must fail provisioning outright, not be treated
+// as "no collision found" -- silently proceeding past an unreadable object
+// would reopen the exact AlreadyExists-treated-as-idempotent-success gap
+// k8sProxyNameOwnedByDifferentType exists to close.
+func TestK8SProvisionProxy_NonNotFoundGetErrorFailsLoudly(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	client.PrependReactor("get", "deployments", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewServiceUnavailable("transient")
+	})
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	err := cluster.k8sProvisionProxyServiceWithClient(client, prx)
+	if err == nil {
+		t.Fatal("expected a non-NotFound Get() error to fail provisioning, got nil")
+	}
+
+	list, err := client.AppsV1().Deployments("k8stest").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error listing deployments: %s", err)
+	}
+	if len(list.Items) != 0 {
+		t.Fatalf("expected no deployment to be created when the collision check itself fails, got %d", len(list.Items))
+	}
+}
+
+// TestK8SProvisionProxy_RefusesNameOwnedByDifferentTypeViaRetainedPVC covers
+// a sequence the Deployment/Service checks alone can't: provision type A,
+// unprovision it (PVC deliberately retained,
+// k8sUnprovisionProxyServiceWithClient), then provision type B under the
+// same name. Deployment and Service are gone at that point, so only the
+// PVC's own proxy-type label still proves the name was already used --
+// without checking it, the second proxy's PVC Create() would come back
+// AlreadyExists and be treated as an idempotent success, starting type B
+// against type A's leftover data.
+func TestK8SProvisionProxy_RefusesNameOwnedByDifferentTypeViaRetainedPVC(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	haproxy := &fakeProxy{name: "colocated", port: "1999", proxyType: config.ConstProxyHaproxy, writePort: 3306}
+	proxysql := &fakeProxy{name: "colocated", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, haproxy); err != nil {
+		t.Fatalf("provision haproxy: unexpected error: %s", err)
+	}
+	if err := cluster.k8sUnprovisionProxyServiceWithClient(client, haproxy); err != nil {
+		t.Fatalf("unprovision haproxy: unexpected error: %s", err)
+	}
+	if _, err := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "colocated"), metav1.GetOptions{}); err != nil {
+		t.Fatalf("test setup invalid: expected the PVC to be retained after unprovision, got error: %s", err)
+	}
+
+	err := cluster.k8sProvisionProxyServiceWithClient(client, proxysql)
+	if err == nil {
+		t.Fatal("expected an explicit error provisioning a ProxySQL proxy whose name is already owned by HAProxy's retained PVC, got nil")
+	}
+	if !strings.Contains(err.Error(), "PVC") || !strings.Contains(err.Error(), "kubectl delete pvc") {
+		t.Fatalf("expected the error to name the colliding object kind (PVC) and give the exact recovery command, got: %s", err)
+	}
+
+	list, err := client.AppsV1().Deployments("k8stest").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error listing deployments: %s", err)
+	}
+	if len(list.Items) != 0 {
+		t.Fatalf("expected no deployment to be created for the colliding proxy, got %d", len(list.Items))
+	}
+}
+
 // --- Proxy provisioning: Service exposure and type-awareness (Phase 3) ---
 
 func TestK8SProvisionProxy_CreatesServiceWithAdminAndSQLPorts(t *testing.T) {

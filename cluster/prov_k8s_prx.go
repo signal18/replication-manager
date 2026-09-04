@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -40,6 +41,108 @@ func k8sProxyServiceName(prx DatabaseProxy) string {
 	return prx.GetName()
 }
 
+// k8sProxyTypeLabel records which proxy type owns a Deployment/Service/PVC,
+// since their names (k8sProxyDeploymentName/k8sProxyServiceName/
+// k8sProxyPVCName) are keyed on proxy name alone -- AddProxy (cluster.go)
+// deliberately does not block two different-type proxies from sharing a
+// name (a normal setup outside Kubernetes, e.g. same host / different write
+// ports), so k8sProxyNameOwnedByDifferentType below needs this label to
+// detect the case here, where it actually does collide.
+const k8sProxyTypeLabel = "proxy-type"
+
+// k8sProxyNameOwnedByDifferentType reports whether prx's own Deployment,
+// Service, and/or PVC names already belong to a different proxy type in
+// this cluster/namespace. Without this check, k8sProvisionProxyServiceWithClient
+// would hit AlreadyExists on the Create() calls below and -- correctly, in
+// the ordinary same-type reprovision case -- treat that as an idempotent
+// success, so a second, different-type proxy sharing a name would silently
+// never get a running Pod. The PVC check specifically covers a sequence
+// Deployment/Service alone can't: provision type A, unprovision it (PVC
+// deliberately retained, k8sUnprovisionProxyServiceWithClient), then
+// provision type B under the same name -- Deployment/Service are gone, so
+// only the PVC's own label still proves the name was already used.
+//
+// Known limitation: detection is label-only (k8sProxyTypeLabel), which this
+// function can only see on objects created by this same code. Per-proxy
+// object naming (k8sProxyDeploymentName/k8sProxyServiceName) has no earlier
+// history that shipped without the label, so there is no real upgrade path
+// with pre-existing unlabeled objects today -- but an operator-created
+// Deployment/Service with a colliding name and no label would still pass
+// through undetected. Deliberately not inferring ownership from anything
+// else (e.g. container image) instead: an image is expected to legitimately
+// change across a same-type reprovision (a version bump), so comparing it
+// would produce false-positive collisions on an ordinary upgrade -- worse
+// than the gap it would close. If this ever needs closing for real, the
+// label is the fix (backfill it on read, or require operators to label
+// pre-existing objects manually), not inference.
+//
+// A Get() failure other than NotFound (RBAC, a transient API error, ...) is
+// returned as a real error rather than silently treated as "no collision":
+// letting provisioning proceed past an unreadable object reopens the same
+// AlreadyExists-treated-as-idempotent-success gap this function exists to
+// close.
+//
+// A nil *k8sProxyNameCollision means no collision. ObjectKind distinguishes
+// which object it found the collision on, since the right recovery advice
+// differs: a Deployment/Service collision means the other proxy is still
+// live (unprovision it, or use a distinct name), while a PVC-only collision
+// means it's just retained leftovers from an unprovisioned proxy (delete
+// the PVC to reuse the name for a different type).
+func (cluster *Cluster) k8sProxyNameOwnedByDifferentType(client kubernetes.Interface, prx DatabaseProxy) (*k8sProxyNameCollision, error) {
+	depName := k8sProxyDeploymentName(cluster.Name, prx.GetName())
+	dep, depErr := client.AppsV1().Deployments(cluster.Name).Get(context.TODO(), depName, metav1.GetOptions{})
+	switch {
+	case depErr == nil:
+		if t := dep.Labels[k8sProxyTypeLabel]; t != "" && t != prx.GetType() {
+			return &k8sProxyNameCollision{OwnerType: t, ObjectKind: "Deployment", ObjectName: depName}, nil
+		}
+	case !apierrors.IsNotFound(depErr):
+		return nil, fmt.Errorf("cannot check Deployment %q for a proxy-type collision: %s", depName, depErr)
+	}
+
+	svcName := k8sProxyServiceName(prx)
+	svc, svcErr := client.CoreV1().Services(cluster.Name).Get(context.TODO(), svcName, metav1.GetOptions{})
+	switch {
+	case svcErr == nil:
+		if t := svc.Labels[k8sProxyTypeLabel]; t != "" && t != prx.GetType() {
+			return &k8sProxyNameCollision{OwnerType: t, ObjectKind: "Service", ObjectName: svcName}, nil
+		}
+	case !apierrors.IsNotFound(svcErr):
+		return nil, fmt.Errorf("cannot check Service %q for a proxy-type collision: %s", svcName, svcErr)
+	}
+
+	pvcName := k8sProxyPVCName(cluster.Name, prx.GetName())
+	pvc, pvcErr := client.CoreV1().PersistentVolumeClaims(cluster.Name).Get(context.TODO(), pvcName, metav1.GetOptions{})
+	switch {
+	case pvcErr == nil:
+		if t := pvc.Labels[k8sProxyTypeLabel]; t != "" && t != prx.GetType() {
+			return &k8sProxyNameCollision{OwnerType: t, ObjectKind: "PVC", ObjectName: pvcName}, nil
+		}
+	case !apierrors.IsNotFound(pvcErr):
+		return nil, fmt.Errorf("cannot check PVC %q for a proxy-type collision: %s", pvcName, pvcErr)
+	}
+
+	return nil, nil
+}
+
+// k8sProxyNameCollision is k8sProxyNameOwnedByDifferentType's result: which
+// object the colliding name was found on, and which proxy type owns it.
+type k8sProxyNameCollision struct {
+	OwnerType  string
+	ObjectKind string // "Deployment", "Service", or "PVC"
+	ObjectName string
+}
+
+// RecoveryHint explains, in terms specific to ObjectKind, what an operator
+// needs to do before this name can be reused for a different proxy type.
+func (c *k8sProxyNameCollision) RecoveryHint(namespace string) string {
+	if c.ObjectKind == "PVC" {
+		return fmt.Sprintf("this looks like a retained PVC left behind by an unprovisioned %s proxy -- if you intend to reuse this name for a different proxy type, delete it first: kubectl delete pvc %s -n %s",
+			c.OwnerType, c.ObjectName, namespace)
+	}
+	return fmt.Sprintf("unprovision the existing %s proxy first, or use a distinct name for this one", c.OwnerType)
+}
+
 var k8sSupportedProxyTypes = []string{config.ConstProxySqlproxy, config.ConstProxyHaproxy}
 
 func k8sUnsupportedProxyTypeErr(proxyType string) error {
@@ -57,43 +160,27 @@ func (cluster *Cluster) k8sProxyImage(prx DatabaseProxy) (string, error) {
 	}
 }
 
-// HaproxyStatPort isn't carried on the DatabaseProxy interface, so it's read
-// via prx.GetCluster().Conf instead.
-func k8sProxyContainerPorts(prx DatabaseProxy) ([]apiv1.ContainerPort, error) {
-	switch prx.GetType() {
-	case config.ConstProxySqlproxy:
-		adminPort, err := strconv.Atoi(prx.GetPort())
-		if err != nil {
-			return nil, fmt.Errorf("invalid ProxySQL admin port %q: %s", prx.GetPort(), err)
-		}
-		return []apiv1.ContainerPort{
-			{Name: "admin", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(adminPort)},
-			{Name: "sql", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(prx.GetWritePort())},
-		}, nil
-	case config.ConstProxyHaproxy:
-		adminPort, err := strconv.Atoi(prx.GetPort())
-		if err != nil {
-			return nil, fmt.Errorf("invalid HAProxy runtime API port %q: %s", prx.GetPort(), err)
-		}
-		return []apiv1.ContainerPort{
-			{Name: "admin", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(adminPort)},
-			{Name: "write", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(prx.GetWritePort())},
-			{Name: "read", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(prx.GetReadPort())},
-			{Name: "stat", Protocol: apiv1.ProtocolTCP, ContainerPort: int32(prx.GetCluster().Conf.HaproxyStatPort)},
-		}, nil
-	default:
-		return nil, k8sUnsupportedProxyTypeErr(prx.GetType())
-	}
+// k8sProxyPortSpec is orchestrator-agnostic (name/protocol/port number);
+// k8sProxyContainerPorts and k8sProxyServicePorts each map it onto their own
+// k8s API type so the per-type port list (admin/sql/write/read/stat) is
+// defined exactly once instead of hand-duplicated in two switches that could
+// silently drift apart.
+type k8sProxyPortSpec struct {
+	Name     string
+	Protocol apiv1.Protocol
+	Port     int32
 }
 
-func k8sProxyServicePorts(prx DatabaseProxy) ([]apiv1.ServicePort, error) {
+// HaproxyStatPort isn't carried on the DatabaseProxy interface, so it's read
+// via prx.GetCluster().Conf instead.
+func k8sProxyPortSpecs(prx DatabaseProxy) ([]k8sProxyPortSpec, error) {
 	switch prx.GetType() {
 	case config.ConstProxySqlproxy:
 		adminPort, err := strconv.Atoi(prx.GetPort())
 		if err != nil {
 			return nil, fmt.Errorf("invalid ProxySQL admin port %q: %s", prx.GetPort(), err)
 		}
-		return []apiv1.ServicePort{
+		return []k8sProxyPortSpec{
 			{Name: "admin", Protocol: apiv1.ProtocolTCP, Port: int32(adminPort)},
 			{Name: "sql", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetWritePort())},
 		}, nil
@@ -102,7 +189,7 @@ func k8sProxyServicePorts(prx DatabaseProxy) ([]apiv1.ServicePort, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid HAProxy runtime API port %q: %s", prx.GetPort(), err)
 		}
-		return []apiv1.ServicePort{
+		return []k8sProxyPortSpec{
 			{Name: "admin", Protocol: apiv1.ProtocolTCP, Port: int32(adminPort)},
 			{Name: "write", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetWritePort())},
 			{Name: "read", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetReadPort())},
@@ -111,6 +198,30 @@ func k8sProxyServicePorts(prx DatabaseProxy) ([]apiv1.ServicePort, error) {
 	default:
 		return nil, k8sUnsupportedProxyTypeErr(prx.GetType())
 	}
+}
+
+func k8sProxyContainerPorts(prx DatabaseProxy) ([]apiv1.ContainerPort, error) {
+	specs, err := k8sProxyPortSpecs(prx)
+	if err != nil {
+		return nil, err
+	}
+	ports := make([]apiv1.ContainerPort, len(specs))
+	for i, s := range specs {
+		ports[i] = apiv1.ContainerPort{Name: s.Name, Protocol: s.Protocol, ContainerPort: s.Port}
+	}
+	return ports, nil
+}
+
+func k8sProxyServicePorts(prx DatabaseProxy) ([]apiv1.ServicePort, error) {
+	specs, err := k8sProxyPortSpecs(prx)
+	if err != nil {
+		return nil, err
+	}
+	ports := make([]apiv1.ServicePort, len(specs))
+	for i, s := range specs {
+		ports[i] = apiv1.ServicePort{Name: s.Name, Protocol: s.Protocol, Port: s.Port}
+	}
+	return ports, nil
 }
 
 // k8sProxyTypeHasPersistentStorage reports whether prx's type gets a PVC, a
@@ -141,7 +252,8 @@ func (cluster *Cluster) k8sProxyPVC(prx DatabaseProxy) *apiv1.PersistentVolumeCl
 	}
 	pvc := &apiv1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: k8sProxyPVCName(cluster.Name, prx.GetName()),
+			Name:   k8sProxyPVCName(cluster.Name, prx.GetName()),
+			Labels: map[string]string{k8sProxyTypeLabel: prx.GetType()},
 		},
 		Spec: apiv1.PersistentVolumeClaimSpec{
 			AccessModes: []apiv1.PersistentVolumeAccessMode{
@@ -398,7 +510,8 @@ func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deploymen
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: k8sProxyDeploymentName(cluster.Name, prx.GetName()),
+			Name:   k8sProxyDeploymentName(cluster.Name, prx.GetName()),
+			Labels: map[string]string{k8sProxyTypeLabel: prx.GetType()},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: int32Ptr(1),
@@ -432,7 +545,8 @@ func (cluster *Cluster) k8sProxyService(prx DatabaseProxy) (*apiv1.Service, erro
 	}
 	return &apiv1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: k8sProxyServiceName(prx),
+			Name:   k8sProxyServiceName(prx),
+			Labels: map[string]string{k8sProxyTypeLabel: prx.GetType()},
 		},
 		Spec: apiv1.ServiceSpec{
 			Ports: ports,
@@ -464,8 +578,30 @@ func (cluster *Cluster) k8sWarnIfLegacyProxyDeploymentExists(client kubernetes.I
 // cluster/namespace, and OpenSVCProvisionProxyService (prov_opensvc_prx.go)
 // is the parity reference: it never assumes DB provisioning ran either, it
 // creates its own service and maps (OpenSVCCreateMaps) unconditionally.
+//
+// Also guards against a name already owned by a different proxy type
+// (k8sProxyNameOwnedByDifferentType) before touching anything -- AddProxy
+// (cluster.go) intentionally allows two different-type proxies to share a
+// name (valid outside Kubernetes), so this is the point that actually knows
+// the Deployment/Service names collide and must fail loudly instead of
+// treating the second proxy's Create() calls as an idempotent AlreadyExists.
 func (cluster *Cluster) k8sProvisionProxyServiceWithClient(client kubernetes.Interface, prx DatabaseProxy) error {
 	cluster.k8sEnsureNamespace(client, cluster.Name)
+
+	collision, err := cluster.k8sProxyNameOwnedByDifferentType(client, prx)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot check for a Kubernetes proxy name collision: %s ", err)
+		return err
+	}
+	if collision != nil {
+		err := fmt.Errorf(clusterError["ERR00109"], prx.GetType(), prx.GetName(), collision.ObjectKind, collision.ObjectName, collision.OwnerType, collision.RecoveryHint(cluster.Name))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
+		if cluster.StateMachine != nil {
+			cluster.StateMachine.AddState("ERR00109", state.State{ErrType: "ERROR", ErrDesc: err.Error(), ErrFrom: "PROXY", ServerUrl: prx.GetName()})
+		}
+		return err
+	}
+
 	cluster.k8sWarnIfLegacyProxyDeploymentExists(client)
 
 	deployment, err := cluster.k8sProxyDeployment(prx)

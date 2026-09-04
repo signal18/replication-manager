@@ -400,12 +400,69 @@ deploying as `ProvProxProxysqlImg`/`ProvProxHaproxyImg` under its own name
   the generated `haproxy.cfg`'s own `listen stats` block).
 
 The Deployment name and selector are unique per proxy
-(`<cluster>-<proxy>-deployment`, label `tag: <proxy>`), so multiple proxies
-in the same cluster don't collide. The Service is named after the proxy
-itself (`k8sProxyServiceName()` = `prx.GetName()`, not the Deployment's
-prefixed form) — required for `prov-net-cni`'s
-`<proxy>.<namespace>.svc.<cluster-domain>` DNS (baked into
+(`<cluster>-<proxy>-deployment`, label `tag: <proxy>`), and the PVC name
+(`k8sProxyPVCName`) follows the same `<cluster>-<proxy>-claim` shape. The
+Service is named after the proxy itself (`k8sProxyServiceName()` =
+`prx.GetName()`, not the Deployment's prefixed form) — required for
+`prov-net-cni`'s `<proxy>.<namespace>.svc.<cluster-domain>` DNS (baked into
 `NewProxySQLProxy`/`NewHaproxyProxy`) to actually resolve.
+
+All three names key on proxy *name* alone, never type — so "unique per
+proxy" only holds if names are unique across the whole cluster regardless
+of type. Two different-type proxies sharing a name but configured with
+distinct write ports is a normal, valid setup (e.g. HAProxy and ProxySQL
+colocated on the same host, necessarily on different write ports to
+coexist at all), so `AddProxy` (`cluster/cluster.go`) deliberately does
+*not* reject it — it has no orchestrator context to know whether that pair
+is actually going to collide downstream, and on Localhost/OnPremise it
+never does (`SetDataDir`, `cluster/prx_set.go`, keys a proxy's working
+directory on `Host + "_" + Port` — the *admin* port, which differs by
+default across types — not `Name` alone).
+
+On Kubernetes it does collide, so the guard lives at the provisioning
+layer instead: `k8sProxyNameOwnedByDifferentType`
+(`cluster/prov_k8s_prx.go`) checks, before `k8sProvisionProxyServiceWithClient`
+touches anything, whether the Deployment, Service, *or* PVC this proxy's
+name maps to already exists with a different `proxy-type` label (set on
+all three objects — Deployment, Service, PVC — for exactly this check). All
+three are checked, not just Deployment/Service: a proxy's PVC is
+deliberately retained on unprovision (see "Persistent storage" above), so
+provision-A / unprovision-A / provision-B-under-the-same-name leaves no
+Deployment or Service behind to catch the collision — only the orphaned
+PVC's label still proves the name was already used. If any of the three
+collide, provisioning fails with an explicit error (`ERR00109`,
+`config/error.go`) instead of the second proxy's `Create()` calls coming
+back `AlreadyExists` and being treated as an idempotent success, which
+would otherwise leave it silently either with no running Pod (Deployment/
+Service case) or running against the previous proxy type's leftover data
+(PVC case). A Get() failure other than `NotFound` (RBAC, a transient API
+error) is also a hard error here, not a silent "assume no collision". The
+error names which object kind collided (`k8sProxyNameCollision.ObjectKind`)
+and gives kind-specific recovery advice (`RecoveryHint`): unprovision the
+live proxy for a Deployment/Service collision, or the exact
+`kubectl delete pvc` command for a PVC-only one.
+
+A retained-PVC collision has no automatic recovery today: the recovery
+advice above (`kubectl delete pvc`) is a manual step, deliberately -- both
+PVC deletion and the collision it's resolving are destructive/one-way
+enough that this scope stops at detecting and reporting it clearly, not at
+adding a delete path of its own.
+
+Detection is label-only: a Deployment/Service/PVC that exists with the
+colliding name but no `proxy-type` label passes through undetected. This
+per-proxy naming scheme has no earlier history that shipped without the
+label, so there's no real upgrade path with pre-existing unlabeled objects
+today — the only way to hit this is an operator-created object with a
+colliding name outside repman. Deliberately not inferring ownership from
+anything else (e.g. container image) as a fallback: an image is expected to
+legitimately change across a same-type reprovision (a version bump), so
+comparing it would produce false-positive collisions on an ordinary
+upgrade — worse than the gap it would close.
+
+OpenSVC has the identical name-only keying in its own proxy service path
+(`cluster.Name+"/svc/"+pri.GetName()`,
+`OpenSVCProvisionProxyService`/`prov_opensvc_prx.go`) but no equivalent
+guard yet — see "Known limitations".
 
 `k8sProvisionProxyServiceWithClient` ensures the Namespace itself
 (`k8sEnsureNamespace`, same best-effort/idempotent call the DB path uses)
@@ -707,6 +764,13 @@ Kubernetes-orchestrated scenarios.
 
 ## Known limitations
 
+- OpenSVC has no equivalent of `k8sProxyNameOwnedByDifferentType`: two
+  different-type proxies sharing a name (same host, distinct write ports —
+  see "Proxy provisioning" above) still silently collide on
+  `OpenSVCProvisionProxyService`'s `cluster.Name+"/svc/"+pri.GetName()`
+  service path today. Left as a documented follow-up rather than fixed
+  speculatively, since it needs the OpenSVC collector API's own tagging
+  mechanism (`CreateTag`/`SetServiceTag`) rather than a Kubernetes label.
 - Persisted config (database and proxy) can go stale: it's only refreshed
   on a successful live fetch, so a config change with no restart since
   leaves the persisted copy out of date. Matches OpenSVC's own bootstrap

@@ -128,6 +128,8 @@ var ClusterError = map[string]string{
 	"ERR00105":  "Cluster is in standby mode — failover, switchover, rejoin and maintenance disabled",
 	"ERR00106":  "HAProxy %s could not repoint write backend %s to master %s: %s",
 	"ERR00107":  "HAProxy %s could not update address for server %s in backend %s: %s",
+	"ERR00108":  "Proxy %s %s not registered: Id collides with already-registered proxy %s %s -- use a distinct address or write port",
+	"ERR00109":  "Proxy %s %s not provisioned: Kubernetes %s %q already belongs to a %s proxy in this cluster (Deployment/Service/PVC names are keyed on name alone, not type) -- %s",
 	"WARN0022":  "Rejoining standalone server %s to master %s",
 	"WARN0023":  "Number of failed master ping has been reached",
 	"WARN0045":  "Provision task is in queue",
