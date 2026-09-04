@@ -13,10 +13,12 @@ package cluster
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 	"github.com/spf13/pflag"
 )
 
@@ -42,8 +44,16 @@ func NewMaxscaleProxy(placement int, cluster *Cluster, proxyHost string) *Maxsca
 	prx.ReadWritePort = conf.MxsReadWritePort
 	prx.Name = proxyHost
 	prx.Host = proxyHost
-	if cluster.Conf.ProvNetCNI {
-		prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+	if conf.ProvNetCNI {
+		// Falls back "local" -> "cluster.local" on Kubernetes, matching
+		// NewHaproxyProxy/NewProxySQLProxy: prov-orchestrator-cluster's own
+		// CLI default otherwise leaves the host one ".svc." segment short of
+		// the real Service DNS name and CoreDNS never resolves it.
+		domain := conf.ProvOrchestratorCluster
+		if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+			domain = k8sClusterDomain(cluster)
+		}
+		prx.Host = prx.Host + "." + cluster.Name + ".svc." + domain
 	}
 
 	return prx
@@ -72,6 +82,78 @@ func (proxy *MaxscaleProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) 
 	flags.StringVar(&conf.MxsHostsIPV6, "maxscale-servers-ipv6", "", "ipv6 bind address ")
 	flags.BoolVar(&conf.MxsDebug, "maxscale-debug", true, "Log Maxscale Debug")
 	flags.IntVar(&conf.MxsLogLevel, "log-level-maxscale", 1, "Log Maxscale Debug Level")
+	flags.StringVar(&conf.MxsMode, "maxscale-mode", "auto", "MaxScale config syntax: auto (detect from maxscale-docker-img tag, fall back to legacy), legacy (pre-2.5: cli/maxinfo routers, MySQLClient protocol), or pinloki (2.5+: pinloki binlogrouter, mariadbprotocol, no cli/maxinfo routers). Both use password= -- passwd= was already rejected as of 2.4.10, the oldest image still pullable")
+	// Independent of maxscale-mode: config syntax (2.5 cutoff) and client
+	// protocol (2.2 cutoff, when the REST API was introduced) are different
+	// version boundaries. Off explicitly opts into the old MaxAdmin TCP
+	// protocol for MaxScale older than that.
+	flags.BoolVar(&conf.MxsRestApi, "maxscale-rest-api", true, "Use MaxScale's REST API to connect (MaxScale >= 2.2). Disable for older MaxScale, which falls back to the MaxAdmin TCP protocol")
+	flags.IntVar(&conf.MxsRestPort, "maxscale-rest-port", 8989, "MaxScale REST API port (only used when maxscale-rest-api is on)")
+}
+
+// MaxscaleUsesPinloki resolves conf.MxsMode to a concrete legacy/pinloki
+// choice. "auto" parses the tag in ProvProxMaxscaleImg via utils/version:
+// MaxScale's versioning went from semver (...2.4, 2.5) to calendar-based
+// YY.MM (21.06, 22.08...), but every calendar major is far larger than 2, so
+// a plain >= "2.5" comparison holds without special-casing the transition.
+// An unparseable tag (e.g. "latest", a private-registry name) falls back to
+// legacy, same as the explicit legacy mode.
+func (cluster *Cluster) MaxscaleUsesPinloki() bool {
+	switch cluster.Conf.MxsMode {
+	case "pinloki":
+		return true
+	case "legacy":
+		return false
+	}
+
+	// registry[:port]/repo/image[:tag]: isolate the last "/"-segment before
+	// splitting on ":", so a registry port isn't read as a version tag.
+	lastPart := cluster.Conf.ProvProxMaxscaleImg
+	if i := strings.LastIndex(lastPart, "/"); i >= 0 {
+		lastPart = lastPart[i+1:]
+	}
+	tag := ""
+	if i := strings.LastIndex(lastPart, ":"); i >= 0 {
+		tag = lastPart[i+1:]
+	}
+	v, tokens := version.NewVersionFromString("maxscale", tag)
+	if tokens == 0 {
+		return false
+	}
+	return v.GreaterEqual("2.5")
+}
+
+// MaxscaleUsesMaxinfo reports whether maxscale-get-info-method=maxinfo should
+// actually be used for proxy. The maxinfo HTTP plugin doesn't exist in
+// pinloki-mode MaxScale (2.5+ dropped it, alongside cli/debugcli -- see
+// MaxscaleUsesPinloki) -- returns false there and raises WARN0211 instead of
+// letting callers dial a maxinfo port nothing is listening on every tick.
+func (proxy *MaxscaleProxy) MaxscaleUsesMaxinfo() bool {
+	cluster := proxy.ClusterGroup
+	if cluster.Conf.MxsGetInfoMethod != "maxinfo" {
+		return false
+	}
+	if cluster.MaxscaleUsesPinloki() {
+		cluster.SetState("WARN0211", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0211"], proxy.Name), ErrFrom: "MAXSCALE", ServerUrl: proxy.Name})
+		return false
+	}
+	return true
+}
+
+// newMaxscaleClient builds the client for proxy, honoring maxscale-rest-api's
+// choice of port/protocol on the non-tunnel path. TunnelPort is only ever
+// forwarded to the MaxAdmin port, so the tunnel path always speaks MaxAdmin
+// regardless of maxscale-rest-api.
+func (proxy *MaxscaleProxy) newMaxscaleClient() maxscale.MaxScale {
+	cluster := proxy.ClusterGroup
+	if proxy.Tunnel {
+		return maxscale.MaxScale{Host: "localhost", Port: strconv.Itoa(proxy.TunnelPort), User: proxy.User, Pass: proxy.Pass, UseRest: false}
+	}
+	port := proxy.Port
+	if cluster.Conf.MxsRestApi {
+		port = strconv.Itoa(cluster.Conf.MxsRestPort)
+	}
+	return maxscale.MaxScale{Host: proxy.Host, Port: port, User: proxy.User, Pass: proxy.Pass, UseRest: cluster.Conf.MxsRestApi}
 }
 
 func (proxy *MaxscaleProxy) Refresh() error {
@@ -79,12 +161,7 @@ func (proxy *MaxscaleProxy) Refresh() error {
 	if !cluster.Conf.MxsOn {
 		return nil
 	}
-	var m maxscale.MaxScale
-	if proxy.Tunnel {
-		m = maxscale.MaxScale{Host: "localhost", Port: strconv.Itoa(proxy.TunnelPort), User: proxy.User, Pass: proxy.Pass}
-	} else {
-		m = maxscale.MaxScale{Host: proxy.Host, Port: proxy.Port, User: proxy.User, Pass: proxy.Pass}
-	}
+	m := proxy.newMaxscaleClient()
 
 	if cluster.Conf.MxsOn {
 		err := m.Connect()
@@ -104,7 +181,7 @@ func (proxy *MaxscaleProxy) Refresh() error {
 			PrxName: server.URL,
 		}
 
-		if cluster.Conf.MxsGetInfoMethod == "maxinfo" {
+		if proxy.MaxscaleUsesMaxinfo() {
 			_, err := m.GetMaxInfoServers("http://" + proxy.Host + ":" + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + "/servers")
 			if err != nil {
 				cluster.SetState("ERR00020", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00020"], server.URL), ErrFrom: "MON", ServerUrl: proxy.Name})
@@ -152,12 +229,7 @@ func (proxy *MaxscaleProxy) Init() {
 		return
 	}
 
-	var m maxscale.MaxScale
-	if proxy.Tunnel {
-		m = maxscale.MaxScale{Host: "localhost", Port: strconv.Itoa(proxy.TunnelPort), User: proxy.User, Pass: proxy.Pass}
-	} else {
-		m = maxscale.MaxScale{Host: proxy.Host, Port: proxy.Port, User: proxy.User, Pass: proxy.Pass}
-	}
+	m := proxy.newMaxscaleClient()
 	err := m.Connect()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "Could not connect to MaxScale:%s", err)
@@ -173,9 +245,9 @@ func (proxy *MaxscaleProxy) Init() {
 	}
 
 	var monitor string
-	if cluster.Conf.MxsGetInfoMethod == "maxinfo" {
+	if proxy.MaxscaleUsesMaxinfo() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlDbg, "Getting Maxscale monitor via maxinfo")
-		m.GetMaxInfoMonitors("http://" + cluster.Conf.MxsHost + ":" + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + "/monitors")
+		m.GetMaxInfoMonitors("http://" + proxy.Host + ":" + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + "/monitors")
 		monitor = m.GetMaxInfoMonitor()
 
 	} else {
@@ -186,19 +258,43 @@ func (proxy *MaxscaleProxy) Init() {
 		}
 		monitor = m.GetMonitor()
 	}
-	if monitor != "" && cluster.Conf.MxsDisableMonitor {
-		cmd := "shutdown monitor \"" + monitor + "\""
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlInfo, "Maxscale shutdown monitor: %s", cmd)
-		err = m.ShutdownMonitor(monitor)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not shutdown monitor:%s", err)
-		}
-		m.Response()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not shutdown monitor:%s", err)
+	// MaxScale's REST API refuses to manually set/clear master/slave/running
+	// on a server its own monitor owns -- confirmed live against a real
+	// MaxScale 2.4.10: HTTP 403 "The server is monitored, so only the
+	// maintenance status can be set/cleared manually. Status was not
+	// modified." So repman only drives server state by hand below when
+	// there's no monitor to conflict with: either none was found (the
+	// ERR00017 case -- MaxScale genuinely has no monitor watching these
+	// servers, so repman's manual pushes are the only thing keeping its
+	// routing correct), or maxscale-disable-monitor explicitly shut a
+	// running one down. A monitor left running (the default, and how both
+	// legacy MaxAdmin and REST deployments normally operate -- mariadbmon/
+	// galeramon actively watching) is the expected, healthy case, not an
+	// error: it already drives these exact states itself, correctly and
+	// continuously, without repman's help.
+	driveServerStateManually := monitor == ""
+	if monitor != "" {
+		if cluster.Conf.MxsDisableMonitor {
+			cmd := "shutdown monitor \"" + monitor + "\""
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlInfo, "Maxscale shutdown monitor: %s", cmd)
+			err = m.ShutdownMonitor(monitor)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not shutdown monitor:%s", err)
+			}
+			m.Response()
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not shutdown monitor:%s", err)
+			}
+			driveServerStateManually = true
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlDbg, "MaxScale monitor %q is running and owns server state; not pushing manual server states", monitor)
 		}
 	} else {
 		cluster.SetState("ERR00017", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00017"], ErrFrom: "TOPO", ServerUrl: proxy.Name})
+	}
+
+	if !driveServerStateManually {
+		return
 	}
 
 	err = m.SetServer(cluster.GetMaster().MxsServerName, "master")
@@ -265,7 +361,7 @@ func (pr *MaxscaleProxy) SetMaintenance(server *ServerMonitor) {
 	if cluster.Conf.MxsOn {
 		return
 	}
-	m := maxscale.MaxScale{Host: pr.Host, Port: pr.Port, User: pr.User, Pass: pr.Pass}
+	m := pr.newMaxscaleClient()
 	err := m.Connect()
 	if err != nil {
 		cluster.SetState("ERR00018", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00018"], err), ErrFrom: "CONF"})
