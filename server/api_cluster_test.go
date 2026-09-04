@@ -319,6 +319,27 @@ func TestSetClusterSetting_ProvKubeStorageClass(t *testing.T) {
 	}
 }
 
+// prov-kube-proxy-storage-class is prov-kube-storage-class's proxy-side
+// counterpart (GUI dispatches setSetting for it, OrchestratorDbVM.jsx) --
+// confirms it reaches SetProvKubeProxyStorageClass, a distinct config field
+// from the database one, through setClusterSetting's switch.
+func TestSetClusterSetting_ProvKubeProxyStorageClass(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	if err := repman.setClusterSetting(cl, "prov-kube-proxy-storage-class", "fast-ssd"); err != nil {
+		t.Fatalf(`setClusterSetting(prov-kube-proxy-storage-class, "fast-ssd"): unexpected error: %v`, err)
+	}
+	if cl.Conf.ProvKubeProxyStorageClass != "fast-ssd" {
+		t.Fatalf("expected ProvKubeProxyStorageClass %q, got %q", "fast-ssd", cl.Conf.ProvKubeProxyStorageClass)
+	}
+	if cl.Conf.ProvKubeStorageClass != "" {
+		t.Fatalf("expected ProvKubeStorageClass to stay unset, got %q", cl.Conf.ProvKubeStorageClass)
+	}
+}
+
 func TestSetClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	cl := newTestClusterForAPI(t)
 	cl.Conf.Secrets = make(map[string]config.Secret)

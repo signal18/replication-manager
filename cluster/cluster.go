@@ -3295,9 +3295,49 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 	}
 }
 
+// AddProxy registers a new proxy.
+//
+// Id is only hashed from cluster/name/write-port (SetID, prx_set.go), so
+// two different proxy families sharing the same address and write port
+// would hash to the same Id -- blocked below rather than allowing
+// GetProxyFromName (prx_get.go) to later resolve API actions against
+// whichever one happens to come first in cluster.Proxies. The rejection is
+// also recorded on StateMachine (ERR00108, config/error.go), not just
+// logged, so a caller that doesn't check AddProxy's own (void) return --
+// every current caller, including newProxyList (prx.go) -- still has
+// somewhere to see that a configured proxy silently never made it into
+// cluster.Proxies.
+//
+// Name is deliberately NOT blocked from colliding across different-type
+// proxies here: two proxies sharing a name but configured with distinct
+// write ports is a normal, valid setup (e.g. HAProxy and ProxySQL colocated
+// on the same host, which must run on different ports to coexist at all),
+// and AddProxy has no orchestrator context to know whether that pair is
+// actually going to collide downstream. It only does for Kubernetes and
+// OpenSVC, whose object-naming schemes key on name alone, never type
+// (k8sProxyServiceName/k8sProxyDeploymentName/k8sProxyPVCName,
+// prov_k8s_prx.go; OpenSVCProvisionProxyService's own
+// cluster.Name+"/svc/"+pri.GetName(), prov_opensvc_prx.go) -- guarded at
+// provision time instead, closer to the orchestrator that actually cares
+// (k8sProxyNameOwnedByDifferentType, prov_k8s_prx.go; OpenSVC's own guard
+// is a documented follow-up, not yet implemented -- see "Known
+// limitations" in doc/implementation/cluster/KUBERNETES_PROVISIONING.md).
 func (c *Cluster) AddProxy(prx DatabaseProxy) {
 	prx.SetCluster(c)
 	prx.SetID()
+	for _, existing := range c.Proxies {
+		if existing.GetId() == prx.GetId() {
+			c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Refusing to add proxy %s %s:%d: Id collides with already-registered proxy %s %s:%d -- use distinct addresses or write ports",
+				prx.GetType(), prx.GetName(), prx.GetWritePort(), existing.GetType(), existing.GetName(), existing.GetWritePort())
+			if c.StateMachine != nil {
+				c.StateMachine.AddState("ERR00108", state.State{ErrType: "ERROR",
+					ErrDesc: fmt.Sprintf(clusterError["ERR00108"], prx.GetType(), prx.GetName(), existing.GetType(), existing.GetName()),
+					ErrFrom: "PROXY", ServerUrl: prx.GetName()})
+			}
+			return
+		}
+	}
 	prx.SetDataDir()
 	prx.SetServiceName(c.Name)
 	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New proxy monitored %s: %s:%s", prx.GetType(), prx.GetHost(), prx.GetPort())
