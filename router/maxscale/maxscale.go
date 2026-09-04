@@ -264,6 +264,11 @@ func (m *MaxScale) restartMonitorREST(monitor string) error {
 // --- MaxAdmin (legacy TCP protocol, MaxScale < 2.5; removed entirely in
 // 2.5+, so UseRest must be false to reach a MaxScale that old) ---
 
+// connectMaxAdmin dials and completes the MaxAdmin login handshake. Every
+// failure after the dial succeeds closes m.Conn before returning: callers
+// (e.g. SetMaintenance) treat a Connect() error as "nothing to clean up" and
+// return without calling Close(), so a half-completed handshake left open
+// here would otherwise leak the socket.
 func (m *MaxScale) connectMaxAdmin() error {
 	var err error
 	address := net.JoinHostPort(m.Host, m.Port)
@@ -275,9 +280,11 @@ func (m *MaxScale) connectMaxAdmin() error {
 	buf := make([]byte, 80)
 	res, err := reader.Read(buf)
 	if err != nil {
+		m.Close()
 		return errors.New(ErrorReader)
 	}
 	if res != 4 {
+		m.Close()
 		return errors.New(ErrorNegotiation)
 	}
 	writer := bufio.NewWriter(m.Conn)
@@ -285,18 +292,22 @@ func (m *MaxScale) connectMaxAdmin() error {
 	writer.Flush()
 	res, err = reader.Read(buf)
 	if err != nil {
+		m.Close()
 		return errors.New(ErrorReader)
 	}
 	if res != 8 {
+		m.Close()
 		return errors.New(ErrorNegotiation)
 	}
 	fmt.Fprint(writer, m.Pass)
 	writer.Flush()
 	res, err = reader.Read(buf)
 	if err != nil {
+		m.Close()
 		return errors.New(ErrorReader)
 	}
 	if string(buf[0:6]) == "FAILED" {
+		m.Close()
 		return errors.New("Authentication failed")
 	}
 	return nil
@@ -317,7 +328,23 @@ func (m *MaxScale) Command(cmd string) error {
 	return err
 }
 
-func (m *MaxScale) readUntilOK(buf []byte) ([]byte, error) {
+// readUntilOK reads from m.Conn until a chunk ends in "OK", which MaxAdmin
+// appends to every reply. strict additionally requires that chunk to be a
+// short read (res < len(buf)), to avoid mistaking a coincidental "OK" inside
+// a full buffer for the actual terminator:
+//   - ShowServers passes strict=true -- it alone used this short-read
+//     termination historically.
+//   - ListServers, ListMonitors, and Response pass strict=false -- they must
+//     accept "OK" even when it lands exactly on the read buffer's boundary
+//     (512/1024 bytes), or they hang forever waiting for a short read that
+//     will never come.
+//
+// strict=false still carries the old MaxAdmin framing's inherent ambiguity:
+// a non-final chunk that happens to end in "OK" is indistinguishable from
+// the real terminator and ends the read early. Pre-existing behavior
+// (restored here, not introduced by strict), and not fixable without a
+// proper length- or delimiter-based framing the protocol doesn't offer.
+func (m *MaxScale) readUntilOK(buf []byte, strict bool) ([]byte, error) {
 	reader := bufio.NewReader(m.Conn)
 	var response []byte
 	for {
@@ -326,7 +353,7 @@ func (m *MaxScale) readUntilOK(buf []byte) ([]byte, error) {
 			return response, err
 		}
 		str := string(buf[0:res])
-		if res < len(buf) && strings.HasSuffix(str, "OK") {
+		if (!strict || res < len(buf)) && strings.HasSuffix(str, "OK") {
 			response = append(response, buf[0:res-2]...)
 			break
 		}
@@ -337,7 +364,7 @@ func (m *MaxScale) readUntilOK(buf []byte) ([]byte, error) {
 
 func (m *MaxScale) ShowServers() ([]byte, error) {
 	m.Command("show serversjson")
-	return m.readUntilOK(make([]byte, 80))
+	return m.readUntilOK(make([]byte, 80), true)
 }
 
 func (m *MaxScale) listServersMaxAdmin() ([]Server, error) {
@@ -346,7 +373,7 @@ func (m *MaxScale) listServersMaxAdmin() ([]Server, error) {
 		return nil, errors.New("Tcp Connection close")
 	}
 	ServerList = make([]Server, 0)
-	response, err := m.readUntilOK(make([]byte, 1024))
+	response, err := m.readUntilOK(make([]byte, 1024), false)
 	if err != nil {
 		return ServerList, nil
 	}
@@ -367,7 +394,7 @@ func (m *MaxScale) listMonitorsMaxAdmin() ([]Monitor, error) {
 		return nil, err
 	}
 	MonitorList = make([]Monitor, 0)
-	response, err := m.readUntilOK(make([]byte, 512))
+	response, err := m.readUntilOK(make([]byte, 512), false)
 	if err != nil {
 		return MonitorList, nil
 	}
@@ -384,7 +411,7 @@ func (m *MaxScale) listMonitorsMaxAdmin() ([]Monitor, error) {
 }
 
 func (m *MaxScale) responseMaxAdmin() ([]string, error) {
-	response, err := m.readUntilOK(make([]byte, 512))
+	response, err := m.readUntilOK(make([]byte, 512), false)
 	if err != nil {
 		return nil, errors.New("Failed to read result")
 	}

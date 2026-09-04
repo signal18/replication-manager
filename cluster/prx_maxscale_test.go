@@ -495,6 +495,126 @@ func TestMaxscalePushMasterAcceptReads_PatchesReadWriteRouterOnly(t *testing.T) 
 	}
 }
 
+// --- SetMaintenance: pushing server maintenance state to MaxScale ---
+
+// Regression: the guards in SetMaintenance() were inverted (`if GetMaster()
+// != nil { return }` / `if cluster.Conf.MxsOn { return }`), so the function
+// only ever did anything when there was NO master and MaxScale was OFF --
+// the opposite of normal operation. Since SetProxyServerMaintenance() calls
+// SetMaintenance() unconditionally on every proxy with no compensating
+// check, this meant MaxScale silently never received maintenance state at
+// all under normal conditions. (The GetMaster() nil check was later dropped
+// entirely -- see TestMaxscaleSetMaintenance_StillPushesStateWhenNoMaster.)
+func TestMaxscaleSetMaintenance_PutsMaintenanceStateWhenOnAndMasterExists(t *testing.T) {
+	var gotMethod, gotPath, gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/v1/servers":
+			w.Write([]byte(`{"data":[]}`))
+		case r.Method == "PUT":
+			gotMethod = r.Method
+			gotPath = r.URL.Path
+			gotQuery = r.URL.RawQuery
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	cluster, prx := newTestMaxscaleInitCluster(t, "mxs-set-maintenance-on", srv)
+	slave := cluster.Servers[1]
+	slave.IsMaintenance = true
+
+	prx.SetMaintenance(slave)
+
+	if gotMethod != "PUT" || gotPath != "/v1/servers/server2/set" || gotQuery != "state=maintenance" {
+		t.Fatalf("expected PUT /v1/servers/server2/set?state=maintenance, got method=%q path=%q query=%q", gotMethod, gotPath, gotQuery)
+	}
+}
+
+func TestMaxscaleSetMaintenance_ClearsMaintenanceStateWhenOnAndMasterExists(t *testing.T) {
+	var gotMethod, gotPath, gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/v1/servers":
+			w.Write([]byte(`{"data":[]}`))
+		case r.Method == "PUT":
+			gotMethod = r.Method
+			gotPath = r.URL.Path
+			gotQuery = r.URL.RawQuery
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	cluster, prx := newTestMaxscaleInitCluster(t, "mxs-clear-maintenance-on", srv)
+	slave := cluster.Servers[1]
+	slave.IsMaintenance = false
+
+	prx.SetMaintenance(slave)
+
+	if gotMethod != "PUT" || gotPath != "/v1/servers/server2/clear" || gotQuery != "state=maintenance" {
+		t.Fatalf("expected PUT /v1/servers/server2/clear?state=maintenance, got method=%q path=%q query=%q", gotMethod, gotPath, gotQuery)
+	}
+}
+
+func TestMaxscaleSetMaintenance_NoOpWhenMaxscaleDisabled(t *testing.T) {
+	var putCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "PUT" {
+			putCalls++
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	cluster, prx := newTestMaxscaleInitCluster(t, "mxs-set-maintenance-off", srv)
+	cluster.Conf.MxsOn = false
+	slave := cluster.Servers[1]
+	slave.IsMaintenance = true
+
+	prx.SetMaintenance(slave)
+
+	if putCalls != 0 {
+		t.Fatalf("expected no MaxScale call when maxscale-on is false, got %d PUT calls", putCalls)
+	}
+}
+
+// SetMaintenance must still push maintenance state with no elected master --
+// quarantining a broken replica is exactly the kind of thing an operator
+// needs during a failover/all-down window, and neither HaproxyProxy nor
+// ProxySQLProxy require a master for this either (see the comment on
+// SetMaintenance).
+func TestMaxscaleSetMaintenance_StillPushesStateWhenNoMaster(t *testing.T) {
+	var putCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/v1/servers":
+			w.Write([]byte(`{"data":[]}`))
+		case r.Method == "PUT":
+			putCalls++
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	cluster, prx := newTestMaxscaleInitCluster(t, "mxs-set-maintenance-no-master", srv)
+	cluster.master = nil
+	slave := cluster.Servers[1]
+	slave.IsMaintenance = true
+
+	prx.SetMaintenance(slave)
+
+	if putCalls != 1 {
+		t.Fatalf("expected SetMaintenance to still push state with no elected master, got %d PUT calls", putCalls)
+	}
+}
+
 // --- Moduleset: master_accept_reads and server_id must stay dynamic in every maxscale.cnf variant ---
 
 // Regression: master_accept_reads was hardcoded per-variant (=1 legacy,
