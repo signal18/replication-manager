@@ -443,6 +443,26 @@ func (cluster *Cluster) SwitchMaxscaleProxy() {
 	cluster.Conf.MxsOn = !cluster.Conf.MxsOn
 }
 
+func (cluster *Cluster) SwitchMaxscaleRestApi() {
+	cluster.Conf.MxsRestApi = !cluster.Conf.MxsRestApi
+}
+
+func (cluster *Cluster) SwitchMaxscaleDisableMonitor() {
+	cluster.Conf.MxsDisableMonitor = !cluster.Conf.MxsDisableMonitor
+}
+
+func (cluster *Cluster) SwitchMaxscaleServerMatchPort() {
+	cluster.Conf.MxsServerMatchPort = !cluster.Conf.MxsServerMatchPort
+}
+
+func (cluster *Cluster) SwitchMaxscaleBinlog() {
+	cluster.Conf.MxsBinlogOn = !cluster.Conf.MxsBinlogOn
+}
+
+func (cluster *Cluster) SwitchFailoverFalsePositiveMaxscale() {
+	cluster.Conf.CheckFalsePositiveMaxscale = !cluster.Conf.CheckFalsePositiveMaxscale
+}
+
 func (cluster *Cluster) SwitchMyProxy() {
 	cluster.Conf.MyproxyOn = !cluster.Conf.MyproxyOn
 }

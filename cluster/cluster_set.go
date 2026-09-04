@@ -1126,7 +1126,14 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 			}
 		}
 	case config.ConstProxyMaxscale:
-		cluster.Conf.MxsUser, cluster.Conf.MxsPass = misc.SplitPair(credential)
+		user, pass := misc.SplitPair(credential)
+		var newSecret config.Secret
+		newSecret.OldValue = cluster.Conf.Secrets["maxscale-pass"].Value
+		newSecret.Value = pass
+		cluster.Conf.Secrets["maxscale-pass"] = newSecret
+		cluster.Conf.MxsUser = user
+		cluster.Conf.MxsPass = pass
+		cluster.MarkSecretVersionStoreDirty()
 
 		/*for _, pri := range cluster.Proxies {
 
