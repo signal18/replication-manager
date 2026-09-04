@@ -436,6 +436,7 @@ func (pr *MaxscaleProxy) SetMaintenance(server *ServerMonitor) {
 		cluster.SetState("ERR00018", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00018"], err), ErrFrom: "CONF"})
 		return
 	}
+	defer m.Close()
 	if server.IsMaintenance {
 		err = m.SetServer(server.MxsServerName, "maintenance")
 	} else {
@@ -443,9 +444,7 @@ func (pr *MaxscaleProxy) SetMaintenance(server *ServerMonitor) {
 	}
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "Could not set server %s in maintenance", err)
-		m.Close()
 	}
-	m.Close()
 }
 
 // Failover for MaxScale simply calls Init
