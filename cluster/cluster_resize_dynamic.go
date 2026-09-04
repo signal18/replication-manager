@@ -299,7 +299,12 @@ func (server *ServerMonitor) resizeCPUSQL() []string {
 // memory is not raised (never OOM). Restart-only SET GLOBALs (error 1238) fall
 // back to a restart cookie.
 func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
-	if !cluster.Conf.ProvDBDynamicResource {
+	// Live resize only engages in the plan-driven model: a service plan is the
+	// authorized envelope that lets resources move (3-axis: autorisé). With no
+	// plan, resources are fixed/immutable and we must not touch them — the
+	// existing reprov/restart model applies. prov-db-dynamic-resource is the
+	// separate opt-in off-switch (T14) on top of that precondition.
+	if !cluster.Conf.ProvDBDynamicResource || cluster.Conf.ProvServicePlan == "" {
 		return
 	}
 	dir := "shrink"
@@ -383,17 +388,70 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 			}
 			cluster.logResize(server, dim, true, true, feas, sql)
 		} else {
+			// Feasibility gate applies to shrink too: a can-change verdict of no/
+			// migration must stop a live shrink (e.g. a maintenance window).
+			feas, err := rz.CanResize(server, false)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+					"Resource shrink feasibility check failed on %s: %s", server.URL, err)
+				cluster.logResize(server, dim, false, false, feas, nil)
+				continue
+			}
+			if feas == ResizeNo {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+					"Resource shrink not possible on %s, keeping current size", server.URL)
+				cluster.logResize(server, dim, false, false, feas, nil)
+				continue
+			}
+			if feas == ResizeMigration {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+					"Resource shrink needs migration on %s; in-place skipped", server.URL)
+				cluster.logResize(server, dim, false, false, feas, nil)
+				continue
+			}
+			// Phase 1: free DB memory (SET GLOBAL, buffer pool down). InnoDB resizes
+			// the pool ASYNCHRONOUSLY, so we DEFER the cgroup shrink — phase 2
+			// (completePendingCgroupShrink, on a later monitor tick) shrinks the
+			// cgroup only once the pool has actually shrunk, so we never lower the
+			// cgroup below live memory (OOM). Non-blocking: a per-tick comparison.
 			sql := server.resizeMemorySQL(false)
 			if _, needRestart := server.ExecScriptSQL(sql); needRestart {
 				server.SetRestartCookie()
 			}
-			applied := true
-			if _, err := rz.Resize(server, false); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-					"Resource shrink on %s failed: %s", server.URL, err)
-				applied = false
-			}
-			cluster.logResize(server, dim, false, applied, ResizeYes, sql)
+			server.PendingCgroupShrink = true
+			// applied=false: the DB side is done but the cgroup shrink is deferred.
+			cluster.logResize(server, dim, false, false, feas, sql)
 		}
 	}
+}
+
+// completePendingCgroupShrink is phase 2 of a live memory shrink. Phase 1 lowered
+// the buffer pool via SET GLOBAL; InnoDB resizes it asynchronously, so this shrinks
+// the container cgroup only once the pool has actually reached its target — never
+// below live memory (anti-OOM). Called every monitor tick; when nothing is pending
+// it is a single comparison, so it does not burden the monitor (F2).
+func (cluster *Cluster) completePendingCgroupShrink(server *ServerMonitor) {
+	if server == nil || !server.PendingCgroupShrink {
+		return
+	}
+	if server.State == stateFailed || server.State == stateUnconn {
+		return
+	}
+	targetMB, err := strconv.ParseInt(server.ClusterGroup.Configurator.GetConfigInnoDBBPSize(), 10, 64)
+	if err != nil {
+		server.PendingCgroupShrink = false
+		return
+	}
+	runtime, _ := strconv.ParseInt(server.Variables.Get("INNODB_BUFFER_POOL_SIZE"), 10, 64)
+	if runtime > targetMB*1024*1024 {
+		return // buffer pool still shrinking asynchronously — wait for the next tick
+	}
+	// The pool has reached its target: it is now safe to shrink the cgroup.
+	server.PendingCgroupShrink = false
+	applied, rerr := cluster.resourceResizer().Resize(server, false)
+	if rerr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+			"Deferred cgroup shrink on %s failed: %s", server.URL, rerr)
+	}
+	cluster.logResize(server, resizeMemory, false, applied, ResizeYes, nil)
 }
