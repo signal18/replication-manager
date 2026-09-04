@@ -172,6 +172,7 @@ func (proxy *MaxscaleProxy) Refresh() error {
 		}
 	}
 	proxy.BackendsWrite = nil
+	proxy.BackendsRead = nil
 	for _, server := range cluster.Servers {
 
 		var bke = Backend{
@@ -213,7 +214,22 @@ func (proxy *MaxscaleProxy) Refresh() error {
 				//server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModMaxscale,"INFO", "Affect for server %s, %s %s  ", server.IP, server.MxsServerName, server.MxsServerStatus)
 			}
 		}
-		proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
+		// Write-Connection-Router uses router=readconnroute with router_options=master:
+		// every server is a configured candidate (needed so a post-failover master is
+		// already known to the router), but only the server MaxScale currently reports
+		// as Master ever receives a write connection. Mirror that here instead of
+		// listing every candidate as if it were an active write backend.
+		if strings.Contains(bke.PrxStatus, "Master") {
+			proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
+		}
+		// Read-Write-Connection-Router uses router=readwritesplit with
+		// master_accept_reads=1: reads are distributed across every server
+		// MaxScale currently considers Running -- slaves normally, but the
+		// master too when needed -- so the read group mirrors that full
+		// candidate pool rather than being filtered down to one server.
+		if strings.Contains(bke.PrxStatus, "Running") {
+			proxy.BackendsRead = append(proxy.BackendsRead, bke)
+		}
 	}
 	m.Close()
 	return nil

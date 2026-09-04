@@ -313,3 +313,95 @@ func TestMaxscaleUsesMaxinfo_FalseAndWarnsForPinlokiWithMaxinfoRequested(t *test
 		t.Fatalf("expected WARN0211 to be raised for the maxinfo+pinloki combination")
 	}
 }
+
+// --- Refresh: BackendsWrite must reflect the actual write group, not every configured candidate ---
+
+// Regression: Write-Connection-Router (readconnroute + router_options=master)
+// lists every server as a configured candidate -- required so a post-failover
+// master is already known to the router -- but only the server MaxScale
+// currently reports as Master ever receives a write connection. Refresh()
+// used to push every server into proxy.BackendsWrite unconditionally, which
+// the dashboard renders as the proxy's "write group" -- live-verified this
+// showed both slaves alongside the master under the WRITE group in the GUI,
+// which is misleading (and was flagged as such: "why the write group of
+// maxscale has all serves?"). Confirms Refresh() now filters BackendsWrite to
+// only the server(s) MaxScale itself reports as Master.
+func TestMaxscaleRefresh_BackendsWrite_OnlyIncludesReportedMaster(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/v1/servers":
+			w.Write([]byte(`{"data":[
+				{"id":"server1","type":"servers","attributes":{"state":"Master, Running","parameters":{"address":"db1","port":3306},"statistics":{"connections":1}}},
+				{"id":"server2","type":"servers","attributes":{"state":"Slave, Running","parameters":{"address":"db2","port":3306},"statistics":{"connections":0}}},
+				{"id":"server3","type":"servers","attributes":{"state":"Slave, Running","parameters":{"address":"db3","port":3306},"statistics":{"connections":0}}}
+			]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	cluster, prx := newTestMaxscaleInitCluster(t, "mxs-refresh-write-group", srv)
+	db1 := &ServerMonitor{Id: "db1", Host: "db1", Port: "3306", URL: "db1:3306", ClusterGroup: cluster, State: stateMaster}
+	db2 := &ServerMonitor{Id: "db2", Host: "db2", Port: "3306", URL: "db2:3306", ClusterGroup: cluster, State: stateSlave}
+	db3 := &ServerMonitor{Id: "db3", Host: "db3", Port: "3306", URL: "db3:3306", ClusterGroup: cluster, State: stateSlave}
+	cluster.master = db1
+	cluster.Servers = []*ServerMonitor{db1, db2, db3}
+
+	if err := prx.Refresh(); err != nil {
+		t.Fatalf("Refresh() returned an error: %s", err)
+	}
+
+	if len(prx.BackendsWrite) != 1 {
+		t.Fatalf("expected exactly 1 backend in the write group (the reported Master), got %d: %+v", len(prx.BackendsWrite), prx.BackendsWrite)
+	}
+	if prx.BackendsWrite[0].Host != "db1" {
+		t.Fatalf("expected the write group's only member to be the Master (db1), got %s", prx.BackendsWrite[0].Host)
+	}
+}
+
+// Regression: Read-Write-Connection-Router (readwritesplit, master_accept_reads=1)
+// distributes reads across every Running server, master included -- unlike the
+// write group, there is no single "the reader". Confirms Refresh() populates
+// BackendsRead with the full Running candidate pool rather than leaving it
+// empty (as it did before this fix) or filtering it down like the write group.
+func TestMaxscaleRefresh_BackendsRead_IncludesAllRunningServers(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/v1/servers":
+			w.Write([]byte(`{"data":[
+				{"id":"server1","type":"servers","attributes":{"state":"Master, Running","parameters":{"address":"db1","port":3306},"statistics":{"connections":1}}},
+				{"id":"server2","type":"servers","attributes":{"state":"Slave, Running","parameters":{"address":"db2","port":3306},"statistics":{"connections":0}}},
+				{"id":"server3","type":"servers","attributes":{"state":"Down","parameters":{"address":"db3","port":3306},"statistics":{"connections":0}}}
+			]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	cluster, prx := newTestMaxscaleInitCluster(t, "mxs-refresh-read-group", srv)
+	db1 := &ServerMonitor{Id: "db1", Host: "db1", Port: "3306", URL: "db1:3306", ClusterGroup: cluster, State: stateMaster}
+	db2 := &ServerMonitor{Id: "db2", Host: "db2", Port: "3306", URL: "db2:3306", ClusterGroup: cluster, State: stateSlave}
+	db3 := &ServerMonitor{Id: "db3", Host: "db3", Port: "3306", URL: "db3:3306", ClusterGroup: cluster, State: stateFailed}
+	cluster.master = db1
+	cluster.Servers = []*ServerMonitor{db1, db2, db3}
+
+	if err := prx.Refresh(); err != nil {
+		t.Fatalf("Refresh() returned an error: %s", err)
+	}
+
+	if len(prx.BackendsRead) != 2 {
+		t.Fatalf("expected 2 backends in the read group (both Running servers, master included), got %d: %+v", len(prx.BackendsRead), prx.BackendsRead)
+	}
+	gotHosts := map[string]bool{}
+	for _, b := range prx.BackendsRead {
+		gotHosts[b.Host] = true
+	}
+	if !gotHosts["db1"] || !gotHosts["db2"] {
+		t.Fatalf("expected read group to include both db1 (Master, Running) and db2 (Slave, Running), got %+v", prx.BackendsRead)
+	}
+	if gotHosts["db3"] {
+		t.Fatalf("expected read group to exclude db3 (Down), got %+v", prx.BackendsRead)
+	}
+}
