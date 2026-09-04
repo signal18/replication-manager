@@ -177,6 +177,14 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerGetJobEntries)),
 	))
+	// DBU consumed push: the thin system-level sensor running in the DB container
+	// (authenticated via secret-login, same JWT as the other dbjob callbacks)
+	// POSTs the four raw per-axis period maxima; repman computes the DBU here so
+	// the client's DB CPU is never spent on it.
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/dbu", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDBUConsumed)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/processlist", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerProcesslist)),
@@ -4828,6 +4836,49 @@ func (repman *ReplicationManager) handlerMuxServersPortConfigReceiver(w http.Res
 // @Failure 500 {string} string "No cluster" or "No server" or "Error decrypting data" or "Error signing token"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/secret-login [post]
 // @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/secret-login [post]
+// handlerMuxServerDBUConsumed receives the DBU sensor push from the DB container:
+// the four raw per-axis period maxima (memory.current, cpu rate, io rate, statfs
+// disk — all read cheaply at the system/cgroup level). repman does the DBU
+// semantics (normalise, pivot, biggest-contributor) so no client DB CPU is spent
+// on it, then stores the reading on the server for Graphite emission on the loop.
+func (repman *ReplicationManager) handlerMuxServerDBUConsumed(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+	if node == nil {
+		http.Error(w, "Server Not Found", 500)
+		return
+	}
+
+	var req struct {
+		WindowStart  time.Time `json:"windowStart"`
+		WindowEnd    time.Time `json:"windowEnd"`
+		MemMaxBytes  int64     `json:"memMaxBytes"`
+		CpuMaxCores  float64   `json:"cpuMaxCores"`
+		IoMaxIops    float64   `json:"ioMaxIops"`
+		DiskMaxBytes int64     `json:"diskMaxBytes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Decode error: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	reading := cluster.ComputeDBUFromMaxes(req.WindowStart, req.WindowEnd, req.MemMaxBytes, req.CpuMaxCores, req.IoMaxIops, req.DiskMaxBytes)
+	node.SetDBUConsumed(reading)
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+		"DBU consumed %s: %.2f (%s-bound) [cpu=%.2f mem=%.2f io=%.2f disk=%.2f]",
+		node.URL, reading.Dbu, reading.Binding, reading.DbuCpu, reading.DbuMem, reading.DbuIo, reading.DbuDisk)
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)

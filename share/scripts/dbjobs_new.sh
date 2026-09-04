@@ -1,6 +1,6 @@
 #!/bin/bash
 # This script is given as sample and might be overwritten on upgrade
-# The real script is auto generated based on compliance json
+# The real script is auto generated based on compliance json and overwrite by go embed
 
 # %%ENV:GENLINE%%
 
@@ -600,6 +600,51 @@ secret_login() {
         # Other error
         return 2
     fi
+}
+
+# collect_dbu: thin DBU sensor. Reads the SERVICE cgroup (mounted read-only at
+# /svc-cgroup by the orchestrator provisioning -- OpenSVC binds the service pg
+# slice, K8s the pod cgroup, systemd the service slice; identical here) plus the
+# datadir df, and pushes the four raw per-axis maxima to repman, which computes
+# the DBU (normalise/pivot/binding) so the client DB CPU is never spent on it.
+# Runs once per dbjobs_new invocation (~60s launcher cadence). cpu/io are rates
+# vs the previous run's cumulative counters, persisted in a checkpoint. Fail-soft:
+# any missing piece just skips the push, never breaks the job run.
+collect_dbu() {
+    local cg="/svc-cgroup"
+    [[ -r "$cg/memory.current" ]] || return 0   # cgroup not mounted yet -> skip
+
+    local now_epoch mem cpu_usec io_ops disk
+    now_epoch=$(date +%s)
+    mem=$(cat "$cg/memory.current" 2>/dev/null || echo 0)
+    cpu_usec=$(awk '/^usage_usec/{print $2}' "$cg/cpu.stat" 2>/dev/null || echo 0)
+    # io: sum rios+wios across all block devices (operation counts -> iops)
+    io_ops=$(awk '{for(i=1;i<=NF;i++){if($i ~ /^rios=/){sub("rios=","",$i);r+=$i} if($i ~ /^wios=/){sub("wios=","",$i);w+=$i}}} END{printf "%d", r+w+0}' "$cg/io.stat" 2>/dev/null || echo 0)
+    # disk: sum df used over mounts UNDER the datadir only (statfs, no du); this
+    # excludes host bind-mounts (e.g. zoneinfo) and the initdb volume.
+    disk=$(df -B1 2>/dev/null | awk -v d="$DATADIR" 'NR>1 && $NF ~ ("^" d) {s+=$3} END{printf "%d", s+0}')
+
+    local ckpt="$CHECKPOINT_DIR/dbu.checkpoint"
+    local prev_epoch="" prev_cpu="" prev_io=""
+    [[ -s "$ckpt" ]] && read -r prev_epoch prev_cpu prev_io < "$ckpt"
+    echo "$now_epoch $cpu_usec $io_ops" > "$ckpt"
+
+    # First run (no baseline) or clock skew -> just seed the checkpoint, no push.
+    [[ -z "$prev_epoch" ]] && return 0
+    local dt=$((now_epoch - prev_epoch))
+    ((dt <= 0)) && return 0
+
+    local cpu_cores io_iops
+    cpu_cores=$(awk -v c="$cpu_usec" -v p="$prev_cpu" -v dt="$dt" 'BEGIN{printf "%.4f", (c-p)/(dt*1000000)}')
+    io_iops=$(awk -v c="$io_ops" -v p="$prev_io" -v dt="$dt" 'BEGIN{printf "%.4f", (c-p)/dt}')
+
+    local ws we
+    ws=$(date -u -d "@$prev_epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
+    we=$(date -u -d "@$now_epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
+
+    local data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cpu_cores,\"ioMaxIops\":$io_iops,\"diskMaxBytes\":$disk}"
+    local endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/dbu"
+    send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$endpoint" "$data" "application/json" "$TOKEN" >/dev/null 2>&1 || true
 }
 
 # Fetch config receiver information
@@ -1778,6 +1823,11 @@ if [ "$TOKEN" == "error" ]; then
     echo "Failed to authenticate with the replication manager API."
     exit 1
 fi
+
+# DBU sensor: push the service cgroup + datadir maxima once per run (~60s
+# launcher cadence), BEFORE the job dispatch, so it still fires on a cycle where
+# a backup would later block or early-exit. Thin + fail-soft (see collect_dbu).
+collect_dbu || true
 
 # Clear previous temporary files
 echo "" > "$LOG_DIR/curl_response.txt"

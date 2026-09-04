@@ -218,6 +218,7 @@ type ServerMonitor struct {
 	BinaryLogPurgeBefore        int64                       `json:"binaryLogPurgeBefore"`
 	MaxSlowQueryTimestamp       int64                       `json:"maxSlowQueryTimestamp"`
 	WorkLoad                    *config.WorkLoadsMap        `json:"workLoad"`
+	DBUConsumed                 *DBUReading                 `json:"dbuConsumed"`
 	DelayStat                   *ServerDelayStat            `json:"delayStat"`
 	SlaveVariables              SlaveVariables              `json:"slaveVariables"`
 	IsReseeding                 string                      `json:"isReseeding"`
