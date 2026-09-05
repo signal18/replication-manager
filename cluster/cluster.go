@@ -288,30 +288,43 @@ type Cluster struct {
 	// MaintenanceLogrus is a dedicated logrus.Logger that writes to maintenance.log.
 	// Receives ConstLogModMaintenance events: backup, SST, task execution, purge, etc.
 	// Set by the server on cluster init. Nil when no log-file is configured.
-	MaintenanceLogrus                   *log.Logger                 `json:"-"`
-	runOnceAfterTopology                bool                        `json:"-"`
-	logPtr                              *os.File                    `json:"-"`
-	termlength                          int                         `json:"-"`
-	runUUID                             string                      `json:"-"`
-	cfgGroupDisplay                     string                      `json:"-"`
-	RepMgrVersion                       string                      `json:"-"`
-	RepMgrFullVersion                   string                      `json:"-"`
-	RepMgrRestartTime                   int64                       `json:"-"`
-	RepMgrHostname                      string                      `json:"-"`
-	exitMsg                             string                      `json:"-"`
-	exit                                atomic.Bool                 `json:"-"`
-	stopOnce                            sync.Once                   `json:"-"`
-	canFlashBack                        bool                        `json:"-"`
-	canResticFetchRepo                  bool                        `json:"-"`
-	failoverCond                        *nbc.NonBlockingChan        `json:"-"`
-	switchoverCond                      *nbc.NonBlockingChan        `json:"-"`
-	rejoinCond                          *nbc.NonBlockingChan        `json:"-"`
-	bootstrapCond                       *nbc.NonBlockingChan        `json:"-"`
-	altertableCond                      *nbc.NonBlockingChan        `json:"-"`
-	addtableCond                        *nbc.NonBlockingChan        `json:"-"`
-	statecloseChan                      chan state.State            `json:"-"`
-	switchoverChan                      chan bool                   `json:"-"`
-	errorChan                           chan error                  `json:"-"`
+	MaintenanceLogrus    *log.Logger          `json:"-"`
+	runOnceAfterTopology bool                 `json:"-"`
+	logPtr               *os.File             `json:"-"`
+	termlength           int                  `json:"-"`
+	runUUID              string               `json:"-"`
+	cfgGroupDisplay      string               `json:"-"`
+	RepMgrVersion        string               `json:"-"`
+	RepMgrFullVersion    string               `json:"-"`
+	RepMgrRestartTime    int64                `json:"-"`
+	RepMgrHostname       string               `json:"-"`
+	exitMsg              string               `json:"-"`
+	exit                 atomic.Bool          `json:"-"`
+	stopOnce             sync.Once            `json:"-"`
+	canFlashBack         bool                 `json:"-"`
+	canResticFetchRepo   bool                 `json:"-"`
+	failoverCond         *nbc.NonBlockingChan `json:"-"`
+	switchoverCond       *nbc.NonBlockingChan `json:"-"`
+	rejoinCond           *nbc.NonBlockingChan `json:"-"`
+	bootstrapCond        *nbc.NonBlockingChan `json:"-"`
+	altertableCond       *nbc.NonBlockingChan `json:"-"`
+	addtableCond         *nbc.NonBlockingChan `json:"-"`
+	statecloseChan       chan state.State     `json:"-"`
+	switchoverChan       chan bool            `json:"-"`
+	errorChan            chan error           `json:"-"`
+	// provisioningMutex serialises every provision/unprovision operation that
+	// reports its result through the shared, unbuffered errorChan (the ~10
+	// receivers in prov.go + srv.go Uprovision). Without it, two overlapping
+	// operations cross-talk on that single channel: one receiver reads the
+	// other operation's result and the other blocks forever, deadlocking the
+	// orchestration and leaving a server stuck (e.g. in maintenance) with no
+	// log (issue #1769). This is the Phase-1 mitigation: it removes cross-op
+	// cross-talk while keeping the shared channel. The residual intra-op
+	// multi-send smell (config-building helpers such as OpenSVCGetDBEnvSection
+	// sending on errorChan mid-flight instead of returning the error) is left
+	// to the Phase-2 per-operation-channel refactor. See
+	// doc/implementation/cluster/ERRORCHAN_PROVISIONING.md.
+	provisioningMutex                   sync.Mutex                  `json:"-"`
 	testStopCluster                     bool                        `json:"-"`
 	testStartCluster                    bool                        `json:"-"`
 	lastmaster                          *ServerMonitor              `json:"-"`
