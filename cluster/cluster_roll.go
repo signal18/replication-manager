@@ -17,6 +17,18 @@ func (cluster *Cluster) RollingReprov() error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling reprovisionning")
 
+	// Reentrancy guard: only one RollingReprov may run at a time on a cluster.
+	// Both call sites are unguarded (the API handler fires it per POST, the cron
+	// scheduler fires it independently), and the flag piloting below is not safe
+	// under interleaving -- two overlapping runs would corrupt the Autoseed
+	// save/restore and could leave autoseed permanently flipped or reintroduce
+	// the #1771 data-loss. TryLock so a concurrent run is refused, not queued.
+	if !cluster.rollingReprovMutex.TryLock() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling reprovision already in progress, skipping")
+		return errors.New("rolling reprovision already in progress")
+	}
+	defer cluster.rollingReprovMutex.Unlock()
+
 	// A rolling reprovision DESTROYS each replica's data (UnprovisionDatabaseService)
 	// before recreating an empty service. The reseed that repopulates it is not done
 	// by this function: it is delegated to the autoseed rejoin path
