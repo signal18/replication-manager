@@ -356,21 +356,30 @@ type Cluster struct {
 	InResticPhysicalBackup              bool                        `json:"inResticPhysicalBackup" groups:"web"`
 	InResticBackup                      bool                        `json:"inResticBackup" groups:"web"`
 	InRollingRestart                    bool                        `json:"inRollingRestart" groups:"web"`
-	failLoadP12Cert                     bool                        `json:"-"`
-	Mailer                              *mailer.Mailer              `json:"-"`
-	ResticManager                       *backupmgr.ResticManager    `json:"-"`
-	resolvedS3Mode                      string                      // probe-resolved S3 mode during auto startup; "" if not yet probed
-	MessageChan                         chan sharedlog.Message      `json:"-"`
-	ErrorConfigs                        config.ErrorConfigs         `json:"-"` //To store error config
-	Partner                             *config.Partner             `json:"partner" groups:"web"`
-	ServerGlobals                       *ServerGlobals              `json:"-"`
-	ConfigManager                       *manager.ConfigManager      `json:"-"`
-	failSendCount                       int                         `json:"-"`
-	MeetUserID                          string                      `json:"-"` //To store meet user id
-	ServiceTemplates                    []string                    `json:"-"` //To store application templates
-	DiskStatManager                     *misc.DiskStatManager       `json:"diskStat" groups:"web"`
-	RefreshTemplateMD5Chan              chan *App                   `json:"-"`
-	LastDelayStatPrint                  time.Time
+	// rollingReprovMutex serialises RollingReprov against itself. RollingReprov
+	// pilots the shared Conf.Autoseed / Conf.AutorejoinMysqldump flags for its
+	// duration and restores them via defer; two overlapping runs would corrupt
+	// that save/restore (the second captures the first's forced value and can
+	// leave autoseed permanently flipped, or restore it mid-flight and
+	// reintroduce the #1771 data-loss). Both call sites are unguarded (the API
+	// handler and the cron scheduler), so TryLock() this before mutating any
+	// flag; a concurrent run is refused rather than interleaved.
+	rollingReprovMutex     sync.Mutex               `json:"-"`
+	failLoadP12Cert        bool                     `json:"-"`
+	Mailer                 *mailer.Mailer           `json:"-"`
+	ResticManager          *backupmgr.ResticManager `json:"-"`
+	resolvedS3Mode         string                   // probe-resolved S3 mode during auto startup; "" if not yet probed
+	MessageChan            chan sharedlog.Message   `json:"-"`
+	ErrorConfigs           config.ErrorConfigs      `json:"-"` //To store error config
+	Partner                *config.Partner          `json:"partner" groups:"web"`
+	ServerGlobals          *ServerGlobals           `json:"-"`
+	ConfigManager          *manager.ConfigManager   `json:"-"`
+	failSendCount          int                      `json:"-"`
+	MeetUserID             string                   `json:"-"` //To store meet user id
+	ServiceTemplates       []string                 `json:"-"` //To store application templates
+	DiskStatManager        *misc.DiskStatManager    `json:"diskStat" groups:"web"`
+	RefreshTemplateMD5Chan chan *App                `json:"-"`
+	LastDelayStatPrint     time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
 	SlavesOldestMasterFile SlavesOldestMasterFile
