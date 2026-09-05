@@ -16,6 +16,26 @@ import (
 func (cluster *Cluster) RollingReprov() error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling reprovisionning")
+
+	// A rolling reprovision DESTROYS each replica's data (UnprovisionDatabaseService)
+	// before recreating an empty service. The reseed that repopulates it is not done
+	// by this function: it is delegated to the autoseed rejoin path
+	// (srv.go RejoinMaster -> srv_rejoin.go ReseedMasterSST), which fires only when
+	// Conf.Autorejoin AND Conf.Autoseed are on. So a reprov with autoseed off (the
+	// default) would leave the replicas empty -- silent data loss (#1771). Guarantee
+	// the reseed:
+	//   - require autorejoin: srv.go:947 gates the rejoin trigger on it, and forcing
+	//     it globally would change failover behaviour for every other server, so we
+	//     refuse (before destroying anything) rather than pilot it;
+	//   - pilot autoseed on for the duration and restore the operator's value after,
+	//     so each reprovisioned replica is reseeded from the master.
+	if !cluster.Conf.Autorejoin {
+		return errors.New("rolling reprovision refused: autorejoin is disabled -- reprovisioned replicas would be destroyed without a reseed; enable autorejoin first")
+	}
+	savedAutoseed := cluster.Conf.Autoseed
+	cluster.Conf.Autoseed = true
+	defer func() { cluster.Conf.Autoseed = savedAutoseed }()
+
 	master := cluster.GetMaster()
 	if master == nil {
 		return errors.New("No master found for rolling reprovisionning")
