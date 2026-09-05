@@ -1854,6 +1854,9 @@ func (server *ServerMonitor) FlushTables() (string, error) {
 
 func (server *ServerMonitor) Uprovision() {
 	cluster := server.ClusterGroup
+	// Serialise errorChan use against other provision/unprovision ops (#1769).
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 	go cluster.OpenSVCUnprovisionDatabaseService(server)
 	if err := <-cluster.errorChan; err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database service %s: %s", server.ServiceName, err)
