@@ -118,6 +118,13 @@ func (cluster *Cluster) Bootstrap() error {
 }
 
 func (cluster *Cluster) ProvisionServices() error {
+	// Serialise against every other provision/unprovision op on this cluster:
+	// they all report through the shared errorChan and would otherwise
+	// cross-talk (issue #1769). The fan-out below still launches its per-server
+	// goroutines in parallel under this single hold, so bulk provisioning
+	// (volume creation, etc.) keeps its concurrency.
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 	hasConfigPath := make(map[string]bool)
 	cluster.StateMachine.SetFailoverState()
 	// delete the cluster state here
@@ -207,6 +214,9 @@ func (cluster *Cluster) ProvisionServices() error {
 }
 
 func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
+	// Serialise errorChan use against other provision/unprovision ops (#1769).
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 	cluster.StateMachine.SetFailoverState()
 	server.WipeDeltaConfig()
 	switch cluster.GetOrchestrator() {
@@ -254,6 +264,9 @@ func (cluster *Cluster) proxyServiceOrchestrator(prx DatabaseProxy) string {
 }
 
 func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
+	// Serialise errorChan use against other provision/unprovision ops (#1769).
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 	switch cluster.proxyServiceOrchestrator(prx) {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCProvisionProxyService(prx)
@@ -285,6 +298,9 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 }
 
 func (cluster *Cluster) InitAppService(app *App) error {
+	// Serialise errorChan use against other provision/unprovision ops (#1769).
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCProvisionAppService(app)
@@ -319,6 +335,11 @@ func (cluster *Cluster) InitAppService(app *App) error {
 }
 
 func (cluster *Cluster) Unprovision() error {
+	// Serialise against every other provision/unprovision op on this cluster
+	// (#1769). The two fan-out loops below (proxies, then databases) still run
+	// their per-entity goroutines in parallel under this single hold.
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 
 	cluster.StateMachine.SetFailoverState()
 	// Unprovision proxies first, since they are dependent on databases
@@ -407,6 +428,9 @@ func (cluster *Cluster) Unprovision() error {
 }
 
 func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
+	// Serialise errorChan use against other provision/unprovision ops (#1769).
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 	switch cluster.proxyServiceOrchestrator(prx) {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCUnprovisionProxyService(prx)
@@ -434,6 +458,11 @@ func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
 }
 
 func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error {
+	// Serialise errorChan use against other provision/unprovision ops (#1769).
+	// This is the path that hung in the reported incident: a config-building
+	// send racing this unprovision's <-errorChan left the server in maintenance.
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 	cluster.ResetCrashes()
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
