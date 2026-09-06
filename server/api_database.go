@@ -4869,8 +4869,10 @@ func (repman *ReplicationManager) handlerMuxServerDBUConsumed(w http.ResponseWri
 		return
 	}
 
-	reading := cluster.ComputeDBUFromMaxes(req.WindowStart, req.WindowEnd, req.MemMaxBytes, req.CpuMaxCores, req.IoMaxIops, req.DiskMaxBytes)
-	node.SetDBUConsumed(reading)
+	// The handler stays dumb: forward the raw maxima; the cluster's ResourceManager
+	// owns the ratios, converts, and stores (survives reload). Returns the reading
+	// for the debug log below.
+	reading := node.IngestDBUMaxes(req.WindowStart, req.WindowEnd, req.MemMaxBytes, req.CpuMaxCores, req.IoMaxIops, req.DiskMaxBytes)
 
 	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
 		"DBU consumed %s: %.2f (%s-bound) [cpu=%.2f mem=%.2f io=%.2f disk=%.2f]",

@@ -480,6 +480,11 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	// Backup-related metadata
 	go server.FetchLastBackupMetadata()
+
+	// A config reload recreates this ServerMonitor; reload the last DBU reading
+	// from the repman-level store so the DBU metric does not gap (the flapping).
+	// No stored entry (server off / never pushed) leaves DBUConsumed nil.
+	server.RestoreDBUConsumed()
 	return server, err
 }
 

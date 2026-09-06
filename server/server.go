@@ -85,6 +85,7 @@ type ReplicationManager struct {
 	MemProfile                   string                             `json:"memprofile"`
 	CpuProfile                   string                             `json:"cpuprofile"`
 	Clusters                     map[string]*cluster.Cluster        `json:"-"`
+	resourceManager                   *cluster.ResourceManager                `json:"-"` // repman-side DBU authority (Epic #1776); created once, injected into every cluster; survives ServerMonitor recreation
 	PeerManager                  *peer.PeerManager                  `json:"-"`
 	Partners                     []config.Partner                   `json:"partners"`
 	Partner                      config.Partner                     `json:"partner"`
@@ -3459,6 +3460,14 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.Unlock()
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
+	// The ResourceManager is repman-side and infra-wide (Epic #1776): created once, shared
+	// into every cluster. The per-server consumed reading then survives the cluster's
+	// ServerMonitor recreations here (fixes the graph flapping), and it is where the
+	// per-cluster / per-agent consumed views and capacity ("is there room?") live.
+	if repman.resourceManager == nil {
+		repman.resourceManager = cluster.NewResourceManager()
+	}
+	repman.currentCluster.SetResourceManager(repman.resourceManager)
 
 	if repman.currentCluster.Conf.SecretKey == nil {
 		repman.currentCluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: config.ClusterError["ERR00090"], ErrFrom: "CLUSTER"})

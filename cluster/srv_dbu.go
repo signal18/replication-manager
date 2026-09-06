@@ -6,17 +6,10 @@ package cluster
 
 import "time"
 
-// DBU (Database Unit) locking ratio: one DBU = 1 core / 4 GB RAM / 40 GB disk /
-// 1000 IOPS. A workload consumes an integer-ish number of DBU determined by
-// whichever axis binds (the max). See CLOUD18_CREDIT_MODEL.md.
-const (
-	dbuCoresPerUnit  = 1.0
-	dbuMemMBPerUnit  = 4096.0
-	dbuDiskGBPerUnit = 40.0
-	dbuIopsPerUnit   = 1000.0
-)
-
-// DBUReading is one period's consumed-DBU picture for a server. The raw per-axis
+// DBUReading is one period's consumed-DBU picture for a server. DBU is one unit
+// projection over native resources; the conversion RATIOS (1 DBU = 1 core / 4 GB /
+// 40 GB / 1000 IOPS by default) live on the ResourceManager -- the point where
+// resources converge -- so ComputeDBU is a method there, not a package function. The raw per-axis
 // maxima are measured at the SYSTEM level (cgroup + statfs) by a thin sensor in
 // the DB container and pushed here; repman does the DBU semantics (normalisation,
 // pivot, binding) so the client's DB CPU is never spent on it. All the "max"
@@ -45,42 +38,45 @@ type DBUReading struct {
 	Binding string  `json:"binding"`
 }
 
-// ComputeDBUFromMaxes turns the four raw per-axis period maxima (as pushed by the
-// sensor) into a DBUReading: normalises each axis to DBU, then the pivot is the
-// max and Binding is the argmax. Pure function — no I/O, no client cost.
-func ComputeDBUFromMaxes(start, end time.Time, memMaxBytes int64, cpuMaxCores, ioMaxIops float64, diskMaxBytes int64) DBUReading {
-	r := DBUReading{
-		WindowStart:  start,
-		WindowEnd:    end,
-		MemMaxBytes:  memMaxBytes,
-		CpuMaxCores:  cpuMaxCores,
-		IoMaxIops:    ioMaxIops,
-		DiskMaxBytes: diskMaxBytes,
-		DbuMem:       (float64(memMaxBytes) / (1024 * 1024)) / dbuMemMBPerUnit,
-		DbuCpu:       cpuMaxCores / dbuCoresPerUnit,
-		DbuIo:        ioMaxIops / dbuIopsPerUnit,
-		DbuDisk:      (float64(diskMaxBytes) / (1024 * 1024 * 1024)) / dbuDiskGBPerUnit,
-	}
+// SetResourceManager injects the repman-side ResourceManager into this cluster (set once at
+// cluster start). nil is tolerated (tests, or before wiring): the reading then only
+// lives on the ServerMonitor, as before. See resource_manager.go for why the manager --
+// not the ServerMonitor or the Cluster, both recreated on reload -- is the reading's
+// durable home (it is what stops the DBU graph flapping).
+func (cluster *Cluster) SetResourceManager(m *ResourceManager) { cluster.resources = m }
 
-	// Pivot = max of the four axes; Binding = the axis that set it. Order is
-	// deterministic on ties (cpu, mem, io, disk) so the same input always maps
-	// to the same binding.
-	r.Dbu, r.Binding = r.DbuCpu, "cpu"
-	if r.DbuMem > r.Dbu {
-		r.Dbu, r.Binding = r.DbuMem, "mem"
+// SetDBUConsumed records the latest computed reading. Written by the DBU-push API
+// handler (sensor callback), read by the Graphite emission on the monitor loop.
+// It updates the ServerMonitor field (immediate emission + GUI JSON) AND the
+// repman-side manager keyed by cluster/server, so the reading survives the
+// ServerMonitor recreation on a config reload (RestoreDBUConsumed reloads it).
+func (server *ServerMonitor) SetDBUConsumed(r DBUReading) {
+	server.DBUConsumed = &r
+	if cluster := server.ClusterGroup; cluster != nil && cluster.resources != nil {
+		cluster.resources.SetConsumed(ResourceKey{Cluster: cluster.Name, Server: server.URL}, &r)
 	}
-	if r.DbuIo > r.Dbu {
-		r.Dbu, r.Binding = r.DbuIo, "io"
+}
+
+// IngestDBUMaxes is the single entry point for a sensor push: it converts the raw
+// per-axis maxima into a DBUReading using THIS cluster's ResourceManager ratios
+// (conversion is owned by the manager, so the API handler stays dumb and just
+// forwards raw numbers), stores it, and returns it for logging. No manager wired
+// (tests, early startup) -> zero reading, nothing stored.
+func (server *ServerMonitor) IngestDBUMaxes(start, end time.Time, memMaxBytes int64, cpuMaxCores, ioMaxIops float64, diskMaxBytes int64) DBUReading {
+	cluster := server.ClusterGroup
+	if cluster == nil || cluster.resources == nil {
+		return DBUReading{}
 	}
-	if r.DbuDisk > r.Dbu {
-		r.Dbu, r.Binding = r.DbuDisk, "disk"
-	}
+	r := cluster.resources.ComputeDBU(start, end, memMaxBytes, cpuMaxCores, ioMaxIops, diskMaxBytes)
+	server.SetDBUConsumed(r)
 	return r
 }
 
-// SetDBUConsumed stores the latest computed reading on the server. Written by the
-// DBU-push API handler (sensor callback), read by the Graphite emission on the
-// monitor loop. A single pointer swap keeps the last full period picture.
-func (server *ServerMonitor) SetDBUConsumed(r DBUReading) {
-	server.DBUConsumed = &r
+// RestoreDBUConsumed reloads this server's last reading from the repman-side manager
+// into the (freshly recreated) ServerMonitor, so a config reload does not blank the
+// DBU metric. No entry (never pushed) leaves DBUConsumed nil.
+func (server *ServerMonitor) RestoreDBUConsumed() {
+	if cluster := server.ClusterGroup; cluster != nil && cluster.resources != nil {
+		server.DBUConsumed = cluster.resources.GetConsumed(ResourceKey{Cluster: cluster.Name, Server: server.URL})
+	}
 }
