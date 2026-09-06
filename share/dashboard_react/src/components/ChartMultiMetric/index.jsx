@@ -128,7 +128,12 @@ function ChartMultiMetric({
 
       // Create data points
       const data = values.map((value, i) => {
-        const val = value === 'None' ? 0 : parseFloat(value) || 0;
+        // Graphite sends 'None' for a gap (no datapoint that period). Keep it as
+        // NaN -- NOT 0 -- so the filter below drops it and the line connects
+        // across the gap instead of dipping to 0 (the "flapping"). 0 is a real
+        // value (an idle-but-measured DB), nil means "not measured": they must
+        // not render the same.
+        const val = value === 'None' ? NaN : parseFloat(value);
         return {
           date: new Date(startTime + (i * stepTime)),
           value: val
@@ -184,12 +189,13 @@ function ChartMultiMetric({
 
       // Use a single atomic update for state changes
       setMetricsData(prevData => {
-        // More thorough comparison to prevent unnecessary updates
-        const hasSignificantChanges = Object.keys(dataMap).some(path => {
-          const prevValues = prevData[path]?.data?.map(d => d.value).join(',');
-          const newValues = dataMap[path]?.data?.map(d => d.value).join(',');
-          return prevValues !== newValues;
-        });
+        // Redraw when the data OR the time window changed. The old check compared
+        // only values, so a flat series (e.g. an idle DB floored at 1 DBU -> "1,1,..
+        // ,1") kept the same value string as the window slid: the graph never redrew,
+        // froze, and only jumped when a value finally changed (the "flapping"). Include
+        // each point's timestamp so a sliding window always triggers a redraw.
+        const sig = (m) => m?.data?.map(p => `${p.date.getTime()}:${p.value}`).join(',');
+        const hasSignificantChanges = Object.keys(dataMap).some(path => sig(prevData[path]) !== sig(dataMap[path]));
 
         if (hasSignificantChanges) {
           // Trigger re-render atomically with the data change
