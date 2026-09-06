@@ -169,6 +169,19 @@ func (server *ServerMonitor) GetReplicationServerID() uint64 {
 	return ss.MasterServerID
 }
 
+// GetDatabaseUptime returns the database server's uptime in seconds, read from
+// the already-collected status snapshot (dbhelper.GetStatus normalises the
+// per-vendor uptime to the UPTIME key), so it costs no extra query. A
+// reprovisioned or restarted server reports a freshly reset (low) uptime, which
+// is what lets a test confirm the servers were actually cycled.
+func (server *ServerMonitor) GetDatabaseUptime() int64 {
+	if server.Status == nil {
+		return 0
+	}
+	uptime, _ := strconv.ParseInt(server.Status.Get("UPTIME"), 10, 64)
+	return uptime
+}
+
 func (server *ServerMonitor) GetReplicationDelay() int64 {
 	ss, sserr := server.GetSlaveStatus(server.ReplicationSourceName)
 	if sserr != nil {
