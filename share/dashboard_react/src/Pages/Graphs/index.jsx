@@ -50,21 +50,16 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   // fleet and a cluster's graph showed another cluster's numbers (#1756).
   const carbonHost = (h) =>
     (h || '').toUpperCase().replace(/[`?()'"<]/g, '-').replace(/\./g, '-').replace(/[ /]/g, '_')
-  const carbonHosts = (selectedCluster?.servers || [])
-    .map((s) => carbonHost(s.host))
-    .filter(Boolean)
-  // Scope a whole-fleet 'mysql.*.<metric>' to THIS cluster's servers by expanding it
-  // into comma-separated per-host args INSIDE the aggregation (maxSeries/averageSeries),
-  // so carbon returns ONE aggregated series. Do NOT use a '{a,b,c}' brace: go-graphite
-  // expands the brace into several SEPARATE series (one maxSeries per host), and
-  // ChartMultiMetric -- which parses one series per target -- then gets "Unexpected
-  // response format" and blanks the graph (#1756 regression). No servers known -> leave
-  // 'mysql.*' (whole fleet, still one series) rather than break the graph.
-  const scope = (s) => {
-    if (typeof s !== 'string' || !carbonHosts.length) return s
-    return s.replace(/mysql\.\*\.([A-Za-z0-9_]+)/g, (_, metric) =>
-      carbonHosts.map((h) => `mysql.${h}.${metric}`).join(','))
-  }
+  // Scope a whole-fleet 'mysql.*' to THIS cluster by its NAME, which is embedded in
+  // every carbon host id ('DB<n>-<CLUSTER>-SVC-CLOUD18'): match 'mysql.*-<CLUSTER>-*'.
+  // ONE wildcard pattern -- NOT a '{a,b,c}' brace, which go-graphite expands into several
+  // SEPARATE series that ChartMultiMetric (one series per target) cannot parse -> blank
+  // graph (#1756 regression). So maxSeries/sumSeries aggregate to ONE series. It also
+  // filters by cluster ALWAYS, with NO dependency on the (possibly not-yet-loaded) server
+  // list, so it never falls back to the unscoped whole-fleet '*' that mixes clusters.
+  const clusterToken = carbonHost(selectedCluster?.name || '')
+  const scope = (s) =>
+    typeof s === 'string' && clusterToken ? s.replaceAll('mysql.*', `mysql.*-${clusterToken}-*`) : s
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
 
   useEffect(() => {
