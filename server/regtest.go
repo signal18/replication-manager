@@ -257,6 +257,15 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testOpenSVCUpgradeWarnRecovery" {
 			res = regtest.TestOpenSVCUpgradeWarnRecovery(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testRollingRestart" {
+			res = regtest.TestRollingRestart(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testRollingUpgrade" {
+			res = regtest.TestRollingUpgrade(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testRollingReprovReseed" {
+			res = regtest.TestRollingReprovReseed(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testK8SProvisionSchedulerVolumeBinding" {
 			res = regtest.TestK8SProvisionSchedulerVolumeBinding(cl, test.ConfigFile, &test)
 		}
