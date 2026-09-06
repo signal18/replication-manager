@@ -71,10 +71,16 @@ Per **service** (a "server" is a DB service; a proxy/app is another kind of serv
   *reverse* dependency — the GUI *reconstructing* the DBU as `ceil(max(prov-db-*/ratio))`
   (configurator `DBUSlider`), which conflates the measured/provisioned size with the
   reservation contract and breaks the moment one axis is edited or admin-fixed alone; it
-  is what the explicit **`AddDBU`/`RemoveDBU`** must replace. ⚠️ No dedicated plan field
-  exists yet (neither here nor on `marketplace-pricing`); when added it mirrors the app
-  credit model (`Cloud18ApplicationCredits*` → `Cloud18DatabaseCredits*`;
-  `prov-app-credit-planned` → the DB plan).
+  is what the explicit **`AddDBU`/`RemoveDBU`** must replace. ⚠️ No dedicated DBU plan
+  field exists yet: **today the reservation contract is carried by the marketplace
+  `ServicePlan`** (`prov-service-plan`, sourced from the `prov-service-plan-registry` CSV
+  — raw resources + an absolute €), and crucially it is **NOT expressed in DBU/APU**
+  (CLOUD18_CREDIT_MODEL.md §3.2 "no credit field today — the plan is `ServicePlan`"). That
+  gap — a contract in raw €/resources instead of units — is exactly what the DBU/APU model
+  closes; the `ServicePlan` is a provisioning template, not a unit contract (the
+  self-declared tier `Cloud18SubscriptionPlan` sits alongside it). When the dedicated
+  DBU/APU plan field is added it mirrors the app credit model (`Cloud18ApplicationCredits*`
+  → `Cloud18DatabaseCredits*`; `prov-app-credit-planned` → the DB plan).
 
 Aggregated views (`DBUAggregate`: per-axis + a global pivot = the binding axis):
 - `ConsumedByCluster` / `ConsumedByAgent`
