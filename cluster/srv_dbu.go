@@ -72,6 +72,54 @@ func (server *ServerMonitor) IngestDBUMaxes(start, end time.Time, memMaxBytes in
 	return r
 }
 
+// ConsumedDBUForEmit returns the five DBU series values to emit, applying the DBU
+// business rule -- this is DBU SEMANTICS only; the raw resource metrics are never
+// touched. Emitted every tick, so the series is continuous (no gaps -> no flapping).
+//
+// The DBU never drops below 1 per axis -- even for a STOPPED service. The DBU drives
+// plan-decrease proposals, and we can NEVER free a service's resources below what it
+// needs to RESTART: a stopped service must always keep >= 1 DBU reserved, or it could
+// fail to come back for lack of resource. (The raw resource series, by contrast, DO
+// go to 0 when down -- that is real consumption; see RawResourceForEmit.)
+//   - DOWN, or not measured yet -> 1 on every axis (the reserved restart minimum).
+//   - UP                         -> max(measured, 1) on every axis.
+func (server *ServerMonitor) ConsumedDBUForEmit() (dbu, cpu, mem, io, disk float64) {
+	atLeastOne := func(v float64) float64 {
+		if v < 1 {
+			return 1
+		}
+		return v
+	}
+	if server.IsDown() || server.DBUConsumed == nil {
+		return 1, 1, 1, 1, 1
+	}
+	r := server.DBUConsumed
+	return atLeastOne(r.Dbu), atLeastOne(r.DbuCpu), atLeastOne(r.DbuMem), atLeastOne(r.DbuIo), atLeastOne(r.DbuDisk)
+}
+
+// RawResourceForEmit returns the RAW measured per-axis values to emit (native units:
+// cores, mem bytes, iops, disk bytes) -- the real measurement, NOT floored (the DBU
+// duplicate carries the min-1 rule).
+//
+// When the service is DOWN: cpu/mem/io go to 0 (the process is gone, they do not
+// persist), but DISK keeps its LAST-KNOWN value -- the image and data volumes are
+// still on disk, so the last measurement stays valid until the volume is actually
+// deleted (the in-container sensor cannot re-measure a stopped service). Before the
+// first measurement everything is 0.
+func (server *ServerMonitor) RawResourceForEmit() (cores, memBytes, iops, diskBytes float64) {
+	r := server.DBUConsumed
+	if server.IsDown() {
+		if r != nil {
+			return 0, 0, 0, float64(r.DiskMaxBytes)
+		}
+		return 0, 0, 0, 0
+	}
+	if r == nil {
+		return 0, 0, 0, 0
+	}
+	return r.CpuMaxCores, float64(r.MemMaxBytes), r.IoMaxIops, float64(r.DiskMaxBytes)
+}
+
 // RestoreDBUConsumed reloads this server's last reading from the repman-side manager
 // into the (freshly recreated) ServerMonitor, so a config reload does not blank the
 // DBU metric. No entry (never pushed) leaves DBUConsumed nil.

@@ -97,13 +97,28 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 	// not whitelist-gated), one value per monitor loop. dbu is the pivot = the
 	// peak DBU of the last period; the per-axis values show which one binds
 	// (the biggest contributor is server.DBUConsumed.Binding, kept in the JSON).
-	if r := server.DBUConsumed; r != nil {
+	// Emitted EVERY tick (not only on a fresh sensor push) so the series is continuous
+	// (no gaps -> no flapping). Two views: the DBU duplicate (dbu_*), always >= 1 per
+	// axis -- even for a stopped service, which keeps its reserved restart minimum
+	// (ConsumedDBUForEmit) -- and the RAW resource series (service_*), the real
+	// measurement, which DOES go to 0 when the service is down (RawResourceForEmit).
+	{
 		ts := time.Now().Unix()
-		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu", hostname), strconv.FormatFloat(r.Dbu, 'f', 4, 64), ts))
-		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu_cpu", hostname), strconv.FormatFloat(r.DbuCpu, 'f', 4, 64), ts))
-		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu_mem", hostname), strconv.FormatFloat(r.DbuMem, 'f', 4, 64), ts))
-		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu_io", hostname), strconv.FormatFloat(r.DbuIo, 'f', 4, 64), ts))
-		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu_disk", hostname), strconv.FormatFloat(r.DbuDisk, 'f', 4, 64), ts))
+		dbu, cpu, mem, io, disk := server.ConsumedDBUForEmit()
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu", hostname), strconv.FormatFloat(dbu, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu_cpu", hostname), strconv.FormatFloat(cpu, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu_mem", hostname), strconv.FormatFloat(mem, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu_io", hostname), strconv.FormatFloat(io, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.dbu_disk", hostname), strconv.FormatFloat(disk, 'f', 4, 64), ts))
+
+		// Raw resource values (native units), the real measurement -- NOT floored
+		// (the dbu_* series above are the DBU duplicate carrying the min-1 rule).
+		// 0 on a down server. Same "service" unit the resource model reasons in.
+		cores, memBytes, iops, diskBytes := server.RawResourceForEmit()
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.service_cpu", hostname), strconv.FormatFloat(cores, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.service_mem", hostname), strconv.FormatFloat(memBytes, 'f', 0, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.service_io", hostname), strconv.FormatFloat(iops, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.service_disk", hostname), strconv.FormatFloat(diskBytes, 'f', 0, 64), ts))
 	}
 	return metrics
 }
