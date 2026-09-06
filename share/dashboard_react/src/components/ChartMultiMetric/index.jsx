@@ -46,18 +46,28 @@ function ChartMultiMetric({
     tooltipText: theme === 'light' ? 'var(--text-color, #333333)' : 'var(--text-color, #e7e9ef)'
   };
 
+  // Short, human labels. The DBU/service leaf tokens (dbu, dbu_cpu, ...) have
+  // fewer than 3 underscore-words, so the old slice(3) logic yielded '' and fell
+  // back to the FULL graphite path ('maxSeries(mysql.*-DEV3-*.dbu)') as the legend
+  // -- unreadable, and every DBU line got the same overlong name so they looked
+  // like one series ("il affiche que les disques" = 5 lines flat at 1 overlapping).
+  const FRIENDLY = {
+    dbu: 'DBU', dbu_cpu: 'CPU', dbu_mem: 'Mem', dbu_io: 'IO', dbu_disk: 'Disk',
+    dbu_plan: 'Plan',
+    service_cpu: 'CPU', service_mem: 'Mem', service_io: 'IO', service_disk: 'Disk',
+  };
   const getDisplayName = (metricPath) => {
     const parts = metricPath.split('.');
-    let displayName = parts[parts.length - 1] || metricPath;
+    // leaf = last dotted segment, minus any trailing ')' from maxSeries(...) wrappers
+    const leaf = (parts[parts.length - 1] || metricPath).replace(/\)+$/, '');
 
-    // Remove first 3 underscore-separated words
-    const nameParts = displayName.split('_');
-    displayName = nameParts.slice(3).join('_');
+    if (FRIENDLY[leaf]) return FRIENDLY[leaf];
 
-    // Remove trailing closing parenthesis
-    displayName = displayName.replace(/\)+$/, '');
+    // mysql_global_status_* / mysql_global_variables_*: drop the 3-word prefix
+    const words = leaf.split('_');
+    if (words.length > 3) return words.slice(3).join('_');
 
-    return displayName || metricPath; // Fallback to original if empty
+    return leaf || metricPath; // Fallback to original if empty
   };
 
   // Helper function to format numbers with units (K, M, G, T)
