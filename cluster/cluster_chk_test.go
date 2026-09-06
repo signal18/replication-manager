@@ -7,8 +7,13 @@
 package cluster
 
 import (
+	"hash/crc64"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 )
 
@@ -273,5 +278,84 @@ func BenchmarkCheckDummyConfigSendCookies_WithCookies(b *testing.B) {
 
 		// Process
 		cluster.CheckDummyConfigSendCookies()
+	}
+}
+
+// --- isMaxscaleSupectRunning: must reuse the proxy's own client, never a
+// parallel maxscale.MaxScale{} literal built from raw config ---
+
+func TestIsMaxscaleSupectRunning_NoProxyConfigured(t *testing.T) {
+	cluster := newTestCluster("mxs-fp-test")
+	cluster.Conf.MxsOn = true
+	cluster.Conf.CheckFalsePositiveMaxscale = true
+
+	if cluster.isMaxscaleSupectRunning() {
+		t.Fatalf("expected false with no MaxScale proxy registered")
+	}
+}
+
+// Regression: isMaxscaleSupectRunning used to build its own
+// maxscale.MaxScale{Host: cluster.Conf.MxsHost, ...} literal, always
+// defaulting to UseRest=false (MaxAdmin) regardless of maxscale-rest-api, and
+// dialing the raw configured MxsHost instead of the proxy's resolved host
+// (broken on Kubernetes, where the proxy's Host carries the Service DNS
+// suffix). This proves the fixed path reaches the *MaxscaleProxy's own REST
+// endpoint via newMaxscaleClient(), not cluster.Conf.MxsHost -- a plain TCP
+// dial against this httptest server (the old MaxAdmin path) would fail its
+// handshake instead of ever hitting /v1/servers.
+func TestIsMaxscaleSupectRunning_UsesProxyClientOverConfiguredMxsHost(t *testing.T) {
+	hit := make(chan struct{}, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/servers" {
+			select {
+			case hit <- struct{}{}:
+			default:
+			}
+			w.Write([]byte(`{"data":[]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	host, portStr, err := net.SplitHostPort(srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("could not split httptest server address: %s", err)
+	}
+	restPort, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("could not parse httptest server port: %s", err)
+	}
+
+	cluster := newTestCluster("mxs-fp-test")
+	cluster.Conf.MxsOn = true
+	cluster.Conf.CheckFalsePositiveMaxscale = true
+	cluster.Conf.MxsRestApi = true
+	cluster.Conf.MxsRestPort = restPort
+	// Deliberately wrong/unreachable: proves the check never dials this.
+	cluster.Conf.MxsHost = "mxshost-should-not-be-dialed.invalid"
+	cluster.Conf.MxsPort = "6603"
+
+	cluster.crcTable = crc64.MakeTable(crc64.ECMA)
+	prx := &MaxscaleProxy{}
+	prx.ClusterGroup = cluster
+	prx.Host = host
+	prx.Port = "6603"
+	prx.User = "admin"
+	prx.Pass = "mariadb"
+	cluster.AddProxy(prx)
+
+	// MxsServerName left empty on purpose: isMaxscaleSupectRunning returns
+	// false right after Connect() succeeds, which is exactly the boundary
+	// this test needs -- it only has to prove Connect() reached the right
+	// server, not exercise the full monitor-restart flow.
+	cluster.master = &ServerMonitor{Id: "master", Host: "master", Port: "3306", URL: "master:3306", ClusterGroup: cluster}
+
+	cluster.isMaxscaleSupectRunning()
+
+	select {
+	case <-hit:
+	default:
+		t.Fatalf("expected the false-positive check to reach the proxy's own REST endpoint (%s), not cluster.Conf.MxsHost", srv.URL)
 	}
 }

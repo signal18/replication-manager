@@ -1156,7 +1156,14 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 			}
 		}
 	case config.ConstProxyMaxscale:
-		cluster.Conf.MxsUser, cluster.Conf.MxsPass = misc.SplitPair(credential)
+		user, pass := misc.SplitPair(credential)
+		var newSecret config.Secret
+		newSecret.OldValue = cluster.Conf.Secrets["maxscale-pass"].Value
+		newSecret.Value = pass
+		cluster.Conf.Secrets["maxscale-pass"] = newSecret
+		cluster.Conf.MxsUser = user
+		cluster.Conf.MxsPass = pass
+		cluster.MarkSecretVersionStoreDirty()
 
 		/*for _, pri := range cluster.Proxies {
 
@@ -1628,10 +1635,31 @@ func (cluster *Cluster) SetProvOrchestratorCluster(value string) error {
 
 // SetProvKubeStorageClass only affects the PVC built for a server's *next*
 // (re)provision (k8sDatabasePVC, prov_k8s_db.go), same as SetDBDiskSize --
-// so it needs the DB reprov cookie, not the proxy one.
+// so it needs the DB reprov cookie, not the proxy one. Note this only takes
+// effect for a server whose PVC doesn't already exist: k8sDatabasePVC's
+// Create() is a no-op (AlreadyExists) against an existing PVC, and
+// StorageClassName is immutable on a PVC once created -- reprovisioning an
+// existing server alone will never migrate it to a newly-set StorageClass;
+// the old PVC would need to be deleted first (destructive, and today never
+// done automatically -- see k8sUnprovisionDatabaseServiceWithClient's own
+// retention comment).
 func (cluster *Cluster) SetProvKubeStorageClass(value string) error {
 	cluster.Conf.ProvKubeStorageClass = value
 	cluster.SetDBReprovCookie()
+	return nil
+}
+
+// SetProvKubeProxyStorageClass is SetProvKubeStorageClass's proxy-side
+// counterpart (k8sProxyPVC, prov_k8s_prx.go) -- only affects a proxy's
+// *next* (re)provision, so it needs the proxy reprov cookie, not the DB one.
+// Same existing-PVC caveat as SetProvKubeStorageClass applies: proxy PVCs
+// are retained on unprovision (k8sUnprovisionProxyServiceWithClient), so a
+// reprovision of an existing proxy reuses that same PVC and its original
+// StorageClass -- this setting only takes effect for a proxy name whose PVC
+// doesn't exist yet.
+func (cluster *Cluster) SetProvKubeProxyStorageClass(value string) error {
+	cluster.Conf.ProvKubeProxyStorageClass = value
+	cluster.SetProxiesReprovCookie()
 	return nil
 }
 

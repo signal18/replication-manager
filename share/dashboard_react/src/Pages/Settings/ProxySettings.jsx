@@ -14,6 +14,8 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
+import RMButton from '../../components/RMButton'
+import SetCredentialsModal from '../../components/Modals/SetCredentialsModal'
 
 // Static help text - hoisted to module scope (not derived from props/state) so the
 // useMemo blocks below don't need them in their dependency arrays.
@@ -46,6 +48,21 @@ const HAPROXY_BACKEND_NAME_PATTERN = '^[a-zA-Z0-9_-]+$'
 const hHaproxyUser = `**HAProxy Admin User**\n\nAdmin username configured for HAProxy's stats/admin interface at provisioning time.\n\nApplied at proxy provisioning time — reprovision the proxy for a change to take effect.\n\nConfig: \`haproxy-user\``
 const hHaproxyPassword = `**HAProxy Admin Password**\n\nAdmin password configured for HAProxy's stats/admin interface at provisioning time.\n\nApplied at proxy provisioning time — reprovision the proxy for a change to take effect.\n\nConfig: \`haproxy-password\``
 
+const hMaxscaleMode = `**MaxScale Config Mode**\n\nSelects the config syntax repman generates when provisioning MaxScale:\n\n- **auto** (default): detected from the MaxScale image tag (\`prov-proxy-docker-maxscale-img\`) — MaxScale's own versioning went from semver (2.2, 2.4...) to calendar-based (21.06, 22.08...); anything \`>= 2.5\` (semver) or any calendar release is treated as pinloki. An unparseable tag falls back to legacy.\n- **legacy**: pre-2.5 config syntax (\`cli\`/\`maxinfo\` routers, \`MariaDBClient\` protocol).\n- **pinloki**: 2.5+ config syntax (pinloki binlogrouter, no \`cli\`/\`maxinfo\` routers — removed upstream).\n\nBoth syntaxes use \`password=\`, never \`passwd=\` — that's rejected outright as of MaxScale 2.4.10, the oldest image still pullable from Docker Hub.\n\nConfig: \`maxscale-mode\``
+const hMaxscaleRestApi = `**MaxScale REST API**\n\nUse MaxScale's REST API to connect (MaxScale >= 2.2, introduced alongside the API). Off falls back to the legacy MaxAdmin TCP protocol, removed entirely in MaxScale 2.5 — only disable this for a MaxScale older than 2.2.\n\nIndependent of MaxScale Config Mode: a legacy-mode config still speaks to MaxScale over REST when this is on (the common case — REST predates the config-syntax split by three years).\n\nConfig: \`maxscale-rest-api\``
+const hMaxscaleRestPort = `**MaxScale REST API Port**\n\nPort repman connects to for MaxScale's REST API (used when MaxScale REST API is on).\n\nConfig: \`maxscale-rest-port\``
+const hMaxscalePort = `**MaxScale Admin Port**\n\nMaxScale's CLI/MaxAdmin listener port. Used for the legacy MaxAdmin TCP protocol (MaxScale REST API off) and rendered as the legacy config template's CLI listener port either way.\n\nConfig: \`maxscale-port\``
+const hMaxscaleWritePort = `**MaxScale Write Port**\n\nMaxScale's read-write (leader) front-end port.\n\nConfig: \`maxscale-write-port\``
+const hMaxscaleReadPort = `**MaxScale Read Port**\n\nMaxScale's load-balanced read front-end port, across all nodes.\n\nConfig: \`maxscale-read-port\``
+const hMaxscaleReadWritePort = `**MaxScale Read-Write Split Port**\n\nMaxScale's combined read-write split front-end port (routes writes to the leader, reads across replicas).\n\nConfig: \`maxscale-read-write-port\``
+const hMaxscaleCredentials = `**MaxScale Admin Credentials**\n\nAdmin user/password used for both the REST API and MaxAdmin. Opens the same credentials dialog as Cluster → Credentials → Set Maxscale Credentials.\n\nConfig: \`maxscale-servers-credential\` (combined \`user:password\`, encrypted at rest)`
+const hMaxscaleGetInfoMethod = `**MaxScale Get Info Method**\n\nHow repman fetches backend server/monitor status from MaxScale:\n\n- **maxadmin** (default): via \`ListServers\`/\`ListMonitors\` — despite the name, this actually goes over whichever transport MaxScale REST API selects (REST or MaxAdmin), not literally the MaxAdmin protocol.\n- **maxinfo**: the older \`maxinfo\` HTTP plugin. Not available on pinloki-mode MaxScale (2.5+ dropped it, same as \`cli\`/\`debugcli\`) — automatically falls back to the method above with a warning (\`WARN0211\`) if selected there.\n\nConfig: \`maxscale-get-info-method\``
+const hMaxscaleServerMatchPort = `**MaxScale Match Servers by Port**\n\nWhen multiple database servers run on the same host with different ports, match MaxScale backend servers by host **and** port instead of host alone.\n\nConfig: \`maxscale-server-match-port\``
+const hMaxscaleDisableMonitor = `**MaxScale Disable Monitor**\n\nShuts down MaxScale's own monitor (\`mariadbmon\`/\`galeramon\`/\`mmmon\`) and has repman drive server state manually instead.\n\nOff (the default, and how MaxScale normally runs) leaves MaxScale's monitor in charge — it already tracks and drives master/slave/running state on its own, correctly and continuously; repman only pushes state manually when there's genuinely no monitor to conflict with (none found, or this is enabled).\n\nConfig: \`maxscale-disable-monitor\``
+const hMaxscaleBinlogOn = `**MaxScale Binlog Server**\n\nTreats a configured MaxScale as a binlog relay server (\`MxsBinlogOn\`) — repman detects it via \`@@maxscale_version\` (legacy) or \`@@version_comment\` (pinloki) rather than as a regular topology member.\n\nConfig: \`maxscale-binlog\``
+const hMaxscaleBinlogPort = `**MaxScale Binlog Port**\n\nPort MaxScale's binlog relay (\`replication\`/\`Replication\` service) listens on.\n\nConfig: \`maxscale-binlog-port\``
+const hMaxscaleFalsePositive = `**MaxScale Failover False-Positive Check**\n\nBefore confirming a failover, also asks MaxScale whether it independently sees the same master as down — guards against a false positive from repman's own monitoring alone.\n\nConfig: \`failover-falsepositive-maxscale\``
+
 const hCompress = `**Proxies Compression to Backends**\n\nEnables MySQL protocol compression on connections between ProxySQL and the backend servers.\nReduces network bandwidth at the cost of additional CPU.\n\nConfig: \`proxy-servers-backend-compression\``
 const hReadsWriter = `**Proxies Reads on Writer**\n\nRoutes read queries to the writer (master) node as well.\nUseful when strong read consistency is required or replica lag is too high.\n\nConfig: \`proxy-servers-read-on-master\``
 const hReadsNoSlave = `**Proxies Reads on Writer When No Slave**\n\nFallback: automatically routes reads to the writer when no healthy replica is available.\n\nConfig: \`proxy-servers-read-on-master-no-slave\``
@@ -59,6 +76,7 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
   const [action, setAction] = useState({ title: '', body: <></> })
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
   const [proxyTypeTabIndex, setProxyTypeTabIndex] = useState(0)
+  const [isMaxscaleCredModalOpen, setIsMaxscaleCredModalOpen] = useState(false)
 
   const clusterName = selectedCluster?.name
   const config = selectedCluster?.config
@@ -126,14 +144,40 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
     return rows
   }, [h, sw, txt, dispatch, clusterName, isDisabled, config, haproxyMode])
 
-  // Proxy-type-specific settings live behind a Tab strip (ProxySQL/HAProxy, styled
-  // like Restic's repository-type tabs), nested as the value of one TableType2 row -
-  // same as Restic nests its own repo-type tabs inside a row of its settings table.
+  const maxscaleBinlogOn = config?.maxscaleBinlog
+
+  const maxscaleRows = useMemo(() => {
+    const rows = [
+      { key: 'MaxScale Config Mode', help: h(hMaxscaleMode, 'MaxScale Config Mode'), value: (<Dropdown options={[{ name: 'auto — detect from image tag (default)', value: 'auto' }, { name: 'legacy — pre-2.5 config syntax', value: 'legacy' }, { name: 'pinloki — 2.5+ config syntax', value: 'pinloki' }]} selectedValue={config?.maxscaleMode} confirmTitle={'Confirm maxscale-mode to'} isDisabled={isDisabled} onChange={(val) => dispatch(setSetting({ clusterName, setting: 'maxscale-mode', value: val }))} />) },
+      { key: 'MaxScale REST API', help: h(hMaxscaleRestApi, 'MaxScale REST API'), value: sw('maxscale-rest-api', 'maxscaleRestApi') },
+      { key: 'MaxScale REST API Port', help: h(hMaxscaleRestPort, 'MaxScale REST API Port'), value: txt('maxscale-rest-port', 'maxscaleRestPort', { regexPattern: HAPROXY_PORT_PATTERN }) },
+      { key: 'MaxScale Admin Port', help: h(hMaxscalePort, 'MaxScale Admin Port'), value: txt('maxscale-port', 'maxscalePort', { regexPattern: HAPROXY_PORT_PATTERN }) },
+      { key: 'MaxScale Write Port', help: h(hMaxscaleWritePort, 'MaxScale Write Port'), value: txt('maxscale-write-port', 'maxscaleWritePort', { regexPattern: HAPROXY_PORT_PATTERN }) },
+      { key: 'MaxScale Read Port', help: h(hMaxscaleReadPort, 'MaxScale Read Port'), value: txt('maxscale-read-port', 'maxscaleReadPort', { regexPattern: HAPROXY_PORT_PATTERN }) },
+      { key: 'MaxScale Read-Write Split Port', help: h(hMaxscaleReadWritePort, 'MaxScale Read-Write Split Port'), value: txt('maxscale-read-write-port', 'maxscaleReadWritePort', { regexPattern: HAPROXY_PORT_PATTERN }) },
+      { key: 'MaxScale Admin Credentials', help: h(hMaxscaleCredentials, 'MaxScale Admin Credentials'), value: (<RMButton size='sm' variant='outline' isDisabled={isDisabled} onClick={() => setIsMaxscaleCredModalOpen(true)}>Set Credentials</RMButton>) },
+      { key: 'MaxScale Get Info Method', help: h(hMaxscaleGetInfoMethod, 'MaxScale Get Info Method'), value: (<Dropdown options={[{ name: 'maxadmin (default)', value: 'maxadmin' }, { name: 'maxinfo — legacy only, dropped in pinloki', value: 'maxinfo' }]} selectedValue={config?.maxscaleGetInfoMethod} confirmTitle={'Confirm maxscale-get-info-method to'} isDisabled={isDisabled} onChange={(val) => dispatch(setSetting({ clusterName, setting: 'maxscale-get-info-method', value: val }))} />) },
+      { key: 'MaxScale Match Servers by Port', help: h(hMaxscaleServerMatchPort, 'MaxScale Match Servers by Port'), value: sw('maxscale-server-match-port', 'maxscaleServerMatchPort') },
+      { key: 'MaxScale Disable Monitor', help: h(hMaxscaleDisableMonitor, 'MaxScale Disable Monitor'), value: sw('maxscale-disable-monitor', 'maxscaleDisableMonitor') },
+      { key: 'MaxScale Binlog Server', help: h(hMaxscaleBinlogOn, 'MaxScale Binlog Server'), value: sw('maxscale-binlog', 'maxscaleBinlog') },
+    ]
+    // Binlog Port only applies when this MaxScale is acting as a binlog relay.
+    if (maxscaleBinlogOn) {
+      rows.push({ key: 'MaxScale Binlog Port', help: h(hMaxscaleBinlogPort, 'MaxScale Binlog Port'), value: txt('maxscale-binlog-port', 'maxscaleBinlogPort', { regexPattern: HAPROXY_PORT_PATTERN }) })
+    }
+    rows.push({ key: 'MaxScale Failover False-Positive Check', help: h(hMaxscaleFalsePositive, 'MaxScale Failover False-Positive Check'), value: sw('failover-falsepositive-maxscale', 'failoverFalsePositiveMaxscale') })
+    return rows
+  }, [h, sw, txt, dispatch, clusterName, isDisabled, config, maxscaleBinlogOn])
+
+  // Proxy-type-specific settings live behind a Tab strip (ProxySQL/HAProxy/MaxScale,
+  // styled like Restic's repository-type tabs), nested as the value of one TableType2
+  // row - same as Restic nests its own repo-type tabs inside a row of its settings table.
   const proxyTypeTabs = useMemo(() => (
     <Tabs index={proxyTypeTabIndex} onChange={setProxyTypeTabIndex} className={styles.repoTabs} variant='enclosed'>
       <TabList className={styles.repoTabList}>
         <Tab className={styles.repoTab}>ProxySQL</Tab>
         <Tab className={styles.repoTab}>HAProxy</Tab>
+        <Tab className={styles.repoTab}>MaxScale</Tab>
       </TabList>
       <TabPanels>
         <TabPanel px='0' pt='3'>
@@ -142,9 +186,12 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
         <TabPanel px='0' pt='3'>
           <TableType2 dataArray={haproxyRows} className={styles.tableWithHelp} helpColumn={true} />
         </TabPanel>
+        <TabPanel px='0' pt='3'>
+          <TableType2 dataArray={maxscaleRows} className={styles.tableWithHelp} helpColumn={true} />
+        </TabPanel>
       </TabPanels>
     </Tabs>
-  ), [proxyTypeTabIndex, proxysqlRows, haproxyRows])
+  ), [proxyTypeTabIndex, proxysqlRows, haproxyRows, maxscaleRows])
 
   const commonRows = useMemo(() => [
     { key: 'Proxies Compression to Backends', help: h(hCompress, 'Proxies Compression to Backends'), value: sw('proxy-servers-backend-compression', 'proxyServersBackendCompression') },
@@ -169,6 +216,14 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
         <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
       </Flex>
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
+      {isMaxscaleCredModalOpen && (
+        <SetCredentialsModal
+          clusterName={clusterName}
+          isOpen={isMaxscaleCredModalOpen}
+          closeModal={() => setIsMaxscaleCredModalOpen(false)}
+          type='maxscale-servers-credential'
+        />
+      )}
     </>
   )
 }

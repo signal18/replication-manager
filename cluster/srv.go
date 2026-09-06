@@ -1084,12 +1084,25 @@ func (server *ServerMonitor) Refresh() error {
 	server.CheckVersion()
 
 	if cluster.Conf.MxsBinlogOn {
-		mxsversion, _ := dbhelper.GetMaxscaleVersion(server.Conn)
-		if mxsversion != "" {
+		var isMaxscale bool
+		var mxsVersionNum int
+		if cluster.MaxscaleUsesPinloki() {
+			// pinloki doesn't recognize @@maxscale_version -- it echoes the
+			// literal text back instead of erroring, which used to crash
+			// MariaDBVersion() (nil regex match, unchecked index). Its own
+			// self-ID is @@version_comment = "pinloki"; no numeric version
+			// is available this way, so MxsVersion stays 0.
+			isMaxscale = dbhelper.IsMaxscalePinloki(server.Conn)
+		} else {
+			mxsversion, _ := dbhelper.GetMaxscaleVersion(server.Conn)
+			isMaxscale = mxsversion != ""
+			mxsVersionNum = dbhelper.MariaDBVersion(mxsversion)
+		}
+		if isMaxscale {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Found Maxscale")
 			server.IsMaxscale = true
 			server.IsRelay = true
-			server.MxsVersion = dbhelper.MariaDBVersion(mxsversion)
+			server.MxsVersion = mxsVersionNum
 			server.SetState(stateRelay)
 		} else {
 			server.IsMaxscale = false
@@ -1847,6 +1860,9 @@ func (server *ServerMonitor) FlushTables() (string, error) {
 
 func (server *ServerMonitor) Uprovision() {
 	cluster := server.ClusterGroup
+	// Serialise errorChan use against other provision/unprovision ops (#1769).
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 	go cluster.OpenSVCUnprovisionDatabaseService(server)
 	if err := <-cluster.errorChan; err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database service %s: %s", server.ServiceName, err)

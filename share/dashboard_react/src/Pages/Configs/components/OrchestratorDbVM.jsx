@@ -103,6 +103,26 @@ function OrchestratorDbVM({ selectedCluster, user }) {
       )
     },
     selectedCluster?.config?.provOrchestrator === 'kube' && {
+      key: 'Kubernetes Proxy Storage Class',
+      value: (
+        <Dropdown
+          className={parentStyles.dropdown}
+          options={kubeStorageClasses}
+          selectedValue={selectedCluster?.config?.provKubeProxyStorageClass}
+          confirmTitle={`Confirm change Kubernetes proxy storage class to `}
+          onChange={(value) => {
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'prov-kube-proxy-storage-class',
+                value: value
+              })
+            )
+          }}
+        />
+      )
+    },
+    selectedCluster?.config?.provOrchestrator === 'kube' && {
       key: 'Kubernetes Force Image Pull',
       value: (
         <RMSwitch

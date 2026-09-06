@@ -20,6 +20,14 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
+// SetID hashes cluster/name/write-port -- the same (address, write-port)
+// pair the API/URL layer already resolves proxies by, so the Id stays
+// stable across upgrades (no reprovision/restart ever changes a proxy's
+// Id). Two different proxy families sharing the same name and write port
+// within one cluster would hash to the same Id; AddProxy (cluster.go)
+// blocks that at registration time instead of silently letting
+// GetProxyFromName (prx_get.go) resolve to whichever one happens to come
+// first in cluster.Proxies.
 func (p *Proxy) SetID() {
 	cluster := p.ClusterGroup
 	p.Id = "px" + strconv.FormatUint(

@@ -24,7 +24,6 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -323,7 +322,23 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 		return false
 	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover Maxscale Master Satus")
-	m := maxscale.MaxScale{Host: cluster.Conf.MxsHost, Port: cluster.Conf.MxsPort, User: cluster.Conf.MxsUser, Pass: cluster.Conf.MxsPass}
+	var mxsProxy *MaxscaleProxy
+	for _, p := range cluster.Proxies {
+		if mp, ok := p.(*MaxscaleProxy); ok {
+			mxsProxy = mp
+			break
+		}
+	}
+	if mxsProxy == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No MaxScale proxy configured for false-positive check")
+		return false
+	}
+	// Reuses newMaxscaleClient() rather than building a parallel MaxScale{}
+	// literal here: that's the one place that resolves the K8s Service DNS
+	// host and honors maxscale-rest-api, so a hand-rolled client here would
+	// silently fall back to a raw MxsHost (unresolvable on Kubernetes) and
+	// the legacy MaxAdmin protocol even when REST is configured.
+	m := mxsProxy.newMaxscaleClient()
 	err := m.Connect()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not connect to MaxScale:", err)
@@ -337,9 +352,9 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 	//disable monitoring
 
 	var monitor string
-	if cluster.Conf.MxsGetInfoMethod == "maxinfo" {
+	if mxsProxy.MaxscaleUsesMaxinfo() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Getting Maxscale monitor via maxinfo")
-		m.GetMaxInfoMonitors("http://" + cluster.Conf.MxsHost + ":" + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + "/monitors")
+		m.GetMaxInfoMonitors("http://" + mxsProxy.GetHost() + ":" + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + "/monitors")
 		monitor = m.GetMaxInfoStoppedMonitor()
 
 	} else {

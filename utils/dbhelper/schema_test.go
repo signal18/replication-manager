@@ -275,8 +275,10 @@ func TestGetTablesQueryAlignment(t *testing.T) {
 	expectedCRC := expectedTable.TableCrc
 
 	tablesSQL := tablesQueryAll(ver)
-	mock.ExpectExec(regexp.QuoteMeta("SET SESSION information_schema_stats_expiry = 0")).
-		WillReturnResult(sqlmock.NewResult(0, 0))
+	// No ExpectExec for "SET SESSION information_schema_stats_expiry = 0":
+	// that variable is MySQL-8.0-only, and applyInformationSchemaStatsExpiry
+	// skips it entirely for MariaDB (the version built above), going
+	// straight to the table Query below.
 	mock.ExpectQuery(regexp.QuoteMeta(tablesSQL)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"table_schema",

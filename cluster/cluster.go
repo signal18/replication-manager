@@ -288,30 +288,43 @@ type Cluster struct {
 	// MaintenanceLogrus is a dedicated logrus.Logger that writes to maintenance.log.
 	// Receives ConstLogModMaintenance events: backup, SST, task execution, purge, etc.
 	// Set by the server on cluster init. Nil when no log-file is configured.
-	MaintenanceLogrus                   *log.Logger                 `json:"-"`
-	runOnceAfterTopology                bool                        `json:"-"`
-	logPtr                              *os.File                    `json:"-"`
-	termlength                          int                         `json:"-"`
-	runUUID                             string                      `json:"-"`
-	cfgGroupDisplay                     string                      `json:"-"`
-	RepMgrVersion                       string                      `json:"-"`
-	RepMgrFullVersion                   string                      `json:"-"`
-	RepMgrRestartTime                   int64                       `json:"-"`
-	RepMgrHostname                      string                      `json:"-"`
-	exitMsg                             string                      `json:"-"`
-	exit                                atomic.Bool                 `json:"-"`
-	stopOnce                            sync.Once                   `json:"-"`
-	canFlashBack                        bool                        `json:"-"`
-	canResticFetchRepo                  bool                        `json:"-"`
-	failoverCond                        *nbc.NonBlockingChan        `json:"-"`
-	switchoverCond                      *nbc.NonBlockingChan        `json:"-"`
-	rejoinCond                          *nbc.NonBlockingChan        `json:"-"`
-	bootstrapCond                       *nbc.NonBlockingChan        `json:"-"`
-	altertableCond                      *nbc.NonBlockingChan        `json:"-"`
-	addtableCond                        *nbc.NonBlockingChan        `json:"-"`
-	statecloseChan                      chan state.State            `json:"-"`
-	switchoverChan                      chan bool                   `json:"-"`
-	errorChan                           chan error                  `json:"-"`
+	MaintenanceLogrus    *log.Logger          `json:"-"`
+	runOnceAfterTopology bool                 `json:"-"`
+	logPtr               *os.File             `json:"-"`
+	termlength           int                  `json:"-"`
+	runUUID              string               `json:"-"`
+	cfgGroupDisplay      string               `json:"-"`
+	RepMgrVersion        string               `json:"-"`
+	RepMgrFullVersion    string               `json:"-"`
+	RepMgrRestartTime    int64                `json:"-"`
+	RepMgrHostname       string               `json:"-"`
+	exitMsg              string               `json:"-"`
+	exit                 atomic.Bool          `json:"-"`
+	stopOnce             sync.Once            `json:"-"`
+	canFlashBack         bool                 `json:"-"`
+	canResticFetchRepo   bool                 `json:"-"`
+	failoverCond         *nbc.NonBlockingChan `json:"-"`
+	switchoverCond       *nbc.NonBlockingChan `json:"-"`
+	rejoinCond           *nbc.NonBlockingChan `json:"-"`
+	bootstrapCond        *nbc.NonBlockingChan `json:"-"`
+	altertableCond       *nbc.NonBlockingChan `json:"-"`
+	addtableCond         *nbc.NonBlockingChan `json:"-"`
+	statecloseChan       chan state.State     `json:"-"`
+	switchoverChan       chan bool            `json:"-"`
+	errorChan            chan error           `json:"-"`
+	// provisioningMutex serialises every provision/unprovision operation that
+	// reports its result through the shared, unbuffered errorChan (the ~10
+	// receivers in prov.go + srv.go Uprovision). Without it, two overlapping
+	// operations cross-talk on that single channel: one receiver reads the
+	// other operation's result and the other blocks forever, deadlocking the
+	// orchestration and leaving a server stuck (e.g. in maintenance) with no
+	// log (issue #1769). This is the Phase-1 mitigation: it removes cross-op
+	// cross-talk while keeping the shared channel. The residual intra-op
+	// multi-send smell (config-building helpers such as OpenSVCGetDBEnvSection
+	// sending on errorChan mid-flight instead of returning the error) is left
+	// to the Phase-2 per-operation-channel refactor. See
+	// doc/implementation/cluster/ERRORCHAN_PROVISIONING.md.
+	provisioningMutex                   sync.Mutex                  `json:"-"`
 	testStopCluster                     bool                        `json:"-"`
 	testStartCluster                    bool                        `json:"-"`
 	lastmaster                          *ServerMonitor              `json:"-"`
@@ -357,21 +370,30 @@ type Cluster struct {
 	InResticPhysicalBackup              bool                        `json:"inResticPhysicalBackup" groups:"web"`
 	InResticBackup                      bool                        `json:"inResticBackup" groups:"web"`
 	InRollingRestart                    bool                        `json:"inRollingRestart" groups:"web"`
-	failLoadP12Cert                     bool                        `json:"-"`
-	Mailer                              *mailer.Mailer              `json:"-"`
-	ResticManager                       *backupmgr.ResticManager    `json:"-"`
-	resolvedS3Mode                      string                      // probe-resolved S3 mode during auto startup; "" if not yet probed
-	MessageChan                         chan sharedlog.Message      `json:"-"`
-	ErrorConfigs                        config.ErrorConfigs         `json:"-"` //To store error config
-	Partner                             *config.Partner             `json:"partner" groups:"web"`
-	ServerGlobals                       *ServerGlobals              `json:"-"`
-	ConfigManager                       *manager.ConfigManager      `json:"-"`
-	failSendCount                       int                         `json:"-"`
-	MeetUserID                          string                      `json:"-"` //To store meet user id
-	ServiceTemplates                    []string                    `json:"-"` //To store application templates
-	DiskStatManager                     *misc.DiskStatManager       `json:"diskStat" groups:"web"`
-	RefreshTemplateMD5Chan              chan *App                   `json:"-"`
-	LastDelayStatPrint                  time.Time
+	// rollingReprovMutex serialises RollingReprov against itself. RollingReprov
+	// pilots the shared Conf.Autoseed / Conf.AutorejoinMysqldump flags for its
+	// duration and restores them via defer; two overlapping runs would corrupt
+	// that save/restore (the second captures the first's forced value and can
+	// leave autoseed permanently flipped, or restore it mid-flight and
+	// reintroduce the #1771 data-loss). Both call sites are unguarded (the API
+	// handler and the cron scheduler), so TryLock() this before mutating any
+	// flag; a concurrent run is refused rather than interleaved.
+	rollingReprovMutex     sync.Mutex               `json:"-"`
+	failLoadP12Cert        bool                     `json:"-"`
+	Mailer                 *mailer.Mailer           `json:"-"`
+	ResticManager          *backupmgr.ResticManager `json:"-"`
+	resolvedS3Mode         string                   // probe-resolved S3 mode during auto startup; "" if not yet probed
+	MessageChan            chan sharedlog.Message   `json:"-"`
+	ErrorConfigs           config.ErrorConfigs      `json:"-"` //To store error config
+	Partner                *config.Partner          `json:"partner" groups:"web"`
+	ServerGlobals          *ServerGlobals           `json:"-"`
+	ConfigManager          *manager.ConfigManager   `json:"-"`
+	failSendCount          int                      `json:"-"`
+	MeetUserID             string                   `json:"-"` //To store meet user id
+	ServiceTemplates       []string                 `json:"-"` //To store application templates
+	DiskStatManager        *misc.DiskStatManager    `json:"diskStat" groups:"web"`
+	RefreshTemplateMD5Chan chan *App                `json:"-"`
+	LastDelayStatPrint     time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
 	SlavesOldestMasterFile SlavesOldestMasterFile
@@ -3315,9 +3337,49 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 	}
 }
 
+// AddProxy registers a new proxy.
+//
+// Id is only hashed from cluster/name/write-port (SetID, prx_set.go), so
+// two different proxy families sharing the same address and write port
+// would hash to the same Id -- blocked below rather than allowing
+// GetProxyFromName (prx_get.go) to later resolve API actions against
+// whichever one happens to come first in cluster.Proxies. The rejection is
+// also recorded on StateMachine (ERR00108, config/error.go), not just
+// logged, so a caller that doesn't check AddProxy's own (void) return --
+// every current caller, including newProxyList (prx.go) -- still has
+// somewhere to see that a configured proxy silently never made it into
+// cluster.Proxies.
+//
+// Name is deliberately NOT blocked from colliding across different-type
+// proxies here: two proxies sharing a name but configured with distinct
+// write ports is a normal, valid setup (e.g. HAProxy and ProxySQL colocated
+// on the same host, which must run on different ports to coexist at all),
+// and AddProxy has no orchestrator context to know whether that pair is
+// actually going to collide downstream. It only does for Kubernetes and
+// OpenSVC, whose object-naming schemes key on name alone, never type
+// (k8sProxyServiceName/k8sProxyDeploymentName/k8sProxyPVCName,
+// prov_k8s_prx.go; OpenSVCProvisionProxyService's own
+// cluster.Name+"/svc/"+pri.GetName(), prov_opensvc_prx.go) -- guarded at
+// provision time instead, closer to the orchestrator that actually cares
+// (k8sProxyNameOwnedByDifferentType, prov_k8s_prx.go; OpenSVC's own guard
+// is a documented follow-up, not yet implemented -- see "Known
+// limitations" in doc/implementation/cluster/KUBERNETES_PROVISIONING.md).
 func (c *Cluster) AddProxy(prx DatabaseProxy) {
 	prx.SetCluster(c)
 	prx.SetID()
+	for _, existing := range c.Proxies {
+		if existing.GetId() == prx.GetId() {
+			c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Refusing to add proxy %s %s:%d: Id collides with already-registered proxy %s %s:%d -- use distinct addresses or write ports",
+				prx.GetType(), prx.GetName(), prx.GetWritePort(), existing.GetType(), existing.GetName(), existing.GetWritePort())
+			if c.StateMachine != nil {
+				c.StateMachine.AddState("ERR00108", state.State{ErrType: "ERROR",
+					ErrDesc: fmt.Sprintf(clusterError["ERR00108"], prx.GetType(), prx.GetName(), existing.GetType(), existing.GetName()),
+					ErrFrom: "PROXY", ServerUrl: prx.GetName()})
+			}
+			return
+		}
+	}
 	prx.SetDataDir()
 	prx.SetServiceName(c.Name)
 	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New proxy monitored %s: %s:%s", prx.GetType(), prx.GetHost(), prx.GetPort())

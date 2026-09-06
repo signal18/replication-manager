@@ -103,6 +103,7 @@ function SetCredentialsModal({ clusterName, isOpen, closeModal, type }) {
             credential: `${userName}:${password}`
           })
         )
+        break
       case 'shardproxy-servers-credential':
         dispatch(
           setCredentials({

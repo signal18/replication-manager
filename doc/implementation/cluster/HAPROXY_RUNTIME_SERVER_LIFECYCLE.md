@@ -39,9 +39,16 @@ Three conditions must all hold, or `reconcileReadBackendServers()` is a no-op:
   config — a monitoring regression, not an improvement. The gate simply
   starts at 2.6 rather than special-casing those releases.
 - `haproxy-mode == "runtimeapi"`. Read-backend servers are named after
-  `server.Id` only on this config path; the OpenSVC-driven path used by
-  `standby`/`dataplaneapi` names them positionally (`server1`, `server2`,
-  ...), so reconciling there would treat real entries as stale.
+  `server.Id` only on this config path; the OpenSVC/K8s-driven path used by
+  `externalcheck`/`dataplaneapi` names them positionally (`server1`,
+  `server2`, ...), so reconciling there would treat real entries as stale.
+  `standby` never reaches this function at all: its proxy service is always
+  dispatched to the Localhost orchestrator's handlers regardless of where
+  the cluster's databases are provisioned (`proxyServiceOrchestrator`,
+  `cluster/prov.go`), and its own topology propagation is a full local
+  config re-render/reload (`HaproxyProxy.Init()`), never this Runtime API
+  reconciliation — see `doc/implementation/cluster/KUBERNETES_PROVISIONING.md`
+  for the standby/externalcheck/runtimeapi split.
 
 A narrower check, `supportsWaitRemovable()` (HAProxy >= 3.0), separately
 gates the `wait ... srv-removable` step inside removal — see below.

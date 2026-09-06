@@ -257,7 +257,7 @@ func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *Haproxy
 	// below, renders+reloads it via a local PID regardless of the cluster's
 	// own orchestrator) -- prx.Host there must stay whatever
 	// locally-reachable address the operator configured via haproxy-servers
-	// (127.0.0.1 by default), never the CNI-rewritten Service DNS name
+	// (127.0.0.1 by default), never the CNI-rewritten K8s Service DNS name
 	// below. That rewrite is for runtimeapi/externalcheck, which genuinely
 	// are deployed as a separate orchestrator-managed resource repman only
 	// reaches over the network -- applying it to standby would have Init()
@@ -265,7 +265,15 @@ func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *Haproxy
 	// (share/haproxy_config.template) that the local HAProxy process can't
 	// bind to.
 	if conf.ProvNetCNI && conf.HaproxyMode != "standby" {
-		prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+		// Falls back "local" -> "cluster.local" on Kubernetes, matching
+		// NewProxySQLProxy: prov-orchestrator-cluster's own CLI default
+		// otherwise leaves the host one ".svc." segment short of the real
+		// Service DNS name and CoreDNS never resolves it.
+		domain := conf.ProvOrchestratorCluster
+		if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+			domain = k8sClusterDomain(cluster)
+		}
+		prx.Host = prx.Host + "." + cluster.Name + ".svc." + domain
 	}
 	prx.User = conf.HaproxyUser
 	prx.Pass = cluster.Conf.GetDecryptedValue("haproxy-password")
@@ -332,19 +340,22 @@ func (proxy *HaproxyProxy) Init() {
 	//  - haproxy-mode=standby specifically, regardless of orchestrator:
 	//    standby always runs its HAProxy instance co-located with repman --
 	//    started/reloaded via its local PID -- even when the cluster's
-	//    databases are provisioned elsewhere (OpenSVC, etc.); prov.go's
+	//    databases are provisioned elsewhere (K8s, OpenSVC, etc.); prov.go's
 	//    proxyServiceOrchestrator() already routes standby's
 	//    Start/Stop/(Un)ProvisionProxyService calls to the Localhost*
-	//    implementations for exactly this reason.
+	//    implementations for exactly this reason, so gating on the
+	//    *cluster's* orchestrator here (instead of mode) would just make
+	//    this fall out of sync with where the proxy service dispatch
+	//    actually sends things.
 	//
 	// Every other mode on a non-Localhost orchestrator (runtimeapi,
-	// externalcheck) is deployed by the cluster's own orchestrator instead,
-	// so this local render+reload has nothing to do there; those proxies
-	// bootstrap once via the config-fetch tarball path
-	// (server/api_database.go, GetProxyConfig() above already covers that
-	// one-time fetch) and then keep current via runtimeapi's own Runtime
-	// API calls or externalcheck's own remote check scripts -- never via a
-	// full local re-render.
+	// externalcheck, dataplaneapi) is deployed by the cluster's own
+	// orchestrator instead (K8s Deployment, OpenSVC service, etc.), so this
+	// local render+reload has nothing to do there; those proxies bootstrap
+	// once via the config-fetch tarball path (server/api_database.go,
+	// GetProxyConfig() above already covers that one-time fetch) and then
+	// keep current via runtimeapi's own Runtime API calls or externalcheck's
+	// own remote check scripts -- never via a full local re-render.
 	if cluster.GetOrchestrator() != config.ConstOrchestratorLocalhost && cluster.Conf.HaproxyMode != "standby" {
 		return
 	}
@@ -1559,13 +1570,13 @@ func (proxy *HaproxyProxy) reconcileReadBackendServers(haRuntime haproxy.Runtime
 		return
 	}
 	// Read-backend servers are only named after server.Id in "runtimeapi"
-	// mode; the OpenSVC-driven config path (cluster/prx_get.go) names them
-	// positionally ("server1", "server2", ...) in externalcheck/dataplaneapi
-	// mode, where this reconciliation would treat real entries as stale.
-	// standby never reaches this code at all -- its proxy service is always
-	// dispatched to the Localhost* handlers regardless of the cluster's own
-	// orchestrator (proxyServiceOrchestrator, cluster/prov.go), and Init()
-	// (this file) names its own servers by server.Id too, same as
+	// mode; the OpenSVC/K8s-driven config path (cluster/prx_get.go) names
+	// them positionally ("server1", "server2", ...) in externalcheck/
+	// dataplaneapi mode, where this reconciliation would treat real entries
+	// as stale. standby never reaches this code at all -- its proxy service
+	// is always dispatched to the Localhost* handlers regardless of the
+	// cluster's own orchestrator (proxyServiceOrchestrator, cluster/prov.go),
+	// and Init() (this file) names its own servers by server.Id too, same as
 	// runtimeapi -- but its topology propagation is a full local
 	// re-render/reload, never this Runtime API reconciliation.
 	if cluster.Conf.HaproxyMode != "runtimeapi" {

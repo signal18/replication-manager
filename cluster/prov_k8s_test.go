@@ -26,15 +26,44 @@ func newTestCluster(name string) *Cluster {
 	return &Cluster{Name: name, Conf: &config.Config{}}
 }
 
-// Embeds a nil DatabaseProxy so only GetName/GetPort need overriding.
+// Embeds a nil DatabaseProxy so only the methods actually exercised below
+// need overriding. proxyType defaults to "" (zero value), which
+// k8sProxyImage/k8sProxyContainerPorts/k8sProxyServicePorts treat as an
+// unsupported type -- tests exercising the ProxySQL path must set it
+// explicitly to config.ConstProxySqlproxy.
 type fakeProxy struct {
 	DatabaseProxy
-	name string
-	port string
+	name          string
+	host          string
+	port          string
+	proxyType     string
+	writePort     int
+	readPort      int
+	readWritePort int
+	cluster       *Cluster
 }
 
 func (f *fakeProxy) GetName() string { return f.name }
 func (f *fakeProxy) GetPort() string { return f.port }
+func (f *fakeProxy) GetType() string { return f.proxyType }
+func (f *fakeProxy) GetHost() string {
+	if f.host != "" {
+		return f.host
+	}
+	return f.name
+}
+func (f *fakeProxy) GetWritePort() int     { return f.writePort }
+func (f *fakeProxy) GetReadPort() int      { return f.readPort }
+func (f *fakeProxy) GetReadWritePort() int { return f.readWritePort }
+
+// GetCluster falls back to a bare Cluster instead of nil, which would panic
+// on the HAProxy stat-port lookup in k8sProxyContainerPorts.
+func (f *fakeProxy) GetCluster() *Cluster {
+	if f.cluster != nil {
+		return f.cluster
+	}
+	return &Cluster{Conf: &config.Config{}}
+}
 
 // --- K8SGetNodes / node discovery safety ---
 
@@ -177,7 +206,7 @@ func TestK8SProxyDeploymentName_UniquePerProxy(t *testing.T) {
 func TestK8SProvisionProxy_InvalidPort(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	cluster := newTestCluster("k8stest")
-	prx := &fakeProxy{name: "proxysql1", port: "not-a-port"}
+	prx := &fakeProxy{name: "proxysql1", port: "not-a-port", proxyType: config.ConstProxySqlproxy, writePort: 6033}
 
 	err := cluster.k8sProvisionProxyServiceWithClient(client, prx)
 	if err == nil {
@@ -185,10 +214,71 @@ func TestK8SProvisionProxy_InvalidPort(t *testing.T) {
 	}
 }
 
+// TestK8SProvisionProxy_DottedNameInvalidForService guards a real gap:
+// Kubernetes Service names must be a single RFC 1035 label (no dots),
+// stricter than the RFC 1123 subdomain Deployment/PVC names accept (dots
+// allowed) -- so a literal IP address or dotted hostname in
+// haproxy-servers/proxysql-servers (a normal, pre-existing config on
+// non-Kubernetes orchestrators) must fail clearly up front, not leave a
+// Deployment/PVC provisioned with no Service after an opaque Kubernetes API
+// validation error on the Service Create() call.
+func TestK8SProvisionProxy_DottedNameInvalidForService(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "10.0.0.5", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	err := cluster.k8sProvisionProxyServiceWithClient(client, prx)
+	if err == nil {
+		t.Fatal("expected an explicit error for a dotted proxy name invalid as a Kubernetes Service name, got nil")
+	}
+
+	if _, getErr := client.AppsV1().Deployments("k8stest").Get(context.TODO(), k8sProxyDeploymentName("k8stest", "10.0.0.5"), metav1.GetOptions{}); getErr == nil {
+		t.Fatal("expected no Deployment to be created when the name fails Service validation")
+	}
+	if _, getErr := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "10.0.0.5"), metav1.GetOptions{}); getErr == nil {
+		t.Fatal("expected no PVC to be created when the name fails Service validation")
+	}
+}
+
+// TestK8SProvisionProxy_PlainNameValidForService is the counterpart: an
+// ordinary, dot-free hostname must still provision normally.
+func TestK8SProvisionProxy_PlainNameValidForService(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error provisioning a plain hostname proxy: %s", err)
+	}
+	if _, err := client.CoreV1().Services("k8stest").Get(context.TODO(), "proxysql1", metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected the Service to be created: %s", err)
+	}
+}
+
+// TestK8SProvisionProxy_EnsuresNamespaceOnFreshCluster guards direct proxy
+// provisioning (handlerMuxProxyProvision, server/api_proxy.go) into a
+// cluster/namespace where DB provisioning never ran -- k8sEnsureNamespace
+// used to be called only from K8SProvisionDatabaseService, so a fresh
+// namespace made every create below fail against a real API server (the
+// fake clientset used elsewhere in this file doesn't enforce namespace
+// existence, so it wouldn't have caught this).
+func TestK8SProvisionProxy_EnsuresNamespaceOnFreshCluster(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error provisioning into a fresh namespace: %s", err)
+	}
+	if _, err := client.CoreV1().Namespaces().Get(context.TODO(), "k8stest", metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected namespace %q to be created, got error: %s", "k8stest", err)
+	}
+}
+
 func TestK8SProvisionProxy_AlreadyExistsIsIdempotent(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	cluster := newTestCluster("k8stest")
-	prx := &fakeProxy{name: "proxysql1", port: "6033"}
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
 
 	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
 		t.Fatalf("first provision: unexpected error: %s", err)
@@ -201,8 +291,8 @@ func TestK8SProvisionProxy_AlreadyExistsIsIdempotent(t *testing.T) {
 func TestK8SProvisionProxy_TwoProxiesDoNotCollide(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	cluster := newTestCluster("k8stest")
-	prxA := &fakeProxy{name: "proxysql1", port: "6033"}
-	prxB := &fakeProxy{name: "proxysql2", port: "6034"}
+	prxA := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+	prxB := &fakeProxy{name: "proxysql2", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
 
 	if err := cluster.k8sProvisionProxyServiceWithClient(client, prxA); err != nil {
 		t.Fatalf("provision proxysql1: unexpected error: %s", err)
@@ -217,6 +307,701 @@ func TestK8SProvisionProxy_TwoProxiesDoNotCollide(t *testing.T) {
 	}
 	if len(list.Items) != 2 {
 		t.Fatalf("expected 2 distinct proxy deployments, got %d", len(list.Items))
+	}
+
+	svcList, err := client.CoreV1().Services("k8stest").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error listing services: %s", err)
+	}
+	if len(svcList.Items) != 2 {
+		t.Fatalf("expected 2 distinct proxy services, got %d", len(svcList.Items))
+	}
+}
+
+// TestK8SProvisionProxy_RefusesNameOwnedByDifferentType guards the case
+// TestK8SProvisionProxy_TwoProxiesDoNotCollide doesn't cover: AddProxy
+// (cluster.go) deliberately allows two different-type proxies to share a
+// name (valid outside Kubernetes, e.g. same host / different write ports),
+// so it's this function's job to refuse provisioning the second one rather
+// than letting its Deployment/Service Create() calls come back
+// AlreadyExists and get treated as an idempotent success -- which would
+// silently leave the second proxy type with no running Pod at all.
+func TestK8SProvisionProxy_RefusesNameOwnedByDifferentType(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	haproxy := &fakeProxy{name: "colocated", port: "1999", proxyType: config.ConstProxyHaproxy, writePort: 3306}
+	proxysql := &fakeProxy{name: "colocated", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, haproxy); err != nil {
+		t.Fatalf("provision haproxy: unexpected error: %s", err)
+	}
+	err := cluster.k8sProvisionProxyServiceWithClient(client, proxysql)
+	if err == nil {
+		t.Fatal("expected an explicit error provisioning a ProxySQL proxy whose name is already owned by an HAProxy Deployment/Service, got nil")
+	}
+	if !strings.Contains(err.Error(), "Deployment") || !strings.Contains(err.Error(), "unprovision") {
+		t.Fatalf("expected the error to name the colliding object kind (Deployment) and advise unprovisioning the live proxy, got: %s", err)
+	}
+
+	list, err := client.AppsV1().Deployments("k8stest").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error listing deployments: %s", err)
+	}
+	if len(list.Items) != 1 {
+		t.Fatalf("expected the second (colliding) proxy's deployment to never be created, got %d deployments", len(list.Items))
+	}
+}
+
+// TestK8SProvisionProxy_UnlabeledExistingDeploymentIsNotDetectedAsCollision
+// documents a known, accepted gap in k8sProxyNameOwnedByDifferentType
+// (prov_k8s_prx.go): detection is label-only (k8sProxyTypeLabel), so a
+// pre-existing Deployment with a colliding name but no label -- e.g. one an
+// operator created directly, since this per-proxy naming scheme has no
+// earlier history that ever shipped without the label -- passes through
+// undetected, and the second proxy's Create() falls through to the normal
+// AlreadyExists-is-idempotent path. Deliberately not "fixed" by inferring
+// ownership from the container image instead: an image is expected to
+// legitimately differ across a same-type reprovision after a version bump,
+// so that inference would misfire as a false-positive collision on an
+// ordinary upgrade. If this test ever starts failing because the guard
+// grew smarter, that's fine -- update this comment, not just the assertion.
+func TestK8SProvisionProxy_UnlabeledExistingDeploymentIsNotDetectedAsCollision(t *testing.T) {
+	existing := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      k8sProxyDeploymentName("k8stest", "colocated"),
+			Namespace: "k8stest",
+			// No proxy-type label -- simulates a Deployment this code did
+			// not create.
+		},
+	}
+	client := fake.NewSimpleClientset(existing)
+	cluster := newTestCluster("k8stest")
+	proxysql := &fakeProxy{name: "colocated", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, proxysql); err != nil {
+		t.Fatalf("expected the unlabeled pre-existing Deployment to be silently treated as this proxy's own (known limitation), got error: %s", err)
+	}
+}
+
+// TestK8SProvisionProxy_NonNotFoundGetErrorFailsLoudly guards the other half
+// of the same collision check: a Get() failure that isn't NotFound (RBAC, a
+// transient API error, ...) must fail provisioning outright, not be treated
+// as "no collision found" -- silently proceeding past an unreadable object
+// would reopen the exact AlreadyExists-treated-as-idempotent-success gap
+// k8sProxyNameOwnedByDifferentType exists to close.
+func TestK8SProvisionProxy_NonNotFoundGetErrorFailsLoudly(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	client.PrependReactor("get", "deployments", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewServiceUnavailable("transient")
+	})
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	err := cluster.k8sProvisionProxyServiceWithClient(client, prx)
+	if err == nil {
+		t.Fatal("expected a non-NotFound Get() error to fail provisioning, got nil")
+	}
+
+	list, err := client.AppsV1().Deployments("k8stest").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error listing deployments: %s", err)
+	}
+	if len(list.Items) != 0 {
+		t.Fatalf("expected no deployment to be created when the collision check itself fails, got %d", len(list.Items))
+	}
+}
+
+// TestK8SProvisionProxy_RefusesNameOwnedByDifferentTypeViaRetainedPVC covers
+// a sequence the Deployment/Service checks alone can't: provision type A,
+// unprovision it (PVC deliberately retained,
+// k8sUnprovisionProxyServiceWithClient), then provision type B under the
+// same name. Deployment and Service are gone at that point, so only the
+// PVC's own proxy-type label still proves the name was already used --
+// without checking it, the second proxy's PVC Create() would come back
+// AlreadyExists and be treated as an idempotent success, starting type B
+// against type A's leftover data.
+func TestK8SProvisionProxy_RefusesNameOwnedByDifferentTypeViaRetainedPVC(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	haproxy := &fakeProxy{name: "colocated", port: "1999", proxyType: config.ConstProxyHaproxy, writePort: 3306}
+	proxysql := &fakeProxy{name: "colocated", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, haproxy); err != nil {
+		t.Fatalf("provision haproxy: unexpected error: %s", err)
+	}
+	if err := cluster.k8sUnprovisionProxyServiceWithClient(client, haproxy); err != nil {
+		t.Fatalf("unprovision haproxy: unexpected error: %s", err)
+	}
+	if _, err := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "colocated"), metav1.GetOptions{}); err != nil {
+		t.Fatalf("test setup invalid: expected the PVC to be retained after unprovision, got error: %s", err)
+	}
+
+	err := cluster.k8sProvisionProxyServiceWithClient(client, proxysql)
+	if err == nil {
+		t.Fatal("expected an explicit error provisioning a ProxySQL proxy whose name is already owned by HAProxy's retained PVC, got nil")
+	}
+	if !strings.Contains(err.Error(), "PVC") || !strings.Contains(err.Error(), "kubectl delete pvc") {
+		t.Fatalf("expected the error to name the colliding object kind (PVC) and give the exact recovery command, got: %s", err)
+	}
+
+	list, err := client.AppsV1().Deployments("k8stest").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error listing deployments: %s", err)
+	}
+	if len(list.Items) != 0 {
+		t.Fatalf("expected no deployment to be created for the colliding proxy, got %d", len(list.Items))
+	}
+}
+
+// --- Proxy provisioning: Service exposure and type-awareness (Phase 3) ---
+
+func TestK8SProvisionProxy_CreatesServiceWithAdminAndSQLPorts(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	svc, err := client.CoreV1().Services("k8stest").Get(context.TODO(), k8sProxyServiceName(prx), metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected a Service named %q to exist: %s", k8sProxyServiceName(prx), err)
+	}
+	if len(svc.Spec.Ports) != 2 {
+		t.Fatalf("expected 2 service ports (admin, sql), got %d: %v", len(svc.Spec.Ports), svc.Spec.Ports)
+	}
+	var gotAdmin, gotSQL bool
+	for _, p := range svc.Spec.Ports {
+		switch p.Name {
+		case "admin":
+			gotAdmin = p.Port == 6032
+		case "sql":
+			gotSQL = p.Port == 6033
+		}
+	}
+	if !gotAdmin {
+		t.Fatalf("expected an admin port 6032, got %v", svc.Spec.Ports)
+	}
+	if !gotSQL {
+		t.Fatalf("expected a sql port 6033, got %v", svc.Spec.Ports)
+	}
+}
+
+func TestK8SProvisionProxy_ServiceAlreadyExistsIsIdempotent(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("first provision: unexpected error: %s", err)
+	}
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("second provision (Service AlreadyExists) should be idempotent, got error: %s", err)
+	}
+}
+
+func TestK8SProxyDeployment_UsesProvProxProxysqlImg(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvProxProxysqlImg = "signal18/proxysql:1.4"
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if got := dep.Spec.Template.Spec.Containers[0].Image; got != "signal18/proxysql:1.4" {
+		t.Fatalf("expected image %q, got %q", "signal18/proxysql:1.4", got)
+	}
+}
+
+func TestK8SProxyDeployment_ExposesAdminAndSQLContainerPorts(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	ports := dep.Spec.Template.Spec.Containers[0].Ports
+	if len(ports) != 2 {
+		t.Fatalf("expected 2 container ports (admin, sql), got %d: %v", len(ports), ports)
+	}
+	var gotAdmin, gotSQL bool
+	for _, p := range ports {
+		switch p.Name {
+		case "admin":
+			gotAdmin = p.ContainerPort == 6032
+		case "sql":
+			gotSQL = p.ContainerPort == 6033
+		}
+	}
+	if !gotAdmin {
+		t.Fatalf("expected an admin container port 6032, got %v", ports)
+	}
+	if !gotSQL {
+		t.Fatalf("expected a sql container port 6033, got %v", ports)
+	}
+}
+
+// Only GetPort() (the admin port) previously fed Kubernetes proxy
+// provisioning -- if a caller reverted to that, the SQL port applications
+// actually connect to would silently disappear from both the Deployment and
+// the Service.
+func TestK8SProxyDeployment_SQLPortIsNotJustGetPort(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	for _, p := range dep.Spec.Template.Spec.Containers[0].Ports {
+		if p.Name == "sql" && p.ContainerPort == int32(6032) {
+			t.Fatal("sql container port must not equal the admin port (GetPort()) -- GetWritePort() was not consulted")
+		}
+	}
+}
+
+func TestK8SProxyImage_UnsupportedTypeReturnsExplicitError(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	for _, typ := range []string{config.ConstProxySpider, config.ConstProxySphinx, ""} {
+		prx := &fakeProxy{name: "proxy1", port: "6032", proxyType: typ}
+		if _, err := cluster.k8sProxyImage(prx); err == nil {
+			t.Fatalf("expected an explicit unsupported-type error for proxy type %q, got nil", typ)
+		}
+	}
+}
+
+func TestK8SProvisionProxy_UnsupportedTypeCreatesNothing(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "spider1", port: "6032", proxyType: config.ConstProxySpider}
+
+	err := cluster.k8sProvisionProxyServiceWithClient(client, prx)
+	if err == nil {
+		t.Fatal("expected an explicit error for an unsupported proxy type, not a silent ProxySQL deployment")
+	}
+
+	if _, getErr := client.AppsV1().Deployments("k8stest").Get(context.TODO(), k8sProxyDeploymentName("k8stest", "spider1"), metav1.GetOptions{}); getErr == nil {
+		t.Fatal("expected no Deployment to be created for an unsupported proxy type")
+	}
+	if _, getErr := client.CoreV1().Services("k8stest").Get(context.TODO(), "spider1", metav1.GetOptions{}); getErr == nil {
+		t.Fatal("expected no Service to be created for an unsupported proxy type")
+	}
+	if _, getErr := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "spider1"), metav1.GetOptions{}); getErr == nil {
+		t.Fatal("expected no PVC to be created for an unsupported proxy type")
+	}
+}
+
+// --- Proxy PVC (Phase 4: ProxySQL persistent storage) ---
+
+func TestK8SProxyPVC_UsesProvProxyDiskSize(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvProxDisk = "10G"
+	prx := &fakeProxy{name: "proxysql1"}
+
+	pvc := cluster.k8sProxyPVC(prx)
+
+	got := pvc.Spec.Resources.Requests[apiv1.ResourceStorage]
+	want := resource.MustParse("10G")
+	if got.Cmp(want) != 0 {
+		t.Fatalf("expected storage request %s, got %s", want.String(), got.String())
+	}
+}
+
+func TestK8SProxyPVC_FallsBackToDefaultSizeWhenUnparseable(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvProxDisk = "not-a-size"
+	prx := &fakeProxy{name: "proxysql1"}
+
+	pvc := cluster.k8sProxyPVC(prx)
+
+	got := pvc.Spec.Resources.Requests[apiv1.ResourceStorage]
+	want := resource.MustParse("20G")
+	if got.Cmp(want) != 0 {
+		t.Fatalf("expected the fallback to match prov-proxy-disk-size's own default (20G), got %s", got.String())
+	}
+}
+
+func TestK8SProxyPVC_NoStorageClassNameWhenUnset(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1"}
+
+	pvc := cluster.k8sProxyPVC(prx)
+
+	if pvc.Spec.StorageClassName != nil {
+		t.Fatalf("expected a nil StorageClassName (use cluster default), got %q", *pvc.Spec.StorageClassName)
+	}
+}
+
+func TestK8SProxyPVC_UsesConfiguredStorageClass(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvKubeProxyStorageClass = "fast-ssd"
+	prx := &fakeProxy{name: "proxysql1"}
+
+	pvc := cluster.k8sProxyPVC(prx)
+
+	if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName != "fast-ssd" {
+		t.Fatalf("expected StorageClassName \"fast-ssd\", got %v", pvc.Spec.StorageClassName)
+	}
+}
+
+func TestK8SProxyPVC_NamePerProxy(t *testing.T) {
+	n1 := k8sProxyPVCName("mycluster", "proxysql1")
+	n2 := k8sProxyPVCName("mycluster", "proxysql2")
+	if n1 == n2 {
+		t.Fatalf("expected distinct PVC names for distinct proxies, got %q for both", n1)
+	}
+}
+
+// --- ProxySQL Deployment: PVC-backed persistent storage and bootstrap
+// init container (Phase 4) ---
+
+func TestK8SProxyDeployment_UsesPVCBackedVolume(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if len(dep.Spec.Template.Spec.Volumes) != 1 {
+		t.Fatalf("expected exactly one volume, got %d: %v", len(dep.Spec.Template.Spec.Volumes), dep.Spec.Template.Spec.Volumes)
+	}
+	vol := dep.Spec.Template.Spec.Volumes[0]
+	if vol.PersistentVolumeClaim == nil || vol.PersistentVolumeClaim.ClaimName != k8sProxyPVCName("k8stest", "proxysql1") {
+		t.Fatalf("expected the volume to reference PVC %q, got %v", k8sProxyPVCName("k8stest", "proxysql1"), vol)
+	}
+}
+
+func TestK8SProxyDeployment_MainContainerMountsDataAndConfigDirs(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	mounts := dep.Spec.Template.Spec.Containers[0].VolumeMounts
+	var hasData, hasConf bool
+	for _, m := range mounts {
+		if m.MountPath == "/var/lib/proxysql" && m.SubPath == "" {
+			hasData = true
+		}
+		if m.MountPath == "/etc/proxysql" && m.SubPath == k8sProxyConfPersistSubPath {
+			hasConf = true
+		}
+	}
+	if !hasData {
+		t.Fatalf("expected a full-volume mount at /var/lib/proxysql, got %v", mounts)
+	}
+	if !hasConf {
+		t.Fatalf("expected a subPath mount at /etc/proxysql (subPath %q), got %v", k8sProxyConfPersistSubPath, mounts)
+	}
+}
+
+// The generated proxysql.cnf's ssl_p2s_cert/ssl_p2s_key/ssl_p2s_ca
+// directives are built from CONFDIR ("/etc" for Kubernetes,
+// GetConfigConfigdir, prx_get.go) + "/ssl/*.pem" -- i.e. /etc/ssl/*.pem --
+// not /etc/proxysql/ssl/*.pem, which is where GenerateProxyConfig
+// (cluster/configurator/configurator.go) actually stages those certs in
+// the fetched tarball. Both the main and init containers must mount
+// /etc/ssl, on its own subPath so it doesn't also relocate proxysql.cnf.
+func TestK8SProxyDeployment_MountsSSLCertPathConfigExpects(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	for _, c := range []apiv1.Container{dep.Spec.Template.Spec.Containers[0], dep.Spec.Template.Spec.InitContainers[0]} {
+		var hasSSL bool
+		for _, m := range c.VolumeMounts {
+			if m.MountPath == "/etc/ssl" {
+				hasSSL = true
+				if m.SubPath != k8sProxySSLPersistSubPath {
+					t.Fatalf("container %q: expected /etc/ssl subPath %q, got %q", c.Name, k8sProxySSLPersistSubPath, m.SubPath)
+				}
+				if m.SubPath == k8sProxyConfPersistSubPath {
+					t.Fatalf("container %q: /etc/ssl must not share proxysql.cnf's own subPath (would relocate proxysql.cnf out of /etc/proxysql)", c.Name)
+				}
+			}
+		}
+		if !hasSSL {
+			t.Fatalf("container %q: expected a mount at /etc/ssl, got %v", c.Name, c.VolumeMounts)
+		}
+	}
+}
+
+// Regression test for a review finding: the init container fetched the
+// tarball and copied proxysql.cnf/data/*.pem, but never copied the p2s SSL
+// certs from the tarball's etc/proxysql/ssl/ staging path to /etc/ssl,
+// where the generated config actually looks for them -- so an SSL-enabled
+// ProxySQL would come up with ssl_p2s_cert/key/ca pointing at files that
+// were never placed there.
+func TestK8SProxyDeployment_InitContainerCopiesSSLCertsToConfigExpectedPath(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", host: "proxysql1.k8stest.svc.cluster.local", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	cmdStr := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+	if !strings.Contains(cmdStr, "cp /tmp/cfg/etc/proxysql/ssl/") {
+		t.Fatalf("expected the init container to copy the tarball's staged SSL certs (etc/proxysql/ssl/), got %q", cmdStr)
+	}
+	if !strings.Contains(cmdStr, "/etc/ssl/") {
+		t.Fatalf("expected the init container to copy SSL certs to /etc/ssl (where ssl_p2s_cert/key/ca in the generated config point), got %q", cmdStr)
+	}
+	if !strings.Contains(cmdStr, "mkdir -p") || !strings.Contains(cmdStr, "/etc/ssl") {
+		t.Fatalf("expected /etc/ssl to be created before use, got %q", cmdStr)
+	}
+}
+
+func TestK8SProxyDeployment_MainContainerCommandPointsToPersistedConfig(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	cmd := dep.Spec.Template.Spec.Containers[0].Command
+	found := false
+	for _, c := range cmd {
+		if strings.Contains(c, "/etc/proxysql/proxysql.cnf") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected the container command to reference /etc/proxysql/proxysql.cnf, got %v", cmd)
+	}
+}
+
+func TestK8SProxyDeployment_ProxySQLCommandCapsFileDescriptorLimit(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	cmd := dep.Spec.Template.Spec.Containers[0].Command
+	if len(cmd) < 3 {
+		t.Fatalf("expected a sh -c command, got %+v", cmd)
+	}
+	script := cmd[2]
+	// Matches plain "docker run"'s default (soft 1024 / hard 1048576), which
+	// is what OpenSVC's ProxySQL container gets implicitly -- some container
+	// runtimes (observed on kind/containerd) instead hand pods an inflated
+	// RLIMIT_NOFILE by default, so this keeps behavior identical regardless
+	// of orchestrator.
+	for _, want := range []string{"ulimit -Sn 1024", "ulimit -Hn 1048576", "exec proxysql"} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("expected proxysql command to contain %q, got: %s", want, script)
+		}
+	}
+}
+
+func TestK8SProxyDeployment_HasBootstrapInitContainer(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", host: "proxysql1.k8stest.svc.cluster.local", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if len(dep.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatalf("expected exactly one init container, got %d", len(dep.Spec.Template.Spec.InitContainers))
+	}
+	init := dep.Spec.Template.Spec.InitContainers[0]
+	cmdStr := strings.Join(init.Command, " ")
+	if !strings.Contains(cmdStr, "-T 8") {
+		t.Fatalf("expected a bounded (-T 8) wget fetch in the init container command, got %q", cmdStr)
+	}
+	if !strings.Contains(cmdStr, prx.GetHost()+"/"+prx.GetPort()+"/config") {
+		t.Fatalf("expected the init container to fetch from the proxy's own host/port, got %q", cmdStr)
+	}
+	if !strings.Contains(cmdStr, "need-config-fetch") {
+		t.Fatalf("expected the init container to consult need-config-fetch before fetching, got %q", cmdStr)
+	}
+}
+
+func TestK8SProxyDeployment_InitContainerSecureConfigUsesSecretKeyRef(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.APISecureConfig = true
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	init := dep.Spec.Template.Spec.InitContainers[0]
+	var found *apiv1.EnvVar
+	for i := range init.Env {
+		if init.Env[i].Name == k8sSecretKeyAPIAuthHeader {
+			found = &init.Env[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("expected a REPMAN_AUTH_HEADER env var when api-credentials-secure-config is enabled")
+	}
+	if found.Value != "" {
+		t.Fatalf("expected no raw Value (auth header must come from the Secret), got %q", found.Value)
+	}
+	if found.ValueFrom == nil || found.ValueFrom.SecretKeyRef == nil {
+		t.Fatal("expected REPMAN_AUTH_HEADER to be sourced from a SecretKeyRef")
+	}
+	if found.ValueFrom.SecretKeyRef.Name != k8sClusterSecretName("k8stest") {
+		t.Fatalf("expected SecretKeyRef to name %q, got %q", k8sClusterSecretName("k8stest"), found.ValueFrom.SecretKeyRef.Name)
+	}
+}
+
+func TestK8SProxyDeployment_NoInitContainerOrVolumesForUnsupportedType(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "spider1", port: "6032", proxyType: config.ConstProxySpider}
+
+	if _, err := cluster.k8sProxyDeployment(prx); err == nil {
+		t.Fatal("expected an explicit error for an unsupported proxy type")
+	}
+}
+
+// --- Proxy provisioning: PVC lifecycle (Phase 4) ---
+
+func TestK8SProvisionProxy_CreatesPVC(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if _, err := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "proxysql1"), metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected a PVC named %q to exist: %s", k8sProxyPVCName("k8stest", "proxysql1"), err)
+	}
+}
+
+func TestK8SProvisionProxy_PVCAlreadyExistsIsIdempotent(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("first provision: unexpected error: %s", err)
+	}
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("second provision (PVC AlreadyExists) should be idempotent, got error: %s", err)
+	}
+}
+
+// Unprovisioning must never destroy the persisted ProxySQL config/data --
+// same retention semantics as the database PVC (prov_k8s_db.go).
+func TestK8SUnprovisionProxy_RetainsPVC(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("provision: unexpected error: %s", err)
+	}
+	if err := cluster.k8sUnprovisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unprovision: unexpected error: %s", err)
+	}
+
+	if _, err := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "proxysql1"), metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected the PVC to be retained after unprovision, got error: %s", err)
+	}
+}
+
+// --- Proxy fetch-config parity (prov-proxy-start-fetch-config) ---
+//
+// Mirrors TestSrvCheckNeedConfigFetch-equivalent DB behavior
+// (srv_chk.go's ServerMonitor.CheckNeedConfigFetch): the cookie state
+// tracks the live config setting, both directions.
+
+func newTestProxyForFetchConfig(cluster *Cluster) *Proxy {
+	// Host and Port must be set: SetDataDir is a no-op ("" Datadir, so
+	// createCookie writes to filesystem root and silently fails) unless
+	// proxy.Host is non-empty.
+	prx := &Proxy{Name: "proxysql1", Host: "proxysql1", Port: "6032", ClusterGroup: cluster}
+	prx.SetDataDir()
+	return prx
+}
+
+func TestProxyCheckNeedConfigFetch_EnabledDropsNoFetchCookie(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.WorkingDir = t.TempDir()
+	cluster.Conf.ProvProxyStartFetchConfig = true
+	prx := newTestProxyForFetchConfig(cluster)
+	prx.SetNoConfigFetchCookie()
+
+	prx.CheckNeedConfigFetch()
+
+	if prx.HasNoConfigFetchCookie() {
+		t.Fatal("expected the no-fetch cookie to be removed once prov-proxy-start-fetch-config is enabled")
+	}
+}
+
+func TestProxyCheckNeedConfigFetch_DisabledSetsNoFetchCookie(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.WorkingDir = t.TempDir()
+	cluster.Conf.ProvProxyStartFetchConfig = false
+	prx := newTestProxyForFetchConfig(cluster)
+
+	prx.CheckNeedConfigFetch()
+
+	if !prx.HasNoConfigFetchCookie() {
+		t.Fatal("expected the no-fetch cookie to be set once prov-proxy-start-fetch-config is disabled")
+	}
+}
+
+func TestClusterCheckNeedConfigFetch_CoversProxiesToo(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.WorkingDir = t.TempDir()
+	cluster.Conf.ProvDbStartFetchConfig = true
+	cluster.Conf.ProvProxyStartFetchConfig = false
+	prx := newTestProxyForFetchConfig(cluster)
+	cluster.Proxies = []DatabaseProxy{prx}
+
+	cluster.CheckNeedConfigFetch()
+
+	if !prx.HasNoConfigFetchCookie() {
+		t.Fatal("expected cluster.CheckNeedConfigFetch to also sync the proxy's no-fetch cookie, not just servers'")
+	}
+}
+
+func TestK8SUnprovisionProxy_DeletesService(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+	client := fake.NewSimpleClientset(
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: k8sProxyDeploymentName("k8stest", "proxysql1"), Namespace: "k8stest"}},
+		&apiv1.Service{ObjectMeta: metav1.ObjectMeta{Name: "proxysql1", Namespace: "k8stest"}},
+	)
+
+	if err := cluster.k8sUnprovisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if _, err := client.CoreV1().Services("k8stest").Get(context.TODO(), "proxysql1", metav1.GetOptions{}); err == nil {
+		t.Fatal("expected service to be deleted")
+	}
+}
+
+func TestK8SUnprovisionProxy_ServiceNotFoundIsIdempotent(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
+	// Deployment exists, Service does not -- e.g. an object provisioned by an
+	// older repman build before Service creation existed.
+	client := fake.NewSimpleClientset(
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: k8sProxyDeploymentName("k8stest", "proxysql1"), Namespace: "k8stest"}},
+	)
+
+	if err := cluster.k8sUnprovisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("expected a missing Service to be treated as idempotent, got error: %s", err)
 	}
 }
 
@@ -501,7 +1286,7 @@ func TestK8SProvisionProxy_DoesNotTouchLegacyDeployment(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: legacyName, Namespace: "k8stest"},
 	})
 	cluster := newTestCluster("k8stest")
-	prx := &fakeProxy{name: "proxysql1", port: "6033"}
+	prx := &fakeProxy{name: "proxysql1", port: "6032", proxyType: config.ConstProxySqlproxy, writePort: 6033}
 
 	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
 		t.Fatalf("unexpected error: %s", err)
@@ -614,6 +1399,136 @@ func TestK8SStartDatabase_MissingDeploymentIsError(t *testing.T) {
 
 	if err := cluster.k8sStartDatabaseServiceWithClient(client, "db1"); err == nil {
 		t.Fatal("expected an error when the deployment to start does not exist")
+	}
+}
+
+// --- Proxy stop/start: same scale-to-0/scale-to-1 pattern as the database
+// lifecycle above (k8sStopProxyServiceWithClient/
+// k8sStartProxyServiceWithClient, prov_k8s_prx.go), keyed by the per-proxy
+// Deployment name (k8sProxyDeploymentName), never the legacy shared
+// <cluster>-deployment.
+
+func TestK8SStopProxy_ScalesReplicasToZero(t *testing.T) {
+	one := int32(1)
+	name := k8sProxyDeploymentName("k8stest", "proxysql1")
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "k8stest"},
+		Spec:       appsv1.DeploymentSpec{Replicas: &one},
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStopProxyServiceWithClient(client, name); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if dep.Spec.Replicas == nil || *dep.Spec.Replicas != 0 {
+		t.Fatalf("expected replicas to be patched to 0, got %v", dep.Spec.Replicas)
+	}
+}
+
+func TestK8SStopProxy_MissingDeploymentIsError(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStopProxyServiceWithClient(client, k8sProxyDeploymentName("k8stest", "proxysql1")); err == nil {
+		t.Fatal("expected an error when the proxy deployment to stop does not exist")
+	}
+}
+
+// Patching replicas to 0 when already at 0 must be a harmless no-op.
+func TestK8SStopProxy_AlreadyStoppedIsNoOp(t *testing.T) {
+	zero := int32(0)
+	name := k8sProxyDeploymentName("k8stest", "proxysql1")
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "k8stest"},
+		Spec:       appsv1.DeploymentSpec{Replicas: &zero},
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStopProxyServiceWithClient(client, name); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+}
+
+func TestK8SStartProxy_ScalesReplicasToOne(t *testing.T) {
+	zero := int32(0)
+	name := k8sProxyDeploymentName("k8stest", "proxysql1")
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "k8stest"},
+		Spec:       appsv1.DeploymentSpec{Replicas: &zero},
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStartProxyServiceWithClient(client, name); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if dep.Spec.Replicas == nil || *dep.Spec.Replicas != 1 {
+		t.Fatalf("expected replicas to be patched back to 1, got %v", dep.Spec.Replicas)
+	}
+}
+
+func TestK8SStartProxy_MissingDeploymentIsError(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStartProxyServiceWithClient(client, k8sProxyDeploymentName("k8stest", "proxysql1")); err == nil {
+		t.Fatal("expected an error when the proxy deployment to start does not exist")
+	}
+}
+
+// Patching replicas to 1 when already at 1 must be a harmless no-op -- Start
+// is called unconditionally regardless of whether Stop actually ran.
+func TestK8SStartProxy_AlreadyRunningIsNoOp(t *testing.T) {
+	one := int32(1)
+	name := k8sProxyDeploymentName("k8stest", "proxysql1")
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "k8stest"},
+		Spec:       appsv1.DeploymentSpec{Replicas: &one},
+	})
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStartProxyServiceWithClient(client, name); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+}
+
+// Stop/start on a proxy must never touch the legacy shared
+// <cluster>-deployment, even though it also carries the shared "app"
+// selector -- a single proxy's lifecycle call has no way to prove the
+// legacy Deployment belongs to it rather than a different, not-yet-migrated
+// proxy in the same cluster.
+func TestK8SStopStartProxy_DoesNotTouchLegacyDeployment(t *testing.T) {
+	legacyName := k8sLegacyProxyDeploymentName("k8stest")
+	one := int32(1)
+	name := k8sProxyDeploymentName("k8stest", "proxysql1")
+	client := fake.NewSimpleClientset(
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "k8stest"}, Spec: appsv1.DeploymentSpec{Replicas: &one}},
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: legacyName, Namespace: "k8stest"}, Spec: appsv1.DeploymentSpec{Replicas: &one}},
+	)
+	cluster := newTestCluster("k8stest")
+
+	if err := cluster.k8sStopProxyServiceWithClient(client, name); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if err := cluster.k8sStartProxyServiceWithClient(client, name); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	legacy, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), legacyName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if legacy.Spec.Replicas == nil || *legacy.Spec.Replicas != 1 {
+		t.Fatalf("expected the legacy deployment's replicas to be left untouched at 1, got %v", legacy.Spec.Replicas)
 	}
 }
 
@@ -1872,6 +2787,83 @@ func TestGetDomainHeadCluster_KubernetesRoutesThroughParentsHeadlessService(t *t
 	}
 }
 
+// --- NewProxySQLProxy host suffix (prx_proxysql.go): must share
+// k8sClusterDomain's "local" -> "cluster.local" fallback on Kubernetes,
+// like GetDomain() already does for the DB side, or the proxy's own host
+// ends in ".svc.local" -- one ".svc." segment short of the real Service DNS
+// name -- and CoreDNS never resolves it. Found via live kind testing: the
+// Kubernetes Service itself resolved fine under its real name, but the
+// proxy's own computed Host did not.
+
+func TestNewProxySQLProxy_KubernetesFallsBackToClusterLocalWhenUnset(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cluster.Conf.ProvOrchestratorCluster = "" // never configured, same as the CLI default "local"
+
+	prx := NewProxySQLProxy(0, cluster, "proxysql1")
+	want := "proxysql1.clustera.svc.cluster.local"
+	if prx.Host != want {
+		t.Fatalf("expected %q, got %q", want, prx.Host)
+	}
+}
+
+func TestNewProxySQLProxy_KubernetesFallsBackWhenLiteralCLIDefault(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cluster.Conf.ProvOrchestratorCluster = "local"
+
+	prx := NewProxySQLProxy(0, cluster, "proxysql1")
+	want := "proxysql1.clustera.svc.cluster.local"
+	if prx.Host != want {
+		t.Fatalf("expected the CLI default \"local\" to fall back to cluster.local, got %q (want %q)", prx.Host, want)
+	}
+}
+
+func TestNewProxySQLProxy_KubernetesTracksConfiguredClusterDomain(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cluster.Conf.ProvOrchestratorCluster = "k8s.internal"
+
+	prx := NewProxySQLProxy(0, cluster, "proxysql1")
+	want := "proxysql1.clustera.svc.k8s.internal"
+	if prx.Host != want {
+		t.Fatalf("expected the host to track the configured cluster domain, got %q (want %q)", prx.Host, want)
+	}
+}
+
+func TestNewProxySQLProxy_KubernetesHeadCluster(t *testing.T) {
+	cluster := newTestCluster("clustera-child")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cluster.Conf.ProvOrchestratorCluster = "cluster.local"
+	cluster.Conf.ClusterHead = "clustera"
+
+	prx := NewProxySQLProxy(0, cluster, "proxysql1")
+	want := "proxysql1.clustera.svc.cluster.local"
+	if prx.Host != want {
+		t.Fatalf("expected the parent cluster's own name, got %q (want %q)", prx.Host, want)
+	}
+}
+
+// OpenSVC must keep its original, unfallback-ed shape exactly -- this fix
+// is Kubernetes-only, since OpenSVC doesn't share Kubernetes' CoreDNS
+// "cluster.local" default and never had this fallback.
+func TestNewProxySQLProxy_OpenSVCUnaffectedByKubernetesFallback(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	cluster.Conf.ProvOrchestratorCluster = "local"
+
+	prx := NewProxySQLProxy(0, cluster, "proxysql1")
+	want := "proxysql1.clustera.svc.local"
+	if prx.Host != want {
+		t.Fatalf("expected OpenSVC's raw, unfallback-ed suffix to be untouched, got %q (want %q)", prx.Host, want)
+	}
+}
+
 // --- Config bootstrap resilience: bounded remote fetch + persisted PVC
 // fallback ---
 //
@@ -2418,5 +3410,315 @@ func TestK8SDatabaseDeployment_TruncatedCLIDownloadDoesNotCorruptCachedCLI(t *te
 	got, err := os.ReadFile(tmpDir + "/init-out/replication-manager-cli")
 	if err != nil || string(got) != "old-good-cli-binary\n" {
 		t.Fatalf("expected the cached CLI to survive a truncated download untouched, got content %q, err %v", got, err)
+	}
+}
+
+// --- HAProxy K8s provisioning ---
+
+func newTestHaproxyProxy(cluster *Cluster) *fakeProxy {
+	return &fakeProxy{
+		name:      "haproxy1",
+		host:      "haproxy1",
+		port:      "1999",
+		proxyType: config.ConstProxyHaproxy,
+		writePort: 3306,
+		readPort:  3307,
+		cluster:   cluster,
+	}
+}
+
+func TestK8SProxyImage_HaproxyUsesProvProxHaproxyImg(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvProxHaproxyImg = "haproxytech/haproxy-alpine:2.4"
+	prx := newTestHaproxyProxy(cluster)
+
+	image, err := cluster.k8sProxyImage(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if image != "haproxytech/haproxy-alpine:2.4" {
+		t.Fatalf("expected the configured HAProxy image, got %q", image)
+	}
+}
+
+func TestK8SProxyContainerPorts_HaproxyExposesAdminWriteReadStat(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.HaproxyStatPort = 1988
+	prx := newTestHaproxyProxy(cluster)
+
+	ports, err := k8sProxyContainerPorts(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	want := map[string]int32{"admin": 1999, "write": 3306, "read": 3307, "stat": 1988}
+	if len(ports) != len(want) {
+		t.Fatalf("expected %d ports, got %d: %+v", len(want), len(ports), ports)
+	}
+	for _, p := range ports {
+		wp, ok := want[p.Name]
+		if !ok {
+			t.Fatalf("unexpected port name %q in %+v", p.Name, ports)
+		}
+		if p.ContainerPort != wp {
+			t.Fatalf("port %q: expected %d, got %d", p.Name, wp, p.ContainerPort)
+		}
+	}
+}
+
+func TestK8SProxyServicePorts_HaproxyMatchesContainerPorts(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.HaproxyStatPort = 1988
+	prx := newTestHaproxyProxy(cluster)
+
+	ports, err := k8sProxyServicePorts(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	want := map[string]int32{"admin": 1999, "write": 3306, "read": 3307, "stat": 1988}
+	if len(ports) != len(want) {
+		t.Fatalf("expected %d ports, got %d: %+v", len(want), len(ports), ports)
+	}
+	for _, p := range ports {
+		wp, ok := want[p.Name]
+		if !ok {
+			t.Fatalf("unexpected port name %q in %+v", p.Name, ports)
+		}
+		if p.Port != wp {
+			t.Fatalf("port %q: expected %d, got %d", p.Name, wp, p.Port)
+		}
+	}
+}
+
+func TestK8SProxyDeployment_HaproxyMountsConfDirSubPath(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := newTestHaproxyProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	container := dep.Spec.Template.Spec.Containers[0]
+	found := false
+	for _, m := range container.VolumeMounts {
+		if m.MountPath == "/usr/local/etc/haproxy" {
+			found = true
+			if m.SubPath != k8sHaproxyConfPersistSubPath {
+				t.Fatalf("expected subPath %q, got %q", k8sHaproxyConfPersistSubPath, m.SubPath)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected a /usr/local/etc/haproxy mount, got %+v", container.VolumeMounts)
+	}
+}
+
+func TestK8SProxyDeployment_HaproxyNoCommandOverride(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := newTestHaproxyProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	container := dep.Spec.Template.Spec.Containers[0]
+	if container.Command != nil {
+		t.Fatalf("expected no Command override for HAProxy (rely on the image's own entrypoint), got %+v", container.Command)
+	}
+}
+
+func TestK8SProxyDeployment_HaproxyExternalCheckModePlacesCheckScriptsAndUsesCheckConfig(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.HaproxyMode = "externalcheck"
+	prx := newTestHaproxyProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	container := dep.Spec.Template.Spec.Containers[0]
+	if len(container.Command) < 3 {
+		t.Fatalf("expected a sh -c command for haproxy-mode=externalcheck, got %+v", container.Command)
+	}
+	script := container.Command[2]
+	for _, want := range []string{
+		"cp /usr/local/etc/haproxy/checkmaster /usr/bin/checkmaster",
+		"cp /usr/local/etc/haproxy/checkslave /usr/bin/checkslave",
+		"chmod +x /usr/bin/checkmaster /usr/bin/checkslave",
+		"ulimit -Sn 1024",
+		"ulimit -Hn 1048576",
+		"exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("expected externalcheck-mode command to contain %q, got: %s", want, script)
+		}
+	}
+
+	// The copy into /usr/bin only succeeds if the container runs as root:
+	// haproxytech/haproxy-alpine defaults to root, but the official Debian
+	// haproxy:<tag> image drops to uid 99 via its own USER directive, which
+	// would otherwise leave /usr/bin unwritable and the copy a silent no-op.
+	if container.SecurityContext == nil || container.SecurityContext.RunAsUser == nil {
+		t.Fatalf("expected externalcheck-mode container to force RunAsUser=0, got SecurityContext=%+v", container.SecurityContext)
+	}
+	if got := *container.SecurityContext.RunAsUser; got != 0 {
+		t.Fatalf("expected externalcheck-mode container to force RunAsUser=0, got %d", got)
+	}
+}
+
+func TestK8SProxyDeployment_HaproxyRuntimeAPIModeDoesNotForceRoot(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.HaproxyMode = "runtimeapi"
+	prx := newTestHaproxyProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	container := dep.Spec.Template.Spec.Containers[0]
+	if container.SecurityContext != nil {
+		t.Fatalf("expected no SecurityContext override outside externalcheck mode, got %+v", container.SecurityContext)
+	}
+}
+
+func TestK8SProxyDeployment_HaproxyStandbyModeNoCommandOverride(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.HaproxyMode = "standby"
+	prx := newTestHaproxyProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	container := dep.Spec.Template.Spec.Containers[0]
+	if container.Command != nil {
+		t.Fatalf("expected no Command override for haproxy-mode=standby (rely on the image's own entrypoint against haproxy.cfg), got %+v", container.Command)
+	}
+	if container.SecurityContext != nil {
+		t.Fatalf("expected no SecurityContext override for haproxy-mode=standby, got %+v", container.SecurityContext)
+	}
+}
+
+func TestK8SProxyDeployment_HaproxyInitContainerAppliesConfigAndScripts(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	prx := newTestHaproxyProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if len(dep.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatalf("expected exactly one init container, got %d", len(dep.Spec.Template.Spec.InitContainers))
+	}
+	initContainer := dep.Spec.Template.Spec.InitContainers[0]
+	if len(initContainer.Command) < 3 {
+		t.Fatalf("expected a sh -c command, got %+v", initContainer.Command)
+	}
+	script := initContainer.Command[2]
+	for _, want := range []string{
+		"mkdir -p",
+		"/usr/local/etc/haproxy",
+		"cp -r /tmp/cfg/etc/haproxy/. /usr/local/etc/haproxy/",
+		"/tmp/cfg/init/checkmaster",
+		"/tmp/cfg/init/checkslave",
+		"chmod +x",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("expected init command to contain %q, got: %s", want, script)
+		}
+	}
+
+	for _, m := range initContainer.VolumeMounts {
+		if m.MountPath == "/usr/local/etc/haproxy" && m.SubPath != k8sHaproxyConfPersistSubPath {
+			t.Fatalf("expected init container's /usr/local/etc/haproxy mount to share the main container's subPath, got %q", m.SubPath)
+		}
+	}
+}
+
+func TestK8SProvisionProxy_HaproxyCreatesPVC(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := newTestHaproxyProxy(cluster)
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if _, err := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "haproxy1"), metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected a PVC to be created for HAProxy: %s", err)
+	}
+}
+
+func TestK8SUnprovisionProxy_HaproxyRetainsPVC(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newTestCluster("k8stest")
+	prx := newTestHaproxyProxy(cluster)
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error provisioning: %s", err)
+	}
+	if err := cluster.k8sUnprovisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error unprovisioning: %s", err)
+	}
+
+	if _, err := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "haproxy1"), metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected the PVC to survive unprovision: %s", err)
+	}
+}
+
+func TestNewHaproxyProxy_KubernetesFallsBackToClusterLocalWhenUnset(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cluster.Conf.ProvOrchestratorCluster = "" // never configured, same as the CLI default "local"
+
+	prx := NewHaproxyProxy(0, cluster, "haproxy1")
+	want := "haproxy1.clustera.svc.cluster.local"
+	if prx.Host != want {
+		t.Fatalf("expected %q, got %q", want, prx.Host)
+	}
+}
+
+func TestNewHaproxyProxy_KubernetesFallsBackWhenLiteralCLIDefault(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cluster.Conf.ProvOrchestratorCluster = "local"
+
+	prx := NewHaproxyProxy(0, cluster, "haproxy1")
+	want := "haproxy1.clustera.svc.cluster.local"
+	if prx.Host != want {
+		t.Fatalf("expected the CLI default \"local\" to fall back to cluster.local, got %q (want %q)", prx.Host, want)
+	}
+}
+
+func TestNewHaproxyProxy_KubernetesTracksConfiguredClusterDomain(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cluster.Conf.ProvOrchestratorCluster = "k8s.internal"
+
+	prx := NewHaproxyProxy(0, cluster, "haproxy1")
+	want := "haproxy1.clustera.svc.k8s.internal"
+	if prx.Host != want {
+		t.Fatalf("expected the host to track the configured cluster domain, got %q (want %q)", prx.Host, want)
+	}
+}
+
+func TestNewHaproxyProxy_OpenSVCUnaffectedByKubernetesFallback(t *testing.T) {
+	cluster := newTestCluster("clustera")
+	cluster.Conf.ProvNetCNI = true
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	cluster.Conf.ProvOrchestratorCluster = "local"
+
+	prx := NewHaproxyProxy(0, cluster, "haproxy1")
+	want := "haproxy1.clustera.svc.local"
+	if prx.Host != want {
+		t.Fatalf("expected OpenSVC's raw, unfallback-ed suffix to be untouched, got %q (want %q)", prx.Host, want)
 	}
 }

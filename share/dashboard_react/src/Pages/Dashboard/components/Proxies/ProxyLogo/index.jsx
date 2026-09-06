@@ -9,6 +9,8 @@ function ProxyLogo({ proxyName }) {
         <Image className={styles.image} src='/images/proxysql.png' />
       ) : proxyName === 'haproxy' ? (
         <Image className={styles.image} src='/images/haproxy.png' />
+      ) : proxyName === 'maxscale' ? (
+        <Image className={styles.image} src='/images/maxscaleproxy.png' />
       ) : (
         <Image className={styles.image} src='/images/genericproxy.svg' />
       )}
