@@ -587,7 +587,14 @@ function ChartMultiMetric({
       clearInterval(intervalId);
       abortControllerRef.current.abort();
     };
-  }, [metricPaths, context, isVisible]);
+    // Depend on the metric paths BY VALUE, not the array reference: the parent passes
+    // metricPaths={scopeAll([...])}, a NEW array on every render, so a reference dep
+    // re-ran this effect each render -> abort() killed the in-flight fetch (the
+    // "proxy error: context canceled" flood) -> it returned empty -> blank graph, with
+    // the AbortError swallowed so no console error. Keying on the joined string re-runs
+    // only when the paths actually change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metricPaths.join('|'), context, isVisible]);
 
   // Unified chart drawing effect that handles all triggers
   useEffect(() => {
