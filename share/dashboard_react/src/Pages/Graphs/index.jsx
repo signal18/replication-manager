@@ -53,10 +53,18 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   const carbonHosts = (selectedCluster?.servers || [])
     .map((s) => carbonHost(s.host))
     .filter(Boolean)
-  const hostGlob = carbonHosts.length
-    ? (carbonHosts.length === 1 ? carbonHosts[0] : `{${carbonHosts.join(',')}}`)
-    : '*'
-  const scope = (s) => (typeof s === 'string' ? s.replaceAll('mysql.*', 'mysql.' + hostGlob) : s)
+  // Scope a whole-fleet 'mysql.*.<metric>' to THIS cluster's servers by expanding it
+  // into comma-separated per-host args INSIDE the aggregation (maxSeries/averageSeries),
+  // so carbon returns ONE aggregated series. Do NOT use a '{a,b,c}' brace: go-graphite
+  // expands the brace into several SEPARATE series (one maxSeries per host), and
+  // ChartMultiMetric -- which parses one series per target -- then gets "Unexpected
+  // response format" and blanks the graph (#1756 regression). No servers known -> leave
+  // 'mysql.*' (whole fleet, still one series) rather than break the graph.
+  const scope = (s) => {
+    if (typeof s !== 'string' || !carbonHosts.length) return s
+    return s.replace(/mysql\.\*\.([A-Za-z0-9_]+)/g, (_, metric) =>
+      carbonHosts.map((h) => `mysql.${h}.${metric}`).join(','))
+  }
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
 
   useEffect(() => {
