@@ -59,7 +59,14 @@ Per **service** (a "server" is a DB service; a proxy/app is another kind of serv
   balanced unit (1 core / 4 GB / 40 GB / 1000 IOPS) at the locked ratio. Raising the plan
   **legitimately provisions the resources to the full tier** — the client reserved them
   *because he needs them*, so setting them to the reservation is the expected behaviour,
-  **not** an error. The one exception: **a resource made immutable (fixed by the admin)**
+  **not** an error. But it is a **claim**, and a claim must **not** be applied live at the
+  client's sole decision: it is **mediated** — agent-capacity availability, reclaim from
+  the overcommit **pool** (burst tenants yielding their best-effort slack), then an
+  orchestrated resize — never an instantaneous unilateral client write. A claim **can be
+  refused**, for any of a thousand reasons (no free agent capacity, the pool exhausted, a
+  quota/policy limit, the orchestrator declining or failing the resize, an immutable axis,
+  …): raising the plan is a *request*, not a guaranteed effect. The one exception:
+  **a resource made immutable (fixed by the admin)**
   is never touched by `+1/−1`; it stays at the admin-imposed value. The **bug** is the
   *reverse* dependency — the GUI *reconstructing* the DBU as `ceil(max(prov-db-*/ratio))`
   (configurator `DBUSlider`), which conflates the measured/provisioned size with the
