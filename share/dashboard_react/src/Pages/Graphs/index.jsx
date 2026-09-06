@@ -6,7 +6,9 @@ import Graphite from '../../components/Graphite'
 import Dropdown from '../../components/Dropdown'
 import ChartLatchTracing from '../../components/ChartLatchTracing';
 import ChartMultiMetric from '../../components/ChartMultiMetric';
+import ChartGroupedDBU from '../../components/ChartGroupedDBU';
 import ChartBarStack from '../../components/ChartBarStack';
+import { convertSize } from '../../utility/common';
 import RMIconButton from '../../components/RMIconButton'
 import { HiCog } from 'react-icons/hi'
 
@@ -61,6 +63,19 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   const scope = (s) =>
     typeof s === 'string' && clusterToken ? s.replaceAll('mysql.*', `mysql.*-${clusterToken}-*`) : s
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
+
+  // Plan ceiling in DBU, computed EXACTLY as the configurator does today
+  // (DBConfigs.jsx DBUSlider): the whole-DBU tier = ceil(max over axes of
+  // prov-db-*/standard-rate). 1 DBU = 1 core / 4 GB / 40 GB / 1000 IOPS. The graph
+  // only READS this value, so when the configurator later drives it via +1/-1 DBU
+  // instead of this derivation, the graph needs no change.
+  const cfg = selectedCluster?.config || {}
+  const planDbu = Math.max(1, Math.ceil(Math.max(
+    (parseFloat(cfg.provDbCpuCores) || 1),
+    (parseFloat(convertSize(cfg.provDbMemory, 'M', 'M')) || 4096) / 4096,
+    (parseFloat(convertSize(cfg.provDbDiskSize, 'G', 'G')) || 40) / 40,
+    (parseFloat(cfg.provDbDiskIops) || 1000) / 1000
+  )))
 
   useEffect(() => {
   if (typeof window === 'undefined' || !window.cubism) return;
@@ -188,18 +203,25 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           ])}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
-        <ChartMultiMetric
+        <ChartGroupedDBU
          context={context}
-         metricPaths={scopeAll([
-           'maxSeries(mysql.*.dbu)',
-           'maxSeries(mysql.*.dbu_cpu)',
-           'maxSeries(mysql.*.dbu_mem)',
-           'maxSeries(mysql.*.dbu_io)',
-           'maxSeries(mysql.*.dbu_disk)'
-         ])}
+         dbuPaths={{
+           cpu: scope('maxSeries(mysql.*.dbu_cpu)'),
+           mem: scope('maxSeries(mysql.*.dbu_mem)'),
+           io: scope('maxSeries(mysql.*.dbu_io)'),
+           disk: scope('maxSeries(mysql.*.dbu_disk)')
+         }}
+         servicePaths={{
+           cpu: scope('maxSeries(mysql.*.service_cpu)'),
+           mem: scope('maxSeries(mysql.*.service_mem)'),
+           io: scope('maxSeries(mysql.*.service_io)'),
+           disk: scope('maxSeries(mysql.*.service_disk)')
+         }}
+         pivotPath={scope('maxSeries(mysql.*.dbu)')}
+         planDbu={planDbu}
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
-         title="Consumed DBU (pivot + per-axis: cpu/mem/io/disk)"
+         title="Consumed DBU — real → DBU per axis (plan = configurator)"
        />
         <ChartMultiMetric
          context={context}
