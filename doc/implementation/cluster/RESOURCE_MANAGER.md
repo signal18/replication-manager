@@ -52,17 +52,18 @@ ratios, distinct output types.
 Per **service** (a "server" is a DB service; a proxy/app is another kind of service):
 - `consumed` — real, measured, pushed by the sensor. `nil` when a service is off or
   not configured to send metrics (never fabricated).
-- `plan` — the client's **technical contract**: a **client-set DBU ceiling** (whole DBU
-  units, ratio LOCKED — the client adjusts it by **+1 / −1 DBU**). It is **NOT derived
-  from `prov-db-*`** and it **never modifies them**. `prov-db-*` are the actual
-  provisioned resources — imposed by admin OR set by the client — that live **at or
-  below** this ceiling: the plan **caps** them, it does not compute them. ⚠️ No
-  client-set plan field exists yet (neither here nor on `marketplace-pricing`); when
-  added it mirrors the app credit model (`Cloud18ApplicationCredits*` →
-  `Cloud18DatabaseCredits*`; `prov-app-credit-planned` → the DB plan). Until then the
-  GUI *derives* a stand-in as `ceil(max(prov-db-*/ratio))` (configurator `DBUSlider`) —
-  a **known bug** to replace with explicit `AddDBU`/`RemoveDBU` on the dedicated value,
-  which must not touch `prov-db-*`.
+- `plan` — the client's **technical contract**: a **client-set DBU size** (whole DBU
+  units, ratio LOCKED — the client adjusts it by **+1 / −1 DBU**). A **+1 / −1 DBU DOES
+  modify the resources**: each step adds/removes one whole balanced unit (1 core / 4 GB /
+  40 GB / 1000 IOPS), so `prov-db-*` are **resized with it** at the locked ratio — with
+  ONE exception: **a resource made immutable (fixed by the admin)** is never touched by
+  `+1/−1`; it stays at the admin-imposed value. What is a **bug** is the *reverse*
+  dependency — the GUI *reconstructing* the DBU as `ceil(max(prov-db-*/ratio))`
+  (configurator `DBUSlider`): it breaks the moment one axis is edited or admin-fixed
+  alone, and it is what the explicit **`AddDBU`/`RemoveDBU`** must replace. ⚠️ No
+  dedicated plan field exists yet (neither here nor on `marketplace-pricing`); when added
+  it mirrors the app credit model (`Cloud18ApplicationCredits*` →
+  `Cloud18DatabaseCredits*`; `prov-app-credit-planned` → the DB plan).
 
 Aggregated views (`DBUAggregate`: per-axis + a global pivot = the binding axis):
 - `ConsumedByCluster` / `ConsumedByAgent`
@@ -129,9 +130,10 @@ Implemented: the substrate above, plus the per-axis **emission** of consumed met
 (`service_*` raw + `dbu_*` DBU translation, srv_snd.go) and the **GUI graph** that reads
 them — `ChartGroupedDBU` (grouped bars per axis: real conso → DBU, pivot max line, plan
 line = the configurator ceiling the GUI reads but does not own).
-Follow-ups: `SetPlan` wiring — the plan is a **client-set DBU ceiling** (whole units,
-capping `prov-db-*`, **NOT** derived from them; future dedicated `Cloud18DatabaseCredits*`
-vars mirroring the app credit model, driven by `AddDBU`/`RemoveDBU`), `SetServerAgent` /
+Follow-ups: `SetPlan` wiring — the plan is a **client-set DBU size** (whole units); a
+**+1/−1 DBU resizes `prov-db-*`** at the locked ratio (except admin-immutable resources)
+and is **NOT** derived from them; future dedicated `Cloud18DatabaseCredits*` vars mirror
+the app credit model, driven by `AddDBU`/`RemoveDBU`. Also `SetServerAgent` /
 `SetAgentCapacity` from physical monitoring (#1778), APU compute wiring for apps/proxies,
 per-cluster/agent/minute **emission** (the data), then the burst/overcommit **policy**
 and the heatmap.
