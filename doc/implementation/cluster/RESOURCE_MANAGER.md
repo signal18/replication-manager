@@ -52,18 +52,22 @@ ratios, distinct output types.
 Per **service** (a "server" is a DB service; a proxy/app is another kind of service):
 - `consumed` — real, measured, pushed by the sensor. `nil` when a service is off or
   not configured to send metrics (never fabricated).
-- `plan` — the client's **technical contract**: a **client-set DBU size** (whole DBU
-  units, ratio LOCKED — the client adjusts it by **+1 / −1 DBU**). A **+1 / −1 DBU DOES
-  modify the resources**: each step adds/removes one whole balanced unit (1 core / 4 GB /
-  40 GB / 1000 IOPS), so `prov-db-*` are **resized with it** at the locked ratio — with
-  ONE exception: **a resource made immutable (fixed by the admin)** is never touched by
-  `+1/−1`; it stays at the admin-imposed value. What is a **bug** is the *reverse*
-  dependency — the GUI *reconstructing* the DBU as `ceil(max(prov-db-*/ratio))`
-  (configurator `DBUSlider`): it breaks the moment one axis is edited or admin-fixed
-  alone, and it is what the explicit **`AddDBU`/`RemoveDBU`** must replace. ⚠️ No
-  dedicated plan field exists yet (neither here nor on `marketplace-pricing`); when added
-  it mirrors the app credit model (`Cloud18ApplicationCredits*` →
-  `Cloud18DatabaseCredits*`; `prov-app-credit-planned` → the DB plan).
+- `plan` — the client's **resource RESERVATION contract**, **not a recalculation**. It
+  is a **client-set DBU size** (whole DBU units, ratio LOCKED — adjusted by **+1 / −1
+  DBU**) and authoritative in its own right: the DBU is **never inferred back** from the
+  resources. A **+1 / −1 DBU resizes the resources**: each step adds/removes one whole
+  balanced unit (1 core / 4 GB / 40 GB / 1000 IOPS) at the locked ratio. Raising the plan
+  **legitimately provisions the resources to the full tier** — the client reserved them
+  *because he needs them*, so setting them to the reservation is the expected behaviour,
+  **not** an error. The one exception: **a resource made immutable (fixed by the admin)**
+  is never touched by `+1/−1`; it stays at the admin-imposed value. The **bug** is the
+  *reverse* dependency — the GUI *reconstructing* the DBU as `ceil(max(prov-db-*/ratio))`
+  (configurator `DBUSlider`), which conflates the measured/provisioned size with the
+  reservation contract and breaks the moment one axis is edited or admin-fixed alone; it
+  is what the explicit **`AddDBU`/`RemoveDBU`** must replace. ⚠️ No dedicated plan field
+  exists yet (neither here nor on `marketplace-pricing`); when added it mirrors the app
+  credit model (`Cloud18ApplicationCredits*` → `Cloud18DatabaseCredits*`;
+  `prov-app-credit-planned` → the DB plan).
 
 Aggregated views (`DBUAggregate`: per-axis + a global pivot = the binding axis):
 - `ConsumedByCluster` / `ConsumedByAgent`
