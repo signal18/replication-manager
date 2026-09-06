@@ -409,7 +409,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 		subdomain = k8sHeadlessServiceName
 		podLabels[k8sRoleLabel] = k8sRoleDB
 	}
-	return &appsv1.Deployment{
+	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: s.Name,
 		},
@@ -556,6 +556,47 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 				},
 			},
 		},
+	}
+	cluster.k8sAttachResourceSensorCgroup(dep, s.Name)
+	return dep
+}
+
+// k8sAttachResourceSensorCgroup wires the DBU resource sensor (dbjobs collect_dbu)
+// to the database's cgroup on Kubernetes. The sensor runs in the "<name>-dbjobs"
+// sidecar -- a separate container from the database -- so by default it can see
+// neither the DB process nor its cgroup. Sharing the pod PID namespace lets
+// collect_dbu find mariadbd/mysqld, and a read-only hostPath mount of the node
+// cgroupfs lets it read that process's cgroup v2 memory.current/cpu.stat/io.stat
+// (resolve_dbu_cgroup in dbjobs_new.sh). Gated on MonitoringSystemResources (the
+// off-switch, T14): it needs a hostPath and a shared PID namespace, which a
+// cluster's PodSecurity admission may refuse -- turning the flag off provisions
+// the pod without them.
+func (cluster *Cluster) k8sAttachResourceSensorCgroup(dep *appsv1.Deployment, name string) {
+	if !cluster.Conf.MonitoringSystemResources {
+		return
+	}
+	share := true
+	dep.Spec.Template.Spec.ShareProcessNamespace = &share
+
+	hostPathDir := apiv1.HostPathDirectory
+	dep.Spec.Template.Spec.Volumes = append(dep.Spec.Template.Spec.Volumes, apiv1.Volume{
+		Name: "host-cgroup",
+		VolumeSource: apiv1.VolumeSource{
+			HostPath: &apiv1.HostPathVolumeSource{
+				Path: "/sys/fs/cgroup",
+				Type: &hostPathDir,
+			},
+		},
+	})
+
+	jobs := name + "-dbjobs"
+	for i := range dep.Spec.Template.Spec.Containers {
+		if dep.Spec.Template.Spec.Containers[i].Name == jobs {
+			dep.Spec.Template.Spec.Containers[i].VolumeMounts = append(
+				dep.Spec.Template.Spec.Containers[i].VolumeMounts,
+				apiv1.VolumeMount{Name: "host-cgroup", MountPath: "/sys/fs/cgroup", ReadOnly: true},
+			)
+		}
 	}
 }
 

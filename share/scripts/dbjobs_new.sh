@@ -602,17 +602,42 @@ secret_login() {
     fi
 }
 
-# collect_dbu: thin DBU sensor. Reads the SERVICE cgroup (mounted read-only at
-# /svc-cgroup by the orchestrator provisioning -- OpenSVC binds the service pg
-# slice, K8s the pod cgroup, systemd the service slice; identical here) plus the
-# datadir df, and pushes the four raw per-axis maxima to repman, which computes
-# the DBU (normalise/pivot/binding) so the client DB CPU is never spent on it.
-# Runs once per dbjobs_new invocation (~60s launcher cadence). cpu/io are rates
-# vs the previous run's cumulative counters, persisted in a checkpoint. Fail-soft:
-# any missing piece just skips the push, never breaks the job run.
+# resolve_dbu_cgroup: locate the cgroup v2 directory whose memory.current /
+# cpu.stat / io.stat describe this database's resource use. Two sources,
+# orchestrator-agnostic:
+#   1. /svc-cgroup -- an explicit read-only bind the orchestrator provides
+#      (OpenSVC binds the service pg slice there). Preferred when present.
+#   2. Auto-discovery via the database process's own cgroup: find mariadbd/mysqld
+#      and read /proc/<pid>/cgroup (a single "0::<path>" line in cgroup v2), then
+#      /sys/fs/cgroup<path>. Works on-premise (the job runs on the host, so it
+#      sees the DB process and the host cgroupfs) and under Kubernetes when the
+#      pod shares its PID namespace and mounts the host cgroupfs.
+# Echoes the directory, or nothing when neither source is usable (caller skips).
+resolve_dbu_cgroup() {
+    if [[ -r /svc-cgroup/memory.current ]]; then
+        echo /svc-cgroup
+        return 0
+    fi
+    local pid sub
+    pid=$(pgrep -x mariadbd 2>/dev/null | head -1)
+    [[ -z "$pid" ]] && pid=$(pgrep -x mysqld 2>/dev/null | head -1)
+    [[ -n "$pid" ]] || return 0
+    sub=$(awk -F: '$1=="0"{print $3; exit}' "/proc/$pid/cgroup" 2>/dev/null)
+    [[ -n "$sub" && -r "/sys/fs/cgroup${sub}/memory.current" ]] && echo "/sys/fs/cgroup${sub}"
+}
+
+# collect_dbu: thin DBU sensor. Reads the database cgroup (see resolve_dbu_cgroup:
+# an orchestrator bind at /svc-cgroup, or the DB process's own cgroup discovered
+# via /proc) plus the datadir df, and pushes the four raw per-axis maxima to
+# repman, which computes the DBU (normalise/pivot/binding) so the client DB CPU
+# is never spent on it. Runs once per dbjobs_new invocation (~60s launcher
+# cadence). cpu/io are rates vs the previous run's cumulative counters, persisted
+# in a checkpoint. Fail-soft: any missing piece just skips the push, never breaks
+# the job run.
 collect_dbu() {
-    local cg="/svc-cgroup"
-    [[ -r "$cg/memory.current" ]] || return 0   # cgroup not mounted yet -> skip
+    local cg
+    cg=$(resolve_dbu_cgroup)
+    [[ -n "$cg" && -r "$cg/memory.current" ]] || return 0   # no readable cgroup -> skip
 
     local now_epoch mem cpu_usec io_ops disk
     now_epoch=$(date +%s)
