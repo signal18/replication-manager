@@ -160,6 +160,21 @@ the app credit model, driven by `AddDBU`/`RemoveDBU`. Also `SetServerAgent` /
 per-cluster/agent/minute **emission** (the data), then the burst/overcommit **policy**
 and the heatmap.
 
+## On-premise (first-class, not cloud18-only)
+
+The whole model applies **on-premise**, not only in the cloud18 marketplace. The technical
+core is identical — unit projection (DBU/APU), capacity monitoring, the mediated
+claim/resize, refund on the measured gap; **only the commercial envelope changes**:
+- **agent capacity** = the client's **own metal** (same physical-first monitoring);
+- the "price" is a **license quota**, not a marketplace €/unit — and **over-quota is
+  state + alert, NEVER a gate** on monitoring or on the running DB (F-laws);
+- the claim's dynamic resize runs through **on-prem drivers** (reuse the OpenSVC
+  zfs/lvm/snapshot drivers, or a client hook `prov-db-dynamic-resource-change-script`),
+  not a cloud orchestrator.
+
+So the DBU/APU contract, the claim, and the resize plugin must never assume the cloud18
+marketplace is present.
+
 ## Laws
 
 T7 (unified interface — capacity is orchestrator-agnostic), T16 (ratios/params in TOML
