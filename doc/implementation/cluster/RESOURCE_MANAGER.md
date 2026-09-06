@@ -34,6 +34,16 @@ and **configurable** (`SetProfileRatios`) — the product does not hard-lock the
 marketplace "lock" is a commercial policy, nothing is contracted outside these ratios.
 An axis with ratio 0 is excluded (never binds) — that is how Compute drops IOPS.
 
+**Network is a planned 5th axis, but NOT a cgroup axis.** cgroup v1 `net_cls`/`net_prio`
+only *classify/prioritise* packets (no counters), and cgroup v2 has **no network
+controller** at all (per-cgroup network accounting needs an eBPF `cgroup/skb` program).
+So network is read from the container's **network namespace** instead —
+`/proc/<pid>/net/dev` (rx/tx bytes & packets), the same source cAdvisor (K8s) and the
+OpenSVC collectors use — a distinct but equally cheap system-level read. A network axis
+would map to the marketplace `Cloud18InfraPublicBandwidth`. Kept in mind, **not wired**:
+the current axes are cpu/mem/io/disk (cgroup + statfs); adding network means a 5th axis
+sourced from the netns, not the cgroup.
+
 ## Two SEPARATE tracks (a DB is not an app)
 
 | | DB track | App track |
