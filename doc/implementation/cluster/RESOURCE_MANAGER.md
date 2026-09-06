@@ -65,7 +65,11 @@ Per **service** (a "server" is a DB service; a proxy/app is another kind of serv
   orchestrated resize — never an instantaneous unilateral client write. A claim **can be
   refused**, for any of a thousand reasons (no free agent capacity, the pool exhausted, a
   quota/policy limit, the orchestrator declining or failing the resize, an immutable axis,
-  …): raising the plan is a *request*, not a guaranteed effect. The one exception:
+  …): raising the plan is a *request*, not a guaranteed effect. The **first refusal level
+  is capacity — "no room"** — decided from the **global multi-cluster consumption view**
+  (`ConsumedByAgent` vs `UsableCeilingDBU` → `AgentSlackDBU`), the infra-wide picture only
+  repman can net. That global view is therefore not merely a dashboard: it **is** the first
+  gate of the claim. The one exception:
   **a resource made immutable (fixed by the admin)**
   is never touched by `+1/−1`; it stays at the admin-imposed value. The **bug** is the
   *reverse* dependency — the GUI *reconstructing* the DBU as `ceil(max(prov-db-*/ratio))`
