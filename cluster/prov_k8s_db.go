@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -570,11 +571,12 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 // It is applied ONLY if the cluster's admission accepts it: a copy of the
 // deployment with shareProcessNamespace is server-side dry-run first, so if
 // PodSecurity or a validating webhook would reject it the real deployment is left
-// untouched -- the pod still provisions and DBU falls back to the Metrics API.
-// Enabling the sensor can therefore never break a deployment. shareProcessNamespace
-// is pod-scoped (it never crosses the pod, so it does not affect inter-pod or
+// untouched -- the pod still provisions, and the system-resource DBU is simply
+// unavailable on that cluster (fail-soft, no degraded fallback). Enabling the
+// sensor can therefore never break a deployment. shareProcessNamespace is
+// pod-scoped (it never crosses the pod, so it does not affect inter-pod or
 // inter-namespace/tenant isolation). No-op unless monitoring-system-resources is set.
-func (cluster *Cluster) k8sTryEnableResourceSensor(client kubernetes.Interface, dep *appsv1.Deployment) {
+func (cluster *Cluster) k8sTryEnableResourceSensor(client kubernetes.Interface, dep *appsv1.Deployment, s *ServerMonitor) {
 	if !cluster.Conf.MonitoringSystemResources {
 		return
 	}
@@ -586,8 +588,12 @@ func (cluster *Cluster) k8sTryEnableResourceSensor(client kubernetes.Interface, 
 	probe.Name = dep.Name + "-dbuprobe"
 	probe.Spec.Template.Spec.ShareProcessNamespace = &share
 	if _, err := client.AppsV1().Deployments(cluster.Name).Create(context.TODO(), probe, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}}); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"DBU resource sensor: shareProcessNamespace not admitted for %s (%s); provisioning without it, DBU will use the Metrics API", dep.Name, err)
+		// Not a failure of provisioning -- the pod is created without the sensor.
+		// Surface it as a tracked STATE so the partner knows their Kubernetes is
+		// configured to refuse the secure sensor and can fix the namespace policy,
+		// rather than silently getting no DBU (the secure solution is available; it
+		// is the cluster parameter that must allow it).
+		cluster.SetState("WARN0212", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0212"], dep.Name, err), ErrFrom: "CONF", ServerUrl: s.URL})
 		return
 	}
 	dep.Spec.Template.Spec.ShareProcessNamespace = &share
@@ -661,7 +667,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	}
 	nodeHostnameLabel := cluster.k8sHostnameLabel(agent.HostName)
 	deployment := cluster.k8sDatabaseDeployment(s, port, nodeHostnameLabel)
-	cluster.k8sTryEnableResourceSensor(client, deployment)
+	cluster.k8sTryEnableResourceSensor(client, deployment, s)
 
 	// Create Deployment
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Creating Kubernetes deployment...")

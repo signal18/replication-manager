@@ -84,27 +84,31 @@ default. Two ways to close that gap, neither using `hostPath`:
   it does not touch inter-pod or inter-namespace isolation (namespace = tenant);
   it is applied only after a **server-side dry-run** confirms the cluster's
   admission (PodSecurity/webhooks) accepts it, so it can never break the pod.
-- **Metrics API fallback (`metrics.k8s.io`).** When the dry-run is refused,
-  repman queries the Metrics API (served by metrics-server) for the pod's CPU and
-  memory via the API server — zero pod-spec change, RBAC-controlled. It provides
-  only cpu+memory (no io), and requires metrics-server to be installed.
+When the dry-run is **refused**, the sensor stays off on that cluster (fail-soft,
+no degraded fallback) and repman raises a tracked state **WARN0212** on the
+server: the secure sensor exists, it is the cluster's namespace policy
+(PodSecurity) that must be changed to allow `shareProcessNamespace`. Surfacing it
+as a state — rather than silently collecting nothing — lets the operator fix the
+parameter; a reprovision then enables the sensor and clears the state.
 
 ## Why OpenSVC comes out ahead — summary
 
 | Property                              | OpenSVC        | On-premise      | Kubernetes                          |
 |---------------------------------------|----------------|-----------------|-------------------------------------|
-| What is measured                      | whole service  | DB process/slice| DB container (or pod, via metrics)  |
-| Mechanism                             | ro slice bind  | `/proc` on host | shared PID ns + `/proc`, or metrics |
+| What is measured                      | whole service  | DB process/slice| DB container                        |
+| Mechanism                             | ro slice bind  | `/proc` on host | shared PID ns + `/proc` (dry-run)   |
 | Shared PID namespace needed           | **no**         | no              | yes (for cgroup path)               |
 | Node filesystem access                | **none**       | host is the DB  | none                                |
-| `io.stat` available                   | **yes**        | yes             | often no / not via metrics          |
-| Admission can refuse it               | **no**         | n/a             | yes (dry-run guards it)             |
-| Runtime detection required            | **no**         | minimal         | yes (dry-run / metrics presence)    |
+| `io.stat` available                   | **yes**        | yes             | often no                            |
+| Admission can refuse it               | **no**         | n/a             | yes → WARN0212, dry-run guards it   |
+| Runtime detection required            | **no**         | minimal         | yes (dry-run)                       |
 
 OpenSVC's "a service is a cgroup slice" model matches the sensor's need exactly:
 one declarative, least-privilege, node-isolated bind yields the whole service's
 consumption with all four axes. The other orchestrators reach the same data only
-with extra machinery (process discovery, shared PID namespace with a dry-run
-guard, or an external metrics API) and usually a narrower result.
+with extra machinery (process discovery, or a dry-run-guarded shared PID
+namespace) and usually a narrower result; where a Kubernetes namespace policy
+refuses the shared PID namespace, the sensor stays off and repman raises WARN0212
+so the operator can allow it.
 
 Off-switch for all of it: `monitoring-system-resources` (T14).
