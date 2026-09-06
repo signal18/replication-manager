@@ -557,47 +557,42 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 			},
 		},
 	}
-	cluster.k8sAttachResourceSensorCgroup(dep, s.Name)
 	return dep
 }
 
-// k8sAttachResourceSensorCgroup wires the DBU resource sensor (dbjobs collect_dbu)
-// to the database's cgroup on Kubernetes. The sensor runs in the "<name>-dbjobs"
-// sidecar -- a separate container from the database -- so by default it can see
-// neither the DB process nor its cgroup. Sharing the pod PID namespace lets
-// collect_dbu find mariadbd/mysqld, and a read-only hostPath mount of the node
-// cgroupfs lets it read that process's cgroup v2 memory.current/cpu.stat/io.stat
-// (resolve_dbu_cgroup in dbjobs_new.sh). Gated on MonitoringSystemResources (the
-// off-switch, T14): it needs a hostPath and a shared PID namespace, which a
-// cluster's PodSecurity admission may refuse -- turning the flag off provisions
-// the pod without them.
-func (cluster *Cluster) k8sAttachResourceSensorCgroup(dep *appsv1.Deployment, name string) {
+// k8sTryEnableResourceSensor enables the DBU resource sensor's pod-spec
+// requirement -- a shared PID namespace, so the "-dbjobs" sidecar can read the
+// database container's own cgroup v2 memory.current/cpu.stat/io.stat through
+// /proc/<pid>/root/sys/fs/cgroup (the cgroup mount Kubernetes already provides in
+// the DB container; resolve_dbu_cgroup in dbjobs_new.sh). Deliberately NO
+// hostPath / node cgroupfs mount and NO hostPID: it stays inside the pod.
+//
+// It is applied ONLY if the cluster's admission accepts it: a copy of the
+// deployment with shareProcessNamespace is server-side dry-run first, so if
+// PodSecurity or a validating webhook would reject it the real deployment is left
+// untouched -- the pod still provisions and DBU falls back to the Metrics API.
+// Enabling the sensor can therefore never break a deployment. shareProcessNamespace
+// is pod-scoped (it never crosses the pod, so it does not affect inter-pod or
+// inter-namespace/tenant isolation). No-op unless monitoring-system-resources is set.
+func (cluster *Cluster) k8sTryEnableResourceSensor(client kubernetes.Interface, dep *appsv1.Deployment) {
 	if !cluster.Conf.MonitoringSystemResources {
 		return
 	}
 	share := true
-	dep.Spec.Template.Spec.ShareProcessNamespace = &share
-
-	hostPathDir := apiv1.HostPathDirectory
-	dep.Spec.Template.Spec.Volumes = append(dep.Spec.Template.Spec.Volumes, apiv1.Volume{
-		Name: "host-cgroup",
-		VolumeSource: apiv1.VolumeSource{
-			HostPath: &apiv1.HostPathVolumeSource{
-				Path: "/sys/fs/cgroup",
-				Type: &hostPathDir,
-			},
-		},
-	})
-
-	jobs := name + "-dbjobs"
-	for i := range dep.Spec.Template.Spec.Containers {
-		if dep.Spec.Template.Spec.Containers[i].Name == jobs {
-			dep.Spec.Template.Spec.Containers[i].VolumeMounts = append(
-				dep.Spec.Template.Spec.Containers[i].VolumeMounts,
-				apiv1.VolumeMount{Name: "host-cgroup", MountPath: "/sys/fs/cgroup", ReadOnly: true},
-			)
-		}
+	probe := dep.DeepCopy()
+	// Distinct name so a re-provision (deployment already exists) does not mask
+	// the admission result with an AlreadyExists error; PodSecurity is evaluated
+	// on the pod spec, not the name.
+	probe.Name = dep.Name + "-dbuprobe"
+	probe.Spec.Template.Spec.ShareProcessNamespace = &share
+	if _, err := client.AppsV1().Deployments(cluster.Name).Create(context.TODO(), probe, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}}); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"DBU resource sensor: shareProcessNamespace not admitted for %s (%s); provisioning without it, DBU will use the Metrics API", dep.Name, err)
+		return
 	}
+	dep.Spec.Template.Spec.ShareProcessNamespace = &share
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"DBU resource sensor: shareProcessNamespace admitted; enabled for %s", dep.Name)
 }
 
 func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
@@ -666,6 +661,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	}
 	nodeHostnameLabel := cluster.k8sHostnameLabel(agent.HostName)
 	deployment := cluster.k8sDatabaseDeployment(s, port, nodeHostnameLabel)
+	cluster.k8sTryEnableResourceSensor(client, deployment)
 
 	// Create Deployment
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Creating Kubernetes deployment...")

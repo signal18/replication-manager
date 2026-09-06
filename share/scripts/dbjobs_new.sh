@@ -618,12 +618,19 @@ resolve_dbu_cgroup() {
         echo /svc-cgroup
         return 0
     fi
-    local pid sub
+    local pid sub base
     pid=$(pgrep -x mariadbd 2>/dev/null | head -1)
     [[ -z "$pid" ]] && pid=$(pgrep -x mysqld 2>/dev/null | head -1)
     [[ -n "$pid" ]] || return 0
     sub=$(awk -F: '$1=="0"{print $3; exit}' "/proc/$pid/cgroup" 2>/dev/null)
-    [[ -n "$sub" && -r "/sys/fs/cgroup${sub}/memory.current" ]] && echo "/sys/fs/cgroup${sub}"
+    [[ -n "$sub" ]] || return 0
+    # Read through the DB process's own mount view first: this reaches the
+    # database container's cgroup under Kubernetes (via a shared PID namespace)
+    # AND the host cgroupfs on-premise (where root is the host). Fall back to the
+    # host cgroupfs path directly.
+    for base in "/proc/$pid/root/sys/fs/cgroup" "/sys/fs/cgroup"; do
+        [[ -r "${base}${sub}/memory.current" ]] && { echo "${base}${sub}"; return 0; }
+    done
 }
 
 # collect_dbu: thin DBU sensor. Reads the database cgroup (see resolve_dbu_cgroup:
