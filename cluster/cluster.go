@@ -1345,6 +1345,7 @@ func (cluster *Cluster) tickBody() {
 		cluster.CheckPluginRejectionStates()
 		cluster.StateProcessing()
 		cluster.CheckHasFailCertLoadP12()
+		cluster.CheckK8SResourceSensor()
 		cluster.trackTickGoroutine(cluster.GetSlowLogTable) // prevent blocking cycle
 	}
 }

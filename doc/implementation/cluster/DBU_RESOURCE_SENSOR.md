@@ -74,39 +74,43 @@ provisioning wiring.
 
 The `-dbjobs` sidecar is a **separate container** from the database, with its own
 cgroup and PID namespace, so it can see neither the DB process nor its cgroup by
-default. Two ways to close that gap, neither using `hostPath`:
+default. Kubernetes already mounts the database container's own cgroup v2 tree at
+its `/sys/fs/cgroup`; the only gap is that the sidecar cannot reach it. That is
+closed **without any `hostPath` / node access**:
 
-- **Shared PID namespace + `/proc/<pid>/root`.** With `shareProcessNamespace` the
-  sidecar sees `mariadbd`/`mysqld` and reads the **database container's own**
-  cgroup v2 mount (Kubernetes already mounts it at the container's
-  `/sys/fs/cgroup`) via `/proc/<pid>/root/sys/fs/cgroup`. No node access.
-  `shareProcessNamespace` is pod-scoped — it never crosses the pod boundary, so
-  it does not touch inter-pod or inter-namespace isolation (namespace = tenant);
-  it is applied only after a **server-side dry-run** confirms the cluster's
-  admission (PodSecurity/webhooks) accepts it, so it can never break the pod.
-When the dry-run is **refused**, the sensor stays off on that cluster (fail-soft,
-no degraded fallback) and repman raises a tracked state **WARN0212** on the
-server: the secure sensor exists, it is the cluster's namespace policy
-(PodSecurity) that must be changed to allow `shareProcessNamespace`. Surfacing it
-as a state — rather than silently collecting nothing — lets the operator fix the
-parameter; a reprovision then enables the sensor and clears the state.
+**Shared PID namespace + `/proc/<pid>/root`.** With `shareProcessNamespace` the
+sidecar sees `mariadbd`/`mysqld` and reads the database container's own cgroup via
+`/proc/<pid>/root/sys/fs/cgroup`. `shareProcessNamespace` is pod-scoped — it never
+crosses the pod boundary, so it does not touch inter-pod or inter-namespace
+isolation (namespace = tenant). Provisioning sets it; if the cluster's admission
+(PodSecurity/webhook) **forbids** it the `Create` returns `Forbidden` and is
+retried **without** it, so the database still provisions — the sensor is optional
+(Cloud18-managed clusters set the policy and never hit this).
+
+The monitor then **observes** the resulting Deployment (`CheckK8SResourceSensor`,
+slow cadence, `PreserveState` between reads): when `monitoring-system-resources`
+is on and a Deployment lacks `shareProcessNamespace`, it raises the tracked state
+**WARN0212** — the secure sensor exists, it is the namespace policy (PodSecurity)
+that must allow it. Deriving the state from the **observed Deployment** (not a
+stored flag) means it clears by itself once the policy is fixed and the server
+reprovisioned.
 
 ## Why OpenSVC comes out ahead — summary
 
 | Property                              | OpenSVC        | On-premise      | Kubernetes                          |
 |---------------------------------------|----------------|-----------------|-------------------------------------|
 | What is measured                      | whole service  | DB process/slice| DB container                        |
-| Mechanism                             | ro slice bind  | `/proc` on host | shared PID ns + `/proc` (dry-run)   |
+| Mechanism                             | ro slice bind  | `/proc` on host | shared PID ns + `/proc` (retry if forbidden) |
 | Shared PID namespace needed           | **no**         | no              | yes (for cgroup path)               |
 | Node filesystem access                | **none**       | host is the DB  | none                                |
 | `io.stat` available                   | **yes**        | yes             | often no                            |
-| Admission can refuse it               | **no**         | n/a             | yes → WARN0212, dry-run guards it   |
-| Runtime detection required            | **no**         | minimal         | yes (dry-run)                       |
+| Admission can refuse it               | **no**         | n/a             | yes → Create retried without it, WARN0212 |
+| Runtime detection required            | **no**         | minimal         | yes (observed Deployment)           |
 
 OpenSVC's "a service is a cgroup slice" model matches the sensor's need exactly:
 one declarative, least-privilege, node-isolated bind yields the whole service's
 consumption with all four axes. The other orchestrators reach the same data only
-with extra machinery (process discovery, or a dry-run-guarded shared PID
+with extra machinery (process discovery, or a retry-guarded shared PID
 namespace) and usually a narrower result; where a Kubernetes namespace policy
 refuses the shared PID namespace, the sensor stays off and repman raises WARN0212
 so the operator can allow it.

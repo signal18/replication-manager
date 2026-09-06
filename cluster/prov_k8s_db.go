@@ -561,44 +561,47 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 	return dep
 }
 
-// k8sTryEnableResourceSensor enables the DBU resource sensor's pod-spec
-// requirement -- a shared PID namespace, so the "-dbjobs" sidecar can read the
-// database container's own cgroup v2 memory.current/cpu.stat/io.stat through
-// /proc/<pid>/root/sys/fs/cgroup (the cgroup mount Kubernetes already provides in
-// the DB container; resolve_dbu_cgroup in dbjobs_new.sh). Deliberately NO
-// hostPath / node cgroupfs mount and NO hostPID: it stays inside the pod.
-//
-// It is applied ONLY if the cluster's admission accepts it: a copy of the
-// deployment with shareProcessNamespace is server-side dry-run first, so if
-// PodSecurity or a validating webhook would reject it the real deployment is left
-// untouched -- the pod still provisions, and the system-resource DBU is simply
-// unavailable on that cluster (fail-soft, no degraded fallback). Enabling the
-// sensor can therefore never break a deployment. shareProcessNamespace is
-// pod-scoped (it never crosses the pod, so it does not affect inter-pod or
-// inter-namespace/tenant isolation). No-op unless monitoring-system-resources is set.
-func (cluster *Cluster) k8sTryEnableResourceSensor(client kubernetes.Interface, dep *appsv1.Deployment, s *ServerMonitor) {
-	if !cluster.Conf.MonitoringSystemResources {
+// k8sResourceSensorCheckEveryNHeartbeats throttles the Deployment read behind
+// WARN0212 to a slow cadence; PreserveState keeps the state alive on the ticks in
+// between so it does not flap (pstates contract).
+const k8sResourceSensorCheckEveryNHeartbeats = 30
+
+// CheckK8SResourceSensor observes, from the Kubernetes API, whether the DBU
+// resource sensor can actually run: the database Deployment must carry
+// shareProcessNamespace (so the sidecar reads the DB cgroup via /proc/<pid>/root).
+// When monitoring-system-resources is on and a Deployment lacks it -- because the
+// namespace policy (PodSecurity) forbade it at provision, so provisioning fell
+// back without it -- raise WARN0212. Derived from the observed Deployment (not a
+// stored flag): the value only changes on a reprovision, and this re-reads it, so
+// the state clears by itself once the policy is fixed and the server reprovisioned.
+// Cluster-scoped, because the namespace policy applies to every server alike.
+func (cluster *Cluster) CheckK8SResourceSensor() {
+	if !cluster.Conf.MonitoringSystemResources || cluster.GetOrchestrator() != config.ConstOrchestratorKubernetes {
 		return
 	}
-	share := true
-	probe := dep.DeepCopy()
-	// Distinct name so a re-provision (deployment already exists) does not mask
-	// the admission result with an AlreadyExists error; PodSecurity is evaluated
-	// on the pod spec, not the name.
-	probe.Name = dep.Name + "-dbuprobe"
-	probe.Spec.Template.Spec.ShareProcessNamespace = &share
-	if _, err := client.AppsV1().Deployments(cluster.Name).Create(context.TODO(), probe, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}}); err != nil {
-		// Not a failure of provisioning -- the pod is created without the sensor.
-		// Surface it as a tracked STATE so the partner knows their Kubernetes is
-		// configured to refuse the secure sensor and can fix the namespace policy,
-		// rather than silently getting no DBU (the secure solution is available; it
-		// is the cluster parameter that must allow it).
-		cluster.SetState("WARN0212", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0212"], dep.Name, err), ErrFrom: "CONF", ServerUrl: s.URL})
+	// Slow cadence: only hit the API every N heartbeats, preserve in between.
+	if cluster.StateMachine.GetHeartbeats()%k8sResourceSensorCheckEveryNHeartbeats != 0 {
+		cluster.GetStateMachine().PreserveState("WARN0212")
 		return
 	}
-	dep.Spec.Template.Spec.ShareProcessNamespace = &share
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-		"DBU resource sensor: shareProcessNamespace admitted; enabled for %s", dep.Name)
+	client, err := cluster.K8SConnectAPI()
+	if err != nil {
+		cluster.GetStateMachine().PreserveState("WARN0212") // API unreachable: keep the last verdict
+		return
+	}
+	for _, s := range cluster.Servers {
+		if s == nil || !s.HasProvisionCookie() {
+			continue
+		}
+		dep, err := client.AppsV1().Deployments(cluster.Name).Get(context.TODO(), s.Name, metav1.GetOptions{})
+		if err != nil {
+			continue
+		}
+		if spn := dep.Spec.Template.Spec.ShareProcessNamespace; spn == nil || !*spn {
+			cluster.SetState("WARN0212", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0212"], cluster.Name), ErrFrom: "CONF"})
+			return // namespace policy is cluster-wide; one is enough
+		}
+	}
 }
 
 func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
@@ -667,11 +670,29 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	}
 	nodeHostnameLabel := cluster.k8sHostnameLabel(agent.HostName)
 	deployment := cluster.k8sDatabaseDeployment(s, port, nodeHostnameLabel)
-	cluster.k8sTryEnableResourceSensor(client, deployment, s)
+
+	// Enable the DBU resource sensor's pod requirement: a shared PID namespace so
+	// the "-dbjobs" sidecar reads the database container's own cgroup via
+	// /proc/<pid>/root (no hostPath, no node access). The sensor is optional, so
+	// if the cluster's admission (PodSecurity) forbids shareProcessNamespace the
+	// first Create is rejected -- retry without it so the database still
+	// provisions. The absence is then observed and surfaced as WARN0212 by the
+	// monitor. A Cloud18-managed cluster (we set the policy) admits it and never
+	// hits this fallback. See doc/implementation/cluster/DBU_RESOURCE_SENSOR.md.
+	sensorEnabled := cluster.Conf.MonitoringSystemResources
+	if sensorEnabled {
+		share := true
+		deployment.Spec.Template.Spec.ShareProcessNamespace = &share
+	}
 
 	// Create Deployment
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Creating Kubernetes deployment...")
 	result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
+	if sensorEnabled && apierrors.IsForbidden(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "shareProcessNamespace forbidden by admission for %s (%s); provisioning without the resource sensor", s.Name, err)
+		deployment.Spec.Template.Spec.ShareProcessNamespace = nil
+		result, err = deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
+	}
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot deploy Kubernetes deployment %s ", err)
 		cluster.errorChan <- err
