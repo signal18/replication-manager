@@ -169,6 +169,8 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 			h.Cpu_cores = val("cpu_cores").Int()
 			h.Cpu_freq = val("cpu_freq").Int()
 			h.Mem_bytes = val("mem_bytes").Int()
+			h.Os_name = val("os_name").String()
+			h.Os_kernel = val("os_kernel").String()
 		} else if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC v3 node property fetch failed for %s: %s\n", name, perr)
 		}
