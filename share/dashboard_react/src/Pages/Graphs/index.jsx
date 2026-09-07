@@ -134,6 +134,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           title='Threads running'
           yLabel='threads'
           logScale
+          logBase={2}
           cap={1024}
           windowSec={windowSec}
           refreshMs={refreshMs}

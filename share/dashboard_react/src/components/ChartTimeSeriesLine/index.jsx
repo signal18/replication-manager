@@ -14,6 +14,7 @@ function ChartTimeSeriesLine({
   targets = [],
   yLabel = '',
   logScale = false,
+  logBase = 10,
   cap = 0,
   height = 220,
   windowSec = 3600,
@@ -125,14 +126,24 @@ function ChartTimeSeriesLine({
     if (logScale) {
       // Fixed span [1, cap] (grows only if data exceeds the cap) -> the full dynamic range
       // is always visible even when the current load sits low.
-      y = d3.scaleLog().domain([1, Math.max(cap || 0, maxY, 10)]).range([chartH, 0]).clamp(true)
+      y = d3.scaleLog().base(logBase).domain([1, Math.max(cap || 0, maxY, logBase)]).range([chartH, 0]).clamp(true)
     } else {
       y = d3.scaleLinear().domain([0, Math.max(cap || 0, maxY) * 1.05 || 1]).range([chartH, 0])
     }
 
-    // Y grid + axis (SI-formatted: 1k / 1M / 1G ...)
+    // Y grid + axis. For a log scale we set EXPLICIT tick values at powers of the base
+    // (1,2,4,8,... for base 2 = natural thread steps; 1,10,100,... for base 10) so the
+    // axis stays clean instead of d3's crowded minor log ticks. Base 2 -> integers, else SI.
+    const yAxis = d3.axisLeft(y).tickSize(-width)
+    if (logScale) {
+      const powers = []
+      for (let v = 1; v <= y.domain()[1] * (1 + 1e-9); v *= logBase) powers.push(v)
+      yAxis.tickValues(powers).tickFormat(logBase === 2 ? d3.format('d') : d3.format('~s'))
+    } else {
+      yAxis.ticks(5).tickFormat(d3.format('~s'))
+    }
     g.append('g')
-      .call(d3.axisLeft(y).ticks(5, logScale ? '~s' : undefined).tickSize(-width).tickFormat(d3.format('~s')))
+      .call(yAxis)
       .call((gg) => gg.selectAll('.tick line').attr('stroke', gridColor))
       .call((gg) => gg.selectAll('text').attr('fill', textColor).attr('font-size', '9px'))
       .call((gg) => gg.select('.domain').attr('stroke', textColor))
