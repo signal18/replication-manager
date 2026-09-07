@@ -74,6 +74,9 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   // the CLUSTER total = per-server tier × the number of DB nodes (each node is
   // provisioned identically). 1 DBU = 1 core / 4 GB / 40 GB / 1000 IOPS.
   const cfg = selectedCluster?.config || {}
+  // The plan line is the cluster's DBU RESERVATION CONTRACT. Prefer the explicit
+  // prov-service-plan-dbu (the cluster-total plan the client sets); fall back to the
+  // derived per-server tier × db node count only when it isn't set.
   const dbNodeCount = selectedCluster?.dbServers?.length || selectedCluster?.servers?.length || 1
   const planDbuPerServer = Math.max(1, Math.ceil(Math.max(
     (parseFloat(cfg.provDbCpuCores) || 1),
@@ -81,7 +84,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
     (parseFloat(convertSize(cfg.provDbDiskSize, 'G', 'G')) || 40) / 40,
     (parseFloat(cfg.provDbDiskIops) || 1000) / 1000
   )))
-  const planDbu = planDbuPerServer * dbNodeCount
+  const planDbu = parseFloat(cfg.provServicePlanDbu) || (planDbuPerServer * dbNodeCount)
 
   useEffect(() => {
   if (typeof window === 'undefined' || !window.cubism) return;
