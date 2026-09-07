@@ -69,13 +69,19 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   // prov-db-*/standard-rate). 1 DBU = 1 core / 4 GB / 40 GB / 1000 IOPS. The graph
   // only READS this value, so when the configurator later drives it via +1/-1 DBU
   // instead of this derivation, the graph needs no change.
+  // ceil(max over axes of prov-db-*/standard-rate) = the per-SERVER DBU tier. The
+  // consumed bars are sumSeries across the cluster's servers, so the plan line must be
+  // the CLUSTER total = per-server tier × the number of DB nodes (each node is
+  // provisioned identically). 1 DBU = 1 core / 4 GB / 40 GB / 1000 IOPS.
   const cfg = selectedCluster?.config || {}
-  const planDbu = Math.max(1, Math.ceil(Math.max(
+  const dbNodeCount = selectedCluster?.dbServers?.length || selectedCluster?.servers?.length || 1
+  const planDbuPerServer = Math.max(1, Math.ceil(Math.max(
     (parseFloat(cfg.provDbCpuCores) || 1),
     (parseFloat(convertSize(cfg.provDbMemory, 'M', 'M')) || 4096) / 4096,
     (parseFloat(convertSize(cfg.provDbDiskSize, 'G', 'G')) || 40) / 40,
     (parseFloat(cfg.provDbDiskIops) || 1000) / 1000
   )))
+  const planDbu = planDbuPerServer * dbNodeCount
 
   useEffect(() => {
   if (typeof window === 'undefined' || !window.cubism) return;
