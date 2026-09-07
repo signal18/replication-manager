@@ -126,13 +126,12 @@ func (server *ServerMonitor) RawResourceForEmit() (cores, memBytes, iops, diskBy
 	return r.CpuMaxCores, float64(r.MemMaxBytes), r.IoMaxIops, float64(r.DiskMaxBytes)
 }
 
-// GetProvDbuPerNode returns the per-node DBU the cluster's current prov-db-* provisioning
-// maps to, computed by the ResourceManager -- the SINGLE ratio authority. The derivation
-// (ceil(max over axes of prov-db-*/ratio)) MUST NOT be re-done in the frontend; this is
-// what feeds Conf.ProvDbDbu (json provDbDbu) so the GUI just reads it. Parses the prov-db-*
-// config and projects via ComputeUsedDBU (Database ratios); returns ceil(pivot). 0 when no
-// manager is wired.
-func (cluster *Cluster) GetProvDbuPerNode() int {
+// GetProvDbuFromConfigPerNode returns the per-node DBU the cluster's current prov-db-* provisioning
+// maps to = max over axes of (prov-db-* / ratio), computed by the ResourceManager -- the
+// SINGLE ratio authority (MUST NOT be re-done in the frontend). It is the per-node term of
+// the plan materialization (GetProvDbuFromConfigPerNode × node count). Parses the prov-db-* config and
+// projects via ComputeUsedDBU (Database ratios); returns ceil(pivot). 0 when no manager is wired.
+func (cluster *Cluster) GetProvDbuFromConfigPerNode() int {
 	if cluster.resources == nil {
 		return 0
 	}
@@ -147,14 +146,14 @@ func (cluster *Cluster) GetProvDbuPerNode() int {
 
 // GetPlanDbu returns the cluster's EFFECTIVE plan DBU: the explicit
 // prov-service-plan-dbu reservation contract when set (> 0), else AUTO-computed =
-// per-node derived DBU (GetProvDbuPerNode) × the number of DB nodes. "Auto only when
+// per-node derived DBU (GetProvDbuFromConfigPerNode) × the number of DB nodes. "Auto only when
 // zero" -- a stored 0 means "let repman compute it". Single source used by the API and
 // the graphite emission.
 func (cluster *Cluster) GetPlanDbu() int {
 	if cluster.Conf.ProvServicePlanDbu > 0 {
 		return cluster.Conf.ProvServicePlanDbu
 	}
-	return cluster.GetProvDbuPerNode() * len(cluster.Servers)
+	return cluster.GetProvDbuFromConfigPerNode() * len(cluster.Servers)
 }
 
 // RestoreDBUConsumed reloads this server's last reading from the repman-side manager

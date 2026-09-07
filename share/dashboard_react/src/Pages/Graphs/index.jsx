@@ -64,10 +64,9 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
 
   const cfg = selectedCluster?.config || {}
-  // The plan line = the cluster's EFFECTIVE plan DBU, computed by repman
-  // (config.provClusterPlanDbu): explicit prov-service-plan-dbu when set, else AUTO =
-  // per-node DBU × node count. The GUI just READS it -- no ratios/derivation in JS.
-  const planDbu = parseInt(cfg.provClusterPlanDbu) || 1
+  // The plan line = prov-service-plan-dbu, a REAL config field repman materializes (sum of
+  // per-server DBU when the admin hasn't set it / on-premise). The GUI just READS it.
+  const planDbu = parseInt(cfg.provServicePlanDbu) || 1
 
   useEffect(() => {
   if (typeof window === 'undefined' || !window.cubism) return;

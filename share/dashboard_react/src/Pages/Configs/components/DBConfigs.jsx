@@ -409,12 +409,10 @@ function DBConfigs({ selectedCluster, user }) {
         <Flex direction='column' gap={4} w='100%'>
           <DBUSlider
             isDisabled={user?.grants['proxy-config-flag'] == false}
-            value={Math.ceil(Math.max(
-              (parseFloat(selectedCluster?.config?.provDbCpuCores) || 1),
-              (parseFloat(convertSize(selectedCluster?.config?.provDbMemory,"M","M")) || 4096) / 4096,
-              (parseFloat(convertSize(selectedCluster?.config?.provDbDiskSize,"G","G")) || 40) / 40,
-              (parseFloat(selectedCluster?.config?.provDbDiskIops) || 1000) / 1000
-            ))}
+            /* The DB plan in DBU = prov-service-plan-dbu, a REAL config field repman
+               materializes (sum of per-server DBU when unset). The GUI just READS it --
+               no ratio derivation in JS, no computed-only field. */
+            value={parseInt(selectedCluster?.config?.provServicePlanDbu) || 1}
             onChange={(dbu) => {
               const mem = dbu * 4096
               const disk = dbu * 40

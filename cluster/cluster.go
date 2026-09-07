@@ -1352,11 +1352,18 @@ func (cluster *Cluster) tickBody() {
 }
 
 func (cluster *Cluster) StateProcessing() {
-	// Keep the COMPUTED DBU fields fresh (single ratio authority; the GUI reads these
-	// instead of re-deriving in JS): per-node DBU, and the effective cluster plan
-	// (explicit prov-service-plan-dbu, else auto = per-node × node count).
-	cluster.Conf.ProvDbDbu = cluster.GetProvDbuPerNode()
-	cluster.Conf.ProvClusterPlanDbu = cluster.GetPlanDbu()
+	// Materialize the DB plan when the admin hasn't set it (prov-service-plan-dbu == 0, the
+	// default) OR on an on-premise/local orchestrator (no marketplace contract sets it there):
+	// compute it = max(prov-db-* in DBU) × node count (per-node DBU × DB nodes) and SET it.
+	// prov-service-plan-dbu is then a REAL, always-populated config field that propagates to
+	// every serialization -- the GUI just READS it, never re-derives ratios in JS.
+	if len(cluster.Servers) > 0 {
+		orch := cluster.GetOrchestrator()
+		onPremise := orch == config.ConstOrchestratorOnPremise || orch == config.ConstOrchestratorLocalhost || orch == ""
+		if cluster.Conf.ProvServicePlanDbu == 0 || onPremise {
+			cluster.Conf.ProvServicePlanDbu = cluster.GetProvDbuFromConfigPerNode() * len(cluster.Servers)
+		}
+	}
 	if !cluster.StateMachine.IsInFailover() {
 		// trigger action on resolving states
 		cstates := cluster.StateMachine.GetResolvedStates()
