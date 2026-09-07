@@ -385,14 +385,28 @@ type globalResourcesAxis struct {
 // expose no disk/iops/network). The binding axis is the SCARCEST (min); usable =
 // capacity x quota%; slack = usable - consumed. This is the claim's first gate.
 type globalResourcesResponse struct {
-	QuotaPct    float64               `json:"quotaPct"`
-	Agents      int                   `json:"agents"`
-	Axes        []globalResourcesAxis `json:"axes"`
-	CapacityDBU float64               `json:"capacityDbu"`
-	BindingAxis string                `json:"bindingAxis"`
-	UsableDBU   float64               `json:"usableDbu"`
-	ConsumedDBU float64               `json:"consumedDbu"`
-	SlackDBU    float64               `json:"slackDbu"`
+	QuotaPct    float64                  `json:"quotaPct"`
+	Agents      int                      `json:"agents"`
+	Axes        []globalResourcesAxis    `json:"axes"`
+	CapacityDBU float64                  `json:"capacityDbu"`
+	BindingAxis string                   `json:"bindingAxis"`
+	UsableDBU   float64                  `json:"usableDbu"`
+	ConsumedDBU float64                  `json:"consumedDbu"`
+	SlackDBU    float64                  `json:"slackDbu"`
+	Clusters    []globalResourcesCluster `json:"clusters"`
+}
+
+// globalResourcesCluster is one cluster's consumed DBU -- the per-cluster breakdown that
+// stacks up to the infra consumed (for the stacked-by-cluster chart).
+type globalResourcesCluster struct {
+	Cluster string  `json:"cluster"`
+	Dbu     float64 `json:"dbu"` // real consumed pivot (max axis) -- the cluster's share of infra DBU
+	DbuCpu  float64 `json:"dbuCpu"`
+	DbuMem  float64 `json:"dbuMem"`
+	DbuIo   float64 `json:"dbuIo"`
+	DbuDisk float64 `json:"dbuDisk"`
+	PlanDbu float64 `json:"planDbu"` // the cluster's DBU reservation contract (prov-service-plan-dbu)
+	Servers int     `json:"servers"`
 }
 
 // handlerMuxGlobalResources returns the ResourceManager infra-wide capacity-vs-consumed
@@ -466,6 +480,21 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 	}
 	consumed := rm.ConsumedInfra()
 
+	// Per-cluster consumed breakdown (stacks up to the infra consumed).
+	var perCluster []globalResourcesCluster
+	for _, cl := range clusters {
+		a := rm.ConsumedByCluster(cl.Name)
+		plan := float64(cl.Conf.ProvServicePlanDbu)
+		if a.Servers == 0 && a.Dbu == 0 && plan == 0 {
+			continue
+		}
+		perCluster = append(perCluster, globalResourcesCluster{
+			Cluster: cl.Name, Dbu: a.Dbu, DbuCpu: a.DbuCpu, DbuMem: a.DbuMem,
+			DbuIo: a.DbuIo, DbuDisk: a.DbuDisk, PlanDbu: plan, Servers: a.Servers,
+		})
+	}
+	sort.Slice(perCluster, func(i, j int) bool { return perCluster[i].PlanDbu > perCluster[j].PlanDbu })
+
 	resp := globalResourcesResponse{
 		QuotaPct:    quota,
 		Agents:      len(seen),
@@ -474,6 +503,7 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 		UsableDBU:   usable,
 		ConsumedDBU: consumed.Dbu,
 		SlackDBU:    usable - consumed.Dbu,
+		Clusters:    perCluster,
 		Axes: []globalResourcesAxis{
 			{Axis: "cpu", CapacityRaw: cores, Unit: "cores", Source: srcCpu, CapacityDBU: cpuDBU, ConsumedDBU: consumed.DbuCpu},
 			{Axis: "mem", CapacityRaw: memMB, Unit: "MB", Source: srcMem, CapacityDBU: memDBU, ConsumedDBU: consumed.DbuMem},
