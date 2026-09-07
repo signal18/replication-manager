@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -191,7 +190,6 @@ func (collector *Collector) getNodeSystemProperties(nodename string) ([]byte, er
 	defer cancel()
 	resp, err := client.GetNodeSystemProperty(ctx, apiv3.InPathNodeName(nodename), collector.RequestCloserV3())
 	if err != nil {
-		os.WriteFile("/tmp/om3prop_err_"+nodename+".txt", []byte(err.Error()), 0644) // TEMP DEBUG
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -199,7 +197,6 @@ func (collector *Collector) getNodeSystemProperties(nodename string) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	os.WriteFile("/tmp/om3prop_"+nodename+".json", []byte(fmt.Sprintf("status=%d\n%s", resp.StatusCode, string(b))), 0644) // TEMP DEBUG
 	if !handleSuccessGroup(resp.StatusCode) {
 		return nil, &StatusError{StatusCode: resp.StatusCode, Body: string(b)}
 	}
