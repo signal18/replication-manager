@@ -25,7 +25,7 @@ per workload is the **ratio**, not just the price:
 | Profile (unit) | cpu | mem | disk | iops |
 |---|---|---|---|---|
 | **Database** (DBU) | 1 | 4 GB | 40 GB | **1000** (locked) |
-| **Compute/App** (APU) | 1 | 4 GB | **10 GB** | **— (none)** |
+| **Compute/App** (APU) | 1 | **2 GB** | **10 GB** | **— (none)** |
 | **Storage** (backup) | low | low | high | low (TBD) |
 
 A database is **not** an app (proxy/phpMyAdmin): little disk, no IOPS lock. Ratios are

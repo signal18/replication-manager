@@ -113,10 +113,12 @@ func NewResourceManager() *ResourceManager {
 		appAgent:    make(map[AppKey]string),
 		capacity:    make(map[string]*AgentCapacity),
 		// Default per-profile ratios (the operator's rules; configurable, not locked).
-		// Values from CLOUD18_CREDIT_MODEL.md; Storage TBD (zero = not yet defined).
+		// DB from CLOUD18_CREDIT_MODEL.md; Compute mem = 2 GB (NOT the doc's 4 GB): with
+		// refund, contractualising 4 GB for a light app/proxy is wasteful -- reserve
+		// modest, real consumption + refund handle the rest. Storage TBD (zero = undefined).
 		ratios: map[WorkloadProfile]UnitRatios{
 			ProfileDatabase: {CoresPerUnit: 1.0, MemMBPerUnit: 4096.0, DiskGBPerUnit: 40.0, IopsPerUnit: 1000.0},
-			ProfileCompute:  {CoresPerUnit: 1.0, MemMBPerUnit: 4096.0, DiskGBPerUnit: 10.0, IopsPerUnit: 0.0}, // no IOPS
+			ProfileCompute:  {CoresPerUnit: 1.0, MemMBPerUnit: 2048.0, DiskGBPerUnit: 10.0, IopsPerUnit: 0.0}, // 2GB, no IOPS
 			ProfileStorage:  {},                                                                               // TBD
 		},
 	}
