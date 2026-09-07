@@ -206,18 +206,18 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         <ChartGroupedDBU
          context={context}
          dbuPaths={{
-           cpu: scope('maxSeries(mysql.*.dbu_cpu)'),
-           mem: scope('maxSeries(mysql.*.dbu_mem)'),
-           io: scope('maxSeries(mysql.*.dbu_io)'),
-           disk: scope('maxSeries(mysql.*.dbu_disk)')
+           cpu: scope('sumSeries(mysql.*.dbu_cpu)'),
+           mem: scope('sumSeries(mysql.*.dbu_mem)'),
+           io: scope('sumSeries(mysql.*.dbu_io)'),
+           disk: scope('sumSeries(mysql.*.dbu_disk)')
          }}
          servicePaths={{
-           cpu: scope('maxSeries(mysql.*.service_cpu)'),
-           mem: scope('maxSeries(mysql.*.service_mem)'),
-           io: scope('maxSeries(mysql.*.service_io)'),
-           disk: scope('maxSeries(mysql.*.service_disk)')
+           cpu: scope('sumSeries(mysql.*.service_cpu)'),
+           mem: scope('sumSeries(mysql.*.service_mem)'),
+           io: scope('sumSeries(mysql.*.service_io)'),
+           disk: scope('sumSeries(mysql.*.service_disk)')
          }}
-         pivotPath={scope('maxSeries(mysql.*.dbu)')}
+         pivotPath={scope('sumSeries(mysql.*.dbu)')}
          planDbu={planDbu}
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
