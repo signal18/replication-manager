@@ -49,6 +49,7 @@ import QueryRules from '../QueryRules'
 import PeerClusterList from '../PeerClusterList'
 import ClustersGlobalSettings from '../ClustersGlobalSettings'
 import GlobalItems, { GlobalLogs } from '../GlobalItems'
+import ResourceManager from '../ResourceManager'
 import AccordionComponent from '../../components/AccordionComponent'
 import Billing from '../Billing'
 import NewClusterModal from '../../components/Modals/NewClusterModal'
@@ -113,6 +114,7 @@ function Home() {
       globalTabsRef.current.push('Settings')
     }
     globalTabsRef.current.push('Dashboard')
+    globalTabsRef.current.push('Resources')
   }, [monitor?.config?.cloud18, monitor?.config?.cloud18DisablePeers, monitor?.config?.cloud18DisableForSale, monitor?.config?.cloud18SubscriptionPlan, loggedUser?.User, isSSOUser])
 
   // For SSO users: if local clusters are empty after loading, advance to Peer,
@@ -436,7 +438,8 @@ function Home() {
                   ...(globalTabsRef.current.includes('Settings')
                     ? [<ClustersGlobalSettings user={loggedUser} />]
                     : []),
-                  <GlobalItems />
+                  <GlobalItems />,
+                  <ResourceManager />
                 ])
           ]}
         />
