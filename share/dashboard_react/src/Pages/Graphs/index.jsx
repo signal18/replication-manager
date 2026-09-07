@@ -175,6 +175,36 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           targets={[{ target: scope('sumSeries(mysql.*.mysql_slave_status_seconds_behind_master)'), label: 'Delay' }]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
+        <ChartGroupedDBU
+         context={context}
+         dbuPaths={{
+           cpu: scope('sumSeries(mysql.*.dbu_cpu)'),
+           mem: scope('sumSeries(mysql.*.dbu_mem)'),
+           io: scope('sumSeries(mysql.*.dbu_io)'),
+           disk: scope('sumSeries(mysql.*.dbu_disk)')
+         }}
+         servicePaths={{
+           cpu: scope('sumSeries(mysql.*.service_cpu)'),
+           mem: scope('sumSeries(mysql.*.service_mem)'),
+           io: scope('sumSeries(mysql.*.service_io)'),
+           disk: scope('sumSeries(mysql.*.service_disk)')
+         }}
+         pivotPath={scope('sumSeries(mysql.*.dbu)')}
+         planDbu={planDbu}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Consumed DBU — real → DBU per axis (plan = configurator)"
+       />
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
+           'averageSeries(mysql.*.mysql_global_variables_innodb_log_file_size)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="InnoDB Redo Log Status"
+       />
         <ChartLatchTracing
           context={context}
           title={'Mutex'}
@@ -214,36 +244,6 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           ])}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
-        <ChartGroupedDBU
-         context={context}
-         dbuPaths={{
-           cpu: scope('sumSeries(mysql.*.dbu_cpu)'),
-           mem: scope('sumSeries(mysql.*.dbu_mem)'),
-           io: scope('sumSeries(mysql.*.dbu_io)'),
-           disk: scope('sumSeries(mysql.*.dbu_disk)')
-         }}
-         servicePaths={{
-           cpu: scope('sumSeries(mysql.*.service_cpu)'),
-           mem: scope('sumSeries(mysql.*.service_mem)'),
-           io: scope('sumSeries(mysql.*.service_io)'),
-           disk: scope('sumSeries(mysql.*.service_disk)')
-         }}
-         pivotPath={scope('sumSeries(mysql.*.dbu)')}
-         planDbu={planDbu}
-         height={300}
-         className={`${styles.graph} ${styles.multiMetricGraph}`}
-         title="Consumed DBU — real → DBU per axis (plan = configurator)"
-       />
-        <ChartMultiMetric
-         context={context}
-         metricPaths={scopeAll([
-           'maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
-           'averageSeries(mysql.*.mysql_global_variables_innodb_log_file_size)'
-         ])}
-         height={300}
-         className={`${styles.graph} ${styles.multiMetricGraph}`}
-         title="InnoDB Redo Log Status"
-       />
        <Graphite
          chartRef={ihlRef}
          size={selectedHour.value}
