@@ -703,6 +703,7 @@ type Config struct {
 	ProvServicePlanApu                        int                          `mapstructure:"prov-service-plan-apu" toml:"prov-service-plan-apu" json:"provServicePlanApu"`
 	ProvServicePlanBpu                        int                          `mapstructure:"prov-service-plan-bpu" toml:"prov-service-plan-bpu" json:"provServicePlanBpu"`
 	ProvServicePlanBku                        int                          `mapstructure:"prov-service-plan-bku" toml:"prov-service-plan-bku" json:"provServicePlanBku"`
+	ResourceManagerInfraQuotaPct              float64                      `scope:"server" mapstructure:"resource-manager-infra-quota-pct" toml:"resource-manager-infra-quota-pct" json:"resourceManagerInfraQuotaPct"`
 	ProvDbBootstrapScript                     string                       `mapstructure:"prov-db-bootstrap-script" toml:"prov-db-bootstrap-script" json:"provDbBootstrapScript"`
 	ProvProxyBootstrapScript                  string                       `mapstructure:"prov-proxy-bootstrap-script" toml:"prov-proxy-bootstrap-script" json:"provProxyBootstrapScript"`
 	ProvDbCleanupScript                       string                       `mapstructure:"prov-db-cleanup-script" toml:"prov-db-cleanup-script" json:"provDbCleanupScript"`

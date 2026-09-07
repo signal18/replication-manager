@@ -1086,6 +1086,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.ProvServicePlanApu, "prov-service-plan-apu", 4, "Service plan in Application Units (APU reservation contract; 1 APU = 1 core / 2GB / 10GB, no IOPS). Default 4 = 2 proxies + phpMyAdmin + 1 client app.")
 	flags.IntVar(&conf.ProvServicePlanBpu, "prov-service-plan-bpu", 1, "Service plan in Public-network/Bandwidth Units (BPU reservation contract; public network capacity, maps to cloud18-infra-public-bandwidth). Default 1.")
 	flags.IntVar(&conf.ProvServicePlanBku, "prov-service-plan-bku", 1, "Service plan in Backup Units (BKU reservation contract; storage/backup profile, disk-dominant). Default 1.")
+	flags.Float64Var(&conf.ResourceManagerInfraQuotaPct, "resource-manager-infra-quota-pct", 80, "Share of the physical metal (0-100) repman's ResourceManager may allocate, protecting non-repman workloads on the agent. Default 80.")
 	flags.BoolVar(&conf.ProvSerialized, "prov-serialized", false, "Disable concurrent provisionning")
 	flags.StringVar(&conf.ProvDBClientBasedir, "prov-db-client-basedir", "/usr/bin", "Path to database client binary")
 	flags.StringVar(&conf.ProvDBBinaryBasedir, "prov-db-binary-basedir", "/usr/local/mysql/bin", "Path to mysqld binary")
@@ -3471,6 +3472,9 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	if repman.resourceManager == nil {
 		repman.resourceManager = cluster.NewResourceManager()
 	}
+	// Global policy: the share of the metal repman may allocate (protects non-repman
+	// workloads). resource-manager-* family (repman-side / on-prem first-class, NOT cloud18).
+	repman.resourceManager.SetQuotaPct(repman.Conf.ResourceManagerInfraQuotaPct)
 	repman.currentCluster.SetResourceManager(repman.resourceManager)
 
 	if repman.currentCluster.Conf.SecretKey == nil {

@@ -110,7 +110,7 @@ Aggregated views (`DBUAggregate`: per-axis + a global pivot = the binding axis):
 Per **agent** (physical, capping — an agent is NOT a contract):
 - `AgentCapacity` — monitored + modifiable per axis (cores/mem/disk from node stats;
   iops from a multi-core sysbench calibration, #1779). `UsableCeilingDBU` = metal ×
-  `cap%` (`cloud18-infra-repman-quota-pct`), which protects non-repman workloads.
+  `cap%` (`resource-manager-infra-quota-pct`), which protects non-repman workloads.
 
 ## Restore on reload (the graph flap)
 

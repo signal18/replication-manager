@@ -40,7 +40,7 @@ type ResourceManager struct {
 
 	// Shared physical side (both DB servers and apps are placed on agents).
 	capacity map[string]*AgentCapacity // per agent (node) name
-	quotaPct float64                   // cloud18-infra-repman-quota-pct: share of the metal repman may take
+	quotaPct float64                   // resource-manager-infra-quota-pct: share of the metal repman may take
 
 	// Unit ratios per workload profile -- owned by the manager, because it is the
 	// point where native resources converge and get projected into units. A database
@@ -481,7 +481,7 @@ func (m *ResourceManager) GetAgentCapacity(agent string) *AgentCapacity {
 }
 
 // SetQuotaPct sets the share of the metal repman is allowed to take (0 < pct <= 100),
-// from cloud18-infra-repman-quota-pct. It is a global policy, not per-agent physics.
+// from resource-manager-infra-quota-pct. It is a global policy, not per-agent physics.
 func (m *ResourceManager) SetQuotaPct(pct float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
