@@ -553,6 +553,14 @@ function ChartLatchTracing({
     }
   }, [theme, themeColors.background]);
 
+  // Hide the panel entirely when the backing metrics don't exist (e.g. a MariaDB version
+  // whose collector doesn't expose these perf_schema wait_synch counters) -- otherwise it
+  // renders as a big empty white block. It reappears on its own once real data is present.
+  const hasData = Object.values(metricsData).some(
+    (m) => Array.isArray(m?.data) && m.data.length > 0
+  );
+  if (!isVisible || !hasData) return null;
+
   return (
     <Box
       className={`${styles.container} ${className || ''} ${theme === 'dark' ? styles.darkContainer : ''}`}
