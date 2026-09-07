@@ -436,7 +436,10 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 			}
 			seen[key] = true
 			sumCores += float64(a.CpuCores)
-			sumMemMB += float64(a.MemBytes) / (1024 * 1024)
+			// NB: cluster.Agent.MemBytes is populated in MB (OpenSVC asset + on-prem
+			// /proc/meminfo/1024 both store MB), despite the "Bytes" name -- so it is
+			// already the MB we want, no division.
+			sumMemMB += float64(a.MemBytes)
 		}
 	}
 
