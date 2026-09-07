@@ -59,7 +59,11 @@ function ChartTimeSeriesLine({
             if (!res.ok) return null
             const text = await res.text()
             if (!text.trim()) return null
-            const parts = text.split('|')
+            // raw format is one "name,start,end,step|v,v,..." line per series; a wildcard
+            // target that wasn't aggregated returns several -- take the first rather than blank.
+            const rawLine = text.trim().split('\n').find((l) => l.includes('|'))
+            if (!rawLine) return null
+            const parts = rawLine.split('|')
             if (parts.length !== 2) return null
             const ti = parts[0].split(',')
             const start = parseInt(ti[1])

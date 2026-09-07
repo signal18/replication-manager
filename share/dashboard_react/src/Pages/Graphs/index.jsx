@@ -127,7 +127,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           cap={1e6}
           windowSec={windowSec}
           refreshMs={refreshMs}
-          targets={[{ target: scope('perSecond(mysql.*.mysql_global_status_queries)'), label: 'Qps' }]}
+          targets={[{ target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_queries))'), label: 'Qps' }]}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
         <ChartTimeSeriesLine
@@ -148,8 +148,8 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           windowSec={windowSec}
           refreshMs={refreshMs}
           targets={[
-            { target: scope('perSecond(mysql.*.mysql_global_status_bytes_received)'), label: 'In' },
-            { target: scope('perSecond(mysql.*.mysql_global_status_bytes_sent)'), label: 'Out' }
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_bytes_received))'), label: 'In' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_bytes_sent))'), label: 'Out' }
           ]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
