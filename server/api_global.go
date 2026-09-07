@@ -367,6 +367,127 @@ type globalMetricsResponse struct {
 	Process globalMetricsProcessInfo `json:"process"`
 }
 
+// --- Global ResourceManager view (infra-wide capacity vs consumed) ----------
+
+// globalResourcesAxis is one resource axis in the infra-wide capacity picture.
+type globalResourcesAxis struct {
+	Axis        string  `json:"axis"`        // cpu|mem|io|disk|network
+	CapacityRaw float64 `json:"capacityRaw"` // native units
+	Unit        string  `json:"unit"`        // cores|MB|iops|GB|Mbps
+	Source      string  `json:"source"`      // config|agents
+	CapacityDBU float64 `json:"capacityDbu"` // projected to DBU (0 for network)
+	ConsumedDBU float64 `json:"consumedDbu"` // consumed on this axis (0 for network)
+}
+
+// globalResourcesResponse is the payload for GET /api/global/resources: the
+// ResourceManager infra-wide view. Capacity per axis comes from resource-manager-infra-*
+// overrides when set (>0), else from the summed physical agents (cpu/mem only -- agents
+// expose no disk/iops/network). The binding axis is the SCARCEST (min); usable =
+// capacity x quota%; slack = usable - consumed. This is the claim's first gate.
+type globalResourcesResponse struct {
+	QuotaPct    float64               `json:"quotaPct"`
+	Agents      int                   `json:"agents"`
+	Axes        []globalResourcesAxis `json:"axes"`
+	CapacityDBU float64               `json:"capacityDbu"`
+	BindingAxis string                `json:"bindingAxis"`
+	UsableDBU   float64               `json:"usableDbu"`
+	ConsumedDBU float64               `json:"consumedDbu"`
+	SlackDBU    float64               `json:"slackDbu"`
+}
+
+// handlerMuxGlobalResources returns the ResourceManager infra-wide capacity-vs-consumed
+// view -- the global picture that is the claim's first gate ("is there room?").
+//
+// @Summary Global ResourceManager view
+// @Tags Global
+// @Produce json
+// @Success 200 {object} globalResourcesResponse
+// @Router /api/global/resources [get]
+func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if !repman.UserHasGlobalGrant(r, config.GrantGlobalAdminShow) {
+		http.Error(w, "Forbidden: requires "+config.GrantGlobalAdminShow+" grant", http.StatusForbidden)
+		return
+	}
+	rm := repman.resourceManager
+	if rm == nil {
+		http.Error(w, "ResourceManager not ready", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Sum unique physical agents (cpu cores + mem) across all clusters -- there is no
+	// repman-wide agent list, so we union each cluster's Agents, deduped by host.
+	repman.Lock()
+	clusters := make([]*cluster.Cluster, 0, len(repman.Clusters))
+	for _, cl := range repman.Clusters {
+		clusters = append(clusters, cl)
+	}
+	repman.Unlock()
+	seen := map[string]bool{}
+	var sumCores, sumMemMB float64
+	for _, cl := range clusters {
+		for _, a := range cl.Agents {
+			key := a.HostName
+			if key == "" {
+				key = a.Id
+			}
+			if key == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			sumCores += float64(a.CpuCores)
+			sumMemMB += float64(a.MemBytes) / (1024 * 1024)
+		}
+	}
+
+	// config override wins when > 0, else the summed agents (agents lack disk/iops/net).
+	pick := func(override, agents float64) (float64, string) {
+		if override > 0 {
+			return override, "config"
+		}
+		return agents, "agents"
+	}
+	cores, srcCpu := pick(repman.Conf.ResourceManagerInfraCpuCores, sumCores)
+	memMB, srcMem := pick(repman.Conf.ResourceManagerInfraMemoryMB, sumMemMB)
+	diskGB, srcDisk := pick(repman.Conf.ResourceManagerInfraDiskGB, 0)
+	iops, srcIo := pick(repman.Conf.ResourceManagerInfraIops, 0)
+	netMbps, srcNet := pick(repman.Conf.ResourceManagerInfraNetworkMbps, 0)
+
+	cpuDBU, memDBU, ioDBU, diskDBU, bindingDBU, bindingAxis := rm.CapacityDBUView(cluster.AgentCapacity{
+		Cores: cores, MemMB: memMB, DiskGB: diskGB, Iops: iops,
+	})
+	quota := rm.QuotaPct()
+	usable := bindingDBU
+	if quota > 0 {
+		usable = bindingDBU * quota / 100.0
+	}
+	consumed := rm.ConsumedInfra()
+
+	resp := globalResourcesResponse{
+		QuotaPct:    quota,
+		Agents:      len(seen),
+		CapacityDBU: bindingDBU,
+		BindingAxis: bindingAxis,
+		UsableDBU:   usable,
+		ConsumedDBU: consumed.Dbu,
+		SlackDBU:    usable - consumed.Dbu,
+		Axes: []globalResourcesAxis{
+			{Axis: "cpu", CapacityRaw: cores, Unit: "cores", Source: srcCpu, CapacityDBU: cpuDBU, ConsumedDBU: consumed.DbuCpu},
+			{Axis: "mem", CapacityRaw: memMB, Unit: "MB", Source: srcMem, CapacityDBU: memDBU, ConsumedDBU: consumed.DbuMem},
+			{Axis: "io", CapacityRaw: iops, Unit: "iops", Source: srcIo, CapacityDBU: ioDBU, ConsumedDBU: consumed.DbuIo},
+			{Axis: "disk", CapacityRaw: diskGB, Unit: "GB", Source: srcDisk, CapacityDBU: diskDBU, ConsumedDBU: consumed.DbuDisk},
+			{Axis: "network", CapacityRaw: netMbps, Unit: "Mbps", Source: srcNet, CapacityDBU: 0, ConsumedDBU: 0},
+		},
+	}
+	out, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(out)
+}
+
 // handlerMuxGlobalMetrics returns host and process telemetry for the running repman instance.
 //
 // @Summary Get global metrics

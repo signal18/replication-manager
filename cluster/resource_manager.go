@@ -528,3 +528,53 @@ func (m *ResourceManager) UsableCeilingDBU(agent string) (float64, bool) {
 	}
 	return metal * m.quotaPct / 100.0, true
 }
+
+// QuotaPct returns the configured share of the metal repman may allocate (0 = unset,
+// meaning the full metal is usable). From resource-manager-infra-quota-pct.
+func (m *ResourceManager) QuotaPct() float64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.quotaPct
+}
+
+// CapacityDBUView projects a raw infra capacity (native units, already assembled by the
+// caller from summed agents + config overrides) into DBU per axis, and returns the
+// BINDING axis = the SCARCEST one (min) -- capacity is bounded by its smallest axis,
+// unlike consumed which pivots on the largest. An axis with ratio 0 or value 0 is
+// excluded from the binding. Exported so the global GUI can pass an infra-wide total,
+// not just a stored per-agent AgentCapacity.
+func (m *ResourceManager) CapacityDBUView(c AgentCapacity) (cpu, mem, io, disk, binding float64, bindingAxis string) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	r := m.ratios[ProfileDatabase]
+	cpu = unitDiv(c.Cores, r.CoresPerUnit)
+	mem = unitDiv(c.MemMB, r.MemMBPerUnit)
+	io = unitDiv(c.Iops, r.IopsPerUnit)
+	disk = unitDiv(c.DiskGB, r.DiskGBPerUnit)
+	binding = -1
+	consider := func(v, ratio float64, axis string) {
+		if ratio > 0 && v > 0 && (binding < 0 || v < binding) {
+			binding, bindingAxis = v, axis
+		}
+	}
+	consider(cpu, r.CoresPerUnit, "cpu")
+	consider(mem, r.MemMBPerUnit, "mem")
+	consider(io, r.IopsPerUnit, "io")
+	consider(disk, r.DiskGBPerUnit, "disk")
+	if binding < 0 {
+		binding = 0
+	}
+	return
+}
+
+// ConsumedInfra sums the real consumed DBU across EVERY server the manager knows (all
+// clusters) -- the infra-wide "how full are we" in DBU, per axis + the binding pivot.
+func (m *ResourceManager) ConsumedInfra() DBUAggregate {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	readings := make([]*DBUReading, 0, len(m.consumed))
+	for _, r := range m.consumed {
+		readings = append(readings, r)
+	}
+	return sumReadings(readings)
+}
