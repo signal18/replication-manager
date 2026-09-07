@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import * as d3 from 'd3'
-import { Box } from '@chakra-ui/react'
+import { Box, Text } from '@chakra-ui/react'
 import { useTheme } from '../../ThemeProvider'
 
 // Live time-series line chart (d3) matching the sysbench BenchCompareModal LineChart look,
@@ -105,11 +105,6 @@ function ChartTimeSeriesLine({
     const width = Math.max(180, w) - margin.left - margin.right
     const chartH = height - margin.top - margin.bottom
 
-    svg.append('text')
-      .attr('x', margin.left).attr('y', 14)
-      .attr('fill', textColor).attr('font-size', '12px').attr('font-weight', 'bold')
-      .text(title || '')
-
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
 
     const valid = series.filter((s) => s.data && s.data.some((d) => d.y != null))
@@ -197,6 +192,11 @@ function ChartTimeSeriesLine({
 
   return (
     <Box className={className} ref={wrapRef} sx={{ width: '100%' }}>
+      {title && (
+        <Text fontSize='sm' fontWeight='bold' px={2} pt={1}>
+          {title}
+        </Text>
+      )}
       <svg ref={svgRef} width={w} height={height} />
     </Box>
   )
