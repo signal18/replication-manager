@@ -409,9 +409,12 @@ function DBConfigs({ selectedCluster, user }) {
         <Flex direction='column' gap={4} w='100%'>
           <DBUSlider
             isDisabled={user?.grants['proxy-config-flag'] == false}
-            /* DBU is computed by repman (the single ratio authority) and exposed as
-               config.provDbDbu -- READ it, never re-derive the ratios in JS. */
-            value={parseInt(selectedCluster?.config?.provDbDbu) || 1}
+            value={Math.ceil(Math.max(
+              (parseFloat(selectedCluster?.config?.provDbCpuCores) || 1),
+              (parseFloat(convertSize(selectedCluster?.config?.provDbMemory,"M","M")) || 4096) / 4096,
+              (parseFloat(convertSize(selectedCluster?.config?.provDbDiskSize,"G","G")) || 40) / 40,
+              (parseFloat(selectedCluster?.config?.provDbDiskIops) || 1000) / 1000
+            ))}
             onChange={(dbu) => {
               const mem = dbu * 4096
               const disk = dbu * 40
