@@ -7,7 +7,8 @@ import Dropdown from '../../components/Dropdown'
 import ChartLatchTracing from '../../components/ChartLatchTracing';
 import ChartMultiMetric from '../../components/ChartMultiMetric';
 import ChartGroupedDBU from '../../components/ChartGroupedDBU';
-import ChartBarStack from '../../components/ChartBarStack';
+import ChartBarStack from '../../components/ChartBarStack'
+import ChartTimeSeriesLine from '../../components/ChartTimeSeriesLine';
 import RMIconButton from '../../components/RMIconButton'
 import { HiCog } from 'react-icons/hi'
 
@@ -68,6 +69,11 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   // per-server DBU when the admin hasn't set it / on-premise). The GUI just READS it.
   const planDbu = parseInt(cfg.provServicePlanDbu) || 1
 
+  // Window (seconds) and refresh cadence for the d3 line charts, from the same
+  // hour/step selectors that drive the cubism graphs.
+  const windowSec = Math.max(60, Math.round((selectedHour.value * selectedStep.value) / 1000))
+  const refreshMs = selectedStep.value
+
   useEffect(() => {
   if (typeof window === 'undefined' || !window.cubism) return;
 
@@ -114,35 +120,37 @@ function Graphs({ selectedCluster, onOpenSettings }) {
       </Flex>
       { context && (
       <Flex className={styles.graphs}>
-        <Graphite
-          chartRef={qpsRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
-          context={context}
-          title={'Qps'}
-          target={scope('perSecond(mysql.*.mysql_global_status_queries)')}
+        <ChartTimeSeriesLine
+          title='Qps'
+          yLabel='queries/s'
+          logScale
+          cap={1e6}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[{ target: scope('perSecond(mysql.*.mysql_global_status_queries)'), label: 'Qps' }]}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
-        <Graphite
-          chartRef={coreRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
-          context={context}
-          title={'Threads'}
-          target={scope('sumSeries(mysql.*.mysql_global_status_threads_running)')}
-          maxExtent={1024}
+        <ChartTimeSeriesLine
+          title='Threads running'
+          yLabel='threads'
+          logScale
+          cap={1024}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[{ target: scope('sumSeries(mysql.*.mysql_global_status_threads_running)'), label: 'Threads' }]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
-        <Graphite
-          chartRef={netRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
-          context={context}
-          title={'BytesIn'}
-          target={scope('perSecond(mysql.*.mysql_global_status_bytes_received)')}
-          title2={'BytesOut'}
-          target2={scope('perSecond(mysql.*.mysql_global_status_bytes_sent)')}
-          maxExtent={100000}
+        <ChartTimeSeriesLine
+          title='Network in / out'
+          yLabel='bytes/s'
+          logScale
+          cap={100e9}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('perSecond(mysql.*.mysql_global_status_bytes_received)'), label: 'In' },
+            { target: scope('perSecond(mysql.*.mysql_global_status_bytes_sent)'), label: 'Out' }
+          ]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
         <Graphite
