@@ -8,7 +8,6 @@ import ChartLatchTracing from '../../components/ChartLatchTracing';
 import ChartMultiMetric from '../../components/ChartMultiMetric';
 import ChartGroupedDBU from '../../components/ChartGroupedDBU';
 import ChartBarStack from '../../components/ChartBarStack';
-import { convertSize } from '../../utility/common';
 import RMIconButton from '../../components/RMIconButton'
 import { HiCog } from 'react-icons/hi'
 
@@ -64,26 +63,13 @@ function Graphs({ selectedCluster, onOpenSettings }) {
     typeof s === 'string' && clusterToken ? s.replaceAll('mysql.*', `mysql.*-${clusterToken}-*`) : s
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
 
-  // Plan ceiling in DBU, computed EXACTLY as the configurator does today
-  // (DBConfigs.jsx DBUSlider): the whole-DBU tier = ceil(max over axes of
-  // prov-db-*/standard-rate). 1 DBU = 1 core / 4 GB / 40 GB / 1000 IOPS. The graph
-  // only READS this value, so when the configurator later drives it via +1/-1 DBU
-  // instead of this derivation, the graph needs no change.
-  // ceil(max over axes of prov-db-*/standard-rate) = the per-SERVER DBU tier. The
-  // consumed bars are sumSeries across the cluster's servers, so the plan line must be
-  // the CLUSTER total = per-server tier × the number of DB nodes (each node is
-  // provisioned identically). 1 DBU = 1 core / 4 GB / 40 GB / 1000 IOPS.
   const cfg = selectedCluster?.config || {}
   // The plan line is the cluster's DBU RESERVATION CONTRACT. Prefer the explicit
   // prov-service-plan-dbu (the cluster-total plan the client sets); fall back to the
-  // derived per-server tier × db node count only when it isn't set.
+  // per-node DBU (computed by repman -> config.provDbDbu, NOT re-derived in JS) × db node
+  // count only when the contract isn't set.
   const dbNodeCount = selectedCluster?.dbServers?.length || selectedCluster?.servers?.length || 1
-  const planDbuPerServer = Math.max(1, Math.ceil(Math.max(
-    (parseFloat(cfg.provDbCpuCores) || 1),
-    (parseFloat(convertSize(cfg.provDbMemory, 'M', 'M')) || 4096) / 4096,
-    (parseFloat(convertSize(cfg.provDbDiskSize, 'G', 'G')) || 40) / 40,
-    (parseFloat(cfg.provDbDiskIops) || 1000) / 1000
-  )))
+  const planDbuPerServer = parseInt(cfg.provDbDbu) || 1
   const planDbu = parseFloat(cfg.provServicePlanDbu) || (planDbuPerServer * dbNodeCount)
 
   useEffect(() => {

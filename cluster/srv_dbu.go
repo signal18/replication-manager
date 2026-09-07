@@ -4,7 +4,13 @@
 
 package cluster
 
-import "time"
+import (
+	"math"
+	"strconv"
+	"time"
+
+	"github.com/signal18/replication-manager/config"
+)
 
 // DBUReading is one period's consumed-DBU picture for a server. DBU is one unit
 // projection over native resources; the conversion RATIOS (1 DBU = 1 core / 4 GB /
@@ -118,6 +124,25 @@ func (server *ServerMonitor) RawResourceForEmit() (cores, memBytes, iops, diskBy
 		return 0, 0, 0, 0
 	}
 	return r.CpuMaxCores, float64(r.MemMaxBytes), r.IoMaxIops, float64(r.DiskMaxBytes)
+}
+
+// GetProvDbuPerNode returns the per-node DBU the cluster's current prov-db-* provisioning
+// maps to, computed by the ResourceManager -- the SINGLE ratio authority. The derivation
+// (ceil(max over axes of prov-db-*/ratio)) MUST NOT be re-done in the frontend; this is
+// what feeds Conf.ProvDbDbu (json provDbDbu) so the GUI just reads it. Parses the prov-db-*
+// config and projects via ComputeUsedDBU (Database ratios); returns ceil(pivot). 0 when no
+// manager is wired.
+func (cluster *Cluster) GetProvDbuPerNode() int {
+	if cluster.resources == nil {
+		return 0
+	}
+	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+	iops, _ := strconv.ParseFloat(cluster.Conf.ProvIops, 64)
+	memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+	diskGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
+	now := time.Now()
+	r := cluster.resources.ComputeUsedDBU(now, now, int64(memMB)*1024*1024, cores, iops, int64(diskGB)*1024*1024*1024)
+	return int(math.Ceil(r.Dbu))
 }
 
 // RestoreDBUConsumed reloads this server's last reading from the repman-side manager

@@ -1352,6 +1352,9 @@ func (cluster *Cluster) tickBody() {
 }
 
 func (cluster *Cluster) StateProcessing() {
+	// Keep the COMPUTED per-node DBU fresh (single ratio authority; the GUI reads
+	// Conf.ProvDbDbu instead of re-deriving it in JS).
+	cluster.Conf.ProvDbDbu = cluster.GetProvDbuPerNode()
 	if !cluster.StateMachine.IsInFailover() {
 		// trigger action on resolving states
 		cstates := cluster.StateMachine.GetResolvedStates()
