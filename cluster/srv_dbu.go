@@ -9,7 +9,7 @@ import "time"
 // DBUReading is one period's consumed-DBU picture for a server. DBU is one unit
 // projection over native resources; the conversion RATIOS (1 DBU = 1 core / 4 GB /
 // 40 GB / 1000 IOPS by default) live on the ResourceManager -- the point where
-// resources converge -- so ComputeDBU is a method there, not a package function. The raw per-axis
+// resources converge -- so ComputeUsedDBU is a method there, not a package function. The raw per-axis
 // maxima are measured at the SYSTEM level (cgroup + statfs) by a thin sensor in
 // the DB container and pushed here; repman does the DBU semantics (normalisation,
 // pivot, binding) so the client's DB CPU is never spent on it. All the "max"
@@ -67,7 +67,7 @@ func (server *ServerMonitor) IngestDBUMaxes(start, end time.Time, memMaxBytes in
 	if cluster == nil || cluster.resources == nil {
 		return DBUReading{}
 	}
-	r := cluster.resources.ComputeDBU(start, end, memMaxBytes, cpuMaxCores, ioMaxIops, diskMaxBytes)
+	r := cluster.resources.ComputeUsedDBU(start, end, memMaxBytes, cpuMaxCores, ioMaxIops, diskMaxBytes)
 	server.SetDBUConsumed(r)
 	return r
 }

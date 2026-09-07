@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestComputeDBUFromMaxes_BindingPerAxis(t *testing.T) {
+func TestComputeUsedDBUFromMaxes_BindingPerAxis(t *testing.T) {
 	now := time.Now()
 	const GB = 1024 * 1024 * 1024
 	const MB = 1024 * 1024
@@ -35,7 +35,7 @@ func TestComputeDBUFromMaxes_BindingPerAxis(t *testing.T) {
 	rm := NewResourceManager()
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			r := rm.ComputeDBU(now, now.Add(time.Minute), c.memBytes, c.cpuCores, c.ioIops, c.diskBytes)
+			r := rm.ComputeUsedDBU(now, now.Add(time.Minute), c.memBytes, c.cpuCores, c.ioIops, c.diskBytes)
 			if r.Binding != c.wantBinding {
 				t.Fatalf("binding = %q, want %q (dbu cpu=%.2f mem=%.2f io=%.2f disk=%.2f)",
 					r.Binding, c.wantBinding, r.DbuCpu, r.DbuMem, r.DbuIo, r.DbuDisk)

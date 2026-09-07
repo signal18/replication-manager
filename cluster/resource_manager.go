@@ -139,12 +139,12 @@ func (m *ResourceManager) Ratios(profile WorkloadProfile) UnitRatios {
 	return m.ratios[profile]
 }
 
-// ComputeDBU turns the four raw per-axis maxima (native units, as pushed by the
+// ComputeUsedDBU turns the four raw per-axis maxima (native units, as pushed by the
 // sensor, or a plan's provisioned allocation) into a DBUReading, using THIS manager's
 // ratios: normalise each axis to DBU, pivot = the max, Binding = the argmax. Pure
 // over the manager's ratios -- no I/O, no client cost. This is the single conversion
 // path; the API handler forwards raw maxima and lets the manager own the ratios.
-func (m *ResourceManager) ComputeDBU(start, end time.Time, memMaxBytes int64, cpuMaxCores, ioMaxIops float64, diskMaxBytes int64) DBUReading {
+func (m *ResourceManager) ComputeUsedDBU(start, end time.Time, memMaxBytes int64, cpuMaxCores, ioMaxIops float64, diskMaxBytes int64) DBUReading {
 	m.mu.RLock()
 	ratios := m.ratios[ProfileDatabase]
 	m.mu.RUnlock()
@@ -235,10 +235,10 @@ type APUReading struct {
 	Binding string  `json:"binding"` // "cpu" | "mem" | "disk" (no io -- Compute has no IOPS lock)
 }
 
-// ComputeAPU projects an app's native maxima into APU using the Compute profile
+// ComputeUsedAPU projects an app's native maxima into APU using the Compute profile
 // ratios (no IOPS axis). Reuses the shared normalisation -- same math, different
 // ratios, distinct output type.
-func (m *ResourceManager) ComputeAPU(start, end time.Time, memMaxBytes int64, cpuMaxCores float64, diskMaxBytes int64) APUReading {
+func (m *ResourceManager) ComputeUsedAPU(start, end time.Time, memMaxBytes int64, cpuMaxCores float64, diskMaxBytes int64) APUReading {
 	m.mu.RLock()
 	ratios := m.ratios[ProfileCompute]
 	m.mu.RUnlock()
@@ -408,7 +408,7 @@ func (m *ResourceManager) ConsumedByAgent(agent string) DBUAggregate {
 
 // SetPlan records a server's PLANNED (allocated) DBU -- the client's technical
 // contract, derived from its prov-db-* config (service plan). Unlike consumed it is
-// always known (no sensor). Build the reading with ComputeDBU over the
+// always known (no sensor). Build the reading with ComputeUsedDBU over the
 // provisioned cores/mem/disk/iops so the normalisation stays in one place (T2).
 func (m *ResourceManager) SetPlan(k ResourceKey, r *DBUReading) {
 	m.mu.Lock()

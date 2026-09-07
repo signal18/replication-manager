@@ -125,10 +125,10 @@ side-effect, not the manager's reason to exist.
 ## The conversion entry point
 
 The sensor push handler (`server/api_database.go`) stays dumb: it forwards raw maxima
-to `ServerMonitor.IngestDBUMaxes`, which calls `ResourceManager.ComputeDBU` (Database
+to `ServerMonitor.IngestDBUMaxes`, which calls `ResourceManager.ComputeUsedDBU` (Database
 profile ratios) and stores. The ratios live **only** on the manager (one source of
 truth). ⚠️ `marketplace-pricing` (Ahmad) is a **pre-refund, bottom-up** DB billing
-attempt: its `ComputeDBUPerNode` **derives** DBU from the *provisioned* resources and
+attempt: its `ComputeUsedDBUPerNode` **derives** DBU from the *provisioned* resources and
 hardcodes the ratio — at the merge it must defer to the manager (T20). The model here is
 **top-down** (client-set plan ceiling; **real measured** below; gap = **refund**), so the
 consumed DBU is a projection of the *measured* consumption, not of the provisioned size.
@@ -193,6 +193,6 @@ marketplace is present.
 
 T7 (unified interface — capacity is orchestrator-agnostic), T16 (ratios/params in TOML
 when made configurable), T18 (Graphite is the bounded history, no in-memory buffer),
-T20 (one conversion source — reconcile `ComputeDBUPerNode`), T6 (GUI for the editable
+T20 (one conversion source — reconcile `ComputeUsedDBUPerNode`), T6 (GUI for the editable
 capacity). Commercial axis (refund %, overage, tiered price) stacks on top and never
 gates the technical path.
