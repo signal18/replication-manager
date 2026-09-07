@@ -1084,6 +1084,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvServicePlan, "prov-service-plan", "", "Cluster plan")
 	flags.IntVar(&conf.ProvServicePlanDbu, "prov-service-plan-dbu", 1, "Service plan in Database Units (DBU reservation contract; 1 DBU = 1 core / 4GB / 40GB / 1000 IOPS). Default 1.")
 	flags.IntVar(&conf.ProvServicePlanApu, "prov-service-plan-apu", 3, "Service plan in Application Units (APU reservation contract; 1 APU = 1 core / 4GB / 10GB, no IOPS). Default 3.")
+	flags.IntVar(&conf.ProvServicePlanBpu, "prov-service-plan-bpu", 1, "Service plan in Proxy Units (BPU reservation contract; proxy/router profile, cpu/mem bound, no IOPS). Default 1.")
 	flags.IntVar(&conf.ProvServicePlanBku, "prov-service-plan-bku", 1, "Service plan in Backup Units (BKU reservation contract; storage/backup profile, disk-dominant). Default 1.")
 	flags.BoolVar(&conf.ProvSerialized, "prov-serialized", false, "Disable concurrent provisionning")
 	flags.StringVar(&conf.ProvDBClientBasedir, "prov-db-client-basedir", "/usr/bin", "Path to database client binary")
