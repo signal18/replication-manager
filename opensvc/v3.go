@@ -151,17 +151,56 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 	}
 
 	var hosts []Host
-	// Process the response to extract node information
+	// Process the response to extract node information. GetNodes v3 returns ONLY the
+	// node name -- the physical capacity (cpu_cores/cpu_freq/mem_bytes/node_id) lives on
+	// the per-node system/property endpoint, so fetch it per node like GetNodesV1/V2 did
+	// (otherwise cluster.Agents comes back cpu/mem = 0 on OpenSVC v3, breaking the Agents
+	// page and the ResourceManager capacity view). Best-effort: a property-fetch failure
+	// leaves that node's axes at 0 rather than dropping the node.
 	nodes := gjson.GetBytes(body, "items.#.meta.node").Array()
 	for _, node := range nodes {
-		h := Host{
-			Node_name: node.String(),
+		name := node.String()
+		h := Host{Node_name: name}
+		if pbody, perr := collector.getNodeSystemProperties(name); perr == nil {
+			val := func(prop string) gjson.Result {
+				return gjson.GetBytes(pbody, `items.#(data.name=="`+prop+`").data.value`)
+			}
+			h.Node_id = val("node_id").String()
+			h.Cpu_cores = val("cpu_cores").Int()
+			h.Cpu_freq = val("cpu_freq").Int()
+			h.Mem_bytes = val("mem_bytes").Int()
+		} else if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC v3 node property fetch failed for %s: %s\n", name, perr)
 		}
-
 		hosts = append(hosts, h)
 	}
 
 	return hosts, nil
+}
+
+// getNodeSystemProperties fetches one node's system/property list (v3) as raw JSON --
+// where cpu_cores / cpu_freq / mem_bytes / node_id live (GetNodes itself returns only the
+// node name). Best-effort helper for GetNodesV3; the caller tolerates an error.
+func (collector *Collector) getNodeSystemProperties(nodename string) ([]byte, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+	resp, err := client.GetNodeSystemProperty(ctx, apiv3.InPathNodeName(nodename), collector.RequestCloserV3())
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if !handleSuccessGroup(resp.StatusCode) {
+		return nil, &StatusError{StatusCode: resp.StatusCode, Body: string(b)}
+	}
+	return b, nil
 }
 
 func (collector *Collector) GetPoolListV3() ([]string, error) {
