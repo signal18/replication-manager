@@ -1,9 +1,16 @@
 import React, { useEffect, useState } from 'react'
 import { Box, Flex, Text, Table, Thead, Tbody, Tr, Th, Td, Progress, Badge } from '@chakra-ui/react'
 import { globalClustersService } from '../../services/globalClustersService'
+import ChartBarStack from '../../components/ChartBarStack'
 
 const CLUSTER_COLORS = ['#3f8fd0', '#8b5cf6', '#e0603a', '#37a06f', '#d99a2b', '#5aa8e6', '#a98bff', '#ef7a54', '#4dc088', '#eabb52']
 const colorFor = (i) => CLUSTER_COLORS[i % CLUSTER_COLORS.length]
+// ChartBarStack colours its layers with d3.schemeCategory10 in metricPaths order, so the
+// over-time legend below maps cluster i -> SCHEME10[i] to match.
+const SCHEME10 = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+// carbonHost mirrors the DB metric-host token: cluster name uppercased, '.'->'-'. The
+// mysql.<HOST> series and the emitted resourcemanager.<CLUSTER> series both use it.
+const carbonHost = (h) => (h || '').toUpperCase().replace(/[`?()'"<]/g, '-').replace(/\./g, '-').replace(/[ /]/g, '_')
 
 // ResourceManager is the GLOBAL (infra-wide) ResourceManager view: per-axis capacity
 // (from resource-manager-infra-* overrides, else summed from the physical agents) vs
@@ -31,6 +38,19 @@ function ResourceManager() {
     return () => {
       alive = false
       clearInterval(id)
+    }
+  }, [])
+
+  // Cubism context for the over-time ChartBarStack graphs (mirrors the Graphs page).
+  const [ctx, setCtx] = useState(null)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.cubism) return
+    const c = window.cubism.context().serverDelay(0).clientDelay(0).step(10000).size(360)
+    c.start()
+    setCtx(c)
+    return () => {
+      try { c.stop() } catch (e) { /* noop */ }
+      setCtx(null)
     }
   }, [])
 
@@ -139,6 +159,35 @@ function ResourceManager() {
           </Box>
         )
       })()}
+
+      {ctx && data.clusters && data.clusters.length > 0 && (
+        <Box mt={6}>
+          <Text fontSize='md' fontWeight='bold' mb={1}>Historique par cluster</Text>
+          <Text fontSize='xs' opacity={0.6} mb={2}>
+            Consommé = sumSeries(mysql.*.dbu) par cluster (séries serveur, agrégées au query) · Plan = resourcemanager.&lt;cluster&gt;.plan_dbu (émis, historisé pour tracer les +1/−1 DBU)
+          </Text>
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Consommé DBU (par cluster)'
+            metricPaths={data.clusters.map((c) => `sumSeries(mysql.*-${carbonHost(c.cluster)}-*.dbu)`)}
+          />
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Plan DBU (par cluster)'
+            metricPaths={data.clusters.map((c) => `resourcemanager.${carbonHost(c.cluster)}.plan_dbu`)}
+          />
+          <Flex gap={4} wrap='wrap' mt={2}>
+            {data.clusters.map((c, i) => (
+              <Flex key={c.cluster} align='center' gap={1}>
+                <Box w='11px' h='11px' borderRadius='2px' style={{ background: SCHEME10[i % SCHEME10.length] }} />
+                <Text fontSize='xs'>{c.cluster}</Text>
+              </Flex>
+            ))}
+          </Flex>
+        </Box>
+      )}
 
       <Text fontSize='xs' opacity={0.6} mt={3}>
         Source “agents” = summed from the physical agents (cpu/mem); “config” = a

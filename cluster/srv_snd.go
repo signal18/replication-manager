@@ -120,6 +120,19 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.service_io", hostname), strconv.FormatFloat(iops, 'f', 4, 64), ts))
 		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.service_disk", hostname), strconv.FormatFloat(diskBytes, 'f', 0, 64), ts))
 	}
+
+	// Cluster-level PLAN series, emitted ONCE per cluster (from the master). The plan
+	// (prov-service-plan-dbu) is a CLUSTER contract -- it exists nowhere per-server, so
+	// unlike consumed (mysql.<host>.dbu, summed at query time via sumSeries) it MUST be
+	// emitted here to be graphed over time, as resourcemanager.<CLUSTER>.plan_dbu. The
+	// token is uppercased like the mysql.<HOST> series so the GUI scopes both the same way.
+	if server.IsMaster() {
+		ctoken := strings.ToUpper(replacer.Replace(cluster.Name))
+		metrics = append(metrics, graphite.NewMetric(
+			fmt.Sprintf("resourcemanager.%s.plan_dbu", ctoken),
+			strconv.FormatFloat(float64(cluster.Conf.ProvServicePlanDbu), 'f', 4, 64),
+			time.Now().Unix()))
+	}
 	return metrics
 }
 
