@@ -402,8 +402,14 @@ function ChartLatchTracing({
     let currentLine = 0;
 
     metricPaths.forEach((path, i) => {
-      // Extract display name from path
-      const pathLabel = path.split('.').pop();
+      // Extract a readable display name: last dotted segment, minus the trailing ')',
+      // the long common prefix (...wait_synch_{mutex,rwlock}_innodb_) and the _mutex/_latch
+      // suffix -> e.g. "buf_pool", "trx_sys", "btr_search", "log".
+      const pathLabel = path
+        .split('.').pop()
+        .replace(/\)+$/, '')
+        .replace(/^mysql_global_status_wait_synch_(?:mutex|rwlock)_innodb_/, '')
+        .replace(/_(?:mutex|latch)$/, '');
       const textNode = legend.append('text')
         .attr('class', theme === 'dark' ? styles['dark-legend-text'] : styles.legendText)
         .style('fill', themeColors.text)
