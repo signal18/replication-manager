@@ -130,7 +130,7 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 		ctoken := strings.ToUpper(replacer.Replace(cluster.Name))
 		metrics = append(metrics, graphite.NewMetric(
 			fmt.Sprintf("resourcemanager.%s.plan_dbu", ctoken),
-			strconv.FormatFloat(float64(cluster.Conf.ProvServicePlanDbu), 'f', 4, 64),
+			strconv.FormatFloat(float64(cluster.GetPlanDbu()), 'f', 4, 64),
 			time.Now().Unix()))
 	}
 	return metrics

@@ -484,7 +484,7 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 	var perCluster []globalResourcesCluster
 	for _, cl := range clusters {
 		a := rm.ConsumedByCluster(cl.Name)
-		plan := float64(cl.Conf.ProvServicePlanDbu)
+		plan := float64(cl.GetPlanDbu()) // explicit prov-service-plan-dbu, else auto (per-node × nodes)
 		if a.Servers == 0 && a.Dbu == 0 && plan == 0 {
 			continue
 		}

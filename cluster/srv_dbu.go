@@ -145,6 +145,18 @@ func (cluster *Cluster) GetProvDbuPerNode() int {
 	return int(math.Ceil(r.Dbu))
 }
 
+// GetPlanDbu returns the cluster's EFFECTIVE plan DBU: the explicit
+// prov-service-plan-dbu reservation contract when set (> 0), else AUTO-computed =
+// per-node derived DBU (GetProvDbuPerNode) × the number of DB nodes. "Auto only when
+// zero" -- a stored 0 means "let repman compute it". Single source used by the API and
+// the graphite emission.
+func (cluster *Cluster) GetPlanDbu() int {
+	if cluster.Conf.ProvServicePlanDbu > 0 {
+		return cluster.Conf.ProvServicePlanDbu
+	}
+	return cluster.GetProvDbuPerNode() * len(cluster.Servers)
+}
+
 // RestoreDBUConsumed reloads this server's last reading from the repman-side manager
 // into the (freshly recreated) ServerMonitor, so a config reload does not blank the
 // DBU metric. No entry (never pushed) leaves DBUConsumed nil.

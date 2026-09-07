@@ -64,13 +64,10 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
 
   const cfg = selectedCluster?.config || {}
-  // The plan line is the cluster's DBU RESERVATION CONTRACT. Prefer the explicit
-  // prov-service-plan-dbu (the cluster-total plan the client sets); fall back to the
-  // per-node DBU (computed by repman -> config.provDbDbu, NOT re-derived in JS) × db node
-  // count only when the contract isn't set.
-  const dbNodeCount = selectedCluster?.dbServers?.length || selectedCluster?.servers?.length || 1
-  const planDbuPerServer = parseInt(cfg.provDbDbu) || 1
-  const planDbu = parseFloat(cfg.provServicePlanDbu) || (planDbuPerServer * dbNodeCount)
+  // The plan line = the cluster's EFFECTIVE plan DBU, computed by repman
+  // (config.provClusterPlanDbu): explicit prov-service-plan-dbu when set, else AUTO =
+  // per-node DBU × node count. The GUI just READS it -- no ratios/derivation in JS.
+  const planDbu = parseInt(cfg.provClusterPlanDbu) || 1
 
   useEffect(() => {
   if (typeof window === 'undefined' || !window.cubism) return;
