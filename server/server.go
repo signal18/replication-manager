@@ -1091,6 +1091,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.Float64Var(&conf.ResourceManagerInfraMemoryMB, "resource-manager-infra-memory-mb", 0, "ResourceManager infra capacity override: total memory in MB. 0 = unset (use the monitored value).")
 	flags.Float64Var(&conf.ResourceManagerInfraDiskGB, "resource-manager-infra-disk-gb", 0, "ResourceManager infra capacity override: total disk in GB. 0 = unset (use the monitored value).")
 	flags.Float64Var(&conf.ResourceManagerInfraIops, "resource-manager-infra-iops", 0, "ResourceManager infra capacity override: total IOPS. 0 = unset (use the monitored/calibrated value).")
+	flags.Float64Var(&conf.ResourceManagerInfraNetworkMbps, "resource-manager-infra-network-mbps", 0, "ResourceManager infra capacity override: total public network bandwidth in Mbps (the BPU axis). 0 = unset (use the monitored value).")
 	flags.BoolVar(&conf.ProvSerialized, "prov-serialized", false, "Disable concurrent provisionning")
 	flags.StringVar(&conf.ProvDBClientBasedir, "prov-db-client-basedir", "/usr/bin", "Path to database client binary")
 	flags.StringVar(&conf.ProvDBBinaryBasedir, "prov-db-binary-basedir", "/usr/local/mysql/bin", "Path to mysqld binary")
