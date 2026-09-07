@@ -85,7 +85,7 @@ type ReplicationManager struct {
 	MemProfile                   string                             `json:"memprofile"`
 	CpuProfile                   string                             `json:"cpuprofile"`
 	Clusters                     map[string]*cluster.Cluster        `json:"-"`
-	resourceManager                   *cluster.ResourceManager                `json:"-"` // repman-side DBU authority (Epic #1776); created once, injected into every cluster; survives ServerMonitor recreation
+	resourceManager              *cluster.ResourceManager           `json:"-"` // repman-side DBU authority (Epic #1776); created once, injected into every cluster; survives ServerMonitor recreation
 	PeerManager                  *peer.PeerManager                  `json:"-"`
 	Partners                     []config.Partner                   `json:"partners"`
 	Partner                      config.Partner                     `json:"partner"`
@@ -1082,6 +1082,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "https://docs.google.com/spreadsheets/d/e/2PACX-1vQClXknRapJZ4bRSId_aa5zUrbFDZmmc6GiV3n7-tPyQJispqqnSJj6lMaJxoJv5pOC9Ktj8ywWdGX6/pub?gid=0&single=true&output=csv", "URL to csv service plan list")
 	//	flags.StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "http://gsx2json.com/api?id=130326CF_SPaz-flQzCRPE-w7FjzqU1NqbsM7MpIQ_oU&sheet=1&columns=false", "URL to json service plan list")
 	flags.StringVar(&conf.ProvServicePlan, "prov-service-plan", "", "Cluster plan")
+	flags.IntVar(&conf.ProvServicePlanDbu, "prov-service-plan-dbu", 0, "Service plan in Database Units (DBU reservation contract; 1 DBU = 1 core / 4GB / 40GB / 1000 IOPS). 0 = unset.")
+	flags.IntVar(&conf.ProvServicePlanApu, "prov-service-plan-apu", 0, "Service plan in Application Units (APU reservation contract; 1 APU = 1 core / 4GB / 10GB, no IOPS). 0 = unset.")
+	flags.IntVar(&conf.ProvServicePlanBku, "prov-service-plan-bku", 0, "Service plan in Backup Units (BKU reservation contract; storage/backup profile, disk-dominant). 0 = unset.")
 	flags.BoolVar(&conf.ProvSerialized, "prov-serialized", false, "Disable concurrent provisionning")
 	flags.StringVar(&conf.ProvDBClientBasedir, "prov-db-client-basedir", "/usr/bin", "Path to database client binary")
 	flags.StringVar(&conf.ProvDBBinaryBasedir, "prov-db-binary-basedir", "/usr/local/mysql/bin", "Path to mysqld binary")

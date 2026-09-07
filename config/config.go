@@ -424,9 +424,9 @@ type Config struct {
 	MxsDisableMonitor                         bool                         `mapstructure:"maxscale-disable-monitor" toml:"maxscale-disable-monitor" json:"maxscaleDisableMonitor"`
 	MxsGetInfoMethod                          string                       `mapstructure:"maxscale-get-info-method" toml:"maxscale-get-info-method" json:"maxscaleGetInfoMethod"`
 	MxsServerMatchPort                        bool                         `mapstructure:"maxscale-server-match-port" toml:"maxscale-server-match-port" json:"maxscaleServerMatchPort"`
-	MxsMode                                    string                       `mapstructure:"maxscale-mode" toml:"maxscale-mode" json:"maxscaleMode"`
-	MxsRestApi                                 bool                         `mapstructure:"maxscale-rest-api" toml:"maxscale-rest-api" json:"maxscaleRestApi"`
-	MxsRestPort                                int                          `mapstructure:"maxscale-rest-port" toml:"maxscale-rest-port" json:"maxscaleRestPort"`
+	MxsMode                                   string                       `mapstructure:"maxscale-mode" toml:"maxscale-mode" json:"maxscaleMode"`
+	MxsRestApi                                bool                         `mapstructure:"maxscale-rest-api" toml:"maxscale-rest-api" json:"maxscaleRestApi"`
+	MxsRestPort                               int                          `mapstructure:"maxscale-rest-port" toml:"maxscale-rest-port" json:"maxscaleRestPort"`
 	MxsBinaryPath                             string                       `mapstructure:"maxscale-binary-path" toml:"maxscale-binary-path" json:"maxscalemBinaryPath"`
 	MyproxyOn                                 bool                         `mapstructure:"myproxy" toml:"myproxy" json:"myproxy"`
 	MyproxyDebug                              bool                         `mapstructure:"myproxy-debug" toml:"myproxy-debug" json:"myproxyDebug"`
@@ -699,6 +699,9 @@ type Config struct {
 	ProvDockerDaemonPrivate                   bool                         `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
 	ProvServicePlan                           string                       `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`
 	ProvServicePlanRegistry                   string                       `scope:"server" mapstructure:"prov-service-plan-registry" toml:"prov-service-plan-registry" json:"provServicePlanRegistry"`
+	ProvServicePlanDbu                        int                          `mapstructure:"prov-service-plan-dbu" toml:"prov-service-plan-dbu" json:"provServicePlanDbu"`
+	ProvServicePlanApu                        int                          `mapstructure:"prov-service-plan-apu" toml:"prov-service-plan-apu" json:"provServicePlanApu"`
+	ProvServicePlanBku                        int                          `mapstructure:"prov-service-plan-bku" toml:"prov-service-plan-bku" json:"provServicePlanBku"`
 	ProvDbBootstrapScript                     string                       `mapstructure:"prov-db-bootstrap-script" toml:"prov-db-bootstrap-script" json:"provDbBootstrapScript"`
 	ProvProxyBootstrapScript                  string                       `mapstructure:"prov-proxy-bootstrap-script" toml:"prov-proxy-bootstrap-script" json:"provProxyBootstrapScript"`
 	ProvDbCleanupScript                       string                       `mapstructure:"prov-db-cleanup-script" toml:"prov-db-cleanup-script" json:"provDbCleanupScript"`
