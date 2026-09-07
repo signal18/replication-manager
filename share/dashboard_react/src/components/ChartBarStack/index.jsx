@@ -10,7 +10,9 @@ function ChartBarStack({
   metricPaths = [],
   title = "Memory Usage",
   height = 400,
-  isVisible = true
+  isVisible = true,
+  minYMax = 0,
+  ceilingLabel
 }) {
   const chartRef = useRef(null);
   const svgRef = useRef(null);
@@ -292,8 +294,12 @@ function ChartBarStack({
       metricPaths.reduce((sum, path) => sum + d[path], 0)
     );
 
+    // Floor the top of the Y axis at minYMax (e.g. the usable DBU ceiling = capacity ×
+    // quota) so the stacked bars are always read against that reference, even when
+    // consumption sits far below it -- and grow past it when a cluster over-reserves.
+    const yTop = Math.max(maxTotal || 1, (Number.isFinite(minYMax) ? minYMax : 0));
     const yScale = d3.scaleLinear()
-      .domain([0, maxTotal || 1]) // Fallback to 1 if maxTotal is 0
+      .domain([0, yTop])
       .nice()
       .range([chartHeight, 0]);
 
@@ -352,6 +358,26 @@ function ChartBarStack({
         .style('stroke-opacity', theme === 'dark' ? 0.3 : 0.5)
         .style('shape-rendering', 'crispEdges'))
       .call(g => g.select('.domain').remove());
+
+    // Usable-ceiling reference line (capacity × quota): the scale is floored to it, so the
+    // consumed bars always read against this reference; anything above it is over-reserved.
+    if (Number.isFinite(minYMax) && minYMax > 0) {
+      const yc = yScale(minYMax);
+      g.append('line')
+        .attr('x1', 0).attr('x2', width)
+        .attr('y1', yc).attr('y2', yc)
+        .style('stroke', themeColors.text)
+        .style('stroke-width', 1)
+        .style('stroke-dasharray', '4 3')
+        .style('opacity', 0.7);
+      g.append('text')
+        .attr('x', width).attr('y', yc - 4)
+        .attr('text-anchor', 'end')
+        .style('font-size', '10px')
+        .style('fill', themeColors.text)
+        .style('opacity', 0.85)
+        .text(ceilingLabel || `usable ${minYMax}`);
+    }
 
     // Totals with conditional rendering
     processedData.forEach(d => {

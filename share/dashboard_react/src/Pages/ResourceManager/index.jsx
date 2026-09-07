@@ -170,6 +170,8 @@ function ResourceManager() {
             context={ctx}
             height={200}
             title='Consommé DBU (par cluster)'
+            minYMax={data.usableDbu}
+            ceilingLabel={`usable ${fmt(data.usableDbu)} DBU`}
             metricPaths={data.clusters.map((c) => `sumSeries(mysql.*-${carbonHost(c.cluster)}-*.dbu)`)}
           />
           <ChartBarStack
