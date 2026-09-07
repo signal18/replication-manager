@@ -110,7 +110,7 @@ function ChartTimeSeriesLine({
     const valid = series.filter((s) => s.data && s.data.some((d) => d.y != null))
     if (valid.length === 0) {
       g.append('text').attr('x', width / 2).attr('y', chartH / 2)
-        .attr('text-anchor', 'middle').attr('fill', textColor).attr('opacity', 0.5)
+        .attr('text-anchor', 'middle').style('fill', textColor, 'important').attr('opacity', 0.5)
         .attr('font-size', '11px').text('no data')
       return
     }
@@ -148,14 +148,14 @@ function ChartTimeSeriesLine({
     g.append('g')
       .call(yAxis)
       .call((gg) => gg.selectAll('.tick line').attr('stroke', gridColor))
-      .call((gg) => gg.selectAll('text').attr('fill', textColor).attr('font-size', '9px'))
+      .call((gg) => gg.selectAll('text').style('fill', textColor, 'important').attr('font-size', '9px'))
       .call((gg) => gg.select('.domain').attr('stroke', textColor))
 
     // X axis
     g.append('g')
       .attr('transform', `translate(0,${chartH})`)
       .call(d3.axisBottom(x).ticks(6).tickFormat(d3.timeFormat('%H:%M')))
-      .call((gg) => gg.selectAll('text').attr('fill', textColor).attr('font-size', '9px'))
+      .call((gg) => gg.selectAll('text').style('fill', textColor, 'important').attr('font-size', '9px'))
       .call((gg) => gg.select('.domain').attr('stroke', textColor))
 
     const line = d3.line()
@@ -180,13 +180,13 @@ function ChartTimeSeriesLine({
       row.append('line').attr('x1', 0).attr('x2', 14).attr('y1', 5).attr('y2', 5)
         .attr('stroke', s.color || palette[i % palette.length]).attr('stroke-width', 1.5)
       row.append('text').attr('x', 18).attr('y', 9).text(s.label)
-        .attr('fill', textColor).attr('font-size', '10px')
+        .style('fill', textColor, 'important').attr('font-size', '10px')
     })
 
     if (yLabel) {
       g.append('text').attr('transform', 'rotate(-90)')
         .attr('x', -chartH / 2).attr('y', -44).attr('text-anchor', 'middle')
-        .attr('fill', textColor).attr('font-size', '10px').attr('opacity', 0.8).text(yLabel)
+        .style('fill', textColor, 'important').attr('font-size', '10px').attr('opacity', 0.8).text(yLabel)
     }
   }, [series, theme, w, logScale, cap, height, title, yLabel])
 
