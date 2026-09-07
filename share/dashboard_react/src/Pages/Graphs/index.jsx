@@ -74,6 +74,15 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   const windowSec = Math.max(60, Math.round((selectedHour.value * selectedStep.value) / 1000))
   const refreshMs = selectedStep.value
 
+  // Seconds -> human duration, for the replication-delay Y axis (values are seconds,
+  // labelled 1s/1m/1h/1d up to the 6-day cap).
+  const fmtDur = (s) => {
+    if (s < 60) return `${Math.round(s)}s`
+    if (s < 3600) return `${Math.round(s / 60)}m`
+    if (s < 86400) return `${Math.round(s / 3600)}h`
+    return `${Math.round(s / 86400)}d`
+  }
+
   useEffect(() => {
   if (typeof window === 'undefined' || !window.cubism) return;
 
@@ -154,14 +163,16 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           ]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
-        <Graphite
-          chartRef={sbmRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
-          context={context}
-          title={'ReplDelay'}
-          target={scope('sumSeries(mysql.*.mysql_slave_status_seconds_behind_master)')}
-          maxExtent={8000}
+        <ChartTimeSeriesLine
+          title='Replication delay'
+          yLabel='behind master'
+          logScale
+          cap={518400}
+          yTickValues={[1, 10, 60, 600, 3600, 21600, 86400, 259200, 518400]}
+          yTickFormat={fmtDur}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[{ target: scope('sumSeries(mysql.*.mysql_slave_status_seconds_behind_master)'), label: 'Delay' }]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
         <ChartLatchTracing

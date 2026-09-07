@@ -16,6 +16,8 @@ function ChartTimeSeriesLine({
   logScale = false,
   logBase = 10,
   cap = 0,
+  yTickValues = null,   // explicit Y tick positions (e.g. natural time boundaries)
+  yTickFormat = null,   // custom Y tick formatter (e.g. seconds -> "1m"/"1h"/"1d")
   height = 220,
   windowSec = 3600,
   refreshMs = 10000,
@@ -135,12 +137,18 @@ function ChartTimeSeriesLine({
     // (1,2,4,8,... for base 2 = natural thread steps; 1,10,100,... for base 10) so the
     // axis stays clean instead of d3's crowded minor log ticks. Base 2 -> integers, else SI.
     const yAxis = d3.axisLeft(y).tickSize(-width)
+    const domMax = y.domain()[1] * (1 + 1e-9)
     if (logScale) {
-      const powers = []
-      for (let v = 1; v <= y.domain()[1] * (1 + 1e-9); v *= logBase) powers.push(v)
-      yAxis.tickValues(powers).tickFormat(logBase === 2 ? d3.format('d') : d3.format('~s'))
+      let ticks = yTickValues
+      if (ticks) {
+        ticks = ticks.filter((v) => v >= 1 && v <= domMax)
+      } else {
+        ticks = []
+        for (let v = 1; v <= domMax; v *= logBase) ticks.push(v)
+      }
+      yAxis.tickValues(ticks).tickFormat(yTickFormat || (logBase === 2 ? d3.format('d') : d3.format('~s')))
     } else {
-      yAxis.ticks(5).tickFormat(d3.format('~s'))
+      yAxis.ticks(5).tickFormat(yTickFormat || d3.format('~s'))
     }
     g.append('g')
       .call(yAxis)
