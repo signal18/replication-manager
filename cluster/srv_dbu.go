@@ -5,11 +5,14 @@
 package cluster
 
 import (
+	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/graphite"
 )
 
 // DBUReading is one period's consumed-DBU picture for a server. DBU is one unit
@@ -327,4 +330,125 @@ func (server *ServerMonitor) RestoreDBUConsumed() {
 	if cluster := server.ClusterGroup; cluster != nil && cluster.resources != nil {
 		server.DBUConsumed = cluster.resources.GetConsumed(ResourceKey{Cluster: cluster.Name, Server: server.URL})
 	}
+}
+
+func clampPct(p int) float64 {
+	if p < 0 {
+		return 0
+	}
+	if p > 100 {
+		return 100
+	}
+	return float64(p)
+}
+
+// axisConfigDBU returns the per-node config DBU of one axis from a reading.
+func axisConfigDBU(r DBUReading, axis string) float64 {
+	switch axis {
+	case "cpu":
+		return r.DbuCpu
+	case "mem":
+		return r.DbuMem
+	case "io":
+		return r.DbuIo
+	case "disk":
+		return r.DbuDisk
+	}
+	return 0
+}
+
+// lastRenderValue returns the last non-absent point of a graphite render result.
+func lastRenderValue(vals []float64, absent []bool) (float64, bool) {
+	for i := len(vals) - 1; i >= 0; i-- {
+		if i < len(absent) && absent[i] {
+			continue
+		}
+		return vals[i], true
+	}
+	return 0, false
+}
+
+// graphiteHostToken is this server's token in the mysql.<host>.* graphite series (same
+// replacer as srv_snd.go's emission).
+func (server *ServerMonitor) graphiteHostToken() string {
+	replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-")
+	return replacer.Replace(server.Variables.Get("HOSTNAME"))
+}
+
+// canScaleSustained is the shared SPEED gate for the scale-due decisions: given the instant
+// over/under axes, the client-set speed, and the per-node reference (config or plan), it returns
+// the axes for which the saturation has PERSISTED long enough to act. At the fastest speed (<= one
+// sensor tick, the 1m default) the instant state is the decision -- no history. For a slower speed
+// it asks Graphite whether the consumed axis stayed over/under its threshold for the WHOLE window
+// (summarize min for grow / max for shrink); a Graphite hiccup falls back to the instant state.
+// DECISION only -- never resizes (the resize is composed downstream, gated by CanConfigResize).
+func (server *ServerMonitor) canScaleSustained(up bool, instant []string, speedStr string, ref DBUReading) []string {
+	cluster := server.ClusterGroup
+	if cluster == nil || len(instant) == 0 {
+		return nil // no cluster, or not even instantaneously over/under -> nothing to sustain
+	}
+	d, err := time.ParseDuration(speedStr)
+	if err != nil || d <= time.Minute {
+		return instant // fast path: 1 tick / <= 1m -> the instant state IS the decision
+	}
+	overThrFactor := 1 - clampPct(cluster.Conf.ProvDBCapSafetyPct)/100.0
+	underThrFactor := clampPct(cluster.Conf.ProvDBCapShrinkPct) / 100.0
+	host := server.graphiteHostToken()
+	until := int32(time.Now().Unix())
+	from := until - int32(d.Seconds()) - 60
+	agg := "max" // shrink: even the busiest sample of the window must be under
+	if up {
+		agg = "min" // grow: even the quietest sample of the window must be over
+	}
+	var due []string
+	for _, axis := range instant {
+		capa := axisConfigDBU(ref, axis)
+		if capa <= 0 {
+			continue
+		}
+		target := fmt.Sprintf("summarize(mysql.%s.dbu_%s,'%ds','%s')", host, axis, int(d.Seconds()), agg)
+		md, rerr := graphite.Zipper.Render(target, from, until)
+		if rerr != nil {
+			due = append(due, axis) // Graphite unavailable -> trust the instant state
+			continue
+		}
+		v, ok := lastRenderValue(md.Values, md.IsAbsent)
+		if !ok {
+			due = append(due, axis)
+			continue
+		}
+		if (up && v >= capa*overThrFactor) || (!up && v <= capa*underThrFactor) {
+			due = append(due, axis)
+		}
+	}
+	return due
+}
+
+// CanScaleConfigInPlan reports the axes for which a config resource scale is DUE (up = grow on
+// saturation, down = shrink on under-use), reference = the per-server CONFIG, speed =
+// ScaleUp/DownConfigInPlanSpeed. In-plan, so cheap/reactive (fast default).
+func (server *ServerMonitor) CanScaleConfigInPlan(up bool) []string {
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return nil
+	}
+	if up {
+		return server.canScaleSustained(true, server.ResourceConsumedOverConfigAxes, cluster.Conf.ScaleUpConfigInPlanSpeed, cluster.GetConfigDBUPerNode())
+	}
+	return server.canScaleSustained(false, server.ResourceConsumedUnderConfigAxes, cluster.Conf.ScaleDownConfigInPlanSpeed, cluster.GetConfigDBUPerNode())
+}
+
+// CanScalePlan reports the axes for which a PLAN scale is DUE (up = cap up, down = cap down),
+// reference = the PLAN (the cap), speed = ScaleUp/DownPlanSpeed. Commercial, so slower/more
+// conservative than in-plan. Per server; the cluster composes cap up/down from these (one server
+// suffices to force cap-up; every server must agree for cap-down).
+func (server *ServerMonitor) CanScalePlan(up bool) []string {
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return nil
+	}
+	if up {
+		return server.canScaleSustained(true, server.ResourceConsumedOverPlanAxes, cluster.Conf.ScaleUpPlanSpeed, cluster.GetPlanDBUPerNode())
+	}
+	return server.canScaleSustained(false, server.ResourceConsumedUnderPlanAxes, cluster.Conf.ScaleDownPlanSpeed, cluster.GetPlanDBUPerNode())
 }

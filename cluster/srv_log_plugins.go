@@ -605,8 +605,43 @@ func (cluster *Cluster) assertDomainObservabilityStates() {
 	}
 }
 
+// checkResourceScaleWorkloadStates surfaces the per-server resource scale DECISIONS
+// (CanScaleConfigInPlan / CanScalePlan) as workload states, so they appear in the Workload pill
+// and modal -- no new GUI. It rides the monitor-loop state lifecycle (the WorkloadStateMachine is
+// cleared each cycle and re-populated here + by the plugin states). INFO for routine in-plan
+// resource scaling and the cap-down opportunity; WARNING for a plan cap-UP (commercial -- the
+// client is at the plan cap and should raise it). Purely state -- it triggers no resize.
+func (cluster *Cluster) checkResourceScaleWorkloadStates() {
+	sm := cluster.WorkloadStateMachine
+	if sm == nil || cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff {
+		return
+	}
+	add := func(code, errType, url string, axes []string) {
+		if len(axes) == 0 {
+			return
+		}
+		sm.AddState(code+"@"+url, state.State{
+			ErrType:   errType,
+			ErrKey:    code,
+			ErrDesc:   fmt.Sprintf(clusterError[code], url, strings.Join(axes, ",")),
+			ErrFrom:   "WORKLOAD",
+			ServerUrl: url,
+		})
+	}
+	for _, srv := range cluster.Servers {
+		if srv == nil || srv.IsDown() {
+			continue
+		}
+		add("CINF0007", "INFO", srv.URL, srv.CanScaleConfigInPlan(true))
+		add("CINF0008", "INFO", srv.URL, srv.CanScaleConfigInPlan(false))
+		add("WARN0213", "WARNING", srv.URL, srv.CanScalePlan(true))
+		add("CINF0009", "INFO", srv.URL, srv.CanScalePlan(false))
+	}
+}
+
 func (cluster *Cluster) CheckLogPlugins() {
 	cluster.assertDomainObservabilityStates()
+	cluster.checkResourceScaleWorkloadStates() // surface resource scale decisions in the Workload pill
 	if !cluster.Conf.LogPlugin {
 		// WARN0314 — plugins are present on disk but log-plugin is disabled.
 		// Raise an advisory with a direct API link so the operator can enable
