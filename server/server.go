@@ -3038,7 +3038,7 @@ func (repman *ReplicationManager) Run() error {
 			//      SaveCallBack in step 1) or safetyDue (GitMonitoringTicker, the
 			//      periodic feed/safety cadence). Config no longer waits on the
 			//      timer; the agents.json staging throttle is unchanged.
-			if repman.Conf.GitUrl != "" && repman.Status == ConstMonitorActif {
+			if repman.Status == ConstMonitorActif {
 				safetyDue := counter%int64(repman.Conf.GitMonitoringTicker) == 0
 				if repman.gitSyncBusy.CompareAndSwap(false, true) {
 					go func() {
@@ -3079,6 +3079,14 @@ func (repman *ReplicationManager) Run() error {
 							}
 						}()
 						savewg.Wait()
+
+						// Local config persistence (the SAVE phase above) is done and is
+						// INDEPENDENT of git: it must always run on the active repman. Only the
+						// git PUSH below needs a configured remote -- a missing or failing git
+						// remote must never prevent local file persistence.
+						if repman.Conf.GitUrl == "" {
+							return
+						}
 
 						// 2. PUSH phase (dirty-gated). IsNeedGitPush was just set by
 						// SaveCallBack above when config actually changed.
