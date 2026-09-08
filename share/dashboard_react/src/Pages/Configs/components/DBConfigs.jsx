@@ -21,6 +21,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import modalStyles from '../../../components/Modals/styles.module.scss'
 
+import DynamicConfigSettings from '../../Settings/DynamicConfigSettings'
 import PreservedVariablesEditor from '../../../components/PreservedVariablesEditor'
 import ConfigFilesPanel from '../../../components/ConfigFilesPanel'
 import MemoryPctEditor from '../../../components/MemoryPctEditor'
@@ -614,6 +615,13 @@ function DBConfigs({ selectedCluster, user }) {
         </Alert>
       )}
       <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
+      <AccordionComponent
+        heading={'Dynamic Config'}
+        className={styles.accordion}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionBody}
+        body={<DynamicConfigSettings selectedCluster={selectedCluster} user={user} />}
+      />
       {user?.grants['db-config-flag'] && (
         <HStack className={styles.configTagContainer}>
           <VStack className={styles.availableTags}>
