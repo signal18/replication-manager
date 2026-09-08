@@ -180,24 +180,36 @@ The dynamic resource resize is governed by **two ORTHOGONAL gates — never conf
   | **in-plan** | *(always yes — no budget gate)* | `CanConfigResize` |
   | **beyond-plan** | `CanGrowBeyondPlan` | `CanConfigResize` |
 
-**Two states, two `checkState` functions.** Both ONLY set tracked states — no action, no
-mutation, no resize (the resize is composed downstream from these states). Each compares, per
-axis, the **WORST real DB node's** consumed DBU against a per-node reference minus the safety
-margin (`prov-db-cap-safety-pct`, default 15 % → fire at 85 %) — never a `Σ/N` average, which
-would hide a hot master. They differ ONLY by the reference:
+**States are PER SERVER; the plan signals COMPOSE at the cluster.** Consumption is measured per
+server, resources within the plan are managed per server, so the atomic states live on the
+`ServerMonitor` — never a `Σ/N` cluster average that would hide a hot master. All are **signals
+only** — no action, no mutation, no resize (that is composed downstream; nothing consumes them
+yet, see Status). The axes are recorded (not a bare bool) because the consequence differs per axis
+(mem → OOM, disk → full, cpu → throttle, io → latency).
 
-| checkState (cluster_has.go) | reference | state field(s) set | consequence (composed downstream) |
+`ServerMonitor.CheckResourceConsumed()` (checkState) sets, from THIS server's own `DBUConsumed`,
+four per-axis states — two references × two directions, with a **dead-band** between the
+high-water (`prov-db-cap-safety-pct`, default 15 % → over at 85 %) and the low-water
+(`prov-db-cap-shrink-pct`, default 50 % → under at 50 %) so it never flaps:
+
+| server state | consumed vs | condition (per axis) | consequence |
 |---|---|---|---|
-| `CheckResourceConsumedOverConfig` | **config**, per-axis (`GetConfigDBUPerNode`) | `ResourceConsumedOverConfigAxes` | **RAISE THE RESOURCES** — SATURATION: grow `prov-db-*` via the dynamic resize (free within the plan) |
-| `CheckResourceConsumedOverPlan` | **plan / the cap** (`GetPlanDBUPerNode`) | `IsNeedResourceCapUp` + `ResourceConsumedOverPlanAxes` | **RAISE THE PLAN** (cap up) — the client is hitting the paid envelope |
+| `ResourceConsumedOverConfigAxes`  | **config** (`GetConfigDBUPerNode`) | `≥ config × (1 − safety%)` | **raise THIS server's resources** (saturation) |
+| `ResourceConsumedUnderConfigAxes` | **config** | `≤ config × shrink%`        | **shrink THIS server's resources** |
+| `ResourceConsumedOverPlanAxes`    | **plan / cap** (`GetPlanDBUPerNode`) | `≥ plan × (1 − safety%)` | feeds cap-**up** |
+| `ResourceConsumedUnderPlanAxes`   | **plan / cap** | `≤ plan × shrink%`          | feeds cap-**down** |
 
-The **cap is already set at the plan**, so `IsNeedResourceCapUp` stays false as long as consumed
-< plan − margin. The axes are recorded (not a bare bool) because the consequence differs per axis
-(mem → OOM, disk → full, cpu → throttle, io → latency). There is deliberately **no `config ≥ plan`
-path** (being provisioned AT the plan is the normal state — would fire permanently). Natural
-progression: consumption first saturates the config → raise resources within the plan; as
-resources/consumption climb to the plan envelope → cap up. Both are **signals only** — nothing
-consumes them yet (the resize is still admin/plan-triggered; see Status).
+`Cluster.CheckResourceCapPlan()` (checkState) then COMPOSES the plan signals from the per-server
+`*Plan` states — **one server suffices to force OR to break the action**:
+- `IsNeedResourceCapUp`   = **ANY** up server over the plan (one hitting the envelope forces ↑);
+- `IsNeedResourceCapDown` = **EVERY** up server under the plan (one non-under server BREAKS ↓ —
+  safe-shrink: never lower the plan while any server still needs it).
+
+The **cap is already set at the plan**, so `IsNeedResourceCapUp` stays false while consumed <
+plan − margin. There is deliberately **no `config ≥ plan` path** (being provisioned AT the plan is
+the normal state — would fire permanently). Natural progression: consumption first saturates a
+server's config → raise that server's resources within the plan; once every server's consumption
+climbs to the plan envelope → cap up; when all fall back under → cap down.
 
 **Measurement source & window (defines what "consumed" means).** Consumption comes from the DBU
 sensor `share/scripts/dbjobs_new.sh` → `collect_dbu`, which runs **once per dbjobs_new invocation,

@@ -114,9 +114,9 @@ type Cluster struct {
 	IsNeedDatabasesRestart        bool                `json:"isNeedDatabasesRestart" groups:"web"`
 	IsNeedDatabasesRollingRestart bool                `json:"isNeedDatabasesRollingRestart" groups:"web"`
 	IsNeedDatabasesRollingReprov  bool                `json:"isNeedDatabasesRollingReprov" groups:"web"`
-	ResourceConsumedOverConfigAxes []string          `json:"resourceConsumedOverConfigAxes" groups:"web"` // axes (cpu/mem/io/disk) where the worst node's consumed >= config - margin -> SATURATION, consequence = RAISE THE RESOURCES (grow prov-db-* via dynamic resize). Set by CheckResourceConsumedOverConfig
-	IsNeedResourceCapUp          bool                `json:"isNeedResourceCapUp" groups:"web"`            // worst node's consumed >= plan(cap) - margin -> consequence = RAISE THE PLAN (cap up). Set by CheckResourceConsumedOverPlan
-	ResourceConsumedOverPlanAxes []string            `json:"resourceConsumedOverPlanAxes" groups:"web"`   // axes driving the cap-up (consumed over the plan). Consequences differ per axis (mem->OOM, disk->full, cpu->throttle, io->latency)
+	IsNeedResourceCapUp          bool                `json:"isNeedResourceCapUp" groups:"web"`   // composed from the per-server plan states: ANY up server over the plan -> RAISE THE PLAN (cap up). Set by CheckResourceCapPlan
+	IsNeedResourceCapDown        bool                `json:"isNeedResourceCapDown" groups:"web"` // composed: EVERY up server under the plan -> LOWER THE PLAN (cap down); one non-under server breaks it (safe-shrink). Set by CheckResourceCapPlan
+	// Per-axis consumed-vs-reference detail is PER SERVER (ServerMonitor.ResourceConsumedOver/UnderConfigAxes for raise/shrink resources, .ResourceConsumedOver/UnderPlanAxes composed here).
 	IsNeedDatabasesReprov         bool                `json:"isNeedDatabasesReprov" groups:"web"`
 	IsNeedDatabasesConfigChange   bool                `json:"isNeedDatabasesConfigChange" groups:"web"`
 	IsNeedAppsReprov              bool                `json:"isNeedAppsReprov" groups:"web"`

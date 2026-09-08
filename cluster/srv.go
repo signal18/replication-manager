@@ -219,6 +219,15 @@ type ServerMonitor struct {
 	MaxSlowQueryTimestamp       int64                       `json:"maxSlowQueryTimestamp"`
 	WorkLoad                    *config.WorkLoadsMap        `json:"workLoad"`
 	DBUConsumed                 *DBUReading                 `json:"dbuConsumed"`
+	// Per-server consumed-vs-reference axis states (set by CheckResourceConsumed, checkState only,
+	// no action). Over = consumed_axis >= ref x (1 - cap-safety-pct/100); under = consumed_axis <=
+	// ref x (cap-shrink-pct/100); dead-band between = status quo. Config ref = THIS server's
+	// resources (raise/shrink this server); plan ref = the cap. The cluster composes cap-up/down
+	// from the *Plan* axes across servers (see Cluster.CheckResourceCapPlan).
+	ResourceConsumedOverConfigAxes  []string `json:"resourceConsumedOverConfigAxes"`  // saturates its config -> raise this server's resources
+	ResourceConsumedUnderConfigAxes []string `json:"resourceConsumedUnderConfigAxes"` // under-uses its config -> shrink this server's resources
+	ResourceConsumedOverPlanAxes    []string `json:"resourceConsumedOverPlanAxes"`    // hits the plan/cap -> contributes to cap-up
+	ResourceConsumedUnderPlanAxes   []string `json:"resourceConsumedUnderPlanAxes"`   // under the plan/cap -> allows cap-down (only if ALL servers are)
 	DelayStat                   *ServerDelayStat            `json:"delayStat"`
 	SlaveVariables              SlaveVariables              `json:"slaveVariables"`
 	IsReseeding                 string                      `json:"isReseeding"`

@@ -168,6 +168,78 @@ func (cluster *Cluster) GetPlanDBUPerNode() DBUReading {
 	return DBUReading{DbuCpu: p, DbuMem: p, DbuIo: p, DbuDisk: p, Dbu: p}
 }
 
+// CheckResourceConsumed is THIS server's checkState: from its own DBUConsumed it sets the four
+// consumed-vs-reference axis states (over/under x config/plan). checkState ONLY -- it sets state,
+// takes no action (the resize/cap decision is composed downstream). Over = consumed_axis >=
+// ref_axis x (1 - prov-db-cap-safety-pct/100); under = consumed_axis <= ref_axis x
+// (prov-db-cap-shrink-pct/100); the dead-band between the two is status quo (anti-flap). Config
+// ref = this server's own resource allocation (GetConfigDBUPerNode) -> raise/shrink THIS server;
+// plan ref = the cap (GetPlanDBUPerNode) -> feeds the cluster cap-up/down composition. All four
+// are cleared when the server is down / unmeasured / resource-align is off.
+func (server *ServerMonitor) CheckResourceConsumed() {
+	server.ResourceConsumedOverConfigAxes = nil
+	server.ResourceConsumedUnderConfigAxes = nil
+	server.ResourceConsumedOverPlanAxes = nil
+	server.ResourceConsumedUnderPlanAxes = nil
+	cluster := server.ClusterGroup
+	if cluster == nil || cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff {
+		return
+	}
+	if cluster.resources == nil || server.IsDown() || server.DBUConsumed == nil {
+		return
+	}
+	clamp := func(p int) float64 {
+		if p < 0 {
+			return 0
+		}
+		if p > 100 {
+			return 100
+		}
+		return float64(p)
+	}
+	hi := 1 - clamp(cluster.Conf.ProvDBCapSafetyPct)/100.0
+	lo := clamp(cluster.Conf.ProvDBCapShrinkPct) / 100.0
+	cfg := cluster.GetConfigDBUPerNode()
+	plan := cluster.GetPlanDBUPerNode()
+	c := server.DBUConsumed
+	server.ResourceConsumedOverConfigAxes = consumedAxes(c, cfg, hi, true)
+	server.ResourceConsumedUnderConfigAxes = consumedAxes(c, cfg, lo, false)
+	server.ResourceConsumedOverPlanAxes = consumedAxes(c, plan, hi, true)
+	server.ResourceConsumedUnderPlanAxes = consumedAxes(c, plan, lo, false)
+}
+
+// consumedAxes returns the axes (cpu/mem/io/disk, stable order) where consumed_axis / ref_axis
+// compares to frac: >= frac when over is true, <= frac when over is false. An axis whose
+// reference is 0 is skipped (not provisioned / unknown). nil when none match.
+func consumedAxes(c *DBUReading, ref DBUReading, frac float64, over bool) []string {
+	set := map[string]bool{}
+	for _, a := range []struct {
+		name       string
+		cons, capa float64
+	}{
+		{"cpu", c.DbuCpu, ref.DbuCpu}, {"mem", c.DbuMem, ref.DbuMem},
+		{"io", c.DbuIo, ref.DbuIo}, {"disk", c.DbuDisk, ref.DbuDisk},
+	} {
+		if a.capa <= 0 {
+			continue
+		}
+		r := a.cons / a.capa
+		if (over && r >= frac) || (!over && r <= frac) {
+			set[a.name] = true
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(set))
+	for _, a := range []string{"cpu", "mem", "io", "disk"} {
+		if set[a] {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 // GetPlanDbu returns the cluster's EFFECTIVE plan DBU: the explicit
 // prov-service-plan-dbu reservation contract when set (> 0), else AUTO-computed =
 // per-node derived DBU (GetProvDbuFromConfigPerNode) × the number of DB nodes. "Auto only when

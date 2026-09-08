@@ -443,78 +443,44 @@ func (cluster *Cluster) HasRequestDBRollingRestart() bool {
 	return ret
 }
 
-// CheckResourceConsumedOverConfig is a checkState (evaluate consumed against a reference, set a
-// tracked state). It records, per axis, whether the WORST DB node's consumed DBU has reached its
-// per-node CONFIG minus the safety margin -- consumed_axis >= config_axis × (1 -
-// prov-db-cap-safety-pct/100). This is the SATURATION signal whose consequence is to RAISE THE
-// RESOURCES (grow prov-db-* live via the dynamic resize). Reference = the technical config
-// (GetConfigDBUPerNode), NOT the plan. Sets ResourceConsumedOverConfigAxes.
-func (cluster *Cluster) CheckResourceConsumedOverConfig() {
-	cluster.ResourceConsumedOverConfigAxes = cluster.consumedOverAxes(cluster.GetConfigDBUPerNode())
-}
-
-// CheckResourceConsumedOverPlan is a checkState. It records, per axis, whether the WORST DB
-// node's consumed DBU has reached the per-node PLAN (the cap, already set at the plan) minus the
-// safety margin -- consumed_axis >= planPerNode × (1 - prov-db-cap-safety-pct/100). This is the
-// CAP-UP signal whose consequence is to RAISE THE PLAN (the client is hitting the envelope they
-// paid for). Reference = the commercial plan/cap (GetPlanDBUPerNode), NOT the config. Sets
-// ResourceConsumedOverPlanAxes and the IsNeedResourceCapUp bool.
-func (cluster *Cluster) CheckResourceConsumedOverPlan() {
-	axes := cluster.consumedOverAxes(cluster.GetPlanDBUPerNode())
-	cluster.ResourceConsumedOverPlanAxes = axes
-	cluster.IsNeedResourceCapUp = len(axes) > 0
-}
-
-// consumedOverAxes returns the axes (subset of cpu/mem/io/disk, stable order) where the WORST DB
-// node's consumed DBU reaches the per-node reference minus the safety margin -- EMPTY when none.
-// The axes are recorded (not a bare bool) because the consequence differs per axis (mem -> OOM,
-// disk -> full, cpu -> throttle, io -> latency), which the alert/GUI and the per-axis resize must
-// distinguish (state-driven law). Measured PER REAL NODE (each server's own consumed vs the
-// per-node reference) and the WORST node counts -- never an average, which would hide a single
-// saturated node (a hot master, idle slaves). Empty when resource-align is off, no manager, or
-// no servers. Callers pass the reference: config (GetConfigDBUPerNode) or plan (GetPlanDBUPerNode).
-func (cluster *Cluster) consumedOverAxes(ref DBUReading) []string {
-	if cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff {
-		return nil
+// CheckResourceCapPlan composes the cluster-level cap-up / cap-down signals from the PER-SERVER
+// plan states (each server's ResourceConsumedOver/UnderPlanAxes, set by
+// ServerMonitor.CheckResourceConsumed). checkState only -- it sets state, takes no action.
+// Composition rule -- ONE server suffices to force OR to break the action:
+//   - IsNeedResourceCapUp   = ANY up server is over the plan  (one server hitting the envelope
+//     forces raising the plan).
+//   - IsNeedResourceCapDown = EVERY up server is under the plan (a single non-under server BREAKS
+//     the cap-down -- safe-shrink: never lower the plan while any server still needs it).
+//
+// Resources within the plan are managed PER SERVER (each server's ResourceConsumedOver/
+// UnderConfigAxes drive raising/shrinking that server), so there is no cluster-level config
+// aggregate here. Both signals are false when resource-align is off, no manager, or no up server.
+func (cluster *Cluster) CheckResourceCapPlan() {
+	cluster.IsNeedResourceCapUp = false
+	cluster.IsNeedResourceCapDown = false
+	if cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff || cluster.resources == nil {
+		return
 	}
-	if cluster.resources == nil || len(cluster.Servers) == 0 {
-		return nil
-	}
-	pct := float64(cluster.Conf.ProvDBCapSafetyPct)
-	if pct < 0 {
-		pct = 0
-	} else if pct > 100 {
-		pct = 100
-	}
-	thr := 1 - pct/100.0
-	set := map[string]bool{}
+	nUp := 0
+	anyOver := false
+	allUnder := true
 	for _, srv := range cluster.Servers {
-		if srv == nil || srv.IsDown() || srv.DBUConsumed == nil {
+		if srv == nil || srv.IsDown() {
 			continue
 		}
-		c := srv.DBUConsumed
-		for _, a := range []struct {
-			name       string
-			cons, capa float64
-		}{
-			{"cpu", c.DbuCpu, ref.DbuCpu}, {"mem", c.DbuMem, ref.DbuMem},
-			{"io", c.DbuIo, ref.DbuIo}, {"disk", c.DbuDisk, ref.DbuDisk},
-		} {
-			if a.capa > 0 && a.cons/a.capa >= thr {
-				set[a.name] = true
-			}
+		nUp++
+		if len(srv.ResourceConsumedOverPlanAxes) > 0 {
+			anyOver = true
+		}
+		if len(srv.ResourceConsumedUnderPlanAxes) == 0 {
+			allUnder = false
 		}
 	}
-	if len(set) == 0 {
-		return nil
+	if nUp == 0 {
+		return
 	}
-	out := make([]string, 0, len(set))
-	for _, a := range []string{"cpu", "mem", "io", "disk"} { // stable order
-		if set[a] {
-			out = append(out, a)
-		}
-	}
-	return out
+	cluster.IsNeedResourceCapUp = anyOver
+	cluster.IsNeedResourceCapDown = allUnder
 }
 
 func (cluster *Cluster) HasRequestDBRollingReprov() bool {
