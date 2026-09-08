@@ -105,11 +105,27 @@ func (cluster *Cluster) resourceResizer() ResourceResizer {
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		return openSVCResizer{cluster}
-	case config.ConstOrchestratorKubernetes, config.ConstOrchestratorOnPremise,
-		config.ConstOrchestratorLocalhost, config.ConstOrchestratorSlapOS:
+	case config.ConstOrchestratorKubernetes:
+		// k8sResizer (native in-place Pod memory resize, 1.27+ -- fully built and
+		// tested, cluster_resize_k8s.go) is DELIBERATELY not selected here yet.
+		// It computes the Kubernetes effective service cap as
+		// GetDBContainerMemoryCapMB() + a fixed dbjobs allocation, which does
+		// NOT reproduce OpenSVC's DEFAULT.pg_mem_limit service-level target --
+		// a different contract than the exact OpenSVC-cap parity this feature
+		// is meant to deliver (KUBERNETES_OPENSVC_RESOURCE_PARITY_IMPLEMENTATION_
+		// PLAN.md). Until the deferred OpenSVC runtime cgroup proof and the
+		// matching Kubernetes effective-cap proof land, native resize must not
+		// ship: every Kubernetes resource change goes through the script/restart
+		// path (same one used before this feature), which already reconciles the
+		// Deployment template's memory resources on every replacement
+		// (k8sContainerMemoryResourcesFragment, k8sRestartDatabaseServiceWithClient
+		// / k8sForceRepullDatabaseServiceWithClient) -- so a change still
+		// eventually applies, just via a Pod replacement instead of a live
+		// in-place resize.
+		return scriptResizer{cluster}
+	case config.ConstOrchestratorOnPremise, config.ConstOrchestratorLocalhost, config.ConstOrchestratorSlapOS:
 		// For now these resize only through the client change-script; scriptResizer
-		// falls back to a restart when no script is set. K8s in-place pod resize
-		// (1.27+) is a follow-up that would get its own backend here.
+		// falls back to a restart when no script is set.
 		return scriptResizer{cluster}
 	default:
 		return restartResizer{cluster, "no live resource resize for this orchestrator"}
@@ -379,14 +395,17 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 				continue
 			}
 			if !applied {
-				cluster.logResize(server, dim, true, false, feas, nil) // native path scheduled a restart
+				// Either the native path gave up and scheduled a restart (e.g. no
+				// client script, OpenSVC v2), or -- Kubernetes only -- it is
+				// genuinely still pending kubelet confirmation: k8sResizer.Resize
+				// sets server.PendingK8sMemoryResize instead of a restart cookie in
+				// that case, and completePendingK8sMemoryResize (monitor tick)
+				// raises the DB memory once confirmed. Either way, DB memory must
+				// not be raised on this tick.
+				cluster.logResize(server, dim, true, false, feas, nil)
 				continue
 			}
-			sql := server.resizeMemorySQL(true)
-			if _, needRestart := server.ExecScriptSQL(sql); needRestart {
-				server.SetRestartCookie()
-			}
-			cluster.logResize(server, dim, true, true, feas, sql)
+			cluster.applyConfirmedMemoryGrow(server, feas)
 		} else {
 			// Feasibility gate applies to shrink too: a can-change verdict of no/
 			// migration must stop a live shrink (e.g. a maintenance window).
@@ -423,6 +442,18 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 			cluster.logResize(server, dim, false, false, feas, sql)
 		}
 	}
+}
+
+// applyConfirmedMemoryGrow raises the DB-side memory (SET GLOBALs, buffer pool
+// LAST) once the infra grow is confirmed applied -- shared by the synchronous
+// grow path above and by completePendingK8sMemoryResize (cluster_resize_k8s.go),
+// which calls this asynchronously once kubelet confirms a native Pod resize.
+func (cluster *Cluster) applyConfirmedMemoryGrow(server *ServerMonitor, feas ResizeFeasibility) {
+	sql := server.resizeMemorySQL(true)
+	if _, needRestart := server.ExecScriptSQL(sql); needRestart {
+		server.SetRestartCookie()
+	}
+	cluster.logResize(server, resizeMemory, true, true, feas, sql)
 }
 
 // completePendingCgroupShrink is phase 2 of a live memory shrink. Phase 1 lowered

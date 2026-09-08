@@ -419,6 +419,15 @@ type Cluster struct {
 	// Deployment NodeSelector placement doesn't need a per-node nodes/get call.
 	k8sNodeHostnameLabels   map[string]string `json:"-"`
 	k8sNodeHostnameLabelsMu sync.RWMutex      `json:"-"`
+	// k8sPendingMemoryResizes is server.Id -> *K8sMemoryResizeState (cluster_resize_k8s.go),
+	// the Cluster-scoped shadow of every ServerMonitor's pendingK8sMemoryResize.
+	// A ServerMonitor is fully recreated on every newServerList() (cluster_topo.go
+	// -- called from a live config-set handler, not just startup), which would
+	// otherwise silently drop a pending native Kubernetes resize mid-flight. A
+	// plain sync.Map, deliberately NOT guarded by Cluster's own embedded
+	// sync.Mutex: newServerList() already holds that lock while calling
+	// newServerMonitor() for every server, so reusing it here would deadlock.
+	k8sPendingMemoryResizes sync.Map `json:"-"`
 	// Per-cluster preserved variables (replaces ProvDBConfigPreserveVars mechanism)
 	preservedVars               map[string]string          `json:"-"`
 	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}

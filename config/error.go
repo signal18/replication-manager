@@ -299,6 +299,7 @@ var ClusterError = map[string]string{
 	"WARN0210":   "HAProxy read backend %s: catching up on add/remove cleanup over multiple monitoring passes (%s budget each) — safe, no action needed",
 	"WARN0211":   "MaxScale proxy %s: maxscale-get-info-method=maxinfo requested but MaxScale >= 2.5 (pinloki) drops the maxinfo plugin -- falling back to the REST/MaxAdmin path instead of erroring against a port nothing listens on",
 	"WARN0212":   "Can't monitor resource on cluster %s without shareProcessNamespace -- the Kubernetes namespace policy (PodSecurity) must allow it so the DBU sensor can read the database cgroup",
+	"WARN0213":   "Resource sensor on %s is not usable: %s -- monitoring-system-resources is on but the DBU reading cannot be trusted right now",
 	// CINF: cluster observability statuses (INFO, state-as-tag) — each domain
 	// state machine always explains why it may have nothing to report.
 	"CINF0001":  "%s reporting limited: instance not registered on Cloud18",

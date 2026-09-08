@@ -466,6 +466,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 							Name:            s.Name,
 							Image:           cluster.Conf.ProvDbImg,
 							ImagePullPolicy: k8sImagePullPolicy(cluster),
+							Resources:       cluster.k8sDatabaseContainerResources(),
 							Ports: []apiv1.ContainerPort{
 								{
 									Name:          "mysql",
@@ -504,8 +505,9 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 						// share network by default, and the script connects over
 						// TCP.
 						{
-							Name:  s.Name + "-dbjobs",
-							Image: cluster.Conf.ProvDbImg,
+							Name:      s.Name + "-dbjobs",
+							Image:     cluster.Conf.ProvDbImg,
+							Resources: cluster.k8sDBJobsContainerResources(),
 							// Guarded, not a direct exec: on a server with nothing
 							// ever persisted (a first boot with repman
 							// unreachable), /docker-entrypoint-initdb.d is empty --
@@ -561,20 +563,266 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 	return dep
 }
 
-// k8sResourceSensorCheckEveryNHeartbeats throttles the Deployment read behind
-// WARN0212 to a slow cadence; PreserveState keeps the state alive on the ticks in
-// between so it does not flap (pstates contract).
+// k8sDBJobsMemoryCapMB is the dbjobs sidecar's own technical minimum (MiB) --
+// NOT an operator-tunable policy (no TOML/Viper key: OpenSVC has no
+// equivalent knob for it either, see k8sDatabaseMemoryTargets). Proven in
+// Kind (doc/implementation/cluster/KUBERNETES_OPENSVC_RESOURCE_PARITY_IMPLEMENTATION_PLAN.md,
+// Phase 1): kubelet sets a Pod-level cgroup memory.max equal to the SUM of
+// every container's own memory limit, but only when every container in the
+// Pod declares one -- so this is the Kubernetes equivalent of OpenSVC's
+// service-level PG cgroup, which wraps both the DB and dbjobs containers.
+// OpenSVC's own dbjobs container carries no explicit cap of its own
+// (OpenSVCGetJobsContainerSection): it is implicitly bounded only by that
+// service-level PG limit. Kubernetes has no such implicit parent enforcement
+// without an explicit limit on every container, so dbjobs needs SOME
+// concrete number -- this is carved OUT of the same service-level target
+// OpenSVC uses (k8sDatabaseMemoryTargets), never added on top of it.
+const k8sDBJobsMemoryCapMB = 128
+
+// k8sDatabaseMinMB is the floor the DB container's own share is never let
+// drop below, even when prov-db-memory itself is too small to spare
+// k8sDBJobsMemoryCapMB for dbjobs (an unrealistic config in practice --
+// prov-db-memory defaults to 4G -- but the split must degrade safely rather
+// than produce a zero/negative DB share) and the safe fallback when
+// prov-db-memory itself fails to parse.
+const k8sDatabaseMinMB = 256
+
+// k8sDatabaseMemoryTargets is the SINGLE authority for the Kubernetes
+// service-level memory split -- used identically by the provisioning-time
+// builder below, the restart/force-repull template reconciliation
+// (k8sContainerMemoryResourcesPatch), and the native resizer
+// (cluster_resize_k8s.go), so none of the three can ever drift onto
+// different numbers.
+//
+// dbMB + jobsMB == T (cluster.Conf.ProvMem, parsed the SAME way
+// openSVCResize parses it for OpenSVC's own DEFAULT.pg_mem_limit) ALWAYS --
+// OpenSVC's behavior is the authority for what the effective service cap
+// is, not a Kubernetes-specific reinterpretation of it: T IS the effective
+// OpenSVC service cap (pg_mem_limit), so the Kubernetes Pod-level cgroup cap
+// (dbMB+jobsMB, Phase 1: kubelet sets it to the SUM of every container's own
+// limit) must equal that SAME T, never silently add anything above it. This
+// does NOT use GetDBContainerMemoryCapMB() (OpenSVC's separate, larger,
+// DBU-tier-padded CONTAINER cap, used only for OpenSVC's own container
+// run_args -- prov_opensvc_db.go, untouched by this split): mirroring that
+// number here would reproduce OpenSVC's OWN two-layer headroom on
+// Kubernetes, which is a different, larger effective cap than pg_mem_limit,
+// not the one this contract targets. dbjobs is carved OUT of T (see
+// k8sDBJobsMemoryCapMB's own doc comment for why it needs an explicit
+// number at all), never added on top; if T itself is smaller than that
+// technical minimum, dbjobs is the one that shrinks (down to 1Mi) so the DB
+// container -- the actually load-bearing process -- keeps as much of T as
+// possible.
+func (cluster *Cluster) k8sDatabaseMemoryTargets() (dbMB, jobsMB int) {
+	totalMB, err := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+	if err != nil || totalMB <= 0 {
+		// Never surface an invalid/unparseable target as a 0Mi cap: fall back
+		// to the same technical minimum the split is itself built around.
+		return k8sDatabaseMinMB, k8sDBJobsMemoryCapMB
+	}
+	jobsMB = k8sDBJobsMemoryCapMB
+	if jobsMB >= totalMB {
+		jobsMB = 1
+	}
+	dbMB = totalMB - jobsMB
+	return dbMB, jobsMB
+}
+
+// k8sDatabaseContainerResources returns the DB container's memory
+// Requests/Limits (k8sDatabaseMemoryTargets) -- gated by the same
+// prov-db-docker-run-args-limit opt-in OpenSVC's own container run_args
+// --memory uses, so a cluster that has chosen not to cap container memory on
+// OpenSVC gets the identical choice honored on Kubernetes rather than an
+// unrequested new default. Requests == Limits so the resize target is
+// unambiguous (matches Docker's own --memory==--memory-swap hard cap) --
+// this does NOT by itself make the Pod Kubernetes "Guaranteed" QoS class
+// (that also requires a CPU request==limit pair on every container, which
+// prov-db-docker-run-args-limit does not set here: CPU/IO cgroup resizing is
+// explicitly out of scope for this feature). The native Pod resize
+// subresource does not require full-Pod Guaranteed QoS, only that the
+// resized resource itself has a request/limit pair on the target container
+// -- proven live in Kind with a memory-only, no-CPU-limit test container
+// (cluster/smoke_kind_pod_resize_test.go).
+func (cluster *Cluster) k8sDatabaseContainerResources() apiv1.ResourceRequirements {
+	if !cluster.Conf.ProvDBDockerRunArgsLimit {
+		return apiv1.ResourceRequirements{}
+	}
+	dbMB, _ := cluster.k8sDatabaseMemoryTargets()
+	mem := resource.MustParse(strconv.Itoa(dbMB) + "Mi")
+	return apiv1.ResourceRequirements{
+		Requests: apiv1.ResourceList{apiv1.ResourceMemory: mem},
+		Limits:   apiv1.ResourceList{apiv1.ResourceMemory: mem},
+	}
+}
+
+// k8sDBJobsContainerResources mirrors k8sDatabaseContainerResources for the
+// dbjobs sidecar -- see k8sDatabaseMemoryTargets.
+func (cluster *Cluster) k8sDBJobsContainerResources() apiv1.ResourceRequirements {
+	if !cluster.Conf.ProvDBDockerRunArgsLimit {
+		return apiv1.ResourceRequirements{}
+	}
+	_, jobsMB := cluster.k8sDatabaseMemoryTargets()
+	mem := resource.MustParse(strconv.Itoa(jobsMB) + "Mi")
+	return apiv1.ResourceRequirements{
+		Requests: apiv1.ResourceList{apiv1.ResourceMemory: mem},
+		Limits:   apiv1.ResourceList{apiv1.ResourceMemory: mem},
+	}
+}
+
+// k8sAPICallTimeout bounds every Kubernetes API call reachable from the
+// monitor loop (F2: the perpetual-monitoring invariant outranks everything
+// else -- a stalled API server/network connection must never stall
+// ServerMonitor.Refresh() indefinitely). Generous for a normally-responsive
+// in-cluster API server, far below any realistic monitoring-ticker interval.
+const k8sAPICallTimeout = 5 * time.Second
+
+// k8sCurrentReplicaSet returns the Deployment's CURRENT ReplicaSet -- the one
+// with the highest "deployment.kubernetes.io/revision" annotation among the
+// ReplicaSets it owns. That revision counter is assigned by the Deployment
+// controller itself each time the Pod template changes, so it is the
+// authoritative "this is the desired generation" marker (the same one
+// `kubectl rollout history` reads) -- unlike Pod phase alone, it survives a
+// RollingUpdate window where an OLD-generation Pod is still Running while the
+// NEW-generation Pod is still Pending (e.g. an RWO PVC blocking the new Pod
+// from scheduling until the old one releases it -- exactly the scenario a
+// label+phase-only lookup gets wrong). Returns (nil, nil), not an error, when
+// the Deployment does not yet own any ReplicaSet (not rolled out yet).
+func (cluster *Cluster) k8sCurrentReplicaSet(ctx context.Context, client kubernetes.Interface, dep *appsv1.Deployment) (*appsv1.ReplicaSet, error) {
+	sel, err := metav1.LabelSelectorAsSelector(dep.Spec.Selector)
+	if err != nil {
+		return nil, err
+	}
+	rsList, err := client.AppsV1().ReplicaSets(cluster.Name).List(ctx, metav1.ListOptions{LabelSelector: sel.String()})
+	if err != nil {
+		return nil, err
+	}
+	var current *appsv1.ReplicaSet
+	currentRev := int64(-1)
+	for i := range rsList.Items {
+		rs := &rsList.Items[i]
+		owned := false
+		for _, ref := range rs.OwnerReferences {
+			if ref.UID == dep.UID {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			continue
+		}
+		rev, _ := strconv.ParseInt(rs.Annotations["deployment.kubernetes.io/revision"], 10, 64)
+		if rev > currentRev {
+			currentRev = rev
+			current = rs
+		}
+	}
+	return current, nil
+}
+
+// k8sContainerReady reports whether the named container is Ready in the
+// Pod's own status -- Running Phase alone does not mean the DB container
+// itself has passed its readiness probe.
+func k8sContainerReady(pod *apiv1.Pod, containerName string) bool {
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.Name == containerName {
+			return cs.Ready
+		}
+	}
+	return false
+}
+
+// k8sFindDatabasePod finds the live Pod backing a server's Deployment,
+// controller-aware: Deployment -> its CURRENT ReplicaSet (k8sCurrentReplicaSet)
+// -> exactly one non-terminating, Running, DB-container-Ready Pod OWNED by
+// that ReplicaSet. A label+phase-only lookup (the previous implementation)
+// can select an old-generation Pod that is still Running while its
+// replacement (new ReplicaSet) is still Pending -- e.g. an RWO PVC blocking
+// the new Pod from scheduling until the old one releases it -- and resizing
+// or confirming against that old Pod would target a Pod already on its way
+// out while the replacement serves traffic at the OLD memory limit.
+//
+// Zero or multiple eligible candidates both return (nil, nil), not an error:
+// callers that need "cannot confirm" vs. "confirmed absent" to differ check
+// for a nil Pod explicitly, and every caller of this function already treats
+// a nil Pod as "wait / cannot confirm" rather than a hard failure. A missing
+// Deployment or ReplicaSet (not provisioned/rolled out yet) is the same
+// "cannot confirm" case, not an error.
+func (cluster *Cluster) k8sFindDatabasePod(ctx context.Context, client kubernetes.Interface, s *ServerMonitor) (*apiv1.Pod, error) {
+	dep, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, s.Name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	rs, err := cluster.k8sCurrentReplicaSet(ctx, client, dep)
+	if err != nil {
+		return nil, err
+	}
+	if rs == nil {
+		return nil, nil
+	}
+	pods, err := client.CoreV1().Pods(cluster.Name).List(ctx, metav1.ListOptions{
+		LabelSelector: "app=repication-manager,tag=" + s.Name,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var candidate *apiv1.Pod
+	for i := range pods.Items {
+		p := &pods.Items[i]
+		if p.DeletionTimestamp != nil || p.Status.Phase != apiv1.PodRunning {
+			continue
+		}
+		owned := false
+		for _, ref := range p.OwnerReferences {
+			if ref.UID == rs.UID {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			continue // belongs to an old/other ReplicaSet, not the Deployment's current one
+		}
+		if !k8sContainerReady(p, s.Name) {
+			continue
+		}
+		if candidate != nil {
+			return nil, nil // ambiguous: more than one eligible Pod, cannot confirm a single target
+		}
+		candidate = p
+	}
+	return candidate, nil
+}
+
+// k8sResourceSensorCheckEveryNHeartbeats throttles the Deployment/Pod reads behind
+// WARN0212/WARN0213 to a slow cadence; PreserveState keeps the state alive on the
+// ticks in between so it does not flap (pstates contract).
 const k8sResourceSensorCheckEveryNHeartbeats = 30
 
+// k8sResourceSensorFreshnessWindow is how stale the last successful DBU reading
+// (server.DBUConsumed.WindowEnd) may be before the sensor is considered not
+// actually delivering data. Generous relative to the dbjobs launcher's own ~60s
+// push cadence so a couple of missed/slow cycles don't flap WARN0213.
+const k8sResourceSensorFreshnessWindow = 5 * time.Minute
+
 // CheckK8SResourceSensor observes, from the Kubernetes API, whether the DBU
-// resource sensor can actually run: the database Deployment must carry
-// shareProcessNamespace (so the sidecar reads the DB cgroup via /proc/<pid>/root).
-// When monitoring-system-resources is on and a Deployment lacks it -- because the
-// namespace policy (PodSecurity) forbade it at provision, so provisioning fell
-// back without it -- raise WARN0212. Derived from the observed Deployment (not a
-// stored flag): the value only changes on a reprovision, and this re-reads it, so
-// the state clears by itself once the policy is fixed and the server reprovisioned.
-// Cluster-scoped, because the namespace policy applies to every server alike.
+// resource sensor can actually run -- both the provisioning-time precondition
+// and the ongoing runtime reality, not just the Deployment template boolean:
+//
+//   - WARN0212: the database Deployment must carry shareProcessNamespace (so
+//     the sidecar reads the DB cgroup via /proc/<pid>/root). Missing means the
+//     namespace policy (PodSecurity) forbade it at provision, so provisioning
+//     fell back without it. Cluster-scoped: the namespace policy applies to
+//     every server alike, so one missing Deployment is enough to raise it.
+//   - WARN0213: per-server runtime prerequisites -- the DB Pod is Running, the
+//     dbjobs sidecar (the container that actually runs collect_dbu) is Ready,
+//     and a reading has arrived within k8sResourceSensorFreshnessWindow. A
+//     Deployment can carry the shareProcessNamespace policy correctly and
+//     still not be delivering real data (Pod not scheduled yet, dbjobs
+//     crash-looping, sensor silently failing every push).
+//
+// Both are derived from live state (not a stored flag), so they clear by
+// themselves once the underlying condition is fixed and this re-observes it.
 func (cluster *Cluster) CheckK8SResourceSensor() {
 	if !cluster.Conf.MonitoringSystemResources || cluster.GetOrchestrator() != config.ConstOrchestratorKubernetes {
 		return
@@ -582,26 +830,150 @@ func (cluster *Cluster) CheckK8SResourceSensor() {
 	// Slow cadence: only hit the API every N heartbeats, preserve in between.
 	if cluster.StateMachine.GetHeartbeats()%k8sResourceSensorCheckEveryNHeartbeats != 0 {
 		cluster.GetStateMachine().PreserveState("WARN0212")
+		cluster.GetStateMachine().PreserveState("WARN0213")
 		return
 	}
 	client, err := cluster.K8SConnectAPI()
 	if err != nil {
 		cluster.GetStateMachine().PreserveState("WARN0212") // API unreachable: keep the last verdict
+		cluster.GetStateMachine().PreserveState("WARN0213")
 		return
 	}
+	cluster.checkK8SResourceSensorWithClient(client)
+}
+
+// checkK8SResourceSensorWithClient is the *WithClient testable half of
+// CheckK8SResourceSensor (same split as every other prov_k8s_*.go entry
+// point) -- everything past the cadence throttle and the K8SConnectAPI call.
+func (cluster *Cluster) checkK8SResourceSensorWithClient(client kubernetes.Interface) {
+	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+	defer cancel()
+
+	// The Deployment-policy scan (WARN0212, cluster-scoped) and the per-server
+	// runtime scan (WARN0213) are tracked independently across the WHOLE loop:
+	// a confirmed runtime problem on one server must never cut the scan short
+	// and leave a LATER server's missing shareProcessNamespace undiscovered,
+	// so both warnings stay cluster-wide-accurate for this pass regardless of
+	// which server triggers which condition.
+	spnMissing := false
+	deploymentPolicyUnconfirmed := false
+	runtimeBroken := false
+	runtimeUnconfirmed := false
+	var runtimeBrokenURL, runtimeBrokenReason, firstUnconfirmedURL string
+
 	for _, s := range cluster.Servers {
 		if s == nil || !s.HasProvisionCookie() {
 			continue
 		}
-		dep, err := client.AppsV1().Deployments(cluster.Name).Get(context.TODO(), s.Name, metav1.GetOptions{})
+		dep, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, s.Name, metav1.GetOptions{})
 		if err != nil {
+			// A transient Get failure verifies NEITHER prerequisite for this
+			// server: it must not be allowed to silently clear a real,
+			// previously-known WARN0212 (the policy could not be re-checked)
+			// nor look confirmed-good on WARN0213 just because this pass
+			// could not check either.
+			deploymentPolicyUnconfirmed = true
+			runtimeUnconfirmed = true
+			if firstUnconfirmedURL == "" {
+				firstUnconfirmedURL = s.URL
+			}
 			continue
 		}
 		if spn := dep.Spec.Template.Spec.ShareProcessNamespace; spn == nil || !*spn {
-			cluster.SetState("WARN0212", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0212"], cluster.Name), ErrFrom: "CONF"})
-			return // namespace policy is cluster-wide; one is enough
+			spnMissing = true
+			continue // still worth checking other servers' runtime prerequisites below
+		}
+		if runtimeBroken {
+			// Already have a confirmed runtime problem to report this pass --
+			// keep walking the loop for the Deployment-policy scan above,
+			// just skip the (redundant) runtime check itself.
+			continue
+		}
+		verdict, reason := cluster.k8sResourceSensorRuntimeIssue(ctx, client, s)
+		switch verdict {
+		case k8sSensorBroken:
+			runtimeBroken = true
+			runtimeBrokenURL, runtimeBrokenReason = s.URL, reason
+		case k8sSensorUnconfirmed:
+			runtimeUnconfirmed = true
+			if firstUnconfirmedURL == "" {
+				firstUnconfirmedURL = s.URL
+			}
 		}
 	}
+
+	if spnMissing {
+		// A positively-confirmed missing capability always wins over an
+		// unrelated inconclusive check on some OTHER server this same pass --
+		// an unconfirmed condition elsewhere must never suppress a confirmed
+		// one (finding: a real db1 failure was being swallowed by a
+		// transient db2 API/RBAC error in the same scan).
+		cluster.SetState("WARN0212", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0212"], cluster.Name), ErrFrom: "CONF"})
+	} else if deploymentPolicyUnconfirmed {
+		cluster.GetStateMachine().PreserveState("WARN0212")
+	}
+
+	switch {
+	case runtimeBroken:
+		cluster.SetState("WARN0213", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0213"], runtimeBrokenURL, runtimeBrokenReason), ErrFrom: "CONF"})
+	case runtimeUnconfirmed:
+		// Explicitly SET (not merely preserved): a service whose sensor has
+		// never been positively verified -- newly provisioned, or every check
+		// so far has been inconclusive (missing/ambiguous Pod, API error) --
+		// must get a tracked non-ready state from its very FIRST observation,
+		// not only once a pre-existing WARN0213 already happens to exist
+		// (PreserveState is a no-op when there is nothing to preserve).
+		cluster.SetState("WARN0213", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0213"], firstUnconfirmedURL, "sensor state not yet verified"), ErrFrom: "CONF"})
+	}
+}
+
+// k8sSensorRuntimeVerdict distinguishes a positively-confirmed sensor problem
+// from "could not check this pass" -- the two must never be conflated, or a
+// transient API hiccup would silently clear a real WARN0213.
+type k8sSensorRuntimeVerdict int
+
+const (
+	k8sSensorHealthy k8sSensorRuntimeVerdict = iota
+	k8sSensorUnconfirmed
+	k8sSensorBroken
+)
+
+// k8sResourceSensorRuntimeIssue checks the runtime prerequisites the DBU sensor
+// needs beyond the Deployment's shareProcessNamespace policy: a Running DB Pod,
+// a Ready dbjobs sidecar, and a reading fresh enough to prove the sensor is
+// actually delivering data, not just theoretically able to. An API error, an
+// ambiguous Pod set, or a not-yet-scheduled Pod is k8sSensorUnconfirmed --
+// distinct from k8sSensorHealthy -- so the caller preserves rather than clears
+// the existing state.
+func (cluster *Cluster) k8sResourceSensorRuntimeIssue(ctx context.Context, client kubernetes.Interface, s *ServerMonitor) (k8sSensorRuntimeVerdict, string) {
+	pod, err := cluster.k8sFindDatabasePod(ctx, client, s)
+	if err != nil {
+		return k8sSensorUnconfirmed, ""
+	}
+	if pod == nil {
+		return k8sSensorUnconfirmed, ""
+	}
+	jobsName := s.Name + "-dbjobs"
+	jobsFound := false
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.Name != jobsName {
+			continue
+		}
+		jobsFound = true
+		if !cs.Ready {
+			return k8sSensorBroken, fmt.Sprintf("dbjobs sidecar %s is not Ready on Pod %s", jobsName, pod.Name)
+		}
+	}
+	if !jobsFound {
+		return k8sSensorBroken, fmt.Sprintf("dbjobs sidecar container %s not found on Pod %s", jobsName, pod.Name)
+	}
+	if s.DBUConsumed == nil {
+		return k8sSensorBroken, "no DBU reading has ever been received"
+	}
+	if age := time.Since(s.DBUConsumed.WindowEnd); age > k8sResourceSensorFreshnessWindow {
+		return k8sSensorBroken, fmt.Sprintf("last DBU reading is %s old (window %s)", age.Round(time.Second), k8sResourceSensorFreshnessWindow)
+	}
+	return k8sSensorHealthy, ""
 }
 
 func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
@@ -669,16 +1041,31 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		return
 	}
 	nodeHostnameLabel := cluster.k8sHostnameLabel(agent.HostName)
+	// k8sDatabaseContainerResources/k8sDBJobsContainerResources (called by the
+	// builder below) read cluster.Conf.ProvMem fresh -- SetDBMemorySize
+	// (cluster/cluster_set.go) already updates it BEFORE a dynamic resize is
+	// dispatched, so a genuine recreate here automatically picks up the last
+	// confirmed target with no separate persistence mechanism needed (the
+	// same guarantee every other dynamic prov-db-* setting already has: it
+	// survives for the life of this process, and durably across a restart
+	// only once config-merge writes it back to TOML -- not a gap unique to
+	// this feature).
 	deployment := cluster.k8sDatabaseDeployment(s, port, nodeHostnameLabel)
 
 	// Enable the DBU resource sensor's pod requirement: a shared PID namespace so
 	// the "-dbjobs" sidecar reads the database container's own cgroup via
-	// /proc/<pid>/root (no hostPath, no node access). The sensor is optional, so
-	// if the cluster's admission (PodSecurity) forbids shareProcessNamespace the
-	// first Create is rejected -- retry without it so the database still
-	// provisions. The absence is then observed and surfaced as WARN0212 by the
-	// monitor. A Cloud18-managed cluster (we set the policy) admits it and never
-	// hits this fallback. See doc/implementation/cluster/DBU_RESOURCE_SENSOR.md.
+	// /proc/<pid>/root (no hostPath, no node access). monitoring-system-resources
+	// is a capability that changes the service definition -- the same way
+	// enabling OpenSVC's own resource-sensor capability changes the service
+	// definition there, and OpenSVC does not retry with that capability silently
+	// dropped. So if the cluster's admission (PodSecurity) forbids
+	// shareProcessNamespace, provisioning does NOT fall back to a sensor-less
+	// Deployment: that would let an operator believe the DBU sensor is active
+	// when it can never run under this namespace policy. It fails the
+	// provisioning call instead (ERR00112) so the operator sees the capability
+	// gap immediately, not as a silently-degraded WARN0212 discovered later. A
+	// Cloud18-managed cluster (we set the policy) admits it and never hits this
+	// path. See doc/implementation/cluster/DBU_RESOURCE_SENSOR.md.
 	sensorEnabled := cluster.Conf.MonitoringSystemResources
 	if sensorEnabled {
 		share := true
@@ -689,9 +1076,11 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Creating Kubernetes deployment...")
 	result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
 	if sensorEnabled && apierrors.IsForbidden(err) {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "shareProcessNamespace forbidden by admission for %s (%s); provisioning without the resource sensor", s.Name, err)
-		deployment.Spec.Template.Spec.ShareProcessNamespace = nil
-		result, err = deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
+		cluster.SetState("WARN0212", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0212"], cluster.Name), ErrFrom: "CONF"})
+		capErr := fmt.Errorf(clusterError["ERR00112"], s.Name, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", capErr)
+		cluster.errorChan <- capErr
+		return
 	}
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot deploy Kubernetes deployment %s ", err)
@@ -781,14 +1170,107 @@ func (cluster *Cluster) K8SStartDatabaseService(s *ServerMonitor) error {
 	return cluster.k8sStartDatabaseServiceWithClient(client, s.Name)
 }
 
+// k8sMemoryResourcesFragment is the strategic-merge "resources" sub-map for
+// one container's memory Requests==Limits.
+func k8sMemoryResourcesFragment(mb int) map[string]interface{} {
+	memStr := strconv.Itoa(mb) + "Mi"
+	return map[string]interface{}{
+		"requests": map[string]string{"memory": memStr},
+		"limits":   map[string]string{"memory": memStr},
+	}
+}
+
+// k8sDBJobsContainerName is the dbjobs sidecar's container name convention
+// (k8sDatabaseDeployment).
+func k8sDBJobsContainerName(dbContainerName string) string {
+	return dbContainerName + "-dbjobs"
+}
+
+func k8sDeploymentHasContainer(dep *appsv1.Deployment, name string) bool {
+	for _, c := range dep.Spec.Template.Spec.Containers {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// k8sContainerMemoryResourcesPatch is the SINGLE authoritative source for the
+// strategic-merge "containers" entries every Pod-replacing restart path
+// (k8sRestartDatabaseServiceWithClient, k8sForceRepullDatabaseServiceWithClient)
+// patches onto the Deployment template, so none of them can ever drift onto
+// different numbers (the exact drift that let a fallback restart recreate
+// the OLD template limit even after Repman had already confirmed/applied a
+// new DB memory target). Reconciles BOTH the DB container AND -- if dep's
+// live template already has one -- its dbjobs sidecar to the current
+// k8sDatabaseMemoryTargets split, so their AGGREGATE always matches the same
+// service-level target OpenSVC's own DEFAULT.pg_mem_limit uses, never
+// leaving the dbjobs half silently unbounded on an existing Deployment even
+// after the DB container's own limit was patched. Only includes the dbjobs
+// entry when dep already carries that container: patching a name that
+// doesn't exist would create a NEW, incomplete container (missing image,
+// command, volume mounts) rather than erroring -- the same landmine
+// k8sUpdateDatabaseServiceConfigWithClient's own doc comment describes. nil
+// when prov-db-docker-run-args-limit is off (byte-identical patch to before
+// this feature in that case).
+func (cluster *Cluster) k8sContainerMemoryResourcesPatch(dep *appsv1.Deployment, name string) []map[string]interface{} {
+	if !cluster.Conf.ProvDBDockerRunArgsLimit {
+		return nil
+	}
+	dbMB, jobsMB := cluster.k8sDatabaseMemoryTargets()
+	patch := []map[string]interface{}{
+		{"name": name, "resources": k8sMemoryResourcesFragment(dbMB)},
+	}
+	jobsName := k8sDBJobsContainerName(name)
+	if k8sDeploymentHasContainer(dep, jobsName) {
+		patch = append(patch, map[string]interface{}{"name": jobsName, "resources": k8sMemoryResourcesFragment(jobsMB)})
+	}
+	return patch
+}
+
 // k8sRestartDatabaseServiceWithClient triggers a rolling pod replacement
 // like `kubectl rollout restart`, patching only the restartedAt annotation
 // -- unlike k8sForceRepullDatabaseServiceWithClient, never ImagePullPolicy:
 // a plain restart (used by RollingRestart, often on a schedule) must never
 // silently re-pull a different image.
+//
+// When prov-db-docker-run-args-limit is set, the SAME patch also carries the
+// CURRENT DB+dbjobs memory targets (k8sContainerMemoryResourcesPatch, sourced
+// from cluster.Conf.ProvMem -- already up to date after any confirmed
+// dynamic resize, see SetDBMemorySize) onto both containers' Requests/Limits:
+// an explicit restart already replaces the Pod by design, so this is the one
+// safe moment to reconcile the Deployment's own template (which the resize
+// subresource never touched) with the value already confirmed live, instead
+// of the replacement Pod reverting to whatever the template held at last
+// (re)provision. A cluster with the flag off gets a byte-identical patch to
+// before this feature. Needs a bounded Get first (to know whether dep
+// already carries a dbjobs container) -- still not Update(): the Get is
+// read-only and the Patch call below never uses its resourceVersion, so this
+// does not reintroduce the resourceVersion problem k8sEnsureDatabaseSecret
+// has with Update().
 func (cluster *Cluster) k8sRestartDatabaseServiceWithClient(client kubernetes.Interface, name string) error {
-	patch := []byte(`{"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"` + time.Now().Format(time.RFC3339) + `"}}}}}`)
-	_, err := client.AppsV1().Deployments(cluster.Name).Patch(context.TODO(), name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
+	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+	defer cancel()
+	templatePatch := map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"annotations": map[string]string{"kubectl.kubernetes.io/restartedAt": time.Now().Format(time.RFC3339)},
+		},
+	}
+	if cluster.Conf.ProvDBDockerRunArgsLimit {
+		dep, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot restart %s: %s ", name, err)
+			return err
+		}
+		templatePatch["spec"] = map[string]interface{}{
+			"containers": cluster.k8sContainerMemoryResourcesPatch(dep, name),
+		}
+	}
+	patch, err := json.Marshal(map[string]interface{}{"spec": map[string]interface{}{"template": templatePatch}})
+	if err != nil {
+		return err
+	}
+	_, err = client.AppsV1().Deployments(cluster.Name).Patch(ctx, name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot restart %s: %s ", name, err)
 	}
@@ -864,12 +1346,58 @@ func (cluster *Cluster) K8SWaitRolloutComplete(s *ServerMonitor) error {
 // ImagePullPolicy is patched in the same call to the *current* setting,
 // since k8sDatabaseDeployment only sets it at creation time. Not Update():
 // same resourceVersion problem as k8sEnsureDatabaseSecret.
+//
+// This is the fallback path a native Kubernetes resize dispatch reaches
+// on timeout/Deferred/Infeasible (server.SetRestartCookie, cluster_resize_k8s.go)
+// AND the path CheckRestartContainerCookies (reachable every monitor tick,
+// see cluster.go) drives automatically for any RestartRidJobsContainer
+// cookie -- so it MUST carry the current DB+dbjobs memory targets too
+// (k8sContainerMemoryResourcesPatch, the same single source
+// k8sRestartDatabaseServiceWithClient uses): without it, a replacement Pod
+// created by this path would revert to whatever the Deployment template held
+// at last (re)provision even though Repman may have already applied a new
+// DB-side memory configuration expecting the larger cgroup. Bounded by
+// k8sAPICallTimeout, not context.TODO(): this call is reachable from the
+// perpetual monitor loop (F2), which must never be allowed to stall on a
+// hung API request. Needs a bounded Get first (to know whether dep already
+// carries a dbjobs container) -- still not Update(): the Get is read-only
+// and the Patch call below never uses its resourceVersion.
 func (cluster *Cluster) k8sForceRepullDatabaseServiceWithClient(client kubernetes.Interface, name string) error {
-	patch := []byte(`{"spec":{"template":{` +
-		`"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"` + time.Now().Format(time.RFC3339) + `"}},` +
-		`"spec":{"containers":[{"name":"` + name + `","imagePullPolicy":"` + string(k8sImagePullPolicy(cluster)) + `"}]}` +
-		`}}}`)
-	_, err := client.AppsV1().Deployments(cluster.Name).Patch(context.TODO(), name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
+	ctx, cancel := context.WithTimeout(context.Background(), k8sAPICallTimeout)
+	defer cancel()
+	containers := []map[string]interface{}{
+		{"name": name, "imagePullPolicy": string(k8sImagePullPolicy(cluster))},
+	}
+	if cluster.Conf.ProvDBDockerRunArgsLimit {
+		dep, err := client.AppsV1().Deployments(cluster.Name).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot force image re-pull for %s: %s ", name, err)
+			return err
+		}
+		for _, c := range cluster.k8sContainerMemoryResourcesPatch(dep, name) {
+			if c["name"] == name {
+				containers[0]["resources"] = c["resources"]
+			} else {
+				containers = append(containers, c)
+			}
+		}
+	}
+	patch, err := json.Marshal(map[string]interface{}{
+		"spec": map[string]interface{}{
+			"template": map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"annotations": map[string]string{"kubectl.kubernetes.io/restartedAt": time.Now().Format(time.RFC3339)},
+				},
+				"spec": map[string]interface{}{
+					"containers": containers,
+				},
+			},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	_, err = client.AppsV1().Deployments(cluster.Name).Patch(ctx, name, ktypes.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot force image re-pull for %s: %s ", name, err)
 	}

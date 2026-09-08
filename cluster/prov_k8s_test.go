@@ -5,11 +5,13 @@ import (
 	"encoding/base64"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -17,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	ktypes "k8s.io/apimachinery/pkg/types"
 	k8stesting "k8s.io/client-go/testing"
 
 	"k8s.io/client-go/kubernetes/fake"
@@ -1564,6 +1567,346 @@ func TestK8SDatabaseDeployment_ContainerUsesConfiguredPullPolicy(t *testing.T) {
 	}
 }
 
+// --- Service-level memory-cgroup contract (Kubernetes/OpenSVC resource
+// parity, Phase 1) ---
+//
+// Proven live in Kind: kubelet sets a Pod-level cgroup memory.max equal to
+// the SUM of every container's own memory limit, but only when every
+// container in the Pod declares one. Setting Requests==Limits on both the DB
+// container and the dbjobs sidecar is therefore what makes the Pod cgroup the
+// Kubernetes equivalent of OpenSVC's service-level PG cgroup, which wraps
+// both. See doc/implementation/cluster/KUBERNETES_OPENSVC_RESOURCE_PARITY_IMPLEMENTATION_PLAN.md.
+
+// --- Sensor runtime prerequisites (Kubernetes/OpenSVC resource parity, Phase 2) ---
+
+func k8sSensorTestPod(clusterName, serverName string, phase apiv1.PodPhase, jobsReady *bool, rsUID ktypes.UID) *apiv1.Pod {
+	pod := &apiv1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            serverName + "-abc123",
+			Namespace:       clusterName,
+			Labels:          map[string]string{"app": "repication-manager", "tag": serverName},
+			OwnerReferences: []metav1.OwnerReference{{UID: rsUID}},
+		},
+		Status: apiv1.PodStatus{Phase: phase},
+	}
+	if jobsReady != nil {
+		pod.Status.ContainerStatuses = []apiv1.ContainerStatus{
+			{Name: serverName + "-dbjobs", Ready: *jobsReady},
+			// k8sFindDatabasePod also requires the DB container itself Ready.
+			{Name: serverName, Ready: true},
+		}
+	}
+	return pod
+}
+
+func TestK8SResourceSensorRuntimeIssue_NoPodFoundCannotConfirm(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	client := fake.NewSimpleClientset()
+	s := &ServerMonitor{Name: "db1"}
+
+	if verdict, _ := cluster.k8sResourceSensorRuntimeIssue(context.Background(), client, s); verdict != k8sSensorUnconfirmed {
+		t.Fatalf("expected k8sSensorUnconfirmed when no Pod is found, got %v", verdict)
+	}
+}
+
+func TestK8SResourceSensorRuntimeIssue_PodNotRunningCannotConfirm(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	dep, rs := k8sTestController("k8stest", "db1")
+	ready := true
+	// k8sFindDatabasePod only returns Running Pods -- a Pending Pod looks
+	// identical to "no Pod yet" at this layer, which is intentional
+	// (mid-transition, not a confirmed problem): see k8sSensorUnconfirmed.
+	client := fake.NewSimpleClientset(dep, rs, k8sSensorTestPod("k8stest", "db1", apiv1.PodPending, &ready, rs.UID))
+	s := &ServerMonitor{Name: "db1"}
+
+	if verdict, _ := cluster.k8sResourceSensorRuntimeIssue(context.Background(), client, s); verdict != k8sSensorUnconfirmed {
+		t.Fatalf("expected k8sSensorUnconfirmed for a not-yet-Running Pod, got %v", verdict)
+	}
+}
+
+func TestK8SResourceSensorRuntimeIssue_DbjobsSidecarMissing(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	dep, rs := k8sTestController("k8stest", "db1")
+	pod := k8sSensorTestPod("k8stest", "db1", apiv1.PodRunning, nil, rs.UID)
+	// The DB container itself must still be Ready for k8sFindDatabasePod to
+	// return this Pod at all -- only the dbjobs sidecar is missing here.
+	pod.Status.ContainerStatuses = []apiv1.ContainerStatus{{Name: "db1", Ready: true}}
+	client := fake.NewSimpleClientset(dep, rs, pod)
+	s := &ServerMonitor{Name: "db1"}
+
+	verdict, reason := cluster.k8sResourceSensorRuntimeIssue(context.Background(), client, s)
+	if verdict != k8sSensorBroken || !strings.Contains(reason, "dbjobs sidecar container") || !strings.Contains(reason, "not found") {
+		t.Fatalf("expected a broken missing-dbjobs-container verdict, got verdict=%v reason=%q", verdict, reason)
+	}
+}
+
+func TestK8SResourceSensorRuntimeIssue_DbjobsSidecarNotReady(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	dep, rs := k8sTestController("k8stest", "db1")
+	notReady := false
+	client := fake.NewSimpleClientset(dep, rs, k8sSensorTestPod("k8stest", "db1", apiv1.PodRunning, &notReady, rs.UID))
+	s := &ServerMonitor{Name: "db1"}
+
+	verdict, reason := cluster.k8sResourceSensorRuntimeIssue(context.Background(), client, s)
+	if verdict != k8sSensorBroken || !strings.Contains(reason, "not Ready") {
+		t.Fatalf("expected a broken dbjobs-not-Ready verdict, got verdict=%v reason=%q", verdict, reason)
+	}
+}
+
+func TestK8SResourceSensorRuntimeIssue_NoReadingYet(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	dep, rs := k8sTestController("k8stest", "db1")
+	ready := true
+	client := fake.NewSimpleClientset(dep, rs, k8sSensorTestPod("k8stest", "db1", apiv1.PodRunning, &ready, rs.UID))
+	s := &ServerMonitor{Name: "db1"}
+
+	verdict, reason := cluster.k8sResourceSensorRuntimeIssue(context.Background(), client, s)
+	if verdict != k8sSensorBroken || !strings.Contains(reason, "no DBU reading") {
+		t.Fatalf("expected a broken no-reading-yet verdict, got verdict=%v reason=%q", verdict, reason)
+	}
+}
+
+func TestK8SResourceSensorRuntimeIssue_StaleReading(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	dep, rs := k8sTestController("k8stest", "db1")
+	ready := true
+	client := fake.NewSimpleClientset(dep, rs, k8sSensorTestPod("k8stest", "db1", apiv1.PodRunning, &ready, rs.UID))
+	s := &ServerMonitor{Name: "db1", DBUConsumed: &DBUReading{WindowEnd: time.Now().Add(-1 * time.Hour)}}
+
+	verdict, reason := cluster.k8sResourceSensorRuntimeIssue(context.Background(), client, s)
+	if verdict != k8sSensorBroken || !strings.Contains(reason, "old") {
+		t.Fatalf("expected a broken stale-reading verdict, got verdict=%v reason=%q", verdict, reason)
+	}
+}
+
+func TestK8SResourceSensorRuntimeIssue_AllSatisfiedIsHealthy(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	dep, rs := k8sTestController("k8stest", "db1")
+	ready := true
+	client := fake.NewSimpleClientset(dep, rs, k8sSensorTestPod("k8stest", "db1", apiv1.PodRunning, &ready, rs.UID))
+	s := &ServerMonitor{Name: "db1", DBUConsumed: &DBUReading{WindowEnd: time.Now()}}
+
+	if verdict, reason := cluster.k8sResourceSensorRuntimeIssue(context.Background(), client, s); verdict != k8sSensorHealthy {
+		t.Fatalf("expected k8sSensorHealthy when Pod is Running, dbjobs is Ready, and the reading is fresh, got verdict=%v reason=%q", verdict, reason)
+	}
+}
+
+// --- CheckK8SResourceSensor (via checkK8SResourceSensorWithClient): the
+// cluster-wide WARN0212/WARN0213 scan built on top of the per-server checks
+// above ---
+
+func k8sSensorTestClusterWithStateMachine(t *testing.T, name string) *Cluster {
+	t.Helper()
+	cluster := newTestCluster(name)
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Conf.MonitoringSystemResources = true
+	cluster.Conf.ProvOrchestrator = "kube"
+	return cluster
+}
+
+func k8sSensorTestProvisionedServer(t *testing.T, cluster *Cluster, name string) *ServerMonitor {
+	t.Helper()
+	s := &ServerMonitor{Name: name, URL: name + ":3306", ClusterGroup: cluster, Datadir: t.TempDir()}
+	if err := s.SetProvisionCookie(); err != nil {
+		t.Fatalf("failed to set provision cookie: %s", err)
+	}
+	return s
+}
+
+// k8sSensorHasOpenState mirrors PreserveState's own prefix-match lookup
+// (utils/state/state.go) against whatever this pass added to CurState --
+// checking CurState directly (not IsInState/GetOpenStates, which read
+// OldState) because a test asserts on the pass that JUST ran, before any
+// ClearState() tick-boundary rotation.
+func k8sSensorHasOpenState(cluster *Cluster, prefix string) bool {
+	for key := range *cluster.StateMachine.CurState {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestCheckK8SResourceSensor_FirstUnconfirmedObservationSetsWarning is the
+// regression for the finding: PreserveState only retains a PRE-EXISTING
+// warning, so a newly-provisioned service whose very first check is
+// inconclusive (here: the Deployment does not exist yet) must still get an
+// explicitly tracked non-ready WARN0213, not silent absence of any warning.
+func TestCheckK8SResourceSensor_FirstUnconfirmedObservationSetsWarning(t *testing.T) {
+	cluster := k8sSensorTestClusterWithStateMachine(t, "k8stest")
+	s := k8sSensorTestProvisionedServer(t, cluster, "db1")
+	cluster.Servers = []*ServerMonitor{s}
+	client := fake.NewSimpleClientset() // no Deployment at all yet
+
+	cluster.checkK8SResourceSensorWithClient(client)
+
+	if !k8sSensorHasOpenState(cluster, "WARN0213") {
+		t.Fatal("expected WARN0213 to be explicitly set on the very first unconfirmed observation, not silently absent")
+	}
+}
+
+// TestCheckK8SResourceSensor_TransientDeploymentGetFailurePreservesWARN0212
+// is the regression for the finding: a Deployment read error only preserved
+// WARN0213, never WARN0212 -- so a previously-known missing-shareProcessNamespace
+// condition could silently disappear during a transient API/RBAC hiccup.
+func TestCheckK8SResourceSensor_TransientDeploymentGetFailurePreservesWARN0212(t *testing.T) {
+	cluster := k8sSensorTestClusterWithStateMachine(t, "k8stest")
+	s := k8sSensorTestProvisionedServer(t, cluster, "db1")
+	cluster.Servers = []*ServerMonitor{s}
+
+	// Pass 1: Deployment exists but is missing shareProcessNamespace -> WARN0212 set.
+	missingSPN := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"}}
+	cluster.checkK8SResourceSensorWithClient(fake.NewSimpleClientset(missingSPN))
+	if !k8sSensorHasOpenState(cluster, "WARN0212") {
+		t.Fatal("setup: expected WARN0212 to be set when shareProcessNamespace is missing")
+	}
+	cluster.StateMachine.ClearState() // simulate the tick boundary: CurState -> OldState
+
+	// Pass 2: the Deployment cannot be read at all this time (transient error) --
+	// WARN0212 must be preserved, not silently dropped.
+	cluster.checkK8SResourceSensorWithClient(fake.NewSimpleClientset())
+
+	if !k8sSensorHasOpenState(cluster, "WARN0212") {
+		t.Fatal("expected a transient Deployment-read failure to preserve the previously-known WARN0212, not clear it")
+	}
+}
+
+// TestCheckK8SResourceSensor_BrokenRuntimeOnOneServerStillDetectsMissingSPNOnAnother
+// is the regression for the finding: the scan returned as soon as one server
+// had a confirmed runtime problem, so a LATER server's missing
+// shareProcessNamespace was never inspected and WARN0212 stayed hidden.
+func TestCheckK8SResourceSensor_BrokenRuntimeOnOneServerStillDetectsMissingSPNOnAnother(t *testing.T) {
+	cluster := k8sSensorTestClusterWithStateMachine(t, "k8stest")
+	brokenServer := k8sSensorTestProvisionedServer(t, cluster, "db1")
+	spnMissingServer := k8sSensorTestProvisionedServer(t, cluster, "db2")
+	cluster.Servers = []*ServerMonitor{brokenServer, spnMissingServer}
+
+	share := true
+	dep1, rs1 := k8sTestController("k8stest", "db1")
+	dep1.Spec.Template.Spec.ShareProcessNamespace = &share
+	notReady := false
+	brokenPod := k8sSensorTestPod("k8stest", "db1", apiv1.PodRunning, &notReady, rs1.UID)
+
+	dep2 := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "db2", Namespace: "k8stest"}} // no SPN at all
+
+	client := fake.NewSimpleClientset(dep1, rs1, brokenPod, dep2)
+	cluster.checkK8SResourceSensorWithClient(client)
+
+	if !k8sSensorHasOpenState(cluster, "WARN0213") {
+		t.Fatal("expected the confirmed-broken runtime on db1 to still raise WARN0213")
+	}
+	if !k8sSensorHasOpenState(cluster, "WARN0212") {
+		t.Fatal("expected db2's missing shareProcessNamespace to still be detected even though db1 already had a confirmed runtime problem")
+	}
+}
+
+// TestCheckK8SResourceSensor_ConfirmedMissingSPNWinsOverUnrelatedUnconfirmedServer
+// is the High-finding regression: a POSITIVELY confirmed missing
+// shareProcessNamespace on one server must not be suppressed by an unrelated
+// inconclusive check (here: a Deployment read failure) on a DIFFERENT server
+// in the same pass. Before the fix, deploymentPolicyUnconfirmed took
+// precedence over spnMissing, so PreserveState (a no-op with no prior
+// WARN0212) silently swallowed the confirmed db1 failure.
+func TestCheckK8SResourceSensor_ConfirmedMissingSPNWinsOverUnrelatedUnconfirmedServer(t *testing.T) {
+	cluster := k8sSensorTestClusterWithStateMachine(t, "k8stest")
+	spnMissingServer := k8sSensorTestProvisionedServer(t, cluster, "db1")
+	unreadableServer := k8sSensorTestProvisionedServer(t, cluster, "db2")
+	cluster.Servers = []*ServerMonitor{spnMissingServer, unreadableServer}
+
+	dep1 := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"}} // no SPN at all
+	// db2's Deployment is never created in the fake client -> its Get fails
+	// (NotFound), simulating a transient API/RBAC read failure this pass.
+	client := fake.NewSimpleClientset(dep1)
+	cluster.checkK8SResourceSensorWithClient(client)
+
+	if !k8sSensorHasOpenState(cluster, "WARN0212") {
+		t.Fatal("expected db1's confirmed missing shareProcessNamespace to be set even though db2's check was inconclusive in the same pass")
+	}
+}
+
+func TestK8SDatabaseDeployment_NoMemoryLimitsWhenRunArgsLimitDisabled(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDBDockerRunArgsLimit = false
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+
+	db := dep.Spec.Template.Spec.Containers[0]
+	if len(db.Resources.Requests) != 0 || len(db.Resources.Limits) != 0 {
+		t.Fatalf("expected no DB container resource requirements when prov-db-docker-run-args-limit is off, got %#v", db.Resources)
+	}
+	jobs := dep.Spec.Template.Spec.Containers[1]
+	if len(jobs.Resources.Requests) != 0 || len(jobs.Resources.Limits) != 0 {
+		t.Fatalf("expected no dbjobs container resource requirements when prov-db-docker-run-args-limit is off, got %#v", jobs.Resources)
+	}
+}
+
+func TestK8SDatabaseDeployment_MemoryLimitsSetWhenRunArgsLimitEnabled(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDBDockerRunArgsLimit = true
+	cluster.Conf.ProvMem = "512M" // dbMB = 512 - k8sDBJobsMemoryCapMB(128) = 384
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+
+	db := dep.Spec.Template.Spec.Containers[0]
+	wantDB := resource.MustParse("384Mi")
+	if got := db.Resources.Requests[apiv1.ResourceMemory]; got.Cmp(wantDB) != 0 {
+		t.Fatalf("DB container memory request = %s, want %s", got.String(), wantDB.String())
+	}
+	if got := db.Resources.Limits[apiv1.ResourceMemory]; got.Cmp(wantDB) != 0 {
+		t.Fatalf("DB container memory limit = %s, want %s", got.String(), wantDB.String())
+	}
+	dbRequest, dbLimit := db.Resources.Requests[apiv1.ResourceMemory], db.Resources.Limits[apiv1.ResourceMemory]
+	if dbRequest.Cmp(dbLimit) != 0 {
+		t.Fatal("DB container request must equal limit (Guaranteed QoS) for a stable native-resize target")
+	}
+
+	jobs := dep.Spec.Template.Spec.Containers[1]
+	wantJobs := resource.MustParse(strconv.Itoa(k8sDBJobsMemoryCapMB) + "Mi")
+	if got := jobs.Resources.Requests[apiv1.ResourceMemory]; got.Cmp(wantJobs) != 0 {
+		t.Fatalf("dbjobs container memory request = %s, want %s", got.String(), wantJobs.String())
+	}
+	if got := jobs.Resources.Limits[apiv1.ResourceMemory]; got.Cmp(wantJobs) != 0 {
+		t.Fatalf("dbjobs container memory limit = %s, want %s", got.String(), wantJobs.String())
+	}
+
+	total := db.Resources.Limits[apiv1.ResourceMemory]
+	total.Add(jobs.Resources.Limits[apiv1.ResourceMemory])
+	if want := resource.MustParse("512Mi"); total.Cmp(want) != 0 {
+		t.Fatalf("aggregate DB+dbjobs Pod cap = %s, want exactly prov-db-memory = %s (OpenSVC-cap parity: never add anything above T)", total.String(), want.String())
+	}
+}
+
+// TestK8SDatabaseDeployment_MemoryLimitTracksK8sDatabaseMemoryTargetsNotDBUTierCap
+// pins the OpenSVC-cap-parity contract: the deployment builder derives the DB
+// container's limit from k8sDatabaseMemoryTargets (the single authority, T
+// split with dbjobs), NOT from GetDBContainerMemoryCapMB (OpenSVC's own,
+// separate CONTAINER cap -- prov_opensvc_db.go, untouched by this split).
+// The two already diverge with no DBU tier wired at all: GetDBContainerMemoryCapMB
+// falls back to raw T (512), while k8sDatabaseMemoryTargets carves dbjobs OUT
+// of T (384) -- proving the K8s Deployment builder is NOT quietly still
+// calling the old, gated-off formula.
+func TestK8SDatabaseDeployment_MemoryLimitTracksK8sDatabaseMemoryTargetsNotDBUTierCap(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDBDockerRunArgsLimit = true
+	cluster.Conf.ProvMem = "512M"
+	s := &ServerMonitor{Name: "db1", Port: "3306"}
+
+	dep := cluster.k8sDatabaseDeployment(s, 3306, "node-a")
+
+	dbMB, _ := cluster.k8sDatabaseMemoryTargets()
+	want := resource.MustParse(strconv.Itoa(dbMB) + "Mi")
+	got := dep.Spec.Template.Spec.Containers[0].Resources.Limits[apiv1.ResourceMemory]
+	if got.Cmp(want) != 0 {
+		t.Fatalf("DB container memory limit = %s, want %s (k8sDatabaseMemoryTargets)", got.String(), want.String())
+	}
+	if capMB := cluster.GetDBContainerMemoryCapMB(); capMB == dbMB {
+		t.Fatalf("GetDBContainerMemoryCapMB() (%dMi) unexpectedly equals k8sDatabaseMemoryTargets' dbMB (%dMi) -- this test needs a config where they diverge to prove the builder isn't still using the old formula", capMB, dbMB)
+	}
+}
+
 // --- Plain restart (rolling restart via annotation patch only) ---
 //
 // Used by RollingRestart (cluster/cluster_roll.go), a scheduled/bulk
@@ -1617,6 +1960,50 @@ func TestK8SRestartDatabaseService_NeverTouchesImagePullPolicy(t *testing.T) {
 	}
 	if got := dep.Spec.Template.Spec.Containers[0].ImagePullPolicy; got != apiv1.PullIfNotPresent {
 		t.Fatalf("expected ImagePullPolicy to be left untouched at PullIfNotPresent despite prov-kube-image-force-pull=true, got %q", got)
+	}
+}
+
+// TestK8SRestartDatabaseService_PatchesBothContainersMemoryWhenRunArgsLimitEnabled
+// is the Medium-finding regression: an existing Deployment (created before
+// prov-db-docker-run-args-limit was enabled, or before this feature existed)
+// with unbounded DB and dbjobs containers -- a normal restart must reconcile
+// BOTH to the current k8sDatabaseMemoryTargets split, not just the DB
+// container, or the dbjobs sidecar stays silently unbounded forever.
+func TestK8SRestartDatabaseService_PatchesBothContainersMemoryWhenRunArgsLimitEnabled(t *testing.T) {
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec: appsv1.DeploymentSpec{
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{Name: "db1"},       // unbounded (pre-existing Deployment)
+						{Name: "db1-dbjobs"}, // unbounded (pre-existing Deployment)
+					},
+				},
+			},
+		},
+	})
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDBDockerRunArgsLimit = true
+	cluster.Conf.ProvMem = "512M" // dbMB = 512 - 128 = 384
+
+	if err := cluster.k8sRestartDatabaseServiceWithClient(client, "db1"); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), "db1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	wantDB := resource.MustParse("384Mi")
+	gotDB := dep.Spec.Template.Spec.Containers[0].Resources.Limits[apiv1.ResourceMemory]
+	if gotDB.Cmp(wantDB) != 0 {
+		t.Fatalf("DB container memory limit = %s, want %s", gotDB.String(), wantDB.String())
+	}
+	wantJobs := resource.MustParse(strconv.Itoa(k8sDBJobsMemoryCapMB) + "Mi")
+	gotJobs := dep.Spec.Template.Spec.Containers[1].Resources.Limits[apiv1.ResourceMemory]
+	if gotJobs.Cmp(wantJobs) != 0 {
+		t.Fatalf("dbjobs container memory limit = %s, want %s -- a normal restart left the existing dbjobs container unbounded", gotJobs.String(), wantJobs.String())
 	}
 }
 
@@ -1785,6 +2172,125 @@ func TestK8SForceRepullDatabaseService_PatchesImagePullPolicyToCurrentSetting(t 
 	}
 	if got := dep.Spec.Template.Spec.Containers[0].ImagePullPolicy; got != apiv1.PullAlways {
 		t.Fatalf("expected ImagePullPolicy to be patched to PullAlways, got %q", got)
+	}
+}
+
+// TestK8SForceRepullDatabaseService_PatchesMemoryResourcesWhenRunArgsLimitEnabled
+// is the regression for the fallback-restart drift: a native resize dispatch
+// that times out / is Deferred / Infeasible falls back to a restart-cookie
+// (cluster_resize_k8s.go), and CheckRestartContainerCookies (reachable every
+// monitor tick) drives the actual Pod replacement through THIS function --
+// so it must carry the CURRENT DB container memory target, or a replacement
+// Pod would revert to whatever the Deployment template held at last
+// (re)provision even though Repman had already confirmed/applied a new size.
+func TestK8SForceRepullDatabaseService_PatchesMemoryResourcesWhenRunArgsLimitEnabled(t *testing.T) {
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec: appsv1.DeploymentSpec{
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{
+							Name: "db1",
+							Resources: apiv1.ResourceRequirements{
+								Requests: apiv1.ResourceList{apiv1.ResourceMemory: resource.MustParse("256Mi")},
+								Limits:   apiv1.ResourceList{apiv1.ResourceMemory: resource.MustParse("256Mi")},
+							},
+						},
+						{
+							Name: "db1-dbjobs",
+							Resources: apiv1.ResourceRequirements{
+								Requests: apiv1.ResourceList{apiv1.ResourceMemory: resource.MustParse("128Mi")},
+								Limits:   apiv1.ResourceList{apiv1.ResourceMemory: resource.MustParse("128Mi")},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDBDockerRunArgsLimit = true
+	cluster.Conf.ProvMem = "512M" // e.g. already confirmed by an earlier successful native resize -- dbMB = 512-128 = 384
+
+	if err := cluster.k8sForceRepullDatabaseServiceWithClient(client, "db1"); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), "db1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	wantDB := resource.MustParse("384Mi")
+	gotDB := dep.Spec.Template.Spec.Containers[0].Resources.Limits[apiv1.ResourceMemory]
+	if gotDB.Cmp(wantDB) != 0 {
+		t.Fatalf("expected the replacement Pod's DB memory limit to reconcile to the current target %s, got %s -- a restart-fallback must not recreate the old template limit", wantDB.String(), gotDB.String())
+	}
+	wantJobs := resource.MustParse(strconv.Itoa(k8sDBJobsMemoryCapMB) + "Mi")
+	gotJobs := dep.Spec.Template.Spec.Containers[1].Resources.Limits[apiv1.ResourceMemory]
+	if gotJobs.Cmp(wantJobs) != 0 {
+		t.Fatalf("expected the replacement Pod's dbjobs memory limit to also reconcile to %s, got %s -- a restart-fallback must not leave the existing dbjobs container unbounded", wantJobs.String(), gotJobs.String())
+	}
+}
+
+// TestK8SForceRepullDatabaseService_NoDBJobsContainerOnOlderDeploymentDoesNotCreateOne
+// is the regression for the "creates a broken incomplete container" landmine:
+// an older Deployment (from before the dbjobs sidecar existed) has no
+// db1-dbjobs container at all -- the patch must not add one via a strategic
+// merge, since a partial container (memory only, no image/command/mounts)
+// would either be rejected by the API server or produce a broken Pod.
+func TestK8SForceRepullDatabaseService_NoDBJobsContainerOnOlderDeploymentDoesNotCreateOne(t *testing.T) {
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec: appsv1.DeploymentSpec{
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{{Name: "db1"}},
+				},
+			},
+		},
+	})
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDBDockerRunArgsLimit = true
+	cluster.Conf.ProvMem = "512M"
+
+	if err := cluster.k8sForceRepullDatabaseServiceWithClient(client, "db1"); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), "db1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if got := len(dep.Spec.Template.Spec.Containers); got != 1 {
+		t.Fatalf("expected the container count to stay at 1 (no dbjobs container conjured up), got %d", got)
+	}
+}
+
+func TestK8SForceRepullDatabaseService_NoMemoryPatchWhenRunArgsLimitDisabled(t *testing.T) {
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "db1", Namespace: "k8stest"},
+		Spec: appsv1.DeploymentSpec{
+			Template: apiv1.PodTemplateSpec{
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{{Name: "db1"}},
+				},
+			},
+		},
+	})
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.ProvDBDockerRunArgsLimit = false
+
+	if err := cluster.k8sForceRepullDatabaseServiceWithClient(client, "db1"); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), "db1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if res := dep.Spec.Template.Spec.Containers[0].Resources; len(res.Requests) != 0 || len(res.Limits) != 0 {
+		t.Fatalf("expected no resource patch when prov-db-docker-run-args-limit is off, got %#v", res)
 	}
 }
 
