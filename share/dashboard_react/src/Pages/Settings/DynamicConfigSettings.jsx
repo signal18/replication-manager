@@ -65,9 +65,24 @@ function DynamicConfigSettings({ selectedCluster, user }) {
 
   const dataObject = [
     {
-      key: 'Dynamic Resource',
-      help: h(`**Dynamic Resource**\n\nWhen on, a resource change is applied LIVE (SET GLOBAL + orchestrator/script) instead of a container recreation.\n\nConfig: \`prov-db-dynamic-resource\``, 'Dynamic Resource'),
-      value: (<RMSwitch confirmTitle={'Confirm switch prov-db-dynamic-resource?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-dynamic-resource' }))} isDisabled={disabled} isChecked={cfg.provDbDynamicResource} />)
+      key: 'Apply Dynamic Config On Change Tags',
+      help: h(`**Apply Dynamic Config**\n\nWhen enabled, config changes are applied dynamically via \`SET GLOBAL\` (no restart); restart-only variables are written for the next restart.\n\nConfig: \`prov-db-apply-dynamic-config\``, 'Apply Dynamic Config'),
+      value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-apply-dynamic-config?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-apply-dynamic-config' }))} isDisabled={disabled} isChecked={cfg.provDBApplyDynamicConfig} />)
+    },
+    {
+      key: 'Apply Dynamic Resource Resize',
+      help: h(`**Dynamic Resource Resize**\n\nWhen on, a provisioned-memory change (e.g. a DBU/plan resize) is applied to the RUNNING database live (SET GLOBAL + cgroup via orchestrator/client hook) instead of a restart. Restart-only vars still schedule a restart. Optional hooks: \`prov-db-dynamic-resource-can-change-script\` (feasibility) and \`prov-db-dynamic-resource-change-script\` (does the infra resize).\n\nConfig: \`prov-db-dynamic-resource\``, 'Apply Dynamic Resource Resize'),
+      value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-dynamic-resource?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-dynamic-resource' }))} isDisabled={disabled} isChecked={cfg.provDbDynamicResource} />)
+    },
+    {
+      key: 'Auto-Update Compliance',
+      help: h(`**Auto-Update Compliance**\n\nWhen enabled, repman regenerates the config from a new compliance module automatically (repman side).\n\nConfig: \`prov-auto-update-compliance\``, 'Auto-Update Compliance'),
+      value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-auto-update-compliance?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-auto-update-compliance' }))} isDisabled={disabled} isChecked={cfg.provAutoUpdateCompliance} />)
+    },
+    {
+      key: 'Auto-Agree Compliance',
+      help: h(`**Auto-Agree Compliance**\n\nWhen enabled, a config VALUE delta is auto-agreed to the compliance value and pushed to the DB (value changes only; dropped/deprecated/unknown vars always stay for manual review). Disabled = manual review. DB side.\n\nConfig: \`prov-db-compliance-auto-agree\``, 'Auto-Agree Compliance'),
+      value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-compliance-auto-agree?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-compliance-auto-agree' }))} isDisabled={disabled} isChecked={cfg.provDbComplianceAutoAgree} />)
     },
     {
       key: 'Resource Alignment',
