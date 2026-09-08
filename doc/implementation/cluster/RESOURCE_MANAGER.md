@@ -160,6 +160,43 @@ re-accounted.
   map" (green = slack/cheap, red = saturated/expensive) — the reference a client/ops
   consults before overcommitting, so bursts move to "good weather" (demand-shaping).
 
+## Resize gates & saturation trigger (SETTLED 2026-09)
+
+The dynamic resource resize is governed by **two ORTHOGONAL gates — never conflate them**:
+
+- **`CanConfigResize` (feasibility / apply)** — the `ResourceResizer` interface method (per
+  orchestrator; a client `prov-db-dynamic-resource-change-script` overrides, F7). Plan-agnostic;
+  it **never refuses** a resize, it only decides **how** the infra follows: **live** (cgroup à
+  chaud / SET GLOBAL) or a **restart** fallback. It is the ONLY gate for an **in-plan** resize —
+  the config drives the system, so a change within the plan always lands.
+- **`ResourceManager.CanGrowBeyondPlan(target, plan, pct)` (budget / authorise)** — consulted
+  **ONLY when the target exceeds the plan**. Permits up to `plan × (1 + prov-db-overcommit-pct/100)`
+  (the commercial scalability-up ceiling the client accepted); beyond it the growth is REFUSED
+  and the plan must be raised (a claim). In-plan resizes never call it — that is why the name
+  says *BeyondPlan*.
+
+  | | authorise | apply (live / restart) |
+  |---|---|---|
+  | **in-plan** | *(always yes — no budget gate)* | `CanConfigResize` |
+  | **beyond-plan** | `CanGrowBeyondPlan` | `CanConfigResize` |
+
+**Trigger — saturation, PER AXIS.** `IsNeedResourceCapUp` (bool) + `ResourceCapUpAxes`
+(`[]string`, cluster.go) light up when ANY **real node** — the worst node, never a `Σ/N`
+average that would hide a hot master — has `consumed_axis ≥ config_axis × (1 −
+prov-db-cap-safety-pct/100)` on ANY axis (default 15 % → fire at 85 %), OR when the config has
+grown to fill the plan. The **axes are recorded** because the consequence differs
+(mem → OOM, disk → full, cpu → throttle, io → latency). Config-driven, resource-termed
+(on-prem-compatible, not DBU/plan-specific).
+
+**Granularity of a size-up = one DBU-equivalent on the SATURATED axis** (mem +4096 MB, cpu
++1 core, io +1000 iops, disk +40 GB) — not a whole DBU (would grow idle axes) and not a free
+native step (would drift off the DBU grid). The grow follows `ResourceCapUpAxes`.
+
+**Vocabulary (settled):** `prov-db-cap-burst-dbu` = TECHNICAL cgroup headroom above the config
+(anti-OOM), NOT overcommit. *Overcommit* = OVER-consumption (`consumed > plan`), *undercommit* =
+under-consumption (`plan > consumed`) — both DERIVED in the GUI from graphite (`diffSeries`),
+nothing emitted. `prov-db-overcommit-pct` = the commercial scale-up ceiling above.
+
 ## Status / TODO
 
 Implemented: the substrate above, plus the per-axis **emission** of consumed metrics
@@ -173,6 +210,15 @@ the app credit model, driven by `AddDBU`/`RemoveDBU`. Also `SetServerAgent` /
 `SetAgentCapacity` from physical monitoring (#1778), APU compute wiring for apps/proxies,
 per-cluster/agent/minute **emission** (the data), then the burst/overcommit **policy**
 and the heatmap.
+
+Resize gates (above) are DEFINED but **not wired**: `CanGrowBeyondPlan` has no caller and
+`IsNeedResourceCapUp`/`ResourceCapUpAxes` are a **signal nothing consumes yet**. There is **no
+autonomous (saturation-driven) trigger** — a resize fires only from `SetDB*` via the API, the
+CLI configurator, or a plan apply (`applyPlanSpec`). Wiring needs a **target-first** restructure
+of the `SetDB*` setters (compute target → gate → mutate; today they mutate then resize). And the
+**infra grow is memory-only**: `SetDBCores`/`SetDBDiskIOPS` only re-tune DB SET GLOBAL vars (no
+cgroup resize; CPU cgroup limit resize is a marked follow-up), disk has no live path — so a real
+multi-axis grow (needed for granularity-C on cpu/io/disk) is still missing.
 
 ## On-premise (first-class, not cloud18-only)
 

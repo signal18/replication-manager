@@ -114,7 +114,8 @@ type Cluster struct {
 	IsNeedDatabasesRestart        bool                `json:"isNeedDatabasesRestart" groups:"web"`
 	IsNeedDatabasesRollingRestart bool                `json:"isNeedDatabasesRollingRestart" groups:"web"`
 	IsNeedDatabasesRollingReprov  bool                `json:"isNeedDatabasesRollingReprov" groups:"web"`
-	IsNeedDBReCapUp               bool                `json:"isNeedDbReCapUp" groups:"web"` // config resources have filled the plan's DBU -> raise the plan (re-cap up) before eating the +1 overcommit
+	IsNeedResourceCapUp          bool                `json:"isNeedResourceCapUp" groups:"web"` // some node needs its resource cap raised (see ResourceCapUpAxes for which axes). Config-driven (the config drives the system); resource-termed, not DBU/plan, to stay on-prem compatible
+	ResourceCapUpAxes            []string            `json:"resourceCapUpAxes" groups:"web"`   // WHICH axes (cpu/mem/io/disk) warrant the cap-up -- consequences differ (mem->OOM, disk->full, cpu->throttle, io->latency); saturation (consumed>=config-safety, worst node) OR config-filled-the-plan
 	IsNeedDatabasesReprov         bool                `json:"isNeedDatabasesReprov" groups:"web"`
 	IsNeedDatabasesConfigChange   bool                `json:"isNeedDatabasesConfigChange" groups:"web"`
 	IsNeedAppsReprov              bool                `json:"isNeedAppsReprov" groups:"web"`

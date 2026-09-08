@@ -135,13 +135,24 @@ func (cluster *Cluster) GetProvDbuFromConfigPerNode() int {
 	if cluster.resources == nil {
 		return 0
 	}
+	return int(math.Ceil(cluster.GetConfigDBUPerNode().Dbu))
+}
+
+// GetConfigDBUPerNode projects the cluster's current prov-db-* provisioning into a per-node
+// DBUReading via the ResourceManager ratios -- the PER-AXIS config allocation (DbuCpu/DbuMem/
+// DbuIo/DbuDisk) plus the pivot (Dbu = max axis) and its Binding. It is the per-node config
+// "capacity" the saturation check reads against (consumed_axis / config_axis). Zero reading
+// when no manager is wired.
+func (cluster *Cluster) GetConfigDBUPerNode() DBUReading {
+	if cluster.resources == nil {
+		return DBUReading{}
+	}
 	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
 	iops, _ := strconv.ParseFloat(cluster.Conf.ProvIops, 64)
 	memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
 	diskGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
 	now := time.Now()
-	r := cluster.resources.ComputeUsedDBU(now, now, int64(memMB)*1024*1024, cores, iops, int64(diskGB)*1024*1024*1024)
-	return int(math.Ceil(r.Dbu))
+	return cluster.resources.ComputeUsedDBU(now, now, int64(memMB)*1024*1024, cores, iops, int64(diskGB)*1024*1024*1024)
 }
 
 // GetPlanDbu returns the cluster's EFFECTIVE plan DBU: the explicit
@@ -168,14 +179,16 @@ func (cluster *Cluster) GetPlanDbu() int {
 // Modes (prov-db-resource-align): "plan" (default) tier = prov-service-plan-dbu / node count;
 // "up" tier = max-axis config DBU (coherence/debug); "off" cap = prov-db-memory (legacy).
 // The cap never drops below prov-db-memory.
-func (cluster *Cluster) GetDBContainerMemoryCapMB() int {
-	provMemMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+// GetDBTierDbuPerNode is the per-node DBU tier the container cap aligns to, per
+// prov-db-resource-align: "plan" (prov-service-plan-dbu / nodes), "up" (max-axis config DBU).
+// Returns 0 when alignment is off or there is no RM/servers yet (caller falls back to legacy).
+func (cluster *Cluster) GetDBTierDbuPerNode() float64 {
 	mode := cluster.Conf.ProvDBResourceAlign
 	if mode == "" {
 		mode = config.ConstResourceAlignPlan
 	}
 	if mode == config.ConstResourceAlignOff || cluster.resources == nil || len(cluster.Servers) == 0 {
-		return int(provMemMB)
+		return 0
 	}
 	var tier float64
 	if mode == config.ConstResourceAlignUp {
@@ -186,13 +199,36 @@ func (cluster *Cluster) GetDBContainerMemoryCapMB() int {
 	if tier < 1 {
 		tier = 1
 	}
-	// Overcommit DBU (prov-db-overcommit-dbu, default 1) added above the reservation tier --
-	// a cap-only headroom kept in its OWN variable; the plan is never modified here.
-	overcommit := float64(cluster.Conf.ProvDBOvercommitDbu)
-	if overcommit < 0 {
-		overcommit = 0
+	return tier
+}
+
+// GetDBCapBurstDbuPerNode is the per-node BURST headroom added above the tier for the container
+// memory cap = prov-db-cap-burst-dbu (a fixed, TECHNICAL OOM headroom so mariadbd's real
+// footprint has room above prov-db-memory). This is NOT "overcommit": overcommit means real
+// OVER-CONSUMPTION of the plan (consumed - plan) and is derived from graphite, not from this. It
+// is also NOT the commercial dynamic-resize limit (prov-db-overcommit-pct). 0 when align is off.
+func (cluster *Cluster) GetDBCapBurstDbuPerNode() float64 {
+	if cluster.GetDBTierDbuPerNode() <= 0 {
+		return 0
 	}
-	capMB := int(math.Ceil((tier + overcommit) * cluster.resources.DBMemMBPerUnit()))
+	oc := float64(cluster.Conf.ProvDBCapBurstDbu)
+	if oc < 0 {
+		oc = 0
+	}
+	return oc
+}
+
+// GetDBContainerMemoryCapMB returns the cgroup --memory cap (MB) for the DB container:
+// (tier + cap-burst) × mem-ratio, deliberately ABOVE prov-db-memory (the my.cnf sizing, never
+// changed) so mariadbd has headroom and is not OOM-killed. Falls back to prov-db-memory when
+// alignment is off. Never below prov-db-memory.
+func (cluster *Cluster) GetDBContainerMemoryCapMB() int {
+	provMemMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+	tier := cluster.GetDBTierDbuPerNode()
+	if tier <= 0 {
+		return int(provMemMB)
+	}
+	capMB := int(math.Ceil((tier + cluster.GetDBCapBurstDbuPerNode()) * cluster.resources.DBMemMBPerUnit()))
 	if capMB < int(provMemMB) {
 		capMB = int(provMemMB)
 	}

@@ -443,23 +443,73 @@ func (cluster *Cluster) HasRequestDBRollingRestart() bool {
 	return ret
 }
 
-// HasRequestDBReCapUp reports whether the DB config resources have grown to fill the plan's
-// DBU reservation: the per-node config DBU (max axis) has reached the plan DBU, so only the
-// +1 overcommit DBU of container headroom is left. It is the state-driven signal to raise the
-// plan (re-cap up) before the config keeps growing into the overcommit and risks OOM. Off when
-// resource-align is disabled or no plan/servers.
-func (cluster *Cluster) HasRequestDBReCapUp() bool {
+// GetResourceCapUpAxes returns the resource AXES (subset of cpu/mem/io/disk, stable order) that
+// currently warrant raising the cap -- EMPTY when none. It records the axes, not a bare bool,
+// because the consequence differs per axis (mem -> OOM, disk -> full, cpu -> throttle, io ->
+// latency), which the alert/GUI and the eventual per-axis resize must distinguish (state-driven
+// law: track each factor as its own atomic state). An axis is listed for either reason:
+//
+//   - SATURATION (universal, on-prem, NO dynamic config needed): some node consumes at least
+//     (1 - prov-db-cap-safety-pct/100) of its per-node config on that axis. Measured PER REAL
+//     NODE (each server's own consumed vs the per-node config) and the WORST node counts -- not
+//     an average, which would hide a single saturated node (a hot master, idle slaves).
+//   - CONFIG FILLED THE PLAN (cloud18 / dynamic config): the config has grown to the plan
+//     reservation; the binding (pivot) axis of that config is listed.
+//
+// The CONFIG drives the system; consumption is only observed. Empty when resource-align is off
+// or there is no manager/servers.
+func (cluster *Cluster) GetResourceCapUpAxes() []string {
 	if cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff {
-		return false
+		return nil
 	}
 	if cluster.resources == nil || len(cluster.Servers) == 0 {
-		return false
+		return nil
 	}
+	cfg := cluster.GetConfigDBUPerNode() // per-node config, per axis
+	set := map[string]bool{}
+
+	// Path 1 -- saturation, per real node, worst node counts, per axis.
+	pct := float64(cluster.Conf.ProvDBCapSafetyPct)
+	if pct < 0 {
+		pct = 0
+	} else if pct > 100 {
+		pct = 100
+	}
+	thr := 1 - pct/100.0
+	for _, srv := range cluster.Servers {
+		if srv == nil || srv.IsDown() || srv.DBUConsumed == nil {
+			continue
+		}
+		c := srv.DBUConsumed
+		for _, a := range []struct {
+			name       string
+			cons, capa float64
+		}{
+			{"cpu", c.DbuCpu, cfg.DbuCpu}, {"mem", c.DbuMem, cfg.DbuMem},
+			{"io", c.DbuIo, cfg.DbuIo}, {"disk", c.DbuDisk, cfg.DbuDisk},
+		} {
+			if a.capa > 0 && a.cons/a.capa >= thr {
+				set[a.name] = true
+			}
+		}
+	}
+
+	// Path 2 -- config filled the plan (dynamic config grew it to the reservation).
 	planDbuPerNode := float64(cluster.GetPlanDbu()) / float64(len(cluster.Servers))
-	if planDbuPerNode < 1 {
-		return false
+	if planDbuPerNode >= 1 && float64(cluster.GetProvDbuFromConfigPerNode()) >= planDbuPerNode && cfg.Binding != "" {
+		set[cfg.Binding] = true
 	}
-	return float64(cluster.GetProvDbuFromConfigPerNode()) >= planDbuPerNode
+
+	if len(set) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(set))
+	for _, a := range []string{"cpu", "mem", "io", "disk"} { // stable order
+		if set[a] {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 func (cluster *Cluster) HasRequestDBRollingReprov() bool {

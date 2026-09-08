@@ -133,13 +133,12 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 			fmt.Sprintf("resourcemanager.%s.plan_dbu", ctoken),
 			strconv.FormatFloat(float64(cluster.GetPlanDbu()), 'f', 4, 64), ts))
 
-		// Overcommit DBU for this cluster = the cap headroom above the plan
-		// (prov-db-overcommit-dbu per node × node count). The consumed (mysql.*.dbu) and the
-		// plan (plan_dbu) are already in graphite; the overcommit is the only piece the
-		// ResourceManager over-time graph was missing (the container cap = plan + overcommit).
-		metrics = append(metrics, graphite.NewMetric(
-			fmt.Sprintf("resourcemanager.%s.overcommit_dbu", ctoken),
-			strconv.FormatFloat(float64(cluster.Conf.ProvDBOvercommitDbu*len(cluster.Servers)), 'f', 4, 64), ts))
+		// Nothing else is emitted here on purpose. Over/under-consumption -- what the client
+		// calls OVERCOMMIT (consumed > plan) and its opposite (consumed < plan, the giveback)
+		// -- are NOT emitted: they are DERIVED at query time from the two series that already
+		// exist, consumed (sumSeries(mysql.*.dbu)) and plan (resourcemanager.<CLUSTER>.plan_dbu),
+		// via diffSeries in the GUI. The container cap burst (prov-db-cap-burst-dbu) is a
+		// technical cgroup headroom, not overcommit, and is not a time series.
 	}
 	return metrics
 }

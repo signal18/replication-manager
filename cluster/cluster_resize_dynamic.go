@@ -32,22 +32,22 @@ const (
 // cluster.resourceResizer() selects the right one. A client resize script always
 // overrides the native backend (F7).
 type ResourceResizer interface {
-	// CanResize answers whether the resize is possible: yes (in place), no (keep
+	// CanConfigResize answers whether the resize is possible: yes (in place), no (keep
 	// current size), or migration (needs relocating the instance).
-	CanResize(server *ServerMonitor, grow bool) (ResizeFeasibility, error)
-	// Resize applies the infra resize live and reports whether it was applied.
-	Resize(server *ServerMonitor, grow bool) (bool, error)
+	CanConfigResize(server *ServerMonitor, grow bool) (ResizeFeasibility, error)
+	// ConfigResize applies the infra resize live and reports whether it was applied.
+	ConfigResize(server *ServerMonitor, grow bool) (bool, error)
 }
 
 // scriptResizer is the client-overridable backend (F7): used in every
 // orchestrator case when prov-db-dynamic-resource-change-script is set.
 type scriptResizer struct{ cluster *Cluster }
 
-func (r scriptResizer) CanResize(server *ServerMonitor, grow bool) (ResizeFeasibility, error) {
+func (r scriptResizer) CanConfigResize(server *ServerMonitor, grow bool) (ResizeFeasibility, error) {
 	return r.cluster.RunDynamicResourceCanChangeScript(server, grow)
 }
 
-func (r scriptResizer) Resize(server *ServerMonitor, grow bool) (bool, error) {
+func (r scriptResizer) ConfigResize(server *ServerMonitor, grow bool) (bool, error) {
 	if r.cluster.Conf.ProvDBDynamicResourceChangeScript == "" {
 		// No client script set: cannot resize the infra live here — schedule a
 		// restart so the new size applies on the next boot (never grow DB memory
@@ -67,11 +67,11 @@ func (r scriptResizer) Resize(server *ServerMonitor, grow bool) (bool, error) {
 // API (om3 v3). The client can-change script (if any) still gates feasibility.
 type openSVCResizer struct{ cluster *Cluster }
 
-func (r openSVCResizer) CanResize(server *ServerMonitor, grow bool) (ResizeFeasibility, error) {
+func (r openSVCResizer) CanConfigResize(server *ServerMonitor, grow bool) (ResizeFeasibility, error) {
 	return r.cluster.RunDynamicResourceCanChangeScript(server, grow)
 }
 
-func (r openSVCResizer) Resize(server *ServerMonitor, grow bool) (bool, error) {
+func (r openSVCResizer) ConfigResize(server *ServerMonitor, grow bool) (bool, error) {
 	return r.cluster.openSVCResize(server, grow)
 }
 
@@ -84,11 +84,11 @@ type restartResizer struct {
 	reason  string
 }
 
-func (r restartResizer) CanResize(server *ServerMonitor, grow bool) (ResizeFeasibility, error) {
+func (r restartResizer) CanConfigResize(server *ServerMonitor, grow bool) (ResizeFeasibility, error) {
 	return r.cluster.RunDynamicResourceCanChangeScript(server, grow)
 }
 
-func (r restartResizer) Resize(server *ServerMonitor, grow bool) (bool, error) {
+func (r restartResizer) ConfigResize(server *ServerMonitor, grow bool) (bool, error) {
 	r.cluster.LogModulePrintf(r.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"%s, scheduling restart on %s", r.reason, server.URL)
 	server.SetRestartCookie()
@@ -349,7 +349,7 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 		// resizeMemory: sequence the infra (cgroup) and the DB memory anti-OOM.
 		rz := cluster.resourceResizer()
 		if grow {
-			feas, err := rz.CanResize(server, true)
+			feas, err := rz.CanConfigResize(server, true)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 					"Resource grow feasibility check failed on %s: %s", server.URL, err)
@@ -371,7 +371,7 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 				cluster.logResize(server, dim, true, false, feas, nil)
 				continue
 			}
-			applied, err := rz.Resize(server, true)
+			applied, err := rz.ConfigResize(server, true)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 					"Resource grow on %s failed, keeping current DB memory: %s", server.URL, err)
@@ -390,7 +390,7 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 		} else {
 			// Feasibility gate applies to shrink too: a can-change verdict of no/
 			// migration must stop a live shrink (e.g. a maintenance window).
-			feas, err := rz.CanResize(server, false)
+			feas, err := rz.CanConfigResize(server, false)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 					"Resource shrink feasibility check failed on %s: %s", server.URL, err)
@@ -448,7 +448,7 @@ func (cluster *Cluster) completePendingCgroupShrink(server *ServerMonitor) {
 	}
 	// The pool has reached its target: it is now safe to shrink the cgroup.
 	server.PendingCgroupShrink = false
-	applied, rerr := cluster.resourceResizer().Resize(server, false)
+	applied, rerr := cluster.resourceResizer().ConfigResize(server, false)
 	if rerr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 			"Deferred cgroup shrink on %s failed: %s", server.URL, rerr)

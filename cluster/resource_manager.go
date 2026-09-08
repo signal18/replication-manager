@@ -5,6 +5,7 @@
 package cluster
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -337,6 +338,29 @@ func (m *ResourceManager) AgentSlackDBU(agent string) (float64, bool) {
 	}
 	real := m.ConsumedByAgent(agent)
 	return ceiling - real.Dbu, true
+}
+
+// CanGrowBeyondPlan is the ResourceManager's authority decision on a DYNAMIC auto-grow PAST the
+// plan: may the resources be grown to targetDbuPerNode when that target exceeds the plan? Growth
+// up to the plan is always fine and never comes here; this gate governs ONLY the region beyond
+// the plan -- the COMMERCIAL scalability-up barrier the client accepted: repman may auto-grow up
+// to plan × (1 + overcommitPct/100) per node (prov-db-overcommit-pct); beyond that the growth is
+// REFUSED and the plan must be raised (a claim -> the IsNeedResourceCapUp state). It protects the
+// client from automatic over-consumption. Pure decision: changes no config, mutates nothing.
+// Returns allowed + a short reason ("" when allowed). No plan (<= 0) means no ceiling.
+func (m *ResourceManager) CanGrowBeyondPlan(targetDbuPerNode, planDbuPerNode float64, overcommitPct int) (bool, string) {
+	if planDbuPerNode <= 0 {
+		return true, ""
+	}
+	if overcommitPct < 0 {
+		overcommitPct = 0
+	}
+	ceiling := planDbuPerNode * (1 + float64(overcommitPct)/100.0)
+	if targetDbuPerNode > ceiling {
+		return false, fmt.Sprintf("commercial scalability-up ceiling reached: %.2f > plan %.2f × %d%% = %.2f DBU/node -- raise the plan",
+			targetDbuPerNode, planDbuPerNode, 100+overcommitPct, ceiling)
+	}
+	return true, ""
 }
 
 // DBUAggregate is a sum of consumed readings -- the two notions of "real consumed
