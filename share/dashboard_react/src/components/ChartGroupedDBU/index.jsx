@@ -18,7 +18,7 @@ import { useTheme } from '../../ThemeProvider';
 const GiB = 1024 * 1024 * 1024;
 const AXES = [
   { key: 'cpu', label: 'CPU', ratio: 1, light: '#3f8fd0', dark: '#5aa8e6' },
-  { key: 'mem', label: 'Mem', ratio: 4 * GiB, light: '#8b5cf6', dark: '#a98bff' },
+  { key: 'mem', label: 'Mem', ratio: 4 * GiB, light: '#a21caf', dark: '#d946ef' },
   { key: 'io', label: 'IO', ratio: 1000, light: '#e0603a', dark: '#ef7a54' },
   { key: 'disk', label: 'Disk', ratio: 40 * GiB, light: '#37a06f', dark: '#4dc088' },
 ];
