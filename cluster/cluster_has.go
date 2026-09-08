@@ -443,31 +443,43 @@ func (cluster *Cluster) HasRequestDBRollingRestart() bool {
 	return ret
 }
 
-// GetResourceCapUpAxes returns the resource AXES (subset of cpu/mem/io/disk, stable order) that
-// currently warrant raising the cap -- EMPTY when none. It records the axes, not a bare bool,
-// because the consequence differs per axis (mem -> OOM, disk -> full, cpu -> throttle, io ->
-// latency), which the alert/GUI and the eventual per-axis resize must distinguish (state-driven
-// law: track each factor as its own atomic state). An axis is listed on SATURATION only
-// (universal, on-prem, NO dynamic config needed): some node consumes at least
-// (1 - prov-db-cap-safety-pct/100) of its per-node config on that axis. Measured PER REAL NODE
-// (each server's own consumed vs the per-node config) and the WORST node counts -- not an
-// average, which would hide a single saturated node (a hot master, idle slaves).
-//
-// NOTE: there is deliberately NO "config >= plan" path. Being provisioned AT the plan is the
-// NORMAL state (config == plan), so it would light this signal permanently for every properly
-// provisioned cluster -- meaningless. Only real saturation (consumption near the config)
-// warrants a cap-up. Empty when resource-align is off or there is no manager/servers.
-func (cluster *Cluster) GetResourceCapUpAxes() []string {
+// CheckResourceConsumedOverConfig is a checkState (evaluate consumed against a reference, set a
+// tracked state). It records, per axis, whether the WORST DB node's consumed DBU has reached its
+// per-node CONFIG minus the safety margin -- consumed_axis >= config_axis × (1 -
+// prov-db-cap-safety-pct/100). This is the SATURATION signal whose consequence is to RAISE THE
+// RESOURCES (grow prov-db-* live via the dynamic resize). Reference = the technical config
+// (GetConfigDBUPerNode), NOT the plan. Sets ResourceConsumedOverConfigAxes.
+func (cluster *Cluster) CheckResourceConsumedOverConfig() {
+	cluster.ResourceConsumedOverConfigAxes = cluster.consumedOverAxes(cluster.GetConfigDBUPerNode())
+}
+
+// CheckResourceConsumedOverPlan is a checkState. It records, per axis, whether the WORST DB
+// node's consumed DBU has reached the per-node PLAN (the cap, already set at the plan) minus the
+// safety margin -- consumed_axis >= planPerNode × (1 - prov-db-cap-safety-pct/100). This is the
+// CAP-UP signal whose consequence is to RAISE THE PLAN (the client is hitting the envelope they
+// paid for). Reference = the commercial plan/cap (GetPlanDBUPerNode), NOT the config. Sets
+// ResourceConsumedOverPlanAxes and the IsNeedResourceCapUp bool.
+func (cluster *Cluster) CheckResourceConsumedOverPlan() {
+	axes := cluster.consumedOverAxes(cluster.GetPlanDBUPerNode())
+	cluster.ResourceConsumedOverPlanAxes = axes
+	cluster.IsNeedResourceCapUp = len(axes) > 0
+}
+
+// consumedOverAxes returns the axes (subset of cpu/mem/io/disk, stable order) where the WORST DB
+// node's consumed DBU reaches the per-node reference minus the safety margin -- EMPTY when none.
+// The axes are recorded (not a bare bool) because the consequence differs per axis (mem -> OOM,
+// disk -> full, cpu -> throttle, io -> latency), which the alert/GUI and the per-axis resize must
+// distinguish (state-driven law). Measured PER REAL NODE (each server's own consumed vs the
+// per-node reference) and the WORST node counts -- never an average, which would hide a single
+// saturated node (a hot master, idle slaves). Empty when resource-align is off, no manager, or
+// no servers. Callers pass the reference: config (GetConfigDBUPerNode) or plan (GetPlanDBUPerNode).
+func (cluster *Cluster) consumedOverAxes(ref DBUReading) []string {
 	if cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff {
 		return nil
 	}
 	if cluster.resources == nil || len(cluster.Servers) == 0 {
 		return nil
 	}
-	cfg := cluster.GetConfigDBUPerNode() // per-node config, per axis
-	set := map[string]bool{}
-
-	// Saturation, per real node, worst node counts, per axis.
 	pct := float64(cluster.Conf.ProvDBCapSafetyPct)
 	if pct < 0 {
 		pct = 0
@@ -475,6 +487,7 @@ func (cluster *Cluster) GetResourceCapUpAxes() []string {
 		pct = 100
 	}
 	thr := 1 - pct/100.0
+	set := map[string]bool{}
 	for _, srv := range cluster.Servers {
 		if srv == nil || srv.IsDown() || srv.DBUConsumed == nil {
 			continue
@@ -484,15 +497,14 @@ func (cluster *Cluster) GetResourceCapUpAxes() []string {
 			name       string
 			cons, capa float64
 		}{
-			{"cpu", c.DbuCpu, cfg.DbuCpu}, {"mem", c.DbuMem, cfg.DbuMem},
-			{"io", c.DbuIo, cfg.DbuIo}, {"disk", c.DbuDisk, cfg.DbuDisk},
+			{"cpu", c.DbuCpu, ref.DbuCpu}, {"mem", c.DbuMem, ref.DbuMem},
+			{"io", c.DbuIo, ref.DbuIo}, {"disk", c.DbuDisk, ref.DbuDisk},
 		} {
 			if a.capa > 0 && a.cons/a.capa >= thr {
 				set[a.name] = true
 			}
 		}
 	}
-
 	if len(set) == 0 {
 		return nil
 	}

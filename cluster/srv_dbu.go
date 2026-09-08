@@ -155,6 +155,19 @@ func (cluster *Cluster) GetConfigDBUPerNode() DBUReading {
 	return cluster.resources.ComputeUsedDBU(now, now, int64(memMB)*1024*1024, cores, iops, int64(diskGB)*1024*1024*1024)
 }
 
+// GetPlanDBUPerNode projects the cluster PLAN (the cap -- "le cap est déjà réglé au plan") to a
+// per-node per-axis reference reading. The plan is a bundled DBU reservation, so each axis's
+// per-node cap is the same GetPlanDbu()/node-count DBU. Used by CheckResourceConsumedOverPlan as
+// the reference the consumed DBU is measured against (consumed approaching the plan -> cap up).
+// Zero reading when there are no servers.
+func (cluster *Cluster) GetPlanDBUPerNode() DBUReading {
+	if len(cluster.Servers) == 0 {
+		return DBUReading{}
+	}
+	p := float64(cluster.GetPlanDbu()) / float64(len(cluster.Servers))
+	return DBUReading{DbuCpu: p, DbuMem: p, DbuIo: p, DbuDisk: p, Dbu: p}
+}
+
 // GetPlanDbu returns the cluster's EFFECTIVE plan DBU: the explicit
 // prov-service-plan-dbu reservation contract when set (> 0), else AUTO-computed =
 // per-node derived DBU (GetProvDbuFromConfigPerNode) × the number of DB nodes. "Auto only when

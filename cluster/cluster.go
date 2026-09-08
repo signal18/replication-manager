@@ -114,8 +114,9 @@ type Cluster struct {
 	IsNeedDatabasesRestart        bool                `json:"isNeedDatabasesRestart" groups:"web"`
 	IsNeedDatabasesRollingRestart bool                `json:"isNeedDatabasesRollingRestart" groups:"web"`
 	IsNeedDatabasesRollingReprov  bool                `json:"isNeedDatabasesRollingReprov" groups:"web"`
-	IsNeedResourceCapUp          bool                `json:"isNeedResourceCapUp" groups:"web"` // some node needs its resource cap raised (see ResourceCapUpAxes for which axes). Config-driven (the config drives the system); resource-termed, not DBU/plan, to stay on-prem compatible
-	ResourceCapUpAxes            []string            `json:"resourceCapUpAxes" groups:"web"`   // WHICH axes (cpu/mem/io/disk) warrant the cap-up -- consequences differ (mem->OOM, disk->full, cpu->throttle, io->latency); saturation (consumed>=config-safety, worst node) OR config-filled-the-plan
+	ResourceConsumedOverConfigAxes []string          `json:"resourceConsumedOverConfigAxes" groups:"web"` // axes (cpu/mem/io/disk) where the worst node's consumed >= config - margin -> SATURATION, consequence = RAISE THE RESOURCES (grow prov-db-* via dynamic resize). Set by CheckResourceConsumedOverConfig
+	IsNeedResourceCapUp          bool                `json:"isNeedResourceCapUp" groups:"web"`            // worst node's consumed >= plan(cap) - margin -> consequence = RAISE THE PLAN (cap up). Set by CheckResourceConsumedOverPlan
+	ResourceConsumedOverPlanAxes []string            `json:"resourceConsumedOverPlanAxes" groups:"web"`   // axes driving the cap-up (consumed over the plan). Consequences differ per axis (mem->OOM, disk->full, cpu->throttle, io->latency)
 	IsNeedDatabasesReprov         bool                `json:"isNeedDatabasesReprov" groups:"web"`
 	IsNeedDatabasesConfigChange   bool                `json:"isNeedDatabasesConfigChange" groups:"web"`
 	IsNeedAppsReprov              bool                `json:"isNeedAppsReprov" groups:"web"`

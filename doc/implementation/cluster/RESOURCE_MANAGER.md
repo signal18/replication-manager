@@ -180,19 +180,24 @@ The dynamic resource resize is governed by **two ORTHOGONAL gates — never conf
   | **in-plan** | *(always yes — no budget gate)* | `CanConfigResize` |
   | **beyond-plan** | `CanGrowBeyondPlan` | `CanConfigResize` |
 
-**State definition.** `IsNeedResourceCapUp` (bool) + `ResourceCapUpAxes` (`[]string`,
-cluster.go) = **at least one DB node is saturating at least one resource axis**, and the list
-names WHICH axes. It is a **monitoring signal only** — nothing consumes it yet (the resize is
-still admin/plan-triggered; see Status). The **axes are recorded** because the consequence
-differs (mem → OOM, disk → full, cpu → throttle, io → latency), so the eventual per-axis resize
-/ alert must distinguish them.
+**Two states, two `checkState` functions.** Both ONLY set tracked states — no action, no
+mutation, no resize (the resize is composed downstream from these states). Each compares, per
+axis, the **WORST real DB node's** consumed DBU against a per-node reference minus the safety
+margin (`prov-db-cap-safety-pct`, default 15 % → fire at 85 %) — never a `Σ/N` average, which
+would hide a hot master. They differ ONLY by the reference:
 
-**Trigger — SATURATION, per axis.** It lights up when ANY **real node** — the worst node, never
-a `Σ/N` average that would hide a hot master — has `consumed_axis ≥ config_axis × (1 −
-prov-db-cap-safety-pct/100)` on ANY axis (default 15 % → fire at 85 %). There is deliberately
-**no `config ≥ plan` path**: being provisioned AT the plan is the normal state (config == plan),
-which would light the signal permanently for every properly provisioned cluster. Config-driven,
-resource-termed (on-prem-compatible, not DBU/plan-specific).
+| checkState (cluster_has.go) | reference | state field(s) set | consequence (composed downstream) |
+|---|---|---|---|
+| `CheckResourceConsumedOverConfig` | **config**, per-axis (`GetConfigDBUPerNode`) | `ResourceConsumedOverConfigAxes` | **RAISE THE RESOURCES** — SATURATION: grow `prov-db-*` via the dynamic resize (free within the plan) |
+| `CheckResourceConsumedOverPlan` | **plan / the cap** (`GetPlanDBUPerNode`) | `IsNeedResourceCapUp` + `ResourceConsumedOverPlanAxes` | **RAISE THE PLAN** (cap up) — the client is hitting the paid envelope |
+
+The **cap is already set at the plan**, so `IsNeedResourceCapUp` stays false as long as consumed
+< plan − margin. The axes are recorded (not a bare bool) because the consequence differs per axis
+(mem → OOM, disk → full, cpu → throttle, io → latency). There is deliberately **no `config ≥ plan`
+path** (being provisioned AT the plan is the normal state — would fire permanently). Natural
+progression: consumption first saturates the config → raise resources within the plan; as
+resources/consumption climb to the plan envelope → cap up. Both are **signals only** — nothing
+consumes them yet (the resize is still admin/plan-triggered; see Status).
 
 **Measurement source & window (defines what "consumed" means).** Consumption comes from the DBU
 sensor `share/scripts/dbjobs_new.sh` → `collect_dbu`, which runs **once per dbjobs_new invocation,
