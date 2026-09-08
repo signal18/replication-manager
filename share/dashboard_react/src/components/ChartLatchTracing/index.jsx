@@ -498,7 +498,11 @@ function ChartLatchTracing({
       clearInterval(intervalId);
       abortControllerRef.current.abort();
     };
-  }, [metricPaths, context, isVisible]);
+    // metricPaths is scopeAll([...]) -> a NEW array every render; a reference dep would
+    // re-run this effect and abort the in-flight fetch on every parent render, which (with
+    // the hasData hide) makes the panel flap/disappear. Depend on the value-stable string.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metricPaths.join('|'), context, isVisible]);
 
   // Unified chart drawing effect that handles all triggers
   useEffect(() => {

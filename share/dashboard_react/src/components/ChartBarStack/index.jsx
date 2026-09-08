@@ -176,7 +176,11 @@ function ChartBarStack({
       clearInterval(intervalId);
       abortControllerRef.current.abort();
     };
-  }, [metricPaths, context, isVisible]);
+    // metricPaths is scopeAll([...]) -> a NEW array every render; a reference dep would
+    // re-run this effect and abort the in-flight fetch on every parent render, blanking the
+    // chart to "no data" intermittently (flapping). Depend on the value-stable joined string.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metricPaths.join('|'), context, isVisible]);
 
   // Create a memoized draw chart function
   const drawChart = useCallback((dataMap) => {
