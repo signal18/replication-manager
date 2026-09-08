@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Box } from '@chakra-ui/react';
+import { Box, Text } from '@chakra-ui/react';
 import * as d3 from 'd3';
 import styles from '../../styles/_chartbarstack.module.scss';
 import { useTheme } from '../../ThemeProvider';
@@ -563,16 +563,22 @@ function ChartLatchTracing({
   const hasData = Object.values(metricsData).some(
     (m) => Array.isArray(m?.data) && m.data.length > 0
   );
-  if (!isVisible || !hasData) return null;
+  // Do NOT hide the panel when there's no data -- the user must still SEE the feature
+  // exists. Keep the title always, and show a clear "no data" note instead of a blank block.
+  if (!isVisible) return null;
 
   return (
     <Box
       className={`${styles.container} ${className || ''} ${theme === 'dark' ? styles.darkContainer : ''}`}
       data-testid="chart-latch-tracing"
+      position="relative"
       style={{
         backgroundColor: themeColors.background
       }}
     >
+      <Text px={2} pt={1} fontSize="sm" fontWeight="bold">
+        {title}
+      </Text>
       <div
         ref={chartRef}
         className={`${styles.chartContainer} ${theme === 'dark' ? styles.darkChartContainer : ''}`}
@@ -583,6 +589,20 @@ function ChartLatchTracing({
           borderRadius: '8px'
         }}
       />
+      {!hasData && (
+        <Text
+          position="absolute"
+          top="55%"
+          left="50%"
+          transform="translate(-50%, -50%)"
+          fontSize="sm"
+          opacity={0.6}
+          textAlign="center"
+          px={4}
+        >
+          No data — perf_schema “{title}” counters are not collected on this database
+        </Text>
+      )}
     </Box>
   );
 }
