@@ -3720,6 +3720,24 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetProvDbDiskDevice(value)
 	case "prov-db-service-type":
 		mycluster.SetProvDbServiceType(value)
+	case "prov-db-resource-align":
+		mycluster.Conf.ProvDBResourceAlign = value
+	case "prov-db-cap-safety-pct":
+		mycluster.Conf.ProvDBCapSafetyPct, _ = strconv.Atoi(value)
+	case "prov-db-cap-shrink-pct":
+		mycluster.Conf.ProvDBCapShrinkPct, _ = strconv.Atoi(value)
+	case "prov-db-overcommit-pct":
+		mycluster.Conf.ProvDBOvercommitPct, _ = strconv.Atoi(value)
+	case "prov-db-cap-burst-dbu":
+		mycluster.Conf.ProvDBCapBurstDbu, _ = strconv.Atoi(value)
+	case "prov-db-scale-up-config-in-plan-speed":
+		mycluster.Conf.ScaleUpConfigInPlanSpeed = value
+	case "prov-db-scale-down-config-in-plan-speed":
+		mycluster.Conf.ScaleDownConfigInPlanSpeed = value
+	case "prov-db-scale-up-plan-speed":
+		mycluster.Conf.ScaleUpPlanSpeed = value
+	case "prov-db-scale-down-plan-speed":
+		mycluster.Conf.ScaleDownPlanSpeed = value
 	case "proxysql-servers-credential":
 		mycluster.SetProxyServersCredential(value, config.ConstProxySqlproxy)
 	case "proxy-servers-backend-max-connections":
