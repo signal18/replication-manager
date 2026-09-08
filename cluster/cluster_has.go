@@ -447,17 +447,16 @@ func (cluster *Cluster) HasRequestDBRollingRestart() bool {
 // currently warrant raising the cap -- EMPTY when none. It records the axes, not a bare bool,
 // because the consequence differs per axis (mem -> OOM, disk -> full, cpu -> throttle, io ->
 // latency), which the alert/GUI and the eventual per-axis resize must distinguish (state-driven
-// law: track each factor as its own atomic state). An axis is listed for either reason:
+// law: track each factor as its own atomic state). An axis is listed on SATURATION only
+// (universal, on-prem, NO dynamic config needed): some node consumes at least
+// (1 - prov-db-cap-safety-pct/100) of its per-node config on that axis. Measured PER REAL NODE
+// (each server's own consumed vs the per-node config) and the WORST node counts -- not an
+// average, which would hide a single saturated node (a hot master, idle slaves).
 //
-//   - SATURATION (universal, on-prem, NO dynamic config needed): some node consumes at least
-//     (1 - prov-db-cap-safety-pct/100) of its per-node config on that axis. Measured PER REAL
-//     NODE (each server's own consumed vs the per-node config) and the WORST node counts -- not
-//     an average, which would hide a single saturated node (a hot master, idle slaves).
-//   - CONFIG FILLED THE PLAN (cloud18 / dynamic config): the config has grown to the plan
-//     reservation; the binding (pivot) axis of that config is listed.
-//
-// The CONFIG drives the system; consumption is only observed. Empty when resource-align is off
-// or there is no manager/servers.
+// NOTE: there is deliberately NO "config >= plan" path. Being provisioned AT the plan is the
+// NORMAL state (config == plan), so it would light this signal permanently for every properly
+// provisioned cluster -- meaningless. Only real saturation (consumption near the config)
+// warrants a cap-up. Empty when resource-align is off or there is no manager/servers.
 func (cluster *Cluster) GetResourceCapUpAxes() []string {
 	if cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff {
 		return nil
@@ -468,7 +467,7 @@ func (cluster *Cluster) GetResourceCapUpAxes() []string {
 	cfg := cluster.GetConfigDBUPerNode() // per-node config, per axis
 	set := map[string]bool{}
 
-	// Path 1 -- saturation, per real node, worst node counts, per axis.
+	// Saturation, per real node, worst node counts, per axis.
 	pct := float64(cluster.Conf.ProvDBCapSafetyPct)
 	if pct < 0 {
 		pct = 0
@@ -492,12 +491,6 @@ func (cluster *Cluster) GetResourceCapUpAxes() []string {
 				set[a.name] = true
 			}
 		}
-	}
-
-	// Path 2 -- config filled the plan (dynamic config grew it to the reservation).
-	planDbuPerNode := float64(cluster.GetPlanDbu()) / float64(len(cluster.Servers))
-	if planDbuPerNode >= 1 && float64(cluster.GetProvDbuFromConfigPerNode()) >= planDbuPerNode && cfg.Binding != "" {
-		set[cfg.Binding] = true
 	}
 
 	if len(set) == 0 {

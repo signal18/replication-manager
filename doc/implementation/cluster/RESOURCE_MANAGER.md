@@ -180,13 +180,34 @@ The dynamic resource resize is governed by **two ORTHOGONAL gates — never conf
   | **in-plan** | *(always yes — no budget gate)* | `CanConfigResize` |
   | **beyond-plan** | `CanGrowBeyondPlan` | `CanConfigResize` |
 
-**Trigger — saturation, PER AXIS.** `IsNeedResourceCapUp` (bool) + `ResourceCapUpAxes`
-(`[]string`, cluster.go) light up when ANY **real node** — the worst node, never a `Σ/N`
-average that would hide a hot master — has `consumed_axis ≥ config_axis × (1 −
-prov-db-cap-safety-pct/100)` on ANY axis (default 15 % → fire at 85 %), OR when the config has
-grown to fill the plan. The **axes are recorded** because the consequence differs
-(mem → OOM, disk → full, cpu → throttle, io → latency). Config-driven, resource-termed
-(on-prem-compatible, not DBU/plan-specific).
+**State definition.** `IsNeedResourceCapUp` (bool) + `ResourceCapUpAxes` (`[]string`,
+cluster.go) = **at least one DB node is saturating at least one resource axis**, and the list
+names WHICH axes. It is a **monitoring signal only** — nothing consumes it yet (the resize is
+still admin/plan-triggered; see Status). The **axes are recorded** because the consequence
+differs (mem → OOM, disk → full, cpu → throttle, io → latency), so the eventual per-axis resize
+/ alert must distinguish them.
+
+**Trigger — SATURATION, per axis.** It lights up when ANY **real node** — the worst node, never
+a `Σ/N` average that would hide a hot master — has `consumed_axis ≥ config_axis × (1 −
+prov-db-cap-safety-pct/100)` on ANY axis (default 15 % → fire at 85 %). There is deliberately
+**no `config ≥ plan` path**: being provisioned AT the plan is the normal state (config == plan),
+which would light the signal permanently for every properly provisioned cluster. Config-driven,
+resource-termed (on-prem-compatible, not DBU/plan-specific).
+
+**Measurement source & window (defines what "consumed" means).** Consumption comes from the DBU
+sensor `share/scripts/dbjobs_new.sh` → `collect_dbu`, which runs **once per dbjobs_new invocation,
+~60 s cadence**, inside each DB container. It reads the database cgroup and pushes to
+`/api/clusters/<c>/servers/<h>/<p>/dbu`:
+- **CPU & IO = the MEAN rate over the ~60 s window** (differential of cgroup `cpu.stat`
+  usage_usec / `io.stat` rios+wios between two runs, ÷ dt) — so saturation is a **~60 s
+  sustained** condition, not a sub-second spike.
+- **Mem & disk = instantaneous** at the sample (`memory.current`, `df` under the datadir).
+
+Repman re-emits the last reading every monitor tick (~2 s) for a continuous graph, but the
+underlying value only refreshes per sensor push (~60 s). A down / never-measured node is skipped
+(contributes no axis). **Flap caveat:** the value being a 60 s mean checked per tick, a
+consumption hovering at the threshold would flap the derived workload state — so wiring it to the
+WorkloadStateMachine needs **hysteresis** (open 85 % / close ~75 %) + `pstatesN` preservation.
 
 **Granularity of a size-up = one DBU-equivalent on the SATURATED axis** (mem +4096 MB, cpu
 +1 core, io +1000 iops, disk +40 GB) — not a whole DBU (would grow idle axes) and not a free
