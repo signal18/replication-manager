@@ -114,6 +114,7 @@ type Cluster struct {
 	IsNeedDatabasesRestart        bool                `json:"isNeedDatabasesRestart" groups:"web"`
 	IsNeedDatabasesRollingRestart bool                `json:"isNeedDatabasesRollingRestart" groups:"web"`
 	IsNeedDatabasesRollingReprov  bool                `json:"isNeedDatabasesRollingReprov" groups:"web"`
+	IsNeedDBReCapUp               bool                `json:"isNeedDbReCapUp" groups:"web"` // config resources have filled the plan's DBU -> raise the plan (re-cap up) before eating the +1 overcommit
 	IsNeedDatabasesReprov         bool                `json:"isNeedDatabasesReprov" groups:"web"`
 	IsNeedDatabasesConfigChange   bool                `json:"isNeedDatabasesConfigChange" groups:"web"`
 	IsNeedAppsReprov              bool                `json:"isNeedAppsReprov" groups:"web"`

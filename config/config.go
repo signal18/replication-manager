@@ -598,6 +598,7 @@ type Config struct {
 	ProvDBApplyDynamicConfig                  bool                         `mapstructure:"prov-db-apply-dynamic-config" toml:"prov-db-apply-dynamic-config" json:"provDBApplyDynamicConfig"`
 	ProvDBDynamicResource                     bool                         `mapstructure:"prov-db-dynamic-resource" toml:"prov-db-dynamic-resource" json:"provDbDynamicResource"`
 	ProvDBResourceAlign                       string                       `mapstructure:"prov-db-resource-align" toml:"prov-db-resource-align" json:"provDbResourceAlign"` // container memory cap alignment to the DBU tier: "plan" (default) / "up" / "off"
+	ProvDBOvercommitDbu                       int                          `mapstructure:"prov-db-overcommit-dbu" toml:"prov-db-overcommit-dbu" json:"provDbOvercommitDbu"` // overcommit DBU ADDED on top of the tier for the container memory cap (headroom above the plan); the plan itself is never modified
 	ProvDBDynamicResourceCanChangeScript      string                       `mapstructure:"prov-db-dynamic-resource-can-change-script" toml:"prov-db-dynamic-resource-can-change-script" json:"provDbDynamicResourceCanChangeScript"`
 	ProvDBDynamicResourceChangeScript         string                       `mapstructure:"prov-db-dynamic-resource-change-script" toml:"prov-db-dynamic-resource-change-script" json:"provDbDynamicResourceChangeScript"`
 	ProvDBConfig                              bool                         `mapstructure:"prov-db-config" toml:"prov-db-config" json:"provDbConfig"`

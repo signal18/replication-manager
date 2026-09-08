@@ -186,8 +186,13 @@ func (cluster *Cluster) GetDBContainerMemoryCapMB() int {
 	if tier < 1 {
 		tier = 1
 	}
-	// +1 DBU overcommit headroom above the reservation tier.
-	capMB := int(math.Ceil((tier + 1) * cluster.resources.DBMemMBPerUnit()))
+	// Overcommit DBU (prov-db-overcommit-dbu, default 1) added above the reservation tier --
+	// a cap-only headroom kept in its OWN variable; the plan is never modified here.
+	overcommit := float64(cluster.Conf.ProvDBOvercommitDbu)
+	if overcommit < 0 {
+		overcommit = 0
+	}
+	capMB := int(math.Ceil((tier + overcommit) * cluster.resources.DBMemMBPerUnit()))
 	if capMB < int(provMemMB) {
 		capMB = int(provMemMB)
 	}

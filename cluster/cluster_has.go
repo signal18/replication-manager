@@ -443,6 +443,25 @@ func (cluster *Cluster) HasRequestDBRollingRestart() bool {
 	return ret
 }
 
+// HasRequestDBReCapUp reports whether the DB config resources have grown to fill the plan's
+// DBU reservation: the per-node config DBU (max axis) has reached the plan DBU, so only the
+// +1 overcommit DBU of container headroom is left. It is the state-driven signal to raise the
+// plan (re-cap up) before the config keeps growing into the overcommit and risks OOM. Off when
+// resource-align is disabled or no plan/servers.
+func (cluster *Cluster) HasRequestDBReCapUp() bool {
+	if cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff {
+		return false
+	}
+	if cluster.resources == nil || len(cluster.Servers) == 0 {
+		return false
+	}
+	planDbuPerNode := float64(cluster.GetPlanDbu()) / float64(len(cluster.Servers))
+	if planDbuPerNode < 1 {
+		return false
+	}
+	return float64(cluster.GetProvDbuFromConfigPerNode()) >= planDbuPerNode
+}
+
 func (cluster *Cluster) HasRequestDBRollingReprov() bool {
 	ret := true
 	if cluster.Servers == nil {
