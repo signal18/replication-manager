@@ -290,22 +290,6 @@ func (cluster *Cluster) GetDBTierDbuPerNode() float64 {
 	return tier
 }
 
-// GetDBCapBurstDbuPerNode is the per-node BURST headroom added above the tier for the container
-// memory cap = prov-db-cap-burst-dbu (a fixed, TECHNICAL OOM headroom so mariadbd's real
-// footprint has room above prov-db-memory). This is NOT "overcommit": overcommit means real
-// OVER-CONSUMPTION of the plan (consumed - plan) and is derived from graphite, not from this. It
-// is also NOT the commercial dynamic-resize limit (prov-db-overcommit-pct). 0 when align is off.
-func (cluster *Cluster) GetDBCapBurstDbuPerNode() float64 {
-	if cluster.GetDBTierDbuPerNode() <= 0 {
-		return 0
-	}
-	oc := float64(cluster.Conf.ProvDBCapBurstDbu)
-	if oc < 0 {
-		oc = 0
-	}
-	return oc
-}
-
 // GetDBContainerMemoryCapMB returns the cgroup --memory cap (MB) for the DB container:
 // (tier + cap-burst) × mem-ratio, deliberately ABOVE prov-db-memory (the my.cnf sizing, never
 // changed) so mariadbd has headroom and is not OOM-killed. Falls back to prov-db-memory when
@@ -316,7 +300,7 @@ func (cluster *Cluster) GetDBContainerMemoryCapMB() int {
 	if tier <= 0 {
 		return int(provMemMB)
 	}
-	capMB := int(math.Ceil((tier + cluster.GetDBCapBurstDbuPerNode()) * cluster.resources.DBMemMBPerUnit()))
+	capMB := int(math.Ceil(tier * cluster.resources.DBMemMBPerUnit()))
 	if capMB < int(provMemMB) {
 		capMB = int(provMemMB)
 	}

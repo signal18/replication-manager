@@ -112,11 +112,6 @@ function DynamicConfigSettings({ selectedCluster, user }) {
       value: num('prov-db-overcommit-pct', cfg.provDbOvercommitPct, '50')
     },
     {
-      key: 'Cap Burst DBU',
-      help: h(`**Container cap burst (technical headroom)**\n\nBurst DBU added on top of the DBU tier for the container memory cap, so mariadbd has room above prov-db-memory and is not OOM-killed. NOT overcommit; the plan is never modified.\n\nConfig: \`prov-db-cap-burst-dbu\` (default 1)`, 'Cap Burst DBU'),
-      value: num('prov-db-cap-burst-dbu', cfg.provDbCapBurstDbu, '1')
-    },
-    {
       key: 'Scale-Up Speed (resources, in-plan)',
       help: h(`**Scale-up speed — resources within the plan**\n\nHow long a server's config saturation must persist before repman scales its resources UP (free within the plan). A duration.\n\nConfig: \`prov-db-scale-up-config-in-plan-speed\` (default 1m)`, 'Scale-Up Speed (resources)'),
       value: num('prov-db-scale-up-config-in-plan-speed', cfg.scaleUpConfigInPlanSpeed, '1m')

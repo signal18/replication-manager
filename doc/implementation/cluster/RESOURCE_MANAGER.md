@@ -230,10 +230,12 @@ WorkloadStateMachine needs **hysteresis** (open 85 % / close ~75 %) + `pstatesN`
 +1 core, io +1000 iops, disk +40 GB) — not a whole DBU (would grow idle axes) and not a free
 native step (would drift off the DBU grid). The grow follows `ResourceCapUpAxes`.
 
-**Vocabulary (settled):** `prov-db-cap-burst-dbu` = TECHNICAL cgroup headroom above the config
-(anti-OOM), NOT overcommit. *Overcommit* = OVER-consumption (`consumed > plan`), *undercommit* =
-under-consumption (`plan > consumed`) — both DERIVED in the GUI from graphite (`diffSeries`),
-nothing emitted. `prov-db-overcommit-pct` = the commercial scale-up ceiling above.
+**Vocabulary (settled):** the container cgroup `--memory` cap = the DBU tier × mem-ratio, where
+the tier is chosen by `prov-db-resource-align`: `plan` (default) = the per-node plan, or `up` =
+the per-node config rounded up to the next DBU (`GetProvDbuFromConfigPerNode`). No extra offset.
+*Overcommit* = OVER-consumption (`consumed > plan`), *undercommit* = under-consumption
+(`plan > consumed`) — both DERIVED in the GUI from graphite (`diffSeries`), nothing emitted.
+`prov-db-overcommit-pct` = the commercial scale-up ceiling above the plan.
 
 ## Status / TODO
 
