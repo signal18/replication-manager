@@ -350,7 +350,6 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 	return nil
 }
 
-
 func (cluster *Cluster) OpenSVCRestartDatabaseService(server *ServerMonitor, node string, rid string) error {
 	svc := cluster.OpenSVCConnect()
 	agent := server.Agent
@@ -567,8 +566,10 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 			svccontainer["run_args"] = svccontainer["run_args"] + " --user mysql"
 		}
 		if server.ClusterGroup.Conf.ProvDBDockerRunArgsLimit {
-			memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", server.ClusterGroup.Conf.ProvMem, true)
-			memStr := strconv.Itoa(memMB) + "m"
+			// Container memory CAP = DBU tier + 1 overcommit DBU (GetDBContainerMemoryCapMB),
+			// deliberately ABOVE prov-db-memory (which sizes my.cnf) so mariadbd has headroom
+			// and is not OOM-killed when its real footprint exceeds the buffer pool.
+			memStr := strconv.Itoa(server.ClusterGroup.GetDBContainerMemoryCapMB()) + "m"
 			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + memStr + " --memory-swap=" + memStr + " --cpus=" + server.ClusterGroup.Conf.ProvCores + ".0"
 			// this need to find the device with df in container
 			//  --device-read-iops=" + server.ClusterGroup.Conf.ProvIops +".0" --device-write-iops=device" + server.ClusterGroup.Conf.ProvIops

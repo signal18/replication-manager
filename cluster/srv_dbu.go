@@ -156,6 +156,44 @@ func (cluster *Cluster) GetPlanDbu() int {
 	return cluster.GetProvDbuFromConfigPerNode() * len(cluster.Servers)
 }
 
+// GetDBContainerMemoryCapMB returns the cgroup --memory cap (MB) for the DB container.
+//
+// The cap is aligned to the DBU tier PLUS one overcommit DBU -- the same overcommit slack the
+// MariaDB dynamic-resize model uses -- so it sits ABOVE the MySQL config memory. prov-db-memory
+// (immutable) keeps driving my.cnf (buffer pool etc.) and is NEVER changed here; only the
+// container cap moves. A cap flush against the config memory OOM-kills mariadbd the instant its
+// real footprint (connections, temp tables, performance_schema, allocator overhead) exceeds the
+// buffer pool -- the db3 crash. The +1 DBU headroom prevents that.
+//
+// Modes (prov-db-resource-align): "plan" (default) tier = prov-service-plan-dbu / node count;
+// "up" tier = max-axis config DBU (coherence/debug); "off" cap = prov-db-memory (legacy).
+// The cap never drops below prov-db-memory.
+func (cluster *Cluster) GetDBContainerMemoryCapMB() int {
+	provMemMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+	mode := cluster.Conf.ProvDBResourceAlign
+	if mode == "" {
+		mode = config.ConstResourceAlignPlan
+	}
+	if mode == config.ConstResourceAlignOff || cluster.resources == nil || len(cluster.Servers) == 0 {
+		return int(provMemMB)
+	}
+	var tier float64
+	if mode == config.ConstResourceAlignUp {
+		tier = float64(cluster.GetProvDbuFromConfigPerNode())
+	} else {
+		tier = float64(cluster.GetPlanDbu()) / float64(len(cluster.Servers))
+	}
+	if tier < 1 {
+		tier = 1
+	}
+	// +1 DBU overcommit headroom above the reservation tier.
+	capMB := int(math.Ceil((tier + 1) * cluster.resources.DBMemMBPerUnit()))
+	if capMB < int(provMemMB) {
+		capMB = int(provMemMB)
+	}
+	return capMB
+}
+
 // RestoreDBUConsumed reloads this server's last reading from the repman-side manager
 // into the (freshly recreated) ServerMonitor, so a config reload does not blank the
 // DBU metric. No entry (never pushed) leaves DBUConsumed nil.

@@ -597,6 +597,7 @@ type Config struct {
 	ProvOrchestratorCluster                   string                       `mapstructure:"prov-orchestrator-cluster" toml:"prov-orchestrator-cluster" json:"provOrchestratorCluster"`
 	ProvDBApplyDynamicConfig                  bool                         `mapstructure:"prov-db-apply-dynamic-config" toml:"prov-db-apply-dynamic-config" json:"provDBApplyDynamicConfig"`
 	ProvDBDynamicResource                     bool                         `mapstructure:"prov-db-dynamic-resource" toml:"prov-db-dynamic-resource" json:"provDbDynamicResource"`
+	ProvDBResourceAlign                       string                       `mapstructure:"prov-db-resource-align" toml:"prov-db-resource-align" json:"provDbResourceAlign"` // container memory cap alignment to the DBU tier: "plan" (default) / "up" / "off"
 	ProvDBDynamicResourceCanChangeScript      string                       `mapstructure:"prov-db-dynamic-resource-can-change-script" toml:"prov-db-dynamic-resource-can-change-script" json:"provDbDynamicResourceCanChangeScript"`
 	ProvDBDynamicResourceChangeScript         string                       `mapstructure:"prov-db-dynamic-resource-change-script" toml:"prov-db-dynamic-resource-change-script" json:"provDbDynamicResourceChangeScript"`
 	ProvDBConfig                              bool                         `mapstructure:"prov-db-config" toml:"prov-db-config" json:"provDbConfig"`
@@ -1465,6 +1466,13 @@ const (
 	ConstOrchestratorSlapOS     string = "slapos"
 	ConstOrchestratorLocalhost  string = "local"
 	ConstOrchestratorOnPremise  string = "onpremise"
+
+	// DB container memory-cap alignment modes (prov-db-resource-align). The cgroup --memory
+	// cap is deliberately set ABOVE the MySQL config memory (prov-db-memory) so mariadbd's
+	// real footprint has headroom and is not OOM-killed the instant it exceeds the buffer pool.
+	ConstResourceAlignPlan string = "plan" // cap = (prov-service-plan-dbu / nodes) × mem-ratio
+	ConstResourceAlignUp   string = "up"   // cap = max-axis DBU from config × mem-ratio (coherence/debug)
+	ConstResourceAlignOff  string = "off"  // no alignment: cap = prov-db-memory (legacy)
 )
 
 const (

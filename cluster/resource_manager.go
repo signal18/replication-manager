@@ -124,6 +124,12 @@ func NewResourceManager() *ResourceManager {
 	}
 }
 
+// DBMemMBPerUnit is the Database-profile memory ratio (MB per DBU) -- the single source used
+// to size the DBU-aligned container memory cap. Keeps the ratio owned by the ResourceManager.
+func (m *ResourceManager) DBMemMBPerUnit() float64 {
+	return m.ratios[ProfileDatabase].MemMBPerUnit
+}
+
 // SetProfileRatios reconfigures one workload profile's unit ratios -- the operator's
 // rule for that profile. The product does not lock these; nothing is contracted or
 // billed outside the ratios the operator sets here.
