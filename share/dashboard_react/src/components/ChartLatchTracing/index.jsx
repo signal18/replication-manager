@@ -168,8 +168,12 @@ function ChartLatchTracing({
       return;
     }
 
-    // Validate data
-    const primaryData = dataMap[metricPaths[0]]?.data;
+    // Validate data. Use the first metric that actually HAS data as the date source, not
+    // rigidly metricPaths[0] -- otherwise a graph whose first series is empty (e.g. latch,
+    // where several rwlocks have COUNT_STAR 0) would wrongly render "No data".
+    const primaryData =
+      metricPaths.map((p) => dataMap[p]?.data).find((d) => d && d.length) ||
+      dataMap[metricPaths[0]]?.data;
     if (!primaryData || !primaryData.length) {
       // No data yet: still render the SVG + title (+ "No data") so the empty
       // graph stays identifiable instead of an unlabelled blank box.
@@ -245,7 +249,11 @@ function ChartLatchTracing({
     const processedData = allDates.map(date => {
       const entry = { date };
       metricPaths.forEach(path => {
-        const pointData = dataMap[path]?.data.find(d =>
+        // A metric with no data (e.g. a rwlock whose COUNT_STAR is 0, so it was never
+        // emitted) comes back with data undefined. Guard with ?. before find -- otherwise
+        // undefined.find() throws and the WHOLE chart fails to render (why 'latch', with 4
+        // of 6 series empty, showed nothing while 'mutex' with all 6 present rendered fine).
+        const pointData = dataMap[path]?.data?.find(d =>
           d.date.getTime() === date.getTime()
         );
         entry[path] = pointData?.value || 0;
