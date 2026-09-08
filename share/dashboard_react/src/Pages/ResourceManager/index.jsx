@@ -180,6 +180,12 @@ function ResourceManager() {
             title='Plan DBU (par cluster)'
             metricPaths={data.clusters.map((c) => `resourcemanager.${carbonHost(c.cluster)}.plan_dbu`)}
           />
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Overcommit DBU (par cluster) — cap headroom above the plan (+prov-db-overcommit-dbu × nodes)'
+            metricPaths={data.clusters.map((c) => `resourcemanager.${carbonHost(c.cluster)}.overcommit_dbu`)}
+          />
           <Flex gap={4} wrap='wrap' mt={2}>
             {data.clusters.map((c, i) => (
               <Flex key={c.cluster} align='center' gap={1}>

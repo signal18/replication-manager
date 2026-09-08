@@ -127,11 +127,19 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 	// emitted here to be graphed over time, as resourcemanager.<CLUSTER>.plan_dbu. The
 	// token is uppercased like the mysql.<HOST> series so the GUI scopes both the same way.
 	if server.IsMaster() {
+		ts := time.Now().Unix()
 		ctoken := strings.ToUpper(replacer.Replace(cluster.Name))
 		metrics = append(metrics, graphite.NewMetric(
 			fmt.Sprintf("resourcemanager.%s.plan_dbu", ctoken),
-			strconv.FormatFloat(float64(cluster.GetPlanDbu()), 'f', 4, 64),
-			time.Now().Unix()))
+			strconv.FormatFloat(float64(cluster.GetPlanDbu()), 'f', 4, 64), ts))
+
+		// Overcommit DBU for this cluster = the cap headroom above the plan
+		// (prov-db-overcommit-dbu per node × node count). The consumed (mysql.*.dbu) and the
+		// plan (plan_dbu) are already in graphite; the overcommit is the only piece the
+		// ResourceManager over-time graph was missing (the container cap = plan + overcommit).
+		metrics = append(metrics, graphite.NewMetric(
+			fmt.Sprintf("resourcemanager.%s.overcommit_dbu", ctoken),
+			strconv.FormatFloat(float64(cluster.Conf.ProvDBOvercommitDbu*len(cluster.Servers)), 'f', 4, 64), ts))
 	}
 	return metrics
 }
