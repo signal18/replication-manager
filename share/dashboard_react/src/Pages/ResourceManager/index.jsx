@@ -180,11 +180,20 @@ function ResourceManager() {
             title='Plan DBU (par cluster)'
             metricPaths={data.clusters.map((c) => `resourcemanager.${carbonHost(c.cluster)}.plan_dbu`)}
           />
+          <Text fontSize='xs' opacity={0.6} mt={4} mb={1}>
+            Overcommit (surconso) = max(0, consommé − plan) · Undercommit (sous-conso / giveback) = max(0, plan − consommé). Dérivés au query de consommé &amp; plan (rien d'émis).
+          </Text>
           <ChartBarStack
             context={ctx}
             height={200}
-            title='Overcommit DBU (par cluster) — cap headroom above the plan (+prov-db-overcommit-dbu × nodes)'
-            metricPaths={data.clusters.map((c) => `resourcemanager.${carbonHost(c.cluster)}.overcommit_dbu`)}
+            title='Overcommit DBU (surconsommation : consommé > plan, par cluster)'
+            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(sumSeries(mysql.*-${carbonHost(c.cluster)}-*.dbu),resourcemanager.${carbonHost(c.cluster)}.plan_dbu),0)`)}
+          />
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Undercommit DBU (sous-consommation / giveback : plan > consommé, par cluster)'
+            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(resourcemanager.${carbonHost(c.cluster)}.plan_dbu,sumSeries(mysql.*-${carbonHost(c.cluster)}-*.dbu)),0)`)}
           />
           <Flex gap={4} wrap='wrap' mt={2}>
             {data.clusters.map((c, i) => (

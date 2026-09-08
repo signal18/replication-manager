@@ -55,10 +55,16 @@ function ChartBarStack({
   };
 
   const formatWithUnits = (value) => {
-    if (value <= 0) return '0';
+    if (!Number.isFinite(value) || value <= 0) return '0';
     const k = 1024;
     const sizes = ['', 'K', 'M', 'G', 'T'];
-    const i = Math.floor(Math.log(value) / Math.log(k));
+    // Clamp the magnitude index to the valid range: a value < 1 gives a NEGATIVE
+    // floor(log_k(value)) -> sizes[-1] === undefined and value*k as the mantissa
+    // (0.5 -> "512.0undefined"). Sub-unit DBU deltas (overcommit/undercommit) must
+    // render as plain "0.5", so floor to 0; and never index past 'T'.
+    let i = Math.floor(Math.log(value) / Math.log(k));
+    if (i < 0) i = 0;
+    if (i >= sizes.length) i = sizes.length - 1;
     return d3.format(',.1f')(value / Math.pow(k, i)) + sizes[i];
   };
 
