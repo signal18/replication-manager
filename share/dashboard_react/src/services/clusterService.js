@@ -87,7 +87,7 @@ export const clusterService = {
   reseedStagingFromParent,
 
   // Server management APIs
-  setMaintenanceMode,
+  switchMaintenanceMode,
   jobsUpgrade,
   promoteToLeader,
   setAsUnrated,
@@ -489,7 +489,9 @@ function reseedStagingFromParent(clusterName, baseURL) {
 //#endregion Cluster management APIs
 
 //#region Server management APIs
-function setMaintenanceMode(clusterName, serverId, baseURL) {
+// Hits actions/maintenance, which toggles (server.SwitchMaintenance) -- not a
+// dedicated set action, hence the switch* name rather than set*.
+function switchMaintenanceMode(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/maintenance`)
 }
 

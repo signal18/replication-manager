@@ -25,7 +25,7 @@ import {
   setAsIgnored,
   setAsPreferred,
   setAsUnrated,
-  setMaintenanceMode,
+  switchMaintenanceMode,
   skipReplicationEvent,
   startDatabase,
   restartDatabase,
@@ -104,6 +104,7 @@ function ServerMenu({
   // State for basic ConfirmModal (used for all non-reseed operations)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
+  const [confirmBody, setConfirmBody] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
 
   // State for AdvancedReseedModal (used for reseed operations)
@@ -136,6 +137,7 @@ function ServerMenu({
     setIsConfirmModalOpen(false)
     setConfirmHandler(null)
     setConfirmTitle('')
+    setConfirmBody('')
   }
 
   // Handlers for AdvancedReseedModal
@@ -202,9 +204,22 @@ function ServerMenu({
             name: 'Maintenance Mode',
             isDisabled: !user?.grants['db-maintenance'],
             onClick: () => {
+              // This dispatches the toggle endpoint (actions/maintenance), so
+              // the confirm copy must reflect which direction this click
+              // actually flips, not always "entering maintenance".
               openConfirmModal()
-              setConfirmTitle(`Confirm maintenance for ${serverName}?`)
-              setConfirmHandler(() => () => dispatch(setMaintenanceMode({ clusterName, serverId: row.id })))
+              if (row?.isMaintenance) {
+                setConfirmTitle(`Confirm clearing maintenance for ${serverName}?`)
+                setConfirmBody(
+                  'This clears the durable maintenance membership -- the server rejoins proxy routing and failover election immediately, and stays rejoined across a future restart or config reload.'
+                )
+              } else {
+                setConfirmTitle(`Confirm maintenance for ${serverName}?`)
+                setConfirmBody(
+                  'Maintenance mode persists across a replication-manager restart or config reload -- the server stays out of proxy routing and failover election until maintenance is explicitly cleared. Requires monitoring-save-config=true (the default) to survive a restart.'
+                )
+              }
+              setConfirmHandler(() => () => dispatch(switchMaintenanceMode({ clusterName, serverId: row.id })))
             }
           },
           {
@@ -593,6 +608,7 @@ function ServerMenu({
           isOpen={isConfirmModalOpen}
           closeModal={closeConfirmModal}
           title={confirmTitle}
+          body={confirmBody}
           onConfirmClick={() => {
             confirmHandler?.()
             closeConfirmModal()

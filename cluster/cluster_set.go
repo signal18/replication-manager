@@ -416,6 +416,77 @@ func (cluster *Cluster) SetIgnoreSrv(IgnoredHostURL string) {
 	// fmt.Printf("Update config ignored server: " + cluster.Conf.IgnoreSrv + "\n")
 }
 
+// SetMaintenanceSrv replaces the durable maintenance-host membership list
+// with newList (a comma-separated set of host tokens, deduplicated; matched
+// EXACTLY -- see maintenanceListHasHost, never by substring), then syncs the
+// runtime IsMaintenance flag for every currently-instantiated server to match
+// it. It trusts newList as the complete intended membership -- it does not
+// filter tokens against cluster.Servers, so a host temporarily absent from
+// the live server list keeps its entry (see AddMaintenanceSrv/
+// RemoveMaintenanceSrv, which build newList by editing the existing token
+// list rather than reconstructing it from live servers). It does not run the
+// db-servers-state-change script or touch proxy backends -- callers
+// (SetMaintenance/DelMaintenance/SwitchMaintenance) own those side effects;
+// this only tracks membership so it survives restart and config reload (see
+// newServerMonitor).
+func (cluster *Cluster) SetMaintenanceSrv(newList string) {
+	seen := make(map[string]bool)
+	var deduped []string
+	for _, tok := range maintenanceTokens(newList) {
+		if seen[tok] {
+			continue
+		}
+		seen[tok] = true
+		deduped = append(deduped, tok)
+	}
+	cluster.Conf.MaintenanceSrv = strings.Join(deduped, ",")
+
+	for _, srv := range cluster.Servers {
+		if srv == nil || srv.GetSourceClusterName() != cluster.Name {
+			continue
+		}
+		srv.IsMaintenance = maintenanceListHasHost(cluster.Conf.MaintenanceSrv, srv.URL, srv.Name)
+	}
+}
+
+// AddMaintenanceSrv adds node to the durable maintenance-host membership and
+// persists it, preserving every other entry already tracked -- including
+// hosts not currently represented in cluster.Servers.
+func (cluster *Cluster) AddMaintenanceSrv(node *ServerMonitor) {
+	if maintenanceListHasHost(cluster.Conf.MaintenanceSrv, node.URL, node.Name) {
+		node.IsMaintenance = true
+		return
+	}
+	entry := strings.ReplaceAll(node.URL, node.Domain+":3306", "")
+	newList := append(maintenanceTokens(cluster.Conf.MaintenanceSrv), entry)
+	cluster.SetMaintenanceSrv(strings.Join(newList, ","))
+	cluster.ConfigManager.SaveConfig(cluster, false)
+}
+
+// RemoveMaintenanceSrv removes node from the durable maintenance-host
+// membership and persists it, preserving every other entry already tracked --
+// including hosts not currently represented in cluster.Servers.
+func (cluster *Cluster) RemoveMaintenanceSrv(node *ServerMonitor) error {
+	if node.SourceClusterName != cluster.Name {
+		return fmt.Errorf("Host is in child cluster. Cannot remove maintenance")
+	}
+
+	if !maintenanceListHasHost(cluster.Conf.MaintenanceSrv, node.URL, node.Name) {
+		return fmt.Errorf("Host not found in maintenance list")
+	}
+
+	var kept []string
+	for _, tok := range maintenanceTokens(cluster.Conf.MaintenanceSrv) {
+		if tok == node.URL || tok == node.Name {
+			continue
+		}
+		kept = append(kept, tok)
+	}
+	cluster.SetMaintenanceSrv(strings.Join(kept, ","))
+	cluster.ConfigManager.SaveConfig(cluster, false)
+	return nil
+}
+
 // Set Ignored for ReadOnly Check
 func (cluster *Cluster) SetIgnoreRO(IgnoredReadOnlyHostURL string) {
 	var ignoreROList []string
