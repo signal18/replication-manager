@@ -375,6 +375,37 @@ func (cluster *Cluster) resourceManagerAllowsGrow(server *ServerMonitor) (bool, 
 	return true, ""
 }
 
+// isMemoryResizeInFlight reports whether a live memory resize on this server has NOT yet
+// converged, so a new one must not be stacked. Guards all three races: (1) an async InnoDB
+// buffer-pool resize still running (runtime INNODB_BUFFER_POOL_SIZE not yet at the configured
+// target, within a tolerance for chunk-size rounding), (2) a grow issued while a shrink's cgroup
+// step is still pending (PendingCgroupShrink), (3) a second SET GLOBAL while the first is running.
+// The gate turns the autonomous cooldown from "wait 1 minute" into "wait until the pool has
+// actually reached its new size".
+func (server *ServerMonitor) isMemoryResizeInFlight() bool {
+	if server.PendingCgroupShrink {
+		return true
+	}
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return false
+	}
+	targetMB, err := strconv.ParseInt(cluster.Configurator.GetConfigInnoDBBPSize(), 10, 64)
+	if err != nil || targetMB <= 0 {
+		return false
+	}
+	runtime, err := strconv.ParseInt(server.Variables.Get("INNODB_BUFFER_POOL_SIZE"), 10, 64)
+	if err != nil || runtime <= 0 {
+		return false
+	}
+	targetBytes := targetMB * 1024 * 1024
+	diff := runtime - targetBytes
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff > targetBytes/20 // >5% off target => still converging
+}
+
 func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 	// Live resize is gated only by its own opt-in toggle (T14): when
 	// prov-db-dynamic-resource is on, a resource change is applied live
@@ -441,6 +472,16 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 		if server.IsRunningJobs {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 				"Live memory resize on %s deferred: a dbjob is running (gated by jobs execution)", server.URL)
+			cluster.logResize(server, dim, grow, false, ResizeYes, nil)
+			continue
+		}
+
+		// In-flight gate: never stack a memory resize on one that has not converged (async
+		// InnoDB buffer-pool resize, or a pending cgroup shrink). Skip; the next tick retries
+		// once the previous resize has actually reached its new size.
+		if server.isMemoryResizeInFlight() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"Live memory resize on %s deferred: a previous resize is still converging (in-flight gate)", server.URL)
 			cluster.logResize(server, dim, grow, false, ResizeYes, nil)
 			continue
 		}
@@ -648,6 +689,11 @@ func (cluster *Cluster) DriveAutonomousResize() {
 	for _, s := range cluster.Servers {
 		if s == nil {
 			continue
+		}
+		// In-flight gate: if a memory resize is still converging on any node, do not start
+		// another step -- wait for the async buffer-pool resize to actually reach its size.
+		if s.isMemoryResizeInFlight() {
+			return
 		}
 		for _, a := range s.CanScaleConfigInPlan(true) {
 			if a == "mem" {

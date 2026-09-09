@@ -352,7 +352,13 @@ no separate flag). When any server has a sustained in-plan **mem** grow due
 (`CanScaleConfigInPlan(true)`, pressure-driven via #1), it raises the cluster `prov-db-memory` by
 **+1 DBU step** toward the per-node plan ceiling (`GetDBContainerMemoryCapMB`), applied live by
 `SetDBMemorySize → ResizeDynamicResources` (ResourceManager- + jobs-gated, anti-OOM ordered). One
-step per scale-up window (cooldown), skipped during failover. Still open: cpu/io autonomous grow
+step per scale-up window (cooldown), skipped during failover. **In-flight gate**
+(`isMemoryResizeInFlight`): a new memory resize is never stacked on one that has not converged —
+both `ResizeDynamicResources` (memory) and `DriveAutonomousResize` skip while the runtime
+`INNODB_BUFFER_POOL_SIZE` is still off its target (async InnoDB resize) or a `PendingCgroupShrink`
+is outstanding. This turns the cooldown from "wait 1 minute" into "wait until the pool actually
+reached its new size", closing the grow-vs-async-resize / grow-vs-pending-shrink / double-SET-GLOBAL
+races. Still open: cpu/io autonomous grow
 (need the real cgroup cpu/io resize, today only SET GLOBAL), autonomous **shrink** (the deliberate
 reclaim, must clamp at the plan floor), cap-up (`IsNeedResourceCapUp`) still a signal nothing
 consumes, the physical gate is instantaneous (no reserve / co-tenant reclaim — Type-2 safety is a
