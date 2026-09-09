@@ -311,6 +311,7 @@ var ClusterError = map[string]string{
 	"CINF0008":  "Server %s: consumption of axes %s well under its config, scale DOWN possible (in-plan, prov-db-scale-down-config-in-plan-speed %s time)",
 	"CINF0009":  "Server %s: consumption of axes %s well under the plan, plan cap-down possible (prov-db-scale-down-plan-speed %s time)",
 	"WARN0213":  "Server %s: consumption of axes %s reached the plan cap, plan cap-UP needed -- raise the plan (prov-db-scale-up-plan-speed %s time)",
+	"WARN0214":  "Cluster %s: prov-db-dynamic-resource is ON but the container is still capped at the DOCKER SCOPE (prov-db-docker-run-args-limit ON) -- a live cgroup resize cannot take effect (the docker run-arg limit binds, not the om3 PG slice); move the cap to the PG slice (set prov-db-docker-run-args-limit OFF) and rolling-restart to recreate the container resize-ready",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",

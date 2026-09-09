@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 	logsql "github.com/sirupsen/logrus"
 	"gopkg.in/ini.v1"
 )
@@ -827,4 +828,30 @@ func (cluster *Cluster) recordDynamicGrow(axis string, qps float64) {
 	cluster.lastDynamicResize = time.Now()
 	cluster.lastDynamicGrowAxis = axis
 	cluster.qpsBeforeDynamicGrow = qps
+}
+
+// CheckDynamicResourceDeploymentReady raises WARN0214 when the live resize is enabled
+// (prov-db-dynamic-resource) but the container is still capped at the DOCKER SCOPE
+// (prov-db-docker-run-args-limit on) instead of the om3 PG SLICE. In that shape a live
+// cgroup resize (pg update) cannot take effect -- cgroup v2 binds on the tightest limit
+// in the path, and the docker run-arg limit (--cpus/--memory) is tighter than the slice.
+// The fix is to move the cap onto the PG slice (prov-db-docker-run-args-limit off, cap
+// written as pg_mem_limit/pg_cpu_quota) and rolling-restart to recreate the container
+// resize-ready. The state is config-derived (stable, no flap) and clears when the
+// deployment is reconciled. The rolling-restart is NOT auto-triggered yet: it is only
+// safe once the render can drop the docker cap AND set the PG-slice cap on every axis
+// (the cpu path waits on the confirmed om3 pg_cpu_quota unit); triggering it before then
+// would either restart-loop (cap re-added) or recreate an un-capped container.
+func (cluster *Cluster) CheckDynamicResourceDeploymentReady() {
+	if !cluster.Conf.ProvDBDynamicResource {
+		return
+	}
+	if cluster.Conf.ProvDBDockerRunArgsLimit {
+		cluster.StateMachine.AddState("WARN0214", state.State{
+			ErrType: "WARNING",
+			ErrKey:  "WARN0214",
+			ErrDesc: fmt.Sprintf(clusterError["WARN0214"], cluster.Name),
+			ErrFrom: "PROV",
+		})
+	}
 }
