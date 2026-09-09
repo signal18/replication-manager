@@ -1065,16 +1065,19 @@ export const checksumRepairAllTables = createGuardedAsyncThunk(
 )
 
 
-export const setMaintenanceMode = createGuardedAsyncThunk(
-  'cluster/setMaintenanceMode',
+// Toggles maintenance (hits actions/maintenance -> server.SwitchMaintenance),
+// not a dedicated set action -- the banner text stays direction-neutral since
+// this thunk doesn't know which way it just flipped.
+export const switchMaintenanceMode = createGuardedAsyncThunk(
+  'cluster/switchMaintenanceMode',
   async ({ clusterName, serverId }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.setMaintenanceMode(clusterName, serverId, baseURL)
-      showSuccessBanner('Maintenance mode is set!', status, thunkAPI)
+      const { data, status } = await clusterService.switchMaintenanceMode(clusterName, serverId, baseURL)
+      showSuccessBanner('Maintenance mode toggled!', status, thunkAPI)
       return { data, status }
     } catch (error) {
-      showErrorBanner('Setting Maintenance mode failed!', error, thunkAPI)
+      showErrorBanner('Toggling maintenance mode failed!', error, thunkAPI)
       return handleError(error, thunkAPI)
     }
   }
@@ -2894,7 +2897,7 @@ export const clusterSlice = createSlice({
         configReload.pending,
         configDiscoverDB.pending,
         configDynamic.pending,
-        setMaintenanceMode.pending,
+        switchMaintenanceMode.pending,
         promoteToLeader.pending,
         setAsUnrated.pending,
         setAsPreferred.pending,
@@ -2981,7 +2984,7 @@ export const clusterSlice = createSlice({
         configReload.fulfilled,
         configDiscoverDB.fulfilled,
         configDynamic.fulfilled,
-        setMaintenanceMode.fulfilled,
+        switchMaintenanceMode.fulfilled,
         promoteToLeader.fulfilled,
         setAsUnrated.fulfilled,
         setAsPreferred.fulfilled,
@@ -3069,7 +3072,7 @@ export const clusterSlice = createSlice({
         configReload.rejected,
         configDiscoverDB.rejected,
         configDynamic.rejected,
-        setMaintenanceMode.rejected,
+        switchMaintenanceMode.rejected,
         promoteToLeader.rejected,
         setAsUnrated.rejected,
         setAsPreferred.rejected,

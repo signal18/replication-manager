@@ -140,9 +140,28 @@ handlers, `clients/client_server.go`) already route through `SetMaintenance` /
 `DelMaintenance` / `SwitchMaintenance`, so they inherit persistence without
 code changes. Their Swagger `@Description` annotations were updated to state
 the persistence contract and the `monitoring-save-config=true` dependency
-(`server/api_database.go`), and the dashboard's maintenance confirmation
-dialog (`share/dashboard_react/.../DBServers/ServerMenu.jsx`) now shows the
-same note in its confirm-modal body so an operator sees it before confirming.
+(`server/api_database.go`).
+
+The dashboard's "Maintenance Mode" menu item
+(`share/dashboard_react/.../DBServers/ServerMenu.jsx`) dispatches
+`switchMaintenanceMode`, which hits the toggle endpoint
+(`actions/maintenance` → `SwitchMaintenance`), not a dedicated set action —
+the same click clears maintenance when the server is already in it. The
+action (`redux/clusterSlice.js`) and its API-call function
+(`services/clusterService.js`) were both renamed from `setMaintenanceMode`
+to `switchMaintenanceMode` (action type `cluster/switchMaintenanceMode`) to
+match what they actually do, mirroring this codebase's existing
+`switchOverCluster`/`switchClusterSetting` naming for toggle actions; the
+success/error banner text was reworded to be direction-neutral for the same
+reason. The dedicated `set-maintenance`/`del-maintenance` API endpoints
+(`SetMaintenance()`/`DelMaintenance()` server-side) are correctly named
+already but aren't wired into the dashboard at all — only the toggle is. The
+confirm-modal title and body are both gated on `row?.isMaintenance`
+accordingly: entering maintenance shows "Confirm maintenance for
+{server}?" plus the persistence/`monitoring-save-config=true` note; clearing
+it shows "Confirm clearing maintenance for {server}?" plus a note that the
+durable membership is cleared too and the server rejoins immediately and
+stays rejoined.
 
 ## Test coverage
 
