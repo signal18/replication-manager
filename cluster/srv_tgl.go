@@ -35,8 +35,12 @@ func (server *ServerMonitor) SwitchMaintenance() error {
 	if server.IsMaintenance {
 		server.ClusterGroup.AddMaintenanceSrv(server)
 		server.ClusterGroup.BashScriptDbServersChangeState(server, stateMaintenance, server.State)
-	} else {
-		server.ClusterGroup.RemoveMaintenanceSrv(server)
+	} else if err := server.ClusterGroup.RemoveMaintenanceSrv(server); err != nil {
+		// Not expected (IsMaintenance was just true), but log rather than
+		// swallow: a silent failure means membership tracking drifted from
+		// the runtime flag without anyone noticing.
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"SwitchMaintenance: could not clear durable maintenance membership for %s: %s", server.URL, err)
 	}
 	cluster.failoverProxies()
 	return nil

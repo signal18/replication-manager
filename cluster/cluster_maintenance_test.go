@@ -62,6 +62,82 @@ func TestIsInMaintenanceHostsChildClusterNeverMatches(t *testing.T) {
 	}
 }
 
+// TestMaintenanceDomainQualifiedServerNormalization exercises AddMaintenanceSrv's
+// entry := strings.ReplaceAll(node.URL, node.Domain+":3306", "") normalization
+// (copied from SetIgnoreSrv's existing idiom) against a domain-qualified
+// server (Domain != "", the GetDomain()/GetDomainHeadCluster() case), which
+// the other tests in this file don't cover since they all use an empty
+// Domain. Two sub-cases:
+//
+//  1. default port (3306): Domain+":3306" is a literal suffix of URL, so it
+//     gets stripped and the stored entry is the bare Name.
+//  2. non-default port: the ":3306" suffix isn't present in URL, so
+//     ReplaceAll is a no-op and the stored entry is the full domain-qualified
+//     URL.
+//
+// Both must still round-trip through IsInMaintenanceHosts for a freshly
+// rebuilt ServerMonitor (simulating restart/reload) with the same
+// deterministically-derived Name/Domain/Port/URL, since maintenanceListHasHost
+// checks both the URL and the Name form.
+func TestMaintenanceDomainQualifiedServerNormalization(t *testing.T) {
+	cl := newMaintenanceTestCluster(0)
+
+	// --- Sub-case 1: domain-qualified, default port -> stored as bare Name. ---
+	domSrv := &ServerMonitor{
+		Name:              "db1",
+		Domain:            ".svc.cluster.local",
+		Port:              "3306",
+		URL:               "db1.svc.cluster.local:3306",
+		SourceClusterName: cl.Name,
+	}
+	cl.Servers = []*ServerMonitor{domSrv}
+
+	cl.AddMaintenanceSrv(domSrv)
+	if got := cl.Conf.MaintenanceSrv; got != "db1" {
+		t.Fatalf("expected domain+port stripped to bare name %q, got %q", "db1", got)
+	}
+
+	rebuilt := &ServerMonitor{
+		Name:              "db1",
+		Domain:            ".svc.cluster.local",
+		Port:              "3306",
+		URL:               "db1.svc.cluster.local:3306",
+		SourceClusterName: cl.Name,
+	}
+	if !cl.IsInMaintenanceHosts(rebuilt) {
+		t.Fatalf("domain-qualified server on the default port did not restore from its stripped bare-name entry")
+	}
+
+	// --- Sub-case 2: domain-qualified, non-default port -> stored as the full URL. ---
+	if err := cl.RemoveMaintenanceSrv(domSrv); err != nil {
+		t.Fatalf("RemoveMaintenanceSrv: %v", err)
+	}
+	domSrvAltPort := &ServerMonitor{
+		Name:              "db2",
+		Domain:            ".svc.cluster.local",
+		Port:              "3307",
+		URL:               "db2.svc.cluster.local:3307",
+		SourceClusterName: cl.Name,
+	}
+	cl.Servers = []*ServerMonitor{domSrvAltPort}
+
+	cl.AddMaintenanceSrv(domSrvAltPort)
+	if got := cl.Conf.MaintenanceSrv; got != "db2.svc.cluster.local:3307" {
+		t.Fatalf("expected unstripped full URL %q for a non-default port, got %q", "db2.svc.cluster.local:3307", got)
+	}
+
+	rebuiltAltPort := &ServerMonitor{
+		Name:              "db2",
+		Domain:            ".svc.cluster.local",
+		Port:              "3307",
+		URL:               "db2.svc.cluster.local:3307",
+		SourceClusterName: cl.Name,
+	}
+	if !cl.IsInMaintenanceHosts(rebuiltAltPort) {
+		t.Fatalf("domain-qualified server on a non-default port did not restore from its unstripped URL entry")
+	}
+}
+
 // TestSetMaintenanceSrvExactMatchNoSubstring guards against a regression where
 // SetMaintenanceSrv matched membership with strings.Contains instead of an
 // exact token comparison: "1.2.3.4:3306" is a literal substring of

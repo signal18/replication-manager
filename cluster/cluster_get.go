@@ -808,16 +808,6 @@ func (cluster *Cluster) GetIgnoredHostList() string {
 	return strings.Join(prevIgnored, ",")
 }
 
-// GetMaintenanceHostList returns the durable maintenance-host membership list
-// (cluster.Conf.MaintenanceSrv) directly. Unlike GetIgnoredHostList, this does
-// NOT reconstruct the list from currently-instantiated cluster.Servers: a host
-// temporarily absent from cluster.Servers (topology churn, a config-driven
-// host-list change) would otherwise have its persisted maintenance entry
-// silently dropped the next time membership is mutated.
-func (cluster *Cluster) GetMaintenanceHostList() string {
-	return cluster.Conf.MaintenanceSrv
-}
-
 func (cluster *Cluster) GetIgnoredROList() string {
 	var prevIgnoredRO []string
 	for _, server := range cluster.Servers {

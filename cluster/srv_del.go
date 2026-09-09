@@ -199,8 +199,14 @@ func (server *ServerMonitor) DelBackupTypeCookie(backtype string) error {
 func (server *ServerMonitor) DelMaintenance() {
 	server.IsMaintenance = false
 	// Clear the persisted membership too, otherwise a restart/reload would
-	// resurrect maintenance (see newServerMonitor).
-	server.ClusterGroup.RemoveMaintenanceSrv(server)
+	// resurrect maintenance (see newServerMonitor). Not expected to fail here
+	// (IsMaintenance was just true), but log rather than swallow: a silent
+	// failure would mean membership tracking drifted from the runtime flag
+	// without anyone noticing.
+	if err := server.ClusterGroup.RemoveMaintenanceSrv(server); err != nil {
+		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"DelMaintenance: could not clear durable maintenance membership for %s: %s", server.URL, err)
+	}
 	server.ClusterGroup.SetProxyServerMaintenance(server.ServerID)
 }
 
