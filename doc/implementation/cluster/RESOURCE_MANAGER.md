@@ -237,6 +237,38 @@ the per-node config rounded up to the next DBU (`GetProvDbuFromConfigPerNode`). 
 (`plan > consumed`) — both DERIVED in the GUI from graphite (`diffSeries`), nothing emitted.
 `prov-db-overcommit-pct` = the commercial scale-up ceiling above the plan.
 
+## Two memory limits: live working memory vs the container ceiling
+
+A DB container has **two** distinct memory limits, changed by two different mechanisms:
+
+1. **Working memory — live, no restart.** The in-plan resize
+   (`cluster_resize_dynamic.go`, gated by `prov-db-dynamic-resource`) moves the *running*
+   memory and reconfigures MariaDB in lockstep, orchestrator-agnostically:
+   - `ResourceResizer.ConfigResize` changes the cgroup live — OpenSVC via the om3 **PG update**
+     (`pg_mem_limit`, `PGUpdateInstanceV3`); Kubernetes via the **in-place Pod `resize`
+     subresource** (1.27+, `k8sResizer`, on branch `k8s-proxy`). No container recreate.
+   - the shared orchestration then runs `resizeMemorySQL` (`SET GLOBAL innodb_buffer_pool_size`
+     + key_buffer / tmp_table / join_buffer / max_session_mem_used …).
+   - anti-OOM ordering: **grow** = cgroup up → buffer pool up; **shrink** = buffer pool down →
+     (deferred, async-aware) cgroup down, never below live memory
+     (`completePendingCgroupShrink`).
+
+2. **The container ceiling — only on recreate.** The docker `--memory` in the OpenSVC
+   `container#db` run_args (`GetDBContainerMemoryCapMB`) is the outer hard limit, set at
+   container **create**. It is the plan tier (`prov-db-resource-align`, default `plan` →
+   `(plan DBU / #nodes) × mem-ratio`), deliberately above `prov-db-memory` so the live resize
+   has headroom to grow into. It cannot change without recreating the container.
+
+**`prov-orchestrator-deployment-upgrade-on-start`** (default on) is what applies (2). On each
+node (re)start in a rolling restart/upgrade, `UpgradeDatabaseDeploymentOnStart` (prov.go)
+re-renders and pushes the full deployment BEFORE start, so the recreated container comes up on
+the current service config — the plan-driven ceiling, image, run_args, env — instead of the
+one written at the last provision. OpenSVC v3 → `OpenSVCUpdateDatabaseTemplate` (full re-push);
+K8s → the on-develop image-update path (container resources stay owned by `k8sResizer`).
+Non-fatal in the rolling loop: a push failure leaves the previous cap and never breaks the
+restart. So: the live path moves working memory under the ceiling with no restart; this gate
+raises the ceiling itself, on the next restart, when the plan grows past it.
+
 ## Status / TODO
 
 Implemented: the substrate above, plus the per-axis **emission** of consumed metrics
