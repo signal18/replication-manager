@@ -9,6 +9,7 @@ package cluster
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -674,6 +675,39 @@ func (cluster *Cluster) dynamicMemoryResizeDue() (grow bool, due bool) {
 // (GetDBContainerMemoryCapMB); headroom lives in the buffer-pool being a fraction of prov-db-memory.
 // The apply goes through SetDBMemorySize -> ResizeDynamicResources (already ResourceManager- and
 // jobs-gated, anti-OOM ordered). One step per scale-up window (cooldown); skipped in failover.
+// dynamicResizeQPSMarginPct is the throughput improvement a memory step must buy
+// to count as "memory still helps". Below this, the last memory grow is treated as
+// a plateau and the hill-climb escalates to IOPS (the genuine-IO bottleneck).
+const dynamicResizeQPSMarginPct = 5.0
+
+// currentClusterQPS returns a per-cycle query rate proxy for the cluster, taken from
+// the master's Queries counter delta (GetStatusDeltaValue is already per monitor tick).
+// It is a proxy, not an absolute QPS: only before/after comparisons over equal-length
+// cycles are meaningful, which is exactly what the hill-climb needs.
+func (cluster *Cluster) currentClusterQPS() float64 {
+	m := cluster.GetMaster()
+	if m == nil {
+		return 0
+	}
+	return float64(m.GetStatusDeltaValue("QUERIES"))
+}
+
+// DriveAutonomousResize is the QPS-driven in-plan escalation. It grows the axis the
+// database is actually binding on, one +1 DBU step per scale-up window, using QPS as
+// the objective so the DB tells us which resource is short instead of us guessing:
+//
+//	Priority 1  CPU  -- if cores are pinned, nothing else moves QPS; grow CPU.
+//	Priority 2  MEM  -- the first throughput lever: a bigger buffer pool cuts BOTH
+//	                    read misses (disk reads) and forced eviction (disk writes),
+//	                    so IO pressure is usually relieved by memory, not IOPS. Keep
+//	                    growing memory while each step buys >dynamicResizeQPSMarginPct QPS.
+//	Priority 3  IOPS -- the last resort: taken only once another memory step stops
+//	                    improving QPS (the working set now fits / the cache is no
+//	                    longer the bottleneck), i.e. the IO is genuine, not eviction.
+//
+// Every step is bounded by the per-node plan ceiling (in-plan only; a plan cap-up is a
+// separate commercial decision). Gated by prov-db-dynamic-resource; never runs during a
+// failover, never stacks on an unconverged memory resize.
 func (cluster *Cluster) DriveAutonomousResize() {
 	if !cluster.Conf.ProvDBDynamicResource || cluster.IsInFailover() {
 		return
@@ -683,39 +717,127 @@ func (cluster *Cluster) DriveAutonomousResize() {
 		d = time.Minute
 	}
 	if !cluster.lastAutonomousResize.IsZero() && time.Since(cluster.lastAutonomousResize) < d {
-		return // cooldown: at most one +1 DBU step per scale-up window
+		return // cooldown: at most one +1 DBU step per scale-up window (also the QPS-feedback window)
 	}
-	memDue := false
+	// Observe which axes are saturated against config, cluster-wide. Also honour the
+	// in-flight gate: never start another step while a memory resize is still converging.
+	cpuDue, memDue, ioDue := false, false, false
 	for _, s := range cluster.Servers {
 		if s == nil {
 			continue
 		}
-		// In-flight gate: if a memory resize is still converging on any node, do not start
-		// another step -- wait for the async buffer-pool resize to actually reach its size.
 		if s.isMemoryResizeInFlight() {
 			return
 		}
 		for _, a := range s.CanScaleConfigInPlan(true) {
-			if a == "mem" {
+			switch a {
+			case "cpu":
+				cpuDue = true
+			case "mem":
 				memDue = true
+			case "io":
+				ioDue = true
 			}
 		}
 	}
-	if !memDue {
+	if !cpuDue && !memDue && !ioDue {
+		cluster.lastAutonomousGrowAxis = "" // nothing constrained: reset the hill-climb memory
 		return
 	}
-	curMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
-	ceilMB := cluster.GetDBContainerMemoryCapMB() // per-node plan ceiling
-	if curMB >= ceilMB {
-		return // already at the plan ceiling: in-plan grow exhausted (cap-up is a plan decision, not this)
+
+	qps := cluster.currentClusterQPS()
+
+	// Priority 1 -- CPU is binding: neither memory nor IOPS moves QPS while cores are pinned.
+	if cpuDue {
+		if cluster.growAxisInPlan("cpu", qps) {
+			return
+		}
+		// CPU already at the plan ceiling: fall through -- a memory/IO step may still help.
 	}
-	const stepMB = 4096 // +1 DBU of memory
-	newMB := curMB + stepMB
-	if newMB > ceilMB {
-		newMB = ceilMB
+
+	// Priority 2/3 -- throughput-limited. Memory first; IOPS only on a memory plateau.
+	escalateToIO := false
+	if cluster.lastAutonomousGrowAxis == "mem" {
+		threshold := cluster.qpsBeforeAutonomousGrow * (1.0 + dynamicResizeQPSMarginPct/100.0)
+		if qps <= threshold {
+			escalateToIO = true // the previous memory step did not buy throughput -> genuine IO
+		}
 	}
+	if !escalateToIO && (memDue || ioDue) {
+		if cluster.growAxisInPlan("mem", qps) {
+			return
+		}
+		escalateToIO = ioDue // memory exhausted at the plan ceiling: escalate to IOPS
+	}
+	if escalateToIO && ioDue {
+		cluster.growAxisInPlan("io", qps)
+	}
+}
+
+// growAxisInPlan raises one config axis by +1 DBU, clamped to the per-node plan ceiling,
+// records it as the last autonomous grow (with the pre-grow QPS for the next window's
+// plateau check), and applies it live via the axis setter. Returns false without acting
+// when the axis is already at its plan ceiling (in-plan grow exhausted). NOTE: memory is
+// physically effective now (buffer-pool grow); cpu/io currently only re-tune SET GLOBAL
+// vars -- the container cpu/io cgroup resize (pg_cpus / io weight) is the follow-up that
+// makes those steps add real capacity.
+func (cluster *Cluster) growAxisInPlan(axis string, qps float64) bool {
+	planPerNode := cluster.GetPlanDBUPerNode().Dbu
+	switch axis {
+	case "mem":
+		curMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+		ceilMB := cluster.GetDBContainerMemoryCapMB()
+		if int(curMB) >= ceilMB {
+			return false
+		}
+		newMB := int(curMB) + 4096 // +1 DBU of memory
+		if newMB > ceilMB {
+			newMB = ceilMB
+		}
+		cluster.recordAutonomousGrow("mem", qps)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"Autonomous in-plan MEMORY grow (first throughput lever, relieves read misses + eviction): prov-db-memory %dMB -> %dMB (ceiling %dMB)", curMB, newMB, ceilMB)
+		cluster.SetDBMemorySize(strconv.Itoa(newMB))
+		return true
+	case "cpu":
+		cur, _ := strconv.Atoi(cluster.Conf.ProvCores)
+		ceil := int(math.Floor(planPerNode)) // 1 core per DBU
+		if ceil < 1 {
+			ceil = 1
+		}
+		if cur >= ceil {
+			return false
+		}
+		newC := cur + 1
+		if newC > ceil {
+			newC = ceil
+		}
+		cluster.recordAutonomousGrow("cpu", qps)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"Autonomous in-plan CPU grow (cores pinned, cpu-bound): prov-db-cpu-cores %d -> %d (ceiling %d)", cur, newC, ceil)
+		cluster.SetDBCores(strconv.Itoa(newC))
+		return true
+	case "io":
+		cur, _ := strconv.Atoi(cluster.Conf.ProvIops)
+		ceil := int(planPerNode * 1000) // 1000 IOPS per DBU
+		if cur >= ceil {
+			return false
+		}
+		newI := cur + 1000 // +1 DBU of IOPS
+		if newI > ceil {
+			newI = ceil
+		}
+		cluster.recordAutonomousGrow("io", qps)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"Autonomous in-plan IO grow (memory plateaued, genuine IO bottleneck): prov-db-disk-iops %d -> %d (ceiling %d)", cur, newI, ceil)
+		cluster.SetDBDiskIOPS(strconv.Itoa(newI))
+		return true
+	}
+	return false
+}
+
+func (cluster *Cluster) recordAutonomousGrow(axis string, qps float64) {
 	cluster.lastAutonomousResize = time.Now()
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-		"Autonomous in-plan memory grow (buffer-pool pressure): prov-db-memory %dMB -> %dMB (ceiling %dMB)", curMB, newMB, ceilMB)
-	cluster.SetDBMemorySize(strconv.Itoa(newMB))
+	cluster.lastAutonomousGrowAxis = axis
+	cluster.qpsBeforeAutonomousGrow = qps
 }

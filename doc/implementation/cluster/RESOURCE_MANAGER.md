@@ -234,9 +234,10 @@ occupancy trigger. **Memory grow now rides pressure** (`checkBufferPoolPressure`
 `prov-db-scale-up-config-in-plan-speed` sets `BufferPoolMemGrowDue`, which `CanScaleConfigInPlan(up)`
 folds back into the mem axis (so `CINF0007` fires on mem only under real pressure, and resolves when
 it clears). Read from in-memory `server.Status` via `GetStatusDeltaValue` (the BP counters are
-whitelist-gated in graphite, so not reliably queryable there). Further refinement: also weigh
-`Innodb_buffer_pool_reads` / hit-ratio to disambiguate an io-saturation trigger into grow-iops vs
-grow-memory.
+whitelist-gated in graphite, so not reliably queryable there). An io-saturation trigger is
+disambiguated into grow-memory vs grow-iops **not** by a static hit-ratio heuristic but by the
+QPS-driven escalation (see "Autonomous trigger" below): grow memory first, and escalate to IOPS
+only when another memory step stops improving QPS.
 
 Repman re-emits the last reading every monitor tick (~2 s) for a continuous graph, but the
 underlying value only refreshes per sensor push (~60 s). A down / never-measured node is skipped
@@ -346,23 +347,56 @@ AND, when the node's `AgentCapacity` is known, on the physical free pool (`Usabl
 must cover `ConsumedByAgent(agent) + (target − plan)`). A refusal logs and skips the live grow —
 the client must raise the plan (the `IsNeedResourceCapUp` claim).
 
-**Autonomous trigger — now wired for in-plan memory** (`DriveAutonomousResize`, per tick from
-`SetStatus`, gated by the existing `prov-db-dynamic-resource` — the dynamic resize IS autonomous,
-no separate flag). When any server has a sustained in-plan **mem** grow due
-(`CanScaleConfigInPlan(true)`, pressure-driven via #1), it raises the cluster `prov-db-memory` by
-**+1 DBU step** toward the per-node plan ceiling (`GetDBContainerMemoryCapMB`), applied live by
-`SetDBMemorySize → ResizeDynamicResources` (ResourceManager- + jobs-gated, anti-OOM ordered). One
-step per scale-up window (cooldown), skipped during failover. **In-flight gate**
-(`isMemoryResizeInFlight`): a new memory resize is never stacked on one that has not converged —
-both `ResizeDynamicResources` (memory) and `DriveAutonomousResize` skip while the runtime
-`INNODB_BUFFER_POOL_SIZE` is still off its target (async InnoDB resize) or a `PendingCgroupShrink`
-is outstanding. This turns the cooldown from "wait 1 minute" into "wait until the pool actually
-reached its new size", closing the grow-vs-async-resize / grow-vs-pending-shrink / double-SET-GLOBAL
-races. Still open: cpu/io autonomous grow
-(need the real cgroup cpu/io resize, today only SET GLOBAL), autonomous **shrink** (the deliberate
-reclaim, must clamp at the plan floor), cap-up (`IsNeedResourceCapUp`) still a signal nothing
-consumes, the physical gate is instantaneous (no reserve / co-tenant reclaim — Type-2 safety is a
-later step), and `overcommit_dbu` is not yet a tracked/emitted ledger. The other resize entry
+### Autonomous trigger — the QPS-driven escalation (CPU → memory → IOPS)
+
+`DriveAutonomousResize` (per tick from `SetStatus`, gated by the existing
+`prov-db-dynamic-resource` — the dynamic resize IS autonomous, no separate flag) grows the axis
+the database is **actually binding on**, one +1 DBU step per scale-up window. The order is not
+arbitrary and it is not per-axis-independent — the axes are coupled through the buffer pool, so
+the driver uses **QPS as the objective** and lets the DB tell us which resource is short instead
+of guessing:
+
+1. **CPU first.** If any node's cores are pinned (`cpu` in `CanScaleConfigInPlan(true)`), nothing
+   else moves throughput — grow CPU. A CPU-bound server will not answer a memory or IOPS grow with
+   more QPS, so this must be checked before the throughput lever.
+2. **Memory is the first throughput lever.** A bigger buffer pool cuts IO on **both** sides — read
+   misses (`Innodb_buffer_pool_reads` → disk reads) *and* forced eviction / dirty-page flushes
+   (`Innodb_buffer_pool_wait_free` → disk writes). So **IO saturation is usually relieved by
+   memory, not IOPS.** When throughput-limited (mem or io due) and not CPU-bound, grow memory.
+3. **IOPS is the last resort.** After a memory step, the next window compares cluster QPS
+   (`currentClusterQPS`, the master's `Queries` delta) against the pre-grow value. If the step
+   bought **> `dynamicResizeQPSMarginPct` (5 %)** more QPS, memory was the constraint → keep
+   growing memory. If QPS **plateaued**, the working set now fits / the cache is no longer the
+   bottleneck → the IO is *genuine* (not eviction) → escalate to a **+1 DBU IOPS** step. Buying
+   IOPS before this point would only paper over an undersized cache.
+
+So the loop is a hill-climb: **CPU (if pinned) → memory (while it pays off) → IOPS (once memory
+stops paying off)**, with QPS measured over the scale-up window at each step (verify-after-action,
+same cooldown as the resize convergence check). `growAxisInPlan` clamps every step to the per-node
+plan ceiling (memory `GetDBContainerMemoryCapMB`, cpu `floor(plan)` cores, io `plan × 1000` iops),
+records the axis + pre-grow QPS for the next window's plateau test, and applies live via the axis
+setter. One step per scale-up window (cooldown), skipped during failover, hill-climb memory reset
+when nothing is constrained.
+
+**In-flight gate** (`isMemoryResizeInFlight`): a new memory resize is never stacked on one that has
+not converged — both `ResizeDynamicResources` (memory) and `DriveAutonomousResize` skip while the
+runtime `INNODB_BUFFER_POOL_SIZE` is still off its target (async InnoDB resize) or a
+`PendingCgroupShrink` is outstanding. This turns the cooldown from "wait 1 minute" into "wait until
+the pool actually reached its new size", closing the grow-vs-async-resize / grow-vs-pending-shrink /
+double-SET-GLOBAL races.
+
+**Physical depth caveat (the follow-up that makes CPU/IOPS steps real).** Memory grow is
+physically effective today (buffer-pool grow under the container ceiling). CPU and IOPS steps
+currently only re-tune DB `SET GLOBAL` vars — `SetDBCores`/`SetDBDiskIOPS` do **not** yet resize
+the container cpu/io cgroup (`pg_cpus` / io weight). So the escalation *decides and applies*
+correctly, but a CPU or IOPS step will not add real capacity until the cgroup cpu/io resize is
+built (extend `openSVCResize`/`PGUpdateInstanceV3` the same way it already does `pg_mem_limit`).
+Until then, on a CPU-bound saturation the state fires and the config axis grows, but the container
+stays pinned — the memory hill-climb is the provable half. Still open beyond that: autonomous
+**shrink** (the deliberate reclaim, must clamp at the plan floor), cap-up (`IsNeedResourceCapUp`)
+still a signal nothing consumes, the physical gate is instantaneous (no reserve / co-tenant
+reclaim — Type-2 safety is a later step), and `overcommit_dbu` is not yet a tracked/emitted
+ledger. The other resize entry
 points remain `SetDB*` via the API, the CLI configurator, or a plan apply (`applyPlanSpec`). Wiring needs a **target-first** restructure
 of the `SetDB*` setters (compute target → gate → mutate; today they mutate then resize). And the
 **infra grow is memory-only**: `SetDBCores`/`SetDBDiskIOPS` only re-tune DB SET GLOBAL vars (no
