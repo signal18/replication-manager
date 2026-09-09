@@ -220,6 +220,19 @@ sensor `share/scripts/dbjobs_new.sh` → `collect_dbu`, which runs **once per db
   sustained** condition, not a sub-second spike.
 - **Mem & disk = instantaneous** at the sample (`memory.current`, `df` under the datadir).
 
+**Memory occupancy is NOT a scaling signal — the demand axes are cpu/io (+disk).** A healthy
+InnoDB buffer pool is *always* ~full (clean + dirty pages, adaptive hash index, change buffer),
+so `dbu_mem` (cgroup occupancy) is pinned near the cap regardless of load: it never legitimately
+means "grow" (always saturated) and never means "shrink" (memory is sticky — the pool does not
+release on idle; only a restart or an explicit `SET GLOBAL` buffer-pool-down frees it). So
+`CheckResourceConsumed` **excludes the mem axis** from all four consumed-vs-reference states
+(`dropMem`). Growth is driven by **CPU usage and IO saturation** (and disk usage); real memory
+NEED surfaces *as IO* — a too-small buffer pool causes misses (`Innodb_buffer_pool_reads` → disk
+reads), which the io axis already sees. Memory SHRINK is the deliberate reclaim path, never an
+occupancy trigger. **Follow-up:** a pressure-based mem grow signal (`Innodb_buffer_pool_reads` /
+`wait_free` / hit-ratio, already emitted to graphite) to split an io-saturation trigger into
+"grow iops" vs "grow memory (bigger BP)".
+
 Repman re-emits the last reading every monitor tick (~2 s) for a continuous graph, but the
 underlying value only refreshes per sensor push (~60 s). A down / never-measured node is skipped
 (contributes no axis). **Flap caveat:** the value being a 60 s mean checked per tick, a

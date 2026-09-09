@@ -205,10 +205,34 @@ func (server *ServerMonitor) CheckResourceConsumed() {
 	cfg := cluster.GetConfigDBUPerNode()
 	plan := cluster.GetPlanDBUPerNode()
 	c := server.DBUConsumed
-	server.ResourceConsumedOverConfigAxes = consumedAxes(c, cfg, hi, true)
-	server.ResourceConsumedUnderConfigAxes = consumedAxes(c, cfg, lo, false)
-	server.ResourceConsumedOverPlanAxes = consumedAxes(c, plan, hi, true)
-	server.ResourceConsumedUnderPlanAxes = consumedAxes(c, plan, lo, false)
+	server.ResourceConsumedOverConfigAxes = dropMem(consumedAxes(c, cfg, hi, true))
+	server.ResourceConsumedUnderConfigAxes = dropMem(consumedAxes(c, cfg, lo, false))
+	server.ResourceConsumedOverPlanAxes = dropMem(consumedAxes(c, plan, hi, true))
+	server.ResourceConsumedUnderPlanAxes = dropMem(consumedAxes(c, plan, lo, false))
+}
+
+// dropMem removes the memory axis from a scaling state. dbu_mem is cgroup memory OCCUPANCY,
+// and a healthy InnoDB buffer pool is ALWAYS ~full (clean + dirty pages, adaptive hash index,
+// change buffer, ...), so occupancy is not a workload-demand signal in EITHER direction: it
+// never means "grow" (it is pinned near the cap regardless of load) and never means "shrink"
+// (memory is sticky -- the buffer pool does not release on idle). So the autonomous scaling
+// states are driven by the DEMAND axes -- cpu (usage), io (saturation), disk (usage) -- not by
+// memory occupancy. Real memory NEED surfaces as IO: a too-small buffer pool causes misses
+// (Innodb_buffer_pool_reads -> disk reads), which the io axis already sees. Memory SHRINK is
+// the deliberate reclaim path (SET GLOBAL buffer pool down), never an occupancy trigger.
+// Follow-up: a pressure-based mem grow signal (Innodb_buffer_pool_reads / wait_free / hit-ratio)
+// to disambiguate io saturation into "grow iops" vs "grow memory".
+func dropMem(axes []string) []string {
+	out := make([]string, 0, len(axes))
+	for _, a := range axes {
+		if a != "mem" {
+			out = append(out, a)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // consumedAxes returns the axes (cpu/mem/io/disk, stable order) where consumed_axis / ref_axis
