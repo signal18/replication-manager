@@ -1590,6 +1590,11 @@ func (repman *ReplicationManager) handlerMuxServerBackupSlowQueryLog(w http.Resp
 // handlerMuxServerMaintenance handles the HTTP request to toggle maintenance mode on a specific server within a cluster.
 // @Summary Toggle maintenance mode on a server
 // @Description Toggles the maintenance mode on a specified server within a cluster.
+// @Description Maintenance mode is durable: it is written to the cluster's
+// @Description dynamic configuration and restored on process restart or config
+// @Description reload, so a server stays excluded from proxy routing and failover
+// @Description election until maintenance is explicitly cleared. Requires
+// @Description monitoring-save-config=true (the default) to survive a restart.
 // @Tags DatabaseMaintenance
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -1624,6 +1629,12 @@ func (repman *ReplicationManager) handlerMuxServerMaintenance(w http.ResponseWri
 // handlerMuxServerSetMaintenance handles the HTTP request to set a server to maintenance mode.
 // @Summary Set a server to maintenance mode
 // @Description Sets a specified server within a cluster to maintenance mode.
+// @Description Maintenance mode is durable: it is written to the cluster's
+// @Description dynamic configuration and restored on process restart or config
+// @Description reload, so the server stays excluded from proxy routing and
+// @Description failover election until maintenance is explicitly cleared.
+// @Description Requires monitoring-save-config=true (the default) to survive a
+// @Description restart.
 // @Tags DatabaseMaintenance
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -1658,6 +1669,9 @@ func (repman *ReplicationManager) handlerMuxServerSetMaintenance(w http.Response
 // handlerMuxServerDelMaintenance handles the HTTP request to delete maintenance mode on a specific server within a cluster.
 // @Summary Delete maintenance mode on a server
 // @Description Deletes the maintenance mode on a specified server within a cluster.
+// @Description Also clears the durable maintenance membership, so the server does
+// @Description not come back into maintenance on the next process restart or
+// @Description config reload.
 // @Tags DatabaseMaintenance
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)

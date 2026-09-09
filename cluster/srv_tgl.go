@@ -33,7 +33,10 @@ func (server *ServerMonitor) SwitchMaintenance() error {
 
 	server.IsMaintenance = !server.IsMaintenance
 	if server.IsMaintenance {
+		server.ClusterGroup.AddMaintenanceSrv(server)
 		server.ClusterGroup.BashScriptDbServersChangeState(server, stateMaintenance, server.State)
+	} else {
+		server.ClusterGroup.RemoveMaintenanceSrv(server)
 	}
 	cluster.failoverProxies()
 	return nil

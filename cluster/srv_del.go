@@ -198,6 +198,9 @@ func (server *ServerMonitor) DelBackupTypeCookie(backtype string) error {
 
 func (server *ServerMonitor) DelMaintenance() {
 	server.IsMaintenance = false
+	// Clear the persisted membership too, otherwise a restart/reload would
+	// resurrect maintenance (see newServerMonitor).
+	server.ClusterGroup.RemoveMaintenanceSrv(server)
 	server.ClusterGroup.SetProxyServerMaintenance(server.ServerID)
 }
 

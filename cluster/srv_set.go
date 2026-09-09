@@ -258,6 +258,9 @@ func (server *ServerMonitor) SetReadWrite() error {
 
 func (server *ServerMonitor) SetMaintenance() {
 	server.IsMaintenance = true
+	// Persist membership so maintenance survives restart/config reload (see
+	// newServerMonitor); AddMaintenanceSrv is a no-op if already tracked.
+	server.ClusterGroup.AddMaintenanceSrv(server)
 	server.ClusterGroup.BashScriptDbServersChangeState(server, stateMaintenance, server.State)
 	server.ClusterGroup.SetProxyServerMaintenance(server.ServerID)
 }
