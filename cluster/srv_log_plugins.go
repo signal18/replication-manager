@@ -616,14 +616,16 @@ func (cluster *Cluster) checkResourceScaleWorkloadStates() {
 	if sm == nil || cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff {
 		return
 	}
-	add := func(code, errType, url string, axes []string) {
+	// window = the sustain-duration parameter that gates this decision -- named in the message
+	// (with its value) so the operator sees exactly what triggered the state and what to tune.
+	add := func(code, errType, url string, axes []string, window string) {
 		if len(axes) == 0 {
 			return
 		}
 		sm.AddState(code+"@"+url, state.State{
 			ErrType:   errType,
 			ErrKey:    code,
-			ErrDesc:   fmt.Sprintf(clusterError[code], url, strings.Join(axes, ",")),
+			ErrDesc:   fmt.Sprintf(clusterError[code], url, strings.Join(axes, ","), window),
 			ErrFrom:   "WORKLOAD",
 			ServerUrl: url,
 		})
@@ -632,10 +634,10 @@ func (cluster *Cluster) checkResourceScaleWorkloadStates() {
 		if srv == nil || srv.IsDown() {
 			continue
 		}
-		add("CINF0007", "INFO", srv.URL, srv.CanScaleConfigInPlan(true))
-		add("CINF0008", "INFO", srv.URL, srv.CanScaleConfigInPlan(false))
-		add("WARN0213", "WARNING", srv.URL, srv.CanScalePlan(true))
-		add("CINF0009", "INFO", srv.URL, srv.CanScalePlan(false))
+		add("CINF0007", "INFO", srv.URL, srv.CanScaleConfigInPlan(true), cluster.Conf.ScaleUpConfigInPlanSpeed)
+		add("CINF0008", "INFO", srv.URL, srv.CanScaleConfigInPlan(false), cluster.Conf.ScaleDownConfigInPlanSpeed)
+		add("WARN0213", "WARNING", srv.URL, srv.CanScalePlan(true), cluster.Conf.ScaleUpPlanSpeed)
+		add("CINF0009", "INFO", srv.URL, srv.CanScalePlan(false), cluster.Conf.ScaleDownPlanSpeed)
 	}
 }
 
