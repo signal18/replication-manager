@@ -1430,6 +1430,15 @@ func (cluster *Cluster) SetSysbenchThreads(Threads string) {
 	}
 }
 
+func (cluster *Cluster) SetSysbenchTime(t string) {
+	i, err := strconv.Atoi(t)
+	if err == nil {
+		cluster.Conf.SysbenchTime = i
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error converting sysbench time to int %s", err)
+	}
+}
+
 /*
 Set Service Plan. Log Module : Topology
 */

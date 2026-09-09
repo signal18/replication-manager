@@ -1703,10 +1703,10 @@ export const stagingProxy = createGuardedAsyncThunk(
   }
 )
 
-export const runSysBench = createGuardedAsyncThunk('cluster/runSysBench', async ({ clusterName, thread, test }, thunkAPI) => {
+export const runSysBench = createGuardedAsyncThunk('cluster/runSysBench', async ({ clusterName, thread, test, time }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.runSysbench(clusterName, thread, baseURL, test)
+    const { data, status } = await clusterService.runSysbench(clusterName, thread, baseURL, test, time)
     showSuccessBanner('Sysbench ran successfuly!', status, thunkAPI)
     return { data, status }
   } catch (error) {

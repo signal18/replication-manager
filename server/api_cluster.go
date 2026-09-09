@@ -6164,6 +6164,10 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 		if r.URL.Query().Get("test") != "" {
 			mycluster.SetSysbenchTest(r.URL.Query().Get("test"))
 		}
+		if r.URL.Query().Get("time") != "" {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench time to %ss", r.URL.Query().Get("time"))
+			mycluster.SetSysbenchTime(r.URL.Query().Get("time"))
+		}
 		if r.URL.Query().Get("threads") == "0" {
 			// threads=0 means scale from 1 to 2×cores
 			go mycluster.RunSysbenchScaleThreads()
