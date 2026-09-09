@@ -526,6 +526,41 @@ func (cluster *Cluster) UpgradeDatabaseService(server *ServerMonitor) error {
 	return err
 }
 
+// UpgradeDatabaseDeploymentOnStart re-renders the FULL deployment (the orchestrated
+// service definition: image, resources/cgroup cap, run_args, env) and pushes it to the
+// orchestrator, so a container/pod recreated by a rolling restart/upgrade comes up on the
+// CURRENT config instead of the one written at the last provision. This is what makes a
+// resource-cap change (and an unpinned image tag) actually land on restart.
+//
+// Gated by prov-orchestrator-deployment-upgrade-on-start (default on). Returns nil (no-op)
+// when off, or when the orchestrator/API has no full-deployment push (OpenSVC v2 legacy).
+// Called SYNCHRONOUSLY from the rolling loop and returns its error directly -- it must NOT
+// go through cluster.errorChan (per-op cross-talk, issue #1769).
+func (cluster *Cluster) UpgradeDatabaseDeploymentOnStart(server *ServerMonitor) error {
+	if !cluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart {
+		return nil
+	}
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		// Full re-render + push exists only on the v3 API; the v2 legacy path keeps a
+		// restart deployment-neutral rather than failing it.
+		if svc := cluster.OpenSVCConnect(); !svc.IsV3() {
+			return nil
+		}
+		return cluster.OpenSVCUpdateDatabaseTemplate(server)
+	case config.ConstOrchestratorKubernetes:
+		// K8s re-applies the Deployment pod template (image, pull policy) via the update
+		// path already on develop (feat(k8s) rolling-upgrade image support). It requires the
+		// Deployment scaled to 0 -- the rolling paths call the deployment upgrade from the
+		// stopped phase, which satisfies that. The K8s container RESOURCE baseline and the
+		// live in-place pod resize are owned by the k8sResizer (cluster_resize_k8s.go): that
+		// stays a separate mechanism and is NOT re-implemented here.
+		return cluster.K8SUpdateDatabaseServiceConfig(server, false)
+	default:
+		return nil
+	}
+}
+
 // StopDatabaseServiceClean stops the database with innodb_fast_shutdown=0 for
 // safe version upgrades. For masters, it also issues SHUTDOWN WAIT FOR ALL SLAVES
 // via SQL so replicas receive all pending events before the master goes down.
