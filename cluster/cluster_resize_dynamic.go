@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	logsql "github.com/sirupsen/logrus"
@@ -298,6 +299,50 @@ func (server *ServerMonitor) resizeCPUSQL() []string {
 // On a "no"/"migration" verdict, or when the infra could not resize live, the DB
 // memory is not raised (never OOM). Restart-only SET GLOBALs (error 1238) fall
 // back to a restart cookie.
+// dynamicResizeWindowMinutes is how long the daily window stays open after
+// prov-db-dynamic-resize-daily-time, so the driver can WAIT for an off-peak dbjob (backups run
+// at the same hour) to finish before resizing, instead of skipping the day.
+const dynamicResizeWindowMinutes = 60
+
+// isDynamicResizeDailyWindowNow reports whether the server-local clock is within the daily
+// window [prov-db-dynamic-resize-daily-time (HH:MM), + dynamicResizeWindowMinutes). The width
+// gives the driver time to wait out a running job; the once-per-day guard (LastDynamicResizeDay)
+// still applies it at most once. An empty/invalid time never matches.
+func (cluster *Cluster) isDynamicResizeDailyWindowNow() bool {
+	t, err := time.Parse("15:04", strings.TrimSpace(cluster.Conf.ProvDBDynamicResizeDailyTime))
+	if err != nil {
+		return false
+	}
+	now := time.Now()
+	start := t.Hour()*60 + t.Minute()
+	cur := now.Hour()*60 + now.Minute()
+	return cur >= start && cur < start+dynamicResizeWindowMinutes
+}
+
+// anyServerRunningJobs reports whether a dbjob (backup, optimize, reseed, ...) is executing on
+// any monitored server — the gate that keeps a live resize from colliding with a job.
+func (cluster *Cluster) anyServerRunningJobs() bool {
+	for _, s := range cluster.Servers {
+		if s != nil && s.IsRunningJobs {
+			return true
+		}
+	}
+	return false
+}
+
+// dynamicMemoryResizeApplyAllowedNow gates the APPLY step of a live MEMORY resize on the
+// timing policy. scale-speed (default): always allowed, apply immediately (its cadence is the
+// prov-db-scale-*-speed timeframe upstream). daily-time: allowed only inside the daily window,
+// so any InnoDB buffer-pool-resize stall is contained to an off-peak hour; outside the window
+// the apply is skipped and DriveDailyDynamicResize re-applies it when the window opens.
+// CPU/IO tuning never routes through here (no stall), so it is unaffected by the policy.
+func (cluster *Cluster) dynamicMemoryResizeApplyAllowedNow() bool {
+	if cluster.Conf.ProvDBDynamicResizePolicy != config.ConstResizePolicyDailyTime {
+		return true
+	}
+	return cluster.isDynamicResizeDailyWindowNow()
+}
+
 func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 	// Live resize is gated only by its own opt-in toggle (T14): when
 	// prov-db-dynamic-resource is on, a resource change is applied live
@@ -343,6 +388,28 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 				}
 			}
 			cluster.logResize(server, dim, grow, true, ResizeYes, sql)
+			continue
+		}
+
+		// resizeMemory timing policy: under daily-time, the live memory resize (the
+		// stall-prone InnoDB buffer-pool part) is applied only inside the daily window.
+		// Outside it, skip -- the config target is already set and DriveDailyDynamicResize
+		// re-applies it when the window opens.
+		if !cluster.dynamicMemoryResizeApplyAllowedNow() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"Live memory resize on %s deferred to the daily window %s (prov-db-dynamic-resize-policy=daily-time)", server.URL, cluster.Conf.ProvDBDynamicResizeDailyTime)
+			cluster.logResize(server, dim, grow, false, ResizeYes, nil)
+			continue
+		}
+
+		// Gated by jobs execution: never resize memory while a dbjob (backup, optimize,
+		// reseed, ...) is running on this server -- a live buffer-pool resize or cgroup
+		// change under a heavy job risks OOM/contention and could fail the job. Skip; the
+		// next trigger (scale-speed) or the daily driver (which waits for idle) retries.
+		if server.IsRunningJobs {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"Live memory resize on %s deferred: a dbjob is running (gated by jobs execution)", server.URL)
+			cluster.logResize(server, dim, grow, false, ResizeYes, nil)
 			continue
 		}
 
@@ -454,4 +521,59 @@ func (cluster *Cluster) completePendingCgroupShrink(server *ServerMonitor) {
 			"Deferred cgroup shrink on %s failed: %s", server.URL, rerr)
 	}
 	cluster.logResize(server, resizeMemory, false, applied, ResizeYes, nil)
+}
+
+// DriveDailyDynamicResize is the daily-time policy's per-tick driver (called from SetStatus).
+// Under prov-db-dynamic-resize-policy=daily-time it reconciles live memory to the provisioned
+// target ONCE per day, when the server-local clock reaches prov-db-dynamic-resize-daily-time,
+// so a resize that came due during the day (or was deferred by the apply gate) lands in the
+// off-peak window instead of at an arbitrary moment. No-op for scale-speed, off outside the
+// window, and at most one apply per day (LastDynamicResizeDay).
+func (cluster *Cluster) DriveDailyDynamicResize() {
+	if !cluster.Conf.ProvDBDynamicResource || cluster.Conf.ProvDBDynamicResizePolicy != config.ConstResizePolicyDailyTime {
+		return
+	}
+	if !cluster.isDynamicResizeDailyWindowNow() {
+		return
+	}
+	today := time.Now().Format("2006-01-02")
+	if cluster.LastDynamicResizeDay == today {
+		return // already reconciled in today's window
+	}
+	grow, due := cluster.dynamicMemoryResizeDue()
+	if !due {
+		cluster.LastDynamicResizeDay = today // nothing to reconcile today; done
+		return
+	}
+	// A resize is due. Gated by jobs execution: wait for any running dbjob (a backup often
+	// runs at this same off-peak hour) to finish before applying -- do NOT mark the day done,
+	// so we retry on the next tick within the window and land at the first idle moment.
+	if cluster.anyServerRunningJobs() {
+		return
+	}
+	cluster.LastDynamicResizeDay = today
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Daily-time window (%s), servers idle: reconciling live memory to the provisioned target", cluster.Conf.ProvDBDynamicResizeDailyTime)
+	cluster.ResizeDynamicResources(resizeMemory, grow)
+}
+
+// dynamicMemoryResizeDue reports whether any up server's live InnoDB buffer pool differs from
+// the provisioned target (prov-db-memory -> GetConfigInnoDBBPSize, in MB), and the direction.
+// Lets the daily driver skip a no-op reconcile and decide grow vs shrink.
+func (cluster *Cluster) dynamicMemoryResizeDue() (grow bool, due bool) {
+	targetMB, err := strconv.ParseInt(cluster.Configurator.GetConfigInnoDBBPSize(), 10, 64)
+	if err != nil {
+		return false, false
+	}
+	for _, s := range cluster.Servers {
+		if s == nil || s.State == stateFailed || s.State == stateUnconn {
+			continue
+		}
+		liveBytes, _ := strconv.ParseInt(s.Variables.Get("INNODB_BUFFER_POOL_SIZE"), 10, 64)
+		liveMB := liveBytes / (1024 * 1024)
+		if liveMB != targetMB {
+			return targetMB > liveMB, true
+		}
+	}
+	return false, false
 }

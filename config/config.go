@@ -599,6 +599,8 @@ type Config struct {
 	ProvDBApplyDynamicConfig                  bool                         `mapstructure:"prov-db-apply-dynamic-config" toml:"prov-db-apply-dynamic-config" json:"provDBApplyDynamicConfig"`
 	ProvDBDynamicResource                     bool                         `mapstructure:"prov-db-dynamic-resource" toml:"prov-db-dynamic-resource" json:"provDbDynamicResource"`
 	ProvDBResourceAlign                       string                       `mapstructure:"prov-db-resource-align" toml:"prov-db-resource-align" json:"provDbResourceAlign"` // container memory cap alignment to the DBU tier: "plan" (default) / "up" / "off"
+	ProvDBDynamicResizePolicy                 string                       `mapstructure:"prov-db-dynamic-resize-policy" toml:"prov-db-dynamic-resize-policy" json:"provDBDynamicResizePolicy"`       // WHEN a live memory resize applies: "scale-speed" (default) / "daily-time"
+	ProvDBDynamicResizeDailyTime              string                       `mapstructure:"prov-db-dynamic-resize-daily-time" toml:"prov-db-dynamic-resize-daily-time" json:"provDBDynamicResizeDailyTime"` // HH:MM daily window when policy = daily-time
 	ProvDBOvercommitPct                       int                          `mapstructure:"prov-db-overcommit-pct" toml:"prov-db-overcommit-pct" json:"provDbOvercommitPct"` // COMMERCIAL scalability-up barrier: max % the dynamic resource change may auto-grow the plan (plan × (1+pct/100)) before a plan raise is required. Not a technical cap formula (see ResourceManager.CanGrowBeyondPlan)
 	ProvDBCapSafetyPct                        int                          `mapstructure:"prov-db-cap-safety-pct" toml:"prov-db-cap-safety-pct" json:"provDbCapSafetyPct"` // HIGH-water margin: a server is "over" a reference on an axis when consumed >= ref x (1 - pct/100). Drives raise-resources (vs config) and cap-up (vs plan). Default 15 (85%)
 	ProvDBCapShrinkPct                        int                          `mapstructure:"prov-db-cap-shrink-pct" toml:"prov-db-cap-shrink-pct" json:"provDbCapShrinkPct"` // LOW-water margin: a server is "under" a reference on an axis when consumed <= ref x (pct/100). Drives shrink-resources (vs config) and cap-down (vs plan). The dead-band [shrink-pct, 100-safety-pct] = status quo (anti-flap). Default 50
@@ -1485,6 +1487,12 @@ const (
 	ConstResourceAlignPlan string = "plan" // cap = (prov-service-plan-dbu / nodes) × mem-ratio
 	ConstResourceAlignUp   string = "up"   // cap = max-axis DBU from config × mem-ratio (coherence/debug)
 	ConstResourceAlignOff  string = "off"  // no alignment: cap = prov-db-memory (legacy)
+)
+
+// prov-db-dynamic-resize-policy values: WHEN a triggered live memory resize is applied.
+const (
+	ConstResizePolicyScaleSpeed string = "scale-speed" // apply as saturation dictates, throttled by prov-db-scale-*-speed (default)
+	ConstResizePolicyDailyTime  string = "daily-time"  // defer the live memory resize to a fixed daily clock time (prov-db-dynamic-resize-daily-time)
 )
 
 const (

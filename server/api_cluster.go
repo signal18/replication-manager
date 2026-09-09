@@ -3724,6 +3724,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetProvDbServiceType(value)
 	case "prov-db-resource-align":
 		mycluster.Conf.ProvDBResourceAlign = value
+	case "prov-db-dynamic-resize-policy":
+		mycluster.Conf.ProvDBDynamicResizePolicy = value
+	case "prov-db-dynamic-resize-daily-time":
+		mycluster.Conf.ProvDBDynamicResizeDailyTime = value
 	case "prov-db-cap-safety-pct":
 		mycluster.Conf.ProvDBCapSafetyPct, _ = strconv.Atoi(value)
 	case "prov-db-cap-shrink-pct":

@@ -53,6 +53,7 @@ func (cluster *Cluster) SetStatus() {
 		}
 	}
 	cluster.CheckResourceCapPlan() // compose cluster cap-up/down from the per-server plan states
+	cluster.DriveDailyDynamicResize() // daily-time policy: reconcile live memory in the off-peak window
 	cluster.IsNeedDatabasesRestart = cluster.HasRequestDBRestart()
 	cluster.IsNeedDatabasesReprov = cluster.HasRequestDBReprov()
 	cluster.IsNeedDatabasesConfigChange = cluster.HasRequestDBConfigChange()

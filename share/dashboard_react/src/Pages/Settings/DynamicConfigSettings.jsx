@@ -80,6 +80,23 @@ function DynamicConfigSettings({ selectedCluster, user }) {
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-orchestrator-deployment-upgrade-on-start?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-orchestrator-deployment-upgrade-on-start' }))} isDisabled={disabled} isChecked={cfg.provOrchestratorDeploymentUpgradeOnStart} />)
     },
     {
+      key: 'Dynamic Resize Policy',
+      help: h(`**Dynamic Resize Policy**\n\nWHEN a live memory resize (Apply Dynamic Resource Resize) is applied:\n\n- **scale-speed** (default): as saturation dictates, throttled by the Scale Speeds below.\n- **daily-time**: deferred to a fixed daily clock time (Dynamic Resize Daily Time), so any InnoDB buffer-pool-resize stall is contained to an off-peak hour.\n\nCPU/IO tuning is unaffected (no stall).\n\nConfig: \`prov-db-dynamic-resize-policy\``, 'Dynamic Resize Policy'),
+      value: (
+        <Dropdown
+          options={[{ value: 'scale-speed', label: 'scale-speed (default)' }, { value: 'daily-time', label: 'daily-time' }]}
+          selectedValue={cfg.provDBDynamicResizePolicy || 'scale-speed'}
+          confirmTitle='Confirm dynamic resize policy: '
+          onChange={(value) => dispatch(setSetting({ clusterName, setting: 'prov-db-dynamic-resize-policy', value }))}
+        />
+      )
+    },
+    {
+      key: 'Dynamic Resize Daily Time',
+      help: h(`**Dynamic Resize Daily Time**\n\nDaily clock time HH:MM (24h, server-local) at which the live memory resize is applied when Dynamic Resize Policy = **daily-time**. Ignored under scale-speed.\n\nConfig: \`prov-db-dynamic-resize-daily-time\``, 'Dynamic Resize Daily Time'),
+      value: num('prov-db-dynamic-resize-daily-time', cfg.provDBDynamicResizeDailyTime, '03:00')
+    },
+    {
       key: 'Auto-Update Compliance',
       help: h(`**Auto-Update Compliance**\n\nWhen enabled, repman regenerates the config from a new compliance module automatically (repman side).\n\nConfig: \`prov-auto-update-compliance\``, 'Auto-Update Compliance'),
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-auto-update-compliance?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-auto-update-compliance' }))} isDisabled={disabled} isChecked={cfg.provAutoUpdateCompliance} />)
@@ -90,8 +107,8 @@ function DynamicConfigSettings({ selectedCluster, user }) {
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-compliance-auto-agree?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-compliance-auto-agree' }))} isDisabled={disabled} isChecked={cfg.provDbComplianceAutoAgree} />)
     },
     {
-      key: 'Resource Alignment',
-      help: h(`**Resource Alignment**\n\nAligns the container memory cap to the DBU tier.\n\n- **plan** (default): tier = the plan / node count\n- **up**: tier = max-axis config DBU (coherence/debug)\n- **off**: cap = prov-db-memory (legacy)\n\nConfig: \`prov-db-resource-align\``, 'Resource Alignment'),
+      key: 'Resource Alignment On Start',
+      help: h(`**Resource Alignment On Start**\n\nAligns the container memory cap (the outer ceiling, applied when the container is (re)started) to the DBU tier.\n\n- **plan** (default): tier = the plan / node count\n- **up**: tier = max-axis config DBU (coherence/debug)\n- **off**: cap = prov-db-memory (legacy)\n\nConfig: \`prov-db-resource-align\``, 'Resource Alignment On Start'),
       value: (
         <Dropdown
           options={[{ value: 'plan', label: 'plan (default)' }, { value: 'up', label: 'up' }, { value: 'off', label: 'off' }]}

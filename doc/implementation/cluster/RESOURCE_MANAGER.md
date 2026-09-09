@@ -269,6 +269,44 @@ Non-fatal in the rolling loop: a push failure leaves the previous cap and never 
 restart. So: the live path moves working memory under the ceiling with no restart; this gate
 raises the ceiling itself, on the next restart, when the plan grows past it.
 
+## Live-resize timing: `prov-db-dynamic-resize-policy`
+
+The live memory resize adjusts `innodb_buffer_pool_size`. On a MariaDB without the modern
+instant/resizable buffer pool (MDEV-29445), that resize is *chunked* — quantized to a
+non-dynamic `innodb_buffer_pool_chunk_size` grid (re-tuning it needs a restart) **and** it can
+**stall** the workload while it runs (especially a shrink, which withdraws pages). We do **not**
+block the resize on old releases — we control *when* it happens so a stall lands at a chosen
+time. Two orthogonal timing knobs:
+
+- **`prov-db-scale-*-speed`** (existing) — *how long* saturation must persist before a resize is
+  **triggered** (the sustained-saturation throttle; see the gate section above).
+- **`prov-db-dynamic-resize-policy`** (this) — *when* a triggered memory resize is **applied**:
+  - **`scale-speed`** (default) — apply immediately; cadence is the scale-speed timeframe. (No
+    separate "live" value — that IS the scale-speed-governed default.)
+  - **`daily-time`** — apply only inside the daily window `prov-db-dynamic-resize-daily-time`
+    (`HH:MM`, server-local), so any buffer-pool-resize stall is contained to an off-peak hour.
+
+`maintenance` and `restart` are deliberately **not** policy values: a resize deferred to a
+restart already rides the maintenance window via the deployment-upgrade-on-start gate, so they
+collapse into "defer to restart" (`prov-db-dynamic-resource = off`), not a resize-timing mode.
+
+Mechanics (`cluster_resize_dynamic.go`): the memory branch of `ResizeDynamicResources` is gated
+by `dynamicMemoryResizeApplyAllowedNow()` — under `daily-time` outside the window it skips the
+apply; `DriveDailyDynamicResize()` (called per tick from `SetStatus`) reconciles live memory to
+the provisioned target once per day when the window opens (`LastDynamicResizeDay` guard,
+`dynamicMemoryResizeDue` decides grow/shrink and skips a no-op). CPU/IO tuning never routes
+through the gate (no stall) and is unaffected.
+
+**Gated by jobs execution.** A live memory resize never runs on a server while a dbjob
+(backup/optimize/reseed) is executing there (`server.IsRunningJobs`) — a buffer-pool resize or
+cgroup change under a heavy job risks OOM/contention and could fail the job. This gate applies
+to BOTH policies: `scale-speed` skips a busy server (retries on the next trigger), and because
+backups typically run at the same off-peak hour as the daily window, `daily-time` opens a
+`dynamicResizeWindowMinutes` (60 min) window from the daily time and **waits** for the job to
+finish (`anyServerRunningJobs`) — the day is marked done only once the resize actually applies,
+so a backup running at `03:00` just delays the resize to the first idle moment in the window
+rather than skipping the day.
+
 ## Status / TODO
 
 Implemented: the substrate above, plus the per-axis **emission** of consumed metrics

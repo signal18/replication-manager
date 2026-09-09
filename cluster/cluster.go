@@ -116,6 +116,7 @@ type Cluster struct {
 	IsNeedDatabasesRollingReprov  bool                `json:"isNeedDatabasesRollingReprov" groups:"web"`
 	IsNeedResourceCapUp          bool                `json:"isNeedResourceCapUp" groups:"web"`   // composed from the per-server plan states: ANY up server over the plan -> RAISE THE PLAN (cap up). Set by CheckResourceCapPlan
 	IsNeedResourceCapDown        bool                `json:"isNeedResourceCapDown" groups:"web"` // composed: EVERY up server under the plan -> LOWER THE PLAN (cap down); one non-under server breaks it (safe-shrink). Set by CheckResourceCapPlan
+	LastDynamicResizeDay         string              `json:"-"`                                  // YYYY-MM-DD of the last daily-time memory reconcile (DriveDailyDynamicResize); one apply per day per window
 	// Per-axis consumed-vs-reference detail is PER SERVER (ServerMonitor.ResourceConsumedOver/UnderConfigAxes for raise/shrink resources, .ResourceConsumedOver/UnderPlanAxes composed here).
 	IsNeedDatabasesReprov         bool                `json:"isNeedDatabasesReprov" groups:"web"`
 	IsNeedDatabasesConfigChange   bool                `json:"isNeedDatabasesConfigChange" groups:"web"`
