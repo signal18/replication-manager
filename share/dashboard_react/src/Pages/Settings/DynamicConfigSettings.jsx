@@ -75,6 +75,11 @@ function DynamicConfigSettings({ selectedCluster, user }) {
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-dynamic-resource?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-dynamic-resource' }))} isDisabled={disabled} isChecked={cfg.provDbDynamicResource} />)
     },
     {
+      key: 'Reapply Deployment On Start',
+      help: h(`**Reapply Deployment On Start**\n\nOn each node (re)start during a rolling restart/upgrade, re-render and push the full deployment (service config: the plan-driven container memory cap, image, run_args, env) to the orchestrator BEFORE start, so the recreated container comes up on the CURRENT config instead of the one written at the last provision. This is how a plan/cap change -- and an unpinned image tag rolling forward -- actually lands on restart. The live in-plan resize (pg_mem_limit + MySQL SET GLOBAL) is separate and unaffected; this only raises the outer ceiling. On by default.\n\nConfig: \`prov-orchestrator-deployment-upgrade-on-start\``, 'Reapply Deployment On Start'),
+      value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-orchestrator-deployment-upgrade-on-start?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-orchestrator-deployment-upgrade-on-start' }))} isDisabled={disabled} isChecked={cfg.provOrchestratorDeploymentUpgradeOnStart} />)
+    },
+    {
       key: 'Auto-Update Compliance',
       help: h(`**Auto-Update Compliance**\n\nWhen enabled, repman regenerates the config from a new compliance module automatically (repman side).\n\nConfig: \`prov-auto-update-compliance\``, 'Auto-Update Compliance'),
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-auto-update-compliance?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-auto-update-compliance' }))} isDisabled={disabled} isChecked={cfg.provAutoUpdateCompliance} />)
