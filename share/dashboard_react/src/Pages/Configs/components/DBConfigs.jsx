@@ -29,7 +29,10 @@ import { convertSize } from '../../../utility/common'
 
 // DBU_MAX_POW is the largest DBU exponent: 2^9 = 512 DBU.
 const DBU_MAX_POW = 9
-const dbuToPos = (dbu) => Math.max(0, Math.min(DBU_MAX_POW, Math.round(Math.log2(dbu || 1))))
+// Position on the log2 axis for the REAL dbu value -- NOT rounded, so a non-power-of-two plan
+// (e.g. 6) sits at its true spot (log2(6)=2.58, between the 4 and 8 stops) instead of snapping
+// the value to 8. Only the abscissa is log-scaled; the value is never changed by display.
+const dbuToPos = (dbu) => Math.max(0, Math.min(DBU_MAX_POW, Math.log2(dbu || 1)))
 
 function DBUSlider({ value, isDisabled, onChange }) {
   const [draft, setDraft] = useState(null)
@@ -39,7 +42,9 @@ function DBUSlider({ value, isDisabled, onChange }) {
   // common values against the left. Each stop doubles the resources and maps to a
   // plan tier.
   const pos = draft !== null ? draft : dbuToPos(value)
-  const dbu = 2 ** pos
+  // Idle: show the REAL value at its log position. While dragging: show the power-of-two tier
+  // the thumb is snapping to (step=1 on the log axis).
+  const dbu = draft !== null ? 2 ** pos : (value || 1)
 
   const formatDBU = useCallback((d) => {
     const mem = d * 4096
