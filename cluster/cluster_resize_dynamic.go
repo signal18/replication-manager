@@ -619,3 +619,57 @@ func (cluster *Cluster) dynamicMemoryResizeDue() (grow bool, due bool) {
 	}
 	return false, false
 }
+
+// DriveAutonomousResize is the AUTONOMOUS trigger for the dynamic resource resize: it turns a
+// sustained saturation SIGNAL into an actual resize, closing the loop (saturation -> state ->
+// resize) instead of only observing. Gated by the SAME prov-db-dynamic-resource switch -- the
+// dynamic resize IS autonomous by design, there is no separate opt-in. Called per monitor tick
+// from SetStatus.
+//
+// Scope (first cut): in-plan MEMORY grow -- memory is the one axis with a live cgroup resize
+// (pg_mem_limit), and its trigger is now buffer-pool PRESSURE (checkBufferPoolPressure / #1), not
+// occupancy. When any server has a sustained in-plan mem grow due (CanScaleConfigInPlan(true)),
+// raise the cluster prov-db-memory by +1 DBU step toward the per-node plan ceiling
+// (GetDBContainerMemoryCapMB); headroom lives in the buffer-pool being a fraction of prov-db-memory.
+// The apply goes through SetDBMemorySize -> ResizeDynamicResources (already ResourceManager- and
+// jobs-gated, anti-OOM ordered). One step per scale-up window (cooldown); skipped in failover.
+func (cluster *Cluster) DriveAutonomousResize() {
+	if !cluster.Conf.ProvDBDynamicResource || cluster.IsInFailover() {
+		return
+	}
+	d, err := time.ParseDuration(cluster.Conf.ScaleUpConfigInPlanSpeed)
+	if err != nil || d < time.Minute {
+		d = time.Minute
+	}
+	if !cluster.lastAutonomousResize.IsZero() && time.Since(cluster.lastAutonomousResize) < d {
+		return // cooldown: at most one +1 DBU step per scale-up window
+	}
+	memDue := false
+	for _, s := range cluster.Servers {
+		if s == nil {
+			continue
+		}
+		for _, a := range s.CanScaleConfigInPlan(true) {
+			if a == "mem" {
+				memDue = true
+			}
+		}
+	}
+	if !memDue {
+		return
+	}
+	curMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+	ceilMB := cluster.GetDBContainerMemoryCapMB() // per-node plan ceiling
+	if curMB >= ceilMB {
+		return // already at the plan ceiling: in-plan grow exhausted (cap-up is a plan decision, not this)
+	}
+	const stepMB = 4096 // +1 DBU of memory
+	newMB := curMB + stepMB
+	if newMB > ceilMB {
+		newMB = ceilMB
+	}
+	cluster.lastAutonomousResize = time.Now()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Autonomous in-plan memory grow (buffer-pool pressure): prov-db-memory %dMB -> %dMB (ceiling %dMB)", curMB, newMB, ceilMB)
+	cluster.SetDBMemorySize(strconv.Itoa(newMB))
+}

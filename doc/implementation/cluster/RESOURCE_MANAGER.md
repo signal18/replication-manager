@@ -344,12 +344,20 @@ calls `resourceManagerAllowsGrow` **before** the infra feasibility. A within-pla
 untouched; a grow PAST the plan is gated on `CanGrowBeyondPlan` (the commercial overcommit budget)
 AND, when the node's `AgentCapacity` is known, on the physical free pool (`UsableCeilingDBU(agent)`
 must cover `ConsumedByAgent(agent) + (target − plan)`). A refusal logs and skips the live grow —
-the client must raise the plan (the `IsNeedResourceCapUp` claim). Still open: `IsNeedResourceCapUp`/
-`ResourceCapUpAxes` are a **signal nothing consumes yet** (no autonomous trigger), the physical
-gate is instantaneous (no reserve / co-tenant reclaim yet — Type-2 lending safety is a later step),
-and `overcommit_dbu` is not yet a tracked/emitted ledger. There is **no
-autonomous (saturation-driven) trigger** — a resize fires only from `SetDB*` via the API, the
-CLI configurator, or a plan apply (`applyPlanSpec`). Wiring needs a **target-first** restructure
+the client must raise the plan (the `IsNeedResourceCapUp` claim).
+
+**Autonomous trigger — now wired for in-plan memory** (`DriveAutonomousResize`, per tick from
+`SetStatus`, gated by the existing `prov-db-dynamic-resource` — the dynamic resize IS autonomous,
+no separate flag). When any server has a sustained in-plan **mem** grow due
+(`CanScaleConfigInPlan(true)`, pressure-driven via #1), it raises the cluster `prov-db-memory` by
+**+1 DBU step** toward the per-node plan ceiling (`GetDBContainerMemoryCapMB`), applied live by
+`SetDBMemorySize → ResizeDynamicResources` (ResourceManager- + jobs-gated, anti-OOM ordered). One
+step per scale-up window (cooldown), skipped during failover. Still open: cpu/io autonomous grow
+(need the real cgroup cpu/io resize, today only SET GLOBAL), autonomous **shrink** (the deliberate
+reclaim, must clamp at the plan floor), cap-up (`IsNeedResourceCapUp`) still a signal nothing
+consumes, the physical gate is instantaneous (no reserve / co-tenant reclaim — Type-2 safety is a
+later step), and `overcommit_dbu` is not yet a tracked/emitted ledger. The other resize entry
+points remain `SetDB*` via the API, the CLI configurator, or a plan apply (`applyPlanSpec`). Wiring needs a **target-first** restructure
 of the `SetDB*` setters (compute target → gate → mutate; today they mutate then resize). And the
 **infra grow is memory-only**: `SetDBCores`/`SetDBDiskIOPS` only re-tune DB SET GLOBAL vars (no
 cgroup resize; CPU cgroup limit resize is a marked follow-up), disk has no live path — so a real
