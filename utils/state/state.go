@@ -405,6 +405,12 @@ func (SM *StateMachine) GetOpenStates() []State {
 	}
 
 	SM.Unlock()
+	// Stable order so the dashboard state list does not reorder every tick: the CurState map
+	// iteration is non-deterministic in Go. Key on ErrKey+ServerUrl (same key the log-plugin
+	// snapshots use), so same-code states on different servers keep a fixed relative order.
+	sort.SliceStable(log, func(i, j int) bool {
+		return log[i].ErrKey+"\x00"+log[i].ServerUrl < log[j].ErrKey+"\x00"+log[j].ServerUrl
+	})
 	return log
 }
 
