@@ -321,8 +321,15 @@ the app credit model, driven by `AddDBU`/`RemoveDBU`. Also `SetServerAgent` /
 per-cluster/agent/minute **emission** (the data), then the burst/overcommit **policy**
 and the heatmap.
 
-Resize gates (above) are DEFINED but **not wired**: `CanGrowBeyondPlan` has no caller and
-`IsNeedResourceCapUp`/`ResourceCapUpAxes` are a **signal nothing consumes yet**. There is **no
+Resize gates — **step 1 now wired** (2026-09): the memory grow branch of `ResizeDynamicResources`
+calls `resourceManagerAllowsGrow` **before** the infra feasibility. A within-plan grow passes
+untouched; a grow PAST the plan is gated on `CanGrowBeyondPlan` (the commercial overcommit budget)
+AND, when the node's `AgentCapacity` is known, on the physical free pool (`UsableCeilingDBU(agent)`
+must cover `ConsumedByAgent(agent) + (target − plan)`). A refusal logs and skips the live grow —
+the client must raise the plan (the `IsNeedResourceCapUp` claim). Still open: `IsNeedResourceCapUp`/
+`ResourceCapUpAxes` are a **signal nothing consumes yet** (no autonomous trigger), the physical
+gate is instantaneous (no reserve / co-tenant reclaim yet — Type-2 lending safety is a later step),
+and `overcommit_dbu` is not yet a tracked/emitted ledger. There is **no
 autonomous (saturation-driven) trigger** — a resize fires only from `SetDB*` via the API, the
 CLI configurator, or a plan apply (`applyPlanSpec`). Wiring needs a **target-first** restructure
 of the `SetDB*` setters (compute target → gate → mutate; today they mutate then resize). And the

@@ -343,6 +343,38 @@ func (cluster *Cluster) dynamicMemoryResizeApplyAllowedNow() bool {
 	return cluster.isDynamicResizeDailyWindowNow()
 }
 
+// resourceManagerAllowsGrow is the ResourceManager AUTHORITY gate on a live grow (step 1 of
+// wiring the resize to the pool). Growth WITHIN the plan is always allowed and skips the gate.
+// Growth PAST the plan is gated on two things, in order: the commercial overcommit budget
+// (CanGrowBeyondPlan, prov-db-overcommit-pct) and -- when the node's physical capacity is known
+// -- the free pool on that node (the usable ceiling must cover the per-agent consumed plus the
+// extra DBU this grow claims over the plan, so we never physically exceed the metal). Best
+// effort: no manager, or unknown capacity, does not block. Returns allowed + a short reason.
+func (cluster *Cluster) resourceManagerAllowsGrow(server *ServerMonitor) (bool, string) {
+	if cluster.resources == nil {
+		return true, ""
+	}
+	target := cluster.GetConfigDBUPerNode().Dbu // the config target, per node
+	plan := cluster.GetPlanDBUPerNode().Dbu
+	if target <= plan {
+		return true, "" // within the contract -- always free, never gated
+	}
+	// Commercial budget: the overcommit ceiling the client accepted (plan × (1+pct/100)).
+	if ok, reason := cluster.resources.CanGrowBeyondPlan(target, plan, cluster.Conf.ProvDBOvercommitPct); !ok {
+		return false, reason
+	}
+	// Physical free pool on the node -- only gate when the agent capacity is known.
+	if ceiling, ok := cluster.resources.UsableCeilingDBU(server.Agent); ok {
+		used := cluster.resources.ConsumedByAgent(server.Agent).Dbu
+		extra := target - plan
+		if used+extra > ceiling {
+			return false, fmt.Sprintf("no free pool on node %s: consumed %.2f + grow %.2f > usable %.2f DBU/node",
+				server.Agent, used, extra, ceiling)
+		}
+	}
+	return true, ""
+}
+
 func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 	// Live resize is gated only by its own opt-in toggle (T14): when
 	// prov-db-dynamic-resource is on, a resource change is applied live
@@ -416,6 +448,16 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 		// resizeMemory: sequence the infra (cgroup) and the DB memory anti-OOM.
 		rz := cluster.resourceResizer()
 		if grow {
+			// ResourceManager authority (step 1): gate a grow PAST the plan on the
+			// commercial budget + the node's physical free pool, BEFORE the infra
+			// feasibility. A within-plan grow passes through untouched. A refusal here
+			// means the client must raise the plan (the IsNeedResourceCapUp claim).
+			if ok, reason := cluster.resourceManagerAllowsGrow(server); !ok {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+					"Resource grow on %s refused by ResourceManager: %s", server.URL, reason)
+				cluster.logResize(server, dim, true, false, ResizeNo, nil)
+				continue
+			}
 			feas, err := rz.CanConfigResize(server, true)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
