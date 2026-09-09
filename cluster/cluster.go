@@ -884,6 +884,15 @@ func (cluster *Cluster) InitFromConf() {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set proxy list %s", err)
 	}
+	// Proxies were just rebuilt with no knowledge of maintenance restored onto
+	// Servers above (see newServerMonitor) -- replay the notification so
+	// HAProxy/ProxySQL/MaxScale converge immediately instead of waiting on
+	// their next refresh cycle.
+	for _, server := range cluster.Servers {
+		if server != nil && server.IsMaintenance {
+			cluster.SetProxyServerMaintenance(server.ServerID)
+		}
+	}
 	persistRebasedAppCreditCap := false
 	err = cluster.newAppList()
 	if err != nil {

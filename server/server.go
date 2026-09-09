@@ -547,6 +547,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.PrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
 	flags.StringVar(&conf.IgnoreSrv, "db-servers-ignored-hosts", "", "Database list of hosts to ignore in election")
 	flags.StringVar(&conf.IgnoreSrvRO, "db-servers-ignored-readonly", "", "Database list of hosts not changing read only status")
+	flags.StringVar(&conf.MaintenanceSrv, "db-servers-maintenance-hosts", "", "Database list of hosts in maintenance mode, excluded from proxy routing and failover election, restored on restart/reload")
 	flags.StringVar(&conf.BackupServers, "db-servers-backup-hosts", "", "Database list of hosts to backup when set can backup a slave")
 	flags.StringVar(&conf.DbServersChangeStateScript, "db-servers-state-change-script", "", "Database state change script")
 	flags.StringVar(&conf.DbServersBindAddress, "db-servers-bind-address", "", "Database bind address to use for jobs like SST, backup")

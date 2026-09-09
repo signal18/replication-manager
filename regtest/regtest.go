@@ -107,6 +107,7 @@ var tests = []string{
 	"testDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped",
 	"testHaproxyRuntimeAPIDynamicServerLifecycle",
 	"testProxyReadBackendReconciliation",
+	"testMaintenancePersistReload",
 }
 
 const recoverTime = 8

@@ -463,6 +463,11 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		server.SetIgnoredReadonly(cluster.IsInIgnoredReadonly(server))
 		server.SetPreferedBackup(cluster.IsInPreferedBackupHosts(server))
 		server.SetPrefered(cluster.IsInPreferedHosts(server))
+		// Restore maintenance from durable membership (startup and config
+		// reload both rebuild ServerMonitor here). Set the field directly
+		// rather than calling SetMaintenance(): this is reconciliation, not a
+		// new state transition, so it must not replay the state-change script.
+		server.IsMaintenance = cluster.IsInMaintenanceHosts(server)
 	} else {
 		// Always ignore child cluster
 		server.SetIgnored(true)

@@ -287,6 +287,43 @@ func (cluster *Cluster) IsInIgnoredReadonly(server *ServerMonitor) bool {
 	return false
 }
 
+// maintenanceTokens splits a maintenance-host membership list into its
+// non-empty comma-separated tokens.
+func maintenanceTokens(hostList string) []string {
+	var toks []string
+	for _, tok := range strings.Split(hostList, ",") {
+		if tok != "" {
+			toks = append(toks, tok)
+		}
+	}
+	return toks
+}
+
+// maintenanceListHasHost reports whether hostList contains a token that
+// EXACTLY equals url or name -- never a substring/prefix match. This is the
+// single membership predicate shared by restoration (IsInMaintenanceHosts)
+// and mutation (SetMaintenanceSrv), so the two can never disagree about what
+// counts as a match.
+func maintenanceListHasHost(hostList, url, name string) bool {
+	for _, tok := range maintenanceTokens(hostList) {
+		if tok == url || tok == name {
+			return true
+		}
+	}
+	return false
+}
+
+// IsInMaintenanceHosts reports whether server belongs to the durable maintenance-host
+// membership, the persisted counterpart of the runtime IsMaintenance flag restored at
+// server-monitor construction (startup and config reload).
+func (cluster *Cluster) IsInMaintenanceHosts(server *ServerMonitor) bool {
+	// Child cluster servers never carry this cluster's maintenance membership
+	if server.SourceClusterName != cluster.Name {
+		return false
+	}
+	return maintenanceListHasHost(cluster.Conf.MaintenanceSrv, server.URL, server.Name)
+}
+
 func (cluster *Cluster) IsInPreferedHosts(server *ServerMonitor) bool {
 	// Ignore if child cluster
 	if server.SourceClusterName != cluster.Name {
