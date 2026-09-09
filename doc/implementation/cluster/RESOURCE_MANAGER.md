@@ -236,7 +236,7 @@ folds back into the mem axis (so `CINF0007` fires on mem only under real pressur
 it clears). Read from in-memory `server.Status` via `GetStatusDeltaValue` (the BP counters are
 whitelist-gated in graphite, so not reliably queryable there). An io-saturation trigger is
 disambiguated into grow-memory vs grow-iops **not** by a static hit-ratio heuristic but by the
-QPS-driven escalation (see "Autonomous trigger" below): grow memory first, and escalate to IOPS
+QPS-driven escalation (see "Dynamic-resize trigger" below): grow memory first, and escalate to IOPS
 only when another memory step stops improving QPS.
 
 Repman re-emits the last reading every monitor tick (~2 s) for a continuous graph, but the
@@ -347,10 +347,10 @@ AND, when the node's `AgentCapacity` is known, on the physical free pool (`Usabl
 must cover `ConsumedByAgent(agent) + (target − plan)`). A refusal logs and skips the live grow —
 the client must raise the plan (the `IsNeedResourceCapUp` claim).
 
-### Autonomous trigger — the QPS-driven escalation (CPU → memory → IOPS)
+### Dynamic-resize trigger — the QPS-driven escalation (CPU → memory → IOPS)
 
-`DriveAutonomousResize` (per tick from `SetStatus`, gated by the existing
-`prov-db-dynamic-resource` — the dynamic resize IS autonomous, no separate flag) grows the axis
+`DriveDynamicResize` (per tick from `SetStatus`, gated by the existing
+`prov-db-dynamic-resource` — no separate flag, the dynamic resize IS this trigger) grows the axis
 the database is **actually binding on**, one +1 DBU step per scale-up window. The order is not
 arbitrary and it is not per-axis-independent — the axes are coupled through the buffer pool, so
 the driver uses **QPS as the objective** and lets the DB tell us which resource is short instead
@@ -379,7 +379,7 @@ setter. One step per scale-up window (cooldown), skipped during failover, hill-c
 when nothing is constrained.
 
 **In-flight gate** (`isMemoryResizeInFlight`): a new memory resize is never stacked on one that has
-not converged — both `ResizeDynamicResources` (memory) and `DriveAutonomousResize` skip while the
+not converged — both `ResizeDynamicResources` (memory) and `DriveDynamicResize` skip while the
 runtime `INNODB_BUFFER_POOL_SIZE` is still off its target (async InnoDB resize) or a
 `PendingCgroupShrink` is outstanding. This turns the cooldown from "wait 1 minute" into "wait until
 the pool actually reached its new size", closing the grow-vs-async-resize / grow-vs-pending-shrink /
@@ -392,7 +392,7 @@ the container cpu/io cgroup (`pg_cpus` / io weight). So the escalation *decides 
 correctly, but a CPU or IOPS step will not add real capacity until the cgroup cpu/io resize is
 built (extend `openSVCResize`/`PGUpdateInstanceV3` the same way it already does `pg_mem_limit`).
 Until then, on a CPU-bound saturation the state fires and the config axis grows, but the container
-stays pinned — the memory hill-climb is the provable half. Still open beyond that: autonomous
+stays pinned — the memory hill-climb is the provable half. Still open beyond that: dynamic
 **shrink** (the deliberate reclaim, must clamp at the plan floor), cap-up (`IsNeedResourceCapUp`)
 still a signal nothing consumes, the physical gate is instantaneous (no reserve / co-tenant
 reclaim — Type-2 safety is a later step), and `overcommit_dbu` is not yet a tracked/emitted

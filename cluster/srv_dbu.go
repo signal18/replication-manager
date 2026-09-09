@@ -246,7 +246,7 @@ func (server *ServerMonitor) checkBufferPoolPressure() {
 // and a healthy InnoDB buffer pool is ALWAYS ~full (clean + dirty pages, adaptive hash index,
 // change buffer, ...), so occupancy is not a workload-demand signal in EITHER direction: it
 // never means "grow" (it is pinned near the cap regardless of load) and never means "shrink"
-// (memory is sticky -- the buffer pool does not release on idle). So the autonomous scaling
+// (memory is sticky -- the buffer pool does not release on idle). So the dynamic scaling
 // states are driven by the DEMAND axes -- cpu (usage), io (saturation), disk (usage) -- not by
 // memory occupancy. Real memory NEED surfaces as IO: a too-small buffer pool causes misses
 // (Innodb_buffer_pool_reads -> disk reads), which the io axis already sees. Memory SHRINK is

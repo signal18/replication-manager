@@ -117,9 +117,9 @@ type Cluster struct {
 	IsNeedResourceCapUp          bool                `json:"isNeedResourceCapUp" groups:"web"`   // composed from the per-server plan states: ANY up server over the plan -> RAISE THE PLAN (cap up). Set by CheckResourceCapPlan
 	IsNeedResourceCapDown        bool                `json:"isNeedResourceCapDown" groups:"web"` // composed: EVERY up server under the plan -> LOWER THE PLAN (cap down); one non-under server breaks it (safe-shrink). Set by CheckResourceCapPlan
 	LastDynamicResizeDay         string              `json:"-"`                                  // YYYY-MM-DD of the last daily-time memory reconcile (DriveDailyDynamicResize); one apply per day per window
-	lastAutonomousResize         time.Time           `json:"-"`                                  // last autonomous in-plan grow (DriveAutonomousResize); cooldown = one step per scale-up window
-	lastAutonomousGrowAxis       string              `json:"-"`                                  // axis of the last autonomous grow ("cpu"/"mem"/"io"); drives the QPS-feedback mem->io escalation
-	qpsBeforeAutonomousGrow      float64             `json:"-"`                                  // cluster QPS sampled just before that grow; next window compares to detect a plateau
+	lastDynamicResize         time.Time           `json:"-"`                                  // last dynamic in-plan grow (DriveDynamicResize); cooldown = one step per scale-up window
+	lastDynamicGrowAxis       string              `json:"-"`                                  // axis of the last dynamic grow ("cpu"/"mem"/"io"); drives the QPS-feedback mem->io escalation
+	qpsBeforeDynamicGrow      float64             `json:"-"`                                  // cluster QPS sampled just before that grow; next window compares to detect a plateau
 	// Per-axis consumed-vs-reference detail is PER SERVER (ServerMonitor.ResourceConsumedOver/UnderConfigAxes for raise/shrink resources, .ResourceConsumedOver/UnderPlanAxes composed here).
 	IsNeedDatabasesReprov         bool                `json:"isNeedDatabasesReprov" groups:"web"`
 	IsNeedDatabasesConfigChange   bool                `json:"isNeedDatabasesConfigChange" groups:"web"`

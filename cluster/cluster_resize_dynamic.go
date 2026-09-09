@@ -381,7 +381,7 @@ func (cluster *Cluster) resourceManagerAllowsGrow(server *ServerMonitor) (bool, 
 // buffer-pool resize still running (runtime INNODB_BUFFER_POOL_SIZE not yet at the configured
 // target, within a tolerance for chunk-size rounding), (2) a grow issued while a shrink's cgroup
 // step is still pending (PendingCgroupShrink), (3) a second SET GLOBAL while the first is running.
-// The gate turns the autonomous cooldown from "wait 1 minute" into "wait until the pool has
+// The gate turns the dynamic-resize cooldown from "wait 1 minute" into "wait until the pool has
 // actually reached its new size".
 func (server *ServerMonitor) isMemoryResizeInFlight() bool {
 	if server.PendingCgroupShrink {
@@ -662,19 +662,6 @@ func (cluster *Cluster) dynamicMemoryResizeDue() (grow bool, due bool) {
 	return false, false
 }
 
-// DriveAutonomousResize is the AUTONOMOUS trigger for the dynamic resource resize: it turns a
-// sustained saturation SIGNAL into an actual resize, closing the loop (saturation -> state ->
-// resize) instead of only observing. Gated by the SAME prov-db-dynamic-resource switch -- the
-// dynamic resize IS autonomous by design, there is no separate opt-in. Called per monitor tick
-// from SetStatus.
-//
-// Scope (first cut): in-plan MEMORY grow -- memory is the one axis with a live cgroup resize
-// (pg_mem_limit), and its trigger is now buffer-pool PRESSURE (checkBufferPoolPressure / #1), not
-// occupancy. When any server has a sustained in-plan mem grow due (CanScaleConfigInPlan(true)),
-// raise the cluster prov-db-memory by +1 DBU step toward the per-node plan ceiling
-// (GetDBContainerMemoryCapMB); headroom lives in the buffer-pool being a fraction of prov-db-memory.
-// The apply goes through SetDBMemorySize -> ResizeDynamicResources (already ResourceManager- and
-// jobs-gated, anti-OOM ordered). One step per scale-up window (cooldown); skipped in failover.
 // dynamicResizeQPSMarginPct is the throughput improvement a memory step must buy
 // to count as "memory still helps". Below this, the last memory grow is treated as
 // a plateau and the hill-climb escalates to IOPS (the genuine-IO bottleneck).
@@ -692,7 +679,7 @@ func (cluster *Cluster) currentClusterQPS() float64 {
 	return float64(m.GetStatusDeltaValue("QUERIES"))
 }
 
-// DriveAutonomousResize is the QPS-driven in-plan escalation. It grows the axis the
+// DriveDynamicResize is the QPS-driven in-plan escalation. It grows the axis the
 // database is actually binding on, one +1 DBU step per scale-up window, using QPS as
 // the objective so the DB tells us which resource is short instead of us guessing:
 //
@@ -708,7 +695,7 @@ func (cluster *Cluster) currentClusterQPS() float64 {
 // Every step is bounded by the per-node plan ceiling (in-plan only; a plan cap-up is a
 // separate commercial decision). Gated by prov-db-dynamic-resource; never runs during a
 // failover, never stacks on an unconverged memory resize.
-func (cluster *Cluster) DriveAutonomousResize() {
+func (cluster *Cluster) DriveDynamicResize() {
 	if !cluster.Conf.ProvDBDynamicResource || cluster.IsInFailover() {
 		return
 	}
@@ -716,7 +703,7 @@ func (cluster *Cluster) DriveAutonomousResize() {
 	if err != nil || d < time.Minute {
 		d = time.Minute
 	}
-	if !cluster.lastAutonomousResize.IsZero() && time.Since(cluster.lastAutonomousResize) < d {
+	if !cluster.lastDynamicResize.IsZero() && time.Since(cluster.lastDynamicResize) < d {
 		return // cooldown: at most one +1 DBU step per scale-up window (also the QPS-feedback window)
 	}
 	// Observe which axes are saturated against config, cluster-wide. Also honour the
@@ -741,7 +728,7 @@ func (cluster *Cluster) DriveAutonomousResize() {
 		}
 	}
 	if !cpuDue && !memDue && !ioDue {
-		cluster.lastAutonomousGrowAxis = "" // nothing constrained: reset the hill-climb memory
+		cluster.lastDynamicGrowAxis = "" // nothing constrained: reset the hill-climb memory
 		return
 	}
 
@@ -757,8 +744,8 @@ func (cluster *Cluster) DriveAutonomousResize() {
 
 	// Priority 2/3 -- throughput-limited. Memory first; IOPS only on a memory plateau.
 	escalateToIO := false
-	if cluster.lastAutonomousGrowAxis == "mem" {
-		threshold := cluster.qpsBeforeAutonomousGrow * (1.0 + dynamicResizeQPSMarginPct/100.0)
+	if cluster.lastDynamicGrowAxis == "mem" {
+		threshold := cluster.qpsBeforeDynamicGrow * (1.0 + dynamicResizeQPSMarginPct/100.0)
 		if qps <= threshold {
 			escalateToIO = true // the previous memory step did not buy throughput -> genuine IO
 		}
@@ -775,7 +762,7 @@ func (cluster *Cluster) DriveAutonomousResize() {
 }
 
 // growAxisInPlan raises one config axis by +1 DBU, clamped to the per-node plan ceiling,
-// records it as the last autonomous grow (with the pre-grow QPS for the next window's
+// records it as the last dynamic grow (with the pre-grow QPS for the next window's
 // plateau check), and applies it live via the axis setter. Returns false without acting
 // when the axis is already at its plan ceiling (in-plan grow exhausted). NOTE: memory is
 // physically effective now (buffer-pool grow); cpu/io currently only re-tune SET GLOBAL
@@ -794,9 +781,9 @@ func (cluster *Cluster) growAxisInPlan(axis string, qps float64) bool {
 		if newMB > ceilMB {
 			newMB = ceilMB
 		}
-		cluster.recordAutonomousGrow("mem", qps)
+		cluster.recordDynamicGrow("mem", qps)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"Autonomous in-plan MEMORY grow (first throughput lever, relieves read misses + eviction): prov-db-memory %dMB -> %dMB (ceiling %dMB)", curMB, newMB, ceilMB)
+			"Dynamic in-plan MEMORY grow (first throughput lever, relieves read misses + eviction): prov-db-memory %dMB -> %dMB (ceiling %dMB)", curMB, newMB, ceilMB)
 		cluster.SetDBMemorySize(strconv.Itoa(newMB))
 		return true
 	case "cpu":
@@ -812,9 +799,9 @@ func (cluster *Cluster) growAxisInPlan(axis string, qps float64) bool {
 		if newC > ceil {
 			newC = ceil
 		}
-		cluster.recordAutonomousGrow("cpu", qps)
+		cluster.recordDynamicGrow("cpu", qps)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"Autonomous in-plan CPU grow (cores pinned, cpu-bound): prov-db-cpu-cores %d -> %d (ceiling %d)", cur, newC, ceil)
+			"Dynamic in-plan CPU grow (cores pinned, cpu-bound): prov-db-cpu-cores %d -> %d (ceiling %d)", cur, newC, ceil)
 		cluster.SetDBCores(strconv.Itoa(newC))
 		return true
 	case "io":
@@ -827,17 +814,17 @@ func (cluster *Cluster) growAxisInPlan(axis string, qps float64) bool {
 		if newI > ceil {
 			newI = ceil
 		}
-		cluster.recordAutonomousGrow("io", qps)
+		cluster.recordDynamicGrow("io", qps)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"Autonomous in-plan IO grow (memory plateaued, genuine IO bottleneck): prov-db-disk-iops %d -> %d (ceiling %d)", cur, newI, ceil)
+			"Dynamic in-plan IO grow (memory plateaued, genuine IO bottleneck): prov-db-disk-iops %d -> %d (ceiling %d)", cur, newI, ceil)
 		cluster.SetDBDiskIOPS(strconv.Itoa(newI))
 		return true
 	}
 	return false
 }
 
-func (cluster *Cluster) recordAutonomousGrow(axis string, qps float64) {
-	cluster.lastAutonomousResize = time.Now()
-	cluster.lastAutonomousGrowAxis = axis
-	cluster.qpsBeforeAutonomousGrow = qps
+func (cluster *Cluster) recordDynamicGrow(axis string, qps float64) {
+	cluster.lastDynamicResize = time.Now()
+	cluster.lastDynamicGrowAxis = axis
+	cluster.qpsBeforeDynamicGrow = qps
 }
