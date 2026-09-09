@@ -27,41 +27,36 @@ import ConfigFilesPanel from '../../../components/ConfigFilesPanel'
 import MemoryPctEditor from '../../../components/MemoryPctEditor'
 import { convertSize } from '../../../utility/common'
 
-// DBU_MAX_POW is the largest DBU exponent: 2^9 = 512 DBU.
-const DBU_MAX_POW = 9
-// Position on the log2 axis for the REAL dbu value -- NOT rounded, so a non-power-of-two plan
-// (e.g. 6) sits at its true spot (log2(6)=2.58, between the 4 and 8 stops) instead of snapping
-// the value to 8. Only the abscissa is log-scaled; the value is never changed by display.
+// The slider POSITION is log2 (power-of-two stops 1,2,4,...,512 evenly spaced = the look you
+// want), but the VALUE is the real DBU: position -> round(2^pos) reaches every integer DBU
+// (so 6 is 6, not snapped to 8), and the value is what is shown and committed.
+const DBU_MAX_POW = 9 // 2^9 = 512
+const posToDbu = (pos) => Math.max(1, Math.min(512, Math.round(2 ** pos)))
 const dbuToPos = (dbu) => Math.max(0, Math.min(DBU_MAX_POW, Math.log2(dbu || 1)))
 
-function DBUSlider({ value, isDisabled, onChange }) {
-  const [draft, setDraft] = useState(null)
+function DBUSlider({ value, isDisabled, onChange, nbNodes = 1 }) {
+  const [draft, setDraft] = useState(null) // draft is a log2 POSITION while dragging
   const [showTooltip, setShowTooltip] = useState(false)
-  // The slider runs on the log2 position (0..9) so power-of-two DBU stops
-  // (1,2,4,...,512) are evenly spaced — a linear 1..512 scale squashes the small,
-  // common values against the left. Each stop doubles the resources and maps to a
-  // plan tier.
   const pos = draft !== null ? draft : dbuToPos(value)
-  // Idle: show the REAL value at its log position. While dragging: show the power-of-two tier
-  // the thumb is snapping to (step=1 on the log axis).
-  const dbu = draft !== null ? 2 ** pos : (value || 1)
+  const dbu = posToDbu(pos) // PER-NODE DBU (the configurator is per-cluster: all nodes identical)
+  const total = dbu * nbNodes // plan total = per-node x node count
 
   const formatDBU = useCallback((d) => {
     const mem = d * 4096
     const memLabel = mem >= 1024 ? `${mem / 1024}GB` : `${mem}MB`
-    return `${d} DBU — standard rate: ${d} cores · ${memLabel} · ${d * 40}GB disk · ${d * 1000} IO/s`
+    return `${d} DBU/node — ${d} cores · ${memLabel} · ${d * 40}GB disk · ${d * 1000} IO/s`
   }, [])
 
   return (
     <Box w='100%'>
       <Flex justify='space-between' mb={1}>
-        <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Database Units (DBU)</Text>
-        <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>{formatDBU(dbu)}</Text>
+        <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Database Units (DBU) — per node</Text>
+        <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>{dbu} DBU/node · plan {total} DBU ({nbNodes} node{nbNodes > 1 ? 's' : ''})</Text>
       </Flex>
       <Slider
         min={0}
         max={DBU_MAX_POW}
-        step={1}
+        step={0.02}
         value={pos}
         isDisabled={isDisabled}
         onChange={(v) => setDraft(v)}
@@ -69,7 +64,7 @@ function DBUSlider({ value, isDisabled, onChange }) {
         onMouseLeave={() => setShowTooltip(false)}
         onChangeEnd={(v) => {
           setDraft(null)
-          const nd = 2 ** v
+          const nd = posToDbu(v)
           if (nd !== value && onChange) onChange(nd)
         }}
       >
@@ -361,10 +356,11 @@ function DBConfigs({ selectedCluster, user }) {
         <Flex direction='column' gap={4} w='100%'>
           <DBUSlider
             isDisabled={user?.grants['proxy-config-flag'] == false}
-            /* The DB plan in DBU = prov-service-plan-dbu, a REAL config field repman
-               materializes (sum of per-server DBU when unset). The GUI just READS it --
-               no ratio derivation in JS, no computed-only field. */
-            value={parseInt(selectedCluster?.config?.provServicePlanDbu) || 1}
+            nbNodes={selectedCluster?.dbServers?.length || 1}
+            /* PER-NODE DBU. The configurator is per-cluster and all DB nodes are identical
+               (any node can become master on failover/switchover), so the slider sets the
+               per-node config. Read = materialized plan (prov-service-plan-dbu) / #nodes. */
+            value={Math.max(1, Math.round((parseInt(selectedCluster?.config?.provServicePlanDbu) || 0) / (selectedCluster?.dbServers?.length || 1)))}
             onChange={(dbu) => {
               const mem = dbu * 4096
               const disk = dbu * 40
