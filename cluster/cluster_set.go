@@ -47,8 +47,12 @@ func (cluster *Cluster) SetStatus() {
 	cluster.IsNeedDatabasesConfigChange = cluster.HasRequestDBConfigChange()
 	cluster.IsNeedDatabasesRollingRestart = cluster.HasRequestDBRollingRestart()
 	cluster.IsNeedDatabasesRollingReprov = cluster.HasRequestDBRollingReprov()
-	cluster.ResourceCapUpAxes = cluster.GetResourceCapUpAxes()
-	cluster.IsNeedResourceCapUp = len(cluster.ResourceCapUpAxes) > 0
+	for _, srv := range cluster.Servers { // per-server over/under x config/plan consumed states
+		if srv != nil {
+			srv.CheckResourceConsumed()
+		}
+	}
+	cluster.CheckResourceCapPlan() // compose cluster cap-up/down from the per-server plan states
 	cluster.IsNeedDatabasesRestart = cluster.HasRequestDBRestart()
 	cluster.IsNeedDatabasesReprov = cluster.HasRequestDBReprov()
 	cluster.IsNeedDatabasesConfigChange = cluster.HasRequestDBConfigChange()

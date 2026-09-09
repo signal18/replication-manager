@@ -5,11 +5,14 @@
 package cluster
 
 import (
+	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/graphite"
 )
 
 // DBUReading is one period's consumed-DBU picture for a server. DBU is one unit
@@ -155,6 +158,91 @@ func (cluster *Cluster) GetConfigDBUPerNode() DBUReading {
 	return cluster.resources.ComputeUsedDBU(now, now, int64(memMB)*1024*1024, cores, iops, int64(diskGB)*1024*1024*1024)
 }
 
+// GetPlanDBUPerNode projects the cluster PLAN (the cap -- "le cap est déjà réglé au plan") to a
+// per-node per-axis reference reading. The plan is a bundled DBU reservation, so each axis's
+// per-node cap is the same GetPlanDbu()/node-count DBU. Used by CheckResourceConsumedOverPlan as
+// the reference the consumed DBU is measured against (consumed approaching the plan -> cap up).
+// Zero reading when there are no servers.
+func (cluster *Cluster) GetPlanDBUPerNode() DBUReading {
+	if len(cluster.Servers) == 0 {
+		return DBUReading{}
+	}
+	p := float64(cluster.GetPlanDbu()) / float64(len(cluster.Servers))
+	return DBUReading{DbuCpu: p, DbuMem: p, DbuIo: p, DbuDisk: p, Dbu: p}
+}
+
+// CheckResourceConsumed is THIS server's checkState: from its own DBUConsumed it sets the four
+// consumed-vs-reference axis states (over/under x config/plan). checkState ONLY -- it sets state,
+// takes no action (the resize/cap decision is composed downstream). Over = consumed_axis >=
+// ref_axis x (1 - prov-db-cap-safety-pct/100); under = consumed_axis <= ref_axis x
+// (prov-db-cap-shrink-pct/100); the dead-band between the two is status quo (anti-flap). Config
+// ref = this server's own resource allocation (GetConfigDBUPerNode) -> raise/shrink THIS server;
+// plan ref = the cap (GetPlanDBUPerNode) -> feeds the cluster cap-up/down composition. All four
+// are cleared when the server is down / unmeasured / resource-align is off.
+func (server *ServerMonitor) CheckResourceConsumed() {
+	server.ResourceConsumedOverConfigAxes = nil
+	server.ResourceConsumedUnderConfigAxes = nil
+	server.ResourceConsumedOverPlanAxes = nil
+	server.ResourceConsumedUnderPlanAxes = nil
+	cluster := server.ClusterGroup
+	if cluster == nil || cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff {
+		return
+	}
+	if cluster.resources == nil || server.IsDown() || server.DBUConsumed == nil {
+		return
+	}
+	clamp := func(p int) float64 {
+		if p < 0 {
+			return 0
+		}
+		if p > 100 {
+			return 100
+		}
+		return float64(p)
+	}
+	hi := 1 - clamp(cluster.Conf.ProvDBCapSafetyPct)/100.0
+	lo := clamp(cluster.Conf.ProvDBCapShrinkPct) / 100.0
+	cfg := cluster.GetConfigDBUPerNode()
+	plan := cluster.GetPlanDBUPerNode()
+	c := server.DBUConsumed
+	server.ResourceConsumedOverConfigAxes = consumedAxes(c, cfg, hi, true)
+	server.ResourceConsumedUnderConfigAxes = consumedAxes(c, cfg, lo, false)
+	server.ResourceConsumedOverPlanAxes = consumedAxes(c, plan, hi, true)
+	server.ResourceConsumedUnderPlanAxes = consumedAxes(c, plan, lo, false)
+}
+
+// consumedAxes returns the axes (cpu/mem/io/disk, stable order) where consumed_axis / ref_axis
+// compares to frac: >= frac when over is true, <= frac when over is false. An axis whose
+// reference is 0 is skipped (not provisioned / unknown). nil when none match.
+func consumedAxes(c *DBUReading, ref DBUReading, frac float64, over bool) []string {
+	set := map[string]bool{}
+	for _, a := range []struct {
+		name       string
+		cons, capa float64
+	}{
+		{"cpu", c.DbuCpu, ref.DbuCpu}, {"mem", c.DbuMem, ref.DbuMem},
+		{"io", c.DbuIo, ref.DbuIo}, {"disk", c.DbuDisk, ref.DbuDisk},
+	} {
+		if a.capa <= 0 {
+			continue
+		}
+		r := a.cons / a.capa
+		if (over && r >= frac) || (!over && r <= frac) {
+			set[a.name] = true
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(set))
+	for _, a := range []string{"cpu", "mem", "io", "disk"} {
+		if set[a] {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 // GetPlanDbu returns the cluster's EFFECTIVE plan DBU: the explicit
 // prov-service-plan-dbu reservation contract when set (> 0), else AUTO-computed =
 // per-node derived DBU (GetProvDbuFromConfigPerNode) × the number of DB nodes. "Auto only when
@@ -202,22 +290,6 @@ func (cluster *Cluster) GetDBTierDbuPerNode() float64 {
 	return tier
 }
 
-// GetDBCapBurstDbuPerNode is the per-node BURST headroom added above the tier for the container
-// memory cap = prov-db-cap-burst-dbu (a fixed, TECHNICAL OOM headroom so mariadbd's real
-// footprint has room above prov-db-memory). This is NOT "overcommit": overcommit means real
-// OVER-CONSUMPTION of the plan (consumed - plan) and is derived from graphite, not from this. It
-// is also NOT the commercial dynamic-resize limit (prov-db-overcommit-pct). 0 when align is off.
-func (cluster *Cluster) GetDBCapBurstDbuPerNode() float64 {
-	if cluster.GetDBTierDbuPerNode() <= 0 {
-		return 0
-	}
-	oc := float64(cluster.Conf.ProvDBCapBurstDbu)
-	if oc < 0 {
-		oc = 0
-	}
-	return oc
-}
-
 // GetDBContainerMemoryCapMB returns the cgroup --memory cap (MB) for the DB container:
 // (tier + cap-burst) × mem-ratio, deliberately ABOVE prov-db-memory (the my.cnf sizing, never
 // changed) so mariadbd has headroom and is not OOM-killed. Falls back to prov-db-memory when
@@ -228,7 +300,7 @@ func (cluster *Cluster) GetDBContainerMemoryCapMB() int {
 	if tier <= 0 {
 		return int(provMemMB)
 	}
-	capMB := int(math.Ceil((tier + cluster.GetDBCapBurstDbuPerNode()) * cluster.resources.DBMemMBPerUnit()))
+	capMB := int(math.Ceil(tier * cluster.resources.DBMemMBPerUnit()))
 	if capMB < int(provMemMB) {
 		capMB = int(provMemMB)
 	}
@@ -242,4 +314,125 @@ func (server *ServerMonitor) RestoreDBUConsumed() {
 	if cluster := server.ClusterGroup; cluster != nil && cluster.resources != nil {
 		server.DBUConsumed = cluster.resources.GetConsumed(ResourceKey{Cluster: cluster.Name, Server: server.URL})
 	}
+}
+
+func clampPct(p int) float64 {
+	if p < 0 {
+		return 0
+	}
+	if p > 100 {
+		return 100
+	}
+	return float64(p)
+}
+
+// axisConfigDBU returns the per-node config DBU of one axis from a reading.
+func axisConfigDBU(r DBUReading, axis string) float64 {
+	switch axis {
+	case "cpu":
+		return r.DbuCpu
+	case "mem":
+		return r.DbuMem
+	case "io":
+		return r.DbuIo
+	case "disk":
+		return r.DbuDisk
+	}
+	return 0
+}
+
+// lastRenderValue returns the last non-absent point of a graphite render result.
+func lastRenderValue(vals []float64, absent []bool) (float64, bool) {
+	for i := len(vals) - 1; i >= 0; i-- {
+		if i < len(absent) && absent[i] {
+			continue
+		}
+		return vals[i], true
+	}
+	return 0, false
+}
+
+// graphiteHostToken is this server's token in the mysql.<host>.* graphite series (same
+// replacer as srv_snd.go's emission).
+func (server *ServerMonitor) graphiteHostToken() string {
+	replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-")
+	return replacer.Replace(server.Variables.Get("HOSTNAME"))
+}
+
+// canScaleSustained is the shared SPEED gate for the scale-due decisions: given the instant
+// over/under axes, the client-set speed, and the per-node reference (config or plan), it returns
+// the axes for which the saturation has PERSISTED long enough to act. At the fastest speed (<= one
+// sensor tick, the 1m default) the instant state is the decision -- no history. For a slower speed
+// it asks Graphite whether the consumed axis stayed over/under its threshold for the WHOLE window
+// (summarize min for grow / max for shrink); a Graphite hiccup falls back to the instant state.
+// DECISION only -- never resizes (the resize is composed downstream, gated by CanConfigResize).
+func (server *ServerMonitor) canScaleSustained(up bool, instant []string, speedStr string, ref DBUReading) []string {
+	cluster := server.ClusterGroup
+	if cluster == nil || len(instant) == 0 {
+		return nil // no cluster, or not even instantaneously over/under -> nothing to sustain
+	}
+	d, err := time.ParseDuration(speedStr)
+	if err != nil || d <= time.Minute {
+		return instant // fast path: 1 tick / <= 1m -> the instant state IS the decision
+	}
+	overThrFactor := 1 - clampPct(cluster.Conf.ProvDBCapSafetyPct)/100.0
+	underThrFactor := clampPct(cluster.Conf.ProvDBCapShrinkPct) / 100.0
+	host := server.graphiteHostToken()
+	until := int32(time.Now().Unix())
+	from := until - int32(d.Seconds()) - 60
+	agg := "max" // shrink: even the busiest sample of the window must be under
+	if up {
+		agg = "min" // grow: even the quietest sample of the window must be over
+	}
+	var due []string
+	for _, axis := range instant {
+		capa := axisConfigDBU(ref, axis)
+		if capa <= 0 {
+			continue
+		}
+		target := fmt.Sprintf("summarize(mysql.%s.dbu_%s,'%ds','%s')", host, axis, int(d.Seconds()), agg)
+		md, rerr := graphite.Zipper.Render(target, from, until)
+		if rerr != nil {
+			due = append(due, axis) // Graphite unavailable -> trust the instant state
+			continue
+		}
+		v, ok := lastRenderValue(md.Values, md.IsAbsent)
+		if !ok {
+			due = append(due, axis)
+			continue
+		}
+		if (up && v >= capa*overThrFactor) || (!up && v <= capa*underThrFactor) {
+			due = append(due, axis)
+		}
+	}
+	return due
+}
+
+// CanScaleConfigInPlan reports the axes for which a config resource scale is DUE (up = grow on
+// saturation, down = shrink on under-use), reference = the per-server CONFIG, speed =
+// ScaleUp/DownConfigInPlanSpeed. In-plan, so cheap/reactive (fast default).
+func (server *ServerMonitor) CanScaleConfigInPlan(up bool) []string {
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return nil
+	}
+	if up {
+		return server.canScaleSustained(true, server.ResourceConsumedOverConfigAxes, cluster.Conf.ScaleUpConfigInPlanSpeed, cluster.GetConfigDBUPerNode())
+	}
+	return server.canScaleSustained(false, server.ResourceConsumedUnderConfigAxes, cluster.Conf.ScaleDownConfigInPlanSpeed, cluster.GetConfigDBUPerNode())
+}
+
+// CanScalePlan reports the axes for which a PLAN scale is DUE (up = cap up, down = cap down),
+// reference = the PLAN (the cap), speed = ScaleUp/DownPlanSpeed. Commercial, so slower/more
+// conservative than in-plan. Per server; the cluster composes cap up/down from these (one server
+// suffices to force cap-up; every server must agree for cap-down).
+func (server *ServerMonitor) CanScalePlan(up bool) []string {
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return nil
+	}
+	if up {
+		return server.canScaleSustained(true, server.ResourceConsumedOverPlanAxes, cluster.Conf.ScaleUpPlanSpeed, cluster.GetPlanDBUPerNode())
+	}
+	return server.canScaleSustained(false, server.ResourceConsumedUnderPlanAxes, cluster.Conf.ScaleDownPlanSpeed, cluster.GetPlanDBUPerNode())
 }

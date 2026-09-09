@@ -114,8 +114,9 @@ type Cluster struct {
 	IsNeedDatabasesRestart        bool                `json:"isNeedDatabasesRestart" groups:"web"`
 	IsNeedDatabasesRollingRestart bool                `json:"isNeedDatabasesRollingRestart" groups:"web"`
 	IsNeedDatabasesRollingReprov  bool                `json:"isNeedDatabasesRollingReprov" groups:"web"`
-	IsNeedResourceCapUp          bool                `json:"isNeedResourceCapUp" groups:"web"` // some node needs its resource cap raised (see ResourceCapUpAxes for which axes). Config-driven (the config drives the system); resource-termed, not DBU/plan, to stay on-prem compatible
-	ResourceCapUpAxes            []string            `json:"resourceCapUpAxes" groups:"web"`   // WHICH axes (cpu/mem/io/disk) warrant the cap-up -- consequences differ (mem->OOM, disk->full, cpu->throttle, io->latency); saturation (consumed>=config-safety, worst node) OR config-filled-the-plan
+	IsNeedResourceCapUp          bool                `json:"isNeedResourceCapUp" groups:"web"`   // composed from the per-server plan states: ANY up server over the plan -> RAISE THE PLAN (cap up). Set by CheckResourceCapPlan
+	IsNeedResourceCapDown        bool                `json:"isNeedResourceCapDown" groups:"web"` // composed: EVERY up server under the plan -> LOWER THE PLAN (cap down); one non-under server breaks it (safe-shrink). Set by CheckResourceCapPlan
+	// Per-axis consumed-vs-reference detail is PER SERVER (ServerMonitor.ResourceConsumedOver/UnderConfigAxes for raise/shrink resources, .ResourceConsumedOver/UnderPlanAxes composed here).
 	IsNeedDatabasesReprov         bool                `json:"isNeedDatabasesReprov" groups:"web"`
 	IsNeedDatabasesConfigChange   bool                `json:"isNeedDatabasesConfigChange" groups:"web"`
 	IsNeedAppsReprov              bool                `json:"isNeedAppsReprov" groups:"web"`

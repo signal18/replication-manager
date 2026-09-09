@@ -21,6 +21,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import modalStyles from '../../../components/Modals/styles.module.scss'
 
+import DynamicConfigSettings from '../../Settings/DynamicConfigSettings'
 import PreservedVariablesEditor from '../../../components/PreservedVariablesEditor'
 import ConfigFilesPanel from '../../../components/ConfigFilesPanel'
 import MemoryPctEditor from '../../../components/MemoryPctEditor'
@@ -277,62 +278,8 @@ function DBConfigs({ selectedCluster, user }) {
         />
       )
     },
-    {
-      key: 'Apply Dynamic Config On Change Tags',
-      help: h(hDynamicConfig, 'Apply Dynamic Config On Change Tags'),
-      value: (
-        <RMSwitch
-          isChecked={selectedCluster?.config?.provDBApplyDynamicConfig}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          confirmTitle={'Confirm switch settings for prov-db-apply-dynamic-config?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-apply-dynamic-config' }))
-          }
-        />
-      )
-    },
-    {
-      key: 'Apply Dynamic Resource Resize',
-      help: h(hDynamicResource, 'Apply Dynamic Resource Resize'),
-      value: (
-        <RMSwitch
-          isChecked={selectedCluster?.config?.provDbDynamicResource}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          confirmTitle={'Confirm switch settings for prov-db-dynamic-resource?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-dynamic-resource' }))
-          }
-        />
-      )
-    },
-    {
-      key: 'Auto-Update Compliance',
-      help: h(hAutoUpdateCompliance, 'Auto-Update Compliance'),
-      value: (
-        <RMSwitch
-          isChecked={selectedCluster?.config?.provAutoUpdateCompliance}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          confirmTitle={'Confirm switch settings for prov-auto-update-compliance?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-auto-update-compliance' }))
-          }
-        />
-      )
-    },
-    {
-      key: 'Auto-Agree Compliance',
-      help: h(hAutoAgreeCompliance, 'Auto-Agree Compliance'),
-      value: (
-        <RMSwitch
-          isChecked={selectedCluster?.config?.provDbComplianceAutoAgree}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          confirmTitle={'Confirm switch settings for prov-db-compliance-auto-agree?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-compliance-auto-agree' }))
-          }
-        />
-      )
-    },
+    // Apply Dynamic Config / Dynamic Resource Resize / Auto-Update & Auto-Agree Compliance
+    // moved into the retractable "Dynamic Config" section below (DynamicConfigSettings).
     {
       key: 'Refresh Variables and DB Config',
       help: h(hRefreshConfig, 'Refresh Variables and DB Config'),
@@ -614,6 +561,13 @@ function DBConfigs({ selectedCluster, user }) {
         </Alert>
       )}
       <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
+      <AccordionComponent
+        heading={'Dynamic Config'}
+        className={styles.accordion}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionBody}
+        body={<DynamicConfigSettings selectedCluster={selectedCluster} user={user} />}
+      />
       {user?.grants['db-config-flag'] && (
         <HStack className={styles.configTagContainer}>
           <VStack className={styles.availableTags}>

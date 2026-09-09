@@ -443,66 +443,44 @@ func (cluster *Cluster) HasRequestDBRollingRestart() bool {
 	return ret
 }
 
-// GetResourceCapUpAxes returns the resource AXES (subset of cpu/mem/io/disk, stable order) that
-// currently warrant raising the cap -- EMPTY when none. It records the axes, not a bare bool,
-// because the consequence differs per axis (mem -> OOM, disk -> full, cpu -> throttle, io ->
-// latency), which the alert/GUI and the eventual per-axis resize must distinguish (state-driven
-// law: track each factor as its own atomic state). An axis is listed on SATURATION only
-// (universal, on-prem, NO dynamic config needed): some node consumes at least
-// (1 - prov-db-cap-safety-pct/100) of its per-node config on that axis. Measured PER REAL NODE
-// (each server's own consumed vs the per-node config) and the WORST node counts -- not an
-// average, which would hide a single saturated node (a hot master, idle slaves).
+// CheckResourceCapPlan composes the cluster-level cap-up / cap-down signals from the PER-SERVER
+// plan states (each server's ResourceConsumedOver/UnderPlanAxes, set by
+// ServerMonitor.CheckResourceConsumed). checkState only -- it sets state, takes no action.
+// Composition rule -- ONE server suffices to force OR to break the action:
+//   - IsNeedResourceCapUp   = ANY up server is over the plan  (one server hitting the envelope
+//     forces raising the plan).
+//   - IsNeedResourceCapDown = EVERY up server is under the plan (a single non-under server BREAKS
+//     the cap-down -- safe-shrink: never lower the plan while any server still needs it).
 //
-// NOTE: there is deliberately NO "config >= plan" path. Being provisioned AT the plan is the
-// NORMAL state (config == plan), so it would light this signal permanently for every properly
-// provisioned cluster -- meaningless. Only real saturation (consumption near the config)
-// warrants a cap-up. Empty when resource-align is off or there is no manager/servers.
-func (cluster *Cluster) GetResourceCapUpAxes() []string {
-	if cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff {
-		return nil
+// Resources within the plan are managed PER SERVER (each server's ResourceConsumedOver/
+// UnderConfigAxes drive raising/shrinking that server), so there is no cluster-level config
+// aggregate here. Both signals are false when resource-align is off, no manager, or no up server.
+func (cluster *Cluster) CheckResourceCapPlan() {
+	cluster.IsNeedResourceCapUp = false
+	cluster.IsNeedResourceCapDown = false
+	if cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff || cluster.resources == nil {
+		return
 	}
-	if cluster.resources == nil || len(cluster.Servers) == 0 {
-		return nil
-	}
-	cfg := cluster.GetConfigDBUPerNode() // per-node config, per axis
-	set := map[string]bool{}
-
-	// Saturation, per real node, worst node counts, per axis.
-	pct := float64(cluster.Conf.ProvDBCapSafetyPct)
-	if pct < 0 {
-		pct = 0
-	} else if pct > 100 {
-		pct = 100
-	}
-	thr := 1 - pct/100.0
+	nUp := 0
+	anyOver := false
+	allUnder := true
 	for _, srv := range cluster.Servers {
-		if srv == nil || srv.IsDown() || srv.DBUConsumed == nil {
+		if srv == nil || srv.IsDown() {
 			continue
 		}
-		c := srv.DBUConsumed
-		for _, a := range []struct {
-			name       string
-			cons, capa float64
-		}{
-			{"cpu", c.DbuCpu, cfg.DbuCpu}, {"mem", c.DbuMem, cfg.DbuMem},
-			{"io", c.DbuIo, cfg.DbuIo}, {"disk", c.DbuDisk, cfg.DbuDisk},
-		} {
-			if a.capa > 0 && a.cons/a.capa >= thr {
-				set[a.name] = true
-			}
+		nUp++
+		if len(srv.ResourceConsumedOverPlanAxes) > 0 {
+			anyOver = true
+		}
+		if len(srv.ResourceConsumedUnderPlanAxes) == 0 {
+			allUnder = false
 		}
 	}
-
-	if len(set) == 0 {
-		return nil
+	if nUp == 0 {
+		return
 	}
-	out := make([]string, 0, len(set))
-	for _, a := range []string{"cpu", "mem", "io", "disk"} { // stable order
-		if set[a] {
-			out = append(out, a)
-		}
-	}
-	return out
+	cluster.IsNeedResourceCapUp = anyOver
+	cluster.IsNeedResourceCapDown = allUnder
 }
 
 func (cluster *Cluster) HasRequestDBRollingReprov() bool {

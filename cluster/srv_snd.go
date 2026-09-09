@@ -137,8 +137,7 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 		// calls OVERCOMMIT (consumed > plan) and its opposite (consumed < plan, the giveback)
 		// -- are NOT emitted: they are DERIVED at query time from the two series that already
 		// exist, consumed (sumSeries(mysql.*.dbu)) and plan (resourcemanager.<CLUSTER>.plan_dbu),
-		// via diffSeries in the GUI. The container cap burst (prov-db-cap-burst-dbu) is a
-		// technical cgroup headroom, not overcommit, and is not a time series.
+		// via diffSeries in the GUI.
 	}
 	return metrics
 }

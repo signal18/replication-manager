@@ -180,19 +180,36 @@ The dynamic resource resize is governed by **two ORTHOGONAL gates — never conf
   | **in-plan** | *(always yes — no budget gate)* | `CanConfigResize` |
   | **beyond-plan** | `CanGrowBeyondPlan` | `CanConfigResize` |
 
-**State definition.** `IsNeedResourceCapUp` (bool) + `ResourceCapUpAxes` (`[]string`,
-cluster.go) = **at least one DB node is saturating at least one resource axis**, and the list
-names WHICH axes. It is a **monitoring signal only** — nothing consumes it yet (the resize is
-still admin/plan-triggered; see Status). The **axes are recorded** because the consequence
-differs (mem → OOM, disk → full, cpu → throttle, io → latency), so the eventual per-axis resize
-/ alert must distinguish them.
+**States are PER SERVER; the plan signals COMPOSE at the cluster.** Consumption is measured per
+server, resources within the plan are managed per server, so the atomic states live on the
+`ServerMonitor` — never a `Σ/N` cluster average that would hide a hot master. All are **signals
+only** — no action, no mutation, no resize (that is composed downstream; nothing consumes them
+yet, see Status). The axes are recorded (not a bare bool) because the consequence differs per axis
+(mem → OOM, disk → full, cpu → throttle, io → latency).
 
-**Trigger — SATURATION, per axis.** It lights up when ANY **real node** — the worst node, never
-a `Σ/N` average that would hide a hot master — has `consumed_axis ≥ config_axis × (1 −
-prov-db-cap-safety-pct/100)` on ANY axis (default 15 % → fire at 85 %). There is deliberately
-**no `config ≥ plan` path**: being provisioned AT the plan is the normal state (config == plan),
-which would light the signal permanently for every properly provisioned cluster. Config-driven,
-resource-termed (on-prem-compatible, not DBU/plan-specific).
+`ServerMonitor.CheckResourceConsumed()` (checkState) sets, from THIS server's own `DBUConsumed`,
+four per-axis states — two references × two directions, with a **dead-band** between the
+high-water (`prov-db-cap-safety-pct`, default 15 % → over at 85 %) and the low-water
+(`prov-db-cap-shrink-pct`, default 50 % → under at 50 %) so it never flaps:
+
+| server state | consumed vs | condition (per axis) | consequence |
+|---|---|---|---|
+| `ResourceConsumedOverConfigAxes`  | **config** (`GetConfigDBUPerNode`) | `≥ config × (1 − safety%)` | **raise THIS server's resources** (saturation) |
+| `ResourceConsumedUnderConfigAxes` | **config** | `≤ config × shrink%`        | **shrink THIS server's resources** |
+| `ResourceConsumedOverPlanAxes`    | **plan / cap** (`GetPlanDBUPerNode`) | `≥ plan × (1 − safety%)` | feeds cap-**up** |
+| `ResourceConsumedUnderPlanAxes`   | **plan / cap** | `≤ plan × shrink%`          | feeds cap-**down** |
+
+`Cluster.CheckResourceCapPlan()` (checkState) then COMPOSES the plan signals from the per-server
+`*Plan` states — **one server suffices to force OR to break the action**:
+- `IsNeedResourceCapUp`   = **ANY** up server over the plan (one hitting the envelope forces ↑);
+- `IsNeedResourceCapDown` = **EVERY** up server under the plan (one non-under server BREAKS ↓ —
+  safe-shrink: never lower the plan while any server still needs it).
+
+The **cap is already set at the plan**, so `IsNeedResourceCapUp` stays false while consumed <
+plan − margin. There is deliberately **no `config ≥ plan` path** (being provisioned AT the plan is
+the normal state — would fire permanently). Natural progression: consumption first saturates a
+server's config → raise that server's resources within the plan; once every server's consumption
+climbs to the plan envelope → cap up; when all fall back under → cap down.
 
 **Measurement source & window (defines what "consumed" means).** Consumption comes from the DBU
 sensor `share/scripts/dbjobs_new.sh` → `collect_dbu`, which runs **once per dbjobs_new invocation,
@@ -213,10 +230,12 @@ WorkloadStateMachine needs **hysteresis** (open 85 % / close ~75 %) + `pstatesN`
 +1 core, io +1000 iops, disk +40 GB) — not a whole DBU (would grow idle axes) and not a free
 native step (would drift off the DBU grid). The grow follows `ResourceCapUpAxes`.
 
-**Vocabulary (settled):** `prov-db-cap-burst-dbu` = TECHNICAL cgroup headroom above the config
-(anti-OOM), NOT overcommit. *Overcommit* = OVER-consumption (`consumed > plan`), *undercommit* =
-under-consumption (`plan > consumed`) — both DERIVED in the GUI from graphite (`diffSeries`),
-nothing emitted. `prov-db-overcommit-pct` = the commercial scale-up ceiling above.
+**Vocabulary (settled):** the container cgroup `--memory` cap = the DBU tier × mem-ratio, where
+the tier is chosen by `prov-db-resource-align`: `plan` (default) = the per-node plan, or `up` =
+the per-node config rounded up to the next DBU (`GetProvDbuFromConfigPerNode`). No extra offset.
+*Overcommit* = OVER-consumption (`consumed > plan`), *undercommit* = under-consumption
+(`plan > consumed`) — both DERIVED in the GUI from graphite (`diffSeries`), nothing emitted.
+`prov-db-overcommit-pct` = the commercial scale-up ceiling above the plan.
 
 ## Status / TODO
 
