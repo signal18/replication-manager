@@ -227,7 +227,9 @@ type ServerMonitor struct {
 	ResourceConsumedOverConfigAxes  []string `json:"resourceConsumedOverConfigAxes"`  // saturates its config -> raise this server's resources
 	ResourceConsumedUnderConfigAxes []string `json:"resourceConsumedUnderConfigAxes"` // under-uses its config -> shrink this server's resources
 	ResourceConsumedOverPlanAxes    []string `json:"resourceConsumedOverPlanAxes"`    // hits the plan/cap -> contributes to cap-up
-	ResourceConsumedUnderPlanAxes   []string `json:"resourceConsumedUnderPlanAxes"`   // under the plan/cap -> allows cap-down (only if ALL servers are)
+	ResourceConsumedUnderPlanAxes   []string  `json:"resourceConsumedUnderPlanAxes"`   // under the plan/cap -> allows cap-down (only if ALL servers are)
+	BufferPoolMemGrowDue            bool      `json:"bufferPoolMemGrowDue"`            // memory GROW due from buffer-pool PRESSURE (Innodb_buffer_pool_wait_free sustained), NOT occupancy -- folded into the mem axis by CanScaleConfigInPlan(up)
+	bufferPoolPressureSince         time.Time // when continuous buffer-pool pressure began (zero = not under pressure); >= scale-up speed -> BufferPoolMemGrowDue
 	DelayStat                   *ServerDelayStat            `json:"delayStat"`
 	SlaveVariables              SlaveVariables              `json:"slaveVariables"`
 	IsReseeding                 string                      `json:"isReseeding"`

@@ -184,10 +184,12 @@ func (server *ServerMonitor) CheckResourceConsumed() {
 	server.ResourceConsumedUnderConfigAxes = nil
 	server.ResourceConsumedOverPlanAxes = nil
 	server.ResourceConsumedUnderPlanAxes = nil
+	server.BufferPoolMemGrowDue = false
 	cluster := server.ClusterGroup
 	if cluster == nil || cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff {
 		return
 	}
+	server.checkBufferPoolPressure() // memory grow signal = pressure (not occupancy), folded into the mem axis
 	if cluster.resources == nil || server.IsDown() || server.DBUConsumed == nil {
 		return
 	}
@@ -209,6 +211,35 @@ func (server *ServerMonitor) CheckResourceConsumed() {
 	server.ResourceConsumedUnderConfigAxes = dropMem(consumedAxes(c, cfg, lo, false))
 	server.ResourceConsumedOverPlanAxes = dropMem(consumedAxes(c, plan, hi, true))
 	server.ResourceConsumedUnderPlanAxes = dropMem(consumedAxes(c, plan, lo, false))
+}
+
+// checkBufferPoolPressure sets the memory GROW signal from buffer-pool PRESSURE (not occupancy,
+// see dropMem). Innodb_buffer_pool_wait_free rising means InnoDB had to WAIT for a free page --
+// no clean page available -- which is a threshold-free sign the buffer pool is too small for the
+// working set. Once that pressure has PERSISTED for the scale-up-config-in-plan window,
+// BufferPoolMemGrowDue is set and CanScaleConfigInPlan(up) folds "mem" back into the due axes.
+// A single quiet cycle (delta 0) clears the sustain timer, so a blip never grows.
+func (server *ServerMonitor) checkBufferPoolPressure() {
+	server.BufferPoolMemGrowDue = false
+	cluster := server.ClusterGroup
+	if cluster == nil || server.IsDown() {
+		server.bufferPoolPressureSince = time.Time{}
+		return
+	}
+	if server.GetStatusDeltaValue("INNODB_BUFFER_POOL_WAIT_FREE") <= 0 {
+		server.bufferPoolPressureSince = time.Time{} // pressure cleared this cycle
+		return
+	}
+	if server.bufferPoolPressureSince.IsZero() {
+		server.bufferPoolPressureSince = time.Now()
+	}
+	d, err := time.ParseDuration(cluster.Conf.ScaleUpConfigInPlanSpeed)
+	if err != nil || d < time.Minute {
+		d = time.Minute
+	}
+	if time.Since(server.bufferPoolPressureSince) >= d {
+		server.BufferPoolMemGrowDue = true
+	}
 }
 
 // dropMem removes the memory axis from a scaling state. dbu_mem is cgroup memory OCCUPANCY,
@@ -441,7 +472,14 @@ func (server *ServerMonitor) CanScaleConfigInPlan(up bool) []string {
 		return nil
 	}
 	if up {
-		return server.canScaleSustained(true, server.ResourceConsumedOverConfigAxes, cluster.Conf.ScaleUpConfigInPlanSpeed, cluster.GetConfigDBUPerNode())
+		due := server.canScaleSustained(true, server.ResourceConsumedOverConfigAxes, cluster.Conf.ScaleUpConfigInPlanSpeed, cluster.GetConfigDBUPerNode())
+		// Memory grow rides buffer-pool PRESSURE, not occupancy (dropMem removed mem from the
+		// occupancy axes). checkBufferPoolPressure already applied the scale-up-window sustain,
+		// so if it is due, fold mem in (it can never already be present).
+		if server.BufferPoolMemGrowDue {
+			due = append(due, "mem")
+		}
+		return due
 	}
 	return server.canScaleSustained(false, server.ResourceConsumedUnderConfigAxes, cluster.Conf.ScaleDownConfigInPlanSpeed, cluster.GetConfigDBUPerNode())
 }

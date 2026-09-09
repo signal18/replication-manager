@@ -229,9 +229,14 @@ release on idle; only a restart or an explicit `SET GLOBAL` buffer-pool-down fre
 (`dropMem`). Growth is driven by **CPU usage and IO saturation** (and disk usage); real memory
 NEED surfaces *as IO* — a too-small buffer pool causes misses (`Innodb_buffer_pool_reads` → disk
 reads), which the io axis already sees. Memory SHRINK is the deliberate reclaim path, never an
-occupancy trigger. **Follow-up:** a pressure-based mem grow signal (`Innodb_buffer_pool_reads` /
-`wait_free` / hit-ratio, already emitted to graphite) to split an io-saturation trigger into
-"grow iops" vs "grow memory (bigger BP)".
+occupancy trigger. **Memory grow now rides pressure** (`checkBufferPoolPressure`): a rising
+`Innodb_buffer_pool_wait_free` (InnoDB waited for a free page — threshold-free) sustained over
+`prov-db-scale-up-config-in-plan-speed` sets `BufferPoolMemGrowDue`, which `CanScaleConfigInPlan(up)`
+folds back into the mem axis (so `CINF0007` fires on mem only under real pressure, and resolves when
+it clears). Read from in-memory `server.Status` via `GetStatusDeltaValue` (the BP counters are
+whitelist-gated in graphite, so not reliably queryable there). Further refinement: also weigh
+`Innodb_buffer_pool_reads` / hit-ratio to disambiguate an io-saturation trigger into grow-iops vs
+grow-memory.
 
 Repman re-emits the last reading every monitor tick (~2 s) for a continuous graph, but the
 underlying value only refreshes per sensor push (~60 s). A down / never-measured node is skipped
