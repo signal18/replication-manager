@@ -404,6 +404,21 @@ func (cluster *Cluster) AddPreservedVar(varName string, value string) error {
 	return nil
 }
 
+// IsVariablePreserved reports whether a DB variable is pinned to its running
+// value in the cluster's preserved set (01_preserved.cnf, the "agree"). Keys are
+// stored upper-cased. Returns false when the preserved set is not loaded yet.
+func (cluster *Cluster) IsVariablePreserved(varName string) bool {
+	cluster.preservedVarsMutex.RLock()
+	defer cluster.preservedVarsMutex.RUnlock()
+
+	if !cluster.preservedVarsLoaded {
+		return false
+	}
+
+	_, ok := cluster.preservedVars[strings.ToUpper(varName)]
+	return ok
+}
+
 // RemovePreservedVar removes a preserved variable
 func (cluster *Cluster) RemovePreservedVar(varName string) error {
 	cluster.preservedVarsMutex.Lock()

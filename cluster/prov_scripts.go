@@ -7,7 +7,9 @@
 package cluster
 
 import (
+	"errors"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -236,6 +238,54 @@ func (cluster *Cluster) StopProxyScript(server DatabaseProxy) error {
 	if err := scriptCmd.Wait(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s", err)
 		return err
+	}
+	return nil
+}
+
+// ChangePlanScript is the client-overridable service-plan (DBU) change gate,
+// the bash-hook counterpart of the built-in CanChangePlan check. It is passed
+// every argument needed to reproduce the change — cluster, credentials, the
+// from/to plan and the target plan's specs — so a client script can validate,
+// log, or reproduce it. A non-zero exit refuses the plan change. Empty config
+// is a no-op (the built-in immutable/preserved gate applies instead).
+func (cluster *Cluster) ChangePlanScript(fromPlan string, toPlan string) error {
+	if cluster.Conf.ProvDbChangePlanScript == "" {
+		return nil
+	}
+
+	// Resolve the target plan's specs so the script has full context.
+	var mem, cores, disk, iops string
+	for _, plan := range cluster.GetServicePlans() {
+		if plan.Plan == toPlan {
+			mem = strconv.Itoa(plan.DbMemory)
+			cores = strconv.Itoa(plan.DbCores)
+			disk = strconv.Itoa(plan.DbDataSize)
+			iops = strconv.Itoa(plan.DbIops)
+			break
+		}
+	}
+
+	// The script talks to repman's own API, the same convention as the other
+	// sample scripts (see share/scripts/staging_refresh.sh). GetExecEnv already
+	// builds the standard REPLICATION_MANAGER_URL/USER/PASSWORD/CLUSTER_NAME
+	// (API admin creds + URL) through the environment — never argv, which is
+	// world-visible and would leak into logs. Plan + specs stay as args for
+	// convenience. The script reaches every DB variable through the API, so it
+	// never needs DB hosts or DB credentials.
+	scriptCmd := exec.Command(cluster.Conf.ProvDbChangePlanScript, cluster.Name, fromPlan, toPlan, mem, cores, disk, iops)
+	scriptCmd.Env = append(cluster.GetExecEnv(),
+		"REPLICATION_MANAGER_FROM_PLAN="+fromPlan,
+		"REPLICATION_MANAGER_TO_PLAN="+toPlan,
+	)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", scriptCmd.String())
+
+	out, err := scriptCmd.CombinedOutput()
+	if len(out) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "prov-db-change-plan-script output: %s", strings.TrimSpace(string(out)))
+	}
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Service plan change refused by %s: %s", cluster.Conf.ProvDbChangePlanScript, err)
+		return errors.New("plan change refused by prov-db-change-plan-script: " + err.Error())
 	}
 	return nil
 }

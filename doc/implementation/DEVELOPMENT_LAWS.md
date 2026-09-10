@@ -254,6 +254,21 @@ branch that depends on it cherry-picks that export commit; carrying an export
 inside a feature branch is the exception, and is what triggers the
 concurrent-branch check above.
 
+**T22. NEVER add an API route without both an ACL rule and a Swagger
+annotation.** Every new HTTP route MUST (1) resolve to an ACL rule and (2)
+carry `// @Summary … @Router …` annotations on its handler. The ACL is
+path-based: `IsValidClusterACL` passes `r.URL.Path` to `IsURLPassACL`, which
+routes to `matchACLRules`, and **an unmatched path is DENIED** (`matchACLRules`
+returns false on no match) — so a route with no rule is not "open", it is
+silently broken for every non-owner user. Add the rule to the right set
+(`clusterACLRules`, `databaseACLRules`, `globalSettingsACLRules`, …) with the
+least-privilege grant for the operation (read endpoints use a `*-get`/`*-show`
+grant, e.g. `GrantDBConfigGet`; writes use the mutating grant), keyed on a
+`strings.Contains` pattern specific enough not to widen access to sibling
+paths (longest-match wins). The Swagger block keeps `doc/api_latest.md`
+generatable and the route discoverable. A handler without both is incomplete —
+the route is unreachable in practice or invisible in the API surface.
+
 ---
 
 *Precedence: functional laws outrank technical laws; the perpetual-monitoring
