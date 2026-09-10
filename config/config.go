@@ -1302,8 +1302,10 @@ const (
 
 // Fixed resource quantities that define one App Unit.
 const (
+	// App Unit == APU (same concept): 1 core / 1 GB / 10 GB, matching ProfileCompute in
+	// the ResourceManager. Kept in sync -- an app unit and a proxy APU are one thing.
 	AppUnitCpuCores = 1    // 1 core per App Unit
-	AppUnitMemMB    = 4096 // 4 GB per App Unit (in MB)
+	AppUnitMemMB    = 1024 // 1 GB per App Unit (in MB) -- unified with APU (was 4 GB)
 	AppUnitDiskGB   = 10   // 10 GB per App Unit
 )
 const (

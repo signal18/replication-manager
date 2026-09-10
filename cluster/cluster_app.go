@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -1197,12 +1196,10 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 		cluster.resources.SetAppPlan(AppKey{Cluster: cluster.Name, App: prx.GetName(), Kind: KindProxy}, &r)
 	}
 
-	// Materialize the APU POOL = Σ per-unit (proxies×1 + apps), the Compute mirror of the
-	// DBU pool. It's DERIVED from the per-unit plans just set (no changePlanMethod): the
-	// pool is the contract, always coherent with the units, so prov-service-plan-apu tracks
-	// the real units (1 proxy -> 1 APU) instead of a stale default. This is what the RM
-	// aggregates fleet-wide for overcommit, and what CanPlanIncrease() reads.
-	cluster.Conf.ProvServicePlanApu = int(math.Ceil(cluster.resources.AppPlanByCluster(cluster.Name).Apu))
+	// NOTE: prov-service-plan-apu is the CLIENT-SET technical resource RESERVATION (the
+	// contract), NOT derived from the units here -- the per-unit plans set above feed the
+	// RM (floor + pool-consumption tracking), but the cap itself is moved by the slider and
+	// validated/hooked through SaveChangePlan, not force-recomputed each cycle.
 }
 
 func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {

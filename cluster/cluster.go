@@ -1376,12 +1376,16 @@ func (cluster *Cluster) StateProcessing() {
 	// prov-service-plan-dbu is then a REAL, always-populated config field that propagates to
 	// every serialization -- the GUI just READS it, never re-derives ratios in JS.
 	if len(cluster.Servers) > 0 {
-		// The pool IS the contract and is ALWAYS coherent with the per-unit config:
-		// recompute it unconditionally = per-node DBU × node count. (Previously a pinned
-		// cloud value was left stale when the per-node slider changed prov-db-* -- the
-		// "contract becomes unclear" gap. On-premise already recomputed; now cloud does too,
-		// so the DBU number always == what is actually configured.)
-		cluster.Conf.ProvServicePlanDbu = cluster.GetProvDbuFromConfigPerNode() * len(cluster.Servers)
+		// prov-service-plan-dbu is the CLIENT-SET technical resource RESERVATION (the
+		// contract the slider moves) -- it is NOT derived from the provisioned resource
+		// (prov-db-*), which lives UNDER the cap. Only auto-seed it when unset (0) or on
+		// on-premise (no marketplace sets it there); a client-set value is left alone so a
+		// reservation can legitimately sit above what is currently provisioned.
+		orch := cluster.GetOrchestrator()
+		onPremise := orch == config.ConstOrchestratorOnPremise || orch == config.ConstOrchestratorLocalhost || orch == ""
+		if cluster.Conf.ProvServicePlanDbu == 0 || onPremise {
+			cluster.Conf.ProvServicePlanDbu = cluster.GetProvDbuFromConfigPerNode() * len(cluster.Servers)
+		}
 	}
 	if !cluster.StateMachine.IsInFailover() {
 		// trigger action on resolving states
