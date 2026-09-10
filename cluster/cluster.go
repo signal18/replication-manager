@@ -1269,6 +1269,7 @@ func (cluster *Cluster) tickBody() {
 					goRun(cluster.CheckClusterServiceAgents)
 				}
 				if cluster.Conf.GraphiteMetrics && heartbeats%5 == 0 {
+					cluster.CollectComputeMetrics() // queue APU (proxies+apps) BEFORE the flush -> same batch
 					goRun(func() { cluster.SendGraphiteMetrics() })
 					goRun(cluster.CheckDisksUsage)
 				}
