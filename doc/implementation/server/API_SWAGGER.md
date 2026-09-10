@@ -77,6 +77,35 @@ git diff --stat docs/swagger.json             # expect insertions, NOT a mass de
 If the path count drops toward 0, DO NOT commit — the generation aborted (wrong flags);
 `git checkout -- docs/` and use the exact command above.
 
+## ACL rule (T6 — required for reachable endpoints)
+
+`IsValidClusterACL` → `IsURLPassACL` matches the **request URL path** against grant
+tables, and **denies (403) any path with no matching rule** — so a new state-changing
+endpoint is *unreachable* until you add its rule. Add it WITH the handler, not after a
+403.
+
+Rule tables (`cluster/cluster_acl_rules.go`):
+
+| Table | For |
+|---|---|
+| `clusterACLRules` | per-cluster endpoints `/api/clusters/{name}/…` |
+| `globalSettingsACLRules` | global `/api/clusters/settings/…` |
+| `IsURLPassDatabasesACL` / `…ProxiesACL` / `…AppsACL` | `/servers`, `/proxies`, `/apps` sub-trees |
+
+A rule is `{URLPattern, nil, []string{grant, …}}`. Reuse the closest existing grant
+rather than inventing one — config/sync actions use `config.GrantClusterSettings`
+(same as `/settings/actions/reload`); DB-config actions `GrantDBConfigFlag`; etc.
+Example (the git actions):
+
+```go
+{"/settings/actions/git-push",   nil, []string{config.GrantClusterSettings}},
+{"/settings/actions/git-repair", nil, []string{config.GrantClusterSettings}},
+```
+
+Note the `/settings/actions/` special-case in `IsURLPassACL` (a `/settings/actions/*`
+URL only matches rules whose pattern also contains `/settings/actions/`), so put the
+rule under that prefix, not a bare `/actions/` one.
+
 ## Checklist when adding an endpoint
 
 - [ ] Handler in `server/api_*.go`, route in the mux (`router.Handle(...)`).

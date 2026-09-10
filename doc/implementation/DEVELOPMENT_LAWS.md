@@ -109,14 +109,23 @@ or ad-hoc checks. Criticality is carried by the tracked state; the transition is
 the trigger. Keep it flap-free (a %N-tick state must live in `pstatesN`).
 
 **T6. NEVER implement an API call without a GUI interface — and never without
-Swagger.** Every API endpoint ships with its GUI — no API-only features. Present a
-GUI whenever possible; don't leave a capability CLI/API/config-only. Every new
-handler MUST also carry its **Swagger annotations** (`// @Summary`, `@Tags`,
-`@Param`, `@Success`/`@Failure`, `@Router …/[method]`) and the generated
-`docs/swagger.{json,yaml}` MUST be regenerated (`swag init`) — no API without
-Swagger. An endpoint is not "done" until it is documented in Swagger. See
+Swagger, and never without an ACL rule.** Every API endpoint ships with its GUI —
+no API-only features. Present a GUI whenever possible; don't leave a capability
+CLI/API/config-only. Every new handler MUST also:
+- carry its **Swagger annotations** (`// @Summary`, `@Tags`, `@Param`,
+  `@Success`/`@Failure`, `@Router …/[method]`) and the generated
+  `docs/swagger.{json,yaml}` MUST be regenerated (`swag init`) — no API without
+  Swagger; and
+- have its **ACL rule** — a write/action endpoint that changes state MUST map to a
+  grant in the ACL rule table (`cluster/cluster_acl_rules.go`
+  `clusterACLRules` / `globalSettingsACLRules` / the databases/proxies/apps tables),
+  reusing the closest existing grant (e.g. `GrantClusterSettings`). Without a rule
+  `IsURLPassACL` denies it (403) — the endpoint is unreachable, not open. Add the
+  rule WITH the handler, not after a 403.
+
+An endpoint is not "done" until it has GUI + Swagger + ACL. See
 `doc/implementation/server/API_SWAGGER.md` for the annotation shape, the
-regeneration command, and the verify-before-commit step.
+regeneration command, the ACL-rule step, and the verify-before-commit checklist.
 
 **T7. Expose each unified capability behind a programmatic interface (a pluggable
 abstraction).** One Go interface, multiple backends — never parallel hard-wired
