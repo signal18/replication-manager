@@ -1132,6 +1132,22 @@ func (cluster *Cluster) computePlanAPUReading(now time.Time, memStr, coresStr, d
 		int64(memMB)*1024*1024, cores, int64(diskGB)*1024*1024*1024)
 }
 
+// IngestAppConsumedAPU converts a compute-sensor push (raw cgroup maxima for ONE
+// stateless Compute unit -- an app deployment or a proxy) into an APUReading via the
+// Compute profile and records it as consumed, so AppConsumedByCluster reflects live
+// app/proxy compute (and the per-cluster GUI graph can read it). Mirror of the DB
+// track's IngestDBUMaxes. Returns the reading for logging; no-op (zero reading) when
+// no manager is wired.
+func (cluster *Cluster) IngestAppConsumedAPU(kind ComputeKind, name string, start, end time.Time, memMaxBytes int64, cpuMaxCores float64, diskMaxBytes int64) APUReading {
+	if cluster == nil || cluster.resources == nil {
+		return APUReading{}
+	}
+	r := cluster.resources.ComputeUsedAPU(start, end, memMaxBytes, cpuMaxCores, diskMaxBytes)
+	k := AppKey{Cluster: cluster.Name, App: name, Kind: kind}
+	cluster.resources.SetAppConsumed(k, &r)
+	return r
+}
+
 // RefreshComputePlanAPU projects the PLANNED resources of every stateless Compute
 // unit -- the configurator app deployments (cluster.Apps) and the proxies
 // (cluster.Proxies) -- into APU (Compute profile) and records each as its plan in

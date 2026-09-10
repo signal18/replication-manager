@@ -185,6 +185,13 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDBUConsumed)),
 	))
+	// APU consumed push: the thin compute sensor running in an app/proxy jobs
+	// sidecar (same JWT as the dbjob callbacks) POSTs the raw per-axis period maxima
+	// for one stateless Compute unit (kind = app|proxy); repman projects them to APU.
+	router.Handle("/api/clusters/{clusterName}/apu/{kind}/{name}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppAPUConsumed)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/processlist", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerProcesslist)),
@@ -4892,6 +4899,55 @@ func (repman *ReplicationManager) handlerMuxServerDBUConsumed(w http.ResponseWri
 		"DBU consumed %s: %.2f (%s-bound) [cpu=%.2f mem=%.2f io=%.2f disk=%.2f]",
 		node.URL, reading.Dbu, reading.Binding, reading.DbuCpu, reading.DbuMem, reading.DbuIo, reading.DbuDisk)
 
+	w.WriteHeader(http.StatusOK)
+}
+
+// handlerMuxAppAPUConsumed receives the APU compute-sensor push for one stateless
+// Compute unit (an app deployment or a proxy): the sensor in the service's jobs
+// sidecar POSTs the raw per-axis period maxima, repman projects them to APU here
+// (Compute profile) and records them as consumed, so the per-cluster APU graph and
+// AppConsumedByCluster reflect live app/proxy compute. The DB CPU is never spent on it.
+// @Summary Ingest an app/proxy APU compute-sensor push
+// @Description The compute sensor (app/proxy jobs sidecar) POSTs raw cgroup period maxima (mem/cpu/disk) for one Compute unit; repman projects them to APU via the Compute profile and records them as consumed. kind = app | proxy.
+// @Tags ClusterResources
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param kind path string true "Compute kind: app or proxy"
+// @Param name path string true "App deployment or proxy name"
+// @Success 200 {string} string "ingested"
+// @Failure 400 {string} string "Decode error / invalid kind"
+// @Failure 404 {string} string "Cluster not found"
+// @Router /api/clusters/{clusterName}/apu/{kind}/{name} [post]
+func (repman *ReplicationManager) handlerMuxAppAPUConsumed(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusNotFound)
+		return
+	}
+	kind := cluster.ComputeKind(vars["kind"])
+	if kind != cluster.KindApp && kind != cluster.KindProxy {
+		http.Error(w, "Invalid kind (app|proxy)", http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		WindowStart  time.Time `json:"windowStart"`
+		WindowEnd    time.Time `json:"windowEnd"`
+		MemMaxBytes  int64     `json:"memMaxBytes"`
+		CpuMaxCores  float64   `json:"cpuMaxCores"`
+		DiskMaxBytes int64     `json:"diskMaxBytes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Decode error: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	reading := mycluster.IngestAppConsumedAPU(kind, vars["name"], req.WindowStart, req.WindowEnd, req.MemMaxBytes, req.CpuMaxCores, req.DiskMaxBytes)
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+		"APU consumed %s/%s: %.2f (%s-bound) [cpu=%.2f mem=%.2f disk=%.2f]",
+		kind, vars["name"], reading.Apu, reading.Binding, reading.ApuCpu, reading.ApuMem, reading.ApuDisk)
 	w.WriteHeader(http.StatusOK)
 }
 
