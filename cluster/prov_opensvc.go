@@ -325,6 +325,11 @@ func (cluster *Cluster) openSVCCreateMapsV2(svc opensvc.Collector, agent string)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "SHARDPROXY_ROOT_PASSWORD", err)
 	}
+	// APU (Compute) sensor credential -- see openSVCCreateMapsV3 for the rationale.
+	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "SENSOR_API_KEY", cluster.GetSystemAPIKey())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "SENSOR_API_KEY", err)
+	}
 
 	err = svc.CreateConfigV2(cluster.Name, "env", agent)
 	if err != nil {
@@ -381,6 +386,14 @@ func (cluster *Cluster) openSVCCreateMapsV3(svc opensvc.Collector, agent string)
 	err = svc.CreateSecretKeyValue(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
 	if err != nil {
 		errs["SHARDPROXY_ROOT_PASSWORD"] = err
+	}
+	// APU (Compute) sensor credential: the derived `system` API key, delivered via the
+	// OpenSVC SECRET channel (never svcenv/git). app_job.sh logs in as `system` with it
+	// so stateless proxies/apps -- which have no DB password -- can push /apu. Rotatable
+	// with the repman private key (GetSystemAPIKey = HMAC(SecretKey, cluster)).
+	err = svc.CreateSecretKeyValue(cluster.Name, "env", "SENSOR_API_KEY", cluster.GetSystemAPIKey())
+	if err != nil {
+		errs["SENSOR_API_KEY"] = err
 	}
 
 	if len(errs) > 0 {

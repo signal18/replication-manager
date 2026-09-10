@@ -486,6 +486,12 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateSectionMap(servers string, pri Da
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
 	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(pri.GetPort())
 
+	// APU (Compute) sensor sidecar: proxies are stateless and consume Compute, so they
+	// report their cgroup usage to the ResourceManager like the DB jobs container does.
+	if cluster.Conf.MonitoringSystemResources {
+		svcsection["container#sensor"] = cluster.OpenSVCGetSensorContainerSection(string(KindProxy), pri.GetName())
+	}
+
 	if prx, ok := pri.(*MariadbShardProxy); ok {
 		svcsection["container#prx"] = cluster.OpenSVCGetShardproxyContainerSection(prx)
 	}

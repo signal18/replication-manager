@@ -682,6 +682,43 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 	return svcenv
 }
 
+// OpenSVCGetSensorContainerSection builds the APU (Compute) sensor sidecar shared by
+// proxy and app services. It is a long-running busybox container (detach=true, unlike
+// the one-shot init container) that shares the service netns (container#01, for egress
+// to repman) and has ONLY this service's cgroup slice bound read-only at /svc-cgroup
+// (least privilege, same rationale as the DB jobs container). It runs init/app_job --
+// staged into the config tarball via go:embed share/scripts/app_job.sh and extracted
+// into the shared FS by the init container -- so no image baking and no moduleset edit.
+// The SENSOR_API_KEY comes via the OpenSVC SECRET channel (secrets_environment), never
+// svcenv. Gated by MonitoringSystemResources (the off-switch, T14).
+func (cluster *Cluster) OpenSVCGetSensorContainerSection(kind string, name string) map[string]string {
+	svccontainer := make(map[string]string)
+	if cluster.Conf.ProvType != "docker" && cluster.Conf.ProvType != "podman" {
+		return svccontainer
+	}
+	svccontainer["type"] = "docker"
+	svccontainer["image"] = "busybox"
+	svccontainer["netns"] = "container#01"
+	svccontainer["detach"] = "true"
+	svccontainer["rm"] = "true"
+	svccontainer["entrypoint"] = "/bin/sh"
+	if cluster.Conf.ProvDiskType != "volume" {
+		svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {env.base_dir}:/bootstrap"
+	} else {
+		svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}:/bootstrap"
+	}
+	// Bind ONLY this service's cgroup slice read-only -- NOT --cgroupns=host, which would
+	// expose every co-tenant on a shared node. {namespace}/{svcname} substituted by OpenSVC.
+	svccontainer["volume_mounts"] += " /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"
+	svccontainer["secrets_environment"] = "env/SENSOR_API_KEY"
+	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_URL"
+	svccontainer["environment"] = "MRM_CLUSTER={namespace} SENSOR_KIND=" + kind + " SENSOR_NAME=" + name + " SENSOR_INTERVAL=60"
+	// The init container (detach=false) extracts init/app_job before later containers
+	// start; the wait-loop makes the sidecar robust to ordering/retries regardless.
+	svccontainer["command"] = "-c 'while [ ! -f /bootstrap/init/app_job ]; do sleep 2; done; exec sh /bootstrap/init/app_job'"
+	return svccontainer
+}
+
 func (cluster *Cluster) OpenSVCGetNamespaceContainerSection() map[string]string {
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {

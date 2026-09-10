@@ -1,12 +1,17 @@
-#!/bin/bash
+#!/bin/sh
 # app_job.sh -- stateless Compute (APU) sensor for app deployments and proxies.
 #
 # Companion to dbjobs_new.sh's collect_dbu (the DBU sensor for databases). It runs in a
-# small sidecar that shares the service's netns (container#01, for egress to repman) and
-# has the whole-service cgroup bound read-only at /svc-cgroup. It reads the cgroup, logs
-# in as the `system` API-key service account, and POSTs the per-window APU maxima to
-# repman, which computes the APU (normalise / pivot / binding) so the client workload's
-# CPU is never spent on it.
+# small busybox sidecar that shares the service's netns (container#01, for egress to
+# repman) and has the whole-service cgroup bound read-only at /svc-cgroup. It reads the
+# cgroup, logs in as the `system` API-key service account, and POSTs the per-window APU
+# maxima to repman, which computes the APU (normalise / pivot / binding) so the client
+# workload's CPU is never spent on it.
+#
+# Busybox-friendly by design (ash `sh` + `wget`, no bash/curl): the sidecar is the same
+# tiny `busybox` image as the proxy init container, and the script itself ships embedded
+# in the repman binary (go:embed share/scripts/app_job.sh), staged into the service
+# config tarball as init/app_job and extracted into the shared FS by the init container.
 #
 # APU (Compute profile) has THREE axes -- mem, cpu, disk -- and NO io (no IOPS lock),
 # so unlike collect_dbu this pushes no ioMaxIops. cpu is a rate vs the previous run's
@@ -44,9 +49,12 @@ if [ -z "$URL" ] || [ -z "$KEY" ] || [ -z "$CLUSTER" ] || [ -z "$NAME" ]; then
 fi
 
 # Log in as the system service account with the injected API key; echoes the JWT or "".
+# busybox wget: -O- to stdout, --post-data for POST, --header repeatable.
 system_login() {
-    curl -sk -m 10 -X POST "$URL/api/login" -H 'Content-Type: application/json' \
-        -d "{\"username\":\"system\",\"password\":\"$KEY\"}" 2>/dev/null \
+    wget -q --no-check-certificate -O- \
+        --header "Content-Type:application/json" \
+        --post-data "{\"username\":\"system\",\"password\":\"$KEY\"}" \
+        "$URL/api/login" 2>/dev/null \
         | grep -o '"token":"[^"]*"' | head -1 | cut -d'"' -f4
 }
 
@@ -54,7 +62,6 @@ system_login() {
 collect_apu() {
     [ -r "$CG/memory.current" ] || { log "no readable cgroup at $CG; skip"; return 0; }
 
-    local now mem cpu disk
     now=$(date +%s)
     mem=$(cat "$CG/memory.current" 2>/dev/null || echo 0)
     cpu=$(awk '/^usage_usec/{print $2}' "$CG/cpu.stat" 2>/dev/null || echo 0)
@@ -63,28 +70,29 @@ collect_apu() {
     # refinement can statfs the unit's data volume if one is mounted into the sidecar.
     disk=0
 
-    local pe pc
+    pe=""; pc=""
     [ -s "$CKPT" ] && read -r pe pc < "$CKPT"
     echo "$now $cpu" > "$CKPT"
-    [ -z "${pe:-}" ] && return 0                 # first run: seed the checkpoint, no push
-    local dt=$((now - pe))
+    [ -z "$pe" ] && return 0                      # first run: seed the checkpoint, no push
+    dt=$((now - pe))
     [ "$dt" -le 0 ] && return 0                   # clock skew
 
-    local cores
     cores=$(awk -v c="$cpu" -v p="$pc" -v dt="$dt" 'BEGIN{printf "%.4f", (c-p)/(dt*1000000)}')
 
-    local tok
     tok=$(system_login)
     [ -z "$tok" ] && { log "login failed; skip push"; return 0; }
 
-    local ws we
+    # busybox date may not support -d @epoch; fall back to current time (window is
+    # approximate -- repman uses the values, not the exact boundaries).
     ws=$(date -u -d "@$pe" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
     we=$(date -u -d "@$now" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
 
-    local data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cores,\"diskMaxBytes\":$disk}"
-    curl -sk -m 10 -X POST "$URL/api/clusters/$CLUSTER/apu/$KIND/$NAME" \
-        -H "Authorization: Bearer $tok" -H 'Content-Type: application/json' \
-        -d "$data" >/dev/null 2>&1 || log "push failed (non-fatal)"
+    data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cores,\"diskMaxBytes\":$disk}"
+    wget -q --no-check-certificate -O- \
+        --header "Authorization: Bearer $tok" \
+        --header "Content-Type:application/json" \
+        --post-data "$data" \
+        "$URL/api/clusters/$CLUSTER/apu/$KIND/$NAME" >/dev/null 2>&1 || log "push failed (non-fatal)"
 }
 
 log "APU sensor starting: $KIND/$NAME -> $URL (cluster $CLUSTER), every ${INTERVAL}s"
