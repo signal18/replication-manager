@@ -142,11 +142,13 @@ func (cluster *Cluster) alignDBResourceToPlan(planDBU int) {
 }
 
 // alignProxyResourceToPlan sets the proxy resource from the cluster APU reservation, using the
-// ProfileCompute ratios. The APU plan is a shared pool (proxies + apps); until the app credit
-// fold-in lands, proxies are the setter-backed consumers and the pool is spread over the unit
-// count (each reserving >=1 APU), which at the floor gives 1 APU = 1c/1GB/10GB per proxy.
+// ProfileCompute ratios. The APU plan is designed as a shared pool (proxies + apps), but until
+// the app-credit fold-in pass lands, apps are OWNED by Ahmad's credit system and are NOT touched
+// here: the align is PROXY-ONLY (spread over the proxy count; at the floor 1 APU = 1c/1GB/10GB
+// per proxy). Counting apps in the divisor would only dilute the proxy share while provisioning
+// no app -- half-wiring. Apps join when the credit -> shared-pool fold-in is done.
 func (cluster *Cluster) alignProxyResourceToPlan(planAPU int) {
-	units := len(cluster.Proxies) + len(cluster.Apps)
+	units := len(cluster.Proxies)
 	if units < 1 {
 		units = 1
 	}
@@ -180,7 +182,7 @@ func (cluster *Cluster) planUnitSpec(unit PlanUnit) (cur int, floor int, apply f
 		return cluster.Conf.ProvServicePlanDbu, nodes, // floor = 1 DBU per node
 			func(v int) { cluster.Conf.ProvServicePlanDbu = v }, nil
 	case PlanUnitAPU:
-		floor := len(cluster.Proxies) + len(cluster.Apps) // floor = 1 APU per proxy/app
+		floor := len(cluster.Proxies) // floor = 1 APU per proxy (apps join at the credit fold-in)
 		if floor < 1 {
 			floor = 1
 		}
