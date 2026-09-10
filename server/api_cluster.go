@@ -295,6 +295,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAcceptCompliance)),
 	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/settings/actions/git-push", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterGitPush)),
+	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/settings/actions/git-repair", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterGitRepair)),
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/configurator/compliance-diff", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxComplianceDiff)),
@@ -5737,6 +5745,74 @@ func (repman *ReplicationManager) handlerMuxAcceptCompliance(w http.ResponseWrit
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"compliance update accepted"}`))
+}
+
+// handlerMuxClusterGitPush forces the server-level config-repo push NOW (the
+// outbound git sync that normally only fires dirty-gated in the config-sync loop).
+// It runs the real push path (PushAllConfigsToGit), which self-heals a corrupt
+// pack (reclone + retry) on its own. Serialized with the sync worker via the git
+// lock. Server-level (one repo, all clusters); routed per-cluster for ACL.
+func (repman *ReplicationManager) handlerMuxClusterGitPush(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if repman.ConfigManager == nil || repman.Conf.GitUrl == "" {
+		http.Error(w, `{"error":"git config sync not configured (git-url empty)"}`, http.StatusConflict)
+		return
+	}
+	var err error
+	repman.ConfigManager.WithGitLock(func() {
+		err = repman.ConfigManager.PushAllConfigsToGit(repman.Conf, repman.ClusterList)
+	})
+	if err != nil {
+		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
+		http.Error(w, string(errJSON), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"config pushed to git"}`))
+}
+
+// handlerMuxClusterGitRepair forces the explicit self-heal: refresh git metadata
+// (reclone, which re-inits the local .git from the remote and sheds corrupt/
+// dangling objects) then push a clean pack. Use when the config-repo push is stuck
+// (e.g. after a gitlab failover emptied the remote and pushes fail the remote's
+// receive fsck). Serialized with the sync worker via the git lock.
+func (repman *ReplicationManager) handlerMuxClusterGitRepair(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if repman.ConfigManager == nil || repman.Conf.GitUrl == "" {
+		http.Error(w, `{"error":"git config sync not configured (git-url empty)"}`, http.StatusConflict)
+		return
+	}
+	var err error
+	repman.ConfigManager.WithGitLock(func() {
+		err = repman.ConfigManager.RepairAndPush(repman.Conf, repman.ClusterList)
+	})
+	if err != nil {
+		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
+		http.Error(w, string(errJSON), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"git repaired and pushed"}`))
 }
 
 // handlerMuxComplianceDiff returns a structured diff between the previous
