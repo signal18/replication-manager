@@ -46,36 +46,36 @@ route, method lowercase).
 **`@Router` path = the registered route.** For a per-cluster action that is really
 server-level (like git-push), still document the per-cluster route it is registered on.
 
-## Regenerating the docs
+## Regenerating the docs — use this exact command
 
 ```
-swag init -g server/http.go --parseDependency --parseInternal -o docs
+GOFLAGS="-tags=server" swag init -g server/http.go --parseDependency --parseInternal -o docs
 ```
+
+The `GOFLAGS="-tags=server"` is **required** and non-obvious — here is why:
+
+- The repo root's `main_*.go` files are all build-tag-gated (`//go:build server` /
+  `clients` / `arbitrator`), so with **no** tag `go list ./` reports *"build constraints
+  exclude all Go files"*. swag relies on that module resolution to map an annotation's
+  type (e.g. `treehelper.FileTreeCache`, defined in `utils/treehelper`) to a package it
+  can parse. When it fails, that one unresolved type **aborts the whole generation** →
+  an empty `swagger.json` (all 347+ paths gone).
+- But passing `--tags server` *to swag itself* makes swag's file walker **skip the
+  untagged handler files** (`server/api_*.go` have no build tag) → 0 paths.
+- The fix is to put the tag in **`GOFLAGS`** (so swag's internal `go list` resolves the
+  module and every type) while **not** passing `--tags` to swag (so it still scans all
+  handler files). That yields the full doc, types resolved.
 
 **Always verify before committing** — a bad run silently strips the file:
 
 ```
-grep -c '"/api/clusters' docs/swagger.json   # must stay >= the previous count (currently 347)
+grep -c '"/api/clusters' docs/swagger.json   # must stay >= the previous count (~347)
 grep -c '<your-new-path>' docs/swagger.json   # must be >= 1
+git diff --stat docs/swagger.json             # expect insertions, NOT a mass deletion
 ```
 
-If the path count drops toward 0, DO NOT commit — the generation aborted (see below);
-`git checkout -- docs/` and fix the blocker first.
-
-## Known blocker (fix before a clean regen is possible)
-
-`swag init` currently **aborts** with:
-
-```
-ParseComment error in file server/api_app.go ... '// @Success 200 {object} treehelper.FileTreeCache ...':
-cannot find type definition: treehelper.FileTreeCache
-```
-
-swaggo cannot resolve that response type, and one unresolved type aborts the **whole**
-generation → an empty `swagger.json`. Until it is fixed (resolve/rename the type in the
-`@Success` annotation, or make swaggo parse the `treehelper` package), `swag init` cannot
-regenerate the full doc in place — new annotations are correct in source but won't render.
-This is a pre-existing repo issue, tracked separately from any one endpoint.
+If the path count drops toward 0, DO NOT commit — the generation aborted (wrong flags);
+`git checkout -- docs/` and use the exact command above.
 
 ## Checklist when adding an endpoint
 

@@ -9638,7 +9638,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/del-maintenance": {
             "get": {
-                "description": "Deletes the maintenance mode on a specified server within a cluster.",
+                "description": "Deletes the maintenance mode on a specified server within a cluster.\nAlso clears the durable maintenance membership, so the server does\nnot come back into maintenance on the next process restart or\nconfig reload.",
                 "produces": [
                     "application/json"
                 ],
@@ -9875,7 +9875,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/maintenance": {
             "get": {
-                "description": "Toggles the maintenance mode on a specified server within a cluster.",
+                "description": "Toggles the maintenance mode on a specified server within a cluster.\nMaintenance mode is durable: it is written to the cluster's\ndynamic configuration and restored on process restart or config\nreload, so a server stays excluded from proxy routing and failover\nelection until maintenance is explicitly cleared. Requires\nmonitoring-save-config=true (the default) to survive a restart.",
                 "produces": [
                     "application/json"
                 ],
@@ -10735,7 +10735,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/set-maintenance": {
             "get": {
-                "description": "Sets a specified server within a cluster to maintenance mode.",
+                "description": "Sets a specified server within a cluster to maintenance mode.\nMaintenance mode is durable: it is written to the cluster's\ndynamic configuration and restored on process restart or config\nreload, so the server stays excluded from proxy routing and\nfailover election until maintenance is explicitly cleared.\nRequires monitoring-save-config=true (the default) to survive a\nrestart.",
                 "produces": [
                     "application/json"
                 ],
@@ -17295,6 +17295,116 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/settings/actions/git-push": {
+            "post": {
+                "description": "Triggers the server-level config git push immediately instead of waiting for the dirty-gated config-sync loop. Runs the real push path, which self-heals a corrupt pack (reclone + retry). Server-level (one repo, all clusters); routed per-cluster for ACL. Requires GrantClusterSettings.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSettings"
+                ],
+                "summary": "Force the config-repo push to git now",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "config pushed to git",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "git config sync not configured",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/settings/actions/git-repair": {
+            "post": {
+                "description": "Explicit self-heal: refresh git metadata (reclone re-inits the local .git from the remote, shedding corrupt/dangling objects) then push a clean pack. Use when the config-repo push is stuck (e.g. after a gitlab failover emptied the remote and pushes fail the remote receive fsck). Server-level; routed per-cluster for ACL. Requires GrantClusterSettings.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSettings"
+                ],
+                "summary": "Repair a stuck config-repo git sync and push",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "git repaired and pushed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "git config sync not configured",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/settings/actions/preserve-variable/{variableName}/{preserve}": {
             "get": {
                 "description": "Preserves or unpreserves a variable for the specified cluster.",
@@ -20415,6 +20525,25 @@ const docTemplate = `{
                         "description": "Unauthorized",
                         "schema": {
                             "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/global/resources": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Global ResourceManager view",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.globalResourcesResponse"
                         }
                     }
                 }
@@ -24830,6 +24959,9 @@ const docTemplate = `{
                 "dbServersLocality": {
                     "type": "string"
                 },
+                "dbServersMaintenanceHosts": {
+                    "type": "string"
+                },
                 "dbServersPreferedMaster": {
                     "type": "string"
                 },
@@ -25430,6 +25562,9 @@ const docTemplate = `{
                 "maxscaleMaxinfoPort": {
                     "type": "integer"
                 },
+                "maxscaleMode": {
+                    "type": "string"
+                },
                 "maxscalePass": {
                     "type": "string"
                 },
@@ -25440,6 +25575,12 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "maxscaleReadWritePort": {
+                    "type": "integer"
+                },
+                "maxscaleRestApi": {
+                    "type": "boolean"
+                },
+                "maxscaleRestPort": {
                     "type": "integer"
                 },
                 "maxscaleServerMatchPort": {
@@ -25643,6 +25784,9 @@ const docTemplate = `{
                 "monitoringQueryTimeout": {
                     "type": "integer"
                 },
+                "monitoringResolveServerIP": {
+                    "type": "boolean"
+                },
                 "monitoringRestoreConfigOnStart": {
                     "type": "boolean"
                 },
@@ -25702,6 +25846,9 @@ const docTemplate = `{
                 },
                 "monitoringSqlErrorLogLength": {
                     "type": "integer"
+                },
+                "monitoringSystemResources": {
+                    "type": "boolean"
                 },
                 "monitoringTenant": {
                     "type": "string"
@@ -25922,6 +26069,14 @@ const docTemplate = `{
                 "provDBCompliance": {
                     "type": "string"
                 },
+                "provDBDynamicResizeDailyTime": {
+                    "description": "HH:MM daily window when policy = daily-time",
+                    "type": "string"
+                },
+                "provDBDynamicResizePolicy": {
+                    "description": "WHEN a live memory resize applies: \"scale-speed\" (default) / \"daily-time\"",
+                    "type": "string"
+                },
                 "provDBForceWriteConfig": {
                     "type": "boolean"
                 },
@@ -25943,11 +26098,22 @@ const docTemplate = `{
                 "provDbBootstrapScript": {
                     "type": "string"
                 },
+                "provDbCapSafetyPct": {
+                    "description": "HIGH-water margin: a server is \"over\" a reference on an axis when consumed \u003e= ref x (1 - pct/100). Drives raise-resources (vs config) and cap-up (vs plan). Default 15 (85%)",
+                    "type": "integer"
+                },
+                "provDbCapShrinkPct": {
+                    "description": "LOW-water margin: a server is \"under\" a reference on an axis when consumed \u003c= ref x (pct/100). Drives shrink-resources (vs config) and cap-down (vs plan). The dead-band [shrink-pct, 100-safety-pct] = status quo (anti-flap). Default 50",
+                    "type": "integer"
+                },
                 "provDbCleanupScript": {
                     "type": "string"
                 },
                 "provDbClientBasedir": {
                     "type": "string"
+                },
+                "provDbComplianceAutoAgree": {
+                    "type": "boolean"
                 },
                 "provDbConfig": {
                     "type": "boolean"
@@ -26006,6 +26172,9 @@ const docTemplate = `{
                 "provDbDockerImg": {
                     "type": "string"
                 },
+                "provDbDockerJemallocPreload": {
+                    "type": "string"
+                },
                 "provDbDockerRunArgs": {
                     "type": "string"
                 },
@@ -26016,6 +26185,15 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provDbDomain": {
+                    "type": "string"
+                },
+                "provDbDynamicResource": {
+                    "type": "boolean"
+                },
+                "provDbDynamicResourceCanChangeScript": {
+                    "type": "string"
+                },
+                "provDbDynamicResourceChangeScript": {
                     "type": "string"
                 },
                 "provDbExpireLogDays": {
@@ -26051,6 +26229,14 @@ const docTemplate = `{
                 "provDbNetMask": {
                     "type": "string"
                 },
+                "provDbOvercommitPct": {
+                    "description": "COMMERCIAL scalability-up barrier: max % the dynamic resource change may auto-grow the plan (plan × (1+pct/100)) before a plan raise is required. Not a technical cap formula (see ResourceManager.CanGrowBeyondPlan)",
+                    "type": "integer"
+                },
+                "provDbResourceAlign": {
+                    "description": "container memory cap alignment to the DBU tier: \"plan\" (default) / \"up\" / \"off\"",
+                    "type": "string"
+                },
                 "provDbServiceType": {
                     "type": "string"
                 },
@@ -26084,6 +26270,9 @@ const docTemplate = `{
                 "provKubeImageForcePull": {
                     "type": "boolean"
                 },
+                "provKubeProxyStorageClass": {
+                    "type": "string"
+                },
                 "provKubeStorageClass": {
                     "type": "string"
                 },
@@ -26104,6 +26293,9 @@ const docTemplate = `{
                 },
                 "provOrchestratorCluster": {
                     "type": "string"
+                },
+                "provOrchestratorDeploymentUpgradeOnStart": {
+                    "type": "boolean"
                 },
                 "provOrchestratorEnable": {
                     "type": "string"
@@ -26206,6 +26398,18 @@ const docTemplate = `{
                 },
                 "provServicePlan": {
                     "type": "string"
+                },
+                "provServicePlanApu": {
+                    "type": "integer"
+                },
+                "provServicePlanBku": {
+                    "type": "integer"
+                },
+                "provServicePlanBpu": {
+                    "type": "integer"
+                },
+                "provServicePlanDbu": {
+                    "type": "integer"
                 },
                 "provServicePlanRegistry": {
                     "type": "string"
@@ -26467,6 +26671,40 @@ const docTemplate = `{
                 },
                 "replicationUseSsl": {
                     "type": "boolean"
+                },
+                "resourceManagerInfraCpuCores": {
+                    "type": "number"
+                },
+                "resourceManagerInfraDiskGb": {
+                    "type": "number"
+                },
+                "resourceManagerInfraIops": {
+                    "type": "number"
+                },
+                "resourceManagerInfraMemoryMb": {
+                    "type": "number"
+                },
+                "resourceManagerInfraNetworkMbps": {
+                    "type": "number"
+                },
+                "resourceManagerInfraQuotaPct": {
+                    "type": "number"
+                },
+                "scaleDownConfigInPlanSpeed": {
+                    "description": "sustain duration before scaling DOWN a server's config resources within the plan. Default 5m",
+                    "type": "string"
+                },
+                "scaleDownPlanSpeed": {
+                    "description": "sustain duration before lowering the PLAN (cap down) -- most conservative, don't yo-yo the billed plan. Default 1h",
+                    "type": "string"
+                },
+                "scaleUpConfigInPlanSpeed": {
+                    "description": "Client-settable SCALE SPEED: how long a saturation must persist before repman scales the\nresources up. Today this behaviour was fixed at 1 minute; this makes it a client knob.\nA duration string; the default 1m is the current (fastest) behaviour. The down/plan\nvariants (ScaleDownConfigInPlan, ScaleUp/DownPlan) will follow the same naming when wired.",
+                    "type": "string"
+                },
+                "scaleUpPlanSpeed": {
+                    "description": "sustain duration before raising the PLAN (cap up) -- commercial, slower than in-plan. Default 30m",
+                    "type": "string"
                 },
                 "schedulerAlertDisable": {
                     "type": "boolean"
@@ -27780,6 +28018,104 @@ const docTemplate = `{
                 },
                 "process": {
                     "$ref": "#/definitions/server.globalMetricsProcessInfo"
+                }
+            }
+        },
+        "server.globalResourcesAxis": {
+            "type": "object",
+            "properties": {
+                "axis": {
+                    "description": "cpu|mem|io|disk|network",
+                    "type": "string"
+                },
+                "capacityDbu": {
+                    "description": "projected to DBU (0 for network)",
+                    "type": "number"
+                },
+                "capacityRaw": {
+                    "description": "native units",
+                    "type": "number"
+                },
+                "consumedDbu": {
+                    "description": "consumed on this axis (0 for network)",
+                    "type": "number"
+                },
+                "source": {
+                    "description": "config|agents",
+                    "type": "string"
+                },
+                "unit": {
+                    "description": "cores|MB|iops|GB|Mbps",
+                    "type": "string"
+                }
+            }
+        },
+        "server.globalResourcesCluster": {
+            "type": "object",
+            "properties": {
+                "cluster": {
+                    "type": "string"
+                },
+                "dbu": {
+                    "description": "real consumed pivot (max axis) -- the cluster's share of infra DBU",
+                    "type": "number"
+                },
+                "dbuCpu": {
+                    "type": "number"
+                },
+                "dbuDisk": {
+                    "type": "number"
+                },
+                "dbuIo": {
+                    "type": "number"
+                },
+                "dbuMem": {
+                    "type": "number"
+                },
+                "planDbu": {
+                    "description": "the cluster's DBU reservation contract (prov-service-plan-dbu)",
+                    "type": "number"
+                },
+                "servers": {
+                    "type": "integer"
+                }
+            }
+        },
+        "server.globalResourcesResponse": {
+            "type": "object",
+            "properties": {
+                "agents": {
+                    "type": "integer"
+                },
+                "axes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.globalResourcesAxis"
+                    }
+                },
+                "bindingAxis": {
+                    "type": "string"
+                },
+                "capacityDbu": {
+                    "type": "number"
+                },
+                "clusters": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.globalResourcesCluster"
+                    }
+                },
+                "consumedDbu": {
+                    "type": "number"
+                },
+                "quotaPct": {
+                    "type": "number"
+                },
+                "slackDbu": {
+                    "type": "number"
+                },
+                "usableDbu": {
+                    "type": "number"
                 }
             }
         },
