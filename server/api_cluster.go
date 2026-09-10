@@ -343,6 +343,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettings)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/change-plan-units/{unit}/{delta}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxChangePlanUnits)),
+	))
 	router.Handle("/api/clusters/settings/actions/reload-clusters-plans", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReloadPlans)),
@@ -3087,6 +3091,47 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
+}
+
+// handlerMuxChangePlanUnits moves a cluster's technical resource RESERVATION (plan) for a
+// unit by a relative delta, via cluster.ChangePlanUnits (validate + hook + persist).
+// @Summary Change a cluster plan reservation by a delta
+// @Description Moves the cluster's plan (technical resource reservation) for a unit (DBU/APU)
+// @Description by a relative delta. Decrease is free down to the floor; increase is validated
+// @Description (admin immutable lock; external claim hook) then applied and persisted.
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param unit path string true "Plan unit: DBU or APU"
+// @Param delta path int true "Relative change (e.g. -3 or 2)"
+// @Success 200 {string} string "OK"
+// @Failure 400 {string} string "delta must be an integer"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "error"
+// @Router /api/clusters/{clusterName}/settings/actions/change-plan-units/{unit}/{delta} [post]
+func (repman *ReplicationManager) handlerMuxChangePlanUnits(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	delta, err := strconv.Atoi(vars["delta"])
+	if err != nil {
+		http.Error(w, "delta must be an integer", http.StatusBadRequest)
+		return
+	}
+	if err := mycluster.ChangePlanUnits(cluster.PlanUnit(vars["unit"]), delta); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Write([]byte("OK"))
 }
 
 // handlerMuxSetCron handles the setting of cron jobs for a given cluster.

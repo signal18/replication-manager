@@ -252,6 +252,7 @@ var clusterACLRules = []ACLRule{
 	{"/configurator/compliance-diff", nil, []string{config.GrantDBConfigGet}},
 	{"/settings/actions/switch", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/set", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
+	{"/settings/actions/change-plan-units", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/clear", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/discover", nil, []string{config.GrantClusterSettings}},
 	{"/actions/reset-failover-control", nil, []string{config.GrantClusterSettings}},
