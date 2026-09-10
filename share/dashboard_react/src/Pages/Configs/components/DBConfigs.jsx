@@ -364,7 +364,7 @@ function DBConfigs({ selectedCluster, user }) {
             onChange={(dbu) => {
               /* Move the PLAN (prov-service-plan-dbu, a per-cluster technical resource
                  reservation), NOT the resource. Slider is per-node; cluster delta =
-                 (newPerNode - curPerNode) * nodes. ChangePlanUnits validates (CanPlanIncrease
+                 (newPerNode - curPerNode) * nodes. ChangePlanUnits validates (CanPlanChange
                  + claim hook) and persists via the dynamic config manager. The prov-db-*
                  resource follows under the cap via the dynamic resize, not from here. */
               const nodes = selectedCluster?.dbServers?.length || 1
