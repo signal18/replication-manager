@@ -5752,6 +5752,17 @@ func (repman *ReplicationManager) handlerMuxAcceptCompliance(w http.ResponseWrit
 // It runs the real push path (PushAllConfigsToGit), which self-heals a corrupt
 // pack (reclone + retry) on its own. Serialized with the sync worker via the git
 // lock. Server-level (one repo, all clusters); routed per-cluster for ACL.
+// @Summary Force the config-repo push to git now
+// @Description Triggers the server-level config git push immediately instead of waiting for the dirty-gated config-sync loop. Runs the real push path, which self-heals a corrupt pack (reclone + retry). Server-level (one repo, all clusters); routed per-cluster for ACL. Requires GrantClusterSettings.
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "config pushed to git"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "git config sync not configured"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /api/clusters/{clusterName}/settings/actions/git-push [post]
 func (repman *ReplicationManager) handlerMuxClusterGitPush(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -5786,6 +5797,17 @@ func (repman *ReplicationManager) handlerMuxClusterGitPush(w http.ResponseWriter
 // dangling objects) then push a clean pack. Use when the config-repo push is stuck
 // (e.g. after a gitlab failover emptied the remote and pushes fail the remote's
 // receive fsck). Serialized with the sync worker via the git lock.
+// @Summary Repair a stuck config-repo git sync and push
+// @Description Explicit self-heal: refresh git metadata (reclone re-inits the local .git from the remote, shedding corrupt/dangling objects) then push a clean pack. Use when the config-repo push is stuck (e.g. after a gitlab failover emptied the remote and pushes fail the remote receive fsck). Server-level; routed per-cluster for ACL. Requires GrantClusterSettings.
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "git repaired and pushed"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "git config sync not configured"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /api/clusters/{clusterName}/settings/actions/git-repair [post]
 func (repman *ReplicationManager) handlerMuxClusterGitRepair(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)

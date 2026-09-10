@@ -108,9 +108,15 @@ domain state machine transitions into a critical state — never from log scrapi
 or ad-hoc checks. Criticality is carried by the tracked state; the transition is
 the trigger. Keep it flap-free (a %N-tick state must live in `pstatesN`).
 
-**T6. NEVER implement an API call without a GUI interface.** Every API endpoint
-ships with its GUI — no API-only features. Present a GUI whenever possible; don't
-leave a capability CLI/API/config-only.
+**T6. NEVER implement an API call without a GUI interface — and never without
+Swagger.** Every API endpoint ships with its GUI — no API-only features. Present a
+GUI whenever possible; don't leave a capability CLI/API/config-only. Every new
+handler MUST also carry its **Swagger annotations** (`// @Summary`, `@Tags`,
+`@Param`, `@Success`/`@Failure`, `@Router …/[method]`) and the generated
+`docs/swagger.{json,yaml}` MUST be regenerated (`swag init`) — no API without
+Swagger. An endpoint is not "done" until it is documented in Swagger. See
+`doc/implementation/server/API_SWAGGER.md` for the annotation shape, the
+regeneration command, and the verify-before-commit step.
 
 **T7. Expose each unified capability behind a programmatic interface (a pluggable
 abstraction).** One Go interface, multiple backends — never parallel hard-wired
