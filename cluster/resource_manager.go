@@ -6,6 +6,7 @@ package cluster
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 )
@@ -694,4 +695,300 @@ func (m *ResourceManager) ConsumedInfra() DBUAggregate {
 		readings = append(readings, r)
 	}
 	return sumReadings(readings)
+}
+
+// ============================================================================
+// UNIFIED PHYSICAL VIEW -- composes the DBU (DB server) and APU (app/proxy)
+// tracks at the one layer they share: the physical axes of the agent both run on.
+// DBU and APU are different units (different ratios) and are NEVER added; but a DB
+// server and a proxy on the same node draw from the same cores/mem/disk/iops, so the
+// only correct cross-track sum is physical. This is the feasibility/saturation
+// currency the dynamic-resize gate and the per-cluster GUI graph read. The two typed
+// tracks are never collapsed -- this view is composed from them (state-driven law).
+// ============================================================================
+
+// PhysicalUsage is native physical consumption (or capacity), the common currency both
+// reading types reduce to. io is DB-only -- Compute (APU) has no IOPS lock, so an app/
+// proxy contributes 0 to the io axis.
+type PhysicalUsage struct {
+	MemBytes  int64   `json:"memBytes"`
+	CpuCores  float64 `json:"cpuCores"`
+	IoIops    float64 `json:"ioIops"`
+	DiskBytes int64   `json:"diskBytes"`
+}
+
+func (p *PhysicalUsage) add(o PhysicalUsage) {
+	p.MemBytes += o.MemBytes
+	p.CpuCores += o.CpuCores
+	p.IoIops += o.IoIops
+	p.DiskBytes += o.DiskBytes
+}
+
+// Physical reduces a DB (DBU) reading to its native physical axes.
+func (r *DBUReading) Physical() PhysicalUsage {
+	if r == nil {
+		return PhysicalUsage{}
+	}
+	return PhysicalUsage{MemBytes: r.MemMaxBytes, CpuCores: r.CpuMaxCores, IoIops: r.IoMaxIops, DiskBytes: r.DiskMaxBytes}
+}
+
+// Physical reduces an app/proxy (APU) reading to its native physical axes. Compute has
+// no IOPS lock, so io is always 0 -- it contributes nothing to the shared io axis.
+func (r *APUReading) Physical() PhysicalUsage {
+	if r == nil {
+		return PhysicalUsage{}
+	}
+	return PhysicalUsage{MemBytes: r.MemMaxBytes, CpuCores: r.CpuMaxCores, IoIops: 0, DiskBytes: r.DiskMaxBytes}
+}
+
+// Physical converts an agent's per-axis ceiling into the same native currency (MemMB ->
+// bytes, DiskGB -> bytes) so headroom compares like with like.
+func (c *AgentCapacity) Physical() PhysicalUsage {
+	if c == nil {
+		return PhysicalUsage{}
+	}
+	return PhysicalUsage{
+		MemBytes:  int64(c.MemMB * 1024 * 1024),
+		CpuCores:  c.Cores,
+		IoIops:    c.Iops,
+		DiskBytes: int64(c.DiskGB * 1024 * 1024 * 1024),
+	}
+}
+
+func clampF(x float64) float64 {
+	if x < 0 {
+		return 0
+	}
+	return x
+}
+
+func clampI(x int64) int64 {
+	if x < 0 {
+		return 0
+	}
+	return x
+}
+
+// --- per-scope physical sums (both tracks) ----------------------------------
+
+// ClusterPhysicalConsumed sums both tracks' real consumption across a cluster.
+func (m *ResourceManager) ClusterPhysicalConsumed(clusterName string) PhysicalUsage {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var p PhysicalUsage
+	for k, r := range m.consumed {
+		if k.Cluster == clusterName && r != nil {
+			p.add(r.Physical())
+		}
+	}
+	for k, r := range m.appConsumed {
+		if k.Cluster == clusterName && r != nil {
+			p.add(r.Physical())
+		}
+	}
+	return p
+}
+
+// ClusterPhysicalPlan sums both tracks' planned/allocated physical across a cluster.
+func (m *ResourceManager) ClusterPhysicalPlan(clusterName string) PhysicalUsage {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var p PhysicalUsage
+	for k, r := range m.plan {
+		if k.Cluster == clusterName && r != nil {
+			p.add(r.Physical())
+		}
+	}
+	for k, r := range m.appPlan {
+		if k.Cluster == clusterName && r != nil {
+			p.add(r.Physical())
+		}
+	}
+	return p
+}
+
+// AgentPhysicalConsumed sums both tracks' real consumption for everything on one agent
+// (across all clusters) -- the true co-tenant load the metal is carrying.
+func (m *ResourceManager) AgentPhysicalConsumed(agent string) PhysicalUsage {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.agentPhysicalConsumedLocked(agent)
+}
+
+// agentPhysicalConsumedLocked is the lock-held body of AgentPhysicalConsumed, reused by
+// the headroom + cluster-view assembly so they take the lock exactly once.
+func (m *ResourceManager) agentPhysicalConsumedLocked(agent string) PhysicalUsage {
+	var p PhysicalUsage
+	for k, r := range m.consumed {
+		if m.serverAgent[k] == agent && r != nil {
+			p.add(r.Physical())
+		}
+	}
+	for k, r := range m.appConsumed {
+		if m.appAgent[k] == agent && r != nil {
+			p.add(r.Physical())
+		}
+	}
+	return p
+}
+
+// AgentPhysicalPlan sums both tracks' planned physical for everything on one agent.
+func (m *ResourceManager) AgentPhysicalPlan(agent string) PhysicalUsage {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var p PhysicalUsage
+	for k, r := range m.plan {
+		if m.serverAgent[k] == agent && r != nil {
+			p.add(r.Physical())
+		}
+	}
+	for k, r := range m.appPlan {
+		if m.appAgent[k] == agent && r != nil {
+			p.add(r.Physical())
+		}
+	}
+	return p
+}
+
+// --- per-agent headroom (the cross-track saturation gate) -------------------
+
+// AgentHeadroomView is one agent's physical fullness: its capacity, what BOTH tracks
+// consume on it, the free remainder per axis, and the worst (scarcest) axis. This is
+// the saturation gate -- a DB on this agent cannot grow into space a co-located proxy
+// already uses, so the gate must read the combined physical load, not DBU alone.
+type AgentHeadroomView struct {
+	Agent       string             `json:"agent"`
+	HasCapacity bool               `json:"hasCapacity"` // false = agent capacity unknown
+	Capacity    PhysicalUsage      `json:"capacity"`    // zero if capacity unknown
+	Consumed    PhysicalUsage      `json:"consumed"`    // both tracks
+	Free        PhysicalUsage      `json:"free"`        // capacity - consumed, clamped >= 0
+	PctFull     map[string]float64 `json:"pctFull"`     // axis -> % of capacity used (axis absent = capacity unknown)
+	WorstAxis   string             `json:"worstAxis"`   // the scarcest axis
+	WorstPct    float64            `json:"worstPct"`    // its % full
+}
+
+// AgentHeadroom computes one agent's combined physical fullness (both tracks). When the
+// agent's capacity is unknown, Capacity/Free/PctFull are empty and HasCapacity is false
+// (consumed is still reported) -- never a fabricated ceiling.
+func (m *ResourceManager) AgentHeadroom(agent string) AgentHeadroomView {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.agentHeadroomLocked(agent)
+}
+
+func (m *ResourceManager) agentHeadroomLocked(agent string) AgentHeadroomView {
+	v := AgentHeadroomView{Agent: agent, Consumed: m.agentPhysicalConsumedLocked(agent), PctFull: map[string]float64{}}
+	c := m.capacity[agent]
+	if c == nil {
+		return v
+	}
+	v.HasCapacity = true
+	v.Capacity = c.Physical()
+	v.Free = PhysicalUsage{
+		MemBytes:  clampI(v.Capacity.MemBytes - v.Consumed.MemBytes),
+		CpuCores:  clampF(v.Capacity.CpuCores - v.Consumed.CpuCores),
+		IoIops:    clampF(v.Capacity.IoIops - v.Consumed.IoIops),
+		DiskBytes: clampI(v.Capacity.DiskBytes - v.Consumed.DiskBytes),
+	}
+	setPct := func(axis string, used, capacity float64) {
+		if capacity <= 0 { // axis capacity unknown/undeclared -> not a saturation signal
+			return
+		}
+		pct := used / capacity * 100
+		v.PctFull[axis] = pct
+		if pct > v.WorstPct {
+			v.WorstPct, v.WorstAxis = pct, axis
+		}
+	}
+	setPct("cpu", v.Consumed.CpuCores, v.Capacity.CpuCores)
+	setPct("mem", float64(v.Consumed.MemBytes), float64(v.Capacity.MemBytes))
+	setPct("io", v.Consumed.IoIops, v.Capacity.IoIops)
+	setPct("disk", float64(v.Consumed.DiskBytes), float64(v.Capacity.DiskBytes))
+	return v
+}
+
+// --- the one unified per-cluster object -------------------------------------
+
+// ClusterResourceView is THE unified per-cluster resource object -- the single read the
+// per-cluster GUI graph and the resource authority consume. It keeps the two unit tracks
+// distinct (Dbu*/Apu* are projections in their own units, never added) and adds the
+// physical composition + per-agent fullness that only exist across tracks.
+type ClusterResourceView struct {
+	Cluster string `json:"cluster"`
+
+	// Per-unit projections, consumed and planned, each in its own unit (never summed).
+	Dbu     DBUAggregate `json:"dbu"`     // consumed DBU (DB servers)
+	DbuPlan DBUAggregate `json:"dbuPlan"` // planned DBU (the technical contract)
+	Apu     APUAggregate `json:"apu"`     // consumed APU (apps + proxies)
+	ApuPlan APUAggregate `json:"apuPlan"` // planned APU
+
+	// Physical composition across BOTH tracks -- the only correct cross-track sum.
+	Physical     PhysicalUsage `json:"physical"`     // consumed, both tracks
+	PhysicalPlan PhysicalUsage `json:"physicalPlan"` // planned, both tracks
+
+	// Per-agent fullness for every agent hosting this cluster (DB server or app/proxy).
+	Agents []AgentHeadroomView `json:"agents"`
+}
+
+// ClusterResource assembles the unified view in ONE lock acquisition so the GUI graph
+// and the authority see a consistent snapshot across both tracks.
+func (m *ResourceManager) ClusterResource(clusterName string) ClusterResourceView {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	v := ClusterResourceView{Cluster: clusterName}
+	agents := map[string]struct{}{}
+
+	var dbuCons, dbuPlan []*DBUReading
+	for k, r := range m.consumed {
+		if k.Cluster == clusterName && r != nil {
+			dbuCons = append(dbuCons, r)
+			v.Physical.add(r.Physical())
+		}
+	}
+	for k, r := range m.plan {
+		if k.Cluster == clusterName && r != nil {
+			dbuPlan = append(dbuPlan, r)
+			v.PhysicalPlan.add(r.Physical())
+		}
+	}
+	for k := range m.serverAgent {
+		if k.Cluster == clusterName {
+			if a := m.serverAgent[k]; a != "" {
+				agents[a] = struct{}{}
+			}
+		}
+	}
+
+	var apuCons, apuPlan []*APUReading
+	for k, r := range m.appConsumed {
+		if k.Cluster == clusterName && r != nil {
+			apuCons = append(apuCons, r)
+			v.Physical.add(r.Physical())
+		}
+	}
+	for k, r := range m.appPlan {
+		if k.Cluster == clusterName && r != nil {
+			apuPlan = append(apuPlan, r)
+			v.PhysicalPlan.add(r.Physical())
+		}
+	}
+	for k := range m.appAgent {
+		if k.Cluster == clusterName {
+			if a := m.appAgent[k]; a != "" {
+				agents[a] = struct{}{}
+			}
+		}
+	}
+
+	v.Dbu = sumReadings(dbuCons)
+	v.DbuPlan = sumReadings(dbuPlan)
+	v.Apu = sumAPUReadings(apuCons)
+	v.ApuPlan = sumAPUReadings(apuPlan)
+
+	for a := range agents {
+		v.Agents = append(v.Agents, m.agentHeadroomLocked(a))
+	}
+	sort.Slice(v.Agents, func(i, j int) bool { return v.Agents[i].Agent < v.Agents[j].Agent })
+	return v
 }
