@@ -660,8 +660,14 @@ func (cluster *Cluster) GetSystemAPIKey() string {
 	if len(key) == 0 {
 		return ""
 	}
+	// Repman-WIDE identity, NOT per-cluster: /api/login is cluster-agnostic and matches
+	// `system` against whichever cluster it hits first (tryLocalAuth loops repman.Clusters),
+	// so a per-cluster key (…"system:"+cluster.Name) makes the sensor's key fail whenever a
+	// DIFFERENT cluster's `system` user is matched first. One key across all clusters lets
+	// any match authenticate; per-cluster authorization is still enforced by the URL's
+	// cluster ACL (IsURLPassACL), not by the key.
 	mac := hmac.New(sha256.New, key)
-	mac.Write([]byte("system:" + cluster.Name))
+	mac.Write([]byte("system"))
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
