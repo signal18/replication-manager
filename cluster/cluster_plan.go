@@ -73,31 +73,34 @@ func (cluster *Cluster) ChangePlanUnits(unit PlanUnit, delta int) error {
 }
 
 // applyPlanResourceFollow makes the provisioned resource follow a plan change. Whether a plan
-// INCREASE also grows the resource is a method decision backed by a variable (per-domain
+// change also moves the resource is a method decision backed by a variable (the per-domain
 // dynamic-resource flag) -- not a frontend concern:
 //
-//	DECREASE -> ALWAYS align the resource down to the new cap: the resource can never sit above
-//	            the reservation, so this is forced and immediate in every mode.
-//	INCREASE -> follow-plan mode (dynamic-resource OFF, the common/on-premise case): align the
-//	            resource UP to the new unit directly. Dynamic mode (ON, e.g. many DB instances
-//	            packed on one host where we cannot hand each its full reservation): only the cap
-//	            rose; DriveDynamicResize grows into it on demand within the cap.
+//	FOLLOW-PLAN mode (dynamic-resource OFF -- the common/on-premise case): the resource tracks
+//	    the reservation 1:1, BOTH directions -- align it to the new unit.
+//	DYNAMIC mode (ON -- e.g. many DB instances packed on one host where we cannot hand each its
+//	    full reservation): the resize loop OWNS the resource UNDER the cap. A plan increase only
+//	    lifts the ceiling (DriveDynamicResize grows into it on demand); a plan decrease that
+//	    drops the cap below the live resource is reconciled by the resize loop. We deliberately
+//	    do NOT "align to cap" here: in dynamic mode the live resource legitimately sits below the
+//	    cap, so setting it to the cap would GROW it -- the opposite of intent.
+//	    TODO(dynamic-decrease): force-clamp the live resource to the new cap here if the resize
+//	    loop's reconcile latency proves too slow.
 //
-// The per-dimension setters it calls (SetDBCores/SetDBMemorySize/...) already branch on the same
-// variable internally (live SET GLOBAL resize vs reprovision), so this only decides WHETHER to
-// align, not HOW to apply it.
+// The per-dimension setters it calls already branch on the same variable internally (live resize
+// vs reprovision), so this only decides WHETHER to align, not HOW.
 func (cluster *Cluster) applyPlanResourceFollow(unit PlanUnit, cur, target int) {
 	if cluster.resources == nil {
 		return
 	}
 	switch PlanUnit(strings.ToUpper(string(unit))) {
 	case PlanUnitDBU:
-		if target < cur || !cluster.Conf.ProvDBDynamicResource {
+		if !cluster.Conf.ProvDBDynamicResource {
 			cluster.alignDBResourceToPlan(target)
 		}
 	case PlanUnitAPU:
-		// Proxies (and, once folded in, apps) have no live SET-GLOBAL resize path: the resource
-		// always follows the plan directly, in both directions.
+		// Proxies (and, once folded in, apps) have no live-resize path: the resource always
+		// follows the plan directly, in both directions.
 		cluster.alignProxyResourceToPlan(target)
 	}
 }
