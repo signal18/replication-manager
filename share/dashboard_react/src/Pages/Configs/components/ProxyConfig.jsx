@@ -8,7 +8,8 @@ import { Flex, HStack, VStack } from '@chakra-ui/react'
 import AddRemovePill from '../../../components/AddRemovePill'
 import { addProxyTag, dropProxyTag } from '../../../redux/configSlice'
 import { useDispatch } from 'react-redux'
-import { setSetting, switchSetting } from '../../../redux/settingsSlice'
+import { setSetting, switchSetting, changePlanUnits } from '../../../redux/settingsSlice'
+import RMSlider from '../../../components/Sliders/RMSlider'
 import { convertSize } from '../../../utility/common'
 
 function ProxyConfig({ selectedCluster, user }) {
@@ -111,6 +112,25 @@ function ProxyConfig({ selectedCluster, user }) {
             </HStack>
           </VStack>
         </VStack>
+      )
+    },
+    {
+      key: 'APU Plan (shared pool: proxies + apps)',
+      value: (
+        <RMSlider
+          value={parseInt(selectedCluster?.config?.provServicePlanApu) || 1}
+          min={1}
+          max={64}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle='Confirm cluster APU plan (technical resource reservation) to: '
+          onChange={(val) => {
+            const cur = parseInt(selectedCluster?.config?.provServicePlanApu) || 1
+            const delta = val - cur
+            if (delta !== 0) {
+              dispatch(changePlanUnits({ clusterName: selectedCluster?.name, unit: 'APU', delta }))
+            }
+          }}
+        />
       )
     },
     {
