@@ -336,9 +336,22 @@ Follow-ups: `SetPlan` wiring — the plan is a **client-set DBU size** (whole un
 **+1/−1 DBU resizes `prov-db-*`** at the locked ratio (except admin-immutable resources)
 and is **NOT** derived from them; future dedicated `Cloud18DatabaseCredits*` vars mirror
 the app credit model, driven by `AddDBU`/`RemoveDBU`. Also `SetServerAgent` /
-`SetAgentCapacity` from physical monitoring (#1778), APU compute wiring for apps/proxies,
+`SetAgentCapacity` from physical monitoring (#1778),
 per-cluster/agent/minute **emission** (the data), then the burst/overcommit **policy**
 and the heatmap.
+
+**APU plan — now wired (Compute track, apps + proxies unified).** The two stateless
+Compute workloads the configurator provisions — app deployments (`cluster.Apps`) and
+proxies (`cluster.Proxies`, ProxySQL/HAProxy/MaxScale) — share ONE Compute/APU track,
+keyed `AppKey{Cluster, App, Kind}` with `Kind` = `app` | `proxy`. `RefreshComputePlanAPU`
+(per tick from `SetStatus`) projects each unit's configured resources (`prov-app-*` /
+`prov-proxy-*`) into APU via the Compute profile (`ComputeUsedAPU`) and records the plan
+(`SetAppPlan`); `AppPlanByCluster` / `AppPlanByClusterKind` aggregate it (`APUAggregate`,
+3 axes, no io), mirroring `PlanByCluster` on the DBU track. The plan is deterministic
+from config, so no sensor is needed. **Still open:** the APU **consumed** sensor (a
+compute sensor reading the app/proxy container cgroups, like the DB sensor feeds
+`IngestDBUMaxes`) — until it lands `AppConsumedByCluster` reads zero; and apps use
+cluster-level app sizing (per-app `AppConfig` matching is a refinement).
 
 Resize gates — **step 1 now wired** (2026-09): the memory grow branch of `ResizeDynamicResources`
 calls `resourceManagerAllowsGrow` **before** the infra feasibility. A within-plan grow passes

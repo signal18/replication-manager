@@ -218,10 +218,22 @@ func unitDiv(x, ratio float64) float64 {
 // profile ratios. The two tracks only meet at agent capacity.
 // ============================================================================
 
-// AppKey identifies an app within a cluster -- kept distinct from ResourceKey.
+// ComputeKind distinguishes the two stateless Compute (APU) workloads that share
+// this track: a configurator app deployment vs a proxy (ProxySQL/HAProxy/MaxScale).
+// Same Compute profile and APUReading; the kind only labels the per-unit detail.
+type ComputeKind string
+
+const (
+	KindApp   ComputeKind = "app"
+	KindProxy ComputeKind = "proxy"
+)
+
+// AppKey identifies a Compute unit (an app deployment OR a proxy) within a cluster
+// -- kept distinct from ResourceKey (which is DB servers on the DBU track).
 type AppKey struct {
 	Cluster string
 	App     string
+	Kind    ComputeKind
 }
 
 // APUReading is one period's consumed-APU picture for an app (workload profile
@@ -299,6 +311,81 @@ func (m *ResourceManager) SetAppAgent(k AppKey, agent string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.appAgent[k] = agent
+}
+
+// APUAggregate is the summed Compute picture for a set of units (apps + proxies).
+// Three axes (Compute has no IOPS lock); the global pivot is the max of the summed
+// axes -- the one that saturates first. Mirrors DBUAggregate on the APU track.
+type APUAggregate struct {
+	ApuCpu  float64 `json:"apuCpu"`
+	ApuMem  float64 `json:"apuMem"`
+	ApuDisk float64 `json:"apuDisk"`
+	Apu     float64 `json:"apu"`     // global: max of the summed axes (the binding)
+	Binding string  `json:"binding"` // "cpu" | "mem" | "disk"
+	Units   int     `json:"units"`   // how many compute units contributed a reading
+}
+
+// sumAPUReadings adds per-axis APU across readings; the global pivot is the max of
+// the summed axes. Caller holds the lock. Mirror of sumReadings on the DBU track.
+func sumAPUReadings(readings []*APUReading) APUAggregate {
+	var a APUAggregate
+	for _, r := range readings {
+		a.ApuCpu += r.ApuCpu
+		a.ApuMem += r.ApuMem
+		a.ApuDisk += r.ApuDisk
+		a.Units++
+	}
+	a.Apu, a.Binding = a.ApuCpu, "cpu"
+	if a.ApuMem > a.Apu {
+		a.Apu, a.Binding = a.ApuMem, "mem"
+	}
+	if a.ApuDisk > a.Apu {
+		a.Apu, a.Binding = a.ApuDisk, "disk"
+	}
+	return a
+}
+
+// AppPlanByCluster sums the planned APU of every Compute unit (apps + proxies) in a
+// cluster -- the Compute-track equivalent of PlanByCluster on the DBU track.
+func (m *ResourceManager) AppPlanByCluster(clusterName string) APUAggregate {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var readings []*APUReading
+	for k, r := range m.appPlan {
+		if k.Cluster == clusterName && r != nil {
+			readings = append(readings, r)
+		}
+	}
+	return sumAPUReadings(readings)
+}
+
+// AppPlanByClusterKind sums planned APU for one kind (app or proxy) in a cluster,
+// so a caller can break the cluster Compute plan down by app-deployments vs proxies.
+func (m *ResourceManager) AppPlanByClusterKind(clusterName string, kind ComputeKind) APUAggregate {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var readings []*APUReading
+	for k, r := range m.appPlan {
+		if k.Cluster == clusterName && k.Kind == kind && r != nil {
+			readings = append(readings, r)
+		}
+	}
+	return sumAPUReadings(readings)
+}
+
+// AppConsumedByCluster sums the consumed APU of every Compute unit in a cluster.
+// The compute sensor that feeds appConsumed is a follow-up, so this reads zero until
+// then -- it is here so the plan and consumed views are symmetric with the DBU track.
+func (m *ResourceManager) AppConsumedByCluster(clusterName string) APUAggregate {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var readings []*APUReading
+	for k, r := range m.appConsumed {
+		if k.Cluster == clusterName && r != nil {
+			readings = append(readings, r)
+		}
+	}
+	return sumAPUReadings(readings)
 }
 
 // ============================================================================

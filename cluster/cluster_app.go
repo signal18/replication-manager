@@ -1121,6 +1121,54 @@ func (cluster *Cluster) GetAppDiskIops(appcnf *config.AppConfig) string {
 	return iops
 }
 
+// computePlanAPUReading parses config resource strings (memory in M, disk in G,
+// cores as a float) into bytes/cores and projects them into APU via the Compute
+// profile. Used to size the PLAN of a stateless Compute unit (app or proxy).
+func (cluster *Cluster) computePlanAPUReading(now time.Time, memStr, coresStr, diskStr string) APUReading {
+	memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", memStr, true)
+	diskGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", diskStr, true)
+	cores, _ := strconv.ParseFloat(strings.TrimSpace(coresStr), 64)
+	return cluster.resources.ComputeUsedAPU(now, now,
+		int64(memMB)*1024*1024, cores, int64(diskGB)*1024*1024*1024)
+}
+
+// RefreshComputePlanAPU projects the PLANNED resources of every stateless Compute
+// unit -- the configurator app deployments (cluster.Apps) and the proxies
+// (cluster.Proxies) -- into APU (Compute profile) and records each as its plan in
+// the ResourceManager, so AppPlanByCluster reflects the cluster's committed Compute
+// reservation. The plan is deterministic from config (prov-app-* / prov-proxy-*),
+// so no sensor is needed here; the CONSUMED side (a compute sensor on the app/proxy
+// cgroups, like the DB sensor) is the remaining follow-up. Apps use cluster-level
+// app sizing for now (per-app AppConfig matching is a refinement).
+func (cluster *Cluster) RefreshComputePlanAPU() {
+	if cluster == nil || cluster.resources == nil {
+		return
+	}
+	now := time.Now()
+	for _, app := range cluster.Apps {
+		if app == nil {
+			continue
+		}
+		r := cluster.computePlanAPUReading(now,
+			cluster.GetAppMemory(nil), cluster.GetAppCores(nil), cluster.GetAppDisk(nil))
+		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}
+		cluster.resources.SetAppPlan(k, &r)
+		if app.Agent != "" {
+			cluster.resources.SetAppAgent(k, app.Agent)
+		}
+	}
+	for _, prx := range cluster.Proxies {
+		if prx == nil {
+			continue
+		}
+		r := cluster.computePlanAPUReading(now,
+			cluster.Configurator.GetProxyMemorySize(),
+			cluster.Configurator.GetConfigProxyCores(),
+			cluster.Configurator.GetProxyDiskSize())
+		cluster.resources.SetAppPlan(AppKey{Cluster: cluster.Name, App: prx.GetName(), Kind: KindProxy}, &r)
+	}
+}
+
 func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {
 	if appcnf != nil && appcnf.ProvAppHATopology != "" {
 		// If the app config has HA topology, return it
