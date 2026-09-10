@@ -8,7 +8,10 @@ package cluster
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -642,4 +645,45 @@ func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCl
 	}
 
 	return node, payload, 200, nil
+}
+
+// GetSystemAPIKey derives the `system` service account's API key from the PERSISTENT
+// secret key (monitoring-key-path): HMAC-SHA256(SecretKey, "system:"+cluster), hex.
+// It is the credential the stateless app/proxy compute sensor uses to log in as
+// `system` via /api/login -- because apps/proxies have no DB password, they cannot use
+// the DB-scoped secret-login the dbjobs use (that path validates the DB password and is
+// untouched here). Derived, not stored: recomputed on demand for both validation (as
+// the user's password) and injection into the jobs container, and it rotates when the
+// key rotates (monitoring-secret-versioning). Empty when no persistent key is set.
+func (cluster *Cluster) GetSystemAPIKey() string {
+	key := cluster.Conf.SecretKey
+	if len(key) == 0 {
+		return ""
+	}
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte("system:" + cluster.Name))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// EnsureSystemServiceUser makes sure the `system` service account exists with the
+// derived API key as its credential and the grants internal callers need (db + proxy,
+// plus the resource-sensor grant for the /apu + /dbu push endpoints). It is an
+// API-key-only machine account -- the app/proxy sensor logs in as `system` with the
+// derived key; the dbjobs keep using secret-login (DB password), which mints the same
+// system JWT regardless of this password, so that path is unaffected. Idempotent: does
+// nothing if `system` already exists (created here or lazily by secretLoginHandler), so
+// the credential is not churned on every reload.
+func (cluster *Cluster) EnsureSystemServiceUser() {
+	apikey := cluster.GetSystemAPIKey()
+	if apikey == "" {
+		return // no persistent key -> cannot derive; app/proxy sensor auth stays unavailable
+	}
+	if _, ok := cluster.APIUsers["system"]; ok {
+		return
+	}
+	cluster.AddUser(UserForm{
+		Username: "system",
+		Grants:   "db proxy " + config.GrantClusterResourceSensor,
+		Password: apikey,
+	}, "admin", true)
 }
