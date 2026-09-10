@@ -29,10 +29,12 @@ const (
 // duplication -- T2/T7); the only per-unit-varying data is the {current, floor, setter}
 // triple in planUnitSpec.
 //
-//	delta < 0  -> DECREASE: always allowed, clamped at the per-unit floor, applied + persisted.
-//	delta > 0  -> INCREASE (a "claim"): VALIDATED first -- CanPlanIncrease (admin immutable
-//	              lock; the fleet-pool overcommit is TRACKED as GWARN016, never hard-blocked)
-//	              + the external plan-claim script -- then applied + persisted.
+//	ADMIN LOCK (both directions) -> if the plan variable is pinned immutable (/etc) for this
+//	              cluster it is admin-controlled and FROZEN: neither a client increase nor a
+//	              client give-back may move it. Checked FIRST, before anything is written.
+//	delta < 0  -> DECREASE (unlocked): allowed, clamped at the per-unit floor, applied + persisted.
+//	delta > 0  -> INCREASE (unlocked, a "claim"): the external plan-claim script may still refuse
+//	              it; the fleet-pool overcommit is TRACKED as GWARN016, never hard-blocked.
 //
 // It is validation + hooking only. The plan is a client-set config variable; the dynamic
 // config manager persists it (SaveConfig) and the resource keeps living under the cap.
@@ -52,10 +54,14 @@ func (cluster *Cluster) ChangePlanUnits(unit PlanUnit, delta int) error {
 		return nil
 	}
 
-	if target > cur { // increase = a claim -> validate + hook
-		if !cluster.CanPlanIncrease(unit) {
-			return fmt.Errorf("plan increase refused for %s: reservation is locked (immutable) by the admin", unit)
-		}
+	// The admin lock freezes the reservation in BOTH directions: a plan variable pinned in the
+	// immutable /etc config is admin-controlled, so neither a client increase nor a give-back may
+	// move it. Refuse BEFORE writing anything -- otherwise the dynamic overwrite layer would
+	// silently win over the lock (the bug that let a decrease bypass a locked plan).
+	if !cluster.CanPlanChange(unit) {
+		return fmt.Errorf("plan %s is admin-locked (immutable) for this cluster; the reservation cannot be changed", unit)
+	}
+	if target > cur { // increase = a claim -> the external hook may still refuse it
 		if err := cluster.RunPlanClaimScript(unit, cur, target); err != nil {
 			return fmt.Errorf("plan increase refused for %s by external claim script: %w", unit, err)
 		}
@@ -185,17 +191,22 @@ func (cluster *Cluster) planUnitSpec(unit PlanUnit) (cur int, floor int, apply f
 	}
 }
 
-// CanPlanIncrease reports whether the client may RAISE this unit's reservation. The ONLY
-// hard refuse is the admin lock: the plan variable is immutable for this cluster (/etc ->
-// immutable.toml). The fleet-pool overcommit is deliberately NOT gated here -- it is TRACKED
-// as the GWARN016 global state (over-reservation is allowed and surfaced; the admin caps it
-// by locking the plan immutable). Pool room is a signal, not a gate.
-func (cluster *Cluster) CanPlanIncrease(unit PlanUnit) bool {
-	flag := "prov-service-plan-dbu"
+// planFlag is the config flag name backing a unit's reservation -- the admin-lock target.
+func (cluster *Cluster) planFlag(unit PlanUnit) string {
 	if PlanUnit(strings.ToUpper(string(unit))) == PlanUnitAPU {
-		flag = "prov-service-plan-apu"
+		return "prov-service-plan-apu"
 	}
-	return !cluster.IsVariableImmutable(flag)
+	return "prov-service-plan-dbu"
+}
+
+// CanPlanChange reports whether the client may change this unit's reservation in EITHER
+// direction. The ONLY hard refuse is the admin lock: the plan variable is pinned immutable for
+// this cluster (/etc -> immutable.toml), which freezes it both ways. The fleet-pool overcommit
+// is deliberately NOT gated here -- it is TRACKED as the GWARN016 global state (over-reservation
+// is allowed and surfaced; the admin caps it by locking the plan immutable). Pool room is a
+// signal, not a gate.
+func (cluster *Cluster) CanPlanChange(unit PlanUnit) bool {
+	return !cluster.IsVariableImmutable(cluster.planFlag(unit))
 }
 
 // RunPlanClaimScript invokes the client-overridable external plan-claim hook -- a DIFFERENT
