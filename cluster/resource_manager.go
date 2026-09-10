@@ -120,7 +120,7 @@ func NewResourceManager() *ResourceManager {
 		// modest, real consumption + refund handle the rest. Storage TBD (zero = undefined).
 		ratios: map[WorkloadProfile]UnitRatios{
 			ProfileDatabase: {CoresPerUnit: 1.0, MemMBPerUnit: 4096.0, DiskGBPerUnit: 40.0, IopsPerUnit: 1000.0},
-			ProfileCompute:  {CoresPerUnit: 1.0, MemMBPerUnit: 2048.0, DiskGBPerUnit: 10.0, IopsPerUnit: 0.0}, // 2GB, no IOPS
+			ProfileCompute:  {CoresPerUnit: 1.0, MemMBPerUnit: 1024.0, DiskGBPerUnit: 10.0, IopsPerUnit: 0.0}, // 1GB, no IOPS (proxies/light apps; scale by taking more APU)
 			ProfileStorage:  {},                                                                               // TBD
 		},
 	}

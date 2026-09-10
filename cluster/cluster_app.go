@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -1177,12 +1178,23 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 		if prx == nil {
 			continue
 		}
-		r := cluster.computePlanAPUReading(now,
-			cluster.Configurator.GetProxyMemorySize(),
-			cluster.Configurator.GetConfigProxyCores(),
-			cluster.Configurator.GetProxyDiskSize())
+		// The proxy CONTRACT is a flat 1 APU per proxy -- it guarantees exactly one
+		// Compute unit (1 core + the per-unit mem/disk), independent of the docker
+		// resource actually provisioned. The plan is the contract, NOT the given
+		// resource (mirrors DBU's plan-vs-given split). Built from the Compute ratios
+		// so each axis is ratio/ratio = 1 APU, and it auto-follows a later ratio change.
+		cr := cluster.resources.Ratios(ProfileCompute)
+		r := cluster.resources.ComputeUsedAPU(now, now,
+			int64(cr.MemMBPerUnit)*1024*1024, cr.CoresPerUnit, int64(cr.DiskGBPerUnit)*1024*1024*1024)
 		cluster.resources.SetAppPlan(AppKey{Cluster: cluster.Name, App: prx.GetName(), Kind: KindProxy}, &r)
 	}
+
+	// Materialize the APU POOL = Σ per-unit (proxies×1 + apps), the Compute mirror of the
+	// DBU pool. It's DERIVED from the per-unit plans just set (no changePlanMethod): the
+	// pool is the contract, always coherent with the units, so prov-service-plan-apu tracks
+	// the real units (1 proxy -> 1 APU) instead of a stale default. This is what the RM
+	// aggregates fleet-wide for overcommit, and what CanPlanIncrease() reads.
+	cluster.Conf.ProvServicePlanApu = int(math.Ceil(cluster.resources.AppPlanByCluster(cluster.Name).Apu))
 }
 
 func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {
