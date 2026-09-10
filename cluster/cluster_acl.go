@@ -157,24 +157,8 @@ func (cluster *Cluster) isValidACL(strUser string, strPassword string, URL strin
 	if user.Password == "" || strPassword == "" {
 		return false
 	}
-	dec := cluster.Conf.GetDecryptedPassword("api-credentials", strPassword)
-	if subtle.ConstantTimeCompare([]byte(user.Password), []byte(dec)) == 1 {
+	if subtle.ConstantTimeCompare([]byte(user.Password), []byte(cluster.Conf.GetDecryptedPassword("api-credentials", strPassword))) == 1 {
 		return cluster.IsURLPassACL(strUser, URL, errorPrint)
-	}
-	// TEMP DEBUG (remove after diagnosing the compute-sensor login): non-sensitive
-	// diagnostics only -- lengths, 6-char prefixes of a 64-hex HMAC, and whitespace-
-	// trimmed equality -- never the full secret.
-	if strUser == "system" {
-		sp := func(s string) string {
-			if len(s) > 6 {
-				return s[:6]
-			}
-			return s
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"[sysauth-debug] storedLen=%d subLen=%d decLen=%d storedPfx=%q subPfx=%q decPfx=%q trimEq=%v",
-			len(user.Password), len(strPassword), len(dec), sp(user.Password), sp(strPassword), sp(dec),
-			strings.TrimSpace(user.Password) == strings.TrimSpace(dec))
 	}
 	return false
 }
