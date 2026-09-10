@@ -429,15 +429,32 @@ func (configurator *Configurator) GetConfigInnoDBWriteIoThreads() string {
 		return "4"
 	}
 	nbthreads := int(iopsLatency * iops)
-	if nbthreads < 1 {
-		return "1"
+	return strconv.Itoa(clampInnoDBIoThreads(nbthreads))
+}
+
+// innoDBMaxIoThreads is MariaDB/MySQL's hard maximum for innodb_read_io_threads and
+// innodb_write_io_threads (valid range 1..64). A value above it makes the live
+// SET GLOBAL fail out of range -- which is exactly what a large plan would produce
+// (e.g. > 32 DBU of IOPS via Little's-law sizing, or a > 64-core config).
+const innoDBMaxIoThreads = 64
+
+// clampInnoDBIoThreads clamps an innodb io-thread count to the valid [1, 64] range.
+func clampInnoDBIoThreads(n int) int {
+	if n < 1 {
+		return 1
 	}
-	strnbthreads := strconv.Itoa(nbthreads)
-	return strnbthreads
+	if n > innoDBMaxIoThreads {
+		return innoDBMaxIoThreads
+	}
+	return n
 }
 
 func (configurator *Configurator) GetConfigInnoDBReadIoThreads() string {
-	return configurator.ClusterConfig.ProvCores
+	cores, err := strconv.ParseFloat(strings.TrimSpace(configurator.ClusterConfig.ProvCores), 64)
+	if err != nil {
+		return "1"
+	}
+	return strconv.Itoa(clampInnoDBIoThreads(int(cores)))
 }
 
 func (configurator *Configurator) GetConfigInnoDBPurgeThreads() string {
