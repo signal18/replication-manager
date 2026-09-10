@@ -29,16 +29,14 @@ var computeTokenReplacer = strings.NewReplacer("`", "", "?", "", " ", "_", ".", 
 // yields a continuous, gap-free series (no flapping). No io axis -- Compute has no IOPS
 // lock. nil reading or a down unit -> all 1s.
 func consumedAPUForEmit(r *APUReading, down bool) (apu, cpu, mem, disk float64) {
-	atLeastOne := func(v float64) float64 {
-		if v < 1 {
-			return 1
-		}
-		return v
-	}
+	// Compute (APU) emits the REAL projected value -- NOT floored to 1 like the DBU billing
+	// duplicate. A proxy is a lightweight router (tens of MB, well under one core): flooring
+	// hid its true usage and made the graph read a flat "1". A down/unmeasured unit reports 0
+	// -- still a value, so the series stays gap-free (no flapping), just honest.
 	if down || r == nil {
-		return 1, 1, 1, 1
+		return 0, 0, 0, 0
 	}
-	return atLeastOne(r.Apu), atLeastOne(r.ApuCpu), atLeastOne(r.ApuMem), atLeastOne(r.ApuDisk)
+	return r.Apu, r.ApuCpu, r.ApuMem, r.ApuDisk
 }
 
 // rawResourceAPUForEmit is the native measurement (NOT floored), 0 when down -- the same
