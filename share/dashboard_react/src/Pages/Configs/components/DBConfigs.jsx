@@ -4,7 +4,7 @@ import RMSwitch from '../../../components/RMSwitch'
 import TableType2 from '../../../components/TableType2'
 import styles from '../styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
-import { setSetting, switchSetting } from '../../../redux/settingsSlice'
+import { setSetting, switchSetting, changePlanUnits } from '../../../redux/settingsSlice'
 import AccordionComponent from '../../../components/AccordionComponent'
 import AddRemovePill from '../../../components/AddRemovePill'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
@@ -362,17 +362,21 @@ function DBConfigs({ selectedCluster, user }) {
                per-node config. Read = materialized plan (prov-service-plan-dbu) / #nodes. */
             value={Math.max(1, Math.round((parseInt(selectedCluster?.config?.provServicePlanDbu) || 0) / (selectedCluster?.dbServers?.length || 1)))}
             onChange={(dbu) => {
-              const mem = dbu * 4096
-              const disk = dbu * 40
-              const iops = dbu * 1000
-              setConfirmTitle(`Confirm DBU change to ${dbu} (${dbu} cores, ${mem >= 1024 ? (mem/1024) + 'GB' : mem + 'MB'} mem, ${disk}GB disk, ${iops} IO/s)`)
+              /* Move the PLAN (prov-service-plan-dbu, a per-cluster technical resource
+                 reservation), NOT the resource. Slider is per-node; cluster delta =
+                 (newPerNode - curPerNode) * nodes. ChangePlanUnits validates (CanPlanIncrease
+                 + claim hook) and persists via the dynamic config manager. The prov-db-*
+                 resource follows under the cap via the dynamic resize, not from here. */
+              const nodes = selectedCluster?.dbServers?.length || 1
+              const cur = parseInt(selectedCluster?.config?.provServicePlanDbu) || nodes
+              const delta = (dbu * nodes) - cur
+              setConfirmTitle(`Confirm DBU plan to ${dbu}/node (${dbu * nodes} DBU cluster reservation)`)
               setIsConfirmModalOpen(true)
               setConfirmHandler(
                 () => () => {
-                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-cpu-cores', value: dbu }))
-                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-memory', value: mem }))
-                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-disk-size', value: disk }))
-                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-disk-iops', value: iops }))
+                  if (delta !== 0) {
+                    dispatch(changePlanUnits({ clusterName: selectedCluster?.name, unit: 'DBU', delta }))
+                  }
                 }
               )
             }}

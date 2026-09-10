@@ -6,6 +6,8 @@ package cluster
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -63,7 +65,98 @@ func (cluster *Cluster) ChangePlanUnits(unit PlanUnit, delta int) error {
 	cluster.ConfigManager.SaveConfig(cluster, false) // persist via the dynamic config manager
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
 		"Plan reservation %s changed %d -> %d (delta %+d)", unit, cur, target, delta)
+
+	// The reservation moved; now make the RESOURCE follow it. Back-driven and centralized
+	// here (never in the frontend): the caller only ever sends a signed delta.
+	cluster.applyPlanResourceFollow(unit, cur, target)
 	return nil
+}
+
+// applyPlanResourceFollow makes the provisioned resource follow a plan change. Whether a plan
+// INCREASE also grows the resource is a method decision backed by a variable (per-domain
+// dynamic-resource flag) -- not a frontend concern:
+//
+//	DECREASE -> ALWAYS align the resource down to the new cap: the resource can never sit above
+//	            the reservation, so this is forced and immediate in every mode.
+//	INCREASE -> follow-plan mode (dynamic-resource OFF, the common/on-premise case): align the
+//	            resource UP to the new unit directly. Dynamic mode (ON, e.g. many DB instances
+//	            packed on one host where we cannot hand each its full reservation): only the cap
+//	            rose; DriveDynamicResize grows into it on demand within the cap.
+//
+// The per-dimension setters it calls (SetDBCores/SetDBMemorySize/...) already branch on the same
+// variable internally (live SET GLOBAL resize vs reprovision), so this only decides WHETHER to
+// align, not HOW to apply it.
+func (cluster *Cluster) applyPlanResourceFollow(unit PlanUnit, cur, target int) {
+	if cluster.resources == nil {
+		return
+	}
+	switch PlanUnit(strings.ToUpper(string(unit))) {
+	case PlanUnitDBU:
+		if target < cur || !cluster.Conf.ProvDBDynamicResource {
+			cluster.alignDBResourceToPlan(target)
+		}
+	case PlanUnitAPU:
+		// Proxies (and, once folded in, apps) have no live SET-GLOBAL resize path: the resource
+		// always follows the plan directly, in both directions.
+		cluster.alignProxyResourceToPlan(target)
+	}
+}
+
+// alignDBResourceToPlan sets the per-node DB resource (cores/mem/disk/iops) from the cluster DBU
+// reservation, using the ResourceManager ProfileDatabase ratios (the single ratio source -- no
+// hardcoded unit constants). All DB nodes are identical (any can become master), so the plan is
+// spread evenly per node.
+func (cluster *Cluster) alignDBResourceToPlan(planDBU int) {
+	nodes := len(cluster.Servers)
+	if nodes < 1 {
+		nodes = 1
+	}
+	perNode := planDBU / nodes
+	if perNode < 1 {
+		perNode = 1
+	}
+	r := cluster.resources.Ratios(ProfileDatabase)
+	cores := int(math.Round(float64(perNode) * r.CoresPerUnit))
+	if cores < 1 {
+		cores = 1
+	}
+	memMB := int(math.Round(float64(perNode) * r.MemMBPerUnit))
+	diskGB := int(math.Round(float64(perNode) * r.DiskGBPerUnit))
+	cluster.SetDBCores(strconv.Itoa(cores))
+	cluster.SetDBMemorySize(strconv.Itoa(memMB))
+	cluster.SetDBDiskSize(strconv.Itoa(diskGB))
+	if r.IopsPerUnit > 0 {
+		cluster.SetDBDiskIOPS(strconv.Itoa(int(math.Round(float64(perNode) * r.IopsPerUnit))))
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+		"Plan DBU %d -> DB resource aligned to %dc/%dMB/%dGB per node (x%d nodes)", planDBU, cores, memMB, diskGB, nodes)
+}
+
+// alignProxyResourceToPlan sets the proxy resource from the cluster APU reservation, using the
+// ProfileCompute ratios. The APU plan is a shared pool (proxies + apps); until the app credit
+// fold-in lands, proxies are the setter-backed consumers and the pool is spread over the unit
+// count (each reserving >=1 APU), which at the floor gives 1 APU = 1c/1GB/10GB per proxy.
+func (cluster *Cluster) alignProxyResourceToPlan(planAPU int) {
+	units := len(cluster.Proxies) + len(cluster.Apps)
+	if units < 1 {
+		units = 1
+	}
+	perUnit := planAPU / units
+	if perUnit < 1 {
+		perUnit = 1
+	}
+	r := cluster.resources.Ratios(ProfileCompute)
+	cores := int(math.Round(float64(perUnit) * r.CoresPerUnit))
+	if cores < 1 {
+		cores = 1
+	}
+	memMB := int(math.Round(float64(perUnit) * r.MemMBPerUnit))
+	diskGB := int(math.Round(float64(perUnit) * r.DiskGBPerUnit))
+	cluster.SetProxyCores(strconv.Itoa(cores))
+	cluster.SetProxyMemorySize(strconv.Itoa(memMB))
+	cluster.SetProxyDiskSize(strconv.Itoa(diskGB))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+		"Plan APU %d -> proxy resource aligned to %dc/%dMB/%dGB per unit (shared pool, %d units)", planAPU, cores, memMB, diskGB, units)
 }
 
 // planUnitSpec returns the ONLY per-unit-varying data: the current reservation, the floor
