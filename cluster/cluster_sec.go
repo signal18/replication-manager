@@ -687,3 +687,24 @@ func (cluster *Cluster) EnsureSystemServiceUser() {
 		Password: apikey,
 	}, "admin", true)
 }
+
+// reconcileSystemServicePassword forces the in-memory `system` credential to the CURRENT
+// derived API key. It is called at the end of LoadAPIUsers so every load path (startup +
+// each dynamic config reload) repairs a stale password: a `system` user persisted by an
+// older binary (before AddUser honoured an explicit password) carries a random password,
+// and a SecretKey change would also drift it; EnsureSystemServiceUser skips an existing
+// user, so that drift would otherwise never be corrected and the compute sensor's login
+// would keep failing. Auth compares this in-memory map (IsValidACL), so overwriting it
+// here is the reliable fix -- no fragile per-value secret rewrite, and no recursion
+// (unlike EnsureSystemServiceUser, which may AddUser -> LoadAPIUsers). Idempotent.
+func (cluster *Cluster) reconcileSystemServicePassword() {
+	apikey := cluster.GetSystemAPIKey()
+	if apikey == "" {
+		return
+	}
+	if u, ok := cluster.APIUsers["system"]; ok && u.Password != apikey {
+		u.Password = apikey
+		cluster.APIUsers["system"] = u
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reconciled `system` service-account password to the current derived API key")
+	}
+}
