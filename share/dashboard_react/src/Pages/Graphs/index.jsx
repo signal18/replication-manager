@@ -195,6 +195,26 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="Consumed DBU — real → DBU per axis (plan = configurator)"
        />
+        {/* Compute (APU) — proxies + apps. Reuses the grouped-unit chart: the apu_* series
+            already carry the server-side Compute projection, so we pass them as the billed
+            bars and leave servicePaths empty (the real→unit overlay uses DBU ratios, N/A here).
+            No IO axis (Compute has no IOPS lock). NOTE: apu.<name>.* has no cluster token yet,
+            so this is unscoped (correct on a single-cluster instance; multi-cluster scoping is
+            a follow-up once the cluster token is added to the APU metric name). */}
+        <ChartGroupedDBU
+         context={context}
+         dbuPaths={{
+           cpu: 'sumSeries(apu.*.apu_cpu)',
+           mem: 'sumSeries(apu.*.apu_mem)',
+           disk: 'sumSeries(apu.*.apu_disk)'
+         }}
+         servicePaths={{}}
+         pivotPath={'sumSeries(apu.*.apu)'}
+         planDbu={0}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Consumed APU — proxies + apps (Compute; no IO axis)"
+       />
         <ChartMultiMetric
          context={context}
          metricPaths={scopeAll([
