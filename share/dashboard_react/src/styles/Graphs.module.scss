@@ -30,6 +30,10 @@
 
     &.multiMetricGraph {
       min-height: 350px;
+      // Grouped-unit charts (DBU, APU) are wide + legend-heavy: give each its OWN
+      // full-width row instead of sharing a row at ~half width (cramped/overlapping).
+      flex-basis: 100%;
+      width: 100%;
     }
   }
 }
