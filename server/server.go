@@ -3166,6 +3166,7 @@ func (repman *ReplicationManager) Run() error {
 		repman.ProduceClusterHeartbeatSupervisionStates()
 		repman.ProduceGitSupervisionStates()
 		repman.ProduceClusterAggregateStates()
+		repman.ProduceContractedCapacityState()
 		if counter%60 == 0 {
 			repman.ProduceCloud18ConnectivityStates()
 			repman.RefreshCreditsFromCRM()

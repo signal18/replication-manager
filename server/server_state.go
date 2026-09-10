@@ -569,3 +569,72 @@ func probeHTTPReachability(client *http.Client, url string) error {
 	}
 	return nil
 }
+
+// ProduceContractedCapacityState raises GWARN016 when the fleet's TOTAL contracted plan
+// (every cluster's DBU + APU pool reduced to shared PHYSICAL) exceeds the usable pool
+// (physical capacity × quota). DBU and APU contend for the SAME metal, so the check is
+// physical (cores + mem), not per-unit. It is a SOFT limit -- over-consumption beyond a
+// plan is tracked/billed elsewhere; this only surfaces "no global room left to hand out".
+// Cheap and graphite-free: sums two coherent per-cluster plan ints + the agent capacity;
+// only SetState when over (unasserted states auto-resolve, so it clears on its own).
+func (repman *ReplicationManager) ProduceContractedCapacityState() {
+	if repman == nil || repman.StateMachine == nil || repman.resourceManager == nil {
+		return
+	}
+	dbuR := repman.resourceManager.Ratios(cluster.ProfileDatabase)
+	apuR := repman.resourceManager.Ratios(cluster.ProfileCompute)
+
+	repman.Lock()
+	clusters := make([]*cluster.Cluster, 0, len(repman.Clusters))
+	for _, cl := range repman.Clusters {
+		if cl != nil {
+			clusters = append(clusters, cl)
+		}
+	}
+	repman.Unlock()
+
+	var cCores, cMemMB, capCores, capMemMB float64
+	seen := map[string]bool{}
+	for _, cl := range clusters {
+		dbu := float64(cl.Conf.ProvServicePlanDbu)
+		apu := float64(cl.Conf.ProvServicePlanApu)
+		cCores += dbu*dbuR.CoresPerUnit + apu*apuR.CoresPerUnit
+		cMemMB += dbu*dbuR.MemMBPerUnit + apu*apuR.MemMBPerUnit
+		for _, a := range cl.Agents {
+			key := a.HostName
+			if key == "" {
+				key = a.Id
+			}
+			if key == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			capCores += float64(a.CpuCores)
+			capMemMB += float64(a.MemBytes) // stored in MB despite the name
+		}
+	}
+	if repman.Conf.ResourceManagerInfraCpuCores > 0 {
+		capCores = repman.Conf.ResourceManagerInfraCpuCores
+	}
+	if repman.Conf.ResourceManagerInfraMemoryMB > 0 {
+		capMemMB = repman.Conf.ResourceManagerInfraMemoryMB
+	}
+	q := repman.Conf.ResourceManagerInfraQuotaPct / 100.0
+	if q <= 0 {
+		q = 1
+	}
+	usableCores := capCores * q
+	usableMemMB := capMemMB * q
+
+	over := ""
+	if usableCores > 0 && cCores > usableCores {
+		over = fmt.Sprintf("cpu %.1f of %.1f cores", cCores, usableCores)
+	} else if usableMemMB > 0 && cMemMB > usableMemMB {
+		over = fmt.Sprintf("mem %.0f of %.0f MB", cMemMB, usableMemMB)
+	}
+	if over != "" {
+		repman.SetState("GWARN016", state.State{ErrType: "WARNING", ErrKey: "GWARN016",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN016"], fmt.Sprintf("contracted %s (quota %.0f%%)", over, repman.Conf.ResourceManagerInfraQuotaPct)),
+			ErrFrom: "REPMAN"})
+	}
+}

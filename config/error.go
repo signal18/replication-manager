@@ -339,6 +339,7 @@ var GlobalError = map[string]string{
 	"GWARN013": "Periodic %s task still running from previous cycle — possible network hang",
 	"GWARN014": "Instance not registered on Cloud18 (%s) — some community features may be disabled",
 	"GWARN015": "Offline license invalid — plan falls back to free: %s",
+	"GWARN016": "Total contracted capacity reached the resource limit: %s",
 	// GINF: informational operating modes (state-as-tag), never counted as alerts
 	"GINF001": "ReplicationManager has %d cluster(s) in standby pulling config from active peer: %s",
 	"GINF002": "ReplicationManager has %d unprovisioned cluster(s): %s",

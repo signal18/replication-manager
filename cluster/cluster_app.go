@@ -1168,6 +1168,14 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 		}
 		r := cluster.computePlanAPUReading(now,
 			cluster.GetAppMemory(nil), cluster.GetAppCores(nil), cluster.GetAppDisk(nil))
+		// Every app contracts a MINIMUM of 1 APU (same floor as a proxy) -- a tiny app
+		// still reserves one Compute unit; a bigger app contracts more. Floor a sub-1
+		// computed plan to exactly the 1-APU unit (the Compute ratios).
+		if r.Apu < 1 {
+			cr := cluster.resources.Ratios(ProfileCompute)
+			r = cluster.resources.ComputeUsedAPU(now, now,
+				int64(cr.MemMBPerUnit)*1024*1024, cr.CoresPerUnit, int64(cr.DiskGBPerUnit)*1024*1024*1024)
+		}
 		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}
 		cluster.resources.SetAppPlan(k, &r)
 		if app.Agent != "" {
