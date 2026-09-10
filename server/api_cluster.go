@@ -2790,6 +2790,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.ProvDBComplianceAutoAgree = !mycluster.Conf.ProvDBComplianceAutoAgree
 	case "prov-db-dynamic-resource":
 		mycluster.Conf.ProvDBDynamicResource = !mycluster.Conf.ProvDBDynamicResource
+	case "prov-db-docker-run-args-limit":
+		mycluster.Conf.ProvDBDockerRunArgsLimit = !mycluster.Conf.ProvDBDockerRunArgsLimit
 	case "prov-orchestrator-deployment-upgrade-on-start":
 		mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart = !mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart
 	case "prov-docker-daemon-private":
