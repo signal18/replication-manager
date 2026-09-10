@@ -282,12 +282,19 @@ func (server *ServerMonitor) resizeIOSQL() []string {
 	return sql
 }
 
-// resizeCPUSQL builds the cores-driven SET GLOBALs. innodb_read_io_threads is
-// sized from the core count and is dynamic on MariaDB (restart-only on MySQL).
+// resizeCPUSQL builds the cores-driven SET GLOBALs. The real CPU-concurrency lever
+// is thread_pool_size (thread_handling=pool-of-threads): MariaDB defaults it to the
+// HOST core count (not cgroup-aware), so it must be pinned to the cpu allocation and
+// re-tuned on a resize. It is a dynamic GLOBAL, harmless when thread_handling=
+// one-thread-per-connection. innodb_read_io_threads is also cores-driven and dynamic
+// on MariaDB (restart-only on MySQL, hence the gate).
 func (server *ServerMonitor) resizeCPUSQL() []string {
 	cfg := &server.ClusterGroup.Configurator
 	if server.IsMariaDB() {
-		return []string{fmt.Sprintf("SET GLOBAL innodb_read_io_threads = %s", cfg.GetConfigInnoDBReadIoThreads())}
+		return []string{
+			fmt.Sprintf("SET GLOBAL thread_pool_size = %s", cfg.GetConfigThreadPoolSize()),
+			fmt.Sprintf("SET GLOBAL innodb_read_io_threads = %s", cfg.GetConfigInnoDBReadIoThreads()),
+		}
 	}
 	return nil
 }

@@ -461,6 +461,19 @@ func (configurator *Configurator) GetConfigInnoDBPurgeThreads() string {
 	return "4"
 }
 
+// GetConfigThreadPoolSize sizes the thread pool to the DB's cpu-core allocation
+// (prov-db-cpu-cores). With thread_handling=pool-of-threads, MariaDB otherwise
+// defaults thread_pool_size to the HOST core count (sysconf _SC_NPROCESSORS_ONLN,
+// which is NOT cgroup-aware), oversizing the pool in a cpu-limited container.
+// thread_pool_size is a dynamic GLOBAL, so it is applied live on a CPU resize.
+func (configurator *Configurator) GetConfigThreadPoolSize() string {
+	cores, err := strconv.ParseFloat(strings.TrimSpace(configurator.ClusterConfig.ProvCores), 64)
+	if err != nil || cores < 1 {
+		return "1"
+	}
+	return strconv.Itoa(int(cores))
+}
+
 func (configurator *Configurator) GetConfigInnoDBLruFlushSize() string {
 	return "1024"
 }
