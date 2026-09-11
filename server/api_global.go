@@ -385,15 +385,21 @@ type globalResourcesAxis struct {
 // expose no disk/iops/network). The binding axis is the SCARCEST (min); usable =
 // capacity x quota%; slack = usable - consumed. This is the claim's first gate.
 type globalResourcesResponse struct {
-	QuotaPct    float64                  `json:"quotaPct"`
-	Agents      int                      `json:"agents"`
-	Axes        []globalResourcesAxis    `json:"axes"`
-	CapacityDBU float64                  `json:"capacityDbu"`
-	BindingAxis string                   `json:"bindingAxis"`
-	UsableDBU   float64                  `json:"usableDbu"`
-	ConsumedDBU float64                  `json:"consumedDbu"`
-	SlackDBU    float64                  `json:"slackDbu"`
-	Clusters    []globalResourcesCluster `json:"clusters"`
+	QuotaPct    float64               `json:"quotaPct"`
+	Agents      int                   `json:"agents"`
+	Axes        []globalResourcesAxis `json:"axes"`
+	CapacityDBU float64               `json:"capacityDbu"`
+	BindingAxis string                `json:"bindingAxis"`
+	UsableDBU   float64               `json:"usableDbu"`
+	ConsumedDBU float64               `json:"consumedDbu"`
+	SlackDBU    float64               `json:"slackDbu"`
+	// APU (Compute) infra view -- the SAME metal projected into APU (1c/1GB/10GB, no IO).
+	CapacityAPU    float64                  `json:"capacityApu"`
+	BindingAxisApu string                   `json:"bindingAxisApu"`
+	UsableAPU      float64                  `json:"usableApu"`
+	ConsumedAPU    float64                  `json:"consumedApu"`
+	SlackAPU       float64                  `json:"slackApu"`
+	Clusters       []globalResourcesCluster `json:"clusters"`
 }
 
 // globalResourcesCluster is one cluster's consumed DBU -- the per-cluster breakdown that
@@ -406,6 +412,8 @@ type globalResourcesCluster struct {
 	DbuIo   float64 `json:"dbuIo"`
 	DbuDisk float64 `json:"dbuDisk"`
 	PlanDbu float64 `json:"planDbu"` // the cluster's DBU reservation contract (prov-service-plan-dbu)
+	Apu     float64 `json:"apu"`     // real consumed APU pivot -- the cluster's share of infra APU
+	PlanApu float64 `json:"planApu"` // the cluster's APU reservation contract (prov-service-plan-apu)
 	Servers int     `json:"servers"`
 }
 
@@ -480,30 +488,48 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 	}
 	consumed := rm.ConsumedInfra()
 
-	// Per-cluster consumed breakdown (stacks up to the infra consumed).
+	// APU (Compute) infra view -- the SAME metal projected into APU (no IO axis).
+	_, _, _, bindingAPU, bindingAxisApu := rm.CapacityAPUView(cluster.AgentCapacity{
+		Cores: cores, MemMB: memMB, DiskGB: diskGB,
+	})
+	usableApu := bindingAPU
+	if quota > 0 {
+		usableApu = bindingAPU * quota / 100.0
+	}
+	consumedApu := rm.AppConsumedInfra()
+
+	// Per-cluster consumed breakdown (stacks up to the infra consumed), DBU + APU.
 	var perCluster []globalResourcesCluster
 	for _, cl := range clusters {
 		a := rm.ConsumedByCluster(cl.Name)
 		plan := float64(cl.GetPlanDbu()) // explicit prov-service-plan-dbu, else auto (per-node × nodes)
-		if a.Servers == 0 && a.Dbu == 0 && plan == 0 {
+		apuPlan := rm.AppPlanByCluster(cl.Name)
+		apuCons := rm.AppConsumedByCluster(cl.Name)
+		if a.Servers == 0 && a.Dbu == 0 && plan == 0 && apuPlan.Apu == 0 && apuCons.Apu == 0 {
 			continue
 		}
 		perCluster = append(perCluster, globalResourcesCluster{
 			Cluster: cl.Name, Dbu: a.Dbu, DbuCpu: a.DbuCpu, DbuMem: a.DbuMem,
-			DbuIo: a.DbuIo, DbuDisk: a.DbuDisk, PlanDbu: plan, Servers: a.Servers,
+			DbuIo: a.DbuIo, DbuDisk: a.DbuDisk, PlanDbu: plan,
+			Apu: apuCons.Apu, PlanApu: apuPlan.Apu, Servers: a.Servers,
 		})
 	}
 	sort.Slice(perCluster, func(i, j int) bool { return perCluster[i].PlanDbu > perCluster[j].PlanDbu })
 
 	resp := globalResourcesResponse{
-		QuotaPct:    quota,
-		Agents:      len(seen),
-		CapacityDBU: bindingDBU,
-		BindingAxis: bindingAxis,
-		UsableDBU:   usable,
-		ConsumedDBU: consumed.Dbu,
-		SlackDBU:    usable - consumed.Dbu,
-		Clusters:    perCluster,
+		QuotaPct:       quota,
+		Agents:         len(seen),
+		CapacityDBU:    bindingDBU,
+		BindingAxis:    bindingAxis,
+		UsableDBU:      usable,
+		ConsumedDBU:    consumed.Dbu,
+		SlackDBU:       usable - consumed.Dbu,
+		CapacityAPU:    bindingAPU,
+		BindingAxisApu: bindingAxisApu,
+		UsableAPU:      usableApu,
+		ConsumedAPU:    consumedApu.Apu,
+		SlackAPU:       usableApu - consumedApu.Apu,
+		Clusters:       perCluster,
 		Axes: []globalResourcesAxis{
 			{Axis: "cpu", CapacityRaw: cores, Unit: "cores", Source: srcCpu, CapacityDBU: cpuDBU, ConsumedDBU: consumed.DbuCpu},
 			{Axis: "mem", CapacityRaw: memMB, Unit: "MB", Source: srcMem, CapacityDBU: memDBU, ConsumedDBU: consumed.DbuMem},

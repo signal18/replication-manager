@@ -685,6 +685,31 @@ func (m *ResourceManager) CapacityDBUView(c AgentCapacity) (cpu, mem, io, disk, 
 	return
 }
 
+// CapacityAPUView projects a raw infra capacity into APU per axis (Compute profile -- no IO),
+// returning the BINDING = scarcest axis. The APU twin of CapacityDBUView: the SAME metal, the
+// Compute ratios (1c/1GB/10GB). Exported so the global GUI can show APU headroom alongside DBU.
+func (m *ResourceManager) CapacityAPUView(c AgentCapacity) (cpu, mem, disk, binding float64, bindingAxis string) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	r := m.ratios[ProfileCompute]
+	cpu = unitDiv(c.Cores, r.CoresPerUnit)
+	mem = unitDiv(c.MemMB, r.MemMBPerUnit)
+	disk = unitDiv(c.DiskGB, r.DiskGBPerUnit)
+	binding = -1
+	consider := func(v, ratio float64, axis string) {
+		if ratio > 0 && v > 0 && (binding < 0 || v < binding) {
+			binding, bindingAxis = v, axis
+		}
+	}
+	consider(cpu, r.CoresPerUnit, "cpu")
+	consider(mem, r.MemMBPerUnit, "mem")
+	consider(disk, r.DiskGBPerUnit, "disk")
+	if binding < 0 {
+		binding = 0
+	}
+	return
+}
+
 // ConsumedInfra sums the real consumed DBU across EVERY server the manager knows (all
 // clusters) -- the infra-wide "how full are we" in DBU, per axis + the binding pivot.
 func (m *ResourceManager) ConsumedInfra() DBUAggregate {
@@ -695,6 +720,18 @@ func (m *ResourceManager) ConsumedInfra() DBUAggregate {
 		readings = append(readings, r)
 	}
 	return sumReadings(readings)
+}
+
+// AppConsumedInfra sums the real consumed APU across EVERY Compute unit the manager knows (all
+// clusters) -- the infra-wide APU "how full are we". The APU twin of ConsumedInfra.
+func (m *ResourceManager) AppConsumedInfra() APUAggregate {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	readings := make([]*APUReading, 0, len(m.appConsumed))
+	for _, r := range m.appConsumed {
+		readings = append(readings, r)
+	}
+	return sumAPUReadings(readings)
 }
 
 // ============================================================================

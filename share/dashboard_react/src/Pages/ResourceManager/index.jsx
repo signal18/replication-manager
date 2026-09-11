@@ -77,6 +77,17 @@ function ResourceManager() {
         <Stat label='Slack / room' value={fmt(data.slackDbu)} highlight={data.slackDbu <= 0} />
       </Flex>
 
+      <Text fontSize='sm' opacity={0.7} mb={1}>
+        Compute (APU) — the same metal, 1c/1GB/10GB (no IO) · binding axis:{' '}
+        <Text as='span' fontWeight='bold' textTransform='uppercase'>{data.bindingAxisApu || '—'}</Text>
+      </Text>
+      <Flex gap={8} wrap='wrap' mb={4}>
+        <Stat label='Capacity (APU)' value={fmt(data.capacityApu)} />
+        <Stat label='Usable APU (× quota)' value={fmt(data.usableApu)} />
+        <Stat label='Consumed (APU)' value={fmt(data.consumedApu)} />
+        <Stat label='Slack APU / room' value={fmt(data.slackApu)} highlight={data.slackApu <= 0} />
+      </Flex>
+
       <Box mb={6} maxW='560px'>
         <Flex justify='space-between' mb={1}>
           <Text fontSize='xs' opacity={0.7}>Usable filled — the claim's first gate</Text>
@@ -120,34 +131,41 @@ function ResourceManager() {
       {data.clusters && data.clusters.length > 0 && (() => {
         const sumReal = data.clusters.reduce((s, c) => s + (c.dbu || 0), 0)
         const sumPlan = data.clusters.reduce((s, c) => s + (c.planDbu || 0), 0)
-        const scale = Math.max(data.usableDbu || 0, sumPlan, sumReal, 0.0001)
-        const markerPct = Math.min(100, (data.usableDbu / scale) * 100)
-        const StackBar = ({ title, k, sum }) => (
-          <Box mb={3}>
-            <Flex justify='space-between' mb={1}>
-              <Text fontSize='sm' fontWeight='semibold'>{title}</Text>
-              <Text fontSize='xs' opacity={0.7}>Σ {fmt(sum)} / usable {fmt(data.usableDbu)} DBU</Text>
-            </Flex>
-            <Box position='relative' h='24px' borderRadius='md' overflow='hidden' style={{ background: 'var(--panel2, #edeff5)' }}>
-              <Flex h='100%'>
-                {data.clusters.map((c, i) => {
-                  const w = (c[k] / scale) * 100
-                  return w > 0.05 ? (
-                    <Box key={c.cluster} h='100%' w={`${w}%`} style={{ background: colorFor(i) }} title={`${c.cluster}: ${fmt(c[k])} DBU`} />
-                  ) : null
-                })}
+        const sumRealApu = data.clusters.reduce((s, c) => s + (c.apu || 0), 0)
+        const sumPlanApu = data.clusters.reduce((s, c) => s + (c.planApu || 0), 0)
+        const StackBar = ({ title, k, sum, usable, unit }) => {
+          const scale = Math.max(usable || 0, sum, ...data.clusters.map((c) => c[k] || 0), 0.0001)
+          const markerPct = Math.min(100, (usable / scale) * 100)
+          return (
+            <Box mb={3}>
+              <Flex justify='space-between' mb={1}>
+                <Text fontSize='sm' fontWeight='semibold'>{title}</Text>
+                <Text fontSize='xs' opacity={0.7}>Σ {fmt(sum)} / usable {fmt(usable)} {unit}</Text>
               </Flex>
-              {markerPct > 0 && markerPct < 100 && (
-                <Box position='absolute' top='-3px' bottom='-3px' left={`${markerPct}%`} style={{ borderLeft: '2px dashed var(--text-color)' }} />
-              )}
+              <Box position='relative' h='24px' borderRadius='md' overflow='hidden' style={{ background: 'var(--panel2, #edeff5)' }}>
+                <Flex h='100%'>
+                  {data.clusters.map((c, i) => {
+                    const w = (c[k] / scale) * 100
+                    return w > 0.05 ? (
+                      <Box key={c.cluster} h='100%' w={`${w}%`} style={{ background: colorFor(i) }} title={`${c.cluster}: ${fmt(c[k])} ${unit}`} />
+                    ) : null
+                  })}
+                </Flex>
+                {markerPct > 0 && markerPct < 100 && (
+                  <Box position='absolute' top='-3px' bottom='-3px' left={`${markerPct}%`} style={{ borderLeft: '2px dashed var(--text-color)' }} />
+                )}
+              </Box>
             </Box>
-          </Box>
-        )
+          )
+        }
         return (
           <Box mt={6}>
-            <Text fontSize='md' fontWeight='bold' mb={2}>Par cluster <Text as='span' fontSize='xs' opacity={0.6}>(┊ = usable {fmt(data.usableDbu)} DBU · au-delà = sur-réservé)</Text></Text>
-            <StackBar title='Réel (consommé)' k='dbu' sum={sumReal} />
-            <StackBar title='Plan (réservé)' k='planDbu' sum={sumPlan} />
+            <Text fontSize='md' fontWeight='bold' mb={2}>Par cluster — DBU <Text as='span' fontSize='xs' opacity={0.6}>(┊ = usable {fmt(data.usableDbu)} DBU · au-delà = sur-réservé)</Text></Text>
+            <StackBar title='Réel (consommé)' k='dbu' sum={sumReal} usable={data.usableDbu} unit='DBU' />
+            <StackBar title='Plan (réservé)' k='planDbu' sum={sumPlan} usable={data.usableDbu} unit='DBU' />
+            <Text fontSize='md' fontWeight='bold' mb={2} mt={4}>Par cluster — APU <Text as='span' fontSize='xs' opacity={0.6}>(┊ = usable {fmt(data.usableApu)} APU · au-delà = sur-réservé)</Text></Text>
+            <StackBar title='Réel (consommé)' k='apu' sum={sumRealApu} usable={data.usableApu} unit='APU' />
+            <StackBar title='Plan (réservé)' k='planApu' sum={sumPlanApu} usable={data.usableApu} unit='APU' />
             <Flex gap={4} wrap='wrap' mt={2}>
               {data.clusters.map((c, i) => (
                 <Flex key={c.cluster} align='center' gap={1}>
@@ -194,6 +212,36 @@ function ResourceManager() {
             height={200}
             title='Undercommit DBU (sous-consommation / giveback : plan > consommé, par cluster)'
             metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(resourcemanager.${carbonHost(c.cluster)}.plan_dbu,sumSeries(dbu.${c.cluster}.*.dbu)),0)`)}
+          />
+          <Text fontSize='md' fontWeight='bold' mt={6} mb={1}>Compute (APU) — proxies + apps</Text>
+          <Text fontSize='xs' opacity={0.6} mb={1}>
+            Consommé = sumSeries(apu.&lt;cluster&gt;.*.apu) par cluster · Plan = resourcemanager.&lt;cluster&gt;.plan_apu (Σ des plans de déploiement proxy + app)
+          </Text>
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Consommé APU (par cluster)'
+            minYMax={data.usableApu}
+            ceilingLabel={`usable ${fmt(data.usableApu)} APU`}
+            metricPaths={data.clusters.map((c) => `sumSeries(apu.${c.cluster}.*.apu)`)}
+          />
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Plan APU (par cluster)'
+            metricPaths={data.clusters.map((c) => `resourcemanager.${carbonHost(c.cluster)}.plan_apu`)}
+          />
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Overcommit APU (surconsommation : consommé > plan, par cluster)'
+            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(sumSeries(apu.${c.cluster}.*.apu),resourcemanager.${carbonHost(c.cluster)}.plan_apu),0)`)}
+          />
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Undercommit APU (sous-consommation / giveback : plan > consommé, par cluster)'
+            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(resourcemanager.${carbonHost(c.cluster)}.plan_apu,sumSeries(apu.${c.cluster}.*.apu)),0)`)}
           />
           <Flex gap={4} wrap='wrap' mt={2}>
             {data.clusters.map((c, i) => (
