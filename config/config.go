@@ -717,6 +717,7 @@ type Config struct {
 	ProvServicePlan                           string            `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`
 	ProvServicePlanRegistry                   string            `scope:"server" mapstructure:"prov-service-plan-registry" toml:"prov-service-plan-registry" json:"provServicePlanRegistry"`
 	ProvServicePlanDbu                        int               `mapstructure:"prov-service-plan-dbu" toml:"prov-service-plan-dbu" json:"provServicePlanDbu"`
+	ProvDbDbu                                 int               `mapstructure:"prov-db-dbu" toml:"prov-db-dbu" json:"provDbDbu"`
 	ProvServicePlanApu                        int               `mapstructure:"prov-service-plan-apu" toml:"prov-service-plan-apu" json:"provServicePlanApu"`
 	ProvServicePlanBpu                        int               `mapstructure:"prov-service-plan-bpu" toml:"prov-service-plan-bpu" json:"provServicePlanBpu"`
 	ProvServicePlanBku                        int               `mapstructure:"prov-service-plan-bku" toml:"prov-service-plan-bku" json:"provServicePlanBku"`

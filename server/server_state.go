@@ -596,9 +596,10 @@ func (repman *ReplicationManager) ProduceContractedCapacityState() {
 	var cCores, cMemMB, capCores, capMemMB float64
 	seen := map[string]bool{}
 	for _, cl := range clusters {
-		dbu := float64(cl.Conf.ProvServicePlanDbu)
-		// APU contract = the per-instance reservation ROLLUP (Σ proxies at prov-proxy-apu +
-		// Σ apps at their own config), not the legacy prov-service-plan-apu single number.
+		// Both contracts are the per-instance reservation ROLLUPS, not the legacy single
+		// numbers: DBU = Σ per-node prov-db-dbu (PlanByCluster); APU = Σ proxies at prov-proxy-apu
+		// + Σ apps at their own config (AppPlanByCluster).
+		dbu := repman.resourceManager.PlanByCluster(cl.Name).Dbu
 		apu := repman.resourceManager.AppPlanByCluster(cl.Name).Apu
 		cCores += dbu*dbuR.CoresPerUnit + apu*apuR.CoresPerUnit
 		cMemMB += dbu*dbuR.MemMBPerUnit + apu*apuR.MemMBPerUnit

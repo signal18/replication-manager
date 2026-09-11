@@ -472,7 +472,10 @@ The RM is the lender and the ledger of who borrowed what.
 `SetAppConsumed`); `prov-proxy-apu` (default 2) drives the per-proxy reservation (plan ledger,
 `ChangePlanUnits(APU)`, resource-follow); apps sized **per-app** from their own `AppConfig`; the APU
 **contract = the `AppPlanByCluster` rollup** (`plan_apu` emit + GWARN016 read it, not the now-vestigial
-`prov-service-plan-apu`).
+`prov-service-plan-apu`). **DBU now mirrors it**: `prov-db-dbu` (default 2) is the per-node DBU
+reservation (client-controlled, dynamic layer — never `/etc`-locked, fixing the admin-lock trap);
+`RefreshDBUPlan` wires `SetPlan` per server; the DBU contract = the `PlanByCluster` rollup (`plan_dbu`
+emit via `GetPlanDbu` + GWARN016 read it). `prov-service-plan-dbu` is now deprecated/vestigial.
 
 **Remaining:** (1) **Borrow tracking** — per-service `BorrowDBU`/`BorrowAPU` from the RM pool; cgroup
 cap = Plan + Borrow. (2) Register app-provisioned **pg/minio** as **DBU** ledger entries into

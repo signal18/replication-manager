@@ -111,34 +111,29 @@ func (cluster *Cluster) applyPlanResourceFollow(unit PlanUnit, cur, target int) 
 	}
 }
 
-// alignDBResourceToPlan sets the per-node DB resource (cores/mem/disk/iops) from the cluster DBU
-// reservation, using the ResourceManager ProfileDatabase ratios (the single ratio source -- no
-// hardcoded unit constants). All DB nodes are identical (any can become master), so the plan is
-// spread evenly per node.
-func (cluster *Cluster) alignDBResourceToPlan(planDBU int) {
-	nodes := len(cluster.Servers)
-	if nodes < 1 {
-		nodes = 1
-	}
-	perNode := planDBU / nodes
-	if perNode < 1 {
-		perNode = 1
+// alignDBResourceToPlan sets the per-node DB resource (cores/mem/disk/iops) from the PER-NODE DBU
+// reservation (prov-db-dbu) via the ResourceManager ProfileDatabase ratios (the single ratio
+// source -- no hardcoded unit constants). All DB nodes are identical, so one per-node value sizes
+// every node (mirror of alignProxyResourceToPlan).
+func (cluster *Cluster) alignDBResourceToPlan(perNodeDBU int) {
+	if perNodeDBU < 1 {
+		perNodeDBU = 1
 	}
 	r := cluster.resources.Ratios(ProfileDatabase)
-	cores := int(math.Round(float64(perNode) * r.CoresPerUnit))
+	cores := int(math.Round(float64(perNodeDBU) * r.CoresPerUnit))
 	if cores < 1 {
 		cores = 1
 	}
-	memMB := int(math.Round(float64(perNode) * r.MemMBPerUnit))
-	diskGB := int(math.Round(float64(perNode) * r.DiskGBPerUnit))
+	memMB := int(math.Round(float64(perNodeDBU) * r.MemMBPerUnit))
+	diskGB := int(math.Round(float64(perNodeDBU) * r.DiskGBPerUnit))
 	cluster.SetDBCores(strconv.Itoa(cores))
 	cluster.SetDBMemorySize(strconv.Itoa(memMB))
 	cluster.SetDBDiskSize(strconv.Itoa(diskGB))
 	if r.IopsPerUnit > 0 {
-		cluster.SetDBDiskIOPS(strconv.Itoa(int(math.Round(float64(perNode) * r.IopsPerUnit))))
+		cluster.SetDBDiskIOPS(strconv.Itoa(int(math.Round(float64(perNodeDBU) * r.IopsPerUnit))))
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
-		"Plan DBU %d -> DB resource aligned to %dc/%dMB/%dGB per node (x%d nodes)", planDBU, cores, memMB, diskGB, nodes)
+		"Plan DBU %d/node -> DB resource aligned to %dc/%dMB/%dGB per node", perNodeDBU, cores, memMB, diskGB)
 }
 
 // alignProxyResourceToPlan sets the proxy resource from the PER-PROXY APU reservation
@@ -168,12 +163,12 @@ func (cluster *Cluster) alignProxyResourceToPlan(perProxyAPU int) {
 func (cluster *Cluster) planUnitSpec(unit PlanUnit) (cur int, floor int, apply func(int), err error) {
 	switch PlanUnit(strings.ToUpper(string(unit))) {
 	case PlanUnitDBU:
-		nodes := len(cluster.Servers)
-		if nodes < 1 {
-			nodes = 1
-		}
-		return cluster.Conf.ProvServicePlanDbu, nodes, // floor = 1 DBU per node
-			func(v int) { cluster.Conf.ProvServicePlanDbu = v }, nil
+		// prov-db-dbu is the PER-NODE DBU reservation the DB configurator moves. All nodes are
+		// identical (any can become master), so the cluster contract = prov-db-dbu x #nodes (the
+		// PlanByCluster rollup). Floor is 1 DBU/node. Client-controlled (dynamic layer), never
+		// pinned in /etc -- the mirror of prov-proxy-apu.
+		return cluster.Conf.ProvDbDbu, 1,
+			func(v int) { cluster.Conf.ProvDbDbu = v }, nil
 	case PlanUnitAPU:
 		// prov-proxy-apu is the PER-PROXY reservation the proxy configurator moves -- the proxy
 		// is the controlled stateless class repman sizes. Per-proxy floor is 1 APU. Apps carry
@@ -191,7 +186,7 @@ func (cluster *Cluster) planFlag(unit PlanUnit) string {
 	if PlanUnit(strings.ToUpper(string(unit))) == PlanUnitAPU {
 		return "prov-proxy-apu"
 	}
-	return "prov-service-plan-dbu"
+	return "prov-db-dbu"
 }
 
 // CanPlanChange reports whether the client may change this unit's reservation in EITHER

@@ -52,10 +52,11 @@ func (cluster *Cluster) SetStatus() {
 			srv.CheckResourceConsumed()
 		}
 	}
-	cluster.CheckResourceCapPlan()   // compose cluster cap-up/down from the per-server plan states
-	cluster.RefreshComputePlanAPU()  // APU plan: project app-deployment + proxy resources into the ResourceManager (Compute track)
-	cluster.DriveDailyDynamicResize() // daily-time policy: reconcile live memory in the off-peak window
-	cluster.DriveDynamicResize()   // dynamic-resize trigger: turn a sustained saturation state into a real resize
+	cluster.CheckResourceCapPlan()                // compose cluster cap-up/down from the per-server plan states
+	cluster.RefreshDBUPlan()                      // DBU plan: project per-node prov-db-dbu into the ResourceManager (DB track)
+	cluster.RefreshComputePlanAPU()               // APU plan: project app-deployment + proxy resources into the ResourceManager (Compute track)
+	cluster.DriveDailyDynamicResize()             // daily-time policy: reconcile live memory in the off-peak window
+	cluster.DriveDynamicResize()                  // dynamic-resize trigger: turn a sustained saturation state into a real resize
 	cluster.CheckDynamicResourceDeploymentReady() // WARN0214 when live resize is on but the container is still docker-capped (not resize-ready)
 	cluster.IsNeedDatabasesRestart = cluster.HasRequestDBRestart()
 	cluster.IsNeedDatabasesReprov = cluster.HasRequestDBReprov()

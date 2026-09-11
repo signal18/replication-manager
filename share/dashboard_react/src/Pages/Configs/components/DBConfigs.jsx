@@ -360,20 +360,18 @@ function DBConfigs({ selectedCluster, user }) {
           <DBUSlider
             isDisabled={user?.grants['proxy-config-flag'] == false}
             nbNodes={selectedCluster?.dbServers?.length || 1}
-            /* PER-NODE DBU. The configurator is per-cluster and all DB nodes are identical
-               (any node can become master on failover/switchover), so the slider sets the
-               per-node config. Read = materialized plan (prov-service-plan-dbu) / #nodes. */
-            value={Math.max(1, Math.round((parseInt(selectedCluster?.config?.provServicePlanDbu) || 0) / (selectedCluster?.dbServers?.length || 1)))}
+            /* PER-NODE DBU. All DB nodes are identical (any can become master), so the slider
+               moves prov-db-dbu directly -- the per-node reservation (mirror of prov-proxy-apu).
+               The cluster contract is prov-db-dbu x #nodes (the PlanByCluster rollup). */
+            value={parseInt(selectedCluster?.config?.provDbDbu) || 2}
             onChange={(dbu) => {
-              /* Move the PLAN (prov-service-plan-dbu, a per-cluster technical resource
-                 reservation), NOT the resource. Slider is per-node; cluster delta =
-                 (newPerNode - curPerNode) * nodes. ChangePlanUnits validates (CanPlanChange
-                 + claim hook) and persists via the dynamic config manager. The prov-db-*
-                 resource follows under the cap via the dynamic resize, not from here. */
+              /* Move prov-db-dbu (per-node reservation) by the per-node delta. ChangePlanUnits
+                 validates (CanPlanChange) and persists to the dynamic layer; the prov-db-*
+                 resource follows via the resource-follow, not from here. */
+              const cur = parseInt(selectedCluster?.config?.provDbDbu) || 2
               const nodes = selectedCluster?.dbServers?.length || 1
-              const cur = parseInt(selectedCluster?.config?.provServicePlanDbu) || nodes
-              const delta = (dbu * nodes) - cur
-              setConfirmTitle(`Confirm DBU plan to ${dbu}/node (${dbu * nodes} DBU cluster reservation)`)
+              const delta = dbu - cur
+              setConfirmTitle(`Confirm DBU plan to ${dbu}/node (${dbu * nodes} DBU cluster contract)`)
               setIsConfirmModalOpen(true)
               setConfirmHandler(
                 () => () => {

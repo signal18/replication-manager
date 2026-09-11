@@ -303,11 +303,49 @@ func consumedAxes(c *DBUReading, ref DBUReading, frac float64, over bool) []stri
 // per-node derived DBU (GetProvDbuFromConfigPerNode) × the number of DB nodes. "Auto only when
 // zero" -- a stored 0 means "let repman compute it". Single source used by the API and
 // the graphite emission.
+// GetPlanDbu is the cluster DBU contract = the PlanByCluster ROLLUP (Σ per-node prov-db-dbu).
+// Falls back to prov-db-dbu x #nodes before the per-server plan ledger (RefreshDBUPlan) is
+// populated, then to the legacy prov-service-plan-dbu / config-derived value.
 func (cluster *Cluster) GetPlanDbu() int {
+	if cluster.resources != nil {
+		if agg := cluster.resources.PlanByCluster(cluster.Name); agg.Dbu > 0 {
+			return int(math.Round(agg.Dbu))
+		}
+	}
+	if cluster.Conf.ProvDbDbu > 0 {
+		return cluster.Conf.ProvDbDbu * len(cluster.Servers)
+	}
 	if cluster.Conf.ProvServicePlanDbu > 0 {
 		return cluster.Conf.ProvServicePlanDbu
 	}
 	return cluster.GetProvDbuFromConfigPerNode() * len(cluster.Servers)
+}
+
+// RefreshDBUPlan records each DB server's DBU reservation (prov-db-dbu per node, at the Database
+// ratios) as its plan in the ResourceManager, so PlanByCluster is the cluster DBU contract -- the
+// DB-track mirror of RefreshComputePlanAPU. Deterministic from config, no sensor. Uses the same
+// ResourceKey (Cluster + Server.URL) as the consumed side, so plan and consumed align per server.
+func (cluster *Cluster) RefreshDBUPlan() {
+	if cluster == nil || cluster.resources == nil {
+		return
+	}
+	now := time.Now()
+	dbu := cluster.Conf.ProvDbDbu
+	if dbu < 1 {
+		dbu = 1
+	}
+	r := cluster.resources.Ratios(ProfileDatabase)
+	for _, server := range cluster.Servers {
+		if server == nil {
+			continue
+		}
+		reading := cluster.resources.ComputeUsedDBU(now, now,
+			int64(float64(dbu)*r.MemMBPerUnit)*1024*1024,
+			float64(dbu)*r.CoresPerUnit,
+			float64(dbu)*r.IopsPerUnit,
+			int64(float64(dbu)*r.DiskGBPerUnit)*1024*1024*1024)
+		cluster.resources.SetPlan(ResourceKey{Cluster: cluster.Name, Server: server.URL}, &reading)
+	}
 }
 
 // GetDBContainerMemoryCapMB returns the cgroup --memory cap (MB) for the DB container.
