@@ -141,33 +141,26 @@ func (cluster *Cluster) alignDBResourceToPlan(planDBU int) {
 		"Plan DBU %d -> DB resource aligned to %dc/%dMB/%dGB per node (x%d nodes)", planDBU, cores, memMB, diskGB, nodes)
 }
 
-// alignProxyResourceToPlan sets the proxy resource from the cluster APU reservation, using the
-// ProfileCompute ratios. The APU plan is designed as a shared pool (proxies + apps), but until
-// the app-credit fold-in pass lands, apps are OWNED by Ahmad's credit system and are NOT touched
-// here: the align is PROXY-ONLY (spread over the proxy count; at the floor 1 APU = 1c/1GB/10GB
-// per proxy). Counting apps in the divisor would only dilute the proxy share while provisioning
-// no app -- half-wiring. Apps join when the credit -> shared-pool fold-in is done.
-func (cluster *Cluster) alignProxyResourceToPlan(planAPU int) {
-	units := len(cluster.Proxies)
-	if units < 1 {
-		units = 1
-	}
-	perUnit := planAPU / units
-	if perUnit < 1 {
-		perUnit = 1
+// alignProxyResourceToPlan sets the proxy resource from the PER-PROXY APU reservation
+// (prov-proxy-apu) via the ProfileCompute ratios. Every proxy is sized to its own reservation
+// (default 2 APU = 2c/2GB/20GB). Apps are a different class -- sized from their own config in
+// RefreshComputePlanAPU, never here.
+func (cluster *Cluster) alignProxyResourceToPlan(perProxyAPU int) {
+	if perProxyAPU < 1 {
+		perProxyAPU = 1
 	}
 	r := cluster.resources.Ratios(ProfileCompute)
-	cores := int(math.Round(float64(perUnit) * r.CoresPerUnit))
+	cores := int(math.Round(float64(perProxyAPU) * r.CoresPerUnit))
 	if cores < 1 {
 		cores = 1
 	}
-	memMB := int(math.Round(float64(perUnit) * r.MemMBPerUnit))
-	diskGB := int(math.Round(float64(perUnit) * r.DiskGBPerUnit))
+	memMB := int(math.Round(float64(perProxyAPU) * r.MemMBPerUnit))
+	diskGB := int(math.Round(float64(perProxyAPU) * r.DiskGBPerUnit))
 	cluster.SetProxyCores(strconv.Itoa(cores))
 	cluster.SetProxyMemorySize(strconv.Itoa(memMB))
 	cluster.SetProxyDiskSize(strconv.Itoa(diskGB))
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
-		"Plan APU %d -> proxy resource aligned to %dc/%dMB/%dGB per unit (shared pool, %d units)", planAPU, cores, memMB, diskGB, units)
+		"Plan APU %d/proxy -> proxy resource aligned to %dc/%dMB/%dGB", perProxyAPU, cores, memMB, diskGB)
 }
 
 // planUnitSpec returns the ONLY per-unit-varying data: the current reservation, the floor
@@ -182,12 +175,12 @@ func (cluster *Cluster) planUnitSpec(unit PlanUnit) (cur int, floor int, apply f
 		return cluster.Conf.ProvServicePlanDbu, nodes, // floor = 1 DBU per node
 			func(v int) { cluster.Conf.ProvServicePlanDbu = v }, nil
 	case PlanUnitAPU:
-		floor := len(cluster.Proxies) // floor = 1 APU per proxy (apps join at the credit fold-in)
-		if floor < 1 {
-			floor = 1
-		}
-		return cluster.Conf.ProvServicePlanApu, floor,
-			func(v int) { cluster.Conf.ProvServicePlanApu = v }, nil
+		// prov-proxy-apu is the PER-PROXY reservation the proxy configurator moves -- the proxy
+		// is the controlled stateless class repman sizes. Per-proxy floor is 1 APU. Apps carry
+		// their OWN per-app reservation (their AppConfig) and feed the contract rollup
+		// (AppPlanByCluster) separately; they are not moved here.
+		return cluster.Conf.ProvProxyApu, 1,
+			func(v int) { cluster.Conf.ProvProxyApu = v }, nil
 	default:
 		return 0, 0, nil, fmt.Errorf("ChangePlanUnits: unit %q not supported yet", unit)
 	}
@@ -196,7 +189,7 @@ func (cluster *Cluster) planUnitSpec(unit PlanUnit) (cur int, floor int, apply f
 // planFlag is the config flag name backing a unit's reservation -- the admin-lock target.
 func (cluster *Cluster) planFlag(unit PlanUnit) string {
 	if PlanUnit(strings.ToUpper(string(unit))) == PlanUnitAPU {
-		return "prov-service-plan-apu"
+		return "prov-proxy-apu"
 	}
 	return "prov-service-plan-dbu"
 }

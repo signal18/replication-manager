@@ -115,16 +115,16 @@ function ProxyConfig({ selectedCluster, user }) {
       )
     },
     {
-      key: 'APU Plan (shared pool: proxies + apps)',
+      key: 'APU per proxy (prov-proxy-apu)',
       value: (
         <RMSlider
-          value={parseInt(selectedCluster?.config?.provServicePlanApu) || 1}
+          value={parseInt(selectedCluster?.config?.provProxyApu) || 2}
           min={1}
           max={64}
           isDisabled={user?.grants['cluster-settings'] == false}
-          confirmTitle='Confirm cluster APU plan (technical resource reservation) to: '
+          confirmTitle='Confirm per-proxy APU reservation (technical resource contract) to: '
           onChange={(val) => {
-            const cur = parseInt(selectedCluster?.config?.provServicePlanApu) || 1
+            const cur = parseInt(selectedCluster?.config?.provProxyApu) || 2
             const delta = val - cur
             if (delta !== 0) {
               dispatch(changePlanUnits({ clusterName: selectedCluster?.name, unit: 'APU', delta }))

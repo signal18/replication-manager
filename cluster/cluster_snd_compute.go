@@ -97,14 +97,19 @@ func (cluster *Cluster) CollectComputeMetrics() {
 	}
 
 	// Cluster-level APU PLAN contract, the Compute mirror of resourcemanager.<C>.plan_dbu:
-	// the coherent pool (prov-service-plan-apu = Σ units) emitted once per cluster so the
-	// fleet view is sumSeries(resourcemanager.*.plan_apu) and overcommit is DERIVED at query
-	// time (plan vs sumSeries(apu.*.apu)) -- no server-side aggregation. Uppercased token,
-	// scoped like the DBU plan + apu.<name> series.
+	// the contract is the ROLLUP of the per-instance reservations (AppPlanByCluster = Σ proxies
+	// at prov-proxy-apu + Σ apps at their own config), emitted once per cluster so the fleet view
+	// is sumSeries(resourcemanager.*.plan_apu) and overcommit is DERIVED at query time (plan vs
+	// sumSeries(apu.*.apu)) -- no server-side aggregation. Uppercased token, scoped like the DBU
+	// plan + apu.<name> series.
 	ctoken := strings.ToUpper(computeTokenReplacer.Replace(cluster.Name))
+	planAPU := 0.0
+	if cluster.resources != nil {
+		planAPU = cluster.resources.AppPlanByCluster(cluster.Name).Apu
+	}
 	metrics = append(metrics, graphite.NewMetric(
 		fmt.Sprintf("resourcemanager.%s.plan_apu", ctoken),
-		strconv.FormatFloat(float64(cluster.Conf.ProvServicePlanApu), 'f', 4, 64), ts))
+		strconv.FormatFloat(planAPU, 'f', 4, 64), ts))
 
 	if len(metrics) > 0 {
 		cluster.AddMetrics(metrics)

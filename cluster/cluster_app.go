@@ -1165,8 +1165,12 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 		if app == nil {
 			continue
 		}
+		// PER-APP sizing: each app reserves from its OWN AppConfig (GetApp* fall back to the
+		// cluster default only when the app sets nothing), so a dev php (~0) and a prod php
+		// (large) are distinct reservations -- not a cluster average. This is the app class:
+		// client-defined, repman tracks + scales its reservation, never reshapes its definition.
 		r := cluster.computePlanAPUReading(now,
-			cluster.GetAppMemory(nil), cluster.GetAppCores(nil), cluster.GetAppDisk(nil))
+			cluster.GetAppMemory(app.AppConfig), cluster.GetAppCores(app.AppConfig), cluster.GetAppDisk(app.AppConfig))
 		// Every app contracts a MINIMUM of 1 APU (same floor as a proxy) -- a tiny app
 		// still reserves one Compute unit; a bigger app contracts more. Floor a sub-1
 		// computed plan to exactly the 1-APU unit (the Compute ratios).
@@ -1185,21 +1189,27 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 		if prx == nil {
 			continue
 		}
-		// The proxy CONTRACT is a flat 1 APU per proxy -- it guarantees exactly one
-		// Compute unit (1 core + the per-unit mem/disk), independent of the docker
-		// resource actually provisioned. The plan is the contract, NOT the given
-		// resource (mirrors DBU's plan-vs-given split). Built from the Compute ratios
-		// so each axis is ratio/ratio = 1 APU, and it auto-follows a later ratio change.
+		// The proxy reservation is prov-proxy-apu APU per proxy (default 2 = 2c/2GB/20GB) --
+		// the CONTRACT, independent of the docker resource actually provisioned (mirrors DBU's
+		// plan-vs-given split). Built from the Compute ratios x the per-proxy APU, so it
+		// auto-follows a ratio change. The proxy is the controlled stateless class: this is the
+		// reservation ChangePlanUnits(APU) moves and the resource-follow aligns.
+		apu := cluster.Conf.ProvProxyApu
+		if apu < 1 {
+			apu = 1
+		}
 		cr := cluster.resources.Ratios(ProfileCompute)
 		r := cluster.resources.ComputeUsedAPU(now, now,
-			int64(cr.MemMBPerUnit)*1024*1024, cr.CoresPerUnit, int64(cr.DiskGBPerUnit)*1024*1024*1024)
+			int64(float64(apu)*cr.MemMBPerUnit)*1024*1024, float64(apu)*cr.CoresPerUnit,
+			int64(float64(apu)*cr.DiskGBPerUnit)*1024*1024*1024)
 		cluster.resources.SetAppPlan(AppKey{Cluster: cluster.Name, App: prx.GetName(), Kind: KindProxy}, &r)
 	}
 
-	// NOTE: prov-service-plan-apu is the CLIENT-SET technical resource RESERVATION (the
-	// contract), NOT derived from the units here -- the per-unit plans set above feed the
-	// RM (floor + pool-consumption tracking), but the cap itself is moved by the slider and
-	// validated/hooked through SaveChangePlan, not force-recomputed each cycle.
+	// NOTE: the per-instance plans set above ARE the reservation primitive (per service,
+	// with its agent/class), and the cluster APU contract is their ROLLUP (AppPlanByCluster),
+	// NOT a single stored number. prov-proxy-apu is the per-proxy reservation the configurator
+	// moves via ChangePlanUnits(APU); apps carry their own per-app reservation. The legacy
+	// single-number prov-service-plan-apu is superseded by the rollup.
 }
 
 func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {

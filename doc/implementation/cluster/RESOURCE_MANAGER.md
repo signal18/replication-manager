@@ -25,7 +25,7 @@ per workload is the **ratio**, not just the price:
 | Profile (unit) | cpu | mem | disk | iops |
 |---|---|---|---|---|
 | **Database** (DBU) | 1 | 4 GB | 40 GB | **1000** (locked) |
-| **Compute/App** (APU) | 1 | **2 GB** | **10 GB** | **— (none)** |
+| **Compute/App** (APU) | 1 | **1 GB** | **10 GB** | **— (none)** |
 | **Storage** (backup) | low | low | high | low (TBD) |
 
 A database is **not** an app (proxy/phpMyAdmin): little disk, no IOPS lock. Ratios are
@@ -430,6 +430,59 @@ claim/resize, refund on the measured gap; **only the commercial envelope changes
 
 So the DBU/APU contract, the claim, and the resize plugin must never assume the cloud18
 marketplace is present.
+
+## The reservation contract: per-instance, classed, rolled up
+
+repman matches a **technical reservation contract** to **real usage** against the
+**hardware quota** — three distinct things. The RM owns only the third (capacity / room /
+auto-placement); the **reservation lives with each service**, and the diff (reservation −
+usage) is what repman watches.
+
+**Unit is about *what* a service provisions, not *who* provisions it.** DBU = stateful /
+storage (a MariaDB/MySQL node, *or* an app-deployed **pg**/**minio/S3**); APU = stateless
+compute (a proxy, *or* a stateless app like phpMyAdmin/PHP). An app can be **either** — so
+neither contract is "per-node × count"; both are **sums over per-instance reservations**
+classified by unit.
+
+**The tracking primitive is per service instance, attributed to placement — never a cluster
+total.** A `# APU per cluster` can't be decomposed back to a node, so it can't drive
+per-node usage-diff or a correct scale delta. Each instance is a record
+`{ unit, reservation, real usage, node/agent placement, class }`, keyed `AppKey{Cluster,
+Name, Kind}`, rolled up **per node** (room + auto-placement) and **per cluster** (the
+contract view — `prov-service-plan-dbu`/`-apu` are reporting rollups, not the primitive).
+
+**Class decides how a ±1 is affected:**
+- **Controlled** (repman orchestrates + sizes): MariaDB/MySQL topology (DBU), proxies (APU)
+  → `ChangePlanUnits(±1)` is **applied**, repman resizes/places (resource-follow).
+- **Uncontrolled** (apps, client-created): repman does not define them but **tracks
+  reservation + usage and scales the APU reservation with usage** — apps are the *primary*
+  scale target (dev PHP ≈0 CPU → large idle gap; prod PHP → unbounded growth). Class changes
+  *how* we act (only its reservation/limits, never its definition), not *whether* it scales.
+
+**Borrow — overcommit is Plan + Borrow, tracked per service.** A service's guaranteed reservation
+is its Plan (`PlanDBU`/`PlanAPU`). To burst beyond it, the service **borrows** DBU/APU from the
+ResourceManager pool (the slack under-consumers leave on the agent). The borrow is tracked **per
+service under its contract**, so the effective **cgroup cap = Plan + Borrow**, never just Plan.
+Borrow is best-effort — it yields when a lender reclaims its reservation — and is the billable
+overage (funded by `contract − real` on the lenders), always bounded by `Σ real ≤ agent ceiling`.
+The RM is the lender and the ledger of who borrowed what.
+
+**Implemented (this pass):** the per-instance reservation / usage / placement / class ledger
+(`RefreshComputePlanAPU` → `SetAppPlan`/`SetAppAgent`/`AppKey.Kind`; `IngestAppConsumedAPU` →
+`SetAppConsumed`); `prov-proxy-apu` (default 2) drives the per-proxy reservation (plan ledger,
+`ChangePlanUnits(APU)`, resource-follow); apps sized **per-app** from their own `AppConfig`; the APU
+**contract = the `AppPlanByCluster` rollup** (`plan_apu` emit + GWARN016 read it, not the now-vestigial
+`prov-service-plan-apu`).
+
+**Remaining:** (1) **Borrow tracking** — per-service `BorrowDBU`/`BorrowAPU` from the RM pool; cgroup
+cap = Plan + Borrow. (2) Register app-provisioned **pg/minio** as **DBU** ledger entries into
+`prov-service-plan-dbu`. (3) **Consumed source** — scrape OpenSVC `/metrics/pg` (`opensvc_pg_cgroup_*`:
+`cpu_usage_usec` Δ→cores, `memory_current_bytes`, io) into `Ingest*`, retiring the custom sidecar
+**(needs the om3 upgrade)**. (4) Real **CPU/IO cgroup resize** via the om3 `pg reset` / `pg_cpu_quota`
+fix / `"default"` pg_* kw patch (today the CPU/IOPS steps only re-tune `SET GLOBAL`).
+
+**Vocabulary:** units are **DBU**/**APU**; classes **controlled**/**uncontrolled**; never
+"credits" (the app system's own accounting) or "tier".
 
 ## Laws
 

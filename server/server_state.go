@@ -21,15 +21,15 @@ import (
 )
 
 const (
-	clusterHeartbeatWarnErrKey                  = "GWARN001"
-	clusterHeartbeatCriticalErrKey              = "GERR001"
-	gitPushWarnErrKey                           = "GWARN002"
-	gitPushErrErrKey                            = "GERR002"
-	gitPullWarnErrKey                           = "GWARN003"
-	gitPullErrErrKey                            = "GERR003"
-	gitlabConnectWarnErrKey                     = "GWARN004"
-	crmConnectWarnErrKey                        = "GWARN005"
-	meetConnectWarnErrKey                       = "GWARN012"
+	clusterHeartbeatWarnErrKey     = "GWARN001"
+	clusterHeartbeatCriticalErrKey = "GERR001"
+	gitPushWarnErrKey              = "GWARN002"
+	gitPushErrErrKey               = "GERR002"
+	gitPullWarnErrKey              = "GWARN003"
+	gitPullErrErrKey               = "GERR003"
+	gitlabConnectWarnErrKey        = "GWARN004"
+	crmConnectWarnErrKey           = "GWARN005"
+	meetConnectWarnErrKey          = "GWARN012"
 	// Stall detection counts repman loop ticks (monitoring-ticker, 2s) with an
 	// unchanged cluster heartbeat — but a busy cluster tick can legitimately
 	// take 10s+ (slow DB connection attempts during an outage), so a tight
@@ -597,7 +597,9 @@ func (repman *ReplicationManager) ProduceContractedCapacityState() {
 	seen := map[string]bool{}
 	for _, cl := range clusters {
 		dbu := float64(cl.Conf.ProvServicePlanDbu)
-		apu := float64(cl.Conf.ProvServicePlanApu)
+		// APU contract = the per-instance reservation ROLLUP (Σ proxies at prov-proxy-apu +
+		// Σ apps at their own config), not the legacy prov-service-plan-apu single number.
+		apu := repman.resourceManager.AppPlanByCluster(cl.Name).Apu
 		cCores += dbu*dbuR.CoresPerUnit + apu*apuR.CoresPerUnit
 		cMemMB += dbu*dbuR.MemMBPerUnit + apu*apuR.MemMBPerUnit
 		for _, a := range cl.Agents {
