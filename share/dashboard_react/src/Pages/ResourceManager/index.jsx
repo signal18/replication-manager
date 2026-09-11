@@ -160,17 +160,17 @@ function ResourceManager() {
         }
         return (
           <Box mt={6}>
-            <Text fontSize='md' fontWeight='bold' mb={2}>Par cluster — DBU <Text as='span' fontSize='xs' opacity={0.6}>(┊ = usable {fmt(data.usableDbu)} DBU · au-delà = sur-réservé)</Text></Text>
-            <StackBar title='Réel (consommé)' k='dbu' sum={sumReal} usable={data.usableDbu} unit='DBU' />
-            <StackBar title='Plan (réservé)' k='planDbu' sum={sumPlan} usable={data.usableDbu} unit='DBU' />
-            <Text fontSize='md' fontWeight='bold' mb={2} mt={4}>Par cluster — APU <Text as='span' fontSize='xs' opacity={0.6}>(┊ = usable {fmt(data.usableApu)} APU · au-delà = sur-réservé)</Text></Text>
-            <StackBar title='Réel (consommé)' k='apu' sum={sumRealApu} usable={data.usableApu} unit='APU' />
-            <StackBar title='Plan (réservé)' k='planApu' sum={sumPlanApu} usable={data.usableApu} unit='APU' />
+            <Text fontSize='md' fontWeight='bold' mb={2}>Per cluster — DBU <Text as='span' fontSize='xs' opacity={0.6}>(┊ = usable {fmt(data.usableDbu)} DBU · beyond = over-reserved)</Text></Text>
+            <StackBar title='Real (consumed)' k='dbu' sum={sumReal} usable={data.usableDbu} unit='DBU' />
+            <StackBar title='Plan (reserved)' k='planDbu' sum={sumPlan} usable={data.usableDbu} unit='DBU' />
+            <Text fontSize='md' fontWeight='bold' mb={2} mt={4}>Per cluster — APU <Text as='span' fontSize='xs' opacity={0.6}>(┊ = usable {fmt(data.usableApu)} APU · beyond = over-reserved)</Text></Text>
+            <StackBar title='Real (consumed)' k='apu' sum={sumRealApu} usable={data.usableApu} unit='APU' />
+            <StackBar title='Plan (reserved)' k='planApu' sum={sumPlanApu} usable={data.usableApu} unit='APU' />
             <Flex gap={4} wrap='wrap' mt={2}>
               {data.clusters.map((c, i) => (
                 <Flex key={c.cluster} align='center' gap={1}>
                   <Box w='11px' h='11px' borderRadius='2px' style={{ background: colorFor(i) }} />
-                  <Text fontSize='xs'>{c.cluster} <Text as='span' opacity={0.6}>· réel {fmt(c.dbu)} / plan {fmt(c.planDbu)}</Text></Text>
+                  <Text fontSize='xs'>{c.cluster} <Text as='span' opacity={0.6}>· real {fmt(c.dbu)} / plan {fmt(c.planDbu)}</Text></Text>
                 </Flex>
               ))}
             </Flex>
@@ -180,14 +180,14 @@ function ResourceManager() {
 
       {ctx && data.clusters && data.clusters.length > 0 && (
         <Box mt={6}>
-          <Text fontSize='md' fontWeight='bold' mb={1}>Historique par cluster</Text>
+          <Text fontSize='md' fontWeight='bold' mb={1}>Historique per cluster</Text>
           <Text fontSize='xs' opacity={0.6} mb={2}>
-            Consommé = sumSeries(dbu.&lt;cluster&gt;.*.dbu) par cluster (séries serveur, agrégées au query) · Plan = resourcemanager.&lt;cluster&gt;.plan_dbu (émis, historisé pour tracer les +1/−1 DBU)
+            Consumed = sumSeries(dbu.&lt;cluster&gt;.*.dbu) per cluster (server series, summed at query) · Plan = resourcemanager.&lt;cluster&gt;.plan_dbu (emitted, historised to trace +1/−1 DBU)
           </Text>
           <ChartBarStack
             context={ctx}
             height={200}
-            title='Consommé DBU (par cluster)'
+            title='Consumed DBU (per cluster)'
             minYMax={data.usableDbu}
             ceilingLabel={`usable ${fmt(data.usableDbu)} DBU`}
             metricPaths={data.clusters.map((c) => `sumSeries(dbu.${c.cluster}.*.dbu)`)}
@@ -195,32 +195,32 @@ function ResourceManager() {
           <ChartBarStack
             context={ctx}
             height={200}
-            title='Plan DBU (par cluster)'
+            title='Plan DBU (per cluster)'
             metricPaths={data.clusters.map((c) => `resourcemanager.${carbonHost(c.cluster)}.plan_dbu`)}
           />
           <Text fontSize='xs' opacity={0.6} mt={4} mb={1}>
-            Overcommit (surconso) = max(0, consommé − plan) · Undercommit (sous-conso / giveback) = max(0, plan − consommé). Dérivés au query de consommé &amp; plan (rien d'émis).
+            Overcommit (over-use) = max(0, consumed − plan) · Undercommit (under-use / giveback) = max(0, plan − consumed). Derived at query from consumed &amp; plan (nothing emitted).
           </Text>
           <ChartBarStack
             context={ctx}
             height={200}
-            title='Overcommit DBU (surconsommation : consommé > plan, par cluster)'
+            title='Overcommit DBU (over-use: consumed > plan, per cluster)'
             metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(sumSeries(dbu.${c.cluster}.*.dbu),resourcemanager.${carbonHost(c.cluster)}.plan_dbu),0)`)}
           />
           <ChartBarStack
             context={ctx}
             height={200}
-            title='Undercommit DBU (sous-consommation / giveback : plan > consommé, par cluster)'
+            title='Undercommit DBU (under-use / giveback: plan > consumed, per cluster)'
             metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(resourcemanager.${carbonHost(c.cluster)}.plan_dbu,sumSeries(dbu.${c.cluster}.*.dbu)),0)`)}
           />
           <Text fontSize='md' fontWeight='bold' mt={6} mb={1}>Compute (APU) — proxies + apps</Text>
           <Text fontSize='xs' opacity={0.6} mb={1}>
-            Consommé = sumSeries(apu.&lt;cluster&gt;.*.apu) par cluster · Plan = resourcemanager.&lt;cluster&gt;.plan_apu (Σ des plans de déploiement proxy + app)
+            Consumed = sumSeries(apu.&lt;cluster&gt;.*.apu) per cluster · Plan = resourcemanager.&lt;cluster&gt;.plan_apu (Σ of proxy + app deployment plans)
           </Text>
           <ChartBarStack
             context={ctx}
             height={200}
-            title='Consommé APU (par cluster)'
+            title='Consumed APU (per cluster)'
             minYMax={data.usableApu}
             ceilingLabel={`usable ${fmt(data.usableApu)} APU`}
             metricPaths={data.clusters.map((c) => `sumSeries(apu.${c.cluster}.*.apu)`)}
@@ -228,19 +228,19 @@ function ResourceManager() {
           <ChartBarStack
             context={ctx}
             height={200}
-            title='Plan APU (par cluster)'
+            title='Plan APU (per cluster)'
             metricPaths={data.clusters.map((c) => `resourcemanager.${carbonHost(c.cluster)}.plan_apu`)}
           />
           <ChartBarStack
             context={ctx}
             height={200}
-            title='Overcommit APU (surconsommation : consommé > plan, par cluster)'
+            title='Overcommit APU (over-use: consumed > plan, per cluster)'
             metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(sumSeries(apu.${c.cluster}.*.apu),resourcemanager.${carbonHost(c.cluster)}.plan_apu),0)`)}
           />
           <ChartBarStack
             context={ctx}
             height={200}
-            title='Undercommit APU (sous-consommation / giveback : plan > consommé, par cluster)'
+            title='Undercommit APU (under-use / giveback: plan > consumed, per cluster)'
             metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(resourcemanager.${carbonHost(c.cluster)}.plan_apu,sumSeries(apu.${c.cluster}.*.apu)),0)`)}
           />
           <Flex gap={4} wrap='wrap' mt={2}>
