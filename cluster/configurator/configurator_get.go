@@ -199,6 +199,87 @@ func (configurator *Configurator) GetConfigRocksDBCacheSize() string {
 	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["rocksdb"])), 10)
 }
 
+// sessionMemFloorMB is the minimum per-session memory ceiling. Below this even
+// ordinary queries (their sort/join/tmp buffers) would fail; on a small VM the
+// cap still protects the instance because a single runaway session is stopped
+// before it OOM-kills the whole container.
+const sessionMemFloorMB int64 = 64
+
+// GetConfigMaxSessionMemUsedMB returns the per-session memory ceiling
+// (MariaDB max_session_mem_used) in MB, driven by the "threads" share of
+// prov-db-memory-shared-pct so it resizes with prov-db-memory / the DBU — the
+// same percentage model as every engine buffer. It is the native MariaDB safety
+// net for small VMs (#1749 item 3): a session that exceeds it is errored instead
+// of OOM-killing the whole instance, without having to rescale every per-thread
+// buffer. A "threads" share of 0 disables the cap (returns 0 -> the template
+// emits MariaDB's unlimited default), so it has its own off-switch.
+func (configurator *Configurator) GetConfigMaxSessionMemUsedMB() int64 {
+	usable, err := configurator.getUsableMemoryMB()
+	if err != nil {
+		return 0
+	}
+	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
+	pct := int64(sharedmempcts["threads"])
+	if pct <= 0 {
+		return 0 // disabled -> unlimited
+	}
+	if v := largestPow2LE(usable * pct / 100); v > sessionMemFloorMB {
+		return v
+	}
+	return sessionMemFloorMB
+}
+
+// getThreadBudgetMB is the memory bucket for per-thread/session buffers: the
+// "threads" share of prov-db-memory-shared-pct. The threaded buffers below split
+// it via prov-db-memory-threaded-pct (tmp/join/sort).
+func (configurator *Configurator) getThreadBudgetMB() int64 {
+	usable, err := configurator.getUsableMemoryMB()
+	if err != nil {
+		return 0
+	}
+	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
+	return usable * int64(sharedmempcts["threads"]) / 100
+}
+
+// threadedBufferMB sizes one per-thread buffer from the thread budget and its
+// prov-db-memory-threaded-pct share, rounded down to a power of two, floored.
+func (configurator *Configurator) threadedBufferMB(key string, floorMB int64) int64 {
+	threadedpcts, _ := configurator.ClusterConfig.GetMemoryPctThreaded()
+	if v := largestPow2LE(configurator.getThreadBudgetMB() * int64(threadedpcts[key]) / 100); v > floorMB {
+		return v
+	}
+	return floorMB
+}
+
+// GetConfigTmpTableSize is the per-thread in-memory temp table size (also used for
+// max_heap_table_size), sized from the "tmp" threaded share. MB.
+func (configurator *Configurator) GetConfigTmpTableSize() string {
+	return strconv.FormatInt(configurator.threadedBufferMB("tmp", 16), 10)
+}
+
+// GetConfigJoinBufferSize is the per-join per-thread buffer, from the "join" share. MB.
+func (configurator *Configurator) GetConfigJoinBufferSize() string {
+	return strconv.FormatInt(configurator.threadedBufferMB("join", 1), 10)
+}
+
+// GetConfigJoinBufferSpaceLimit caps the total join-buffer memory per query
+// (MariaDB only). Sized at several single join buffers, hard-capped at 1G. MB.
+func (configurator *Configurator) GetConfigJoinBufferSpaceLimit() string {
+	v := configurator.threadedBufferMB("join", 1) * 8
+	if v > 1024 {
+		v = 1024
+	}
+	return strconv.FormatInt(v, 10)
+}
+
+// GetConfigMRRBufferSize is the Multi-Range Read buffer (MariaDB), used by
+// Batched Key Access for modern INDEXED joins — the buffer that effectively
+// replaces join_buffer_size (which now only serves index-less joins). Sized from
+// the same "join" threaded share. MB.
+func (configurator *Configurator) GetConfigMRRBufferSize() string {
+	return strconv.FormatInt(configurator.threadedBufferMB("join", 1), 10)
+}
+
 // GetConfigPFSMemoryMB returns the memory share budgeted to the Performance
 // Schema, from the "pfs" entry of prov-db-memory-shared-pct (default 5 when
 // absent; pfs:0 disables the budget so MariaDB defaults stay untouched).
@@ -348,19 +429,49 @@ func (configurator *Configurator) GetConfigInnoDBWriteIoThreads() string {
 		return "4"
 	}
 	nbthreads := int(iopsLatency * iops)
-	if nbthreads < 1 {
-		return "1"
+	return strconv.Itoa(clampInnoDBIoThreads(nbthreads))
+}
+
+// innoDBMaxIoThreads is MariaDB/MySQL's hard maximum for innodb_read_io_threads and
+// innodb_write_io_threads (valid range 1..64). A value above it makes the live
+// SET GLOBAL fail out of range -- which is exactly what a large plan would produce
+// (e.g. > 32 DBU of IOPS via Little's-law sizing, or a > 64-core config).
+const innoDBMaxIoThreads = 64
+
+// clampInnoDBIoThreads clamps an innodb io-thread count to the valid [1, 64] range.
+func clampInnoDBIoThreads(n int) int {
+	if n < 1 {
+		return 1
 	}
-	strnbthreads := strconv.Itoa(nbthreads)
-	return strnbthreads
+	if n > innoDBMaxIoThreads {
+		return innoDBMaxIoThreads
+	}
+	return n
 }
 
 func (configurator *Configurator) GetConfigInnoDBReadIoThreads() string {
-	return configurator.ClusterConfig.ProvCores
+	cores, err := strconv.ParseFloat(strings.TrimSpace(configurator.ClusterConfig.ProvCores), 64)
+	if err != nil {
+		return "1"
+	}
+	return strconv.Itoa(clampInnoDBIoThreads(int(cores)))
 }
 
 func (configurator *Configurator) GetConfigInnoDBPurgeThreads() string {
 	return "4"
+}
+
+// GetConfigThreadPoolSize sizes the thread pool to the DB's cpu-core allocation
+// (prov-db-cpu-cores). With thread_handling=pool-of-threads, MariaDB otherwise
+// defaults thread_pool_size to the HOST core count (sysconf _SC_NPROCESSORS_ONLN,
+// which is NOT cgroup-aware), oversizing the pool in a cpu-limited container.
+// thread_pool_size is a dynamic GLOBAL, so it is applied live on a CPU resize.
+func (configurator *Configurator) GetConfigThreadPoolSize() string {
+	cores, err := strconv.ParseFloat(strings.TrimSpace(configurator.ClusterConfig.ProvCores), 64)
+	if err != nil || cores < 1 {
+		return "1"
+	}
+	return strconv.Itoa(int(cores))
 }
 
 func (configurator *Configurator) GetConfigInnoDBLruFlushSize() string {

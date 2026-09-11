@@ -920,6 +920,20 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 		}
 	}*/
 
+	// Stage the APU (Compute) sensor script into the proxy config tarball, mirroring
+	// how GenerateDatabaseConfig stages dbjobs_new. The init container extracts the
+	// tarball into the shared service FS, and the sensor sidecar -- which shares that
+	// FS like the DB jobs container does -- runs init/app_job. No image baking, no
+	// moduleset edit: the script ships embedded in the binary via go:embed.
+	if scriptBytes, err := share.EmbededDbModuleFS.ReadFile("scripts/app_job.sh"); err == nil {
+		appjobPath := filepath.Join(Datadir, "init", "init", "app_job")
+		os.MkdirAll(filepath.Dir(appjobPath), 0775)
+		content := misc.ExtractKey(string(scriptBytes), TemplateEnv)
+		if err := os.WriteFile(appjobPath, []byte(content), 0755); err != nil {
+			configurator.Logger.Errorf("Failed to write embedded app_job: %s", err)
+		}
+	}
+
 	configurator.TarGz(Datadir+"/config.tar.gz", Datadir+"/init")
 
 	return nil

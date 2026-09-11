@@ -46,18 +46,28 @@ function ChartMultiMetric({
     tooltipText: theme === 'light' ? 'var(--text-color, #333333)' : 'var(--text-color, #e7e9ef)'
   };
 
+  // Short, human labels. The DBU/service leaf tokens (dbu, dbu_cpu, ...) have
+  // fewer than 3 underscore-words, so the old slice(3) logic yielded '' and fell
+  // back to the FULL graphite path ('maxSeries(mysql.*-DEV3-*.dbu)') as the legend
+  // -- unreadable, and every DBU line got the same overlong name so they looked
+  // like one series ("il affiche que les disques" = 5 lines flat at 1 overlapping).
+  const FRIENDLY = {
+    dbu: 'DBU', dbu_cpu: 'CPU', dbu_mem: 'Mem', dbu_io: 'IO', dbu_disk: 'Disk',
+    dbu_plan: 'Plan',
+    service_cpu: 'CPU', service_mem: 'Mem', service_io: 'IO', service_disk: 'Disk',
+  };
   const getDisplayName = (metricPath) => {
     const parts = metricPath.split('.');
-    let displayName = parts[parts.length - 1] || metricPath;
+    // leaf = last dotted segment, minus any trailing ')' from maxSeries(...) wrappers
+    const leaf = (parts[parts.length - 1] || metricPath).replace(/\)+$/, '');
 
-    // Remove first 3 underscore-separated words
-    const nameParts = displayName.split('_');
-    displayName = nameParts.slice(3).join('_');
+    if (FRIENDLY[leaf]) return FRIENDLY[leaf];
 
-    // Remove trailing closing parenthesis
-    displayName = displayName.replace(/\)+$/, '');
+    // mysql_global_status_* / mysql_global_variables_*: drop the 3-word prefix
+    const words = leaf.split('_');
+    if (words.length > 3) return words.slice(3).join('_');
 
-    return displayName || metricPath; // Fallback to original if empty
+    return leaf || metricPath; // Fallback to original if empty
   };
 
   // Helper function to format numbers with units (K, M, G, T)
@@ -128,7 +138,12 @@ function ChartMultiMetric({
 
       // Create data points
       const data = values.map((value, i) => {
-        const val = value === 'None' ? 0 : parseFloat(value) || 0;
+        // Graphite sends 'None' for a gap (no datapoint that period). Keep it as
+        // NaN -- NOT 0 -- so the filter below drops it and the line connects
+        // across the gap instead of dipping to 0 (the "flapping"). 0 is a real
+        // value (an idle-but-measured DB), nil means "not measured": they must
+        // not render the same.
+        const val = value === 'None' ? NaN : parseFloat(value);
         return {
           date: new Date(startTime + (i * stepTime)),
           value: val
@@ -184,12 +199,13 @@ function ChartMultiMetric({
 
       // Use a single atomic update for state changes
       setMetricsData(prevData => {
-        // More thorough comparison to prevent unnecessary updates
-        const hasSignificantChanges = Object.keys(dataMap).some(path => {
-          const prevValues = prevData[path]?.data?.map(d => d.value).join(',');
-          const newValues = dataMap[path]?.data?.map(d => d.value).join(',');
-          return prevValues !== newValues;
-        });
+        // Redraw when the data OR the time window changed. The old check compared
+        // only values, so a flat series (e.g. an idle DB floored at 1 DBU -> "1,1,..
+        // ,1") kept the same value string as the window slid: the graph never redrew,
+        // froze, and only jumped when a value finally changed (the "flapping"). Include
+        // each point's timestamp so a sliding window always triggers a redraw.
+        const sig = (m) => m?.data?.map(p => `${p.date.getTime()}:${p.value}`).join(',');
+        const hasSignificantChanges = Object.keys(dataMap).some(path => sig(prevData[path]) !== sig(dataMap[path]));
 
         if (hasSignificantChanges) {
           // Trigger re-render atomically with the data change
@@ -227,6 +243,32 @@ function ChartMultiMetric({
     // Validate data
     const allData = Object.values(dataMap).flatMap(item => item.data);
     if (!allData.length) {
+      // No data yet: still render the SVG + title (and a "No data" note) so the
+      // empty graph stays identifiable instead of showing as an unlabelled empty
+      // box (e.g. metrics not produced yet, or performance_schema disabled).
+      d3.select(container).selectAll('svg').remove();
+      const emptySvg = d3.select(container).append('svg')
+        .attr('width', '100%')
+        .attr('height', height)
+        .style('background', themeColors.background)
+        .style('border-radius', '8px');
+      emptySvg.append('text')
+        .attr('x', 60)
+        .attr('y', 20)
+        .attr('class', theme === 'dark' ? 'dark-theme-title' : '')
+        .style('fill', themeColors.titleColor)
+        .style('font-size', '16px')
+        .style('font-weight', '600')
+        .style('dominant-baseline', 'middle')
+        .text(title);
+      emptySvg.append('text')
+        .attr('x', '50%')
+        .attr('y', height / 2)
+        .attr('text-anchor', 'middle')
+        .style('fill', themeColors.titleColor)
+        .style('font-size', '13px')
+        .style('opacity', 0.6)
+        .text('No data');
       isDrawingRef.current = false;
       return;
     }
@@ -555,7 +597,14 @@ function ChartMultiMetric({
       clearInterval(intervalId);
       abortControllerRef.current.abort();
     };
-  }, [metricPaths, context, isVisible]);
+    // Depend on the metric paths BY VALUE, not the array reference: the parent passes
+    // metricPaths={scopeAll([...])}, a NEW array on every render, so a reference dep
+    // re-ran this effect each render -> abort() killed the in-flight fetch (the
+    // "proxy error: context canceled" flood) -> it returned empty -> blank graph, with
+    // the AbortError swallowed so no console error. Keying on the joined string re-runs
+    // only when the paths actually change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metricPaths.join('|'), context, isVisible]);
 
   // Unified chart drawing effect that handles all triggers
   useEffect(() => {

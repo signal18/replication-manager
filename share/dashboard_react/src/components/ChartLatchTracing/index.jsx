@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Box } from '@chakra-ui/react';
+import { Box, Text } from '@chakra-ui/react';
 import * as d3 from 'd3';
 import styles from '../../styles/_chartbarstack.module.scss';
 import { useTheme } from '../../ThemeProvider';
@@ -168,9 +168,38 @@ function ChartLatchTracing({
       return;
     }
 
-    // Validate data
-    const primaryData = dataMap[metricPaths[0]]?.data;
+    // Validate data. Use the first metric that actually HAS data as the date source, not
+    // rigidly metricPaths[0] -- otherwise a graph whose first series is empty (e.g. latch,
+    // where several rwlocks have COUNT_STAR 0) would wrongly render "No data".
+    const primaryData =
+      metricPaths.map((p) => dataMap[p]?.data).find((d) => d && d.length) ||
+      dataMap[metricPaths[0]]?.data;
     if (!primaryData || !primaryData.length) {
+      // No data yet: still render the SVG + title (+ "No data") so the empty
+      // graph stays identifiable instead of an unlabelled blank box.
+      d3.select(container).selectAll('svg').remove();
+      const emptySvg = d3.select(container).append('svg')
+        .attr('width', '100%')
+        .attr('height', height)
+        .style('background', themeColors.background)
+        .style('border-radius', '8px');
+      emptySvg.append('text')
+        .attr('x', 60)
+        .attr('y', 20)
+        .attr('class', theme === 'dark' ? 'dark-theme-title' : '')
+        .style('fill', themeColors.titleColor)
+        .style('font-size', '16px')
+        .style('font-weight', '600')
+        .style('dominant-baseline', 'middle')
+        .text(title);
+      emptySvg.append('text')
+        .attr('x', '50%')
+        .attr('y', height / 2)
+        .attr('text-anchor', 'middle')
+        .style('fill', themeColors.titleColor)
+        .style('font-size', '13px')
+        .style('opacity', 0.6)
+        .text('No data');
       isDrawingRef.current = false;
       return;
     }
@@ -220,7 +249,11 @@ function ChartLatchTracing({
     const processedData = allDates.map(date => {
       const entry = { date };
       metricPaths.forEach(path => {
-        const pointData = dataMap[path]?.data.find(d =>
+        // A metric with no data (e.g. a rwlock whose COUNT_STAR is 0, so it was never
+        // emitted) comes back with data undefined. Guard with ?. before find -- otherwise
+        // undefined.find() throws and the WHOLE chart fails to render (why 'latch', with 4
+        // of 6 series empty, showed nothing while 'mutex' with all 6 present rendered fine).
+        const pointData = dataMap[path]?.data?.find(d =>
           d.date.getTime() === date.getTime()
         );
         entry[path] = pointData?.value || 0;
@@ -377,8 +410,14 @@ function ChartLatchTracing({
     let currentLine = 0;
 
     metricPaths.forEach((path, i) => {
-      // Extract display name from path
-      const pathLabel = path.split('.').pop();
+      // Extract a readable display name: last dotted segment, minus the trailing ')',
+      // the long common prefix (...wait_synch_{mutex,rwlock}_innodb_) and the _mutex/_latch
+      // suffix -> e.g. "buf_pool", "trx_sys", "btr_search", "log".
+      const pathLabel = path
+        .split('.').pop()
+        .replace(/\)+$/, '')
+        .replace(/^mysql_global_status_wait_synch_(?:mutex|rwlock)_innodb_/, '')
+        .replace(/_(?:mutex|latch)$/, '');
       const textNode = legend.append('text')
         .attr('class', theme === 'dark' ? styles['dark-legend-text'] : styles.legendText)
         .style('fill', themeColors.text)
@@ -467,7 +506,11 @@ function ChartLatchTracing({
       clearInterval(intervalId);
       abortControllerRef.current.abort();
     };
-  }, [metricPaths, context, isVisible]);
+    // metricPaths is scopeAll([...]) -> a NEW array every render; a reference dep would
+    // re-run this effect and abort the in-flight fetch on every parent render, which (with
+    // the hasData hide) makes the panel flap/disappear. Depend on the value-stable string.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metricPaths.join('|'), context, isVisible]);
 
   // Unified chart drawing effect that handles all triggers
   useEffect(() => {
@@ -522,14 +565,28 @@ function ChartLatchTracing({
     }
   }, [theme, themeColors.background]);
 
+  // Hide the panel entirely when the backing metrics don't exist (e.g. a MariaDB version
+  // whose collector doesn't expose these perf_schema wait_synch counters) -- otherwise it
+  // renders as a big empty white block. It reappears on its own once real data is present.
+  const hasData = Object.values(metricsData).some(
+    (m) => Array.isArray(m?.data) && m.data.length > 0
+  );
+  // Do NOT hide the panel when there's no data -- the user must still SEE the feature
+  // exists. Keep the title always, and show a clear "no data" note instead of a blank block.
+  if (!isVisible) return null;
+
   return (
     <Box
       className={`${styles.container} ${className || ''} ${theme === 'dark' ? styles.darkContainer : ''}`}
       data-testid="chart-latch-tracing"
+      position="relative"
       style={{
         backgroundColor: themeColors.background
       }}
     >
+      <Text px={2} pt={1} fontSize="sm" fontWeight="bold">
+        {title}
+      </Text>
       <div
         ref={chartRef}
         className={`${styles.chartContainer} ${theme === 'dark' ? styles.darkChartContainer : ''}`}
@@ -540,6 +597,20 @@ function ChartLatchTracing({
           borderRadius: '8px'
         }}
       />
+      {!hasData && (
+        <Text
+          position="absolute"
+          top="55%"
+          left="50%"
+          transform="translate(-50%, -50%)"
+          fontSize="sm"
+          opacity={0.6}
+          textAlign="center"
+          px={4}
+        >
+          No data — perf_schema “{title}” counters are not collected on this database
+        </Text>
+      )}
     </Box>
   );
 }

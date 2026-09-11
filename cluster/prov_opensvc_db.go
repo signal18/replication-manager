@@ -350,7 +350,6 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 	return nil
 }
 
-
 func (cluster *Cluster) OpenSVCRestartDatabaseService(server *ServerMonitor, node string, rid string) error {
 	svc := cluster.OpenSVCConnect()
 	agent := server.Agent
@@ -567,8 +566,10 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 			svccontainer["run_args"] = svccontainer["run_args"] + " --user mysql"
 		}
 		if server.ClusterGroup.Conf.ProvDBDockerRunArgsLimit {
-			memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", server.ClusterGroup.Conf.ProvMem, true)
-			memStr := strconv.Itoa(memMB) + "m"
+			// Container memory CAP = DBU tier + 1 overcommit DBU (GetDBContainerMemoryCapMB),
+			// deliberately ABOVE prov-db-memory (which sizes my.cnf) so mariadbd has headroom
+			// and is not OOM-killed when its real footprint exceeds the buffer pool.
+			memStr := strconv.Itoa(server.ClusterGroup.GetDBContainerMemoryCapMB()) + "m"
 			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + memStr + " --memory-swap=" + memStr + " --cpus=" + server.ClusterGroup.Conf.ProvCores + ".0"
 			// this need to find the device with df in container
 			//  --device-read-iops=" + server.ClusterGroup.Conf.ProvIops +".0" --device-write-iops=device" + server.ClusterGroup.Conf.ProvIops
@@ -614,6 +615,17 @@ func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string 
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 		svccontainer["run_args"] = server.ClusterGroup.Conf.ProvDBJobsDockerRunArgs
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/jobs:/var/lib/replication-manager-jobs:rw {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw {name}-sec/:/credentials`
+		if server.ClusterGroup.Conf.MonitoringSystemResources {
+			// Bind ONLY this service's pg cgroup slice read-only into the jobs
+			// container at /svc-cgroup, so the system-units sensor reads the
+			// whole-service memory.current/cpu.stat/io.stat. Least privilege: the
+			// sidecar sees only its own service's cgroup -- unlike --cgroupns=host,
+			// which would expose the whole node's cgroup tree (every co-tenant on a
+			// shared host). {namespace}/{svcname} are substituted by OpenSVC like
+			// {name} above. On by default; the flag is the off-switch (T14) if a
+			// bad bind blocks container start on an unexpected cgroup layout.
+			svccontainer["volume_mounts"] += " /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"
+		}
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
 		svccontainer["command"] = "/docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm"
 		svccontainer["entrypoint"] = "/bin/bash"
@@ -668,6 +680,43 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 		svcenv["innodb_buffer_pool_instances"] = server.ClusterGroup.GetConfigInnoDBBPInstances()
 		svcenv["innodb_log_buffer_size"] = "8"*/
 	return svcenv
+}
+
+// OpenSVCGetSensorContainerSection builds the APU (Compute) sensor sidecar shared by
+// proxy and app services. It is a long-running busybox container (detach=true, unlike
+// the one-shot init container) that shares the service netns (container#01, for egress
+// to repman) and has ONLY this service's cgroup slice bound read-only at /svc-cgroup
+// (least privilege, same rationale as the DB jobs container). It runs init/app_job --
+// staged into the config tarball via go:embed share/scripts/app_job.sh and extracted
+// into the shared FS by the init container -- so no image baking and no moduleset edit.
+// The SENSOR_API_KEY comes via the OpenSVC SECRET channel (secrets_environment), never
+// svcenv. Gated by MonitoringSystemResources (the off-switch, T14).
+func (cluster *Cluster) OpenSVCGetSensorContainerSection(kind string, name string) map[string]string {
+	svccontainer := make(map[string]string)
+	if cluster.Conf.ProvType != "docker" && cluster.Conf.ProvType != "podman" {
+		return svccontainer
+	}
+	svccontainer["type"] = "docker"
+	svccontainer["image"] = "busybox"
+	svccontainer["netns"] = "container#01"
+	svccontainer["detach"] = "true"
+	svccontainer["rm"] = "true"
+	svccontainer["entrypoint"] = "/bin/sh"
+	if cluster.Conf.ProvDiskType != "volume" {
+		svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {env.base_dir}:/bootstrap"
+	} else {
+		svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}:/bootstrap"
+	}
+	// Bind ONLY this service's cgroup slice read-only -- NOT --cgroupns=host, which would
+	// expose every co-tenant on a shared node. {namespace}/{svcname} substituted by OpenSVC.
+	svccontainer["volume_mounts"] += " /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"
+	svccontainer["secrets_environment"] = "env/SENSOR_API_KEY"
+	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_URL"
+	svccontainer["environment"] = "MRM_CLUSTER={namespace} SENSOR_KIND=" + kind + " SENSOR_NAME=" + name + " SENSOR_INTERVAL=60"
+	// The init container (detach=false) extracts init/app_job before later containers
+	// start; the wait-loop makes the sidecar robust to ordering/retries regardless.
+	svccontainer["command"] = "-c 'while [ ! -f /bootstrap/init/app_job ]; do sleep 2; done; exec sh /bootstrap/init/app_job'"
+	return svccontainer
 }
 
 func (cluster *Cluster) OpenSVCGetNamespaceContainerSection() map[string]string {

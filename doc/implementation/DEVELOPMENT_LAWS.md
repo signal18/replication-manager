@@ -108,9 +108,24 @@ domain state machine transitions into a critical state — never from log scrapi
 or ad-hoc checks. Criticality is carried by the tracked state; the transition is
 the trigger. Keep it flap-free (a %N-tick state must live in `pstatesN`).
 
-**T6. NEVER implement an API call without a GUI interface.** Every API endpoint
-ships with its GUI — no API-only features. Present a GUI whenever possible; don't
-leave a capability CLI/API/config-only.
+**T6. NEVER implement an API call without a GUI interface — and never without
+Swagger, and never without an ACL rule.** Every API endpoint ships with its GUI —
+no API-only features. Present a GUI whenever possible; don't leave a capability
+CLI/API/config-only. Every new handler MUST also:
+- carry its **Swagger annotations** (`// @Summary`, `@Tags`, `@Param`,
+  `@Success`/`@Failure`, `@Router …/[method]`) and the generated
+  `docs/swagger.{json,yaml}` MUST be regenerated (`swag init`) — no API without
+  Swagger; and
+- have its **ACL rule** — a write/action endpoint that changes state MUST map to a
+  grant in the ACL rule table (`cluster/cluster_acl_rules.go`
+  `clusterACLRules` / `globalSettingsACLRules` / the databases/proxies/apps tables),
+  reusing the closest existing grant (e.g. `GrantClusterSettings`). Without a rule
+  `IsURLPassACL` denies it (403) — the endpoint is unreachable, not open. Add the
+  rule WITH the handler, not after a 403.
+
+An endpoint is not "done" until it has GUI + Swagger + ACL. See
+`doc/implementation/server/API_SWAGGER.md` for the annotation shape, the
+regeneration command, the ACL-rule step, and the verify-before-commit checklist.
 
 **T7. Expose each unified capability behind a programmatic interface (a pluggable
 abstraction).** One Go interface, multiple backends — never parallel hard-wired
@@ -253,6 +268,41 @@ moduleset level). Ideally the moduleset export is committed on `develop` itself
 branch that depends on it cherry-picks that export commit; carrying an export
 inside a feature branch is the exception, and is what triggers the
 concurrent-branch check above.
+
+## Debugging discipline — investigate FULLY before you unblock
+
+**Never unblock a stuck issue before you have investigated it fully.** A restart, a
+killed goroutine, a cleared flag or a truncated file *makes the problem disappear and
+takes the evidence with it* — you lose the one chance to find the root cause and the bug
+ships to the next demo. This is the live-investigation half of "never delete the trigger":
+keep the investigation **read-only** until you understand *why*, then fix the cause, not
+the symptom.
+
+**The goroutine dump is the first tool for anything stuck / hung / deadlocked** (a
+rejoin/reseed that never completes, a server pinned in maintenance, an op that "runs"
+forever). repman registers `net/http/pprof` on the HTTP monitor (`server/http.go`,
+`http-port` default 10001, `http-bind-address` = localhost), so from **inside the repman
+container** (a read-only GET):
+
+    curl -s "http://localhost:10001/debug/pprof/goroutine?debug=2"
+
+`debug=2` prints every goroutine with its **wait state and blocked duration** —
+`[sync.Mutex.Lock, 1615 minutes]`, `[chan receive, 13079 minutes]`. Read it as:
+- **long durations are the smoking gun** — a goroutine blocked *minutes/hours/days* is
+  stuck, not busy. Sort on the `N minutes]` in each state header.
+- **a mutex deadlock** shows as ≥2 goroutines in `sync.Mutex.Lock` on the *same* mutex
+  address; find the **holder** (the goroutine that took that lock and is now blocked
+  *elsewhere* — a channel/network/another lock — while still holding it). The classic
+  cause is **a lock held across a blocking wait**.
+- `?debug=1` groups the counts — hundreds piling up in one stack = a **goroutine leak**.
+
+Worked example (2026-09-11, belair/db2): an operator logical rejoin sat "running" for a
+day. pprof showed `RejoinMaster → rejoinWithMethod → JobFlashbackLogicalBackup →
+snapshotLogicalBackupMeta` blocked 27h on `server.backupMetaMutex`, held by a cron
+physical backup parked in `waitForBackupSlot` while `MarkBackupPhysicalDone` (which frees
+the slot) had waited 8.6 days on the same mutex — a circular wait. Restarting repman "to
+unblock it" would have erased all of it, and the deadlock would have re-bitten the next
+demo.
 
 ---
 

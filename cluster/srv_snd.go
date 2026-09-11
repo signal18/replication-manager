@@ -90,6 +90,62 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 			}
 		}
 	}
+
+	// DBU (Database Unit) consumed — computed by repman from the system-level
+	// sensor push (cgroup + df) in handlerMuxServerDBUConsumed. Emitted
+	// unconditionally like the slave-status block above (a first-class signal,
+	// not whitelist-gated), one value per monitor loop. dbu is the pivot = the
+	// peak DBU of the last period; the per-axis values show which one binds
+	// (the biggest contributor is server.DBUConsumed.Binding, kept in the JSON).
+	// Emitted EVERY tick (not only on a fresh sensor push) so the series is continuous
+	// (no gaps -> no flapping). Two views: the DBU duplicate (dbu_*), always >= 1 per
+	// axis -- even for a stopped service, which keeps its reserved restart minimum
+	// (ConsumedDBUForEmit) -- and the RAW resource series (service_*), the real
+	// measurement, which DOES go to 0 when the service is down (RawResourceForEmit).
+	{
+		ts := time.Now().Unix()
+		dbu, cpu, mem, io, disk := server.ConsumedDBUForEmit()
+		// DBU RESOURCE series on the B scheme: dbu.<cluster>.<host>.* -- cluster is its OWN leading
+		// segment with the RAW cluster.Name (mirrors apu.<cluster>.<unit>), so a multi-cluster repman
+		// never mixes clusters and the GUI scope() matches with the identical raw name (no Go/JS
+		// sanitiser). DEPARTURE from the old mysql.<HOST>.dbu* tree (cluster carried inside the host
+		// id); the other mysql.* stats series keep the old scheme. This orphans the old dbu whisper
+		// data (the DBU graph starts fresh from deploy).
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.dbu", cluster.Name, hostname), strconv.FormatFloat(dbu, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.dbu_cpu", cluster.Name, hostname), strconv.FormatFloat(cpu, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.dbu_mem", cluster.Name, hostname), strconv.FormatFloat(mem, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.dbu_io", cluster.Name, hostname), strconv.FormatFloat(io, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.dbu_disk", cluster.Name, hostname), strconv.FormatFloat(disk, 'f', 4, 64), ts))
+
+		// Raw resource values (native units), the real measurement -- NOT floored
+		// (the dbu_* series above are the DBU duplicate carrying the min-1 rule).
+		// 0 on a down server. Same "service" unit the resource model reasons in.
+		cores, memBytes, iops, diskBytes := server.RawResourceForEmit()
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.service_cpu", cluster.Name, hostname), strconv.FormatFloat(cores, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.service_mem", cluster.Name, hostname), strconv.FormatFloat(memBytes, 'f', 0, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.service_io", cluster.Name, hostname), strconv.FormatFloat(iops, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.service_disk", cluster.Name, hostname), strconv.FormatFloat(diskBytes, 'f', 0, 64), ts))
+	}
+
+	// Cluster-level PLAN series, emitted ONCE per cluster (from the master). The plan
+	// (prov-service-plan-dbu) is a CLUSTER contract -- it exists nowhere per-server, so
+	// unlike consumed (dbu.<cluster>.<host>.dbu, summed at query time via sumSeries) it MUST be
+	// emitted here to be graphed over time, as resourcemanager.<CTOKEN>.plan_dbu. This plan token
+	// stays the uppercased CTOKEN (unchanged); only the consumed resource series moved to the
+	// dbu.<cluster>.<host> scheme.
+	if server.IsMaster() {
+		ts := time.Now().Unix()
+		ctoken := strings.ToUpper(replacer.Replace(cluster.Name))
+		metrics = append(metrics, graphite.NewMetric(
+			fmt.Sprintf("resourcemanager.%s.plan_dbu", ctoken),
+			strconv.FormatFloat(float64(cluster.GetPlanDbu()), 'f', 4, 64), ts))
+
+		// Nothing else is emitted here on purpose. Over/under-consumption -- what the client
+		// calls OVERCOMMIT (consumed > plan) and its opposite (consumed < plan, the giveback)
+		// -- are NOT emitted: they are DERIVED at query time from the two series that already
+		// exist, consumed (sumSeries(dbu.<cluster>.*.dbu)) and plan (resourcemanager.<CTOKEN>.plan_dbu),
+		// via diffSeries in the GUI.
+	}
 	return metrics
 }
 

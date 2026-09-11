@@ -21,15 +21,15 @@ import (
 )
 
 const (
-	clusterHeartbeatWarnErrKey                  = "GWARN001"
-	clusterHeartbeatCriticalErrKey              = "GERR001"
-	gitPushWarnErrKey                           = "GWARN002"
-	gitPushErrErrKey                            = "GERR002"
-	gitPullWarnErrKey                           = "GWARN003"
-	gitPullErrErrKey                            = "GERR003"
-	gitlabConnectWarnErrKey                     = "GWARN004"
-	crmConnectWarnErrKey                        = "GWARN005"
-	meetConnectWarnErrKey                       = "GWARN012"
+	clusterHeartbeatWarnErrKey     = "GWARN001"
+	clusterHeartbeatCriticalErrKey = "GERR001"
+	gitPushWarnErrKey              = "GWARN002"
+	gitPushErrErrKey               = "GERR002"
+	gitPullWarnErrKey              = "GWARN003"
+	gitPullErrErrKey               = "GERR003"
+	gitlabConnectWarnErrKey        = "GWARN004"
+	crmConnectWarnErrKey           = "GWARN005"
+	meetConnectWarnErrKey          = "GWARN012"
 	// Stall detection counts repman loop ticks (monitoring-ticker, 2s) with an
 	// unchanged cluster heartbeat — but a busy cluster tick can legitimately
 	// take 10s+ (slow DB connection attempts during an outage), so a tight
@@ -568,4 +568,76 @@ func probeHTTPReachability(client *http.Client, url string) error {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// ProduceContractedCapacityState raises GWARN016 when the fleet's TOTAL contracted plan
+// (every cluster's DBU + APU pool reduced to shared PHYSICAL) exceeds the usable pool
+// (physical capacity × quota). DBU and APU contend for the SAME metal, so the check is
+// physical (cores + mem), not per-unit. It is a SOFT limit -- over-consumption beyond a
+// plan is tracked/billed elsewhere; this only surfaces "no global room left to hand out".
+// Cheap and graphite-free: sums two coherent per-cluster plan ints + the agent capacity;
+// only SetState when over (unasserted states auto-resolve, so it clears on its own).
+func (repman *ReplicationManager) ProduceContractedCapacityState() {
+	if repman == nil || repman.StateMachine == nil || repman.resourceManager == nil {
+		return
+	}
+	dbuR := repman.resourceManager.Ratios(cluster.ProfileDatabase)
+	apuR := repman.resourceManager.Ratios(cluster.ProfileCompute)
+
+	repman.Lock()
+	clusters := make([]*cluster.Cluster, 0, len(repman.Clusters))
+	for _, cl := range repman.Clusters {
+		if cl != nil {
+			clusters = append(clusters, cl)
+		}
+	}
+	repman.Unlock()
+
+	var cCores, cMemMB, capCores, capMemMB float64
+	seen := map[string]bool{}
+	for _, cl := range clusters {
+		// Both contracts are the per-instance reservation ROLLUPS, not the legacy single
+		// numbers: DBU = Σ per-node prov-db-dbu (PlanByCluster); APU = Σ proxies at prov-proxy-apu
+		// + Σ apps at their own config (AppPlanByCluster).
+		dbu := repman.resourceManager.PlanByCluster(cl.Name).Dbu
+		apu := repman.resourceManager.AppPlanByCluster(cl.Name).Apu
+		cCores += dbu*dbuR.CoresPerUnit + apu*apuR.CoresPerUnit
+		cMemMB += dbu*dbuR.MemMBPerUnit + apu*apuR.MemMBPerUnit
+		for _, a := range cl.Agents {
+			key := a.HostName
+			if key == "" {
+				key = a.Id
+			}
+			if key == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			capCores += float64(a.CpuCores)
+			capMemMB += float64(a.MemBytes) // stored in MB despite the name
+		}
+	}
+	if repman.Conf.ResourceManagerInfraCpuCores > 0 {
+		capCores = repman.Conf.ResourceManagerInfraCpuCores
+	}
+	if repman.Conf.ResourceManagerInfraMemoryMB > 0 {
+		capMemMB = repman.Conf.ResourceManagerInfraMemoryMB
+	}
+	q := repman.Conf.ResourceManagerInfraQuotaPct / 100.0
+	if q <= 0 {
+		q = 1
+	}
+	usableCores := capCores * q
+	usableMemMB := capMemMB * q
+
+	over := ""
+	if usableCores > 0 && cCores > usableCores {
+		over = fmt.Sprintf("cpu %.1f of %.1f cores", cCores, usableCores)
+	} else if usableMemMB > 0 && cMemMB > usableMemMB {
+		over = fmt.Sprintf("mem %.0f of %.0f MB", cMemMB, usableMemMB)
+	}
+	if over != "" {
+		repman.SetState("GWARN016", state.State{ErrType: "WARNING", ErrKey: "GWARN016",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN016"], fmt.Sprintf("contracted %s (quota %.0f%%)", over, repman.Conf.ResourceManagerInfraQuotaPct)),
+			ErrFrom: "REPMAN"})
+	}
 }

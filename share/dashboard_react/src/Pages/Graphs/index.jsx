@@ -6,7 +6,9 @@ import Graphite from '../../components/Graphite'
 import Dropdown from '../../components/Dropdown'
 import ChartLatchTracing from '../../components/ChartLatchTracing';
 import ChartMultiMetric from '../../components/ChartMultiMetric';
-import ChartBarStack from '../../components/ChartBarStack';
+import ChartGroupedDBU from '../../components/ChartGroupedDBU';
+import ChartBarStack from '../../components/ChartBarStack'
+import ChartTimeSeriesLine from '../../components/ChartTimeSeriesLine';
 import RMIconButton from '../../components/RMIconButton'
 import { HiCog } from 'react-icons/hi'
 
@@ -50,14 +52,45 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   // fleet and a cluster's graph showed another cluster's numbers (#1756).
   const carbonHost = (h) =>
     (h || '').toUpperCase().replace(/[`?()'"<]/g, '-').replace(/\./g, '-').replace(/[ /]/g, '_')
-  const carbonHosts = (selectedCluster?.servers || [])
-    .map((s) => carbonHost(s.host))
-    .filter(Boolean)
-  const hostGlob = carbonHosts.length
-    ? (carbonHosts.length === 1 ? carbonHosts[0] : `{${carbonHosts.join(',')}}`)
-    : '*'
-  const scope = (s) => (typeof s === 'string' ? s.replaceAll('mysql.*', 'mysql.' + hostGlob) : s)
+  // Scope a whole-fleet 'mysql.*' to THIS cluster by its NAME, which is embedded in
+  // every carbon host id ('DB<n>-<CLUSTER>-SVC-CLOUD18'): match 'mysql.*-<CLUSTER>-*'.
+  // ONE wildcard pattern -- NOT a '{a,b,c}' brace, which go-graphite expands into several
+  // SEPARATE series that ChartMultiMetric (one series per target) cannot parse -> blank
+  // graph (#1756 regression). So maxSeries/sumSeries aggregate to ONE series. It also
+  // filters by cluster ALWAYS, with NO dependency on the (possibly not-yet-loaded) server
+  // list, so it never falls back to the unscoped whole-fleet '*' that mixes clusters.
+  const clusterToken = carbonHost(selectedCluster?.name || '')
+  // mysql.* (DB stats) keeps the old scheme (cluster embedded in the host id -> mysql.*-<CLUSTER>-*).
+  // dbu.* (DB resource) and apu.* (Compute) use the newer scheme: cluster as its own segment with
+  // the RAW cluster name, matching what repman emits (dbu.<cluster>.<host> / apu.<cluster>.<unit>)
+  // -- identical string both sides, no Go/JS sanitiser.
+  const scope = (s) =>
+    typeof s === 'string' && clusterToken
+      ? s
+          .replaceAll('mysql.*', `mysql.*-${clusterToken}-*`)
+          .replaceAll('dbu.*', `dbu.${selectedCluster?.name}.*`)
+          .replaceAll('apu.*', `apu.${selectedCluster?.name}.*`)
+      : s
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
+
+  const cfg = selectedCluster?.config || {}
+  // The plan line = prov-service-plan-dbu, the materialized service-plan DBU (Σ per-node
+  // deployment plans = prov-db-dbu x #nodes), recomputed each tick. The GUI just READS it.
+  const planDbu = parseInt(cfg.provServicePlanDbu) || 1
+
+  // Window (seconds) and refresh cadence for the d3 line charts, from the same
+  // hour/step selectors that drive the cubism graphs.
+  const windowSec = Math.max(60, Math.round((selectedHour.value * selectedStep.value) / 1000))
+  const refreshMs = selectedStep.value
+
+  // Seconds -> human duration, for the replication-delay Y axis (values are seconds,
+  // labelled 1s/1m/1h/1d up to the 6-day cap).
+  const fmtDur = (s) => {
+    if (s < 60) return `${Math.round(s)}s`
+    if (s < 3600) return `${Math.round(s / 60)}m`
+    if (s < 86400) return `${Math.round(s / 3600)}h`
+    return `${Math.round(s / 86400)}d`
+  }
 
   useEffect(() => {
   if (typeof window === 'undefined' || !window.cubism) return;
@@ -105,47 +138,103 @@ function Graphs({ selectedCluster, onOpenSettings }) {
       </Flex>
       { context && (
       <Flex className={styles.graphs}>
-        <Graphite
-          chartRef={qpsRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
-          context={context}
-          title={'Qps'}
-          target={scope('perSecond(mysql.*.mysql_global_status_queries)')}
+        <ChartTimeSeriesLine
+          title='Qps'
+          yLabel='queries/s'
+          logScale
+          cap={1e6}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[{ target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_queries))'), label: 'Qps' }]}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
-        <Graphite
-          chartRef={coreRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
-          context={context}
-          title={'Threads'}
-          target={scope('sumSeries(mysql.*.mysql_global_status_threads_running)')}
-          maxExtent={1024}
+        <ChartTimeSeriesLine
+          title='Threads running'
+          yLabel='threads'
+          logScale
+          logBase={2}
+          cap={1024}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[{ target: scope('sumSeries(mysql.*.mysql_global_status_threads_running)'), label: 'Threads' }]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
-        <Graphite
-          chartRef={netRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
-          context={context}
-          title={'BytesIn'}
-          target={scope('perSecond(mysql.*.mysql_global_status_bytes_received)')}
-          title2={'BytesOut'}
-          target2={scope('perSecond(mysql.*.mysql_global_status_bytes_sent)')}
-          maxExtent={100000}
+        <ChartTimeSeriesLine
+          title='Network in / out'
+          yLabel='bytes/s'
+          logScale
+          cap={100e9}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_bytes_received))'), label: 'In' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_bytes_sent))'), label: 'Out' }
+          ]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
-        <Graphite
-          chartRef={sbmRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
-          context={context}
-          title={'ReplDelay'}
-          target={scope('sumSeries(mysql.*.mysql_slave_status_seconds_behind_master)')}
-          maxExtent={8000}
+        <ChartTimeSeriesLine
+          title='Replication delay'
+          yLabel='behind master'
+          logScale
+          cap={518400}
+          yTickValues={[1, 10, 60, 600, 3600, 21600, 86400, 259200, 518400]}
+          yTickFormat={fmtDur}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[{ target: scope('sumSeries(mysql.*.mysql_slave_status_seconds_behind_master)'), label: 'Delay' }]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
+        <ChartGroupedDBU
+         context={context}
+         dbuPaths={{
+           cpu: scope('sumSeries(dbu.*.dbu_cpu)'),
+           mem: scope('sumSeries(dbu.*.dbu_mem)'),
+           io: scope('sumSeries(dbu.*.dbu_io)'),
+           disk: scope('sumSeries(dbu.*.dbu_disk)')
+         }}
+         servicePaths={{
+           cpu: scope('sumSeries(dbu.*.service_cpu)'),
+           mem: scope('sumSeries(dbu.*.service_mem)'),
+           io: scope('sumSeries(dbu.*.service_io)'),
+           disk: scope('sumSeries(dbu.*.service_disk)')
+         }}
+         pivotPath={scope('sumSeries(dbu.*.dbu)')}
+         planDbu={planDbu}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Consumed DBU — real → DBU per axis (plan = configurator)"
+       />
+        {/* Compute (APU) — proxies + apps. Reuses the grouped-unit chart: the apu_* series
+            already carry the server-side Compute projection, so we pass them as the billed
+            bars and leave servicePaths empty (the real→unit overlay uses DBU ratios, N/A here).
+            No IO axis (Compute has no IOPS lock). Cluster-scoped: apu.* is rewritten to
+            apu.<CTOKEN>.* by scope(), matching the cluster token repman now emits, so a
+            multi-cluster instance no longer mixes clusters. Plan line = prov-service-plan-apu
+            (the materialized service-plan APU = Σ proxy+app deployment plans). */}
+        <ChartGroupedDBU
+         context={context}
+         dbuPaths={{
+           cpu: scope('sumSeries(apu.*.apu_cpu)'),
+           mem: scope('sumSeries(apu.*.apu_mem)'),
+           disk: scope('sumSeries(apu.*.apu_disk)')
+         }}
+         servicePaths={{}}
+         pivotPath={scope('sumSeries(apu.*.apu)')}
+         planDbu={parseInt(cfg.provServicePlanApu) || 0}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Consumed APU — proxies + apps (Compute; plan = service-plan APU)"
+       />
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
+           'averageSeries(mysql.*.mysql_global_variables_innodb_log_file_size)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="InnoDB Redo Log Status"
+       />
         <ChartLatchTracing
           context={context}
           title={'Mutex'}
@@ -185,16 +274,6 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           ])}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
-        <ChartMultiMetric
-         context={context}
-         metricPaths={scopeAll([
-           'maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
-           'averageSeries(mysql.*.mysql_global_variables_innodb_log_file_size)'
-         ])}
-         height={300}
-         className={`${styles.graph} ${styles.multiMetricGraph}`}
-         title="InnoDB Redo Log Status"
-       />
        <Graphite
          chartRef={ihlRef}
          size={selectedHour.value}

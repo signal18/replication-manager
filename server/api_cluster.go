@@ -295,6 +295,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAcceptCompliance)),
 	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/settings/actions/git-push", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterGitPush)),
+	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/settings/actions/git-repair", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterGitRepair)),
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/configurator/compliance-diff", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxComplianceDiff)),
@@ -334,6 +342,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/settings/actions/clear/{settingName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettings)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/change-plan-units/{unit}/{delta}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxChangePlanUnits)),
 	))
 	router.Handle("/api/clusters/settings/actions/reload-clusters-plans", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -2788,6 +2800,12 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.ProvAutoUpdateCompliance = !mycluster.Conf.ProvAutoUpdateCompliance
 	case "prov-db-compliance-auto-agree":
 		mycluster.Conf.ProvDBComplianceAutoAgree = !mycluster.Conf.ProvDBComplianceAutoAgree
+	case "prov-db-dynamic-resource":
+		mycluster.Conf.ProvDBDynamicResource = !mycluster.Conf.ProvDBDynamicResource
+	case "prov-db-docker-run-args-limit":
+		mycluster.Conf.ProvDBDockerRunArgsLimit = !mycluster.Conf.ProvDBDockerRunArgsLimit
+	case "prov-orchestrator-deployment-upgrade-on-start":
+		mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart = !mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart
 	case "prov-docker-daemon-private":
 		mycluster.SwitchProvDockerDaemonPrivate()
 	case "prov-object-allow-overwrite":
@@ -3073,6 +3091,47 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
+}
+
+// handlerMuxChangePlanUnits moves a cluster's technical resource RESERVATION (plan) for a
+// unit by a relative delta, via cluster.ChangePlanUnits (validate + hook + persist).
+// @Summary Change a cluster plan reservation by a delta
+// @Description Moves the cluster's plan (technical resource reservation) for a unit (DBU/APU)
+// @Description by a relative delta. Decrease is free down to the floor; increase is validated
+// @Description (admin immutable lock; external claim hook) then applied and persisted.
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param unit path string true "Plan unit: DBU or APU"
+// @Param delta path int true "Relative change (e.g. -3 or 2)"
+// @Success 200 {string} string "OK"
+// @Failure 400 {string} string "delta must be an integer"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "error"
+// @Router /api/clusters/{clusterName}/settings/actions/change-plan-units/{unit}/{delta} [post]
+func (repman *ReplicationManager) handlerMuxChangePlanUnits(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	delta, err := strconv.Atoi(vars["delta"])
+	if err != nil {
+		http.Error(w, "delta must be an integer", http.StatusBadRequest)
+		return
+	}
+	if err := mycluster.ChangePlanUnits(cluster.PlanUnit(vars["unit"]), delta); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Write([]byte("OK"))
 }
 
 // handlerMuxSetCron handles the setting of cron jobs for a given cluster.
@@ -3718,6 +3777,26 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetProvDbDiskDevice(value)
 	case "prov-db-service-type":
 		mycluster.SetProvDbServiceType(value)
+	case "prov-db-resource-align":
+		mycluster.Conf.ProvDBResourceAlign = value
+	case "prov-db-dynamic-resize-policy":
+		mycluster.Conf.ProvDBDynamicResizePolicy = value
+	case "prov-db-dynamic-resize-daily-time":
+		mycluster.Conf.ProvDBDynamicResizeDailyTime = value
+	case "prov-db-cap-safety-pct":
+		mycluster.Conf.ProvDBCapSafetyPct, _ = strconv.Atoi(value)
+	case "prov-db-cap-shrink-pct":
+		mycluster.Conf.ProvDBCapShrinkPct, _ = strconv.Atoi(value)
+	case "prov-db-overcommit-pct":
+		mycluster.Conf.ProvDBOvercommitPct, _ = strconv.Atoi(value)
+	case "prov-db-scale-up-config-in-plan-speed":
+		mycluster.Conf.ScaleUpConfigInPlanSpeed = value
+	case "prov-db-scale-down-config-in-plan-speed":
+		mycluster.Conf.ScaleDownConfigInPlanSpeed = value
+	case "prov-db-scale-up-plan-speed":
+		mycluster.Conf.ScaleUpPlanSpeed = value
+	case "prov-db-scale-down-plan-speed":
+		mycluster.Conf.ScaleDownPlanSpeed = value
 	case "proxysql-servers-credential":
 		mycluster.SetProxyServersCredential(value, config.ConstProxySqlproxy)
 	case "proxy-servers-backend-max-connections":
@@ -4591,6 +4670,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.CheckNeedConfigFetch()
 	case "prov-db-apply-dynamic-config":
 		mycluster.Conf.ProvDBApplyDynamicConfig = applyIsActive(mycluster.Conf.ProvDBApplyDynamicConfig, isactive)
+	case "prov-orchestrator-deployment-upgrade-on-start":
+		mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart = applyIsActive(mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart, isactive)
 	case "prov-auto-update-compliance":
 		mycluster.Conf.ProvAutoUpdateCompliance = applyIsActive(mycluster.Conf.ProvAutoUpdateCompliance, isactive)
 	case "prov-docker-daemon-private":
@@ -5711,6 +5792,96 @@ func (repman *ReplicationManager) handlerMuxAcceptCompliance(w http.ResponseWrit
 	w.Write([]byte(`{"status":"compliance update accepted"}`))
 }
 
+// handlerMuxClusterGitPush forces the server-level config-repo push NOW (the
+// outbound git sync that normally only fires dirty-gated in the config-sync loop).
+// It runs the real push path (PushAllConfigsToGit), which self-heals a corrupt
+// pack (reclone + retry) on its own. Serialized with the sync worker via the git
+// lock. Server-level (one repo, all clusters); routed per-cluster for ACL.
+// @Summary Force the config-repo push to git now
+// @Description Triggers the server-level config git push immediately instead of waiting for the dirty-gated config-sync loop. Runs the real push path, which self-heals a corrupt pack (reclone + retry). Server-level (one repo, all clusters); routed per-cluster for ACL. Requires GrantClusterSettings.
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "config pushed to git"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "git config sync not configured"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /api/clusters/{clusterName}/settings/actions/git-push [post]
+func (repman *ReplicationManager) handlerMuxClusterGitPush(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if repman.ConfigManager == nil || repman.Conf.GitUrl == "" {
+		http.Error(w, `{"error":"git config sync not configured (git-url empty)"}`, http.StatusConflict)
+		return
+	}
+	var err error
+	repman.ConfigManager.WithGitLock(func() {
+		err = repman.ConfigManager.PushAllConfigsToGit(repman.Conf, repman.ClusterList)
+	})
+	if err != nil {
+		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
+		http.Error(w, string(errJSON), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"config pushed to git"}`))
+}
+
+// handlerMuxClusterGitRepair forces the explicit self-heal: refresh git metadata
+// (reclone, which re-inits the local .git from the remote and sheds corrupt/
+// dangling objects) then push a clean pack. Use when the config-repo push is stuck
+// (e.g. after a gitlab failover emptied the remote and pushes fail the remote's
+// receive fsck). Serialized with the sync worker via the git lock.
+// @Summary Repair a stuck config-repo git sync and push
+// @Description Explicit self-heal: refresh git metadata (reclone re-inits the local .git from the remote, shedding corrupt/dangling objects) then push a clean pack. Use when the config-repo push is stuck (e.g. after a gitlab failover emptied the remote and pushes fail the remote receive fsck). Server-level; routed per-cluster for ACL. Requires GrantClusterSettings.
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "git repaired and pushed"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "git config sync not configured"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /api/clusters/{clusterName}/settings/actions/git-repair [post]
+func (repman *ReplicationManager) handlerMuxClusterGitRepair(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if repman.ConfigManager == nil || repman.Conf.GitUrl == "" {
+		http.Error(w, `{"error":"git config sync not configured (git-url empty)"}`, http.StatusConflict)
+		return
+	}
+	var err error
+	repman.ConfigManager.WithGitLock(func() {
+		err = repman.ConfigManager.RepairAndPush(repman.Conf, repman.ClusterList)
+	})
+	if err != nil {
+		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
+		http.Error(w, string(errJSON), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"git repaired and pushed"}`))
+}
+
 // handlerMuxComplianceDiff returns a structured diff between the previous
 // (.old) and current accepted compliance, showing added/removed/modified tags.
 func (repman *ReplicationManager) handlerMuxComplianceDiff(w http.ResponseWriter, r *http.Request) {
@@ -6137,6 +6308,10 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 		}
 		if r.URL.Query().Get("test") != "" {
 			mycluster.SetSysbenchTest(r.URL.Query().Get("test"))
+		}
+		if r.URL.Query().Get("time") != "" {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench time to %ss", r.URL.Query().Get("time"))
+			mycluster.SetSysbenchTime(r.URL.Query().Get("time"))
 		}
 		if r.URL.Query().Get("threads") == "0" {
 			// threads=0 means scale from 1 to 2×cores

@@ -1,6 +1,6 @@
 #!/bin/bash
 # This script is given as sample and might be overwritten on upgrade
-# The real script is auto generated based on compliance json
+# The real script is auto generated based on compliance json and overwrite by go embed
 
 # %%ENV:GENLINE%%
 
@@ -600,6 +600,83 @@ secret_login() {
         # Other error
         return 2
     fi
+}
+
+# resolve_dbu_cgroup: locate the cgroup v2 directory whose memory.current /
+# cpu.stat / io.stat describe this database's resource use. Two sources,
+# orchestrator-agnostic:
+#   1. /svc-cgroup -- an explicit read-only bind the orchestrator provides
+#      (OpenSVC binds the service pg slice there). Preferred when present.
+#   2. Auto-discovery via the database process's own cgroup: find mariadbd/mysqld
+#      and read /proc/<pid>/cgroup (a single "0::<path>" line in cgroup v2), then
+#      /sys/fs/cgroup<path>. Works on-premise (the job runs on the host, so it
+#      sees the DB process and the host cgroupfs) and under Kubernetes when the
+#      pod shares its PID namespace and mounts the host cgroupfs.
+# Echoes the directory, or nothing when neither source is usable (caller skips).
+resolve_dbu_cgroup() {
+    if [[ -r /svc-cgroup/memory.current ]]; then
+        echo /svc-cgroup
+        return 0
+    fi
+    local pid sub base
+    pid=$(pgrep -x mariadbd 2>/dev/null | head -1)
+    [[ -z "$pid" ]] && pid=$(pgrep -x mysqld 2>/dev/null | head -1)
+    [[ -n "$pid" ]] || return 0
+    sub=$(awk -F: '$1=="0"{print $3; exit}' "/proc/$pid/cgroup" 2>/dev/null)
+    [[ -n "$sub" ]] || return 0
+    # Read through the DB process's own mount view first: this reaches the
+    # database container's cgroup under Kubernetes (via a shared PID namespace)
+    # AND the host cgroupfs on-premise (where root is the host). Fall back to the
+    # host cgroupfs path directly.
+    for base in "/proc/$pid/root/sys/fs/cgroup" "/sys/fs/cgroup"; do
+        [[ -r "${base}${sub}/memory.current" ]] && { echo "${base}${sub}"; return 0; }
+    done
+}
+
+# collect_dbu: thin DBU sensor. Reads the database cgroup (see resolve_dbu_cgroup:
+# an orchestrator bind at /svc-cgroup, or the DB process's own cgroup discovered
+# via /proc) plus the datadir df, and pushes the four raw per-axis maxima to
+# repman, which computes the DBU (normalise/pivot/binding) so the client DB CPU
+# is never spent on it. Runs once per dbjobs_new invocation (~60s launcher
+# cadence). cpu/io are rates vs the previous run's cumulative counters, persisted
+# in a checkpoint. Fail-soft: any missing piece just skips the push, never breaks
+# the job run.
+collect_dbu() {
+    local cg
+    cg=$(resolve_dbu_cgroup)
+    [[ -n "$cg" && -r "$cg/memory.current" ]] || return 0   # no readable cgroup -> skip
+
+    local now_epoch mem cpu_usec io_ops disk
+    now_epoch=$(date +%s)
+    mem=$(cat "$cg/memory.current" 2>/dev/null || echo 0)
+    cpu_usec=$(awk '/^usage_usec/{print $2}' "$cg/cpu.stat" 2>/dev/null || echo 0)
+    # io: sum rios+wios across all block devices (operation counts -> iops)
+    io_ops=$(awk '{for(i=1;i<=NF;i++){if($i ~ /^rios=/){sub("rios=","",$i);r+=$i} if($i ~ /^wios=/){sub("wios=","",$i);w+=$i}}} END{printf "%d", r+w+0}' "$cg/io.stat" 2>/dev/null || echo 0)
+    # disk: sum df used over mounts UNDER the datadir only (statfs, no du); this
+    # excludes host bind-mounts (e.g. zoneinfo) and the initdb volume.
+    disk=$(df -B1 2>/dev/null | awk -v d="$DATADIR" 'NR>1 && $NF ~ ("^" d) {s+=$3} END{printf "%d", s+0}')
+
+    local ckpt="$CHECKPOINT_DIR/dbu.checkpoint"
+    local prev_epoch="" prev_cpu="" prev_io=""
+    [[ -s "$ckpt" ]] && read -r prev_epoch prev_cpu prev_io < "$ckpt"
+    echo "$now_epoch $cpu_usec $io_ops" > "$ckpt"
+
+    # First run (no baseline) or clock skew -> just seed the checkpoint, no push.
+    [[ -z "$prev_epoch" ]] && return 0
+    local dt=$((now_epoch - prev_epoch))
+    ((dt <= 0)) && return 0
+
+    local cpu_cores io_iops
+    cpu_cores=$(awk -v c="$cpu_usec" -v p="$prev_cpu" -v dt="$dt" 'BEGIN{printf "%.4f", (c-p)/(dt*1000000)}')
+    io_iops=$(awk -v c="$io_ops" -v p="$prev_io" -v dt="$dt" 'BEGIN{printf "%.4f", (c-p)/dt}')
+
+    local ws we
+    ws=$(date -u -d "@$prev_epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
+    we=$(date -u -d "@$now_epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
+
+    local data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cpu_cores,\"ioMaxIops\":$io_iops,\"diskMaxBytes\":$disk}"
+    local endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/dbu"
+    send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$endpoint" "$data" "application/json" "$TOKEN" >/dev/null 2>&1 || true
 }
 
 # Fetch config receiver information
@@ -1778,6 +1855,11 @@ if [ "$TOKEN" == "error" ]; then
     echo "Failed to authenticate with the replication manager API."
     exit 1
 fi
+
+# DBU sensor: push the service cgroup + datadir maxima once per run (~60s
+# launcher cadence), BEFORE the job dispatch, so it still fires on a cycle where
+# a backup would later block or early-exit. Thin + fail-soft (see collect_dbu).
+collect_dbu || true
 
 # Clear previous temporary files
 echo "" > "$LOG_DIR/curl_response.txt"

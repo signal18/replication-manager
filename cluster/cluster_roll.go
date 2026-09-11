@@ -246,6 +246,13 @@ func (cluster *Cluster) RollingRestart() error {
 					return err
 				}
 
+				// Reapply the deployment (the plan-driven container cap, image, run_args,
+				// env) so the slave comes up on the CURRENT OpenSVC service config, not the
+				// one written at the last provision. prov-orchestrator-deployment-upgrade-on-start
+				// (default on); non-fatal -- a push failure just leaves the previous cap.
+				if uerr := cluster.UpgradeDatabaseDeploymentOnStart(slave); uerr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: deployment upgrade on start failed on slave %s (continuing): %s", slave.URL, uerr)
+				}
 				err = cluster.StartDatabaseWaitRejoin(slave)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
@@ -321,6 +328,12 @@ func (cluster *Cluster) RollingRestart() error {
 				master.SwitchMaintenance()
 			}
 			return err
+		}
+		// Reapply the deployment (the plan-driven container cap, image, run_args, env)
+		// so the old master comes up on the CURRENT OpenSVC service config.
+		// prov-orchestrator-deployment-upgrade-on-start (default on); non-fatal.
+		if uerr := cluster.UpgradeDatabaseDeploymentOnStart(master); uerr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: deployment upgrade on start failed on old master %s (continuing): %s", master.URL, uerr)
 		}
 		err = cluster.StartDatabaseWaitRejoin(master)
 		if err != nil {

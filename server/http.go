@@ -371,6 +371,10 @@ func (repman *ReplicationManager) httpserver() {
 			negroni.HandlerFunc(repman.validateTokenMiddleware),
 			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalMetrics)),
 		))
+		router.Handle("/api/global/resources", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalResources)),
+		))
 		router.Handle("/api/global/http-logs", negroni.New(
 			negroni.HandlerFunc(repman.validateTokenMiddleware),
 			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalLogs)),

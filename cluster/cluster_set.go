@@ -47,6 +47,17 @@ func (cluster *Cluster) SetStatus() {
 	cluster.IsNeedDatabasesConfigChange = cluster.HasRequestDBConfigChange()
 	cluster.IsNeedDatabasesRollingRestart = cluster.HasRequestDBRollingRestart()
 	cluster.IsNeedDatabasesRollingReprov = cluster.HasRequestDBRollingReprov()
+	for _, srv := range cluster.Servers { // per-server over/under x config/plan consumed states
+		if srv != nil {
+			srv.CheckResourceConsumed()
+		}
+	}
+	cluster.CheckResourceCapPlan()                // compose cluster cap-up/down from the per-server plan states
+	cluster.RefreshDBUPlan()                      // DBU plan: project per-node prov-db-dbu into the ResourceManager (DB track)
+	cluster.RefreshComputePlanAPU()               // APU plan: project app-deployment + proxy resources into the ResourceManager (Compute track)
+	cluster.DriveDailyDynamicResize()             // daily-time policy: reconcile live memory in the off-peak window
+	cluster.DriveDynamicResize()                  // dynamic-resize trigger: turn a sustained saturation state into a real resize
+	cluster.CheckDynamicResourceDeploymentReady() // WARN0214 when live resize is on but the container is still docker-capped (not resize-ready)
 	cluster.IsNeedDatabasesRestart = cluster.HasRequestDBRestart()
 	cluster.IsNeedDatabasesReprov = cluster.HasRequestDBReprov()
 	cluster.IsNeedDatabasesConfigChange = cluster.HasRequestDBConfigChange()
@@ -125,14 +136,35 @@ func (cluster *Cluster) SetDBDiskSize(value string) {
 }
 
 func (cluster *Cluster) SetDBCores(value string) {
+	old := cluster.Conf.ProvCores
 	cluster.Configurator.SetDBCores(value)
 	cluster.Conf.ProvCores = cluster.Configurator.GetConfigDBCores()
+	// Live resize: a core change re-tunes the cores-driven DB variables
+	// (innodb_read_io_threads) via SET GLOBAL. The container cpu cgroup limit
+	// resize (pg_cpus) is a follow-up; for now this only re-tunes the DB side.
+	if cluster.Conf.ProvDBDynamicResource {
+		if cluster.Conf.ProvCores != old {
+			cluster.ResizeDynamicResources(resizeCPU, false)
+		}
+		return
+	}
 	cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBMemorySize(value string) {
+	oldMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
 	cluster.Configurator.SetDBMemory(value)
 	cluster.Conf.ProvMem = cluster.Configurator.GetConfigDBMemory()
+	// When live resource resize is enabled, drive it (SET GLOBAL + client
+	// infra hook) instead of a full container recreation. grow is decided from
+	// the memory delta; ResizeDynamicResources no-ops when the feature is off.
+	if cluster.Conf.ProvDBDynamicResource {
+		newMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+		if newMB != oldMB { // skip no-op reloads (would re-run the feasibility script for nothing)
+			cluster.ResizeDynamicResources(resizeMemory, newMB > oldMB)
+		}
+		return
+	}
 	cluster.SetDBReprovCookie()
 }
 
@@ -158,8 +190,17 @@ func (cluster *Cluster) SetTagsFromConfigurator() {
 }
 
 func (cluster *Cluster) SetDBDiskIOPS(value string) {
+	old := cluster.Conf.ProvIops
 	cluster.Configurator.SetDBDiskIOPS(value)
 	cluster.Conf.ProvIops = cluster.Configurator.GetConfigDBDiskIOPS()
+	// Live resize: an iops change re-tunes the iops-driven DB variables
+	// (innodb_io_capacity/_max, innodb_write_io_threads) via SET GLOBAL.
+	if cluster.Conf.ProvDBDynamicResource {
+		if cluster.Conf.ProvIops != old {
+			cluster.ResizeDynamicResources(resizeIO, false)
+		}
+		return
+	}
 	cluster.SetDBRestartCookie()
 }
 
@@ -1460,6 +1501,15 @@ func (cluster *Cluster) SetSysbenchThreads(Threads string) {
 		cluster.Conf.SysbenchThreads = i
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error converting threads to int %s", err)
+	}
+}
+
+func (cluster *Cluster) SetSysbenchTime(t string) {
+	i, err := strconv.Atoi(t)
+	if err == nil {
+		cluster.Conf.SysbenchTime = i
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error converting sysbench time to int %s", err)
 	}
 }
 

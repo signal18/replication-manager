@@ -367,6 +367,11 @@ func (cluster *Cluster) LoadAPIUsers() error {
 	}
 
 	cluster.APIUsers = meUsers
+	// Every (re)load reinstates the persisted `system` password, which can be stale
+	// (an older binary stored a random one before AddUser honoured an explicit password;
+	// a SecretKey change would also drift it). Force it back to the current derived key
+	// here so a config reload can never break the compute sensor's login.
+	cluster.reconcileSystemServicePassword()
 	return nil
 }
 

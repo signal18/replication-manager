@@ -1121,6 +1121,102 @@ func (cluster *Cluster) GetAppDiskIops(appcnf *config.AppConfig) string {
 	return iops
 }
 
+// computePlanAPUReading parses config resource strings (memory in M, disk in G,
+// cores as a float) into bytes/cores and projects them into APU via the Compute
+// profile. Used to size the PLAN of a stateless Compute unit (app or proxy).
+func (cluster *Cluster) computePlanAPUReading(now time.Time, memStr, coresStr, diskStr string) APUReading {
+	memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", memStr, true)
+	diskGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", diskStr, true)
+	cores, _ := strconv.ParseFloat(strings.TrimSpace(coresStr), 64)
+	return cluster.resources.ComputeUsedAPU(now, now,
+		int64(memMB)*1024*1024, cores, int64(diskGB)*1024*1024*1024)
+}
+
+// IngestAppConsumedAPU converts a compute-sensor push (raw cgroup maxima for ONE
+// stateless Compute unit -- an app deployment or a proxy) into an APUReading via the
+// Compute profile and records it as consumed, so AppConsumedByCluster reflects live
+// app/proxy compute (and the per-cluster GUI graph can read it). Mirror of the DB
+// track's IngestDBUMaxes. Returns the reading for logging; no-op (zero reading) when
+// no manager is wired.
+func (cluster *Cluster) IngestAppConsumedAPU(kind ComputeKind, name string, start, end time.Time, memMaxBytes int64, cpuMaxCores float64, diskMaxBytes int64) APUReading {
+	if cluster == nil || cluster.resources == nil {
+		return APUReading{}
+	}
+	r := cluster.resources.ComputeUsedAPU(start, end, memMaxBytes, cpuMaxCores, diskMaxBytes)
+	k := AppKey{Cluster: cluster.Name, App: name, Kind: kind}
+	cluster.resources.SetAppConsumed(k, &r)
+	return r
+}
+
+// RefreshComputePlanAPU projects the PLANNED resources of every stateless Compute
+// unit -- the configurator app deployments (cluster.Apps) and the proxies
+// (cluster.Proxies) -- into APU (Compute profile) and records each as its plan in
+// the ResourceManager, so AppPlanByCluster reflects the cluster's committed Compute
+// reservation. The plan is deterministic from config (prov-app-* / prov-proxy-*),
+// so no sensor is needed here; the CONSUMED side (a compute sensor on the app/proxy
+// cgroups, like the DB sensor) is the remaining follow-up. Apps use cluster-level
+// app sizing for now (per-app AppConfig matching is a refinement).
+func (cluster *Cluster) RefreshComputePlanAPU() {
+	if cluster == nil || cluster.resources == nil {
+		return
+	}
+	now := time.Now()
+	for _, app := range cluster.Apps {
+		if app == nil {
+			continue
+		}
+		// PER-APP sizing: each app reserves from its OWN AppConfig (GetApp* fall back to the
+		// cluster default only when the app sets nothing), so a dev php (~0) and a prod php
+		// (large) are distinct reservations -- not a cluster average. This is the app class:
+		// client-defined, repman tracks + scales its reservation, never reshapes its definition.
+		r := cluster.computePlanAPUReading(now,
+			cluster.GetAppMemory(app.AppConfig), cluster.GetAppCores(app.AppConfig), cluster.GetAppDisk(app.AppConfig))
+		// Every app contracts a MINIMUM of 1 APU (same floor as a proxy) -- a tiny app
+		// still reserves one Compute unit; a bigger app contracts more. Floor a sub-1
+		// computed plan to exactly the 1-APU unit (the Compute ratios).
+		if r.Apu < 1 {
+			cr := cluster.resources.Ratios(ProfileCompute)
+			r = cluster.resources.ComputeUsedAPU(now, now,
+				int64(cr.MemMBPerUnit)*1024*1024, cr.CoresPerUnit, int64(cr.DiskGBPerUnit)*1024*1024*1024)
+		}
+		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}
+		cluster.resources.SetAppPlan(k, &r)
+		if app.Agent != "" {
+			cluster.resources.SetAppAgent(k, app.Agent)
+		}
+	}
+	for _, prx := range cluster.Proxies {
+		if prx == nil {
+			continue
+		}
+		// The proxy reservation is prov-proxy-apu APU per proxy (default 2 = 2c/2GB/20GB) --
+		// the CONTRACT, independent of the docker resource actually provisioned (mirrors DBU's
+		// plan-vs-given split). Built from the Compute ratios x the per-proxy APU, so it
+		// auto-follows a ratio change. The proxy is the controlled stateless class: this is the
+		// reservation ChangePlanUnits(APU) moves and the resource-follow aligns.
+		apu := cluster.Conf.ProvProxyApu
+		if apu < 1 {
+			apu = 1
+		}
+		cr := cluster.resources.Ratios(ProfileCompute)
+		r := cluster.resources.ComputeUsedAPU(now, now,
+			int64(float64(apu)*cr.MemMBPerUnit)*1024*1024, float64(apu)*cr.CoresPerUnit,
+			int64(float64(apu)*cr.DiskGBPerUnit)*1024*1024*1024)
+		pk := AppKey{Cluster: cluster.Name, App: prx.GetName(), Kind: KindProxy}
+		cluster.resources.SetAppPlan(pk, &r)
+		if ag := prx.GetAgent(); ag != "" {
+			cluster.resources.SetAppAgent(pk, ag) // placement, for the per-agent view (was unset for proxies)
+		}
+	}
+
+	// Materialize the per-cluster APU contract -- the REAL cluster-level number (the service plan's
+	// APU) every reader uses = the SUM of the per-service reservations (proxies at prov-proxy-apu +
+	// apps at their own config), i.e. AppPlanByCluster. Derived and recomputed each tick from the
+	// per-instance inputs; the client moves those (prov-proxy-apu / per-app), never this directly,
+	// so it stays a real cluster number without re-locking in /etc.
+	cluster.Conf.ProvServicePlanApu = int(cluster.resources.AppPlanByCluster(cluster.Name).Apu + 0.5)
+}
+
 func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {
 	if appcnf != nil && appcnf.ProvAppHATopology != "" {
 		// If the app config has HA topology, return it

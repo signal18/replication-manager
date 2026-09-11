@@ -218,6 +218,18 @@ type ServerMonitor struct {
 	BinaryLogPurgeBefore        int64                       `json:"binaryLogPurgeBefore"`
 	MaxSlowQueryTimestamp       int64                       `json:"maxSlowQueryTimestamp"`
 	WorkLoad                    *config.WorkLoadsMap        `json:"workLoad"`
+	DBUConsumed                 *DBUReading                 `json:"dbuConsumed"`
+	// Per-server consumed-vs-reference axis states (set by CheckResourceConsumed, checkState only,
+	// no action). Over = consumed_axis >= ref x (1 - cap-safety-pct/100); under = consumed_axis <=
+	// ref x (cap-shrink-pct/100); dead-band between = status quo. Config ref = THIS server's
+	// resources (raise/shrink this server); plan ref = the cap. The cluster composes cap-up/down
+	// from the *Plan* axes across servers (see Cluster.CheckResourceCapPlan).
+	ResourceConsumedOverConfigAxes  []string `json:"resourceConsumedOverConfigAxes"`  // saturates its config -> raise this server's resources
+	ResourceConsumedUnderConfigAxes []string `json:"resourceConsumedUnderConfigAxes"` // under-uses its config -> shrink this server's resources
+	ResourceConsumedOverPlanAxes    []string `json:"resourceConsumedOverPlanAxes"`    // hits the plan/cap -> contributes to cap-up
+	ResourceConsumedUnderPlanAxes   []string  `json:"resourceConsumedUnderPlanAxes"`   // under the plan/cap -> allows cap-down (only if ALL servers are)
+	BufferPoolMemGrowDue            bool      `json:"bufferPoolMemGrowDue"`            // memory GROW due from buffer-pool PRESSURE (Innodb_buffer_pool_wait_free sustained), NOT occupancy -- folded into the mem axis by CanScaleConfigInPlan(up)
+	bufferPoolPressureSince         time.Time // when continuous buffer-pool pressure began (zero = not under pressure); >= scale-up speed -> BufferPoolMemGrowDue
 	DelayStat                   *ServerDelayStat            `json:"delayStat"`
 	SlaveVariables              SlaveVariables              `json:"slaveVariables"`
 	IsReseeding                 string                      `json:"isReseeding"`
@@ -249,6 +261,7 @@ type ServerMonitor struct {
 	IsNeedPathCheck             bool
 	HasConfigPathChanged        bool
 	HasConfigDiff               bool         `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config
+	PendingCgroupShrink         bool         `json:"-"`             // a memory live-shrink lowered the buffer pool and is waiting for the async InnoDB resize to complete before shrinking the cgroup (anti-OOM)
 	RestartNode                 string       // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
 	RestartRid                  string       // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
 	jobMutex                    sync.Mutex   // protects IsRunningJobs flag
@@ -483,6 +496,11 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	// Backup-related metadata
 	go server.FetchLastBackupMetadata()
+
+	// A config reload recreates this ServerMonitor; reload the last DBU reading
+	// from the repman-level store so the DBU metric does not gap (the flapping).
+	// No stored entry (server off / never pushed) leaves DBUConsumed nil.
+	server.RestoreDBUConsumed()
 	return server, err
 }
 
@@ -1202,6 +1220,10 @@ func (server *ServerMonitor) Refresh() error {
 				server.VariablesMap.ClearDeployedChanged()
 			}
 		}
+
+		// Phase 2 of a live memory shrink: once the async buffer-pool resize has
+		// completed, shrink the cgroup (no-op / single comparison otherwise).
+		cluster.completePendingCgroupShrink(server)
 
 		if server.IsNeedPathCheck {
 			server.CheckDBConfigPath()

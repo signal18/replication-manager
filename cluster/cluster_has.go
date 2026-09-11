@@ -480,6 +480,46 @@ func (cluster *Cluster) HasRequestDBRollingRestart() bool {
 	return ret
 }
 
+// CheckResourceCapPlan composes the cluster-level cap-up / cap-down signals from the PER-SERVER
+// plan states (each server's ResourceConsumedOver/UnderPlanAxes, set by
+// ServerMonitor.CheckResourceConsumed). checkState only -- it sets state, takes no action.
+// Composition rule -- ONE server suffices to force OR to break the action:
+//   - IsNeedResourceCapUp   = ANY up server is over the plan  (one server hitting the envelope
+//     forces raising the plan).
+//   - IsNeedResourceCapDown = EVERY up server is under the plan (a single non-under server BREAKS
+//     the cap-down -- safe-shrink: never lower the plan while any server still needs it).
+//
+// Resources within the plan are managed PER SERVER (each server's ResourceConsumedOver/
+// UnderConfigAxes drive raising/shrinking that server), so there is no cluster-level config
+// aggregate here. Both signals are false when resource-align is off, no manager, or no up server.
+func (cluster *Cluster) CheckResourceCapPlan() {
+	cluster.IsNeedResourceCapUp = false
+	cluster.IsNeedResourceCapDown = false
+	if cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff || cluster.resources == nil {
+		return
+	}
+	nUp := 0
+	anyOver := false
+	allUnder := true
+	for _, srv := range cluster.Servers {
+		if srv == nil || srv.IsDown() {
+			continue
+		}
+		nUp++
+		if len(srv.ResourceConsumedOverPlanAxes) > 0 {
+			anyOver = true
+		}
+		if len(srv.ResourceConsumedUnderPlanAxes) == 0 {
+			allUnder = false
+		}
+	}
+	if nUp == 0 {
+		return
+	}
+	cluster.IsNeedResourceCapUp = anyOver
+	cluster.IsNeedResourceCapDown = allUnder
+}
+
 func (cluster *Cluster) HasRequestDBRollingReprov() bool {
 	ret := true
 	if cluster.Servers == nil {

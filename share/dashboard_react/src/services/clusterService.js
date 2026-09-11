@@ -751,8 +751,8 @@ function monitorAllSchemas(clusterName, baseURL) {
 //#endregion Database service APIs
 
 //#region Test run APIs
-function runSysbench(clusterName, threads, baseURL, test) {
-  const params = `threads=${threads}` + (test ? `&test=${test}` : '')
+function runSysbench(clusterName, threads, baseURL, test, time) {
+  const params = `threads=${threads}` + (test ? `&test=${test}` : '') + (time ? `&time=${time}` : '')
   return getApi(baseURL).get(`clusters/${clusterName}/actions/sysbench?${params}`)
 }
 

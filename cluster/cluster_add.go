@@ -203,7 +203,13 @@ func (cluster *Cluster) AddUser(userform UserForm, delegator string, reloadACL b
 	user := userform.Username
 	roles := userform.Roles
 	grants := userform.Grants
-	pass, _ := cluster.GeneratePassword()
+	// Honour an explicitly-provided password (e.g. the derived system API key, or the
+	// password secretLoginHandler already passes); only generate one when none is given.
+	// Backward-compatible: callers that leave Password empty still get a random password.
+	pass := userform.Password
+	if pass == "" {
+		pass, _ = cluster.GeneratePassword()
+	}
 
 	if delegator != "admin" {
 		duser, dok := cluster.APIUsers[delegator]

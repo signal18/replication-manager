@@ -486,6 +486,12 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateSectionMap(servers string, pri Da
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
 	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(pri.GetPort())
 
+	// APU (Compute) sensor sidecar: proxies are stateless and consume Compute, so they
+	// report their cgroup usage to the ResourceManager like the DB jobs container does.
+	if cluster.Conf.MonitoringSystemResources {
+		svcsection["container#sensor"] = cluster.OpenSVCGetSensorContainerSection(string(KindProxy), pri.GetName())
+	}
+
 	if prx, ok := pri.(*MariadbShardProxy); ok {
 		svcsection["container#prx"] = cluster.OpenSVCGetShardproxyContainerSection(prx)
 	}
@@ -639,6 +645,11 @@ func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, prx DatabasePr
 	svcenv["user_admin"] = prx.GetUser()
 	svcenv["mrm_api_addr"] = cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
 	svcenv["mrm_cluster_name"] = cluster.GetClusterName()
+	// APU compute sensor identity (kind=proxy). NON-secret only: the derived `system`
+	// API key is NOT put in svcenv (config is pushed to git) -- it goes via the OpenSVC
+	// secret channel (secrets_environment), like the DB's MYSQL_ROOT_PASSWORD.
+	svcenv["sensor_kind"] = string(KindProxy)
+	svcenv["sensor_name"] = prx.GetName()
 
 	return svcenv
 }

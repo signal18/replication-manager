@@ -10,7 +10,9 @@ function ChartBarStack({
   metricPaths = [],
   title = "Memory Usage",
   height = 400,
-  isVisible = true
+  isVisible = true,
+  minYMax = 0,
+  ceilingLabel
 }) {
   const chartRef = useRef(null);
   const svgRef = useRef(null);
@@ -53,10 +55,16 @@ function ChartBarStack({
   };
 
   const formatWithUnits = (value) => {
-    if (value <= 0) return '0';
+    if (!Number.isFinite(value) || value <= 0) return '0';
     const k = 1024;
     const sizes = ['', 'K', 'M', 'G', 'T'];
-    const i = Math.floor(Math.log(value) / Math.log(k));
+    // Clamp the magnitude index to the valid range: a value < 1 gives a NEGATIVE
+    // floor(log_k(value)) -> sizes[-1] === undefined and value*k as the mantissa
+    // (0.5 -> "512.0undefined"). Sub-unit DBU deltas (overcommit/undercommit) must
+    // render as plain "0.5", so floor to 0; and never index past 'T'.
+    let i = Math.floor(Math.log(value) / Math.log(k));
+    if (i < 0) i = 0;
+    if (i >= sizes.length) i = sizes.length - 1;
     return d3.format(',.1f')(value / Math.pow(k, i)) + sizes[i];
   };
 
@@ -174,7 +182,11 @@ function ChartBarStack({
       clearInterval(intervalId);
       abortControllerRef.current.abort();
     };
-  }, [metricPaths, context, isVisible]);
+    // metricPaths is scopeAll([...]) -> a NEW array every render; a reference dep would
+    // re-run this effect and abort the in-flight fetch on every parent render, blanking the
+    // chart to "no data" intermittently (flapping). Depend on the value-stable joined string.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metricPaths.join('|'), context, isVisible]);
 
   // Create a memoized draw chart function
   const drawChart = useCallback((dataMap) => {
@@ -196,6 +208,31 @@ function ChartBarStack({
     // Validate data
     const primaryData = dataMap[metricPaths[0]]?.data;
     if (!primaryData || !primaryData.length) {
+      // No data yet: still render the SVG + title (+ "No data") so the empty
+      // graph stays identifiable instead of an unlabelled blank box.
+      d3.select(container).selectAll('svg').remove();
+      const emptySvg = d3.select(container).append('svg')
+        .attr('width', '100%')
+        .attr('height', height)
+        .style('background', themeColors.background)
+        .style('border-radius', '8px');
+      emptySvg.append('text')
+        .attr('x', 60)
+        .attr('y', 20)
+        .attr('class', theme === 'dark' ? 'dark-theme-title' : '')
+        .style('fill', themeColors.titleColor)
+        .style('font-size', '16px')
+        .style('font-weight', '600')
+        .style('dominant-baseline', 'middle')
+        .text(title);
+      emptySvg.append('text')
+        .attr('x', '50%')
+        .attr('y', height / 2)
+        .attr('text-anchor', 'middle')
+        .style('fill', themeColors.titleColor)
+        .style('font-size', '13px')
+        .style('opacity', 0.6)
+        .text('No data');
       isDrawingRef.current = false;
       return;
     }
@@ -267,8 +304,12 @@ function ChartBarStack({
       metricPaths.reduce((sum, path) => sum + d[path], 0)
     );
 
+    // Floor the top of the Y axis at minYMax (e.g. the usable DBU ceiling = capacity ×
+    // quota) so the stacked bars are always read against that reference, even when
+    // consumption sits far below it -- and grow past it when a cluster over-reserves.
+    const yTop = Math.max(maxTotal || 1, (Number.isFinite(minYMax) ? minYMax : 0));
     const yScale = d3.scaleLinear()
-      .domain([0, maxTotal || 1]) // Fallback to 1 if maxTotal is 0
+      .domain([0, yTop])
       .nice()
       .range([chartHeight, 0]);
 
@@ -327,6 +368,26 @@ function ChartBarStack({
         .style('stroke-opacity', theme === 'dark' ? 0.3 : 0.5)
         .style('shape-rendering', 'crispEdges'))
       .call(g => g.select('.domain').remove());
+
+    // Usable-ceiling reference line (capacity × quota): the scale is floored to it, so the
+    // consumed bars always read against this reference; anything above it is over-reserved.
+    if (Number.isFinite(minYMax) && minYMax > 0) {
+      const yc = yScale(minYMax);
+      g.append('line')
+        .attr('x1', 0).attr('x2', width)
+        .attr('y1', yc).attr('y2', yc)
+        .style('stroke', themeColors.text)
+        .style('stroke-width', 1)
+        .style('stroke-dasharray', '4 3')
+        .style('opacity', 0.7);
+      g.append('text')
+        .attr('x', width).attr('y', yc - 4)
+        .attr('text-anchor', 'end')
+        .style('font-size', '10px')
+        .style('fill', themeColors.text)
+        .style('opacity', 0.85)
+        .text(ceilingLabel || `usable ${minYMax}`);
+    }
 
     // Totals with conditional rendering
     processedData.forEach(d => {

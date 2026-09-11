@@ -77,6 +77,7 @@ const (
 	GrantClusterSwitchover         string = "cluster-switchover"
 	GrantClusterRolling            string = "cluster-rolling"
 	GrantClusterSettings           string = "cluster-settings"
+	GrantClusterResourceSensor     string = "cluster-resource-sensor"
 	GrantClusterGrant              string = "cluster-grant"
 	GrantClusterAnalyze            string = "cluster-analyze"
 	GrantClusterChecksum           string = "cluster-checksum"
@@ -188,6 +189,7 @@ func GetGrantType() map[string]string {
 		GrantClusterSwitchover:         GrantClusterSwitchover,
 		GrantClusterRolling:            GrantClusterRolling,
 		GrantClusterSettings:           GrantClusterSettings,
+		GrantClusterResourceSensor:     GrantClusterResourceSensor,
 		GrantClusterGrant:              GrantClusterGrant,
 		GrantClusterReplication:        GrantClusterReplication,
 		GrantClusterRejoinUnsafe:       GrantClusterRejoinUnsafe,
@@ -305,6 +307,7 @@ func GetGrantCluster() []string {
 		GrantClusterSwitchover,
 		GrantClusterRolling,
 		GrantClusterSettings,
+		GrantClusterResourceSensor,
 		GrantClusterGrant,
 		GrantClusterReplication,
 		GrantClusterRejoinUnsafe,

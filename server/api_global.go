@@ -367,6 +367,207 @@ type globalMetricsResponse struct {
 	Process globalMetricsProcessInfo `json:"process"`
 }
 
+// --- Global ResourceManager view (infra-wide capacity vs consumed) ----------
+
+// globalResourcesAxis is one resource axis in the infra-wide capacity picture.
+type globalResourcesAxis struct {
+	Axis        string  `json:"axis"`        // cpu|mem|io|disk|network
+	CapacityRaw float64 `json:"capacityRaw"` // native units
+	Unit        string  `json:"unit"`        // cores|MB|iops|GB|Mbps
+	Source      string  `json:"source"`      // config|agents
+	CapacityDBU float64 `json:"capacityDbu"` // projected to DBU (0 for network)
+	ConsumedDBU float64 `json:"consumedDbu"` // consumed on this axis (0 for network)
+}
+
+// globalResourcesResponse is the payload for GET /api/global/resources: the
+// ResourceManager infra-wide view. Capacity per axis comes from resource-manager-infra-*
+// overrides when set (>0), else from the summed physical agents (cpu/mem only -- agents
+// expose no disk/iops/network). The binding axis is the SCARCEST (min); usable =
+// capacity x quota%; slack = usable - consumed. This is the claim's first gate.
+type globalResourcesResponse struct {
+	QuotaPct    float64               `json:"quotaPct"`
+	Agents      int                   `json:"agents"`
+	Axes        []globalResourcesAxis `json:"axes"`
+	CapacityDBU float64               `json:"capacityDbu"`
+	BindingAxis string                `json:"bindingAxis"`
+	UsableDBU   float64               `json:"usableDbu"`
+	ConsumedDBU float64               `json:"consumedDbu"`
+	SlackDBU    float64               `json:"slackDbu"`
+	// APU (Compute) infra view -- the SAME metal projected into APU (1c/1GB/10GB, no IO).
+	CapacityAPU    float64                  `json:"capacityApu"`
+	BindingAxisApu string                   `json:"bindingAxisApu"`
+	UsableAPU      float64                  `json:"usableApu"`
+	ConsumedAPU    float64                  `json:"consumedApu"`
+	SlackAPU       float64                  `json:"slackApu"`
+	Clusters       []globalResourcesCluster `json:"clusters"`
+	// Agents the RM has placement for, each with the exact graphite token its per-agent series are
+	// keyed on (resourcemanager.agent.<token>.{dbu,apu,plan_dbu,plan_apu}) so the GUI targets them.
+	AgentList []globalResourcesAgent `json:"agentList"`
+}
+
+// globalResourcesAgent names one agent + the exact graphite token its per-agent series use,
+// plus the agent's physical cores -- the ceiling the per-agent DBU+APU stack is drawn against
+// (1 DBU = 1 APU = 1 core, so the stacked unit counts sit under the agent's total cores).
+type globalResourcesAgent struct {
+	Name  string  `json:"name"`
+	Token string  `json:"token"`
+	Cores float64 `json:"cores"`
+}
+
+// globalResourcesCluster is one cluster's consumed DBU -- the per-cluster breakdown that
+// stacks up to the infra consumed (for the stacked-by-cluster chart).
+type globalResourcesCluster struct {
+	Cluster string  `json:"cluster"`
+	Dbu     float64 `json:"dbu"` // real consumed pivot (max axis) -- the cluster's share of infra DBU
+	DbuCpu  float64 `json:"dbuCpu"`
+	DbuMem  float64 `json:"dbuMem"`
+	DbuIo   float64 `json:"dbuIo"`
+	DbuDisk float64 `json:"dbuDisk"`
+	PlanDbu float64 `json:"planDbu"` // the cluster's DBU reservation contract (prov-service-plan-dbu)
+	Apu     float64 `json:"apu"`     // real consumed APU pivot -- the cluster's share of infra APU
+	PlanApu float64 `json:"planApu"` // the cluster's APU reservation contract (prov-service-plan-apu)
+	Servers int     `json:"servers"`
+}
+
+// handlerMuxGlobalResources returns the ResourceManager infra-wide capacity-vs-consumed
+// view -- the global picture that is the claim's first gate ("is there room?").
+//
+// @Summary Global ResourceManager view
+// @Tags Global
+// @Produce json
+// @Success 200 {object} globalResourcesResponse
+// @Router /api/global/resources [get]
+func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if !repman.UserHasGlobalGrant(r, config.GrantGlobalAdminShow) {
+		http.Error(w, "Forbidden: requires "+config.GrantGlobalAdminShow+" grant", http.StatusForbidden)
+		return
+	}
+	rm := repman.resourceManager
+	if rm == nil {
+		http.Error(w, "ResourceManager not ready", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Sum unique physical agents (cpu cores + mem) across all clusters -- there is no
+	// repman-wide agent list, so we union each cluster's Agents, deduped by host.
+	repman.Lock()
+	clusters := make([]*cluster.Cluster, 0, len(repman.Clusters))
+	for _, cl := range repman.Clusters {
+		clusters = append(clusters, cl)
+	}
+	repman.Unlock()
+	seen := map[string]bool{}
+	agentCores := map[string]float64{} // per-agent physical cores -- the ceiling for the per-agent stack
+	var sumCores, sumMemMB float64
+	for _, cl := range clusters {
+		for _, a := range cl.Agents {
+			key := a.HostName
+			if key == "" {
+				key = a.Id
+			}
+			if key == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			agentCores[key] = float64(a.CpuCores)
+			sumCores += float64(a.CpuCores)
+			// NB: cluster.Agent.MemBytes is populated in MB (OpenSVC asset + on-prem
+			// /proc/meminfo/1024 both store MB), despite the "Bytes" name -- so it is
+			// already the MB we want, no division.
+			sumMemMB += float64(a.MemBytes)
+		}
+	}
+
+	// config override wins when > 0, else the summed agents (agents lack disk/iops/net).
+	pick := func(override, agents float64) (float64, string) {
+		if override > 0 {
+			return override, "config"
+		}
+		return agents, "agents"
+	}
+	cores, srcCpu := pick(repman.Conf.ResourceManagerInfraCpuCores, sumCores)
+	memMB, srcMem := pick(repman.Conf.ResourceManagerInfraMemoryMB, sumMemMB)
+	diskGB, srcDisk := pick(repman.Conf.ResourceManagerInfraDiskGB, 0)
+	iops, srcIo := pick(repman.Conf.ResourceManagerInfraIops, 0)
+	netMbps, srcNet := pick(repman.Conf.ResourceManagerInfraNetworkMbps, 0)
+
+	cpuDBU, memDBU, ioDBU, diskDBU, bindingDBU, bindingAxis := rm.CapacityDBUView(cluster.AgentCapacity{
+		Cores: cores, MemMB: memMB, DiskGB: diskGB, Iops: iops,
+	})
+	quota := rm.QuotaPct()
+	usable := bindingDBU
+	if quota > 0 {
+		usable = bindingDBU * quota / 100.0
+	}
+	consumed := rm.ConsumedInfra()
+
+	// APU (Compute) infra view -- the SAME metal projected into APU (no IO axis).
+	_, _, _, bindingAPU, bindingAxisApu := rm.CapacityAPUView(cluster.AgentCapacity{
+		Cores: cores, MemMB: memMB, DiskGB: diskGB,
+	})
+	usableApu := bindingAPU
+	if quota > 0 {
+		usableApu = bindingAPU * quota / 100.0
+	}
+	consumedApu := rm.AppConsumedInfra()
+
+	// Per-cluster consumed breakdown (stacks up to the infra consumed), DBU + APU.
+	var perCluster []globalResourcesCluster
+	for _, cl := range clusters {
+		a := rm.ConsumedByCluster(cl.Name)
+		plan := float64(cl.GetPlanDbu()) // explicit prov-service-plan-dbu, else auto (per-node × nodes)
+		apuPlan := rm.AppPlanByCluster(cl.Name)
+		apuCons := rm.AppConsumedByCluster(cl.Name)
+		if a.Servers == 0 && a.Dbu == 0 && plan == 0 && apuPlan.Apu == 0 && apuCons.Apu == 0 {
+			continue
+		}
+		perCluster = append(perCluster, globalResourcesCluster{
+			Cluster: cl.Name, Dbu: a.Dbu, DbuCpu: a.DbuCpu, DbuMem: a.DbuMem,
+			DbuIo: a.DbuIo, DbuDisk: a.DbuDisk, PlanDbu: plan,
+			Apu: apuCons.Apu, PlanApu: apuPlan.Apu, Servers: a.Servers,
+		})
+	}
+	sort.Slice(perCluster, func(i, j int) bool { return perCluster[i].PlanDbu > perCluster[j].PlanDbu })
+
+	// Agent list + the exact graphite token each per-agent series is keyed on (one sanitiser).
+	agentList := make([]globalResourcesAgent, 0)
+	for _, a := range rm.Agents() {
+		agentList = append(agentList, globalResourcesAgent{Name: a, Token: cluster.GraphiteComputeToken(a), Cores: agentCores[a]})
+	}
+
+	resp := globalResourcesResponse{
+		QuotaPct:       quota,
+		Agents:         len(seen),
+		CapacityDBU:    bindingDBU,
+		BindingAxis:    bindingAxis,
+		UsableDBU:      usable,
+		ConsumedDBU:    consumed.Dbu,
+		SlackDBU:       usable - consumed.Dbu,
+		CapacityAPU:    bindingAPU,
+		BindingAxisApu: bindingAxisApu,
+		UsableAPU:      usableApu,
+		ConsumedAPU:    consumedApu.Apu,
+		SlackAPU:       usableApu - consumedApu.Apu,
+		Clusters:       perCluster,
+		AgentList:      agentList,
+		Axes: []globalResourcesAxis{
+			{Axis: "cpu", CapacityRaw: cores, Unit: "cores", Source: srcCpu, CapacityDBU: cpuDBU, ConsumedDBU: consumed.DbuCpu},
+			{Axis: "mem", CapacityRaw: memMB, Unit: "MB", Source: srcMem, CapacityDBU: memDBU, ConsumedDBU: consumed.DbuMem},
+			{Axis: "io", CapacityRaw: iops, Unit: "iops", Source: srcIo, CapacityDBU: ioDBU, ConsumedDBU: consumed.DbuIo},
+			{Axis: "disk", CapacityRaw: diskGB, Unit: "GB", Source: srcDisk, CapacityDBU: diskDBU, ConsumedDBU: consumed.DbuDisk},
+			{Axis: "network", CapacityRaw: netMbps, Unit: "Mbps", Source: srcNet, CapacityDBU: 0, ConsumedDBU: 0},
+		},
+	}
+	out, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(out)
+}
+
 // handlerMuxGlobalMetrics returns host and process telemetry for the running repman instance.
 //
 // @Summary Get global metrics

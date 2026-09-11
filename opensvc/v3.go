@@ -151,17 +151,58 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 	}
 
 	var hosts []Host
-	// Process the response to extract node information
+	// Process the response to extract node information. GetNodes v3 returns ONLY the
+	// node name -- the physical capacity (cpu_cores/cpu_freq/mem_bytes/node_id) lives on
+	// the per-node system/property endpoint, so fetch it per node like GetNodesV1/V2 did
+	// (otherwise cluster.Agents comes back cpu/mem = 0 on OpenSVC v3, breaking the Agents
+	// page and the ResourceManager capacity view). Best-effort: a property-fetch failure
+	// leaves that node's axes at 0 rather than dropping the node.
 	nodes := gjson.GetBytes(body, "items.#.meta.node").Array()
 	for _, node := range nodes {
-		h := Host{
-			Node_name: node.String(),
+		name := node.String()
+		h := Host{Node_name: name}
+		if pbody, perr := collector.getNodeSystemProperties(name); perr == nil {
+			val := func(prop string) gjson.Result {
+				return gjson.GetBytes(pbody, `items.#(data.name=="`+prop+`").data.value`)
+			}
+			h.Node_id = val("node_id").String()
+			h.Cpu_cores = val("cpu_cores").Int()
+			h.Cpu_freq = val("cpu_freq").Int()
+			h.Mem_bytes = val("mem_bytes").Int()
+			h.Os_name = val("os_name").String()
+			h.Os_kernel = val("os_kernel").String()
+		} else if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC v3 node property fetch failed for %s: %s\n", name, perr)
 		}
-
 		hosts = append(hosts, h)
 	}
 
 	return hosts, nil
+}
+
+// getNodeSystemProperties fetches one node's system/property list (v3) as raw JSON --
+// where cpu_cores / cpu_freq / mem_bytes / node_id live (GetNodes itself returns only the
+// node name). Best-effort helper for GetNodesV3; the caller tolerates an error.
+func (collector *Collector) getNodeSystemProperties(nodename string) ([]byte, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+	resp, err := client.GetNodeSystemProperty(ctx, apiv3.InPathNodeName(nodename), collector.RequestCloserV3())
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if !handleSuccessGroup(resp.StatusCode) {
+		return nil, &StatusError{StatusCode: resp.StatusCode, Body: string(b)}
+	}
+	return b, nil
 }
 
 func (collector *Collector) GetPoolListV3() ([]string, error) {
@@ -315,7 +356,6 @@ func (collector *Collector) UpdateObjectV3(namespace, kind, service string, data
 
 	return body, nil
 }
-
 
 type ObjectGetterFunc func([]byte) ([]byte, error)
 
@@ -512,7 +552,7 @@ func (collector *Collector) ListConfigKeysV3(namespace, service string) ([]strin
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
 	defer cancel()
-	resp, err := client.GetObjectDataKeys(ctx, apiv3.InPathNamespace(namespace), "cfg", apiv3.InPathName(service), collector.RequestCloserV3())
+	resp, err := client.GetObjectDataKeys(ctx, apiv3.InPathNamespace(namespace), "cfg", apiv3.InPathName(service), nil, collector.RequestCloserV3())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list cfg keys for %s/%s: %w", namespace, service, err)
 	}
@@ -662,6 +702,39 @@ func (collector *Collector) StartInstanceV3(node, svc string) error {
 
 	_, err := collector.handleInstanceActionV3(node, svcparts[0], svcparts[1], svcparts[2], "start", nil)
 	return err
+}
+
+// PGUpdateInstanceV3 re-applies the process-group (cgroup) limits of a running
+// instance live via `om instance pg update` — no restart. Use it after changing
+// the container's mem/cpu keywords in the service config to grow/shrink the live
+// cgroup. rid optionally targets a single resource (e.g. "container#db"); empty
+// applies to the whole instance.
+func (collector *Collector) PGUpdateInstanceV3(node, svc, rid string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+
+	params := &apiv3.PostInstanceActionPGUpdateParams{}
+	if rid != "" {
+		r := apiv3.InQueryRid(rid)
+		params.Rid = &r
+	}
+	resp, err := client.PostInstanceActionPGUpdate(ctx, node, svcparts[0], apiv3.Kind(svcparts[1]), svcparts[2], params, collector.RequestCloserV3())
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("pg update failed on %s (%s): status %d", node, svc, resp.StatusCode)
+	}
+	return nil
 }
 
 func (collector *Collector) StopServiceV3(cluster, svc string) error {

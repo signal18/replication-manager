@@ -98,69 +98,76 @@ type Cluster struct {
 	IsSplitBrainBck   bool       `json:"-"`
 	SplitBrainStartTs int64      `json:"splitBrainStartTs" groups:"web"` // unix ts when the current/last split brain began; used to filter a peer crash to THIS split
 
-	injectTrafficTableReady       map[string]bool     `json:"-"` // dml marker schema created once per proxy target
-	IsFailedArbitrator            bool                `json:"isFailedArbitrator" groups:"web"`
-	IsLostMajority                bool                `json:"isLostMajority" groups:"web"`
-	IsDown                        bool                `json:"isDown" groups:"web"`
-	IsClusterDown                 bool                `json:"isClusterDown" groups:"web"`
-	IsMasterDown                  bool                `json:"isMasterDown" groups:"web"`
-	IsAllDbUp                     bool                `json:"isAllDbUp" groups:"web"`
-	IsFailable                    bool                `json:"isFailable" groups:"web"`
-	IsPostgres                    bool                `json:"isPostgres" groups:"web"`
-	IsProvision                   bool                `json:"isProvision" groups:"web"`
-	IsNeedProxiesRestart          bool                `json:"isNeedProxiesRestart" groups:"web"`
-	IsNeedProxiesReprov           bool                `json:"isNeedProxiesReprov" groups:"web"`
-	IsNeedProxiesConfigChange     bool                `json:"isNeedProxiesConfigChange" groups:"web"`
-	IsNeedDatabasesRestart        bool                `json:"isNeedDatabasesRestart" groups:"web"`
-	IsNeedDatabasesRollingRestart bool                `json:"isNeedDatabasesRollingRestart" groups:"web"`
-	IsNeedDatabasesRollingReprov  bool                `json:"isNeedDatabasesRollingReprov" groups:"web"`
-	IsNeedDatabasesReprov         bool                `json:"isNeedDatabasesReprov" groups:"web"`
-	IsNeedDatabasesConfigChange   bool                `json:"isNeedDatabasesConfigChange" groups:"web"`
-	IsNeedAppsReprov              bool                `json:"isNeedAppsReprov" groups:"web"`
-	IsGettingSlowLog              bool                `json:"isGettingSlowLog" groups:"web"`
-	IsValidBackup                 bool                `json:"isValidBackup" groups:"web"`
-	IsValidRejoinBackupLogical    bool                `json:"isValidRejoinBackupLogical" groups:"web"`
-	IsValidRejoinBackupPhysical   bool                `json:"isValidRejoinBackupPhysical" groups:"web"`
-	IsNotMonitoring               bool                `json:"isNotMonitoring" groups:"web"`
-	HaveSSHKeyChecked             bool                `json:"-"`
-	IsCapturing                   bool                `json:"isCapturing" groups:"web"`
-	IsGitPull                     bool                `json:"isGitPull" groups:"web"`
-	IsGitPush                     bool                `json:"isGitPush" groups:"web"`
-	IsSavingConfig                bool                `json:"-"`
-	IsNeedGitPush                 bool                `json:"-"`
-	IsNeedConfigSave              bool                `json:"-"` // event flag: Save() sets it, the repman config-sync gate consumes it and runs SaveCallBack
-	IsExportPush                  bool                `json:"isExportPush" groups:"web"`
-	IsAlertDisable                bool                `json:"isAlertDisable" groups:"web"`
-	IsIntervention                bool                `json:"isIntervention" groups:"web"`
-	InterventionCurrent           *InterventionEntry  `json:"interventionCurrent,omitempty" groups:"web"`
-	InterventionHistory           []InterventionEntry `json:"interventionHistory" groups:"web"`
-	InterventionSuppressedAlerts  int                 `json:"interventionSuppressedAlerts" groups:"web"`
-	InterventionPending           *InterventionEntry  `json:"interventionPending,omitempty" groups:"web"`
-	IsRefreshStaging              bool                `json:"isRefreshStaging" groups:"web"`
-	IsNeedStagingChange           bool                `json:"isNeedStagingChange" groups:"web"`
-	IsConfigPathChange            bool                `json:"isConfigPathChange" groups:"web"`
-	IsResticQueuePaused           bool                `json:"isResticQueuePaused" groups:"web"`
-	BackupSlotsInUse              int                 `json:"backupSlotsInUse" groups:"web"`
-	BackupSlotsTotal              int                 `json:"backupSlotsTotal" groups:"web"`
-	SchemaMonitorRequested        int32               `json:"-"`
-	Conf                          *config.Config      `json:"config" groups:"apps"`
-	Confs                         *config.ConfVersion `json:"-"`
-	CleanAll                      bool                `json:"cleanReplication" groups:"web"` //used in testing
-	Topology                      string              `json:"topology" groups:"web"`
-	Uptime                        string              `json:"uptime" groups:"web"`
-	UptimeFailable                string              `json:"uptimeFailable" groups:"web"`
-	UptimeSemiSync                string              `json:"uptimeSemisync" groups:"web"`
-	MonitorSpin                   string              `json:"monitorSpin" groups:"web"`
-	WorkLoad                      config.WorkLoad     `json:"workLoad" groups:"web"`
-	DockerRepos                   []config.DockerRepo `json:"-"`
-	Logrus                        *log.Logger         `json:"-"`
-	LogPushover                   *log.Logger         `json:"-"`
-	Log                           s18log.HttpLog      `json:"-" groups:"web"`
-	LogTask                       s18log.HttpLog      `json:"-" groups:"web"`
-	LogSecurity                   s18log.HttpLog      `json:"-" groups:"web"`
-	LogWorkload                   s18log.HttpLog      `json:"-" groups:"web"`
-	LogDDL                        s18log.HttpLog      `json:"-" groups:"web"`
-	LogVariableChange             s18log.HttpLog      `json:"-" groups:"web"`
+	injectTrafficTableReady       map[string]bool `json:"-"` // dml marker schema created once per proxy target
+	IsFailedArbitrator            bool            `json:"isFailedArbitrator" groups:"web"`
+	IsLostMajority                bool            `json:"isLostMajority" groups:"web"`
+	IsDown                        bool            `json:"isDown" groups:"web"`
+	IsClusterDown                 bool            `json:"isClusterDown" groups:"web"`
+	IsMasterDown                  bool            `json:"isMasterDown" groups:"web"`
+	IsAllDbUp                     bool            `json:"isAllDbUp" groups:"web"`
+	IsFailable                    bool            `json:"isFailable" groups:"web"`
+	IsPostgres                    bool            `json:"isPostgres" groups:"web"`
+	IsProvision                   bool            `json:"isProvision" groups:"web"`
+	IsNeedProxiesRestart          bool            `json:"isNeedProxiesRestart" groups:"web"`
+	IsNeedProxiesReprov           bool            `json:"isNeedProxiesReprov" groups:"web"`
+	IsNeedProxiesConfigChange     bool            `json:"isNeedProxiesConfigChange" groups:"web"`
+	IsNeedDatabasesRestart        bool            `json:"isNeedDatabasesRestart" groups:"web"`
+	IsNeedDatabasesRollingRestart bool            `json:"isNeedDatabasesRollingRestart" groups:"web"`
+	IsNeedDatabasesRollingReprov  bool            `json:"isNeedDatabasesRollingReprov" groups:"web"`
+	IsNeedResourceCapUp           bool            `json:"isNeedResourceCapUp" groups:"web"`   // composed from the per-server plan states: ANY up server over the plan -> RAISE THE PLAN (cap up). Set by CheckResourceCapPlan
+	IsNeedResourceCapDown         bool            `json:"isNeedResourceCapDown" groups:"web"` // composed: EVERY up server under the plan -> LOWER THE PLAN (cap down); one non-under server breaks it (safe-shrink). Set by CheckResourceCapPlan
+	LastDynamicResizeDay          string          `json:"-"`                                  // YYYY-MM-DD of the last daily-time memory reconcile (DriveDailyDynamicResize); one apply per day per window
+	lastDynamicResize             time.Time       `json:"-"`                                  // last dynamic in-plan grow (DriveDynamicResize); cooldown = one step per scale-up window
+	lastDynamicGrowAxis           string          `json:"-"`                                  // axis of the last dynamic grow ("cpu"/"mem"/"io"); drives the QPS-feedback mem->io escalation
+	qpsBeforeDynamicGrow          float64         `json:"-"`                                  // cluster QPS sampled just before that grow; next window compares to detect a plateau
+	// Per-axis consumed-vs-reference detail is PER SERVER (ServerMonitor.ResourceConsumedOver/UnderConfigAxes for raise/shrink resources, .ResourceConsumedOver/UnderPlanAxes composed here).
+	IsNeedDatabasesReprov        bool                `json:"isNeedDatabasesReprov" groups:"web"`
+	IsNeedDatabasesConfigChange  bool                `json:"isNeedDatabasesConfigChange" groups:"web"`
+	IsNeedAppsReprov             bool                `json:"isNeedAppsReprov" groups:"web"`
+	IsGettingSlowLog             bool                `json:"isGettingSlowLog" groups:"web"`
+	IsValidBackup                bool                `json:"isValidBackup" groups:"web"`
+	IsValidRejoinBackupLogical   bool                `json:"isValidRejoinBackupLogical" groups:"web"`
+	IsValidRejoinBackupPhysical  bool                `json:"isValidRejoinBackupPhysical" groups:"web"`
+	IsNotMonitoring              bool                `json:"isNotMonitoring" groups:"web"`
+	HaveSSHKeyChecked            bool                `json:"-"`
+	IsCapturing                  bool                `json:"isCapturing" groups:"web"`
+	IsGitPull                    bool                `json:"isGitPull" groups:"web"`
+	IsGitPush                    bool                `json:"isGitPush" groups:"web"`
+	IsSavingConfig               bool                `json:"-"`
+	IsNeedGitPush                bool                `json:"-"`
+	IsNeedConfigSave             bool                `json:"-"` // event flag: Save() sets it, the repman config-sync gate consumes it and runs SaveCallBack
+	IsExportPush                 bool                `json:"isExportPush" groups:"web"`
+	IsAlertDisable               bool                `json:"isAlertDisable" groups:"web"`
+	IsIntervention               bool                `json:"isIntervention" groups:"web"`
+	InterventionCurrent          *InterventionEntry  `json:"interventionCurrent,omitempty" groups:"web"`
+	InterventionHistory          []InterventionEntry `json:"interventionHistory" groups:"web"`
+	InterventionSuppressedAlerts int                 `json:"interventionSuppressedAlerts" groups:"web"`
+	InterventionPending          *InterventionEntry  `json:"interventionPending,omitempty" groups:"web"`
+	IsRefreshStaging             bool                `json:"isRefreshStaging" groups:"web"`
+	IsNeedStagingChange          bool                `json:"isNeedStagingChange" groups:"web"`
+	IsConfigPathChange           bool                `json:"isConfigPathChange" groups:"web"`
+	IsResticQueuePaused          bool                `json:"isResticQueuePaused" groups:"web"`
+	BackupSlotsInUse             int                 `json:"backupSlotsInUse" groups:"web"`
+	BackupSlotsTotal             int                 `json:"backupSlotsTotal" groups:"web"`
+	SchemaMonitorRequested       int32               `json:"-"`
+	Conf                         *config.Config      `json:"config" groups:"apps"`
+	Confs                        *config.ConfVersion `json:"-"`
+	CleanAll                     bool                `json:"cleanReplication" groups:"web"` //used in testing
+	Topology                     string              `json:"topology" groups:"web"`
+	Uptime                       string              `json:"uptime" groups:"web"`
+	UptimeFailable               string              `json:"uptimeFailable" groups:"web"`
+	UptimeSemiSync               string              `json:"uptimeSemisync" groups:"web"`
+	MonitorSpin                  string              `json:"monitorSpin" groups:"web"`
+	WorkLoad                     config.WorkLoad     `json:"workLoad" groups:"web"`
+	DockerRepos                  []config.DockerRepo `json:"-"`
+	Logrus                       *log.Logger         `json:"-"`
+	LogPushover                  *log.Logger         `json:"-"`
+	Log                          s18log.HttpLog      `json:"-" groups:"web"`
+	LogTask                      s18log.HttpLog      `json:"-" groups:"web"`
+	LogSecurity                  s18log.HttpLog      `json:"-" groups:"web"`
+	LogWorkload                  s18log.HttpLog      `json:"-" groups:"web"`
+	LogDDL                       s18log.HttpLog      `json:"-" groups:"web"`
+	LogVariableChange            s18log.HttpLog      `json:"-" groups:"web"`
 	// LogSchema is a dedicated rotating buffer for schema advisory findings, mirrors LogSecurity/LogWorkload.
 	LogSchema           s18log.HttpLog         `json:"-" groups:"web"`
 	LogSlack            *slackman.SlackManager `json:"-"`
@@ -312,6 +319,7 @@ type Cluster struct {
 	statecloseChan       chan state.State     `json:"-"`
 	switchoverChan       chan bool            `json:"-"`
 	errorChan            chan error           `json:"-"`
+	resources            *ResourceManager     `json:"-"` // repman-side RESOURCE authority (see resource_manager.go); injected via SetResourceManager; DBU/APU are unit projections over it, survives ServerMonitor recreation
 	// provisioningMutex serialises every provision/unprovision operation that
 	// reports its result through the shared, unbuffered errorChan (the ~10
 	// receivers in prov.go + srv.go Uprovision). Without it, two overlapping
@@ -360,6 +368,7 @@ type Cluster struct {
 	errorConnectVault                   error                       `json:"-"`
 	SqlErrorLog                         *logsql.Logger              `json:"-"`
 	SqlGeneralLog                       *logsql.Logger              `json:"-"`
+	ResourceResizeLog                   *logsql.Logger              `json:"-"`
 	SstAvailablePorts                   map[string]string           `json:"sstAvailablePorts" groups:"web"`
 	InPhysicalBackup                    bool                        `json:"inPhysicalBackup" groups:"web"`
 	InLogicalBackup                     bool                        `json:"inLogicalBackup" groups:"web"`
@@ -611,6 +620,7 @@ func (cluster *Cluster) InitFromConf() {
 
 	cluster.SqlErrorLog = logsql.New()
 	cluster.SqlGeneralLog = logsql.New()
+	cluster.ResourceResizeLog = logsql.New()
 	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 	cluster.switchoverChan = make(chan bool)
 	// should use buffered channels or it will block
@@ -738,6 +748,7 @@ func (cluster *Cluster) InitFromConf() {
 
 	cluster.SetClusterCredentialsFromConfig()
 	cluster.LoadAPIUsers()
+	cluster.EnsureSystemServiceUser() // `system` API-key service account (derived key) for the app/proxy compute sensor
 	cluster.SaveAcls()
 	cluster.InitMailer()
 	cluster.GetPersistentState()
@@ -828,6 +839,24 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.SqlGeneralLog.WithError(err).Error("Can't init general sql log file")
 	}
 	cluster.SqlGeneralLog.AddHook(hookgen)
+
+	// Dedicated rotating resource-resize audit log (JSON, one event per line) — the
+	// paramétré-axis history of live resource changes, pushed to the BO for DBU /
+	// billing reconciliation. Rotated like the sql logs.
+	hookresize, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
+		Filename:   cluster.WorkingDir + "/resource_resize.log",
+		MaxSize:    cluster.Conf.LogRotateMaxSize,
+		MaxBackups: cluster.Conf.LogRotateMaxBackup,
+		MaxAge:     cluster.Conf.LogRotateMaxAge,
+		Level:      logsql.InfoLevel,
+		Formatter: &logsql.JSONFormatter{
+			TimestampFormat: "2006-01-02 15:04:05",
+		},
+	})
+	if err != nil {
+		cluster.ResourceResizeLog.WithError(err).Error("Can't init resource resize log file")
+	}
+	cluster.ResourceResizeLog.AddHook(hookresize)
 
 	if loadErr := cluster.LoadAppConfigs(); loadErr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr,
@@ -1240,6 +1269,8 @@ func (cluster *Cluster) tickBody() {
 					goRun(cluster.CheckClusterServiceAgents)
 				}
 				if cluster.Conf.GraphiteMetrics && heartbeats%5 == 0 {
+					cluster.CollectComputeMetrics()  // queue APU (proxies+apps) BEFORE the flush -> same batch
+					cluster.CollectPerAgentMetrics() // queue per-agent DBU+APU rollup into the same batch
 					goRun(func() { cluster.SendGraphiteMetrics() })
 					goRun(cluster.CheckDisksUsage)
 				}
@@ -1334,11 +1365,29 @@ func (cluster *Cluster) tickBody() {
 		cluster.CheckPluginRejectionStates()
 		cluster.StateProcessing()
 		cluster.CheckHasFailCertLoadP12()
+		cluster.CheckK8SResourceSensor()
 		cluster.trackTickGoroutine(cluster.GetSlowLogTable) // prevent blocking cycle
 	}
 }
 
 func (cluster *Cluster) StateProcessing() {
+	// Materialize the DB plan when the admin hasn't set it (prov-service-plan-dbu == 0, the
+	// default) OR on an on-premise/local orchestrator (no marketplace contract sets it there):
+	// compute it = max(prov-db-* in DBU) × node count (per-node DBU × DB nodes) and SET it.
+	// prov-service-plan-dbu is then a REAL, always-populated config field that propagates to
+	// every serialization -- the GUI just READS it, never re-derives ratios in JS.
+	if len(cluster.Servers) > 0 {
+		// prov-service-plan-dbu is the CLIENT-SET technical resource RESERVATION (the
+		// contract the slider moves) -- it is NOT derived from the provisioned resource
+		// (prov-db-*), which lives UNDER the cap. Only auto-seed it when unset (0) or on
+		// on-premise (no marketplace sets it there); a client-set value is left alone so a
+		// reservation can legitimately sit above what is currently provisioned.
+		orch := cluster.GetOrchestrator()
+		onPremise := orch == config.ConstOrchestratorOnPremise || orch == config.ConstOrchestratorLocalhost || orch == ""
+		if cluster.Conf.ProvServicePlanDbu == 0 || onPremise {
+			cluster.Conf.ProvServicePlanDbu = cluster.GetProvDbuFromConfigPerNode() * len(cluster.Servers)
+		}
+	}
 	if !cluster.StateMachine.IsInFailover() {
 		// trigger action on resolving states
 		cstates := cluster.StateMachine.GetResolvedStates()

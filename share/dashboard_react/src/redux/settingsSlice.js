@@ -50,6 +50,22 @@ export const setSetting = createAsyncThunk('settings/setSetting', async ({ clust
   }
 })
 
+export const changePlanUnits = createAsyncThunk('settings/changePlanUnits', async ({ clusterName, unit, delta }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.changePlanUnits(clusterName, unit, delta, baseURL)
+    if (status === 200) {
+      showSuccessBanner(`${unit} plan changed by ${delta}!`, status, thunkAPI)
+      return { data, status }
+    } else {
+      throw new Error(data)
+    }
+  } catch (error) {
+    showErrorBanner(`Changing ${unit} plan failed!`, error.toString(), thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
 export const updateGraphiteWhiteList = createAsyncThunk(
   'settings/updateGraphiteWhiteList',
   async ({ clusterName, whiteListValue }, thunkAPI) => {

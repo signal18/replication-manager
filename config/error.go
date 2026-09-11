@@ -298,6 +298,7 @@ var ClusterError = map[string]string{
 	"WARN0209":   "HAProxy read backend %s: %d server(s) not added (DNS-based config) and %d not removed (HAProxy Runtime API refuses); reload HAProxy to apply",
 	"WARN0210":   "HAProxy read backend %s: catching up on add/remove cleanup over multiple monitoring passes (%s budget each) — safe, no action needed",
 	"WARN0211":   "MaxScale proxy %s: maxscale-get-info-method=maxinfo requested but MaxScale >= 2.5 (pinloki) drops the maxinfo plugin -- falling back to the REST/MaxAdmin path instead of erroring against a port nothing listens on",
+	"WARN0212":   "Can't monitor resource on cluster %s without shareProcessNamespace -- the Kubernetes namespace policy (PodSecurity) must allow it so the DBU sensor can read the database cgroup",
 	// CINF: cluster observability statuses (INFO, state-as-tag) — each domain
 	// state machine always explains why it may have nothing to report.
 	"CINF0001":  "%s reporting limited: instance not registered on Cloud18",
@@ -306,6 +307,11 @@ var ClusterError = map[string]string{
 	"CINF0004":  "%d %s plugin(s) loaded",
 	"CINF0005":  "Next schema monitoring run at %s",
 	"CINF0006":  "Schema monitoring in progress",
+	"CINF0007":  "Server %s: consumption of axes %s reached its config limit, scale UP needed (in-plan, prov-db-scale-up-config-in-plan-speed %s time)",
+	"CINF0008":  "Server %s: consumption of axes %s well under its config, scale DOWN possible (in-plan, prov-db-scale-down-config-in-plan-speed %s time)",
+	"CINF0009":  "Server %s: consumption of axes %s well under the plan, plan cap-down possible (prov-db-scale-down-plan-speed %s time)",
+	"WARN0213":  "Server %s: consumption of axes %s reached the plan cap, plan cap-UP needed -- raise the plan (prov-db-scale-up-plan-speed %s time)",
+	"WARN0214":  "Cluster %s: prov-db-dynamic-resource is ON but the container is still capped at the DOCKER SCOPE (prov-db-docker-run-args-limit ON) -- a live cgroup resize cannot take effect (the docker run-arg limit binds, not the om3 PG slice); move the cap to the PG slice (set prov-db-docker-run-args-limit OFF) and rolling-restart to recreate the container resize-ready",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",
@@ -333,6 +339,7 @@ var GlobalError = map[string]string{
 	"GWARN013": "Periodic %s task still running from previous cycle — possible network hang",
 	"GWARN014": "Instance not registered on Cloud18 (%s) — some community features may be disabled",
 	"GWARN015": "Offline license invalid — plan falls back to free: %s",
+	"GWARN016": "Total contracted capacity reached the resource limit: %s",
 	// GINF: informational operating modes (state-as-tag), never counted as alerts
 	"GINF001": "ReplicationManager has %d cluster(s) in standby pulling config from active peer: %s",
 	"GINF002": "ReplicationManager has %d unprovisioned cluster(s): %s",

@@ -85,6 +85,7 @@ type ReplicationManager struct {
 	MemProfile                   string                             `json:"memprofile"`
 	CpuProfile                   string                             `json:"cpuprofile"`
 	Clusters                     map[string]*cluster.Cluster        `json:"-"`
+	resourceManager              *cluster.ResourceManager           `json:"-"` // repman-side DBU authority (Epic #1776); created once, injected into every cluster; survives ServerMonitor recreation
 	PeerManager                  *peer.PeerManager                  `json:"-"`
 	Partners                     []config.Partner                   `json:"partners"`
 	Partner                      config.Partner                     `json:"partner"`
@@ -1059,7 +1060,24 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvIopsLatency, "prov-db-disk-iops-latency", "0.002", "IO latency in s")
 	flags.StringVar(&conf.ProvCores, "prov-db-cpu-cores", "1", "Number of cpu cores for the micro service VM")
 	flags.BoolVar(&conf.ProvDBConfig, "prov-db-config", WithProvisioning == "ON", "Enable configurator config tracking and deployment to database servers. When false, dbjobs skips config refresh and no config is pushed to databases. Default: true for PRO, false for OSC.")
+	flags.BoolVar(&conf.ProvOrchestratorDeploymentUpgradeOnStart, "prov-orchestrator-deployment-upgrade-on-start", true, "On each node (re)start during a rolling restart/upgrade, re-render and push the full deployment (service config: image, resources/cgroup cap, run_args, env) to the orchestrator BEFORE start, so the recreated container/pod comes up on the current config instead of the last-provisioned one. Covers the resource cap; also lets an unpinned image tag roll forward on restart (intended). On by default; set false to keep rolling restart deployment-neutral.")
 	flags.BoolVar(&conf.ProvDBApplyDynamicConfig, "prov-db-apply-dynamic-config", false, "Dynamic database config change")
+	flags.BoolVar(&conf.ProvDBDynamicResource, "prov-db-dynamic-resource", false, "Apply system-resource resizes (prov-db-memory/cpu/io) live via SET GLOBAL instead of a restart, for the dynamically-settable variables (buffer pool, max_session_mem_used, io capacity, ...); off by default")
+	flags.StringVar(&conf.ProvDBResourceAlign, "prov-db-resource-align", "plan", "Align the DB container memory CAP (cgroup --memory) to the DBU tier, ABOVE the MySQL config memory (prov-db-memory drives my.cnf) so mariadbd has headroom and is not OOM-killed. 'plan' (default): cap from prov-service-plan-dbu; 'up': cap from the max-axis DBU (coherence/debug); 'off': cap = prov-db-memory (legacy). prov-db-memory itself is never changed.")
+	flags.StringVar(&conf.ProvDBDynamicResizePolicy, "prov-db-dynamic-resize-policy", "scale-speed", "WHEN a live memory resize (prov-db-dynamic-resource) is applied: 'scale-speed' (default) applies as saturation dictates, throttled by the prov-db-scale-*-speed timeframe; 'daily-time' defers the live memory resize to the fixed daily clock time prov-db-dynamic-resize-daily-time, so any InnoDB buffer-pool-resize stall is contained to an off-peak hour. CPU/IO tuning is unaffected (no stall).")
+	flags.StringVar(&conf.ProvDBDynamicResizeDailyTime, "prov-db-dynamic-resize-daily-time", "03:00", "Daily clock time HH:MM (24h, server-local) at which the live memory resize is applied when prov-db-dynamic-resize-policy=daily-time.")
+	flags.IntVar(&conf.ProvDBOvercommitPct, "prov-db-overcommit-pct", 50, "COMMERCIAL scalability-up barrier (per cluster): the max percent the dynamic resource change may AUTO-grow the client's plan before a manual plan raise is required -- the client accepts auto-scaling up to plan x (1 + pct/100) (e.g. 50 = up to x1.5). Not a technical cap formula; enforced by ResourceManager.CanGrowBeyondPlan. Default 50.")
+	flags.IntVar(&conf.ProvDBCapSafetyPct, "prov-db-cap-safety-pct", 15, "HIGH-water margin (per cluster, per axis): a server is OVER a reference when it consumes at least (1 - pct/100) of it. Drives raise-resources (consumed vs per-server CONFIG) and cap-up (consumed vs PLAN). Default 15 (over at 85%).")
+	flags.IntVar(&conf.ProvDBCapShrinkPct, "prov-db-cap-shrink-pct", 50, "LOW-water margin (per cluster, per axis): a server is UNDER a reference when it consumes at most (pct/100) of it. Drives shrink-resources (consumed vs per-server CONFIG) and cap-down (consumed vs PLAN). The dead-band between shrink-pct and (100 - safety-pct) is status quo (anti-flap). Default 50 (under at 50%).")
+	flags.StringVar(&conf.ScaleUpConfigInPlanSpeed, "prov-db-scale-up-config-in-plan-speed", "1m", "Client-settable scale SPEED: how long a server's config saturation must persist before repman scales its resources UP within the plan. A duration; default 1m is the current (fastest) behaviour.")
+	flags.StringVar(&conf.ScaleDownConfigInPlanSpeed, "prov-db-scale-down-config-in-plan-speed", "5m", "Client-settable scale SPEED: how long a server's config under-use must persist before repman scales its resources DOWN within the plan. A duration; default 5m (slower than up, to avoid thrashing).")
+	flags.StringVar(&conf.ScaleUpPlanSpeed, "prov-db-scale-up-plan-speed", "30m", "Client-settable scale SPEED: how long consumption must persist against the PLAN before repman raises the plan (cap up). Commercial, so slower than in-plan; default 30m.")
+	flags.StringVar(&conf.ScaleDownPlanSpeed, "prov-db-scale-down-plan-speed", "1h", "Client-settable scale SPEED: how long under-use must persist against the PLAN before repman lowers the plan (cap down). Most conservative (don't yo-yo the billed plan); default 1h.")
+	flags.BoolVar(&conf.MonitoringSystemResources, "monitoring-system-resources", true, "Enable the system-level resource sensor: bind each service's pg cgroup read-only into the jobs/sidecar container (/svc-cgroup) so the sensor measures the whole-service consumed system resources (mem/cpu/io) and repman derives the units per domain (DBU for databases, APU for apps, ...); on by default (disable if a bad bind blocks container start on an unexpected cgroup layout)")
+	flags.StringVar(&conf.ProvDBDynamicResourceCanChangeScript, "prov-db-dynamic-resource-can-change-script", "", "Client-overridable feasibility check run BEFORE a live resource resize; prints its verdict on stdout: 'yes' (resize possible in place), 'no' (not possible, keep current size), or 'migration' (not in place, needs relocating the instance to a host with capacity); resource values and direction via env; empty means always yes")
+	flags.StringVar(&conf.ProvDBDynamicResourceChangeScript, "prov-db-dynamic-resource-change-script", "", "Client-overridable hook called to resize the four provisioned resources (mem/cpu/disk/io) of a running server live (cgroup/disk/io), for orchestrators without a native resize API (on-premise, localhost, slapos); resource values and direction are passed via env; empty disables it")
+	flags.StringVar(&conf.ProvPlanIncreaseScript, "prov-plan-increase-script", "", "Client-overridable hook fired PER CLUSTER when the client RAISES a unit's plan/contract (ChangePlanUnits, DBU or APU). Non-zero exit REFUSES the increase; empty = always allowed. Args: unit from to cluster; also via env REPMAN_PLAN_UNIT/FROM/TO.")
+	flags.StringVar(&conf.ProvDBResourceRaisedOverPlanScript, "prov-db-resource-raised-over-plan-script", "", "Client-overridable hook fired PER SERVICE when the dynamic resize raises a server's resource PAST its plan (the borrow: cgroup cap = plan + borrow). Non-zero exit VETOES the over-plan grow; empty = allowed. Args: host port cluster; plan/target/borrow DBU-per-node via env REPMAN_PLAN_DBU/TARGET_DBU/BORROW_DBU.")
 	flags.BoolVar(&conf.ProvDBForceWriteConfig, "prov-db-force-write-config", false, "Force write to config files without Signal18 header on provision")
 	flags.BoolVar(&conf.ProvDBConfigPreserve, "prov-db-config-preserve", true, "Preserve values in config files. If set to false, the 99_preserved.cnf will not be copied to the config.tar.gz")
 	flags.StringVar(&conf.ProvDBConfigPreserveVars, "prov-db-config-preserve-vars", "", "List of preserved options separated by semicolon (opt1;opt2=val2;opt3). Allow hard code by adding value e.g. innodb_data_home_dir=/var/lib/mysql")
@@ -1075,9 +1093,21 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvProxDisk, "prov-proxy-disk-size", "20G", "Proxy container disk size, value with unit e.g. 20G, 100G")
 	flags.StringVar(&conf.ProvProxCores, "prov-proxy-cpu-cores", "1", "Cpu cores ")
 	flags.StringVar(&conf.ProvProxMem, "prov-proxy-memory", "1G", "Proxy container memory, value with unit e.g. 256M, 1G")
+	flags.IntVar(&conf.ProvProxyApu, "prov-proxy-apu", 2, "Per-proxy APU reservation (technical resource contract; 1 APU = 1 core / 1GB / 10GB, no IOPS). The proxy contribution to the cluster APU contract is prov-proxy-apu x number of proxies; apps add their own APU reservation from their own config. Default 2 (2 cores / 2GB / 20GB per proxy).")
 	flags.StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "https://docs.google.com/spreadsheets/d/e/2PACX-1vQClXknRapJZ4bRSId_aa5zUrbFDZmmc6GiV3n7-tPyQJispqqnSJj6lMaJxoJv5pOC9Ktj8ywWdGX6/pub?gid=0&single=true&output=csv", "URL to csv service plan list")
 	//	flags.StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "http://gsx2json.com/api?id=130326CF_SPaz-flQzCRPE-w7FjzqU1NqbsM7MpIQ_oU&sheet=1&columns=false", "URL to json service plan list")
 	flags.StringVar(&conf.ProvServicePlan, "prov-service-plan", "", "Cluster plan")
+	flags.IntVar(&conf.ProvServicePlanDbu, "prov-service-plan-dbu", 0, "Per-cluster DBU service plan = the SUM of the deployment plans (Σ prov-db-dbu over the DB nodes). Materialized/recomputed each tick -- the real cluster contract number readers use (GUI/API/GWARN016). The client moves the per-node prov-db-dbu, not this, so it never re-locks in /etc.")
+	flags.IntVar(&conf.ProvDbDbu, "prov-db-dbu", 2, "Per-node DBU reservation (technical resource contract; 1 DBU = 1 core / 4GB / 40GB / 1000 IOPS). All DB nodes are identical, so the cluster DBU contract = prov-db-dbu x number of nodes. Client-controlled (dynamic layer), the DBU configurator moves it. Default 2 (2 cores / 8GB / 80GB / 2000 IOPS per node).")
+	flags.IntVar(&conf.ProvServicePlanApu, "prov-service-plan-apu", 4, "Per-cluster APU service plan = the SUM of the deployment plans (proxies at prov-proxy-apu + apps at their own config). Materialized/recomputed each tick -- the real cluster contract number readers use (GUI/API/GWARN016). The client moves the per-deployment reservations, not this. 1 APU = 1 core / 1GB / 10GB, no IOPS.")
+	flags.IntVar(&conf.ProvServicePlanBpu, "prov-service-plan-bpu", 1, "Service plan in Public-network/Bandwidth Units (BPU reservation contract; public network capacity, maps to cloud18-infra-public-bandwidth). Default 1.")
+	flags.IntVar(&conf.ProvServicePlanBku, "prov-service-plan-bku", 1, "Service plan in Backup Units (BKU reservation contract; storage/backup profile, disk-dominant). Default 1.")
+	flags.Float64Var(&conf.ResourceManagerInfraQuotaPct, "resource-manager-infra-quota-pct", 90, "Share of the physical metal (0-100) repman's ResourceManager may allocate, protecting non-repman workloads on the agent. Default 90.")
+	flags.Float64Var(&conf.ResourceManagerInfraCpuCores, "resource-manager-infra-cpu-cores", 0, "ResourceManager infra capacity override: total CPU cores. 0 = unset (use the monitored value).")
+	flags.Float64Var(&conf.ResourceManagerInfraMemoryMB, "resource-manager-infra-memory-mb", 0, "ResourceManager infra capacity override: total memory in MB. 0 = unset (use the monitored value).")
+	flags.Float64Var(&conf.ResourceManagerInfraDiskGB, "resource-manager-infra-disk-gb", 0, "ResourceManager infra capacity override: total disk in GB. 0 = unset (use the monitored value).")
+	flags.Float64Var(&conf.ResourceManagerInfraIops, "resource-manager-infra-iops", 0, "ResourceManager infra capacity override: total IOPS. 0 = unset (use the monitored/calibrated value).")
+	flags.Float64Var(&conf.ResourceManagerInfraNetworkMbps, "resource-manager-infra-network-mbps", 0, "ResourceManager infra capacity override: total public network bandwidth in Mbps (the BPU axis). 0 = unset (use the monitored value).")
 	flags.BoolVar(&conf.ProvSerialized, "prov-serialized", false, "Disable concurrent provisionning")
 	flags.StringVar(&conf.ProvDBClientBasedir, "prov-db-client-basedir", "/usr/bin", "Path to database client binary")
 	flags.StringVar(&conf.ProvDBBinaryBasedir, "prov-db-binary-basedir", "/usr/local/mysql/bin", "Path to mysqld binary")
@@ -3024,7 +3054,7 @@ func (repman *ReplicationManager) Run() error {
 			//      SaveCallBack in step 1) or safetyDue (GitMonitoringTicker, the
 			//      periodic feed/safety cadence). Config no longer waits on the
 			//      timer; the agents.json staging throttle is unchanged.
-			if repman.Conf.GitUrl != "" && repman.Status == ConstMonitorActif {
+			if repman.Status == ConstMonitorActif {
 				safetyDue := counter%int64(repman.Conf.GitMonitoringTicker) == 0
 				if repman.gitSyncBusy.CompareAndSwap(false, true) {
 					go func() {
@@ -3065,6 +3095,14 @@ func (repman *ReplicationManager) Run() error {
 							}
 						}()
 						savewg.Wait()
+
+						// Local config persistence (the SAVE phase above) is done and is
+						// INDEPENDENT of git: it must always run on the active repman. Only the
+						// git PUSH below needs a configured remote -- a missing or failing git
+						// remote must never prevent local file persistence.
+						if repman.Conf.GitUrl == "" {
+							return
+						}
 
 						// 2. PUSH phase (dirty-gated). IsNeedGitPush was just set by
 						// SaveCallBack above when config actually changed.
@@ -3132,6 +3170,7 @@ func (repman *ReplicationManager) Run() error {
 		repman.ProduceClusterHeartbeatSupervisionStates()
 		repman.ProduceGitSupervisionStates()
 		repman.ProduceClusterAggregateStates()
+		repman.ProduceContractedCapacityState()
 		if counter%60 == 0 {
 			repman.ProduceCloud18ConnectivityStates()
 			repman.RefreshCreditsFromCRM()
@@ -3456,6 +3495,17 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.Unlock()
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
+	// The ResourceManager is repman-side and infra-wide (Epic #1776): created once, shared
+	// into every cluster. The per-server consumed reading then survives the cluster's
+	// ServerMonitor recreations here (fixes the graph flapping), and it is where the
+	// per-cluster / per-agent consumed views and capacity ("is there room?") live.
+	if repman.resourceManager == nil {
+		repman.resourceManager = cluster.NewResourceManager()
+	}
+	// Global policy: the share of the metal repman may allocate (protects non-repman
+	// workloads). resource-manager-* family (repman-side / on-prem first-class, NOT cloud18).
+	repman.resourceManager.SetQuotaPct(repman.Conf.ResourceManagerInfraQuotaPct)
+	repman.currentCluster.SetResourceManager(repman.resourceManager)
 
 	if repman.currentCluster.Conf.SecretKey == nil {
 		repman.currentCluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: config.ClusterError["ERR00090"], ErrFrom: "CLUSTER"})

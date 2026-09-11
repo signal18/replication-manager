@@ -8,7 +8,10 @@ package cluster
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -642,4 +645,72 @@ func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCl
 	}
 
 	return node, payload, 200, nil
+}
+
+// GetSystemAPIKey derives the `system` service account's API key from the PERSISTENT
+// secret key (monitoring-key-path): HMAC-SHA256(SecretKey, "system:"+cluster), hex.
+// It is the credential the stateless app/proxy compute sensor uses to log in as
+// `system` via /api/login -- because apps/proxies have no DB password, they cannot use
+// the DB-scoped secret-login the dbjobs use (that path validates the DB password and is
+// untouched here). Derived, not stored: recomputed on demand for both validation (as
+// the user's password) and injection into the jobs container, and it rotates when the
+// key rotates (monitoring-secret-versioning). Empty when no persistent key is set.
+func (cluster *Cluster) GetSystemAPIKey() string {
+	key := cluster.Conf.SecretKey
+	if len(key) == 0 {
+		return ""
+	}
+	// Repman-WIDE identity, NOT per-cluster: /api/login is cluster-agnostic and matches
+	// `system` against whichever cluster it hits first (tryLocalAuth loops repman.Clusters),
+	// so a per-cluster key (…"system:"+cluster.Name) makes the sensor's key fail whenever a
+	// DIFFERENT cluster's `system` user is matched first. One key across all clusters lets
+	// any match authenticate; per-cluster authorization is still enforced by the URL's
+	// cluster ACL (IsURLPassACL), not by the key.
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte("system"))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// EnsureSystemServiceUser makes sure the `system` service account exists with the
+// derived API key as its credential and the grants internal callers need (db + proxy,
+// plus the resource-sensor grant for the /apu + /dbu push endpoints). It is an
+// API-key-only machine account -- the app/proxy sensor logs in as `system` with the
+// derived key; the dbjobs keep using secret-login (DB password), which mints the same
+// system JWT regardless of this password, so that path is unaffected. Idempotent: does
+// nothing if `system` already exists (created here or lazily by secretLoginHandler), so
+// the credential is not churned on every reload.
+func (cluster *Cluster) EnsureSystemServiceUser() {
+	apikey := cluster.GetSystemAPIKey()
+	if apikey == "" {
+		return // no persistent key -> cannot derive; app/proxy sensor auth stays unavailable
+	}
+	if _, ok := cluster.APIUsers["system"]; ok {
+		return
+	}
+	cluster.AddUser(UserForm{
+		Username: "system",
+		Grants:   "db proxy " + config.GrantClusterResourceSensor,
+		Password: apikey,
+	}, "admin", true)
+}
+
+// reconcileSystemServicePassword forces the in-memory `system` credential to the CURRENT
+// derived API key. It is called at the end of LoadAPIUsers so every load path (startup +
+// each dynamic config reload) repairs a stale password: a `system` user persisted by an
+// older binary (before AddUser honoured an explicit password) carries a random password,
+// and a SecretKey change would also drift it; EnsureSystemServiceUser skips an existing
+// user, so that drift would otherwise never be corrected and the compute sensor's login
+// would keep failing. Auth compares this in-memory map (IsValidACL), so overwriting it
+// here is the reliable fix -- no fragile per-value secret rewrite, and no recursion
+// (unlike EnsureSystemServiceUser, which may AddUser -> LoadAPIUsers). Idempotent.
+func (cluster *Cluster) reconcileSystemServicePassword() {
+	apikey := cluster.GetSystemAPIKey()
+	if apikey == "" {
+		return
+	}
+	if u, ok := cluster.APIUsers["system"]; ok && u.Password != apikey {
+		u.Password = apikey
+		cluster.APIUsers["system"] = u
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reconciled `system` service-account password to the current derived API key")
+	}
 }

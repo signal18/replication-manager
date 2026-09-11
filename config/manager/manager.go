@@ -706,6 +706,26 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []
 	return nil
 }
 
+// RepairAndPush is the explicit, operator-/API-triggered self-heal for a config
+// repo whose pushes are stuck (e.g. corrupt/dangling local objects after a gitlab
+// failover that emptied the remote). It forces a metadata refresh (reclone — which
+// re-inits the local .git from the remote, shedding dangling objects) and then
+// pushes a clean pack. Unlike the automatic path in PushAllConfigsToGit, it does
+// not wait for a classified error first; it always refreshes then pushes.
+func (cm *ConfigManager) RepairAndPush(conf *config.Config, clusterList []string) error {
+	cm.logger.Infof("none", config.ConstLogModGit, "[Git] Repair requested: refreshing repository metadata (reclone sheds corrupt/dangling objects), then pushing")
+	if err := cm.RefreshGitMetadata(conf); err != nil {
+		cm.logger.Errorf("none", config.ConstLogModGit, "[Git] Repair: metadata refresh failed: %v", err)
+		return fmt.Errorf("git repair: metadata refresh failed: %w", err)
+	}
+	if err := cm.PushAllConfigsToGit(conf, clusterList); err != nil {
+		cm.logger.Errorf("none", config.ConstLogModGit, "[Git] Repair: push after refresh failed: %v", err)
+		return err
+	}
+	cm.logger.Infof("none", config.ConstLogModGit, "[Git] Repair complete: config repo pushed")
+	return nil
+}
+
 func (cm *ConfigManager) classifyRecoverablePushError(err error) (bool, string) {
 	if err == nil {
 		return false, ""
@@ -735,6 +755,19 @@ func (cm *ConfigManager) classifyRecoverablePushError(err error) (bool, string) 
 		{reason: "missing remote ref", match: "couldn't find remote ref"},
 		{reason: "reference does not exist", match: "reference does not exist"},
 		{reason: "cannot resolve reference", match: "unable to resolve reference"},
+		// Corrupt/garbage local objects — typically dangling objects left behind by
+		// repeated reclone/swap churn — make go-git build a pack the remote's
+		// receive-side fsck (transfer.fsckObjects=true) rejects: the client sees
+		// "unpack error: unpack-objects abnormal exit", gitaly logs "fatal: object of
+		// unexpected type". RefreshGitMetadata re-inits the local .git from the remote
+		// (an empty remote bootstraps a fresh, empty repo), shedding the dangling
+		// objects, so the single retry pushes a clean minimal pack. Bounded to one
+		// reclone+retry per push cycle, so a genuinely unfixable case degrades (it does
+		// not loop). This is what unstuck config repos emptied by a gitlab failover.
+		{reason: "corrupt pack rejected by remote fsck (reclone+retry)", match: "unpack error"},
+		{reason: "corrupt pack rejected by remote fsck (reclone+retry)", match: "unpack-objects"},
+		{reason: "corrupt pack rejected by remote fsck (reclone+retry)", match: "abnormal exit"},
+		{reason: "corrupt object rejected by remote fsck (reclone+retry)", match: "object of unexpected type"},
 	}
 
 	for _, candidate := range recoverableSubstrings {

@@ -17,6 +17,7 @@ export const settingsService = {
   switchSettings,
   changeTopology,
   setSetting,
+  changePlanUnits,
   clearSetting,
   updateGraphiteWhiteList,
   updateGraphiteBlackList,
@@ -49,6 +50,10 @@ function setSetting(clusterName, setting, value, baseURL) {
   } else {
     return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/set/${setting}/${encodeURIComponent(value)}`)
   }
+}
+
+function changePlanUnits(clusterName, unit, delta, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/change-plan-units/${unit}/${delta}`)
 }
 
 function clearSetting(clusterName, setting, baseURL) {
