@@ -259,8 +259,8 @@ function ResourceManager() {
           <Text fontSize='md' fontWeight='bold' mb={1}>Per agent — physical load (DBU + APU stacked, over time)</Text>
           <Text fontSize='xs' opacity={0.6} mb={2}>
             Each agent's consumed DBU (databases) + APU (proxies/apps) stacked on the same metal
-            (resourcemanager.agent.&lt;agent&gt;.dbu/apu). The two unit tracks are separate layers, never summed —
-            this is the physical per-node view (pool pressure / the reclaim basis).
+            (resourcemanager.agent.&lt;agent&gt;.dbu/apu), capped at the agent's total capacity — 1 DBU = 1 APU = 1 core,
+            so the stack sits under the node's cores. This is the physical per-node view (pool pressure / the reclaim basis).
           </Text>
           <Flex gap={4} mb={2}>
             <Flex align='center' gap={1}><Box w='11px' h='11px' borderRadius='2px' style={{ background: SCHEME10[0] }} /><Text fontSize='xs'>DBU</Text></Flex>
@@ -268,11 +268,13 @@ function ResourceManager() {
           </Flex>
           {data.agentList.map((ag) => (
             <Box key={ag.token} mb={3}>
-              <Text fontSize='sm' fontWeight='semibold' mb={1}>{ag.name}</Text>
+              <Text fontSize='sm' fontWeight='semibold' mb={1}>{ag.name} <Text as='span' fontSize='xs' opacity={0.6}>· capacity {fmt(ag.cores)} cores</Text></Text>
               <ChartBarStack
                 context={ctx}
                 height={160}
-                title={`${ag.name} — consumed DBU + APU`}
+                title={`${ag.name} — DBU + APU vs ${fmt(ag.cores)} cores`}
+                minYMax={ag.cores}
+                ceilingLabel={`${fmt(ag.cores)} cores`}
                 metricPaths={[
                   `resourcemanager.agent.${ag.token}.dbu`,
                   `resourcemanager.agent.${ag.token}.apu`

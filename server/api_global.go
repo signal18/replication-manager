@@ -405,10 +405,13 @@ type globalResourcesResponse struct {
 	AgentList []globalResourcesAgent `json:"agentList"`
 }
 
-// globalResourcesAgent names one agent + the exact graphite token its per-agent series use.
+// globalResourcesAgent names one agent + the exact graphite token its per-agent series use,
+// plus the agent's physical cores -- the ceiling the per-agent DBU+APU stack is drawn against
+// (1 DBU = 1 APU = 1 core, so the stacked unit counts sit under the agent's total cores).
 type globalResourcesAgent struct {
-	Name  string `json:"name"`
-	Token string `json:"token"`
+	Name  string  `json:"name"`
+	Token string  `json:"token"`
+	Cores float64 `json:"cores"`
 }
 
 // globalResourcesCluster is one cluster's consumed DBU -- the per-cluster breakdown that
@@ -455,6 +458,7 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 	}
 	repman.Unlock()
 	seen := map[string]bool{}
+	agentCores := map[string]float64{} // per-agent physical cores -- the ceiling for the per-agent stack
 	var sumCores, sumMemMB float64
 	for _, cl := range clusters {
 		for _, a := range cl.Agents {
@@ -466,6 +470,7 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 				continue
 			}
 			seen[key] = true
+			agentCores[key] = float64(a.CpuCores)
 			sumCores += float64(a.CpuCores)
 			// NB: cluster.Agent.MemBytes is populated in MB (OpenSVC asset + on-prem
 			// /proc/meminfo/1024 both store MB), despite the "Bytes" name -- so it is
@@ -528,7 +533,7 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 	// Agent list + the exact graphite token each per-agent series is keyed on (one sanitiser).
 	agentList := make([]globalResourcesAgent, 0)
 	for _, a := range rm.Agents() {
-		agentList = append(agentList, globalResourcesAgent{Name: a, Token: cluster.GraphiteComputeToken(a)})
+		agentList = append(agentList, globalResourcesAgent{Name: a, Token: cluster.GraphiteComputeToken(a), Cores: agentCores[a]})
 	}
 
 	resp := globalResourcesResponse{

@@ -134,8 +134,8 @@ func (cluster *Cluster) CollectComputeMetrics() {
 // agent hosts units from many clusters), so emitting from each cluster that touches the agent
 // writes the same value (idempotent) -- the GUI reads the series directly, no sumSeries. This is
 // the per-agent physical view: the stacked DBU+APU-per-agent graph and the basis for the reclaim
-// (co-tenants on one node). The two unit tracks are NEVER summed -- they are separate layers over
-// the same metal. No-op without a manager.
+// (co-tenants on one node). The two tracks STACK as separate layers over the same metal (1 DBU =
+// 1 APU = 1 core), capped in the GUI at the agent's total cores. No-op without a manager.
 func (cluster *Cluster) CollectPerAgentMetrics() {
 	if cluster.resources == nil {
 		return
