@@ -459,13 +459,26 @@ contract view — `prov-service-plan-dbu`/`-apu` are reporting rollups, not the 
   scale target (dev PHP ≈0 CPU → large idle gap; prod PHP → unbounded growth). Class changes
   *how* we act (only its reservation/limits, never its definition), not *whether* it scales.
 
-**Borrow — overcommit is Plan + Borrow, tracked per service.** A service's guaranteed reservation
-is its Plan (`PlanDBU`/`PlanAPU`). To burst beyond it, the service **borrows** DBU/APU from the
-ResourceManager pool (the slack under-consumers leave on the agent). The borrow is tracked **per
-service under its contract**, so the effective **cgroup cap = Plan + Borrow**, never just Plan.
-Borrow is best-effort — it yields when a lender reclaims its reservation — and is the billable
-overage (funded by `contract − real` on the lenders), always bounded by `Σ real ≤ agent ceiling`.
-The RM is the lender and the ledger of who borrowed what.
+**Borrow — capping vs overage are two figures in two durable places.** A service's guaranteed
+reservation is its Plan (`PlanDBU`/`PlanAPU`). To burst beyond it, the service **borrows** DBU/APU
+from the ResourceManager pool (the slack under-consumers leave on the agent). There is **no
+"provisioned" quantity** — only Plan (contract) and consumed (real usage) are real. The borrow has
+two faces:
+
+- **granted borrow = the cap.** Capping is enforcement: the cgroup cap is a concrete
+  `cap = Plan + borrow` — headroom the pool lends so the workload has room above its plan — SET on
+  the container (`docker --memory` / om3 `pg_mem_limit` / the live cgroup) by the resize. It lives
+  **in the cgroup / orchestrator** (durable, re-read on the deployment-upgrade-on-start), never
+  repman-memory-only. That service's granted borrow = `cap − plan`.
+- **used overage = the bill.** `consumed − plan` (clamped ≥0) — what the service actually used
+  beyond its contract. **DERIVED at query time** via `diffSeries` over the two durable Graphite
+  series (`plan_dbu`/`plan_apu` and `mysql.*.dbu`/`apu.*.apu`); nothing stored, like over/under-commit.
+
+Borrow is best-effort — it yields when a lender reclaims its reservation — and the overage is billed,
+always bounded by `Σ real ≤ agent ceiling`. The RM lends from the pool; any live **pool ledger**
+(Σ granted borrows, so it never over-lends the metal) must be a **rollup recomputed from those
+durable sources** (each cap from the orchestrator, plan/consumed from Graphite), restored on reload
+— never an in-memory-only field (T18 / the graph-flap lesson).
 
 **Client hooks (two levels).** `prov-plan-increase-script` fires **per cluster** in `ChangePlanUnits`
 when the client raises a unit's plan/contract (non-zero exit refuses the increase).
