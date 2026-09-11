@@ -524,6 +524,73 @@ func (m *ResourceManager) ConsumedByAgent(agent string) DBUAggregate {
 	return sumReadings(readings)
 }
 
+// PlanByAgent is the reserved DBU (technical contract) summed over the servers placed on one
+// agent -- the per-agent twin of PlanByCluster, for the per-agent physical view.
+func (m *ResourceManager) PlanByAgent(agent string) DBUAggregate {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var readings []*DBUReading
+	for k, r := range m.plan {
+		if m.serverAgent[k] == agent && r != nil {
+			readings = append(readings, r)
+		}
+	}
+	return sumReadings(readings)
+}
+
+// AppConsumedByAgent is the APU twin of ConsumedByAgent: real consumed APU summed over the
+// Compute units (apps + proxies) running on one agent, across all clusters.
+func (m *ResourceManager) AppConsumedByAgent(agent string) APUAggregate {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var readings []*APUReading
+	for k, r := range m.appConsumed {
+		if m.appAgent[k] == agent && r != nil {
+			readings = append(readings, r)
+		}
+	}
+	return sumAPUReadings(readings)
+}
+
+// AppPlanByAgent is the reserved APU summed over the Compute units placed on one agent --
+// the APU per-agent twin of AppPlanByCluster.
+func (m *ResourceManager) AppPlanByAgent(agent string) APUAggregate {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var readings []*APUReading
+	for k, r := range m.appPlan {
+		if m.appAgent[k] == agent && r != nil {
+			readings = append(readings, r)
+		}
+	}
+	return sumAPUReadings(readings)
+}
+
+// Agents returns the distinct agents the manager has placement for (DB servers + apps/proxies) --
+// the set the per-agent views iterate and the per-agent graphite series are emitted for. Uses the
+// SAME agent strings the emission keys on, so the GUI can target resourcemanager.agent.<token>.*.
+func (m *ResourceManager) Agents() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	set := map[string]bool{}
+	for _, a := range m.serverAgent {
+		if a != "" {
+			set[a] = true
+		}
+	}
+	for _, a := range m.appAgent {
+		if a != "" {
+			set[a] = true
+		}
+	}
+	out := make([]string, 0, len(set))
+	for a := range set {
+		out = append(out, a)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // --- plan / allocated (the client's technical contract) ---------------------
 
 // SetPlan records a server's PLANNED (allocated) DBU -- the client's technical

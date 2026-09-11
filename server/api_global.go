@@ -400,6 +400,15 @@ type globalResourcesResponse struct {
 	ConsumedAPU    float64                  `json:"consumedApu"`
 	SlackAPU       float64                  `json:"slackApu"`
 	Clusters       []globalResourcesCluster `json:"clusters"`
+	// Agents the RM has placement for, each with the exact graphite token its per-agent series are
+	// keyed on (resourcemanager.agent.<token>.{dbu,apu,plan_dbu,plan_apu}) so the GUI targets them.
+	AgentList []globalResourcesAgent `json:"agentList"`
+}
+
+// globalResourcesAgent names one agent + the exact graphite token its per-agent series use.
+type globalResourcesAgent struct {
+	Name  string `json:"name"`
+	Token string `json:"token"`
 }
 
 // globalResourcesCluster is one cluster's consumed DBU -- the per-cluster breakdown that
@@ -516,6 +525,12 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 	}
 	sort.Slice(perCluster, func(i, j int) bool { return perCluster[i].PlanDbu > perCluster[j].PlanDbu })
 
+	// Agent list + the exact graphite token each per-agent series is keyed on (one sanitiser).
+	agentList := make([]globalResourcesAgent, 0)
+	for _, a := range rm.Agents() {
+		agentList = append(agentList, globalResourcesAgent{Name: a, Token: cluster.GraphiteComputeToken(a)})
+	}
+
 	resp := globalResourcesResponse{
 		QuotaPct:       quota,
 		Agents:         len(seen),
@@ -530,6 +545,7 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 		ConsumedAPU:    consumedApu.Apu,
 		SlackAPU:       usableApu - consumedApu.Apu,
 		Clusters:       perCluster,
+		AgentList:      agentList,
 		Axes: []globalResourcesAxis{
 			{Axis: "cpu", CapacityRaw: cores, Unit: "cores", Source: srcCpu, CapacityDBU: cpuDBU, ConsumedDBU: consumed.DbuCpu},
 			{Axis: "mem", CapacityRaw: memMB, Unit: "MB", Source: srcMem, CapacityDBU: memDBU, ConsumedDBU: consumed.DbuMem},

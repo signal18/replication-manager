@@ -24,6 +24,11 @@ import (
 // DB hostname sanitiser in GetDatabaseMetrics so the two metric trees are consistent.
 var computeTokenReplacer = strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-", ":", "-")
 
+// GraphiteComputeToken sanitises a name into the graphite path token used by the Compute/APU and
+// per-agent series (apu.<cluster>.<unit>, resourcemanager.agent.<AGENT>). Exported so the API can
+// hand the GUI the EXACT token the emission keys on (one sanitiser, no Go/JS or cross-pkg drift).
+func GraphiteComputeToken(s string) string { return computeTokenReplacer.Replace(s) }
+
 // consumedAPUForEmit mirrors ConsumedDBUForEmit on the Compute track: floor each axis at
 // 1 (the reserved restart minimum) so a unit that is down or has not yet pushed still
 // yields a continuous, gap-free series (no flapping). No io axis -- Compute has no IOPS
@@ -118,6 +123,58 @@ func (cluster *Cluster) CollectComputeMetrics() {
 		fmt.Sprintf("resourcemanager.%s.plan_apu", ctoken),
 		strconv.FormatFloat(planAPU, 'f', 4, 64), ts))
 
+	if len(metrics) > 0 {
+		cluster.AddMetrics(metrics)
+	}
+}
+
+// CollectPerAgentMetrics emits the per-AGENT physical rollup -- DBU + APU, consumed + plan --
+// as resourcemanager.agent.<AGENT>.{dbu,apu,plan_dbu,plan_apu}, for every agent THIS cluster has
+// a unit (server / app / proxy) on. The values are the RM's CROSS-CLUSTER per-agent totals (an
+// agent hosts units from many clusters), so emitting from each cluster that touches the agent
+// writes the same value (idempotent) -- the GUI reads the series directly, no sumSeries. This is
+// the per-agent physical view: the stacked DBU+APU-per-agent graph and the basis for the reclaim
+// (co-tenants on one node). The two unit tracks are NEVER summed -- they are separate layers over
+// the same metal. No-op without a manager.
+func (cluster *Cluster) CollectPerAgentMetrics() {
+	if cluster.resources == nil {
+		return
+	}
+	ts := time.Now().Unix()
+	agents := map[string]bool{}
+	for _, s := range cluster.Servers {
+		if s == nil {
+			continue
+		}
+		a := s.GetWorkingAgent()
+		if a == "" {
+			a = s.Agent
+		}
+		if a != "" {
+			agents[a] = true
+		}
+	}
+	for _, app := range cluster.Apps {
+		if app != nil && app.Agent != "" {
+			agents[app.Agent] = true
+		}
+	}
+	for _, prx := range cluster.Proxies {
+		if prx != nil && prx.GetAgent() != "" {
+			agents[prx.GetAgent()] = true
+		}
+	}
+	f := func(v float64) string { return strconv.FormatFloat(v, 'f', 4, 64) }
+	var metrics []graphite.Metric
+	for agent := range agents {
+		tok := computeTokenReplacer.Replace(agent)
+		metrics = append(metrics,
+			graphite.NewMetric(fmt.Sprintf("resourcemanager.agent.%s.dbu", tok), f(cluster.resources.ConsumedByAgent(agent).Dbu), ts),
+			graphite.NewMetric(fmt.Sprintf("resourcemanager.agent.%s.apu", tok), f(cluster.resources.AppConsumedByAgent(agent).Apu), ts),
+			graphite.NewMetric(fmt.Sprintf("resourcemanager.agent.%s.plan_dbu", tok), f(cluster.resources.PlanByAgent(agent).Dbu), ts),
+			graphite.NewMetric(fmt.Sprintf("resourcemanager.agent.%s.plan_apu", tok), f(cluster.resources.AppPlanByAgent(agent).Apu), ts),
+		)
+	}
 	if len(metrics) > 0 {
 		cluster.AddMetrics(metrics)
 	}

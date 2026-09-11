@@ -344,7 +344,19 @@ func (cluster *Cluster) RefreshDBUPlan() {
 			float64(dbu)*r.CoresPerUnit,
 			float64(dbu)*r.IopsPerUnit,
 			int64(float64(dbu)*r.DiskGBPerUnit)*1024*1024*1024)
-		cluster.resources.SetPlan(ResourceKey{Cluster: cluster.Name, Server: server.URL}, &reading)
+		k := ResourceKey{Cluster: cluster.Name, Server: server.URL}
+		cluster.resources.SetPlan(k, &reading)
+		// Placement: attribute this server to the agent it RUNS on (working node), falling back to
+		// the provisioning assignment -- so the per-agent physical view (and the reclaim) can group
+		// co-tenants by node. The DB-track mirror of SetAppAgent. (Was only set in tests = the
+		// per-agent DBU view had no data.)
+		agent := server.GetWorkingAgent()
+		if agent == "" {
+			agent = server.Agent
+		}
+		if agent != "" {
+			cluster.resources.SetServerAgent(k, agent)
+		}
 	}
 	// Materialize the per-cluster DBU contract -- the REAL cluster-level number every reader uses
 	// (GUI, API, GWARN016): the PlanByCluster rollup (= prov-db-dbu x #nodes). Derived from the

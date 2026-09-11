@@ -1202,7 +1202,11 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 		r := cluster.resources.ComputeUsedAPU(now, now,
 			int64(float64(apu)*cr.MemMBPerUnit)*1024*1024, float64(apu)*cr.CoresPerUnit,
 			int64(float64(apu)*cr.DiskGBPerUnit)*1024*1024*1024)
-		cluster.resources.SetAppPlan(AppKey{Cluster: cluster.Name, App: prx.GetName(), Kind: KindProxy}, &r)
+		pk := AppKey{Cluster: cluster.Name, App: prx.GetName(), Kind: KindProxy}
+		cluster.resources.SetAppPlan(pk, &r)
+		if ag := prx.GetAgent(); ag != "" {
+			cluster.resources.SetAppAgent(pk, ag) // placement, for the per-agent view (was unset for proxies)
+		}
 	}
 
 	// Materialize the per-cluster APU contract -- the REAL cluster-level number (the service plan's

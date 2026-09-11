@@ -254,6 +254,35 @@ function ResourceManager() {
         </Box>
       )}
 
+      {ctx && data.agentList && data.agentList.length > 0 && (
+        <Box mt={8}>
+          <Text fontSize='md' fontWeight='bold' mb={1}>Per agent — physical load (DBU + APU stacked, over time)</Text>
+          <Text fontSize='xs' opacity={0.6} mb={2}>
+            Each agent's consumed DBU (databases) + APU (proxies/apps) stacked on the same metal
+            (resourcemanager.agent.&lt;agent&gt;.dbu/apu). The two unit tracks are separate layers, never summed —
+            this is the physical per-node view (pool pressure / the reclaim basis).
+          </Text>
+          <Flex gap={4} mb={2}>
+            <Flex align='center' gap={1}><Box w='11px' h='11px' borderRadius='2px' style={{ background: SCHEME10[0] }} /><Text fontSize='xs'>DBU</Text></Flex>
+            <Flex align='center' gap={1}><Box w='11px' h='11px' borderRadius='2px' style={{ background: SCHEME10[1] }} /><Text fontSize='xs'>APU</Text></Flex>
+          </Flex>
+          {data.agentList.map((ag) => (
+            <Box key={ag.token} mb={3}>
+              <Text fontSize='sm' fontWeight='semibold' mb={1}>{ag.name}</Text>
+              <ChartBarStack
+                context={ctx}
+                height={160}
+                title={`${ag.name} — consumed DBU + APU`}
+                metricPaths={[
+                  `resourcemanager.agent.${ag.token}.dbu`,
+                  `resourcemanager.agent.${ag.token}.apu`
+                ]}
+              />
+            </Box>
+          ))}
+        </Box>
+      )}
+
       <Text fontSize='xs' opacity={0.6} mt={3}>
         Source “agents” = summed from the physical agents (cpu/mem); “config” = a
         resource-manager-infra-* override. disk/iops/network have no per-agent source yet,
