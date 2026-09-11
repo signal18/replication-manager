@@ -271,7 +271,7 @@ function ResourceManager() {
               <Text fontSize='sm' fontWeight='semibold' mb={1}>{ag.name} <Text as='span' fontSize='xs' opacity={0.6}>· capacity {fmt(ag.cores)} cores</Text></Text>
               <ChartBarStack
                 context={ctx}
-                height={160}
+                height={320}
                 title={`${ag.name} — DBU + APU vs ${fmt(ag.cores)} cores`}
                 minYMax={ag.cores}
                 ceilingLabel={`${fmt(ag.cores)} cores`}
