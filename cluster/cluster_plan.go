@@ -7,6 +7,7 @@ package cluster
 import (
 	"fmt"
 	"math"
+	"os/exec"
 	"strconv"
 	"strings"
 
@@ -33,8 +34,8 @@ const (
 //	              cluster it is admin-controlled and FROZEN: neither a client increase nor a
 //	              client give-back may move it. Checked FIRST, before anything is written.
 //	delta < 0  -> DECREASE (unlocked): allowed, clamped at the per-unit floor, applied + persisted.
-//	delta > 0  -> INCREASE (unlocked, a "claim"): the external plan-claim script may still refuse
-//	              it; the fleet-pool overcommit is TRACKED as GWARN016, never hard-blocked.
+//	delta > 0  -> INCREASE (unlocked): prov-plan-increase-script may still refuse it; the
+//	              fleet-pool overcommit is TRACKED as GWARN016, never hard-blocked.
 //
 // It is validation + hooking only. The plan is a client-set config variable; the dynamic
 // config manager persists it (SaveConfig) and the resource keeps living under the cap.
@@ -61,9 +62,9 @@ func (cluster *Cluster) ChangePlanUnits(unit PlanUnit, delta int) error {
 	if !cluster.CanPlanChange(unit) {
 		return fmt.Errorf("plan %s is admin-locked (immutable) for this cluster; the reservation cannot be changed", unit)
 	}
-	if target > cur { // increase = a claim -> the external hook may still refuse it
-		if err := cluster.RunPlanClaimScript(unit, cur, target); err != nil {
-			return fmt.Errorf("plan increase refused for %s by external claim script: %w", unit, err)
+	if target > cur { // increase -> prov-plan-increase-script may still refuse it
+		if err := cluster.RunPlanIncreaseScript(unit, cur, target); err != nil {
+			return fmt.Errorf("plan increase refused for %s by prov-plan-increase-script: %w", unit, err)
 		}
 	}
 
@@ -199,11 +200,30 @@ func (cluster *Cluster) CanPlanChange(unit PlanUnit) bool {
 	return !cluster.IsVariableImmutable(cluster.planFlag(unit))
 }
 
-// RunPlanClaimScript invokes the client-overridable external plan-claim hook -- a DIFFERENT
-// script from the resize can-change script (that one decides HOW to apply, never WHETHER to
-// claim). Non-zero exit REFUSES the increase; no script configured = allowed.
-// TODO: bind a `prov-plan-claim-script` config flag + args (cluster, unit, from, to); today
-// it is a no-op hook so an increase is allowed unless admin-locked.
-func (cluster *Cluster) RunPlanClaimScript(unit PlanUnit, from, to int) error {
-	return nil
+// RunPlanIncreaseScript invokes the client-overridable prov-plan-increase-script, fired PER
+// CLUSTER when the client RAISES a unit's plan/contract (ChangePlanUnits, DBU or APU). It is a
+// DIFFERENT hook from the resize scripts (those decide HOW to apply a resize; this authorises
+// WHETHER to raise the contract) and from the per-service over-plan borrow hook. Non-zero exit
+// REFUSES the increase (a client-overridable action); empty script = allowed. Non-secret context
+// is argv (unit, from, to, cluster); credentials ride GetExecEnv.
+func (cluster *Cluster) RunPlanIncreaseScript(unit PlanUnit, from, to int) error {
+	if cluster.Conf.ProvPlanIncreaseScript == "" {
+		return nil
+	}
+	scriptCmd := exec.Command(cluster.Conf.ProvPlanIncreaseScript,
+		string(unit), strconv.Itoa(from), strconv.Itoa(to), cluster.Name)
+	scriptCmd.Env = append(cluster.GetExecEnv(),
+		"REPMAN_PLAN_UNIT="+string(unit),
+		"REPMAN_PLAN_FROM="+strconv.Itoa(from),
+		"REPMAN_PLAN_TO="+strconv.Itoa(to),
+		"REPMAN_CLUSTER="+cluster.Name,
+	)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+		"prov-plan-increase-script: %s %d -> %d on cluster %s", unit, from, to, cluster.Name)
+	out, err := scriptCmd.CombinedOutput()
+	if len(out) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+			"prov-plan-increase-script output: %s", strings.TrimSpace(string(out)))
+	}
+	return err
 }

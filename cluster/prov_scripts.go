@@ -9,6 +9,7 @@ package cluster
 import (
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -175,6 +176,38 @@ func (cluster *Cluster) RunDynamicResourceChangeScript(server *ServerMonitor, gr
 		return err
 	}
 	return nil
+}
+
+// RunResourceRaisedOverPlanScript fires the client-overridable prov-db-resource-raised-over-plan-script
+// PER SERVICE, when the dynamic resize raises ONE server's resource PAST its plan -- the borrow, where
+// the cgroup cap becomes plan + borrow. Different from the resize change-script (that APPLIES a resize):
+// this signals the client that a specific instance crossed its contract so they can react (bill the
+// overage, alert, migrate). Non-zero exit VETOES the over-plan grow (a client-overridable action);
+// empty script = allowed. Non-secret context is argv (host, port, cluster); plan/target/borrow
+// (DBU per node) ride env. Returns allowed + a short reason.
+func (cluster *Cluster) RunResourceRaisedOverPlanScript(server *ServerMonitor, plan, target float64) (bool, string) {
+	if cluster.Conf.ProvDBResourceRaisedOverPlanScript == "" {
+		return true, ""
+	}
+	borrow := target - plan
+	scriptCmd := exec.Command(cluster.Conf.ProvDBResourceRaisedOverPlanScript,
+		misc.Unbracket(server.Host), server.Port, cluster.Name)
+	scriptCmd.Env = append(cluster.GetExecEnv(),
+		"REPMAN_CLUSTER="+cluster.Name,
+		"REPMAN_SERVER_HOST="+misc.Unbracket(server.Host),
+		"REPMAN_SERVER_PORT="+server.Port,
+		"REPMAN_PLAN_DBU="+strconv.FormatFloat(plan, 'f', 4, 64),
+		"REPMAN_TARGET_DBU="+strconv.FormatFloat(target, 'f', 4, 64),
+		"REPMAN_BORROW_DBU="+strconv.FormatFloat(borrow, 'f', 4, 64),
+	)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"prov-db-resource-raised-over-plan-script on %s: plan %.2f target %.2f borrow %.2f DBU/node",
+		server.URL, plan, target, borrow)
+	if out, err := scriptCmd.CombinedOutput(); err != nil {
+		return false, fmt.Sprintf("prov-db-resource-raised-over-plan-script vetoed the borrow on %s: %v (%s)",
+			server.URL, err, strings.TrimSpace(string(out)))
+	}
+	return true, ""
 }
 
 func (cluster *Cluster) StopDatabaseScript(server *ServerMonitor) error {

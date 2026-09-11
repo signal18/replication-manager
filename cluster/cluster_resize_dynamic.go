@@ -381,6 +381,12 @@ func (cluster *Cluster) resourceManagerAllowsGrow(server *ServerMonitor) (bool, 
 				server.Agent, used, extra, ceiling)
 		}
 	}
+	// The RM has GRANTED the borrow (target > plan, budget + pool OK). Fire the per-service
+	// client over-plan hook; a veto (non-zero exit) refuses the borrow. Only reached over-plan
+	// -- the within-plan path returned early above.
+	if ok, reason := cluster.RunResourceRaisedOverPlanScript(server, plan, target); !ok {
+		return false, reason
+	}
 	return true, ""
 }
 

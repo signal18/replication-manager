@@ -615,6 +615,8 @@ type Config struct {
 	ScaleDownPlanSpeed                        string            `mapstructure:"prov-db-scale-down-plan-speed" toml:"prov-db-scale-down-plan-speed" json:"scaleDownPlanSpeed"`                             // sustain duration before lowering the PLAN (cap down) -- most conservative, don't yo-yo the billed plan. Default 1h
 	ProvDBDynamicResourceCanChangeScript      string            `mapstructure:"prov-db-dynamic-resource-can-change-script" toml:"prov-db-dynamic-resource-can-change-script" json:"provDbDynamicResourceCanChangeScript"`
 	ProvDBDynamicResourceChangeScript         string            `mapstructure:"prov-db-dynamic-resource-change-script" toml:"prov-db-dynamic-resource-change-script" json:"provDbDynamicResourceChangeScript"`
+	ProvPlanIncreaseScript                    string            `mapstructure:"prov-plan-increase-script" toml:"prov-plan-increase-script" json:"provPlanIncreaseScript"`
+	ProvDBResourceRaisedOverPlanScript        string            `mapstructure:"prov-db-resource-raised-over-plan-script" toml:"prov-db-resource-raised-over-plan-script" json:"provDbResourceRaisedOverPlanScript"`
 	ProvDBConfig                              bool              `mapstructure:"prov-db-config" toml:"prov-db-config" json:"provDbConfig"`
 	ProvDBForceWriteConfig                    bool              `mapstructure:"prov-db-force-write-config" toml:"prov-db-force-write-config" json:"provDBForceWriteConfig"`
 	ProvDBConfigPreserve                      bool              `mapstructure:"prov-db-config-preserve" toml:"prov-db-config-preserve" json:"provDbConfigPreserve"`

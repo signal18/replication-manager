@@ -467,6 +467,13 @@ Borrow is best-effort — it yields when a lender reclaims its reservation — a
 overage (funded by `contract − real` on the lenders), always bounded by `Σ real ≤ agent ceiling`.
 The RM is the lender and the ledger of who borrowed what.
 
+**Client hooks (two levels).** `prov-plan-increase-script` fires **per cluster** in `ChangePlanUnits`
+when the client raises a unit's plan/contract (non-zero exit refuses the increase).
+`prov-db-resource-raised-over-plan-script` fires **per service** in `resourceManagerAllowsGrow` at the
+borrow moment (`target > plan`, budget + pool OK), passing `plan/target/borrow` (DBU/node) — non-zero
+exit vetoes the borrow. Contract-level authorisation is per-cluster; the borrow/placement action is
+per-service, matching the ledger. Both use the `prov-db-dynamic-resource-*-script` exec/env convention.
+
 **Implemented (this pass):** the per-instance reservation / usage / placement / class ledger
 (`RefreshComputePlanAPU` → `SetAppPlan`/`SetAppAgent`/`AppKey.Kind`; `IngestAppConsumedAPU` →
 `SetAppConsumed`); `prov-proxy-apu` (default 2) drives the per-proxy reservation (plan ledger,
