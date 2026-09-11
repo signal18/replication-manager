@@ -1089,3 +1089,51 @@ func TestMarkBackupPhysicalDoneRaceWithResticUpdate(t *testing.T) {
 		t.Fatalf("ResticSnapshotID = %q, want %q", server.LastBackupMeta.Physical.ResticSnapshotID, "snap-id")
 	}
 }
+
+// TestWaitForBinlogMetaNoDeadlock reproduces the WriteBackupMetadata self-deadlock: the
+// metadata writer held backupMetaMutex while polling for lastmeta.BinLogFileName, but that
+// field is only ever published by the writelog API path, which takes the SAME mutex. The
+// writer therefore blocked forever on a value it was preventing anyone from setting -- this
+// wedged belair/db2's rejoin for a day. waitForBinlogMeta must poll with the mutex RELEASED
+// so the publisher can make progress, then return holding it again.
+func TestWaitForBinlogMetaNoDeadlock(t *testing.T) {
+	_, server := newTestClusterServer(t)
+	lastmeta := &backupmgr.BackupMetadata{}
+
+	done := make(chan struct{})
+	go func() {
+		// Match WriteBackupMetadata's caller state: enter holding the mutex.
+		server.backupMetaMutex.Lock()
+		server.waitForBinlogMeta(lastmeta)
+		server.backupMetaMutex.Unlock() // helper returns holding it, per its contract
+		close(done)
+	}()
+
+	// The writelog API path publishes BinLogFileName under the same mutex. With the old code
+	// (poll while holding the lock) this Lock() would block forever -> deadlock.
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		server.backupMetaMutex.Lock()
+		lastmeta.BinLogFileName = "binlog.000042"
+		server.backupMetaMutex.Unlock()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("waitForBinlogMeta did not return within 5s: backupMetaMutex self-deadlock regressed")
+	}
+}
+
+// TestJobsCheckStatesApiModeSkipsSQL verifies the api-mode guard. In api mode the jobs table
+// is not the source of truth, so JobsCheckStates must return before the SQL path. With Conn
+// nil and no guard the function would instead return the "No connection pool" error (and in a
+// live server spam ERROR 1146 against the non-existent jobs table every tick).
+func TestJobsCheckStatesApiModeSkipsSQL(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	cluster.Conf.SchedulerJobsMode = "api"
+
+	if err := server.JobsCheckStates(); err != nil {
+		t.Fatalf("JobsCheckStates in api mode returned %v, want nil (must skip the SQL path)", err)
+	}
+}
