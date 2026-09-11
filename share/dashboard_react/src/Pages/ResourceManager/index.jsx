@@ -164,7 +164,7 @@ function ResourceManager() {
         <Box mt={6}>
           <Text fontSize='md' fontWeight='bold' mb={1}>Historique par cluster</Text>
           <Text fontSize='xs' opacity={0.6} mb={2}>
-            Consommé = sumSeries(mysql.*.dbu) par cluster (séries serveur, agrégées au query) · Plan = resourcemanager.&lt;cluster&gt;.plan_dbu (émis, historisé pour tracer les +1/−1 DBU)
+            Consommé = sumSeries(dbu.&lt;cluster&gt;.*.dbu) par cluster (séries serveur, agrégées au query) · Plan = resourcemanager.&lt;cluster&gt;.plan_dbu (émis, historisé pour tracer les +1/−1 DBU)
           </Text>
           <ChartBarStack
             context={ctx}
@@ -172,7 +172,7 @@ function ResourceManager() {
             title='Consommé DBU (par cluster)'
             minYMax={data.usableDbu}
             ceilingLabel={`usable ${fmt(data.usableDbu)} DBU`}
-            metricPaths={data.clusters.map((c) => `sumSeries(mysql.*-${carbonHost(c.cluster)}-*.dbu)`)}
+            metricPaths={data.clusters.map((c) => `sumSeries(dbu.${c.cluster}.*.dbu)`)}
           />
           <ChartBarStack
             context={ctx}
@@ -187,13 +187,13 @@ function ResourceManager() {
             context={ctx}
             height={200}
             title='Overcommit DBU (surconsommation : consommé > plan, par cluster)'
-            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(sumSeries(mysql.*-${carbonHost(c.cluster)}-*.dbu),resourcemanager.${carbonHost(c.cluster)}.plan_dbu),0)`)}
+            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(sumSeries(dbu.${c.cluster}.*.dbu),resourcemanager.${carbonHost(c.cluster)}.plan_dbu),0)`)}
           />
           <ChartBarStack
             context={ctx}
             height={200}
             title='Undercommit DBU (sous-consommation / giveback : plan > consommé, par cluster)'
-            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(resourcemanager.${carbonHost(c.cluster)}.plan_dbu,sumSeries(mysql.*-${carbonHost(c.cluster)}-*.dbu)),0)`)}
+            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(resourcemanager.${carbonHost(c.cluster)}.plan_dbu,sumSeries(dbu.${c.cluster}.*.dbu)),0)`)}
           />
           <Flex gap={4} wrap='wrap' mt={2}>
             {data.clusters.map((c, i) => (

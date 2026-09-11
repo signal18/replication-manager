@@ -52,7 +52,14 @@ func rawResourceAPUForEmit(r *APUReading, down bool) (cores, memBytes, diskBytes
 // under apu.<name>.*, mirroring the mysql.<host>.dbu* block. ts is shared across the
 // batch so the axes line up.
 func (cluster *Cluster) computeUnitMetrics(name string, r *APUReading, down bool, ts int64) []graphite.Metric {
-	token := computeTokenReplacer.Replace(name)
+	// Cluster-scoped path apu.<cluster>.<name>.* so a multi-cluster repman never MIXES clusters.
+	// DELIBERATE DEPARTURE from the DBU convention (cluster embedded IN the service/host id,
+	// mysql.<HOST>): here the cluster is its OWN leading segment and uses the RAW cluster.Name --
+	// the GUI scope() rewrites apu.* -> apu.<cluster.Name>.* with the same raw name, so both sides
+	// splice the identical string and always match (no Go/JS sanitiser, robust even to a dot in
+	// the name). Only the unit segment is sanitised (it is matched by the scope wildcard). Applied
+	// to APU only for now; migrating mysql.* to this shape is a separate change.
+	token := cluster.Name + "." + computeTokenReplacer.Replace(name)
 	apu, cpu, mem, disk := consumedAPUForEmit(r, down)
 	cores, memBytes, diskBytes := rawResourceAPUForEmit(r, down)
 

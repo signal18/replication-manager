@@ -60,13 +60,22 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   // filters by cluster ALWAYS, with NO dependency on the (possibly not-yet-loaded) server
   // list, so it never falls back to the unscoped whole-fleet '*' that mixes clusters.
   const clusterToken = carbonHost(selectedCluster?.name || '')
+  // mysql.* (DB stats) keeps the old scheme (cluster embedded in the host id -> mysql.*-<CLUSTER>-*).
+  // dbu.* (DB resource) and apu.* (Compute) use the newer scheme: cluster as its own segment with
+  // the RAW cluster name, matching what repman emits (dbu.<cluster>.<host> / apu.<cluster>.<unit>)
+  // -- identical string both sides, no Go/JS sanitiser.
   const scope = (s) =>
-    typeof s === 'string' && clusterToken ? s.replaceAll('mysql.*', `mysql.*-${clusterToken}-*`) : s
+    typeof s === 'string' && clusterToken
+      ? s
+          .replaceAll('mysql.*', `mysql.*-${clusterToken}-*`)
+          .replaceAll('dbu.*', `dbu.${selectedCluster?.name}.*`)
+          .replaceAll('apu.*', `apu.${selectedCluster?.name}.*`)
+      : s
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
 
   const cfg = selectedCluster?.config || {}
-  // The plan line = prov-service-plan-dbu, a REAL config field repman materializes (sum of
-  // per-server DBU when the admin hasn't set it / on-premise). The GUI just READS it.
+  // The plan line = prov-service-plan-dbu, the materialized service-plan DBU (Σ per-node
+  // deployment plans = prov-db-dbu x #nodes), recomputed each tick. The GUI just READS it.
   const planDbu = parseInt(cfg.provServicePlanDbu) || 1
 
   // Window (seconds) and refresh cadence for the d3 line charts, from the same
@@ -178,18 +187,18 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         <ChartGroupedDBU
          context={context}
          dbuPaths={{
-           cpu: scope('sumSeries(mysql.*.dbu_cpu)'),
-           mem: scope('sumSeries(mysql.*.dbu_mem)'),
-           io: scope('sumSeries(mysql.*.dbu_io)'),
-           disk: scope('sumSeries(mysql.*.dbu_disk)')
+           cpu: scope('sumSeries(dbu.*.dbu_cpu)'),
+           mem: scope('sumSeries(dbu.*.dbu_mem)'),
+           io: scope('sumSeries(dbu.*.dbu_io)'),
+           disk: scope('sumSeries(dbu.*.dbu_disk)')
          }}
          servicePaths={{
-           cpu: scope('sumSeries(mysql.*.service_cpu)'),
-           mem: scope('sumSeries(mysql.*.service_mem)'),
-           io: scope('sumSeries(mysql.*.service_io)'),
-           disk: scope('sumSeries(mysql.*.service_disk)')
+           cpu: scope('sumSeries(dbu.*.service_cpu)'),
+           mem: scope('sumSeries(dbu.*.service_mem)'),
+           io: scope('sumSeries(dbu.*.service_io)'),
+           disk: scope('sumSeries(dbu.*.service_disk)')
          }}
-         pivotPath={scope('sumSeries(mysql.*.dbu)')}
+         pivotPath={scope('sumSeries(dbu.*.dbu)')}
          planDbu={planDbu}
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
@@ -198,22 +207,23 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         {/* Compute (APU) — proxies + apps. Reuses the grouped-unit chart: the apu_* series
             already carry the server-side Compute projection, so we pass them as the billed
             bars and leave servicePaths empty (the real→unit overlay uses DBU ratios, N/A here).
-            No IO axis (Compute has no IOPS lock). NOTE: apu.<name>.* has no cluster token yet,
-            so this is unscoped (correct on a single-cluster instance; multi-cluster scoping is
-            a follow-up once the cluster token is added to the APU metric name). */}
+            No IO axis (Compute has no IOPS lock). Cluster-scoped: apu.* is rewritten to
+            apu.<CTOKEN>.* by scope(), matching the cluster token repman now emits, so a
+            multi-cluster instance no longer mixes clusters. Plan line = prov-service-plan-apu
+            (the materialized service-plan APU = Σ proxy+app deployment plans). */}
         <ChartGroupedDBU
          context={context}
          dbuPaths={{
-           cpu: 'sumSeries(apu.*.apu_cpu)',
-           mem: 'sumSeries(apu.*.apu_mem)',
-           disk: 'sumSeries(apu.*.apu_disk)'
+           cpu: scope('sumSeries(apu.*.apu_cpu)'),
+           mem: scope('sumSeries(apu.*.apu_mem)'),
+           disk: scope('sumSeries(apu.*.apu_disk)')
          }}
          servicePaths={{}}
-         pivotPath={'sumSeries(apu.*.apu)'}
-         planDbu={0}
+         pivotPath={scope('sumSeries(apu.*.apu)')}
+         planDbu={parseInt(cfg.provServicePlanApu) || 0}
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
-         title="Consumed APU — proxies + apps (Compute; no IO axis)"
+         title="Consumed APU — proxies + apps (Compute; plan = service-plan APU)"
        />
         <ChartMultiMetric
          context={context}

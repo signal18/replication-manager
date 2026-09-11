@@ -346,6 +346,11 @@ func (cluster *Cluster) RefreshDBUPlan() {
 			int64(float64(dbu)*r.DiskGBPerUnit)*1024*1024*1024)
 		cluster.resources.SetPlan(ResourceKey{Cluster: cluster.Name, Server: server.URL}, &reading)
 	}
+	// Materialize the per-cluster DBU contract -- the REAL cluster-level number every reader uses
+	// (GUI, API, GWARN016): the PlanByCluster rollup (= prov-db-dbu x #nodes). Derived from the
+	// per-node input and recomputed each tick, so it is always correct and never stale; the client
+	// moves only the per-node prov-db-dbu (dynamic layer), so this never re-locks in /etc.
+	cluster.Conf.ProvServicePlanDbu = int(cluster.resources.PlanByCluster(cluster.Name).Dbu + 0.5)
 }
 
 // GetDBContainerMemoryCapMB returns the cgroup --memory cap (MB) for the DB container.
@@ -483,7 +488,7 @@ func (server *ServerMonitor) canScaleSustained(up bool, instant []string, speedS
 		if capa <= 0 {
 			continue
 		}
-		target := fmt.Sprintf("summarize(mysql.%s.dbu_%s,'%ds','%s')", host, axis, int(d.Seconds()), agg)
+		target := fmt.Sprintf("summarize(dbu.%s.%s.dbu_%s,'%ds','%s')", cluster.Name, host, axis, int(d.Seconds()), agg)
 		md, rerr := graphite.Zipper.Render(target, from, until)
 		if rerr != nil {
 			due = append(due, axis) // Graphite unavailable -> trust the instant state

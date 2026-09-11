@@ -1205,11 +1205,12 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 		cluster.resources.SetAppPlan(AppKey{Cluster: cluster.Name, App: prx.GetName(), Kind: KindProxy}, &r)
 	}
 
-	// NOTE: the per-instance plans set above ARE the reservation primitive (per service,
-	// with its agent/class), and the cluster APU contract is their ROLLUP (AppPlanByCluster),
-	// NOT a single stored number. prov-proxy-apu is the per-proxy reservation the configurator
-	// moves via ChangePlanUnits(APU); apps carry their own per-app reservation. The legacy
-	// single-number prov-service-plan-apu is superseded by the rollup.
+	// Materialize the per-cluster APU contract -- the REAL cluster-level number (the service plan's
+	// APU) every reader uses = the SUM of the per-service reservations (proxies at prov-proxy-apu +
+	// apps at their own config), i.e. AppPlanByCluster. Derived and recomputed each tick from the
+	// per-instance inputs; the client moves those (prov-proxy-apu / per-app), never this directly,
+	// so it stays a real cluster number without re-locking in /etc.
+	cluster.Conf.ProvServicePlanApu = int(cluster.resources.AppPlanByCluster(cluster.Name).Apu + 0.5)
 }
 
 func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {
