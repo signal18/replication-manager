@@ -49,8 +49,11 @@ function DBUSlider({ value, isDisabled, onChange, nbNodes = 1 }) {
 
   return (
     <Box w='100%'>
-      <Flex justify='space-between' mb={1}>
-        <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Database Units (DBU) — per node</Text>
+      <Flex justify='space-between' mb={1} align='start'>
+        <Box>
+          <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Database Units (DBU) — per node</Text>
+          <Text fontSize='11px' color='gray.500'>1 DBU = 1 core · 4 GB · 40 GB · 1000 IO/s</Text>
+        </Box>
         <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>{dbu} DBU/node · plan {total} DBU ({nbNodes} node{nbNodes > 1 ? 's' : ''})</Text>
       </Flex>
       <Slider
