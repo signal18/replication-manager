@@ -269,6 +269,22 @@ branch that depends on it cherry-picks that export commit; carrying an export
 inside a feature branch is the exception, and is what triggers the
 concurrent-branch check above.
 
+**T22. Infrastructure & environment questions are answered by the infrastructure
+reference — never guessed.** Anything about the DEV or PRODUCTION infrastructure —
+which host/OpenSVC service an instance is, dev vs prod, how to reach or read it
+(bastions, SSH jump paths, `om`, `docker exec`), where a config value or secret
+lives, which values are environment-specific vs portable, how one environment maps
+to another — is answered by the single infra-access reference `INFRASTRUCTURE.md`
+(maintained in the private back-office repo), the source of truth. **Consult it
+FIRST**: do not answer from assumption, and do not declare a dead-end ("the VPN is
+down, I can't reach it") before checking the reference — the access path, the exact
+instance, and how to read its config are written there, so "I can't get it" is
+almost always "I didn't open the reference." It is private (hosts, paths, access
+methods): **point to it, never copy its specifics into this public repo** (T15) —
+and keep the reference itself updated as you learn. This is the infrastructure face
+of F5 (reconcile against reality, don't assume) and of T20 (check what already
+exists before you work).
+
 ## Debugging discipline — investigate FULLY before you unblock
 
 **Never unblock a stuck issue before you have investigated it fully.** A restart, a
