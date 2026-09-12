@@ -6784,6 +6784,28 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 	return nil
 }
 
+// waitForBinlogMeta blocks until the writelog API path fills in lastmeta.BinLogFileName.
+//
+// Lock contract: the caller MUST hold server.backupMetaMutex on entry, and it is held again on
+// return; the wait itself runs with the mutex RELEASED. BinLogFileName is published by the
+// writelog path (which takes this SAME mutex, see WriteJobMeta/writelog around the
+// server.backupMetaMutex.Lock that sets BinLogFileName), so polling it while holding the lock
+// is a self-deadlock: the poller would block forever on a value only settable by acquiring the
+// lock it is already holding. That is exactly what wedged belair/db2's rejoin for a day. The
+// per-iteration Lock/read/Unlock also keeps the read synchronized with the writer instead of
+// reading the field bare (race-clean).
+func (server *ServerMonitor) waitForBinlogMeta(lastmeta *backupmgr.BackupMetadata) {
+	server.backupMetaMutex.Unlock()
+	for {
+		server.backupMetaMutex.Lock()
+		if lastmeta.BinLogFileName != "" {
+			return // return holding the mutex, per the contract above
+		}
+		server.backupMetaMutex.Unlock()
+		time.Sleep(time.Second)
+	}
+}
+
 func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod) {
 	// CRITICAL FIX: Lock to prevent concurrent metadata updates from async Restic callbacks
 	server.backupMetaMutex.Lock()
@@ -6826,19 +6848,26 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 
 	task := server.JobResults.Get(lastmeta.BackupTool)
 
+	// Drop backupMetaMutex while polling for the job to reach a terminal state. task.State is
+	// advanced by jobsUpdateState (srv_job.go) and is NOT guarded by this mutex -- it was an
+	// unsynchronized read before this change too -- so there is nothing to synchronize here.
+	// We still release the lock so this poll cannot block the writelog path, which needs the
+	// same mutex to publish BinLogFileName that waitForBinlogMeta waits for just below.
 	//Wait until job result changed since we're using pointer
+	server.backupMetaMutex.Unlock()
 	for task.State < 3 {
 		time.Sleep(time.Second)
 	}
+	server.backupMetaMutex.Lock()
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Continue for writing metadata for backup in %s", server.URL)
 
 	if task.State == 3 || task.State == 4 {
 		//Wait for binlog metadata sent by writelog API
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Waiting for binlog info: %v", lastmeta)
-		for lastmeta.BinLogFileName == "" {
-			time.Sleep(time.Second)
-		}
+		// Releases backupMetaMutex while polling and re-acquires before we mutate below; see
+		// the waitForBinlogMeta contract -- this is the self-deadlock fix.
+		server.waitForBinlogMeta(lastmeta)
 		lastmeta.Completed = true
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Metadata completed: %v", lastmeta)
 		cluster.BackupPostScript(server, backtype, lastmeta.Dest)

@@ -1226,6 +1226,13 @@ func (server *ServerMonitor) JobsCheckStates() error {
 	var err error
 	cluster := server.ClusterGroup
 
+	// In api mode the jobs table is not the source of truth (dbjobs report via the API),
+	// so polling it here spams ERROR 1146 "Table 'replication_manager_schema.jobs' doesn't
+	// exist". Mirror JobsCheckRunning's guard and skip the SQL path entirely.
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return nil
+	}
+
 	if cluster.IsInFailover() {
 		return nil
 	}
