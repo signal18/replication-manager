@@ -119,11 +119,71 @@ func (cluster *Cluster) resourceResizer() ResourceResizer {
 	}
 }
 
-// openSVCResize writes the process-group (cgroup) memory keyword into the service
-// config and re-applies it live via the om3 PG update API — no restart. Only
-// available on OpenSVC v3 (pg update is a v3 action); on v2 it falls back to a
-// restart. Grow safety is enforced by the caller ordering (infra before the DB
-// memory raise).
+// openSVCConfigSettleTimeout bounds the wait for an om3 node to LOAD a config we just
+// pushed (WaitObjectConfigSettledV3). The reload is normally sub-second; 30s is a guard.
+const openSVCConfigSettleTimeout = 30 * time.Second
+
+// OpenSVCCPUQuotaKeyword renders `cores` as an om3 pg_cpu_quota value meaning exactly
+// that many cores on ANY node. om3 (rc20 through rc36, util/pg CPUQuota.Convert)
+// computes quota = pct × period × cpus / maxCpus / 100 with cpus = 1 when no "@" is
+// given, so a bare "300%" is 3/maxCpus of ONE core -- 0.125 core on a 24-thread node,
+// the dev3 "300% -> 0.09 core" surprise. With "@all", cpus = maxCpus cancels out and pct
+// is simply cores × 100: "300%@all" = 3 cores everywhere. (The 2.1 agent has the opposite
+// convention -- "300%" = 3 cores, "@all" multiplies by the thread count -- so this helper
+// is for the v3 API path only.) Returns "" for a non-positive value.
+func OpenSVCCPUQuotaKeyword(cores float64) string {
+	if cores <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d%%@all", int(math.Round(cores*100)))
+}
+
+// openSVCApplyPGKeywords writes process-group (cgroup) keywords into the service
+// DEFAULT section, waits for the node to LOAD the new config, then re-applies the
+// limits live via the om3 pg update action -- no restart. Shared by the memory and
+// cpu live resizes. v3 only (the caller checks IsV3).
+func (cluster *Cluster) openSVCApplyPGKeywords(server *ServerMonitor, kv map[string]string) error {
+	svc := cluster.OpenSVCConnect()
+	svcparts := strings.SplitN(server.ServiceName, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service name %q, expected namespace/kind/name", server.ServiceName)
+	}
+	ns, kind, svcname := svcparts[0], svcparts[1], svcparts[2]
+
+	// 1. Write the PG keywords into the service config.
+	raw, err := svc.GetObjectConfigFileV3(ns, kind, svcname)
+	if err != nil {
+		return err
+	}
+	cfg, err := ini.LoadSources(ini.LoadOptions{IgnoreInlineComment: true}, bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("failed to parse service config for %s: %w", server.ServiceName, err)
+	}
+	for k, v := range kv {
+		cfg.Section("DEFAULT").Key(k).SetValue(v)
+	}
+	var buf bytes.Buffer
+	if _, err = cfg.WriteTo(&buf); err != nil {
+		return err
+	}
+	if _, err = svc.UpdateObjectV3(ns, kind, svcname, buf.Bytes()); err != nil {
+		return err
+	}
+
+	// 2. The pg update reads the node's LOADED config; fired right after the PUT it
+	// would re-apply the previous limits (#1792). Wait for the reload first.
+	if err := svc.WaitObjectConfigSettledV3(server.Agent, ns, kind, svcname, openSVCConfigSettleTimeout); err != nil {
+		return err
+	}
+
+	// 3. Apply the new cgroup limits live on the running node.
+	return svc.PGUpdateInstanceV3(server.Agent, server.ServiceName, "")
+}
+
+// openSVCResize moves the container MEMORY cap on the om3 PG slice live (pg_mem_limit
+// + pg update) — no restart. Only available on OpenSVC v3 (pg update is a v3 action);
+// on v2 it falls back to a restart. Grow safety is enforced by the caller ordering
+// (infra before the DB memory raise).
 func (cluster *Cluster) openSVCResize(server *ServerMonitor, grow bool) (bool, error) {
 	svc := cluster.OpenSVCConnect()
 	if !svc.IsV3() {
@@ -132,42 +192,35 @@ func (cluster *Cluster) openSVCResize(server *ServerMonitor, grow bool) (bool, e
 		server.SetRestartCookie()
 		return false, nil
 	}
-	svcparts := strings.SplitN(server.ServiceName, "/", 3)
-	if len(svcparts) != 3 {
-		return false, fmt.Errorf("invalid service name %q, expected namespace/kind/name", server.ServiceName)
-	}
-	ns, kind, svcname := svcparts[0], svcparts[1], svcparts[2]
-
 	memMB, err := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
 	if err != nil {
 		return false, err
 	}
-
-	// 1. Write the PG memory keyword (bytes) into the service config.
-	raw, err := svc.GetObjectConfigFileV3(ns, kind, svcname)
-	if err != nil {
-		return false, err
-	}
-	cfg, err := ini.LoadSources(ini.LoadOptions{IgnoreInlineComment: true}, bytes.NewReader(raw))
-	if err != nil {
-		return false, fmt.Errorf("failed to parse service config for %s: %w", server.ServiceName, err)
-	}
-	cfg.Section("DEFAULT").Key("pg_mem_limit").SetValue(strconv.FormatInt(int64(memMB)*1024*1024, 10))
-	var buf bytes.Buffer
-	if _, err = cfg.WriteTo(&buf); err != nil {
-		return false, err
-	}
-	if _, err = svc.UpdateObjectV3(ns, kind, svcname, buf.Bytes()); err != nil {
-		return false, err
-	}
-
-	// 2. Apply the new cgroup limit live on the running node.
-	if err := svc.PGUpdateInstanceV3(server.Agent, server.ServiceName, ""); err != nil {
+	kv := map[string]string{"pg_mem_limit": strconv.FormatInt(int64(memMB)*1024*1024, 10)}
+	if err := cluster.openSVCApplyPGKeywords(server, kv); err != nil {
 		return false, err
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"OpenSVC live cgroup resize applied on %s (pg_mem_limit=%dMB)", server.URL, memMB)
 	return true, nil
+}
+
+// openSVCResizeCPU moves the container CPU cap on the om3 PG slice live (pg_cpu_quota
+// + pg update), the cpu twin of openSVCResize. Only meaningful when the cap lives on
+// the slice (prov-db-docker-run-args-limit off, see WARN0214): under a docker --cpus
+// cap the tighter docker scope binds and the slice change has no effect.
+func (cluster *Cluster) openSVCResizeCPU(server *ServerMonitor) error {
+	cores, err := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+	if err != nil || cores <= 0 {
+		return fmt.Errorf("invalid prov-db-cpu-cores %q", cluster.Conf.ProvCores)
+	}
+	q := OpenSVCCPUQuotaKeyword(cores)
+	if err := cluster.openSVCApplyPGKeywords(server, map[string]string{"pg_cpu_quota": q}); err != nil {
+		return err
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"OpenSVC live cgroup resize applied on %s (pg_cpu_quota=%s = %.2f cores)", server.URL, q, cores)
+	return nil
 }
 
 // resizeDimension is the provisioned resource that changed; each drives its own
@@ -449,9 +502,11 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 			server.SetRestartCookie()
 			continue
 		}
-		// IO and CPU tuning are pure DB SET GLOBALs — no cgroup change, no
-		// feasibility gate, no grow/shrink ordering. Restart-only vars fall back
-		// via error 1238. (The cgroup cpu limit resize is a follow-up, like pg_cpu.)
+		// IO and CPU tuning are DB SET GLOBALs — no feasibility gate, no grow/shrink
+		// ordering. Restart-only vars fall back via error 1238. The CPU cap additionally
+		// moves on the om3 PG slice live when the cap lives there (docker run-args cap
+		// off, v3); IO has no cgroup primitive (om3's pg has no io.max), so it stays a
+		// DB-side tuning.
 		if dim != resizeMemory {
 			var sql []string
 			switch dim {
@@ -463,6 +518,14 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 			if len(sql) > 0 {
 				if _, needRestart := server.ExecScriptSQL(sql); needRestart {
 					server.SetRestartCookie()
+				}
+			}
+			if dim == resizeCPU && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC && !cluster.Conf.ProvDBDockerRunArgsLimit {
+				if svc := cluster.OpenSVCConnect(); svc.IsV3() {
+					if err := cluster.openSVCResizeCPU(server); err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+							"Live cpu cgroup resize failed on %s (DB tuning applied, container cap unchanged): %s", server.URL, err)
+					}
 				}
 			}
 			cluster.logResize(server, dim, grow, true, ResizeYes, sql)
@@ -851,10 +914,12 @@ func (cluster *Cluster) recordDynamicGrow(axis string, qps float64) {
 // The fix is to move the cap onto the PG slice (prov-db-docker-run-args-limit off, cap
 // written as pg_mem_limit/pg_cpu_quota) and rolling-restart to recreate the container
 // resize-ready. The state is config-derived (stable, no flap) and clears when the
-// deployment is reconciled. The rolling-restart is NOT auto-triggered yet: it is only
-// safe once the render can drop the docker cap AND set the PG-slice cap on every axis
-// (the cpu path waits on the confirmed om3 pg_cpu_quota unit); triggering it before then
-// would either restart-loop (cap re-added) or recreate an un-capped container.
+// deployment is reconciled. The v3 template now writes the PG-slice cap on both axes
+// (pg_mem_limit + pg_cpu_quota in the om3 "<cores*100>%@all" syntax, see
+// OpenSVCCPUQuotaKeyword) when the docker cap is off, so a rolling restart lands a
+// resize-ready container. It is still NOT auto-triggered: that is an operator decision
+// (two switchovers per cluster), and the restart must be issued only after the pushed
+// config is loaded (WaitObjectConfigSettledV3, #1792).
 func (cluster *Cluster) CheckDynamicResourceDeploymentReady() {
 	if !cluster.Conf.ProvDBDynamicResource {
 		return

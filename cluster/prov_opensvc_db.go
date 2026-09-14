@@ -170,8 +170,14 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 	ns, kind, svcname := svcparts[0], svcparts[1], svcparts[2]
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"Refreshing OpenSVC template for %s", s.ServiceName)
-	_, err = svc.UpdateObjectV3(ns, kind, svcname, res)
-	return err
+	if _, err = svc.UpdateObjectV3(ns, kind, svcname, res); err != nil {
+		return err
+	}
+	// om3 commits the file synchronously but reloads the instance config
+	// asynchronously: the rolling restart's start issued right after this PUT ran
+	// on the PREVIOUS config and recreated the containers without the pushed
+	// change (#1792, belair 2026-09-14). Return only once the node has loaded it.
+	return svc.WaitObjectConfigSettledV3(s.Agent, ns, kind, svcname, openSVCConfigSettleTimeout)
 }
 
 func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
@@ -1014,6 +1020,18 @@ func (server *ServerMonitor) GenerateDBTemplateV2() ([]byte, error) {
 func (server *ServerMonitor) GenerateDBTemplateV3() ([]byte, error) {
 
 	svcsection := server.GenerateDBTemplateMap()
+	if !server.ClusterGroup.Conf.ProvDBDockerRunArgsLimit {
+		// The container cap lives on the om3 PG SLICE, not the docker scope (see
+		// WARN0214): same memory ceiling the docker run-args carried (tier + 1 DBU
+		// headroom) plus the cpu quota, so a live pg update can move BOTH axes.
+		// om3 syntax only (v3 template): "<cores*100>%@all" -- see OpenSVCCPUQuotaKeyword.
+		svcsection["DEFAULT"]["pg_mem_limit"] = strconv.FormatInt(int64(server.ClusterGroup.GetDBContainerMemoryCapMB())*1024*1024, 10)
+		if cores, err := strconv.ParseFloat(server.ClusterGroup.Conf.ProvCores, 64); err == nil {
+			if q := OpenSVCCPUQuotaKeyword(cores); q != "" {
+				svcsection["DEFAULT"]["pg_cpu_quota"] = q
+			}
+		}
+	}
 
 	cfg := ini.Empty()
 
