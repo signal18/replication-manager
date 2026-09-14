@@ -384,12 +384,14 @@ the container-orchestrator path already gets it for free from
 
 Creates a Deployment + Service, both type-aware via `k8sProxyImage()`/
 `k8sProxyContainerPorts()`/`k8sProxyServicePorts()` switching on
-`prx.GetType()`. **Only ProxySQL (`config.ConstProxySqlproxy`) and HAProxy
-(`config.ConstProxyHaproxy`) are implemented** (`k8sSupportedProxyTypes`).
-Every other family — MaxScale, Sphinx, ShardProxy, external, janitor,
-MyProxy — gets an explicit error before any API call, instead of silently
-deploying as `ProvProxProxysqlImg`/`ProvProxHaproxyImg` under its own name
-(which would look provisioned while running the wrong software entirely).
+`prx.GetType()`. **ProxySQL (`config.ConstProxySqlproxy`), HAProxy
+(`config.ConstProxyHaproxy`), and MaxScale (`config.ConstProxyMaxscale`) are
+implemented** (`k8sSupportedProxyTypes`). Every other family — Sphinx,
+ShardProxy, external, janitor, MyProxy — gets an explicit error before any
+API call, instead of silently deploying as
+`ProvProxProxysqlImg`/`ProvProxHaproxyImg`/`ProvProxMaxscaleImg` under its
+own name (which would look provisioned while running the wrong software
+entirely).
 
 - **ProxySQL** exposes two ports on both the container and the Service:
   `admin` (`prx.GetPort()`) and `sql` (`prx.GetWritePort()`).
@@ -398,6 +400,8 @@ deploying as `ProvProxProxysqlImg`/`ProvProxHaproxyImg` under its own name
   (`HaproxyReadPort`), and `stat` (`HaproxyStatPort` — not on the
   `DatabaseProxy` interface, so read straight off cluster config, same as
   the generated `haproxy.cfg`'s own `listen stats` block).
+- **MaxScale** exposes `admin`, `write`, `rw-split`, `binlog`, and an
+  optional `maxinfo` — see "MaxScale" below.
 
 The Deployment name and selector are unique per proxy
 (`<cluster>-<proxy>-deployment`, label `tag: <proxy>`), and the PVC name
@@ -493,6 +497,14 @@ cluster/namespace. Matches `OpenSVCProvisionProxyService`
 (`prov_opensvc_prx.go`), which never assumes DB provisioning ran either —
 it creates its own service and maps unconditionally.
 
+**Ordering**: name validation and the read-only collision/legacy-Deployment
+checks run first, then the pure `k8sProxyDeployment` builder, and only then
+`k8sEnsureNamespace` and any `Create()` call. The builder is where a
+proxy-type-specific configuration error surfaces — currently MaxScale's
+pinloki-without-REST combination (`k8sProxyPortSpecs`) — so an invalid
+configuration is rejected before any Namespace, PVC, Deployment, or Service
+gets created, rather than leaving a half-provisioned proxy behind.
+
 `K8SUnprovisionProxyService()` deletes the Deployment and Service
 independently (a Service delete failure doesn't stop the Deployment delete
 from being attempted), idempotent via `NotFound` for each. The PVC is
@@ -501,7 +513,7 @@ PVC.
 
 ### Persistent storage & config bootstrap
 
-Both proxy types get a PVC (`k8sProxyPVC()`, `<cluster>-<proxy>-claim` via
+All three proxy types get a PVC (`k8sProxyPVC()`, `<cluster>-<proxy>-claim` via
 `k8sProxyPVCName()`, sized from `prov-proxy-disk-size`, same StorageClass
 handling as the database PVC) and an init container
 (`k8sProxyFetchConfigCmds()`) that fetches and applies the config tarball
@@ -538,16 +550,145 @@ changes to serve this.
   `k8sHaproxyBootstrapCommand()` copies the whole fetched `etc/haproxy/`
   tree plus `init/checkmaster`/`init/checkslave` (`chmod +x`'d) into the
   mount.
+- **MaxScale**: see "MaxScale" below — its mount layout, config selection,
+  and startup commands are distinct enough from ProxySQL/HAProxy to warrant
+  their own section.
 
 If `api-credentials-secure-config` is enabled, the auth header is ensured
 on the cluster's shared Secret before the PVC is created, exactly as on
 the database side — never a raw value baked into the Deployment spec.
 
 Persistent storage and bootstrap apply to every type in
-`k8sProxyTypeHasPersistentStorage()` (today: ProxySQL and HAProxy) — a
-future proxy family needs its own mount layout, command, and bootstrap
-logic added explicitly, not an assumption that either existing type's
-applies unchanged.
+`k8sProxyTypeHasPersistentStorage()` (today: ProxySQL, HAProxy, and
+MaxScale) — a future proxy family needs its own mount layout, command, and
+bootstrap logic added explicitly, not an assumption that any existing
+type's applies unchanged.
+
+### MaxScale
+
+Ports, config selection, persistence, and startup all derive from the same
+two independent settings OpenSVC's own MaxScale provisioning
+(`cluster/prov_opensvc_maxscale.go`) already keys on:
+
+- `maxscale-mode` (`legacy`/`pinloki`/`auto`) — which generated config
+  syntax to use (`Cluster.MaxscaleUsesPinloki()`, `cluster/prx_maxscale.go`).
+  `auto` parses the tag on `prov-proxy-docker-maxscale-img`, isolating the
+  last `/`-segment before splitting on `:` so a registry port (e.g.
+  `myregistry:5000/mariadb/maxscale`) is never mistaken for a version tag;
+  an unparseable tag falls back to legacy, same as the explicit `legacy`
+  setting.
+- `maxscale-rest-api` — REST API (`MxsRestPort`, default `8989`) vs the
+  legacy MaxAdmin TCP protocol (`MxsPort`, default `6603`). Independent of
+  `maxscale-mode`: a pre-2.2 MaxScale predates REST entirely, regardless of
+  config syntax.
+
+**Admin port** (`k8sProxyPortSpecs`, the MaxScale branch): REST enabled uses
+`MxsRestPort` unconditionally; REST disabled parses `prx.GetPort()`
+(`strconv.Atoi`, an explicit error on an unparseable value, never a silent
+port `0`).
+
+**Invalid combination — pinloki requires REST.** A pinloki config
+(`maxscale-pinloki.cnf`, the `share/opensvc/moduleset_mariadb.svc.mrm.proxy.json`
+variant with `[mysql-monitor]`/`[rw-split-router]`/etc.) never generates a
+`[CLI]`/MaxAdmin listener — that router only exists in the legacy config
+variant. So `maxscale-mode=pinloki` (or `auto` resolving to pinloki) combined
+with `maxscale-rest-api=false` is rejected by `k8sProxyPortSpecs` with an
+explicit error before any Kubernetes object is created (see "Ordering"
+above) — the alternative would be a Service exposing an `admin` port nothing
+inside the container is listening on. Explicit `legacy` mode with REST
+disabled remains fully supported.
+
+**Routing ports** are unconditional, regardless of mode: `write`
+(`prx.GetWritePort()`, `MxsWritePort`), `rw-split`
+(`prx.GetReadWritePort()`, `MxsReadWritePort`), and `binlog`
+(`MxsBinlogPort`) — the binlogrouter service is generated in every config
+variant regardless of `maxscale-binlog` (`MxsBinlogOn`). **No `read` port is
+exposed**: neither the legacy nor the pinloki config generates a listener
+for `MxsReadPort` (only `Read-Write-Connection-Router`/`rw-split-router`
+listens for reads, alongside the master-only write router).
+
+**`maxinfo`** is exposed only when `maxscale-get-info-method=maxinfo` *and*
+the resolved mode is legacy — pinloki dropped the `maxinfo` HTTP plugin
+entirely (2.5+), so requesting it under pinloki is **not** a provisioning
+failure: the port is silently omitted while `admin`/`write`/`rw-split`/
+`binlog` and REST monitoring are unaffected. This mirrors
+`MaxscaleProxy.MaxscaleUsesMaxinfo()`'s runtime behavior (which additionally
+raises `WARN0211`) without reproducing its side effect — `k8sProxyPortSpecs`
+is a pure builder and checks `MxsGetInfoMethod == "maxinfo" &&
+!cluster.MaxscaleUsesPinloki()` directly instead of calling that method.
+
+**Persistent storage**: the PVC is mounted twice — a `subPath` at
+`/etc/maxscale-persist` (`k8sMaxscaleConfPersistDir`,
+`.system/etc-maxscale-cnf`) and another at `/var/cache/maxscale`
+(`.system/var-cache-maxscale`, always mounted since the binlogrouter service
+is always generated). Unlike ProxySQL/HAProxy, the persisted config is
+**not** mounted directly onto `/etc/maxscale.cnf` — a `subPath` mount onto a
+single not-yet-existing file fails on kubelet ("not a directory"), the same
+limitation HAProxy's `checkmaster`/`checkslave` hit. Instead the persisted
+directory is mounted, and the container's startup command copies the
+selected file over `/etc/maxscale.cnf` before starting MaxScale.
+
+**Bootstrap** (`k8sMaxscaleBootstrapCommand`) reuses
+`k8sProxyFetchConfigCmds` (same HTTP/HTTPS selection, `need-config-fetch`
+gate, bounded `wget -T 8`, `SecretKeyRef`-sourced `Authorization` header) and
+selects the source file by `cluster.MaxscaleUsesPinloki()`:
+`etc/maxscale/maxscale.cnf` (legacy) or `etc/maxscale/maxscale-pinloki.cnf`
+(pinloki) — the same two files OpenSVC's
+`OpenSVCGetMaxscaleContainerSection` selects between. No SSL copy step: no
+generated `maxscale.cnf`/`maxscale-pinloki.cnf` variant references the
+`ssl/*.pem` files `GenerateProxyConfig` stages for every proxy family, so
+mounting/copying them here would be dead weight.
+
+**Atomic replacement, last-known-good preservation.** The fetched file is
+first copied to `/etc/maxscale-persist/maxscale.cnf.tmp`, and only a
+*successful* copy is followed by `mv -f` onto the real
+`/etc/maxscale-persist/maxscale.cnf` (same directory, so the rename is
+atomic):
+
+```
+if cp /tmp/cfg/etc/maxscale/<selected-file> /etc/maxscale-persist/maxscale.cnf.tmp; then
+  mv -f /etc/maxscale-persist/maxscale.cnf.tmp /etc/maxscale-persist/maxscale.cnf
+fi
+```
+
+nested inside the same `need-config-fetch` → `wget` → `tar xzf` →
+file-exists gate every other bootstrap step uses. A failure at any stage —
+`need-config-fetch` says no, the remote fetch fails, the tarball doesn't
+extract, the selected file is absent from it, or the `cp` itself fails —
+leaves the previously persisted `maxscale.cnf` completely untouched, and a
+partially-written `.tmp` file is never mistaken for the active config (the
+`mv` only ever promotes a fully-written one).
+
+**Startup** (`k8sMaxscaleContainerSpec`) both copies the persisted config to
+`/etc/maxscale.cnf` first, then diverges by mode:
+
+- **Legacy**: `cp ...; exec /usr/bin/docker-entrypoint.sh /bin/sh -c
+  "maxscale-start && monit -I"` — the image's own normal entrypoint path,
+  unchanged.
+- **Pinloki**:
+  ```
+  cp ...;
+  rm -f /var/run/*.pid;
+  chown -R maxscale:maxscale /var/lib/maxscale;
+  trap '/usr/bin/monit unmonitor all; /usr/bin/maxscale-stop; /usr/bin/monit quit' TERM;
+  maxscale-start && monit -I &
+  wait
+  ```
+  No `exec`: the shell must stay alive as PID 1 so a Kubernetes `TERM`
+  reaches the trap and shuts MaxScale down gracefully through `monit`
+  instead of killing it out from under a supervised process.
+
+**The pinloki `rsyslogd` workaround** is deliberately *not* reproduced here.
+It was a live-confirmed bug in `mariadb/maxscale:23.08`'s own entrypoint (a
+bare `rsyslogd` call never daemonizes, hanging startup before
+`maxscale-start` ever runs) — harmless to skip since MaxScale logs via
+`maxlog`, not syslog, but specific to that entrypoint rather than something
+this code needs to invoke itself. Nothing in `k8sMaxscaleContainerSpec`
+calls `rsyslogd` in either mode.
+
+**Retained PVC**: unprovisioning a MaxScale proxy deletes only the
+Deployment and Service — the PVC (persisted config and
+`/var/cache/maxscale`) is retained, identical to ProxySQL and HAProxy.
 
 ### HAProxy mode split
 
@@ -731,8 +872,12 @@ proxy type erroring before any object is created, the `"local"` →
 `k8sHostnameLabel()`'s cached label resolution, the bootstrap/dbjobs shell
 logic (run through a real `sh`, not just asserted from the command's text
 shape), the image/pull-policy patch (`k8sUpdateDatabaseServiceConfigWithClient`),
-both proxy types' PVC/mount/bootstrap builders (including ProxySQL's SSL
-cert path and HAProxy's per-mode command), the `standby` → Localhost
+all three proxy types' PVC/mount/bootstrap builders (including ProxySQL's SSL
+cert path, HAProxy's per-mode command, and MaxScale's admin-port selection,
+pinloki/REST validation, port-set variations, atomic bootstrap replacement,
+and legacy/pinloki startup commands — exercised both directly and through
+representative image tags, e.g. `mariadb/maxscale:23.08` for pinloki and
+`mariadb/maxscale:2.4.10-1` for legacy), the `standby` → Localhost
 dispatch override (`TestProxyServiceOrchestratorRoutesHaproxyStandbyToLocalhost`),
 and `Refresh()`'s mode-gated Runtime API mutations
 (`TestHaproxyRefreshSkipsSetMasterInStandbyMode` and siblings).
@@ -776,6 +921,20 @@ cluster with `haproxy-mode=standby`, confirming the local process starts
 on the repman host, binds correctly, and reloads on topology change. Not
 yet done.
 
+**MaxScale is both unit-tested (`cluster/prov_k8s_test.go`) and
+live-verified** against a real `kind` cluster — see
+`MAXSCALE_K8S_LIVE_TEST_REPORT.md`: legacy-image (`2.4.10-1`) and
+pinloki-image (`23.08`) provision/Deployment/Service/PVC, REST connectivity
+and real per-server data, write/rw-split/binlog listeners confirmed bound
+via `/proc/net/tcp` (no `read` port), `maxinfo` toggled on live via
+unprovision/reprovision and confirmed reachable, the pinloki-without-REST
+combination rejected against an already-running proxy with zero side
+effects, absence of an `rsyslogd` process under pinloki (confirmed via
+`/proc/*/comm`), and the full lifecycle (stop/start, unprovision retaining
+the PVC, reprovision reusing the persisted config). No bugs found. Not yet
+covered live: the first-fetch-ever-fails fallback path and a corrupt
+tarball (both unit-tested only, same as ProxySQL/HAProxy above).
+
 No Kubernetes-capable regtest/CI harness exists in this repository, so none
 of the above is repeatable/automated — it does not substitute for real CI
 integration coverage. Closing that gap requires provisioning a
@@ -805,7 +964,7 @@ Kubernetes-orchestrated scenarios.
 - PVC and Secret deletion on unprovision is a deliberate retain-forever
   policy (for databases, ProxySQL, and HAProxy alike); Namespace deletion
   semantics remain undecided.
-- No Kubernetes proxy support beyond ProxySQL and HAProxy — MaxScale,
+- No Kubernetes proxy support beyond ProxySQL, HAProxy, and MaxScale —
   Sphinx, ShardProxy, and other families return an explicit provisioning
   error instead of deploying as one of the supported types.
 - No Kubernetes proxy manifest view (the DB-only `K8SGetDatabaseManifests`
