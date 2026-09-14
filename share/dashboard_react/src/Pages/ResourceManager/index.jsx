@@ -191,12 +191,14 @@ function ResourceManager() {
             minYMax={data.usableDbu}
             ceilingLabel={`usable ${fmt(data.usableDbu)} DBU`}
             metricPaths={data.clusters.map((c) => `sumSeries(dbu.${c.cluster}.*.dbu)`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
           />
           <ChartBarStack
             context={ctx}
             height={200}
             title='Plan DBU (per cluster)'
             metricPaths={data.clusters.map((c) => `resourcemanager.${carbonHost(c.cluster)}.plan_dbu`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
           />
           <Text fontSize='xs' opacity={0.6} mt={4} mb={1}>
             Overcommit (over-use) = max(0, consumed − plan) · Undercommit (under-use / giveback) = max(0, plan − consumed). Derived at query from consumed &amp; plan (nothing emitted).
@@ -206,12 +208,14 @@ function ResourceManager() {
             height={200}
             title='Overcommit DBU (over-use: consumed > plan, per cluster)'
             metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(sumSeries(dbu.${c.cluster}.*.dbu),resourcemanager.${carbonHost(c.cluster)}.plan_dbu),0)`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
           />
           <ChartBarStack
             context={ctx}
             height={200}
             title='Undercommit DBU (under-use / giveback: plan > consumed, per cluster)'
             metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(resourcemanager.${carbonHost(c.cluster)}.plan_dbu,sumSeries(dbu.${c.cluster}.*.dbu)),0)`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
           />
           <Text fontSize='md' fontWeight='bold' mt={6} mb={1}>Compute (APU) — proxies + apps</Text>
           <Text fontSize='xs' opacity={0.6} mb={1}>
@@ -224,24 +228,28 @@ function ResourceManager() {
             minYMax={data.usableApu}
             ceilingLabel={`usable ${fmt(data.usableApu)} APU`}
             metricPaths={data.clusters.map((c) => `sumSeries(apu.${c.cluster}.*.apu)`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
           />
           <ChartBarStack
             context={ctx}
             height={200}
             title='Plan APU (per cluster)'
             metricPaths={data.clusters.map((c) => `resourcemanager.${carbonHost(c.cluster)}.plan_apu`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
           />
           <ChartBarStack
             context={ctx}
             height={200}
             title='Overcommit APU (over-use: consumed > plan, per cluster)'
             metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(sumSeries(apu.${c.cluster}.*.apu),resourcemanager.${carbonHost(c.cluster)}.plan_apu),0)`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
           />
           <ChartBarStack
             context={ctx}
             height={200}
             title='Undercommit APU (under-use / giveback: plan > consumed, per cluster)'
             metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(resourcemanager.${carbonHost(c.cluster)}.plan_apu,sumSeries(apu.${c.cluster}.*.apu)),0)`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
           />
           <Flex gap={4} wrap='wrap' mt={2}>
             {data.clusters.map((c, i) => (

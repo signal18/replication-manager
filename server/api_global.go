@@ -457,6 +457,11 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 		clusters = append(clusters, cl)
 	}
 	repman.Unlock()
+	// repman.Clusters is a map: its iteration order changes on every call. The GUI keys
+	// its stacked graphs (layer order, colours, graphite target list) on this order, so an
+	// unstable payload made every 10s poll re-run the chart effect and blank it ("No data"
+	// flapping). Sort by name so the payload is deterministic across polls.
+	sort.Slice(clusters, func(i, j int) bool { return clusters[i].Name < clusters[j].Name })
 	seen := map[string]bool{}
 	agentCores := map[string]float64{} // per-agent physical cores -- the ceiling for the per-agent stack
 	var sumCores, sumMemMB float64
