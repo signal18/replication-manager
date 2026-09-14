@@ -3722,3 +3722,709 @@ func TestNewHaproxyProxy_OpenSVCUnaffectedByKubernetesFallback(t *testing.T) {
 		t.Fatalf("expected OpenSVC's raw, unfallback-ed suffix to be untouched, got %q (want %q)", prx.Host, want)
 	}
 }
+
+// --- MaxScale Kubernetes provisioning parity ---
+//
+// Port scheme deliberately distinct from the ProxySQL/HAProxy fixtures above
+// so a copy/paste mistake between them shows up immediately: MaxAdmin/admin
+// 6603, REST admin 8989, write 3306, rw-split 3308, maxinfo 3309, binlog
+// 3310.
+
+func newMaxscaleTestCluster() *Cluster {
+	cluster := newTestCluster("k8stest")
+	cluster.Conf.MxsRestPort = 8989
+	cluster.Conf.MxsBinlogPort = 3310
+	cluster.Conf.MxsMaxinfoPort = 3309
+	return cluster
+}
+
+func newMaxscaleFakeProxy(cluster *Cluster) *fakeProxy {
+	return &fakeProxy{
+		name:          "maxscale1",
+		port:          "6603",
+		proxyType:     config.ConstProxyMaxscale,
+		writePort:     3306,
+		readWritePort: 3308,
+		cluster:       cluster,
+	}
+}
+
+// - Supported type and image -
+
+func TestK8SProxyImage_MaxscaleUsesProvProxMaxscaleImg(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.ProvProxMaxscaleImg = "myregistry.internal:5000/mariadb/maxscale:2.4.10-1"
+	prx := newMaxscaleFakeProxy(cluster)
+
+	img, err := cluster.k8sProxyImage(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if img != "myregistry.internal:5000/mariadb/maxscale:2.4.10-1" {
+		t.Fatalf("expected the configured MaxScale image unchanged (registry host, port, and tag intact), got %q", img)
+	}
+}
+
+func TestK8SProxyImage_UnsupportedTypesStillRejectedAlongsideMaxscale(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	for _, typ := range []string{config.ConstProxySphinx, config.ConstProxySpider, config.ConstProxyMyProxy, config.ConstProxyExternal, config.ConstProxyJanitor, config.ConstProxyMysqlrouter, ""} {
+		prx := &fakeProxy{name: "proxy1", port: "6032", proxyType: typ, cluster: cluster}
+		if _, err := cluster.k8sProxyImage(prx); err == nil {
+			t.Fatalf("expected proxy type %q to remain unsupported now that MaxScale is added, got nil error", typ)
+		}
+	}
+}
+
+// - Admin port selection -
+
+func TestK8SProxyPortSpecs_MaxscaleRestEnabledUsesRestPort(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = true
+	prx := newMaxscaleFakeProxy(cluster)
+
+	specs, err := k8sProxyPortSpecs(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	admin := findPortSpec(t, specs, "admin")
+	if admin.Port != 8989 {
+		t.Fatalf("expected REST admin port 8989, got %d", admin.Port)
+	}
+}
+
+func TestK8SProxyPortSpecs_MaxscaleRestDisabledUsesParsedGetPort(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = false
+	prx := newMaxscaleFakeProxy(cluster)
+
+	specs, err := k8sProxyPortSpecs(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	admin := findPortSpec(t, specs, "admin")
+	if admin.Port != 6603 {
+		t.Fatalf("expected MaxAdmin port 6603 (parsed from GetPort()), got %d", admin.Port)
+	}
+}
+
+func TestK8SProxyPortSpecs_MaxscaleInvalidMaxAdminPortReturnsError(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = false
+	prx := newMaxscaleFakeProxy(cluster)
+	prx.port = "not-a-port"
+
+	if _, err := k8sProxyPortSpecs(prx); err == nil {
+		t.Fatal("expected an explicit error for an unparseable MaxAdmin port, not a silent port-0 spec")
+	}
+}
+
+// Explicit legacy mode plus REST disabled remains a supported, valid
+// combination -- only pinloki-without-REST is rejected.
+func TestK8SProxyPortSpecs_MaxscaleLegacyWithRestDisabledRemainsValid(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = false
+	prx := newMaxscaleFakeProxy(cluster)
+
+	if _, err := k8sProxyPortSpecs(prx); err != nil {
+		t.Fatalf("expected legacy + MaxAdmin to remain valid, got error: %s", err)
+	}
+}
+
+// - Invalid combination: pinloki requires REST -
+
+func TestK8SProxyPortSpecs_MaxscalePinlokiWithRestDisabledReturnsError(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "pinloki"
+	cluster.Conf.MxsRestApi = false
+	prx := newMaxscaleFakeProxy(cluster)
+
+	_, err := k8sProxyPortSpecs(prx)
+	if err == nil {
+		t.Fatal("expected an explicit error for pinloki + maxscale-rest-api=false, got nil")
+	}
+	if !strings.Contains(err.Error(), "pinloki") || !strings.Contains(strings.ToLower(err.Error()), "rest") {
+		t.Fatalf("expected the error to clearly name the incompatible pinloki/REST combination, got: %s", err)
+	}
+}
+
+func TestK8SProvisionProxy_MaxscalePinlokiRestDisabledCreatesNothing(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "pinloki"
+	cluster.Conf.MxsRestApi = false
+	prx := newMaxscaleFakeProxy(cluster)
+
+	err := cluster.k8sProvisionProxyServiceWithClient(client, prx)
+	if err == nil {
+		t.Fatal("expected provisioning to fail before creating any Kubernetes resource")
+	}
+
+	if _, getErr := client.CoreV1().Namespaces().Get(context.TODO(), "k8stest", metav1.GetOptions{}); getErr == nil {
+		t.Fatal("expected no Namespace to be created for an invalid pinloki/MaxAdmin configuration")
+	}
+	if _, getErr := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "maxscale1"), metav1.GetOptions{}); getErr == nil {
+		t.Fatal("expected no PVC to be created")
+	}
+	if _, getErr := client.AppsV1().Deployments("k8stest").Get(context.TODO(), k8sProxyDeploymentName("k8stest", "maxscale1"), metav1.GetOptions{}); getErr == nil {
+		t.Fatal("expected no Deployment to be created")
+	}
+	if _, getErr := client.CoreV1().Services("k8stest").Get(context.TODO(), "maxscale1", metav1.GetOptions{}); getErr == nil {
+		t.Fatal("expected no Service to be created")
+	}
+}
+
+// - Port sets -
+
+func findPortSpec(t *testing.T, specs []k8sProxyPortSpec, name string) k8sProxyPortSpec {
+	t.Helper()
+	for _, s := range specs {
+		if s.Name == name {
+			return s
+		}
+	}
+	t.Fatalf("expected a port spec named %q, got %v", name, specs)
+	return k8sProxyPortSpec{}
+}
+
+func hasPortSpec(specs []k8sProxyPortSpec, name string) bool {
+	for _, s := range specs {
+		if s.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func TestK8SProxyPortSpecs_MaxscaleDefaultSetHasAdminWriteRwSplitBinlogNoRead(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = true
+	cluster.Conf.MxsGetInfoMethod = "maxadmin"
+	prx := newMaxscaleFakeProxy(cluster)
+
+	specs, err := k8sProxyPortSpecs(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if len(specs) != 4 {
+		t.Fatalf("expected exactly 4 ports (admin, write, rw-split, binlog), got %d: %v", len(specs), specs)
+	}
+	for _, want := range []struct {
+		name string
+		port int32
+	}{
+		{"admin", 8989},
+		{"write", 3306},
+		{"rw-split", 3308},
+		{"binlog", 3310},
+	} {
+		if got := findPortSpec(t, specs, want.name); got.Port != want.port {
+			t.Fatalf("expected %s port %d, got %d", want.name, want.port, got.Port)
+		}
+	}
+	if hasPortSpec(specs, "read") {
+		t.Fatal("expected no \"read\" port -- neither generated MaxScale config variant creates a listener for MxsReadPort")
+	}
+}
+
+func TestK8SProxyPortSpecs_MaxscaleLegacyMaxinfoAddsMaxinfoPort(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = true
+	cluster.Conf.MxsGetInfoMethod = "maxinfo"
+	prx := newMaxscaleFakeProxy(cluster)
+
+	specs, err := k8sProxyPortSpecs(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if len(specs) != 5 {
+		t.Fatalf("expected 5 ports (admin, write, rw-split, binlog, maxinfo), got %d: %v", len(specs), specs)
+	}
+	if got := findPortSpec(t, specs, "maxinfo"); got.Port != 3309 {
+		t.Fatalf("expected maxinfo port 3309, got %d", got.Port)
+	}
+}
+
+// Pinloki dropped the maxinfo HTTP plugin: requesting it must not fail
+// provisioning, just silently omit the one port nothing will listen on,
+// keeping every other port (including REST monitoring) intact.
+func TestK8SProxyPortSpecs_MaxscalePinlokiMaxinfoOmitsMaxinfoPortWithoutError(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "pinloki"
+	cluster.Conf.MxsRestApi = true
+	cluster.Conf.MxsGetInfoMethod = "maxinfo"
+	prx := newMaxscaleFakeProxy(cluster)
+
+	specs, err := k8sProxyPortSpecs(prx)
+	if err != nil {
+		t.Fatalf("expected pinloki + maxinfo to be non-fatal, got error: %s", err)
+	}
+	if hasPortSpec(specs, "maxinfo") {
+		t.Fatalf("expected maxinfo port to be omitted under pinloki, got %v", specs)
+	}
+	for _, want := range []string{"admin", "write", "rw-split", "binlog"} {
+		if !hasPortSpec(specs, want) {
+			t.Fatalf("expected pinloki+maxinfo to still retain %q, got %v", want, specs)
+		}
+	}
+}
+
+func TestK8SProxyDeployment_MaxscaleContainerAndServicePortsMatch(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = true
+	cluster.Conf.MxsGetInfoMethod = "maxinfo"
+	cluster.Conf.ProvProxMaxscaleImg = "mariadb/maxscale:2.4.10-1"
+	prx := newMaxscaleFakeProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	svc, err := cluster.k8sProxyService(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	cPorts := dep.Spec.Template.Spec.Containers[0].Ports
+	sPorts := svc.Spec.Ports
+	if len(cPorts) != len(sPorts) {
+		t.Fatalf("expected container and service port counts to match, got %d vs %d", len(cPorts), len(sPorts))
+	}
+	for i := range cPorts {
+		if cPorts[i].Name != sPorts[i].Name || cPorts[i].ContainerPort != sPorts[i].Port {
+			t.Fatalf("expected container/service ports to derive from the same spec, got container=%v service=%v", cPorts[i], sPorts[i])
+		}
+	}
+}
+
+// - Storage -
+
+func TestK8SProxyTypeHasPersistentStorage_Maxscale(t *testing.T) {
+	if !k8sProxyTypeHasPersistentStorage(config.ConstProxyMaxscale) {
+		t.Fatal("expected MaxScale to receive a PVC, like ProxySQL and HAProxy")
+	}
+}
+
+func TestK8SProxyDeployment_MaxscaleUsesPVCBackedVolume(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = true
+	prx := newMaxscaleFakeProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if len(dep.Spec.Template.Spec.Volumes) != 1 {
+		t.Fatalf("expected exactly one PVC-backed volume, got %d", len(dep.Spec.Template.Spec.Volumes))
+	}
+	vol := dep.Spec.Template.Spec.Volumes[0]
+	if vol.PersistentVolumeClaim == nil || vol.PersistentVolumeClaim.ClaimName != k8sProxyPVCName("k8stest", "maxscale1") {
+		t.Fatalf("expected the volume to reference PVC %q, got %v", k8sProxyPVCName("k8stest", "maxscale1"), vol)
+	}
+}
+
+func TestK8SProxyDeployment_MaxscaleMountsPersistPaths(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = true
+	prx := newMaxscaleFakeProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	for _, c := range []apiv1.Container{dep.Spec.Template.Spec.Containers[0], dep.Spec.Template.Spec.InitContainers[0]} {
+		var hasConf, hasCache bool
+		for _, m := range c.VolumeMounts {
+			if m.MountPath == k8sMaxscaleConfPersistDir && m.SubPath == k8sMaxscaleConfPersistSubPath {
+				hasConf = true
+			}
+			if m.MountPath == "/var/cache/maxscale" && m.SubPath == k8sMaxscaleCachePersistSubPath {
+				hasCache = true
+			}
+		}
+		if !hasConf {
+			t.Fatalf("container %q: expected a mount at %s (subPath %q), got %v", c.Name, k8sMaxscaleConfPersistDir, k8sMaxscaleConfPersistSubPath, c.VolumeMounts)
+		}
+		if !hasCache {
+			t.Fatalf("container %q: expected a mount at /var/cache/maxscale (subPath %q), got %v", c.Name, k8sMaxscaleCachePersistSubPath, c.VolumeMounts)
+		}
+	}
+}
+
+// - Startup commands -
+
+func TestK8SProxyDeployment_MaxscaleLegacyStartupCommand(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = true
+	prx := newMaxscaleFakeProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	script := strings.Join(dep.Spec.Template.Spec.Containers[0].Command, " ")
+	for _, want := range []string{
+		"cp " + k8sMaxscaleConfPersistDir + "/maxscale.cnf /etc/maxscale.cnf",
+		"docker-entrypoint.sh",
+		"maxscale-start && monit -I",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("expected legacy startup command to contain %q, got: %s", want, script)
+		}
+	}
+	for _, unwanted := range []string{"rsyslogd", "trap ", "chown -R maxscale", "rm -f /var/run"} {
+		if strings.Contains(script, unwanted) {
+			t.Fatalf("expected legacy startup command NOT to contain the pinloki-only workaround %q, got: %s", unwanted, script)
+		}
+	}
+}
+
+func TestK8SProxyDeployment_MaxscalePinlokiStartupCommand(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "pinloki"
+	cluster.Conf.MxsRestApi = true
+	prx := newMaxscaleFakeProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	script := strings.Join(dep.Spec.Template.Spec.Containers[0].Command, " ")
+	for _, want := range []string{
+		"cp " + k8sMaxscaleConfPersistDir + "/maxscale.cnf /etc/maxscale.cnf",
+		"rm -f /var/run/*.pid",
+		"chown -R maxscale:maxscale /var/lib/maxscale",
+		"trap '/usr/bin/monit unmonitor all; /usr/bin/maxscale-stop; /usr/bin/monit quit' TERM",
+		"maxscale-start && monit -I &",
+		"wait",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("expected pinloki startup command to contain %q, got: %s", want, script)
+		}
+	}
+	if strings.Contains(script, "rsyslogd") {
+		t.Fatalf("expected pinloki startup command to omit rsyslogd, got: %s", script)
+	}
+	if strings.Contains(script, "exec ") {
+		t.Fatalf("expected pinloki startup to keep the shell alive as PID 1 (no exec that would drop the TERM trap), got: %s", script)
+	}
+}
+
+// - Bootstrap commands -
+
+func TestK8SMaxscaleBootstrapCommand_LegacySelectsMaxscaleCnf(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	prx := newMaxscaleFakeProxy(cluster)
+
+	cmd, _ := k8sMaxscaleBootstrapCommand(cluster, prx)
+	script := strings.Join(cmd, " ")
+	if !strings.Contains(script, "etc/maxscale/maxscale.cnf") {
+		t.Fatalf("expected legacy bootstrap to select maxscale.cnf, got: %s", script)
+	}
+	if strings.Contains(script, "maxscale-pinloki.cnf") {
+		t.Fatalf("expected legacy bootstrap NOT to reference maxscale-pinloki.cnf, got: %s", script)
+	}
+}
+
+func TestK8SMaxscaleBootstrapCommand_PinlokiSelectsPinlokiCnf(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "pinloki"
+	prx := newMaxscaleFakeProxy(cluster)
+
+	cmd, _ := k8sMaxscaleBootstrapCommand(cluster, prx)
+	script := strings.Join(cmd, " ")
+	if !strings.Contains(script, "etc/maxscale/maxscale-pinloki.cnf") {
+		t.Fatalf("expected pinloki bootstrap to select maxscale-pinloki.cnf, got: %s", script)
+	}
+}
+
+func TestK8SMaxscaleBootstrapCommand_IncludesNeedConfigFetchAndBoundedWget(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	prx := newMaxscaleFakeProxy(cluster)
+	prx.host = "maxscale1.k8stest.svc.cluster.local"
+
+	cmd, _ := k8sMaxscaleBootstrapCommand(cluster, prx)
+	script := strings.Join(cmd, " ")
+	if !strings.Contains(script, "need-config-fetch") {
+		t.Fatalf("expected the bootstrap command to consult need-config-fetch, got: %s", script)
+	}
+	if !strings.Contains(script, "-T 8") {
+		t.Fatalf("expected a bounded (-T 8) wget fetch, got: %s", script)
+	}
+	if !strings.Contains(script, prx.GetHost()+"/"+prx.GetPort()+"/config") {
+		t.Fatalf("expected the fetch to target the proxy's own host/port, got: %s", script)
+	}
+}
+
+func TestK8SMaxscaleBootstrapCommand_ExtractsTarball(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	prx := newMaxscaleFakeProxy(cluster)
+
+	cmd, _ := k8sMaxscaleBootstrapCommand(cluster, prx)
+	script := strings.Join(cmd, " ")
+	if !strings.Contains(script, "tar xzf /tmp/config.tar.gz -C /tmp/cfg") {
+		t.Fatalf("expected the bootstrap command to extract the fetched tarball, got: %s", script)
+	}
+}
+
+func TestK8SMaxscaleBootstrapCommand_AtomicTmpAndMvReplace(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	prx := newMaxscaleFakeProxy(cluster)
+
+	cmd, _ := k8sMaxscaleBootstrapCommand(cluster, prx)
+	script := strings.Join(cmd, " ")
+	persisted := k8sMaxscaleConfPersistDir + "/maxscale.cnf"
+	tmp := persisted + ".tmp"
+	if !strings.Contains(script, "cp /tmp/cfg/etc/maxscale/maxscale.cnf "+tmp) {
+		t.Fatalf("expected the fetched config to be copied to a .tmp file first, got: %s", script)
+	}
+	if !strings.Contains(script, "mv -f "+tmp+" "+persisted) {
+		t.Fatalf("expected an atomic mv -f from the .tmp file onto the final config, got: %s", script)
+	}
+	// The mv must be gated on a successful cp (the "if cp ...; then mv ...;
+	// fi" structure), not run unconditionally -- otherwise a failed cp could
+	// still promote an empty or stale .tmp file.
+	if !strings.Contains(script, "if cp /tmp/cfg/etc/maxscale/maxscale.cnf "+tmp+" 2>/dev/null; then mv -f "+tmp+" "+persisted) {
+		t.Fatalf("expected mv to be gated on a successful cp, got: %s", script)
+	}
+}
+
+func TestK8SMaxscaleBootstrapCommand_NoSSLCopyStep(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	prx := newMaxscaleFakeProxy(cluster)
+
+	cmd, _ := k8sMaxscaleBootstrapCommand(cluster, prx)
+	script := strings.Join(cmd, " ")
+	if strings.Contains(script, "ssl") {
+		t.Fatalf("expected no SSL copy step -- no generated MaxScale config variant references the staged SSL files, got: %s", script)
+	}
+}
+
+func TestK8SProxyDeployment_MaxscaleInitContainerSecureConfigUsesSecretKeyRef(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = true
+	cluster.Conf.APISecureConfig = true
+	prx := newMaxscaleFakeProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	init := dep.Spec.Template.Spec.InitContainers[0]
+	var found *apiv1.EnvVar
+	for i := range init.Env {
+		if init.Env[i].Name == k8sSecretKeyAPIAuthHeader {
+			found = &init.Env[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("expected a REPMAN_AUTH_HEADER env var when api-credentials-secure-config is enabled")
+	}
+	if found.ValueFrom == nil || found.ValueFrom.SecretKeyRef == nil {
+		t.Fatal("expected REPMAN_AUTH_HEADER to be sourced from a SecretKeyRef")
+	}
+	if found.ValueFrom.SecretKeyRef.Name != k8sClusterSecretName("k8stest") {
+		t.Fatalf("expected SecretKeyRef to name %q, got %q", k8sClusterSecretName("k8stest"), found.ValueFrom.SecretKeyRef.Name)
+	}
+}
+
+// - Deployment and lifecycle -
+
+func TestK8SProvisionProxy_MaxscaleCreatesDeploymentServicePVC(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = true
+	cluster.Conf.ProvProxMaxscaleImg = "mariadb/maxscale:2.4.10-1"
+	prx := newMaxscaleFakeProxy(cluster)
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if _, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), k8sProxyDeploymentName("k8stest", "maxscale1"), metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected a Deployment to be created: %s", err)
+	}
+	if _, err := client.CoreV1().Services("k8stest").Get(context.TODO(), "maxscale1", metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected a Service to be created: %s", err)
+	}
+	if _, err := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "maxscale1"), metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected a PVC to be created: %s", err)
+	}
+}
+
+func TestK8SProvisionProxy_MaxscaleDeploymentAndServiceCarryTypeLabel(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = true
+	prx := newMaxscaleFakeProxy(cluster)
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	dep, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), k8sProxyDeploymentName("k8stest", "maxscale1"), metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if dep.Labels[k8sProxyTypeLabel] != config.ConstProxyMaxscale {
+		t.Fatalf("expected Deployment label %q=%q, got %v", k8sProxyTypeLabel, config.ConstProxyMaxscale, dep.Labels)
+	}
+	svc, err := client.CoreV1().Services("k8stest").Get(context.TODO(), "maxscale1", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if svc.Labels[k8sProxyTypeLabel] != config.ConstProxyMaxscale {
+		t.Fatalf("expected Service label %q=%q, got %v", k8sProxyTypeLabel, config.ConstProxyMaxscale, svc.Labels)
+	}
+}
+
+func TestK8SProvisionProxy_MaxscaleReprovisionIsIdempotent(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = true
+	prx := newMaxscaleFakeProxy(cluster)
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("first provision: unexpected error: %s", err)
+	}
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("second provision (AlreadyExists) should be idempotent, got error: %s", err)
+	}
+}
+
+func TestK8SUnprovisionProxy_MaxscaleDeletesDeploymentAndServiceRetainsPVC(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = true
+	prx := newMaxscaleFakeProxy(cluster)
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("provision: unexpected error: %s", err)
+	}
+	if err := cluster.k8sUnprovisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("unprovision: unexpected error: %s", err)
+	}
+	if _, err := client.AppsV1().Deployments("k8stest").Get(context.TODO(), k8sProxyDeploymentName("k8stest", "maxscale1"), metav1.GetOptions{}); err == nil {
+		t.Fatal("expected the Deployment to be deleted")
+	}
+	if _, err := client.CoreV1().Services("k8stest").Get(context.TODO(), "maxscale1", metav1.GetOptions{}); err == nil {
+		t.Fatal("expected the Service to be deleted")
+	}
+	if _, err := client.CoreV1().PersistentVolumeClaims("k8stest").Get(context.TODO(), k8sProxyPVCName("k8stest", "maxscale1"), metav1.GetOptions{}); err != nil {
+		t.Fatalf("expected the PVC to be retained after unprovision: %s", err)
+	}
+}
+
+func TestK8SProvisionProxy_MaxscaleInvalidConfigurationRejectedBeforeReprovision(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "legacy"
+	cluster.Conf.MxsRestApi = true
+	prx := newMaxscaleFakeProxy(cluster)
+
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err != nil {
+		t.Fatalf("initial valid provision: unexpected error: %s", err)
+	}
+
+	// Flip to the invalid combination and reprovision the same proxy: must
+	// fail without touching the already-provisioned resources.
+	cluster.Conf.MxsMode = "pinloki"
+	cluster.Conf.MxsRestApi = false
+	if err := cluster.k8sProvisionProxyServiceWithClient(client, prx); err == nil {
+		t.Fatal("expected reprovisioning with an invalid pinloki/MaxAdmin configuration to fail")
+	}
+}
+
+// - Mode integration: representative images (Kubernetes-level, not resolver-only) -
+//
+// Deliberately not re-testing MaxscaleUsesPinloki's own tag-parsing rules
+// here (see prx_maxscale_test.go) -- these confirm the Kubernetes builder
+// actually threads that resolution through into ports and startup commands.
+
+func TestK8SProxyDeployment_ModernImageTagUsesPinlokiBehavior(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "auto"
+	cluster.Conf.MxsRestApi = true
+	cluster.Conf.ProvProxMaxscaleImg = "mariadb/maxscale:23.08"
+	prx := newMaxscaleFakeProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	script := strings.Join(dep.Spec.Template.Spec.Containers[0].Command, " ")
+	if !strings.Contains(script, "trap '/usr/bin/monit unmonitor all") {
+		t.Fatalf("expected mariadb/maxscale:23.08 to be detected as pinloki (TERM trap present), got: %s", script)
+	}
+	initScript := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+	if !strings.Contains(initScript, "maxscale-pinloki.cnf") {
+		t.Fatalf("expected bootstrap to select maxscale-pinloki.cnf for the modern image tag, got: %s", initScript)
+	}
+}
+
+func TestK8SProxyDeployment_LegacyImageTagUsesLegacyBehavior(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "auto"
+	cluster.Conf.MxsRestApi = true
+	cluster.Conf.ProvProxMaxscaleImg = "mariadb/maxscale:2.4.10-1"
+	prx := newMaxscaleFakeProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	script := strings.Join(dep.Spec.Template.Spec.Containers[0].Command, " ")
+	if strings.Contains(script, "trap ") {
+		t.Fatalf("expected mariadb/maxscale:2.4.10-1 to be detected as legacy (no TERM trap), got: %s", script)
+	}
+	initScript := strings.Join(dep.Spec.Template.Spec.InitContainers[0].Command, " ")
+	if !strings.Contains(initScript, "etc/maxscale/maxscale.cnf") || strings.Contains(initScript, "maxscale-pinloki.cnf") {
+		t.Fatalf("expected bootstrap to select legacy maxscale.cnf for the legacy image tag, got: %s", initScript)
+	}
+}
+
+func TestK8SProxyDeployment_UnparseableImageTagFallsBackToLegacyBehavior(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "auto"
+	cluster.Conf.MxsRestApi = true
+	cluster.Conf.ProvProxMaxscaleImg = "myregistry.internal/mariadb-maxscale:custom-build"
+	prx := newMaxscaleFakeProxy(cluster)
+
+	dep, err := cluster.k8sProxyDeployment(prx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	script := strings.Join(dep.Spec.Template.Spec.Containers[0].Command, " ")
+	if strings.Contains(script, "trap ") {
+		t.Fatalf("expected an unparseable custom tag to fall back to legacy behavior, got: %s", script)
+	}
+}
+
+func TestK8SProxyPortSpecs_RegistryPortNotMistakenForImageTag(t *testing.T) {
+	cluster := newMaxscaleTestCluster()
+	cluster.Conf.MxsMode = "auto"
+	cluster.Conf.MxsRestApi = false
+	// A registry host:port with no image tag at all -- the lone ":5000" must
+	// not be parsed as a version tag (which would misdetect legacy/pinloki),
+	// and specifically must not be mistaken for a pinloki tag, or this valid
+	// REST-disabled configuration would wrongly be rejected.
+	cluster.Conf.ProvProxMaxscaleImg = "myregistry.internal:5000/mariadb/maxscale"
+	prx := newMaxscaleFakeProxy(cluster)
+
+	if _, err := k8sProxyPortSpecs(prx); err != nil {
+		t.Fatalf("expected the registry port not to be mistaken for a pinloki image tag, got error: %s", err)
+	}
+}

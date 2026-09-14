@@ -3,8 +3,11 @@
 Technical doc for the `maxscale-mode` / `maxscale-rest-api` / `maxscale-rest-port`
 options and the client/config-generation split behind them (`cluster/prx_maxscale.go`,
 `router/maxscale/maxscale.go`), plus a Kubernetes config-delivery constraint
-(Monit process supervision inside the official image) that matters for any
-future native K8s MaxScale proxy provisioning. Also records the legacy
+(Monit process supervision inside the official image) that shapes how native
+K8s MaxScale proxy provisioning (`cluster/prov_k8s_prx.go`) applies config
+changes — see "Config delivery on Kubernetes: pod recreation, not process
+restart" below, and `KUBERNETES_PROVISIONING.md`'s "MaxScale" section for the
+current code-level description of that provisioning. Also records the legacy
 `proxy_cnf_maxscale` collector ruleset fix (T21) — **already applied to the
 collector and live in `share/opensvc/moduleset_mariadb.svc.mrm.proxy.json`
 as of this writing**, re-verified end to end after the export — see
@@ -147,12 +150,22 @@ plugin either way (`maxscale-get-info-method` was left at its default,
 
 Deployed a `maxscale2410` proxy on the `clustera` cluster (kind, 3-node
 MariaDB, existing `clustera-*` topology already used by the HAProxy live
-campaign — see `HAPROXY_LIVE_K8S_TEST_REPORT.md`), hand-built the K8s
-Deployment/Service/PVC (Kubernetes proxy provisioning doesn't cover MaxScale
-yet — `cluster/prov_k8s_prx.go`'s `k8sSupportedProxyTypes` is ProxySQL/HAProxy
-only), and let repman's own config-fetch endpoint
-(`/api/clusters/{cluster}/servers/{host}/{port}/config`) drive its init
-container, exactly like the pre-existing `clusterin`/`maxscale1` proxy does.
+campaign — see `HAPROXY_LIVE_K8S_TEST_REPORT.md`). At the time of this
+validation, Kubernetes proxy provisioning did not yet cover MaxScale
+natively, so the K8s Deployment/Service/PVC were hand-built and repman's own
+config-fetch endpoint (`/api/clusters/{cluster}/servers/{host}/{port}/config`)
+drove its init container, exactly like the pre-existing `clusterin`/
+`maxscale1` proxy does. **MaxScale is now a natively supported Kubernetes
+proxy type** (`k8sSupportedProxyTypes`, `cluster/prov_k8s_prx.go`) —
+`k8sProxyDeployment`/`k8sProvisionProxyServiceWithClient` build and create
+the Deployment/Service/PVC directly, following the same
+`k8sProxyFetchConfigCmds` bootstrap pattern this section's hand-built setup
+exercised manually, and has itself been live-verified against this same kind
+cluster (both legacy and pinloki images, full lifecycle) — see
+`MAXSCALE_K8S_LIVE_TEST_REPORT.md`. See `KUBERNETES_PROVISIONING.md`'s
+"MaxScale" section for the current, code-level description; the
+config-generation and REST-client findings below (all still accurate)
+predate that native support and were gathered against the hand-built setup.
 
 Confirmed live and working end to end: `password=` (not `passwd=`), REST API
 polling (`GET/PUT /v1/servers`, `/v1/monitors`) against a real 2.4.10 server —
@@ -438,9 +451,8 @@ from the host (`{name}/etc/maxscale/<file>:/etc/maxscale.cnf:rw`), so a
 regenerated host file is visible to the running container immediately —
 Monit restarting the process there does pick up new config.
 
-On Kubernetes it's different, and matters for whenever MaxScale gets native
-K8s proxy provisioning (Phase 3, `KUBERNETES_PARITY_PLAN.md`): the pattern
-used here for `maxscale2410`/`maxscale2402` (matching the pre-existing
+On Kubernetes it's different: the pattern used here for
+`maxscale2410`/`maxscale2402` (matching the pre-existing
 `clusterin`/`maxscale1`) copies config from a PVC into the container's
 ephemeral filesystem once, in the container's own start command, before
 `maxscale-start`. That copy never repeats unless the *container* restarts
@@ -450,16 +462,68 @@ config from repman's API; only full pod recreation does. Every config change
 in this validation was applied via `kubectl delete pod`, i.e. full
 recreation — never a process-level restart — for exactly this reason.
 
-The good news: repman's existing native K8s proxy lifecycle
-(`K8SStartProxyService`/`K8SStopProxyService`, `cluster/prov_k8s_prx.go:771-800`,
-today only wired for ProxySQL/HAProxy) already does the right thing here —
-it scales the Deployment `0→1`, which tears the pod down and recreates it,
-re-running the init container every time. **Whenever MaxScale gets native K8s
-provisioning, its lifecycle must follow the same pattern** — config updates
-must go through pod recreation (or an equivalent explicit re-fetch), never a
-process-level kill/restart trusting Monit to pick up something new, or
-config changes will silently never take effect while MaxScale keeps quietly
-resurrecting itself on stale config.
+**Native K8s MaxScale provisioning follows exactly this pattern.**
+`k8sMaxscaleContainerSpec`/`k8sMaxscaleBootstrapCommand`
+(`cluster/prov_k8s_prx.go`) copy the persisted config into
+`/etc/maxscale.cnf` in the main container's own start command, before
+`maxscale-start`, the same as the hand-built setup above — Kubernetes uses
+the *same* two generated config variants OpenSVC does
+(`maxscale.cnf`/`maxscale-pinloki.cnf`, selected by
+`Cluster.MaxscaleUsesPinloki()`), just delivered through a Deployment/init
+container instead of an OpenSVC bind mount. repman's existing native K8s
+proxy lifecycle (`K8SStartProxyService`/`K8SStopProxyService`) already does
+the right thing for this constraint — it scales the Deployment `0→1`, which
+tears the pod down and recreates it, re-running the init container every
+time. **A pod recreation (or an equivalent explicit re-fetch) is required
+any time the config needs to change** — a process-level kill/restart
+trusting Monit to pick up something new will not work, since Monit only
+ever re-execs against whatever is already at `/etc/maxscale.cnf`.
+
+**Bootstrap and atomic replacement.** The init container
+(`k8sMaxscaleBootstrapCommand`) fetches the config tarball the same
+`need-config-fetch`-gated, bounded (`wget -T 8`) way every other proxy
+family's bootstrap does, then stages the fetched file to
+`/etc/maxscale-persist/maxscale.cnf.tmp` and only `mv -f`s it onto the real
+`/etc/maxscale-persist/maxscale.cnf` on a successful copy — same directory,
+so the rename is atomic. A failure at any stage (fetch, extract, missing
+source file, or the copy itself) leaves the previously persisted config
+completely untouched, so a MaxScale pod that gets recreated during a repman
+outage still starts on its last successfully fetched config rather than
+failing to start or falling back to image defaults.
+
+**pinloki requires REST.** A pinloki-mode config (`maxscale-pinloki.cnf`)
+never generates a MaxAdmin (`[CLI]`) listener, so `maxscale-mode=pinloki`
+(or `auto` resolving to pinloki) combined with `maxscale-rest-api=false` is
+rejected by the Kubernetes builder (`k8sProxyPortSpecs`) before any
+Namespace, PVC, Deployment, or Service is created — see
+`KUBERNETES_PROVISIONING.md`'s "MaxScale" section. Explicit `legacy` mode
+with REST disabled remains supported. Relatedly, **`maxinfo` is omitted, not
+rejected, under pinloki**: pinloki dropped the `maxinfo` HTTP plugin
+entirely, so `maxscale-get-info-method=maxinfo` under pinloki simply leaves
+the `maxinfo` container/Service port out rather than failing provisioning —
+`admin`/`write`/`rw-split`/`binlog` and REST monitoring are unaffected.
+
+**Startup differs between legacy and pinloki**, independent of the config
+syntax itself — the two container images behave differently. Legacy uses
+the image's normal `docker-entrypoint.sh` unchanged. Pinloki-era images
+(e.g. `mariadb/maxscale:23.08`) have a live-confirmed entrypoint bug where a
+bare `rsyslogd` call never daemonizes and hangs startup before
+`maxscale-start` ever runs — repman's pinloki startup command skips
+`rsyslogd` entirely and instead traps `TERM` directly (`monit unmonitor
+all; maxscale-stop; monit quit`) so a Kubernetes-issued `TERM` still shuts
+MaxScale down gracefully via Monit; the shell is kept alive as PID 1 (no
+`exec`) so the trap can actually run.
+
+**`AlreadyExists` does not reconcile a changed spec.** Like every other
+Kubernetes-provisioned proxy type, reprovisioning a MaxScale proxy whose
+Deployment/Service/PVC already exist treats `AlreadyExists` as idempotent
+success — it does not diff and patch the live object to match a new desired
+spec (e.g. a changed `maxscale-mode`, image, or port configuration). A
+configuration change that needs to reach an already-running MaxScale
+Deployment requires either deleting and recreating the affected object
+(matching this section's `kubectl delete pod` pattern) or a full
+unprovision/reprovision cycle — a plain reprovision call alone will not
+update it.
 
 ## Collector companion: legacy `proxy_cnf_maxscale` ruleset fix
 

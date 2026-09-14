@@ -166,7 +166,7 @@ func (c *k8sProxyNameCollision) RecoveryHint(namespace string) string {
 	return fmt.Sprintf("unprovision the existing %s proxy first, or use a distinct name for this one", c.OwnerType)
 }
 
-var k8sSupportedProxyTypes = []string{config.ConstProxySqlproxy, config.ConstProxyHaproxy}
+var k8sSupportedProxyTypes = []string{config.ConstProxySqlproxy, config.ConstProxyHaproxy, config.ConstProxyMaxscale}
 
 func k8sUnsupportedProxyTypeErr(proxyType string) error {
 	return fmt.Errorf("Kubernetes proxy provisioning does not support proxy type %q yet (only %q are implemented)", proxyType, k8sSupportedProxyTypes)
@@ -178,6 +178,8 @@ func (cluster *Cluster) k8sProxyImage(prx DatabaseProxy) (string, error) {
 		return cluster.Conf.ProvProxProxysqlImg, nil
 	case config.ConstProxyHaproxy:
 		return cluster.Conf.ProvProxHaproxyImg, nil
+	case config.ConstProxyMaxscale:
+		return cluster.Conf.ProvProxMaxscaleImg, nil
 	default:
 		return "", k8sUnsupportedProxyTypeErr(prx.GetType())
 	}
@@ -218,6 +220,46 @@ func k8sProxyPortSpecs(prx DatabaseProxy) ([]k8sProxyPortSpec, error) {
 			{Name: "read", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetReadPort())},
 			{Name: "stat", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetCluster().Conf.HaproxyStatPort)},
 		}, nil
+	case config.ConstProxyMaxscale:
+		// maxscale-mode (legacy/pinloki config syntax) and maxscale-rest-api
+		// (REST vs MaxAdmin client protocol) are independent settings -- but
+		// a pinloki config never generates a MaxAdmin ("CLI") listener (see
+		// MaxscaleUsesPinloki), so pinloki + maxscale-rest-api=false would
+		// otherwise produce a Service exposing an admin port nothing is
+		// listening on. Checked here, before any Kubernetes object is
+		// created, since this is the single source both
+		// k8sProxyContainerPorts and k8sProxyServicePorts derive from.
+		cluster := prx.GetCluster()
+		usesPinloki := cluster.MaxscaleUsesPinloki()
+		var adminPort int
+		if cluster.Conf.MxsRestApi {
+			adminPort = cluster.Conf.MxsRestPort
+		} else {
+			if usesPinloki {
+				return nil, fmt.Errorf("MaxScale is configured for pinloki-mode config (maxscale-mode=%q, image %q) but maxscale-rest-api is disabled: pinloki configs provide no MaxAdmin listener, so enable maxscale-rest-api or switch maxscale-mode to legacy", cluster.Conf.MxsMode, cluster.Conf.ProvProxMaxscaleImg)
+			}
+			var err error
+			adminPort, err = strconv.Atoi(prx.GetPort())
+			if err != nil {
+				return nil, fmt.Errorf("invalid MaxScale MaxAdmin port %q: %s", prx.GetPort(), err)
+			}
+		}
+		specs := []k8sProxyPortSpec{
+			{Name: "admin", Protocol: apiv1.ProtocolTCP, Port: int32(adminPort)},
+			{Name: "write", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetWritePort())},
+			{Name: "rw-split", Protocol: apiv1.ProtocolTCP, Port: int32(prx.GetReadWritePort())},
+			{Name: "binlog", Protocol: apiv1.ProtocolTCP, Port: int32(cluster.Conf.MxsBinlogPort)},
+		}
+		// Side-effect-free equivalent of MaxscaleProxy.MaxscaleUsesMaxinfo:
+		// that method also raises WARN0211, which this pure port-spec
+		// builder must not do. Pinloki dropped the maxinfo HTTP plugin
+		// entirely (MaxscaleUsesPinloki), so the port is simply omitted --
+		// not a provisioning failure -- leaving admin/write/rw-split/binlog
+		// intact and REST monitoring unaffected.
+		if cluster.Conf.MxsGetInfoMethod == "maxinfo" && !usesPinloki {
+			specs = append(specs, k8sProxyPortSpec{Name: "maxinfo", Protocol: apiv1.ProtocolTCP, Port: int32(cluster.Conf.MxsMaxinfoPort)})
+		}
+		return specs, nil
 	default:
 		return nil, k8sUnsupportedProxyTypeErr(prx.GetType())
 	}
@@ -250,7 +292,7 @@ func k8sProxyServicePorts(prx DatabaseProxy) ([]apiv1.ServicePort, error) {
 // k8sProxyTypeHasPersistentStorage reports whether prx's type gets a PVC, a
 // bootstrap init container, and a custom startup command.
 func k8sProxyTypeHasPersistentStorage(proxyType string) bool {
-	return proxyType == config.ConstProxySqlproxy || proxyType == config.ConstProxyHaproxy
+	return proxyType == config.ConstProxySqlproxy || proxyType == config.ConstProxyHaproxy || proxyType == config.ConstProxyMaxscale
 }
 
 func k8sProxyPVCName(clusterName, proxyName string) string {
@@ -312,6 +354,24 @@ const k8sProxySSLPersistSubPath = ".system/etc-ssl-proxysql"
 // from. HAProxy's SSL certs are staged under etc/haproxy/ssl/ in the
 // tarball, inside this same directory, so no second SSL mount is needed.
 const k8sHaproxyConfPersistSubPath = ".system/etc-haproxy"
+
+// k8sMaxscaleConfPersistSubPath persists a whole directory (mounted at
+// k8sMaxscaleConfPersistDir), not /etc/maxscale.cnf directly: a subPath
+// mount straight onto a single, not-yet-existing file fails on kubelet
+// ("not a directory"), the same limitation HAProxy's checkmaster/checkslave
+// hit. The main container's Command copies the persisted file over
+// /etc/maxscale.cnf before exec'ing the real entrypoint.
+const k8sMaxscaleConfPersistSubPath = ".system/etc-maxscale-cnf"
+
+// k8sMaxscaleConfPersistDir is where k8sMaxscaleConfPersistSubPath is
+// mounted; the persisted config lands at k8sMaxscaleConfPersistDir +
+// "/maxscale.cnf".
+const k8sMaxscaleConfPersistDir = "/etc/maxscale-persist"
+
+// k8sMaxscaleCachePersistSubPath persists /var/cache/maxscale: the
+// binlogrouter service is always generated regardless of MxsBinlogOn, so
+// this is always mounted rather than gated on it.
+const k8sMaxscaleCachePersistSubPath = ".system/var-cache-maxscale"
 
 // k8sProxyFetchConfigCmds builds the need-fetch/remote-fetch wget commands
 // shared by every proxy family's bootstrap init container; only what each
@@ -406,6 +466,98 @@ func k8sHaproxyBootstrapCommand(cluster *Cluster, prx DatabaseProxy) ([]string, 
 			" ; exit \"$MKDIR_STATUS\"",
 	}
 	return cmd, initEnv
+}
+
+// k8sMaxscaleBootstrapCommand fetches and stages MaxScale's config, selecting
+// the legacy or pinloki source file per cluster.MaxscaleUsesPinloki (see
+// prov_opensvc_maxscale.go's OpenSVCGetMaxscaleContainerSection, the same
+// selection on the OpenSVC side). The final cp+mv step is atomic: cp writes
+// to a .tmp file in the same directory as the persisted config, and only a
+// successful cp is followed by "mv -f" onto the real file -- so a failed
+// need-config-fetch, remote fetch, tar extraction, missing source file, or
+// failed copy all leave the previous known-good maxscale.cnf completely
+// untouched, and a partially-written .tmp file is never mistaken for the
+// active config (mv only ever promotes a fully-written one). No SSL copy
+// step: none of the generated maxscale.cnf/maxscale-pinloki.cnf variants
+// reference the ssl/*.pem files GenerateProxyConfig stages for every proxy
+// family, so mounting/copying them here would be dead weight.
+func k8sMaxscaleBootstrapCommand(cluster *Cluster, prx DatabaseProxy) ([]string, []apiv1.EnvVar) {
+	needFetchCmd, remoteFetchCmd, initEnv := k8sProxyFetchConfigCmds(cluster, prx)
+
+	sourceFile := "maxscale.cnf"
+	if cluster.MaxscaleUsesPinloki() {
+		sourceFile = "maxscale-pinloki.cnf"
+	}
+	persistedFile := k8sMaxscaleConfPersistDir + "/maxscale.cnf"
+	tmpFile := persistedFile + ".tmp"
+
+	applyConfig := "if " + needFetchCmd + " 2>/dev/null; then " +
+		"if " + remoteFetchCmd + " 2>/dev/null; then " +
+		"if tar xzf /tmp/config.tar.gz -C /tmp/cfg 2>/dev/null; then " +
+		"if [ -f /tmp/cfg/etc/maxscale/" + sourceFile + " ]; then " +
+		"if cp /tmp/cfg/etc/maxscale/" + sourceFile + " " + tmpFile + " 2>/dev/null; then " +
+		"mv -f " + tmpFile + " " + persistedFile + " 2>/dev/null; " +
+		"fi; fi; fi; fi; fi"
+
+	cmd := []string{
+		"sh", "-c",
+		"mkdir -p /tmp/cfg " + k8sMaxscaleConfPersistDir + " /var/cache/maxscale ; MKDIR_STATUS=$? ; " +
+			applyConfig +
+			" ; exit \"$MKDIR_STATUS\"",
+	}
+	return cmd, initEnv
+}
+
+// k8sMaxscaleContainerSpec fills in MaxScale's persistent-storage mounts and
+// mode-specific startup command on container, and returns the bootstrap init
+// container's command/env. See k8sProxyDeployment.
+//
+// Legacy and pinloki need different startup behavior because the images
+// behave differently, not because of the config syntax itself: pinloki-era
+// images (e.g. mariadb/maxscale:23.08) have a live-confirmed entrypoint bug
+// where a bare "rsyslogd" call never daemonizes and hangs startup before
+// maxscale-start ever runs -- harmless to skip since MaxScale itself logs via
+// maxlog, not syslog. Legacy images don't carry that bug, so their normal
+// docker-entrypoint.sh is used unchanged. Pinloki's shell must stay alive as
+// PID 1 (the trap + "wait" pattern) so a Kubernetes TERM to the container
+// reaches the trap and shuts MaxScale down gracefully via monit instead of
+// killing it out from under a supervised process; an exec here would replace
+// the shell and drop that trap.
+func k8sMaxscaleContainerSpec(cluster *Cluster, prx DatabaseProxy, container *apiv1.Container, volumeName string) (mounts []apiv1.VolumeMount, initCmd []string, initEnv []apiv1.EnvVar) {
+	mounts = []apiv1.VolumeMount{
+		{
+			Name:      volumeName,
+			MountPath: k8sMaxscaleConfPersistDir,
+			SubPath:   k8sMaxscaleConfPersistSubPath,
+		},
+		{
+			Name:      volumeName,
+			MountPath: "/var/cache/maxscale",
+			SubPath:   k8sMaxscaleCachePersistSubPath,
+		},
+	}
+
+	copyPersistedConfig := "cp " + k8sMaxscaleConfPersistDir + "/maxscale.cnf /etc/maxscale.cnf 2>/dev/null; "
+	if cluster.MaxscaleUsesPinloki() {
+		container.Command = []string{
+			"sh", "-c",
+			copyPersistedConfig +
+				"rm -f /var/run/*.pid; " +
+				"chown -R maxscale:maxscale /var/lib/maxscale; " +
+				"trap '/usr/bin/monit unmonitor all; /usr/bin/maxscale-stop; /usr/bin/monit quit' TERM; " +
+				"maxscale-start && monit -I & " +
+				"wait",
+		}
+	} else {
+		container.Command = []string{
+			"sh", "-c",
+			copyPersistedConfig +
+				"exec /usr/bin/docker-entrypoint.sh /bin/sh -c \"maxscale-start && monit -I\"",
+		}
+	}
+
+	initCmd, initEnv = k8sMaxscaleBootstrapCommand(cluster, prx)
+	return
 }
 
 // k8sProxysqlContainerSpec fills in ProxySQL's persistent-storage mounts and
@@ -517,6 +669,8 @@ func (cluster *Cluster) k8sProxyDeployment(prx DatabaseProxy) (*appsv1.Deploymen
 			mounts, initCmd, initEnv = k8sProxysqlContainerSpec(cluster, prx, &container, volumeName)
 		case config.ConstProxyHaproxy:
 			mounts, initCmd, initEnv = k8sHaproxyContainerSpec(cluster, prx, &container, volumeName)
+		case config.ConstProxyMaxscale:
+			mounts, initCmd, initEnv = k8sMaxscaleContainerSpec(cluster, prx, &container, volumeName)
 		}
 
 		container.VolumeMounts = mounts
@@ -594,13 +748,13 @@ func (cluster *Cluster) k8sWarnIfLegacyProxyDeploymentExists(client kubernetes.I
 
 // k8sProvisionProxyServiceWithClient creates the per-proxy Deployment and
 // Service, and a PVC plus auth-header Secret for types with persistent
-// storage. Ensures the Namespace itself first (k8sEnsureNamespace,
-// prov_k8s_db.go) rather than assuming DB provisioning already created it --
-// a proxy can be provisioned directly (handlerMuxProxyProvision,
-// server/api_proxy.go) without a DB ever having been provisioned in this
-// cluster/namespace, and OpenSVCProvisionProxyService (prov_opensvc_prx.go)
-// is the parity reference: it never assumes DB provisioning ran either, it
-// creates its own service and maps (OpenSVCCreateMaps) unconditionally.
+// storage. Ensures the Namespace itself (k8sEnsureNamespace, prov_k8s_db.go)
+// rather than assuming DB provisioning already created it -- a proxy can be
+// provisioned directly (handlerMuxProxyProvision, server/api_proxy.go)
+// without a DB ever having been provisioned in this cluster/namespace, and
+// OpenSVCProvisionProxyService (prov_opensvc_prx.go) is the parity
+// reference: it never assumes DB provisioning ran either, it creates its own
+// service and maps (OpenSVCCreateMaps) unconditionally.
 //
 // Also guards against a name already owned by a different proxy type
 // (k8sProxyNameOwnedByDifferentType) before touching anything -- AddProxy
@@ -608,6 +762,15 @@ func (cluster *Cluster) k8sWarnIfLegacyProxyDeploymentExists(client kubernetes.I
 // name (valid outside Kubernetes), so this is the point that actually knows
 // the Deployment/Service names collide and must fail loudly instead of
 // treating the second proxy's Create() calls as an idempotent AlreadyExists.
+//
+// Ordering: name validation, then the read-only collision checks and legacy
+// warning, then the pure k8sProxyDeployment builder -- deliberately before
+// k8sEnsureNamespace and any Create() call. k8sProxyDeployment is where a
+// proxy-type-specific configuration error surfaces (e.g. MaxScale's
+// pinloki-without-REST combination, k8sProxyPortSpecs), so failing there
+// first means an invalid configuration creates no Namespace, PVC,
+// Deployment, or Service, rather than leaving a half-provisioned proxy
+// behind.
 func (cluster *Cluster) k8sProvisionProxyServiceWithClient(client kubernetes.Interface, prx DatabaseProxy) error {
 	if errs := k8sProxyServiceNameErrs(prx); len(errs) > 0 {
 		err := fmt.Errorf(clusterError["ERR00110"], prx.GetName(), strings.Join(errs, "; "))
@@ -617,8 +780,6 @@ func (cluster *Cluster) k8sProvisionProxyServiceWithClient(client kubernetes.Int
 		}
 		return err
 	}
-
-	cluster.k8sEnsureNamespace(client, cluster.Name)
 
 	collision, err := cluster.k8sProxyNameOwnedByDifferentType(client, prx)
 	if err != nil {
@@ -641,6 +802,8 @@ func (cluster *Cluster) k8sProvisionProxyServiceWithClient(client kubernetes.Int
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot build Kubernetes proxy deployment: %s ", err)
 		return err
 	}
+
+	cluster.k8sEnsureNamespace(client, cluster.Name)
 
 	if k8sProxyTypeHasPersistentStorage(prx.GetType()) {
 		if authHeaderValue := k8sAPIAuthHeaderValue(cluster); authHeaderValue != "" {
