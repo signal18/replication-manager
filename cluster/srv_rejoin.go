@@ -96,6 +96,18 @@ func (server *ServerMonitor) RejoinMaster() error {
 		return nil
 	}
 
+	// CURRENT-MASTER GUARD: RejoinMaster fires on every state edge (Failed->up,
+	// Maintenance->up, the topology extra-master call) and, with no local crash, asks
+	// the peer for a verdict. After a switchover the NEW master takes such an edge; on
+	// 2026-09-14 (belair, #1793) the peer answered with a 4-day-old failoverHistory
+	// entry naming that master as the LOSER, and repman ran CHANGE MASTER on the live
+	// master -- a replication ring, both sides writable. Never re-slave the current
+	// master unless a crash NEWER than its promotion names it.
+	if cluster.rejoinWouldDemoteMaster(server) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoin of %s skipped: it is the current master and no crash newer than its promotion names it", server.URL)
+		return nil
+	}
+
 	// CRASH SOURCE — the ONLY election-specific step. Local crash first; if none
 	// involves this server and arbitration is on, fetch the peer's verdict on
 	// demand (a single-repman cluster has no peer and just keeps its local crash).

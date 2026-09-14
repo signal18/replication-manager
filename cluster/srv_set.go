@@ -103,6 +103,10 @@ func (server *ServerMonitor) SetFailed() {
 
 func (server *ServerMonitor) SetMaster() {
 	cluster := server.ClusterGroup
+	if server.State != stateMaster {
+		// A real promotion (not the per-tick re-assert): anchor the rejoin guards.
+		cluster.MasterChangeTs = time.Now().Unix()
+	}
 	server.SetState(stateMaster)
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Server %s state transition from %s changed to: %s in SetMaster", server.URL, server.PrevState, stateMaster)
 	_, file, no, ok := runtime.Caller(1)

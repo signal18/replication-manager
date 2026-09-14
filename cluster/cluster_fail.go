@@ -412,6 +412,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	cluster.backendStateChangeProxies()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Master switch on %s complete", cluster.master.URL)
 	cluster.master.FailCount = 0
+	// Both failover and switchover change the master: anchor the rejoin staleness
+	// guards on it (#1793). FailoverTs below stays failover-only (it drives the
+	// between-failover throttle).
+	cluster.MasterChangeTs = time.Now().Unix()
 	if fail {
 		cluster.FailoverCtr++
 		cluster.FailoverTs = time.Now().Unix()
