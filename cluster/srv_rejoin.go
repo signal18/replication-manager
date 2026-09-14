@@ -104,7 +104,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 	// master -- a replication ring, both sides writable. Never re-slave the current
 	// master unless a crash NEWER than its promotion names it.
 	if cluster.rejoinWouldDemoteMaster(server) {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoin of %s skipped: it is the current master and no crash newer than its promotion names it", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin of %s skipped: it is the current master and no crash newer than its promotion names it", server.URL)
 		return nil
 	}
 

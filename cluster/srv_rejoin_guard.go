@@ -25,15 +25,17 @@ func (cluster *Cluster) rejoinWouldDemoteMaster(server *ServerMonitor) bool {
 }
 
 // peerCrashStaleReason returns why a crash entry fetched from the arbitration peer
-// must NOT be materialized, or "" when it is a usable verdict. During a split brain
-// the caller already anchors on SplitBrainStartTs; outside one this anchors on the
-// last master change of this cluster (MasterChangeTs) and on the live master itself.
+// must NOT be materialized, or "" when it is a usable verdict. During a LIVE split
+// brain (IsSplitBrain) the caller already anchors on SplitBrainStartTs; outside one
+// this anchors on the last master change of this cluster (MasterChangeTs) and on the
+// live master itself. SplitBrainStartTs is sticky (never reset once a split resolves)
+// so it must not be used to decide whether a split is in progress.
 func (cluster *Cluster) peerCrashStaleReason(last *Crash) string {
 	if last == nil {
 		return "no entry"
 	}
-	if cluster.SplitBrainStartTs > 0 {
-		return "" // split-brain guard (SplitBrainStartTs) applies instead
+	if cluster.IsSplitBrain {
+		return "" // live split: the split-brain guard (SplitBrainStartTs) applies instead
 	}
 	if cluster.MasterChangeTs > 0 && last.UnixTimestamp < cluster.MasterChangeTs {
 		return fmt.Sprintf("predates the current master change (%d)", cluster.MasterChangeTs)

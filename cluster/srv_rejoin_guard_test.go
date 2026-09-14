@@ -39,19 +39,26 @@ func TestRejoinWouldDemoteMaster(t *testing.T) {
 func TestPeerCrashStaleReason(t *testing.T) {
 	cl := newGuardTestCluster("db2:3306", 1000)
 	cases := []struct {
-		name  string
-		crash *Crash
-		split int64
-		stale bool
+		name    string
+		crash   *Crash
+		splitTs int64 // sticky SplitBrainStartTs (never reset after a split resolves)
+		live    bool  // IsSplitBrain: a split is in progress NOW
+		stale   bool
 	}{
-		{"nil entry", nil, 0, true},
-		{"older than master change", &Crash{URL: "db2:3306", ElectedMasterURL: "db1:3306", UnixTimestamp: 900}, 0, true},
-		{"newer but names the live master", &Crash{URL: "db2:3306", ElectedMasterURL: "db1:3306", UnixTimestamp: 1100}, 0, true},
-		{"newer, names the slave (usable)", &Crash{URL: "db1:3306", ElectedMasterURL: "db2:3306", UnixTimestamp: 1100}, 0, false},
-		{"during a split: split guard applies, not this one", &Crash{URL: "db2:3306", ElectedMasterURL: "db1:3306", UnixTimestamp: 900}, 500, false},
+		{"nil entry", nil, 0, false, true},
+		{"older than master change", &Crash{URL: "db2:3306", ElectedMasterURL: "db1:3306", UnixTimestamp: 900}, 0, false, true},
+		{"newer but names the live master", &Crash{URL: "db2:3306", ElectedMasterURL: "db1:3306", UnixTimestamp: 1100}, 0, false, true},
+		{"newer, names the slave (usable)", &Crash{URL: "db1:3306", ElectedMasterURL: "db2:3306", UnixTimestamp: 1100}, 0, false, false},
+		{"during a live split: split guard applies, not this one", &Crash{URL: "db2:3306", ElectedMasterURL: "db1:3306", UnixTimestamp: 900}, 500, true, false},
+		// a split that happened earlier and RESOLVED leaves SplitBrainStartTs set; the
+		// guard must still run on the sticky ts (review on #1794)
+		{"after a resolved split: older than master change", &Crash{URL: "db2:3306", ElectedMasterURL: "db1:3306", UnixTimestamp: 900}, 500, false, true},
+		{"after a resolved split: names the live master", &Crash{URL: "db2:3306", ElectedMasterURL: "db1:3306", UnixTimestamp: 1100}, 500, false, true},
+		{"after a resolved split: names the slave (usable)", &Crash{URL: "db1:3306", ElectedMasterURL: "db2:3306", UnixTimestamp: 1100}, 500, false, false},
 	}
 	for _, c := range cases {
-		cl.SplitBrainStartTs = c.split
+		cl.SplitBrainStartTs = c.splitTs
+		cl.IsSplitBrain = c.live
 		got := cl.peerCrashStaleReason(c.crash) != ""
 		if got != c.stale {
 			t.Errorf("%s: stale=%v want %v", c.name, got, c.stale)
