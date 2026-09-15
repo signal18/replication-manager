@@ -1692,7 +1692,7 @@ func TestK8SResourceSensorRuntimeIssue_AllSatisfiedIsHealthy(t *testing.T) {
 }
 
 // --- CheckK8SResourceSensor (via checkK8SResourceSensorWithClient): the
-// cluster-wide WARN0212/WARN0213 scan built on top of the per-server checks
+// cluster-wide WARN0212/WARN0215 scan built on top of the per-server checks
 // above ---
 
 func k8sSensorTestClusterWithStateMachine(t *testing.T, name string) *Cluster {
@@ -1732,7 +1732,7 @@ func k8sSensorHasOpenState(cluster *Cluster, prefix string) bool {
 // regression for the finding: PreserveState only retains a PRE-EXISTING
 // warning, so a newly-provisioned service whose very first check is
 // inconclusive (here: the Deployment does not exist yet) must still get an
-// explicitly tracked non-ready WARN0213, not silent absence of any warning.
+// explicitly tracked non-ready WARN0215, not silent absence of any warning.
 func TestCheckK8SResourceSensor_FirstUnconfirmedObservationSetsWarning(t *testing.T) {
 	cluster := k8sSensorTestClusterWithStateMachine(t, "k8stest")
 	s := k8sSensorTestProvisionedServer(t, cluster, "db1")
@@ -1741,14 +1741,14 @@ func TestCheckK8SResourceSensor_FirstUnconfirmedObservationSetsWarning(t *testin
 
 	cluster.checkK8SResourceSensorWithClient(client)
 
-	if !k8sSensorHasOpenState(cluster, "WARN0213") {
-		t.Fatal("expected WARN0213 to be explicitly set on the very first unconfirmed observation, not silently absent")
+	if !k8sSensorHasOpenState(cluster, "WARN0215") {
+		t.Fatal("expected WARN0215 to be explicitly set on the very first unconfirmed observation, not silently absent")
 	}
 }
 
 // TestCheckK8SResourceSensor_TransientDeploymentGetFailurePreservesWARN0212
 // is the regression for the finding: a Deployment read error only preserved
-// WARN0213, never WARN0212 -- so a previously-known missing-shareProcessNamespace
+// WARN0215, never WARN0212 -- so a previously-known missing-shareProcessNamespace
 // condition could silently disappear during a transient API/RBAC hiccup.
 func TestCheckK8SResourceSensor_TransientDeploymentGetFailurePreservesWARN0212(t *testing.T) {
 	cluster := k8sSensorTestClusterWithStateMachine(t, "k8stest")
@@ -1793,8 +1793,8 @@ func TestCheckK8SResourceSensor_BrokenRuntimeOnOneServerStillDetectsMissingSPNOn
 	client := fake.NewSimpleClientset(dep1, rs1, brokenPod, dep2)
 	cluster.checkK8SResourceSensorWithClient(client)
 
-	if !k8sSensorHasOpenState(cluster, "WARN0213") {
-		t.Fatal("expected the confirmed-broken runtime on db1 to still raise WARN0213")
+	if !k8sSensorHasOpenState(cluster, "WARN0215") {
+		t.Fatal("expected the confirmed-broken runtime on db1 to still raise WARN0215")
 	}
 	if !k8sSensorHasOpenState(cluster, "WARN0212") {
 		t.Fatal("expected db2's missing shareProcessNamespace to still be detected even though db1 already had a confirmed runtime problem")

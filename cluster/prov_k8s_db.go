@@ -795,14 +795,14 @@ func (cluster *Cluster) k8sFindDatabasePod(ctx context.Context, client kubernete
 }
 
 // k8sResourceSensorCheckEveryNHeartbeats throttles the Deployment/Pod reads behind
-// WARN0212/WARN0213 to a slow cadence; PreserveState keeps the state alive on the
+// WARN0212/WARN0215 to a slow cadence; PreserveState keeps the state alive on the
 // ticks in between so it does not flap (pstates contract).
 const k8sResourceSensorCheckEveryNHeartbeats = 30
 
 // k8sResourceSensorFreshnessWindow is how stale the last successful DBU reading
 // (server.DBUConsumed.WindowEnd) may be before the sensor is considered not
 // actually delivering data. Generous relative to the dbjobs launcher's own ~60s
-// push cadence so a couple of missed/slow cycles don't flap WARN0213.
+// push cadence so a couple of missed/slow cycles don't flap WARN0215.
 const k8sResourceSensorFreshnessWindow = 5 * time.Minute
 
 // CheckK8SResourceSensor observes, from the Kubernetes API, whether the DBU
@@ -814,7 +814,7 @@ const k8sResourceSensorFreshnessWindow = 5 * time.Minute
 //     namespace policy (PodSecurity) forbade it at provision, so provisioning
 //     fell back without it. Cluster-scoped: the namespace policy applies to
 //     every server alike, so one missing Deployment is enough to raise it.
-//   - WARN0213: per-server runtime prerequisites -- the DB Pod is Running, the
+//   - WARN0215: per-server runtime prerequisites -- the DB Pod is Running, the
 //     dbjobs sidecar (the container that actually runs collect_dbu) is Ready,
 //     and a reading has arrived within k8sResourceSensorFreshnessWindow. A
 //     Deployment can carry the shareProcessNamespace policy correctly and
@@ -830,13 +830,13 @@ func (cluster *Cluster) CheckK8SResourceSensor() {
 	// Slow cadence: only hit the API every N heartbeats, preserve in between.
 	if cluster.StateMachine.GetHeartbeats()%k8sResourceSensorCheckEveryNHeartbeats != 0 {
 		cluster.GetStateMachine().PreserveState("WARN0212")
-		cluster.GetStateMachine().PreserveState("WARN0213")
+		cluster.GetStateMachine().PreserveState("WARN0215")
 		return
 	}
 	client, err := cluster.K8SConnectAPI()
 	if err != nil {
 		cluster.GetStateMachine().PreserveState("WARN0212") // API unreachable: keep the last verdict
-		cluster.GetStateMachine().PreserveState("WARN0213")
+		cluster.GetStateMachine().PreserveState("WARN0215")
 		return
 	}
 	cluster.checkK8SResourceSensorWithClient(client)
@@ -850,7 +850,7 @@ func (cluster *Cluster) checkK8SResourceSensorWithClient(client kubernetes.Inter
 	defer cancel()
 
 	// The Deployment-policy scan (WARN0212, cluster-scoped) and the per-server
-	// runtime scan (WARN0213) are tracked independently across the WHOLE loop:
+	// runtime scan (WARN0215) are tracked independently across the WHOLE loop:
 	// a confirmed runtime problem on one server must never cut the scan short
 	// and leave a LATER server's missing shareProcessNamespace undiscovered,
 	// so both warnings stay cluster-wide-accurate for this pass regardless of
@@ -870,7 +870,7 @@ func (cluster *Cluster) checkK8SResourceSensorWithClient(client kubernetes.Inter
 			// A transient Get failure verifies NEITHER prerequisite for this
 			// server: it must not be allowed to silently clear a real,
 			// previously-known WARN0212 (the policy could not be re-checked)
-			// nor look confirmed-good on WARN0213 just because this pass
+			// nor look confirmed-good on WARN0215 just because this pass
 			// could not check either.
 			deploymentPolicyUnconfirmed = true
 			runtimeUnconfirmed = true
@@ -915,21 +915,21 @@ func (cluster *Cluster) checkK8SResourceSensorWithClient(client kubernetes.Inter
 
 	switch {
 	case runtimeBroken:
-		cluster.SetState("WARN0213", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0213"], runtimeBrokenURL, runtimeBrokenReason), ErrFrom: "CONF"})
+		cluster.SetState("WARN0215", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0215"], runtimeBrokenURL, runtimeBrokenReason), ErrFrom: "CONF"})
 	case runtimeUnconfirmed:
 		// Explicitly SET (not merely preserved): a service whose sensor has
 		// never been positively verified -- newly provisioned, or every check
 		// so far has been inconclusive (missing/ambiguous Pod, API error) --
 		// must get a tracked non-ready state from its very FIRST observation,
-		// not only once a pre-existing WARN0213 already happens to exist
+		// not only once a pre-existing WARN0215 already happens to exist
 		// (PreserveState is a no-op when there is nothing to preserve).
-		cluster.SetState("WARN0213", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0213"], firstUnconfirmedURL, "sensor state not yet verified"), ErrFrom: "CONF"})
+		cluster.SetState("WARN0215", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0215"], firstUnconfirmedURL, "sensor state not yet verified"), ErrFrom: "CONF"})
 	}
 }
 
 // k8sSensorRuntimeVerdict distinguishes a positively-confirmed sensor problem
 // from "could not check this pass" -- the two must never be conflated, or a
-// transient API hiccup would silently clear a real WARN0213.
+// transient API hiccup would silently clear a real WARN0215.
 type k8sSensorRuntimeVerdict int
 
 const (
