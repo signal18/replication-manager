@@ -92,6 +92,7 @@ var tests = []string{
 	"testResticReseedXtrabackup",
 	"testResticReseedMariabackup",
 	"testOpenSVCUpgradeWarnRecovery",
+	"testRejoinStaleCrashKeepsMaster",
 	"testRollingRestart",
 	"testRollingUpgrade",
 	"testRollingReprovReseed",

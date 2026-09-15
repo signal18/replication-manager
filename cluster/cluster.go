@@ -78,25 +78,29 @@ type ClusterResponse struct {
 }
 
 type Cluster struct {
-	OsUser            *user.User `json:"-"`
-	Name              string     `json:"name" groups:"apps,web"`
-	Tenant            string     `json:"tenant" groups:"web"`
-	WorkingDir        string     `json:"workingDir" groups:"web"`
-	Servers           serverList `json:"servers" groups:"apps"`
-	LogSlaveServers   []string   `json:"logSlaveServers" groups:"web" ` //To store slave with log-slave-updates
-	ServerIdList      []string   `json:"dbServers" groups:"web"`
-	Crashes           crashList  `json:"dbServersCrashes" groups:"web"` //This will be purged on all db node up
-	FailoverHistory   crashList  `json:"failoverHistory" groups:"web"`  //This will be used for PITR
-	Apps              appList    `json:"apps" groups:"apps" `
-	AppIdList         []string   `json:"appServers" groups:"web"`
-	Proxies           proxyList  `json:"proxies" groups:"apps"`
-	ProxyIdList       []string   `json:"proxyServers" groups:"web"`
-	FailoverCtr       int        `json:"failoverCounter" groups:"web"`
-	FailoverTs        int64      `json:"failoverLastTime" groups:"web"`
-	Status            string     `json:"activePassiveStatus" groups:"web"`
-	IsSplitBrain      bool       `json:"isSplitBrain" groups:"web"`
-	IsSplitBrainBck   bool       `json:"-"`
-	SplitBrainStartTs int64      `json:"splitBrainStartTs" groups:"web"` // unix ts when the current/last split brain began; used to filter a peer crash to THIS split
+	OsUser          *user.User `json:"-"`
+	Name            string     `json:"name" groups:"apps,web"`
+	Tenant          string     `json:"tenant" groups:"web"`
+	WorkingDir      string     `json:"workingDir" groups:"web"`
+	Servers         serverList `json:"servers" groups:"apps"`
+	LogSlaveServers []string   `json:"logSlaveServers" groups:"web" ` //To store slave with log-slave-updates
+	ServerIdList    []string   `json:"dbServers" groups:"web"`
+	Crashes         crashList  `json:"dbServersCrashes" groups:"web"` //This will be purged on all db node up
+	FailoverHistory crashList  `json:"failoverHistory" groups:"web"`  //This will be used for PITR
+	Apps            appList    `json:"apps" groups:"apps" `
+	AppIdList       []string   `json:"appServers" groups:"web"`
+	Proxies         proxyList  `json:"proxies" groups:"apps"`
+	ProxyIdList     []string   `json:"proxyServers" groups:"web"`
+	FailoverCtr     int        `json:"failoverCounter" groups:"web"`
+	FailoverTs      int64      `json:"failoverLastTime" groups:"web"`
+	// MasterChangeTs is when the CURRENT master was designated in this process (failover,
+	// switchover, or first discovery). Anchors the rejoin staleness guards (#1793): a crash
+	// record older than this names a loser that is no longer relevant to the live master.
+	MasterChangeTs    int64  `json:"masterChangeTs" groups:"web"`
+	Status            string `json:"activePassiveStatus" groups:"web"`
+	IsSplitBrain      bool   `json:"isSplitBrain" groups:"web"`
+	IsSplitBrainBck   bool   `json:"-"`
+	SplitBrainStartTs int64  `json:"splitBrainStartTs" groups:"web"` // unix ts when the current/last split brain began; used to filter a peer crash to THIS split
 
 	injectTrafficTableReady       map[string]bool `json:"-"` // dml marker schema created once per proxy target
 	IsFailedArbitrator            bool            `json:"isFailedArbitrator" groups:"web"`

@@ -431,3 +431,31 @@ any crash so all recovery paths are testable end to end.
 5. One-attempt + visible states (requirements 2, 3); freshness applied once, shared.
 6. Regtest: single-repman failover+rejoin unchanged; minority rejoin via the same
    path; transient-split / peer-unreachable -> safe re-slave + state, no loop.
+
+## Staleness guards (2026-09-14, #1793 — the belair replication ring)
+
+**Incident.** During a rolling restart on dbaas-fr-2 the switchover promoted db2; nine seconds
+later db2's state edge fired `RejoinMaster(db2)`. db2 had no local crash, arbitration is on, so
+the rejoin fetched the peer's verdict — the DR's LAST `failoverHistory` entry, a **4-day-old**
+crash naming db2 as the loser and db1 as the winner. `fetchMasterFromPeer` only checks staleness
+against `SplitBrainStartTs`, which is 0 outside a split, so the entry was materialized, db2 was
+treated as the old master and `CHANGE MASTER TO db1` ran **on the live master**: a ring, both
+sides writable, then "reconciled to recovered" because db2 was indeed replicating from db1.
+
+**Two guards, both anchored on `Cluster.MasterChangeTs`** (stamped in `SetMaster` on a real
+transition and at the end of `MasterFailover` for failover AND switchover):
+
+1. `rejoinWouldDemoteMaster(server)` — at the top of `RejoinMaster`, after the one-shot: the
+   CURRENT master is never re-slaved unless a crash **newer than its promotion** names it as the
+   loser (`getCrashFromJoiner`). No crash, or an older one → skip with an INFO line. A newer crash
+   (the split-brain colocated old master whose pointer was just re-designated) still passes.
+2. `peerCrashStaleReason(last)` — in `fetchMasterFromPeer`, before materializing: outside a split
+   brain an entry that predates `MasterChangeTs`, or that names the live master as the loser, is
+   history, not a verdict. During a split the existing `SplitBrainStartTs` guard applies instead.
+
+The one-shot terminator (`rejoinAlreadyAttempted`) is unchanged: it covers entries that already
+carry a result; these guards cover the never-attempted stale entry it could not see.
+
+**Tests.** Unit: `srv_rejoin_guard_test.go`. Regtest: `testRejoinStaleCrashKeepsMaster` seeds a
+stale crash naming the master as loser, fires `RejoinMaster` on the master, and asserts the
+topology stays master-slave (no channel on the master, slave still replicating).

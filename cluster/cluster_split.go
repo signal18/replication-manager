@@ -305,6 +305,15 @@ func (cl *Cluster) fetchMasterFromPeer() (string, error) {
 	if last.ElectedMasterURL == "" {
 		return "", nil
 	}
+	// Outside a split brain there is no SplitBrainStartTs to anchor on: anchor on the
+	// LAST MASTER CHANGE instead. A peer entry that predates our current master's
+	// promotion, or that names our live master as the loser, is history -- not a
+	// verdict (#1793: a 4-day-old entry re-slaved the master promoted by a switchover
+	// nine seconds earlier).
+	if reason := cl.peerCrashStaleReason(&last); reason != "" {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Peer last crash for %s (elected %s, ts %d) ignored: %s", last.URL, last.ElectedMasterURL, last.UnixTimestamp, reason)
+		return "", nil
+	}
 	// Materialize the peer's crash locally so getCrashFromJoiner returns it and
 	// the diverged old master's rejoin has the anchor. Drop the peer-local delta
 	// paths and dir — THIS node captures its own delta and owns its own archive.
