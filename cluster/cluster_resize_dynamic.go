@@ -416,7 +416,16 @@ func (cluster *Cluster) resourceManagerAllowsGrow(server *ServerMonitor) (bool, 
 	if cluster.resources == nil {
 		return true, ""
 	}
-	target := cluster.GetConfigDBUPerNode().Dbu // the config target, per node
+	return cluster.resourceManagerAllowsGrowTo(server, cluster.GetConfigDBUPerNode().Dbu) // the config target, per node
+}
+
+// resourceManagerAllowsGrowTo is resourceManagerAllowsGrow for an EXPLICIT per-node target (the
+// projection of a config the caller has not applied yet -- the dynamic +1 step deciding whether
+// it may go past the plan). Same three gates: overcommit envelope, node free pool, client hook.
+func (cluster *Cluster) resourceManagerAllowsGrowTo(server *ServerMonitor, target float64) (bool, string) {
+	if cluster.resources == nil {
+		return true, ""
+	}
 	plan := cluster.GetPlanDBUPerNode().Dbu
 	if target <= plan {
 		return true, "" // within the contract -- always free, never gated
@@ -769,9 +778,12 @@ func (cluster *Cluster) currentClusterQPS() float64 {
 //	                    improving QPS (the working set now fits / the cache is no
 //	                    longer the bottleneck), i.e. the IO is genuine, not eviction.
 //
-// Every step is bounded by the per-node plan ceiling (in-plan only; a plan cap-up is a
-// separate commercial decision). Gated by prov-db-dynamic-resource; never runs during a
-// failover, never stacks on an unconverged memory resize.
+// A step within the plan is always free. A step PAST the plan is not refused outright: it
+// goes through the ResourceManager over-plan gate (resourceManagerAllowsGrowTo) -- the
+// overcommit envelope rounded up to a whole DBU, the node's free pool, the client hook --
+// on EVERY server, so the cluster grows symmetrically or not at all. The plan itself is
+// never touched here (we raise resources, not the plan). Gated by prov-db-dynamic-resource;
+// never runs during a failover, never stacks on an unconverged memory resize.
 func (cluster *Cluster) DriveDynamicResize() {
 	if !cluster.Conf.ProvDBDynamicResource || cluster.IsInFailover() {
 		return
@@ -838,13 +850,14 @@ func (cluster *Cluster) DriveDynamicResize() {
 	}
 }
 
-// growAxisInPlan raises one config axis by +1 DBU, clamped to the per-node plan ceiling,
-// records it as the last dynamic grow (with the pre-grow QPS for the next window's
-// plateau check), and applies it live via the axis setter. Returns false without acting
-// when the axis is already at its plan ceiling (in-plan grow exhausted). NOTE: memory is
-// physically effective now (buffer-pool grow); cpu/io currently only re-tune SET GLOBAL
-// vars -- the container cpu/io cgroup resize (pg_cpus / io weight) is the follow-up that
-// makes those steps add real capacity.
+// growAxisInPlan raises one config axis by +1 DBU, records it as the last dynamic grow
+// (with the pre-grow QPS for the next window's plateau check), and applies it live via the
+// axis setter. Returns false without acting when the step is refused. Memory is clamped
+// to the container cgroup cap and gated over-plan by ResizeDynamicResources itself; cpu
+// and io are gated here through overPlanGrowAllowed (free within the plan, else the
+// overcommit envelope + node pool + client hook on every server). The cpu step moves the
+// container cgroup live (openSVCResizeCPU) on top of the SET GLOBAL re-tune; io has no
+// cgroup primitive and stays a DB-side tuning.
 func (cluster *Cluster) growAxisInPlan(axis string, qps float64) bool {
 	planPerNode := cluster.GetPlanDBUPerNode().Dbu
 	switch axis {
@@ -865,39 +878,69 @@ func (cluster *Cluster) growAxisInPlan(axis string, qps float64) bool {
 		return true
 	case "cpu":
 		cur, _ := strconv.Atoi(cluster.Conf.ProvCores)
-		ceil := int(math.Floor(planPerNode)) // 1 core per DBU
-		if ceil < 1 {
-			ceil = 1
+		if cur < 0 {
+			cur = 0
 		}
-		if cur >= ceil {
+		newC := cur + 1 // +1 DBU of cpu (1 core per DBU)
+		target := cluster.projectConfigDBUPerNode(float64(newC), -1).Dbu
+		if ok, reason := cluster.overPlanGrowAllowed(target); !ok {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"Dynamic CPU grow prov-db-cpu-cores %d -> %d refused: %s", cur, newC, reason)
 			return false
-		}
-		newC := cur + 1
-		if newC > ceil {
-			newC = ceil
 		}
 		cluster.recordDynamicGrow("cpu", qps)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"Dynamic in-plan CPU grow (cores pinned, cpu-bound): prov-db-cpu-cores %d -> %d (ceiling %d)", cur, newC, ceil)
+			"Dynamic %s CPU grow (cores pinned, cpu-bound): prov-db-cpu-cores %d -> %d (plan %.2f DBU/node)", growScope(target, planPerNode), cur, newC, planPerNode)
 		cluster.SetDBCores(strconv.Itoa(newC))
 		return true
 	case "io":
 		cur, _ := strconv.Atoi(cluster.Conf.ProvIops)
-		ceil := int(planPerNode * 1000) // 1000 IOPS per DBU
-		if cur >= ceil {
-			return false
+		if cur < 0 {
+			cur = 0
 		}
 		newI := cur + 1000 // +1 DBU of IOPS
-		if newI > ceil {
-			newI = ceil
+		target := cluster.projectConfigDBUPerNode(-1, float64(newI)).Dbu
+		if ok, reason := cluster.overPlanGrowAllowed(target); !ok {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"Dynamic IO grow prov-db-disk-iops %d -> %d refused: %s", cur, newI, reason)
+			return false
 		}
 		cluster.recordDynamicGrow("io", qps)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"Dynamic in-plan IO grow (memory plateaued, genuine IO bottleneck): prov-db-disk-iops %d -> %d (ceiling %d)", cur, newI, ceil)
+			"Dynamic %s IO grow (memory plateaued, genuine IO bottleneck): prov-db-disk-iops %d -> %d (plan %.2f DBU/node)", growScope(target, planPerNode), cur, newI, planPerNode)
 		cluster.SetDBDiskIOPS(strconv.Itoa(newI))
 		return true
 	}
 	return false
+}
+
+// growScope labels a dynamic step for the log: within the plan or borrowing past it.
+func growScope(target, planPerNode float64) string {
+	if planPerNode > 0 && target > planPerNode {
+		return "over-plan"
+	}
+	return "in-plan"
+}
+
+// overPlanGrowAllowed decides whether the cluster may move its per-node config to `target`
+// DBU. Free when target <= plan. Past the plan, EVERY monitored server must pass the
+// ResourceManager gate (resourceManagerAllowsGrowTo: overcommit envelope rounded up to a
+// whole DBU, node free pool, client hook) -- the grow is symmetric, so one refusal refuses
+// the step for the whole cluster. Pure decision; the plan is never changed.
+func (cluster *Cluster) overPlanGrowAllowed(target float64) (bool, string) {
+	plan := cluster.GetPlanDBUPerNode().Dbu
+	if plan <= 0 || target <= plan {
+		return true, ""
+	}
+	for _, s := range cluster.Servers {
+		if s == nil || s.State == stateFailed || s.State == stateUnconn {
+			continue
+		}
+		if ok, reason := cluster.resourceManagerAllowsGrowTo(s, target); !ok {
+			return false, fmt.Sprintf("%s: %s", s.URL, reason)
+		}
+	}
+	return true, ""
 }
 
 func (cluster *Cluster) recordDynamicGrow(axis string, qps float64) {

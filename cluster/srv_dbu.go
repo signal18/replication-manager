@@ -147,11 +147,23 @@ func (cluster *Cluster) GetProvDbuFromConfigPerNode() int {
 // "capacity" the saturation check reads against (consumed_axis / config_axis). Zero reading
 // when no manager is wired.
 func (cluster *Cluster) GetConfigDBUPerNode() DBUReading {
+	return cluster.projectConfigDBUPerNode(-1, -1)
+}
+
+// projectConfigDBUPerNode is GetConfigDBUPerNode with an optional cores / iops override
+// (negative = keep the configured value): the per-node reading a NOT-yet-applied config
+// would give, so a dynamic +1 step can be gated before it is written. Zero reading when
+// no manager is wired.
+func (cluster *Cluster) projectConfigDBUPerNode(cores, iops float64) DBUReading {
 	if cluster.resources == nil {
 		return DBUReading{}
 	}
-	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
-	iops, _ := strconv.ParseFloat(cluster.Conf.ProvIops, 64)
+	if cores < 0 {
+		cores, _ = strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+	}
+	if iops < 0 {
+		iops, _ = strconv.ParseFloat(cluster.Conf.ProvIops, 64)
+	}
 	memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
 	diskGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
 	now := time.Now()
