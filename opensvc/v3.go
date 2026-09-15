@@ -3,6 +3,7 @@ package opensvc
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -355,6 +356,74 @@ func (collector *Collector) UpdateObjectV3(namespace, kind, service string, data
 	}
 
 	return body, nil
+}
+
+// GetInstanceConfigChecksumV3 returns the checksum om3 reports for the object config the
+// daemon on `node` has LOADED for namespace/kind/name (instance.Config.Checksum, json
+// "csum" = md5 of the config file at load time) -- the config a start or a pg update
+// would run on, as opposed to the file on disk. Empty when the node has no instance
+// config for the object.
+func (collector *Collector) GetInstanceConfigChecksumV3(node, namespace, kind, name string) (string, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return "", err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+
+	path := fmt.Sprintf("%s/%s/%s", namespace, kind, name)
+	params := &apiv3.GetInstancesParams{Path: &path, Node: &node}
+	resp, err := client.GetInstances(ctx, params, collector.RequestCloserV3())
+	if err != nil {
+		return "", fmt.Errorf("failed to get instance %s on %s: %w", path, node, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+	if !handleSuccessGroup(resp.StatusCode) {
+		return "", &StatusError{StatusCode: resp.StatusCode, Body: string(body)}
+	}
+	for _, item := range gjson.GetBytes(body, "items").Array() {
+		if item.Get("meta.node").String() != node {
+			continue
+		}
+		return item.Get("data.config.csum").String(), nil
+	}
+	return "", nil
+}
+
+// WaitObjectConfigSettledV3 blocks until the daemon on `node` has LOADED the object
+// config currently on disk (its instance config checksum equals the md5 of the config
+// file), or `timeout` elapses. Call it after UpdateObjectV3 and BEFORE any action that
+// reads the config (instance start, pg update): om3 commits the file synchronously but
+// reloads the instance config asynchronously, so an action fired right after the PUT
+// still runs on the PREVIOUS config (issue #1792: a rolling restart recreated the jobs
+// containers without the mount pushed one second earlier). The file is re-read from the
+// daemon rather than hashing the pushed body because the commit re-serializes it.
+func (collector *Collector) WaitObjectConfigSettledV3(node, namespace, kind, name string, timeout time.Duration) error {
+	raw, err := collector.GetObjectConfigFileV3(namespace, kind, name)
+	if err != nil {
+		return err
+	}
+	want := fmt.Sprintf("%x", md5.Sum(raw))
+	deadline := time.Now().Add(timeout)
+	for {
+		got, err := collector.GetInstanceConfigChecksumV3(node, namespace, kind, name)
+		if err == nil && got == want {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			if err != nil {
+				return fmt.Errorf("config of %s/%s/%s not settled on %s after %s: %w", namespace, kind, name, node, timeout, err)
+			}
+			return fmt.Errorf("config of %s/%s/%s not settled on %s after %s (loaded csum %q, file md5 %q)", namespace, kind, name, node, timeout, got, want)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 type ObjectGetterFunc func([]byte) ([]byte, error)

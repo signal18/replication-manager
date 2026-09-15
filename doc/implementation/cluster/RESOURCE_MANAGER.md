@@ -398,14 +398,14 @@ runtime `INNODB_BUFFER_POOL_SIZE` is still off its target (async InnoDB resize) 
 the pool actually reached its new size", closing the grow-vs-async-resize / grow-vs-pending-shrink /
 double-SET-GLOBAL races.
 
-**Physical depth caveat (the follow-up that makes CPU/IOPS steps real).** Memory grow is
-physically effective today (buffer-pool grow under the container ceiling). CPU and IOPS steps
-currently only re-tune DB `SET GLOBAL` vars — `SetDBCores`/`SetDBDiskIOPS` do **not** yet resize
-the container cpu/io cgroup (`pg_cpus` / io weight). So the escalation *decides and applies*
-correctly, but a CPU or IOPS step will not add real capacity until the cgroup cpu/io resize is
-built (extend `openSVCResize`/`PGUpdateInstanceV3` the same way it already does `pg_mem_limit`).
-Until then, on a CPU-bound saturation the state fires and the config axis grows, but the container
-stays pinned — the memory hill-climb is the provable half. Still open beyond that: dynamic
+**Physical depth.** Memory grow is physically effective (buffer-pool grow under the container
+ceiling, `pg_mem_limit` + pg update). **CPU is too, since 2026-09-14**, when the cap lives on the
+om3 PG slice (`prov-db-docker-run-args-limit` off): `openSVCResizeCPU` writes `pg_cpu_quota` in
+the om3 syntax and re-applies it live (`openSVCApplyPGKeywords` → `PGUpdateInstanceV3`), on top
+of the `SET GLOBAL` re-tune. **IOPS has no cgroup primitive**: om3's process group knows cpus,
+mems, cpu_shares, cpu_quota, mem limits, swappiness and `blkio_weight` — no `io.max` — so an
+IOPS step stays a DB-side tuning on every agent version (a real cap is an OpenSVC feature
+request). The memory hill-climb and the CPU step are the provable halves. Still open beyond that: dynamic
 **shrink** (the deliberate reclaim, must clamp at the plan floor), cap-up (`IsNeedResourceCapUp`)
 still a signal nothing consumes, the physical gate is instantaneous (no reserve / co-tenant
 reclaim — Type-2 safety is a later step), and `overcommit_dbu` is not yet a tracked/emitted
@@ -501,11 +501,34 @@ emit via `GetPlanDbu` + GWARN016 read it). `prov-service-plan-dbu` is now deprec
 cap = Plan + Borrow. (2) Register app-provisioned **pg/minio** as **DBU** ledger entries into
 `prov-service-plan-dbu`. (3) **Consumed source** — scrape OpenSVC `/metrics/pg` (`opensvc_pg_cgroup_*`:
 `cpu_usage_usec` Δ→cores, `memory_current_bytes`, io) into `Ingest*`, retiring the custom sidecar
-**(needs the om3 upgrade)**. (4) Real **CPU/IO cgroup resize** via the om3 `pg reset` / `pg_cpu_quota`
-fix / `"default"` pg_* kw patch (today the CPU/IOPS steps only re-tune `SET GLOBAL`).
+**(needs om3 ≥ rc33: `/metrics/pg` + cgroup-v2 reads landed 2026-08-31)**. (4) ~~Real CPU cgroup
+resize~~ **done** (`openSVCResizeCPU`, see "om3 process-group facts" below); IOPS cgroup cap
+impossible (no `io.max` in om3 pg); "unset resets the slice" and `pg reset` do **not** exist in
+any om3 release up to rc36 — always write explicit values.
 
 **Vocabulary:** units are **DBU**/**APU**; classes **controlled**/**uncontrolled**; never
 "credits" (the app system's own accounting) or "tier".
+
+## om3 process-group facts (checked on opensvc/om3 up to v3.0.0-rc36, 2026-09-14)
+
+- **`pg_cpu_quota` unit.** `util/pg CPUQuota.Convert`: `quota = pct × period × cpus / maxCpus / 100`,
+  `cpus = 1` when no `@` is given. So a bare `300%` = 3/maxCpus of ONE core (0.125 core on a
+  24-thread node — the dev3 "300% → 0.09 core" surprise). With `@all`, `cpus = maxCpus` cancels and
+  `pct = cores × 100`: **`300%@all` = 3 cores on any node.** repman always emits
+  `OpenSVCCPUQuotaKeyword(cores)` = `"<cores*100>%@all"`. Byte-identical rc20 → rc36. The 2.1
+  agent (`drivers/pg/linux.py`, fixed in build 1876) has the OPPOSITE convention (`300%` = 3 cores,
+  `@all` multiplies by the thread count) — this helper is for the v3 template/API path only.
+- **Config push vs. instance start race (#1792).** `PUT /object/.../config/file` commits the file
+  synchronously but the daemon reloads the instance config (`icfg`, checksum = md5 of the file)
+  asynchronously. An action issued in the same second — the rolling restart's start, a pg update —
+  runs on the PREVIOUS config (belair 2026-09-14: conf written 08:57:22.89, start 08:57:22, jobs
+  container created 08:57:30 without the pushed mount). `WaitObjectConfigSettledV3(node, …)` polls
+  `GET /instances?path&node` until `data.config.csum` equals the md5 of the (re-read) file;
+  `OpenSVCUpdateDatabaseTemplate` and `openSVCApplyPGKeywords` call it before returning/acting.
+- **No `io.max`**, no `pg reset`, no `"default"` value: unset pg_* keywords reset nothing on either
+  agent. Always write explicit values (a very large `%@all` means "unlimited").
+- **Metrics.** `/metrics/pg` with correct cgroup-v2 reads exists from **rc33** (rc31 "Latest" lacks
+  it). That is the target for retiring the dbjobs/sidecar sensors.
 
 ## Laws
 

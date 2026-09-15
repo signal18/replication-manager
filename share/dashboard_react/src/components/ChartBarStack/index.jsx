@@ -8,6 +8,10 @@ function ChartBarStack({
   context,
   className,
   metricPaths = [],
+  // Optional legend labels aligned with metricPaths. When a target is a composite graphite
+  // expression (sumSeries/diffSeries/...), no readable name can be derived from the path
+  // itself, so the caller passes the label it wants (e.g. the cluster name).
+  metricLabels = [],
   title = "Memory Usage",
   height = 400,
   isVisible = true,
@@ -47,7 +51,8 @@ function ChartBarStack({
     tooltipText: theme === 'light' ? 'var(--text-color, #333333)' : 'var(--text-color, #e7e9ef)'
   };
 
-  const getDisplayName = (metricPath) => {
+  const getDisplayName = (metricPath, index) => {
+    if (metricLabels[index]) return metricLabels[index];
     const parts = metricPath.split('.');
     let displayName = parts[parts.length - 1] || metricPath;
     displayName = displayName.split('_').slice(3).join('_');
@@ -84,11 +89,15 @@ function ChartBarStack({
       if (!response.ok) throw new Error(`HTTP error ${response.status}`);
 
       const text = await response.text();
+      // A target whose series do not exist yet (e.g. dbu.<cluster>.* for an unprovisioned
+      // cluster) renders as HTTP 200 with an EMPTY body. That is a legitimately empty layer
+      // of the stack, not a failure of the whole graph.
+      if (!text.includes('|')) return { path: metricPath, data: [] };
       const [meta, values] = text.split('|');
       const [_, start, end, stepSize] = meta.split(',');
 
       // Process values with proper handling of None values
-      const processedValues = values?.split(',').map((v, i) => {
+      const processedValues = values.split(',').map((v, i) => {
         const timestamp = (parseInt(start) + i * parseInt(stepSize)) * 1000;
         const value = v === 'None' ? 0 : parseFloat(v) || 0;
         return {
@@ -102,9 +111,12 @@ function ChartBarStack({
         data: processedValues
       };
     } catch (error) {
-      if (error.name !== 'AbortError') {
-        console.error('Fetch error:', error);
+      if (error.name === 'AbortError') {
+        // Superseded by a newer poll: report the abort so the caller keeps the data it
+        // already has instead of drawing an empty graph for one cycle.
+        return { path: metricPath, data: null, aborted: true };
       }
+      console.error('Fetch error:', error);
       return { path: metricPath, data: [] };
     }
   };
@@ -122,6 +134,12 @@ function ChartBarStack({
       const data = await Promise.all(
         metricPaths.map(path => fetchMetricData(path))
       );
+
+      // An aborted cycle carries no information: keep the previous data on screen.
+      if (data.some(d => d.aborted)) {
+        dataFetchInProgress.current = false;
+        return;
+      }
 
       const dataMap = data.reduce((acc, curr) => {
         acc[curr.path] = curr;
@@ -205,8 +223,11 @@ function ChartBarStack({
       return;
     }
 
-    // Validate data
-    const primaryData = dataMap[metricPaths[0]]?.data;
+    // Validate data. The time base is the first path that HAS points: a leading layer with
+    // no series (cluster without DBU) must not blank the whole stack -- only when every
+    // layer is empty is there really nothing to draw.
+    const primaryPath = metricPaths.find(p => dataMap[p]?.data?.length) ?? metricPaths[0];
+    const primaryData = dataMap[primaryPath]?.data;
     if (!primaryData || !primaryData.length) {
       // No data yet: still render the SVG + title (+ "No data") so the empty
       // graph stays identifiable instead of an unlabelled blank box.
@@ -463,7 +484,7 @@ function ChartBarStack({
     let currentLine = 0;
 
     metricPaths.forEach((path, i) => {
-      const displayName = getDisplayName(path);
+      const displayName = getDisplayName(path, i);
       const textNode = legend.append('text')
         .attr('class', theme === 'dark' ? styles['dark-legend-text'] : styles.legendText)
         .style('fill', themeColors.text)
