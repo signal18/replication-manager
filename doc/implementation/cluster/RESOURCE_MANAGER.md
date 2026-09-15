@@ -265,7 +265,10 @@ A DB container has **two** distinct memory limits, changed by two different mech
    memory and reconfigures MariaDB in lockstep, orchestrator-agnostically:
    - `ResourceResizer.ConfigResize` changes the cgroup live — OpenSVC via the om3 **PG update**
      (`pg_mem_limit`, `PGUpdateInstanceV3`); Kubernetes via the **in-place Pod `resize`
-     subresource** (1.27+, `k8sResizer`, on branch `k8s-proxy`). No container recreate.
+     subresource** (`k8sResizer`, `cluster_resize_k8s.go`; 1.33+ by default, 1.27-1.32 behind
+     `InPlacePodVerticalScaling`), selected when `prov-db-docker-run-args-limit` puts the
+     Requests == Limits pair on the DB container -- memory AND cpu in one patch, confirmed
+     against the Pod on the monitor tick. No container recreate.
    - the shared orchestration then runs `resizeMemorySQL` (`SET GLOBAL innodb_buffer_pool_size`
      + key_buffer / tmp_table / join_buffer / max_session_mem_used …).
    - anti-OOM ordering: **grow** = cgroup up → buffer pool up; **shrink** = buffer pool down →

@@ -53,6 +53,12 @@ type K8sMemoryResizeState struct {
 	TargetMB  int       `json:"targetMB"`
 	Grow      bool      `json:"grow"`
 	StartedAt time.Time `json:"startedAt"`
+	// TargetCPUMilli is the CPU pair carried by the same Pod resize patch (0 = the
+	// container has no CPU pair, memory-only). MemChanged records whether the
+	// memory limit actually moved with this request: a CPU-only step must not
+	// re-run the memory grow SQL on confirmation.
+	TargetCPUMilli int64 `json:"targetCPUMilli,omitempty"`
+	MemChanged     bool  `json:"memChanged"`
 	// Observed is true once a monitor tick has actually seen THIS dispatch's
 	// Pod carry a non-empty Status.Resize (kubelet genuinely working the
 	// request) at least once. A later clear Status.Resize + matching spec is
@@ -212,13 +218,14 @@ func (cluster *Cluster) k8sResizeWithClient(client kubernetes.Interface, server 
 
 	dbMB, _ := cluster.k8sDatabaseMemoryTargets()
 	target := resource.MustParse(strconv.Itoa(dbMB) + "Mi")
+	cpuMilli, _ := cluster.k8sDatabaseCPUTargetMilli() // 0 when the container carries no CPU pair
 	existing := server.GetPendingK8sMemoryResize()
 	// A resize of OURS is tracked for this exact target but has never been
 	// observed genuinely in flight -- do not trust a live spec-match+clear-
 	// status as confirmation here (the patch-just-issued race, see
 	// K8sMemoryResizeState.Observed); fall through and re-patch instead.
-	racy := existing != nil && existing.TargetMB == dbMB && !existing.Observed
-	if !racy && k8sMemoryResizeConfirmed(pod, server.Name, target) {
+	racy := existing != nil && existing.TargetMB == dbMB && existing.TargetCPUMilli == cpuMilli && !existing.Observed
+	if !racy && k8sResizeConfirmed(pod, server.Name, target, cpuMilli) {
 		// The live Pod is ALREADY confirmed (not just requested -- Status.Resize
 		// is clear and the applied value matches) at the target: e.g. a duplicate
 		// call while a previous resize's confirmation is still catching up on
@@ -231,14 +238,20 @@ func (cluster *Cluster) k8sResizeWithClient(client kubernetes.Interface, server 
 		return true, nil
 	}
 
+	currentMem, hasMem := k8sPodContainerMemory(pod, server.Name)
+	memChanged := !hasMem || currentMem.Cmp(target) != 0
+	resources := map[string]string{"memory": target.String()}
+	if cpuMilli > 0 {
+		resources["cpu"] = resource.NewMilliQuantity(cpuMilli, resource.DecimalSI).String()
+	}
 	patch, err := json.Marshal(map[string]interface{}{
 		"spec": map[string]interface{}{
 			"containers": []map[string]interface{}{
 				{
 					"name": server.Name,
 					"resources": map[string]interface{}{
-						"requests": map[string]string{"memory": target.String()},
-						"limits":   map[string]string{"memory": target.String()},
+						"requests": resources,
+						"limits":   resources,
 					},
 				},
 			},
@@ -254,9 +267,9 @@ func (cluster *Cluster) k8sResizeWithClient(client kubernetes.Interface, server 
 		server.SetRestartCookie()
 		return false, err
 	}
-	server.SetPendingK8sMemoryResize(&K8sMemoryResizeState{TargetMB: dbMB, Grow: grow, StartedAt: time.Now()})
+	server.SetPendingK8sMemoryResize(&K8sMemoryResizeState{TargetMB: dbMB, TargetCPUMilli: cpuMilli, MemChanged: memChanged, Grow: grow, StartedAt: time.Now()})
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-		"Kubernetes Pod memory resize requested on %s (target=%dMi), awaiting kubelet confirmation", server.URL, dbMB)
+		"Kubernetes Pod resize requested on %s (target=%dMi cpu=%dm), awaiting kubelet confirmation", server.URL, dbMB, cpuMilli)
 	return false, nil
 }
 
@@ -287,11 +300,39 @@ func k8sPodContainerMemory(pod *apiv1.Pod, containerName string) (resource.Quant
 // (proven live in Kind: kindSmokeWaitForResizeCompletion, cluster/
 // smoke_kind_pod_resize_test.go, waits for exactly this pair of conditions).
 func k8sMemoryResizeConfirmed(pod *apiv1.Pod, containerName string, target resource.Quantity) bool {
+	return k8sResizeConfirmed(pod, containerName, target, 0)
+}
+
+// k8sPodContainerCPU is k8sPodContainerMemory for the CPU limit.
+func k8sPodContainerCPU(pod *apiv1.Pod, containerName string) (resource.Quantity, bool) {
+	for _, c := range pod.Spec.Containers {
+		if c.Name != containerName {
+			continue
+		}
+		q, ok := c.Resources.Limits[apiv1.ResourceCPU]
+		return q, ok
+	}
+	return resource.Quantity{}, false
+}
+
+// k8sResizeConfirmed is k8sMemoryResizeConfirmed for both axes: the memory limit
+// must match target and, when cpuMilli > 0, the CPU limit must match too; a Pod
+// still carrying a resize status is never confirmed.
+func k8sResizeConfirmed(pod *apiv1.Pod, containerName string, target resource.Quantity, cpuMilli int64) bool {
 	if pod.Status.Resize != "" {
 		return false
 	}
 	current, ok := k8sPodContainerMemory(pod, containerName)
-	return ok && current.Cmp(target) == 0
+	if !ok || current.Cmp(target) != 0 {
+		return false
+	}
+	if cpuMilli > 0 {
+		cpu, ok := k8sPodContainerCPU(pod, containerName)
+		if !ok || cpu.MilliValue() != cpuMilli {
+			return false
+		}
+	}
+	return true
 }
 
 // completePendingK8sMemoryResize is the monitor-tick reconciliation for a
@@ -370,12 +411,17 @@ func (cluster *Cluster) k8sCompletePendingMemoryResizeWithClient(client kubernet
 	}
 
 	target := resource.MustParse(strconv.Itoa(pending.TargetMB) + "Mi")
-	if pending.Observed && k8sMemoryResizeConfirmed(pod, server.Name, target) {
+	if pending.Observed && k8sResizeConfirmed(pod, server.Name, target, pending.TargetCPUMilli) {
 		server.clearPendingK8sMemoryResizeIfSame(pending)
-		if pending.Grow {
+		switch {
+		case pending.Grow && pending.MemChanged:
 			cluster.applyConfirmedMemoryGrow(server, ResizeYes)
-		} else {
+		case pending.MemChanged:
 			cluster.logResize(server, resizeMemory, false, true, ResizeYes, nil)
+		default:
+			// CPU-only step: the DB-side cpu tuning already ran with the setter; the
+			// container cap has now followed.
+			cluster.logResize(server, resizeCPU, pending.Grow, true, ResizeYes, nil)
 		}
 		return
 	}

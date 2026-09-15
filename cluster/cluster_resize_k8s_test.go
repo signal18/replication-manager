@@ -649,13 +649,13 @@ func TestK8sDatabaseMemoryTargets_InvalidProvMemFallsBackSafelyNeverZero(t *test
 // it must not be reachable from production code -- even with
 // prov-db-docker-run-args-limit on -- until that contract is proven and this
 // gate is deliberately reopened.
-func TestResourceResizer_KubernetesNeverSelectsK8sResizerYet(t *testing.T) {
+func TestResourceResizer_KubernetesSelectsK8sResizerWithRunArgsLimit(t *testing.T) {
 	cluster := newTestCluster("k8stest")
 	cluster.Conf.ProvOrchestrator = "kube"
 	cluster.Conf.ProvDBDockerRunArgsLimit = true
 
-	if _, ok := cluster.resourceResizer().(scriptResizer); !ok {
-		t.Fatalf("expected scriptResizer (native k8sResizer must stay gated off until OpenSVC-cap parity is proven), got %T", cluster.resourceResizer())
+	if _, ok := cluster.resourceResizer().(k8sResizer); !ok {
+		t.Fatalf("expected k8sResizer (native in-place Pod resize, cap contract = prov-db-* per node), got %T", cluster.resourceResizer())
 	}
 }
 
@@ -806,5 +806,120 @@ func TestK8sResize_TrackedButNeverObservedDoesNotFalseConfirm(t *testing.T) {
 	}
 	if s.HasRestartCookie() {
 		t.Fatal("a re-patch attempt must not fall back to restart")
+	}
+}
+
+// --- CPU rides the same Pod resize patch as memory (cap contract: prov-db-* per node) ---
+
+func TestK8sDatabaseContainerResources_CarriesCPUPairFromProvCores(t *testing.T) {
+	cluster, _, cleanup := k8sResizeTestServer(t, "k8stest", "db1")
+	defer cleanup()
+	cluster.Conf.ProvDBDockerRunArgsLimit = true
+	cluster.Conf.ProvMem = "512M"
+	cluster.Conf.ProvCores = "2"
+
+	req := cluster.k8sDatabaseContainerResources()
+	if got := req.Limits[apiv1.ResourceCPU]; got.MilliValue() != 2000 {
+		t.Fatalf("expected a 2-core CPU limit next to memory, got %s", got.String())
+	}
+	if got := req.Requests[apiv1.ResourceCPU]; got.MilliValue() != 2000 {
+		t.Fatalf("expected Requests == Limits for cpu, got %s", got.String())
+	}
+	if got := req.Limits[apiv1.ResourceMemory]; got.Cmp(resource.MustParse("384Mi")) != 0 {
+		t.Fatalf("memory pair must be untouched by the cpu addition, got %s", got.String())
+	}
+
+	cluster.Conf.ProvCores = ""
+	if _, ok := cluster.k8sDatabaseContainerResources().Limits[apiv1.ResourceCPU]; ok {
+		t.Fatal("no prov-db-cpu-cores must mean no CPU pair (memory-only cap, as before)")
+	}
+	cluster.Conf.ProvDBDockerRunArgsLimit = false
+	if len(cluster.k8sDatabaseContainerResources().Limits) != 0 {
+		t.Fatal("prov-db-docker-run-args-limit off must keep the container uncapped")
+	}
+}
+
+func TestK8sResize_PatchCarriesCPUAndTracksTarget(t *testing.T) {
+	cluster, s, cleanup := k8sResizeTestServer(t, "k8stest", "db1")
+	defer cleanup()
+	cluster.Conf.ProvMem = "512M" // dbMB = 384
+	cluster.Conf.ProvCores = "2"
+	dep, rs := k8sTestController("k8stest", "db1")
+	pod := k8sResizeTestPod("k8stest", "db1-abc", "db1", "384Mi", "", rs.UID) // memory already at target: cpu-only step
+	client := fake.NewSimpleClientset(dep, rs, pod)
+
+	applied, err := cluster.k8sResizeWithClient(client, s, true)
+	if err != nil || applied {
+		t.Fatalf("expected a pending (not yet confirmed) resize, got applied=%v err=%v", applied, err)
+	}
+	pending := s.GetPendingK8sMemoryResize()
+	if pending == nil || pending.TargetCPUMilli != 2000 || pending.TargetMB != 384 {
+		t.Fatalf("expected pending state to carry the cpu target, got %#v", pending)
+	}
+	if pending.MemChanged {
+		t.Fatal("memory already at target: the request must be recorded as cpu-only (MemChanged=false)")
+	}
+
+	updated, err := client.CoreV1().Pods("k8stest").Get(context.TODO(), pod.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if got := updated.Spec.Containers[0].Resources.Limits[apiv1.ResourceCPU]; got.MilliValue() != 2000 {
+		t.Fatalf("expected the resize subresource patch to carry cpu=2, got %s", got.String())
+	}
+	if got := updated.Spec.Containers[0].Resources.Requests[apiv1.ResourceCPU]; got.MilliValue() != 2000 {
+		t.Fatalf("expected Requests == Limits for cpu in the patch, got %s", got.String())
+	}
+}
+
+func TestK8sResizeConfirmed_RequiresCPUMatchWhenTargeted(t *testing.T) {
+	_, rs := k8sTestController("k8stest", "db1")
+	pod := k8sResizeTestPod("k8stest", "db1-abc", "db1", "384Mi", "", rs.UID)
+	target := resource.MustParse("384Mi")
+
+	if !k8sResizeConfirmed(pod, "db1", target, 0) {
+		t.Fatal("memory-only target must confirm on the memory limit alone")
+	}
+	if k8sResizeConfirmed(pod, "db1", target, 2000) {
+		t.Fatal("a cpu target must not confirm while the Pod carries no cpu limit")
+	}
+	pod.Spec.Containers[0].Resources.Limits[apiv1.ResourceCPU] = resource.MustParse("1")
+	if k8sResizeConfirmed(pod, "db1", target, 2000) {
+		t.Fatal("a cpu target must not confirm on a different cpu limit")
+	}
+	pod.Spec.Containers[0].Resources.Limits[apiv1.ResourceCPU] = resource.MustParse("2")
+	if !k8sResizeConfirmed(pod, "db1", target, 2000) {
+		t.Fatal("memory and cpu at target must confirm")
+	}
+	pod.Status.Resize = apiv1.PodResizeStatusInProgress
+	if k8sResizeConfirmed(pod, "db1", target, 2000) {
+		t.Fatal("a Pod still carrying a resize status is never confirmed")
+	}
+}
+
+func TestCompletePendingK8sMemoryResize_CPUOnlyConfirmClearsWithoutMemoryGrow(t *testing.T) {
+	cluster, s, cleanup := k8sResizeTestServer(t, "k8stest", "db1")
+	defer cleanup()
+	dep, rs := k8sTestController("k8stest", "db1")
+	pod := k8sResizeTestPod("k8stest", "db1-abc", "db1", "256Mi", "", rs.UID)
+	pod.Spec.Containers[0].Resources.Limits[apiv1.ResourceCPU] = resource.MustParse("2")
+	client := fake.NewSimpleClientset(dep, rs, pod)
+
+	s.SetPendingK8sMemoryResize(&K8sMemoryResizeState{TargetMB: 256, TargetCPUMilli: 2000, MemChanged: false, Grow: true, StartedAt: time.Now(), Observed: true})
+	cluster.k8sCompletePendingMemoryResizeWithClient(client, s, "")
+
+	if s.GetPendingK8sMemoryResize() != nil {
+		t.Fatal("expected the cpu-only pending state to be cleared once the Pod carries the cpu limit")
+	}
+	if s.HasRestartCookie() {
+		t.Fatal("a confirmed cpu-only resize must not fall back to a restart")
+	}
+	// still pending while the cpu limit is not there yet
+	pod2 := k8sResizeTestPod("k8stest", "db1-abc", "db1", "256Mi", "", rs.UID)
+	client2 := fake.NewSimpleClientset(dep, rs, pod2)
+	s.SetPendingK8sMemoryResize(&K8sMemoryResizeState{TargetMB: 256, TargetCPUMilli: 2000, Grow: true, StartedAt: time.Now(), Observed: true})
+	cluster.k8sCompletePendingMemoryResizeWithClient(client2, s, "")
+	if s.GetPendingK8sMemoryResize() == nil {
+		t.Fatal("cpu target not yet on the Pod: the pending state must stay")
 	}
 }

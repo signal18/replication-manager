@@ -648,10 +648,28 @@ func (cluster *Cluster) k8sDatabaseContainerResources() apiv1.ResourceRequiremen
 	}
 	dbMB, _ := cluster.k8sDatabaseMemoryTargets()
 	mem := resource.MustParse(strconv.Itoa(dbMB) + "Mi")
-	return apiv1.ResourceRequirements{
-		Requests: apiv1.ResourceList{apiv1.ResourceMemory: mem},
-		Limits:   apiv1.ResourceList{apiv1.ResourceMemory: mem},
+	rl := apiv1.ResourceList{apiv1.ResourceMemory: mem}
+	// CPU rides the same Requests == Limits pair, from prov-db-cpu-cores -- the
+	// Kubernetes twin of OpenSVC's run_args --cpus, resized in place by k8sResizer
+	// together with memory (one Pod resize patch carries both axes).
+	if cpuMilli, ok := cluster.k8sDatabaseCPUTargetMilli(); ok {
+		rl[apiv1.ResourceCPU] = *resource.NewMilliQuantity(cpuMilli, resource.DecimalSI)
 	}
+	return apiv1.ResourceRequirements{
+		Requests: rl.DeepCopy(),
+		Limits:   rl,
+	}
+}
+
+// k8sDatabaseCPUTargetMilli is prov-db-cpu-cores in millicores (1 core per DBU),
+// false when unset/unparseable (the container then carries no CPU pair, as
+// before -- memory-only cap).
+func (cluster *Cluster) k8sDatabaseCPUTargetMilli() (int64, bool) {
+	cores, err := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+	if err != nil || cores <= 0 {
+		return 0, false
+	}
+	return int64(cores*1000 + 0.5), true
 }
 
 // k8sDBJobsContainerResources mirrors k8sDatabaseContainerResources for the

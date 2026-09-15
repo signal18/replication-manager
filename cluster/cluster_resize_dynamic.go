@@ -109,22 +109,17 @@ func (cluster *Cluster) resourceResizer() ResourceResizer {
 	case config.ConstOrchestratorOpenSVC:
 		return openSVCResizer{cluster}
 	case config.ConstOrchestratorKubernetes:
-		// k8sResizer (native in-place Pod memory resize, 1.27+ -- fully built and
-		// tested, cluster_resize_k8s.go) is DELIBERATELY not selected here yet.
-		// It computes the Kubernetes effective service cap as
-		// GetDBContainerMemoryCapMB() + a fixed dbjobs allocation, which does
-		// NOT reproduce OpenSVC's DEFAULT.pg_mem_limit service-level target --
-		// a different contract than the exact OpenSVC-cap parity this feature
-		// is meant to deliver (KUBERNETES_OPENSVC_RESOURCE_PARITY_IMPLEMENTATION_
-		// PLAN.md). Until the deferred OpenSVC runtime cgroup proof and the
-		// matching Kubernetes effective-cap proof land, native resize must not
-		// ship: every Kubernetes resource change goes through the script/restart
-		// path (same one used before this feature), which already reconciles the
-		// Deployment template's memory resources on every replacement
-		// (k8sContainerMemoryResourcesFragment, k8sRestartDatabaseServiceWithClient
-		// / k8sForceRepullDatabaseServiceWithClient) -- so a change still
-		// eventually applies, just via a Pod replacement instead of a live
-		// in-place resize.
+		// k8sResizer = native in-place Pod resize (cluster_resize_k8s.go), memory and
+		// cpu in one patch. Selected only when the Pod actually carries the
+		// Requests == Limits pair, i.e. prov-db-docker-run-args-limit is on
+		// (k8sDatabaseContainerResources) -- the same opt-in that puts --memory/--cpus
+		// on OpenSVC's container run_args; an uncapped Pod has nothing to resize and
+		// keeps the script/restart path. The cap contract is the one settled for every
+		// orchestrator: the container limit IS prov-db-* per node (memory minus the
+		// dbjobs carve-out, k8sDatabaseMemoryTargets), no OpenSVC-style padded tier.
+		if cluster.Conf.ProvDBDockerRunArgsLimit {
+			return k8sResizer{cluster}
+		}
 		return scriptResizer{cluster}
 	case config.ConstOrchestratorOnPremise, config.ConstOrchestratorLocalhost, config.ConstOrchestratorSlapOS:
 		// For now these resize only through the client change-script; scriptResizer
@@ -545,11 +540,22 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 					server.SetRestartCookie()
 				}
 			}
-			if dim == resizeCPU && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC && !cluster.Conf.ProvDBDockerRunArgsLimit {
-				if svc := cluster.OpenSVCConnect(); svc.IsV3() {
-					if err := cluster.openSVCResizeCPU(server); err != nil {
+			if dim == resizeCPU {
+				switch {
+				case cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC && !cluster.Conf.ProvDBDockerRunArgsLimit:
+					if svc := cluster.OpenSVCConnect(); svc.IsV3() {
+						if err := cluster.openSVCResizeCPU(server); err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+								"Live cpu cgroup resize failed on %s (DB tuning applied, container cap unchanged): %s", server.URL, err)
+						}
+					}
+				case cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes:
+					// k8sResizer (or the client change script): the Pod resize patch carries
+					// the whole prov-db-* pair, so the cpu step lands with it; confirmation is
+					// asynchronous (completePendingK8sMemoryResize on the tick).
+					if _, err := cluster.resourceResizer().ConfigResize(server, grow); err != nil {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-							"Live cpu cgroup resize failed on %s (DB tuning applied, container cap unchanged): %s", server.URL, err)
+							"Live cpu Pod resize failed on %s (DB tuning applied, container cap unchanged): %s", server.URL, err)
 					}
 				}
 			}
