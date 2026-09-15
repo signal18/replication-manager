@@ -120,6 +120,8 @@ type Cluster struct {
 	IsNeedDatabasesRollingReprov  bool            `json:"isNeedDatabasesRollingReprov" groups:"web"`
 	IsNeedResourceCapUp           bool            `json:"isNeedResourceCapUp" groups:"web"`   // composed from the per-server plan states: ANY up server over the plan -> RAISE THE PLAN (cap up). Set by CheckResourceCapPlan
 	ResourceGrowRefused           *GrowRefusal    `json:"resourceGrowRefused" groups:"web"`   // last dynamic over-plan step refused by the ResourceManager gate (nil = none); tracked state, surfaced as ERR00112 in the workload channel
+	ConfigDbuPerNode              DBUReading      `json:"configDbuPerNode" groups:"web"`      // prov-db-* projected through the ratios: the TECHNICAL cap per node (paramétré axis), refreshed each tick
+	ConfigDbu                     float64         `json:"configDbu" groups:"web"`             // cluster-wide configured DBU = per-node pivot x #DB nodes; the graph draws it as the "configured" line above the plan
 	IsNeedResourceCapDown         bool            `json:"isNeedResourceCapDown" groups:"web"` // composed: EVERY up server under the plan -> LOWER THE PLAN (cap down); one non-under server breaks it (safe-shrink). Set by CheckResourceCapPlan
 	LastDynamicResizeDay          string          `json:"-"`                                  // YYYY-MM-DD of the last daily-time memory reconcile (DriveDailyDynamicResize); one apply per day per window
 	lastDynamicResize             time.Time       `json:"-"`                                  // last dynamic in-plan grow (DriveDynamicResize); cooldown = one step per scale-up window

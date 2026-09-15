@@ -375,6 +375,11 @@ func (cluster *Cluster) RefreshDBUPlan() {
 	// per-node input and recomputed each tick, so it is always correct and never stale; the client
 	// moves only the per-node prov-db-dbu (dynamic layer), so this never re-locks in /etc.
 	cluster.Conf.ProvServicePlanDbu = int(cluster.resources.PlanByCluster(cluster.Name).Dbu + 0.5)
+	// The TECHNICAL side, next to the plan: what prov-db-* currently allocates, projected to DBU
+	// per node and summed cluster-wide. The graph draws it as the "configured" line so an
+	// operator sees resources raised over the plan (dynamic over-plan grow) as the state it is.
+	cluster.ConfigDbuPerNode = cluster.GetConfigDBUPerNode()
+	cluster.ConfigDbu = math.Round(cluster.ConfigDbuPerNode.Dbu*float64(len(cluster.Servers))*100) / 100
 }
 
 // GetDBContainerMemoryCapMB returns the cgroup --memory cap (MB) for the DB container.

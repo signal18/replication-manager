@@ -9,8 +9,12 @@ import { useTheme } from '../../ThemeProvider';
 //     to DBU by its ratio; PALE = the DBU rounding (the >=1 restart floor, dbu_* - real);
 //   - a DBU line ("max line") connecting each bucket's pivot = max of the axes (the
 //     billed DBU) -- a max, never a sum;
-//   - a horizontal PLAN line = the ceiling the configurator computes today
-//     (ceil(max(prov-db-*/ratio))), passed in as planDbu. No plan rework here.
+//   - a horizontal PLAN line = the commercial contract (prov-service-plan-dbu = per-node
+//     plan x #nodes), passed in as planDbu;
+//   - a horizontal CONFIGURED line = the technical allocation (prov-db-* projected to DBU,
+//     pivot x #nodes), passed in as configDbu. Drawn when it differs from the plan: above
+//     it = resources borrowed over the plan (dynamic over-plan grow), below it = headroom
+//     the plan still allows. The plan is never moved by a resize; this line is.
 //
 // Native units emitted by srv_snd.go: service_cpu=cores, service_mem=bytes,
 // service_io=iops, service_disk=bytes. 1 DBU = 1 core / 4 GB / 40 GB / 1000 IOPS,
@@ -33,7 +37,8 @@ function ChartGroupedDBU({
   dbuPaths = {},      // { cpu, mem, io, disk } scoped graphite targets (dbu_* per axis)
   servicePaths = {},  // { cpu, mem, io, disk } scoped graphite targets (service_* per axis)
   pivotPath = '',     // scoped target for the dbu pivot (max line)
-  planDbu = 1,        // plan ceiling, as the configurator computes it
+  planDbu = 1,        // plan line = the commercial contract (service-plan DBU)
+  configDbu = 0,      // configured line = the technical allocation (prov-db-* in DBU); 0 = not drawn
   isVisible = true,
 }) {
   const chartRef = useRef(null);
@@ -50,6 +55,7 @@ function ChartGroupedDBU({
     axis: isDark ? '#556' : '#cbd5e0',
     dbu: isDark ? '#eabb52' : '#d99a2b',
     plan: isDark ? '#8892b0' : '#6b7495',
+    config: isDark ? '#f0a35c' : '#c96a12',
     muted: isDark ? '#98a1bd' : '#6b7495',
   };
 
@@ -178,6 +184,7 @@ function ChartGroupedDBU({
 
     const maxVal = Math.max(
       planDbu,
+      configDbu || 0,
       d3.max(buckets, (b) => Math.max(b.pivot, d3.max(b.axes, (a) => Math.max(a.billed, a.real)))) || 1
     ) * 1.1;
 
@@ -230,6 +237,19 @@ function ChartGroupedDBU({
         .text(`plan ${planDbu}`);
     }
 
+    // CONFIGURED line (technical allocation, prov-db-*): only when it tells something the
+    // plan line does not. Label sits below the line when it is above the plan so the two
+    // labels never overlap.
+    if (configDbu > 0 && Math.abs(configDbu - planDbu) > 0.005) {
+      const yc = y(configDbu);
+      const above = configDbu > planDbu;
+      g.append('line').attr('x1', 0).attr('x2', plotW).attr('y1', yc).attr('y2', yc)
+        .attr('stroke', colors.config).attr('stroke-width', 1.5).attr('stroke-dasharray', '2 3');
+      g.append('text').attr('x', 0).attr('y', above ? yc - 4 : yc + 11).attr('text-anchor', 'start')
+        .style('fill', colors.config).style('font-size', '10px').style('font-weight', 600)
+        .text(`configured ${configDbu}${above ? ' (over plan)' : ''}`);
+    }
+
     // x axis (time)
     const tickEvery = Math.ceil(buckets.length / 6);
     g.append('g').attr('transform', `translate(0,${plotH})`)
@@ -255,7 +275,7 @@ function ChartGroupedDBU({
     const dbuGrp = legend.append('g').attr('transform', `translate(${lx},0)`);
     dbuGrp.append('line').attr('x1', 0).attr('x2', 16).attr('y1', -4).attr('y2', -4).attr('stroke', colors.dbu).attr('stroke-width', 2.5);
     dbuGrp.append('text').attr('x', 20).attr('y', 0).style('fill', colors.muted).style('font-size', '11px').text('DBU (max)');
-  }, [buildBuckets, height, planDbu, title, colors, isDark]);
+  }, [buildBuckets, height, planDbu, configDbu, title, colors, isDark]);
 
   useEffect(() => {
     if (!isVisible) return;

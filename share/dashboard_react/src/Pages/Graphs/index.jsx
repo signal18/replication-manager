@@ -77,6 +77,10 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   // The plan line = prov-service-plan-dbu, the materialized service-plan DBU (Σ per-node
   // deployment plans = prov-db-dbu x #nodes), recomputed each tick. The GUI just READS it.
   const planDbu = parseInt(cfg.provServicePlanDbu) || 1
+  // The configured line = cluster.configDbu, the technical prov-db-* allocation projected to
+  // DBU (per-node pivot x #nodes), refreshed each tick by repman. Distinct from the plan: a
+  // dynamic over-plan grow moves this line, never the plan.
+  const configDbu = Number(selectedCluster?.configDbu) || 0
 
   // Window (seconds) and refresh cadence for the d3 line charts, from the same
   // hour/step selectors that drive the cubism graphs.
@@ -200,9 +204,10 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          }}
          pivotPath={scope('sumSeries(dbu.*.dbu)')}
          planDbu={planDbu}
+         configDbu={configDbu}
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
-         title="Consumed DBU — real → DBU per axis (plan = configurator)"
+         title="Consumed DBU — real → DBU per axis (plan = service plan, configured = prov-db-*)"
        />
         {/* Compute (APU) — proxies + apps. Reuses the grouped-unit chart: the apu_* series
             already carry the server-side Compute projection, so we pass them as the billed
