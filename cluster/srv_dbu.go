@@ -147,11 +147,23 @@ func (cluster *Cluster) GetProvDbuFromConfigPerNode() int {
 // "capacity" the saturation check reads against (consumed_axis / config_axis). Zero reading
 // when no manager is wired.
 func (cluster *Cluster) GetConfigDBUPerNode() DBUReading {
+	return cluster.projectConfigDBUPerNode(-1, -1)
+}
+
+// projectConfigDBUPerNode is GetConfigDBUPerNode with an optional cores / iops override
+// (negative = keep the configured value): the per-node reading a NOT-yet-applied config
+// would give, so a dynamic +1 step can be gated before it is written. Zero reading when
+// no manager is wired.
+func (cluster *Cluster) projectConfigDBUPerNode(cores, iops float64) DBUReading {
 	if cluster.resources == nil {
 		return DBUReading{}
 	}
-	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
-	iops, _ := strconv.ParseFloat(cluster.Conf.ProvIops, 64)
+	if cores < 0 {
+		cores, _ = strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+	}
+	if iops < 0 {
+		iops, _ = strconv.ParseFloat(cluster.Conf.ProvIops, 64)
+	}
 	memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
 	diskGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
 	now := time.Now()
@@ -363,6 +375,11 @@ func (cluster *Cluster) RefreshDBUPlan() {
 	// per-node input and recomputed each tick, so it is always correct and never stale; the client
 	// moves only the per-node prov-db-dbu (dynamic layer), so this never re-locks in /etc.
 	cluster.Conf.ProvServicePlanDbu = int(cluster.resources.PlanByCluster(cluster.Name).Dbu + 0.5)
+	// The TECHNICAL side, next to the plan: what prov-db-* currently allocates, projected to DBU
+	// per node and summed cluster-wide. The graph draws it as the "configured" line so an
+	// operator sees resources raised over the plan (dynamic over-plan grow) as the state it is.
+	cluster.ConfigDbuPerNode = cluster.GetConfigDBUPerNode()
+	cluster.ConfigDbu = math.Round(cluster.ConfigDbuPerNode.Dbu*float64(len(cluster.Servers))*100) / 100
 }
 
 // GetDBContainerMemoryCapMB returns the cgroup --memory cap (MB) for the DB container.
