@@ -630,6 +630,17 @@ func (cluster *Cluster) checkResourceScaleWorkloadStates() {
 			ServerUrl: url,
 		})
 	}
+	// A refused over-plan step is an ERROR: the client's resources cannot follow the load and
+	// nothing will change until the budget, the pool or the plan does. Cluster-wide (the step
+	// is symmetric), keyed on the cluster so it stands as one state, not one per server.
+	if r := cluster.ResourceGrowRefused; r != nil {
+		sm.AddState("ERR00112@"+cluster.Name, state.State{
+			ErrType: "ERROR",
+			ErrKey:  "ERR00112",
+			ErrDesc: fmt.Sprintf(clusterError["ERR00112"], cluster.Name, r.Axis, r.From, r.To, r.TargetDbu, r.Reason),
+			ErrFrom: "WORKLOAD",
+		})
+	}
 	for _, srv := range cluster.Servers {
 		if srv == nil || srv.IsDown() {
 			continue

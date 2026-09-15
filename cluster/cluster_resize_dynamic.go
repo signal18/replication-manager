@@ -817,7 +817,8 @@ func (cluster *Cluster) DriveDynamicResize() {
 		}
 	}
 	if !cpuDue && !memDue && !ioDue {
-		cluster.lastDynamicGrowAxis = "" // nothing constrained: reset the hill-climb memory
+		cluster.lastDynamicGrowAxis = ""  // nothing constrained: reset the hill-climb memory
+		cluster.ResourceGrowRefused = nil // and a past refusal is moot once nothing is saturated
 		return
 	}
 
@@ -884,8 +885,7 @@ func (cluster *Cluster) growAxisInPlan(axis string, qps float64) bool {
 		newC := cur + 1 // +1 DBU of cpu (1 core per DBU)
 		target := cluster.projectConfigDBUPerNode(float64(newC), -1).Dbu
 		if ok, reason := cluster.overPlanGrowAllowed(target); !ok {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-				"Dynamic CPU grow prov-db-cpu-cores %d -> %d refused: %s", cur, newC, reason)
+			cluster.refuseDynamicGrow("cpu", resizeCPU, strconv.Itoa(cur), strconv.Itoa(newC), target, reason)
 			return false
 		}
 		cluster.recordDynamicGrow("cpu", qps)
@@ -901,8 +901,7 @@ func (cluster *Cluster) growAxisInPlan(axis string, qps float64) bool {
 		newI := cur + 1000 // +1 DBU of IOPS
 		target := cluster.projectConfigDBUPerNode(-1, float64(newI)).Dbu
 		if ok, reason := cluster.overPlanGrowAllowed(target); !ok {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-				"Dynamic IO grow prov-db-disk-iops %d -> %d refused: %s", cur, newI, reason)
+			cluster.refuseDynamicGrow("io", resizeIO, strconv.Itoa(cur), strconv.Itoa(newI), target, reason)
 			return false
 		}
 		cluster.recordDynamicGrow("io", qps)
@@ -912,6 +911,37 @@ func (cluster *Cluster) growAxisInPlan(axis string, qps float64) bool {
 		return true
 	}
 	return false
+}
+
+// GrowRefusal is the tracked state of a dynamic over-plan step the ResourceManager
+// gate refused: which axis, from/to, the projected per-node DBU, why, and when. It is a
+// STATE, not a log: set by growAxisInPlan on refusal, cleared when a later step is applied
+// (recordDynamicGrow) or when no axis is constrained any more (DriveDynamicResize), and
+// surfaced by checkResourceScaleWorkloadStates as ERR00112 in the workload channel.
+type GrowRefusal struct {
+	Axis      string    `json:"axis"`
+	From      string    `json:"from"`
+	To        string    `json:"to"`
+	TargetDbu float64   `json:"targetDbu"`
+	Reason    string    `json:"reason"`
+	Since     time.Time `json:"since"`
+}
+
+// refuseDynamicGrow materializes a refused step: tracked state on the cluster (ERR00112 rides
+// it), an orchestrator log line, and a resize-log entry per live server (feasibility no) so
+// the history shows the attempt -- the same trail the memory path leaves on a refusal.
+func (cluster *Cluster) refuseDynamicGrow(axis string, dim resizeDimension, from, to string, target float64, reason string) {
+	if cluster.ResourceGrowRefused == nil || cluster.ResourceGrowRefused.Axis != axis || cluster.ResourceGrowRefused.Reason != reason {
+		cluster.ResourceGrowRefused = &GrowRefusal{Axis: axis, From: from, To: to, TargetDbu: target, Reason: reason, Since: time.Now()}
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+		"Dynamic %s grow %s -> %s refused: %s", axis, from, to, reason)
+	for _, s := range cluster.Servers {
+		if s == nil || s.State == stateFailed || s.State == stateUnconn {
+			continue
+		}
+		cluster.logResize(s, dim, true, false, ResizeNo, nil)
+	}
 }
 
 // growScope labels a dynamic step for the log: within the plan or borrowing past it.
@@ -947,6 +977,7 @@ func (cluster *Cluster) recordDynamicGrow(axis string, qps float64) {
 	cluster.lastDynamicResize = time.Now()
 	cluster.lastDynamicGrowAxis = axis
 	cluster.qpsBeforeDynamicGrow = qps
+	cluster.ResourceGrowRefused = nil // a step went through: the refusal no longer stands
 }
 
 // CheckDynamicResourceDeploymentReady raises WARN0214 when the live resize is enabled

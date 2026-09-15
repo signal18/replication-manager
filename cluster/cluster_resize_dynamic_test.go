@@ -78,3 +78,38 @@ func TestOverPlanGrowAllowedCPUStep(t *testing.T) {
 		t.Fatalf("config-derived plan must still gate a step past it at 0%% overcommit")
 	}
 }
+
+// TestDynamicGrowRefusalIsTrackedState pins that a refused step is STATE, not a log line:
+// growAxisInPlan sets ResourceGrowRefused, and a later applied step clears it.
+func TestDynamicGrowRefusalIsTrackedState(t *testing.T) {
+	cl := &Cluster{Name: "t", resources: NewResourceManager(), Conf: &config.Config{}}
+	cl.Conf.ProvCores = "1"
+	cl.Conf.ProvMem = "768"
+	cl.Conf.ProvIops = "800"
+	cl.Conf.ProvDisk = "2"
+	cl.Conf.ProvDbDbu = 1
+	cl.Conf.ProvDBOvercommitPct = 0 // no budget: the +1 cpu step past the plan must be refused
+	cl.Servers = []*ServerMonitor{{URL: "db1:3306", State: stateMaster}}
+
+	if cl.growAxisInPlan("cpu", 0) {
+		t.Fatalf("cpu step past the plan with 0%% overcommit must be refused")
+	}
+	r := cl.ResourceGrowRefused
+	if r == nil || r.Axis != "cpu" || r.From != "1" || r.To != "2" || r.Reason == "" || r.Since.IsZero() {
+		t.Fatalf("refusal must be tracked on the cluster, got %+v", r)
+	}
+	if r.TargetDbu < 1.99 || r.TargetDbu > 2.01 {
+		t.Fatalf("refusal must carry the projected target, got %.2f", r.TargetDbu)
+	}
+	// a repeated identical refusal keeps its original timestamp (one state, not a flap)
+	since := r.Since
+	cl.growAxisInPlan("cpu", 0)
+	if cl.ResourceGrowRefused.Since != since {
+		t.Fatalf("identical refusal must not restamp Since")
+	}
+	// an applied step clears it
+	cl.recordDynamicGrow("cpu", 0)
+	if cl.ResourceGrowRefused != nil {
+		t.Fatalf("an applied step must clear the refusal")
+	}
+}
