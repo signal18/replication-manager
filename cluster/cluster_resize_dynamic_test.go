@@ -101,6 +101,10 @@ func TestDynamicGrowRefusalIsTrackedState(t *testing.T) {
 	if r.TargetDbu < 1.99 || r.TargetDbu > 2.01 {
 		t.Fatalf("refusal must carry the projected target, got %.2f", r.TargetDbu)
 	}
+	// a refusal stamps the cooldown: the step is re-evaluated once per window, not per tick
+	if cl.lastDynamicResize.IsZero() {
+		t.Fatalf("a refusal must stamp the scale-up cooldown")
+	}
 	// a repeated identical refusal keeps its original timestamp (one state, not a flap)
 	since := r.Since
 	cl.growAxisInPlan("cpu", 0)

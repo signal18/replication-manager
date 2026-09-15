@@ -928,12 +928,17 @@ type GrowRefusal struct {
 }
 
 // refuseDynamicGrow materializes a refused step: tracked state on the cluster (ERR00112 rides
-// it), an orchestrator log line, and a resize-log entry per live server (feasibility no) so
-// the history shows the attempt -- the same trail the memory path leaves on a refusal.
+// it), and -- only when the refusal is NEW (axis or reason changed) -- an orchestrator log line
+// and a resize-log entry per live server (feasibility no), the same trail the memory path
+// leaves. A standing refusal is re-evaluated once per scale-up window (the cooldown is stamped
+// here too), never per tick: on dev3 the per-tick re-evaluation wrote the same WARN line every
+// 2s (53 lines in 2 minutes) -- the state is the signal, the log is the transition.
 func (cluster *Cluster) refuseDynamicGrow(axis string, dim resizeDimension, from, to string, target float64, reason string) {
-	if cluster.ResourceGrowRefused == nil || cluster.ResourceGrowRefused.Axis != axis || cluster.ResourceGrowRefused.Reason != reason {
-		cluster.ResourceGrowRefused = &GrowRefusal{Axis: axis, From: from, To: to, TargetDbu: target, Reason: reason, Since: time.Now()}
+	cluster.lastDynamicResize = time.Now() // one evaluation per window, refused or not
+	if r := cluster.ResourceGrowRefused; r != nil && r.Axis == axis && r.Reason == reason {
+		return // same standing refusal: nothing new to say
 	}
+	cluster.ResourceGrowRefused = &GrowRefusal{Axis: axis, From: from, To: to, TargetDbu: target, Reason: reason, Since: time.Now()}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
 		"Dynamic %s grow %s -> %s refused: %s", axis, from, to, reason)
 	for _, s := range cluster.Servers {
