@@ -165,6 +165,7 @@ type ServerMonitor struct {
 	DBVersion                   *version.Version            `json:"dbVersion"`
 	Version                     int                         `json:"-"`
 	QPS                         int64                       `json:"qps"`
+	lastParallelModeEnforce     time.Time                   `json:"-"` // last STOP/SET/START of slave_parallel_mode by CheckSlaveSettings (rate limit)
 	ReplicationHealth           string                      `json:"replicationHealth"`
 	EventStatus                 []dbhelper.Event            `json:"eventStatus"`
 	FullProcessList             []dbhelper.Processlist      `json:"-"`
