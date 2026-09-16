@@ -133,6 +133,7 @@ var ClusterError = map[string]string{
 	"ERR00110":  "Proxy %s not provisioned: name is not a valid Kubernetes Service name (RFC 1035 label -- lowercase alphanumeric or '-', starting with a letter, no dots): %s",
 	"ERR00111":  "MaxScale %s could not live-patch master_accept_reads on %s: %s",
 	"ERR00112":  "Cluster %s: dynamic %s grow refused (%s -> %s = %.2f DBU/node over the plan): %s -- resources stay as they are; widen prov-db-overcommit-pct, free the node pool, or raise the plan",
+	"ERR00113":  "Kubernetes deployment %s not created: the namespace policy (PodSecurity) forbids shareProcessNamespace, which the resource sensor needs -- allow it or set monitoring-system-resources=false: %s",
 	"WARN0022":  "Rejoining standalone server %s to master %s",
 	"WARN0023":  "Number of failed master ping has been reached",
 	"WARN0045":  "Provision task is in queue",

@@ -434,6 +434,22 @@ func (cluster *Cluster) resourceManagerAllowsGrow(server *ServerMonitor) (bool, 
 // projection of a config the caller has not applied yet -- the dynamic +1 step deciding whether
 // it may go past the plan). Same three gates: overcommit envelope, node free pool, client hook.
 func (cluster *Cluster) resourceManagerAllowsGrowTo(server *ServerMonitor, target float64) (bool, string) {
+	if ok, reason := cluster.resourceManagerGrowCheck(server, target); !ok {
+		return false, reason
+	}
+	if cluster.resources == nil || target <= cluster.GetPlanDBUPerNode().Dbu {
+		return true, "" // within the contract -- always free, never gated, no hook
+	}
+	// The RM has GRANTED the borrow (target > plan, budget + pool OK). Fire the per-service
+	// client over-plan hook; a veto (non-zero exit) refuses the borrow.
+	return cluster.RunResourceRaisedOverPlanScript(server, cluster.GetPlanDBUPerNode().Dbu, target)
+}
+
+// resourceManagerGrowCheck is the DECISION half of the over-plan gate, side-effect free:
+// the overcommit envelope and the node's free pool for one server. The client hook is the
+// ACT half (RunResourceRaisedOverPlanScript) and must only fire once the whole cluster is
+// known to pass -- see overPlanGrowAllowed.
+func (cluster *Cluster) resourceManagerGrowCheck(server *ServerMonitor, target float64) (bool, string) {
 	if cluster.resources == nil {
 		return true, ""
 	}
@@ -453,12 +469,6 @@ func (cluster *Cluster) resourceManagerAllowsGrowTo(server *ServerMonitor, targe
 			return false, fmt.Sprintf("no free pool on node %s: consumed %.2f + grow %.2f > usable %.2f DBU/node",
 				server.Agent, used, extra, ceiling)
 		}
-	}
-	// The RM has GRANTED the borrow (target > plan, budget + pool OK). Fire the per-service
-	// client over-plan hook; a veto (non-zero exit) refuses the borrow. Only reached over-plan
-	// -- the within-plan path returned early above.
-	if ok, reason := cluster.RunResourceRaisedOverPlanScript(server, plan, target); !ok {
-		return false, reason
 	}
 	return true, ""
 }
@@ -1146,11 +1156,27 @@ func (cluster *Cluster) overPlanGrowAllowed(target float64) (bool, string) {
 	if plan <= 0 || target <= plan {
 		return true, ""
 	}
+	live := make([]*ServerMonitor, 0, len(cluster.Servers))
 	for _, s := range cluster.Servers {
 		if s == nil || s.State == stateFailed || s.State == stateUnconn {
 			continue
 		}
-		if ok, reason := cluster.resourceManagerAllowsGrowTo(s, target); !ok {
+		live = append(live, s)
+	}
+	// Phase 1 -- DECIDE on every server (envelope + pool), no side effect: one refusal
+	// refuses the step before any client hook has fired for a grow that will not happen.
+	for _, s := range live {
+		if ok, reason := cluster.resourceManagerGrowCheck(s, target); !ok {
+			return false, fmt.Sprintf("%s: %s", s.URL, reason)
+		}
+	}
+	// Phase 2 -- ACT: the cluster-wide step is granted by the RM, fire the per-service client
+	// hook (prov-db-resource-raised-over-plan-script). A veto on any server refuses the step;
+	// hooks already fired on earlier servers saw a borrow that is then not applied -- that
+	// residual is inherent to a per-service hook with a cluster-wide decision, and is bounded
+	// to one call per server per scale-up window by the cooldown.
+	for _, s := range live {
+		if ok, reason := cluster.RunResourceRaisedOverPlanScript(s, plan, target); !ok {
 			return false, fmt.Sprintf("%s: %s", s.URL, reason)
 		}
 	}

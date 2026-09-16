@@ -1080,7 +1080,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	// shareProcessNamespace, provisioning does NOT fall back to a sensor-less
 	// Deployment: that would let an operator believe the DBU sensor is active
 	// when it can never run under this namespace policy. It fails the
-	// provisioning call instead (ERR00112) so the operator sees the capability
+	// provisioning call instead (ERR00113) so the operator sees the capability
 	// gap immediately, not as a silently-degraded WARN0212 discovered later. A
 	// Cloud18-managed cluster (we set the policy) admits it and never hits this
 	// path. See doc/implementation/cluster/DBU_RESOURCE_SENSOR.md.
@@ -1095,7 +1095,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
 	if sensorEnabled && apierrors.IsForbidden(err) {
 		cluster.SetState("WARN0212", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0212"], cluster.Name), ErrFrom: "CONF"})
-		capErr := fmt.Errorf(clusterError["ERR00112"], s.Name, err)
+		capErr := fmt.Errorf(clusterError["ERR00113"], s.Name, err)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", capErr)
 		cluster.errorChan <- capErr
 		return

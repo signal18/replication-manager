@@ -560,7 +560,11 @@ func (server *ServerMonitor) canScaleSustained(up bool, instant []string, speedS
 		}
 		v, ok := windowExtremum(md.Values, md.IsAbsent, md.GetStepTime(), d, up)
 		if !ok {
-			continue // not enough history to call it sustained: not due yet
+			// Not enough history to call it sustained: not due yet. Deliberate: right after a
+			// start or across a sensor gap the old code trusted the instant state, which is
+			// exactly the "decided on 2 s of data" this replaces; the fast path (speed <= 1m)
+			// still decides on the instant state, and coverage catches up within one window.
+			continue
 		}
 		if (up && v >= capa*overThrFactor) || (!up && v <= capa*underThrFactor) {
 			due = append(due, axis)
