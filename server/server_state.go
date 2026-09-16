@@ -513,8 +513,6 @@ func (repman *ReplicationManager) ProduceCloud18ConnectivityStates() {
 			ErrDesc: desc,
 			ErrFrom: "REPMAN",
 		})
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-			"Cloud18 GitLab unreachable (%s): %s", gitlabProbeURL, gitlabErr)
 	}
 
 	// ── CRM API probe ────────────────────────────────────────────────────────
@@ -530,8 +528,6 @@ func (repman *ReplicationManager) ProduceCloud18ConnectivityStates() {
 				ErrDesc: desc,
 				ErrFrom: "REPMAN",
 			})
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-				"Cloud18 CRM API unreachable (%s): %s", crmProbeURL, crmErr)
 		}
 	}
 
@@ -545,8 +541,6 @@ func (repman *ReplicationManager) ProduceCloud18ConnectivityStates() {
 			ErrDesc: desc,
 			ErrFrom: "REPMAN",
 		})
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-			"Meet support service unreachable (%s): %s", meethelper.MeetURL, meetErr)
 	}
 }
 
