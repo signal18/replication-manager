@@ -295,7 +295,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          ])}
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
-         title="Replication parallelism — binlog group commit size (commit concurrency) vs parallel workers"
+         title="Replication parallelism — binlog group commit size (commit concurrency, MariaDB only) vs parallel workers"
        />
       </GraphSection>
 

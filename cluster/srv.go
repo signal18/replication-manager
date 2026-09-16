@@ -1555,27 +1555,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.QPS = (qps - prevqps) / (server.MonitorTime - server.PrevMonitorTime)
 		}
 	}
-	// Replication parallelism signal: the average binlog group commit size over the tick.
-	// Transactions that committed in the same group are known conflict-free, so this is the
-	// number of workers a slave can use in parallel on this master's binlog (conservative
-	// mode; optimistic goes further but this stays the floor). Compared on the graph with the
-	// workers actually configured (slave_parallel_threads); drives the future tuner.
-	if pgc, ok := server.PrevStatus.CheckAndGet("BINLOG_GROUP_COMMITS"); ok {
-		groups, _ := strconv.ParseInt(server.Status.Get("BINLOG_GROUP_COMMITS"), 10, 64)
-		prevGroups, _ := strconv.ParseInt(pgc, 10, 64)
-		commits, _ := strconv.ParseInt(server.Status.Get("BINLOG_COMMITS"), 10, 64)
-		prevCommits, _ := strconv.ParseInt(server.PrevStatus.Get("BINLOG_COMMITS"), 10, 64)
-		if dg := groups - prevGroups; dg > 0 && commits >= prevCommits {
-			server.ReplicationGroupCommitSize = float64(commits-prevCommits) / float64(dg)
-		} else {
-			server.ReplicationGroupCommitSize = 0
-		}
-	}
-	if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_THREADS"); ok {
-		server.ReplicationParallelThreads, _ = strconv.ParseInt(v, 10, 64)
-	} else if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_WORKERS"); ok {
-		server.ReplicationParallelThreads, _ = strconv.ParseInt(v, 10, 64)
-	}
+	server.refreshReplicationParallelism()
 
 	if server.HasHighNumberSlowQueries() {
 		cluster.SetState("WARN0088", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["WARN0088"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
@@ -2657,5 +2637,43 @@ func (server *ServerMonitor) refreshResolvedIP() {
 	}
 	if ip != server.IP {
 		server.IP = ip
+	}
+}
+
+// refreshReplicationParallelism recomputes the replication parallelism signal from the
+// current and previous status/variables snapshots (pure: no I/O, unit-tested).
+//
+// ReplicationGroupCommitSize = ΔBinlog_commits / ΔBinlog_group_commits over the tick: the
+// average binlog group commit size. Transactions that committed in the same group are known
+// conflict-free, so this is the number of workers a slave can use in parallel on this
+// master's binlog in conservative mode (optimistic goes further; this stays the floor).
+// Graphed against the workers configured (ReplicationParallelThreads); drives the future
+// tuner (#1806). MariaDB-only: MySQL/Percona expose neither counter, so the value stays 0
+// there (the graph title says so). Reset to 0 whenever the delta cannot be computed (no
+// previous snapshot, no commit in the tick, counter reset) so a missed tick never leaves a
+// stale reading in place.
+//
+// ReplicationParallelThreads = slave_parallel_threads (MariaDB) or slave_parallel_workers
+// (MySQL), the workers configured to consume that concurrency.
+func (server *ServerMonitor) refreshReplicationParallelism() {
+	server.ReplicationGroupCommitSize = 0
+	if server.Status != nil && server.PrevStatus != nil {
+		if _, ok := server.PrevStatus.CheckAndGet("BINLOG_GROUP_COMMITS"); ok {
+			dg := server.GetStatusDeltaValue("BINLOG_GROUP_COMMITS")
+			dc := server.GetStatusDeltaValue("BINLOG_COMMITS")
+			// GetStatusDeltaValue does not guard against a counter reset (restart): both
+			// deltas must be non-negative, and no group means no ratio.
+			if dg > 0 && dc >= 0 {
+				server.ReplicationGroupCommitSize = float64(dc) / float64(dg)
+			}
+		}
+	}
+	if server.Variables == nil {
+		return
+	}
+	if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_THREADS"); ok {
+		server.ReplicationParallelThreads, _ = strconv.ParseInt(v, 10, 64)
+	} else if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_WORKERS"); ok {
+		server.ReplicationParallelThreads, _ = strconv.ParseInt(v, 10, 64)
 	}
 }
