@@ -167,6 +167,7 @@ type ServerMonitor struct {
 	QPS                         int64                       `json:"qps"`
 	ReplicationGroupCommitSize  float64                     `json:"replicationGroupCommitSize"` // avg binlog group commit size over the last tick (Binlog_commits / Binlog_group_commits deltas): the commit concurrency a slave can apply in parallel; 0 when no commit in the tick
 	ReplicationParallelThreads  int64                       `json:"replicationParallelThreads"` // slave_parallel_threads (MariaDB) / slave_parallel_workers (MySQL) as the server runs it -- the workers, to compare with the group commit size
+	lastParallelModeEnforce     time.Time                   `json:"-"` // last STOP/SET/START of slave_parallel_mode by CheckSlaveSettings (rate limit)
 	ReplicationHealth           string                      `json:"replicationHealth"`
 	EventStatus                 []dbhelper.Event            `json:"eventStatus"`
 	FullProcessList             []dbhelper.Processlist      `json:"-"`
