@@ -276,10 +276,13 @@ A DB container has **two** distinct memory limits, changed by two different mech
      (`completePendingCgroupShrink`).
    - the cap follows the load **both ways**: `DriveDynamicResize` steps an axis up (+1 DBU) when
      any server saturates it for `prov-db-scale-up-config-in-plan-speed`, and
-     `driveDynamicShrink` steps it down (-1 DBU) when **every** live server under-uses it
-     (consumed ≤ config × `prov-db-cap-shrink-pct`) for `prov-db-scale-down-config-in-plan-speed`,
-     memory first then cpu, never under the **plan per node** (the floor). Grow always wins;
-     one step per window either way.
+     `driveDynamicShrink` moves it down when **every** live server under-uses it
+     (consumed ≤ config × `prov-db-cap-shrink-pct`) for `prov-db-scale-down-config-in-plan-speed`:
+     in one move, **aligned to the DBU** = the smallest whole DBU that keeps every server's peak
+     consumption under the high-water mark (`1 - prov-db-cap-safety-pct`), bounded by the
+     **undercommit floor** `prov-db-undercommit-pct` (the pendant of the overcommit ceiling:
+     floor(plan × (1 - pct/100)) DBU per node, never under 1 DBU). Memory first then cpu. Grow
+     always wins; one move per window either way.
 
 2. **The container ceiling — only on recreate.** The docker `--memory` in the OpenSVC
    `container#db` run_args (`GetDBContainerMemoryCapMB`) is the outer hard limit, set at

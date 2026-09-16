@@ -815,8 +815,8 @@ func (cluster *Cluster) currentClusterQPS() float64 {
 //	                    improving QPS (the working set now fits / the cache is no
 //	                    longer the bottleneck), i.e. the IO is genuine, not eviction.
 //
-// The cap also follows the load DOWN: when nothing is saturated, driveDynamicShrink steps
-// an axis every live server under-uses back toward the plan floor (see there).
+// The cap also follows the load DOWN: when nothing is saturated, driveDynamicShrink aligns
+// an axis every live server under-uses to the DBU the load needs, floor 1 DBU (see there).
 //
 // A step within the plan is always free. A step PAST the plan is not refused outright: it
 // goes through the ResourceManager over-plan gate (resourceManagerAllowsGrowTo) -- the
@@ -895,23 +895,27 @@ func (cluster *Cluster) DriveDynamicResize() {
 // driveDynamicShrink is the step-DOWN half of DriveDynamicResize: with dynamic capping the
 // cap must follow the load down as well, or every grow accumulates into permanent
 // over-allocation (dev3 sat a full day at 0.2 core with 2 cores configured while CINF0008
-// said "scale down possible" every tick). One -1 DBU step per scale-down window
+// said "scale down possible" every tick). Once per scale-down window
 // (prov-db-scale-down-config-in-plan-speed, slower than up by default), on an axis EVERY live
 // server reports under-used for that window (CanScaleConfigInPlan(false): consumed <= config
-// x prov-db-cap-shrink-pct) -- symmetric with the grow, which any one server can force.
-// Only reached when no axis is saturated (grow always wins). FLOOR = the plan per node
-// (decision pending Stephane 2026-09-16, plan taken as floor): the plan is what the client
-// pays, shrinking under it saves them nothing and only frees the pool. cpu and mem only:
-// io has no shrink primitive worth a step (SET GLOBAL io tuning is not a cost). The memory
-// step reuses the existing anti-OOM shrink (buffer pool first, deferred cgroup) through
-// SetDBMemorySize; the cpu step re-tunes and moves the cgroup through SetDBCores.
+// x prov-db-cap-shrink-pct) -- symmetric with the grow, which any one server can force -- the
+// axis is ALIGNED TO THE DBU (decision 2026-09-16): it lands in one move on the smallest whole
+// number of DBU that still keeps every server's peak consumption under the high-water mark
+// (consumed <= target x (1 - prov-db-cap-safety-pct)), bounded below by the UNDERCOMMIT floor
+// (prov-db-undercommit-pct, the pendant of the overcommit ceiling: floor(plan x (1 - pct/100)),
+// never under 1 DBU). Aligning instead of stepping -1 avoids both the slow descent (4 -> 3 ->
+// 2 -> 1 over four windows for a load of 0.2 core) and the flap a blind -1 step can cause
+// (2 -> 1 with 1.0 core consumed lands at 100% and grows right back). Only reached when no
+// axis is saturated (grow always wins). cpu and mem only: io has no shrink primitive worth a
+// move. The memory move reuses the existing anti-OOM shrink (buffer pool first, deferred
+// cgroup) through SetDBMemorySize; the cpu move re-tunes and moves the cgroup via SetDBCores.
 func (cluster *Cluster) driveDynamicShrink() {
 	d, err := time.ParseDuration(cluster.Conf.ScaleDownConfigInPlanSpeed)
 	if err != nil || d < time.Minute {
 		d = time.Minute
 	}
 	if !cluster.lastDynamicResize.IsZero() && time.Since(cluster.lastDynamicResize) < d {
-		return // one step per scale-down window, up or down
+		return // one move per scale-down window, up or down
 	}
 	cpuUnder, memUnder := true, true
 	live := 0
@@ -939,48 +943,73 @@ func (cluster *Cluster) driveDynamicShrink() {
 	}
 }
 
-// dynamicShrinkTarget is the pure decision of one -1 DBU step down on an axis: the value it
-// would move to, clamped at the plan floor. ok=false when already at (or under) the floor.
+// dynamicResizeCoresPerDBU / dynamicResizeMemMBPerDBU are the Database-profile ratios the
+// dynamic moves use (1 core / 4 GB per DBU, the same constants growAxisInPlan steps by).
+const (
+	dynamicResizeCoresPerDBU = 1
+	dynamicResizeMemMBPerDBU = 4096
+)
+
+// dynamicShrinkTarget is the pure decision of the aligned move down on an axis: from the
+// current config to the smallest whole number of DBU that keeps the peak consumption of every
+// live server under the high-water mark (1 - prov-db-cap-safety-pct), never under the
+// undercommit floor (UndercommitFloorDBU of the plan per node, itself >= 1 DBU). ok=false when
+// the aligned target is not below the current config (already aligned, or the load needs
+// what is configured). Servers without a consumed reading are ignored (no evidence, no move
+// on their behalf); if none has one, nothing moves.
 func (cluster *Cluster) dynamicShrinkTarget(axis string) (from, to string, ok bool) {
-	planPerNode := cluster.GetPlanDBUPerNode().Dbu
+	headroom := 1 - clampPct(cluster.Conf.ProvDBCapSafetyPct)/100.0 // 0.85 by default
+	if headroom <= 0 {
+		headroom = 1
+	}
+	peakDbu, seen := 0.0, false
+	for _, s := range cluster.Servers {
+		if s == nil || s.State == stateFailed || s.State == stateUnconn || s.DBUConsumed == nil {
+			continue
+		}
+		v := 0.0
+		switch axis {
+		case "cpu":
+			v = s.DBUConsumed.DbuCpu
+		case "mem":
+			v = s.DBUConsumed.DbuMem
+		}
+		if v > peakDbu {
+			peakDbu = v
+		}
+		seen = true
+	}
+	if !seen {
+		return "", "", false
+	}
+	targetDbu := math.Ceil(peakDbu/headroom - 1e-9) // align to the DBU grid
+	if floor := UndercommitFloorDBU(cluster.GetPlanDBUPerNode().Dbu, cluster.Conf.ProvDBUndercommitPct); targetDbu < floor {
+		targetDbu = floor // the commercial scalability-down floor (>= 1 DBU)
+	}
 	switch axis {
 	case "cpu":
 		cur, _ := strconv.Atoi(cluster.Conf.ProvCores)
-		floor := int(math.Floor(planPerNode)) // 1 core per DBU
-		if floor < 1 {
-			floor = 1
-		}
-		if cur <= floor {
+		newC := int(targetDbu) * dynamicResizeCoresPerDBU
+		if cur <= newC {
 			return strconv.Itoa(cur), strconv.Itoa(cur), false
-		}
-		newC := cur - 1
-		if newC < floor {
-			newC = floor
 		}
 		return strconv.Itoa(cur), strconv.Itoa(newC), true
 	case "mem":
 		curMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
-		floorMB := int(planPerNode * 4096) // 4 GB per DBU
-		if floorMB < 1 {
-			floorMB = 1
-		}
-		if int(curMB) <= floorMB {
+		newMB := int(targetDbu) * dynamicResizeMemMBPerDBU
+		if int(curMB) <= newMB {
 			return strconv.Itoa(int(curMB)), strconv.Itoa(int(curMB)), false
-		}
-		newMB := int(curMB) - 4096 // -1 DBU of memory
-		if newMB < floorMB {
-			newMB = floorMB
 		}
 		return strconv.Itoa(int(curMB)), strconv.Itoa(newMB), true
 	}
 	return "", "", false
 }
 
-// shrinkAxisInPlan applies one -1 DBU step down on an axis through its setter (which runs the
-// live shrink: SET GLOBAL re-tune + cgroup for cpu, buffer pool then deferred cgroup for
+// shrinkAxisInPlan applies the aligned move down on an axis through its setter (which runs
+// the live shrink: SET GLOBAL re-tune + cgroup for cpu, buffer pool then deferred cgroup for
 // mem), records it as the last dynamic resize (cooldown) and clears the hill-climb memory
-// (a shrink is not a grow step to measure QPS against). Returns false without acting at the
-// plan floor.
+// (a shrink is not a grow step to measure QPS against). Returns false without acting when
+// the config is already aligned to the load (or at the undercommit floor).
 func (cluster *Cluster) shrinkAxisInPlan(axis string) bool {
 	from, to, ok := cluster.dynamicShrinkTarget(axis)
 	if !ok {
@@ -988,15 +1017,14 @@ func (cluster *Cluster) shrinkAxisInPlan(axis string) bool {
 	}
 	cluster.lastDynamicResize = time.Now()
 	cluster.lastDynamicGrowAxis = ""
-	planPerNode := cluster.GetPlanDBUPerNode().Dbu
 	switch axis {
 	case "cpu":
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"Dynamic CPU shrink (all servers under-used for %s): prov-db-cpu-cores %s -> %s (floor = plan %.2f DBU/node)", cluster.Conf.ScaleDownConfigInPlanSpeed, from, to, planPerNode)
+			"Dynamic CPU shrink (all servers under-used for %s, aligned to the DBU): prov-db-cpu-cores %s -> %s", cluster.Conf.ScaleDownConfigInPlanSpeed, from, to)
 		cluster.SetDBCores(to)
 	case "mem":
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"Dynamic MEMORY shrink (all servers under-used for %s): prov-db-memory %sMB -> %sMB (floor = plan %.2f DBU/node)", cluster.Conf.ScaleDownConfigInPlanSpeed, from, to, planPerNode)
+			"Dynamic MEMORY shrink (all servers under-used for %s, aligned to the DBU): prov-db-memory %sMB -> %sMB", cluster.Conf.ScaleDownConfigInPlanSpeed, from, to)
 		cluster.SetDBMemorySize(to)
 	}
 	return true

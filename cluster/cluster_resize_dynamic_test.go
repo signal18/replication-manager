@@ -118,47 +118,86 @@ func TestDynamicGrowRefusalIsTrackedState(t *testing.T) {
 	}
 }
 
-// TestDynamicShrinkTargetFloorsAtThePlan pins the step-down decision: one -1 DBU step on cpu
-// or memory, never under the plan per node (the floor decision of 2026-09-16).
-func TestDynamicShrinkTargetFloorsAtThePlan(t *testing.T) {
-	newCluster := func(cores, memMB string, planDbu int) *Cluster {
+// TestDynamicShrinkTargetAlignsToTheDBU pins the step-down decision (2026-09-16): the axis
+// lands in one move on the smallest whole DBU that keeps every server's peak consumption
+// under the high-water mark (1 - safety-pct), bounded by the undercommit floor
+// (floor(plan x (1 - undercommit-pct)), >= 1 DBU) -- never the plan itself.
+func TestDynamicShrinkTargetAlignsToTheDBU(t *testing.T) {
+	newCluster := func(cores, memMB string, planDbu, undercommit int, cpuUsed, memUsed []float64) *Cluster {
 		cl := &Cluster{Name: "t", resources: NewResourceManager(), Conf: &config.Config{}}
 		cl.Conf.ProvCores = cores
 		cl.Conf.ProvMem = memMB
 		cl.Conf.ProvIops = "800"
 		cl.Conf.ProvDisk = "2"
 		cl.Conf.ProvDbDbu = planDbu
-		cl.Servers = []*ServerMonitor{{URL: "db1:3306", State: stateMaster}}
+		cl.Conf.ProvDBCapSafetyPct = 15
+		cl.Conf.ProvDBUndercommitPct = undercommit
+		for i := range cpuUsed {
+			cl.Servers = append(cl.Servers, &ServerMonitor{URL: "db:3306", State: stateSlave,
+				DBUConsumed: &DBUReading{DbuCpu: cpuUsed[i], DbuMem: memUsed[i]}})
+		}
 		return cl
 	}
-	// dev3 shape: 2 cores over a 1 DBU plan -> one step to 1, then stop
-	cl := newCluster("2", "768", 1)
+	// dev3 idle: 2 cores over a 1 DBU plan, 0.2 core used -> 1 core in one move (ceil(0.2/0.85))
+	cl := newCluster("2", "768", 1, 50, []float64{0.2, 0.15, 0.18}, []float64{0.15, 0.15, 0.15})
 	if from, to, ok := cl.dynamicShrinkTarget("cpu"); !ok || from != "2" || to != "1" {
-		t.Fatalf("cpu 2 over plan 1 must step to 1, got %s->%s ok=%v", from, to, ok)
+		t.Fatalf("2 cores at 0.2 used must align to 1, got %s->%s ok=%v", from, to, ok)
 	}
-	cl.Conf.ProvCores = "1"
+	// 4 cores, peak 1.0 core on one server -> ceil(1.0/0.85) = 2 in ONE move (not 4->3)
+	cl = newCluster("4", "768", 1, 100, []float64{0.2, 1.0, 0.3}, []float64{0.1, 0.1, 0.1})
+	if _, to, ok := cl.dynamicShrinkTarget("cpu"); !ok || to != "2" {
+		t.Fatalf("4 cores with a 1.0-core peak must align to 2, got %s ok=%v", to, ok)
+	}
+	// 2 cores, peak 1.0 core: 1 core would sit at 100% -> stays at 2 (anti-flap landing)
+	cl = newCluster("2", "768", 1, 50, []float64{1.0, 0.2, 0.2}, []float64{0.1, 0.1, 0.1})
 	if _, _, ok := cl.dynamicShrinkTarget("cpu"); ok {
-		t.Fatalf("cpu at the plan floor must not step down")
+		t.Fatalf("2 cores with a 1.0-core peak must not move (1 core would be saturated)")
 	}
-	// memory already under the plan floor (768MB < 4096MB): nothing to shrink
+	// undercommit floor: 4 DBU plan at 50% -> floor 2; 4 cores at 0.2 used land on 2, not 1
+	cl = newCluster("4", "768", 4, 50, []float64{0.2}, []float64{0.1})
+	if _, to, ok := cl.dynamicShrinkTarget("cpu"); !ok || to != "2" {
+		t.Fatalf("4 DBU plan at 50%% undercommit must floor the move at 2 cores, got %s ok=%v", to, ok)
+	}
+	// undercommit 0%: never under the plan (4)
+	cl = newCluster("4", "768", 4, 0, []float64{0.2}, []float64{0.1})
+	if _, _, ok := cl.dynamicShrinkTarget("cpu"); ok {
+		t.Fatalf("0%% undercommit must keep the config at the plan")
+	}
+	// memory: 12288MB with a 0.6 DBU peak -> ceil(0.6/0.85) = 1 DBU = 4096MB (plan 1, 50%)
+	cl = newCluster("2", "12288", 1, 50, []float64{0.1}, []float64{0.6})
+	if from, to, ok := cl.dynamicShrinkTarget("mem"); !ok || from != "12288" || to != "4096" {
+		t.Fatalf("12288MB at 0.6 DBU must align to 4096, got %s->%s ok=%v", from, to, ok)
+	}
+	// memory already under one DBU (768MB): the 1 DBU floor, nothing to shrink
+	cl = newCluster("2", "768", 1, 50, []float64{0.1}, []float64{0.1})
 	if _, _, ok := cl.dynamicShrinkTarget("mem"); ok {
-		t.Fatalf("memory under the plan floor must not step down")
+		t.Fatalf("768MB is under the 1 DBU floor: no move")
 	}
-	// 12GB over a 2 DBU plan (floor 8192MB): one -4096 step, clamped at the floor next time
-	cl2 := newCluster("3", "12288", 2)
-	if from, to, ok := cl2.dynamicShrinkTarget("mem"); !ok || from != "12288" || to != "8192" {
-		t.Fatalf("mem 12288 over plan 2 must step to 8192, got %s->%s ok=%v", from, to, ok)
+	// no consumed reading anywhere: no evidence, no move
+	cl = newCluster("2", "768", 1, 50, nil, nil)
+	cl.Servers = []*ServerMonitor{{URL: "db1:3306", State: stateMaster}}
+	if _, _, ok := cl.dynamicShrinkTarget("cpu"); ok {
+		t.Fatalf("no reading must mean no move")
 	}
-	if from, to, ok := cl2.dynamicShrinkTarget("cpu"); !ok || from != "3" || to != "2" {
-		t.Fatalf("cpu 3 over plan 2 must step to 2, got %s->%s ok=%v", from, to, ok)
-	}
-	// a 5GB config over a 1 DBU plan clamps to the 4096 floor, not to 5120-4096
-	cl3 := newCluster("1", "5120", 1)
-	if _, to, ok := cl3.dynamicShrinkTarget("mem"); !ok || to != "4096" {
-		t.Fatalf("mem 5120 over plan 1 must clamp to the 4096 floor, got %s ok=%v", to, ok)
-	}
-	// at the floor, shrinkAxisInPlan acts on nothing and does not stamp the cooldown
+	// already aligned: shrinkAxisInPlan acts on nothing and does not stamp the cooldown
+	cl = newCluster("1", "768", 1, 50, []float64{0.2}, []float64{0.1})
 	if cl.shrinkAxisInPlan("cpu") || !cl.lastDynamicResize.IsZero() {
-		t.Fatalf("at the floor the shrink must be a no-op")
+		t.Fatalf("already aligned: the shrink must be a no-op")
+	}
+}
+
+// TestUndercommitFloorDBU pins the floor formula next to the ceiling one.
+func TestUndercommitFloorDBU(t *testing.T) {
+	cases := []struct {
+		plan float64
+		pct  int
+		want float64
+	}{
+		{1, 50, 1}, {2, 50, 1}, {3, 50, 1}, {4, 50, 2}, {4, 0, 4}, {4, 100, 1}, {0, 50, 1}, {10, 10, 9},
+	}
+	for _, c := range cases {
+		if got := UndercommitFloorDBU(c.plan, c.pct); got != c.want {
+			t.Errorf("UndercommitFloorDBU(%v, %d) = %v, want %v", c.plan, c.pct, got, c.want)
+		}
 	}
 }

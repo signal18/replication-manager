@@ -458,6 +458,23 @@ func (m *ResourceManager) CanGrowBeyondPlan(targetDbuPerNode, planDbuPerNode flo
 	return true, ""
 }
 
+// UndercommitFloorDBU is the per-node DBU floor an automatic shrink may reach, the pendant
+// of OvercommitCeilingDBU: plan × (1 - pct/100), rounded DOWN to a whole DBU (it is a floor),
+// never under 1 DBU (decision 2026-09-16). No plan (<= 0) means the 1 DBU floor only.
+func UndercommitFloorDBU(planDbuPerNode float64, undercommitPct int) float64 {
+	if undercommitPct < 0 {
+		undercommitPct = 0
+	}
+	if undercommitPct > 100 {
+		undercommitPct = 100
+	}
+	floor := math.Floor(planDbuPerNode*(1-float64(undercommitPct)/100.0) + 1e-9)
+	if floor < 1 {
+		floor = 1
+	}
+	return floor
+}
+
 // OvercommitCeilingDBU is the per-node DBU ceiling an automatic over-plan grow may reach:
 // plan × (1 + pct/100), rounded UP to a whole DBU. The 1e-9 guard absorbs binary float noise
 // (10 × 1.1 = 11.000000000000002 must stay 11, not become 12).
