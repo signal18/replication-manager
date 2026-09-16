@@ -123,3 +123,35 @@ func TestAgentHeadroomNoCapacity(t *testing.T) {
 		t.Errorf("consumed should still be reported: cores = %g, want 1", hr.Consumed.CpuCores)
 	}
 }
+
+// TestCanGrowBeyondPlanEnvelopeRoundsUp pins the 2026-09-15 decision: the overcommit envelope
+// is rounded UP to a whole DBU so a +1 DBU step can use it on small plans.
+func TestCanGrowBeyondPlanEnvelopeRoundsUp(t *testing.T) {
+	m := NewResourceManager()
+	cases := []struct {
+		name   string
+		target float64
+		plan   float64
+		pct    int
+		want   bool
+	}{
+		{"1 DBU plan, 50%: one step (2) passes", 2, 1, 50, true},
+		{"1 DBU plan, 50%: two steps (3) refused", 3, 1, 50, false},
+		{"1 DBU plan, 0%: any step refused", 2, 1, 0, false},
+		{"2 DBU plan, 50%: ceiling 3 exact", 3, 2, 50, true},
+		{"2 DBU plan, 50%: 4 refused", 4, 2, 50, false},
+		{"10 DBU plan, 10%: float noise stays 11", 11, 10, 10, true},
+		{"10 DBU plan, 10%: 12 refused", 12, 10, 10, false},
+		{"no plan: no ceiling", 99, 0, 0, true},
+		{"negative pct treated as 0", 2, 1, -20, false},
+	}
+	for _, c := range cases {
+		got, reason := m.CanGrowBeyondPlan(c.target, c.plan, c.pct)
+		if got != c.want {
+			t.Errorf("%s: allowed=%v want %v (%s)", c.name, got, c.want, reason)
+		}
+	}
+	if OvercommitCeilingDBU(10, 10) != 11 {
+		t.Errorf("OvercommitCeilingDBU(10,10) = %v, want 11", OvercommitCeilingDBU(10, 10))
+	}
+}

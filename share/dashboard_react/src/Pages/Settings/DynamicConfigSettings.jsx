@@ -134,6 +134,11 @@ function DynamicConfigSettings({ selectedCluster, user }) {
       value: num('prov-db-overcommit-pct', cfg.provDbOvercommitPct, '50')
     },
     {
+      key: 'Undercommit % (scale-down floor)',
+      help: h(`**Commercial scalability-down floor**\n\nThe pendant of the overcommit ceiling: max percent the dynamic resource change may auto-shrink resources UNDER the plan (down to floor(plan x (1 - pct/100)) DBU per node, never under 1 DBU).\n\nConfig: \`prov-db-undercommit-pct\` (default 50)`, 'Undercommit %'),
+      value: num('prov-db-undercommit-pct', cfg.provDbUndercommitPct, '50')
+    },
+    {
       key: 'Scale-Up Speed (resources, in-plan)',
       help: h(`**Scale-up speed — resources within the plan**\n\nHow long a server's config saturation must persist before repman scales its resources UP (free within the plan). A duration.\n\nConfig: \`prov-db-scale-up-config-in-plan-speed\` (default 1m)`, 'Scale-Up Speed (resources)'),
       value: num('prov-db-scale-up-config-in-plan-speed', cfg.scaleUpConfigInPlanSpeed, '1m')

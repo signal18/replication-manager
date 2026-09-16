@@ -256,6 +256,207 @@ the per-node config rounded up to the next DBU (`GetProvDbuFromConfigPerNode`). 
 (`plan > consumed`) — both DERIVED in the GUI from graphite (`diffSeries`), nothing emitted.
 `prov-db-overcommit-pct` = the commercial scale-up ceiling above the plan.
 
+## Dynamic resize — decision loop, gates, backends (2026-09-16)
+
+Implementation notes for the live resize of a database's provisioned resources
+(`prov-db-cpu-cores`, `prov-db-memory`, `prov-db-disk-iops`) driven by the consumption the
+DBU sensor observes ([DBU_RESOURCE_SENSOR.md](DBU_RESOURCE_SENSOR.md)). User-facing page:
+docs.signal18.io → Provisioning → Dynamic Resources. Code: `cluster/cluster_resize_dynamic.go`
+(decision + orchestration), `cluster/srv_dbu.go` (saturation / under-use decisions),
+`cluster/resource_manager.go` (envelope + floor), `cluster/cluster_resize_k8s.go` (Kubernetes
+backend), `opensvc/v3.go` (om3 calls).
+
+### 1. The three axes, once more
+
+| axis | what | where it lives | who moves it |
+|---|---|---|---|
+| **paramétré** (configured) | `prov-db-*` per node, projected to DBU by the ratios | `Conf`, `cluster.ConfigDbuPerNode` / `cluster.ConfigDbu` (refreshed each tick) | the setters (`SetDBCores`, `SetDBMemorySize`, `SetDBDiskIOPS`) — by hand, or by the dynamic driver |
+| **consommé** (consumed) | what the service cgroup actually uses | `server.DBUConsumed` (sensor), RM consumed ledger | the sensor |
+| **autorisé / facturé** (plan) | `prov-db-dbu` × nodes = `prov-service-plan-dbu` | RM plan ledger | the client, never the resize |
+
+The resize moves the first axis only. It never touches the plan (the plan is a commercial
+contract; consumption above it is billed as overage, it does not gate the technical path).
+
+### 2. Decision loop (every monitor tick, `SetStatus` → `DriveDynamicResize`)
+
+```
+prov-db-dynamic-resource off, or failover in progress ─────────────▶ nothing
+cooldown: one move per window (up: scale-up speed, down: scale-down speed)
+any server with a memory resize in flight ──────────────────────────▶ wait
+per server: CanScaleConfigInPlan(true)  = axes saturated vs CONFIG
+            consumed ≥ config × (1 − prov-db-cap-safety-pct)   [85 %]
+            sustained for prov-db-scale-up-config-in-plan-speed  [1m = instant]
+ANY server saturated on an axis ──▶ GROW that axis (priority cpu > mem > io, §3)
+NO axis saturated ──▶ clear the refusal state, then driveDynamicShrink:
+            CanScaleConfigInPlan(false) = axes under-used vs CONFIG
+            consumed ≤ config × prov-db-cap-shrink-pct           [50 %]
+            sustained for prov-db-scale-down-config-in-plan-speed [5m]
+            EVERY live server under-used on an axis ──▶ SHRINK it (mem first, then cpu, §4)
+```
+
+The dead band between 50 % and 85 % of config is status quo (anti-flap). With a speed of
+one minute or less the instant sensor state decides; slower speeds ask Graphite for the raw
+series over the whole window and reduce it client-side (`windowExtremum`: busiest sample
+for a shrink, quietest for a grow), and withhold the decision until present samples cover
+at least 80 % of the window (`sustainMinCoverage`) -- the previous `summarize(...,'5m')`
+read its partial last bucket and called "sustained for 5m" two seconds after the load
+dropped. A manual `prov-db-*` change stamps the same cooldown as a dynamic step, so the
+driver never undoes an operator's move inside the window (validated dev3 2026-09-16:
+manual 1→2 held, shrink fired at +5m02s).
+
+### 3. Grow: +1 DBU, in-plan free, over-plan gated
+
+`growAxisInPlan(axis)`:
+
+- **step** = +1 DBU on the axis (1 core, 4096 MB, 1000 IOPS).
+- **target** = the per-node config projected through the ratios with the step applied
+  (`projectConfigDBUPerNode`), pivot = max axis.
+- **target ≤ plan per node** → always allowed.
+- **target > plan** → `overPlanGrowAllowed(target)` runs the ResourceManager gate on
+  **every live server** (`resourceManagerAllowsGrowTo`): symmetric or nothing.
+  1. commercial envelope: `CanGrowBeyondPlan` — target ≤ `OvercommitCeilingDBU(plan, pct)`
+     = **ceil**(plan × (1 + `prov-db-overcommit-pct`/100)). Rounded up to a whole DBU so a
+     +1 step can use it on a 1 DBU plan (1.5 → 2). Decision 2026-09-15.
+  2. node free pool: consumed on the agent + (target − plan) ≤ usable ceiling
+     (`UsableCeilingDBU`, capacity × quota), when the agent capacity is known.
+  3. client hook `prov-db-resource-raised-over-plan-script` (non-zero exit vetoes).
+- **allowed** → `recordDynamicGrow` (cooldown, hill-climb memory, QPS sample) then the setter.
+- **refused** → `refuseDynamicGrow`: tracked state `cluster.ResourceGrowRefused`
+  (`GrowRefusal{axis, from, to, targetDbu, reason, since}`), surfaced as **ERR00112** in the
+  workload state machine by `checkResourceScaleWorkloadStates`, one resize-log entry per
+  live server, one WARN line **on transition only**; the cooldown is stamped so the refused
+  step is re-evaluated once per window, never per tick (dev3: 53 identical lines in 2 min
+  before that fix). Cleared by a later applied step, or when nothing is saturated.
+
+Memory keeps its own ordering inside `ResizeDynamicResources` (grow = cgroup up then
+buffer pool up; the over-plan gate runs there for memory). CPU and IO re-tune the DB
+(`thread_pool_size`, `innodb_read_io_threads` / io capacity) and CPU also moves the cgroup.
+
+### 4. Shrink: aligned to the DBU, bounded by the undercommit floor
+
+`driveDynamicShrink` → `shrinkAxisInPlan(axis)` → `dynamicShrinkTarget(axis)`:
+
+- **trigger**: every live server under-used on the axis for the scale-down window (§2).
+- **target**: in **one move**, the smallest whole DBU that keeps the **peak** consumption of
+  every live server under the high-water mark: `ceil(peak / (1 − safety-pct))`. Aligning to
+  the DBU instead of stepping −1 avoids the slow descent (4 → 3 → 2 → 1 over four windows
+  for a 0.2-core load) and the flap a blind step causes (2 → 1 with a 1.0-core peak lands
+  at 100 % and grows straight back: the target stays 2). Decision 2026-09-16.
+- **floor**: `UndercommitFloorDBU(plan, prov-db-undercommit-pct)` = **floor**(plan × (1 −
+  pct/100)), never under 1 DBU — the pendant of the overcommit ceiling. Default 50.
+- servers without a consumed reading are ignored; none with a reading → no move.
+- memory first (the larger cost), then cpu; io is not shrunk (no cost to save).
+- the move goes through the same setters: `SetDBMemorySize` reuses the anti-OOM shrink
+  (buffer pool down first, deferred cgroup down via `completePendingCgroupShrink`, never
+  below live memory); `SetDBCores` re-tunes and moves the cgroup, and derives grow/shrink
+  from the delta.
+
+### 5. What the operator sees
+
+| signal | meaning |
+|---|---|
+| graph "Consumed DBU": bars | consumed per axis, sensor |
+| graph: dashed **plan** line | `prov-service-plan-dbu` (the contract) |
+| graph: dotted **configured** line | `cluster.configDbu` = configured pivot × nodes; drawn when ≠ plan, "(over plan)" when above |
+| CINF0007 / CINF0008 | a server saturates / under-uses its config (the raw decisions) |
+| WARN0213 | consumption at the **plan** cap for `prov-db-scale-up-plan-speed`: user-facing info to raise the plan by hand; the resize never does it |
+| ERR00112 | a dynamic over-plan step was **refused** (envelope / pool / hook), with the reason |
+| WARN0214 | dynamic resource on but the container is still capped at the docker scope (`prov-db-docker-run-args-limit` on): the live cgroup move cannot bind |
+| resize log (`ResourceResizeLog`) | one record per server per attempt: dimension, direction, applied, feasibility, statements |
+
+### 6. Backends (`ResourceResizer`, `resourceResizer()`)
+
+A client change script (`prov-db-dynamic-resource-change-script`) overrides every backend.
+
+#### OpenSVC v3 — the om3 process group
+
+The service file's `[DEFAULT]` `pg_*` keywords declare the service cgroup slice
+(`opensvc-ns.<ns>-svc.<name>.slice`); the daemon derives `cpu.max` / `memory.max` from them.
+There is no imperative "set this cgroup" call: a resize is **declare, then re-apply**.
+
+`openSVCApplyPGKeywords(server, kv)`, for one service (`openSVCResizeCPU` sets
+`pg_cpu_quota = "<cores×100>%@all"`, `openSVCResize` sets `pg_mem_limit = <bytes>`):
+
+1. `GET /api/object/path/{ns}/svc/{name}/config/file` — read the file.
+2. `PUT /api/object/path/{ns}/svc/{name}/config/file` — the whole file re-serialized with
+   the keyword set. Lands on the `opensvc-host` node; peers fetch it (~230 ms).
+3. `WaitObjectConfigSettledV3(node)` — loop: md5 of a fresh GET of the file vs
+   `GET /api/instance?path=…&node=<node>` → `data.config.csum`, 30 s max.
+4. `POST /api/node/name/<node>/instance/path/{ns}/svc/{name}/action/pg/update` — no
+   arguments; the node re-applies the pg keywords of its **loaded** config to the live slice.
+
+`pg_cpu_quota` unit on om3 (rc20…rc36): `quota = pct × period × cpus / maxCpus`, so a bare
+`300%` is 3/maxCpus of one core; `300%@all` = 3 cores on any node. Only meaningful when the
+docker scope is uncapped (`prov-db-docker-run-args-limit` off), else the tighter docker
+`--cpus/--memory` binds (WARN0214).
+
+**Defect #1795 (fixed e9ffa7369, validated dev3 2026-09-16):** step 3 used to take its md5 from
+the proxied `GET /object/.../config/file`, served by an instance node that still held the OLD
+file for ~250 ms after the PUT, so md5(old) == csum(old), the wait returned at once and step 4
+applied the previous quota on every node other than `opensvc-host`. The reference is now the
+API node's own copy, `GET /node/name/_/instance/path/.../config/file` (the route peers use to
+fetch a fresh foreign config), with the proxied read as fallback once that copy is dropped.
+After the fix the om3 journal shows `install config` before `pg update` on the remote nodes
+on every push. Still worth asking OpenSVC for an atomic set-and-apply action.
+
+#### Kubernetes — in-place Pod resize (`k8sResizer`, `cluster_resize_k8s.go`)
+
+The Deployment's DB container carries `resources.requests == limits` for memory (minus the
+dbjobs carve-out, `k8sDatabaseMemoryTargets`) **and cpu** (`k8sDatabaseCPUTargetMilli`),
+gated by the same `prov-db-docker-run-args-limit` opt-in. A resize is a strategic-merge
+PATCH of the running Pod on the **`resize` subresource** (Kubernetes 1.33+ by default,
+1.27–1.32 behind `InPlacePodVerticalScaling`), both axes in one patch, tracked as
+`K8sMemoryResizeState{TargetMB, TargetCPUMilli, MemChanged, Grow, StartedAt, Observed}`
+on the server (mirrored on the cluster to survive monitor recreation), confirmed
+asynchronously on the tick by `completePendingK8sMemoryResize` when the Pod spec carries
+the target and `status.resize` is clear (`k8sResizeConfirmed`); `Infeasible`/`Deferred`/
+timeout → restart cookie. A cpu-only confirmation does not re-run the memory grow SQL.
+Memory **decrease** is refused by the kubelet with the default `NotRequired` resize policy.
+`k8sResizer` is selected only when the Pod carries the pair; otherwise script/restart.
+
+#### On-premise, localhost, SlapOS
+
+No native primitive: the client change script, or a restart cookie (`scriptResizer`).
+
+### 7. Settings (all `prov-db-*` unless noted, per cluster, GUI Settings → Dynamic Config)
+
+| key | default | role |
+|---|---|---|
+| `prov-db-dynamic-resource` | off | master switch of the live resize |
+| `prov-db-docker-run-args-limit` | on | cap at the docker scope (`--cpus/--memory`); **off** moves the cap to the slice so it can be resized live (OpenSVC); on Kubernetes it is the requests==limits pair itself |
+| `prov-db-cap-safety-pct` | 15 | high-water: over at 85 % of the reference |
+| `prov-db-cap-shrink-pct` | 50 | low-water: under at 50 % of the reference |
+| `prov-db-overcommit-pct` | 50 | grow ceiling: ceil(plan × 1.5) DBU/node |
+| `prov-db-undercommit-pct` | 50 | shrink floor: floor(plan × 0.5) DBU/node, ≥ 1 |
+| `prov-db-scale-up-config-in-plan-speed` | 1m | sustain before a grow |
+| `prov-db-scale-down-config-in-plan-speed` | 5m | sustain before a shrink |
+| `prov-db-scale-up-plan-speed` / `-down-plan-speed` | 30m / 1h | WARN0213 / CINF0009 (plan info only) |
+| `prov-db-dynamic-resize-policy` / `-daily-time` | scale-speed / 03:00 | when the live **memory** apply happens |
+| `prov-db-dynamic-resource-can-change-script` / `-change-script` | — | client feasibility / client resize hooks |
+| `prov-db-resource-raised-over-plan-script` | — | client veto on an over-plan grow |
+| `monitoring-system-resources` (global) | on | the sensor the whole thing reads |
+
+### 8. Tests
+
+Unit: `TestCanGrowBeyondPlanEnvelopeRoundsUp`, `TestOverPlanGrowAllowedCPUStep`,
+`TestDynamicGrowRefusalIsTrackedState`, `TestDynamicShrinkTargetAlignsToTheDBU`,
+`TestUndercommitFloorDBU`, `TestOpenSVCCPUQuotaKeyword`, the `TestK8sResize_*` /
+`TestCompletePendingK8sMemoryResize_*` family. Live validation (dev3, 2026-09-15): grow
+1 → 2 fired 2 s after a saturating load, refusal 2 → 3 tracked + ERR00112, cleared after
+one window; #1795 observed on the two non-API nodes.
+
+### 9. Open
+
+- Resource axes declared in the /etc cluster file are immutable: a dynamic move lands in
+  `immutable.toml` and is lost at restart. They must be dynamic for any resize to persist.
+- Flipping `prov-db-docker-run-args-limit` off on a running cluster removes the docker cap
+  at the next recreate without installing the slice cap: write the pg keywords on the flip,
+  and track "uncapped" as a state.
+- **#1803** — `innodb_buffer_pool_size_max` on MariaDB 10.11.12+/11.4.6+/11.8.2+: the live memory
+  grow no-ops until the configurator sets it and the grow verifies the applied value.
+- The ResourceManager has no **allocated** ledger: configured-over-plan is visible only as
+  the graph line, not as an over-commit the pool accounts for.
+
 ## Two memory limits: live working memory vs the container ceiling
 
 A DB container has **two** distinct memory limits, changed by two different mechanisms:
@@ -265,12 +466,24 @@ A DB container has **two** distinct memory limits, changed by two different mech
    memory and reconfigures MariaDB in lockstep, orchestrator-agnostically:
    - `ResourceResizer.ConfigResize` changes the cgroup live — OpenSVC via the om3 **PG update**
      (`pg_mem_limit`, `PGUpdateInstanceV3`); Kubernetes via the **in-place Pod `resize`
-     subresource** (1.27+, `k8sResizer`, on branch `k8s-proxy`). No container recreate.
+     subresource** (`k8sResizer`, `cluster_resize_k8s.go`; 1.33+ by default, 1.27-1.32 behind
+     `InPlacePodVerticalScaling`), selected when `prov-db-docker-run-args-limit` puts the
+     Requests == Limits pair on the DB container -- memory AND cpu in one patch, confirmed
+     against the Pod on the monitor tick. No container recreate.
    - the shared orchestration then runs `resizeMemorySQL` (`SET GLOBAL innodb_buffer_pool_size`
      + key_buffer / tmp_table / join_buffer / max_session_mem_used …).
    - anti-OOM ordering: **grow** = cgroup up → buffer pool up; **shrink** = buffer pool down →
      (deferred, async-aware) cgroup down, never below live memory
      (`completePendingCgroupShrink`).
+   - the cap follows the load **both ways**: `DriveDynamicResize` steps an axis up (+1 DBU) when
+     any server saturates it for `prov-db-scale-up-config-in-plan-speed`, and
+     `driveDynamicShrink` moves it down when **every** live server under-uses it
+     (consumed ≤ config × `prov-db-cap-shrink-pct`) for `prov-db-scale-down-config-in-plan-speed`:
+     in one move, **aligned to the DBU** = the smallest whole DBU that keeps every server's peak
+     consumption under the high-water mark (`1 - prov-db-cap-safety-pct`), bounded by the
+     **undercommit floor** `prov-db-undercommit-pct` (the pendant of the overcommit ceiling:
+     floor(plan × (1 - pct/100)) DBU per node, never under 1 DBU). Memory first then cpu. Grow
+     always wins; one move per window either way.
 
 2. **The container ceiling — only on recreate.** The docker `--memory` in the OpenSVC
    `container#db` run_args (`GetDBContainerMemoryCapMB`) is the outer hard limit, set at
@@ -304,6 +517,19 @@ time. Two orthogonal timing knobs:
     separate "live" value — that IS the scale-speed-governed default.)
   - **`daily-time`** — apply only inside the daily window `prov-db-dynamic-resize-daily-time`
     (`HH:MM`, server-local), so any buffer-pool-resize stall is contained to an off-peak hour.
+
+**Release facts (checked 2026-09-16, MariaDB KB + developers@ thread):**
+- `innodb_buffer_pool_size` is dynamic since MariaDB 10.2.2 / MySQL 5.7.5; before MDEV-29445
+  the resize is chunked and **blocks the workload** (running transactions must finish, new ones
+  needing the pool wait, nested ones may fail; a shrink is the longest) — hence `daily-time`.
+- **MariaDB 10.11.12 / 11.4.6 / 11.8.2** (MDEV-29445): chunks removed; new **read-only startup**
+  `innodb_buffer_pool_size_max`, **default = the startup `innodb_buffer_pool_size`**. A runtime
+  grow above it is refused with warning 1292 and the value stays → our live memory grow
+  **silently no-ops** on those releases unless the configurator sets `_max` at startup and the
+  grow path verifies the value (#1803). Also MDEV-37557 (resize commits memory at once → crash
+  risk under pressure), MDEV-32339 (a shrink may not release memory → `completePendingCgroupShrink`
+  may wait forever).
+- PostgreSQL: `shared_buffers` is startup-only → restart cookie.
 
 `maintenance` and `restart` are deliberately **not** policy values: a resize deferred to a
 restart already rides the maintenance window via the deployment-upgrade-on-start gate, so they

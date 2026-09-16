@@ -396,18 +396,58 @@ func (collector *Collector) GetInstanceConfigChecksumV3(node, namespace, kind, n
 	return "", nil
 }
 
-// WaitObjectConfigSettledV3 blocks until the daemon on `node` has LOADED the object
-// config currently on disk (its instance config checksum equals the md5 of the config
-// file), or `timeout` elapses. Call it after UpdateObjectV3 and BEFORE any action that
-// reads the config (instance start, pg update): om3 commits the file synchronously but
-// reloads the instance config asynchronously, so an action fired right after the PUT
-// still runs on the PREVIOUS config (issue #1792: a rolling restart recreated the jobs
-// containers without the mount pushed one second earlier). The file is re-read from the
-// daemon rather than hashing the pushed body because the commit re-serializes it.
-func (collector *Collector) WaitObjectConfigSettledV3(node, namespace, kind, name string, timeout time.Duration) error {
-	raw, err := collector.GetObjectConfigFileV3(namespace, kind, name)
+// GetInstanceConfigFileV3 reads the object config file held by the daemon on `node`
+// (GET /api/node/name/{node}/instance/path/.../config/file). `node` = "_" is the daemon
+// that serves the request, i.e. the opensvc-host node repman talks to -- the node a
+// PUT config/file lands on. This is the route om3 peers use to fetch a freshly written
+// "foreign" config, so it returns the new file while the object's instance nodes still
+// hold the old one.
+func (collector *Collector) GetInstanceConfigFileV3(node, namespace, kind, name string) ([]byte, error) {
+	client, err := collector.GetClientV3()
 	if err != nil {
-		return err
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+	resp, err := client.GetInstanceConfigFile(ctx, node, namespace, apiv3.Kind(kind), name, collector.RequestCloserV3())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get instance config file of %s/%s/%s on %s: %w", namespace, kind, name, node, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	if !handleSuccessGroup(resp.StatusCode) {
+		return nil, &StatusError{StatusCode: resp.StatusCode, Body: string(body)}
+	}
+	return body, nil
+}
+
+// WaitObjectConfigSettledV3 blocks until the daemon on `node` has LOADED the object
+// config just written (its instance config checksum equals the md5 of that file), or
+// `timeout` elapses. Call it after UpdateObjectV3 and BEFORE any action that reads the
+// config (instance start, pg update): om3 commits the file synchronously but reloads the
+// instance config asynchronously, so an action fired right after the PUT still runs on
+// the PREVIOUS config (issue #1792: a rolling restart recreated the jobs containers
+// without the mount pushed one second earlier).
+//
+// The reference md5 is taken from the API node's OWN copy of the file (node "_", the
+// daemon the PUT landed on), NOT from GET /object/.../config/file: that read is proxied
+// to an instance node, which for a service living elsewhere still holds the OLD file
+// for ~250 ms after the PUT -- so md5(old) == loaded csum(old), the wait returned at
+// once and the pg update applied the previous quota (issue #1795: every live resize
+// landed one push behind on nodes other than opensvc-host). The API node drops its
+// foreign copy once the peers have fetched it; by then the proxied read is the new
+// file, so it is the fallback. The file is re-read rather than hashing the pushed body
+// because the commit re-serializes it.
+func (collector *Collector) WaitObjectConfigSettledV3(node, namespace, kind, name string, timeout time.Duration) error {
+	raw, err := collector.GetInstanceConfigFileV3("_", namespace, kind, name)
+	if err != nil {
+		raw, err = collector.GetObjectConfigFileV3(namespace, kind, name)
+		if err != nil {
+			return err
+		}
 	}
 	want := fmt.Sprintf("%x", md5.Sum(raw))
 	deadline := time.Now().Add(timeout)
