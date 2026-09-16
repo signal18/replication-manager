@@ -109,6 +109,7 @@ var tests = []string{
 	"testHaproxyRuntimeAPIDynamicServerLifecycle",
 	"testProxyReadBackendReconciliation",
 	"testMaintenancePersistReload",
+	"testAppWarningDebounceAndRecovery",
 }
 
 const recoverTime = 8

@@ -608,6 +608,13 @@ func (p *App) GetFailCount() int {
 	return p.FailCount
 }
 
+// GetWarnCount is locked (app.Lock()) -- see App.SetWarnCount (app_set.go).
+func (p *App) GetWarnCount() int {
+	p.Lock()
+	defer p.Unlock()
+	return p.WarnCount
+}
+
 // GetPrevState is locked (app.Lock()) -- see App.SetPrevState (app_set.go).
 func (p *App) GetPrevState() string {
 	p.Lock()

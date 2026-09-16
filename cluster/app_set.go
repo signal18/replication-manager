@@ -154,6 +154,13 @@ func (app *App) SetFailCount(c int) {
 	app.FailCount = c
 }
 
+// SetWarnCount is locked (app.Lock()) -- see SetPrevState.
+func (app *App) SetWarnCount(c int) {
+	app.Lock()
+	defer app.Unlock()
+	app.WarnCount = c
+}
+
 func (app *App) SetCredential(credential string) {
 	app.User, app.Pass = misc.SplitPair(credential)
 }
@@ -163,6 +170,26 @@ func (app *App) SetState(v string) {
 	app.Lock()
 	defer app.Unlock()
 	app.State = v
+}
+
+// CommitStateTransition is locked (app.Lock()) -- see SetPrevState. It reads
+// PrevState and State as one atomic pair and, only when they differ, advances
+// PrevState to State, returning (old, new, true). When they already match it
+// returns (State, State, false) without mutating anything. Refresh() uses
+// this instead of separately comparing app.PrevState != app.State and then
+// calling SetState()/SetPrevState() -- two locked calls a concurrent
+// Refresh() on the same App (e.g. via BackendsStateChange(), which bypasses
+// the maybeRefreshAppsAsync single-flight guarantee) could interleave with,
+// causing a spurious or missed transition log/alert.
+func (app *App) CommitStateTransition() (oldState, newState string, changed bool) {
+	app.Lock()
+	defer app.Unlock()
+	oldState, newState = app.PrevState, app.State
+	if oldState != newState {
+		app.PrevState = newState
+		return oldState, newState, true
+	}
+	return oldState, newState, false
 }
 
 func (app *App) SetCluster(c *Cluster) {
