@@ -150,8 +150,8 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           }}
         />
       </Flex>
-      {/* Sections mirror what a DBA reads top-down: what the workload does, what it costs
-          in units, what InnoDB is doing about it, and where the memory went. Each section is
+      {/* Sections mirror what a DBA reads top-down: what the workload does, how replication
+          keeps up, what it costs in units, what InnoDB is doing about it, and where the memory went. Each section is
           an accordion; a collapsed section still keeps its charts mounted (Chakra keeps the
           panel in the DOM), so the cubism contexts are not re-created on toggle. */}
       { context && (
@@ -220,18 +220,6 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
         <ChartTimeSeriesLine
-          title='Replication delay'
-          yLabel='behind master'
-          logScale
-          cap={518400}
-          yTickValues={[1, 10, 60, 600, 3600, 21600, 86400, 259200, 518400]}
-          yTickFormat={fmtDur}
-          windowSec={windowSec}
-          refreshMs={refreshMs}
-          targets={[{ target: scope('sumSeries(mysql.*.mysql_slave_status_seconds_behind_master)'), label: 'Delay' }]}
-          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
-        />
-        <ChartTimeSeriesLine
           title='Schema size'
           yLabel='GB'
           windowSec={windowSec}
@@ -281,6 +269,21 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="Transactions — per tick (Top page: Transactions)"
        />
+      </GraphSection>
+
+      <GraphSection heading='Replication'>
+        <ChartTimeSeriesLine
+          title='Replication delay'
+          yLabel='behind master'
+          logScale
+          cap={518400}
+          yTickValues={[1, 10, 60, 600, 3600, 21600, 86400, 259200, 518400]}
+          yTickFormat={fmtDur}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[{ target: scope('sumSeries(mysql.*.mysql_slave_status_seconds_behind_master)'), label: 'Delay' }]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
         {/* Replication parallelism: the binlog group commit size is the concurrency the master's
             binlog offers to conservative/optimistic parallel replication (1.0 = commits never
             overlap, nothing to parallelise) against the workers configured to consume it. */}
