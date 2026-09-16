@@ -97,8 +97,8 @@ type Table struct {
 	// IndexLength is information_schema.TABLES.INDEX_LENGTH (all secondary indexes together). Wire v4.
 	IndexLength int64 `json:"index_length,omitempty"`
 	// AutoIncrement is information_schema.TABLES.AUTO_INCREMENT: the NEXT value the
-	// counter will hand out (exact on MariaDB; on MySQL 8 it can lag until the table is
-	// opened). 0 when the table has no AUTO_INCREMENT column. Wire v4.
+	// counter will hand out (the schema scan resets information_schema_stats_expiry on
+	// MySQL/Percona first, so it is fresh). 0 when the table has no AUTO_INCREMENT column. Wire v4.
 	AutoIncrement int64 `json:"auto_increment,omitempty"`
 	// Indexes are the table's indexes (needs monitoring-schema-indexes). Wire v4.
 	Indexes []TableIndex `json:"indexes,omitempty"`

@@ -9,8 +9,9 @@
 // and every insert then collides with the last row).
 //
 // Data (wire v4): Table.AutoIncrement = information_schema.TABLES.AUTO_INCREMENT,
-// the NEXT value to be handed out (exact on MariaDB; on MySQL 8 it can lag until
-// the table is opened, the finding says so), and the column whose Extra contains
+// the NEXT value to be handed out (the schema scan resets
+// information_schema_stats_expiry on MySQL/Percona before reading, so the value is
+// fresh on every flavor), and the column whose Extra contains
 // "auto_increment" gives the type: TINYINT / SMALLINT / MEDIUMINT / INT / BIGINT,
 // signed or unsigned. Everything is compared in uint64 / big.Int, never float,
 // so an unsigned BIGINT next to 2^64 is judged exactly.
@@ -145,8 +146,8 @@ func evaluateTables(req wire.Request) []wire.Finding {
 	desc := fmt.Sprintf(
 		"%d table(s) have an AUTO_INCREMENT counter at or past %d%% of the capacity of the column type holding it."+
 			" When the counter reaches the maximum every INSERT fails with \"Duplicate entry ... for key 'PRIMARY'\"."+
-			" next = information_schema.TABLES.AUTO_INCREMENT, the next value to be handed out (exact on MariaDB; on MySQL 8"+
-			" it can lag behind until the table is opened). Widen the column before the headroom runs out. Tables: %s",
+			" next = information_schema.TABLES.AUTO_INCREMENT, the next value to be handed out, read with fresh statistics."+
+			" Widen the column before the headroom runs out. Tables: %s",
 		len(hits), threshold, strings.Join(parts, "; "))
 
 	return []wire.Finding{{
