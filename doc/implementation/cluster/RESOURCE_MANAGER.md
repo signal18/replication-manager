@@ -384,13 +384,14 @@ There is no imperative "set this cgroup" call: a resize is **declare, then re-ap
 docker scope is uncapped (`prov-db-docker-run-args-limit` off), else the tighter docker
 `--cpus/--memory` binds (WARN0214).
 
-**Known defect #1795**: step 3 is unsound for a service whose instance is not on the
-`opensvc-host` node: the re-read of step 3 is proxied to that instance node, which still
-holds the old file, so md5 == old csum and the wait returns at once; step 4 then applies the
-**previous** quota. The API node's own services are right immediately; the others are one
-push behind until the next `pg update` or restart. Proposed fix: wait for the target node's
-csum to **change** from its pre-push value (skip when the pushed bytes equal the read ones);
-upstream ask: an om3 action that sets and applies atomically.
+**Defect #1795 (fixed e9ffa7369, validated dev3 2026-09-16):** step 3 used to take its md5 from
+the proxied `GET /object/.../config/file`, served by an instance node that still held the OLD
+file for ~250 ms after the PUT, so md5(old) == csum(old), the wait returned at once and step 4
+applied the previous quota on every node other than `opensvc-host`. The reference is now the
+API node's own copy, `GET /node/name/_/instance/path/.../config/file` (the route peers use to
+fetch a fresh foreign config), with the proxied read as fallback once that copy is dropped.
+After the fix the om3 journal shows `install config` before `pg update` on the remote nodes
+on every push. Still worth asking OpenSVC for an atomic set-and-apply action.
 
 #### Kubernetes — in-place Pod resize (`k8sResizer`, `cluster_resize_k8s.go`)
 
@@ -440,7 +441,6 @@ one window; #1795 observed on the two non-API nodes.
 
 ### 9. Open
 
-- **#1795** settle wait (above).
 - Resource axes declared in the /etc cluster file are immutable: a dynamic move lands in
   `immutable.toml` and is lost at restart. They must be dynamic for any resize to persist.
 - Flipping `prov-db-docker-run-args-limit` off on a running cluster removes the docker cap
