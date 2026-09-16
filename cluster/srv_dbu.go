@@ -479,6 +479,41 @@ func lastRenderValue(vals []float64, absent []bool) (float64, bool) {
 	return 0, false
 }
 
+// sustainMinCoverage is the share of the scale window that must actually be covered by
+// samples before the window is trusted: a decision taken on a handful of points right after
+// a restart, a sensor gap, or -- the dev3 case -- on the partial last summarize bucket is
+// not "sustained for the window", it is instant.
+const sustainMinCoverage = 0.8
+
+// windowExtremum returns the max (up=false: shrink -- the busiest sample must be under) or
+// min (up=true: grow -- the quietest sample must be over) of the present samples of a raw
+// series over the scale window, and ok=false when the present samples cover less than
+// sustainMinCoverage of the window (step x present count). Absent points are skipped, never
+// counted as coverage.
+func windowExtremum(vals []float64, absent []bool, step int32, window time.Duration, up bool) (float64, bool) {
+	if step <= 0 || window <= 0 {
+		return 0, false
+	}
+	var ext float64
+	present := 0
+	for i, v := range vals {
+		if i < len(absent) && absent[i] {
+			continue
+		}
+		if present == 0 || (up && v < ext) || (!up && v > ext) {
+			ext = v
+		}
+		present++
+	}
+	if present == 0 {
+		return 0, false
+	}
+	if float64(present)*float64(step) < sustainMinCoverage*window.Seconds() {
+		return 0, false
+	}
+	return ext, true
+}
+
 // graphiteHostToken is this server's token in the mysql.<host>.* graphite series (same
 // replacer as srv_snd.go's emission).
 func (server *ServerMonitor) graphiteHostToken() string {
@@ -506,27 +541,26 @@ func (server *ServerMonitor) canScaleSustained(up bool, instant []string, speedS
 	underThrFactor := clampPct(cluster.Conf.ProvDBCapShrinkPct) / 100.0
 	host := server.graphiteHostToken()
 	until := int32(time.Now().Unix())
-	from := until - int32(d.Seconds()) - 60
-	agg := "max" // shrink: even the busiest sample of the window must be under
-	if up {
-		agg = "min" // grow: even the quietest sample of the window must be over
-	}
+	from := until - int32(d.Seconds())
 	var due []string
 	for _, axis := range instant {
 		capa := axisConfigDBU(ref, axis)
 		if capa <= 0 {
 			continue
 		}
-		target := fmt.Sprintf("summarize(dbu.%s.%s.dbu_%s,'%ds','%s')", cluster.Name, host, axis, int(d.Seconds()), agg)
+		// The RAW series over the whole window, reduced client-side (windowExtremum): the
+		// previous summarize(...,'<window>','max') read its LAST bucket, which is the partial
+		// current one -- a decision "sustained for 5m" was taken 2 s after the load dropped
+		// (dev3 2026-09-16: a manual 2-core push was shrunk back to 1 within 2 s).
+		target := fmt.Sprintf("dbu.%s.%s.dbu_%s", cluster.Name, host, axis)
 		md, rerr := graphite.Zipper.Render(target, from, until)
 		if rerr != nil {
 			due = append(due, axis) // Graphite unavailable -> trust the instant state
 			continue
 		}
-		v, ok := lastRenderValue(md.Values, md.IsAbsent)
+		v, ok := windowExtremum(md.Values, md.IsAbsent, md.GetStepTime(), d, up)
 		if !ok {
-			due = append(due, axis)
-			continue
+			continue // not enough history to call it sustained: not due yet
 		}
 		if (up && v >= capa*overThrFactor) || (!up && v <= capa*underThrFactor) {
 			due = append(due, axis)
