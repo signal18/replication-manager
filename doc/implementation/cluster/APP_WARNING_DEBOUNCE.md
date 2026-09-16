@@ -132,6 +132,86 @@ noted above, independent of the App path's `ALERT`-only choice):
   eligibility at and below the informational threshold, and confirmation that
   `ALERT`'s error-threshold mapping is untouched.
 
+`regtest/test_app_warning_debounce.go` (`testAppWarningDebounceAndRecovery`,
+registered in `regtest/regtest.go`'s scenario list and dispatched from
+`server/regtest.go`) is the T13 real-cluster gate for this change: it
+registers a real `App` (`cluster.AddApp`) on a live cluster's monitoring loop
+with two TCP routes, one backed by a listener that stays up for the whole
+test (so the aggregate can only ever be `AppRunning`/`AppWarning`, never
+`Failed` -- that debounce is pre-existing and out of scope here) and one it
+opens/closes to simulate a real backend going down and back up.
+
+Synchronization is refresh-completion-based, not ticker-arithmetic-based:
+`waitForNextCompletedRefresh(app, after, timeout)` polls `App.GetAppAPIView()`
+(race-free, taken entirely under `app.Lock()`) until it observes a cycle whose
+`LastRefreshStart` is strictly after `after` and which has finished
+(`RefreshInProgress == false`), returning that cycle's committed `State`.
+Keying on `LastRefreshStart` rather than `LastRefreshEnd` matters: a cycle
+that started slightly before a perturbation but finished slightly after it
+would satisfy an `End`-based check while still having read the *pre*-
+perturbation backend state. This makes every assertion below exact regardless
+of real monitoring-ticker cadence, ambient cluster load, or single-flight
+batch skips (`cluster.appRefreshInProgress` in `maybeRefreshAppsAsync`) --
+correctness never depends on a wall-clock deadline, only on how long the test
+is willing to wait before concluding something genuinely hung.
+
+Through the actual ticking `maybeRefreshAppsAsync` loop (never a direct,
+synchronous `Refresh()` call), it verifies three phases:
+1. **Transient blip** (skipped when `threshold <= 1`, where no sub-threshold
+   window exists): one warning-worthy cycle that recovers before the
+   threshold must never commit `AppWarning` -- checked by observing the very
+   next completed cycle after the blip and again after recovering from it,
+   both expected to still read `AppRunning`.
+2. **Sustained outage**: stepping through completed cycles one at a time,
+   `State` must read `AppRunning` for exactly the first `threshold-1`
+   completed cycles, then `AppWarning` on the `threshold`-th -- not "roughly
+   after N ticks," but the literal committed value of each individual
+   completed cycle.
+3. **Recovery**: bringing the backend back must commit `AppRunning` on the
+   very next completed refresh, checked the same cycle-accurate way, proving
+   recovery is immediate rather than merely "fast."
+
+It deliberately does not (and structurally cannot) assert the exact
+`ALERT`/`ALERTOK` log line or level: `cluster.tlog`/`htlog` are unexported and
+there is no public "recent log" accessor, and adding one only for this test
+would be scope creep. That part of the plan's validation strategy
+(`AppRunning → AppWarning ALERT` / `AppWarning → AppRunning ALERT`) is covered
+at the unit level instead, where it can be asserted precisely without needing
+log-capture plumbing: `TestAppTransitionAlertLevel`
+(`cluster/app_error_test.go`) and the `ALERTOK` eligibility tests
+(`config/log_level_eligibility_test.go`).
+
+It also deliberately avoids mutating `App.AppConfig.Deployment.Routes` on the
+live, registered `App`: `GetMonitoringStatus` reads that slice unlocked
+(`cluster/app_chk.go`), so mutating it from the test goroutine while
+`maybeRefreshAppsAsync`'s background worker concurrently reads it on the same
+`App` would be a genuine data race. Driving the transition through real
+listener up/down instead sidesteps that entirely and is arguably more
+realistic (it simulates an actual backend outage rather than a config edit).
+
+**Teardown** is a single ordered sequence, deferred once so every return path
+(including early failures) runs it identically: (1) best-effort wait for this
+app's own `RefreshInProgress` to clear before removing it, so
+`RemoveAppMonitor` doesn't race a worker still using this `App`; (2)
+`cl.RemoveAppMonitor`; (3) a `tick + 2s` grace sleep, since
+`maybeRefreshAppsAsync` snapshots `cluster.Apps` under `cluster.Lock()` at
+batch *start* -- a batch that had already taken that snapshot just before
+removal can still be mid-flight on this app with no way to observe it from
+outside, and there is no drain API for apps to close that window perfectly,
+only narrow it; (4) `os.RemoveAll(app.Datadir)` (the `log`/`var`/`init`/`bck`
+directories `AddApp`/`SetDataDir` create under the cluster's `WorkingDir`),
+so repeated runs don't accumulate residue; (5) close whichever listener(s)
+are still open.
+
+**Not run in this environment**: there is no Docker/live-cluster harness
+available here, so this regtest has only been compile-checked (`go build`,
+`go build -tags server`, `go vet`), not executed. It needs to be run against
+a real cluster (`--test=testAppWarningDebounceAndRecovery`, or as part of
+`--test=ALL`) before this is treated as passing the T13 gate.
+
+**No GitHub issue filed**: per T9/T11/T12 a labelled issue should exist for
+this change before merge; none was created as part of this work.
+
 Validation: `go test ./config/...`, `go test ./cluster/...`, and
 `go test -race ./config/... ./cluster/...` all pass. The full
 `go test -race ./cluster/...` run also surfaces pre-existing, unrelated data
