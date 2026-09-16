@@ -64,6 +64,14 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 		}
 		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.workload_cpu_user_stats", hostname), fmt.Sprintf("%.2f", wl.CpuUserStats), time.Now().Unix()))
 	}
+	// The Top page per-instance header graphs (TopHeader: Queries, Rows, Swap, Transactions,
+	// Cache Miss), one series per bar, same per-tick delta the page shows. First-class for the
+	// same reason as above.
+	for _, g := range server.TopHeader().Graphs {
+		for _, m := range g.Data {
+			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.top_%s_%s", hostname, topMetricToken(g.Name), topMetricToken(m.Name)), fmt.Sprintf("%d", m.Value), time.Now().Unix()))
+		}
+	}
 	// Table/index bytes are a cluster figure (DictTables are collected on the master), so the
 	// master carries the series.
 	if server.IsMaster() {
@@ -195,4 +203,10 @@ func (server *ServerMonitor) SendAlert() error {
 	}
 
 	return server.ClusterGroup.SendAlert(a)
+}
+
+// topMetricToken turns a Top header label ("Cache Miss", "Binlog Group") into a graphite
+// leaf token (cache_miss, binlog_group).
+func topMetricToken(name string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(name), " ", "_"))
 }

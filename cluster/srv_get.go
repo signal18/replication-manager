@@ -1730,6 +1730,103 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 	return []string{}
 }
 
+// TopHeader is the per-instance "mytop" header: five small graphs (Queries, Rows, Swap,
+// Transactions, Cache Miss), each a list of per-tick status deltas. ONE computation for
+// the Top page (GetTopMetrics) and for the Graphite series (GetDatabaseMetrics emits every
+// value as mysql.<host>.top_<graph>_<metric>), so the Graphs page lines are exactly the
+// Top page bars over time.
+func (server *ServerMonitor) TopHeader() config.TopHeader {
+	var topheader config.TopHeader
+
+	var graph config.TopGraph
+	graph.Name = "Queries"
+	data := make([]config.TopMetrics, 0)
+	var metric config.TopMetrics
+	metric.Name = "Questions"
+	metric.Value = server.GetStatusDeltaValue("QUESTIONS")
+	data = append(data, metric)
+	metric.Name = "Selects"
+	metric.Value = server.GetStatusDeltaValue("COM_SELECT")
+	data = append(data, metric)
+	metric.Name = "Inserts"
+	metric.Value = server.GetStatusDeltaValue("COM_INSERT")
+	data = append(data, metric)
+	metric.Name = "Updates"
+	metric.Value = server.GetStatusDeltaValue("COM_UPDATE")
+	data = append(data, metric)
+	metric.Name = "Deletes"
+	metric.Value = server.GetStatusDeltaValue("COM_DELETE")
+	data = append(data, metric)
+	//metric.Name = "Replace"
+	//metric.Value = server.GetStatusDeltaValue("COM_REPLACE")
+	//data = append(data, metric)
+	graph.Data = data
+	topheader.Graphs = append(topheader.Graphs, graph)
+
+	graph.Name = "Rows"
+	data = make([]config.TopMetrics, 0)
+	metric.Name = "Reads"
+	metric.Value = server.GetStatusDeltaValue("HANDLER_READ_FIRST") + server.GetStatusDeltaValue("HANDLER_READ_KEY") + server.GetStatusDeltaValue("HANDLER_READ_NEXT") + server.GetStatusDeltaValue("HANDLER_READ_PREV") + server.GetStatusDeltaValue("HANDLER_READ_RND") + server.GetStatusDeltaValue("HANDLER_READ_RND_NEXT")
+	data = append(data, metric)
+	metric.Name = "Writes"
+	metric.Value = server.GetStatusDeltaValue("HANDLER_WRITE")
+	data = append(data, metric)
+	metric.Name = "Updates"
+	metric.Value = server.GetStatusDeltaValue("HANDLER_UPDATE")
+	data = append(data, metric)
+	metric.Name = "Deletes"
+	metric.Value = server.GetStatusDeltaValue("HANDLER_DELETE")
+	data = append(data, metric)
+	graph.Data = data
+	topheader.Graphs = append(topheader.Graphs, graph)
+
+	graph.Name = "Swap"
+	data = make([]config.TopMetrics, 0)
+	metric.Name = "Tmp Tables"
+	metric.Value = server.GetStatusDeltaValue("TMP_DISK_TABLES")
+	data = append(data, metric)
+	metric.Name = "Binary Logs"
+	metric.Value = server.GetStatusDeltaValue("BINLOG_STMT_CACHE_DISK_USE") + server.GetStatusDeltaValue("BINLOG_CACHE_DISK_USE")
+	data = append(data, metric)
+	metric.Name = "Sorts"
+	metric.Value = server.GetStatusDeltaValue("SORT_MERGE_PASSES")
+	data = append(data, metric)
+	graph.Data = data
+	topheader.Graphs = append(topheader.Graphs, graph)
+
+	graph.Name = "Transactions"
+	data = make([]config.TopMetrics, 0)
+	metric.Name = "Commits"
+	metric.Value = server.GetStatusDeltaValue("HANDLER_COMMIT")
+	data = append(data, metric)
+	metric.Name = "Binlog"
+	metric.Value = server.GetStatusDeltaValue("BINLOG_COMMITS")
+	data = append(data, metric)
+	metric.Name = "Binlog Group"
+	metric.Value = server.GetStatusDeltaValue("BINLOG_GROUP_COMMITS")
+	data = append(data, metric)
+	graph.Data = data
+	topheader.Graphs = append(topheader.Graphs, graph)
+
+	graph.Name = "Cache Miss"
+	data = make([]config.TopMetrics, 0)
+	metric.Name = "InnoDB"
+	metric.Value = server.GetStatusDeltaValue("INNODB_BUFFER_POOL_READS")
+	data = append(data, metric)
+	metric.Name = "Aria"
+	metric.Value = server.GetStatusDeltaValue("ARIA_PAGECACHE_READS")
+	data = append(data, metric)
+	metric.Name = "MyISAM"
+	metric.Value = server.GetStatusDeltaValue("KEY_READS")
+	data = append(data, metric)
+	metric.Name = "MyROCKS"
+	metric.Value = server.GetStatusDeltaValue("ROCKSDB_BLOCK_CACHE_DATA_MISS")
+	data = append(data, metric)
+	graph.Data = data
+	topheader.Graphs = append(topheader.Graphs, graph)
+	return topheader
+}
+
 func (server *ServerMonitor) GetStatusDeltaValue(name string) int {
 	cur, err := strconv.Atoi(server.Status.Get(name))
 	prev, err2 := strconv.Atoi(server.PrevStatus.Get(name))

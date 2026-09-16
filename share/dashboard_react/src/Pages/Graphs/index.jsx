@@ -167,15 +167,21 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           targets={[{ target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_queries))'), label: 'Qps' }]}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
+        {/* threads_connected joined threads_running in whitelist.conf.minimal; a cluster
+            materialised before that keeps its whitelist.conf until the template is reapplied
+            (graphite-whitelist-template setting), so the Connected line can be empty there. */}
         <ChartTimeSeriesLine
-          title='Threads running'
+          title='Threads running / connected'
           yLabel='threads'
           logScale
           logBase={2}
           cap={1024}
           windowSec={windowSec}
           refreshMs={refreshMs}
-          targets={[{ target: scope('sumSeries(mysql.*.mysql_global_status_threads_running)'), label: 'Threads' }]}
+          targets={[
+            { target: scope('sumSeries(mysql.*.mysql_global_status_threads_running)'), label: 'Running' },
+            { target: scope('sumSeries(mysql.*.mysql_global_status_threads_connected)'), label: 'Connected' }
+          ]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
         {/* The four remaining Top-page gauges (ClusterWorkload.jsx) over time. Same sources:
@@ -236,6 +242,45 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           ]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
+        {/* The Top page per-instance header graphs over time: one line per bar, summed over the
+            cluster's instances (mysql.<host>.top_<graph>_<metric>, per-tick deltas computed by
+            ServerMonitor.TopHeader -- the very numbers the Top page draws). */}
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_queries_questions)',
+           'sumSeries(mysql.*.top_queries_selects)',
+           'sumSeries(mysql.*.top_queries_inserts)',
+           'sumSeries(mysql.*.top_queries_updates)',
+           'sumSeries(mysql.*.top_queries_deletes)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Queries — per tick (Top page: Queries)"
+       />
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_rows_reads)',
+           'sumSeries(mysql.*.top_rows_writes)',
+           'sumSeries(mysql.*.top_rows_updates)',
+           'sumSeries(mysql.*.top_rows_deletes)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Rows — handler calls per tick (Top page: Rows)"
+       />
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_transactions_commits)',
+           'sumSeries(mysql.*.top_transactions_binlog)',
+           'sumSeries(mysql.*.top_transactions_binlog_group)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Transactions — per tick (Top page: Transactions)"
+       />
         {/* Replication parallelism: the binlog group commit size is the concurrency the master's
             binlog offers to conservative/optimistic parallel replication (1.0 = commits never
             overlap, nothing to parallelise) against the workers configured to consume it. */}
@@ -357,6 +402,29 @@ function Graphs({ selectedCluster, onOpenSettings }) {
       </GraphSection>
 
       <GraphSection heading='Memory'>
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_swap_tmp_tables)',
+           'sumSeries(mysql.*.top_swap_binary_logs)',
+           'sumSeries(mysql.*.top_swap_sorts)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Swap — spills to disk per tick (Top page: Swap)"
+       />
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_cache_miss_innodb)',
+           'sumSeries(mysql.*.top_cache_miss_aria)',
+           'sumSeries(mysql.*.top_cache_miss_myisam)',
+           'sumSeries(mysql.*.top_cache_miss_myrocks)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Cache miss — engine cache misses per tick (Top page: Cache Miss)"
+       />
         <ChartBarStack
           context={context}
           title={'Memory'}
