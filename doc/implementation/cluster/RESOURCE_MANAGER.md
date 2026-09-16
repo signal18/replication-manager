@@ -446,6 +446,8 @@ one window; #1795 observed on the two non-API nodes.
 - Flipping `prov-db-docker-run-args-limit` off on a running cluster removes the docker cap
   at the next recreate without installing the slice cap: write the pg keywords on the flip,
   and track "uncapped" as a state.
+- **#1803** — `innodb_buffer_pool_size_max` on MariaDB 10.11.12+/11.4.6+/11.8.2+: the live memory
+  grow no-ops until the configurator sets it and the grow verifies the applied value.
 - The ResourceManager has no **allocated** ledger: configured-over-plan is visible only as
   the graph line, not as an over-commit the pool accounts for.
 
@@ -509,6 +511,19 @@ time. Two orthogonal timing knobs:
     separate "live" value — that IS the scale-speed-governed default.)
   - **`daily-time`** — apply only inside the daily window `prov-db-dynamic-resize-daily-time`
     (`HH:MM`, server-local), so any buffer-pool-resize stall is contained to an off-peak hour.
+
+**Release facts (checked 2026-09-16, MariaDB KB + developers@ thread):**
+- `innodb_buffer_pool_size` is dynamic since MariaDB 10.2.2 / MySQL 5.7.5; before MDEV-29445
+  the resize is chunked and **blocks the workload** (running transactions must finish, new ones
+  needing the pool wait, nested ones may fail; a shrink is the longest) — hence `daily-time`.
+- **MariaDB 10.11.12 / 11.4.6 / 11.8.2** (MDEV-29445): chunks removed; new **read-only startup**
+  `innodb_buffer_pool_size_max`, **default = the startup `innodb_buffer_pool_size`**. A runtime
+  grow above it is refused with warning 1292 and the value stays → our live memory grow
+  **silently no-ops** on those releases unless the configurator sets `_max` at startup and the
+  grow path verifies the value (#1803). Also MDEV-37557 (resize commits memory at once → crash
+  risk under pressure), MDEV-32339 (a shrink may not release memory → `completePendingCgroupShrink`
+  may wait forever).
+- PostgreSQL: `shared_buffers` is startup-only → restart cookie.
 
 `maintenance` and `restart` are deliberately **not** policy values: a resize deferred to a
 restart already rides the maintenance window via the deployment-upgrade-on-start gate, so they
