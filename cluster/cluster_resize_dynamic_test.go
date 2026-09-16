@@ -117,3 +117,48 @@ func TestDynamicGrowRefusalIsTrackedState(t *testing.T) {
 		t.Fatalf("an applied step must clear the refusal")
 	}
 }
+
+// TestDynamicShrinkTargetFloorsAtThePlan pins the step-down decision: one -1 DBU step on cpu
+// or memory, never under the plan per node (the floor decision of 2026-09-16).
+func TestDynamicShrinkTargetFloorsAtThePlan(t *testing.T) {
+	newCluster := func(cores, memMB string, planDbu int) *Cluster {
+		cl := &Cluster{Name: "t", resources: NewResourceManager(), Conf: &config.Config{}}
+		cl.Conf.ProvCores = cores
+		cl.Conf.ProvMem = memMB
+		cl.Conf.ProvIops = "800"
+		cl.Conf.ProvDisk = "2"
+		cl.Conf.ProvDbDbu = planDbu
+		cl.Servers = []*ServerMonitor{{URL: "db1:3306", State: stateMaster}}
+		return cl
+	}
+	// dev3 shape: 2 cores over a 1 DBU plan -> one step to 1, then stop
+	cl := newCluster("2", "768", 1)
+	if from, to, ok := cl.dynamicShrinkTarget("cpu"); !ok || from != "2" || to != "1" {
+		t.Fatalf("cpu 2 over plan 1 must step to 1, got %s->%s ok=%v", from, to, ok)
+	}
+	cl.Conf.ProvCores = "1"
+	if _, _, ok := cl.dynamicShrinkTarget("cpu"); ok {
+		t.Fatalf("cpu at the plan floor must not step down")
+	}
+	// memory already under the plan floor (768MB < 4096MB): nothing to shrink
+	if _, _, ok := cl.dynamicShrinkTarget("mem"); ok {
+		t.Fatalf("memory under the plan floor must not step down")
+	}
+	// 12GB over a 2 DBU plan (floor 8192MB): one -4096 step, clamped at the floor next time
+	cl2 := newCluster("3", "12288", 2)
+	if from, to, ok := cl2.dynamicShrinkTarget("mem"); !ok || from != "12288" || to != "8192" {
+		t.Fatalf("mem 12288 over plan 2 must step to 8192, got %s->%s ok=%v", from, to, ok)
+	}
+	if from, to, ok := cl2.dynamicShrinkTarget("cpu"); !ok || from != "3" || to != "2" {
+		t.Fatalf("cpu 3 over plan 2 must step to 2, got %s->%s ok=%v", from, to, ok)
+	}
+	// a 5GB config over a 1 DBU plan clamps to the 4096 floor, not to 5120-4096
+	cl3 := newCluster("1", "5120", 1)
+	if _, to, ok := cl3.dynamicShrinkTarget("mem"); !ok || to != "4096" {
+		t.Fatalf("mem 5120 over plan 1 must clamp to the 4096 floor, got %s ok=%v", to, ok)
+	}
+	// at the floor, shrinkAxisInPlan acts on nothing and does not stamp the cooldown
+	if cl.shrinkAxisInPlan("cpu") || !cl.lastDynamicResize.IsZero() {
+		t.Fatalf("at the floor the shrink must be a no-op")
+	}
+}

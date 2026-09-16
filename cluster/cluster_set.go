@@ -144,7 +144,9 @@ func (cluster *Cluster) SetDBCores(value string) {
 	// resize (pg_cpus) is a follow-up; for now this only re-tunes the DB side.
 	if cluster.Conf.ProvDBDynamicResource {
 		if cluster.Conf.ProvCores != old {
-			cluster.ResizeDynamicResources(resizeCPU, false)
+			newC, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+			oldC, _ := strconv.ParseFloat(old, 64)
+			cluster.ResizeDynamicResources(resizeCPU, newC > oldC)
 		}
 		return
 	}
