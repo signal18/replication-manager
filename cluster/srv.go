@@ -165,6 +165,8 @@ type ServerMonitor struct {
 	DBVersion                   *version.Version            `json:"dbVersion"`
 	Version                     int                         `json:"-"`
 	QPS                         int64                       `json:"qps"`
+	ReplicationGroupCommitSize  float64                     `json:"replicationGroupCommitSize"` // avg binlog group commit size over the last tick (Binlog_commits / Binlog_group_commits deltas): the commit concurrency a slave can apply in parallel; 0 when no commit in the tick
+	ReplicationParallelThreads  int64                       `json:"replicationParallelThreads"` // slave_parallel_threads (MariaDB) / slave_parallel_workers (MySQL) as the server runs it -- the workers, to compare with the group commit size
 	ReplicationHealth           string                      `json:"replicationHealth"`
 	EventStatus                 []dbhelper.Event            `json:"eventStatus"`
 	FullProcessList             []dbhelper.Processlist      `json:"-"`
@@ -1566,6 +1568,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.QPS = (qps - prevqps) / (server.MonitorTime - server.PrevMonitorTime)
 		}
 	}
+	server.refreshReplicationParallelism()
 
 	if server.HasHighNumberSlowQueries() {
 		cluster.SetState("WARN0088", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["WARN0088"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
@@ -2647,5 +2650,43 @@ func (server *ServerMonitor) refreshResolvedIP() {
 	}
 	if ip != server.IP {
 		server.IP = ip
+	}
+}
+
+// refreshReplicationParallelism recomputes the replication parallelism signal from the
+// current and previous status/variables snapshots (pure: no I/O, unit-tested).
+//
+// ReplicationGroupCommitSize = ΔBinlog_commits / ΔBinlog_group_commits over the tick: the
+// average binlog group commit size. Transactions that committed in the same group are known
+// conflict-free, so this is the number of workers a slave can use in parallel on this
+// master's binlog in conservative mode (optimistic goes further; this stays the floor).
+// Graphed against the workers configured (ReplicationParallelThreads); drives the future
+// tuner (#1806). MariaDB-only: MySQL/Percona expose neither counter, so the value stays 0
+// there (the graph title says so). Reset to 0 whenever the delta cannot be computed (no
+// previous snapshot, no commit in the tick, counter reset) so a missed tick never leaves a
+// stale reading in place.
+//
+// ReplicationParallelThreads = slave_parallel_threads (MariaDB) or slave_parallel_workers
+// (MySQL), the workers configured to consume that concurrency.
+func (server *ServerMonitor) refreshReplicationParallelism() {
+	server.ReplicationGroupCommitSize = 0
+	if server.Status != nil && server.PrevStatus != nil {
+		if _, ok := server.PrevStatus.CheckAndGet("BINLOG_GROUP_COMMITS"); ok {
+			dg := server.GetStatusDeltaValue("BINLOG_GROUP_COMMITS")
+			dc := server.GetStatusDeltaValue("BINLOG_COMMITS")
+			// GetStatusDeltaValue does not guard against a counter reset (restart): both
+			// deltas must be non-negative, and no group means no ratio.
+			if dg > 0 && dc >= 0 {
+				server.ReplicationGroupCommitSize = float64(dc) / float64(dg)
+			}
+		}
+	}
+	if server.Variables == nil {
+		return
+	}
+	if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_THREADS"); ok {
+		server.ReplicationParallelThreads, _ = strconv.ParseInt(v, 10, 64)
+	} else if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_WORKERS"); ok {
+		server.ReplicationParallelThreads, _ = strconv.ParseInt(v, 10, 64)
 	}
 }

@@ -10,7 +10,21 @@ import ChartGroupedDBU from '../../components/ChartGroupedDBU';
 import ChartBarStack from '../../components/ChartBarStack'
 import ChartTimeSeriesLine from '../../components/ChartTimeSeriesLine';
 import RMIconButton from '../../components/RMIconButton'
+import AccordionComponent from '../../components/AccordionComponent'
 import { HiCog } from 'react-icons/hi'
+
+// One collapsible section of the page (Workload / Resources / InnoDB / Memory). Module-level
+// on purpose: defined inside Graphs it would be a new component type on every render and
+// React would unmount/remount every chart (and their cubism contexts) each tick.
+function GraphSection({ heading, children }) {
+  return (
+    <AccordionComponent
+      className={styles.section}
+      heading={heading}
+      body={<Flex className={styles.graphs}>{children}</Flex>}
+    />
+  )
+}
 
 function Graphs({ selectedCluster, onOpenSettings }) {
   const qpsRef = useRef()
@@ -140,8 +154,13 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           }}
         />
       </Flex>
+      {/* Sections mirror what a DBA reads top-down: what the workload does, how replication
+          keeps up, what it costs in units, what InnoDB is doing about it, and where the memory went. Each section is
+          an accordion; a collapsed section still keeps its charts mounted (Chakra keeps the
+          panel in the DOM), so the cubism contexts are not re-created on toggle. */}
       { context && (
-      <Flex className={styles.graphs}>
+      <>
+      <GraphSection heading='Workload'>
         <ChartTimeSeriesLine
           title='Qps'
           yLabel='queries/s'
@@ -152,15 +171,43 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           targets={[{ target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_queries))'), label: 'Qps' }]}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
+        {/* threads_connected joined threads_running in whitelist.conf.minimal; a cluster
+            materialised before that keeps its whitelist.conf until the template is reapplied
+            (graphite-whitelist-template setting), so the Connected line can be empty there. */}
         <ChartTimeSeriesLine
-          title='Threads running'
+          title='Threads running / connected'
           yLabel='threads'
           logScale
           logBase={2}
           cap={1024}
           windowSec={windowSec}
           refreshMs={refreshMs}
-          targets={[{ target: scope('sumSeries(mysql.*.mysql_global_status_threads_running)'), label: 'Threads' }]}
+          targets={[
+            { target: scope('sumSeries(mysql.*.mysql_global_status_threads_running)'), label: 'Running' },
+            { target: scope('sumSeries(mysql.*.mysql_global_status_threads_connected)'), label: 'Connected' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        {/* The four remaining Top-page gauges (ClusterWorkload.jsx) over time. Same sources:
+            Cpu TP = busy thread-pool threads / prov-db-cpu-cores (MariaDB thread pool),
+            Cpu US = userstats CPU time, Tables/Indexes = DictTables bytes from the master. */}
+        <ChartTimeSeriesLine
+          title='Cpu thread pool'
+          yLabel='% of cores'
+          cap={100}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[{ target: scope('maxSeries(mysql.*.workload_cpu_thread_pool_pct)'), label: 'Cpu TP' }]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        <ChartTimeSeriesLine
+          title='Cpu user stats'
+          yLabel='cpu time'
+          logScale
+          cap={10000}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[{ target: scope('maxSeries(mysql.*.workload_cpu_user_stats)'), label: 'Cpu US' }]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
         <ChartTimeSeriesLine
@@ -177,6 +224,59 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
         <ChartTimeSeriesLine
+          title='Schema size'
+          yLabel='GB'
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('scale(maxSeries(mysql.*.workload_table_size_bytes), 9.313225746154785e-10)'), label: 'Tables' },
+            { target: scope('scale(maxSeries(mysql.*.workload_index_size_bytes), 9.313225746154785e-10)'), label: 'Indexes' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        {/* The Top page per-instance header graphs over time: one line per bar, summed over the
+            cluster's instances (mysql.<host>.top_<graph>_<metric>, per-tick deltas computed by
+            ServerMonitor.TopHeader -- the very numbers the Top page draws). */}
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_queries_questions)',
+           'sumSeries(mysql.*.top_queries_selects)',
+           'sumSeries(mysql.*.top_queries_inserts)',
+           'sumSeries(mysql.*.top_queries_updates)',
+           'sumSeries(mysql.*.top_queries_deletes)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Queries — per tick (Top page: Queries)"
+       />
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_rows_reads)',
+           'sumSeries(mysql.*.top_rows_writes)',
+           'sumSeries(mysql.*.top_rows_updates)',
+           'sumSeries(mysql.*.top_rows_deletes)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Rows — handler calls per tick (Top page: Rows)"
+       />
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_transactions_commits)',
+           'sumSeries(mysql.*.top_transactions_binlog)',
+           'sumSeries(mysql.*.top_transactions_binlog_group)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Transactions — per tick (Top page: Transactions)"
+       />
+      </GraphSection>
+
+      <GraphSection heading='Replication'>
+        <ChartTimeSeriesLine
           title='Replication delay'
           yLabel='behind master'
           logScale
@@ -188,6 +288,22 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           targets={[{ target: scope('sumSeries(mysql.*.mysql_slave_status_seconds_behind_master)'), label: 'Delay' }]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
+        {/* Replication parallelism: the binlog group commit size is the concurrency the master's
+            binlog offers to conservative/optimistic parallel replication (1.0 = commits never
+            overlap, nothing to parallelise) against the workers configured to consume it. */}
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'maxSeries(mysql.*.replication_group_commit_size)',
+           'maxSeries(mysql.*.replication_parallel_threads)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Replication parallelism — binlog group commit size (commit concurrency, MariaDB only) vs parallel workers"
+       />
+      </GraphSection>
+
+      <GraphSection heading='Resources'>
         <ChartGroupedDBU
          context={context}
          dbuPaths={{
@@ -230,6 +346,9 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="Consumed APU — proxies + apps (Compute; plan = service-plan APU)"
        />
+      </GraphSection>
+
+      <GraphSection heading='InnoDB'>
         <ChartMultiMetric
          context={context}
          metricPaths={scopeAll([
@@ -239,6 +358,26 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="InnoDB Redo Log Status"
+       />
+       <Graphite
+         chartRef={ihlRef}
+         size={selectedHour.value}
+         step={selectedStep.value}
+         context={context}
+        maxExtent={100000}
+         title={'InnodbHistoryListLenght'}
+         target={scope('maxSeries(mysql.*.engine_innodb_history_list_lenght_inside_innodb)')}
+         className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+       />
+       <Graphite
+         chartRef={irvef}
+         size={selectedHour.value}
+         step={selectedStep.value}
+         context={context}
+         maxExtent={100000}
+         title={'InnodbReadViews'}
+         target={scope('maxSeries(mysql.*.engine_innodb_read_views_open_inside_innodb)')}
+         className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
        />
         <ChartLatchTracing
           context={context}
@@ -268,6 +407,32 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           className={`${styles.graph} ${styles[`width${selectedHour.value}`]}`}
           isVisible={selectedCluster.config.monitoringPerformanceSchemaLatch}
         />
+      </GraphSection>
+
+      <GraphSection heading='Memory'>
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_swap_tmp_tables)',
+           'sumSeries(mysql.*.top_swap_binary_logs)',
+           'sumSeries(mysql.*.top_swap_sorts)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Swap — spills to disk per tick (Top page: Swap)"
+       />
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_cache_miss_innodb)',
+           'sumSeries(mysql.*.top_cache_miss_aria)',
+           'sumSeries(mysql.*.top_cache_miss_myisam)',
+           'sumSeries(mysql.*.top_cache_miss_myrocks)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Cache miss — engine cache misses per tick (Top page: Cache Miss)"
+       />
         <ChartBarStack
           context={context}
           title={'Memory'}
@@ -279,28 +444,8 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           ])}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
-       <Graphite
-         chartRef={ihlRef}
-         size={selectedHour.value}
-         step={selectedStep.value}
-         context={context}
-        maxExtent={100000}
-         title={'InnodbHistoryListLenght'}
-         target={scope('maxSeries(mysql.*.engine_innodb_history_list_lenght_inside_innodb)')}
-         className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
-       />
-       <Graphite
-         chartRef={irvef}
-         size={selectedHour.value}
-         step={selectedStep.value}
-         context={context}
-         maxExtent={100000}
-         title={'InnodbReadViews'}
-         target={scope('maxSeries(mysql.*.engine_innodb_read_views_open_inside_innodb)')}
-         className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
-       />
-
-      </Flex>
+      </GraphSection>
+      </>
       )}
     </Flex>
   )

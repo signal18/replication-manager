@@ -46,6 +46,39 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 
 	}
 
+	// Replication parallelism: group commit size (the concurrency the binlog offers) and the
+	// workers configured to consume it. Emitted for every server (a master's group size is
+	// what its slaves can parallelise; a slave's own is what ITS slaves get).
+	metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.replication_group_commit_size", hostname), fmt.Sprintf("%.3f", server.ReplicationGroupCommitSize), time.Now().Unix()))
+	metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.replication_parallel_threads", hostname), fmt.Sprintf("%d", server.ReplicationParallelThreads), time.Now().Unix()))
+
+	// The Top page "Cluster Workload" gauges (ClusterWorkload.jsx), as series so the Graphs
+	// page shows the same signals over time: thread-pool CPU % (MariaDB thread pool only,
+	// -1 elsewhere -> not emitted), userstats CPU time, and the schema footprint. Queries
+	// and threads already exist as mysql_global_status_queries / threads_running. First-class
+	// (not whitelist-gated) like the replication pair above: the whitelist.conf materialised
+	// per cluster is never refreshed, so a whitelisted name would never reach existing clusters.
+	if wl, ok := server.WorkLoad.CheckAndGet("current"); ok {
+		if wl.CpuThreadPool >= 0 {
+			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.workload_cpu_thread_pool_pct", hostname), fmt.Sprintf("%.2f", wl.CpuThreadPool), time.Now().Unix()))
+		}
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.workload_cpu_user_stats", hostname), fmt.Sprintf("%.2f", wl.CpuUserStats), time.Now().Unix()))
+	}
+	// The Top page per-instance header graphs (TopHeader: Queries, Rows, Swap, Transactions,
+	// Cache Miss), one series per bar, same per-tick delta the page shows. First-class for the
+	// same reason as above.
+	for _, g := range server.TopHeader().Graphs {
+		for _, m := range g.Data {
+			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.top_%s_%s", hostname, topMetricToken(g.Name), topMetricToken(m.Name)), fmt.Sprintf("%d", m.Value), time.Now().Unix()))
+		}
+	}
+	// Table/index bytes are a cluster figure (DictTables are collected on the master), so the
+	// master carries the series.
+	if server.IsMaster() {
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.workload_table_size_bytes", hostname), fmt.Sprintf("%d", cluster.WorkLoad.DBTableSize), time.Now().Unix()))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.workload_index_size_bytes", hostname), fmt.Sprintf("%d", cluster.WorkLoad.DBIndexSize), time.Now().Unix()))
+	}
+
 	isNumeric := func(s string) bool {
 		_, err := strconv.ParseFloat(s, 64)
 		return err == nil
@@ -170,4 +203,10 @@ func (server *ServerMonitor) SendAlert() error {
 	}
 
 	return server.ClusterGroup.SendAlert(a)
+}
+
+// topMetricToken turns a Top header label ("Cache Miss", "Binlog Group") into a graphite
+// leaf token (cache_miss, binlog_group).
+func topMetricToken(name string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(name), " ", "_"))
 }

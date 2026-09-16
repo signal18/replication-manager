@@ -227,3 +227,24 @@ running against the same live cluster throughout (bounded retries /
 inequality checks rather than assuming exclusive access, and no assertion
 depends on ambient environment state), unlike the deterministic bare-struct
 unit tests.
+
+## First-class series (not whitelist-gated)
+
+`ServerMonitor.GetDatabaseMetrics` (`cluster/srv_snd.go`) emits most `mysql.<host>.*`
+series through the per-cluster whitelist (`whitelist.conf`, materialised ONCE from
+`share/whitelist.conf.<template>` and never refreshed until `graphite-whitelist-template`
+is reapplied). Signals that repman computes itself are emitted unconditionally, like the
+slave-status block, so they reach every cluster whatever its whitelist vintage:
+
+| Series (`mysql.<host>.`) | Source | Note |
+|---|---|---|
+| `replication_group_commit_size` | `refreshReplicationParallelism` (`cluster/srv.go`): ΔBinlog_commits / ΔBinlog_group_commits per tick | MariaDB only (MySQL/Percona have no such counters: stays 0). Reset to 0 on a missed tick / counter reset. Drives #1806 |
+| `replication_parallel_threads` | `slave_parallel_threads` (MariaDB) / `slave_parallel_workers` (MySQL) | the workers configured to consume that concurrency |
+| `workload_cpu_thread_pool_pct`, `workload_cpu_user_stats` | the Top page "Cluster Workload" gauges (`WorkLoad` current) | thread-pool % is MariaDB thread pool only (not emitted when -1) |
+| `workload_table_size_bytes`, `workload_index_size_bytes` | `cluster.WorkLoad` from `DictTables` | master only (the tables are collected there) |
+| `top_<graph>_<metric>` | `ServerMonitor.TopHeader()`: the five per-instance Top page bar graphs (Queries, Rows, Swap, Transactions, Cache Miss), per-tick status deltas | e.g. `top_transactions_binlog_group`, `top_cache_miss_innodb`; one computation for the Top page and the series, so the Graphs page lines are the Top page bars over time |
+
+Raw status variables graphed on the Graphs page still go through the whitelist:
+`mysql_global_status_threads_connected` was added to `whitelist.conf.minimal` (2026-09-16)
+for the Threads running / connected chart; a cluster materialised before that keeps its
+`whitelist.conf` until the template is reapplied.

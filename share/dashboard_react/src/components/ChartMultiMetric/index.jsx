@@ -63,6 +63,11 @@ function ChartMultiMetric({
 
     if (FRIENDLY[leaf]) return FRIENDLY[leaf];
 
+    // top_<graph>_<metric...> (the Top page header graphs): the chart title already names
+    // the graph, so the legend keeps only the metric ("binlog_group", "tmp_tables").
+    const top = leaf.match(/^top_[a-z]+_(.+)$/);
+    if (top) return top[1];
+
     // mysql_global_status_* / mysql_global_variables_*: drop the 3-word prefix
     const words = leaf.split('_');
     if (words.length > 3) return words.slice(3).join('_');
