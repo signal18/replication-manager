@@ -1,0 +1,18 @@
+{
+  "description": "Redundant Indexes — SCH0003\n\nFlags indexes whose column list is a leftmost prefix of (or equal to) another index of the same table: they serve no lookup the wider index cannot, while every write maintains them and they occupy buffer pool and disk. A UNIQUE index is never reported as covered by a non-unique one, PRIMARY is never the redundant side, FULLTEXT/SPATIAL indexes only compare with their own kind, and InnoDB's implicit primary-key suffix on secondary indexes is taken into account ((a, pk) is redundant with (a)). All redundant indexes on a server are reported in a single SCH0003 finding per run, with one DROP INDEX remediation each. Wire v4 (indexes on the schema snapshot).",
+  "prerequisites": [
+    {
+      "config_key": "monitoring-schema-indexes",
+      "description": "Schema index metadata must be monitored (monitoring-schema-indexes=true) — without it the snapshot carries no indexes and this check reports nothing"
+    }
+  ],
+  "config_keys": [
+    {
+      "key": "mask-identifiers",
+      "label": "Mask schema/table/index names",
+      "type": "bool",
+      "default": "false",
+      "help": "Partially obscure schema, table, index and column names in the finding (e.g. \"window\" -> \"wi???ow\") and drop the DROP INDEX statements, so the log entry is not directly useful to someone who only has log access (PCI-DSS style deployments)."
+    }
+  ]
+}

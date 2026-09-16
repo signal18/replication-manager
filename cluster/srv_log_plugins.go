@@ -422,7 +422,7 @@ func snapshotSlowLog(sl *s18log.SlowLog) []logplugin.StdioSlowMsg {
 	return out
 }
 
-// RefreshSchemaWireTables rebuilds the wire v3 Tables snapshot handed to
+// RefreshSchemaWireTables rebuilds the wire v3/v4 Tables snapshot handed to
 // schema plugins. Called when the schema monitor refreshes the master table
 // dictionary (daily cron by default, plus boot and on-demand runs).
 func (cluster *Cluster) RefreshSchemaWireTables() {
@@ -438,9 +438,29 @@ func (cluster *Cluster) RefreshSchemaWireTables() {
 			Name:         t.TableName,
 			Engine:       t.Engine,
 			RowFormat:    t.RowFormat,
-			Rows:         t.TableRows,
-			DataLength:   t.DataLength,
-			AvgRowLength: t.AvgRowLength,
+			Rows:          t.TableRows,
+			DataLength:    t.DataLength,
+			AvgRowLength:  t.AvgRowLength,
+			IndexLength:   t.IndexLength,
+			AutoIncrement: t.AutoIncrement,
+		}
+		// Wire v4: indexes (information_schema.STATISTICS, needs monitoring-schema-indexes)
+		// for plugin-schema-duplicate-index, in SEQ_IN_INDEX order as dbhelper loads them.
+		for _, ix := range t.TableIndexes {
+			wi := logplugin.StdioTableIndex{
+				Name:    ix.Name,
+				Unique:  ix.Unique,
+				Primary: ix.Name == "PRIMARY",
+				Type:    ix.Type,
+			}
+			for _, ic := range ix.Columns {
+				c := logplugin.StdioIndexColumn{Name: ic.Name}
+				if ic.Prefix != nil {
+					c.SubPart = int(*ic.Prefix)
+				}
+				wi.Columns = append(wi.Columns, c)
+			}
+			wt.Indexes = append(wt.Indexes, wi)
 		}
 		for _, c := range t.TableColumns {
 			col := logplugin.StdioTableColumn{
@@ -449,6 +469,7 @@ func (cluster *Cluster) RefreshSchemaWireTables() {
 				Nullable:      c.Nullable,
 				Compressed:    c.Compressed,
 				AvgByteLength: c.AvgByteLength,
+				Extra:         c.Extra,
 			}
 			if c.Charset != nil {
 				col.Charset = *c.Charset
@@ -1166,6 +1187,7 @@ func buildMonitoringFlags(cluster *Cluster, server *ServerMonitor) map[string]bo
 		"monitoring-performance-schema-queries": cluster.Conf.MonitorPFSQueries,
 		"monitoring-processlist":                cluster.Conf.MonitorProcessList,
 		"monitoring-schema-columns":             cluster.Conf.MonitorSchemaColumns,
+		"monitoring-schema-indexes":             cluster.Conf.MonitorSchemaIndexes,
 
 		// Auto-detected per-server capability: true only when the MySQL
 		// METADATA_LOCK_INFO plugin is installed and active on this server.

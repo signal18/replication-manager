@@ -12,7 +12,7 @@ import (
 // WireVersion is the version of the stdin/stdout JSON protocol.
 // Increment this when a breaking change is made to Request or Response.
 // The Makefile reads this value to organise the plugin distribution repository.
-const WireVersion = 3
+const WireVersion = 4
 
 // ServerVersion carries the already-parsed database version so plugins
 // do not need to re-parse the raw version string from ServerVariables.
@@ -56,9 +56,32 @@ type TableColumn struct {
 	// AvgByteLength is a bounded-sample observed average byte length
 	// (BLOB/TEXT candidate columns only). Zero means not sampled.
 	AvgByteLength int64 `json:"avg_byte_length,omitempty"`
+	// Extra is information_schema.COLUMNS.EXTRA lower-cased ("auto_increment",
+	// "on update current_timestamp", "virtual generated"...). Wire v4.
+	Extra string `json:"extra,omitempty"`
 }
 
-// Table is one table of the schema dictionary snapshot (wire v3).
+// IndexColumn is one column of a table index (wire v4). SubPart is the
+// prefix length in characters for a prefix index (KEY (col(10))), 0 = whole column.
+type IndexColumn struct {
+	Name    string `json:"name"`
+	SubPart int    `json:"sub_part,omitempty"`
+}
+
+// TableIndex is one index of a table (wire v4), from information_schema.STATISTICS.
+// Columns are in SEQ_IN_INDEX order. Type is the upper-cased INDEX_TYPE
+// ("BTREE", "HASH", "FULLTEXT", "SPATIAL"). The primary key is the index
+// named PRIMARY (Primary is set for convenience).
+type TableIndex struct {
+	Name    string        `json:"name"`
+	Unique  bool          `json:"unique,omitempty"`
+	Primary bool          `json:"primary,omitempty"`
+	Type    string        `json:"type,omitempty"`
+	Columns []IndexColumn `json:"columns,omitempty"`
+}
+
+// Table is one table of the schema dictionary snapshot (wire v3, indexes and
+// auto-increment since wire v4).
 // The snapshot is refreshed with the schema monitor (daily cron by default,
 // plus boot and on-demand runs) and is populated ONLY on the master server's
 // request to keep per-tick payloads flat.
@@ -71,6 +94,14 @@ type Table struct {
 	DataLength   int64         `json:"data_length,omitempty"`
 	AvgRowLength int64         `json:"avg_row_length,omitempty"` // observed average row length (information_schema.tables), corroborating signal only
 	Columns      []TableColumn `json:"columns,omitempty"`
+	// IndexLength is information_schema.TABLES.INDEX_LENGTH (all secondary indexes together). Wire v4.
+	IndexLength int64 `json:"index_length,omitempty"`
+	// AutoIncrement is information_schema.TABLES.AUTO_INCREMENT: the NEXT value the
+	// counter will hand out (exact on MariaDB; on MySQL 8 it can lag until the table is
+	// opened). 0 when the table has no AUTO_INCREMENT column. Wire v4.
+	AutoIncrement int64 `json:"auto_increment,omitempty"`
+	// Indexes are the table's indexes (needs monitoring-schema-indexes). Wire v4.
+	Indexes []TableIndex `json:"indexes,omitempty"`
 }
 
 // Request is written to the plugin's stdin as a single JSON object.
