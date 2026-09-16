@@ -14,6 +14,11 @@
   display: flex;
 }
 
+// One accordion per section (Workload, Resources, InnoDB, Memory); the .graphs flex inside.
+.section {
+  width: 100%;
+}
+
 .graphs {
   flex-wrap: wrap;
   gap: 1.5rem;

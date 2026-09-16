@@ -6,6 +6,7 @@ package cluster
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 	"time"
@@ -436,6 +437,12 @@ func (m *ResourceManager) AgentSlackDBU(agent string) (float64, bool) {
 // REFUSED and the plan must be raised (a claim -> the IsNeedResourceCapUp state). It protects the
 // client from automatic over-consumption. Pure decision: changes no config, mutates nothing.
 // Returns allowed + a short reason ("" when allowed). No plan (<= 0) means no ceiling.
+//
+// The envelope is ROUNDED UP to the next whole DBU (decision 2026-09-15): resources move in
+// whole-DBU steps, so a strict plan × 1.5 on a 1 DBU plan (= 1.5) could never be used by a +1
+// step and the 50% the client accepted was dead letter on small plans. ceil(1 × 1.5) = 2 lets
+// one step pass; on larger plans the percentage is unchanged (ceil(4 × 1.5) = 6). The accepted
+// trade-off: on a 1 DBU plan, 50% effectively means 100%.
 func (m *ResourceManager) CanGrowBeyondPlan(targetDbuPerNode, planDbuPerNode float64, overcommitPct int) (bool, string) {
 	if planDbuPerNode <= 0 {
 		return true, ""
@@ -443,12 +450,39 @@ func (m *ResourceManager) CanGrowBeyondPlan(targetDbuPerNode, planDbuPerNode flo
 	if overcommitPct < 0 {
 		overcommitPct = 0
 	}
-	ceiling := planDbuPerNode * (1 + float64(overcommitPct)/100.0)
+	ceiling := OvercommitCeilingDBU(planDbuPerNode, overcommitPct)
 	if targetDbuPerNode > ceiling {
-		return false, fmt.Sprintf("commercial scalability-up ceiling reached: %.2f > plan %.2f × %d%% = %.2f DBU/node -- raise the plan",
+		return false, fmt.Sprintf("commercial scalability-up ceiling reached: %.2f > ceil(plan %.2f × %d%%) = %.0f DBU/node -- raise the plan",
 			targetDbuPerNode, planDbuPerNode, 100+overcommitPct, ceiling)
 	}
 	return true, ""
+}
+
+// UndercommitFloorDBU is the per-node DBU floor an automatic shrink may reach, the pendant
+// of OvercommitCeilingDBU: plan × (1 - pct/100), rounded DOWN to a whole DBU (it is a floor),
+// never under 1 DBU (decision 2026-09-16). No plan (<= 0) means the 1 DBU floor only.
+func UndercommitFloorDBU(planDbuPerNode float64, undercommitPct int) float64 {
+	if undercommitPct < 0 {
+		undercommitPct = 0
+	}
+	if undercommitPct > 100 {
+		undercommitPct = 100
+	}
+	floor := math.Floor(planDbuPerNode*(1-float64(undercommitPct)/100.0) + 1e-9)
+	if floor < 1 {
+		floor = 1
+	}
+	return floor
+}
+
+// OvercommitCeilingDBU is the per-node DBU ceiling an automatic over-plan grow may reach:
+// plan × (1 + pct/100), rounded UP to a whole DBU. The 1e-9 guard absorbs binary float noise
+// (10 × 1.1 = 11.000000000000002 must stay 11, not become 12).
+func OvercommitCeilingDBU(planDbuPerNode float64, overcommitPct int) float64 {
+	if overcommitPct < 0 {
+		overcommitPct = 0
+	}
+	return math.Ceil(planDbuPerNode*(1+float64(overcommitPct)/100.0) - 1e-9)
 }
 
 // DBUAggregate is a sum of consumed readings -- the two notions of "real consumed

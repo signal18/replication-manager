@@ -3793,6 +3793,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProvDBCapShrinkPct, _ = strconv.Atoi(value)
 	case "prov-db-overcommit-pct":
 		mycluster.Conf.ProvDBOvercommitPct, _ = strconv.Atoi(value)
+	case "prov-db-undercommit-pct":
+		mycluster.Conf.ProvDBUndercommitPct, _ = strconv.Atoi(value)
 	case "prov-db-scale-up-config-in-plan-speed":
 		mycluster.Conf.ScaleUpConfigInPlanSpeed = value
 	case "prov-db-scale-down-config-in-plan-speed":

@@ -108,11 +108,22 @@ func (cluster *Cluster) resourceResizer() ResourceResizer {
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		return openSVCResizer{cluster}
-	case config.ConstOrchestratorKubernetes, config.ConstOrchestratorOnPremise,
-		config.ConstOrchestratorLocalhost, config.ConstOrchestratorSlapOS:
+	case config.ConstOrchestratorKubernetes:
+		// k8sResizer = native in-place Pod resize (cluster_resize_k8s.go), memory and
+		// cpu in one patch. Selected only when the Pod actually carries the
+		// Requests == Limits pair, i.e. prov-db-docker-run-args-limit is on
+		// (k8sDatabaseContainerResources) -- the same opt-in that puts --memory/--cpus
+		// on OpenSVC's container run_args; an uncapped Pod has nothing to resize and
+		// keeps the script/restart path. The cap contract is the one settled for every
+		// orchestrator: the container limit IS prov-db-* per node (memory minus the
+		// dbjobs carve-out, k8sDatabaseMemoryTargets), no OpenSVC-style padded tier.
+		if cluster.Conf.ProvDBDockerRunArgsLimit {
+			return k8sResizer{cluster}
+		}
+		return scriptResizer{cluster}
+	case config.ConstOrchestratorOnPremise, config.ConstOrchestratorLocalhost, config.ConstOrchestratorSlapOS:
 		// For now these resize only through the client change-script; scriptResizer
-		// falls back to a restart when no script is set. K8s in-place pod resize
-		// (1.27+) is a follow-up that would get its own backend here.
+		// falls back to a restart when no script is set.
 		return scriptResizer{cluster}
 	default:
 		return restartResizer{cluster, "no live resource resize for this orchestrator"}
@@ -416,7 +427,32 @@ func (cluster *Cluster) resourceManagerAllowsGrow(server *ServerMonitor) (bool, 
 	if cluster.resources == nil {
 		return true, ""
 	}
-	target := cluster.GetConfigDBUPerNode().Dbu // the config target, per node
+	return cluster.resourceManagerAllowsGrowTo(server, cluster.GetConfigDBUPerNode().Dbu) // the config target, per node
+}
+
+// resourceManagerAllowsGrowTo is resourceManagerAllowsGrow for an EXPLICIT per-node target (the
+// projection of a config the caller has not applied yet -- the dynamic +1 step deciding whether
+// it may go past the plan). Same three gates: overcommit envelope, node free pool, client hook.
+func (cluster *Cluster) resourceManagerAllowsGrowTo(server *ServerMonitor, target float64) (bool, string) {
+	if ok, reason := cluster.resourceManagerGrowCheck(server, target); !ok {
+		return false, reason
+	}
+	if cluster.resources == nil || target <= cluster.GetPlanDBUPerNode().Dbu {
+		return true, "" // within the contract -- always free, never gated, no hook
+	}
+	// The RM has GRANTED the borrow (target > plan, budget + pool OK). Fire the per-service
+	// client over-plan hook; a veto (non-zero exit) refuses the borrow.
+	return cluster.RunResourceRaisedOverPlanScript(server, cluster.GetPlanDBUPerNode().Dbu, target)
+}
+
+// resourceManagerGrowCheck is the DECISION half of the over-plan gate, side-effect free:
+// the overcommit envelope and the node's free pool for one server. The client hook is the
+// ACT half (RunResourceRaisedOverPlanScript) and must only fire once the whole cluster is
+// known to pass -- see overPlanGrowAllowed.
+func (cluster *Cluster) resourceManagerGrowCheck(server *ServerMonitor, target float64) (bool, string) {
+	if cluster.resources == nil {
+		return true, ""
+	}
 	plan := cluster.GetPlanDBUPerNode().Dbu
 	if target <= plan {
 		return true, "" // within the contract -- always free, never gated
@@ -433,12 +469,6 @@ func (cluster *Cluster) resourceManagerAllowsGrow(server *ServerMonitor) (bool, 
 			return false, fmt.Sprintf("no free pool on node %s: consumed %.2f + grow %.2f > usable %.2f DBU/node",
 				server.Agent, used, extra, ceiling)
 		}
-	}
-	// The RM has GRANTED the borrow (target > plan, budget + pool OK). Fire the per-service
-	// client over-plan hook; a veto (non-zero exit) refuses the borrow. Only reached over-plan
-	// -- the within-plan path returned early above.
-	if ok, reason := cluster.RunResourceRaisedOverPlanScript(server, plan, target); !ok {
-		return false, reason
 	}
 	return true, ""
 }
@@ -520,11 +550,22 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 					server.SetRestartCookie()
 				}
 			}
-			if dim == resizeCPU && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC && !cluster.Conf.ProvDBDockerRunArgsLimit {
-				if svc := cluster.OpenSVCConnect(); svc.IsV3() {
-					if err := cluster.openSVCResizeCPU(server); err != nil {
+			if dim == resizeCPU {
+				switch {
+				case cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC && !cluster.Conf.ProvDBDockerRunArgsLimit:
+					if svc := cluster.OpenSVCConnect(); svc.IsV3() {
+						if err := cluster.openSVCResizeCPU(server); err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+								"Live cpu cgroup resize failed on %s (DB tuning applied, container cap unchanged): %s", server.URL, err)
+						}
+					}
+				case cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes:
+					// k8sResizer (or the client change script): the Pod resize patch carries
+					// the whole prov-db-* pair, so the cpu step lands with it; confirmation is
+					// asynchronous (completePendingK8sMemoryResize on the tick).
+					if _, err := cluster.resourceResizer().ConfigResize(server, grow); err != nil {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-							"Live cpu cgroup resize failed on %s (DB tuning applied, container cap unchanged): %s", server.URL, err)
+							"Live cpu Pod resize failed on %s (DB tuning applied, container cap unchanged): %s", server.URL, err)
 					}
 				}
 			}
@@ -607,14 +648,17 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 				continue
 			}
 			if !applied {
-				cluster.logResize(server, dim, true, false, feas, nil) // native path scheduled a restart
+				// Either the native path gave up and scheduled a restart (e.g. no
+				// client script, OpenSVC v2), or -- Kubernetes only -- it is
+				// genuinely still pending kubelet confirmation: k8sResizer.Resize
+				// sets server.PendingK8sMemoryResize instead of a restart cookie in
+				// that case, and completePendingK8sMemoryResize (monitor tick)
+				// raises the DB memory once confirmed. Either way, DB memory must
+				// not be raised on this tick.
+				cluster.logResize(server, dim, true, false, feas, nil)
 				continue
 			}
-			sql := server.resizeMemorySQL(true)
-			if _, needRestart := server.ExecScriptSQL(sql); needRestart {
-				server.SetRestartCookie()
-			}
-			cluster.logResize(server, dim, true, true, feas, sql)
+			cluster.applyConfirmedMemoryGrow(server, feas)
 		} else {
 			// Feasibility gate applies to shrink too: a can-change verdict of no/
 			// migration must stop a live shrink (e.g. a maintenance window).
@@ -651,6 +695,18 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 			cluster.logResize(server, dim, false, false, feas, sql)
 		}
 	}
+}
+
+// applyConfirmedMemoryGrow raises the DB-side memory (SET GLOBALs, buffer pool
+// LAST) once the infra grow is confirmed applied -- shared by the synchronous
+// grow path above and by completePendingK8sMemoryResize (cluster_resize_k8s.go),
+// which calls this asynchronously once kubelet confirms a native Pod resize.
+func (cluster *Cluster) applyConfirmedMemoryGrow(server *ServerMonitor, feas ResizeFeasibility) {
+	sql := server.resizeMemorySQL(true)
+	if _, needRestart := server.ExecScriptSQL(sql); needRestart {
+		server.SetRestartCookie()
+	}
+	cluster.logResize(server, resizeMemory, true, true, feas, sql)
 }
 
 // completePendingCgroupShrink is phase 2 of a live memory shrink. Phase 1 lowered
@@ -769,9 +825,15 @@ func (cluster *Cluster) currentClusterQPS() float64 {
 //	                    improving QPS (the working set now fits / the cache is no
 //	                    longer the bottleneck), i.e. the IO is genuine, not eviction.
 //
-// Every step is bounded by the per-node plan ceiling (in-plan only; a plan cap-up is a
-// separate commercial decision). Gated by prov-db-dynamic-resource; never runs during a
-// failover, never stacks on an unconverged memory resize.
+// The cap also follows the load DOWN: when nothing is saturated, driveDynamicShrink aligns
+// an axis every live server under-uses to the DBU the load needs, floor 1 DBU (see there).
+//
+// A step within the plan is always free. A step PAST the plan is not refused outright: it
+// goes through the ResourceManager over-plan gate (resourceManagerAllowsGrowTo) -- the
+// overcommit envelope rounded up to a whole DBU, the node's free pool, the client hook --
+// on EVERY server, so the cluster grows symmetrically or not at all. The plan itself is
+// never touched here (we raise resources, not the plan). Gated by prov-db-dynamic-resource;
+// never runs during a failover, never stacks on an unconverged memory resize.
 func (cluster *Cluster) DriveDynamicResize() {
 	if !cluster.Conf.ProvDBDynamicResource || cluster.IsInFailover() {
 		return
@@ -805,7 +867,9 @@ func (cluster *Cluster) DriveDynamicResize() {
 		}
 	}
 	if !cpuDue && !memDue && !ioDue {
-		cluster.lastDynamicGrowAxis = "" // nothing constrained: reset the hill-climb memory
+		cluster.lastDynamicGrowAxis = ""  // nothing constrained: reset the hill-climb memory
+		cluster.ResourceGrowRefused = nil // and a past refusal is moot once nothing is saturated
+		cluster.driveDynamicShrink()      // nothing saturated: the cap may follow the load DOWN
 		return
 	}
 
@@ -838,13 +902,152 @@ func (cluster *Cluster) DriveDynamicResize() {
 	}
 }
 
-// growAxisInPlan raises one config axis by +1 DBU, clamped to the per-node plan ceiling,
-// records it as the last dynamic grow (with the pre-grow QPS for the next window's
-// plateau check), and applies it live via the axis setter. Returns false without acting
-// when the axis is already at its plan ceiling (in-plan grow exhausted). NOTE: memory is
-// physically effective now (buffer-pool grow); cpu/io currently only re-tune SET GLOBAL
-// vars -- the container cpu/io cgroup resize (pg_cpus / io weight) is the follow-up that
-// makes those steps add real capacity.
+// driveDynamicShrink is the step-DOWN half of DriveDynamicResize: with dynamic capping the
+// cap must follow the load down as well, or every grow accumulates into permanent
+// over-allocation (dev3 sat a full day at 0.2 core with 2 cores configured while CINF0008
+// said "scale down possible" every tick). Once per scale-down window
+// (prov-db-scale-down-config-in-plan-speed, slower than up by default), on an axis EVERY live
+// server reports under-used for that window (CanScaleConfigInPlan(false): consumed <= config
+// x prov-db-cap-shrink-pct) -- symmetric with the grow, which any one server can force -- the
+// axis is ALIGNED TO THE DBU (decision 2026-09-16): it lands in one move on the smallest whole
+// number of DBU that still keeps every server's peak consumption under the high-water mark
+// (consumed <= target x (1 - prov-db-cap-safety-pct)), bounded below by the UNDERCOMMIT floor
+// (prov-db-undercommit-pct, the pendant of the overcommit ceiling: floor(plan x (1 - pct/100)),
+// never under 1 DBU). Aligning instead of stepping -1 avoids both the slow descent (4 -> 3 ->
+// 2 -> 1 over four windows for a load of 0.2 core) and the flap a blind -1 step can cause
+// (2 -> 1 with 1.0 core consumed lands at 100% and grows right back). Only reached when no
+// axis is saturated (grow always wins). cpu and mem only: io has no shrink primitive worth a
+// move. The memory move reuses the existing anti-OOM shrink (buffer pool first, deferred
+// cgroup) through SetDBMemorySize; the cpu move re-tunes and moves the cgroup via SetDBCores.
+func (cluster *Cluster) driveDynamicShrink() {
+	d, err := time.ParseDuration(cluster.Conf.ScaleDownConfigInPlanSpeed)
+	if err != nil || d < time.Minute {
+		d = time.Minute
+	}
+	if !cluster.lastDynamicResize.IsZero() && time.Since(cluster.lastDynamicResize) < d {
+		return // one move per scale-down window, up or down
+	}
+	cpuUnder, memUnder := true, true
+	live := 0
+	for _, s := range cluster.Servers {
+		if s == nil || s.State == stateFailed || s.State == stateUnconn {
+			continue
+		}
+		live++
+		under := map[string]bool{}
+		for _, a := range s.CanScaleConfigInPlan(false) {
+			under[a] = true
+		}
+		cpuUnder = cpuUnder && under["cpu"]
+		memUnder = memUnder && under["mem"]
+	}
+	if live == 0 {
+		return
+	}
+	// Memory first (the larger cost, and the pool axis that binds most often), then cpu.
+	if memUnder && cluster.shrinkAxisInPlan("mem") {
+		return
+	}
+	if cpuUnder {
+		cluster.shrinkAxisInPlan("cpu")
+	}
+}
+
+// dynamicResizeCoresPerDBU / dynamicResizeMemMBPerDBU are the Database-profile ratios the
+// dynamic moves use (1 core / 4 GB per DBU, the same constants growAxisInPlan steps by).
+const (
+	dynamicResizeCoresPerDBU = 1
+	dynamicResizeMemMBPerDBU = 4096
+)
+
+// dynamicShrinkTarget is the pure decision of the aligned move down on an axis: from the
+// current config to the smallest whole number of DBU that keeps the peak consumption of every
+// live server under the high-water mark (1 - prov-db-cap-safety-pct), never under the
+// undercommit floor (UndercommitFloorDBU of the plan per node, itself >= 1 DBU). ok=false when
+// the aligned target is not below the current config (already aligned, or the load needs
+// what is configured). Servers without a consumed reading are ignored (no evidence, no move
+// on their behalf); if none has one, nothing moves.
+func (cluster *Cluster) dynamicShrinkTarget(axis string) (from, to string, ok bool) {
+	headroom := 1 - clampPct(cluster.Conf.ProvDBCapSafetyPct)/100.0 // 0.85 by default
+	if headroom <= 0 {
+		headroom = 1
+	}
+	peakDbu, seen := 0.0, false
+	for _, s := range cluster.Servers {
+		if s == nil || s.State == stateFailed || s.State == stateUnconn || s.DBUConsumed == nil {
+			continue
+		}
+		v := 0.0
+		switch axis {
+		case "cpu":
+			v = s.DBUConsumed.DbuCpu
+		case "mem":
+			v = s.DBUConsumed.DbuMem
+		}
+		if v > peakDbu {
+			peakDbu = v
+		}
+		seen = true
+	}
+	if !seen {
+		return "", "", false
+	}
+	targetDbu := math.Ceil(peakDbu/headroom - 1e-9) // align to the DBU grid
+	if floor := UndercommitFloorDBU(cluster.GetPlanDBUPerNode().Dbu, cluster.Conf.ProvDBUndercommitPct); targetDbu < floor {
+		targetDbu = floor // the commercial scalability-down floor (>= 1 DBU)
+	}
+	switch axis {
+	case "cpu":
+		cur, _ := strconv.Atoi(cluster.Conf.ProvCores)
+		newC := int(targetDbu) * dynamicResizeCoresPerDBU
+		if cur <= newC {
+			return strconv.Itoa(cur), strconv.Itoa(cur), false
+		}
+		return strconv.Itoa(cur), strconv.Itoa(newC), true
+	case "mem":
+		curMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+		newMB := int(targetDbu) * dynamicResizeMemMBPerDBU
+		if int(curMB) <= newMB {
+			return strconv.Itoa(int(curMB)), strconv.Itoa(int(curMB)), false
+		}
+		return strconv.Itoa(int(curMB)), strconv.Itoa(newMB), true
+	}
+	return "", "", false
+}
+
+// shrinkAxisInPlan applies the aligned move down on an axis through its setter (which runs
+// the live shrink: SET GLOBAL re-tune + cgroup for cpu, buffer pool then deferred cgroup for
+// mem), records it as the last dynamic resize (cooldown) and clears the hill-climb memory
+// (a shrink is not a grow step to measure QPS against). Returns false without acting when
+// the config is already aligned to the load (or at the undercommit floor).
+func (cluster *Cluster) shrinkAxisInPlan(axis string) bool {
+	from, to, ok := cluster.dynamicShrinkTarget(axis)
+	if !ok {
+		return false
+	}
+	cluster.lastDynamicResize = time.Now()
+	cluster.lastDynamicGrowAxis = ""
+	switch axis {
+	case "cpu":
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"Dynamic CPU shrink (all servers under-used for %s, aligned to the DBU): prov-db-cpu-cores %s -> %s", cluster.Conf.ScaleDownConfigInPlanSpeed, from, to)
+		cluster.SetDBCores(to)
+	case "mem":
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"Dynamic MEMORY shrink (all servers under-used for %s, aligned to the DBU): prov-db-memory %sMB -> %sMB", cluster.Conf.ScaleDownConfigInPlanSpeed, from, to)
+		cluster.SetDBMemorySize(to)
+	}
+	return true
+}
+
+// growAxisInPlan raises one config axis by +1 DBU, records it as the last dynamic grow
+// (with the pre-grow QPS for the next window's plateau check), and applies it live via the
+// axis setter. Returns false without acting when the step is refused. Memory is clamped
+// to the container cgroup cap and gated over-plan by ResizeDynamicResources itself; cpu
+// and io are gated here through overPlanGrowAllowed (free within the plan, else the
+// overcommit envelope + node pool + client hook on every server). The cpu step moves the
+// container cgroup live (openSVCResizeCPU) on top of the SET GLOBAL re-tune; io has no
+// cgroup primitive and stays a DB-side tuning.
 func (cluster *Cluster) growAxisInPlan(axis string, qps float64) bool {
 	planPerNode := cluster.GetPlanDBUPerNode().Dbu
 	switch axis {
@@ -865,45 +1068,126 @@ func (cluster *Cluster) growAxisInPlan(axis string, qps float64) bool {
 		return true
 	case "cpu":
 		cur, _ := strconv.Atoi(cluster.Conf.ProvCores)
-		ceil := int(math.Floor(planPerNode)) // 1 core per DBU
-		if ceil < 1 {
-			ceil = 1
+		if cur < 0 {
+			cur = 0
 		}
-		if cur >= ceil {
+		newC := cur + 1 // +1 DBU of cpu (1 core per DBU)
+		target := cluster.projectConfigDBUPerNode(float64(newC), -1).Dbu
+		if ok, reason := cluster.overPlanGrowAllowed(target); !ok {
+			cluster.refuseDynamicGrow("cpu", resizeCPU, strconv.Itoa(cur), strconv.Itoa(newC), target, reason)
 			return false
-		}
-		newC := cur + 1
-		if newC > ceil {
-			newC = ceil
 		}
 		cluster.recordDynamicGrow("cpu", qps)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"Dynamic in-plan CPU grow (cores pinned, cpu-bound): prov-db-cpu-cores %d -> %d (ceiling %d)", cur, newC, ceil)
+			"Dynamic %s CPU grow (cores pinned, cpu-bound): prov-db-cpu-cores %d -> %d (plan %.2f DBU/node)", growScope(target, planPerNode), cur, newC, planPerNode)
 		cluster.SetDBCores(strconv.Itoa(newC))
 		return true
 	case "io":
 		cur, _ := strconv.Atoi(cluster.Conf.ProvIops)
-		ceil := int(planPerNode * 1000) // 1000 IOPS per DBU
-		if cur >= ceil {
-			return false
+		if cur < 0 {
+			cur = 0
 		}
 		newI := cur + 1000 // +1 DBU of IOPS
-		if newI > ceil {
-			newI = ceil
+		target := cluster.projectConfigDBUPerNode(-1, float64(newI)).Dbu
+		if ok, reason := cluster.overPlanGrowAllowed(target); !ok {
+			cluster.refuseDynamicGrow("io", resizeIO, strconv.Itoa(cur), strconv.Itoa(newI), target, reason)
+			return false
 		}
 		cluster.recordDynamicGrow("io", qps)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"Dynamic in-plan IO grow (memory plateaued, genuine IO bottleneck): prov-db-disk-iops %d -> %d (ceiling %d)", cur, newI, ceil)
+			"Dynamic %s IO grow (memory plateaued, genuine IO bottleneck): prov-db-disk-iops %d -> %d (plan %.2f DBU/node)", growScope(target, planPerNode), cur, newI, planPerNode)
 		cluster.SetDBDiskIOPS(strconv.Itoa(newI))
 		return true
 	}
 	return false
 }
 
+// GrowRefusal is the tracked state of a dynamic over-plan step the ResourceManager
+// gate refused: which axis, from/to, the projected per-node DBU, why, and when. It is a
+// STATE, not a log: set by growAxisInPlan on refusal, cleared when a later step is applied
+// (recordDynamicGrow) or when no axis is constrained any more (DriveDynamicResize), and
+// surfaced by checkResourceScaleWorkloadStates as ERR00112 in the workload channel.
+type GrowRefusal struct {
+	Axis      string    `json:"axis"`
+	From      string    `json:"from"`
+	To        string    `json:"to"`
+	TargetDbu float64   `json:"targetDbu"`
+	Reason    string    `json:"reason"`
+	Since     time.Time `json:"since"`
+}
+
+// refuseDynamicGrow materializes a refused step: tracked state on the cluster (ERR00112 rides
+// it), and -- only when the refusal is NEW (axis or reason changed) -- an orchestrator log line
+// and a resize-log entry per live server (feasibility no), the same trail the memory path
+// leaves. A standing refusal is re-evaluated once per scale-up window (the cooldown is stamped
+// here too), never per tick: on dev3 the per-tick re-evaluation wrote the same WARN line every
+// 2s (53 lines in 2 minutes) -- the state is the signal, the log is the transition.
+func (cluster *Cluster) refuseDynamicGrow(axis string, dim resizeDimension, from, to string, target float64, reason string) {
+	cluster.lastDynamicResize = time.Now() // one evaluation per window, refused or not
+	if r := cluster.ResourceGrowRefused; r != nil && r.Axis == axis && r.Reason == reason {
+		return // same standing refusal: nothing new to say
+	}
+	cluster.ResourceGrowRefused = &GrowRefusal{Axis: axis, From: from, To: to, TargetDbu: target, Reason: reason, Since: time.Now()}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+		"Dynamic %s grow %s -> %s refused: %s", axis, from, to, reason)
+	for _, s := range cluster.Servers {
+		if s == nil || s.State == stateFailed || s.State == stateUnconn {
+			continue
+		}
+		cluster.logResize(s, dim, true, false, ResizeNo, nil)
+	}
+}
+
+// growScope labels a dynamic step for the log: within the plan or borrowing past it.
+func growScope(target, planPerNode float64) string {
+	if planPerNode > 0 && target > planPerNode {
+		return "over-plan"
+	}
+	return "in-plan"
+}
+
+// overPlanGrowAllowed decides whether the cluster may move its per-node config to `target`
+// DBU. Free when target <= plan. Past the plan, EVERY monitored server must pass the
+// ResourceManager gate (resourceManagerAllowsGrowTo: overcommit envelope rounded up to a
+// whole DBU, node free pool, client hook) -- the grow is symmetric, so one refusal refuses
+// the step for the whole cluster. Pure decision; the plan is never changed.
+func (cluster *Cluster) overPlanGrowAllowed(target float64) (bool, string) {
+	plan := cluster.GetPlanDBUPerNode().Dbu
+	if plan <= 0 || target <= plan {
+		return true, ""
+	}
+	live := make([]*ServerMonitor, 0, len(cluster.Servers))
+	for _, s := range cluster.Servers {
+		if s == nil || s.State == stateFailed || s.State == stateUnconn {
+			continue
+		}
+		live = append(live, s)
+	}
+	// Phase 1 -- DECIDE on every server (envelope + pool), no side effect: one refusal
+	// refuses the step before any client hook has fired for a grow that will not happen.
+	for _, s := range live {
+		if ok, reason := cluster.resourceManagerGrowCheck(s, target); !ok {
+			return false, fmt.Sprintf("%s: %s", s.URL, reason)
+		}
+	}
+	// Phase 2 -- ACT: the cluster-wide step is granted by the RM, fire the per-service client
+	// hook (prov-db-resource-raised-over-plan-script). A veto on any server refuses the step;
+	// hooks already fired on earlier servers saw a borrow that is then not applied -- that
+	// residual is inherent to a per-service hook with a cluster-wide decision, and is bounded
+	// to one call per server per scale-up window by the cooldown.
+	for _, s := range live {
+		if ok, reason := cluster.RunResourceRaisedOverPlanScript(s, plan, target); !ok {
+			return false, fmt.Sprintf("%s: %s", s.URL, reason)
+		}
+	}
+	return true, ""
+}
+
 func (cluster *Cluster) recordDynamicGrow(axis string, qps float64) {
 	cluster.lastDynamicResize = time.Now()
 	cluster.lastDynamicGrowAxis = axis
 	cluster.qpsBeforeDynamicGrow = qps
+	cluster.ResourceGrowRefused = nil // a step went through: the refusal no longer stands
 }
 
 // CheckDynamicResourceDeploymentReady raises WARN0214 when the live resize is enabled

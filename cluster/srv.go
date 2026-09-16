@@ -165,6 +165,8 @@ type ServerMonitor struct {
 	DBVersion                   *version.Version            `json:"dbVersion"`
 	Version                     int                         `json:"-"`
 	QPS                         int64                       `json:"qps"`
+	ReplicationGroupCommitSize  float64                     `json:"replicationGroupCommitSize"` // avg binlog group commit size over the last tick (Binlog_commits / Binlog_group_commits deltas): the commit concurrency a slave can apply in parallel; 0 when no commit in the tick
+	ReplicationParallelThreads  int64                       `json:"replicationParallelThreads"` // slave_parallel_threads (MariaDB) / slave_parallel_workers (MySQL) as the server runs it -- the workers, to compare with the group commit size
 	lastParallelModeEnforce     time.Time                   `json:"-"` // last STOP/SET/START of slave_parallel_mode by CheckSlaveSettings (rate limit)
 	ReplicationHealth           string                      `json:"replicationHealth"`
 	EventStatus                 []dbhelper.Event            `json:"eventStatus"`
@@ -261,25 +263,26 @@ type ServerMonitor struct {
 	LastPhysicalRestoreMeta     *PhysicalRestoreMeta    `json:"lastPhysicalRestoreMeta,omitempty"`
 	IsNeedPathCheck             bool
 	HasConfigPathChanged        bool
-	HasConfigDiff               bool         `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config
-	PendingCgroupShrink         bool         `json:"-"`             // a memory live-shrink lowered the buffer pool and is waiting for the async InnoDB resize to complete before shrinking the cgroup (anti-OOM)
-	RestartNode                 string       // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
-	RestartRid                  string       // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
-	jobMutex                    sync.Mutex   // protects IsRunningJobs flag
-	configGenMutex              sync.Mutex   // protects config generation operations
-	dbLogMigrateMutex           sync.Mutex   // serializes concurrent attempts at the lazy legacy->backup-backed fetched DB log migration
-	dbLogMigrated               atomic.Bool  // set once a migration pass completes with no errors; left false to allow retry after a transient failure
-	backupMetaMutex             sync.Mutex   // protects LastBackupMeta from concurrent Restic callback updates
-	rejoinInProgress            atomic.Bool  // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
-	reseedFromRejoin            atomic.Bool  // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
-	rejoinReseedStart           atomic.Int64 // unix-nanos when the rejoin armed its reseed; drives the generic "rejoin reseed in progress, started T" state (WARN0189) for methods without byte instrumentation
-	reseedInfo                  atomic.Value // *ReseedProgress: the in-flight restore's backup (nil when idle) — for the progress state
-	reseedBytes                 atomic.Int64 // raw bytes streamed so far (compressed input; no decompression accounting yet)
-	reseedTotal                 atomic.Int64 // total compressed backup file size (0 = unknown)
-	reseedStart                 atomic.Int64 // unix-nanos the current restore started (for MB/s)
-	reseedRateWindow            atomic.Value // []reseedRateSample: last few per-tick (bytes,time) samples, for a windowed "recent" rate distinct from the lifetime average (reseedBytes/reseedStart) — see restore_progress.go
-	reseedPhase                 atomic.Value // string: one of the ReseedPhase* constants (restore_progress.go), physical reseed/flashback only; empty for paths that don't set it
-	logicalReseedDispatching    atomic.Bool  // claimed for the duration of an in-flight launchLogicalReseed call, so repeated StateProcessing ticks over the same open WARN0075 can't enter ProcessReseedLogical concurrently
+	HasConfigDiff               bool                                 `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config
+	PendingCgroupShrink         bool                                 `json:"-"`             // a memory live-shrink lowered the buffer pool and is waiting for the async InnoDB resize to complete before shrinking the cgroup (anti-OOM)
+	pendingK8sMemoryResize      atomic.Pointer[K8sMemoryResizeState] // a native Kubernetes Pod memory resize was requested and is awaiting kubelet confirmation (see cluster_resize_k8s.go); written from the resize-dispatch path, read/cleared from the monitor tick -- different goroutines, so atomic not a plain pointer (GetPendingK8sMemoryResize/SetPendingK8sMemoryResize below)
+	RestartNode                 string                               // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
+	RestartRid                  string                               // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
+	jobMutex                    sync.Mutex                           // protects IsRunningJobs flag
+	configGenMutex              sync.Mutex                           // protects config generation operations
+	dbLogMigrateMutex           sync.Mutex                           // serializes concurrent attempts at the lazy legacy->backup-backed fetched DB log migration
+	dbLogMigrated               atomic.Bool                          // set once a migration pass completes with no errors; left false to allow retry after a transient failure
+	backupMetaMutex             sync.Mutex                           // protects LastBackupMeta from concurrent Restic callback updates
+	rejoinInProgress            atomic.Bool                          // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
+	reseedFromRejoin            atomic.Bool                          // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
+	rejoinReseedStart           atomic.Int64                         // unix-nanos when the rejoin armed its reseed; drives the generic "rejoin reseed in progress, started T" state (WARN0189) for methods without byte instrumentation
+	reseedInfo                  atomic.Value                         // *ReseedProgress: the in-flight restore's backup (nil when idle) — for the progress state
+	reseedBytes                 atomic.Int64                         // raw bytes streamed so far (compressed input; no decompression accounting yet)
+	reseedTotal                 atomic.Int64                         // total compressed backup file size (0 = unknown)
+	reseedStart                 atomic.Int64                         // unix-nanos the current restore started (for MB/s)
+	reseedRateWindow            atomic.Value                         // []reseedRateSample: last few per-tick (bytes,time) samples, for a windowed "recent" rate distinct from the lifetime average (reseedBytes/reseedStart) — see restore_progress.go
+	reseedPhase                 atomic.Value                         // string: one of the ReseedPhase* constants (restore_progress.go), physical reseed/flashback only; empty for paths that don't set it
+	logicalReseedDispatching    atomic.Bool                          // claimed for the duration of an in-flight launchLogicalReseed call, so repeated StateProcessing ticks over the same open WARN0075 can't enter ProcessReseedLogical concurrently
 	// Lock ordering (to prevent deadlocks):
 	// 1. Cluster.stateMutex (highest)
 	// 2. ServerMonitor.stateMutex
@@ -401,6 +404,13 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(url), server.GetCluster().GetCrcTable()), 10), 10, 64)
 	server.ServerID = sid
 	server.Id = fmt.Sprintf("%s%d", "db", sid)
+
+	// newServerList() (cluster_topo.go) rebuilds every *ServerMonitor from
+	// scratch on a reload/config-set (not just startup), which would
+	// otherwise silently drop a pending native Kubernetes resize in flight --
+	// server.Id (just computed above) is deterministic and stable across the
+	// recreation, so a pending resize tracked under it can be restored here.
+	cluster.restorePendingK8sMemoryResize(server)
 
 	if cluster.Conf.TunnelHost != "" {
 		go server.Tunnel()
@@ -1226,6 +1236,11 @@ func (server *ServerMonitor) Refresh() error {
 		// completed, shrink the cgroup (no-op / single comparison otherwise).
 		cluster.completePendingCgroupShrink(server)
 
+		// Reconcile any pending native Kubernetes Pod memory resize (no-op /
+		// single comparison when nothing is pending). Bounded, non-blocking:
+		// see cluster_resize_k8s.go.
+		cluster.completePendingK8sMemoryResize(server)
+
 		if server.IsNeedPathCheck {
 			server.CheckDBConfigPath()
 		}
@@ -1554,6 +1569,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.QPS = (qps - prevqps) / (server.MonitorTime - server.PrevMonitorTime)
 		}
 	}
+	server.refreshReplicationParallelism()
 
 	if server.HasHighNumberSlowQueries() {
 		cluster.SetState("WARN0088", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["WARN0088"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
@@ -2635,5 +2651,43 @@ func (server *ServerMonitor) refreshResolvedIP() {
 	}
 	if ip != server.IP {
 		server.IP = ip
+	}
+}
+
+// refreshReplicationParallelism recomputes the replication parallelism signal from the
+// current and previous status/variables snapshots (pure: no I/O, unit-tested).
+//
+// ReplicationGroupCommitSize = ΔBinlog_commits / ΔBinlog_group_commits over the tick: the
+// average binlog group commit size. Transactions that committed in the same group are known
+// conflict-free, so this is the number of workers a slave can use in parallel on this
+// master's binlog in conservative mode (optimistic goes further; this stays the floor).
+// Graphed against the workers configured (ReplicationParallelThreads); drives the future
+// tuner (#1806). MariaDB-only: MySQL/Percona expose neither counter, so the value stays 0
+// there (the graph title says so). Reset to 0 whenever the delta cannot be computed (no
+// previous snapshot, no commit in the tick, counter reset) so a missed tick never leaves a
+// stale reading in place.
+//
+// ReplicationParallelThreads = slave_parallel_threads (MariaDB) or slave_parallel_workers
+// (MySQL), the workers configured to consume that concurrency.
+func (server *ServerMonitor) refreshReplicationParallelism() {
+	server.ReplicationGroupCommitSize = 0
+	if server.Status != nil && server.PrevStatus != nil {
+		if _, ok := server.PrevStatus.CheckAndGet("BINLOG_GROUP_COMMITS"); ok {
+			dg := server.GetStatusDeltaValue("BINLOG_GROUP_COMMITS")
+			dc := server.GetStatusDeltaValue("BINLOG_COMMITS")
+			// GetStatusDeltaValue does not guard against a counter reset (restart): both
+			// deltas must be non-negative, and no group means no ratio.
+			if dg > 0 && dc >= 0 {
+				server.ReplicationGroupCommitSize = float64(dc) / float64(dg)
+			}
+		}
+	}
+	if server.Variables == nil {
+		return
+	}
+	if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_THREADS"); ok {
+		server.ReplicationParallelThreads, _ = strconv.ParseInt(v, 10, 64)
+	} else if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_WORKERS"); ok {
+		server.ReplicationParallelThreads, _ = strconv.ParseInt(v, 10, 64)
 	}
 }

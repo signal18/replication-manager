@@ -144,7 +144,10 @@ func (cluster *Cluster) SetDBCores(value string) {
 	// resize (pg_cpus) is a follow-up; for now this only re-tunes the DB side.
 	if cluster.Conf.ProvDBDynamicResource {
 		if cluster.Conf.ProvCores != old {
-			cluster.ResizeDynamicResources(resizeCPU, false)
+			newC, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+			oldC, _ := strconv.ParseFloat(old, 64)
+			cluster.lastDynamicResize = time.Now() // a manual change opens the same cooldown as a dynamic step
+			cluster.ResizeDynamicResources(resizeCPU, newC > oldC)
 		}
 		return
 	}
@@ -161,6 +164,7 @@ func (cluster *Cluster) SetDBMemorySize(value string) {
 	if cluster.Conf.ProvDBDynamicResource {
 		newMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
 		if newMB != oldMB { // skip no-op reloads (would re-run the feasibility script for nothing)
+			cluster.lastDynamicResize = time.Now() // a manual change opens the same cooldown as a dynamic step
 			cluster.ResizeDynamicResources(resizeMemory, newMB > oldMB)
 		}
 		return
