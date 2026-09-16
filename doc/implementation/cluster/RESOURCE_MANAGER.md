@@ -295,8 +295,14 @@ NO axis saturated ──▶ clear the refusal state, then driveDynamicShrink:
 ```
 
 The dead band between 50 % and 85 % of config is status quo (anti-flap). With a speed of
-one minute or less the instant sensor state decides; slower speeds ask Graphite whether the
-whole window stayed over/under (`canScaleSustained`).
+one minute or less the instant sensor state decides; slower speeds ask Graphite for the raw
+series over the whole window and reduce it client-side (`windowExtremum`: busiest sample
+for a shrink, quietest for a grow), and withhold the decision until present samples cover
+at least 80 % of the window (`sustainMinCoverage`) -- the previous `summarize(...,'5m')`
+read its partial last bucket and called "sustained for 5m" two seconds after the load
+dropped. A manual `prov-db-*` change stamps the same cooldown as a dynamic step, so the
+driver never undoes an operator's move inside the window (validated dev3 2026-09-16:
+manual 1→2 held, shrink fired at +5m02s).
 
 ### 3. Grow: +1 DBU, in-plan free, over-plan gated
 
