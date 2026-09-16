@@ -228,6 +228,16 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         <ChartMultiMetric
          context={context}
          metricPaths={scopeAll([
+           'maxSeries(mysql.*.replication_group_commit_size)',
+           'maxSeries(mysql.*.replication_parallel_threads)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Replication parallelism — binlog group commit size (commit concurrency) vs parallel workers"
+       />
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
            'maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
            'averageSeries(mysql.*.mysql_global_variables_innodb_log_file_size)'
          ])}

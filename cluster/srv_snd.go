@@ -46,6 +46,12 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 
 	}
 
+	// Replication parallelism: group commit size (the concurrency the binlog offers) and the
+	// workers configured to consume it. Emitted for every server (a master's group size is
+	// what its slaves can parallelise; a slave's own is what ITS slaves get).
+	metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.replication_group_commit_size", hostname), fmt.Sprintf("%.3f", server.ReplicationGroupCommitSize), time.Now().Unix()))
+	metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.replication_parallel_threads", hostname), fmt.Sprintf("%d", server.ReplicationParallelThreads), time.Now().Unix()))
+
 	isNumeric := func(s string) bool {
 		_, err := strconv.ParseFloat(s, 64)
 		return err == nil

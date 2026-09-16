@@ -165,6 +165,8 @@ type ServerMonitor struct {
 	DBVersion                   *version.Version            `json:"dbVersion"`
 	Version                     int                         `json:"-"`
 	QPS                         int64                       `json:"qps"`
+	ReplicationGroupCommitSize  float64                     `json:"replicationGroupCommitSize"` // avg binlog group commit size over the last tick (Binlog_commits / Binlog_group_commits deltas): the commit concurrency a slave can apply in parallel; 0 when no commit in the tick
+	ReplicationParallelThreads  int64                       `json:"replicationParallelThreads"` // slave_parallel_threads (MariaDB) / slave_parallel_workers (MySQL) as the server runs it -- the workers, to compare with the group commit size
 	ReplicationHealth           string                      `json:"replicationHealth"`
 	EventStatus                 []dbhelper.Event            `json:"eventStatus"`
 	FullProcessList             []dbhelper.Processlist      `json:"-"`
@@ -1552,6 +1554,27 @@ func (server *ServerMonitor) Refresh() error {
 		if server.MonitorTime-server.PrevMonitorTime > 0 {
 			server.QPS = (qps - prevqps) / (server.MonitorTime - server.PrevMonitorTime)
 		}
+	}
+	// Replication parallelism signal: the average binlog group commit size over the tick.
+	// Transactions that committed in the same group are known conflict-free, so this is the
+	// number of workers a slave can use in parallel on this master's binlog (conservative
+	// mode; optimistic goes further but this stays the floor). Compared on the graph with the
+	// workers actually configured (slave_parallel_threads); drives the future tuner.
+	if pgc, ok := server.PrevStatus.CheckAndGet("BINLOG_GROUP_COMMITS"); ok {
+		groups, _ := strconv.ParseInt(server.Status.Get("BINLOG_GROUP_COMMITS"), 10, 64)
+		prevGroups, _ := strconv.ParseInt(pgc, 10, 64)
+		commits, _ := strconv.ParseInt(server.Status.Get("BINLOG_COMMITS"), 10, 64)
+		prevCommits, _ := strconv.ParseInt(server.PrevStatus.Get("BINLOG_COMMITS"), 10, 64)
+		if dg := groups - prevGroups; dg > 0 && commits >= prevCommits {
+			server.ReplicationGroupCommitSize = float64(commits-prevCommits) / float64(dg)
+		} else {
+			server.ReplicationGroupCommitSize = 0
+		}
+	}
+	if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_THREADS"); ok {
+		server.ReplicationParallelThreads, _ = strconv.ParseInt(v, 10, 64)
+	} else if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_WORKERS"); ok {
+		server.ReplicationParallelThreads, _ = strconv.ParseInt(v, 10, 64)
 	}
 
 	if server.HasHighNumberSlowQueries() {
