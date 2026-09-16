@@ -632,6 +632,8 @@ type Config struct {
 	ProvIops                                  string            `mapstructure:"prov-db-disk-iops" toml:"prov-db-disk-iops" json:"provDbDiskIops"`
 	ProvIopsLatency                           string            `mapstructure:"prov-db-disk-iops-latency" toml:"prov-db-disk-iops-latency" json:"provDbDiskIopsLatency"`
 	ProvExpireLogDays                         int               `mapstructure:"prov-db-expire-log-days" toml:"prov-db-expire-log-days" json:"provDbExpireLogDays"`
+	ProvReplicationParallelThreads            int               `mapstructure:"prov-db-replication-parallel-threads" toml:"prov-db-replication-parallel-threads" json:"provDbReplicationParallelThreads"`                     // slave_parallel_threads written by the configurator (template env SVC_CONF_ENV_SLAVE_PARALLEL_THREADS); concurrency to absorb latency, NOT tied to cores
+	ProvReplicationDomainParallelThreads      int               `mapstructure:"prov-db-replication-domain-parallel-threads" toml:"prov-db-replication-domain-parallel-threads" json:"provDbReplicationDomainParallelThreads"` // slave_domain_parallel_threads (SVC_CONF_ENV_SLAVE_DOMAIN_PARALLEL_THREADS); 0 = no per-domain cap (MariaDB default)
 	ProvMaxConnections                        int               `mapstructure:"prov-db-max-connections" toml:"prov-db-max-connections" json:"provDbMaxConnections"`
 	ProvCores                                 string            `mapstructure:"prov-db-cpu-cores" toml:"prov-db-cpu-cores" json:"provDbCpuCores"`
 	ProvTags                                  string            `mapstructure:"prov-db-tags" toml:"prov-db-tags" json:"provDbTags"`

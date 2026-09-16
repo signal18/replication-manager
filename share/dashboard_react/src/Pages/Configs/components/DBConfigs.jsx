@@ -350,6 +350,58 @@ function DBConfigs({ selectedCluster, user }) {
               )
             }}
           />
+          <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
+            minValue={0}
+            maxValue={128}
+            value={selectedCluster?.config?.provDbReplicationParallelThreads}
+            text={'Replication workers'}
+            width={150}
+            height={105}
+            hideMinMax={false}
+            showStep={true}
+            step={1}
+            handleStepChange={(value) => {
+              setConfirmTitle(`Confirm replication parallel threads change to ${value} (slave_parallel_threads, applied at next config apply)`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-replication-parallel-threads',
+                      value: value
+                    })
+                  )
+              )
+            }}
+          />
+          <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
+            minValue={0}
+            maxValue={128}
+            value={selectedCluster?.config?.provDbReplicationDomainParallelThreads}
+            text={'Workers per domain (0 = no cap)'}
+            width={150}
+            height={105}
+            hideMinMax={false}
+            showStep={true}
+            step={1}
+            handleStepChange={(value) => {
+              setConfirmTitle(`Confirm replication domain parallel threads change to ${value} (slave_domain_parallel_threads, 0 = no per-domain cap)`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-replication-domain-parallel-threads',
+                      value: value
+                    })
+                  )
+              )
+            }}
+          />
         </Flex>
       )
     },

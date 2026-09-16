@@ -216,6 +216,25 @@ func (cluster *Cluster) SetDBExpireLogDays(value string) {
 	cluster.SetDBRestartCookie()
 }
 
+// SetDBReplicationParallelThreads sets slave_parallel_threads for the configurator template.
+// Decision 2026-09-16: replication workers do NOT follow the core count -- they idle on the
+// thread pool and their number is the concurrency that hides network/commit latency. The
+// value reaches the running slaves at the next config apply (restart cookie), like the
+// other template-driven replication settings.
+func (cluster *Cluster) SetDBReplicationParallelThreads(value string) {
+	cluster.Configurator.SetDBReplicationParallelThreads(value)
+	cluster.Conf.ProvReplicationParallelThreads = cluster.Configurator.GetConfigDBReplicationParallelThreads()
+	cluster.SetDBRestartCookie()
+}
+
+// SetDBReplicationDomainParallelThreads sets slave_domain_parallel_threads (0 = no per-domain
+// cap); keep 0 on a single-master cluster, otherwise the pool is capped per domain.
+func (cluster *Cluster) SetDBReplicationDomainParallelThreads(value string) {
+	cluster.Configurator.SetDBReplicationDomainParallelThreads(value)
+	cluster.Conf.ProvReplicationDomainParallelThreads = cluster.Configurator.GetConfigDBReplicationDomainParallelThreads()
+	cluster.SetDBRestartCookie()
+}
+
 func (cluster *Cluster) SetProxyCores(value string) {
 	cluster.Configurator.SetProxyCores(value)
 	cluster.Conf.ProvProxCores = cluster.Configurator.GetConfigProxyCores()

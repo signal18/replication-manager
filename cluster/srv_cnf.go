@@ -93,6 +93,8 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_NAME%%":                                          server.Name,
 		"%%ENV:SVC_CONF_ENV_SST_METHOD%%":                           server.ClusterGroup.Conf.MultiMasterWsrepSSTMethod,
 		"%%ENV:SVC_CONF_ENV_DOMAIN_ID%%":                            server.ClusterGroup.Configurator.GetConfigReplicationDomain(server.ClusterGroup.Name),
+		"%%ENV:SVC_CONF_ENV_SLAVE_PARALLEL_THREADS%%":               strconv.Itoa(server.ClusterGroup.Configurator.GetConfigDBReplicationParallelThreads()),
+		"%%ENV:SVC_CONF_ENV_SLAVE_DOMAIN_PARALLEL_THREADS%%":        strconv.Itoa(server.ClusterGroup.Configurator.GetConfigDBReplicationDomainParallelThreads()),
 		"%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%":                    server.SSTPort,
 		"%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_ADDR%%":             server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.HttpPort,
 		"%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_URL%%":              server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort,

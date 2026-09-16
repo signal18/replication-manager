@@ -1088,6 +1088,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvMemThreadedPct, "prov-db-memory-threaded-pct", "tmp:70,join:20,sort:10", "% memory allocted per threads")
 	flags.StringVar(&conf.ProvDisk, "prov-db-disk-size", "20G", "Database container disk size, value with unit e.g. 20G, 100G")
 	flags.IntVar(&conf.ProvExpireLogDays, "prov-db-expire-log-days", 5, "Keep binlogs that nunmber of days")
+	flags.IntVar(&conf.ProvReplicationParallelThreads, "prov-db-replication-parallel-threads", 32, "slave_parallel_threads written by the configurator (template env SVC_CONF_ENV_SLAVE_PARALLEL_THREADS). Parallel apply workers run on the thread pool: their count is the concurrency needed to absorb network and commit latency, NOT the number of cores. Default 32.")
+	flags.IntVar(&conf.ProvReplicationDomainParallelThreads, "prov-db-replication-domain-parallel-threads", 0, "slave_domain_parallel_threads written by the configurator (template env SVC_CONF_ENV_SLAVE_DOMAIN_PARALLEL_THREADS): max workers one replication domain may take from the pool. 0 (default, MariaDB's default) = no per-domain cap -- the right value for a single-master cluster; set it only on multi-source/multi-domain topologies (pool / number of domains).")
 	flags.IntVar(&conf.ProvMaxConnections, "prov-db-max-connections", 1000, "Max database connections")
 	flags.StringVar(&conf.ProvProxTags, "prov-proxy-tags", "masterslave,docker,linux,noreadwritesplit", "playbook configuration tags wsrep,multimaster,masterslave")
 	flags.StringVar(&conf.ProvProxDisk, "prov-proxy-disk-size", "20G", "Proxy container disk size, value with unit e.g. 20G, 100G")

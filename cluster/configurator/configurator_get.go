@@ -506,6 +506,24 @@ func (configurator *Configurator) GetConfigDBTags() string {
 	return strings.Join(configurator.DBTags, ",")
 }
 
+// GetConfigDBReplicationParallelThreads is slave_parallel_threads for the templates
+// (SVC_CONF_ENV_SLAVE_PARALLEL_THREADS): concurrency, never derived from the cores.
+func (configurator *Configurator) GetConfigDBReplicationParallelThreads() int {
+	if configurator.ClusterConfig.ProvReplicationParallelThreads <= 0 {
+		return 32
+	}
+	return configurator.ClusterConfig.ProvReplicationParallelThreads
+}
+
+// GetConfigDBReplicationDomainParallelThreads is slave_domain_parallel_threads for the
+// templates (SVC_CONF_ENV_SLAVE_DOMAIN_PARALLEL_THREADS); 0 = no per-domain cap.
+func (configurator *Configurator) GetConfigDBReplicationDomainParallelThreads() int {
+	if configurator.ClusterConfig.ProvReplicationDomainParallelThreads < 0 {
+		return 0
+	}
+	return configurator.ClusterConfig.ProvReplicationDomainParallelThreads
+}
+
 func (configurator *Configurator) GetConfigDBExpireLogDays() int {
 
 	return configurator.ClusterConfig.ProvExpireLogDays

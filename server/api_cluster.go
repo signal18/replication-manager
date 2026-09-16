@@ -3757,6 +3757,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetDBMaxConnections(value)
 	case "prov-db-expire-log-days":
 		mycluster.SetDBExpireLogDays(value)
+	case "prov-db-replication-parallel-threads":
+		mycluster.SetDBReplicationParallelThreads(value)
+	case "prov-db-replication-domain-parallel-threads":
+		mycluster.SetDBReplicationDomainParallelThreads(value)
 	case "prov-db-agents":
 		mycluster.SetProvDbAgents(value)
 	case "prov-proxy-agents":
