@@ -91,11 +91,7 @@ func (app *App) GetMonitoringStatus() string {
 			}
 		}
 	}
-	failureThreshold := cluster.Conf.AppErrorDebounceThreshold
-	if failureThreshold <= 0 {
-		// Keep legacy default when the cluster-level override is unset/invalid.
-		failureThreshold = appErrFailureThreshold
-	}
+	failureThreshold := appErrorDebounceThreshold(cluster.Conf)
 	routeEndpoint := func(route config.Route) string {
 		normalized := route
 		normalized.Normalize()

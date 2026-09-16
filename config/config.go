@@ -3096,7 +3096,7 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 	case "WARN", "START":
 		lvl = NumLvlWarn
 		break
-	case "INFO", "TEST", "BENCH":
+	case "INFO", "TEST", "BENCH", "ALERTOK":
 		lvl = NumLvlInfo
 		break
 	case "DEBUG":
