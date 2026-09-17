@@ -363,6 +363,7 @@ buffer pool up; the over-plan gate runs there for memory). CPU and IO re-tune th
 | ERR00112 | a dynamic over-plan step was **refused** (envelope / pool / hook), with the reason |
 | WARN0214 | dynamic resource on but the container is still capped at the docker scope (`prov-db-docker-run-args-limit` on): the live cgroup move cannot bind |
 | resize log (`ResourceResizeLog`) | one record per server per attempt: dimension, direction, applied, feasibility, statements |
+| Resource Manager page: "Overcommit DBU" / "Undercommit DBU" | `diffSeries(sumSeries(dbu.<cluster>.*.dbu), resourcemanager.<C>.plan_dbu)` at query time. A DISPLAY, never a ledger: the embedded `diffSeries` treats an absent plan point as 0, so a plan gap shows the whole consumption as overcommit. Since 2026-09-17 the plan series is emitted by EVERY server with its consumed batch (not the master only), so a bucket with a consumed point always has the plan point (preprod: 100 % of 17 366 "overcommit" points over 7 days were plan gaps, real over-plan = 0). Over-plan accounting for billing comes from `ResourceConsumedOverPlanAxes` / WARN0213 / ERR00112, never from this graph. |
 
 ### 6. Backends (`ResourceResizer`, `resourceResizer()`)
 
