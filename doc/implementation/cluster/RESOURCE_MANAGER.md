@@ -411,7 +411,13 @@ on the server (mirrored on the cluster to survive monitor recreation), confirmed
 asynchronously on the tick by `completePendingK8sMemoryResize` when the Pod spec carries
 the target and `status.resize` is clear (`k8sResizeConfirmed`); `Infeasible`/`Deferred`/
 timeout → restart cookie. A cpu-only confirmation does not re-run the memory grow SQL.
-Memory **decrease** is refused by the kubelet with the default `NotRequired` resize policy.
+Memory **decrease** is refused by the kubelet with the default `NotRequired` resize policy
+(`status.resize = Infeasible`): lowering `memory.max` under a running container would make
+the kernel reclaim and OOM-kill, so only `RestartContainer` lets a decrease through, as a
+container restart. On that refusal the resizer falls back to the restart cookie (the Pod spec
+already carries the lower value, the buffer pool is already down by SQL); requests == limits,
+so the node keeps the old amount booked until the restart. OpenSVC lowers the PG limit live
+(after the buffer-pool release). User doc: provisioning/dynamic-resources "Memory shrink".
 `k8sResizer` is selected only when the Pod carries the pair; otherwise script/restart.
 
 #### On-premise, localhost, SlapOS
