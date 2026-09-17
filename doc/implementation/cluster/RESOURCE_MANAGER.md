@@ -281,6 +281,7 @@ contract; consumption above it is billed as overage, it does not gate the techni
 
 ```
 prov-db-dynamic-resource off, or failover in progress ─────────────▶ nothing
+sensor reading older than 3 min on a server ───────────────────────▶ its axes cleared (WARN0215)
 cooldown: one move per window (up: scale-up speed, down: scale-down speed)
 any server with a memory resize in flight ──────────────────────────▶ wait
 per server: CanScaleConfigInPlan(true)  = axes saturated vs CONFIG
@@ -303,6 +304,37 @@ read its partial last bucket and called "sustained for 5m" two seconds after the
 dropped. A manual `prov-db-*` change stamps the same cooldown as a dynamic step, so the
 driver never undoes an operator's move inside the window (validated dev3 2026-09-16:
 manual 1→2 held, shrink fired at +5m02s).
+
+**Sensor freshness gate (2026-09-17).** The reading the whole loop runs on is pushed by the
+dbjobs launcher (`dbjobs_launcher.sh`: run `dbjobs_new.sh`, sleep 60, loop) at the start of
+each run, from the same script that then runs the dbjobs. A long backup, reseed or optimize
+-- or a stopped jobs container -- therefore leaves the host with its LAST reading and nothing
+to age it: the instant axes kept the pre-job value, `GetDatabaseMetrics` repeated it into
+`dbu.*` every tick (by design, "no gaps"), and `windowExtremum` saw a flat, fully present
+line. Observed consequences: a pre-backup "under-used" reading shrank the cap under the
+running backup (the quota is on the whole slice, so the backup was throttled too); a
+"saturated" one grew it every minute up to the overcommit ceiling on a load nobody
+measured. Memory apply was the only job-gated step (`IsRunningJobs`), CPU/IO were not,
+and none of the decisions knew the reading was frozen.
+
+The gate: `DBUReading.ReceivedAt` is stamped on ingest (repman clock, so a skewed sensor
+clock cannot make a reading look fresh); `resourceSensorFreshnessWindow` = 3 min (three
+missed pushes), shared with the Kubernetes prerequisite check (`k8sResourceSensorFreshnessWindow`,
+was 5). `ServerMonitor.ResourceReadingStale()` is true when a reading EXISTS and is older
+than that; a missing reading is not stale (nil is already "unmeasured"). Three effects:
+
+- `CheckResourceConsumed` clears the four axes and raises `WARN0215` (age + likely cause,
+  "dynamic resize withheld"), re-set every tick while stale so it resolves on the next push.
+  Both drivers stand still on their own, since they read those axes.
+- `GetDatabaseMetrics` emits NO `dbu.*` series while stale: the gap is the truth, and it is
+  what the coverage rule needs -- a decision window that overlaps the silence has < 80 %
+  present samples and is withheld even after the sensor is back. Never-measured and down
+  servers keep their continuous series (min-1 / 0).
+- Kubernetes keeps its own prerequisite check on the same window.
+
+Not done here (follow-ups): push the reading from the launcher loop itself so a long job no
+longer starves it, and gate both drivers on `anyServerRunningJobs` so nothing moves during a
+job even with fresh readings (the memory apply already does).
 
 ### 3. Grow: +1 DBU, in-plan free, over-plan gated
 
@@ -362,6 +394,7 @@ buffer pool up; the over-plan gate runs there for memory). CPU and IO re-tune th
 | WARN0213 | consumption at the **plan** cap for `prov-db-scale-up-plan-speed`: user-facing info to raise the plan by hand; the resize never does it |
 | ERR00112 | a dynamic over-plan step was **refused** (envelope / pool / hook), with the reason |
 | WARN0214 | dynamic resource on but the container is still capped at the docker scope (`prov-db-docker-run-args-limit` on): the live cgroup move cannot bind |
+| WARN0215 | the sensor reading is stale (> 3 min, a long dbjob or a stopped jobs container) or, on Kubernetes, the sensor prerequisites are missing: decisions withheld, the DBU graph shows a gap |
 | resize log (`ResourceResizeLog`) | one record per server per attempt: dimension, direction, applied, feasibility, statements |
 
 ### 6. Backends (`ResourceResizer`, `resourceResizer()`)
@@ -446,7 +479,8 @@ No native primitive: the client change script, or a restart cookie (`scriptResiz
 
 Unit: `TestCanGrowBeyondPlanEnvelopeRoundsUp`, `TestOverPlanGrowAllowedCPUStep`,
 `TestDynamicGrowRefusalIsTrackedState`, `TestDynamicShrinkTargetAlignsToTheDBU`,
-`TestUndercommitFloorDBU`, `TestOpenSVCCPUQuotaKeyword`, the `TestK8sResize_*` /
+`TestUndercommitFloorDBU`, `TestOpenSVCCPUQuotaKeyword`, `TestResourceReadingStale`,
+`TestCheckResourceConsumedWithholdsOnStaleReading`, `TestGetDatabaseMetricsSkipsDBUSeriesWhenStale`, the `TestK8sResize_*` /
 `TestCompletePendingK8sMemoryResize_*` family. Live validation (dev3, 2026-09-15): grow
 1 → 2 fired 2 s after a saturating load, refusal 2 → 3 tracked + ERR00112, cleared after
 one window; #1795 observed on the two non-API nodes.
