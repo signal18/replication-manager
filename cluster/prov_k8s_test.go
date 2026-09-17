@@ -1250,6 +1250,20 @@ func TestK8SDatabasePVC_UsesConfiguredStorageClass(t *testing.T) {
 	}
 }
 
+// The database PVC is always ReadWriteOnce regardless of StorageClass --
+// the StorageClass/provisioner selected via prov-kube-storage-class must
+// itself support that access mode (see the Kubernetes provisioning docs).
+func TestK8SDatabasePVC_RequestsReadWriteOnce(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	s := &ServerMonitor{Name: "db1"}
+
+	pvc := cluster.k8sDatabasePVC(s)
+
+	if len(pvc.Spec.AccessModes) != 1 || pvc.Spec.AccessModes[0] != apiv1.ReadWriteOnce {
+		t.Fatalf("expected AccessModes [ReadWriteOnce], got %v", pvc.Spec.AccessModes)
+	}
+}
+
 // --- StorageClass listing (provisioning GUI dropdown) ---
 
 func TestK8SStorageClassesFromClient_ListsNames(t *testing.T) {
