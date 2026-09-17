@@ -135,7 +135,13 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 	// axis -- even for a stopped service, which keeps its reserved restart minimum
 	// (ConsumedDBUForEmit) -- and the RAW resource series (service_*), the real
 	// measurement, which DOES go to 0 when the service is down (RawResourceForEmit).
-	{
+	//
+	// EXCEPT when the reading is stale (ResourceReadingStale: the sensor went silent for
+	// longer than resourceSensorFreshnessWindow): then NOTHING is emitted, on purpose. The
+	// gap is the truth, and it is what the sustained-decision coverage rule (windowExtremum,
+	// >= 80 % present samples) needs to withhold a resize instead of deciding on a frozen
+	// line. A never-measured or down server keeps the continuous min-1 / 0 series.
+	if !server.ResourceReadingStale() {
 		ts := time.Now().Unix()
 		dbu, cpu, mem, io, disk := server.ConsumedDBUForEmit()
 		// DBU RESOURCE series on the B scheme: dbu.<cluster>.<host>.* -- cluster is its OWN leading

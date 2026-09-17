@@ -821,7 +821,7 @@ const k8sResourceSensorCheckEveryNHeartbeats = 30
 // (server.DBUConsumed.WindowEnd) may be before the sensor is considered not
 // actually delivering data. Generous relative to the dbjobs launcher's own ~60s
 // push cadence so a couple of missed/slow cycles don't flap WARN0215.
-const k8sResourceSensorFreshnessWindow = 5 * time.Minute
+const k8sResourceSensorFreshnessWindow = resourceSensorFreshnessWindow // one notion of "stale" for every orchestrator
 
 // CheckK8SResourceSensor observes, from the Kubernetes API, whether the DBU
 // resource sensor can actually run -- both the provisioning-time precondition
