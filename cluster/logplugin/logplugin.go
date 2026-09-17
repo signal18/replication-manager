@@ -275,18 +275,38 @@ type StdioTableColumn struct {
 	// AvgByteLength is a bounded-sample observed average byte length
 	// (BLOB/TEXT candidate columns only). Zero means not sampled.
 	AvgByteLength int64 `json:"avg_byte_length,omitempty"`
+	// Extra is information_schema.COLUMNS.EXTRA lower-cased (wire v4).
+	Extra string `json:"extra,omitempty"`
+}
+
+// StdioIndexColumn mirrors wire.IndexColumn (wire v4).
+type StdioIndexColumn struct {
+	Name    string `json:"name"`
+	SubPart int    `json:"sub_part,omitempty"`
+}
+
+// StdioTableIndex mirrors wire.TableIndex (wire v4).
+type StdioTableIndex struct {
+	Name    string             `json:"name"`
+	Unique  bool               `json:"unique,omitempty"`
+	Primary bool               `json:"primary,omitempty"`
+	Type    string             `json:"type,omitempty"`
+	Columns []StdioIndexColumn `json:"columns,omitempty"`
 }
 
 // StdioTable mirrors wire.Table.
 type StdioTable struct {
-	Schema       string             `json:"schema"`
-	Name         string             `json:"name"`
-	Engine       string             `json:"engine"`
-	RowFormat    string             `json:"row_format"`
-	Rows         int64              `json:"rows,omitempty"`
-	DataLength   int64              `json:"data_length,omitempty"`
-	AvgRowLength int64              `json:"avg_row_length,omitempty"`
-	Columns      []StdioTableColumn `json:"columns,omitempty"`
+	Schema        string             `json:"schema"`
+	Name          string             `json:"name"`
+	Engine        string             `json:"engine"`
+	RowFormat     string             `json:"row_format"`
+	Rows          int64              `json:"rows,omitempty"`
+	DataLength    int64              `json:"data_length,omitempty"`
+	AvgRowLength  int64              `json:"avg_row_length,omitempty"`
+	Columns       []StdioTableColumn `json:"columns,omitempty"`
+	IndexLength   int64              `json:"index_length,omitempty"`   // wire v4
+	AutoIncrement int64              `json:"auto_increment,omitempty"` // wire v4
+	Indexes       []StdioTableIndex  `json:"indexes,omitempty"`        // wire v4
 }
 
 // ClusterContext carries cluster-level facts passed to every plugin.

@@ -56,9 +56,9 @@ exit ≠0 = error    (repman logs WARN0203 and skips state injection)
 The plugin has **5 seconds** to complete. If it exceeds this deadline the server
 kills it and records a timeout finding (WARN0203).
 
-The current wire version is **3** (`WireVersion = 3` in `wire.go`) — see
-"Wire v3 — Schema Snapshot" below. Wire v1/v2 plugins continue to work — new
-fields are additive.
+The current wire version is **4** (`WireVersion = 4` in `wire.go`) — see
+"Wire v3 — Schema Snapshot" and "Wire v4 — Indexes and AUTO_INCREMENT" below.
+Wire v1/v2/v3 plugins continue to work — new fields are additive.
 
 ### Request
 
@@ -669,7 +669,9 @@ Error keys follow the pattern `WARN<NNNN>` or a severity-specific prefix. The ra
 
 | SCH0001 | Schema advisory: InnoDB wide-row risk — `plugin-schema-row-size` |
 | SCH0002 | Schema advisory: uncompressed large BLOB/TEXT (MariaDB) — `plugin-schema-lob-compression` |
-| SCH0003+ | Further schema advisories |
+| SCH0003 | Schema advisory: redundant / duplicate index — `plugin-schema-duplicate-index` |
+| SCH0004 | Schema advisory: AUTO_INCREMENT near the column type capacity — `plugin-schema-auto-increment-exhaustion` |
+| SCH0005+ | Further schema advisories |
 | SCHTAG0001+ | Schema inventory tags (engine/row-format counts) |
 
 Choose a key in the WARN0400+ range for custom plugins to avoid collisions.
@@ -723,15 +725,46 @@ Wire version 3 adds two things:
 | `plugin-schema-row-size` | SCH0001 | InnoDB tables whose short (`< 256` byte, always-inline) VARCHAR columns sum past the InnoDB inline row budget (`page_size/2 − 66` ≈ 8126B for 16K, with a discount for `ROW_FORMAT=COMPRESSED`), risking "Row size too large" / forced off-page storage. Pure function over the snapshot — no extra query. Config: `inline-varchar-max-bytes` (default 256), `mask-identifiers` (default false). |
 | `plugin-schema-lob-compression` | SCH0002 | MariaDB `BLOB`/`TEXT` columns whose sampled `avg_byte_length` exceeds a threshold and that are **not** `COMPRESSED`. MariaDB-only; requires `monitoring-schema-columns`. Config: `avg-length-threshold-bytes` (default 8192), `mask-identifiers` (default false). |
 
-Both plugins support `mask-identifiers`: when true, schema/table/column names
+| `plugin-schema-duplicate-index` | SCH0003 | Indexes whose column list is a leftmost prefix of (or equal to) another index of the same table, same sub-parts. A UNIQUE index is never covered by a non-unique one, PRIMARY is never the redundant side, FULLTEXT/SPATIAL only compare with their own kind, and a non-unique InnoDB secondary index that explicitly ends with the PK columns is compared without that suffix ((a, pk) is redundant with (a)). Exact duplicates: PRIMARY wins, then UNIQUE, then the lexically greater name is dropped. One `DROP INDEX` remediation per index (risk moderate: check USE/FORCE INDEX first). Requires `monitoring-schema-indexes` (wire v4). Config: `mask-identifiers`. |
+| `plugin-schema-auto-increment-exhaustion` | SCH0004 | Tables whose `AUTO_INCREMENT` (the next value, from `information_schema.TABLES`, read with `information_schema_stats_expiry = 0` on MySQL/Percona so it is fresh on every flavor) is at or past `capacity-threshold-pct` (default 95, clamped 50–100) of the capacity of the integer column carrying `auto_increment` in its `extra` (TINYINT … BIGINT, signed/unsigned, compared in big integers). Sorted by ratio; remediations `MODIFY … UNSIGNED` when the column is signed, then `BIGINT UNSIGNED` (risk disruptive: table rebuild, size shown). Requires `monitoring-schema-columns` (wire v4). Config: `capacity-threshold-pct`, `mask-identifiers`. |
+
+All four plugins support `mask-identifiers`: when true, schema/table/column names
 in the finding description are partially masked (`wire.MaskIdentifier`, e.g.
 `"window"` → `"wi???ow"`, with a fixed-length mask so the real length isn't
 inferable either; names of 4 chars or fewer mask to `"????"`). The
-lob-compression plugin also drops its suggested `ALTER TABLE` statement in
-this mode, since it would otherwise leak the exact names back into the log.
+lob-compression, duplicate-index and auto-increment plugins also drop their
+suggested SQL remediation in this mode, since it would otherwise leak the exact
+names back into the log.
 Intended for PCI-DSS-style deployments where the findings log is readable by
 more people/systems than the database schema itself — an attacker who only
 gets log access shouldn't get a free schema map out of it.
+
+## Wire v4 — Indexes and AUTO_INCREMENT
+
+Wire version 4 adds, on the same `tables` snapshot (still master request only,
+refreshed with the schema monitor):
+
+- `Table.indexes` — one entry per index from `information_schema.STATISTICS`
+  (`name`, `unique`, `primary`, `type` = upper-cased INDEX_TYPE, `columns` in
+  SEQ_IN_INDEX order with `sub_part` for prefix indexes). Needs
+  `monitoring-schema-indexes` (a manifest prerequisite key since v4; the feed-off
+  case routes an INFO state instead of an empty run). Source:
+  `dbhelper.Table.TableIndexes`, mirrored in `RefreshSchemaWireTables`.
+- `Table.auto_increment` — `information_schema.TABLES.AUTO_INCREMENT`, the next
+  value to be handed out; 0 when the table has none. Carried as int64: a value
+  past 2^63 (BIGINT UNSIGNED counters) arrives negative and is reinterpreted as
+  uint64 by the consumer.
+- `Table.index_length` — `INDEX_LENGTH`, used to size a DROP INDEX gain and an
+  ALTER rebuild.
+- `TableColumn.extra` — `information_schema.COLUMNS.EXTRA` lower-cased
+  (`auto_increment`, `on update current_timestamp`, …). Needs
+  `monitoring-schema-columns` like the rest of the column enrichment.
+
+Consumers: `plugin-schema-duplicate-index` (SCH0003) and
+`plugin-schema-auto-increment-exhaustion` (SCH0004), see the table above. The
+distribution repository gains a `wire-v4/` directory: the back office resolves
+plugins by the repman wire version, so servers on wire v3 keep receiving v3
+plugins and get these two only once they run a v4 repman.
 
 ---
 
@@ -761,7 +794,7 @@ The wire version is read directly from source:
 
 ```go
 // cluster/logplugin/plugins/wire/wire.go
-WireVersion = 3
+WireVersion = 4
 ```
 
 Makefile targets:
