@@ -48,6 +48,21 @@ func TestUniqueNotCoveredByNonUnique(t *testing.T) {
 	}
 }
 
+func TestUniquePrefixNotCoveredByWiderUnique(t *testing.T) {
+	// UNIQUE(a) forbids two rows sharing a; UNIQUE(a,b) does not: dropping u_a changes semantics.
+	got := names(redundantIndexes(table(idx("PRIMARY", true, "id"), idx("u_a", true, "a"), idx("u_ab", true, "a", "b"))))
+	if len(got) != 0 {
+		t.Fatalf("UNIQUE(a) must NOT be reported as covered by UNIQUE(a,b), got %v", got)
+	}
+}
+
+func TestUniqueExactDuplicateIsRedundant(t *testing.T) {
+	got := names(redundantIndexes(table(idx("PRIMARY", true, "id"), idx("u_b", true, "a", "b"), idx("u_a", true, "a", "b"))))
+	if got["u_b"] != "u_a" || len(got) != 1 {
+		t.Fatalf("two identical UNIQUE indexes: the greater name is redundant, got %v", got)
+	}
+}
+
 func TestNonUniqueCoveredByUnique(t *testing.T) {
 	got := names(redundantIndexes(table(idx("PRIMARY", true, "id"), idx("k_a", false, "a"), idx("u_ab", true, "a", "b"))))
 	if got["k_a"] != "u_ab" {
@@ -90,6 +105,23 @@ func TestFulltextIsolation(t *testing.T) {
 	got := names(redundantIndexes(table(idx("PRIMARY", true, "id"), ft, idx("k_ab", false, "a", "b"))))
 	if len(got) != 0 {
 		t.Fatalf("FULLTEXT(a) must not compare with BTREE(a,b), got %v", got)
+	}
+}
+
+func TestFulltextOnlyExactDuplicate(t *testing.T) {
+	ftA := idx("ft_a", false, "a")
+	ftA.Type = "FULLTEXT"
+	ftAB := idx("ft_ab", false, "a", "b")
+	ftAB.Type = "FULLTEXT"
+	got := names(redundantIndexes(table(idx("PRIMARY", true, "id"), ftA, ftAB)))
+	if len(got) != 0 {
+		t.Fatalf("FULLTEXT(a) is not covered by FULLTEXT(a,b): MATCH() needs the exact column list, got %v", got)
+	}
+	ftA2 := idx("ft_a2", false, "a")
+	ftA2.Type = "FULLTEXT"
+	got = names(redundantIndexes(table(idx("PRIMARY", true, "id"), ftA, ftA2)))
+	if got["ft_a2"] != "ft_a" || len(got) != 1 {
+		t.Fatalf("two identical FULLTEXT(a): the greater name is redundant, got %v", got)
 	}
 }
 

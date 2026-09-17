@@ -10,14 +10,16 @@
 //
 //   - B is redundant with A when B's columns, in order, are a leftmost prefix
 //     of A's columns (or equal) with the same sub-part lengths.
-//   - Exception: B is UNIQUE (or PRIMARY) and A is not -- the uniqueness
-//     constraint is not redundant. PRIMARY is never the redundant side.
+//   - Exception: a UNIQUE index is covered only by an EXACT duplicate, never by
+//     a wider index (UNIQUE(a) is a stronger constraint than UNIQUE(a,b) or
+//     KEY(a,b)). PRIMARY is never the redundant side.
 //   - Exact duplicates (same columns, same sub-parts): PRIMARY wins, then a
 //     UNIQUE index wins over a non-unique one, then the lexically greater name
 //     is the redundant one (so a pair is reported once).
 //   - FULLTEXT / SPATIAL indexes are compared only with indexes of the same
-//     type; HASH and BTREE are compared together (same order semantics for
-//     the prefix rule is a simplification, stated in the finding).
+//     type and only as exact duplicates (MATCH() needs the exact column list);
+//     HASH and BTREE are compared together, a simplification stated in the
+//     finding (a HASH index has no leftmost-prefix semantics either).
 //   - InnoDB secondary indexes implicitly end with the primary key columns, so a
 //     NON-unique secondary index that explicitly ends with the PK columns is
 //     compared without that suffix: (a, pk) is redundant with (a).
@@ -120,9 +122,10 @@ func evaluateTables(req wire.Request) []wire.Finding {
 	desc := fmt.Sprintf(
 		"%d redundant index(es): each one's column list is a leftmost prefix of (or equal to) another index of the same table,"+
 			" so it serves no lookup the wider index cannot, while every write maintains it and it occupies buffer pool and disk."+
-			" Uniqueness is respected (a UNIQUE index is never reported as covered by a non-unique one) and InnoDB's implicit"+
-			" primary-key suffix on secondary indexes is taken into account. Size shown = INDEX_LENGTH of the table spread evenly"+
-			" over its secondary indexes (an estimate). Indexes: %s",
+			" Uniqueness is respected (a UNIQUE index is reported only as an exact duplicate, never as covered by a wider index),"+
+			" InnoDB's implicit primary-key suffix on secondary indexes is taken into account, FULLTEXT/SPATIAL count only as"+
+			" exact duplicates, and BTREE and HASH indexes are compared together (check a HASH index by hand: it has no prefix"+
+			" semantics). Size shown = INDEX_LENGTH of the table spread evenly over its secondary indexes (an estimate). Indexes: %s",
 		len(found), strings.Join(parts, "; "))
 
 	return []wire.Finding{{
@@ -166,8 +169,14 @@ func redundantIndexes(t wire.Table) []redundancy {
 				continue
 			}
 			isExact := len(bCols) == len(aCols)
-			if b.Unique && !a.Unique {
-				// the uniqueness constraint is not redundant
+			if b.Unique && !isExact {
+				// UNIQUE(a) is a STRONGER constraint than UNIQUE(a,b) or KEY(a,b): only an
+				// exact duplicate can cover a unique index, never a wider one.
+				continue
+			}
+			if isSpecial(b.Type) && !isExact {
+				// MATCH() uses a FULLTEXT index only when the column list matches exactly
+				// (same for SPATIAL): a prefix is not covered, only an exact duplicate is.
 				continue
 			}
 			if isExact && !a.Primary && a.Unique == b.Unique && a.Name > b.Name {
@@ -247,12 +256,17 @@ func isPrefix(b, a []string) bool {
 	return true
 }
 
+// isSpecial: FULLTEXT and SPATIAL indexes, which have no leftmost-prefix semantics.
+func isSpecial(t string) bool {
+	u := strings.ToUpper(t)
+	return u == "FULLTEXT" || u == "SPATIAL"
+}
+
 // sameFamily: FULLTEXT and SPATIAL only compare with their own kind; BTREE/HASH
 // (and the empty type) compare together.
 func sameFamily(a, b string) bool {
 	fa, fb := strings.ToUpper(a), strings.ToUpper(b)
-	special := func(s string) bool { return s == "FULLTEXT" || s == "SPATIAL" }
-	if special(fa) || special(fb) {
+	if isSpecial(fa) || isSpecial(fb) {
 		return fa == fb
 	}
 	return true
