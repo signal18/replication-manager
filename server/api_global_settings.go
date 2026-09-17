@@ -307,7 +307,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return fmt.Errorf("invalid Eur price for %s: must not be negative", name)
 		}
 		repman.Conf.Cloud18MarketplaceDBUPrice = price
-	case "cloud18-marketplace-app-unit-price":
+	case "cloud18-marketplace-apu-price":
 		price, err := strconv.ParseFloat(value, 64)
 		if err != nil {
 			return fmt.Errorf("invalid Eur price for %s: %w", name, err)
@@ -315,7 +315,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		if price < 0 {
 			return fmt.Errorf("invalid Eur price for %s: must not be negative", name)
 		}
-		repman.Conf.Cloud18MarketplaceAppUnitPrice = price
+		repman.Conf.Cloud18MarketplaceAPUPrice = price
 	case "api-bind":
 		repman.Conf.APIBind = value
 	case "api-port":
