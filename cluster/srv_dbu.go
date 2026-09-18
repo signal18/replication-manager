@@ -249,10 +249,18 @@ func (server *ServerMonitor) CheckResourceConsumed() {
 	// Freshness gate: a silent sensor leaves the last reading in place; treat it as no
 	// reading (axes stay cleared -> DriveDynamicResize / driveDynamicShrink stand still)
 	// and say why. Re-set every tick while stale, so the state resolves on the next push.
+	//
+	// WARN0218, not WARN0215: this is the orchestrator-agnostic "is the reading itself
+	// fresh" check (ReceivedAt, repman's clock), scoped per server via ServerUrl (storage
+	// key WARN0218@<url>). WARN0215 is CheckK8SResourceSensor's own, unrelated,
+	// cluster-scoped "can the Kubernetes prerequisites even deliver a reading" check
+	// (prov_k8s_db.go) -- the two used to share WARN0215, and PreserveState's prefix
+	// match on the bare code (utils/state/state.go) resurrected this scoped entry on
+	// every throttled k8s recheck tick even after it had genuinely cleared.
 	if server.ResourceReadingStale() {
 		age, _ := server.resourceReadingAge()
-		cluster.SetState("WARN0215", state.State{ErrType: config.LvlWarn, ErrFrom: "MON", ServerUrl: server.URL,
-			ErrDesc: fmt.Sprintf(clusterError["WARN0215"], server.URL,
+		cluster.SetState("WARN0218", state.State{ErrType: config.LvlWarn, ErrFrom: "MON", ServerUrl: server.URL,
+			ErrDesc: fmt.Sprintf(clusterError["WARN0218"], server.URL,
 				fmt.Sprintf("last reading is %s old (window %s): the sensor pushes once per dbjobs run, a long dbjob or a stopped jobs container starves it; dynamic resize withheld", age.Round(time.Second), resourceSensorFreshnessWindow))})
 		return
 	}

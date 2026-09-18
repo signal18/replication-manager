@@ -281,7 +281,7 @@ contract; consumption above it is billed as overage, it does not gate the techni
 
 ```
 prov-db-dynamic-resource off, or failover in progress ─────────────▶ nothing
-sensor reading older than 3 min on a server ───────────────────────▶ its axes cleared (WARN0215)
+sensor reading older than 3 min on a server ───────────────────────▶ its axes cleared (WARN0218)
 cooldown: one move per window (up: scale-up speed, down: scale-down speed)
 any server with a memory resize in flight ──────────────────────────▶ wait
 per server: CanScaleConfigInPlan(true)  = axes saturated vs CONFIG
@@ -320,12 +320,34 @@ and none of the decisions knew the reading was frozen.
 The gate: `DBUReading.ReceivedAt` is stamped on ingest (repman clock, so a skewed sensor
 clock cannot make a reading look fresh); `resourceSensorFreshnessWindow` = 3 min (three
 missed pushes), shared with the Kubernetes prerequisite check (`k8sResourceSensorFreshnessWindow`,
-was 5). `ServerMonitor.ResourceReadingStale()` is true when a reading EXISTS and is older
-than that; a missing reading is not stale (nil is already "unmeasured"). Three effects:
+was 5) -- one shared THRESHOLD, but still two different CLOCKS: this gate ages off
+`ReceivedAt`, while `k8sResourceSensorRuntimeIssue` (`cluster/prov_k8s_db.go`) still ages
+off the sensor-reported `DBUReading.WindowEnd`, so it remains vulnerable to sensor clock
+skew that this gate is immune to. `ServerMonitor.ResourceReadingStale()` is true when a
+reading EXISTS and is older than that; a missing reading is not stale (nil is already
+"unmeasured"). Three effects:
 
-- `CheckResourceConsumed` clears the four axes and raises `WARN0215` (age + likely cause,
+- `CheckResourceConsumed` clears the four axes and raises `WARN0218` (age + likely cause,
   "dynamic resize withheld"), re-set every tick while stale so it resolves on the next push.
-  Both drivers stand still on their own, since they read those axes.
+  Both drivers stand still on their own, since they read those axes. WARN0218 is
+  deliberately a DIFFERENT code from WARN0215 (Kubernetes's own, unrelated, cluster-scoped
+  "can the prerequisites even deliver a reading" check, `CheckK8SResourceSensor` in
+  `cluster/prov_k8s_db.go`): the two used to share WARN0215, and on the 29 out of every
+  30 heartbeats where `CheckK8SResourceSensor` only throttle-preserves its own state
+  (`GetStateMachine().PreserveState("WARN0215")`), that call's prefix match on the raw
+  state key (`utils/state/state.go`, `strings.HasPrefix`, not an exact match) also matched
+  and resurrected this per-server-scoped entry (`WARN0215@<url>`) on ticks where
+  `CheckResourceConsumed` had already found the reading fresh again and correctly stopped
+  setting it -- confirmed live on the kind fixture 2026-09-18: the scoped alert stayed open
+  ~29s after the reading was already fresh, clearing only on the next throttled recheck
+  tick (`k8sResourceSensorCheckEveryNHeartbeats` = 30, one full ~60s cycle at worst).
+  **Compatibility:** `Cluster.SetState` checks `monitor-ignore-errors` against the state
+  key directly (`cluster/cluster_set.go`), so any config, alert routing, or monitoring
+  script that already matches on `WARN0215` for the generic (non-Kubernetes) stale-reading
+  condition must be updated to `WARN0218` -- this is a rename of that condition's code, not
+  an addition. The freshness gate itself only landed 2026-09-17 (this branch, unreleased),
+  so no shipped release ever carried `WARN0215` for this meaning; this note is for anyone
+  who configured against it on an interim/dev build before the split.
 - `GetDatabaseMetrics` emits NO `dbu.*` series while stale: the gap is the truth, and it is
   what the coverage rule needs -- a decision window that overlaps the silence has < 80 %
   present samples and is withheld even after the sensor is back. Never-measured and down
@@ -394,7 +416,8 @@ buffer pool up; the over-plan gate runs there for memory). CPU and IO re-tune th
 | WARN0213 | consumption at the **plan** cap for `prov-db-scale-up-plan-speed`: user-facing info to raise the plan by hand; the resize never does it |
 | ERR00112 | a dynamic over-plan step was **refused** (envelope / pool / hook), with the reason |
 | WARN0214 | dynamic resource on but the container is still capped at the docker scope (`prov-db-docker-run-args-limit` on): the live cgroup move cannot bind |
-| WARN0215 | the sensor reading is stale (> 3 min, a long dbjob or a stopped jobs container) or, on Kubernetes, the sensor prerequisites are missing: decisions withheld, the DBU graph shows a gap |
+| WARN0218 | the sensor reading itself is stale (> 3 min, a long dbjob or a stopped jobs container), per server: decisions withheld, the DBU graph shows a gap |
+| WARN0215 | Kubernetes only: the sensor's DELIVERY prerequisites are missing/unconfirmed (Deployment `shareProcessNamespace`→WARN0212 instead, Pod not Running, dbjobs sidecar not Ready, or its own WindowEnd-based staleness check) -- see the Kubernetes section below |
 | resize log (`ResourceResizeLog`) | one record per server per attempt: dimension, direction, applied, feasibility, statements |
 
 ### 6. Backends (`ResourceResizer`, `resourceResizer()`)
