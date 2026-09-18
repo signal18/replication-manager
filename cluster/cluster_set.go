@@ -1831,6 +1831,22 @@ func (cluster *Cluster) SetProxyServersBackendMaxConnections(value string) error
 	return nil
 }
 
+// SetSwitchoverWaitWriteQuery sets switchover-wait-write-query: the number of seconds a
+// write query or an open InnoDB transaction may have been running on the master before a
+// switchover is cancelled (the guard in MasterFailover, CheckLongRunningWrites). At least 1:
+// with 0 every running write matches and no switchover would ever pass.
+func (cluster *Cluster) SetSwitchoverWaitWriteQuery(value string) error {
+	numvalue, err := strconv.Atoi(value)
+	if err != nil {
+		return fmt.Errorf("switchover-wait-write-query: %w", err)
+	}
+	if numvalue < 1 {
+		return fmt.Errorf("switchover-wait-write-query must be at least 1 second, got %d", numvalue)
+	}
+	cluster.Conf.SwitchWaitWrite = numvalue
+	return nil
+}
+
 func (cluster *Cluster) SetSwitchoverWaitRouteChange(value string) error {
 	numvalue, err := strconv.Atoi(value)
 	if err != nil {

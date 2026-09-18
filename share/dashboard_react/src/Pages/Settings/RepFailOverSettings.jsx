@@ -47,6 +47,7 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
   const hSwitchLock = `**Switchover Lock Users on Freeze Workload**\n\nTemporarily locks all user accounts on the current master during switchover to drain active connections.\nEnsures a clean traffic cutover with no in-flight writes at the moment of promotion.\n\nConfig: \`switchover-lock-user-on-freeze\``
   const hMaxDelay = `**Switchover Replication Maximum Delay**\n\nMaximum replication lag (seconds) a replica may have to be a valid switchover target.\nDefault: 30 seconds.\n\nConfig: \`failover-max-slave-delay\``
   const hWaitRoute = `**Switchover Wait Unmanaged Proxy Monitor**\n\nSeconds to wait after switchover for unmanaged proxies to detect the new master. Default: 1 second.\n\nConfig: \`switchover-wait-route-change\``
+  const hWaitWrite = `**Switchover Cancel on Long Write**\n\nSeconds a write query or an open InnoDB transaction may have been running on the master before a switchover is cancelled ("Long updates running on master. Cannot switchover").\nThe switchover then takes a global read lock and kills the sessions still running after the kill delay, so a long transaction would be rolled back: the guard refuses instead. Raise it only if you accept that rollback. Default: 10 seconds.\n\nConfig: \`switchover-wait-write-query\``
   const hMinorRelease = `**Switchover Allow on Minor Release**\n\nAllows switchover when the candidate replica runs a different minor version than the master.\nEnable during rolling upgrades.\n\nConfig: \`switchover-lower-release\``
 
   const dataObject = [
@@ -63,6 +64,7 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
     { key: 'Switchover Lock Users on Freeze Workload', help: h(hSwitchLock, 'Switchover Lock Users on Freeze Workload'), value: sw('switchover-lock-user-on-freeze', 'switchLockUserOnFreeze') },
     { key: 'Switchover Replication Maximum Delay', help: h(hMaxDelay, 'Switchover Replication Maximum Delay'), value: (<RMSlider value={selectedCluster?.config?.failoverMaxSlaveDelay} max={100} showMarkAtInterval={20} confirmTitle='Confirm change max delay to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'failover-max-slave-delay', value: val }))} />) },
     { key: 'Switchover Wait Unmanaged Proxy Monitor', help: h(hWaitRoute, 'Switchover Wait Unmanaged Proxy Monitor'), value: (<RMSlider value={selectedCluster?.config?.switchoverWaitRouteChange} confirmTitle='Confirm change wait change route detection to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'switchover-wait-route-change', value: val }))} />) },
+    { key: 'Switchover Cancel on Long Write (seconds)', help: h(hWaitWrite, 'Switchover Cancel on Long Write'), value: sl('switchover-wait-write-query', 'switchoverWaitWriteQuery', 1, 3600, 600) },
     { key: 'Switchover Allow on Minor Release', help: h(hMinorRelease, 'Switchover Allow on Minor Release'), value: sw('switchover-lower-release', 'switchoverLowerRelease') },
   ]
 
