@@ -583,6 +583,16 @@ func (cluster *Cluster) SwitchSlavesToMaster(fail bool) {
 	}
 }
 
+// LongWriteWait is the tracked fact "a switchover is waiting for long writes to complete on
+// the master". Set by waitLongRunningWrites for the duration of the wait, nil otherwise;
+// CheckFailed asserts WARN0217 on every tick while it is set.
+type LongWriteWait struct {
+	ServerURL string    `json:"serverUrl"`
+	Count     int       `json:"count"`
+	Since     time.Time `json:"since"`
+	Deadline  time.Time `json:"deadline"`
+}
+
 // waitLongRunningWrites is the switchover long-write guard, run before anything is frozen
 // or locked on the master. It counts the write statements running for at least
 // switchover-wait-write-query seconds and the InnoDB transactions open for at least that
@@ -598,7 +608,10 @@ func (cluster *Cluster) waitLongRunningWrites(server *ServerMonitor) bool {
 		return true
 	}
 	deadline := time.Now().Add(time.Duration(cluster.Conf.SwitchWaitTrx) * time.Second)
+	cluster.SwitchoverLongWriteWait = &LongWriteWait{ServerURL: server.URL, Count: qt, Since: time.Now(), Deadline: deadline}
+	defer func() { cluster.SwitchoverLongWriteWait = nil }()
 	for qt > 0 && time.Now().Before(deadline) {
+		cluster.SwitchoverLongWriteWait = &LongWriteWait{ServerURL: server.URL, Count: qt, Since: cluster.SwitchoverLongWriteWait.Since, Deadline: deadline}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Long updates running on master %s: %d write query/transaction past switchover-wait-write-query=%ds, waiting for them to complete, %ds left of switchover-wait-trx=%ds", server.URL, qt, cluster.Conf.SwitchWaitWrite, int(time.Until(deadline).Seconds()), cluster.Conf.SwitchWaitTrx)
 		cluster.logLongRunningWrites(server)
 		time.Sleep(2 * time.Second)

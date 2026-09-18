@@ -40,6 +40,12 @@ func (cluster *Cluster) CheckFailed() {
 	// Don't trigger a failover if a switchover is happening
 	if cluster.StateMachine.IsInFailover() {
 		cluster.SetState("ERR00001", state.State{ErrType: "WARNING", ErrDesc: clusterError["ERR00001"], ErrFrom: "CHECK"})
+		// The switchover long-write guard is waiting: surface it as a state while the fact
+		// holds (set and cleared by waitLongRunningWrites), so the GUI shows what the
+		// switchover is doing instead of a frozen monitor.
+		if w := cluster.SwitchoverLongWriteWait; w != nil {
+			cluster.SetState("WARN0217", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0217"], w.Count, w.ServerURL, cluster.Conf.SwitchWaitWrite, cluster.Conf.SwitchWaitTrx), ErrFrom: "CHECK", ServerUrl: w.ServerURL})
+		}
 		return
 	}
 	if cluster.master == nil {
