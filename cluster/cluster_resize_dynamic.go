@@ -528,24 +528,40 @@ func (server *ServerMonitor) isMemoryResizeInFlight() bool {
 	if server.PendingCgroupShrink {
 		return true
 	}
-	cluster := server.ClusterGroup
-	if cluster == nil {
+	// Only a buffer-pool target that was actually ISSUED can be converging. The
+	// configurator's current wish is NOT that target: the setter moves the wish before
+	// ResizeDynamicResources runs, so comparing the runtime with it declared every real
+	// memory move "still converging" before it started and deferred it forever (#1822).
+	targetBytes := server.IssuedBufferPoolBytes
+	if targetBytes <= 0 {
 		return false
 	}
-	targetMB, err := strconv.ParseInt(cluster.Configurator.GetConfigInnoDBBPSize(), 10, 64)
-	if err != nil || targetMB <= 0 {
-		return false
+	if server.Variables == nil {
+		return true
 	}
 	runtime, err := strconv.ParseInt(server.Variables.Get("INNODB_BUFFER_POOL_SIZE"), 10, 64)
 	if err != nil || runtime <= 0 {
-		return false
+		return true // issued, not yet observed
 	}
-	targetBytes := targetMB * 1024 * 1024
 	diff := runtime - targetBytes
 	if diff < 0 {
 		diff = -diff
 	}
-	return diff > targetBytes/20 // >5% off target => still converging
+	if diff > targetBytes/20 { // >5% off the issued target => still converging
+		return true
+	}
+	server.IssuedBufferPoolBytes = 0 // converged: nothing in flight any more
+	return false
+}
+
+// markBufferPoolIssued records the buffer-pool target a live memory resize just sent
+// to the database, the value isMemoryResizeInFlight converges on.
+func (server *ServerMonitor) markBufferPoolIssued() {
+	mb, err := strconv.ParseInt(server.ClusterGroup.Configurator.GetConfigInnoDBBPSize(), 10, 64)
+	if err != nil || mb <= 0 {
+		return
+	}
+	server.IssuedBufferPoolBytes = mb * 1024 * 1024
 }
 
 func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
@@ -734,6 +750,7 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 			if _, needRestart := server.ExecScriptSQL(sql); needRestart || server.redoLogRestartOnly() {
 				server.SetRestartCookie()
 			}
+			server.markBufferPoolIssued()
 			server.PendingCgroupShrink = true
 			// applied=false: the DB side is done but the cgroup shrink is deferred.
 			cluster.logResize(server, dim, false, false, feas, sql)
@@ -750,6 +767,7 @@ func (cluster *Cluster) applyConfirmedMemoryGrow(server *ServerMonitor, feas Res
 	if _, needRestart := server.ExecScriptSQL(sql); needRestart || server.redoLogRestartOnly() {
 		server.SetRestartCookie()
 	}
+	server.markBufferPoolIssued()
 	cluster.logResize(server, resizeMemory, true, true, feas, sql)
 }
 
