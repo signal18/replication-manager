@@ -70,13 +70,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot switchover without a master connection")
 			return false
 		}
-		qt, logs, err := dbhelper.CheckLongRunningWrites(cluster.master.Conn, cluster.Conf.SwitchWaitWrite)
-		cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", config.LvlDbg, "CheckLongRunningWrites")
-		if qt > 0 {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Long updates running on master. Cannot switchover")
-
+		if !cluster.waitLongRunningWrites(cluster.master) {
 			return false
 		}
+		var logs string
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Flushing tables on master %s", cluster.master.URL)
 		workerFlushTable := make(chan error, 1)
@@ -583,6 +580,49 @@ func (cluster *Cluster) SwitchSlavesToMaster(fail bool) {
 				}
 			}
 		}
+	}
+}
+
+// waitLongRunningWrites is the switchover long-write guard, run before anything is frozen
+// or locked on the master. It counts the write statements running for at least
+// switchover-wait-write-query seconds and the InnoDB transactions open for at least that
+// long. Since nothing is locked yet the application does not see this wait, so instead of
+// refusing at once it re-checks every 2 s for at most switchover-wait-trx seconds and goes
+// on as soon as they are gone. Still there at the deadline: refuse, listing each offender
+// with its age and rows modified. They are never killed: the rollback of a killed
+// transaction runs unbounded, on the server about to be demoted.
+func (cluster *Cluster) waitLongRunningWrites(server *ServerMonitor) bool {
+	qt, logs, err := dbhelper.CheckLongRunningWrites(server.Conn, cluster.Conf.SwitchWaitWrite)
+	cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlDbg, "CheckLongRunningWrites")
+	if qt == 0 {
+		return true
+	}
+	deadline := time.Now().Add(time.Duration(cluster.Conf.SwitchWaitTrx) * time.Second)
+	for qt > 0 && time.Now().Before(deadline) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Long updates running on master %s: %d write query/transaction past switchover-wait-write-query=%ds, waiting for them to complete, %ds left of switchover-wait-trx=%ds", server.URL, qt, cluster.Conf.SwitchWaitWrite, int(time.Until(deadline).Seconds()), cluster.Conf.SwitchWaitTrx)
+		cluster.logLongRunningWrites(server)
+		time.Sleep(2 * time.Second)
+		qt, logs, err = dbhelper.CheckLongRunningWrites(server.Conn, cluster.Conf.SwitchWaitWrite)
+		cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlDbg, "CheckLongRunningWrites")
+	}
+	if qt > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Long updates running on master. Cannot switchover: %d write query/transaction on %s still past switchover-wait-write-query=%ds after switchover-wait-trx=%ds, not killed (rollback time unknown)", qt, server.URL, cluster.Conf.SwitchWaitWrite, cluster.Conf.SwitchWaitTrx)
+		cluster.logLongRunningWrites(server)
+		return false
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Long updates on master %s completed, proceeding with switchover", server.URL)
+	return true
+}
+
+// logLongRunningWrites logs one line per session the long-write guard counts.
+func (cluster *Cluster) logLongRunningWrites(server *ServerMonitor) {
+	pl, logs, err := dbhelper.GetLongRunningWrites(server.Conn, cluster.Conf.SwitchWaitWrite)
+	cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlDbg, "GetLongRunningWrites")
+	if err != nil {
+		return
+	}
+	for _, p := range pl {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Long update on %s: session %d user %s host %s command %s running %.0fs, trx open %ds rows modified %d rows locked %d: %s", server.URL, p.Id, p.User, p.Host, p.Command, p.Time.Float64, p.TrxTime, p.TrxRowsModified, p.TrxRowsLocked, p.Info.String)
 	}
 }
 
@@ -1253,13 +1293,10 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot switchover without a vmaster connection")
 			return false
 		}
-		qt, logs, err := dbhelper.CheckLongRunningWrites(cluster.vmaster.Conn, cluster.Conf.SwitchWaitWrite)
-		cluster.LogSQL(logs, err, cluster.vmaster.URL, "MasterFailover", config.LvlDbg, "CheckLongRunningWrites")
-		if qt > 0 {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Long updates running on virtual master. Cannot switchover")
-
+		if !cluster.waitLongRunningWrites(cluster.vmaster) {
 			return false
 		}
+		var logs string
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Flushing tables on virtual master %s", cluster.vmaster.URL)
 		workerFlushTable := make(chan error, 1)

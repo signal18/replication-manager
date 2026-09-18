@@ -393,6 +393,23 @@ func CheckLongRunningWrites(db *sqlx.DB, thresh int) (int, string, error) {
 	return count, query + "(" + strconv.Itoa(thresh) + ")", err
 }
 
+// GetLongRunningWrites lists the sessions CheckLongRunningWrites counts, with the same
+// threshold: write statements running for at least thresh seconds and InnoDB transactions
+// open for at least that long, with the transaction age and its rows modified and locked so
+// the operator can judge what a rollback would cost.
+func GetLongRunningWrites(db *sqlx.DB, thresh int) ([]Processlist, string, error) {
+	var pl []Processlist
+	query := "SELECT a.Id, a.User, a.Host, a.`Db` AS `db`, a.Command, a.Time as Time, a.State, SUBSTRING(COALESCE(a.INFO,''),1,200) as Info, " +
+		"GREATEST(COALESCE(TIMESTAMPDIFF(SECOND,b.trx_started, now()),0),0) as trx_time, " +
+		"COALESCE(b.trx_rows_modified,0) as trx_rows_modified, " +
+		"COALESCE(b.trx_rows_locked,0) as trx_rows_locked " +
+		"FROM INFORMATION_SCHEMA.PROCESSLIST a " +
+		"LEFT JOIN INFORMATION_SCHEMA.INNODB_TRX b ON b.trx_mysql_thread_id=a.id " +
+		"WHERE (a.command = 'Query' AND a.time >= ? AND a.info NOT LIKE 'select%') OR b.trx_started < CURRENT_TIMESTAMP - INTERVAL ? SECOND"
+	err := db.Select(&pl, query, thresh, thresh)
+	return pl, query + "(" + strconv.Itoa(thresh) + ")", err
+}
+
 func KillThreads(db *sqlx.DB, myver *version.Version) (string, error) {
 	//SELECT pg_terminate_backend(11929);
 	var ids []int
