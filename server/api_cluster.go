@@ -3407,6 +3407,14 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetRplMaxDelay(val)
 	case "switchover-wait-route-change":
 		mycluster.SetSwitchoverWaitRouteChange(value)
+	case "switchover-wait-write-query":
+		if err := mycluster.SetSwitchoverWaitWriteQuery(value); err != nil {
+			return err
+		}
+	case "switchover-wait-trx":
+		if err := mycluster.SetSwitchoverWaitTrx(value); err != nil {
+			return err
+		}
 	case "failover-limit":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetFailLimit(val)

@@ -166,25 +166,28 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.service_disk", cluster.Name, hostname), strconv.FormatFloat(diskBytes, 'f', 0, 64), ts))
 	}
 
-	// Cluster-level PLAN series, emitted ONCE per cluster (from the master). The plan
-	// (prov-service-plan-dbu) is a CLUSTER contract -- it exists nowhere per-server, so
-	// unlike consumed (dbu.<cluster>.<host>.dbu, summed at query time via sumSeries) it MUST be
-	// emitted here to be graphed over time, as resourcemanager.<CTOKEN>.plan_dbu. This plan token
-	// stays the uppercased CTOKEN (unchanged); only the consumed resource series moved to the
-	// dbu.<cluster>.<host> scheme.
-	if server.IsMaster() {
-		ts := time.Now().Unix()
-		ctoken := strings.ToUpper(replacer.Replace(cluster.Name))
-		metrics = append(metrics, graphite.NewMetric(
-			fmt.Sprintf("resourcemanager.%s.plan_dbu", ctoken),
-			strconv.FormatFloat(float64(cluster.GetPlanDbu()), 'f', 4, 64), ts))
-
-		// Nothing else is emitted here on purpose. Over/under-consumption -- what the client
-		// calls OVERCOMMIT (consumed > plan) and its opposite (consumed < plan, the giveback)
-		// -- are NOT emitted: they are DERIVED at query time from the two series that already
-		// exist, consumed (sumSeries(dbu.<cluster>.*.dbu)) and plan (resourcemanager.<CTOKEN>.plan_dbu),
-		// via diffSeries in the GUI.
-	}
+	// Cluster-level PLAN series, resourcemanager.<CTOKEN>.plan_dbu. The plan
+	// (prov-service-plan-dbu) is a CLUSTER contract -- it exists nowhere per-server -- so it is
+	// emitted here to be graphed over time. Emitted by EVERY server, unconditionally (same
+	// series, same value, last write wins in whisper), NOT only by the master: the over/under
+	// commit charts are diffSeries(sumSeries(dbu.<cluster>.*.dbu), plan) computed at query
+	// time, and the embedded diffSeries treats an ABSENT plan point as 0 -- so any bucket where
+	// a consumed point exists without a plan point shows the WHOLE consumption as overcommit.
+	// With a master-only plan that happened on every bucket where the master's batch was missing
+	// or landed one bucket off (preprod 2026-09-17: 100 % of the 17 366 "overcommit" points over
+	// 7 days were plan gaps, real over-plan consumption was 0). Emitting the plan from every
+	// server with the same timestamp base as its consumed series guarantees, by construction,
+	// that a bucket holding a consumed point also holds the plan point. The plan token stays
+	// the uppercased CTOKEN; only the consumed resource series moved to dbu.<cluster>.<host>.
+	//
+	// Nothing else is emitted here on purpose. Over/under-consumption -- what the client calls
+	// OVERCOMMIT (consumed > plan) and its opposite (consumed < plan, the giveback) -- are NOT
+	// emitted: they are DERIVED at query time from the two series that already exist, in the
+	// GUI. A display, never a billing ledger: over-plan accounting comes from the
+	// ResourceManager states (ResourceConsumedOverPlanAxes, WARN0213, ERR00112).
+	metrics = append(metrics, graphite.NewMetric(
+		fmt.Sprintf("resourcemanager.%s.plan_dbu", strings.ToUpper(replacer.Replace(cluster.Name))),
+		strconv.FormatFloat(float64(cluster.GetPlanDbu()), 'f', 4, 64), time.Now().Unix()))
 	return metrics
 }
 

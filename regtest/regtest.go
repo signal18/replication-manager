@@ -15,6 +15,7 @@ import (
 var tests = []string{
 	"testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync",
 	"testSwitchoverLongTransactionNoRplCheckNoSemiSync",
+	"testSwitchoverLongTransactionWaitNoRplCheckNoSemiSync",
 	"testSwitchoverLongQueryNoRplCheckNoSemiSync",
 	"testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync",
 	"testSwitchoverReadOnlyNoRplCheck",
