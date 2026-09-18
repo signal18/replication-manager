@@ -362,9 +362,19 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 		logs, changeMasterErr = dbhelper.ChangeMaster(cluster.oldMaster.Conn, changemasteropt, cluster.oldMaster.DBVersion)
 		cluster.LogSQL(logs, changeMasterErr, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Change master failed on old master, reason:%s ", changeMasterErr)
+		startSlaveErr := error(nil)
 		if oldmasterneedslavestart {
-			logs, err = cluster.oldMaster.StartSlave()
-			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Start slave failed on old master,%s reason:  %s ", cluster.oldMaster.URL, err)
+			logs, startSlaveErr = cluster.oldMaster.StartSlave()
+			cluster.LogSQL(logs, startSlaveErr, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Start slave failed on old master,%s reason:  %s ", cluster.oldMaster.URL, startSlaveErr)
+			err = startSlaveErr
+		}
+		if changeMasterErr == nil && startSlaveErr == nil {
+			// The old master is re-slaved by the switchover itself, never by the rejoin
+			// path, and a switchover has no divergent tail by construction (old master
+			// frozen under FTWRL, candidate caught up before promotion). Stamp the outcome
+			// the rejoin would: the record leaves the working set and history shows
+			// "no-divergence" instead of a crash awaiting analysis.
+			cluster.finishCrashRecord(crash, RejoinResultNoDivergence)
 		}
 
 		if !cluster.Conf.ActivePassive && cluster.Conf.ReadOnly {

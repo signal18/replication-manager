@@ -39,8 +39,8 @@ type Crash struct {
 	// survives clusterstate.json reloads.
 	FailoverIOGtidString string `json:"failoverIOGtidString"`
 	ElectedMasterURL     string
-	UnixTimestamp               int64
-	Switchover                  bool
+	UnixTimestamp        int64
+	Switchover           bool
 	// Lost-events delta: captured from the diverged old master at rejoin and
 	// analyzed (srv_lostevents.go). The verdict decides the recovery path.
 	DeltaArchive          string `json:"deltaArchive"`
@@ -74,11 +74,11 @@ type Crash struct {
 // Operator-chosen rejoin methods (Crash.RejoinMethod), from the GUI delta viewer.
 // All are runnable on ANY crash — the delta verdict informs, it does not gate.
 const (
-	RejoinMethodFlashback    = "flashback"          // rejoinMasterFlashBack
-	RejoinMethodLogicalDump  = "logical-dump"        // RejoinDirectDump (mysqldump from master)
-	RejoinMethodLogicalBkp   = "logical-backup"      // JobFlashbackLogicalBackup
-	RejoinMethodPhysicalBkp  = "physical-backup"     // JobFlashbackPhysicalBackup
-	RejoinMethodIgnoreForce  = "ignore-delta-force"  // discard a divergent tail, force re-slave (data loss)
+	RejoinMethodFlashback    = "flashback"            // rejoinMasterFlashBack
+	RejoinMethodLogicalDump  = "logical-dump"         // RejoinDirectDump (mysqldump from master)
+	RejoinMethodLogicalBkp   = "logical-backup"       // JobFlashbackLogicalBackup
+	RejoinMethodPhysicalBkp  = "physical-backup"      // JobFlashbackPhysicalBackup
+	RejoinMethodIgnoreForce  = "ignore-delta-force"   // discard a divergent tail, force re-slave (data loss)
 	RejoinMethodResetReslave = "reset-master-reslave" // RESET MASTER on the failed slave + re-slave: clears a
 	//                                                   stuck GTID/binlog position (e.g. strict-mode out-of-order
 	//                                                   SlaveErr) and restarts clean replication. The manual repair.
@@ -285,10 +285,28 @@ func (cluster *Cluster) pruneCrashArchives(keep int) {
 // history marker carrying the result so the outcome is visible and one-shot.
 func (cluster *Cluster) finishRejoin(url string, result string) *Crash {
 	var moved *Crash
+	for _, cr := range cluster.Crashes {
+		if cr != nil && cr.URL == url {
+			moved = cr
+			break
+		}
+	}
+	return cluster.finishCrash(moved, url, result)
+}
+
+// finishCrashRecord ends ONE known working crash record, by pointer rather than by
+// URL: the switchover stamps its own record with it, so a stale working crash of
+// the same old master is never mistaken for it.
+func (cluster *Cluster) finishCrashRecord(crash *Crash, result string) *Crash {
+	return cluster.finishCrash(crash, crash.URL, result)
+}
+
+// finishCrash moves the given working crash (nil = none found for url) into
+// history carrying its result; see finishRejoin.
+func (cluster *Cluster) finishCrash(moved *Crash, url string, result string) *Crash {
 	kept := make([]*Crash, 0, len(cluster.Crashes))
 	for _, cr := range cluster.Crashes {
-		if cr != nil && cr.URL == url && moved == nil {
-			moved = cr
+		if cr != nil && cr == moved {
 			continue
 		}
 		kept = append(kept, cr)
@@ -335,9 +353,13 @@ func (cluster *Cluster) rejoinAlreadyAttempted(url string) bool {
 	// yet) OVERRIDES the one-shot: the operator asked for one more attempt. This is
 	// what makes the manual rejoin runnable after an automatic attempt already
 	// finished — without it, the history result below would block forever.
+	var newestWorking int64
 	for _, cr := range cluster.Crashes {
 		if cr != nil && cr.URL == url && cr.RejoinMethod != "" && cr.RejoinResult == "" {
 			return false
+		}
+		if cr != nil && cr.URL == url && cr.UnixTimestamp > newestWorking {
+			newestWorking = cr.UnixTimestamp
 		}
 	}
 	for _, cr := range cluster.FailoverHistory {
@@ -346,6 +368,12 @@ func (cluster *Cluster) rejoinAlreadyAttempted(url string) bool {
 		}
 		if cluster.SplitBrainStartTs > 0 && cr.RejoinResultTs < cluster.SplitBrainStartTs {
 			continue // outcome predates this split — a new event may retry
+		}
+		if newestWorking > 0 && cr.RejoinResultTs < newestWorking {
+			// The outcome predates the CURRENT event (a newer working crash for this
+			// URL exists): a switchover stamped "no-divergence", or an earlier rejoin
+			// that succeeded, must not swallow the attempt a new crash is owed.
+			continue
 		}
 		// peer-unreachable is RETRYABLE, not a terminal attempt: the verdict was
 		// never obtained, so the next tick must try the fetch again (transient
