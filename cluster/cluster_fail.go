@@ -614,9 +614,10 @@ func (cluster *Cluster) waitLongRunningWrites(server *ServerMonitor) bool {
 	deadline := since.Add(time.Duration(cluster.Conf.SwitchWaitTrx) * time.Second)
 	cluster.SwitchoverLongWriteWait = &LongWriteWait{ServerURL: server.URL, Count: qt, Since: since, Deadline: deadline}
 	defer func() { cluster.SwitchoverLongWriteWait = nil }()
-	// One WARN0217 per wait, its description rewritten with the outcome before returning
-	// (the last SetState before the next tick is the one that opens).
+	// One WARN0217 per wait, its description rewritten with the outcome before returning:
+	// the state map keeps the first Add for a key, so delete it before setting it again.
 	setWaitState := func(outcome string) {
+		cluster.StateMachine.DeleteState(state.BuildStateKey("WARN0217", server.URL))
 		cluster.SetState("WARN0217", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0217"], server.URL, qt, cluster.Conf.SwitchWaitWrite, outcome), ErrFrom: "SWITCHOVER", ServerUrl: server.URL})
 	}
 	setWaitState(fmt.Sprintf("waiting up to switchover-wait-trx=%ds for them to complete", cluster.Conf.SwitchWaitTrx))
