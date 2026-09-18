@@ -988,7 +988,11 @@ func (cluster *Cluster) k8sResourceSensorRuntimeIssue(ctx context.Context, clien
 	if s.DBUConsumed == nil {
 		return k8sSensorBroken, "no DBU reading has ever been received"
 	}
-	if age := time.Since(s.DBUConsumed.WindowEnd); age > k8sResourceSensorFreshnessWindow {
+	// resourceReadingAge, not time.Since(s.DBUConsumed.WindowEnd): prefers ReceivedAt
+	// (repman's own clock, stamped on ingest) so a skewed sensor clock cannot make a
+	// stale reading look fresh to this check either -- same clock CheckResourceConsumed's
+	// ResourceReadingStale() already uses for the orchestrator-agnostic WARN0218 gate.
+	if age, _ := s.resourceReadingAge(); age > k8sResourceSensorFreshnessWindow {
 		return k8sSensorBroken, fmt.Sprintf("last DBU reading is %s old (window %s)", age.Round(time.Second), k8sResourceSensorFreshnessWindow)
 	}
 	return k8sSensorHealthy, ""

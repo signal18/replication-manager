@@ -320,16 +320,27 @@ and none of the decisions knew the reading was frozen.
 The gate: `DBUReading.ReceivedAt` is stamped on ingest (repman clock, so a skewed sensor
 clock cannot make a reading look fresh); `resourceSensorFreshnessWindow` = 3 min (three
 missed pushes), shared with the Kubernetes prerequisite check (`k8sResourceSensorFreshnessWindow`,
-was 5) -- one shared THRESHOLD, but still two different CLOCKS: this gate ages off
-`ReceivedAt`, while `k8sResourceSensorRuntimeIssue` (`cluster/prov_k8s_db.go`) still ages
-off the sensor-reported `DBUReading.WindowEnd`, so it remains vulnerable to sensor clock
-skew that this gate is immune to. `ServerMonitor.ResourceReadingStale()` is true when a
-reading EXISTS and is older than that; a missing reading is not stale (nil is already
-"unmeasured"). Three effects:
+was 5) -- one shared THRESHOLD, and now one shared CLOCK too:
+`k8sResourceSensorRuntimeIssue` (`cluster/prov_k8s_db.go`) goes through
+`s.resourceReadingAge()` (`ReceivedAt` preferred, `WindowEnd` fallback) instead of
+`time.Since(s.DBUConsumed.WindowEnd)` directly, so it is no longer vulnerable to sensor
+clock skew either -- regression-tested in
+`TestK8SResourceSensorRuntimeIssue_StaleWindowEndButFreshReceivedAtIsHealthy`
+(`cluster/prov_k8s_test.go`): a `WindowEnd` an hour old with a fresh `ReceivedAt` now
+verdicts healthy. `ServerMonitor.ResourceReadingStale()` is true when a reading EXISTS and
+is older than that; a missing reading is not stale (nil is already "unmeasured"). Three
+effects:
 
 - `CheckResourceConsumed` clears the four axes and raises `WARN0218` (age + likely cause,
   "dynamic resize withheld"), re-set every tick while stale so it resolves on the next push.
-  Both drivers stand still on their own, since they read those axes. WARN0218 is
+  Both drivers stand still on their own, since they read those axes -- **except the
+  buffer-pool-pressure mem-grow path**: `checkBufferPoolPressure()` runs BEFORE this gate's
+  early return and sets `BufferPoolMemGrowDue` from `Innodb_buffer_pool_wait_free` (a live
+  DB status counter, independent of the DBU sensor), and `CanScaleConfigInPlan(up)` folds
+  "mem" into the due axes whenever that flag is true regardless of
+  `ResourceConsumedOverConfigAxes`. So a sustained buffer-pool-wait signal can still drive a
+  mem grow via `DriveDynamicResize` even while the DBU reading is stale -- pre-existing
+  behavior this gate doesn't touch, not covered by WARN0218/WARN0215 either. WARN0218 is
   deliberately a DIFFERENT code from WARN0215 (Kubernetes's own, unrelated, cluster-scoped
   "can the prerequisites even deliver a reading" check, `CheckK8SResourceSensor` in
   `cluster/prov_k8s_db.go`): the two used to share WARN0215, and on the 29 out of every
