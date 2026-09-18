@@ -320,10 +320,54 @@ func (server *ServerMonitor) resizeMemorySQL(grow bool) []string {
 		others = append(others, fmt.Sprintf("SET GLOBAL query_cache_size = %s*1024*1024", qc))
 	}
 
+	// The redo log follows the memory model (BP/4 as a power of two, #1749) on the
+	// releases that resize it online; ordered after the buffer pool on both grow and
+	// shrink (a shrink waits for the checkpoint and must not sit in front of the
+	// memory release). Other releases get it at the next restart (cookie set by the
+	// callers, see redoLogRestartOnly).
+	redo, live := server.redoLogResizeSQL()
+	var sql []string
 	if grow {
-		return append(others, bufferPool)
+		sql = append(others, bufferPool)
+	} else {
+		sql = append([]string{bufferPool}, others...)
 	}
-	return append([]string{bufferPool}, others...)
+	if live {
+		sql = append(sql, redo)
+	}
+	return sql
+}
+
+// redoLogResizeSQL returns the live redo-log resize statement valued from the
+// configurator (GetConfigInnoDBLogFileSize, MB) and true when the release resizes
+// the redo online: MariaDB 10.9+ (innodb_log_file_size became dynamic, MDEV-27812),
+// MySQL/Percona 8.0.30+ (innodb_redo_log_capacity; innodb_log_file_size is
+// deprecated there). False otherwise: the generated config already carries the new
+// size, a restart applies it.
+func (server *ServerMonitor) redoLogResizeSQL() (string, bool) {
+	v := server.DBVersion
+	if v == nil {
+		return "", false
+	}
+	mb := server.ClusterGroup.Configurator.GetConfigInnoDBLogFileSize()
+	switch {
+	case v.IsMariaDB() && v.GreaterEqual("10.9"):
+		return fmt.Sprintf("SET GLOBAL innodb_log_file_size = %s*1024*1024", mb), true
+	case v.IsMySQLOrPercona() && v.GreaterEqual("8.0.30"):
+		return fmt.Sprintf("SET GLOBAL innodb_redo_log_capacity = %s*1024*1024", mb), true
+	}
+	return "", false
+}
+
+// redoLogRestartOnly is true when the release is known and cannot resize the redo
+// log online: a memory step then leaves the redo at its boot-time size until the
+// next restart, which the caller signals with the restart cookie.
+func (server *ServerMonitor) redoLogRestartOnly() bool {
+	if server.DBVersion == nil {
+		return false
+	}
+	_, live := server.redoLogResizeSQL()
+	return !live
 }
 
 // resizeIOSQL builds the iops-driven SET GLOBALs. io capacity is settable on both
@@ -687,7 +731,7 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 			// cgroup only once the pool has actually shrunk, so we never lower the
 			// cgroup below live memory (OOM). Non-blocking: a per-tick comparison.
 			sql := server.resizeMemorySQL(false)
-			if _, needRestart := server.ExecScriptSQL(sql); needRestart {
+			if _, needRestart := server.ExecScriptSQL(sql); needRestart || server.redoLogRestartOnly() {
 				server.SetRestartCookie()
 			}
 			server.PendingCgroupShrink = true
@@ -703,7 +747,7 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 // which calls this asynchronously once kubelet confirms a native Pod resize.
 func (cluster *Cluster) applyConfirmedMemoryGrow(server *ServerMonitor, feas ResizeFeasibility) {
 	sql := server.resizeMemorySQL(true)
-	if _, needRestart := server.ExecScriptSQL(sql); needRestart {
+	if _, needRestart := server.ExecScriptSQL(sql); needRestart || server.redoLogRestartOnly() {
 		server.SetRestartCookie()
 	}
 	cluster.logResize(server, resizeMemory, true, true, feas, sql)
