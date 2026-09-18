@@ -108,7 +108,7 @@ func (proxy *SphinxProxy) Refresh() error {
 		return err
 	}
 	defer sphinx.Connection.Close()
-	proxy.Version = sphinx.GetVersion()
+	proxy.SetVersion(sphinx.GetVersion())
 
 	proxy.BackendsWrite = nil
 	proxy.BackendsRead = nil

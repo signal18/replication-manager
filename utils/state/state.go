@@ -185,17 +185,27 @@ func (SM *StateMachine) IsInSchemaMonitor() bool {
 	return SM.InSchemaMonitor
 }
 
+// BuildStateKey returns the storage key for a state entry: the bare key, or
+// "key@serverUrl" when the state is scoped to a specific server/app instance
+// and the key isn't already scoped. Shared between AddState and any code that
+// needs to pre-scope keys before they reach AddState (e.g. batching per-app
+// errors from multiple apps into one map without collisions).
+func BuildStateKey(key string, serverUrl string) string {
+	if serverUrl != "" && !strings.Contains(key, "@") {
+		return key + "@" + serverUrl
+	}
+	return key
+}
+
 // if state is cluster based the key is the error if state is server based then we concat server URL
 func (SM *StateMachine) AddState(key string, s State) {
 	//Retain the state
 	s.ErrKey = key
-	if s.ServerUrl != "" && !strings.Contains(key, "@") {
-		key = key + "@" + s.ServerUrl
-	}
+	storageKey := BuildStateKey(key, s.ServerUrl)
 	SM.Lock()
-	SM.CurState.Add(key, s)
+	SM.CurState.Add(storageKey, s)
 	if SM.heartbeats == 0 {
-		SM.OldState.Add(key, s)
+		SM.OldState.Add(storageKey, s)
 	}
 	SM.Unlock()
 }
@@ -395,6 +405,12 @@ func (SM *StateMachine) GetOpenStates() []State {
 	}
 
 	SM.Unlock()
+	// Stable order so the dashboard state list does not reorder every tick: the CurState map
+	// iteration is non-deterministic in Go. Key on ErrKey+ServerUrl (same key the log-plugin
+	// snapshots use), so same-code states on different servers keep a fixed relative order.
+	sort.SliceStable(log, func(i, j int) bool {
+		return log[i].ErrKey+"\x00"+log[i].ServerUrl < log[j].ErrKey+"\x00"+log[j].ServerUrl
+	})
 	return log
 }
 

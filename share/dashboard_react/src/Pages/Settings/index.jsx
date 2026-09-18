@@ -1,4 +1,4 @@
-import { Button, Flex, useDisclosure } from '@chakra-ui/react'
+import { Button, Flex, Text, useDisclosure } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 import styles from './styles.module.scss'
 import GeneralSettings from './GeneralSettings'
@@ -17,6 +17,7 @@ import RepConfigSettings from './RepConfigSettings'
 import AlertSettings from './AlertSettings'
 import BackupSettings from './BackupSettings'
 import SchedulerSettings from './SchedulerSettings'
+import DynamicConfigSettings from './DynamicConfigSettings'
 import S3ProvidersSettings from './S3ProvidersSettings'
 import AppTemplateRepoSection from './components/AppTemplateRepoSection'
 import { setSetting } from '../../redux/settingsSlice'
@@ -63,6 +64,9 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   })
   const { isOpen: isRejoinOpen, onToggle: onRejoinToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isRejoinOpen')) || false
+  })
+  const { isOpen: isDynamicConfigOpen, onToggle: onDynamicConfigToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isDynamicConfigOpen')) || false
   })
   const { isOpen: isAlertsOpen, onToggle: onAlertsToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isAlertsOpen')) || false
@@ -113,6 +117,10 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   }, [isRejoinOpen])
 
   useEffect(() => {
+    localStorage.setItem('isDynamicConfigOpen', JSON.stringify(isDynamicConfigOpen))
+  }, [isDynamicConfigOpen])
+
+  useEffect(() => {
     localStorage.setItem('isAlertsOpen', JSON.stringify(isAlertsOpen))
   }, [isAlertsOpen])
   useEffect(() => {
@@ -148,6 +156,15 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   return (
     <Flex className={styles.settingsContainer}>
       <StandbyBanner />
+      {(() => {
+        const ts = selectedCluster?.lastConfigSaveToDisk
+        const saved = ts && !ts.startsWith('0001-01-01')
+        return (
+          <Text fontSize='xs' color='gray.500' mb={1}>
+            Config last saved to disk: {saved ? new Date(ts).toLocaleString() : 'not yet saved this session'}
+          </Text>
+        )
+      })()}
       {sectionFilter && (
         <Button size='sm' variant='outline' mb={2} onClick={clearFilter}>
           Show all settings
@@ -216,6 +233,14 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<RejoinSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+      />}
+      {isVisible('isDynamicConfigOpen') && <AccordionComponent
+        heading={'Dynamic Config'}
+        onToggle={onDynamicConfigToggle}
+        isOpen={isDynamicConfigOpen}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        body={<DynamicConfigSettings selectedCluster={selectedCluster} user={user} />}
       />}
       {isVisible('isProxiesOpen') && <AccordionComponent
         heading={'Proxies'}

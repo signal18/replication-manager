@@ -40,6 +40,7 @@ import (
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/splitdump"
 )
 
@@ -99,6 +100,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/opensvc-pools", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterOpenSVCPoolList)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/kube-storage-classes", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterKubeStorageClassList)),
 	))
 
 	//PROTECTED ENDPOINTS FOR CLUSTERS ACTIONS
@@ -289,6 +295,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAcceptCompliance)),
 	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/settings/actions/git-push", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterGitPush)),
+	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/settings/actions/git-repair", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterGitRepair)),
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/configurator/compliance-diff", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxComplianceDiff)),
@@ -332,6 +346,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/settings/actions/resize-database-units/{units}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResizeDatabaseUnits)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/change-plan-units/{unit}/{delta}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxChangePlanUnits)),
 	))
 	router.Handle("/api/clusters/settings/actions/reload-clusters-plans", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -951,6 +969,15 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 			if err != nil {
 				http.Error(w, "Encoding error: "+err.Error(), http.StatusInternalServerError)
 				return
+			}
+			// Live restore progress (nil when idle) so the dashboard can render a
+			// progress bar / "rejoin reseed in progress, started T" panel per server.
+			if rp := srv.GetReseedProgress(); rp != nil {
+				data, err = sjson.SetBytes(data, "reseedProgress", rp)
+				if err != nil {
+					http.Error(w, "Encoding error: "+err.Error(), http.StatusInternalServerError)
+					return
+				}
 			}
 			err = json.Unmarshal(data, &cont)
 			if err != nil {
@@ -2588,7 +2615,11 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			if value == "" {
 				err := repman.switchClusterSettings(mycluster, setting)
 				if err != nil {
-					http.Error(w, "Setting Not Found", http.StatusNotImplemented)
+					if err.Error() == "setting not found" {
+						http.Error(w, "Setting Not Found", http.StatusNotImplemented)
+						return
+					}
+					http.Error(w, fmt.Sprintf("Failed to switch value for %s: %s", setting, err.Error()), http.StatusBadRequest)
 					return
 				}
 			} else {
@@ -2699,6 +2730,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchGraphiteMetrics()
 	case "graphite-blacklist":
 		mycluster.SwitchGraphiteBlacklist()
+	case "monitoring-performance-schema":
+		mycluster.SwitchMonitorPFS()
 	case "monitoring-performance-schema-mutex":
 		mycluster.SwitchMonitorPFSMutex()
 	case "monitoring-performance-schema-latch":
@@ -2729,6 +2762,20 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchProxysqlBootstrap()
 	case "proxysql":
 		mycluster.SwitchProxySQL()
+	case "haproxy-api-bootstrap-servers":
+		mycluster.SwitchHaproxyAPIBootstrapServers()
+	case "maxscale":
+		mycluster.SwitchMaxscaleProxy()
+	case "maxscale-rest-api":
+		mycluster.SwitchMaxscaleRestApi()
+	case "maxscale-disable-monitor":
+		mycluster.SwitchMaxscaleDisableMonitor()
+	case "maxscale-server-match-port":
+		mycluster.SwitchMaxscaleServerMatchPort()
+	case "maxscale-binlog":
+		mycluster.SwitchMaxscaleBinlog()
+	case "failover-falsepositive-maxscale":
+		mycluster.SwitchFailoverFalsePositiveMaxscale()
 	case "proxy-servers-read-on-master":
 		mycluster.SwitchProxyServersReadOnMaster()
 	case "proxy-servers-read-on-master-no-slave":
@@ -2743,6 +2790,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchTestMode()
 	case "prov-net-cni":
 		mycluster.SwitchProvNetCNI()
+	case "prov-kube-image-force-pull":
+		mycluster.Conf.ProvKubeImageForcePull = !mycluster.Conf.ProvKubeImageForcePull
 	case "prov-db-config":
 		mycluster.Conf.ProvDBConfig = !mycluster.Conf.ProvDBConfig
 	case "prov-db-config-preserve":
@@ -2750,10 +2799,21 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	case "prov-db-start-fetch-config":
 		mycluster.Conf.ProvDbStartFetchConfig = !mycluster.Conf.ProvDbStartFetchConfig
 		mycluster.CheckNeedConfigFetch()
+	case "prov-proxy-start-fetch-config":
+		mycluster.Conf.ProvProxyStartFetchConfig = !mycluster.Conf.ProvProxyStartFetchConfig
+		mycluster.CheckNeedConfigFetch()
 	case "prov-db-apply-dynamic-config":
 		mycluster.SwitchDBApplyDynamicConfig()
 	case "prov-auto-update-compliance":
 		mycluster.Conf.ProvAutoUpdateCompliance = !mycluster.Conf.ProvAutoUpdateCompliance
+	case "prov-db-compliance-auto-agree":
+		mycluster.Conf.ProvDBComplianceAutoAgree = !mycluster.Conf.ProvDBComplianceAutoAgree
+	case "prov-db-dynamic-resource":
+		mycluster.Conf.ProvDBDynamicResource = !mycluster.Conf.ProvDBDynamicResource
+	case "prov-db-docker-run-args-limit":
+		mycluster.Conf.ProvDBDockerRunArgsLimit = !mycluster.Conf.ProvDBDockerRunArgsLimit
+	case "prov-orchestrator-deployment-upgrade-on-start":
+		mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart = !mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart
 	case "prov-docker-daemon-private":
 		mycluster.SwitchProvDockerDaemonPrivate()
 	case "prov-object-allow-overwrite":
@@ -2956,6 +3016,19 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.LogArbitration = !mycluster.Conf.LogArbitration
 	case "onpremise-ssh":
 		mycluster.Conf.OnPremiseSSH = !mycluster.Conf.OnPremiseSSH
+	case "db-log-rotate":
+		mycluster.Conf.DBLogRotate = !mycluster.Conf.DBLogRotate
+		// Nothing else notices this flag turning off -- close any writers
+		// cached while it was on instead of leaving them open indefinitely
+		// (mirrors the db-log-on-backup-storage case below).
+		mycluster.CloseAllDBLogWriters()
+	case "db-log-on-backup-storage":
+		mycluster.Conf.DBLogOnBackupStorage = !mycluster.Conf.DBLogOnBackupStorage
+		// Already-running tailers keep following whatever path they were opened
+		// against; restart them so they pick up the new canonical location
+		// instead of silently going stale until a repman restart (mirrors the
+		// setClusterSetting case for this same setting).
+		mycluster.RestartDBLogTailers()
 	case "monitoring-binlog-events":
 		mycluster.SwitchMonitorBinlogEvents()
 	default:
@@ -3075,7 +3148,48 @@ func (repman *ReplicationManager) handlerMuxResizeDatabaseUnits(w http.ResponseW
 	}
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Successfully resized database units"))
+	_, _ = w.Write([]byte("Successfully resized database units"))
+}
+
+// handlerMuxChangePlanUnits moves a cluster's technical resource RESERVATION (plan) for a
+// unit by a relative delta, via cluster.ChangePlanUnits (validate + hook + persist).
+// @Summary Change a cluster plan reservation by a delta
+// @Description Moves the cluster's plan (technical resource reservation) for a unit (DBU/APU)
+// @Description by a relative delta. Decrease is free down to the floor; increase is validated
+// @Description (admin immutable lock; external claim hook) then applied and persisted.
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param unit path string true "Plan unit: DBU or APU"
+// @Param delta path int true "Relative change (e.g. -3 or 2)"
+// @Success 200 {string} string "OK"
+// @Failure 400 {string} string "delta must be an integer"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "error"
+// @Router /api/clusters/{clusterName}/settings/actions/change-plan-units/{unit}/{delta} [post]
+func (repman *ReplicationManager) handlerMuxChangePlanUnits(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	delta, err := strconv.Atoi(vars["delta"])
+	if err != nil {
+		http.Error(w, "delta must be an integer", http.StatusBadRequest)
+		return
+	}
+	if err := mycluster.ChangePlanUnits(cluster.PlanUnit(vars["unit"]), delta); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, _ = w.Write([]byte("OK"))
 }
 
 // handlerMuxSetCron handles the setting of cron jobs for a given cluster.
@@ -3305,7 +3419,7 @@ var base64LogValueSettings = map[string]struct{}{
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -3507,6 +3621,44 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return fmt.Errorf("compress-backups-compression-level must be between 1 and 9, got %d", val)
 		}
 		mycluster.Conf.CompressBackupsCompressionLevel = val
+	case "db-log-rotate":
+		oldVal := mycluster.Conf.DBLogRotate
+		newVal := applyIsActive(mycluster.Conf.DBLogRotate, isactive)
+		mycluster.Conf.DBLogRotate = newVal
+		if newVal != oldVal {
+			// Nothing else notices this flag turning off -- close any writers
+			// cached while it was on instead of leaving them open
+			// indefinitely (mirrors the db-log-on-backup-storage case below).
+			mycluster.CloseAllDBLogWriters()
+		}
+	case "db-log-on-backup-storage":
+		oldVal := mycluster.Conf.DBLogOnBackupStorage
+		newVal := applyIsActive(mycluster.Conf.DBLogOnBackupStorage, isactive)
+		mycluster.Conf.DBLogOnBackupStorage = newVal
+		if newVal != oldVal {
+			// Already-running tailers keep following whatever path they were
+			// opened against; restart them so they pick up the new canonical
+			// location instead of silently going stale until a repman restart.
+			mycluster.RestartDBLogTailers()
+		}
+	case "db-log-rotate-max-size":
+		val, err := strconv.Atoi(value)
+		if err != nil || val <= 0 {
+			return fmt.Errorf("db-log-rotate-max-size must be greater than 0, got %q", value)
+		}
+		mycluster.Conf.DBLogRotateMaxSize = val
+	case "db-log-rotate-max-backup":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 0 {
+			return fmt.Errorf("db-log-rotate-max-backup must be greater than or equal to 0, got %q", value)
+		}
+		mycluster.Conf.DBLogRotateMaxBackup = val
+	case "db-log-rotate-max-age":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 0 {
+			return fmt.Errorf("db-log-rotate-max-age must be greater than or equal to 0, got %q", value)
+		}
+		mycluster.Conf.DBLogRotateMaxAge = val
 	case "backup-restic-purge-oldest-on-disk-space":
 		mycluster.Conf.BackupResticPurgeOldestOnDiskSpace = applyIsActive(mycluster.Conf.BackupResticPurgeOldestOnDiskSpace, isactive)
 	case "backup-restic-allow-unsafe-mount":
@@ -3659,12 +3811,22 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Secrets["db-servers-credential"] = new_secret
 		mycluster.SetClusterMonitorCredentialsFromConfig()
 		// mycluster.SetDbServersMonitoringCredential(value)
+	case "db-servers-dns-timeout":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 1 || val > 300 {
+			return fmt.Errorf("db-servers-dns-timeout must be between 1 and 300 seconds, got %q", value)
+		}
+		mycluster.Conf.DNSTimeout = val
 	case "prov-service-plan":
 		mycluster.SetServicePlan(value)
 	case "prov-net-cni-cluster":
 		mycluster.SetProvNetCniCluster(value)
 	case "prov-orchestrator-cluster":
 		mycluster.SetProvOrchestratorCluster(value)
+	case "prov-kube-storage-class":
+		mycluster.SetProvKubeStorageClass(value)
+	case "prov-kube-proxy-storage-class":
+		mycluster.SetProvKubeProxyStorageClass(value)
 	case "prov-db-disk-size":
 		mycluster.SetDBDiskSize(value)
 	case "prov-db-cpu-cores":
@@ -3681,6 +3843,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetDBMaxConnections(value)
 	case "prov-db-expire-log-days":
 		mycluster.SetDBExpireLogDays(value)
+	case "prov-db-replication-parallel-threads":
+		mycluster.SetDBReplicationParallelThreads(value)
+	case "prov-db-replication-domain-parallel-threads":
+		mycluster.SetDBReplicationDomainParallelThreads(value)
 	case "prov-db-agents":
 		mycluster.SetProvDbAgents(value)
 	case "prov-proxy-agents":
@@ -3701,6 +3867,28 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetProvDbDiskDevice(value)
 	case "prov-db-service-type":
 		mycluster.SetProvDbServiceType(value)
+	case "prov-db-resource-align":
+		mycluster.Conf.ProvDBResourceAlign = value
+	case "prov-db-dynamic-resize-policy":
+		mycluster.Conf.ProvDBDynamicResizePolicy = value
+	case "prov-db-dynamic-resize-daily-time":
+		mycluster.Conf.ProvDBDynamicResizeDailyTime = value
+	case "prov-db-cap-safety-pct":
+		mycluster.Conf.ProvDBCapSafetyPct, _ = strconv.Atoi(value)
+	case "prov-db-cap-shrink-pct":
+		mycluster.Conf.ProvDBCapShrinkPct, _ = strconv.Atoi(value)
+	case "prov-db-overcommit-pct":
+		mycluster.Conf.ProvDBOvercommitPct, _ = strconv.Atoi(value)
+	case "prov-db-undercommit-pct":
+		mycluster.Conf.ProvDBUndercommitPct, _ = strconv.Atoi(value)
+	case "prov-db-scale-up-config-in-plan-speed":
+		mycluster.Conf.ScaleUpConfigInPlanSpeed = value
+	case "prov-db-scale-down-config-in-plan-speed":
+		mycluster.Conf.ScaleDownConfigInPlanSpeed = value
+	case "prov-db-scale-up-plan-speed":
+		mycluster.Conf.ScaleUpPlanSpeed = value
+	case "prov-db-scale-down-plan-speed":
+		mycluster.Conf.ScaleDownPlanSpeed = value
 	case "proxysql-servers-credential":
 		mycluster.SetProxyServersCredential(value, config.ConstProxySqlproxy)
 	case "proxy-servers-backend-max-connections":
@@ -3850,6 +4038,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetLogMailerLevel(val)
 	case "graphite-whitelist-template":
 		mycluster.SetGraphiteWhitelistTemplate(value)
+	case "graphite-metrics-queue-limit":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.GraphiteMetricsQueueLimit = val
 	case "topology-target":
 		mycluster.BootstrapTopology(value)
 	case "log-task-level", "log-level-task":
@@ -4278,6 +4469,104 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MasterRetryCount = val
 	case "db-servers-tls-ssl-mode":
 		mycluster.Conf.HostsTlsSslMode = value
+	case "haproxy-mode":
+		switch value {
+		case "standby", "runtimeapi", "externalcheck", "dataplaneapi":
+			// Refresh() reads HaproxyMode live every tick, so changing it while provisioned would drift from the deployed config.
+			changed := value != mycluster.Conf.HaproxyMode
+			if changed && mycluster.HasProvisionedHaproxy() {
+				return fmt.Errorf("haproxy-mode: cannot change from %q to %q while a proxy is already provisioned -- unprovision it, then change this and provision again", mycluster.Conf.HaproxyMode, value)
+			}
+			mycluster.Conf.HaproxyMode = value
+			if changed {
+				mycluster.SetProxiesReprovCookie()
+			}
+		default:
+			return fmt.Errorf("invalid value for haproxy-mode: %q, expected one of standby, runtimeapi, externalcheck, dataplaneapi", value)
+		}
+	case "haproxy-write-port", "haproxy-read-port", "haproxy-stat-port", "haproxy-api-port":
+		port, convErr := strconv.Atoi(value)
+		if convErr != nil || port < 1 || port > 65535 {
+			return fmt.Errorf("invalid value for %s: %q, port must be between 1 and 65535", name, value)
+		}
+		switch name {
+		case "haproxy-write-port":
+			mycluster.Conf.HaproxyWritePort = port
+		case "haproxy-read-port":
+			mycluster.Conf.HaproxyReadPort = port
+		case "haproxy-stat-port":
+			mycluster.Conf.HaproxyStatPort = port
+		case "haproxy-api-port":
+			mycluster.Conf.HaproxyAPIPort = port
+		}
+	case "haproxy-ip-write-bind":
+		mycluster.Conf.HaproxyWriteBindIp = value
+	case "haproxy-ip-read-bind":
+		mycluster.Conf.HaproxyReadBindIp = value
+	case "haproxy-binary-path":
+		mycluster.Conf.HaproxyBinaryPath = value
+	case "haproxy-api-read-backend":
+		mycluster.Conf.HaproxyAPIReadBackend = value
+	case "haproxy-api-write-backend":
+		mycluster.Conf.HaproxyAPIWriteBackend = value
+	case "haproxy-staging-backend":
+		mycluster.Conf.HaproxyStagingBackend = value
+	case "haproxy-user":
+		mycluster.Conf.HaproxyUser = value
+	case "haproxy-password":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		mycluster.Conf.HaproxyPassword = string(val)
+		var new_secret config.Secret
+		new_secret.Value = mycluster.Conf.HaproxyPassword
+		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("haproxy-password")
+		mycluster.Conf.Secrets["haproxy-password"] = new_secret
+
+	case "maxscale-mode":
+		switch value {
+		case "auto", "legacy", "pinloki":
+			changed := value != mycluster.Conf.MxsMode
+			mycluster.Conf.MxsMode = value
+			if changed {
+				mycluster.SetProxiesReprovCookie()
+			}
+		default:
+			return fmt.Errorf("invalid value for maxscale-mode: %q, expected one of auto, legacy, pinloki", value)
+		}
+	case "maxscale-get-info-method":
+		switch value {
+		case "maxadmin", "maxinfo":
+			mycluster.Conf.MxsGetInfoMethod = value
+		default:
+			return fmt.Errorf("invalid value for maxscale-get-info-method: %q, expected one of maxadmin, maxinfo", value)
+		}
+	case "maxscale-servers":
+		mycluster.Conf.MxsHost = value
+	case "maxscale-port":
+		port, convErr := strconv.Atoi(value)
+		if convErr != nil || port < 1 || port > 65535 {
+			return fmt.Errorf("invalid value for maxscale-port: %q, port must be between 1 and 65535", value)
+		}
+		mycluster.Conf.MxsPort = value
+	case "maxscale-rest-port", "maxscale-write-port", "maxscale-read-port", "maxscale-read-write-port", "maxscale-binlog-port":
+		port, convErr := strconv.Atoi(value)
+		if convErr != nil || port < 1 || port > 65535 {
+			return fmt.Errorf("invalid value for %s: %q, port must be between 1 and 65535", name, value)
+		}
+		switch name {
+		case "maxscale-rest-port":
+			mycluster.Conf.MxsRestPort = port
+		case "maxscale-write-port":
+			mycluster.Conf.MxsWritePort = port
+		case "maxscale-read-port":
+			mycluster.Conf.MxsReadPort = port
+		case "maxscale-read-write-port":
+			mycluster.Conf.MxsReadWritePort = port
+		case "maxscale-binlog-port":
+			mycluster.Conf.MxsBinlogPort = port
+		}
 
 	// Switches
 	case "verbose":
@@ -4430,6 +4719,13 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProxysqlBootstrapHG = applyIsActive(mycluster.Conf.ProxysqlBootstrapHG, isactive)
 	case "proxysql-bootstrap", "proxysql-bootstrap-servers":
 		mycluster.Conf.ProxysqlBootstrap = applyIsActive(mycluster.Conf.ProxysqlBootstrap, isactive)
+	case "haproxy-api-bootstrap-servers":
+		newValue := applyIsActive(mycluster.Conf.HaproxyAPIBootstrapServers, isactive)
+		changed := newValue != mycluster.Conf.HaproxyAPIBootstrapServers
+		mycluster.Conf.HaproxyAPIBootstrapServers = newValue
+		if changed {
+			mycluster.SetProxiesReprovCookie()
+		}
 	case "proxysql-bootstrap-query-rules":
 		mycluster.Conf.ProxysqlBootstrapQueryRules = applyIsActive(mycluster.Conf.ProxysqlBootstrapQueryRules, isactive)
 	case "proxysql":
@@ -4437,9 +4733,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "proxy-servers-read-on-master":
 		mycluster.Conf.PRXServersReadOnMaster = applyIsActive(mycluster.Conf.PRXServersReadOnMaster, isactive)
 		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
+		mycluster.PushMaxscaleReadOnMaster()
 	case "proxy-servers-read-on-master-no-slave":
 		mycluster.Conf.PRXServersReadOnMasterNoSlave = applyIsActive(mycluster.Conf.PRXServersReadOnMasterNoSlave, isactive)
 		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
+		mycluster.PushMaxscaleReadOnMaster()
 	case "proxy-servers-backend-compression":
 		mycluster.Conf.PRXServersBackendCompression = applyIsActive(mycluster.Conf.PRXServersBackendCompression, isactive)
 	case "database-heartbeat":
@@ -4450,6 +4748,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Test = applyIsActive(mycluster.Conf.Test, isactive)
 	case "prov-net-cni":
 		mycluster.Conf.ProvNetCNI = applyIsActive(mycluster.Conf.ProvNetCNI, isactive)
+	case "prov-kube-image-force-pull":
+		mycluster.Conf.ProvKubeImageForcePull = applyIsActive(mycluster.Conf.ProvKubeImageForcePull, isactive)
 	case "prov-db-config":
 		mycluster.Conf.ProvDBConfig = applyIsActive(mycluster.Conf.ProvDBConfig, isactive)
 	case "prov-db-config-preserve":
@@ -4457,8 +4757,13 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "prov-db-start-fetch-config":
 		mycluster.Conf.ProvDbStartFetchConfig = applyIsActive(mycluster.Conf.ProvDbStartFetchConfig, isactive)
 		mycluster.CheckNeedConfigFetch()
+	case "prov-proxy-start-fetch-config":
+		mycluster.Conf.ProvProxyStartFetchConfig = applyIsActive(mycluster.Conf.ProvProxyStartFetchConfig, isactive)
+		mycluster.CheckNeedConfigFetch()
 	case "prov-db-apply-dynamic-config":
 		mycluster.Conf.ProvDBApplyDynamicConfig = applyIsActive(mycluster.Conf.ProvDBApplyDynamicConfig, isactive)
+	case "prov-orchestrator-deployment-upgrade-on-start":
+		mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart = applyIsActive(mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart, isactive)
 	case "prov-auto-update-compliance":
 		mycluster.Conf.ProvAutoUpdateCompliance = applyIsActive(mycluster.Conf.ProvAutoUpdateCompliance, isactive)
 	case "prov-docker-daemon-private":
@@ -5376,14 +5681,32 @@ func (repman *ReplicationManager) handlerMuxLog(w http.ResponseWriter, r *http.R
 }
 
 // handlerMuxWebLog handles the retrieval of cluster logs by type.
+//
+// Plain requests return the in-memory ring buffer for the given type (or all
+// types). Adding ?since= and/or ?until= (RFC3339) switches "general"/"task"
+// to a bounded scan of on-disk log history instead — see
+// doc/implementation/utils/s18log/LOG_HISTORY_READER.md — additionally
+// filterable by ?level=, ?module=, ?text=, ?limit=. Other log types
+// (security, workload, ddl, schema, variable-change, sysbench) aren't
+// history-backed: their loggers write to separate files without the
+// cluster/module tags needed to reconstruct entries, so a since/until on
+// those (or with no logType at all) is a 400, not a silently-empty result.
+//
 // @Summary Retrieve cluster logs by type
-// @Description Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, schema, variable-change, sysbench. Without logType returns all logs.
+// @Description Returns cluster logs for the specified type (in-memory buffer), or — for general/task with ?since=/?until= — a bounded scan of on-disk log history. Available types: general, task, security, workload, ddl, schema, variable-change, sysbench. Without logType returns all logs.
 // @Tags ClusterTopology
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param logType path string false "Log type: general, task, security, workload, ddl, schema, variable-change, sysbench"
+// @Param since query string false "RFC3339 lower time bound; presence switches general/task to on-disk history"
+// @Param until query string false "RFC3339 upper time bound; presence switches general/task to on-disk history"
+// @Param level query string false "History mode only: comma-separated level buckets ERR,WARN,INFO,DBG"
+// @Param module query string false "History mode only: comma-separated module tags, e.g. sql,proxy"
+// @Param text query string false "History mode only: substring filter on message text"
+// @Param limit query int false "History mode only: max lines returned (server-clamped)"
 // @Success 200 {object} map[string]interface{} "Log data"
+// @Failure 400 {string} string "logType has no on-disk history"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found"
 // @Router /api/clusters/{clusterName}/topology/logs/{logType} [get]
@@ -5405,8 +5728,20 @@ func (repman *ReplicationManager) handlerMuxWebLog(w http.ResponseWriter, r *htt
 		return
 	}
 
+	logType, hasLogType := vars["logType"]
+
 	var logs any
-	if logType, ok := vars["logType"]; ok {
+	if isLogHistoryRequest(r) {
+		if !hasLogType || (logType != "general" && logType != "task") {
+			http.Error(w, "log history requires logType=general or logType=task", http.StatusBadRequest)
+			return
+		}
+		msgs, truncated, ok := repman.serveLogHistory(w, r, cl.Name, logType)
+		if !ok {
+			return
+		}
+		logs = &s18log.HttpLog{Buffer: msgs, Len: len(msgs), Truncated: truncated}
+	} else if hasLogType {
 		logs = cl.GetWebLogsByType(logType)
 	} else {
 		logs = cl.GetAllWebLogs()
@@ -5570,11 +5905,14 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	repman.InitConfig(*repman.Conf, true)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		prevGW := mycluster.Conf.Cloud18GatewayService
-		mycluster.ReloadConfig(repman.Confs[vars["clusterName"]])
+		if err := repman.ReloadLiveClusterConfig(mycluster, vars["clusterName"]); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Reload error: %v", err)
+			http.Error(w, "Reload error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 		repman.RecomputeGatewayConflicts(vars["clusterName"], prevGW)
 	} else {
 		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
@@ -5607,6 +5945,96 @@ func (repman *ReplicationManager) handlerMuxAcceptCompliance(w http.ResponseWrit
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"compliance update accepted"}`))
+}
+
+// handlerMuxClusterGitPush forces the server-level config-repo push NOW (the
+// outbound git sync that normally only fires dirty-gated in the config-sync loop).
+// It runs the real push path (PushAllConfigsToGit), which self-heals a corrupt
+// pack (reclone + retry) on its own. Serialized with the sync worker via the git
+// lock. Server-level (one repo, all clusters); routed per-cluster for ACL.
+// @Summary Force the config-repo push to git now
+// @Description Triggers the server-level config git push immediately instead of waiting for the dirty-gated config-sync loop. Runs the real push path, which self-heals a corrupt pack (reclone + retry). Server-level (one repo, all clusters); routed per-cluster for ACL. Requires GrantClusterSettings.
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "config pushed to git"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "git config sync not configured"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /api/clusters/{clusterName}/settings/actions/git-push [post]
+func (repman *ReplicationManager) handlerMuxClusterGitPush(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if repman.ConfigManager == nil || repman.Conf.GitUrl == "" {
+		http.Error(w, `{"error":"git config sync not configured (git-url empty)"}`, http.StatusConflict)
+		return
+	}
+	var err error
+	repman.ConfigManager.WithGitLock(func() {
+		err = repman.ConfigManager.PushAllConfigsToGit(repman.Conf, repman.ClusterList)
+	})
+	if err != nil {
+		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
+		http.Error(w, string(errJSON), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"config pushed to git"}`))
+}
+
+// handlerMuxClusterGitRepair forces the explicit self-heal: refresh git metadata
+// (reclone, which re-inits the local .git from the remote and sheds corrupt/
+// dangling objects) then push a clean pack. Use when the config-repo push is stuck
+// (e.g. after a gitlab failover emptied the remote and pushes fail the remote's
+// receive fsck). Serialized with the sync worker via the git lock.
+// @Summary Repair a stuck config-repo git sync and push
+// @Description Explicit self-heal: refresh git metadata (reclone re-inits the local .git from the remote, shedding corrupt/dangling objects) then push a clean pack. Use when the config-repo push is stuck (e.g. after a gitlab failover emptied the remote and pushes fail the remote receive fsck). Server-level; routed per-cluster for ACL. Requires GrantClusterSettings.
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "git repaired and pushed"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "git config sync not configured"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /api/clusters/{clusterName}/settings/actions/git-repair [post]
+func (repman *ReplicationManager) handlerMuxClusterGitRepair(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if repman.ConfigManager == nil || repman.Conf.GitUrl == "" {
+		http.Error(w, `{"error":"git config sync not configured (git-url empty)"}`, http.StatusConflict)
+		return
+	}
+	var err error
+	repman.ConfigManager.WithGitLock(func() {
+		err = repman.ConfigManager.RepairAndPush(repman.Conf, repman.ClusterList)
+	})
+	if err != nil {
+		errJSON, _ := json.Marshal(map[string]string{"error": err.Error()})
+		http.Error(w, string(errJSON), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"git repaired and pushed"}`))
 }
 
 // handlerMuxComplianceDiff returns a structured diff between the previous
@@ -6036,6 +6464,10 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 		if r.URL.Query().Get("test") != "" {
 			mycluster.SetSysbenchTest(r.URL.Query().Get("test"))
 		}
+		if r.URL.Query().Get("time") != "" {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench time to %ss", r.URL.Query().Get("time"))
+			mycluster.SetSysbenchTime(r.URL.Query().Get("time"))
+		}
 		if r.URL.Query().Get("threads") == "0" {
 			// threads=0 means scale from 1 to 2×cores
 			go mycluster.RunSysbenchScaleThreads()
@@ -6163,7 +6595,27 @@ func (repman *ReplicationManager) handlerMuxClusterWaitDatabases(w http.Response
 // with a safely-snapshotted copy (acquired under the grouped s3Providers state lock) so
 // concurrent CRUD mutations cannot produce a racy or inconsistent response.
 func buildClusterAPIPayload(mycluster *cluster.Cluster) ([]byte, error) {
-	cl, err := json.Marshal(mycluster)
+	// Apps must be excluded from the marshal walk entirely, not just from
+	// the output. encoding/json's embedded-field conflict resolution only
+	// promotes a shallower field over a deeper one when both compete for
+	// the same JSON name; a shallower field tagged json:"-" is dropped from
+	// that competition instead of winning it, so it does NOT suppress the
+	// embedded Cluster.Apps field (tag json:"apps") -- Apps would still be
+	// visited and marshaled live. Instead, the shadow field below is tagged
+	// json:"apps" (matching Cluster.Apps's tag) so it wins the conflict and
+	// the deep, live Apps field is never visited by json.Marshal at all;
+	// the harmless empty-struct placeholder it produces is deleted from the
+	// bytes afterward alongside servers/proxies. Conf is substituted with a
+	// locked snapshot that has its own Apps cleared for the same reason
+	// (cluster.Conf.Apps[i] and the corresponding App's AppConfig are the
+	// same pointer -- see GetAppConfig).
+	view := struct {
+		*cluster.Cluster
+		Apps struct{}       `json:"apps"`
+		Conf *config.Config `json:"config"`
+	}{Cluster: mycluster, Conf: mycluster.GetConfigSnapshotForWire()}
+
+	cl, err := json.Marshal(&view)
 	if err != nil {
 		return nil, fmt.Errorf("marshal cluster: %w", err)
 	}
@@ -6175,11 +6627,21 @@ func buildClusterAPIPayload(mycluster *cluster.Cluster) ([]byte, error) {
 		}
 	}
 
-	// Reduce the content of the cluster object
+	// Reduce the content of the cluster object. "apps" is the harmless
+	// placeholder from the shadow field above (never touched live Apps
+	// data). "config.apps" comes from GetConfigSnapshotForWire's cleared
+	// (nil) Apps slice, which config.Config's `json:"apps"` tag (no
+	// omitempty) would otherwise emit as "apps":null rather than omitting
+	// the key -- deleting it here is safe: unlike the old
+	// "marshal-live-then-delete" pattern this fix replaced, cl at this
+	// point was already produced from a race-free snapshot, so this delete
+	// only tidies already-inert bytes, it doesn't touch live memory.
+	// Servers/Proxies are intentionally left as live-marshaled-then-deleted,
+	// unchanged -- out of scope for this pass.
+	cl, _ = sjson.DeleteBytes(cl, "apps")
 	cl, _ = sjson.DeleteBytes(cl, "config.apps")
 	cl, _ = sjson.DeleteBytes(cl, "servers")
 	cl, _ = sjson.DeleteBytes(cl, "proxies")
-	cl, _ = sjson.DeleteBytes(cl, "apps")
 
 	// Overwrite clusterS3Providers with a safe snapshot acquired under the mutex
 	// to prevent races with concurrent CRUD mutations (AddS3Provider, etc.).
@@ -9014,21 +9476,29 @@ func (repman *ReplicationManager) handlerMuxClusterVariablesPreserve(w http.Resp
 
 func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	//marshal unmarchal for ofuscation deep copy of struc
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		apps, err := json.MarshalIndent(mycluster.Apps, "", "\t")
+		// GetAppsCopy() snapshots the slice under cluster.Lock() (cluster.Apps
+		// is reassigned wholesale elsewhere under that same lock), and
+		// GetAppAPIView() snapshots each app under its own lock -- so this
+		// never hands encoding/json a live *App the way the previous
+		// json.MarshalIndent(mycluster.Apps, ...) did. Deployment/appDbPass
+		// redaction is baked into GetAppAPIView() itself now, so no sjson
+		// post-processing is needed here.
+		appsSnapshot := mycluster.GetAppsCopy()
+		views := make([]*cluster.AppAPIView, 0, len(appsSnapshot))
+		for _, a := range appsSnapshot {
+			if a != nil {
+				views = append(views, a.GetAppAPIView())
+			}
+		}
+
+		apps, err := json.MarshalIndent(views, "", "\t")
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
-		}
-
-		for idx := range mycluster.Apps {
-			apps, _ = sjson.DeleteBytes(apps, fmt.Sprintf("%d.appClusterSubstitute", idx))
-			apps, _ = sjson.DeleteBytes(apps, fmt.Sprintf("%d.config.deployment", idx))
-			apps, _ = sjson.SetBytes(apps, fmt.Sprintf("%d.config.appDbPass", idx), "*****")
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -9322,6 +9792,50 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCPoolList(w http.Respon
 				continue
 			}
 			options = append(options, PoolOption{Value: pool.Name, Name: pool.Name, Shared: pool.Shared})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(options); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: %s", err)
+		}
+	} else {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxClusterKubeStorageClassList lists the Kubernetes cluster's
+// available StorageClasses, for the provisioning GUI's storage-class
+// dropdown (prov-kube-storage-class) -- Kubernetes' equivalent of
+// handlerMuxClusterOpenSVCPoolList's disk-pool list.
+// @Summary List available Kubernetes StorageClasses
+// @Description Lists the Kubernetes cluster's available StorageClasses.
+// @Tags Database
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} PoolOption "Kubernetes StorageClass list fetched"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "Error getting Kubernetes storage class list"
+// @Router /api/clusters/{clusterName}/kube-storage-classes [get]
+func (repman *ReplicationManager) handlerMuxClusterKubeStorageClassList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+
+		names, err := mycluster.K8SGetStorageClasses()
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting Kubernetes storage class list: %s", err)
+			http.Error(w, "Error getting Kubernetes storage class list: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		options := make([]PoolOption, 0, len(names))
+		for _, name := range names {
+			options = append(options, PoolOption{Value: name, Name: name})
 		}
 
 		w.Header().Set("Content-Type", "application/json")

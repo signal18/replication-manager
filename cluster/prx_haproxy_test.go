@@ -8,13 +8,20 @@ package cluster
 
 import (
 	"bufio"
+	"bytes"
+	"errors"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/router/haproxy"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/sirupsen/logrus"
 )
 
 func TestHaproxyHasAvailableReader(t *testing.T) {
@@ -221,6 +228,7 @@ func TestHaproxyRefreshMasterFallbackSamePass(t *testing.T) {
 		HaproxyAPIWriteBackend: "service_write",
 		HaproxyAPIReadBackend:  "service_read",
 		HaproxyOn:              true,
+		HaproxyMode:            "runtimeapi",
 	}
 	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
 
@@ -284,6 +292,7 @@ func TestHaproxyRefreshMasterFallbackSamePass(t *testing.T) {
 		Datadir:      t.TempDir(),
 		Version:      "test", // non-empty, skips GetVersion()
 	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
 
 	if err := proxy.Refresh(); err != nil {
 		t.Fatalf("Refresh() error = %v", err)
@@ -329,6 +338,7 @@ func TestHaproxyRefreshMasterDrainSamePass(t *testing.T) {
 		HaproxyAPIWriteBackend: "service_write",
 		HaproxyAPIReadBackend:  "service_read",
 		HaproxyOn:              true,
+		HaproxyMode:            "runtimeapi",
 	}
 	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
 
@@ -392,6 +402,7 @@ func TestHaproxyRefreshMasterDrainSamePass(t *testing.T) {
 		Datadir:      t.TempDir(),
 		Version:      "test", // non-empty, skips GetVersion()
 	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
 
 	if err := proxy.Refresh(); err != nil {
 		t.Fatalf("Refresh() error = %v", err)
@@ -438,6 +449,7 @@ func TestHaproxyRefreshMasterStaleMaintSamePass(t *testing.T) {
 		HaproxyAPIWriteBackend: "service_write",
 		HaproxyAPIReadBackend:  "service_read",
 		HaproxyOn:              true,
+		HaproxyMode:            "runtimeapi",
 	}
 	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
 
@@ -502,6 +514,7 @@ func TestHaproxyRefreshMasterStaleMaintSamePass(t *testing.T) {
 		Datadir:      t.TempDir(),
 		Version:      "test", // non-empty, skips GetVersion()
 	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
 
 	if err := proxy.Refresh(); err != nil {
 		t.Fatalf("Refresh() error = %v", err)
@@ -536,5 +549,5504 @@ func TestHaproxyRefreshMasterStaleMaintSamePass(t *testing.T) {
 	}
 	if readyIdx >= drainIdx {
 		t.Errorf("Refresh() commands = %v, want %q (index %d) before %q (index %d)", commands, wantMasterReady, readyIdx, wantMasterDrain, drainIdx)
+	}
+}
+
+// TestHaproxyRefreshSkipsSetMasterInStandbyMode: standby mode lists every
+// server in the write backend (GetConfigProxyModule), not just the master
+// under a "leader" alias, so a non-master row must not trigger SetMaster.
+func TestHaproxyRefreshSkipsSetMasterInStandbyMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	// Every server appears in service_write (standby's actual config shape),
+	// not just the master.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_write", "server2", "DOWN", "127.0.0.1:3307"),
+		haproxyStatRow("service_read", "server1", "DOWN", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server2", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	for _, c := range getCommands() {
+		if strings.HasPrefix(c, "set server "+cluster.Conf.HaproxyAPIWriteBackend+"/leader") {
+			t.Fatalf("Refresh() sent %q in haproxy-mode=standby, which has no \"leader\" alias to address (all commands: %v)", c, getCommands())
+		}
+	}
+}
+
+// TestHaproxyRefreshSkipsSetMasterFallbackInStandbyMode covers Refresh()'s
+// second SetMaster call site, the "!foundMasterInStat" fallback: it fires
+// when no write-backend row resolves to a known ServerMonitor at all.
+func TestHaproxyRefreshSkipsSetMasterFallbackInStandbyMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	// No rows for service_write at all -- foundMasterInStat stays false,
+	// forcing the fallback branch regardless of resolution logic.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_read", "server1", "DOWN", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server2", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	for _, c := range getCommands() {
+		if strings.HasPrefix(c, "set server "+cluster.Conf.HaproxyAPIWriteBackend+"/leader") {
+			t.Fatalf("Refresh() sent %q from the !foundMasterInStat fallback in haproxy-mode=standby, which has no \"leader\" alias to address (all commands: %v)", c, getCommands())
+		}
+	}
+}
+
+// TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode: standby mode
+// propagates topology exclusively through Init()/Failover() (full config
+// regen + reload); Refresh() must never issue a write-backend Runtime API
+// command, even when a non-master row is left UP -- standby has no active
+// health check of its own (unlike externalcheck's checkmaster), so a stale
+// row only ever gets corrected by the next full Init() regen, never by
+// Refresh().
+func TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	// standby has no active health check, so both rows report UP in
+	// service_write regardless of who's actually leader, matching the live
+	// screenshot that prompted this fix.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_write", "server2", "UP", "127.0.0.1:3307"),
+		haproxyStatRow("service_read", "server1", "DOWN", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server2", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	for _, c := range getCommands() {
+		if strings.HasPrefix(c, "set server "+cluster.Conf.HaproxyAPIWriteBackend+"/") {
+			t.Fatalf("Refresh() sent %q in haproxy-mode=standby -- write-backend state must only ever change via Init()/Failover(), never from Refresh() (all commands: %v)", c, getCommands())
+		}
+	}
+
+	if len(proxy.BackendsWrite) != 2 {
+		t.Fatalf("expected Refresh() to still report both write-backend rows for the dashboard, got %d: %+v", len(proxy.BackendsWrite), proxy.BackendsWrite)
+	}
+}
+
+// TestHaproxyRefreshNeverMutatesWriteBackendInExternalCheckMode is
+// TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode's externalcheck
+// counterpart: both write-backend gates in Refresh() (the row loop and the
+// !foundMasterInStat fallback) are `== "runtimeapi"`, not `!= "standby"`, so
+// externalcheck must be independently verified to never issue a
+// write-backend Runtime API command either -- checkmaster's own
+// external-check polling of repman's HTTP handlers owns that decision, not
+// Refresh().
+func TestHaproxyRefreshNeverMutatesWriteBackendInExternalCheckMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "externalcheck",
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	// checkmaster hasn't excluded the stale replica yet (or is momentarily
+	// lagging) -- both rows report UP in service_write.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_write", "server2", "UP", "127.0.0.1:3307"),
+		haproxyStatRow("service_read", "server1", "DOWN", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server2", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	for _, c := range getCommands() {
+		if strings.HasPrefix(c, "set server "+cluster.Conf.HaproxyAPIWriteBackend+"/") {
+			t.Fatalf("Refresh() sent %q in haproxy-mode=externalcheck -- write-backend state must be left to checkmaster's external-check, never touched by Refresh() (all commands: %v)", c, getCommands())
+		}
+	}
+
+	if len(proxy.BackendsWrite) != 2 {
+		t.Fatalf("expected Refresh() to still report both write-backend rows for the dashboard, got %d: %+v", len(proxy.BackendsWrite), proxy.BackendsWrite)
+	}
+}
+
+// TestHaproxyRefreshNeverMutatesReadBackendInExternalCheckMode is
+// TestHaproxyRefreshNeverMutatesWriteBackendInExternalCheckMode's
+// read-backend counterpart. The read-backend mutation logic
+// (broken-replication drain, valid-replication ready, master-reader
+// reconciliation) predates the write-backend fix and was left
+// unconditional -- the same architectural bug, just on the other backend:
+// externalcheck relies on checkslave's own external-check (option
+// external-check, HAProxy's own health check against repman's
+// /slave-status API) to control read-backend membership, so a competing
+// Runtime API SetDrain/SetReady from Refresh() would race against
+// checkslave's independent polling instead of deferring to it.
+func TestHaproxyRefreshNeverMutatesReadBackendInExternalCheckMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "externalcheck",
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 broke replication but checkslave's external-check hasn't
+	// excluded it yet (or is momentarily lagging) -- HAProxy still reports
+	// it UP. In haproxy-mode=runtimeapi this would trigger a SetDrain; in
+	// externalcheck, Refresh() must leave it alone entirely.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlaveErr
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server2", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	for _, c := range getCommands() {
+		if strings.HasPrefix(c, "set server "+cluster.Conf.HaproxyAPIReadBackend+"/") {
+			t.Fatalf("Refresh() sent %q in haproxy-mode=externalcheck -- read-backend state must be left to checkslave's external-check, never touched by Refresh() (all commands: %v)", c, getCommands())
+		}
+	}
+
+	if len(proxy.BackendsRead) != 2 {
+		t.Fatalf("expected Refresh() to still report both read-backend rows for the dashboard, got %d: %+v", len(proxy.BackendsRead), proxy.BackendsRead)
+	}
+}
+
+// TestHaproxyRefreshNeverMutatesReadBackendInStandbyMode is
+// TestHaproxyRefreshNeverMutatesWriteBackendInStandbyMode's read-backend
+// counterpart. standby has no external-check at all (unlike externalcheck's
+// checkslave, see TestHaproxyRefreshNeverMutatesReadBackendInExternalCheckMode
+// above) -- read-backend membership is decided entirely by Init()'s own
+// server loop (skipRead, see hasBrokenReplicationForRead in
+// cluster/prx_haproxy.go), so Refresh() must still never issue a read-backend
+// Runtime API command in standby mode either, the same as externalcheck.
+func TestHaproxyRefreshNeverMutatesReadBackendInStandbyMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 broke replication but Init() hasn't re-rendered since -- HAProxy
+	// still reports it UP. In haproxy-mode=runtimeapi this would trigger a
+	// SetDrain; in standby, Refresh() must leave it alone entirely.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlaveErr
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "server2", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	for _, c := range getCommands() {
+		if strings.HasPrefix(c, "set server "+cluster.Conf.HaproxyAPIReadBackend+"/") {
+			t.Fatalf("Refresh() sent %q in haproxy-mode=standby -- read-backend state must be left to Init()'s own server loop, never touched by Refresh() (all commands: %v)", c, getCommands())
+		}
+	}
+
+	if len(proxy.BackendsRead) != 2 {
+		t.Fatalf("expected Refresh() to still report both read-backend rows for the dashboard, got %d: %+v", len(proxy.BackendsRead), proxy.BackendsRead)
+	}
+}
+
+// TestHaproxyInitPopulatesWriteBackendWithLeaderOnly guards against a
+// long-standing gap in Init() -- the only place haproxy-mode=standby ever
+// reconciles topology, since Failover() just calls Init() again. Its server
+// loop only ever called AddServer for the read backend; the write backend
+// was created but never populated by this function at all (true since at
+// least v3.1.40). Whatever ended up in the write backend at initial
+// provisioning (e.g. every server, via the OpenSVC moduleset's unconditional
+// standby-mode server list) then stayed there forever, since no later
+// Init()/Failover() call ever added the new leader or removed a server that
+// lost leadership -- exactly matching the production symptom of replicas
+// (including ones in SLAVE_ERROR) staying UP in the write group.
+func TestHaproxyInitPopulatesWriteBackendWithLeaderOnly(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmpl := `{{range .Backends}}
+backend {{.Name}}
+{{range .Servers}}    server {{.Name}} {{.Host}}:{{.Port}}
+{{end}}
+{{end}}`
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), []byte(tmpl), 0644); err != nil {
+		t.Fatalf("failed to write test haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "ahmad_write",
+		HaproxyAPIReadBackend:  "ahmad_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "server2"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	proxy.Init()
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	content := string(rendered)
+
+	writeSection := haproxyBackendSection(t, content, "ahmad_write")
+	if !strings.Contains(writeSection, "server server1 127.0.0.1:3306") {
+		t.Fatalf("write backend does not contain the leader, want it present:\n%s", writeSection)
+	}
+	if strings.Contains(writeSection, "server server2 ") {
+		t.Fatalf("write backend contains the non-leader replica -- Init() must only ever route writes to the current leader:\n%s", writeSection)
+	}
+
+	// Neither proxy-servers-read-on-master nor -no-slave is set here, and
+	// server2 is a healthy slave (not the no-valid-slave case), so per the
+	// masterShouldBeReader()-equivalent gate Init() now applies to the
+	// leader's own read-backend membership (see
+	// TestHaproxyInitStandbyRespectsReadOnMasterSettings), the leader is
+	// excluded from the read backend -- only the slave belongs there.
+	readSection := haproxyBackendSection(t, content, "ahmad_read")
+	if strings.Contains(readSection, "server server1 ") {
+		t.Fatalf("read backend contains the leader with no read-on-master setting enabled and a healthy slave present:\n%s", readSection)
+	}
+	if !strings.Contains(readSection, "server server2 127.0.0.1:3307") {
+		t.Fatalf("read backend does not contain the healthy slave:\n%s", readSection)
+	}
+}
+
+// TestNewHaproxyProxyStandbyKeepsLocalHost guards the fix alongside the
+// standby-always-local change: standby's Init() now renders+reloads
+// regardless of the cluster's own orchestrator (prx_haproxy.go, the
+// HaproxyMode != "standby" gate), so if NewHaproxyProxy still rewrote
+// prx.Host into a CNI Service DNS name for standby, Init() would render
+// "stats socket ipv4@<service dns>:<port>" (share/haproxy_config.template)
+// and the local HAProxy process could never bind it. runtimeapi/externalcheck
+// genuinely run as a separate orchestrator-managed resource repman only
+// reaches over the network, so they must keep the CNI rewrite.
+func TestNewHaproxyProxyStandbyKeepsLocalHost(t *testing.T) {
+	newProxy := func(t *testing.T, haproxyMode string) *HaproxyProxy {
+		t.Helper()
+		cluster := newTestCluster("cnitest")
+		cluster.Conf.ProvNetCNI = true
+		cluster.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+		cluster.Conf.ProvOrchestratorCluster = "local"
+		cluster.Conf.HaproxyMode = haproxyMode
+		cluster.Conf.HaproxyAPIPort = 1999
+		return NewHaproxyProxy(0, cluster, "haproxy1")
+	}
+
+	t.Run("standby keeps the plain configured host", func(t *testing.T) {
+		prx := newProxy(t, "standby")
+		if prx.Host != "haproxy1" {
+			t.Fatalf("Host = %q, want %q (standby must stay locally bindable, not CNI-rewritten)", prx.Host, "haproxy1")
+		}
+	})
+
+	t.Run("runtimeapi still gets the CNI Service DNS rewrite", func(t *testing.T) {
+		prx := newProxy(t, "runtimeapi")
+		want := "haproxy1.cnitest.svc.cluster.local"
+		if prx.Host != want {
+			t.Fatalf("Host = %q, want %q", prx.Host, want)
+		}
+	})
+
+	t.Run("externalcheck still gets the CNI Service DNS rewrite", func(t *testing.T) {
+		prx := newProxy(t, "externalcheck")
+		want := "haproxy1.cnitest.svc.cluster.local"
+		if prx.Host != want {
+			t.Fatalf("Host = %q, want %q", prx.Host, want)
+		}
+	})
+}
+
+// TestHaproxyInitLocalWorkGating guards Init()'s combined gate: it does its
+// local build/render/reload work when EITHER the cluster's orchestrator is
+// Localhost (any haproxy-mode -- externalcheck/runtimeapi included, see
+// TestHaproxyInitWritesLocalhostCheckScriptsInExternalCheckMode and
+// TestHaproxyInitSkipsCheckScriptsInRuntimeAPIMode) OR haproxy-mode=standby
+// (any orchestrator -- standby always runs co-located with repman, see
+// prov.go's proxyServiceOrchestrator()). For every other combination
+// (runtimeapi/externalcheck on a non-Localhost orchestrator), the real
+// proxy's config instead reaches its actual container via the separate
+// config-fetch tarball path (GetProxyConfig(), called unconditionally
+// earlier in Init() for the one-time bootstrap); none of this function's
+// local rendering is ever read by anything there, and the reload attempt
+// can only ever fail (a live incident showed "cannot bind socket ...
+// Cannot assign requested address" for the remote proxy's own address),
+// doing so on every single state change and flooding the log.
+func TestHaproxyInitLocalWorkGating(t *testing.T) {
+	newProxy := func(t *testing.T, orchestrator, haproxyMode string) (datadir string) {
+		t.Helper()
+		cluster := setupTestCluster(t, 1)
+		cluster.StateMachine = new(state.StateMachine)
+		cluster.StateMachine.Init()
+		cluster.Topology = config.TopoMasterSlave
+
+		shareDir := t.TempDir()
+		tmpl := `{{range .Backends}}
+backend {{.Name}}
+{{range .Servers}}    server {{.Name}} {{.Host}}:{{.Port}}
+{{end}}
+{{end}}`
+		if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), []byte(tmpl), 0644); err != nil {
+			t.Fatalf("failed to write test haproxy_config.template: %v", err)
+		}
+
+		cluster.Conf = &config.Config{
+			HaproxyAPIWriteBackend: "service_write",
+			HaproxyAPIReadBackend:  "service_read",
+			HaproxyOn:              true,
+			HaproxyMode:            haproxyMode,
+			ShareDir:               shareDir,
+			ProvOrchestrator:       orchestrator,
+		}
+
+		master := cluster.Servers[0]
+		master.Id = "server1"
+		master.Host = "127.0.0.1"
+		master.Port = "3306"
+		master.State = stateMaster
+		master.ClusterGroup = cluster
+		cluster.master = master
+
+		datadir = t.TempDir()
+		if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+			t.Fatalf("failed to create datadir/var: %v", err)
+		}
+
+		proxy := &HaproxyProxy{Proxy: Proxy{
+			ClusterGroup: cluster,
+			Datadir:      datadir,
+			Version:      "test",
+		}}
+		proxy.Init()
+		return datadir
+	}
+
+	t.Run("non-localhost orchestrator, runtimeapi mode: skips rendering and the local reload", func(t *testing.T) {
+		datadir := newProxy(t, config.ConstOrchestratorOpenSVC, "runtimeapi")
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.cfg")); !os.IsNotExist(err) {
+			t.Fatalf("expected no rendered haproxy.cfg for a non-localhost orchestrator in runtimeapi mode (Init() must return before Render()), stat err = %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.pid")); !os.IsNotExist(err) {
+			t.Fatalf("expected no pid file for a non-localhost orchestrator in runtimeapi mode (Reload() must be skipped), stat err = %v", err)
+		}
+	})
+
+	t.Run("non-localhost orchestrator, standby mode: still renders and reloads locally", func(t *testing.T) {
+		datadir := newProxy(t, config.ConstOrchestratorOpenSVC, "standby")
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.cfg")); err != nil {
+			t.Fatalf("expected a rendered haproxy.cfg for standby mode even on a non-localhost orchestrator: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.pid")); err != nil {
+			t.Fatalf("expected a pid file for standby mode even on a non-localhost orchestrator (SetPid() should have run): %v", err)
+		}
+	})
+
+	t.Run("localhost orchestrator, standby mode: still renders and reloads locally", func(t *testing.T) {
+		datadir := newProxy(t, config.ConstOrchestratorLocalhost, "standby")
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.cfg")); err != nil {
+			t.Fatalf("expected a rendered haproxy.cfg for the localhost orchestrator: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.pid")); err != nil {
+			t.Fatalf("expected a pid file for the localhost orchestrator (SetPid() should have run): %v", err)
+		}
+	})
+}
+
+// TestHaproxyInitWritesLocalhostCheckScriptsInExternalCheckMode guards
+// against haproxy-mode=externalcheck losing its only broken-replica
+// exclusion mechanism on the Localhost orchestrator. externalcheck relies
+// entirely on HAProxy's own external-check calling back into repman
+// (checkmaster/checkslave wired into haproxy_check.cfg via "option
+// external-check", share/opensvc/moduleset_mariadb.svc.mrm.proxy.json for
+// OpenSVC), never on Refresh()'s Runtime API SetDrain/SetReady (gated to
+// haproxy-mode=runtimeapi only) or on Init()'s own server-state filtering
+// (that's haproxy-mode=standby's mechanism instead, see
+// TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend below).
+// Localhost has no container image to swap, so Init() must instead write
+// equivalent checkmaster/checkslave scripts to proxy.Datadir/init/ and wire
+// them into the rendered haproxy.cfg via the same external-check mechanism,
+// or nothing excludes a broken replica from read/write routing on this
+// orchestrator at all.
+func TestHaproxyInitWritesLocalhostCheckScriptsInExternalCheckMode(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Name = "ahmadcluster"
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "externalcheck",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+		MonitorAddress:         "127.0.0.1",
+		HttpPort:               "10001",
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+	cluster.master = master
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	proxy.Init()
+
+	checkmaster, err := os.ReadFile(filepath.Join(datadir, "init", "checkmaster"))
+	if err != nil {
+		t.Fatalf("Init() did not write a checkmaster script: %v", err)
+	}
+	checkslave, err := os.ReadFile(filepath.Join(datadir, "init", "checkslave"))
+	if err != nil {
+		t.Fatalf("Init() did not write a checkslave script: %v", err)
+	}
+	if info, err := os.Stat(filepath.Join(datadir, "init", "checkmaster")); err != nil || info.Mode().Perm()&0100 == 0 {
+		t.Fatalf("checkmaster must be executable, mode = %v, err = %v", info.Mode(), err)
+	}
+
+	if !strings.Contains(string(checkmaster), "127.0.0.1:10001/clusters/ahmadcluster/servers/$3/$4/master-status") {
+		t.Fatalf("checkmaster does not target this repman's own master-status API:\n%s", checkmaster)
+	}
+	if !strings.Contains(string(checkslave), "127.0.0.1:10001/clusters/ahmadcluster/servers/$3/$4/reader-status") {
+		t.Fatalf("checkslave does not target this repman's own reader-status API (bug #6 fix -- see handlerMuxServersPortIsReaderStatus):\n%s", checkslave)
+	}
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	content := string(rendered)
+
+	if !strings.Contains(content, "external-check\n") {
+		t.Fatalf("rendered config does not enable the global external-check directive:\n%s", content)
+	}
+	if !strings.Contains(content, "insecure-fork-wanted") {
+		t.Fatalf("rendered config does not enable insecure-fork-wanted -- a multi-threaded worker cannot fork the external-check subprocess without it:\n%s", content)
+	}
+
+	writeSection := haproxyBackendSection(t, content, "service_write")
+	if !strings.Contains(writeSection, "option external-check") || !strings.Contains(writeSection, filepath.Join(datadir, "init", "checkmaster")) {
+		t.Fatalf("write backend does not wire in checkmaster via external-check:\n%s", writeSection)
+	}
+
+	readSection := haproxyBackendSection(t, content, "service_read")
+	if !strings.Contains(readSection, "option external-check") || !strings.Contains(readSection, filepath.Join(datadir, "init", "checkslave")) {
+		t.Fatalf("read backend does not wire in checkslave via external-check:\n%s", readSection)
+	}
+
+	// A correctly-rendered config that nothing ever execs haproxy against is
+	// just as broken as a wrong one -- guard against Init() writing the file
+	// and stopping there for externalcheck on Localhost. SetPid() creates
+	// the pidfile before Reload() attempts to exec the (possibly absent in
+	// this test environment) haproxy binary, so its presence is proof the
+	// reload path was actually reached, independent of whether haproxy
+	// itself is installed here.
+	if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.pid")); err != nil {
+		t.Fatalf("expected a pid file for haproxy-mode=externalcheck on the localhost orchestrator (Init() must exec/reload haproxy, not just render the config): %v", err)
+	}
+}
+
+// TestHaproxyInitSkipsCheckScriptsInRuntimeAPIMode is
+// TestHaproxyInitWritesLocalhostCheckScriptsInExternalCheckMode's runtimeapi
+// counterpart: runtimeapi relies on the Runtime API SetDrain/SetReady calls
+// in Refresh(), not an external-check script, so Init() must not write
+// checkmaster/checkslave or turn on external-check for that mode.
+func TestHaproxyInitSkipsCheckScriptsInRuntimeAPIMode(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "runtimeapi",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+	cluster.master = master
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	proxy.Init()
+
+	if _, err := os.Stat(filepath.Join(datadir, "init", "checkmaster")); !os.IsNotExist(err) {
+		t.Fatalf("expected no checkmaster script for haproxy-mode=runtimeapi, stat err = %v", err)
+	}
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	content := string(rendered)
+	if strings.Contains(content, "external-check") {
+		t.Fatalf("rendered config must not enable external-check for haproxy-mode=runtimeapi:\n%s", content)
+	}
+
+	// Same reasoning as TestHaproxyInitWritesLocalhostCheckScriptsInExternalCheckMode:
+	// a rendered config nothing execs haproxy against is non-functional.
+	// runtimeapi's ongoing updates go through the Runtime API against an
+	// already-running process, so if Init() never starts it in the first
+	// place here, every later Runtime API call has nothing to connect to.
+	if _, err := os.Stat(filepath.Join(datadir, "var", "haproxy.pid")); err != nil {
+		t.Fatalf("expected a pid file for haproxy-mode=runtimeapi on the localhost orchestrator (Init() must exec/reload haproxy, not just render the config): %v", err)
+	}
+}
+
+// TestHaproxyInitStandbyDoesNotWriteCheckScripts is
+// TestHaproxyInitWritesLocalhostCheckScriptsInExternalCheckMode's
+// haproxy-mode=standby counterpart: standby has no external check at all --
+// broken-replica exclusion is Init()'s own server-state filtering instead
+// (TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend below), so
+// it must not write checkmaster/checkslave or turn on external-check either.
+func TestHaproxyInitStandbyDoesNotWriteCheckScripts(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+	cluster.master = master
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	proxy.Init()
+
+	if _, err := os.Stat(filepath.Join(datadir, "init", "checkmaster")); !os.IsNotExist(err) {
+		t.Fatalf("expected no checkmaster script for haproxy-mode=standby, stat err = %v", err)
+	}
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	content := string(rendered)
+	if strings.Contains(content, "external-check") {
+		t.Fatalf("rendered config must not enable external-check for haproxy-mode=standby:\n%s", content)
+	}
+}
+
+// TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend guards
+// against haproxy-mode=standby's actual exclusion mechanism: with no Runtime
+// API and no external check to lean on, Init()'s own config generation is
+// the ONLY thing that can keep a broken replica out of the read backend --
+// before this fix, Init()'s read-backend loop added every non-maintenance
+// server unconditionally, regardless of replication state. This mirrors the
+// classification Refresh() uses to DRAIN a server under haproxy-mode=
+// runtimeapi (hasBrokenReplicationForRead, cluster/prx_haproxy.go), so both
+// modes agree on what "broken" means, applied at config-generation time
+// instead of via a runtime command.
+//
+// Also guards a second, previously-unchecked gap in the same loop: the
+// leader was always added to the read backend too, regardless of
+// proxy-servers-read-on-master / -no-slave -- a real divergence from
+// runtimeapi's masterShouldBeReader() gate in Refresh(). This cluster's only
+// slave is broken, so the master's presence below exercises the
+// -no-slave fallback specifically (enabled above), not the unconditional
+// proxy-servers-read-on-master path -- see
+// TestHaproxyInitStandbyRespectsReadOnMasterSettings for the read-on-master
+// and "excluded when a healthy slave exists" cases this test doesn't cover.
+func TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+	}
+	// Pins the real flag default (server/server.go: proxy-servers-read-on-
+	// master-no-slave defaults to true) that this test's assertion on the
+	// master's own presence below relies on -- config.Config{} above is a
+	// literal, not AddFlags()'s defaults, so it'd otherwise silently read as
+	// false. Read via cluster.Configurator (HasProxyReadLeaderNoSlave()),
+	// not cluster.Conf directly -- see the matching comment in prx_haproxy.go
+	// Init() for why.
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// server2 broke replication -- matches the real incident this whole
+	// family of fixes guards against ("Server db2 ... state transition from
+	// Slave changed to: SlaveErr"). No external check and no Runtime API
+	// exist in standby mode to catch this after the fact. It's also this
+	// test's only slave, so it doubles as the no-valid-slave case that puts
+	// the master's own read-backend membership below on the
+	// proxy-servers-read-on-master-no-slave fallback rather than the
+	// unconditional proxy-servers-read-on-master path.
+	slave := cluster.Servers[1]
+	slave.Id = "server2"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlaveErr
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	proxy.Init()
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	readSection := haproxyBackendSection(t, string(rendered), "service_read")
+	if !strings.Contains(readSection, "server server1 127.0.0.1:3306") {
+		t.Fatalf("read backend does not contain the healthy master:\n%s", readSection)
+	}
+	if strings.Contains(readSection, "server server2 ") {
+		t.Fatalf("read backend contains the replica with broken replication -- Init() must exclude it directly since standby has no other exclusion mechanism:\n%s", readSection)
+	}
+}
+
+// TestHaproxyInitStandbyRespectsReadOnMasterSettings is
+// TestHaproxyInitStandbyExcludesBrokenReplicationFromReadBackend's
+// counterpart for the leader's own read-backend membership: with a healthy
+// slave available, the leader must be excluded unless proxy-servers-
+// read-on-master is set, mirroring runtimeapi's masterShouldBeReader() gate
+// in Refresh() (cluster/prx_haproxy.go) -- before this fix, standby's Init()
+// added the leader to the read backend unconditionally, ignoring both
+// proxy-servers-read-on-master and proxy-servers-read-on-master-no-slave
+// entirely.
+func TestHaproxyInitStandbyRespectsReadOnMasterSettings(t *testing.T) {
+	tests := []struct {
+		name         string
+		readOnMaster bool
+		noSlave      bool
+		topology     string
+		slaveState   string
+		wantMaster   bool
+		wantSlave    bool
+	}{
+		{
+			name:         "healthy slave, no read-on-master flags: leader excluded",
+			readOnMaster: false,
+			noSlave:      false,
+			topology:     config.TopoMasterSlave,
+			slaveState:   stateSlave,
+			wantMaster:   false,
+			wantSlave:    true,
+		},
+		{
+			name:         "healthy slave, proxy-servers-read-on-master: leader included unconditionally",
+			readOnMaster: true,
+			noSlave:      false,
+			topology:     config.TopoMasterSlave,
+			slaveState:   stateSlave,
+			wantMaster:   true,
+			wantSlave:    true,
+		},
+		{
+			name:         "healthy slave, no-slave fallback only: leader still excluded",
+			readOnMaster: false,
+			noSlave:      true,
+			topology:     config.TopoMasterSlave,
+			slaveState:   stateSlave,
+			wantMaster:   false,
+			wantSlave:    true,
+		},
+		// Regression case: cluster.HasNoValidSlave() (cluster/cluster_has.go)
+		// returns true unconditionally for TopoActivePassive, regardless of
+		// the passive node's own state -- matching
+		// TestHaproxyMasterShouldBeReader's "no-slave fallback with
+		// active-passive topology" case for masterShouldBeReader(). Standby
+		// must honor that same topology-driven fallback, not just its own
+		// live per-server read-eligibility count, or the leader would be
+		// wrongly excluded here purely because the passive node looks
+		// replication-healthy.
+		{
+			name:         "active-passive topology with a healthy passive node: leader included via no-slave fallback",
+			readOnMaster: false,
+			noSlave:      true,
+			topology:     config.TopoActivePassive,
+			slaveState:   stateSlave,
+			wantMaster:   true,
+			wantSlave:    true,
+		},
+		// Regression case: hasBrokenReplicationForRead() alone doesn't cover
+		// Failed/Suspect/ErrorAuth (IsDown(), cluster/srv_has.go), so a
+		// Failed replica must still count as "not a valid alternative
+		// reader" for the leader's own fallback decision (standbyReadIneligible,
+		// used only for that decision) -- otherwise the leader would be
+		// wrongly excluded here, leaving no usable reader at all until
+		// HAProxy's own health check caught up and marked the replica down.
+		// The replica's own read-backend membership is intentionally
+		// unchanged, pre-existing behavior: it's still rendered in (relying
+		// on that same HAProxy health check to drain it, exactly as
+		// hasBrokenReplicationForRead()-excluded states always have) --
+		// this fix is scoped to the leader's read-on-master* decision only,
+		// not to widening what standby excludes for ordinary replicas.
+		{
+			name:         "failed replica: leader falls back as reader, failed replica still rendered (unchanged)",
+			readOnMaster: false,
+			noSlave:      true,
+			topology:     config.TopoMasterSlave,
+			slaveState:   stateFailed,
+			wantMaster:   true,
+			wantSlave:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := setupTestCluster(t, 2)
+			defer cleanupTestCluster(t, cluster)
+
+			cluster.StateMachine = new(state.StateMachine)
+			cluster.StateMachine.Init()
+			cluster.Topology = tt.topology
+
+			shareDir := t.TempDir()
+			tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+			if err != nil {
+				t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+				t.Fatalf("failed to copy haproxy_config.template: %v", err)
+			}
+
+			cluster.Conf = &config.Config{
+				HaproxyAPIWriteBackend: "service_write",
+				HaproxyAPIReadBackend:  "service_read",
+				HaproxyOn:              true,
+				HaproxyMode:            "standby",
+				ShareDir:               shareDir,
+				ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+			}
+			cluster.Configurator.ClusterConfig.PRXServersReadOnMaster = tt.readOnMaster
+			cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = tt.noSlave
+
+			master := cluster.Servers[0]
+			master.Id = "server1"
+			master.Host = "127.0.0.1"
+			master.Port = "3306"
+			master.State = stateMaster
+			master.ClusterGroup = cluster
+
+			slave := cluster.Servers[1]
+			slave.Id = "server2"
+			slave.Host = "127.0.0.1"
+			slave.Port = "3307"
+			slave.State = tt.slaveState
+			slave.IsSlave = true
+			slave.ClusterGroup = cluster
+
+			cluster.master = master
+			cluster.slaves = []*ServerMonitor{slave}
+
+			datadir := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+				t.Fatalf("failed to create datadir/var: %v", err)
+			}
+
+			proxy := &HaproxyProxy{Proxy: Proxy{
+				ClusterGroup: cluster,
+				Datadir:      datadir,
+				Version:      "test",
+			}}
+
+			proxy.Init()
+
+			rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+			if err != nil {
+				t.Fatalf("Init() did not render a config file: %v", err)
+			}
+			readSection := haproxyBackendSection(t, string(rendered), "service_read")
+
+			gotMaster := strings.Contains(readSection, "server server1 127.0.0.1:3306")
+			if gotMaster != tt.wantMaster {
+				t.Fatalf("leader present in read backend = %v, want %v:\n%s", gotMaster, tt.wantMaster, readSection)
+			}
+			gotSlave := strings.Contains(readSection, "server server2 127.0.0.1:3307")
+			if gotSlave != tt.wantSlave {
+				t.Fatalf("slave present in read backend = %v, want %v:\n%s", gotSlave, tt.wantSlave, readSection)
+			}
+		})
+	}
+}
+
+// TestHaproxyBackendsStateChangeReconcilesWriteBackendInStandbyMode guards
+// against a gap where BackendsStateChange() -- fired on every meaningful
+// server state change (cluster/srv.go), not just an actual failover or
+// switchover -- only ever called Refresh(), which deliberately never
+// mutates the write backend in haproxy-mode=standby. A replica that breaks
+// replication without the master ever changing (e.g. Slave -> SlaveErr,
+// matching a real production incident) never triggered Init() at all under
+// the old code, leaving it stuck in the write backend indefinitely.
+// TestHaproxyShouldRunStandbyInitDebounces guards the debounce contract
+// BackendsStateChange() and Refresh() both rely on to avoid one full HAProxy
+// render+reload per flapping replica per state transition: at most one
+// standby Init() may fire per standbyReloadMinInterval, and a call debounced
+// during that window must leave standbyReloadPending set so a later
+// shouldRunStandbyInit() call (Refresh()'s trailing-edge check, run every
+// monitoring loop pass regardless of further state changes) still applies
+// it -- exercised directly against the two helpers rather than through a
+// real Init() so this doesn't need to spin up an actual HAProxy process or
+// sleep for standbyReloadMinInterval.
+func TestHaproxyShouldRunStandbyInitDebounces(t *testing.T) {
+	proxy := &HaproxyProxy{}
+
+	if !proxy.shouldRunStandbyInit() {
+		t.Fatal("first call should fire immediately (zero-value lastStandbyInit is always outside the cooldown)")
+	}
+	if proxy.hasStandbyReloadPending() {
+		t.Fatal("pending must be false right after a call that fired")
+	}
+
+	if proxy.shouldRunStandbyInit() {
+		t.Fatal("a call within the cooldown window must not fire again")
+	}
+	if !proxy.hasStandbyReloadPending() {
+		t.Fatal("a debounced call must mark standbyReloadPending so a later pass still applies it")
+	}
+
+	if proxy.shouldRunStandbyInit() {
+		t.Fatal("a second call still within the cooldown window must not fire either")
+	}
+	if !proxy.hasStandbyReloadPending() {
+		t.Fatal("pending must stay set across repeated debounced calls")
+	}
+
+	// Simulate the cooldown having elapsed, the way an independent
+	// monitoring-loop Refresh() pass would eventually observe it even with
+	// no further BackendsStateChange() calls.
+	proxy.lastStandbyInit = time.Now().Add(-standbyReloadMinInterval - time.Millisecond)
+	if !proxy.shouldRunStandbyInit() {
+		t.Fatal("a call after the cooldown elapsed must fire and consume the pending mark")
+	}
+	if proxy.hasStandbyReloadPending() {
+		t.Fatal("pending must be cleared once a deferred reload finally fires")
+	}
+}
+
+func TestHaproxyBackendsStateChangeReconcilesWriteBackendInStandbyMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmpl := `{{range .Backends}}
+backend {{.Name}}
+{{range .Servers}}    server {{.Name}} {{.Host}}:{{.Port}}
+{{end}}
+{{end}}`
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), []byte(tmpl), 0644); err != nil {
+		t.Fatalf("failed to write test haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "ahmad_write",
+		HaproxyAPIReadBackend:  "ahmad_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "standby",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// server2 just broke replication -- matches the real incident ("Server
+	// db2 ... state transition from Slave changed to: SlaveErr"). No
+	// failover happened: server1 is still master.
+	slave := cluster.Servers[1]
+	slave.Id = "server2"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlaveErr
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("ahmad_write", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("ahmad_write", "server2", "UP", "127.0.0.1:3307"),
+		haproxyStatRow("ahmad_read", "server1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("ahmad_read", "server2", "DRAIN", "127.0.0.1:3307"),
+	}, "\n")
+	host, port, _ := startFakeHaproxy(t, statResponse)
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	proxy.BackendsStateChange()
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("BackendsStateChange() did not trigger Init() to render a config file: %v", err)
+	}
+	writeSection := haproxyBackendSection(t, string(rendered), "ahmad_write")
+	if !strings.Contains(writeSection, "server server1 127.0.0.1:3306") {
+		t.Fatalf("write backend does not contain the leader:\n%s", writeSection)
+	}
+	if strings.Contains(writeSection, "server server2 ") {
+		t.Fatalf("write backend still contains the server that broke replication -- BackendsStateChange() must reconcile the write backend via Init() even without a failover:\n%s", writeSection)
+	}
+}
+
+// TestHaproxyFailoverPopulatesWriteBackendInExternalCheckMode guards against a
+// live-reproduced regression: haproxy-mode=externalcheck's write backend is
+// only ever populated by Init() (Refresh() deliberately never touches it,
+// same as standby -- see the runtimeapi-only gates in Refresh() and the
+// comment in Init()'s server loop), so Failover() -- called on every real
+// failover AND switchover via cluster.failoverProxies() -- must call Init()
+// for externalcheck too, exactly like it already does for standby. Before
+// this fix, Failover() only special-cased "standby", leaving externalcheck's
+// write backend permanently pointed at the old (now demoted/dead) leader
+// after every failover and switchover.
+//
+// This also exercises externalcheck's write-backend shape: every server gets
+// a static entry (mirroring the read backend, and what K8s/OpenSVC already
+// ship via GetConfigProxyModule), not just whoever IsLeader() says is master
+// -- checkmaster's own live poll (option external-check, wired in below)
+// decides which entry actually reports UP, so both the old and new leader
+// stay listed in the rendered config across a failover; only the health
+// state HAProxy reports for each (not exercised by this render-only test)
+// changes.
+func TestHaproxyFailoverPopulatesWriteBackendInExternalCheckMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "externalcheck",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+		MonitorAddress:         "127.0.0.1",
+		HttpPort:               "10001",
+	}
+
+	// server2 was just elected the new leader by a failover/switchover that
+	// already ran -- this is Failover()'s view of the post-election world,
+	// matching what cluster.failoverProxies() calls it with.
+	oldMaster := cluster.Servers[0]
+	oldMaster.Id = "server1"
+	oldMaster.Host = "127.0.0.1"
+	oldMaster.Port = "3306"
+	oldMaster.State = stateSlave
+	oldMaster.IsSlave = true
+	oldMaster.ClusterGroup = cluster
+
+	newMaster := cluster.Servers[1]
+	newMaster.Id = "server2"
+	newMaster.Host = "127.0.0.1"
+	newMaster.Port = "3307"
+	newMaster.State = stateMaster
+	newMaster.ClusterGroup = cluster
+
+	cluster.master = newMaster
+	cluster.slaves = []*ServerMonitor{oldMaster}
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	proxy.Failover()
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Failover() did not trigger Init() to render a config file: %v", err)
+	}
+	writeSection := haproxyBackendSection(t, string(rendered), "service_write")
+	if !strings.Contains(writeSection, "server server2 127.0.0.1:3307") {
+		t.Fatalf("write backend does not contain the newly-elected leader after Failover():\n%s", writeSection)
+	}
+	if !strings.Contains(writeSection, "server server1 127.0.0.1:3306") {
+		t.Fatalf("write backend does not contain the old leader after Failover() -- externalcheck must list every candidate and let checkmaster decide who's UP, not drop non-leaders from the config:\n%s", writeSection)
+	}
+	if !strings.Contains(writeSection, "option external-check") {
+		t.Fatalf("write backend does not wire in checkmaster via external-check, so nothing would ever decide which listed server is actually the write target:\n%s", writeSection)
+	}
+}
+
+// TestHaproxyInitWriteBackendSurvivesUnresolvedLeaderInExternalCheckMode
+// guards the root cause behind
+// TestHaproxyFailoverPopulatesWriteBackendInExternalCheckMode's regression:
+// on a freshly-provisioned cluster, Init() can run before the monitoring
+// loop has ever determined a leader (IsLeader() false for every server,
+// live-reproduced via temporary instrumentation during the investigation
+// that found this). Because externalcheck's write backend now lists every
+// server unconditionally -- the same shape as the read backend -- instead of
+// only whoever IsLeader() says is master, this race can no longer leave the
+// write backend empty: rendering never depends on leader election having
+// resolved at all.
+func TestHaproxyInitWriteBackendSurvivesUnresolvedLeaderInExternalCheckMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "externalcheck",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+		MonitorAddress:         "127.0.0.1",
+		HttpPort:               "10001",
+	}
+
+	// No cluster.master assigned, and no server has State == stateMaster --
+	// IsLeader() is false for both, matching Init()'s very first call on a
+	// cluster the monitoring loop hasn't finished discovering yet.
+	server1 := cluster.Servers[0]
+	server1.Id = "server1"
+	server1.Host = "127.0.0.1"
+	server1.Port = "3306"
+	server1.ClusterGroup = cluster
+
+	server2 := cluster.Servers[1]
+	server2.Id = "server2"
+	server2.Host = "127.0.0.1"
+	server2.Port = "3307"
+	server2.ClusterGroup = cluster
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	proxy.Init()
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	writeSection := haproxyBackendSection(t, string(rendered), "service_write")
+	if !strings.Contains(writeSection, "server server1 127.0.0.1:3306") || !strings.Contains(writeSection, "server server2 127.0.0.1:3307") {
+		t.Fatalf("write backend must list every server even when no leader has been resolved yet -- this is what makes the startup race structurally impossible:\n%s", writeSection)
+	}
+}
+
+// TestHaproxyInitWriteBackendUsesLeaderAliasInRuntimeAPIMode guards bug #3
+// found during the live Kubernetes test campaign: on the Localhost
+// orchestrator, haproxy-mode=runtimeapi's write backend must name its single
+// entry "leader" -- not the server's real Id -- because Refresh()'s
+// SetMaster()/SetMasterFQDN() repoint it via the Runtime API command
+// "set server service_write/leader addr ... port ...", which can only ever
+// modify an EXISTING server named "leader". Naming it by server.Id (the
+// shape standby correctly uses, since standby has no Runtime API step at
+// all) left that command permanently failing with "No such server." on
+// every real switchover/failover, live-reproduced against a real HAProxy
+// 2.4/3.0/3.4 binary. This mirrors the "leader" placeholder convention
+// K8s/OpenSVC already ship via GetConfigProxyModule (cluster/prx_get.go).
+func TestHaproxyInitWriteBackendUsesLeaderAliasInRuntimeAPIMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "runtimeapi",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+	cluster.master = master
+
+	slave := cluster.Servers[1]
+	slave.Id = "server2"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.IsSlave = true
+	slave.ClusterGroup = cluster
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	proxy.Init()
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	writeSection := haproxyBackendSection(t, string(rendered), "service_write")
+	if !strings.Contains(writeSection, "server leader 127.0.0.1:3306") {
+		t.Fatalf("write backend must name its entry \"leader\" (pointed at the real master), not server1 -- SetMaster() can only repoint an existing \"leader\" slot:\n%s", writeSection)
+	}
+	if strings.Contains(writeSection, "server server1 ") {
+		t.Fatalf("write backend must not name the entry by the server's real Id in runtimeapi mode:\n%s", writeSection)
+	}
+}
+
+// TestHaproxyInitWriteBackendLeaderPlaceholderWhenUnresolvedInRuntimeAPIMode
+// is TestHaproxyInitWriteBackendSurvivesUnresolvedLeaderInExternalCheckMode's
+// runtimeapi counterpart: when Init() runs before any server has been
+// resolved as leader (the same startup race), the "leader" slot must still
+// be created -- with a placeholder address, mirroring
+// GetConfigProxyModule's own "server leader none:3306 ..." fallback -- so a
+// later SetMaster() call has an existing slot to repoint once discovery
+// completes, instead of failing with "No such server." forever.
+func TestHaproxyInitWriteBackendLeaderPlaceholderWhenUnresolvedInRuntimeAPIMode(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+
+	shareDir := t.TempDir()
+	tmplBytes, err := os.ReadFile("../share/haproxy_config.template")
+	if err != nil {
+		t.Fatalf("failed to read the real haproxy_config.template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), tmplBytes, 0644); err != nil {
+		t.Fatalf("failed to copy haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "runtimeapi",
+		ShareDir:               shareDir,
+		ProvOrchestrator:       config.ConstOrchestratorLocalhost,
+	}
+
+	// No cluster.master assigned, and no server has State == stateMaster --
+	// IsLeader() is false for both, matching Init()'s very first call on a
+	// cluster the monitoring loop hasn't finished discovering yet.
+	server1 := cluster.Servers[0]
+	server1.Id = "server1"
+	server1.Host = "127.0.0.1"
+	server1.Port = "3306"
+	server1.ClusterGroup = cluster
+
+	server2 := cluster.Servers[1]
+	server2.Id = "server2"
+	server2.Host = "127.0.0.1"
+	server2.Port = "3307"
+	server2.ClusterGroup = cluster
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	proxy.Init()
+
+	rendered, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg"))
+	if err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	writeSection := haproxyBackendSection(t, string(rendered), "service_write")
+	if !strings.Contains(writeSection, "server leader 192.0.2.1:3306") {
+		t.Fatalf("write backend must still create a placeholder \"leader\" slot when no leader has been resolved yet, so SetMaster() has something to repoint later -- and that placeholder must be a non-routable address (RFC 5737 TEST-NET), never a real reachable one like 127.0.0.1, which risks silently routing writes to whatever is listening there in the meantime:\n%s", writeSection)
+	}
+}
+
+// TestHaproxyAddServerToDoesNotWrapTypedNilError guards against Init()'s
+// addServerTo closure regressing to Go's classic typed-nil-in-interface
+// trap: haproxy.Config.AddServer returns *haproxy.Error (a concrete pointer
+// type), and returning that value directly from a function whose signature
+// is `error` wraps a nil *Error in a non-nil error interface, so `err !=
+// nil` is true even on success. That exact regression made every "Failed to
+// add server" log line fire on every successful AddServer call, with the
+// error itself printing as "<nil>" -- this reproduces the same call shape
+// against the real router/haproxy types and asserts a successful add
+// produces a genuinely nil error.
+func TestHaproxyAddServerToDoesNotWrapTypedNilError(t *testing.T) {
+	c := &haproxy.Config{}
+	c.InitializeConfig()
+	if err := c.AddBackend(&haproxy.Backend{Name: "b", Mode: "tcp"}); err != nil {
+		t.Fatalf("test setup: AddBackend failed: %v", err)
+	}
+
+	// Mirrors addServerTo's fixed shape in Init() (cluster/prx_haproxy.go).
+	addServerTo := func(backend, name, host string, port int) error {
+		if err := c.AddServer(backend, &haproxy.ServerDetail{
+			Name: name, Host: host, Port: port,
+			Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000,
+		}); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	if err := addServerTo("b", "server1", "127.0.0.1", 3306); err != nil {
+		t.Fatalf("addServerTo returned a non-nil error on a successful AddServer: %v (typed-nil-in-interface regression)", err)
+	}
+}
+
+// haproxyBackendSection extracts the text of a single "backend <name>" block
+// from a rendered haproxy.cfg, up to (but not including) the next "backend "
+// line.
+func haproxyBackendSection(t *testing.T, content, name string) string {
+	t.Helper()
+	// Line-anchored ("\nbackend ", not "backend ") so this doesn't false-match
+	// a "default_backend <name>" line inside a frontend block -- the real
+	// haproxy_config.template renders "default_backend {{.DefaultBackend}}"
+	// in every frontend, and "default_backend x" contains "backend x" as a
+	// plain substring.
+	marker := "\nbackend " + name + "\n"
+	idx := strings.Index(content, marker)
+	if idx == -1 {
+		t.Fatalf("rendered config does not contain backend %q:\n%s", name, content)
+	}
+	rest := content[idx+len(marker):]
+	if next := strings.Index(rest, "\nbackend "); next != -1 {
+		rest = rest[:next]
+	}
+	return rest
+}
+
+// startFakeHaproxy starts a TCP listener that answers "show stat" with
+// statResponse and otherwise just records the command it received (no
+// response body), mirroring how HAProxy's Runtime API accepts a command with
+// no meaningful stdout on success. Returns the host/port to dial and an
+// accessor for the recorded commands.
+func startFakeHaproxy(t *testing.T, statResponse string) (host, port string, getCommands func() []string) {
+	t.Helper()
+	host, port, getCommands, _ = startFakeHaproxyMutable(t, statResponse)
+	return host, port, getCommands
+}
+
+// startFakeHaproxyMutable is startFakeHaproxy plus a setStatResponse setter,
+// for tests that need "show stat" to return something different across
+// multiple Refresh() calls against the same fake server (e.g. simulating a
+// server that was dynamically added in one pass and left the cluster by the
+// next).
+func startFakeHaproxyMutable(t *testing.T, statResponse string) (host, port string, getCommands func() []string, setStatResponse func(string)) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	host, port, _ = net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	resp := statResponse
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				current := resp
+				mu.Unlock()
+				if cmd == "show stat" {
+					c.Write([]byte(current))
+				}
+			}(conn)
+		}
+	}()
+
+	return host, port, func() []string {
+			mu.Lock()
+			defer mu.Unlock()
+			out := make([]string, len(commands))
+			copy(out, commands)
+			return out
+		}, func(newResp string) {
+			mu.Lock()
+			defer mu.Unlock()
+			resp = newResp
+		}
+}
+
+// TestHaproxyReconcileAddsMissingServer covers Phase 1 of issue #1724: a
+// cluster member (slave1) that HAProxy's read backend doesn't know about yet
+// (e.g. it just joined the cluster) must be added via the Runtime API rather
+// than requiring a reload, when haproxy-api-bootstrap-servers is enabled and
+// the HAProxy version supports dynamic servers.
+func TestHaproxyReconcileAddsMissingServer(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	// slave1 is absent from HAProxy's stat output entirely: it has not been
+	// added to the read backend yet.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check weight 100"
+	wantDrain := "set server service_read/slave1 state drain"
+	wantHealth := "enable health service_read/slave1"
+
+	for _, want := range []string{wantAdd, wantDrain, wantHealth} {
+		if cmdIndex(commands, want) < 0 {
+			t.Errorf("Refresh() commands = %v, want to contain %q", commands, want)
+		}
+	}
+
+	// Must come out of MAINT via DRAIN, not READY — see
+	// TestHaproxyReconcileNewServerNotReadiedSamePass for why.
+	addIdx := cmdIndex(commands, wantAdd)
+	drainIdx := cmdIndex(commands, wantDrain)
+	if addIdx >= 0 && drainIdx >= 0 && addIdx >= drainIdx {
+		t.Errorf("Refresh() commands = %v, want %q before %q", commands, wantAdd, wantDrain)
+	}
+
+	if cmdIndex(commands, "set server service_read/slave1 state ready") >= 0 {
+		t.Errorf("Refresh() commands = %v, want no set-ready in the same pass a server was added (eligibility for this server was never checked this pass)", commands)
+	}
+}
+
+// TestHaproxyReconcileAddsMissingIPv6Server is the IPv6 counterpart to
+// TestHaproxyReconcileAddsMissingServer: AddServer must bracket a bracketed
+// ServerMonitor.Host (e.g. "[2001:db8::1]") correctly into the combined
+// host:port token.
+func TestHaproxyReconcileAddsMissingIPv6Server(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "[2001:db8::1]"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	wantAdd := "add server service_read/slave1 [2001:db8::1]:3307 check weight 100"
+	if cmdIndex(commands, wantAdd) < 0 {
+		t.Errorf("Refresh() commands = %v, want to contain %q", commands, wantAdd)
+	}
+}
+
+// TestHaproxyReconcileNewServerNotReadiedSamePass adds a replica with broken
+// replication (stateSlaveErr) and confirms it stays drained, never readied
+// — not in the add pass (never went through eligibility checks), and not on
+// the following pass either, once HAProxy reports it as DRAIN.
+func TestHaproxyReconcileNewServerNotReadiedSamePass(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 has broken replication: it must never be exposed as a ready
+	// reader, added this pass or not.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlaveErr
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	masterOnlyStat := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	host, port, getCommands, setStatResponse := startFakeHaproxyMutable(t, masterOnlyStat)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	// First pass: slave1 gets added and drained, never readied.
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() [1] error = %v", err)
+	}
+	if cmdIndex(getCommands(), "set server service_read/slave1 state ready") >= 0 {
+		t.Fatalf("Refresh() [1] commands = %v, want no set-ready for a just-added server", getCommands())
+	}
+
+	// Second pass: HAProxy now reports slave1 as DRAIN (from pass 1). The
+	// existing, unchanged eligibility logic must see the broken replication
+	// state and leave it drained rather than promote it to ready.
+	setStatResponse(strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "DRAIN", "127.0.0.1:3307"),
+	}, "\n"))
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() [2] error = %v", err)
+	}
+
+	if cmdIndex(getCommands(), "set server service_read/slave1 state ready") >= 0 {
+		t.Errorf("Refresh() [2] commands = %v, want slave1 (broken replication) to stay drained, not be readied", getCommands())
+	}
+}
+
+// TestHaproxyReconcileSkipsWhenGated verifies the additive/gated contract:
+// no "add server" is issued unless both haproxy-api-bootstrap-servers is
+// enabled AND the HAProxy version supports dynamic servers.
+func TestHaproxyReconcileSkipsWhenGated(t *testing.T) {
+	tests := []struct {
+		name        string
+		bootstrapOn bool
+		version     string
+		haproxyMode string
+	}{
+		{name: "flag disabled", bootstrapOn: false, version: "HAProxy version 2.8.5-1 2023/09/01", haproxyMode: "runtimeapi"},
+		{name: "version too old", bootstrapOn: true, version: "HAProxy version 2.0.14-1 2020/06/01", haproxyMode: "runtimeapi"},
+		{name: "version 2.4 (below the gate)", bootstrapOn: true, version: "HAProxy version 2.4.36-1 2024/01/01", haproxyMode: "runtimeapi"},
+		// reconcileReadBackendServers is gated to haproxy-mode=runtimeapi only
+		// (cluster/prx_haproxy.go); standby and externalcheck must both skip
+		// it regardless of why -- externalcheck's config names servers
+		// positionally ("server1", "server2", ...), while standby names them
+		// by server.Id via Init() but never reaches this Runtime API
+		// reconciliation at all (its own topology propagation is a full
+		// local config re-render/reload, not a per-server Runtime API call).
+		{name: "haproxy-mode standby", bootstrapOn: true, version: "HAProxy version 2.8.5-1 2023/09/01", haproxyMode: "standby"},
+		{name: "haproxy-mode externalcheck", bootstrapOn: true, version: "HAProxy version 2.8.5-1 2023/09/01", haproxyMode: "externalcheck"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := setupTestCluster(t, 2)
+			defer cleanupTestCluster(t, cluster)
+
+			cluster.StateMachine = new(state.StateMachine)
+			cluster.StateMachine.Init()
+			cluster.Topology = config.TopoMasterSlave
+			cluster.Conf = &config.Config{
+				HaproxyAPIWriteBackend:     "service_write",
+				HaproxyAPIReadBackend:      "service_read",
+				HaproxyOn:                  true,
+				HaproxyAPIBootstrapServers: tt.bootstrapOn,
+				HaproxyMode:                tt.haproxyMode,
+			}
+			cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+			master := cluster.Servers[0]
+			master.Id = "master1"
+			master.Host = "127.0.0.1"
+			master.Port = "3306"
+			master.State = stateMaster
+			master.ClusterGroup = cluster
+
+			slave := cluster.Servers[1]
+			slave.Id = "slave1"
+			slave.Host = "127.0.0.1"
+			slave.Port = "3307"
+			slave.State = stateSlave
+			slave.ClusterGroup = cluster
+
+			cluster.master = master
+			cluster.slaves = []*ServerMonitor{slave}
+
+			statResponse := strings.Join([]string{
+				haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+				haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+			}, "\n")
+
+			host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+			proxy := &HaproxyProxy{Proxy: Proxy{
+				ClusterGroup: cluster,
+				Host:         host,
+				Port:         port,
+				Datadir:      t.TempDir(),
+				Version:      tt.version,
+			}}
+			proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+			if err := proxy.Refresh(); err != nil {
+				t.Fatalf("Refresh() error = %v", err)
+			}
+
+			commands := getCommands()
+			if cmdIndex(commands, "add server service_read/slave1 127.0.0.1:3307 check weight 100") >= 0 {
+				t.Errorf("Refresh() commands = %v, want no add server command when gated off", commands)
+			}
+		})
+	}
+}
+
+// TestHaproxyReconcileIgnoresOverlappingBackendName confirms a "show stat"
+// row from an unrelated backend whose name merely contains the managed one
+// (e.g. "service_read_shadow" vs "service_read") is never treated as
+// belonging to it — no Runtime API command should ever reference its
+// server.
+func TestHaproxyReconcileIgnoresOverlappingBackendName(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	// "service_read_shadow" is a distinct backend that merely contains
+	// "service_read" as a substring; "shadow1" belongs to it, not to the
+	// managed "service_read" backend, and is not a cluster server either
+	// way.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read_shadow", "shadow1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	for _, c := range commands {
+		if strings.Contains(c, "shadow1") {
+			t.Errorf("Refresh() commands = %v, want no command referencing a server from an unrelated backend, got %q", commands, c)
+		}
+	}
+}
+
+// TestHaproxyReconcileRemovesStaleServer covers removal on HAProxy >= 3.0: a
+// server HAProxy still lists in the read backend but that no longer belongs
+// to the cluster must be drained, waited on, and deleted via the Runtime
+// API — statically bootstrapped or dynamically added, the same way.
+func TestHaproxyReconcileRemovesStaleServer(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	// "decommissioned1" is a read-backend entry HAProxy still has, but its
+	// host (127.0.0.1:9999) matches no server in the current cluster.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	wantMaint := "set server service_read/decommissioned1 state maint"
+	wantWait := "wait 2000 srv-removable service_read/decommissioned1"
+	wantDel := "del server service_read/decommissioned1"
+
+	for _, want := range []string{wantMaint, wantWait, wantDel} {
+		if cmdIndex(commands, want) < 0 {
+			t.Errorf("Refresh() commands = %v, want to contain %q", commands, want)
+		}
+	}
+
+	maintIdx := cmdIndex(commands, wantMaint)
+	waitIdx := cmdIndex(commands, wantWait)
+	delIdx := cmdIndex(commands, wantDel)
+	if maintIdx >= 0 && waitIdx >= 0 && delIdx >= 0 {
+		if !(maintIdx < waitIdx && waitIdx < delIdx) {
+			t.Errorf("Refresh() commands = %v, want maint before wait before del", commands)
+		}
+	}
+}
+
+// TestHaproxyReconcileDelServerSuccessResponseNotMisreported pins a second
+// real bug found running this branch live against HAProxy 3.0, the DelServer
+// counterpart to TestHaproxyReconcileAddServerSuccessResponseCompletesSequence:
+// "del server" also replies with a non-empty confirmation on success
+// ("Server deleted.") unlike SetMaintenance/WaitSrvRemovable/SetDrain/
+// EnableHealth. Routing that response through the generic haproxyCmdFailed
+// misreported every successful stale-server removal as a failure ("HAProxy
+// could not remove server ...: Server deleted.") even though the server was
+// actually gone — confusing, and would have kept a removed-but-not-yet-
+// reconciled svname eligible for another (also misreported) attempt next
+// pass instead of just disappearing from "show stat" as it should.
+// startFakeHaproxy's default empty-body response happens to be correct for
+// SetMaintenance/WaitSrvRemovable, which is why this needs its own fake
+// server using the real HAProxy text, same as the AddServer test above.
+func TestHaproxyReconcileDelServerSuccessResponseNotMisreported(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case strings.HasPrefix(cmd, "del server"):
+					// The real HAProxy Runtime API success text (verified
+					// by hand against haproxy:3.0) — non-empty despite
+					// success.
+					c.Write([]byte("Server deleted.\n\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	mu.Lock()
+	gotCommands := append([]string(nil), commands...)
+	mu.Unlock()
+
+	wantDel := "del server service_read/decommissioned1"
+	if cmdIndex(gotCommands, wantDel) < 0 {
+		t.Errorf("Refresh() commands = %v, want to contain %q", gotCommands, wantDel)
+	}
+
+	// The bug's symptom was a misleading error log on genuine success, not a
+	// functional retry loop, so assert on the thing that actually matters:
+	// this svname must not be marked non-purgeable (that's reserved for
+	// haproxyNonPurgeableServerMsg specifically — "Server deleted." isn't
+	// that message, and misreading a plain success as any kind of failure
+	// here would be its own bug).
+	if proxy.isNonPurgeableReadServer("decommissioned1") {
+		t.Errorf("decommissioned1 marked non-purgeable after a successful delete response, want not marked")
+	}
+}
+
+// TestHaproxySetStateLogLevelDowngradesNoSuchServer pins a fourth real
+// issue found running this branch live: setReadBackendMaintenance's
+// SetReady call raced ServerMonitor.DelMaintenance() (called synchronously,
+// independent of the monitor loop's own tick) against the read-backend row
+// actually being deleted moments earlier — genuinely absent, not a
+// misreported success like the Add/Del/WaitSrvRemovable cases above — and
+// HAProxy correctly replied "No such server." That's an expected,
+// self-correcting race (nothing to set ready on; the next Refresh() pass
+// reconciles it either way), not an operational problem, but it was logged
+// at LvlErr — indistinguishable from a real failure to anyone reading the
+// log, which is exactly what prompted this downgrade.
+func TestHaproxySetStateLogLevelDowngradesNoSuchServer(t *testing.T) {
+	if got := haproxySetStateLogLevel("No such server.\n\n", true); got != config.LvlDbg {
+		t.Errorf("haproxySetStateLogLevel(%q, true) = %q, want %q", "No such server.\n\n", got, config.LvlDbg)
+	}
+	if got := haproxySetStateLogLevel("Failed.\n\n", true); got != config.LvlErr {
+		t.Errorf("haproxySetStateLogLevel(%q, true) = %q, want %q (a real failure must still alarm)", "Failed.\n\n", got, config.LvlErr)
+	}
+	// Without reconcileReadBackendServers actively running
+	// (HaproxyAPIBootstrapServers off, the default), nothing corrects a
+	// persistent "No such server" mismatch — it must stay LvlErr, not be
+	// silently downgraded, or anyone not using the new feature loses their
+	// only error-visibility signal for it.
+	if got := haproxySetStateLogLevel("No such server.\n\n", false); got != config.LvlErr {
+		t.Errorf("haproxySetStateLogLevel(%q, false) = %q, want %q (nothing self-corrects this when reconciliation is off)", "No such server.\n\n", got, config.LvlErr)
+	}
+}
+
+// TestHaproxyReconcileReadBackendServersActiveRequiresAllConditions pins a
+// code-review finding: reconcileReadBackendServersActive (and therefore
+// haproxySetStateLogLevel's "No such server" downgrade) originally checked
+// only cluster.Conf.HaproxyAPIBootstrapServers, but reconcileReadBackendServers
+// itself also no-ops for an unsupported HAProxy version or a non-runtimeapi
+// haproxy-mode — either one means a missing/renamed read-backend row is NOT
+// actually self-correcting, so the "No such server" downgrade's premise
+// doesn't hold. All conditions here must hold for
+// reconcileReadBackendServersActive to report true. proxy.HasDNS() is
+// deliberately exercised below too, but as a case that must NOT affect the
+// result (see GetConfigProxyModule/RuntimeAPIAddr — runtimeapi is no longer
+// resolver-backed, so a K8s/OpenSVC proxy reconciles the same as any other).
+func TestHaproxyReconcileReadBackendServersActiveRequiresAllConditions(t *testing.T) {
+	newBaseCluster := func(t *testing.T) *Cluster {
+		cluster := setupTestCluster(t, 1)
+		cluster.StateMachine = new(state.StateMachine)
+		cluster.StateMachine.Init()
+		cluster.Conf = &config.Config{
+			HaproxyAPIWriteBackend:     "service_write",
+			HaproxyAPIReadBackend:      "service_read",
+			HaproxyOn:                  true,
+			HaproxyAPIBootstrapServers: true,
+			HaproxyMode:                "runtimeapi",
+		}
+		return cluster
+	}
+
+	tests := []struct {
+		name    string
+		mutate  func(cluster *Cluster, proxy *HaproxyProxy)
+		want    bool
+		explain string
+	}{
+		{
+			name:    "all conditions hold",
+			mutate:  func(cluster *Cluster, proxy *HaproxyProxy) {},
+			want:    true,
+			explain: "baseline: bootstrap on, supported version, runtimeapi, no DNS",
+		},
+		{
+			name: "bootstrap-servers off (the default)",
+			mutate: func(cluster *Cluster, proxy *HaproxyProxy) {
+				cluster.Conf.HaproxyAPIBootstrapServers = false
+			},
+			want: false,
+		},
+		{
+			name: "HAProxy version below 2.6",
+			mutate: func(cluster *Cluster, proxy *HaproxyProxy) {
+				proxy.Version = "HAProxy version 2.4.0-1 2021/01/01"
+			},
+			want:    false,
+			explain: "reconcileReadBackendServers' own version gate no-ops the whole function",
+		},
+		{
+			name: "haproxy-mode != runtimeapi",
+			mutate: func(cluster *Cluster, proxy *HaproxyProxy) {
+				cluster.Conf.HaproxyMode = "standby"
+			},
+			want:    false,
+			explain: "reconcileReadBackendServers' own mode gate no-ops the whole function",
+		},
+		{
+			name: "resolver-backed proxy (HasDNS) does not affect the result",
+			mutate: func(cluster *Cluster, proxy *HaproxyProxy) {
+				cluster.Configurator.ProxyTags = []string{"dns"}
+			},
+			want:    true,
+			explain: "runtimeapi's server lines carry no \"resolvers\" clause regardless of proxy.HasDNS(), so a K8s/OpenSVC proxy still self-corrects",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := newBaseCluster(t)
+			defer cleanupTestCluster(t, cluster)
+
+			proxy := &HaproxyProxy{Proxy: Proxy{
+				ClusterGroup: cluster,
+				Host:         "127.0.0.1",
+				Port:         "1999",
+				Datadir:      t.TempDir(),
+				Version:      "HAProxy version 3.0.26-1 2024/05/01",
+			}}
+
+			tt.mutate(cluster, proxy)
+			proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+			if got := proxy.reconcileReadBackendServersActive(); got != tt.want {
+				t.Errorf("reconcileReadBackendServersActive() = %v, want %v (%s)", got, tt.want, tt.explain)
+			}
+		})
+	}
+}
+
+// TestHaproxyReconcileBudgetDefersExcessWork pins the fix for a code-review
+// finding: reconcileReadBackendServers used to issue every stale/missing
+// server's Runtime API calls (SetMaintenance -> WaitSrvRemovable ->
+// DelServer, or AddServer -> SetDrain -> EnableHealth) fully sequentially
+// with no bound, and it runs inside the same goroutine cluster.refreshProxies
+// wg.Wait()s on before the rest of the monitoring tick proceeds — a pass
+// with several stale/missing servers could stall the whole cluster's
+// monitoring tick by multiples of a single Runtime API round trip,
+// delaying failover/switchover detection (DEVELOPMENT_LAWS.md F2-F4).
+// haproxyReconcileBudget now bounds this: forced here to an
+// already-elapsed deadline (deterministic, no reliance on real elapsed
+// time — avoids a flaky sleep-based test) to confirm the add side is
+// deferred entirely, but the removal side's safety-critical drain
+// (SetMaintenance) is NOT — only WaitSrvRemovable/DelServer are — then
+// restored to confirm the deferred add work isn't lost, just picked up on
+// the very next pass. See also
+// TestHaproxyReconcileRemovalDeadlineIsIndependentOfAddDeadline for why
+// drain can't be deadline-gated the same way AddServer is.
+func TestHaproxyReconcileBudgetDefersExcessWork(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 is missing from HAProxy's stat output — would normally trigger
+	// AddServer, must be deferred instead while the budget is exhausted.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	// decommissioned2 is pre-marked non-purgeable, as if a previous pass
+	// already learned this from HAProxy's own refusal — its skippedRemoves
+	// accounting (and therefore WARN0209) must stay accurate regardless of
+	// budget, not just for entries the budget-gated loop actually reaches
+	// (map iteration order is randomized, so which stale svnames get
+	// reached before an exhausted budget varies pass to pass).
+	proxy.markNonPurgeableReadServer("decommissioned2")
+	knownToHaproxyWithGhost := map[string]bool{"decommissioned1": true, "decommissioned2": true}
+
+	origBudget := haproxyReconcileBudget
+	haproxyReconcileBudget = -1 * time.Second // already elapsed before the function even starts
+	defer func() { haproxyReconcileBudget = origBudget }()
+
+	// reconcileReadBackendServers directly, not Refresh(): decommissioned2
+	// isn't a real "show stat" row (it doesn't need to be — its only role
+	// here is to already be marked non-purgeable), so driving this through
+	// Refresh()'s own stat-parsing would require fabricating a matching row
+	// for no benefit.
+	haRuntime := haproxy.Runtime{Host: host, Port: port}
+	proxy.Version = "HAProxy version 3.0.26-1 2024/05/01"
+	proxy.reconcileReadBackendServers(haRuntime, knownToHaproxyWithGhost, map[string]string{}, map[string]string{}, map[string]bool{})
+
+	commands := getCommands()
+	// The add side defers entirely (no AddServer attempt at all).
+	if cmdIndex(commands, "add server service_read/slave1 127.0.0.1:3307 check weight 100") >= 0 {
+		t.Errorf("Refresh() commands = %v, want no add server while the reconcile budget is already exhausted", commands)
+	}
+	// The removal side still drains decommissioned1 — SetMaintenance is
+	// never deadline-gated (see removeReadBackendServer's doc comment) —
+	// but does NOT get as far as WaitSrvRemovable/DelServer, which are.
+	if cmdIndex(commands, "set server service_read/decommissioned1 state maint") < 0 {
+		t.Errorf("Refresh() commands = %v, want set maint for decommissioned1 even while the budget is exhausted (drain must never be skipped)", commands)
+	}
+	for _, unwanted := range []string{
+		"wait 2000 srv-removable service_read/decommissioned1",
+		"del server service_read/decommissioned1",
+	} {
+		if cmdIndex(commands, unwanted) >= 0 {
+			t.Errorf("Refresh() commands = %v, want no %q while the reconcile budget is already exhausted", commands, unwanted)
+		}
+	}
+
+	if !cluster.StateMachine.CurState.Search("WARN0209") {
+		t.Errorf("expected WARN0209 to still be reported this pass (decommissioned2's non-purgeable skip must be counted regardless of budget)")
+	}
+	if !cluster.StateMachine.CurState.Search("WARN0210") {
+		t.Errorf("expected WARN0210 to be reported when the reconcile budget is exhausted mid-pass")
+	}
+
+	// Restore the budget and confirm the deferred add isn't lost — it
+	// completes on the very next pass.
+	haproxyReconcileBudget = origBudget
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+	commands = getCommands()
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check weight 100"
+	if cmdIndex(commands, wantAdd) < 0 {
+		t.Errorf("Refresh() commands = %v, want to contain %q once the budget is available again (deferred work must not be lost)", commands, wantAdd)
+	}
+}
+
+// TestHaproxyReconcileBudgetCheckedInsideHelpers pins a second, more subtle
+// half of the same code-review finding as TestHaproxyReconcileBudgetDefersExcessWork:
+// the budget must be checked *between* completeOrRollbackPendingAdd's own
+// Runtime API calls (SetDrain, then EnableHealth), not just once by the
+// caller before entering the helper — a single server whose SetDrain call
+// alone consumes the whole remaining budget (a slow/wedged Runtime API
+// socket, exactly the scenario haproxyReconcileBudget exists for) must not
+// then also run EnableHealth past the deadline. The fake server here
+// deliberately delays its SetDrain response so the budget genuinely elapses
+// *during* the helper call, not just between per-server loop iterations —
+// and asserts WARN0210 still fires even though this is the only server in
+// the pass, so no later loop iteration's own deadline check could have set
+// deadlineHit instead.
+func TestHaproxyReconcileBudgetCheckedInsideHelpers(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	const drainDelay = 40 * time.Millisecond
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case strings.HasPrefix(cmd, "add server"):
+					c.Write([]byte("New server registered.\n\n"))
+				case cmd == "set server service_read/slave1 state drain":
+					// Long enough to reliably outlast the budget below,
+					// short enough this test still runs fast.
+					time.Sleep(drainDelay)
+					c.Write([]byte("\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	origBudget := haproxyReconcileBudget
+	// Comfortably longer than the cheap setup work before the add branch
+	// (so the OUTER per-server check still passes normally) but much
+	// shorter than drainDelay, so the budget is only exceeded partway
+	// through completeOrRollbackPendingAdd itself.
+	haproxyReconcileBudget = 5 * time.Millisecond
+	defer func() { haproxyReconcileBudget = origBudget }()
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	mu.Lock()
+	gotCommands := append([]string(nil), commands...)
+	mu.Unlock()
+
+	// Confirm the test actually reached the code path it claims to be
+	// exercising, not just that EnableHealth happens to be absent for some
+	// unrelated reason (e.g. AddServer or SetDrain never being reached at
+	// all would also produce no "enable health" call).
+	for _, want := range []string{
+		"add server service_read/slave1 127.0.0.1:3307 check weight 100",
+		"set server service_read/slave1 state drain",
+	} {
+		if cmdIndex(gotCommands, want) < 0 {
+			t.Fatalf("Refresh() commands = %v, want to contain %q (test setup didn't reach the point this test needs to exercise)", gotCommands, want)
+		}
+	}
+
+	if cmdIndex(gotCommands, "enable health service_read/slave1") >= 0 {
+		t.Errorf("Refresh() commands = %v, want no enable health call once the budget elapsed during the preceding SetDrain call", gotCommands)
+	}
+	if !cluster.StateMachine.CurState.Search("WARN0210") {
+		t.Errorf("expected WARN0210 to be reported even though slave1 was the only (and therefore last) server processed this pass")
+	}
+}
+
+// TestHaproxyReconcileRemovalDeadlineIsIndependentOfAddDeadline pins the
+// core fix for a code-review finding: reconcileReadBackendServers used to
+// share a single deadline between the add/update loop and the removal
+// loop. Since add/update always runs first, a sustained add backlog could
+// consume the entire shared budget every single pass, leaving removal's
+// WaitSrvRemovable/DelServer zero time, indefinitely.
+//
+// This asserts on WaitSrvRemovable/DelServer specifically, not
+// SetMaintenance: SetMaintenance is never deadline-gated at all (see
+// removeReadBackendServer), so its presence alone can't distinguish "removal
+// has its own fresh deadline" from "removal isn't deadline-gated in this
+// area either" — a weaker claim this test doesn't intend to make. If
+// removeDeadline instead inherited a deadline already exhausted by the add
+// loop's slow AddServer call, the internal check right after SetMaintenance
+// (see removeReadBackendServer) would trip immediately and skip
+// WaitSrvRemovable/DelServer entirely; asserting they're both reached is
+// what actually distinguishes a fresh deadline from a stale, inherited one.
+// The fake server delays slave1's AddServer response long enough to exhaust
+// a deliberately tiny haproxyReconcileBudget entirely within the add loop
+// before the removal loop even starts.
+func TestHaproxyReconcileRemovalDeadlineIsIndependentOfAddDeadline(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	// decommissioned1 is stale (no matching cluster.Servers entry) —
+	// removal work, competing with slave1's add work for budget.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	const addDelay = 40 * time.Millisecond
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case strings.HasPrefix(cmd, "add server"):
+					// Long enough that addDeadline is fully spent before
+					// the add loop even finishes with slave1, let alone
+					// before the removal loop starts.
+					time.Sleep(addDelay)
+					c.Write([]byte("New server registered.\n\n"))
+				case cmd == "set server service_read/decommissioned1 state maint":
+					c.Write([]byte("\n"))
+				case cmd == "wait 2000 srv-removable service_read/decommissioned1":
+					c.Write([]byte("Done.\n\n"))
+				case cmd == "del server service_read/decommissioned1":
+					c.Write([]byte("Server deleted.\n\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		// >= 3.0, so WaitSrvRemovable is part of the sequence this test
+		// needs to observe.
+		Version: "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	origBudget := haproxyReconcileBudget
+	// Shorter than addDelay, so addDeadline is exhausted entirely within
+	// the add loop's single AddServer call. Comfortably longer than the
+	// fake server's near-instant responses to the removal-loop commands,
+	// so removeDeadline (if genuinely fresh) has time to complete them.
+	haproxyReconcileBudget = 5 * time.Millisecond
+	defer func() { haproxyReconcileBudget = origBudget }()
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	mu.Lock()
+	gotCommands := append([]string(nil), commands...)
+	mu.Unlock()
+
+	// Confirm the add loop actually reached AddServer (and therefore spent
+	// its budget on the slow response) before drawing any conclusion from
+	// the removal loop's behavior.
+	if cmdIndex(gotCommands, "add server service_read/slave1 127.0.0.1:3307 check weight 100") < 0 {
+		t.Fatalf("Refresh() commands = %v, want to contain the add attempt for slave1 (test setup didn't reach the point this test needs to exercise)", gotCommands)
+	}
+
+	for _, want := range []string{
+		"set server service_read/decommissioned1 state maint",
+		"wait 2000 srv-removable service_read/decommissioned1",
+		"del server service_read/decommissioned1",
+	} {
+		if cmdIndex(gotCommands, want) < 0 {
+			t.Errorf("Refresh() commands = %v, want to contain %q — removeDeadline must be its own fresh deadline, not one already exhausted by the add loop's slow AddServer call", gotCommands, want)
+		}
+	}
+}
+
+// TestHaproxyReconcileAddressCorrectionIgnoresBudget pins an explicit
+// production-safety decision made after code review: correcting a
+// backend's address is safety-critical, the same class as draining a
+// stale server, and is therefore never deadline-gated — not deferred to a
+// later pass like AddServer/WaitSrvRemovable/DelServer are. HAProxy keeps
+// routing read traffic to the *previous* address until SetServerAddr
+// lands; after a re-IP/reprovision that address may be unreachable
+// (self-limiting via health checks) or, worse, may have been reassigned to
+// a completely different host — traffic silently reaching the wrong
+// target. This forces the reconcile budget to an already-elapsed deadline
+// and asserts the address update still happens anyway, and that WARN0210
+// does NOT fire at all: address correction never contributes to
+// deadlineHit, so with no other missing/stale servers in this test, there
+// is nothing left for WARN0210 to report.
+func TestHaproxyReconcileAddressCorrectionIgnoresBudget(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 kept its Id but was reprovisioned onto a new address; HAProxy
+	// still has the old one on file — the address-update branch, not add
+	// or remove.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3399"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	origBudget := haproxyReconcileBudget
+	haproxyReconcileBudget = -1 * time.Second // already elapsed before the function even starts
+	defer func() { haproxyReconcileBudget = origBudget }()
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	if cmdIndex(commands, "set server service_read/slave1 addr 127.0.0.1 port 3399") < 0 {
+		t.Errorf("Refresh() commands = %v, want the address update to still happen even though the reconcile budget is already exhausted — SetServerAddr is safety-critical and must never be deferred", commands)
+	}
+
+	// This proxy has no other missing/stale servers, so if WARN0210 fires
+	// at all it can only be because the address-update branch wrongly
+	// contributed to deadlineHit.
+	for _, s := range *cluster.StateMachine.CurState {
+		if s.ErrKey == "WARN0210" {
+			t.Errorf("WARN0210 fired (%q) even though address correction is not supposed to be deadline-gated", s.ErrDesc)
+		}
+	}
+}
+
+// TestHaproxyReconcileRemovesStaleServerWithoutWaitBelowVersion3 covers the
+// removal fallback below HAProxy 3.0, where "wait srv-removable" doesn't
+// exist: removal must skip straight from drain to DelServer.
+func TestHaproxyReconcileRemovesStaleServerWithoutWaitBelowVersion3(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.6.32-1 2024/01/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	wantMaint := "set server service_read/decommissioned1 state maint"
+	wantDel := "del server service_read/decommissioned1"
+
+	if cmdIndex(commands, wantMaint) < 0 {
+		t.Errorf("Refresh() commands = %v, want to contain %q", commands, wantMaint)
+	}
+	if cmdIndex(commands, wantDel) < 0 {
+		t.Errorf("Refresh() commands = %v, want to contain %q", commands, wantDel)
+	}
+	if cmdIndex(commands, "wait 2000 srv-removable service_read/decommissioned1") >= 0 {
+		t.Errorf("Refresh() commands = %v, want no wait srv-removable below HAProxy 3.0", commands)
+	}
+}
+
+// TestHaproxyReconcileUpdatesChangedAddress covers a server that kept its
+// repman Id but changed address (e.g. re-provisioned under a new IP): the
+// existing HAProxy entry must have its address updated via the Runtime API
+// rather than being left stale or churned through add/del.
+func TestHaproxyReconcileUpdatesChangedAddress(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 kept its Id but was reprovisioned onto a new address; HAProxy
+	// still has the old one on file.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3399"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	wantAddrUpdate := "set server service_read/slave1 addr 127.0.0.1 port 3399"
+	if cmdIndex(commands, wantAddrUpdate) < 0 {
+		t.Errorf("Refresh() commands = %v, want to contain %q", commands, wantAddrUpdate)
+	}
+	if cmdIndex(commands, "add server service_read/slave1 127.0.0.1:3399 check weight 100") >= 0 {
+		t.Errorf("Refresh() commands = %v, want no add server for an address change on a known Id", commands)
+	}
+}
+
+// TestHaproxyReconcileNoFalseMismatchForUnchangedIPv6Address confirms an
+// unchanged bracketed IPv6 address is not flagged as mismatched: no
+// address-update command should be issued.
+func TestHaproxyReconcileNoFalseMismatchForUnchangedIPv6Address(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// IPv6, bracketed, matching how ServerMonitor.Host stores it elsewhere
+	// in this codebase (see misc.Unbracket call sites).
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "[2001:db8::1]"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "UP", "[2001:db8::1]:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	for _, c := range commands {
+		if strings.HasPrefix(c, "set server service_read/slave1 addr") || strings.HasPrefix(c, "set server service_read/slave1 fqdn") {
+			t.Errorf("Refresh() commands = %v, want no address reconciliation for an unchanged IPv6 address, got %q", commands, c)
+		}
+	}
+}
+
+// TestHaproxyReconcileUpdatesChangedIPv6Address is the IPv6 counterpart to
+// TestHaproxyReconcileUpdatesChangedAddress: a genuine IPv6 address change
+// must be reconciled via SetServerAddr's "addr" path with the host
+// unbracketed, not misrouted to "fqdn".
+func TestHaproxyReconcileUpdatesChangedIPv6Address(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 kept its Id but was reprovisioned onto a new IPv6 address;
+	// HAProxy still has the old one on file.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "[2001:db8::2]"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "UP", "[2001:db8::1]:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	wantAddrUpdate := "set server service_read/slave1 addr 2001:db8::2 port 3307"
+	if cmdIndex(commands, wantAddrUpdate) < 0 {
+		t.Errorf("Refresh() commands = %v, want to contain %q (unbracketed host, addr not fqdn)", commands, wantAddrUpdate)
+	}
+	if cmdIndex(commands, "set server service_read/slave1 fqdn 2001:db8::2 port 3307") >= 0 {
+		t.Errorf("Refresh() commands = %v, want IPv6 address change to use the addr path, not fqdn", commands)
+	}
+}
+
+// TestHaproxyReconcileSkipsAddressUpdateOnDNSCluster confirms address
+// reconciliation is skipped for a server whose own Host is a hostname/FQDN
+// (not a literal IP) — driven by slave.Host itself, with the "dns" proxy
+// tag also set to prove the skip is due to the server's Host, not merely
+// proxy.HasDNS(). See TestHaproxyReconcileUpdatesChangedAddressForIPServerBehindDNSProxy
+// for the IP-based counterpart.
+// This is now really a special case of the unresolved-address skip (see
+// TestHaproxyReconcileSkipsAddingMemberWithUnresolvedAddress): slave1's Host
+// is an FQDN and its server.IP was never resolved in this synthetic test (no
+// Ping() ran), so ServerMonitor.RuntimeAPIAddr() falls back to the FQDN,
+// which isn't a literal address to reconcile against — not because
+// proxy.HasDNS() is true (that alone no longer gates anything here).
+func TestHaproxyReconcileSkipsAddressUpdateOnDNSCluster(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+	// Forces proxy.HasDNS() == true without needing proxy.Host itself to be
+	// a resolvable hostname (the fake server below is still dialed by IP).
+	cluster.Configurator.ProxyTags = []string{"dns"}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "db-slave1.internal"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	// HAProxy reports slave1's resolved connection IP, not the FQDN
+	// cluster.Servers has for it — this must not be treated as a mismatch.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "UP", "10.0.0.42:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if !proxy.HasDNS() {
+		t.Fatalf("test setup error: expected proxy.HasDNS() to be true")
+	}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	for _, c := range commands {
+		if strings.HasPrefix(c, "set server service_read/slave1 addr") || strings.HasPrefix(c, "set server service_read/slave1 fqdn") {
+			t.Errorf("Refresh() commands = %v, want no address reconciliation on a DNS-backed cluster, got %q", commands, c)
+		}
+	}
+}
+
+// TestHaproxyReconcileUpdatesChangedAddressForIPServerBehindDNSProxy
+// confirms a backend member with a literal IP still gets address
+// reconciliation even when proxy.HasDNS() is true for reasons unrelated to
+// that member (e.g. the proxy host itself is DNS-named).
+func TestHaproxyReconcileUpdatesChangedAddressForIPServerBehindDNSProxy(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+	// Forces proxy.HasDNS() == true for a reason entirely unrelated to
+	// slave1's own address (an IP): e.g. the same tag OpenSVC/Kubernetes
+	// deployments set, or simply proxy.Host being a hostname elsewhere.
+	cluster.Configurator.ProxyTags = []string{"dns"}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 kept its Id but was reprovisioned onto a new IP address;
+	// HAProxy still has the old one on file. Its Host is a literal IP, not
+	// a hostname — the DNS-ness of the proxy/orchestrator is irrelevant to
+	// whether this specific update is safe.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "10.0.0.99"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "UP", "10.0.0.42:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if !proxy.HasDNS() {
+		t.Fatalf("test setup error: expected proxy.HasDNS() to be true")
+	}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	wantAddrUpdate := "set server service_read/slave1 addr 10.0.0.99 port 3307"
+	if cmdIndex(commands, wantAddrUpdate) < 0 {
+		t.Errorf("Refresh() commands = %v, want to contain %q (an IP-based member must be reconciled even though proxy.HasDNS() is true)", commands, wantAddrUpdate)
+	}
+}
+
+// TestHaproxyRefreshMatchesRuntimeAPIWriteRowByIPWithoutFQDNTranslation
+// guards a bug found live against a real Kubernetes cluster while fixing
+// Bug 5b/N4: runtimeapi's server lines are never FQDN-configured (see
+// GetConfigProxyModule, cluster/prx_get.go — a real IPv4 placeholder is
+// rendered at config time, corrected to the real resolved IP over the
+// Runtime API), so "show servers state" never returns a usable srv_fqdn for
+// them. Refresh()'s write-backend row matching used to unconditionally
+// translate a "show stat" row's connect IP back to a hostname via that
+// (now-empty) map whenever proxy.HasDNS() was true, which made every
+// runtimeapi write-backend row fail to match on a DNS/K8s/OpenSVC proxy —
+// live-reproduced as an unbroken loop of "HAProxy cannot add leader ...:
+// nothing changed" every monitoring-ticker pass, even though the master's
+// address was already correct. GetServerFromURL already matches a bare IP
+// directly against ServerMonitor.IP, so runtimeapi must skip the
+// translation and match the raw connect IP as-is.
+func TestHaproxyRefreshMatchesRuntimeAPIWriteRowByIPWithoutFQDNTranslation(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyMode:                "runtimeapi",
+		HaproxyAPIBootstrapServers: true,
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+	// Forces proxy.HasDNS() == true, the same way the config generator sees
+	// a K8s/OpenSVC proxy.
+	cluster.Configurator.ProxyTags = []string{"dns"}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "clustera-1.db.clustera.svc.cluster.local"
+	master.IP = "10.244.3.3"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	// "show stat" reports the real resolved connect IP, matching what the
+	// Runtime API already corrected it to (ServerMonitor.RuntimeAPIAddr) —
+	// there is no FQDN anywhere in this response, matching a real
+	// runtimeapi K8s deployment.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "10.244.3.3:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "10.244.3.3:3306"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if !proxy.HasDNS() {
+		t.Fatalf("test setup error: expected proxy.HasDNS() to be true")
+	}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	// "show servers state" is now called unconditionally whenever
+	// proxy.HasDNS() (ground truth is always fetched fresh — see
+	// resolverBackedPool's doc comment in Refresh()); this fake server
+	// doesn't answer it, so the parsed response is empty and every
+	// backend/svname key correctly comes back "not resolver-backed",
+	// matching this test's actual scenario.
+	for _, c := range commands {
+		if strings.HasPrefix(c, "set server service_write/leader") {
+			t.Errorf("Refresh() commands = %v, want no leader repoint (the write row already matched master1 by IP, nothing to fix)", commands)
+		}
+	}
+
+	if len(proxy.BackendsWrite) != 1 {
+		t.Fatalf("proxy.BackendsWrite = %v, want exactly one entry (the write-backend row must match master1 directly by its connect IP)", proxy.BackendsWrite)
+	}
+}
+
+// TestHaproxyRefreshMatchesRuntimeAPIWriteRowByFQDNWithoutBootstrapFlag is
+// TestHaproxyRefreshMatchesRuntimeAPIWriteRowByIPWithoutFQDNTranslation's
+// counterpart with HaproxyAPIBootstrapServers left at its default (false): a
+// regression found live against a real Kubernetes cluster showed the
+// non-resolver design is scoped to that flag, not to haproxy-mode=="runtimeapi"
+// alone (see GetConfigProxyModule, cluster/prx_get.go, and resolverBackedPool
+// in Refresh(), cluster/prx_haproxy.go — ground truth read fresh from "show
+// servers state" every pass, not a cached read of the flag). Without the
+// flag, runtimeapi's write-backend row matching must keep using the original
+// "show servers state" FQDN translation — the config-time line still carries
+// "resolvers dns", and "show stat"'s address column still isn't a hostname
+// repman can just compare to the FQDN cluster.Servers holds.
+func TestHaproxyRefreshMatchesRuntimeAPIWriteRowByFQDNWithoutBootstrapFlag(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "runtimeapi",
+		// HaproxyAPIBootstrapServers left false (the default).
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+	cluster.Configurator.ProxyTags = []string{"dns"}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "clustera-1.db.clustera.svc.cluster.local"
+	master.IP = "10.244.3.3"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	// "show servers state" is what lets HasDNS() code translate "show
+	// stat"'s reported connect IP back to the FQDN cluster.Servers holds —
+	// exactly the legacy mechanism that must still be exercised here.
+	showServersStateResponse := "1\n# be_id be_name srv_id srv_name srv_addr srv_op_state srv_admin_state srv_uweight srv_iweight srv_time_since_last_change srv_check_status srv_check_result srv_check_health srv_check_state srv_agent_state bk_f_forced_id srv_f_forced_id srv_fqdn srv_port srvrecord srv_use_ssl srv_check_port srv_check_addr srv_agent_addr srv_agent_port\n" +
+		"5 service_write 1 leader 10.244.3.3 2 0 100 100 85 6 3 4 6 0 0 0 clustera-1.db.clustera.svc.cluster.local 3306 - 0 0 - - 0\n"
+	statResponse := haproxyStatRow("service_write", "leader", "UP", "10.244.3.3:3306")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				switch strings.TrimRight(line, "\r\n") {
+				case "show stat":
+					c.Write([]byte(statResponse))
+				case "show servers state":
+					c.Write([]byte(showServersStateResponse))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if !proxy.HasDNS() {
+		t.Fatalf("test setup error: expected proxy.HasDNS() to be true")
+	}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	if len(proxy.BackendsWrite) != 1 {
+		t.Fatalf("proxy.BackendsWrite = %v, want exactly one entry (the write-backend row must still match master1 via the FQDN translation without the bootstrap flag)", proxy.BackendsWrite)
+	}
+}
+
+// TestHaproxyReconcileAddsMissingMemberOnDNSClusterWhenResolved guards the
+// fix for Bug 5b/N4: add-missing used to be blanket-skipped whenever
+// proxy.HasDNS() was true (any K8s/OpenSVC proxy), because
+// GetConfigProxyModule used to attach "resolvers dns" to every runtimeapi
+// server line, and a runtime "add server" can't attach "resolvers" itself.
+// runtimeapi's server lines no longer carry "resolvers" at all (see
+// GetConfigProxyModule, cluster/prx_get.go) — the proxy being DNS/K8s/OpenSVC
+// no longer matters; only whether this specific server has a resolved
+// literal address (ServerMonitor.RuntimeAPIAddr) does. See
+// TestHaproxyReconcileSkipsAddingMemberWithUnresolvedAddress for the
+// narrower case that's still skipped.
+func TestHaproxyReconcileAddsMissingMemberOnDNSClusterWhenResolved(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+	// Forces proxy.HasDNS() == true, same as the other DNS-gated tests above.
+	cluster.Configurator.ProxyTags = []string{"dns"}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 is missing from HAProxy's stat output — would normally trigger
+	// AddServer, must not be attempted here.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if !proxy.HasDNS() {
+		t.Fatalf("test setup error: expected proxy.HasDNS() to be true")
+	}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check weight 100"
+	if cmdIndex(commands, wantAdd) < 0 {
+		t.Errorf("Refresh() commands = %v, want %q even though proxy.HasDNS() is true (slave1's Host is a resolved literal IP)", commands, wantAdd)
+	}
+}
+
+// TestHaproxyReconcileSkipsAddingMemberWithUnresolvedAddress confirms
+// add-missing is still skipped for a server whose address genuinely isn't
+// known yet: an FQDN-configured Host with no resolved server.IP (no
+// successful Ping()/SetCredential() reconnect yet). A Runtime API
+// "add server" call needs a literal IP, not a hostname, since runtimeapi's
+// server lines carry no "resolvers" clause to resolve one against — see
+// ServerMonitor.RuntimeAPIAddr and
+// TestHaproxyReconcileAddsMissingMemberOnDNSClusterWhenResolved for the
+// contrasting case that does now proceed.
+func TestHaproxyReconcileSkipsAddingMemberWithUnresolvedAddress(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+	cluster.Configurator.ProxyTags = []string{"dns"}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// slave1 is missing from HAProxy's stat output and configured with an
+	// FQDN Host; server.IP was never resolved (no Ping() ran in this
+	// synthetic test) — there is no literal address to add yet.
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "db-slave1.internal"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+	if slave.IP != "" {
+		t.Fatalf("test setup error: expected slave.IP to be unresolved")
+	}
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	for _, c := range commands {
+		if strings.HasPrefix(c, "add server service_read/slave1") {
+			t.Errorf("Refresh() commands = %v, want no add-server for slave1 with an unresolved address, got %q", commands, c)
+		}
+	}
+}
+
+// TestHaproxyReconcileStillDrainsStaleServerOnDNSCluster confirms that
+// removal of a stale read-backend entry is NOT blanket-skipped on a
+// proxy.HasDNS() == true cluster the way adding a missing member is (see
+// TestHaproxyReconcileSkipsAddingMembersOnDNSCluster): draining
+// (SetMaintenance) never touches "resolvers" and always succeeds regardless
+// of DNS config, and it's the safety-critical half of removal — the part
+// that actually stops read traffic from reaching a decommissioned node.
+// Skipping it here would leave a decommissioned node serving live read
+// traffic indefinitely. Deletion is also still attempted (not
+// proxy-wide-skipped): the fake server below has no reason to refuse it,
+// unlike TestHaproxyReconcileMarksServerNonPurgeableAfterDelServerRefusal.
+func TestHaproxyReconcileStillDrainsStaleServerOnDNSCluster(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+	cluster.Configurator.ProxyTags = []string{"dns"}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if !proxy.HasDNS() {
+		t.Fatalf("test setup error: expected proxy.HasDNS() to be true")
+	}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	wantMaint := "set server service_read/decommissioned1 state maint"
+	wantDel := "del server service_read/decommissioned1"
+	for _, want := range []string{wantMaint, wantDel} {
+		if cmdIndex(commands, want) < 0 {
+			t.Errorf("Refresh() commands = %v, want to contain %q even though proxy.HasDNS() is true (removing stale entries was never gated on HasDNS(), only on an unresolved address, which doesn't apply here)", commands, want)
+		}
+	}
+}
+
+// TestHaproxyReconcileMarksServerNonPurgeableAfterDelServerRefusal confirms
+// that once HAProxy's Runtime API refuses "del server" with its
+// non-purgeable message (e.g. because the entry carries a "resolvers"
+// clause — see haproxyNonPurgeableServerMsg), reconcileReadBackendServers
+// stops retrying DelServer/WaitSrvRemovable for that svname on later passes,
+// while still re-issuing SetMaintenance every pass (the safety-critical
+// part — see TestHaproxyReconcileStillDrainsStaleServerOnDNSCluster).
+func TestHaproxyReconcileMarksServerNonPurgeableAfterDelServerRefusal(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case cmd == "del server service_read/decommissioned1":
+					c.Write([]byte("Failed. This server cannot be removed at runtime due to other configuration elements pointing to it.\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() [pass 1] error = %v", err)
+	}
+
+	mu.Lock()
+	pass1 := append([]string(nil), commands...)
+	commands = nil
+	mu.Unlock()
+
+	wantMaint := "set server service_read/decommissioned1 state maint"
+	wantWait := "wait 2000 srv-removable service_read/decommissioned1"
+	wantDel := "del server service_read/decommissioned1"
+	for _, want := range []string{wantMaint, wantWait, wantDel} {
+		if cmdIndex(pass1, want) < 0 {
+			t.Errorf("Refresh() [pass 1] commands = %v, want to contain %q", pass1, want)
+		}
+	}
+
+	if !proxy.isNonPurgeableReadServer("decommissioned1") {
+		t.Fatalf("after Refresh() [pass 1], expected decommissioned1 to be marked non-purgeable")
+	}
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() [pass 2] error = %v", err)
+	}
+
+	mu.Lock()
+	pass2 := append([]string(nil), commands...)
+	mu.Unlock()
+
+	if cmdIndex(pass2, wantMaint) < 0 {
+		t.Errorf("Refresh() [pass 2] commands = %v, want to still contain %q (this fake server always reports decommissioned1 as \"UP\", never \"MAINT\", so draining must keep retrying — see TestHaproxyReconcileSkipsRedundantDrainForConfirmedMaintNonPurgeableServer for the case where HAProxy confirms MAINT)", pass2, wantMaint)
+	}
+	for _, unwanted := range []string{wantWait, wantDel} {
+		if cmdIndex(pass2, unwanted) >= 0 {
+			t.Errorf("Refresh() [pass 2] commands = %v, want no %q once decommissioned1 is known non-purgeable", pass2, unwanted)
+		}
+	}
+}
+
+// TestHaproxyReconcileSkipsRedundantDrainForConfirmedMaintNonPurgeableServer
+// pins the fix for a code-review finding: removeReadBackendServer always
+// issued SetMaintenance unconditionally, even for a svname already known
+// non-purgeable from a previous pass. Once WARN0209 becomes a persistent,
+// ongoing condition (several stale entries HAProxy will never let go of —
+// exactly what it exists to report), that meant a full Runtime API round
+// trip per such entry, every pass, forever — scaling linearly with count
+// and reintroducing the unbounded-pass-time risk haproxyReconcileBudget
+// exists to prevent, for this one case the per-pass deadline check can't
+// help with (SetMaintenance runs before any deadline check). The fix reads
+// this same pass's own "show stat" status for the svname (zero extra
+// Runtime API cost, already fetched) and skips the redundant call only
+// when it's already non-purgeable AND already confirmed MAINT — otherwise
+// (see the test above) it still re-drains, in case something external
+// re-armed it.
+func TestHaproxyReconcileSkipsRedundantDrainForConfirmedMaintNonPurgeableServer(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = nil
+
+	var mu sync.Mutex
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "UP", "127.0.0.1:9999"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				resp := statResponse
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(resp))
+				case cmd == "del server service_read/decommissioned1":
+					c.Write([]byte("Failed. This server cannot be removed at runtime due to other configuration elements pointing to it.\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	// Pass 1: decommissioned1 reports UP, gets the full drain/wait/delete
+	// sequence, DelServer refuses, and it's marked non-purgeable.
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() [pass 1] error = %v", err)
+	}
+	if !proxy.isNonPurgeableReadServer("decommissioned1") {
+		t.Fatalf("after Refresh() [pass 1], expected decommissioned1 to be marked non-purgeable")
+	}
+
+	// Pass 2: HAProxy now confirms decommissioned1 is actually sitting in
+	// MAINT (as pass 1's own SetMaintenance call would genuinely leave it,
+	// unlike the always-"UP" fake server in the test above) — the
+	// redundant SetMaintenance call must be skipped entirely.
+	mu.Lock()
+	statResponse = strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "decommissioned1", "MAINT", "127.0.0.1:9999"),
+	}, "\n")
+	commands = nil
+	mu.Unlock()
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() [pass 2] error = %v", err)
+	}
+
+	mu.Lock()
+	pass2 := append([]string(nil), commands...)
+	mu.Unlock()
+
+	for _, unwanted := range []string{
+		"set server service_read/decommissioned1 state maint",
+		"wait 2000 srv-removable service_read/decommissioned1",
+		"del server service_read/decommissioned1",
+	} {
+		if cmdIndex(pass2, unwanted) >= 0 {
+			t.Errorf("Refresh() [pass 2] commands = %v, want no %q once HAProxy's own \"show stat\" confirms decommissioned1 is already MAINT and non-purgeable", pass2, unwanted)
+		}
+	}
+}
+
+// TestHaproxyReconcileRollsBackServerWhenDrainFailsAfterAdd confirms that if
+// AddServer succeeds but SetDrain fails, the server is removed via the
+// Runtime API (not left behind still in MAINT) so the add sequence retries
+// cleanly next pass.
+func TestHaproxyReconcileRollsBackServerWhenDrainFailsAfterAdd(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case cmd == "set server service_read/slave1 state drain":
+					// AddServer succeeded (empty response, not asserted
+					// here) but the very next step fails.
+					c.Write([]byte("some transient HAProxy error\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	mu.Lock()
+	gotCommands := append([]string(nil), commands...)
+	mu.Unlock()
+
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check weight 100"
+	wantDrainAttempt := "set server service_read/slave1 state drain"
+	wantRollbackMaint := "set server service_read/slave1 state maint"
+	wantRollbackDel := "del server service_read/slave1"
+
+	for _, want := range []string{wantAdd, wantDrainAttempt, wantRollbackMaint, wantRollbackDel} {
+		if cmdIndex(gotCommands, want) < 0 {
+			t.Errorf("Refresh() commands = %v, want to contain %q", gotCommands, want)
+		}
+	}
+
+	if cmdIndex(gotCommands, "set server service_read/slave1 state ready") >= 0 {
+		t.Errorf("Refresh() commands = %v, want no set-ready for a server whose add sequence failed and was rolled back", gotCommands)
+	}
+}
+
+// TestHaproxyReconcileRollsBackServerWhenEnableHealthFailsAfterAdd is the
+// EnableHealth counterpart: AddServer and SetDrain succeed but EnableHealth
+// fails, which must trigger the same rollback rather than leave a
+// DRAIN server with health checks never activated.
+func TestHaproxyReconcileRollsBackServerWhenEnableHealthFailsAfterAdd(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case cmd == "enable health service_read/slave1":
+					// AddServer and SetDrain both succeed (empty response,
+					// not asserted here); only health activation fails.
+					c.Write([]byte("some transient HAProxy error\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	mu.Lock()
+	gotCommands := append([]string(nil), commands...)
+	mu.Unlock()
+
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check weight 100"
+	wantDrain := "set server service_read/slave1 state drain"
+	wantHealthAttempt := "enable health service_read/slave1"
+	wantRollbackMaint := "set server service_read/slave1 state maint"
+	wantRollbackDel := "del server service_read/slave1"
+
+	for _, want := range []string{wantAdd, wantDrain, wantHealthAttempt, wantRollbackMaint, wantRollbackDel} {
+		if cmdIndex(gotCommands, want) < 0 {
+			t.Errorf("Refresh() commands = %v, want to contain %q", gotCommands, want)
+		}
+	}
+
+	if cmdIndex(gotCommands, "set server service_read/slave1 state ready") >= 0 {
+		t.Errorf("Refresh() commands = %v, want no set-ready for a server whose health-check activation failed and was rolled back", gotCommands)
+	}
+}
+
+// TestHaproxyReconcileBlocksReadyAfterRollbackFails covers the case where
+// AddServer succeeds, the drain/health steps fail, and the rollback also
+// fails: the leftover row must stay blocked from promotion indefinitely,
+// not just for the pass it was added on. Runs two Refresh() passes — the
+// second reports the leftover row as a healthy-looking DRAIN replica — and
+// confirms it's still refused while removal keeps being retried.
+func TestHaproxyReconcileBlocksReadyAfterRollbackFails(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	masterOnlyStat := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	statResponse := masterOnlyStat
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				current := statResponse
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(current))
+				case cmd == "set server service_read/slave1 state drain":
+					// SetDrain (both the initial attempt and every retry)
+					// always fails, forcing the rollback path every pass.
+					c.Write([]byte("some transient HAProxy error\n"))
+				case cmd == "del server service_read/slave1":
+					// The rollback's own removal also always fails, so the
+					// server can never be cleanly deleted either.
+					c.Write([]byte("some transient HAProxy error\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	// First pass: add succeeds, drain fails, rollback (maint succeeds, del
+	// fails) also fails. The server must remain marked pending.
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() [1] error = %v", err)
+	}
+	if !proxy.isPendingReadServer("slave1") {
+		t.Fatalf("expected slave1 to remain marked pending after a failed add sequence and a failed rollback")
+	}
+
+	mu.Lock()
+	firstPassDelCount := 0
+	for _, c := range commands {
+		if c == "del server service_read/slave1" {
+			firstPassDelCount++
+		}
+	}
+	mu.Unlock()
+	if firstPassDelCount == 0 {
+		t.Fatalf("expected at least one del server attempt in the first pass")
+	}
+
+	// Second pass: HAProxy now reports the leftover row as DRAIN with
+	// otherwise healthy replication — exactly the state the generic
+	// eligibility logic (the "valid replication and DRAIN" block) would
+	// normally promote to ready.
+	mu.Lock()
+	statResponse = strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "DRAIN", "127.0.0.1:3307"),
+	}, "\n")
+	mu.Unlock()
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() [2] error = %v", err)
+	}
+
+	if !proxy.isPendingReadServer("slave1") {
+		t.Errorf("expected slave1 to still be marked pending after a second failed rollback")
+	}
+
+	mu.Lock()
+	gotCommands := append([]string(nil), commands...)
+	secondPassDelCount := 0
+	for _, c := range commands {
+		if c == "del server service_read/slave1" {
+			secondPassDelCount++
+		}
+	}
+	mu.Unlock()
+
+	if cmdIndex(gotCommands, "set server service_read/slave1 state ready") >= 0 {
+		t.Errorf("Refresh() commands = %v, want slave1 never readied while its rollback keeps failing, even though HAProxy reports it as a healthy-looking DRAIN replica", gotCommands)
+	}
+	if secondPassDelCount <= firstPassDelCount {
+		t.Errorf("expected removal to be retried again on the second pass (first pass del attempts=%d, cumulative after second pass=%d)", firstPassDelCount, secondPassDelCount)
+	}
+}
+
+// TestHaproxyReconcileAddServerErrorResponseStopsEnable covers HAProxy
+// returning a plain-text error over a successfully accepted TCP connection
+// (the Runtime API's normal failure mode — err is nil at the transport
+// level). AddServer failing this way must not be treated as success: the
+// dependent set-ready / enable health calls must not fire.
+func TestHaproxyReconcileAddServerErrorResponseStopsEnable(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case strings.HasPrefix(cmd, "add server"):
+					// A real HAProxy Runtime API error: TCP-level success,
+					// non-empty plain-text failure body.
+					c.Write([]byte("Can't add this server, adding a server requires either an IP address or a resolvable FQDN.\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	mu.Lock()
+	gotCommands := append([]string(nil), commands...)
+	mu.Unlock()
+
+	if cmdIndex(gotCommands, "set server service_read/slave1 state ready") >= 0 {
+		t.Errorf("Refresh() commands = %v, want no set-ready after a failed add server", gotCommands)
+	}
+	if cmdIndex(gotCommands, "enable health service_read/slave1") >= 0 {
+		t.Errorf("Refresh() commands = %v, want no enable health after a failed add server", gotCommands)
+	}
+}
+
+// TestHaproxyReconcileAddServerSuccessResponseCompletesSequence pins the fix
+// for a real bug found running this branch against a live HAProxy 3.0
+// container: "add server" replies with a non-empty confirmation on success
+// ("New server registered.") unlike every other admin command reconciled
+// here, which reply with an empty body. Routing that response through the
+// generic haproxyCmdFailed (any non-empty body = error) misclassified every
+// successful add as a failure — SetDrain/EnableHealth
+// (completeOrRollbackPendingAdd) never ran, so the newly added server sat
+// in HAProxy fully live (not MAINT/DRAIN) with health checks permanently
+// disabled ("no check" in "show stat"), while repman itself kept retrying
+// "add server" every pass and logging "Already exists a server with the
+// same name in backend." forever. startFakeHaproxy's default empty-body
+// response for every non-"show stat" command happens to be correct for
+// every other command, which is why no earlier test caught this — this one
+// uses the real HAProxy success text instead.
+func TestHaproxyReconcileAddServerSuccessResponseCompletesSequence(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case strings.HasPrefix(cmd, "add server"):
+					// The real HAProxy Runtime API success text (verified by
+					// hand against haproxy:3.0) — non-empty despite success.
+					c.Write([]byte("New server registered.\n\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	mu.Lock()
+	gotCommands := append([]string(nil), commands...)
+	mu.Unlock()
+
+	wantAdd := "add server service_read/slave1 127.0.0.1:3307 check weight 100"
+	wantDrain := "set server service_read/slave1 state drain"
+	wantHealth := "enable health service_read/slave1"
+	for _, want := range []string{wantAdd, wantDrain, wantHealth} {
+		if cmdIndex(gotCommands, want) < 0 {
+			t.Errorf("Refresh() commands = %v, want to contain %q (add succeeded, sequence must complete)", gotCommands, want)
+		}
+	}
+
+	// The bug retried "add server" every pass because it never recognized
+	// success; confirm this single Refresh() pass issues it only once.
+	addCount := 0
+	for _, c := range gotCommands {
+		if c == wantAdd {
+			addCount++
+		}
+	}
+	if addCount != 1 {
+		t.Errorf("Refresh() issued %q %d times, want exactly once", wantAdd, addCount)
+	}
+
+	if proxy.isPendingReadServer("slave1") {
+		t.Errorf("slave1 still marked pending after a successful add+drain+enable-health sequence")
+	}
+}
+
+// TestHaproxyReconcileSkipsServerInMaintenance ensures a cluster server that
+// is intentionally in maintenance is not added to the read backend.
+func TestHaproxyReconcileSkipsServerInMaintenance(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateMaintenance
+	slave.IsMaintenance = true
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 2.8.5-1 2023/09/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	commands := getCommands()
+	if cmdIndex(commands, "add server service_read/slave1 127.0.0.1:3307 check weight 100") >= 0 {
+		t.Errorf("Refresh() commands = %v, want no add server command for a server in maintenance", commands)
+	}
+}
+
+// TestHaproxyRefreshDialsIPv6RuntimeAPIEndpoint confirms the Runtime API
+// control-plane dial itself (ApiCmdWithTimeout) is IPv6-safe, not just
+// backend-member addresses. proxy.Host is deliberately *unbracketed*
+// ("::1", not "[::1]"): a naive "host + \":\" + port" concatenation happens
+// to still parse when the host is already bracketed, so only the
+// unbracketed form actually exercises the bug. Skips if the environment has
+// no IPv6 loopback.
+func TestHaproxyRefreshDialsIPv6RuntimeAPIEndpoint(t *testing.T) {
+	ln, err := net.Listen("tcp", "[::1]:0")
+	if err != nil {
+		t.Skipf("IPv6 loopback not available in this environment: %v", err)
+	}
+	defer ln.Close()
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+	cluster.master = master
+	cluster.slaves = nil
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+	}, "\n")
+
+	var mu sync.Mutex
+	var gotShowStat bool
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				if strings.TrimRight(line, "\r\n") == "show stat" {
+					mu.Lock()
+					gotShowStat = true
+					mu.Unlock()
+					c.Write([]byte(statResponse))
+				}
+			}(conn)
+		}
+	}()
+
+	// Unbracketed — see the doc comment above for why that specific form
+	// is what actually exercises the bug.
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         "::1",
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v (Runtime API dial to an IPv6 endpoint should succeed)", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if !gotShowStat {
+		t.Errorf("expected the fake IPv6 HAProxy listener to receive \"show stat\", got nothing — the Runtime API dial likely failed")
+	}
+}
+
+// TestHaproxyRefreshDoesNotForceStatusWhenMaintenanceCorrectionSkipped
+// marks a healthy slave pending (as it would be after a failed add
+// sequence), has HAProxy report it as MAINT, and confirms the in-memory
+// status stays MAINT rather than being forced to UP when
+// setReadBackendMaintenance refuses the transition.
+func TestHaproxyRefreshDoesNotForceStatusWhenMaintenanceCorrectionSkipped(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+	}
+	cluster.Configurator.ClusterConfig.PRXServersReadOnMasterNoSlave = true
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	// Repman considers slave1 healthy and not in maintenance; HAProxy will
+	// report it as MAINT (e.g. left behind by an unrelated prior action).
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.IsMaintenance = false
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "MAINT", "127.0.0.1:3307"),
+	}, "\n")
+
+	host, port, getCommands := startFakeHaproxy(t, statResponse)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "test", // non-empty, skips GetVersion()
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	// Simulates slave1 being left pending by a prior failed Runtime API add
+	// sequence (see TestHaproxyReconcileBlocksReadyAfterRollbackFails for
+	// how that arises in practice) — same-package access to the unexported
+	// tracking map used here to isolate this specific code path.
+	proxy.markPendingReadServer("slave1")
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	if cmdIndex(getCommands(), "set server service_read/slave1 state ready") >= 0 {
+		t.Fatalf("test setup error: expected setReadBackendMaintenance to skip the ready transition for a pending server")
+	}
+
+	if proxy.HasAvailableReader() {
+		t.Errorf("HasAvailableReader() = true, want false: slave1's status must not have been forced to UP when the maintenance correction was skipped")
+	}
+
+	found := false
+	for _, b := range proxy.BackendsRead {
+		if b.Svname == "slave1" {
+			found = true
+			if b.PrxStatus != "MAINT" {
+				t.Errorf("slave1 PrxStatus = %q, want %q (must not be forced to UP when setReadBackendMaintenance did not actually ready it)", b.PrxStatus, "MAINT")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("test setup error: slave1 not found in proxy.BackendsRead")
+	}
+}
+
+// TestHaproxySetReadBackendMaintenanceNoOpInExternalCheckMode guards the
+// setReadBackendMaintenance branch for haproxy-mode=externalcheck:
+// externalcheck's read-backend eligibility is decided entirely by
+// checkslave's own external-check polling of repman's HTTP handlers, so
+// this must issue neither a Runtime API maint/ready call (that's the
+// runtimeapi branch below it) nor a local Init() re-render (that's
+// standby's branch) -- a plain no-op.
+func TestHaproxySetReadBackendMaintenanceNoOpInExternalCheckMode(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend: "service_write",
+		HaproxyAPIReadBackend:  "service_read",
+		HaproxyOn:              true,
+		HaproxyMode:            "externalcheck",
+	}
+
+	server := cluster.Servers[0]
+	server.Id = "server1"
+	server.Host = "127.0.0.1"
+	server.Port = "3306"
+	server.ClusterGroup = cluster
+
+	host, port, getCommands := startFakeHaproxy(t, "")
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if got := proxy.setReadBackendMaintenance(server); got != false {
+		t.Fatalf("setReadBackendMaintenance() = %v, want false in haproxy-mode=externalcheck", got)
+	}
+	if cmds := getCommands(); len(cmds) != 0 {
+		t.Fatalf("setReadBackendMaintenance issued Runtime API commands in haproxy-mode=externalcheck: %v", cmds)
+	}
+}
+
+// TestSetAddrFailedRecognizesRealHaproxySuccessResponses pins the fix for a
+// real bug found from a production repman log: "Detecting wrong master
+// server ... fixing it to master" (LvlInfo, correct) immediately followed by
+// HAProxy's own confirmation for the resulting SetMaster() call being logged
+// as LvlErr, even though the address change genuinely succeeded. SetMaster/
+// SetMasterFQDN/SetServerAddr/SetServerFQDN all reply with non-empty
+// confirmation text on success (change or no-op alike) — unlike most other
+// admin server commands reconciled in this file — so routing that response
+// through the generic haproxyCmdFailed (any non-empty body = error)
+// misclassified every one of them as a failure. See
+// haproxySetAddrSuccessSubstrings for which of these texts are independently
+// live-verified vs. inferred by symmetry.
+func TestSetAddrFailedRecognizesRealHaproxySuccessResponses(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		res        string
+		wantFailed bool
+	}{
+		{
+			name:       "empty response",
+			res:        "",
+			wantFailed: false,
+		},
+		{
+			name:       "addr no-op, live-verified against real HAProxy 3.0 (clustera)",
+			res:        "nothing changed\n\n",
+			wantFailed: false,
+		},
+		{
+			name:       "fqdn no-op, live-verified against real HAProxy 3.0 (clustera) -- HAProxy's own \"FDQN\" spelling, not a typo introduced here",
+			res:        "no need to change the FDQN by 'stats socket command'\n\n",
+			wantFailed: false,
+		},
+		{
+			name:       "addr changed, taken directly from a real production repman log",
+			res:        "IP changed from '10.60.50.67' to '10.60.22.249' by 'stats socket command'\n\n",
+			wantFailed: false,
+		},
+		{
+			// The pool/server name leads the line and varies per call site --
+			// this does NOT start with "FQDN"/"changed", so a HasPrefix match
+			// (an earlier, wrong version of this fix) can never match it
+			// regardless of which literal text is chosen. This exact line,
+			// for a different pool/name than the one below, is taken
+			// directly from a production repman log.
+			name:       "fqdn changed, taken directly from a real production repman log (write backend)",
+			res:        "service_write/leader changed its FQDN from 'db1.example.com' to 'db2.example.com' by 'stats socket command'\n\n",
+			wantFailed: false,
+		},
+		{
+			name:       "fqdn changed, different pool/svname prefix -- proves the match isn't tied to one backend's naming",
+			res:        "service_read/db13592028642871093441 changed its FQDN from 'old.host.example.com' to 'new.host.example.com' by 'stats socket command'\n\n",
+			wantFailed: false,
+		},
+		{
+			// Found reading HAProxy's own source (srv_update_addr_port,
+			// src/server.c) rather than live/production evidence: addr and
+			// port are updated independently, so a port-only change (IP
+			// unchanged) replies with this and no "IP changed from" text at
+			// all -- confirmed identical on HAProxy 2.4/3.0/3.4.
+			// SetServerAddr/SetMaster always pass both addr and port
+			// together, so this is real, reachable text.
+			name:       "port-only change, found in HAProxy source (server.c) across 2.4/2.8/3.0/3.4 -- no \"IP changed from\" text present",
+			res:        "port changed from '3306' to '3307' by 'stats socket command'\n\n",
+			wantFailed: false,
+		},
+		{
+			// HAProxy's whole v2 line (confirmed reading src/server.c at
+			// tags v2.4.0 and v2.8.0, the last v2.x release) reports the
+			// addr-unchanged case with this per-field wording instead of
+			// 3.0/3.4's unified "nothing changed" -- the wording changes at
+			// the 2.x->3.0 boundary, not within the v2 line.
+			name:       "addr no-op, HAProxy v2 line's wording (found in source, not live-tested against a 2.x binary)",
+			res:        "no need to change the addr, no need to change the port by 'stats socket command'\n\n",
+			wantFailed: false,
+		},
+		{
+			name:       "genuine failure must still be reported",
+			res:        "No such server.\n\n",
+			wantFailed: true,
+		},
+		{
+			name:       "transport error must still be reported",
+			err:        errors.New("dial tcp: connection refused"),
+			wantFailed: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, failed := setAddrFailed(tt.err, tt.res)
+			if failed != tt.wantFailed {
+				t.Errorf("setAddrFailed(%v, %q) failed = %v, want %v", tt.err, tt.res, failed, tt.wantFailed)
+			}
+		})
+	}
+}
+
+// TestHaproxyRefreshMasterFixIPChangeNotMisreportedAsError reproduces the
+// exact production scenario that surfaced this bug: HAProxy's write backend
+// still points at the old/wrong server, Refresh() detects it ("Detecting
+// wrong master server ... fixing it to master") and calls SetMaster(), and
+// HAProxy's Runtime API replies with its real, non-empty confirmation text
+// ("IP changed from 'X' to 'Y' by 'stats socket command'", copied verbatim
+// from a production log) rather than an empty body. Before the fix, this
+// non-empty success response was misclassified by haproxyCmdFailed and
+// logged at ERROR despite the correction having genuinely succeeded.
+func TestHaproxyRefreshMasterFixIPChangeNotMisreportedAsError(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+		Verbose:                    true,
+		Daemon:                     true,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	var logBuf bytes.Buffer
+	cluster.Logrus = logrus.New()
+	cluster.Logrus.SetOutput(&logBuf)
+	cluster.Logrus.SetLevel(logrus.DebugLevel)
+	cluster.Logrus.SetFormatter(&logrus.TextFormatter{DisableColors: true, DisableTimestamp: true})
+
+	// HAProxy's write backend currently shows the slave, not the master --
+	// the "wrong master" condition Refresh() must detect and correct.
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "slave1", "UP", "127.0.0.1:3307"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	var mu sync.Mutex
+	var commands []string
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				mu.Lock()
+				commands = append(commands, cmd)
+				mu.Unlock()
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case strings.HasPrefix(cmd, "set server service_write/leader addr"):
+					// The real HAProxy Runtime API success text, copied
+					// verbatim from a production repman log -- non-empty
+					// despite success.
+					c.Write([]byte("IP changed from '10.60.50.67' to '10.60.22.249' by 'stats socket command'\n\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	mu.Lock()
+	gotCommands := append([]string(nil), commands...)
+	mu.Unlock()
+
+	wantSetMaster := "set server service_write/leader addr 127.0.0.1 port 3306"
+	if cmdIndex(gotCommands, wantSetMaster) < 0 {
+		t.Fatalf("Refresh() commands = %v, want to contain %q", gotCommands, wantSetMaster)
+	}
+
+	logLines := strings.Split(logBuf.String(), "\n")
+	sawDetecting := false
+	for _, line := range logLines {
+		if strings.Contains(line, "IP changed from") && strings.Contains(line, "level=error") {
+			t.Errorf("a successful HAProxy address change was logged at ERROR: %s", line)
+		}
+		if strings.Contains(line, "Detecting wrong master server") {
+			sawDetecting = true
+			if !strings.Contains(line, "level=info") {
+				t.Errorf("\"Detecting wrong master server\" line not logged at INFO: %s", line)
+			}
+		}
+	}
+	if !sawDetecting {
+		t.Errorf("Refresh() log output = %q, want a \"Detecting wrong master server\" line", logBuf.String())
+	}
+}
+
+// TestHaproxyRefreshGenuineMasterFixFailureRecordedAsStateNotFlooded confirms
+// the companion half of the setAddrFailed fix: a REAL SetMaster failure
+// (HAProxy genuinely refuses the command, e.g. "No such server.") must still
+// be reported -- but through cluster.SetState with a stable key, not a plain
+// LogModulePrintf(LvlErr, ...) call. Refresh() runs on every monitoring
+// tick, so a persistent failure logged directly would repeat forever,
+// identically, once per tick; SetState instead lets the state machine's own
+// OPENED/RESOLV diffing (see cluster.LogPrintAllStates, called once per full
+// monitoring tick, independently of Refresh()) log it exactly once until it
+// resolves. This test only exercises the single Refresh() pass in isolation
+// (no surrounding tick/ClearState loop -- that dedup machinery is
+// StateMachine's own, already covered by utils/state's tests), and pins two
+// things: the failure lands in CurState under "ERR00106" (not silently
+// dropped), and Refresh() itself no longer writes any ERROR-level log line
+// synchronously for it.
+func TestHaproxyRefreshGenuineMasterFixFailureRecordedAsStateNotFlooded(t *testing.T) {
+	cluster := setupTestCluster(t, 2)
+	defer cleanupTestCluster(t, cluster)
+
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+	cluster.Topology = config.TopoMasterSlave
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyAPIBootstrapServers: true,
+		HaproxyMode:                "runtimeapi",
+		Verbose:                    true,
+		Daemon:                     true,
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "master1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+
+	slave := cluster.Servers[1]
+	slave.Id = "slave1"
+	slave.Host = "127.0.0.1"
+	slave.Port = "3307"
+	slave.State = stateSlave
+	slave.ClusterGroup = cluster
+
+	cluster.master = master
+	cluster.slaves = []*ServerMonitor{slave}
+
+	var logBuf bytes.Buffer
+	cluster.Logrus = logrus.New()
+	cluster.Logrus.SetOutput(&logBuf)
+	cluster.Logrus.SetLevel(logrus.DebugLevel)
+	cluster.Logrus.SetFormatter(&logrus.TextFormatter{DisableColors: true, DisableTimestamp: true})
+
+	statResponse := strings.Join([]string{
+		haproxyStatRow("service_write", "slave1", "UP", "127.0.0.1:3307"),
+		haproxyStatRow("service_read", "master1", "UP", "127.0.0.1:3306"),
+		haproxyStatRow("service_read", "slave1", "UP", "127.0.0.1:3307"),
+	}, "\n")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start fake haproxy server: %v", err)
+	}
+	defer ln.Close()
+	host, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				line, _ := bufio.NewReader(c).ReadString('\n')
+				cmd := strings.TrimRight(line, "\r\n")
+				switch {
+				case cmd == "show stat":
+					c.Write([]byte(statResponse))
+				case strings.HasPrefix(cmd, "set server service_write/leader addr"):
+					// A genuine HAProxy failure -- not one of
+					// haproxySetAddrSuccessSubstrings.
+					c.Write([]byte("No such server.\n\n"))
+				}
+			}(conn)
+		}
+	}()
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Host:         host,
+		Port:         port,
+		Datadir:      t.TempDir(),
+		Version:      "HAProxy version 3.0.26-1 2024/05/01",
+	}}
+	proxy.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+
+	if err := proxy.Refresh(); err != nil {
+		t.Fatalf("Refresh() error = %v", err)
+	}
+
+	found := false
+	for key := range *cluster.StateMachine.CurState {
+		if strings.HasPrefix(key, "ERR00106") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("genuine SetMaster failure was not recorded via SetState(\"ERR00106\", ...); CurState = %v", *cluster.StateMachine.CurState)
+	}
+
+	for _, line := range strings.Split(logBuf.String(), "\n") {
+		if strings.Contains(line, "level=error") {
+			t.Errorf("Refresh() logged an ERROR line directly instead of going through SetState: %s", line)
+		}
+	}
+}
+
+// TestHaproxyBootstrapServersEnabledRetainsProvisionedValue pins that the
+// live setting can change without a reprovision, but BootstrapServersEnabled
+// must keep reporting what was actually deployed until reprovisioned.
+func TestHaproxyBootstrapServersEnabledRetainsProvisionedValue(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+	cluster.Conf = &config.Config{}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{ClusterGroup: cluster, Datadir: t.TempDir()}}
+
+	// Never recorded: defaults false regardless of the live setting.
+	cluster.Conf.HaproxyAPIBootstrapServers = true
+	if proxy.BootstrapServersEnabled() {
+		t.Errorf("BootstrapServersEnabled() = true, want false (must default false when never recorded)")
+	}
+
+	// Provisioned with it off; live setting later flips on without a
+	// reprovision -- must keep reporting what was actually deployed.
+	proxy.setProvisionedBootstrapServers(false)
+	cluster.Conf.HaproxyAPIBootstrapServers = true
+	if proxy.BootstrapServersEnabled() {
+		t.Errorf("BootstrapServersEnabled() = true, want false (retained provisioned value, live setting changed since)")
+	}
+
+	// Reprovisioning picks up the new value.
+	proxy.setProvisionedBootstrapServers(true)
+	if !proxy.BootstrapServersEnabled() {
+		t.Errorf("BootstrapServersEnabled() = false, want true (after reprovision)")
+	}
+}
+
+// TestHaproxyInitSyncsBootstrapServersCookieOnRealRender pins the fix for a
+// real drift gap: initProxies() (cluster.go, at repman startup) and
+// LocalhostStartHaProxyService both call Init() directly, bypassing
+// InitProxyService's own cookie write -- so Init() itself must also sync
+// the cookie whenever it actually renders, or a live setting change picked
+// up by an automatic re-render (no explicit Provision action) would drift
+// from BootstrapServersEnabled()'s stale snapshot.
+func TestHaproxyInitSyncsBootstrapServersCookieOnRealRender(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+
+	shareDir := t.TempDir()
+	tmpl := `{{range .Backends}}backend {{.Name}}
+{{range .Servers}}    server {{.Name}} {{.Host}}:{{.Port}}
+{{end}}
+{{end}}`
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), []byte(tmpl), 0644); err != nil {
+		t.Fatalf("failed to write test haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyMode:                "standby",
+		ProvOrchestrator:           config.ConstOrchestratorLocalhost,
+		ShareDir:                   shareDir,
+		HaproxyAPIBootstrapServers: false,
+		HaproxyBinaryPath:          "/bin/true", // reload must succeed for the cookie to update
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+	cluster.master = master
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+	// Simulate a stale cookie from before a live flag change -- an
+	// automatic re-render (no explicit Provision) must still fix it.
+	proxy.setProvisionedBootstrapServers(true)
+
+	proxy.Init()
+
+	if _, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg")); err != nil {
+		t.Fatalf("Init() did not render a config file: %v", err)
+	}
+	if proxy.BootstrapServersEnabled() {
+		t.Errorf("BootstrapServersEnabled() = true after Init() rendered with the flag off, want false")
+	}
+}
+
+// TestHaproxyUnprovisionClearsBootstrapServersCookie pins that unprovision
+// deletes the bootstrap-servers cookie alongside the other proxy cookies --
+// otherwise a later restart could still trust a stale "last deployed" value
+// for a proxy that no longer exists.
+func TestHaproxyUnprovisionClearsBootstrapServersCookie(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      t.TempDir(),
+	}}
+	proxy.setProvisionedBootstrapServers(true)
+	if !proxy.BootstrapServersEnabled() {
+		t.Fatalf("test precondition: expected BootstrapServersEnabled()=true after setProvisionedBootstrapServers(true)")
+	}
+
+	proxy.delProvisionedBootstrapServers()
+
+	if proxy.BootstrapServersEnabled() {
+		t.Errorf("BootstrapServersEnabled() = true after delProvisionedBootstrapServers(), want false")
+	}
+}
+
+// TestHaproxyInitDoesNotUpdateBootstrapServersCookieOnReloadFailure pins that
+// a successful render with a failed reload must NOT update the cookie: the
+// running HAProxy process never actually picked up the new config, so
+// BootstrapServersEnabled() must keep reporting the old, still-true value.
+func TestHaproxyInitDoesNotUpdateBootstrapServersCookieOnReloadFailure(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+
+	shareDir := t.TempDir()
+	tmpl := `{{range .Backends}}backend {{.Name}}
+{{range .Servers}}    server {{.Name}} {{.Host}}:{{.Port}}
+{{end}}
+{{end}}`
+	if err := os.WriteFile(filepath.Join(shareDir, "haproxy_config.template"), []byte(tmpl), 0644); err != nil {
+		t.Fatalf("failed to write test haproxy_config.template: %v", err)
+	}
+
+	cluster.Conf = &config.Config{
+		HaproxyAPIWriteBackend:     "service_write",
+		HaproxyAPIReadBackend:      "service_read",
+		HaproxyOn:                  true,
+		HaproxyMode:                "standby",
+		ProvOrchestrator:           config.ConstOrchestratorLocalhost,
+		ShareDir:                   shareDir,
+		HaproxyAPIBootstrapServers: false,
+		HaproxyBinaryPath:          "/bin/false", // render succeeds, reload always fails
+	}
+
+	master := cluster.Servers[0]
+	master.Id = "server1"
+	master.Host = "127.0.0.1"
+	master.Port = "3306"
+	master.State = stateMaster
+	master.ClusterGroup = cluster
+	cluster.master = master
+
+	datadir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(datadir, "var"), 0755); err != nil {
+		t.Fatalf("failed to create datadir/var: %v", err)
+	}
+
+	proxy := &HaproxyProxy{Proxy: Proxy{
+		ClusterGroup: cluster,
+		Datadir:      datadir,
+		Version:      "test",
+	}}
+	// Stale cookie from an earlier, successful provision.
+	proxy.setProvisionedBootstrapServers(true)
+
+	proxy.Init()
+
+	if _, err := os.ReadFile(filepath.Join(datadir, "var", "haproxy.cfg")); err != nil {
+		t.Fatalf("Init() did not render a config file (test setup assumes render succeeds): %v", err)
+	}
+	if !proxy.BootstrapServersEnabled() {
+		t.Errorf("BootstrapServersEnabled() = false after a reload failure, want true (stale cookie must be left untouched since the running HAProxy never picked up the new config)")
 	}
 }

@@ -10,6 +10,7 @@
 package arbitrator
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -73,10 +74,10 @@ func newRouter() *mux.Router {
 }
 
 var (
-	uriCacheMu sync.RWMutex
-	uriCache   = make(map[string]time.Time)
+	uriCacheMu  sync.RWMutex
+	uriCache    = make(map[string]time.Time)
 	uriCacheTTL = 5 * time.Minute
-	crmClient  = &http.Client{Timeout: 5 * time.Second}
+	crmClient   = &http.Client{Timeout: 5 * time.Second}
 )
 
 func uriCheckMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -190,8 +191,35 @@ type response struct {
 }
 
 var (
-	arbitratorDB *sqlx.DB
+	arbitratorDB   *sqlx.DB
+	arbitratorDBMu sync.Mutex
+
+	lastGoodHostMu sync.Mutex
+	lastGoodHost   string
+
+	lastReconnectAttempt time.Time
+	reconnectCooldown    = 2 * time.Second
 )
+
+// defaultArbitratorConnectTimeoutSeconds is both the flag default and the
+// fallback used whenever arbitrator-connect-timeout is non-positive.
+const defaultArbitratorConnectTimeoutSeconds = 3
+
+// arbitratorConnectTimeoutSeconds returns the configured connect/ping
+// timeout, clamping non-positive values to the default. Passing 0 through
+// unclamped would flip this flag's two use sites to opposite failure modes:
+// context.WithTimeout(ctx, 0) expires immediately (every liveness ping on an
+// otherwise-healthy connection would fail, forcing a reconnect on every
+// request), while the MySQL DSN's "timeout=0s" means unbounded on the dial
+// side — exactly backwards from what a operator typing 0 for "no timeout"
+// would expect from either.
+func arbitratorConnectTimeoutSeconds() int {
+	t := RepMan.Confs["arbitrator"].ArbitratorConnectTimeout
+	if t <= 0 {
+		return defaultArbitratorConnectTimeoutSeconds
+	}
+	return t
+}
 
 func init() {
 	cobra.OnInitialize()
@@ -200,6 +228,7 @@ func init() {
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorDriver, "arbitrator-driver", "sqlite", "sqlite|mysql, use a local sqllite or use a mysql backend")
 	arbitratorCmd.Flags().BoolVar(&conf.ArbitratorURICheck, "arbitrator-uri-check", false, "When true, validate client URI against CRM before accepting requests")
 	arbitratorCmd.Flags().StringVar(&conf.ArbitratorURICheckURL, "arbitrator-uri-check-url", "", "CRM health endpoint URL for URI validation (e.g. https://crm.cloud18.io/api/health)")
+	arbitratorCmd.Flags().IntVar(&conf.ArbitratorConnectTimeout, "arbitrator-connect-timeout", defaultArbitratorConnectTimeoutSeconds, "MySQL connect timeout in seconds per backend host when the arbitrator connects or reconnects, and the bound on liveness-checking an existing connection, kept short so a down host doesn't stall the whole arbitrator. Non-positive values fall back to the default rather than meaning \"no timeout\"")
 
 }
 
@@ -215,26 +244,10 @@ var arbitratorCmd = &cobra.Command{
 			log.Fatal("Could not find [arbitrator] configuration section. Provide a config file with an [arbitrator] section or use the Docker env-backed entrypoint configuration.")
 		}
 
-		var err error
-		arbitratorDB, err = getArbitratorBackendStorageConnection()
-		if err != nil {
-			log.Fatal("Error opening arbitrator database: ", err)
+		if _, err := getArbitratorDB(); err != nil {
+			log.WithError(err).Error("Arbitrator database unavailable at startup, will keep retrying on incoming requests")
 		}
 
-		if RepMan.Confs["arbitrator"].ArbitratorDriver == "sqlite" {
-			arbitratorDB.SetMaxOpenConns(1)
-			arbitratorDB.SetMaxIdleConns(1)
-		}
-
-		err = arbitratorDB.Ping()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		err = dbhelper.SetHeartbeatTable(arbitratorDB)
-		if err != nil {
-			log.WithError(err).Error("Error creating tables")
-		}
 		router := newRouter()
 		log.Infof("Arbitrator listening on %s", RepMan.Confs["arbitrator"].ArbitratorAddress)
 		log.Fatal(http.ListenAndServe(RepMan.Confs["arbitrator"].ArbitratorAddress, router))
@@ -242,48 +255,153 @@ var arbitratorCmd = &cobra.Command{
 }
 
 func getArbitratorBackendStorageConnection() (*sqlx.DB, error) {
-
-	var err error
-	var db *sqlx.DB
-	if RepMan.Confs["arbitrator"].ArbitratorDriver == "sqlite" {
-		db, err = dbhelper.SQLiteConnect(conf.WorkingDir)
+	switch RepMan.Confs["arbitrator"].ArbitratorDriver {
+	case "sqlite":
+		return dbhelper.SQLiteConnect(conf.WorkingDir)
+	case "mysql":
+		return connectArbitratorMySQL()
+	default:
+		return nil, fmt.Errorf("unsupported arbitrator-driver %q", RepMan.Confs["arbitrator"].ArbitratorDriver)
 	}
-	if RepMan.Confs["arbitrator"].ArbitratorDriver == "mysql" {
-		hosts := strings.Split(RepMan.Confs["arbitrator"].Hosts, ",")
-		if len(hosts) == 0 || hosts[0] == "" {
-			return nil, fmt.Errorf("arbitrator mysql backend requires [arbitrator].db-servers-hosts (example: \"127.0.0.1:3306\")")
-		}
-		arbConf := RepMan.Confs["arbitrator"]
-		credential := arbConf.DecryptSecretValue("db-servers-credential", arbConf.User)
-		if !strings.Contains(credential, ":") {
-			return nil, fmt.Errorf("arbitrator mysql backend requires [arbitrator].db-servers-credential in \"user:password\" format")
-		}
-		user, pass := misc.SplitPair(credential)
-		for _, h := range hosts {
-			h = strings.TrimSpace(h)
-			if h == "" {
-				continue
-			}
-			host, port := misc.SplitHostPort(h)
-			db, err = dbhelper.MySQLConnect(user, pass, dbhelper.GetAddress(host, port, ""), fmt.Sprintf("timeout=%ds", RepMan.Confs["arbitrator"].Timeout))
-			if err == nil {
-				if pingErr := db.Ping(); pingErr == nil {
-					log.Infof("Arbitrator connected to MySQL backend %s", h)
-					return db, nil
-				}
-				db.Close()
-			}
-			log.Warnf("Arbitrator failed to connect to MySQL backend %s: %s", h, err)
-		}
-		return nil, fmt.Errorf("arbitrator could not connect to any MySQL backend from: %s", RepMan.Confs["arbitrator"].Hosts)
-	}
-	return db, err
 }
 
-func getArbitratorDB() (*sqlx.DB, error) {
-	if arbitratorDB == nil {
-		return nil, fmt.Errorf("arbitrator database is not initialized")
+// arbitratorMySQLHosts returns the configured MySQL backend hosts in
+// configured order.
+func arbitratorMySQLHosts() ([]string, error) {
+	var hosts []string
+	for _, h := range strings.Split(RepMan.Confs["arbitrator"].Hosts, ",") {
+		h = strings.TrimSpace(h)
+		if h != "" {
+			hosts = append(hosts, h)
+		}
 	}
+	if len(hosts) == 0 {
+		return nil, fmt.Errorf("arbitrator mysql backend requires [arbitrator].db-servers-hosts (example: \"127.0.0.1:3306\")")
+	}
+	return hosts, nil
+}
+
+// arbitratorHostTrialOrder puts the last-known-good host first (if any),
+// followed by the remaining configured hosts in their configured order, so
+// reconnects prefer the backend that was last reachable.
+func arbitratorHostTrialOrder(hosts []string) []string {
+	lastGoodHostMu.Lock()
+	good := lastGoodHost
+	lastGoodHostMu.Unlock()
+
+	if good == "" {
+		return hosts
+	}
+	ordered := make([]string, 0, len(hosts))
+	ordered = append(ordered, good)
+	for _, h := range hosts {
+		if h != good {
+			ordered = append(ordered, h)
+		}
+	}
+	return ordered
+}
+
+func setLastGoodHost(h string) {
+	lastGoodHostMu.Lock()
+	lastGoodHost = h
+	lastGoodHostMu.Unlock()
+}
+
+// connectArbitratorMySQL tries the configured MySQL backend hosts, last-known-
+// good host first, and returns the first one that accepts a connection.
+func connectArbitratorMySQL() (*sqlx.DB, error) {
+	hosts, err := arbitratorMySQLHosts()
+	if err != nil {
+		return nil, err
+	}
+
+	arbConf := RepMan.Confs["arbitrator"]
+	credential := arbConf.DecryptSecretValue("db-servers-credential", arbConf.User)
+	if !strings.Contains(credential, ":") {
+		return nil, fmt.Errorf("arbitrator mysql backend requires [arbitrator].db-servers-credential in \"user:password\" format")
+	}
+	user, pass := misc.SplitPair(credential)
+
+	var lastErr error
+	for _, h := range arbitratorHostTrialOrder(hosts) {
+		host, port := misc.SplitHostPort(h)
+		// dbhelper.MySQLConnect uses sqlx.Connect, which already opens and
+		// pings the connection, so err == nil here implies a verified connection.
+		db, err := dbhelper.MySQLConnect(user, pass, dbhelper.GetAddress(host, port, ""), fmt.Sprintf("timeout=%ds", arbitratorConnectTimeoutSeconds()))
+		if err != nil {
+			lastErr = err
+			log.Warnf("Arbitrator failed to connect to MySQL backend %s: %s", h, err)
+			continue
+		}
+		log.Infof("Arbitrator connected to MySQL backend %s", h)
+		setLastGoodHost(h)
+		return db, nil
+	}
+	return nil, fmt.Errorf("arbitrator could not connect to any MySQL backend from: %s (last error: %v)", RepMan.Confs["arbitrator"].Hosts, lastErr)
+}
+
+// prepareNewArbitratorConnection finishes setting up a connection freshly
+// opened by getArbitratorBackendStorageConnection (pool limits, schema)
+// before it is published as the active handle. The caller only publishes the
+// connection if this succeeds. db is already a verified connection: both
+// SQLiteConnect and MySQLConnect go through sqlx.Connect, which pings before
+// returning, so no extra Ping() is needed here.
+// Schema creation is best-effort: a least-privilege MySQL account (DML-only
+// against a pre-provisioned schema) lacks CREATE and would otherwise never
+// be allowed to reconnect even though the existing table works fine.
+func prepareNewArbitratorConnection(db *sqlx.DB) {
+	if RepMan.Confs["arbitrator"].ArbitratorDriver == "sqlite" {
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+	}
+	if err := dbhelper.SetHeartbeatTable(db); err != nil {
+		log.WithError(err).Warn("Error creating arbitrator heartbeat table, continuing with existing schema")
+	}
+}
+
+// getArbitratorDB is the single recovery path for the arbitrator's database
+// handle: it returns the existing connection if healthy, or transparently
+// reconnects (last-known-good host first for MySQL) if not. A short cooldown
+// avoids hammering an unreachable backend on every request.
+func getArbitratorDB() (*sqlx.DB, error) {
+	arbitratorDBMu.Lock()
+	defer arbitratorDBMu.Unlock()
+
+	if arbitratorDB != nil {
+		// Bounded: a plain Ping() has no deadline and can block on the OS-level
+		// TCP timeout (minutes) against a backend that silently drops packets
+		// (network partition) instead of refusing the connection. Since this
+		// runs under arbitratorDBMu on every request, an unbounded ping here
+		// would stall the whole arbitrator for every cluster, not just the one
+		// hitting the dead connection — exactly the failure mode this reconnect
+		// path exists to avoid.
+		pingTimeout := time.Duration(arbitratorConnectTimeoutSeconds()) * time.Second
+		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+		err := arbitratorDB.PingContext(ctx)
+		cancel()
+		if err == nil {
+			return arbitratorDB, nil
+		}
+		log.WithError(err).Warn("Arbitrator database connection lost, attempting to reconnect")
+		arbitratorDB.Close()
+		arbitratorDB = nil
+	}
+
+	if !lastReconnectAttempt.IsZero() && time.Since(lastReconnectAttempt) < reconnectCooldown {
+		return nil, fmt.Errorf("arbitrator database is unavailable, retrying shortly")
+	}
+	lastReconnectAttempt = time.Now()
+
+	newDB, err := getArbitratorBackendStorageConnection()
+	if err != nil {
+		return nil, fmt.Errorf("arbitrator database is unavailable: %w", err)
+	}
+
+	prepareNewArbitratorConnection(newDB)
+
+	arbitratorDB = newDB
+	lastReconnectAttempt = time.Time{}
 	return arbitratorDB, nil
 }
 
@@ -298,14 +416,12 @@ func handlerVersion(w http.ResponseWriter, r *http.Request) {
 func handlerHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	db, err := getArbitratorDB()
-	if err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "failed"})
-		return
-	}
-
-	if err := db.Ping(); err != nil {
+	// getArbitratorDB already validates the handle with a bounded PingContext
+	// before returning it — a second, unbounded db.Ping() here would be both
+	// redundant on the healthy path and, in the narrow window where the
+	// connection dies between the two calls, exactly the unbounded-block
+	// hazard the bounded ping was added to eliminate.
+	if _, err := getArbitratorDB(); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "failed"})
 		return
@@ -596,8 +712,8 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 }
 
 type clusterStats struct {
-	Cluster   string           `json:"cluster"`
-	Instances []instanceStats  `json:"instances"`
+	Cluster   string          `json:"cluster"`
+	Instances []instanceStats `json:"instances"`
 }
 
 type instanceStats struct {

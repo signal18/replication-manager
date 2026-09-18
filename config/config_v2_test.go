@@ -97,6 +97,7 @@ func TestDatabaseConfigValidation(t *testing.T) {
 				ConnectTimeout: 5,
 				ExecTimeout:    10,
 				ReadTimeout:    3600,
+				DNSTimeout:     5,
 			},
 			expectErr: false,
 		},
@@ -116,6 +117,7 @@ func TestDatabaseConfigValidation(t *testing.T) {
 				ConnectTimeout: 5,
 				ExecTimeout:    10,
 				ReadTimeout:    3600,
+				DNSTimeout:     5,
 				TLSSSLMode:     "INVALID",
 			},
 			expectErr: true,
@@ -127,6 +129,7 @@ func TestDatabaseConfigValidation(t *testing.T) {
 				ConnectTimeout: 5,
 				ExecTimeout:    10,
 				ReadTimeout:    3600,
+				DNSTimeout:     5,
 				TLSSSLMode:     "REQUIRED",
 			},
 			expectErr: false,
@@ -176,8 +179,8 @@ func TestReplicationConfigValidation(t *testing.T) {
 		{
 			name: "invalid wsrep port",
 			config: ReplicationConfig{
-				MasterConnectRetry:  10,
-				MultiMasterWsrep:    true,
+				MasterConnectRetry:   10,
+				MultiMasterWsrep:     true,
 				MultiMasterWsrepPort: 100,
 			},
 			expectErr: true,
@@ -241,8 +244,8 @@ func TestFailoverConfigValidation(t *testing.T) {
 		errMsg    string
 	}{
 		{
-			name:      "valid config",
-			config:    FailoverConfig{
+			name: "valid config",
+			config: FailoverConfig{
 				Mode:  "auto",
 				Limit: 5,
 			},
@@ -301,6 +304,7 @@ func TestConfigV2Validation(t *testing.T) {
 					ConnectTimeout: 5,
 					ExecTimeout:    10,
 					ReadTimeout:    3600,
+					DNSTimeout:     5,
 				},
 				Replication: ReplicationConfig{
 					MasterConnectRetry: 10,
@@ -322,6 +326,7 @@ func TestConfigV2Validation(t *testing.T) {
 					ConnectTimeout: 5,
 					ExecTimeout:    10,
 					ReadTimeout:    3600,
+					DNSTimeout:     5,
 				},
 			},
 			expectErr: true,

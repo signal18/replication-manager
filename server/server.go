@@ -85,6 +85,7 @@ type ReplicationManager struct {
 	MemProfile                   string                             `json:"memprofile"`
 	CpuProfile                   string                             `json:"cpuprofile"`
 	Clusters                     map[string]*cluster.Cluster        `json:"-"`
+	resourceManager              *cluster.ResourceManager           `json:"-"` // repman-side DBU authority (Epic #1776); created once, injected into every cluster; survives ServerMonitor recreation
 	PeerManager                  *peer.PeerManager                  `json:"-"`
 	Partners                     []config.Partner                   `json:"partners"`
 	Partner                      config.Partner                     `json:"partner"`
@@ -112,7 +113,7 @@ type ReplicationManager struct {
 	// sbHeartbeatFailUntil (unix seconds) severs the peer heartbeat both ways
 	// to simulate this node being isolated from its peer — the server-level
 	// leg of the split-brain simulator (cluster_splitbrain_simulator.go). Runtime state only.
-	sbHeartbeatFailUntil            atomic.Int64                       `json:"-"`
+	sbHeartbeatFailUntil atomic.Int64 `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
@@ -156,62 +157,62 @@ type ReplicationManager struct {
 	// reference it — yet json.Marshal(repman) shipped it in /api/monitor at 312 KB (66%
 	// of a 463 KB payload), unredacted secrets and all. json:"-" keeps it internal (like
 	// VersionConfs). Per-cluster config still comes from /api/clusters/{name}.
-	Confs                       map[string]config.Config       `json:"-"`
+	Confs map[string]config.Config `json:"-"`
 	// Peer-network freshness, surfaced in the Clusters Peer view. Push/Pull are stamped
 	// by the ConfigManager worker (the real sync path) via SetSyncStampHook — NOT by any
 	// server-side helper, which would sit on a dead path.
-	LastConfigGitPush           time.Time                      `json:"lastConfigGitPush"` // last successful config push to the BO git
-	LastConfigGitPull           time.Time                      `json:"lastConfigGitPull"` // last successful config pull from the BO git
-	LastPeerLookup              time.Time                      `json:"lastPeerLookup"`    // last remote peer-cluster catalog refresh (peer.json pull)
-	VersionConfs                map[string]*config.ConfVersion `json:"-"`
-	grpcServer                  *grpc.Server                   `json:"-"`
-	grpcWrapped                 *grpcweb.WrappedGrpcServer     `json:"-"`
-	httpServer                  *http.Server                   `json:"-"`
-	apiServer                   *http.Server                   `json:"-"`
-	V3Up                        chan bool                      `json:"-"`
-	v3Config                    Repmanv3Config                 `json:"-"`
-	cloud18CheckSum             hash.Hash                      `json:"-"`
-	RegStatus                   RegistrationStatus             `json:"-"`
-	clog                        *clog.Logger                   `json:"-"`
-	cApiLog                     *clog.Logger                   `json:"-"`
-	Logrus                      *log.Logger                    `json:"-"`
-	ApiLogAdapter               *ApiLogAdapter                 `json:"-"`
-	lastReportedStatus          string                         `json:"-"`
-	lastReportedSplitBrain     bool                            `json:"-"`
-	IsSavingConfig              bool                           `json:"isSavingConfig"`
-	HasSavingConfigQueue        bool                           `json:"hasSavingConfigQueue"`
-	IsGitPull                   bool                           `json:"isGitPull"`
-	IsGitPush                   bool                           `json:"isGitPush"`
-	GitPushLock                 sync.Mutex                     `json:"-"`
+	LastConfigGitPush      time.Time                      `json:"lastConfigGitPush"` // last successful config push to the BO git
+	LastConfigGitPull      time.Time                      `json:"lastConfigGitPull"` // last successful config pull from the BO git
+	LastPeerLookup         time.Time                      `json:"lastPeerLookup"`    // last remote peer-cluster catalog refresh (peer.json pull)
+	VersionConfs           map[string]*config.ConfVersion `json:"-"`
+	grpcServer             *grpc.Server                   `json:"-"`
+	grpcWrapped            *grpcweb.WrappedGrpcServer     `json:"-"`
+	httpServer             *http.Server                   `json:"-"`
+	apiServer              *http.Server                   `json:"-"`
+	V3Up                   chan bool                      `json:"-"`
+	v3Config               Repmanv3Config                 `json:"-"`
+	cloud18CheckSum        hash.Hash                      `json:"-"`
+	RegStatus              RegistrationStatus             `json:"-"`
+	clog                   *clog.Logger                   `json:"-"`
+	cApiLog                *clog.Logger                   `json:"-"`
+	Logrus                 *log.Logger                    `json:"-"`
+	ApiLogAdapter          *ApiLogAdapter                 `json:"-"`
+	lastReportedStatus     string                         `json:"-"`
+	lastReportedSplitBrain bool                           `json:"-"`
+	IsSavingConfig         bool                           `json:"isSavingConfig"`
+	HasSavingConfigQueue   bool                           `json:"hasSavingConfigQueue"`
+	IsGitPull              bool                           `json:"isGitPull"`
+	IsGitPush              bool                           `json:"isGitPush"`
+	GitPushLock            sync.Mutex                     `json:"-"`
 	// runtimeClusterStartMu serializes the runtime cluster-start paths that
 	// mutate shared server state (repman.currentCluster, repman.Clusters) —
 	// currently AddCluster(), FetchDynamicClustersFromGit(), and the
 	// auto-discovery start path inside PullCloud18Configs(). See
 	// doc/implementation/server/DYNAMIC_CLUSTER_GIT_IMPORT_PLAN.md.
-	runtimeClusterStartMu       sync.Mutex                     `json:"-"`
-	gatewayMu                   sync.Map                       `json:"-"`
-	IsNeedGitPush               bool                           `json:"-"`
-	IsNeedConfigSave            bool                           `json:"-"` // event flag: Save() sets it, the config-sync gate consumes it and runs SaveCallBack
-	CanConnectVault             bool                           `json:"canConnectVault"`
-	IsExportPush                bool                           `json:"-"`
-	globalScheduler             *cron.Cron                     `json:"-"`
-	CheckSumConfig              map[string]hash.Hash           `json:"-"`
-	Mailer                      *mailer.Mailer                 `json:"-"`
-	IsHttpListenerReady         bool                           `json:"-"`
-	IsApiListenerReady          bool                           `json:"-"`
-	Terms                       []byte                         `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
-	TermsDT                     time.Time                      `json:"termsDT"`
-	ModTimes                    map[string]time.Time           `json:"-"`
-	SessionManager              *tty.SessionManager            `json:"-"`
-	ConfigManager               *manager.ConfigManager         `json:"-"`
-	MeetUserID                  string                         `json:"-"`
-	LoginUpgradeStore           *LoginUpgradeStore             `json:"-"`
-	LoginUpgradeInitOnce        sync.Once                      `json:"-"`
-	DiskStatManager             *misc.DiskStatManager          `json:"-"`
-	OpenSVCStats                atomic.Value                   `json:"-"`
-	inFetchOpenSVCStats         bool                           `json:"-"`
-	MessageChan                 chan sharedlog.Message         `json:"-"`
-	fileHook                    log.Hook
+	runtimeClusterStartMu sync.Mutex             `json:"-"`
+	gatewayMu             sync.Map               `json:"-"`
+	IsNeedGitPush         bool                   `json:"-"`
+	IsNeedConfigSave      bool                   `json:"-"` // event flag: Save() sets it, the config-sync gate consumes it and runs SaveCallBack
+	CanConnectVault       bool                   `json:"canConnectVault"`
+	IsExportPush          bool                   `json:"-"`
+	globalScheduler       *cron.Cron             `json:"-"`
+	CheckSumConfig        map[string]hash.Hash   `json:"-"`
+	Mailer                *mailer.Mailer         `json:"-"`
+	IsHttpListenerReady   bool                   `json:"-"`
+	IsApiListenerReady    bool                   `json:"-"`
+	Terms                 []byte                 `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
+	TermsDT               time.Time              `json:"termsDT"`
+	ModTimes              map[string]time.Time   `json:"-"`
+	SessionManager        *tty.SessionManager    `json:"-"`
+	ConfigManager         *manager.ConfigManager `json:"-"`
+	MeetUserID            string                 `json:"-"`
+	LoginUpgradeStore     *LoginUpgradeStore     `json:"-"`
+	LoginUpgradeInitOnce  sync.Once              `json:"-"`
+	DiskStatManager       *misc.DiskStatManager  `json:"-"`
+	OpenSVCStats          atomic.Value           `json:"-"`
+	inFetchOpenSVCStats   bool                   `json:"-"`
+	MessageChan           chan sharedlog.Message `json:"-"`
+	fileHook              log.Hook
 	// SecurityLogrus is a dedicated logger that writes security events to
 	// security.log (path derived from log-file by inserting "-security" before
 	// the extension). Nil when log-file is not configured.
@@ -302,12 +303,12 @@ type Heartbeat struct {
 	UUID      string    `json:"uuid"`
 	StartTime time.Time `json:"startTime"`
 	Secret    string    `json:"secret"`
-	Cluster string `json:"cluster"`
-	Master  string `json:"master"`
-	UID     int    `json:"id"`
-	Status  string `json:"status"`
-	Hosts   int    `json:"hosts"`
-	Failed  int    `json:"failed"`
+	Cluster   string    `json:"cluster"`
+	Master    string    `json:"master"`
+	UID       int       `json:"id"`
+	Status    string    `json:"status"`
+	Hosts     int       `json:"hosts"`
+	Failed    int       `json:"failed"`
 }
 
 var confs = make(map[string]config.Config)
@@ -392,6 +393,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitoringSecretVersioningAutoPrune, "monitoring-secret-versioning-auto-prune", false, "Automatically prune tracked secret versions during reconciliation")
 	flags.IntVar(&conf.MonitoringSecretVersioningKeepLast, "monitoring-secret-versioning-keep-last", 0, "Keep only the last N versions per secret key when auto-prune is enabled (0 = unlimited)")
 	flags.Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring interval in seconds")
+	flags.BoolVar(&conf.MonitoringResolveServerIP, "monitoring-resolve-server-ip", true, "Re-resolve a database server's hostname to an IP on every reconnect after an outage, keeping ServerMonitor.IP current for haproxy-mode=externalcheck/runtimeapi and other IP-based lookups (e.g. every pod restart on Kubernetes, where addresses are not stable like they typically are on OpenSVC/Docker). Only triggers on a down-to-up transition, not every tick. Disable to skip this DNS lookup entirely")
 
 	//not working so far
 	//flags.StringVar(&conf.TunnelHost, "monitoring-tunnel-host", "", "Bastion host to access to monitor topology via SSH tunnel host:22")
@@ -404,12 +406,14 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MonitorVariableChangeScript, "monitoring-variable-change-script", "", "Script called when a variable changes on a server")
 	flags.StringVar(&conf.MonitorVariableChangeIgnore, "monitoring-variable-change-ignore", "GTID_BINLOG_POS,GTID_BINLOG_STATE,GTID_CURRENT_POS,GTID_SLAVE_POS,GTID_PURGED,GTID_EXECUTED,TIMESTAMP,IN_TRANSACTION,ERROR_COUNT,WARNING_COUNT,LAST_INSERT_ID,IDENTITY,INSERT_ID,PSEUDO_THREAD_ID,RAND_SEED1,RAND_SEED2,CHARACTER_SET_DATABASE,COLLATION_DATABASE", "Comma-separated list of variable names to ignore in temporal change detection. Merged with auto-detected variables from GLOBAL_VALUE_ORIGIN on MariaDB 10.1+")
 	flags.BoolVar(&conf.MonitorPFS, "monitoring-performance-schema", true, "Monitor performance schema")
+	flags.IntVar(&conf.MonitorPFSSnapshotRetentionDays, "monitoring-pfs-snapshot-retention-days", 2, "Days of hourly PFS query snapshot files (log_pfs_queries_*.jsonl) to keep for the Schema Graph time-series; older files are always pruned (repman-side housekeeping)")
 	flags.BoolVar(&conf.MonitorPFSInstruments, "monitoring-performance-schema-instruments", true, "Monitor performance schema instruments")
 	flags.BoolVar(&conf.MonitorPFSMutex, "monitoring-performance-schema-mutex", true, "Monitor mutex metrics")
 	flags.BoolVar(&conf.MonitorPFSLatch, "monitoring-performance-schema-latch", true, "Monitor Latch metrics")
 	flags.BoolVar(&conf.MonitorPFSMemory, "monitoring-performance-schema-memory", true, "Monitor Performance Schema memory used")
 	flags.BoolVar(&conf.MonitorPFSQueries, "monitoring-performance-schema-queries", false, "Enable periodic PFS digest snapshot: flush and log all query templates with sample SQL at each period")
 	flags.IntVar(&conf.MonitorPFSQueriesPeriod, "monitoring-performance-schema-queries-period", 1, "Period in hours between PFS digest snapshot flushes (requires monitoring-performance-schema-queries=true)")
+	flags.IntVar(&conf.MonitorPFSQueriesInterval, "monitoring-performance-schema-queries-interval", 30, "Live PFS digest capture ticker interval in monitoring ticks, 0=disabled (throttles the GUI Top-Queries refresh instead of running it every tick)")
 	flags.BoolVar(&conf.MonitorPFSQueriesExplain, "monitoring-performance-schema-queries-explain", false, "Run EXPLAIN for each new query template captured during a PFS snapshot and persist the plan to disk")
 	flags.IntVar(&conf.MonitorPFSQueriesExplainDelay, "monitoring-performance-schema-queries-explain-delay", 200, "Milliseconds to sleep between consecutive EXPLAIN calls during a snapshot (0 = no delay)")
 	flags.IntVar(&conf.MonitorPFSQueriesExplainPurgePeriod, "monitoring-performance-schema-queries-explain-purge-period", 30, "Age in days after which a cached explain plan is evicted from memory and disk (0 = never purge)")
@@ -417,9 +421,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MonitorIgnoreErrors, "monitoring-ignore-errors", "", "Comma separated list of error or warning to ignore")
 	flags.BoolVar(&conf.MonitorSchemaChange, "monitoring-schema-change", true, "Monitor schema change")
 	flags.BoolVar(&conf.MonitorSchemaScheduler, "monitoring-schema-scheduler", true, "Cron format schedule for schema monitoring")
-	flags.StringVar(&conf.MonitorSchemaSchedulerCron, "monitoring-schema-scheduler-cron", "0 0 2 * * *", "Cron format schedule for schema monitoring, using 6 space-separated fields")
+	flags.StringVar(&conf.MonitorSchemaSchedulerCron, "monitoring-schema-scheduler-cron", "0 17 2 * * *", "Cron format schedule for schema monitoring, using 6 space-separated fields")
 	flags.BoolVar(&conf.MonitorChecksumScheduler, "monitoring-checksum-scheduler", false, "Cron format schedule for checksum all tables")
-	flags.StringVar(&conf.MonitorChecksumSchedulerCron, "monitoring-checksum-scheduler-cron", "0 0 2 * * 5", "Cron format schedule for checksum all tables, using 6 space-separated fields")
+	flags.StringVar(&conf.MonitorChecksumSchedulerCron, "monitoring-checksum-scheduler-cron", "0 42 3 * * 5", "Cron format schedule for checksum all tables, using 6 space-separated fields")
 	flags.BoolVar(&conf.MonitorSchemaColumns, "monitoring-schema-columns", true, "Monitor schema columns changes")
 	flags.BoolVar(&conf.MonitorSchemaIndexes, "monitoring-schema-indexes", true, "Monitor schema indexes changes")
 	flags.BoolVar(&conf.MonitorSchemaOnReplicas, "monitoring-schema-on-replicas", true, "Also monitor schema changes on replicas")
@@ -539,9 +543,11 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.Timeout, "db-servers-connect-timeout", 5, "Database connection timeout in seconds")
 	flags.IntVar(&conf.ExecTimeout, "db-servers-exec-timeout", 10, "Database execution timeout in seconds")
 	flags.IntVar(&conf.ReadTimeout, "db-servers-read-timeout", 3600, "Database read timeout in seconds")
+	flags.IntVar(&conf.DNSTimeout, "db-servers-dns-timeout", 5, "DNS resolution timeout in seconds when resolving database server hostnames")
 	flags.StringVar(&conf.PrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
 	flags.StringVar(&conf.IgnoreSrv, "db-servers-ignored-hosts", "", "Database list of hosts to ignore in election")
 	flags.StringVar(&conf.IgnoreSrvRO, "db-servers-ignored-readonly", "", "Database list of hosts not changing read only status")
+	flags.StringVar(&conf.MaintenanceSrv, "db-servers-maintenance-hosts", "", "Database list of hosts in maintenance mode, excluded from proxy routing and failover election, restored on restart/reload")
 	flags.StringVar(&conf.BackupServers, "db-servers-backup-hosts", "", "Database list of hosts to backup when set can backup a slave")
 	flags.StringVar(&conf.DbServersChangeStateScript, "db-servers-state-change-script", "", "Database state change script")
 	flags.StringVar(&conf.DbServersBindAddress, "db-servers-bind-address", "", "Database bind address to use for jobs like SST, backup")
@@ -843,6 +849,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.IntVar(&conf.GraphiteCarbonPprofPort, "graphite-carbon-pprof-port", 7007, "Graphite Carbon Pickle port")
 		flags.StringVar(&conf.GraphiteCarbonHost, "graphite-carbon-host", "127.0.0.1", "Graphite monitoring host")
 		flags.BoolVar(&conf.GraphiteMetrics, "graphite-metrics", true, "Enable Graphite monitoring")
+		flags.IntVar(&conf.GraphiteMetricsQueueLimit, "graphite-metrics-queue-limit", 100000, "Max metrics buffered in memory awaiting flush to the carbon sink. Oldest are dropped once exceeded (protects against unbounded growth when the sink is slow/unreachable). <= 0 falls back to this default, never unbounded")
 		flags.BoolVar(&conf.GraphiteEmbedded, "graphite-embedded", true, "Enable Internal Graphite Carbon Server")
 		flags.BoolVar(&conf.GraphiteWhitelist, "graphite-whitelist", true, "Enable Whitelist")
 		flags.BoolVar(&conf.GraphiteBlacklist, "graphite-blacklist", false, "Enable Blacklist")
@@ -930,6 +937,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupResticRepository, "backup-restic-repository", "s3:https://s3.signal18.io/backups", "Restic backend repository")
 	flags.StringVar(&conf.BackupResticPassword, "backup-restic-password", "secret", "Restic backend password")
 	flags.BoolVar(&conf.BackupResticAws, "backup-restic-aws", false, "Restic will archive to s3 or to datadir/backups/archive")
+	flags.IntVar(&conf.BackupWriteStallTimeout, "backup-write-stall-timeout", 300, "Seconds with no bytes written to the backup output before a logical backup is aborted (dead/hung backup volume). 0 disables. This is a stall timeout, not a cap on total backup time.")
 	flags.IntVar(&conf.BackupResticTimeout, "backup-restic-timeout", 7200, "Restic operation timeout in seconds")
 	flags.IntVar(&conf.BackupResticDumpTimeout, "backup-restic-dump-timeout", 0, "Timeout in seconds for restic dump operations (0 uses backup-restic-timeout)")
 	flags.IntVar(&conf.BackupResticDirMode, "backup-restic-dir-mode", 700, "Restic directory permissions (octal, e.g. 700)")
@@ -1052,25 +1060,57 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvIopsLatency, "prov-db-disk-iops-latency", "0.002", "IO latency in s")
 	flags.StringVar(&conf.ProvCores, "prov-db-cpu-cores", "1", "Number of cpu cores for the micro service VM")
 	flags.BoolVar(&conf.ProvDBConfig, "prov-db-config", WithProvisioning == "ON", "Enable configurator config tracking and deployment to database servers. When false, dbjobs skips config refresh and no config is pushed to databases. Default: true for PRO, false for OSC.")
+	flags.BoolVar(&conf.ProvOrchestratorDeploymentUpgradeOnStart, "prov-orchestrator-deployment-upgrade-on-start", true, "On each node (re)start during a rolling restart/upgrade, re-render and push the full deployment (service config: image, resources/cgroup cap, run_args, env) to the orchestrator BEFORE start, so the recreated container/pod comes up on the current config instead of the last-provisioned one. Covers the resource cap; also lets an unpinned image tag roll forward on restart (intended). On by default; set false to keep rolling restart deployment-neutral.")
 	flags.BoolVar(&conf.ProvDBApplyDynamicConfig, "prov-db-apply-dynamic-config", false, "Dynamic database config change")
+	flags.BoolVar(&conf.ProvDBDynamicResource, "prov-db-dynamic-resource", false, "Apply system-resource resizes (prov-db-memory/cpu/io) live via SET GLOBAL instead of a restart, for the dynamically-settable variables (buffer pool, max_session_mem_used, io capacity, ...); off by default")
+	flags.StringVar(&conf.ProvDBResourceAlign, "prov-db-resource-align", "plan", "Align the DB container memory CAP (cgroup --memory) to the DBU tier, ABOVE the MySQL config memory (prov-db-memory drives my.cnf) so mariadbd has headroom and is not OOM-killed. 'plan' (default): cap from prov-service-plan-dbu; 'up': cap from the max-axis DBU (coherence/debug); 'off': cap = prov-db-memory (legacy). prov-db-memory itself is never changed.")
+	flags.StringVar(&conf.ProvDBDynamicResizePolicy, "prov-db-dynamic-resize-policy", "scale-speed", "WHEN a live memory resize (prov-db-dynamic-resource) is applied: 'scale-speed' (default) applies as saturation dictates, throttled by the prov-db-scale-*-speed timeframe; 'daily-time' defers the live memory resize to the fixed daily clock time prov-db-dynamic-resize-daily-time, so any InnoDB buffer-pool-resize stall is contained to an off-peak hour. CPU/IO tuning is unaffected (no stall).")
+	flags.StringVar(&conf.ProvDBDynamicResizeDailyTime, "prov-db-dynamic-resize-daily-time", "03:00", "Daily clock time HH:MM (24h, server-local) at which the live memory resize is applied when prov-db-dynamic-resize-policy=daily-time.")
+	flags.IntVar(&conf.ProvDBOvercommitPct, "prov-db-overcommit-pct", 50, "COMMERCIAL scalability-up barrier (per cluster): the max percent the dynamic resource change may AUTO-grow the client's plan before a manual plan raise is required -- the client accepts auto-scaling up to plan x (1 + pct/100) (e.g. 50 = up to x1.5). Not a technical cap formula; enforced by ResourceManager.CanGrowBeyondPlan. Default 50.")
+	flags.IntVar(&conf.ProvDBUndercommitPct, "prov-db-undercommit-pct", 50, "COMMERCIAL scalability-down floor (per cluster), the pendant of prov-db-overcommit-pct: the max percent the dynamic resource change may AUTO-shrink the client's resources UNDER the plan -- down to floor(plan x (1 - pct/100)) DBU per node, never under 1 DBU (e.g. 50 = down to x0.5). Not a technical formula; enforced by ResourceManager.UndercommitFloorDBU. Default 50.")
+	flags.IntVar(&conf.ProvDBCapSafetyPct, "prov-db-cap-safety-pct", 15, "HIGH-water margin (per cluster, per axis): a server is OVER a reference when it consumes at least (1 - pct/100) of it. Drives raise-resources (consumed vs per-server CONFIG) and cap-up (consumed vs PLAN). Default 15 (over at 85%).")
+	flags.IntVar(&conf.ProvDBCapShrinkPct, "prov-db-cap-shrink-pct", 50, "LOW-water margin (per cluster, per axis): a server is UNDER a reference when it consumes at most (pct/100) of it. Drives shrink-resources (consumed vs per-server CONFIG) and cap-down (consumed vs PLAN). The dead-band between shrink-pct and (100 - safety-pct) is status quo (anti-flap). Default 50 (under at 50%).")
+	flags.StringVar(&conf.ScaleUpConfigInPlanSpeed, "prov-db-scale-up-config-in-plan-speed", "1m", "Client-settable scale SPEED: how long a server's config saturation must persist before repman scales its resources UP within the plan. A duration; default 1m is the current (fastest) behaviour.")
+	flags.StringVar(&conf.ScaleDownConfigInPlanSpeed, "prov-db-scale-down-config-in-plan-speed", "5m", "Client-settable scale SPEED: how long a server's config under-use must persist before repman scales its resources DOWN within the plan. A duration; default 5m (slower than up, to avoid thrashing).")
+	flags.StringVar(&conf.ScaleUpPlanSpeed, "prov-db-scale-up-plan-speed", "30m", "Client-settable scale SPEED: how long consumption must persist against the PLAN before repman raises the plan (cap up). Commercial, so slower than in-plan; default 30m.")
+	flags.StringVar(&conf.ScaleDownPlanSpeed, "prov-db-scale-down-plan-speed", "1h", "Client-settable scale SPEED: how long under-use must persist against the PLAN before repman lowers the plan (cap down). Most conservative (don't yo-yo the billed plan); default 1h.")
+	flags.BoolVar(&conf.MonitoringSystemResources, "monitoring-system-resources", true, "Enable the system-level resource sensor: bind each service's pg cgroup read-only into the jobs/sidecar container (/svc-cgroup) so the sensor measures the whole-service consumed system resources (mem/cpu/io) and repman derives the units per domain (DBU for databases, APU for apps, ...); on by default (disable if a bad bind blocks container start on an unexpected cgroup layout)")
+	flags.StringVar(&conf.ProvDBDynamicResourceCanChangeScript, "prov-db-dynamic-resource-can-change-script", "", "Client-overridable feasibility check run BEFORE a live resource resize; prints its verdict on stdout: 'yes' (resize possible in place), 'no' (not possible, keep current size), or 'migration' (not in place, needs relocating the instance to a host with capacity); resource values and direction via env; empty means always yes")
+	flags.StringVar(&conf.ProvDBDynamicResourceChangeScript, "prov-db-dynamic-resource-change-script", "", "Client-overridable hook called to resize the four provisioned resources (mem/cpu/disk/io) of a running server live (cgroup/disk/io), for orchestrators without a native resize API (on-premise, localhost, slapos); resource values and direction are passed via env; empty disables it")
+	flags.StringVar(&conf.ProvPlanIncreaseScript, "prov-plan-increase-script", "", "Client-overridable hook fired PER CLUSTER when the client RAISES a unit's plan/contract (ChangePlanUnits, DBU or APU). Non-zero exit REFUSES the increase; empty = always allowed. Args: unit from to cluster; also via env REPMAN_PLAN_UNIT/FROM/TO.")
+	flags.StringVar(&conf.ProvDBResourceRaisedOverPlanScript, "prov-db-resource-raised-over-plan-script", "", "Client-overridable hook fired PER SERVICE when the dynamic resize raises a server's resource PAST its plan (the borrow: cgroup cap = plan + borrow). Non-zero exit VETOES the over-plan grow; empty = allowed. Args: host port cluster; plan/target/borrow DBU-per-node via env REPMAN_PLAN_DBU/TARGET_DBU/BORROW_DBU.")
 	flags.BoolVar(&conf.ProvDBForceWriteConfig, "prov-db-force-write-config", false, "Force write to config files without Signal18 header on provision")
 	flags.BoolVar(&conf.ProvDBConfigPreserve, "prov-db-config-preserve", true, "Preserve values in config files. If set to false, the 99_preserved.cnf will not be copied to the config.tar.gz")
 	flags.StringVar(&conf.ProvDBConfigPreserveVars, "prov-db-config-preserve-vars", "", "List of preserved options separated by semicolon (opt1;opt2=val2;opt3). Allow hard code by adding value e.g. innodb_data_home_dir=/var/lib/mysql")
 	flags.StringVar(&conf.ProvTags, "prov-db-tags", "semisync,row,innodb,noquerycache,threadpool,slow,pfs,docker,linux,readonly,diskmonitor,sqlerror,compressbinlog", "playbook configuration tags")
 	flags.StringVar(&conf.ProvDomain, "prov-db-domain", "0", "Config domain id for the cluster")
 	flags.StringVar(&conf.ProvMem, "prov-db-memory", "4G", "Database container memory, value with unit e.g. 256M, 1G")
-	flags.StringVar(&conf.ProvMemSharedPct, "prov-db-memory-shared-pct", "threads:16,innodb:55,myisam:10,aria:10,rocksdb:1,tokudb:0,s3:1,archive:1,querycache:0,tidesdb:1", "% memory shared per buffer")
+	flags.StringVar(&conf.ProvMemSharedPct, "prov-db-memory-shared-pct", "threads:10,innodb:45,myisam:4,aria:8,rocksdb:1,tokudb:0,s3:1,archive:1,querycache:0,tidesdb:1,pfs:4,fscache:20", "% memory shared per buffer")
 	flags.StringVar(&conf.ProvMemThreadedPct, "prov-db-memory-threaded-pct", "tmp:70,join:20,sort:10", "% memory allocted per threads")
 	flags.StringVar(&conf.ProvDisk, "prov-db-disk-size", "20G", "Database container disk size, value with unit e.g. 20G, 100G")
 	flags.IntVar(&conf.ProvExpireLogDays, "prov-db-expire-log-days", 5, "Keep binlogs that nunmber of days")
+	flags.IntVar(&conf.ProvReplicationParallelThreads, "prov-db-replication-parallel-threads", 32, "slave_parallel_threads written by the configurator (template env SVC_CONF_ENV_SLAVE_PARALLEL_THREADS). Parallel apply workers run on the thread pool: their count is the concurrency needed to absorb network and commit latency, NOT the number of cores. Default 32.")
+	flags.IntVar(&conf.ProvReplicationDomainParallelThreads, "prov-db-replication-domain-parallel-threads", 0, "slave_domain_parallel_threads written by the configurator (template env SVC_CONF_ENV_SLAVE_DOMAIN_PARALLEL_THREADS): max workers one replication domain may take from the pool. 0 (default, MariaDB's default) = no per-domain cap -- the right value for a single-master cluster; set it only on multi-source/multi-domain topologies (pool / number of domains).")
 	flags.IntVar(&conf.ProvMaxConnections, "prov-db-max-connections", 1000, "Max database connections")
 	flags.StringVar(&conf.ProvProxTags, "prov-proxy-tags", "masterslave,docker,linux,noreadwritesplit", "playbook configuration tags wsrep,multimaster,masterslave")
 	flags.StringVar(&conf.ProvProxDisk, "prov-proxy-disk-size", "20G", "Proxy container disk size, value with unit e.g. 20G, 100G")
 	flags.StringVar(&conf.ProvProxCores, "prov-proxy-cpu-cores", "1", "Cpu cores ")
 	flags.StringVar(&conf.ProvProxMem, "prov-proxy-memory", "1G", "Proxy container memory, value with unit e.g. 256M, 1G")
+	flags.IntVar(&conf.ProvProxyApu, "prov-proxy-apu", 2, "Per-proxy APU reservation (technical resource contract; 1 APU = 1 core / 1GB / 10GB, no IOPS). The proxy contribution to the cluster APU contract is prov-proxy-apu x number of proxies; apps add their own APU reservation from their own config. Default 2 (2 cores / 2GB / 20GB per proxy).")
 	flags.StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "https://docs.google.com/spreadsheets/d/e/2PACX-1vQClXknRapJZ4bRSId_aa5zUrbFDZmmc6GiV3n7-tPyQJispqqnSJj6lMaJxoJv5pOC9Ktj8ywWdGX6/pub?gid=0&single=true&output=csv", "URL to csv service plan list")
 	//	flags.StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "http://gsx2json.com/api?id=130326CF_SPaz-flQzCRPE-w7FjzqU1NqbsM7MpIQ_oU&sheet=1&columns=false", "URL to json service plan list")
 	flags.StringVar(&conf.ProvServicePlan, "prov-service-plan", "", "Cluster plan")
+	flags.IntVar(&conf.ProvServicePlanDbu, "prov-service-plan-dbu", 0, "Per-cluster DBU service plan = the SUM of the deployment plans (Σ prov-db-dbu over the DB nodes). Materialized/recomputed each tick -- the real cluster contract number readers use (GUI/API/GWARN016). The client moves the per-node prov-db-dbu, not this, so it never re-locks in /etc.")
+	flags.IntVar(&conf.ProvDbDbu, "prov-db-dbu", 2, "Per-node DBU reservation (technical resource contract; 1 DBU = 1 core / 4GB / 40GB / 1000 IOPS). All DB nodes are identical, so the cluster DBU contract = prov-db-dbu x number of nodes. Client-controlled (dynamic layer), the DBU configurator moves it. Default 2 (2 cores / 8GB / 80GB / 2000 IOPS per node).")
+	flags.IntVar(&conf.ProvServicePlanApu, "prov-service-plan-apu", 4, "Per-cluster APU service plan = the SUM of the deployment plans (proxies at prov-proxy-apu + apps at their own config). Materialized/recomputed each tick -- the real cluster contract number readers use (GUI/API/GWARN016). The client moves the per-deployment reservations, not this. 1 APU = 1 core / 1GB / 10GB, no IOPS.")
+	flags.IntVar(&conf.ProvServicePlanBpu, "prov-service-plan-bpu", 1, "Service plan in Public-network/Bandwidth Units (BPU reservation contract; public network capacity, maps to cloud18-infra-public-bandwidth). Default 1.")
+	flags.IntVar(&conf.ProvServicePlanBku, "prov-service-plan-bku", 1, "Service plan in Backup Units (BKU reservation contract; storage/backup profile, disk-dominant). Default 1.")
+	flags.Float64Var(&conf.ResourceManagerInfraQuotaPct, "resource-manager-infra-quota-pct", 90, "Share of the physical metal (0-100) repman's ResourceManager may allocate, protecting non-repman workloads on the agent. Default 90.")
+	flags.Float64Var(&conf.ResourceManagerInfraCpuCores, "resource-manager-infra-cpu-cores", 0, "ResourceManager infra capacity override: total CPU cores. 0 = unset (use the monitored value).")
+	flags.Float64Var(&conf.ResourceManagerInfraMemoryMB, "resource-manager-infra-memory-mb", 0, "ResourceManager infra capacity override: total memory in MB. 0 = unset (use the monitored value).")
+	flags.Float64Var(&conf.ResourceManagerInfraDiskGB, "resource-manager-infra-disk-gb", 0, "ResourceManager infra capacity override: total disk in GB. 0 = unset (use the monitored value).")
+	flags.Float64Var(&conf.ResourceManagerInfraIops, "resource-manager-infra-iops", 0, "ResourceManager infra capacity override: total IOPS. 0 = unset (use the monitored/calibrated value).")
+	flags.Float64Var(&conf.ResourceManagerInfraNetworkMbps, "resource-manager-infra-network-mbps", 0, "ResourceManager infra capacity override: total public network bandwidth in Mbps (the BPU axis). 0 = unset (use the monitored value).")
 	flags.BoolVar(&conf.ProvSerialized, "prov-serialized", false, "Disable concurrent provisionning")
 	flags.StringVar(&conf.ProvDBClientBasedir, "prov-db-client-basedir", "/usr/bin", "Path to database client binary")
 	flags.StringVar(&conf.ProvDBBinaryBasedir, "prov-db-binary-basedir", "/usr/local/mysql/bin", "Path to mysqld binary")
@@ -1194,6 +1234,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18MarketplaceInfraCertifications, "cloud18-marketplace-infra-certifications", "", "Global infrastructure certifications, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
 	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
 	flags.StringVar(&conf.Cloud18SubscriptionPlan, "cloud18-subscription-plan", "free", "Cloud18 subscription plan code (validated by CRM)")
+	flags.StringVar(&conf.Cloud18LicenseFile, "cloud18-license-file", "", "Path to a signed offline license (license.json; detached signature license.sig alongside). When set, the instance sources its Cloud18 plan from this file instead of the CRM — for air-gapped/PCI instances. Verified with plugin-signing-public-key. Empty = normal online CRM path")
 	flags.StringVar(&conf.Cloud18CrmApiUrl, "cloud18-crm-api-url", "https://api.crm.ovh-fr-2.signal18.cloud18.io", "Cloud18 CRM API base URL used for cluster registration")
 	flags.IntVar(&conf.Cloud18ApplicationCredits, "cloud18-application-credits", 2, "Cloud18 application credits(1 core 4G Ram 8G Disk)")
 	flags.IntVar(&conf.Cloud18ApplicationCreditsPrice, "cloud18-application-credits-price", 20, "Cloud18 application credits price in Eur")
@@ -1221,6 +1262,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvDBDockerTmpfsSize, "prov-db-docker-tmpfs-size", "256", "Docker tmpfs size in megabytes. If 0 or not set, no tmpfs will be used. Please note that tmpfs is a memory filesystem and will use memory from the host.")
 		flags.StringVar(&conf.ProvDBDockerRunArgs, "prov-db-docker-run-args", "--ulimit nofile=262144:262144 --sysctl net.ipv4.tcp_tw_reuse=1 --sysctl net.core.somaxconn=1024  --sysctl net.ipv4.tcp_fin_timeout=10", "Additional docker run arguments for db")
 		flags.BoolVar(&conf.ProvDBDockerRunArgsLimit, "prov-db-docker-run-args-limit", true, "Limit Cores and Memory according to configurator")
+		flags.StringVar(&conf.ProvDBDockerJemallocPreload, "prov-db-docker-jemalloc-preload", "libjemalloc.so.2", "Library soname or path LD_PRELOADed in the database container for allocator tuning, with MALLOC_ARENA_MAX derived from prov-cores as the glibc fallback when the image lacks it; empty disables both exports")
 		flags.StringVar(&conf.ProvDBJobsDockerRunArgs, "prov-db-jobs-docker-run-args", "--ulimit nofile=262144:262144", "Additional docker run arguments for db jobs")
 		flags.StringVar(&conf.ProvProxDockerRunArgs, "prov-proxy-docker-run-args", "--ulimit nofile=262144:262144 --sysctl net.ipv4.tcp_tw_reuse=1 --sysctl net.core.somaxconn=1024  --sysctl net.ipv4.tcp_fin_timeout=10", "Additional docker run arguments for proxy")
 		flags.StringVar(&conf.ProvType, "prov-db-service-type ", "package", "[package|docker|podman|oci|kvm|zone|lxc]")
@@ -1256,7 +1298,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvProxRouteMask, "prov-proxy-route-mask", "255.255.255.0", "Route Netmask to databases proxies")
 		flags.StringVar(&conf.ProvProxRoutePolicy, "prov-proxy-route-policy", "failover", "Route policy failover or balance")
 		flags.StringVar(&conf.ProvProxProxysqlImg, "prov-proxy-docker-proxysql-img", "signal18/proxysql:1.4", "Docker image for proxysql")
-		flags.StringVar(&conf.ProvProxMaxscaleImg, "prov-proxy-docker-maxscale-img", "mariadb/maxscale:2.2", "Docker image for maxscale proxy")
+		flags.StringVar(&conf.ProvProxMaxscaleImg, "prov-proxy-docker-maxscale-img", "mariadb/maxscale:2.4.10-1", "Docker image for maxscale proxy (2.4.10-1 is the oldest tag still published on Docker Hub -- 2.2/2.3 have been removed)")
 		flags.StringVar(&conf.ProvProxHaproxyImg, "prov-proxy-docker-haproxy-img", "haproxytech/haproxy-alpine:2.4", "Docker image for haproxy")
 		flags.StringVar(&conf.ProvProxMysqlRouterImg, "prov-proxy-docker-mysqlrouter-img", "pulsepointinc/mysql-router", "Docker image for MySQLRouter")
 		flags.StringVar(&conf.ProvProxShardingImg, "prov-proxy-docker-shardproxy-img", "signal18/mariadb104-spider", "Docker image for sharding proxy")
@@ -1277,11 +1319,15 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvSSLKey, "prov-tls-server-key", "", "server TLS key")
 		flags.BoolVar(&conf.ProvNetCNI, "prov-net-cni", false, "Networking use CNI")
 		flags.StringVar(&conf.ProvNetCNICluster, "prov-net-cni-cluster", "default", "Name of of the OpenSVC network")
+		flags.BoolVar(&conf.ProvKubeImageForcePull, "prov-kube-image-force-pull", false, "Kubernetes only: force ImagePullPolicy=Always on the database container instead of the default IfNotPresent")
+		flags.StringVar(&conf.ProvKubeStorageClass, "prov-kube-storage-class", "", "Kubernetes only: StorageClass for the database PVC (empty uses the cluster's default StorageClass). Only applies to a server's PVC that doesn't exist yet -- an existing PVC keeps its original StorageClass across reprovisions, since StorageClassName is immutable and the PVC is never auto-deleted")
+		flags.StringVar(&conf.ProvKubeProxyStorageClass, "prov-kube-proxy-storage-class", "", "Kubernetes only: StorageClass for the proxy PVC (empty uses the cluster's default StorageClass). Only applies to a proxy's PVC that doesn't exist yet -- an existing PVC keeps its original StorageClass across reprovisions, since StorageClassName is immutable and the PVC is never auto-deleted")
 		flags.StringVar(&conf.ProvNetDockerRunArgs, "prov-net-docker-run-args", "--sysctl net.ipv4.tcp_tw_reuse=1 --sysctl net.core.somaxconn=1024  --sysctl net.ipv4.tcp_fin_timeout=10", "Additional docker run arguments for netns container")
 		flags.BoolVar(&conf.ProvDockerDaemonPrivate, "prov-docker-daemon-private", true, "Use global or private registry per service")
 		flags.StringVar(&conf.ProvDBCompliance, "prov-db-compliance", "", "Path of compliance file for DB configuration")
 		flags.StringVar(&conf.ProvProxyCompliance, "prov-proxy-compliance", "", "Path of compliance file for Proxy configuration")
 		flags.BoolVar(&conf.ProvAutoUpdateCompliance, "prov-auto-update-compliance", true, "Auto-update compliance best practices from back office or binary upgrades")
+		flags.BoolVar(&conf.ProvDBComplianceAutoAgree, "prov-db-compliance-auto-agree", false, "Auto-agree value-differs config deltas to the compliance value on the DB (DB-side counterpart of prov-auto-update-compliance); off by default, value-changes only")
 		flags.BoolVar(&conf.MeasurementAutoClampLimit, "measurement-auto-clamp-limit", false, "Auto clamp to allowed value for measurement if exceed the min-max boundaries")
 		flags.BoolVar(&conf.ProvObjectAllowOverwrite, "prov-object-allow-overwrite", true, "Allow overwriting config/secret keys when objects already exist")
 
@@ -1573,6 +1619,26 @@ func (repman *ReplicationManager) MergeOnStart(conf config.Config) error {
 	return nil
 }
 
+// monitoringSaveConfigEnabled resolves whether startup loads the datadir saved
+// overlays (default.toml + <cluster>/<cluster>.toml, i.e. the [saved-*]
+// sections). It must default to flagDefault (the monitoring-save-config pflag
+// default, true) when the key is ABSENT from the config file.
+//
+// The bug this fixes: reading a bare firstRead.GetBool("default.monitoring-save-config")
+// returns false when the key is not present in the file, so the datadir
+// overlays were skipped at startup — even though the SAVE path is gated on
+// conf.ConfRewrite (the same flag, default true) and had been writing them. A
+// user who never sets monitoring-save-config in their config therefore had
+// their per-cluster changes persisted to disk/git but silently reverted on
+// every restart (e.g. custom backup-mysqldump-options). Aligning the load gate
+// with the save gate removes the asymmetry.
+func monitoringSaveConfigEnabled(firstRead *viper.Viper, flagDefault bool) bool {
+	if firstRead.IsSet("default.monitoring-save-config") {
+		return firstRead.GetBool("default.monitoring-save-config")
+	}
+	return flagDefault
+}
+
 func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) {
 	if repman.Conf == nil {
 		repman.Conf = new(config.Config)
@@ -1791,8 +1857,12 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		tmp_read.Unmarshal(&conf)
 	}
 
-	// Proceed dynamic config
-	monitoringSaveConfig := firstRead.GetBool("default.monitoring-save-config")
+	// Proceed dynamic config. Default to the flag value (conf.ConfRewrite,
+	// default true) when monitoring-save-config is absent from the file — a bare
+	// GetBool returned false when absent and skipped the datadir saved overlays
+	// at startup, silently reverting persisted per-cluster settings on restart
+	// even though the save path (conf.ConfRewrite) had written them.
+	monitoringSaveConfig := monitoringSaveConfigEnabled(firstRead, conf.ConfRewrite)
 	envDefault := envViperForScope("DEFAULT")
 	if envDefault.IsSet("monitoring-save-config") {
 		monitoringSaveConfig = envDefault.GetBool("monitoring-save-config")
@@ -2006,13 +2076,21 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	repman.PeerManager.SetInterval(repman.Conf.Cloud18HealthRefreshInterval)
 
 	if init_git {
-		// Sync the CRM's current plan for this URI so a node booting with cloud18
-		// already set (e.g. a copied config, or a second node registering against
-		// an already-subscribed URI) doesn't stay stuck on a stale local plan.
-		// Must run after *repman.Conf = conf above, since it persists directly onto
-		// repman.Conf — any earlier and this assignment would clobber it back to
-		// the stale pre-sync value. Best-effort: see syncSubscriptionPlanFromCRM.
-		repman.syncSubscriptionPlanFromCRM()
+		if repman.Conf.Cloud18LicenseFile != "" {
+			// Air-gapped / PCI: no internet to reach the CRM. Source the plan from
+			// the signed offline license instead (verified against the embedded
+			// plugin-signing public key, identity-bound to this instance). Soft:
+			// on any failure the plan stays at its default (free) with a WARN.
+			repman.loadOfflineLicensePlan()
+		} else {
+			// Sync the CRM's current plan for this URI so a node booting with cloud18
+			// already set (e.g. a copied config, or a second node registering against
+			// an already-subscribed URI) doesn't stay stuck on a stale local plan.
+			// Must run after *repman.Conf = conf above, since it persists directly onto
+			// repman.Conf — any earlier and this assignment would clobber it back to
+			// the stale pre-sync value. Best-effort: see syncSubscriptionPlanFromCRM.
+			repman.syncSubscriptionPlanFromCRM()
+		}
 	}
 }
 
@@ -2084,15 +2162,10 @@ func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, Immua
 
 		//clusterconf.PrintConf()
 
-		//save the immuable map for the cluster
-		//fmt.Printf("Immuatable map : %s\n", ImmuableMap)
-		repman.ImmuableFlagMaps[cluster] = clustImmuableMap
-
 		//store default cluster config in immutable config (all parameter set in default and cluster section, default value and command line)
 		confs.ConfImmuable = clusterconf
 
 		//fmt.Printf("%+v\n", cf2.AllSettings())
-		repman.DynamicFlagMaps[cluster] = clustDynamicMap
 		//if dynamic config, load modified parameter from the saved config.
 		// Deliberately NOT gated on cf2 (the static cluster section):
 		// dynamically-created clusters exist only through their
@@ -2134,13 +2207,26 @@ func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, Immua
 			confs.ConfDynamic = clusterconf
 
 		}
-		repman.DynamicFlagMaps[cluster] = clustDynamicMap
 
 		confs.ConfInit = clusterconf
 		//fmt.Printf("init conf : ")
 		//clusterconf.PrintConf()
 
+		// Publish all three maps together, once, under repman's lock: this
+		// function is reachable concurrently from live cluster reload
+		// (ReconstructLiveClusterConfig) as well as startup/import paths, and
+		// clustImmuableMap/clustDynamicMap are plain maps -- an unguarded
+		// write here races with any concurrent reader of
+		// ImmuableFlagMaps/DynamicFlagMaps/VersionConfs (e.g. a different
+		// cluster's reload, or ReloadClusterConfig reading this one).
+		// Publishing once, after all mutation above is done, also avoids
+		// exposing a partially-populated clustDynamicMap the way the old
+		// early assignment (before the saved-config loop above) did.
+		repman.Lock()
+		repman.ImmuableFlagMaps[cluster] = clustImmuableMap
+		repman.DynamicFlagMaps[cluster] = clustDynamicMap
 		repman.VersionConfs[cluster] = confs
+		repman.Unlock()
 	}
 	return clusterconf
 }
@@ -2304,6 +2390,30 @@ func (repman *ReplicationManager) LimitPrivileges() {
 
 			// Compatibility with old version, for files with root level permission in workingdir
 			misc.ChownR(repman.Conf.WorkingDir, uidInt, gidInt)
+
+			// repman.Conf.LogFile (and its derived security/workload/schema/
+			// maintenance siblings) live outside WorkingDir by default, so the
+			// chown above never reaches them. Their write fds, opened while
+			// still root, keep working across the Setuid/Setgid below — but any
+			// fresh open (e.g. the log-history API re-reading them) re-checks
+			// permissions under the target user and fails with "permission
+			// denied" unless ownership is also transferred here.
+			if repman.Conf.LogFile != "" {
+				// All five siblings live in the same directory, so this reads
+				// it once and matches all five against that one listing —
+				// see ChownHistoryFilesBatch — instead of each of the five
+				// ChownHistoryFiles calls this replaced independently
+				// re-reading that same directory.
+				if err := s18log.ChownHistoryFilesBatch([]string{
+					repman.Conf.LogFile,
+					securityLogPath(repman.Conf.LogFile),
+					workloadLogPath(repman.Conf.LogFile),
+					schemaLogPath(repman.Conf.LogFile),
+					maintenanceLogPath(repman.Conf.LogFile),
+				}, uidInt, gidInt); err != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not chown log history files to %s: %v", targetUser.Username, err)
+				}
+			}
 
 			// Set GID (Group ID)
 			err = syscall.Setgid(gidInt)
@@ -2500,7 +2610,18 @@ func (repman *ReplicationManager) Run() error {
 			MaxAge:     repman.Conf.LogRotateMaxAge,
 			Level:      config.ToLogrusLevel(repman.Conf.LogFileLevel),
 			Formatter: &log.TextFormatter{
-				DisableColors:   true,
+				DisableColors: true,
+				// Same zoneless format as every other log file this process
+				// writes (security/workload/schema/maintenance/graphite,
+				// below) and as origin/develop always used here. This file is
+				// also the only one ReadHistory (utils/s18log/history.go)
+				// parses back for the GUI's log-history Since/Until
+				// filtering — see historyTimestampLayout there. A zoneless
+				// layout parses as a fictional-but-consistent UTC on both
+				// this side and the picker's query bound (see
+				// datetimeLocalToRFC3339 in Logs/index.jsx), so relative
+				// ordering/filtering is correct without needing to know or
+				// carry the server's real offset.
 				TimestampFormat: "2006-01-02 15:04:05",
 				FullTimestamp:   true,
 			},
@@ -2637,10 +2758,10 @@ func (repman *ReplicationManager) Run() error {
 	repman.ReloadTerms()
 	repman.InitSharedAppTemplates()
 	repman.MonitorType = config.GetMonitorType()
-	repman.ServiceRepos, err = repman.Conf.GetDockerRepos(repman.Conf.ShareDir+"/repo/repos.json", repman.Conf.Test)
-	if err != nil {
-		repman.Logrus.WithError(err).Errorf("Initialization docker repo failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)
-	}
+	// ServiceRepos (the docker image tag list the GUI reads via json:"serviceRepos")
+	// is loaded through ReloadServiceRepos so the exact same path is reused when the
+	// back office pushes a fresh plugins/data/repos.json after startup (issue #1702).
+	repman.ReloadServiceRepos()
 	repman.ServiceTarballs, err = repman.Conf.GetTarballs(repman.Conf.Test)
 	if err != nil {
 		repman.Logrus.WithError(err).Errorf("Initialization tarballs repo failed: %s %s", repman.Conf.ShareDir+"/repo/tarballs.json", err)
@@ -2955,7 +3076,7 @@ func (repman *ReplicationManager) Run() error {
 			//      SaveCallBack in step 1) or safetyDue (GitMonitoringTicker, the
 			//      periodic feed/safety cadence). Config no longer waits on the
 			//      timer; the agents.json staging throttle is unchanged.
-			if repman.Conf.GitUrl != "" && repman.Status == ConstMonitorActif {
+			if repman.Status == ConstMonitorActif {
 				safetyDue := counter%int64(repman.Conf.GitMonitoringTicker) == 0
 				if repman.gitSyncBusy.CompareAndSwap(false, true) {
 					go func() {
@@ -2996,6 +3117,14 @@ func (repman *ReplicationManager) Run() error {
 							}
 						}()
 						savewg.Wait()
+
+						// Local config persistence (the SAVE phase above) is done and is
+						// INDEPENDENT of git: it must always run on the active repman. Only the
+						// git PUSH below needs a configured remote -- a missing or failing git
+						// remote must never prevent local file persistence.
+						if repman.Conf.GitUrl == "" {
+							return
+						}
 
 						// 2. PUSH phase (dirty-gated). IsNeedGitPush was just set by
 						// SaveCallBack above when config actually changed.
@@ -3063,6 +3192,7 @@ func (repman *ReplicationManager) Run() error {
 		repman.ProduceClusterHeartbeatSupervisionStates()
 		repman.ProduceGitSupervisionStates()
 		repman.ProduceClusterAggregateStates()
+		repman.ProduceContractedCapacityState()
 		if counter%60 == 0 {
 			repman.ProduceCloud18ConnectivityStates()
 			repman.RefreshCreditsFromCRM()
@@ -3108,6 +3238,233 @@ func (repman *ReplicationManager) Run() error {
 
 }
 
+// ReloadServiceRepos reloads the server-level ServiceRepos -- the docker image
+// tag list the GUI reads via json:"serviceRepos" (monitor.serviceRepos). It is
+// sourced from GetDockerRepos, which prefers the back-office-pushed
+// plugins/data/repos.json over the embedded fallback. It MUST be called whenever
+// the -pull repo delivers a fresh repos.json; otherwise the GUI keeps showing the
+// tag list captured at startup, while newer tags only land in the per-cluster
+// DockerRepos (which is json:"-" and never serialized to the GUI). See issue #1702.
+func (repman *ReplicationManager) ReloadServiceRepos() {
+	repos, err := repman.Conf.GetDockerRepos(repman.Conf.ShareDir+"/repo/repos.json", repman.Conf.Test)
+	if err != nil {
+		repman.Logrus.WithError(err).Errorf("Reload docker repos failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)
+		return
+	}
+	if len(repos) == 0 {
+		return
+	}
+	if len(repos) != len(repman.ServiceRepos) {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Service docker image repos updated: %d repos loaded from back office plugins/data/repos.json", len(repos))
+	}
+	repman.ServiceRepos = repos
+}
+
+// loadMainConfigInto reads the server's main config.toml into v, using the
+// same resolution rules InitConfig applies at startup (~line 1622): an
+// explicit --config file if set, otherwise search /etc/replication-manager/
+// (or ConfDirExtra when embedded), ".", and the tarball path. Kept minimal
+// and side-effect-free (no cluster discovery, no repman mutation) so callers
+// like ReconstructLiveClusterConfig can reuse it without pulling in
+// InitConfig's global-rebuild behavior. If ConfigFile is unset, this must
+// still find the file -- omitting the fallback search here is exactly what
+// left dev2 without its [dev2] section on reload (isolated.Sub("dev2") came
+// back nil, "Could not parse configuration group", "No hosts list specified").
+func (repman *ReplicationManager) loadMainConfigInto(v *viper.Viper) error {
+	if repman.Conf.ConfigFile != "" {
+		if _, err := os.Stat(repman.Conf.ConfigFile); err != nil {
+			return fmt.Errorf("no config file %s: %w", repman.Conf.ConfigFile, err)
+		}
+		v.SetConfigFile(repman.Conf.ConfigFile)
+	} else {
+		v.SetConfigName("config")
+		if repman.Conf.WithEmbed == "OFF" {
+			v.AddConfigPath("/etc/replication-manager/")
+		} else {
+			v.AddConfigPath(repman.Conf.ConfDirExtra)
+		}
+		v.AddConfigPath(".")
+		if repman.Conf.WithTarball == "ON" {
+			v.AddConfigPath("/usr/local/replication-manager/etc")
+		}
+	}
+
+	if err := v.ReadInConfig(); err != nil {
+		var configNotFound viper.ConfigFileNotFoundError
+		if errors.As(err, &configNotFound) {
+			return nil
+		}
+		return fmt.Errorf("cannot parse config file: %w", err)
+	}
+	return nil
+}
+
+// ReconstructLiveClusterConfig rebuilds clusterName's config for a single
+// already-running cluster, scoped to that cluster only. It deliberately does
+// NOT go through InitConfig: InitConfig rediscovers the whole cluster list,
+// rebuilds repman.ClusterList/ImmutableClusterList/ImmuableFlagMaps/
+// DynamicFlagMaps for every cluster, and -- critically -- recomputes
+// WorkingDir from scratch. Its non-root fallback (hasExplicitWorkingDir,
+// see ~line 1897) silently relocates WorkingDir to
+// ~/.local/replication-manager/data the moment it can't re-derive the
+// original startup context, which on a live reload quietly moved an
+// already-running cluster's data directory out from under it (HAProxy,
+// restic and the job-script deployer all went looking in the new, empty
+// directory and treated it as first boot -- see logs/reload-config.log).
+//
+// Anchoring baseConf on the live *repman.Conf (as reconstructImportedClusterConfig
+// does for freshly-imported clusters) sidesteps that entirely: WorkingDir,
+// ShareDir, BaseDir etc. keep whatever value startup already resolved unless
+// the cluster's own TOML section explicitly overrides them.
+func (repman *ReplicationManager) ReconstructLiveClusterConfig(clusterName string) (config.Config, error) {
+	isolated := viper.New()
+	isolated.SetConfigType("toml")
+
+	if err := repman.loadMainConfigInto(isolated); err != nil {
+		return config.Config{}, err
+	}
+
+	// Global saved-default overlay (dynamic [DEFAULT]-scope settings changed
+	// since the last restart, persisted to WorkingDir/default.toml) -- feeds
+	// the [saved-default] layering below, same as InitConfig's
+	// monitoringSaveConfig block (~line 1800).
+	defaultTomlPath := filepath.Join(repman.Conf.WorkingDir, "default.toml")
+	if _, err := os.Stat(defaultTomlPath); err == nil {
+		isolated.SetConfigFile(defaultTomlPath)
+		if err := isolated.MergeInConfig(); err != nil {
+			return config.Config{}, fmt.Errorf("cannot parse %s: %w", defaultTomlPath, err)
+		}
+	}
+
+	// Optional include directory (default.include), same as InitConfig: a
+	// cluster's static section can live there instead of the main file.
+	// A missing include dir is expected (InitConfig treats it the same way,
+	// just at Debug level) but any other read failure -- permissions, an
+	// unmounted path -- must be visible: silently continuing here would
+	// reload the cluster with its static section quietly dropped, exactly
+	// the "No hosts list specified" failure this function exists to avoid.
+	if includeDir := isolated.GetString("default.include"); includeDir != "" {
+		files, err := os.ReadDir(includeDir)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				repman.Logrus.WithError(err).Warnf("ReconstructLiveClusterConfig(%s): cannot read include dir %s", clusterName, includeDir)
+			}
+		} else {
+			for _, f := range files {
+				if f.IsDir() || !strings.HasSuffix(f.Name(), ".toml") {
+					continue
+				}
+				isolated.SetConfigName(f.Name())
+				isolated.SetConfigFile(filepath.Join(includeDir, f.Name()))
+				if err := isolated.MergeInConfig(); err != nil {
+					return config.Config{}, fmt.Errorf("cannot parse include file %s: %w", f.Name(), err)
+				}
+			}
+		}
+	}
+
+	// Saved cluster overlay (dynamic settings persisted since the last
+	// restart) -- mirrors InitConfig's per-cluster "Parsing saved config
+	// from working directory" merge, but only for this one cluster.
+	clusterTomlPath := filepath.Join(repman.Conf.WorkingDir, clusterName, clusterName+".toml")
+	if _, err := os.Stat(clusterTomlPath); err == nil {
+		isolated.SetConfigName(clusterName)
+		isolated.SetConfigFile(clusterTomlPath)
+		if err := isolated.MergeInConfig(); err != nil {
+			return config.Config{}, fmt.Errorf("cannot parse %s: %w", clusterTomlPath, err)
+		}
+	}
+
+	repman.Lock()
+	defaultImmuable := repman.ImmuableFlagMaps["default"]
+	defaultDynamic := repman.DynamicFlagMaps["default"]
+	repman.Unlock()
+
+	// Re-layer [DEFAULT]/[saved-default] from disk on top of the live
+	// baseline: a reload should reflect default-section edits made since
+	// startup (matching InitConfig's own default-then-cluster layering, see
+	// ~line 1875), not just re-apply the cluster's own section. Unmarshal
+	// only overwrites fields actually present in the TOML, so anything not
+	// explicitly set on disk -- WorkingDir, ShareDir, Interactive (toml:"-")
+	// -- still falls through to the live baseConf value untouched.
+	baseConf := *repman.Conf
+	if cf1 := isolated.Sub("default"); cf1 != nil {
+		repman.initAlias(cf1)
+		cf1.Unmarshal(&baseConf)
+	}
+	if cf3 := isolated.Sub("saved-default"); cf3 != nil {
+		for _, f := range cf3.AllKeys() {
+			if v, ok := repman.Conf.ImmuableFlagMap[f]; ok {
+				cf3.Set(f, v)
+			}
+		}
+		repman.initAlias(cf3)
+		cf3.Unmarshal(&baseConf)
+	}
+
+	return repman.GetClusterConfig(isolated, defaultImmuable, defaultDynamic, clusterName, baseConf), nil
+}
+
+// ReloadLiveClusterConfig reconstructs clusterName's config in isolation (see
+// ReconstructLiveClusterConfig) and applies it to the running mycluster.
+// Callers driving a single-cluster settings reload should use this instead of
+// InitConfig+ReloadClusterConfig, which mutates global server state as a side
+// effect of reloading one cluster.
+func (repman *ReplicationManager) ReloadLiveClusterConfig(mycluster *cluster.Cluster, clusterName string) error {
+	conf, err := repman.ReconstructLiveClusterConfig(clusterName)
+	if err != nil {
+		return err
+	}
+	repman.Lock()
+	repman.Confs[clusterName] = conf
+	repman.Unlock()
+	repman.ReloadClusterConfig(mycluster, clusterName)
+	return nil
+}
+
+// deriveClusterConfFields applies the runtime-computed fields that never come
+// from TOML/env/flags (Interactive has toml:"-" and is derived purely from
+// FailMode) or need resolving against the running host (localhost
+// MonitorAddress, BaseDir-relative ShareDir/WorkingDir). initCluster applies
+// these at startup; ReloadClusterConfig must reapply them on every reload or
+// they silently reset to their zero values -- e.g. Interactive resets to
+// false, forcing automatic failover even when fail-mode=manual.
+func (repman *ReplicationManager) deriveClusterConfFields(conf *config.Config) {
+	if conf.MonitorAddress == "localhost" {
+		conf.MonitorAddress = repman.resolveHostIp()
+	}
+	conf.Interactive = conf.FailMode == "manual"
+	if conf.BaseDir != "system" {
+		conf.ShareDir = conf.BaseDir + "/share"
+		conf.WorkingDir = conf.BaseDir + "/data"
+	}
+}
+
+// ReloadClusterConfig applies clusterName's config after repman.InitConfig,
+// re-pointing ImmuableFlagMap/DynamicFlagMap/DefaultFlagMap at the per-cluster
+// maps the way initCluster does at startup -- InitConfig itself leaves them on
+// the global-default maps, which breaks secret decryption. Callers should use
+// this instead of cluster.ReloadConfig directly.
+func (repman *ReplicationManager) ReloadClusterConfig(mycluster *cluster.Cluster, clusterName string) {
+	// repman.Confs/ImmuableFlagMaps/DynamicFlagMaps are plain maps read and
+	// written from concurrent HTTP/gRPC reload requests (possibly for
+	// different clusters at once) -- lock around every access to them here,
+	// but release before the potentially slow mycluster.ReloadConfig(conf)
+	// call below so a single cluster's reload doesn't hold the server-wide
+	// lock for the duration of its topology discovery.
+	repman.Lock()
+	conf := repman.Confs[clusterName]
+	conf.ImmuableFlagMap = repman.ImmuableFlagMaps[clusterName]
+	conf.DynamicFlagMap = repman.DynamicFlagMaps[clusterName]
+	conf.DefaultFlagMap = repman.DefaultFlagMap
+	repman.deriveClusterConfFields(&conf)
+	repman.Confs[clusterName] = conf
+	repman.Unlock()
+
+	mycluster.ReloadConfig(conf)
+}
+
 // initCluster initialises a cluster and registers it in repman.Clusters but
 // does NOT start its monitoring goroutine.  Call go cl.Run() (or StartCluster)
 // separately.  The startup sequence uses initCluster so cross-cluster gateway
@@ -3127,18 +3484,7 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	go repman.currentCluster.InitiateRefreshTemplateMD5Worker()
 
 	myClusterConf := repman.Confs[clusterName]
-	if myClusterConf.MonitorAddress == "localhost" {
-		myClusterConf.MonitorAddress = repman.resolveHostIp()
-	}
-	if myClusterConf.FailMode == "manual" {
-		myClusterConf.Interactive = true
-	} else {
-		myClusterConf.Interactive = false
-	}
-	if myClusterConf.BaseDir != "system" {
-		myClusterConf.ShareDir = myClusterConf.BaseDir + "/share"
-		myClusterConf.WorkingDir = myClusterConf.BaseDir + "/data"
-	}
+	repman.deriveClusterConfFields(&myClusterConf)
 
 	myClusterConf.ImmuableFlagMap = repman.ImmuableFlagMaps[clusterName]
 	myClusterConf.DynamicFlagMap = repman.DynamicFlagMaps[clusterName]
@@ -3163,10 +3509,25 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	repman.currentCluster.DiskStatManager = repman.DiskStatManager
 	repman.currentCluster.Mailer = repman.Mailer
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
+	// Report the full git-describe version (nightly detection) and repman's own
+	// process start time to the BO via clusterstate.json — RepMgrVersion stays the base tag.
+	repman.currentCluster.RepMgrFullVersion = repman.Fullversion
+	repman.currentCluster.RepMgrRestartTime = repman.StartTime.Unix()
 	repman.Lock()
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.Unlock()
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
+	// The ResourceManager is repman-side and infra-wide (Epic #1776): created once, shared
+	// into every cluster. The per-server consumed reading then survives the cluster's
+	// ServerMonitor recreations here (fixes the graph flapping), and it is where the
+	// per-cluster / per-agent consumed views and capacity ("is there room?") live.
+	if repman.resourceManager == nil {
+		repman.resourceManager = cluster.NewResourceManager()
+	}
+	// Global policy: the share of the metal repman may allocate (protects non-repman
+	// workloads). resource-manager-* family (repman-side / on-prem first-class, NOT cloud18).
+	repman.resourceManager.SetQuotaPct(repman.Conf.ResourceManagerInfraQuotaPct)
+	repman.currentCluster.SetResourceManager(repman.resourceManager)
 
 	if repman.currentCluster.Conf.SecretKey == nil {
 		repman.currentCluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: config.ClusterError["ERR00090"], ErrFrom: "CLUSTER"})

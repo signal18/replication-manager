@@ -171,7 +171,7 @@ func TestComputeDatabaseUnits_BackupDisabled_NoExtraUnit(t *testing.T) {
 // --- ComputeApplicationUnits ---
 //
 // The formula is resource-derived, not credit-based: each provisioned app contributes
-// its App Unit (1 core / 4GB / 10GB ratio, ceil'd) times its agent count, and each live
+// its App Unit (1 core / 1GB / 10GB ratio, ceil'd) times its agent count, and each live
 // proxy contributes one App Unit computed from cluster.Conf.ProvProxCores/Mem/Disk —
 // see doc/implementation/config/CLOUD18_CREDIT_MODEL_IMPLEMENTATION_PLAN.md §3.5.
 
@@ -195,7 +195,7 @@ func newProvisionedTestApp(t *testing.T, cores, memMB, diskGB, agents string) *A
 func TestComputeApplicationUnits_ProvisionedApp_ScalesWithAgentCount(t *testing.T) {
 	cl := newTestClusterForMarketplaceUnits(t)
 	// cores=2 -> unit 2 dominates mem/disk (both at ratio 1); 3 agents.
-	app := newProvisionedTestApp(t, "2", "4096", "10", "a1,a2,a3")
+	app := newProvisionedTestApp(t, "2", "1024", "10", "a1,a2,a3")
 	cl.Apps = appList{app}
 
 	if got, want := cl.ComputeApplicationUnits(), 6.0; got != want {
@@ -224,9 +224,9 @@ func TestComputeApplicationUnits_UnprovisionedApp_NotCounted(t *testing.T) {
 
 func TestComputeApplicationUnits_LiveProxiesUseAppUnitRatio(t *testing.T) {
 	cl := newTestClusterForMarketplaceUnits(t)
-	// cores=1, mem=8192 (2 App Units), disk=10 -> proxy unit = 2.
+	// cores=1, mem=2048 (2 App Units), disk=10 -> proxy unit = 2.
 	cl.Conf.ProvProxCores = "1"
-	cl.Conf.ProvProxMem = "8192"
+	cl.Conf.ProvProxMem = "2048"
 	cl.Conf.ProvProxDisk = "10"
 	cl.Proxies = proxyList{
 		&Proxy{State: stateSuspect}, // down, must not count
@@ -258,10 +258,10 @@ func TestComputeApplicationUnits_AllProxiesDown_NoContribution(t *testing.T) {
 
 func TestComputeApplicationUnits_AppsAndProxiesCombined(t *testing.T) {
 	cl := newTestClusterForMarketplaceUnits(t)
-	app := newProvisionedTestApp(t, "1", "4096", "10", "a1,a2") // unit 1 * 2 agents = 2
+	app := newProvisionedTestApp(t, "1", "1024", "10", "a1,a2") // unit 1 * 2 agents = 2
 	cl.Apps = appList{app}
 	cl.Conf.ProvProxCores = "1"
-	cl.Conf.ProvProxMem = "4096"
+	cl.Conf.ProvProxMem = "1024"
 	cl.Conf.ProvProxDisk = "10" // proxy unit = 1
 	cl.Proxies = proxyList{
 		&Proxy{State: "Running"}, // live, +1

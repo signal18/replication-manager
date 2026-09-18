@@ -4,7 +4,7 @@ import RMSwitch from '../../../components/RMSwitch'
 import TableType2 from '../../../components/TableType2'
 import styles from '../styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
-import { setSetting, switchSetting, resizeDatabaseUnits } from '../../../redux/settingsSlice'
+import { setSetting, switchSetting, resizeDatabaseUnits, changePlanUnits } from '../../../redux/settingsSlice'
 import AccordionComponent from '../../../components/AccordionComponent'
 import AddRemovePill from '../../../components/AddRemovePill'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
@@ -21,46 +21,60 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import modalStyles from '../../../components/Modals/styles.module.scss'
 
+import DynamicConfigSettings from '../../Settings/DynamicConfigSettings'
 import PreservedVariablesEditor from '../../../components/PreservedVariablesEditor'
 import ConfigFilesPanel from '../../../components/ConfigFilesPanel'
 import MemoryPctEditor from '../../../components/MemoryPctEditor'
 import { convertSize } from '../../../utility/common'
 
-function DBUSlider({ value, isDisabled, onChange }) {
-  const [draft, setDraft] = useState(null)
-  const [showTooltip, setShowTooltip] = useState(false)
-  const current = draft !== null ? draft : value
+// The slider POSITION is log2 (power-of-two stops 1,2,4,...,512 evenly spaced = the look you
+// want), but the VALUE is the real DBU: position -> round(2^pos) reaches every integer DBU
+// (so 6 is 6, not snapped to 8), and the value is what is shown and committed.
+const DBU_MAX_POW = 9 // 2^9 = 512
+const posToDbu = (pos) => Math.max(1, Math.min(512, Math.round(2 ** pos)))
+const dbuToPos = (dbu) => Math.max(0, Math.min(DBU_MAX_POW, Math.log2(dbu || 1)))
 
-  const formatDBU = useCallback((dbu) => {
-    const mem = dbu * 4096
+function DBUSlider({ value, isDisabled, onChange, nbNodes = 1 }) {
+  const [draft, setDraft] = useState(null) // draft is a log2 POSITION while dragging
+  const [showTooltip, setShowTooltip] = useState(false)
+  const pos = draft !== null ? draft : dbuToPos(value)
+  const dbu = posToDbu(pos) // PER-NODE DBU (the configurator is per-cluster: all nodes identical)
+  const total = dbu * nbNodes // plan total = per-node x node count
+
+  const formatDBU = useCallback((d) => {
+    const mem = d * 4096
     const memLabel = mem >= 1024 ? `${mem / 1024}GB` : `${mem}MB`
-    return `${dbu} DBU — ${dbu} cores, ${memLabel} mem, ${dbu * 40}GB disk, ${dbu * 1000} IO/s`
+    return `${d} DBU/node — ${d} cores · ${memLabel} · ${d * 40}GB disk · ${d * 1000} IO/s`
   }, [])
 
   return (
     <Box w='100%'>
-      <Flex justify='space-between' mb={1}>
-        <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Database Units (DBU)</Text>
-        <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>{formatDBU(current)}</Text>
+      <Flex justify='space-between' mb={1} align='start'>
+        <Box>
+          <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Database Units (DBU) — per node</Text>
+          <Text fontSize='11px' color='gray.500'>1 DBU = 1 core · 4 GB · 40 GB · 1000 IO/s</Text>
+        </Box>
+        <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>{dbu} DBU/node · plan {total} DBU ({nbNodes} node{nbNodes > 1 ? 's' : ''})</Text>
       </Flex>
       <Slider
-        min={1}
-        max={512}
-        step={1}
-        value={current}
+        min={0}
+        max={DBU_MAX_POW}
+        step={0.02}
+        value={pos}
         isDisabled={isDisabled}
         onChange={(v) => setDraft(v)}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         onChangeEnd={(v) => {
           setDraft(null)
-          if (v !== value && onChange) onChange(v)
+          const nd = posToDbu(v)
+          if (nd !== value && onChange) onChange(nd)
         }}
       >
         <SliderTrack h='8px' borderRadius='full' bg='gray.200'>
           <SliderFilledTrack bg='blue.400' />
         </SliderTrack>
-        <Tooltip label={formatDBU(current)} placement='top' isOpen={showTooltip || draft !== null} hasArrow>
+        <Tooltip label={formatDBU(dbu)} placement='top' isOpen={showTooltip || draft !== null} hasArrow>
           <SliderThumb boxSize={5} bg='blue.500' />
         </Tooltip>
       </Slider>
@@ -250,15 +264,18 @@ function DBConfigs({ selectedCluster, user }) {
     selectedCluster?.configurator?.dbServersTags
   ])
 
-  const hFetchConfig = `**Fetch Config on Start**\n\nWhen enabled, database servers fetch their configuration from replication-manager on startup.\n\nThe generated config is pushed to each server's data directory and applied when the database process starts.\n\nConfig: \`prov-db-start-fetch-config\``
+  const hFetchConfig = `**Fetch Config on Start**\n\nWhen enabled (default), a database server fetches fresh configuration from replication-manager on startup.\n\nOn Kubernetes, disabling this skips that fetch entirely and starts from whatever configuration was already persisted on the server's own volume from a previous boot — nothing is re-fetched as a fallback. On other orchestrators, disabling it skips the on-start refresh the same way.\n\nThis is checked live on every startup, not baked into the server's spec at provision time — toggling it takes effect on the server's next restart.\n\nConfig: \`prov-db-start-fetch-config\``
   const hDynamicConfig = `**Apply Dynamic Config**\n\nWhen enabled, replication-manager applies configuration changes dynamically using \`SET GLOBAL\` statements without requiring a database restart.\n\nOnly variables that support dynamic changes are applied this way. Variables requiring a restart are written to the config file for the next restart.\n\nConfig: \`prov-db-apply-dynamic-config\``
   const hRefreshConfig = `**Refresh Variables and DB Config**\n\nRegenerates the configuration files for all database servers in this cluster from the compliance module and the current tag selection.\n\nThis rebuilds the config tarball at \`{datadir}/config.tar.gz\` with all tag-specific cnf files merged with preserved variables and defaults.`
   const hAutoUpdateCompliance = `**Auto-Update Compliance**\n\nThe compliance module contains replication-manager's best practices for database and proxy configuration. It defines which variables are set for each configuration tag.\n\nWhen enabled (default), compliance updates from the back office or new replication-manager releases are **applied automatically**. Your preserved variables are never overwritten — they always take priority over compliance defaults.\n\nWhen disabled, a warning (WARN0168) is raised when new compliance is available. You can review the changes (added, removed, or modified tags) and accept when ready. This is recommended for production environments where you want to review best practice changes before they take effect.\n\nConfig: \`prov-auto-update-compliance\``
+  const hAutoAgreeCompliance = `**Auto-Agree Compliance**\n\nControls what happens to a config **delta** — a variable whose value on the database differs from the compliance value — that is neither preserved (operator-forced) nor already agreed.\n\nWhen **disabled (default)**, every value delta waits for a manual review and agree in the config editor before it is written to the database. Recommended for production.\n\nWhen **enabled**, a value delta is automatically agreed to the compliance value (written to \`03_agreed.cnf\` and pushed to the database). Scoped to **value changes only** — variables that are dropped, deprecated, or not recognized by the database are **never** auto-agreed and always stay for manual review (they would crash the database on restart).\n\nIndependent of Auto-Update Compliance: that one regenerates the config from a new module (repman side), this one applies value deltas to the running database (DB side).\n\nConfig: \`prov-db-compliance-auto-agree\``
+
+  const hDynamicResource = `**Dynamic Resource Resize**\n\nWhen enabled, a change to the provisioned memory (\`prov-db-memory\`, e.g. from a DBU/plan resize) is applied to the **running** database live instead of a full restart: the buffer pool and other dynamically-settable variables via \`SET GLOBAL\`, and the container cgroup via the orchestrator (OpenSVC \`pg update\`) or a client hook. Restart-only variables still schedule a restart. \`max_connections\` is never touched (client workload).\n\nTwo optional client hooks refine it: \`prov-db-dynamic-resource-can-change-script\` (feasibility — prints yes / no / migration) runs first, and \`prov-db-dynamic-resource-change-script\` (does the infra resize, overrides the native path in every orchestrator case).\n\nOff by default.\n\nConfig: \`prov-db-dynamic-resource\``
 
   const dataObject = [
     {
-      key: 'Cluster DB Start Fetch Config',
-      help: h(hFetchConfig, 'Fetch Config on Start'),
+      key: 'Pull Config On DB Start',
+      help: h(hFetchConfig, 'Pull Config On DB Start'),
       value: (
         <RMSwitch
           isChecked={selectedCluster?.config?.provDbStartFetchConfig}
@@ -270,34 +287,8 @@ function DBConfigs({ selectedCluster, user }) {
         />
       )
     },
-    {
-      key: 'Apply Dynamic Config',
-      help: h(hDynamicConfig, 'Apply Dynamic Config'),
-      value: (
-        <RMSwitch
-          isChecked={selectedCluster?.config?.provDBApplyDynamicConfig}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          confirmTitle={'Confirm switch settings for prov-db-apply-dynamic-config?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-apply-dynamic-config' }))
-          }
-        />
-      )
-    },
-    {
-      key: 'Auto-Update Compliance',
-      help: h(hAutoUpdateCompliance, 'Auto-Update Compliance'),
-      value: (
-        <RMSwitch
-          isChecked={selectedCluster?.config?.provAutoUpdateCompliance}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          confirmTitle={'Confirm switch settings for prov-auto-update-compliance?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-auto-update-compliance' }))
-          }
-        />
-      )
-    },
+    // Apply Dynamic Config / Dynamic Resource Resize / Auto-Update & Auto-Agree Compliance
+    // moved into the retractable "Dynamic Config" section below (DynamicConfigSettings).
     {
       key: 'Refresh Variables and DB Config',
       help: h(hRefreshConfig, 'Refresh Variables and DB Config'),
@@ -365,6 +356,58 @@ function DBConfigs({ selectedCluster, user }) {
               )
             }}
           />
+          <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
+            minValue={0}
+            maxValue={128}
+            value={selectedCluster?.config?.provDbReplicationParallelThreads}
+            text={'Replication workers'}
+            width={150}
+            height={105}
+            hideMinMax={false}
+            showStep={true}
+            step={1}
+            handleStepChange={(value) => {
+              setConfirmTitle(`Confirm replication parallel threads change to ${value} (slave_parallel_threads, applied at next config apply)`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-replication-parallel-threads',
+                      value: value
+                    })
+                  )
+              )
+            }}
+          />
+          <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
+            minValue={0}
+            maxValue={128}
+            value={selectedCluster?.config?.provDbReplicationDomainParallelThreads}
+            text={'Workers per domain (0 = no cap)'}
+            width={150}
+            height={105}
+            hideMinMax={false}
+            showStep={true}
+            step={1}
+            handleStepChange={(value) => {
+              setConfirmTitle(`Confirm replication domain parallel threads change to ${value} (slave_domain_parallel_threads, 0 = no per-domain cap)`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-replication-domain-parallel-threads',
+                      value: value
+                    })
+                  )
+              )
+            }}
+          />
         </Flex>
       )
     },
@@ -374,21 +417,27 @@ function DBConfigs({ selectedCluster, user }) {
         <Flex direction='column' gap={4} w='100%'>
           <DBUSlider
             isDisabled={user?.grants['proxy-config-flag'] == false}
-            value={Math.ceil(Math.max(
-              (parseFloat(selectedCluster?.config?.provDbCpuCores) || 1),
-              (parseFloat(convertSize(selectedCluster?.config?.provDbMemory,"M","M")) || 4096) / 4096,
-              (parseFloat(convertSize(selectedCluster?.config?.provDbDiskSize,"G","G")) || 40) / 40,
-              (parseFloat(selectedCluster?.config?.provDbDiskIops) || 1000) / 1000
-            ))}
+            nbNodes={selectedCluster?.dbServers?.length || 1}
+            /* PER-NODE DBU. All DB nodes are identical (any can become master), so the slider
+               moves prov-db-dbu directly -- the per-node reservation (mirror of prov-proxy-apu).
+               The cluster contract is prov-db-dbu x #nodes (the PlanByCluster rollup). */
+            value={parseInt(selectedCluster?.config?.provDbDbu) || 2}
             onChange={(dbu) => {
-              const mem = dbu * 4096
-              const disk = dbu * 40
-              const iops = dbu * 1000
-              setConfirmTitle(`Confirm DBU change to ${dbu} (${dbu} cores, ${mem >= 1024 ? (mem/1024) + 'GB' : mem + 'MB'} mem, ${disk}GB disk, ${iops} IO/s)`)
+              /* Move prov-db-dbu (per-node reservation) by the per-node delta. ChangePlanUnits
+                 validates (CanPlanChange) and persists to the dynamic layer; the prov-db-*
+                 resource follows via the resource-follow, not from here. */
+              const cur = parseInt(selectedCluster?.config?.provDbDbu) || 2
+              const nodes = selectedCluster?.dbServers?.length || 1
+              const delta = dbu - cur
+              setConfirmTitle(`Confirm DBU plan to ${dbu}/node (${dbu * nodes} DBU cluster contract)`)
               setIsConfirmModalOpen(true)
               setConfirmHandler(
                 () => () => {
-                  dispatch(resizeDatabaseUnits({ clusterName: selectedCluster?.name, units: dbu }))
+                  if (isGlobalUnitPricing) {
+                    dispatch(resizeDatabaseUnits({ clusterName: selectedCluster?.name, units: dbu }))
+                  } else if (delta !== 0) {
+                    dispatch(changePlanUnits({ clusterName: selectedCluster?.name, unit: 'DBU', delta }))
+                  }
                 }
               )
             }}
@@ -578,6 +627,13 @@ function DBConfigs({ selectedCluster, user }) {
         </Alert>
       )}
       <TableType2 dataArray={dataObject} className={styles.tableWithHelp} helpColumn={true} />
+      <AccordionComponent
+        heading={'Dynamic Config'}
+        className={styles.accordion}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionBody}
+        body={<DynamicConfigSettings selectedCluster={selectedCluster} user={user} />}
+      />
       {user?.grants['db-config-flag'] && (
         <HStack className={styles.configTagContainer}>
           <VStack className={styles.availableTags}>

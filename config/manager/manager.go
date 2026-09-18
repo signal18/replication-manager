@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	gogitcfg "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	git_obj "github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -666,6 +667,7 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []
 	cm.AddPullToGitignore(conf)
 	cm.AddTempDirToGitignore(conf)
 	cm.AddConfigSyncToGitignore(conf)
+	cm.AddDataDirsToGitignore(conf)
 
 	cm.logger.Infof("none", config.ConstLogModGit, "Pushing All Configs To Git")
 
@@ -704,6 +706,26 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []
 	return nil
 }
 
+// RepairAndPush is the explicit, operator-/API-triggered self-heal for a config
+// repo whose pushes are stuck (e.g. corrupt/dangling local objects after a gitlab
+// failover that emptied the remote). It forces a metadata refresh (reclone — which
+// re-inits the local .git from the remote, shedding dangling objects) and then
+// pushes a clean pack. Unlike the automatic path in PushAllConfigsToGit, it does
+// not wait for a classified error first; it always refreshes then pushes.
+func (cm *ConfigManager) RepairAndPush(conf *config.Config, clusterList []string) error {
+	cm.logger.Infof("none", config.ConstLogModGit, "[Git] Repair requested: refreshing repository metadata (reclone sheds corrupt/dangling objects), then pushing")
+	if err := cm.RefreshGitMetadata(conf); err != nil {
+		cm.logger.Errorf("none", config.ConstLogModGit, "[Git] Repair: metadata refresh failed: %v", err)
+		return fmt.Errorf("git repair: metadata refresh failed: %w", err)
+	}
+	if err := cm.PushAllConfigsToGit(conf, clusterList); err != nil {
+		cm.logger.Errorf("none", config.ConstLogModGit, "[Git] Repair: push after refresh failed: %v", err)
+		return err
+	}
+	cm.logger.Infof("none", config.ConstLogModGit, "[Git] Repair complete: config repo pushed")
+	return nil
+}
+
 func (cm *ConfigManager) classifyRecoverablePushError(err error) (bool, string) {
 	if err == nil {
 		return false, ""
@@ -733,6 +755,19 @@ func (cm *ConfigManager) classifyRecoverablePushError(err error) (bool, string) 
 		{reason: "missing remote ref", match: "couldn't find remote ref"},
 		{reason: "reference does not exist", match: "reference does not exist"},
 		{reason: "cannot resolve reference", match: "unable to resolve reference"},
+		// Corrupt/garbage local objects — typically dangling objects left behind by
+		// repeated reclone/swap churn — make go-git build a pack the remote's
+		// receive-side fsck (transfer.fsckObjects=true) rejects: the client sees
+		// "unpack error: unpack-objects abnormal exit", gitaly logs "fatal: object of
+		// unexpected type". RefreshGitMetadata re-inits the local .git from the remote
+		// (an empty remote bootstraps a fresh, empty repo), shedding the dangling
+		// objects, so the single retry pushes a clean minimal pack. Bounded to one
+		// reclone+retry per push cycle, so a genuinely unfixable case degrades (it does
+		// not loop). This is what unstuck config repos emptied by a gitlab failover.
+		{reason: "corrupt pack rejected by remote fsck (reclone+retry)", match: "unpack error"},
+		{reason: "corrupt pack rejected by remote fsck (reclone+retry)", match: "unpack-objects"},
+		{reason: "corrupt pack rejected by remote fsck (reclone+retry)", match: "abnormal exit"},
+		{reason: "corrupt object rejected by remote fsck (reclone+retry)", match: "object of unexpected type"},
 	}
 
 	for _, candidate := range recoverableSubstrings {
@@ -826,7 +861,47 @@ func (cm *ConfigManager) cloneRepositoryWithBootstrap(path string, conf *config.
 		repo, cloneErr = git.PlainClone(path, false, cloneopt)
 	}
 
+	// A freshly-created remote project has no commits: PlainClone returns
+	// ErrEmptyRemoteRepository and cannot establish a working tree. Clone can't
+	// bootstrap a bare remote, so initialize a local repository pointed at the
+	// same URL — the caller's add/commit/push then lands the first commit and
+	// creates the remote's default branch. Without this the repo stays empty
+	// forever and GWARN002 ("empty remote repository") re-fires every sync.
+	// (Regression: the pre-ConfigManager push path handled empty remotes;
+	// cloneRepositoryWithBootstrap only covered repository-not-found.)
+	if errors.Is(cloneErr, transport.ErrEmptyRemoteRepository) {
+		return cm.initRepositoryForEmptyRemote(path, cloneopt.URL)
+	}
+
 	return repo, cloneErr
+}
+
+// initRepositoryForEmptyRemote initializes a local git repository at path with
+// an "origin" remote at url, so a subsequent commit+push bootstraps the first
+// commit into an empty remote. The default branch is "master", matching the
+// branch the config-sync worker commits and pushes on (ResolveCurrentLocalBranch).
+func (cm *ConfigManager) initRepositoryForEmptyRemote(path, url string) (*git.Repository, error) {
+	cm.logger.Warnf("none", config.ConstLogModGit,
+		"Remote repository %s is empty; initializing local repository to bootstrap the first commit", url)
+
+	repo, err := git.PlainInit(path, false)
+	if err != nil {
+		if !errors.Is(err, git.ErrRepositoryAlreadyExists) {
+			return nil, fmt.Errorf("empty-remote bootstrap: cannot init repo at %s: %w", path, err)
+		}
+		if repo, err = git.PlainOpen(path); err != nil {
+			return nil, fmt.Errorf("empty-remote bootstrap: cannot open existing repo at %s: %w", path, err)
+		}
+	}
+
+	if _, err = repo.CreateRemote(&gogitcfg.RemoteConfig{
+		Name: "origin",
+		URLs: []string{url},
+	}); err != nil && !errors.Is(err, git.ErrRemoteExists) {
+		return nil, fmt.Errorf("empty-remote bootstrap: cannot set origin remote %s: %w", url, err)
+	}
+
+	return repo, nil
 }
 
 func (cm *ConfigManager) swapGitMetadata(workDir, stagedGitDir string) error {
@@ -1089,6 +1164,65 @@ func (cm *ConfigManager) RefreshGitMetadata(conf *config.Config) error {
 }
 
 // Ensures ".pull/" is in .gitignore.
+// ensureGitignoreLines appends each pattern to WorkingDir/.gitignore if not
+// already present (idempotent, order-preserving). Shared by the AddXToGitignore
+// helpers so a new exclusion is one line, not another 45-line copy (T2).
+func (cm *ConfigManager) ensureGitignoreLines(conf *config.Config, patterns []string) {
+	gitignoreFile := conf.WorkingDir + "/.gitignore"
+
+	existing := make(map[string]bool)
+	if data, err := os.ReadFile(gitignoreFile); err == nil {
+		for _, l := range strings.Split(string(data), "\n") {
+			existing[strings.TrimSpace(l)] = true
+		}
+	} else if !os.IsNotExist(err) {
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error reading .gitignore: %v", err)
+		return
+	}
+
+	file, err := os.OpenFile(gitignoreFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error opening .gitignore: %v", err)
+		return
+	}
+	defer file.Close()
+
+	for _, p := range patterns {
+		if existing[p] {
+			continue
+		}
+		if _, err := file.WriteString(p + "\n"); err != nil {
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error appending to .gitignore: %v", err)
+			return
+		}
+		existing[p] = true
+	}
+}
+
+// AddDataDirsToGitignore excludes the runtime data/backup/log/cert bulk that
+// lives inside the git WorkingDir. WorkingDir doubles as the data dir, and
+// go-git's add/status walks + hashes every untracked file not covered by
+// .gitignore — with tens of GB of backups/graphite/logs present, each config
+// push spends minutes hashing bulk data before committing a few KB of config
+// (GWARN013@gitsync flaps; risks starving the monitor). Excluding them keeps
+// go-git's worktree scan cheap. Non-destructive: nothing is deleted, only left
+// out of the config sync. Cert/key material must not be in the config git in
+// cleartext anyway (F9/F10). See issue #1712.
+func (cm *ConfigManager) AddDataDirsToGitignore(conf *config.Config) {
+	cm.ensureGitignoreLines(conf, []string{
+		"backups/",       // top-level backup catalog
+		"*/backup/",      // per-cluster backup dir (<cluster>/backup)
+		"graphite/",      // embedded carbon whisper DB
+		"*.log",          // repman + maintenance logs
+		"goroutine.txt",  // debug goroutine dumps
+		".cache/",        // top-level cache
+		"*/.cache/",      // per-cluster caches
+		"*.pem",          // TLS certs/keys — never in config git cleartext
+		"*.p12",
+		"*.p12-cert.pem",
+	})
+}
+
 func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 	gitignoreFile := conf.WorkingDir + "/.gitignore"
 	lineToAdd := ".pull/"

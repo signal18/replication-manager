@@ -81,6 +81,9 @@ const fulfilledHandlers = {
   'cluster/getOpenSVCPools': (state, action) => {
     state.opensvcPools = action.payload.data
   },
+  'cluster/getKubeStorageClasses': (state, action) => {
+    state.kubeStorageClasses = action.payload.data
+  },
   'cluster/getBackups': (state, action) => {
     state.backups.list = action.payload.data
   },
@@ -117,6 +120,15 @@ const fulfilledHandlers = {
 
 const handleDatabaseServiceFulfilled = (state, action) => {
   const { serviceName } = action.meta.arg
+  // service/{orchestrator} is dynamic (opensvc, kube, ...) -- matched by
+  // prefix rather than a case per orchestrator. Holds raw OpenSVC service
+  // config text, or a { deployment, service, pvc, pods } object of live
+  // Kubernetes manifest YAML for Kubernetes-orchestrated clusters (#1497
+  // gap 6, server/api_database.go's buildDatabaseServiceConfigResponse).
+  if (serviceName?.startsWith('service/')) {
+    state.database.serviceOpensvc = action.payload.data
+    return
+  }
   switch (serviceName) {
     case 'processlist':
       state.database.processList = action.payload.data
@@ -149,9 +161,6 @@ const handleDatabaseServiceFulfilled = (state, action) => {
       break
     case 'variables':
       state.database.variables = action.payload.status == 200 ? action.payload.data : []
-      break
-    case 'service-opensvc':
-      state.database.serviceOpensvc = action.payload.data
       break
     case 'meta-data-locks':
       state.database.metadataLocks = action.payload.data
@@ -278,6 +287,19 @@ export const getOpenSVCPools = createGuardedAsyncThunk('cluster/getOpenSVCPools'
     return handleError(error, thunkAPI)
   }
 })
+
+export const getKubeStorageClasses = createGuardedAsyncThunk(
+  'cluster/getKubeStorageClasses',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.getKubeStorageClasses(clusterName, baseURL)
+      return { data, status }
+    } catch (error) {
+      return handleError(error, thunkAPI)
+    }
+  }
+)
 
 export const getBackups = createGuardedAsyncThunk('cluster/getBackups', async ({ clusterName }, thunkAPI) => {
   try {
@@ -1043,16 +1065,19 @@ export const checksumRepairAllTables = createGuardedAsyncThunk(
 )
 
 
-export const setMaintenanceMode = createGuardedAsyncThunk(
-  'cluster/setMaintenanceMode',
+// Toggles maintenance (hits actions/maintenance -> server.SwitchMaintenance),
+// not a dedicated set action -- the banner text stays direction-neutral since
+// this thunk doesn't know which way it just flipped.
+export const switchMaintenanceMode = createGuardedAsyncThunk(
+  'cluster/switchMaintenanceMode',
   async ({ clusterName, serverId }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.setMaintenanceMode(clusterName, serverId, baseURL)
-      showSuccessBanner('Maintenance mode is set!', status, thunkAPI)
+      const { data, status } = await clusterService.switchMaintenanceMode(clusterName, serverId, baseURL)
+      showSuccessBanner('Maintenance mode toggled!', status, thunkAPI)
       return { data, status }
     } catch (error) {
-      showErrorBanner('Setting Maintenance mode failed!', error, thunkAPI)
+      showErrorBanner('Toggling maintenance mode failed!', error, thunkAPI)
       return handleError(error, thunkAPI)
     }
   }
@@ -1681,10 +1706,10 @@ export const stagingProxy = createGuardedAsyncThunk(
   }
 )
 
-export const runSysBench = createGuardedAsyncThunk('cluster/runSysBench', async ({ clusterName, thread, test }, thunkAPI) => {
+export const runSysBench = createGuardedAsyncThunk('cluster/runSysBench', async ({ clusterName, thread, test, time }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.runSysbench(clusterName, thread, baseURL, test)
+    const { data, status } = await clusterService.runSysbench(clusterName, thread, baseURL, test, time)
     showSuccessBanner('Sysbench ran successfuly!', status, thunkAPI)
     return { data, status }
   } catch (error) {
@@ -2701,6 +2726,7 @@ const initialState = {
   topProcess: null,
   opensvcStats: null,
   opensvcPools: null,
+  kubeStorageClasses: null,
   jobs: null,
   shardSchema: null,
   queryRules: null,
@@ -2792,6 +2818,7 @@ export const clusterSlice = createSlice({
         getTopProcess.fulfilled,
         getOpenSVCStats.fulfilled,
         getOpenSVCPools.fulfilled,
+        getKubeStorageClasses.fulfilled,
         getShardSchema.fulfilled,
         getQueryRules.fulfilled,
         getBackups.fulfilled,
@@ -2870,7 +2897,7 @@ export const clusterSlice = createSlice({
         configReload.pending,
         configDiscoverDB.pending,
         configDynamic.pending,
-        setMaintenanceMode.pending,
+        switchMaintenanceMode.pending,
         promoteToLeader.pending,
         setAsUnrated.pending,
         setAsPreferred.pending,
@@ -2957,7 +2984,7 @@ export const clusterSlice = createSlice({
         configReload.fulfilled,
         configDiscoverDB.fulfilled,
         configDynamic.fulfilled,
-        setMaintenanceMode.fulfilled,
+        switchMaintenanceMode.fulfilled,
         promoteToLeader.fulfilled,
         setAsUnrated.fulfilled,
         setAsPreferred.fulfilled,
@@ -3045,7 +3072,7 @@ export const clusterSlice = createSlice({
         configReload.rejected,
         configDiscoverDB.rejected,
         configDynamic.rejected,
-        setMaintenanceMode.rejected,
+        switchMaintenanceMode.rejected,
         promoteToLeader.rejected,
         setAsUnrated.rejected,
         setAsPreferred.rejected,

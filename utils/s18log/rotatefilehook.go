@@ -31,6 +31,7 @@ func NewRotateFileHook(config RotateFileConfig) (logrus.Hook, error) {
 		MaxSize:    config.MaxSize,
 		MaxBackups: config.MaxBackups,
 		MaxAge:     config.MaxAge,
+		Compress:   true, // repman logs are always gzip-compressed on rotation
 	}
 
 	return &hook, nil
@@ -47,4 +48,18 @@ func (hook *RotateFileHook) Fire(entry *logrus.Entry) (err error) {
 	}
 	hook.logWriter.Write(b)
 	return nil
+}
+
+// NewRotateWriter returns an io.WriteCloser backed by the same lumberjack
+// rotation engine as NewRotateFileHook, for callers that write directly to a
+// file/appender path instead of going through a logrus hook (e.g. fetched DB
+// working-dir logs).
+func NewRotateWriter(config RotateFileConfig) (io.WriteCloser, error) {
+	return &lumberjack.Logger{
+		Filename:   config.Filename,
+		MaxSize:    config.MaxSize,
+		MaxBackups: config.MaxBackups,
+		MaxAge:     config.MaxAge,
+		Compress:   true, // repman logs are always gzip-compressed on rotation
+	}, nil
 }

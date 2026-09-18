@@ -1245,3 +1245,42 @@ func TestIsURLPassACLOpenSVCPools(t *testing.T) {
 		})
 	}
 }
+
+// The database service/manifest route was generalized from a literal
+// "/service-opensvc" path to a dynamic "/service/{orchestrator}" one
+// (server/api_database.go, #1497 gap 6) -- the databaseACLRules pattern for
+// it (cluster_acl_rules.go) uses strings.Contains, so it had to move from
+// the old literal segment to the "/service/" prefix or every orchestrator
+// would 403 through IsValidClusterACL even with the right grant. Found via
+// live testing against a real JWT-authenticated request, not caught by
+// buildDatabaseServiceConfigResponse's own tests (server/api_database_test.go),
+// since those deliberately bypass this ACL layer.
+func TestIsURLPassACLDatabaseServiceRoute(t *testing.T) {
+	cluster := setupACLTestCluster()
+	cluster.Name = "test"
+
+	cluster.APIUsers["provision_user"] = APIUser{
+		User:   "provision_user",
+		Grants: map[string]bool{config.GrantProvDBProvision: true},
+	}
+
+	tests := []struct {
+		name     string
+		user     string
+		url      string
+		expected bool
+	}{
+		{"opensvc manifest route allowed with provision grant", "provision_user", "/api/clusters/test/servers/db1/service/opensvc", true},
+		{"kubernetes manifest route allowed with provision grant", "provision_user", "/api/clusters/test/servers/db1/service/kube", true},
+		{"denied without provision grant", "user_no_grants", "/api/clusters/test/servers/db1/service/kube", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := cluster.IsURLPassACL(tt.user, tt.url, false)
+			if result != tt.expected {
+				t.Errorf("User %s on URL %s: Expected %v, got %v", tt.user, tt.url, tt.expected, result)
+			}
+		})
+	}
+}

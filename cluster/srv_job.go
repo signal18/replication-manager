@@ -60,6 +60,11 @@ var (
 // Timeout for getting job records
 var JobTimeout time.Duration = time.Second
 
+// terminalJobsReconcileMinInterval throttles JobsReconcileSQL, matching
+// the interval cluster_job.go's jobsAPIDBRefreshMinInterval already uses for the
+// same monitoring-scheduler=false condition on the dashboard-read path.
+const terminalJobsReconcileMinInterval = 5 * time.Second
+
 func (server *ServerMonitor) JobRun() {
 
 }
@@ -441,15 +446,44 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 	// Remote tasks: set a cookie so the dbjobs script discovers them via the needs API.
 	// Local tasks (mysqldump, mydumper): only track state in memory — repman runs them directly.
 	if cluster.Conf.SchedulerJobsMode == "api" {
+		newTask := &config.Task{Task: task, Start: time.Now().Unix(), State: JobStateAvailable}
+		if payload != nil {
+			newTask.Payload = *payload
+		}
+
+		// Atomically claim the task slot with LoadOrStore instead of a separate
+		// IsInTask check followed by a later Store: two concurrent callers can
+		// both pass a plain check before either stores, dispatching the task
+		// twice. LoadOrStore performs the check-and-set as one operation, so at
+		// most one caller ever claims a given task.
+		for {
+			existing, loaded := server.JobResults.LoadOrStore(task, newTask)
+			if !loaded {
+				break // we claimed the slot
+			}
+			if existing.Done == 0 {
+				return 0, fmt.Errorf("task %s is already in progress", task)
+			}
+			// Previous run finished; try to replace it with our claim. If another
+			// caller wins this race, existing has since changed and we loop to
+			// re-evaluate it rather than clobber their claim.
+			if server.JobResults.CompareAndSwap(task, existing, newTask) {
+				break
+			}
+		}
+
+		// Attempt dispatch (cookie write for remote tasks) after claiming the
+		// slot above, since the claim is what makes the check-and-set atomic.
+		// On failure, release the claim so a stale Done=0 entry doesn't block
+		// every retry forever.
 		if config.IsRemoteTask(config.TaskName(task), cluster.Conf.SchedulerJobsExecOverrides) {
 			if err := server.setTaskCookie(task); err != nil {
+				server.JobResults.CompareAndDelete(task, newTask)
 				return 0, fmt.Errorf("Failed to set cookie for remote task %s: %v", task, err)
 			}
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "API mode: set cookie for task %s on %s", task, server.URL)
-		} else {
-			// Local task — track in memory only, no cookie, no dbjobs dispatch
-			server.JobsUpdateState(task, "", 0, 0)
 		}
+
 		return 0, nil
 	}
 
@@ -527,9 +561,21 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 // otherwise the dbjobs script would also attempt to run them.
 func (server *ServerMonitor) setTaskCookie(task string) error {
 	switch config.TaskName(task) {
-	// Physical backup — dbjobs runs xtrabackup/mariabackup on DB host
-	case config.ConstTaskXB, config.ConstTaskMB:
-		return server.SetWaitPhysicalBackupCookie()
+	// Physical backup — dbjobs runs xtrabackup/mariabackup on DB host. Each
+	// tool gets its own cookie so dbjobs_new.sh's fixed poll order (xtrabackup
+	// checked before mariabackup) can't claim a mariabackup task as xtrabackup.
+	// Clear the sibling tool's cookie (and the old pre-split shared one) first:
+	// a stale leftover from a previous run or a pre-upgrade install could
+	// otherwise still be picked up by the poll for the *other* tool before its
+	// own cookie is ever checked.
+	case config.ConstTaskXB:
+		server.DelWaitMariabackupCookie()
+		server.delLegacyPhysicalBackupCookie()
+		return server.SetWaitXtrabackupCookie()
+	case config.ConstTaskMB:
+		server.DelWaitXtrabackupCookie()
+		server.delLegacyPhysicalBackupCookie()
+		return server.SetWaitMariabackupCookie()
 	// Optimize — dbjobs runs mysqlcheck on DB host
 	case config.ConstTaskOptimize:
 		return server.SetWaitOptimizeCookie()
@@ -563,6 +609,54 @@ func (server *ServerMonitor) setTaskCookie(task string) error {
 		return server.createCookie("cookie_waitzfssnapback")
 	default:
 		return fmt.Errorf("no cookie mapping for task %s", task)
+	}
+}
+
+// delTaskCookie removes the wait cookie for a remote task, mirroring
+// setTaskCookie's mapping in reverse. Used by ReconcileRestoredAPIJobs for
+// best-effort cleanup: without it, a task already reconciled to a terminal
+// state would still get dispatched to dbjobs off a stale cookie the next
+// time it polls CheckTaskNeeded (server/api_database.go), contradicting the
+// terminal state we just recorded.
+func (server *ServerMonitor) delTaskCookie(task string) error {
+	switch config.TaskName(task) {
+	// Also clears the old pre-split shared cookie here, not just on the next
+	// setTaskCookie: reconciliation should leave the datadir fully clean
+	// immediately rather than waiting for the next physical backup dispatch.
+	case config.ConstTaskXB:
+		server.delLegacyPhysicalBackupCookie()
+		return server.DelWaitXtrabackupCookie()
+	case config.ConstTaskMB:
+		server.delLegacyPhysicalBackupCookie()
+		return server.DelWaitMariabackupCookie()
+	case config.ConstTaskOptimize:
+		return server.DelWaitOptimizeCookie()
+	case config.ConstTaskRestart:
+		return server.DelWaitRestartCookie()
+	case config.ConstTaskStop:
+		return server.DelWaitStopCookie()
+	case config.ConstTaskStart:
+		return server.DelWaitStartCookie()
+	case config.ConstTaskReseedXB:
+		return server.DelWaitReseedXtrabackupCookie()
+	case config.ConstTaskReseedMB:
+		return server.DelWaitReseedMariabackupCookie()
+	case config.ConstTaskFlashXB:
+		return server.DelWaitFlashbackXtrabackupCookie()
+	case config.ConstTaskFlashMB:
+		return server.DelWaitFlashbackMariabackupCookie()
+	case config.ConstTaskError:
+		return server.DelWaitErrorlogCookie()
+	case config.ConstTaskSlowQuery:
+		return server.DelWaitSlowqueryCookie()
+	case config.ConstTaskAuditLog:
+		return server.DelWaitAuditlogCookie()
+	case config.ConstTaskSqlError:
+		return server.DelWaitSqlErrorlogCookie()
+	case config.ConstTaskZFS:
+		return server.delCookie("cookie_waitzfssnapback")
+	default:
+		return nil
 	}
 }
 
@@ -749,12 +843,25 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 
 // jobsCheckRunningFromMemory scans JobResults for pending tasks in API mode
 // and sets the same WARN states as the SQL-based JobsCheckRunning.
+//
+// Mirrors JobsCheckRunning's GetTasksByState(Conn, JobStateAvailable) filter
+// by also skipping any task no longer in JobStateAvailable, not just Done
+// ones. Without this, a task that dbjobs has already picked up (State ==
+// JobStateRunning, reported via the "processing" job-state callback) keeps
+// re-opening its WARN state every tick until Done -- so the WARN never has
+// an open->resolved edge until the task finishes on its own. For physical
+// reseed/flashback (WARN0074/WARN0076), ProcessReseedPhysical/
+// ProcessFlashbackPhysical (cluster.go's StateProcessing) only fire on that
+// resolved edge, and that's what actually streams the backup to the target
+// -- so the target sits on a blocking receive waiting for a stream repman
+// never starts sending. Same root cause JobsReconcileSQL's doc comment
+// describes for the SQL-mode fallback; it was fixed there but not here.
 func (server *ServerMonitor) jobsCheckRunningFromMemory() error {
 	cluster := server.ClusterGroup
 	server.JobResults.Range(func(k, v any) bool {
 		t := v.(*config.Task)
-		if t.Done == 1 {
-			return true // skip completed
+		if t.Done == 1 || t.State != JobStateAvailable {
+			return true // skip completed or already picked up by dbjobs
 		}
 		switch config.TaskName(t.Task) {
 		case config.ConstTaskOptimize:
@@ -782,6 +889,48 @@ func (server *ServerMonitor) jobsCheckRunningFromMemory() error {
 	return nil
 }
 
+// ReconcileRestoredAPIJobs converts any restored-but-unfinished API-mode job
+// (Done == 0) into a terminal error state, and best-effort clears any wait
+// cookie for a reconciled remote task so it cannot still be dispatched to
+// dbjobs off stale disk state after we've already recorded it as failed.
+// Call once per server, only on a genuine process startup (never on a
+// cluster settings reload) — see cluster.go's InitFromConf/cluster.initiated
+// gating.
+func (server *ServerMonitor) ReconcileRestoredAPIJobs() {
+	cluster := server.ClusterGroup
+	if cluster.Conf.SchedulerJobsMode != "api" || server.JobResults == nil {
+		return
+	}
+	now := time.Now().Unix()
+	server.JobResults.Callback(func(task string, t *config.Task) bool {
+		if t.Done != 0 {
+			return true
+		}
+		t.Done = 1
+		t.State = JobStateErrorExec
+		t.Result = "replication-manager restarted before this job finished"
+		if t.Start == 0 {
+			t.Start = now
+		}
+		t.End = now
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"Reconciled stale API job %s on %s to error state: job was still unfinished when repman restarted", task, server.URL)
+
+		// Not gated on IsRemoteTask(...): that reflects the *current*
+		// SchedulerJobsExecOverrides, which can differ from what was in
+		// effect when the cookie was originally set (it's parsed fresh from
+		// config on every load, not fixed for the process lifetime). Whether
+		// a cookie exists is what actually drives dispatch in
+		// CheckTaskNeeded(), so always attempt cleanup — delTaskCookie is
+		// already a no-op for tasks that never had one.
+		if err := server.delTaskCookie(task); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg,
+				"Cookie cleanup for reconciled task %s on %s: %v", task, server.URL, err)
+		}
+		return true
+	})
+}
+
 func (server *ServerMonitor) JobsCheckPending(Conn *sqlx.Conn) error {
 	if server.ClusterGroup.Conf.SchedulerJobsMode == "api" {
 		return nil
@@ -793,6 +942,24 @@ func (server *ServerMonitor) JobsCheckPending(Conn *sqlx.Conn) error {
 	}
 	// Set timeout for old task
 	server.ConnExecQueryWithTimeout(Conn, JobTimeout, "UPDATE replication_manager_schema.jobs SET state=5, result='Timeout waiting for job to start', done=1, end=now() where state=0 and start <= DATE_SUB(NOW(), interval 1 hour)")
+
+	// Stale-running cleanup, scoped to short-lived DB log jobs only: if one
+	// of these is still state=1/done=0 after an hour, its completion write
+	// (doneJob's backgrounded final UPDATE, or the dbjobs process itself)
+	// was lost, not that it's still legitimately running. Backup/reseed/
+	// flashback jobs are deliberately excluded — they can legitimately run
+	// far longer than an hour, so timing them out generically would risk
+	// cancelling real in-progress work.
+	logTasks := fmt.Sprintf("'%s','%s','%s','%s'", config.ConstTaskError, config.ConstTaskSlowQuery, config.ConstTaskAuditLog, config.ConstTaskSqlError)
+	if res, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, fmt.Sprintf(
+		"UPDATE replication_manager_schema.jobs SET state=5, done=1, end=now(), result='Timeout waiting for job to finish' where state=1 and done=0 and task in (%s) and start <= DATE_SUB(NOW(), interval 1 hour)", logTasks)); err == nil {
+		if n, _ := res.RowsAffected(); n > 0 {
+			server.SetNeedRefreshJobs(true)
+		}
+	} else {
+		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"Stale-running log job cleanup failed on %s: %v", server.URL, err)
+	}
 
 	tasks, err := server.GetTasksByState(Conn, JobStateHalted)
 	if err != nil {
@@ -861,7 +1028,11 @@ func (server *ServerMonitor) JobsCheckErrors(Conn *sqlx.Conn) error {
 	}
 
 	if ct > 0 {
-		query := "UPDATE replication_manager_schema.jobs SET done=1 WHERE done=0 AND state=5 and task in (%s)"
+		// end=NOW() here (not at the original failure site) because this is where
+		// these rows are actually settled: WaitAndSendSST/WaitAndSendSSTStream
+		// deliberately leave reseed/flashback SST failures at done=0 so this scan
+		// can find them and run the cleanup above before marking them done.
+		query := "UPDATE replication_manager_schema.jobs SET done=1, end=NOW() WHERE done=0 AND state=5 and task in (%s)"
 		server.ExecQueryNoBinLog(fmt.Sprintf(query, strings.Join(p, ",")), JobTimeout)
 		server.SetNeedRefreshJobs(true)
 	}
@@ -1055,6 +1226,13 @@ func (server *ServerMonitor) JobsCheckStates() error {
 	var err error
 	cluster := server.ClusterGroup
 
+	// In api mode the jobs table is not the source of truth (dbjobs report via the API),
+	// so polling it here spams ERROR 1146 "Table 'replication_manager_schema.jobs' doesn't
+	// exist". Mirror JobsCheckRunning's guard and skip the SQL path entirely.
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return nil
+	}
+
 	if cluster.IsInFailover() {
 		return nil
 	}
@@ -1100,6 +1278,110 @@ func (server *ServerMonitor) JobsCheckStates() error {
 	return nil
 }
 
+// JobsReconcileSQL drives the SQL jobs table directly for the
+// monitoring-scheduler=false + scheduler-jobs-mode=sql combination, standing
+// in for the two SQL-based checks the monitor loop otherwise only runs when
+// MonitorScheduler is true (JobsCheckRunning, JobsCheckFinished/JobsCheckErrors
+// via JobsCheckStates):
+//
+//   - JobsCheckRunning(): queries GetTasksByState(Conn, JobStateAvailable) and
+//     opens WARN0074/etc for tasks currently Available. This is the piece that
+//     was missing before: the previous scheduler-off fallback,
+//     jobsCheckRunningFromMemory(), decides purely from the in-memory
+//     JobResults cache's Done flag, with no notion of SQL state at all -- so
+//     WARN0074 stayed open continuously for the task's entire lifetime instead
+//     of resolving the moment dbjobs picks it up (state Available -> Processing,
+//     the SQL-side signal dbjobs_new.sh writes and the only interface it has
+//     with repman -- it has no other channel to report through). Since
+//     ProcessReseedPhysical (the code that actually dials out and streams the
+//     backup) only ever fires on that resolved edge (cluster.go's
+//     StateProcessing), the old fallback meant it could never fire before the
+//     task was already fully finished by dbjobs on its own -- reliably too
+//     late to matter, since dbjobs is sitting on a blocking socket accept
+//     waiting for repman to connect.
+//   - JobsCheckFinished()/JobsCheckErrors(): a job dbjobs already finished on
+//     disk (done=1/state=3 in SQL) reaches AfterJobProcess() (channel-aware
+//     server.StartSlave() post-processing) and JobResults gets synced from SQL
+//     truth, without which WARN0074 also never correctly resolves and stays
+//     stuck open.
+//
+// Deliberately narrower than JobsCheckStates(): it skips JobsCheckPending(),
+// whose scheduler/down-style cancellation semantics assume the scheduler is
+// actively driving dispatch. Running that with the scheduler off risks
+// cancelling a job dbjobs is still legitimately processing.
+//
+// Throttled to terminalJobsReconcileMinInterval: unlike JobsCheckStates()
+// (only ever called when MonitorScheduler is true, where a SQL scan on every
+// tick is an accepted, expected cost), this runs on the scheduler-off path
+// that previously did zero SQL work per tick -- an unthrottled call here,
+// including JobsCheckFinished()'s conditional 3s flush-wait, would be a real
+// monitoring-load regression for that mode. The attempt is marked
+// unconditionally as soon as the TTL gate passes, before any of the checks
+// below, so a persistent failure (e.g. no connection pool) still can't retry
+// on every tick and defeat the throttle.
+//
+// The throttle is bypassed entirely while a reseed/flashback or backup is
+// actively in flight (server.IsReseeding set, or cluster.IsInBackup()):
+// those are foreground, time-sensitive, actively-watched operations that
+// should be reconciled every tick -- what MonitorScheduler=true gives for
+// free -- not held to the general idle-server SQL-load throttle, which
+// exists to protect servers with nothing happening, not ones mid-operation.
+func (server *ServerMonitor) JobsReconcileSQL() error {
+	cluster := server.ClusterGroup
+
+	active := server.HasAnyReseedingState() || cluster.IsInBackup()
+	if !active {
+		if !server.HasTerminalJobsReconcileTTLExpired(terminalJobsReconcileMinInterval) {
+			return nil
+		}
+		server.MarkTerminalJobsReconcileAttempt(time.Now())
+	}
+
+	if cluster.IsInFailover() || cluster.InRollingRestart {
+		return nil
+	}
+	if server.IsDown() {
+		return nil
+	}
+	if server.Conn == nil {
+		return fmt.Errorf("No connection pool on %s", server.URL)
+	}
+
+	if !server.TryStartLoadingJobList() {
+		return errors.New("Waiting for previous update")
+	}
+	defer server.SetLoadingJobList(false)
+
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
+	}
+	defer conn.Close()
+
+	master := cluster.GetMaster()
+	if master != nil && cluster.Conf.SuperReadOnly && master.URL != server.URL && server.HasSuperReadOnlyCapability() {
+		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
+		return nil
+	}
+
+	// JobsCheckRunning opens its own connection internally (it's shared with
+	// the MonitorScheduler=true path, which never has one of these already
+	// open) rather than reusing conn above -- a second short-lived connection
+	// acquisition within this same throttled pass, not worth a signature
+	// change to a function scheduler-on mode also depends on as-is.
+	if err := server.JobsCheckRunning(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job reconciliation (running) on %s: %s", server.URL, err)
+	}
+	if err := server.JobsCheckFinished(conn); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job reconciliation (finished) on %s: %s", server.URL, err)
+	}
+	if err := server.JobsCheckErrors(conn); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job reconciliation (errors) on %s: %s", server.URL, err)
+	}
+
+	return server.JobsUpdateEntries(conn)
+}
+
 func (server *ServerMonitor) JobsCheckFinished(conn *sqlx.Conn) error {
 	var err error
 	cluster := server.ClusterGroup
@@ -1127,8 +1409,15 @@ func (server *ServerMonitor) JobsCheckFinished(conn *sqlx.Conn) error {
 		server.SetNeedRefreshJobs(true)
 	}
 
-	//Wait for debug sent via API
-	time.Sleep(3 * time.Second)
+	// Wait for the writelog API to flush a finished job's status before we log it
+	// — but ONLY when there was actually a finished task. This runs on the
+	// monitoring hot path (Ping → Refresh → JobsCheckStates), so an unconditional
+	// sleep taxed every tick for every server even with no finished job, which
+	// (compounded by a stuck backup) is enough to trip the global heartbeat stall
+	// detector. Sleep only when there is something to flush.
+	if len(logs) > 0 {
+		time.Sleep(3 * time.Second)
+	}
 	for _, logrow := range logs {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, logrow[0], logrow[1], logrow[2])
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, logrow[0], logrow[1], logrow[2])
@@ -1211,9 +1500,43 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 }
 
 // Job state always updated in replication-manager runtime.
+// JobsUpdateState updates a task's state for the normal case, where a real
+// jobs-table row may exist (it was created via JobInsertTask). Start/End are
+// only stamped here in API mode, where there is no jobs table at all;
+// otherwise the SQL UPDATE below (when the scheduler is active) is the
+// source of truth for those fields.
+//
+// Call sites that deliberately skip JobInsertTask — so there is no DB row for
+// this task run regardless of scheduler state — must use
+// JobsUpdateStateRuntimeOnly instead, not infer "no DB row" from
+// !MonitorScheduler: some callers (JobServerStop, JobServerRestart,
+// JobOptimize) call JobInsertTask unconditionally and do get a real row even
+// with the scheduler disabled.
 func (server *ServerMonitor) JobsUpdateState(task, result string, state, done int) error {
+	cluster := server.ClusterGroup
+	return server.jobsUpdateState(task, result, state, done, cluster.Conf.SchedulerJobsMode == "api")
+}
+
+// JobsUpdateStateRuntimeOnly behaves like JobsUpdateState but always stamps
+// Start/End from the in-memory cache, regardless of SchedulerJobsMode or
+// MonitorScheduler, and never touches the jobs table. Use it only from call
+// sites that never call JobInsertTask for this task, e.g. manual logical
+// backup/reseed flows (cluster/srv_job_backup.go) — JobsUpdateState alone
+// would leave Start/End blank forever there since there is no DB row to fall
+// back on, and running the SQL UPDATE against a task that was never inserted
+// would just be a wasted round trip against zero matching rows.
+//
+// No error return: jobsUpdateState's runtimeOnly path only ever touches the
+// in-memory cache and always returns nil, so a caller checking an error here
+// would be dead code that can never fire — do not add one back.
+func (server *ServerMonitor) JobsUpdateStateRuntimeOnly(task, result string, state, done int) {
+	server.jobsUpdateState(task, result, state, done, true)
+}
+
+func (server *ServerMonitor) jobsUpdateState(task, result string, state, done int, runtimeOnly bool) error {
 	var err error
 	cluster := server.ClusterGroup
+	now := time.Now().Unix()
 
 	if t, exists := server.JobResults.LoadOrStore(task, &config.Task{
 		Task:   task,
@@ -1221,16 +1544,44 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 		Result: result,
 		Done:   done,
 	}); exists {
+		wasDone := t.Done
 		t.State = state
 		t.Done = done
 		t.Result = result
-	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job state updated in runtime. Continue to update state in jobs table.")
 
-	// In API mode, state is tracked in memory only — no jobs table
-	if cluster.Conf.SchedulerJobsMode == "api" {
+		if runtimeOnly {
+			if done == 1 {
+				if t.Start == 0 {
+					t.Start = now
+				}
+				t.End = now
+			} else {
+				if t.Start == 0 || wasDone == 1 {
+					t.Start = now
+				}
+				t.End = 0
+			}
+		}
+	} else if runtimeOnly {
+		if done == 1 {
+			t.Start = now
+			t.End = now
+		} else {
+			t.Start = now
+			t.End = 0
+		}
+	}
+
+	// runtimeOnly callers (JobsUpdateState in API mode, or JobsUpdateStateRuntimeOnly)
+	// never have a DB row for this task -- API mode has no jobs table at all, and
+	// JobsUpdateStateRuntimeOnly's callers deliberately never call JobInsertTask.
+	// Stop here, or this would fall through to the SQL section below and run a
+	// no-op UPDATE against a row that was never inserted.
+	if runtimeOnly {
 		return nil
 	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job state updated in runtime. Continue to update state in jobs table.")
 
 	if !cluster.Conf.MonitorScheduler {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Monitoring scheduler is inactive, task only updated in runtime")
@@ -1260,7 +1611,32 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 	return err
 }
 
+// JobsUpdatePayload updates a task's payload for the normal case, where a
+// real jobs-table row may exist (it was created via JobInsertTask).
+//
+// Call sites that deliberately skip JobInsertTask — so there is no DB row for
+// this task run regardless of scheduler state — must use
+// JobsUpdatePayloadRuntimeOnly instead; see JobsUpdateState/
+// JobsUpdateStateRuntimeOnly for the same distinction and why it can't be
+// inferred from !MonitorScheduler alone.
 func (server *ServerMonitor) JobsUpdatePayload(task, payload string) error {
+	cluster := server.ClusterGroup
+	return server.jobsUpdatePayload(task, payload, cluster.Conf.SchedulerJobsMode == "api")
+}
+
+// JobsUpdatePayloadRuntimeOnly behaves like JobsUpdatePayload but never
+// touches the jobs table, regardless of SchedulerJobsMode or
+// MonitorScheduler. Use it only from call sites that never call
+// JobInsertTask for this task (e.g. JobReseedLogicalBackupPrepare).
+//
+// No error return: jobsUpdatePayload's runtimeOnly path only ever touches the
+// in-memory cache and always returns nil, so a caller checking an error here
+// would be dead code that can never fire — do not add one back.
+func (server *ServerMonitor) JobsUpdatePayloadRuntimeOnly(task, payload string) {
+	server.jobsUpdatePayload(task, payload, true)
+}
+
+func (server *ServerMonitor) jobsUpdatePayload(task, payload string, runtimeOnly bool) error {
 	cluster := server.ClusterGroup
 	if t, exists := server.JobResults.LoadOrStore(task, &config.Task{
 		Task: task,
@@ -1270,7 +1646,9 @@ func (server *ServerMonitor) JobsUpdatePayload(task, payload string) error {
 		t.Payload = payload
 	}
 
-	if cluster.Conf.SchedulerJobsMode == "api" {
+	// See jobsUpdateState's identical early return for why this must not fall
+	// through to the SQL section: there is no DB row for a runtimeOnly task.
+	if runtimeOnly {
 		return nil
 	}
 
@@ -1428,7 +1806,11 @@ func (server *ServerMonitor) UpgradeJobsScript() error {
 	cluster := server.ClusterGroup
 	defer cluster.LogPanicToFile("jobs-upgrade")
 
-	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server, true)
+	// progress=nil: this is a jobs-script upgrade transfer, not a reseed --
+	// see SSTProgressSink's doc comment for why it must not write reseed
+	// progress counters (could corrupt an unrelated reseed in progress on
+	// this same server).
+	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server, true, nil)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "dbjobs_new file does not exist on %s, retrying later", server.Name)

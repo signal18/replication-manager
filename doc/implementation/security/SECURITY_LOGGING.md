@@ -115,6 +115,24 @@ These events are logged by the `server` package via `repman.logSecurityEvent()`.
 {"event":"api_secret_login_success","user":"system","remote_addr":"127.0.0.1:12345","msg":"API secret login successful (dbjobs/service account)"}
 ```
 
+### SSO/local account collision — `api_sso_local_collision`
+
+**Trigger:** An OIDC/SSO login (`/api/auth/callback`) whose identity matches a
+**password-protected local account** (see
+[API_CREDENTIAL_AUTH_MODEL.md](API_CREDENTIAL_AUTH_MODEL.md)). SSO is denied and
+the attempt is logged — a same-named GitLab identity must never authenticate
+against a local account (`admin`, `system`, `dba`, …). The registering owner
+(`Cloud18GitUser`) is exempt. Always logged.
+
+```json
+{"event":"api_sso_local_collision","user":"dba","remote_addr":"10.0.0.1:54321","msg":"SSO denied: dba is a password-protected local account; refusing to bind a GitLab identity to it"}
+```
+
+> Do not confuse with **`api_login_local_sso_mismatch`** (`api_login_upgrade.go`),
+> a different scenario: a *local* login succeeded but its background SSO upgrade
+> was explicitly rejected. `api_sso_local_collision` is an SSO login being
+> refused because the name belongs to a local account.
+
 ---
 
 ## Configuration

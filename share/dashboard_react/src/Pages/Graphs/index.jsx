@@ -6,9 +6,25 @@ import Graphite from '../../components/Graphite'
 import Dropdown from '../../components/Dropdown'
 import ChartLatchTracing from '../../components/ChartLatchTracing';
 import ChartMultiMetric from '../../components/ChartMultiMetric';
-import ChartBarStack from '../../components/ChartBarStack';
+import ChartGroupedDBU from '../../components/ChartGroupedDBU';
+import ChartBarStack from '../../components/ChartBarStack'
+import ChartTimeSeriesLine from '../../components/ChartTimeSeriesLine';
 import RMIconButton from '../../components/RMIconButton'
+import AccordionComponent from '../../components/AccordionComponent'
 import { HiCog } from 'react-icons/hi'
+
+// One collapsible section of the page (Workload / Resources / InnoDB / Memory). Module-level
+// on purpose: defined inside Graphs it would be a new component type on every render and
+// React would unmount/remount every chart (and their cubism contexts) each tick.
+function GraphSection({ heading, children }) {
+  return (
+    <AccordionComponent
+      className={styles.section}
+      heading={heading}
+      body={<Flex className={styles.graphs}>{children}</Flex>}
+    />
+  )
+}
 
 function Graphs({ selectedCluster, onOpenSettings }) {
   const qpsRef = useRef()
@@ -42,6 +58,57 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   const [selectedStep, setSelectedStep] = useState({ name: '10 seconds', value: 1e4 })
   //console.log("selectedCluster:", selectedCluster);
   const [context, setContext] = useState(null)
+
+  // Scope every graphite target to the servers of the selected cluster.
+  // The carbon metric host is the DB HOSTNAME uppercased with '.' -> '-'
+  // (see cluster/srv_snd.go graphiteHostname). Without this the page used the
+  // bare 'mysql.*' wildcard, so maxSeries/sumSeries aggregated across the WHOLE
+  // fleet and a cluster's graph showed another cluster's numbers (#1756).
+  const carbonHost = (h) =>
+    (h || '').toUpperCase().replace(/[`?()'"<]/g, '-').replace(/\./g, '-').replace(/[ /]/g, '_')
+  // Scope a whole-fleet 'mysql.*' to THIS cluster by its NAME, which is embedded in
+  // every carbon host id ('DB<n>-<CLUSTER>-SVC-CLOUD18'): match 'mysql.*-<CLUSTER>-*'.
+  // ONE wildcard pattern -- NOT a '{a,b,c}' brace, which go-graphite expands into several
+  // SEPARATE series that ChartMultiMetric (one series per target) cannot parse -> blank
+  // graph (#1756 regression). So maxSeries/sumSeries aggregate to ONE series. It also
+  // filters by cluster ALWAYS, with NO dependency on the (possibly not-yet-loaded) server
+  // list, so it never falls back to the unscoped whole-fleet '*' that mixes clusters.
+  const clusterToken = carbonHost(selectedCluster?.name || '')
+  // mysql.* (DB stats) keeps the old scheme (cluster embedded in the host id -> mysql.*-<CLUSTER>-*).
+  // dbu.* (DB resource) and apu.* (Compute) use the newer scheme: cluster as its own segment with
+  // the RAW cluster name, matching what repman emits (dbu.<cluster>.<host> / apu.<cluster>.<unit>)
+  // -- identical string both sides, no Go/JS sanitiser.
+  const scope = (s) =>
+    typeof s === 'string' && clusterToken
+      ? s
+          .replaceAll('mysql.*', `mysql.*-${clusterToken}-*`)
+          .replaceAll('dbu.*', `dbu.${selectedCluster?.name}.*`)
+          .replaceAll('apu.*', `apu.${selectedCluster?.name}.*`)
+      : s
+  const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
+
+  const cfg = selectedCluster?.config || {}
+  // The plan line = prov-service-plan-dbu, the materialized service-plan DBU (Σ per-node
+  // deployment plans = prov-db-dbu x #nodes), recomputed each tick. The GUI just READS it.
+  const planDbu = parseInt(cfg.provServicePlanDbu) || 1
+  // The configured line = cluster.configDbu, the technical prov-db-* allocation projected to
+  // DBU (per-node pivot x #nodes), refreshed each tick by repman. Distinct from the plan: a
+  // dynamic over-plan grow moves this line, never the plan.
+  const configDbu = Number(selectedCluster?.configDbu) || 0
+
+  // Window (seconds) and refresh cadence for the d3 line charts, from the same
+  // hour/step selectors that drive the cubism graphs.
+  const windowSec = Math.max(60, Math.round((selectedHour.value * selectedStep.value) / 1000))
+  const refreshMs = selectedStep.value
+
+  // Seconds -> human duration, for the replication-delay Y axis (values are seconds,
+  // labelled 1s/1m/1h/1d up to the 6-day cap).
+  const fmtDur = (s) => {
+    if (s < 60) return `${Math.round(s)}s`
+    if (s < 3600) return `${Math.round(s / 60)}m`
+    if (s < 86400) return `${Math.round(s / 3600)}h`
+    return `${Math.round(s / 86400)}d`
+  }
 
   useEffect(() => {
   if (typeof window === 'undefined' || !window.cubism) return;
@@ -87,94 +154,207 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           }}
         />
       </Flex>
+      {/* Sections mirror what a DBA reads top-down: what the workload does, how replication
+          keeps up, what it costs in units, what InnoDB is doing about it, and where the memory went. Each section is
+          an accordion; a collapsed section still keeps its charts mounted (Chakra keeps the
+          panel in the DOM), so the cubism contexts are not re-created on toggle. */}
       { context && (
-      <Flex className={styles.graphs}>
-        <Graphite
-          chartRef={qpsRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
-          context={context}
-          title={'Qps'}
-          target={'perSecond(mysql.*.mysql_global_status_queries)'}
+      <>
+      <GraphSection heading='Workload'>
+        <ChartTimeSeriesLine
+          title='Qps'
+          yLabel='queries/s'
+          logScale
+          cap={1e6}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[{ target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_queries))'), label: 'Qps' }]}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
-        <Graphite
-          chartRef={coreRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
-          context={context}
-          title={'Threads'}
-          target={'sumSeries(mysql.*.mysql_global_status_threads_running)'}
-          maxExtent={1024}
-          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
-        />
-        <Graphite
-          chartRef={netRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
-          context={context}
-          title={'BytesIn'}
-          target={'perSecond(mysql.*.mysql_global_status_bytes_received)'}
-          title2={'BytesOut'}
-          target2={'perSecond(mysql.*.mysql_global_status_bytes_sent)'}
-          maxExtent={100000}
-          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
-        />
-        <Graphite
-          chartRef={sbmRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
-          context={context}
-          title={'ReplDelay'}
-          target={'sumSeries(mysql.*.mysql_slave_status_seconds_behind_master)'}
-          maxExtent={8000}
-          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
-        />
-        <ChartLatchTracing
-          context={context}
-          title={'Mutex'}
-          metricPaths={[
-            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_buf_pool_mutex)',
-            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_buf_dblwr_mutex)',
-            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_fil_system_mutex)',
-            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_flush_list_mutex)',
-            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_lock_wait_mutex)',
-            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_trx_sys_mutex)'
+        {/* threads_connected joined threads_running in whitelist.conf.minimal; a cluster
+            materialised before that keeps its whitelist.conf until the template is reapplied
+            (graphite-whitelist-template setting), so the Connected line can be empty there. */}
+        <ChartTimeSeriesLine
+          title='Threads running / connected'
+          yLabel='threads'
+          logScale
+          logBase={2}
+          cap={1024}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('sumSeries(mysql.*.mysql_global_status_threads_running)'), label: 'Running' },
+            { target: scope('sumSeries(mysql.*.mysql_global_status_threads_connected)'), label: 'Connected' }
           ]}
-          className={`${styles.graph} ${styles[`width${selectedHour.value}`]}`}
-          isVisible={selectedCluster.config.monitoringPerformanceSchemaMutex}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
-        <ChartLatchTracing
-          context={context}
-          title={'latch'}
-         metricPaths={[
-         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_btr_search_latch)',
-         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_fil_space_latch)',
-         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_trx_purge_latch)',
-         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_trx_rseg_latch)',
-         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_lock_latch)',
-         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_log_latch)'
-         ]}
-          className={`${styles.graph} ${styles[`width${selectedHour.value}`]}`}
-          isVisible={selectedCluster.config.monitoringPerformanceSchemaLatch}
+        {/* The four remaining Top-page gauges (ClusterWorkload.jsx) over time. Same sources:
+            Cpu TP = busy thread-pool threads / prov-db-cpu-cores (MariaDB thread pool),
+            Cpu US = userstats CPU time, Tables/Indexes = DictTables bytes from the master. */}
+        <ChartTimeSeriesLine
+          title='Cpu thread pool'
+          yLabel='% of cores'
+          cap={100}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[{ target: scope('maxSeries(mysql.*.workload_cpu_thread_pool_pct)'), label: 'Cpu TP' }]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
-        <ChartBarStack
-          context={context}
-          title={'Memory'}
-          metricPaths={[
-            'maxSeries(mysql.*.mysql_global_status_performance_schema_memory)',
-            'maxSeries(mysql.*.mysql_global_status_memory_used)',
-            'maxSeries(mysql.*.mysql_global_status_innodb_buffer_pool_bytes_data)',
-            'maxSeries(mysql.*.mysql_global_status_aria_pagecache_bytes_data)'
+        <ChartTimeSeriesLine
+          title='Cpu user stats'
+          yLabel='cpu time'
+          logScale
+          cap={10000}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[{ target: scope('maxSeries(mysql.*.workload_cpu_user_stats)'), label: 'Cpu US' }]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        <ChartTimeSeriesLine
+          title='Network in / out'
+          yLabel='bytes/s'
+          logScale
+          cap={100e9}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_bytes_received))'), label: 'In' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_bytes_sent))'), label: 'Out' }
           ]}
-          className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
+        <ChartTimeSeriesLine
+          title='Schema size'
+          yLabel='GB'
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('scale(maxSeries(mysql.*.workload_table_size_bytes), 9.313225746154785e-10)'), label: 'Tables' },
+            { target: scope('scale(maxSeries(mysql.*.workload_index_size_bytes), 9.313225746154785e-10)'), label: 'Indexes' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        {/* The Top page per-instance header graphs over time: one line per bar, summed over the
+            cluster's instances (mysql.<host>.top_<graph>_<metric>, per-tick deltas computed by
+            ServerMonitor.TopHeader -- the very numbers the Top page draws). */}
         <ChartMultiMetric
          context={context}
-         metricPaths={[
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_queries_questions)',
+           'sumSeries(mysql.*.top_queries_selects)',
+           'sumSeries(mysql.*.top_queries_inserts)',
+           'sumSeries(mysql.*.top_queries_updates)',
+           'sumSeries(mysql.*.top_queries_deletes)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Queries — per tick (Top page: Queries)"
+       />
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_rows_reads)',
+           'sumSeries(mysql.*.top_rows_writes)',
+           'sumSeries(mysql.*.top_rows_updates)',
+           'sumSeries(mysql.*.top_rows_deletes)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Rows — handler calls per tick (Top page: Rows)"
+       />
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_transactions_commits)',
+           'sumSeries(mysql.*.top_transactions_binlog)',
+           'sumSeries(mysql.*.top_transactions_binlog_group)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Transactions — per tick (Top page: Transactions)"
+       />
+      </GraphSection>
+
+      <GraphSection heading='Replication'>
+        <ChartTimeSeriesLine
+          title='Replication delay'
+          yLabel='behind master'
+          logScale
+          cap={518400}
+          yTickValues={[1, 10, 60, 600, 3600, 21600, 86400, 259200, 518400]}
+          yTickFormat={fmtDur}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[{ target: scope('sumSeries(mysql.*.mysql_slave_status_seconds_behind_master)'), label: 'Delay' }]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        {/* Replication parallelism: the binlog group commit size is the concurrency the master's
+            binlog offers to conservative/optimistic parallel replication (1.0 = commits never
+            overlap, nothing to parallelise) against the workers configured to consume it. */}
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'maxSeries(mysql.*.replication_group_commit_size)',
+           'maxSeries(mysql.*.replication_parallel_threads)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Replication parallelism — binlog group commit size (commit concurrency, MariaDB only) vs parallel workers"
+       />
+      </GraphSection>
+
+      <GraphSection heading='Resources'>
+        <ChartGroupedDBU
+         context={context}
+         dbuPaths={{
+           cpu: scope('sumSeries(dbu.*.dbu_cpu)'),
+           mem: scope('sumSeries(dbu.*.dbu_mem)'),
+           io: scope('sumSeries(dbu.*.dbu_io)'),
+           disk: scope('sumSeries(dbu.*.dbu_disk)')
+         }}
+         servicePaths={{
+           cpu: scope('sumSeries(dbu.*.service_cpu)'),
+           mem: scope('sumSeries(dbu.*.service_mem)'),
+           io: scope('sumSeries(dbu.*.service_io)'),
+           disk: scope('sumSeries(dbu.*.service_disk)')
+         }}
+         pivotPath={scope('sumSeries(dbu.*.dbu)')}
+         planDbu={planDbu}
+         configDbu={configDbu}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Consumed DBU — real → DBU per axis (plan = service plan, configured = prov-db-*)"
+       />
+        {/* Compute (APU) — proxies + apps. Reuses the grouped-unit chart: the apu_* series
+            already carry the server-side Compute projection, so we pass them as the billed
+            bars and leave servicePaths empty (the real→unit overlay uses DBU ratios, N/A here).
+            No IO axis (Compute has no IOPS lock). Cluster-scoped: apu.* is rewritten to
+            apu.<CTOKEN>.* by scope(), matching the cluster token repman now emits, so a
+            multi-cluster instance no longer mixes clusters. Plan line = prov-service-plan-apu
+            (the materialized service-plan APU = Σ proxy+app deployment plans). */}
+        <ChartGroupedDBU
+         context={context}
+         dbuPaths={{
+           cpu: scope('sumSeries(apu.*.apu_cpu)'),
+           mem: scope('sumSeries(apu.*.apu_mem)'),
+           disk: scope('sumSeries(apu.*.apu_disk)')
+         }}
+         servicePaths={{}}
+         pivotPath={scope('sumSeries(apu.*.apu)')}
+         planDbu={parseInt(cfg.provServicePlanApu) || 0}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Consumed APU — proxies + apps (Compute; plan = service-plan APU)"
+       />
+      </GraphSection>
+
+      <GraphSection heading='InnoDB'>
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
            'maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
            'averageSeries(mysql.*.mysql_global_variables_innodb_log_file_size)'
-         ]}
+         ])}
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="InnoDB Redo Log Status"
@@ -186,7 +366,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          context={context}
         maxExtent={100000}
          title={'InnodbHistoryListLenght'}
-         target={'maxSeries(mysql.*.engine_innodb_history_list_lenght_inside_innodb)'}
+         target={scope('maxSeries(mysql.*.engine_innodb_history_list_lenght_inside_innodb)')}
          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
        />
        <Graphite
@@ -196,11 +376,76 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          context={context}
          maxExtent={100000}
          title={'InnodbReadViews'}
-         target={'maxSeries(mysql.*.engine_innodb_read_views_open_inside_innodb)'}
+         target={scope('maxSeries(mysql.*.engine_innodb_read_views_open_inside_innodb)')}
          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
        />
+        <ChartLatchTracing
+          context={context}
+          title={'Mutex'}
+          metricPaths={scopeAll([
+            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_buf_pool_mutex)',
+            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_buf_dblwr_mutex)',
+            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_fil_system_mutex)',
+            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_flush_list_mutex)',
+            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_lock_wait_mutex)',
+            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_trx_sys_mutex)'
+          ])}
+          className={`${styles.graph} ${styles[`width${selectedHour.value}`]}`}
+          isVisible={selectedCluster.config.monitoringPerformanceSchemaMutex}
+        />
+        <ChartLatchTracing
+          context={context}
+          title={'latch'}
+         metricPaths={scopeAll([
+         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_btr_search_latch)',
+         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_fil_space_latch)',
+         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_trx_purge_latch)',
+         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_trx_rseg_latch)',
+         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_lock_latch)',
+         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_log_latch)'
+         ])}
+          className={`${styles.graph} ${styles[`width${selectedHour.value}`]}`}
+          isVisible={selectedCluster.config.monitoringPerformanceSchemaLatch}
+        />
+      </GraphSection>
 
-      </Flex>
+      <GraphSection heading='Memory'>
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_swap_tmp_tables)',
+           'sumSeries(mysql.*.top_swap_binary_logs)',
+           'sumSeries(mysql.*.top_swap_sorts)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Swap — spills to disk per tick (Top page: Swap)"
+       />
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'sumSeries(mysql.*.top_cache_miss_innodb)',
+           'sumSeries(mysql.*.top_cache_miss_aria)',
+           'sumSeries(mysql.*.top_cache_miss_myisam)',
+           'sumSeries(mysql.*.top_cache_miss_myrocks)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Cache miss — engine cache misses per tick (Top page: Cache Miss)"
+       />
+        <ChartBarStack
+          context={context}
+          title={'Memory'}
+          metricPaths={scopeAll([
+            'maxSeries(mysql.*.mysql_global_status_performance_schema_memory)',
+            'maxSeries(mysql.*.mysql_global_status_memory_used)',
+            'maxSeries(mysql.*.mysql_global_status_innodb_buffer_pool_bytes_data)',
+            'maxSeries(mysql.*.mysql_global_status_aria_pagecache_bytes_data)'
+          ])}
+          className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
+        />
+      </GraphSection>
+      </>
       )}
     </Flex>
   )

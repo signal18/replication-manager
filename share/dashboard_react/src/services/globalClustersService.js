@@ -8,7 +8,10 @@ export const globalClustersService = {
   getTermsData,
   getGlobalAlerts,
   getGlobalMetrics,
+  getGlobalResources,
   getGlobalLogs,
+  getGlobalLogHistory,
+  getGlobalJobs,
   switchGlobalSetting,
   setGlobalSetting,
   clearGlobalSetting,
@@ -47,8 +50,25 @@ function getGlobalMetrics(baseURL) {
   return getApi(baseURL).get('global/metrics')
 }
 
+function getGlobalResources(baseURL) {
+  return getApi(baseURL).get('global/resources')
+}
+
 function getGlobalLogs(baseURL) {
   return getApi(baseURL).get('global/http-logs')
+}
+
+// getGlobalLogHistory reads on-disk log history (beyond the in-memory ring
+// buffer) by adding since/until to the same endpoint as getGlobalLogs -
+// server/api_global.go's handlerMuxGlobalLogs switches to a bounded on-disk
+// scan whenever since/until is present. params: { since, until, level,
+// module, text, limit }.
+function getGlobalLogHistory(params, baseURL) {
+  return getApi(baseURL).get('global/http-logs', params)
+}
+
+function getGlobalJobs(baseURL) {
+  return getApi(baseURL).get('global/jobs')
 }
 
 function getTermsData(baseURL) {

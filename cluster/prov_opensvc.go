@@ -81,9 +81,18 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 		svc.CertsDERSecret = cluster.Conf.GetDecryptedValue("opensvc-p12-secret")
 		err := svc.LoadCert(cluster.Conf.ProvOpensvcP12Certificate)
 		if err != nil {
+			// Log at Err only on the state transition: WARN0099 carries the
+			// persistent condition and alerts once; re-logging on every
+			// OpenSVCConnect() call floods the alert channels (a missing p12
+			// on a hot loop produced ~8K Slack messages/day, 2026-09).
+			firstFailure := !cluster.failLoadP12Cert
 			cluster.failLoadP12Cert = true
 			cluster.SetState("WARN0099", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0099"], cluster.Conf.ProvOpensvcP12Certificate, err), ErrFrom: "OpenSVC"})
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)
+			if firstFailure {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Cannot load OpenSVC cluster certificate %s ", err)
+			}
 		} else {
 			cluster.failLoadP12Cert = false
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)
@@ -316,6 +325,11 @@ func (cluster *Cluster) openSVCCreateMapsV2(svc opensvc.Collector, agent string)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "SHARDPROXY_ROOT_PASSWORD", err)
 	}
+	// APU (Compute) sensor credential -- see openSVCCreateMapsV3 for the rationale.
+	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "SENSOR_API_KEY", cluster.GetSystemAPIKey())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "SENSOR_API_KEY", err)
+	}
 
 	err = svc.CreateConfigV2(cluster.Name, "env", agent)
 	if err != nil {
@@ -372,6 +386,14 @@ func (cluster *Cluster) openSVCCreateMapsV3(svc opensvc.Collector, agent string)
 	err = svc.CreateSecretKeyValue(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
 	if err != nil {
 		errs["SHARDPROXY_ROOT_PASSWORD"] = err
+	}
+	// APU (Compute) sensor credential: the derived `system` API key, delivered via the
+	// OpenSVC SECRET channel (never svcenv/git). app_job.sh logs in as `system` with it
+	// so stateless proxies/apps -- which have no DB password -- can push /apu. Rotatable
+	// with the repman private key (GetSystemAPIKey = HMAC(SecretKey, cluster)).
+	err = svc.CreateSecretKeyValue(cluster.Name, "env", "SENSOR_API_KEY", cluster.GetSystemAPIKey())
+	if err != nil {
+		errs["SENSOR_API_KEY"] = err
 	}
 
 	if len(errs) > 0 {

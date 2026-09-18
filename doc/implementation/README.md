@@ -2,7 +2,22 @@
 
 This directory contains detailed implementation documentation for various features and components of replication-manager.
 
+## Cloud18 (community)
+
+- **cloud18/REGISTRATION.md** - Community onboarding A→Z: GitLab SSO login, first-claimant domain ownership, the config vs `-pull` repos, empty-remote config-repo bootstrap, GWARN002 troubleshooting
+- **peer/MARKETPLACE.md** - What registration unlocks: `peer.json` community feed, for-sale listings, delegated cross-repman access and health
+
+## Build & Release
+
+- **CI_RELEASE_PIPELINE.md** - GitHub Actions CI/release pipeline map (Jenkins is retired): package/repo publication, docker images, release assets, tag naming rules
+- **BUILD_PLUGIN_PUBLISHING.md** - Log-plugin publishing ownership (single publisher, `PLUGIN_PUSH` gate)
+
 ## Directory Structure
+
+### `/cluster/`
+Cluster monitoring, backup, and resilience.
+
+- **BACKUP_DEAD_VOLUME_STALL.md** - Why a lost backup volume must not stall the monitor: the write-stall watchdog (`backup-write-stall-timeout`), the monitoring-hot-path sleep fix, and the controllable-mount reproduction
 
 ### `/restart-cookie/`
 Documentation related to the restart cookie mechanism and database restart functionality.
@@ -31,6 +46,11 @@ Frontend UI component documentation.
 - **ServerMenu.README.md** - ServerMenu component documentation
 - **ServerMenu.REVIEW.md** - ServerMenu component review notes
 - **ServerMenu.SUMMARY.md** - ServerMenu component summary
+
+### `/server/`
+Server API and cross-cluster aggregation documentation.
+
+- **GLOBAL_JOBS_DASHBOARD.md** - Global jobs aggregate endpoint, ACL behavior, and dashboard wiring
 
 ### `/utils/dbhelper/`
 Database helper utilities documentation.

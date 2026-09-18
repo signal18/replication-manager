@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
@@ -444,12 +445,258 @@ func TestGetMonitoringStatusRefreshPartialOutageIsAppWarning(t *testing.T) {
 		{Protocol: "tcp", CName: "127.0.0.1", Port: openPort, DestinationPort: openPort, Primary: false},
 	}
 	app := newMonitoringTestApp(routes)
+	app.State = stateAppRunning
+	app.PrevState = stateAppRunning
+
+	// Refresh()'s stateAppWarning case debounces via WarnCount, saturating at
+	// appErrorDebounceThreshold(cluster.Conf) (3, set by newMonitoringTestApp):
+	// App.State does not flip to AppWarning -- and the ALERT log does not fire
+	// -- until that many consecutive cycles report a warning-worthy check.
+	threshold := app.ClusterGroup.Conf.AppErrorDebounceThreshold
+	for i := 1; i < threshold; i++ {
+		if err := app.Refresh(); err != nil {
+			t.Fatalf("Refresh returned error on iteration %d: %v", i, err)
+		}
+		if app.State != stateAppRunning {
+			t.Fatalf("expected app state to stay %s before debounce threshold, iteration %d, got %s", stateAppRunning, i, app.State)
+		}
+		if app.PrevState != stateAppRunning {
+			t.Fatalf("did not expect PrevState to advance before a committed transition, iteration %d, got %s", i, app.PrevState)
+		}
+		if got := app.GetWarnCount(); got != i {
+			t.Fatalf("expected WarnCount=%d on iteration %d, got %d", i, i, got)
+		}
+	}
 
 	if err := app.Refresh(); err != nil {
 		t.Fatalf("Refresh returned error: %v", err)
 	}
 	if app.State != stateAppWarning {
-		t.Fatalf("expected app state %s after partial local outage, got %s", stateAppWarning, app.State)
+		t.Fatalf("expected app state %s after partial local outage past debounce threshold, got %s", stateAppWarning, app.State)
+	}
+	if app.PrevState != stateAppWarning {
+		t.Fatalf("expected PrevState advanced to %s on the committed transition, got %s", stateAppWarning, app.PrevState)
+	}
+}
+
+// TestRefreshAppWarningToAppRunning_ImmediateRecoveryAfterCommittedWarning
+// covers the AppWarning -> AppRunning leg with State already committed to
+// AppWarning (not just a pending, sub-threshold WarnCount): recovery must
+// still take exactly one Refresh() cycle, with WarnCount reset to zero.
+func TestRefreshAppWarningToAppRunning_ImmediateRecoveryAfterCommittedWarning(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start test listener: %v", err)
+	}
+	defer ln.Close()
+	openPort := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
+
+	failRoute := config.Route{Protocol: "tcp", CName: "127.0.0.1", Port: "1", DestinationPort: "1", Primary: true}
+	okRoute := config.Route{Protocol: "tcp", CName: "127.0.0.1", Port: openPort, DestinationPort: openPort, Primary: false}
+	app := newMonitoringTestApp([]config.Route{failRoute, okRoute})
+	app.State = stateAppRunning
+	app.PrevState = stateAppRunning
+
+	threshold := app.ClusterGroup.Conf.AppErrorDebounceThreshold
+	for i := 0; i < threshold; i++ {
+		if err := app.Refresh(); err != nil {
+			t.Fatalf("Refresh returned error on iteration %d: %v", i, err)
+		}
+	}
+	if app.State != stateAppWarning {
+		t.Fatalf("expected app state %s to be committed after %d cycles, got %s", stateAppWarning, threshold, app.State)
+	}
+
+	// Fix the failing route: recovery must land on the very next Refresh().
+	app.AppConfig.Deployment.Routes[0] = config.Route{Protocol: "tcp", CName: "127.0.0.1", Port: openPort, DestinationPort: openPort, Primary: true}
+	if err := app.Refresh(); err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	if app.State != stateAppRunning {
+		t.Fatalf("expected app state %s after recovery, got %s", stateAppRunning, app.State)
+	}
+	if app.PrevState != stateAppRunning {
+		t.Fatalf("expected PrevState advanced to %s on the recovery transition, got %s", stateAppRunning, app.PrevState)
+	}
+	if got := app.GetWarnCount(); got != 0 {
+		t.Fatalf("expected WarnCount reset to 0 after recovery, got %d", got)
+	}
+}
+
+// TestRefreshWarningStreakResetByFailedInterruption covers the plan's
+// "warning interruption" case: a pending (sub-threshold) warning streak must
+// not survive an intervening Failed observation -- a later warning streak
+// has to start counting from zero again, not pick up where the first one
+// left off.
+func TestRefreshWarningStreakResetByFailedInterruption(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start test listener: %v", err)
+	}
+	defer ln.Close()
+	openPort := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
+
+	alwaysDown := config.Route{Protocol: "tcp", CName: "127.0.0.1", Port: "1", DestinationPort: "1", Primary: true}
+	flappingOK := config.Route{Protocol: "tcp", CName: "127.0.0.1", Port: openPort, DestinationPort: openPort, Primary: false}
+	flappingDown := config.Route{Protocol: "tcp", CName: "127.0.0.1", Port: "2", DestinationPort: "2", Primary: false}
+
+	app := newMonitoringTestApp([]config.Route{alwaysDown, flappingOK})
+	app.State = stateAppRunning
+	app.PrevState = stateAppRunning
+	threshold := app.ClusterGroup.Conf.AppErrorDebounceThreshold
+	if threshold < 2 {
+		t.Fatalf("test requires a debounce threshold >= 2, got %d", threshold)
+	}
+
+	// One warning-worthy cycle: pending, below threshold.
+	if err := app.Refresh(); err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	if app.State != stateAppRunning {
+		t.Fatalf("expected app state to stay %s before debounce threshold, got %s", stateAppRunning, app.State)
+	}
+	if got := app.GetWarnCount(); got != 1 {
+		t.Fatalf("expected WarnCount=1 after one warning cycle, got %d", got)
+	}
+
+	// Interrupt with a total outage (both unique local endpoints down) ->
+	// Failed, which must reset the pending warning streak.
+	app.AppConfig.Deployment.Routes[1] = flappingDown
+	if err := app.Refresh(); err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	if app.State != stateFailed {
+		t.Fatalf("expected app state %s during total outage, got %s", stateFailed, app.State)
+	}
+	if got := app.GetWarnCount(); got != 0 {
+		t.Fatalf("expected WarnCount reset to 0 after a Failed observation, got %d", got)
+	}
+
+	// Resume the original partial (warning-worthy) outage: the new streak
+	// must start counting from 1 again, not resume at 2.
+	app.AppConfig.Deployment.Routes[1] = flappingOK
+	if err := app.Refresh(); err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	if got := app.GetWarnCount(); got != 1 {
+		t.Fatalf("expected the post-interruption warning streak to restart at 1, got %d", got)
+	}
+	if app.State != stateFailed {
+		t.Fatalf("expected app state to remain %s while the new warning streak is still pending, got %s", stateFailed, app.State)
+	}
+}
+
+func TestRefreshAppWarningRecoversImmediatelyBelowDebounceThreshold(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start test listener: %v", err)
+	}
+	defer ln.Close()
+	openPort := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
+
+	failRoute := config.Route{Protocol: "tcp", CName: "127.0.0.1", Port: "1", DestinationPort: "1", Primary: true}
+	okRoute := config.Route{Protocol: "tcp", CName: "127.0.0.1", Port: openPort, DestinationPort: openPort, Primary: false}
+	app := newMonitoringTestApp([]config.Route{failRoute, okRoute})
+
+	// One failing cycle, below the debounce threshold: State must not have
+	// flipped to AppWarning yet.
+	if err := app.Refresh(); err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	if app.State == stateAppWarning {
+		t.Fatalf("did not expect app state %s before debounce threshold", stateAppWarning)
+	}
+	if got := app.GetWarnCount(); got != 1 {
+		t.Fatalf("expected WarnCount=1 after one failing cycle, got %d", got)
+	}
+
+	// Fix the failing route: recovery is immediate (not debounced), and the
+	// pending warn count is cleared.
+	app.AppConfig.Deployment.Routes[0] = config.Route{Protocol: "tcp", CName: "127.0.0.1", Port: openPort, DestinationPort: openPort, Primary: true}
+	if err := app.Refresh(); err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	if app.State != stateAppRunning {
+		t.Fatalf("expected app state %s after recovery, got %s", stateAppRunning, app.State)
+	}
+	if got := app.GetWarnCount(); got != 0 {
+		t.Fatalf("expected WarnCount reset to 0 after recovery, got %d", got)
+	}
+}
+
+// TestAppErrorDebounceThreshold_PositiveValuePassedThrough and
+// TestAppErrorDebounceThreshold_ZeroOrNegativeFallsBackToDefault cover the
+// centralized fallback shared by GetMonitoringStatus's per-route debounce
+// and Refresh()'s stateAppWarning debounce.
+func TestAppErrorDebounceThreshold_PositiveValuePassedThrough(t *testing.T) {
+	if got := appErrorDebounceThreshold(&config.Config{AppErrorDebounceThreshold: 1}); got != 1 {
+		t.Fatalf("expected threshold 1 passed through, got %d", got)
+	}
+	if got := appErrorDebounceThreshold(&config.Config{AppErrorDebounceThreshold: 5}); got != 5 {
+		t.Fatalf("expected threshold 5 passed through, got %d", got)
+	}
+}
+
+func TestAppErrorDebounceThreshold_ZeroOrNegativeFallsBackToDefault(t *testing.T) {
+	if got := appErrorDebounceThreshold(&config.Config{AppErrorDebounceThreshold: 0}); got != appErrFailureThreshold {
+		t.Fatalf("expected default threshold %d for 0, got %d", appErrFailureThreshold, got)
+	}
+	if got := appErrorDebounceThreshold(&config.Config{AppErrorDebounceThreshold: -1}); got != appErrFailureThreshold {
+		t.Fatalf("expected default threshold %d for negative value, got %d", appErrFailureThreshold, got)
+	}
+}
+
+// TestRefreshAppWarning_ThresholdOneCommitsOnFirstCycle covers the threshold=1
+// edge case end-to-end: with no debounce window at all, a single
+// warning-worthy cycle must commit immediately, matching pre-debounce
+// behavior.
+func TestRefreshAppWarning_ThresholdOneCommitsOnFirstCycle(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start test listener: %v", err)
+	}
+	defer ln.Close()
+	openPort := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
+
+	routes := []config.Route{
+		{Protocol: "tcp", CName: "127.0.0.1", Port: "1", DestinationPort: "1", Primary: true},
+		{Protocol: "tcp", CName: "127.0.0.1", Port: openPort, DestinationPort: openPort, Primary: false},
+	}
+	app := newMonitoringTestApp(routes)
+	app.ClusterGroup.Conf.AppErrorDebounceThreshold = 1
+	app.State = stateAppRunning
+	app.PrevState = stateAppRunning
+
+	if err := app.Refresh(); err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	if app.State != stateAppWarning {
+		t.Fatalf("expected app state %s on the first cycle with threshold=1, got %s", stateAppWarning, app.State)
+	}
+}
+
+// TestAppTransitionAlertLevel covers the plan's "recovery logging" ask: every
+// committed transition -- a return to AppRunning included -- resolves to
+// ALERT, matching cluster/srv.go's database state-change logging (which
+// always uses ALERT and lets the state values themselves distinguish
+// recovery from a new problem). The one exception is the transient
+// stateSuspect landing (stateFailed's own FailCount/MaxFail debounce below
+// its threshold -- not yet a confirmed failure), which must not alert at all.
+func TestAppTransitionAlertLevel(t *testing.T) {
+	cases := []struct {
+		newState string
+		want     string
+	}{
+		{stateAppRunning, "ALERT"},
+		{stateAppWarning, "ALERT"},
+		{stateFailed, "ALERT"},
+		{stateMaintenance, "ALERT"},
+		{stateSuspect, ""},
+	}
+	for _, c := range cases {
+		if got := appTransitionAlertLevel(c.newState); got != c.want {
+			t.Fatalf("appTransitionAlertLevel(%s) = %q, want %q", c.newState, got, c.want)
+		}
 	}
 }
 
@@ -619,5 +866,100 @@ func TestGetMonitoringStatusRefreshTotalOutageBecomesFailedAfterMaxFail(t *testi
 	}
 	if app.State != stateFailed {
 		t.Fatalf("expected %s after max-fail threshold, got %s", stateFailed, app.State)
+	}
+}
+
+// TestAppRefreshTracksTimingAndInProgress guards the per-app freshness
+// fields (app.go) added so operators can tell which specific app is slow,
+// not just that the batch as a whole is -- the cluster-level
+// AppRefreshLast* fields only cover the batch, not any one app within it.
+func TestAppRefreshTracksTimingAndInProgress(t *testing.T) {
+	app := newMonitoringTestApp([]config.Route{{Protocol: "tcp", CName: "127.0.0.1", Port: "1", Primary: true}})
+
+	if app.RefreshInProgress {
+		t.Fatalf("expected RefreshInProgress=false before any Refresh() call")
+	}
+
+	before := time.Now()
+	if err := app.Refresh(); err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	after := time.Now()
+
+	app.Lock()
+	inProgress := app.RefreshInProgress
+	lastStart := app.LastRefreshStart
+	lastEnd := app.LastRefreshEnd
+	lastDurationMs := app.LastRefreshDurationMs
+	app.Unlock()
+
+	if inProgress {
+		t.Fatalf("expected RefreshInProgress=false after Refresh() returns")
+	}
+	if lastStart.Before(before) || lastStart.After(after) {
+		t.Fatalf("LastRefreshStart %s not within [%s, %s]", lastStart, before, after)
+	}
+	if lastEnd.Before(lastStart) {
+		t.Fatalf("LastRefreshEnd %s before LastRefreshStart %s", lastEnd, lastStart)
+	}
+	if lastDurationMs < 0 {
+		t.Fatalf("expected non-negative LastRefreshDurationMs, got %d", lastDurationMs)
+	}
+}
+
+// TestAppStateAccessorsThreadSafe verifies SetState/GetState (and
+// SetPrevState) are race-free under concurrent access. Run with `go test
+// -race`: before SetState/GetState took app.Lock(), this raced against
+// GetAppAPIView()/IsDown() reading app.State directly.
+func TestAppStateAccessorsThreadSafe(t *testing.T) {
+	app := newTestApp()
+
+	const total = 100
+	var wg sync.WaitGroup
+	wg.Add(total * 3)
+
+	for i := 0; i < total; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			app.SetState(fmt.Sprintf("state-%d", i))
+		}()
+		go func() {
+			defer wg.Done()
+			app.SetPrevState(fmt.Sprintf("prev-%d", i))
+		}()
+	}
+	for i := 0; i < total; i++ {
+		go func() {
+			defer wg.Done()
+			_ = app.GetState()
+			_ = app.GetPrevState()
+		}()
+	}
+
+	wg.Wait()
+}
+
+// TestAppFailCountAccessorsThreadSafe verifies SetFailCount/GetFailCount are
+// race-free under concurrent access, mirroring the increment pattern used in
+// Refresh() (app.SetFailCount(app.GetFailCount() + 1)).
+func TestAppFailCountAccessorsThreadSafe(t *testing.T) {
+	app := newTestApp()
+
+	const total = 100
+	var wg sync.WaitGroup
+	wg.Add(total)
+
+	for i := 0; i < total; i++ {
+		go func() {
+			defer wg.Done()
+			app.SetFailCount(app.GetFailCount() + 1)
+		}()
+	}
+
+	wg.Wait()
+
+	if got := app.GetFailCount(); got <= 0 || got > total {
+		t.Fatalf("expected FailCount in (0, %d], got %d", total, got)
 	}
 }

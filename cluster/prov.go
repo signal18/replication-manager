@@ -9,19 +9,47 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
+	"k8s.io/client-go/kubernetes"
 )
 
 // Constants for restart RID validation
 const (
 	RestartRidJobsContainer = "container#jobs"
 )
+
+// GetProvCoresInt returns prov-cores as a whole number of cores. prov-cores
+// is a float elsewhere (DBU fractions like "0.5" are valid), so fractional
+// values round up to their ceiling; unparseable or non-positive values fall
+// back to 2.
+func (cluster *Cluster) GetProvCoresInt() int {
+	cores, err := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+	if err != nil || cores <= 0 {
+		return 2
+	}
+	return int(math.Ceil(cores))
+}
+
+// GetDBAllocatorEnv returns the allocator tuning exported to every provisioned
+// database container, whatever the orchestrator (#1749). MALLOC_ARENA_MAX
+// derives from prov-cores because arena count scales with the parallelism the
+// cgroup can actually run, not with memory or connection count; an empty
+// preload disables the feature.
+func (cluster *Cluster) GetDBAllocatorEnv() (preload string, arenaMax string) {
+	preload = cluster.Conf.ProvDBDockerJemallocPreload
+	if preload == "" {
+		return "", ""
+	}
+	return preload, strconv.Itoa(cluster.GetProvCoresInt())
+}
 
 // validateRestartRid validates the resource ID parameter for database restart operations.
 // Only container#jobs is allowed for targeted restarts.
@@ -90,6 +118,13 @@ func (cluster *Cluster) Bootstrap() error {
 }
 
 func (cluster *Cluster) ProvisionServices() error {
+	// Serialise against every other provision/unprovision op on this cluster:
+	// they all report through the shared errorChan and would otherwise
+	// cross-talk (issue #1769). The fan-out below still launches its per-server
+	// goroutines in parallel under this single hold, so bulk provisioning
+	// (volume creation, etc.) keeps its concurrency.
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 	hasConfigPath := make(map[string]bool)
 	cluster.StateMachine.SetFailoverState()
 	// delete the cluster state here
@@ -142,7 +177,7 @@ func (cluster *Cluster) ProvisionServices() error {
 		return err
 	}
 	for _, prx := range cluster.Proxies {
-		switch cluster.GetOrchestrator() {
+		switch cluster.proxyServiceOrchestrator(prx) {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCProvisionProxyService(prx)
 		case config.ConstOrchestratorKubernetes:
@@ -179,6 +214,9 @@ func (cluster *Cluster) ProvisionServices() error {
 }
 
 func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
+	// Serialise errorChan use against other provision/unprovision ops (#1769).
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 	cluster.StateMachine.SetFailoverState()
 	server.WipeDeltaConfig()
 	switch cluster.GetOrchestrator() {
@@ -208,8 +246,28 @@ func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 	return nil
 }
 
+// proxyServiceOrchestrator returns config.ConstOrchestratorLocalhost when prx
+// is HAProxy running haproxy-mode=standby, and cluster.GetOrchestrator()
+// otherwise. Databases may be provisioned under any orchestrator, but
+// standby always runs a repman-local HAProxy instance started/reloaded via
+// its own local PID (HaproxyProxy.Init(), cluster/prx_haproxy.go) -- there's
+// no remote equivalent, so the proxy-service dispatch switches below must
+// route standby to the Localhost* implementations regardless of where the
+// cluster's databases actually live. Only used for proxy-service dispatch;
+// database dispatch is unaffected and keeps calling cluster.GetOrchestrator()
+// directly.
+func (cluster *Cluster) proxyServiceOrchestrator(prx DatabaseProxy) string {
+	if prx.GetType() == config.ConstProxyHaproxy && cluster.Conf.HaproxyMode == "standby" {
+		return config.ConstOrchestratorLocalhost
+	}
+	return cluster.GetOrchestrator()
+}
+
 func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
-	switch cluster.GetOrchestrator() {
+	// Serialise errorChan use against other provision/unprovision ops (#1769).
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
+	switch cluster.proxyServiceOrchestrator(prx) {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCProvisionProxyService(prx)
 	case config.ConstOrchestratorKubernetes:
@@ -228,6 +286,11 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 	cluster.StateMachine.RemoveFailoverState()
 	if err == nil {
 		prx.SetProvisionCookie()
+		// Snapshot the live bootstrap-servers setting onto this proxy --
+		// see HaproxyProxy.BootstrapServersEnabled.
+		if hprx, ok := prx.(*HaproxyProxy); ok {
+			hprx.setProvisionedBootstrapServers(cluster.Conf.HaproxyAPIBootstrapServers)
+		}
 	} else {
 		return err
 	}
@@ -235,6 +298,9 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 }
 
 func (cluster *Cluster) InitAppService(app *App) error {
+	// Serialise errorChan use against other provision/unprovision ops (#1769).
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCProvisionAppService(app)
@@ -269,6 +335,11 @@ func (cluster *Cluster) InitAppService(app *App) error {
 }
 
 func (cluster *Cluster) Unprovision() error {
+	// Serialise against every other provision/unprovision op on this cluster
+	// (#1769). The two fan-out loops below (proxies, then databases) still run
+	// their per-entity goroutines in parallel under this single hold.
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 
 	cluster.StateMachine.SetFailoverState()
 	// Unprovision proxies first, since they are dependent on databases
@@ -277,7 +348,7 @@ func (cluster *Cluster) Unprovision() error {
 			if !ok {
 				continue
 			}*/
-		switch cluster.GetOrchestrator() {
+		switch cluster.proxyServiceOrchestrator(prx) {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCUnprovisionProxyService(prx)
 		case config.ConstOrchestratorKubernetes:
@@ -307,6 +378,9 @@ func (cluster *Cluster) Unprovision() error {
 			prx.DelProvisionCookie()
 			prx.DelRestartCookie()
 			prx.DelReprovisionCookie()
+			if hprx, ok := prx.(*HaproxyProxy); ok {
+				hprx.delProvisionedBootstrapServers()
+			}
 		}
 	}
 
@@ -354,7 +428,10 @@ func (cluster *Cluster) Unprovision() error {
 }
 
 func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
-	switch cluster.GetOrchestrator() {
+	// Serialise errorChan use against other provision/unprovision ops (#1769).
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
+	switch cluster.proxyServiceOrchestrator(prx) {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCUnprovisionProxyService(prx)
 	case config.ConstOrchestratorKubernetes:
@@ -373,11 +450,19 @@ func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
 		prx.DelProvisionCookie()
 		prx.DelReprovisionCookie()
 		prx.DelRestartCookie()
+		if hprx, ok := prx.(*HaproxyProxy); ok {
+			hprx.delProvisionedBootstrapServers()
+		}
 	}
 	return err
 }
 
 func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error {
+	// Serialise errorChan use against other provision/unprovision ops (#1769).
+	// This is the path that hung in the reported incident: a config-building
+	// send racing this unprovision's <-errorChan left the server in maintenance.
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 	cluster.ResetCrashes()
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
@@ -407,6 +492,8 @@ func (cluster *Cluster) UpdateDatabaseServiceConfig(server *ServerMonitor, force
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		return cluster.OpenSVCUpdateDatabaseServiceConfig(server, forcePull)
+	case config.ConstOrchestratorKubernetes:
+		return cluster.K8SUpdateDatabaseServiceConfig(server, forcePull)
 	default:
 		return nil
 	}
@@ -419,15 +506,59 @@ func (cluster *Cluster) UpgradeDatabaseService(server *ServerMonitor) error {
 	case config.ConstOrchestratorOnPremise:
 		err = cluster.OnPremiseUpgradeDatabaseService(server)
 	default:
-		// For container orchestrators (OpenSVC, K8S), the image tag change handles
-		// the binary upgrade. The upgrade script is only needed for on-premise.
-		// Fall back to a regular start which pulls the new container image.
-		err = cluster.StartDatabaseService(server)
+		// Same two-phase pull/clean cycle RollingUpgrade (cluster_roll.go) runs
+		// per node, applied here to a single server via the shared
+		// rollingUpgradeStopUpdateStart helper: phase 1 pushes the currently
+		// configured image (forcePull, so a mutable/already-cached tag is
+		// still re-pulled) and restarts on it via a clean shutdown (safe for a
+		// major-version upgrade); phase 2 restores the steady-state pull
+		// policy. Previously this branch just called StartDatabaseService with
+		// no config update at all -- a restart on the unchanged image,
+		// silently upgrading nothing on OpenSVC/Kubernetes.
+		if err = cluster.rollingUpgradeStopUpdateStart(server, true, true, "pull"); err != nil {
+			return err
+		}
+		err = cluster.rollingUpgradeStopUpdateStart(server, false, false, "clean")
 	}
 	if err == nil {
 		server.SetConfigRefreshCookie()
 	}
 	return err
+}
+
+// UpgradeDatabaseDeploymentOnStart re-renders the FULL deployment (the orchestrated
+// service definition: image, resources/cgroup cap, run_args, env) and pushes it to the
+// orchestrator, so a container/pod recreated by a rolling restart/upgrade comes up on the
+// CURRENT config instead of the one written at the last provision. This is what makes a
+// resource-cap change (and an unpinned image tag) actually land on restart.
+//
+// Gated by prov-orchestrator-deployment-upgrade-on-start (default on). Returns nil (no-op)
+// when off, or when the orchestrator/API has no full-deployment push (OpenSVC v2 legacy).
+// Called SYNCHRONOUSLY from the rolling loop and returns its error directly -- it must NOT
+// go through cluster.errorChan (per-op cross-talk, issue #1769).
+func (cluster *Cluster) UpgradeDatabaseDeploymentOnStart(server *ServerMonitor) error {
+	if !cluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart {
+		return nil
+	}
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		// Full re-render + push exists only on the v3 API; the v2 legacy path keeps a
+		// restart deployment-neutral rather than failing it.
+		if svc := cluster.OpenSVCConnect(); !svc.IsV3() {
+			return nil
+		}
+		return cluster.OpenSVCUpdateDatabaseTemplate(server)
+	case config.ConstOrchestratorKubernetes:
+		// K8s re-applies the Deployment pod template (image, pull policy) via the update
+		// path already on develop (feat(k8s) rolling-upgrade image support). It requires the
+		// Deployment scaled to 0 -- the rolling paths call the deployment upgrade from the
+		// stopped phase, which satisfies that. The K8s container RESOURCE baseline and the
+		// live in-place pod resize are owned by the k8sResizer (cluster_resize_k8s.go): that
+		// stays a separate mechanism and is NOT re-implemented here.
+		return cluster.K8SUpdateDatabaseServiceConfig(server, false)
+	default:
+		return nil
+	}
 }
 
 // StopDatabaseServiceClean stops the database with innodb_fast_shutdown=0 for
@@ -497,7 +628,7 @@ func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stopping Proxy service %s", cluster.Name+"/svc/"+server.GetName())
 	var err error
 
-	switch cluster.GetOrchestrator() {
+	switch cluster.proxyServiceOrchestrator(server) {
 	case config.ConstOrchestratorOpenSVC:
 		err = cluster.OpenSVCStopProxyService(server)
 	case config.ConstOrchestratorKubernetes:
@@ -521,7 +652,7 @@ func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
 func (cluster *Cluster) StartProxyService(server DatabaseProxy) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting Proxy service %s", cluster.Name+"/svc/"+server.GetName())
 	var err error
-	switch cluster.GetOrchestrator() {
+	switch cluster.proxyServiceOrchestrator(server) {
 	case config.ConstOrchestratorOpenSVC:
 		err = cluster.OpenSVCStartProxyService(server)
 	case config.ConstOrchestratorKubernetes:
@@ -538,8 +669,34 @@ func (cluster *Cluster) StartProxyService(server DatabaseProxy) error {
 	cluster.StartProxyScript(server)
 	if err == nil {
 		server.DelRestartCookie()
+		if startReappliesProxyConfig(server, cluster.proxyServiceOrchestrator(server)) {
+			server.DelReprovisionCookie()
+		}
 	}
 	return err
+}
+
+// startReappliesProxyConfig reports whether a successful start on this
+// orchestrator actually reapplies the proxy's current config, so it
+// satisfies whatever set the reprov cookie -- NOT true for every start path:
+//   - Localhost always regenerates+applies unconditionally
+//     (GetProxyConfig+Init(), see LocalhostStart{HaProxy,ProxySQL}Service).
+//   - OpenSVC/Kubernetes "start" re-triggers the container's own
+//     init/entrypoint config fetch, but only when
+//     prov-proxy-start-fetch-config is actually enabled for this proxy
+//     (mirrors CheckNeedConfigFetch's condition).
+//   - OnPremise (plain "systemctl start ...") and SlapOS (a no-op beyond
+//     SetWaitStartCookie) never reapply config on start, regardless of
+//     prov-proxy-start-fetch-config.
+func startReappliesProxyConfig(server DatabaseProxy, orchestrator string) bool {
+	switch orchestrator {
+	case config.ConstOrchestratorLocalhost:
+		return true
+	case config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes:
+		return !server.HasNoConfigFetchCookie()
+	default:
+		return false
+	}
 }
 
 func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
@@ -580,6 +737,20 @@ func (cluster *Cluster) RestartDatabaseService(server *ServerMonitor, node strin
 	// OpenSVC supports atomic restart with optional RID targeting
 	if cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC && rid != "" {
 		err = cluster.OpenSVCRestartDatabaseService(server, node, rid)
+		if err == nil {
+			server.DelRestartContainerCookie()
+			server.RestartNode = ""
+			server.RestartRid = ""
+		}
+		return err
+	}
+
+	// A rolling pod replacement (the same mechanism that makes
+	// prov-kube-image-force-pull's ImagePullPolicy: Always actually take
+	// effect on demand) is lighter than a full stop/start cycle for a
+	// plain restart.
+	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+		err = cluster.K8SForceRepullDatabaseService(server)
 		if err == nil {
 			server.DelRestartContainerCookie()
 			server.RestartNode = ""
@@ -1014,14 +1185,36 @@ func (cluster *Cluster) GetAgentInOrchetrator(name string) (Agent, error) {
 }
 
 func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
-	if cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
 		svc := cluster.OpenSVCConnect()
 		err := svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", password)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
 		}
+	case config.ConstOrchestratorKubernetes:
+		client, err := cluster.K8SConnectAPI()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Cannot init Kubernetes client API %s ", err)
+			return err
+		}
+		cluster.k8sRotatePasswordsWithClient(client, password)
 	}
 	return nil
+}
+
+// k8sRotatePasswordsWithClient patches the cluster's shared Secret
+// (k8sEnsureDatabaseSecret) with the freshly rotated password -- one Secret
+// for the whole cluster, matching OpenSVC's own single secret store, so a
+// single patch here covers every server's Deployment. Without it, the
+// dbjobs sidecar (which reads MYSQL_ROOT_PASSWORD as a live credential)
+// would keep authenticating with the pre-rotation password indefinitely,
+// and a future from-scratch reprovision would seed a fresh datadir with the
+// wrong initial root password.
+func (cluster *Cluster) k8sRotatePasswordsWithClient(client kubernetes.Interface, password string) {
+	if err := cluster.k8sEnsureDatabaseSecret(client, password); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProvisionRotatePasswords error: Cannot update Kubernetes secret: %s ", err)
+	}
 }
 
 func (cluster *Cluster) ReloadOpenSVCDaemonNodeStats() error {

@@ -224,12 +224,19 @@ func CopyDir(src string, dst string) (err error) {
 // RemoveOldLogFiles removes log files older than a specified number of days
 // from the given directory, based on a specified prefix and timestamp format.
 func RemoveOldLogFiles(dir, prefix string, daysOld int, timestampFormat string) error {
+	return RemoveOldLogFilesWithExt(dir, prefix, ".log", daysOld, timestampFormat)
+}
+
+// RemoveOldLogFilesWithExt is RemoveOldLogFiles for an arbitrary extension
+// (e.g. ".jsonl" for the PFS query snapshot series), so timestamped series
+// other than ".log" can be pruned with the same prefix/timestamp scheme.
+func RemoveOldLogFilesWithExt(dir, prefix, ext string, daysOld int, timestampFormat string) error {
 	// Get the current time and define the threshold time based on the specified number of days
 	currentTime := time.Now()
 	threshold := currentTime.Add(-time.Duration(daysOld) * 24 * time.Hour)
 
 	// Create a pattern for log files
-	pattern := filepath.Join(dir, fmt.Sprintf("%s*.log", prefix))
+	pattern := filepath.Join(dir, fmt.Sprintf("%s*%s", prefix, ext))
 
 	// Use Glob to find files matching the pattern
 	files, err := filepath.Glob(pattern)
@@ -254,7 +261,7 @@ func RemoveOldLogFiles(dir, prefix string, daysOld int, timestampFormat string) 
 		}
 
 		// Extract the timestamp from the filename
-		fileDateString := strings.TrimSuffix(strings.TrimPrefix(info.Name(), prefix), ".log")
+		fileDateString := strings.TrimSuffix(strings.TrimPrefix(info.Name(), prefix), ext)
 		fileTime, err := time.Parse(timestampFormat, fileDateString)
 		if err != nil {
 			deletionErrors = append(deletionErrors, err)

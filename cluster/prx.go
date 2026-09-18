@@ -168,6 +168,8 @@ type DatabaseProxy interface {
 	HasNoConfigFetchCookie() bool
 	HasDNS() bool
 
+	CheckNeedConfigFetch()
+
 	DelProvisionCookie() error
 	DelUnprovisionCookie() error
 	DelReprovisionCookie() error
@@ -265,6 +267,17 @@ func (cluster *Cluster) newProxyList() error {
 	for _, pr := range cluster.Proxies {
 		if pr != nil && slices.Contains(stagingList, pr.GetName()) {
 			pr.SetStaging(true)
+		}
+	}
+
+	// Mirrors newServerMonitor's server.CheckNeedConfigFetch() call
+	// (cluster/srv.go) -- without this, a cluster started with
+	// prov-proxy-start-fetch-config=false never gets the no-fetch cookie
+	// seeded until an operator later toggles the setting through the API,
+	// leaving proxies free to fetch config on start in the meantime.
+	for _, pr := range cluster.Proxies {
+		if pr != nil {
+			pr.CheckNeedConfigFetch()
 		}
 	}
 
@@ -490,7 +503,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 				cluster.BashScriptPrxServersChangeState(pr, pr.GetState(), pr.GetPrevState())
 				pr.SetPrevState(pr.GetState())
 			}
-			if cluster.Conf.GraphiteMetrics {
+			if cluster.CanSendGraphiteMetrics() {
 				pr.FetchStats()
 			}
 			//	pr.DelLock()

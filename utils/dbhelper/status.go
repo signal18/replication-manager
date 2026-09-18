@@ -9,6 +9,7 @@
 package dbhelper
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"regexp"
@@ -58,7 +59,7 @@ func MariaDBVersion(server string) int {
 	}
 	re := regexp.MustCompile(`([0-9]+).([0-9]+).([0-9]+)*`)
 	match := re.FindStringSubmatch(server)
-	if len(match[1]) == 0 || len(match[2]) == 0 || len(match[3]) == 0 {
+	if len(match) < 4 || len(match[1]) == 0 || len(match[2]) == 0 || len(match[3]) == 0 {
 		return 0
 	}
 	x, _ := strconv.Atoi(match[1])
@@ -67,12 +68,29 @@ func MariaDBVersion(server string) int {
 	return (x*10000 + y*100 + z)
 }
 
-// GetMaxscaleVersion retrieves MaxScale version
+// GetMaxscaleVersion retrieves MaxScale version. Only the legacy binlogrouter
+// (pre-2.5) recognizes @@maxscale_version -- pinloki doesn't and just echoes
+// the literal text back with no error, so this must never be used to detect
+// a pinloki relay; see IsMaxscalePinloki for that.
 func GetMaxscaleVersion(db *sqlx.DB) (string, error) {
 	var value string
 	value = ""
 	err := db.QueryRowx("Select @@maxscale_version").Scan(&value)
 	return value, err
+}
+
+// IsMaxscalePinloki reports whether db is a pinloki-based MaxScale binlog
+// relay, identified via @@version_comment -- pinloki's own documented
+// self-ID, always the literal string "pinloki" -- since @@maxscale_version
+// (the legacy binlogrouter's identification query) isn't a pinloki
+// pseudo-variable at all.
+func IsMaxscalePinloki(db *sqlx.DB) bool {
+	var value string
+	err := db.QueryRowx("Select @@version_comment").Scan(&value)
+	if err != nil {
+		return false
+	}
+	return value == "pinloki"
 }
 
 // GetStatus retrieves global status variables
@@ -250,13 +268,33 @@ func GetEngineInnoDBStatus(db *sqlx.DB) (string, string, error) {
 	defer rows.Close()
 	var typeCol, nameCol, statusCol string
 	// First row should contain the necessary info. If many rows returned then it's unknown case.
-	if rows.Next() {
-		if err := rows.Scan(&typeCol, &nameCol, &statusCol); err != nil {
-			return statusCol, query, nil
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return "", query, err
 		}
+		// SHOW ENGINE INNODB STATUS always returns exactly one row; zero rows means
+		// something is wrong (e.g. InnoDB disabled) and should not look like success.
+		return "", query, sql.ErrNoRows
 	}
-	return statusCol, query, err
+	if err := rows.Scan(&typeCol, &nameCol, &statusCol); err != nil {
+		return statusCol, query, err
+	}
+	// database/sql only reliably surfaces a stream/iteration error once Next() has been
+	// advanced past the last row, so advance the cursor before trusting rows.Err(). A true
+	// result here just means the server sent an (unexpected, but harmless) extra row; we
+	// already have the data we need from the first one.
+	rows.Next()
+	if err := rows.Err(); err != nil {
+		return statusCol, query, err
+	}
+	return statusCol, query, nil
 }
+
+var (
+	reInnoDBQueries = regexp.MustCompile(`(\d+) queries inside InnoDB, (\d+) queries in queue`)
+	reInnoDBViews   = regexp.MustCompile(`(\d+) read views open inside InnoDB`)
+	reInnoDBHistory = regexp.MustCompile(`History list length (\d+)`)
+)
 
 // GetEngineInnoDBVariables parses InnoDB status and returns key metrics
 func GetEngineInnoDBVariables(db *sqlx.DB) (map[string]string, string, error) {
@@ -268,18 +306,18 @@ func GetEngineInnoDBVariables(db *sqlx.DB) (map[string]string, string, error) {
 	vars := make(map[string]string)
 	// 0 queries inside InnoDB, 0 queries in queue
 	// 0 read views open inside InnoDB
-	rQueries, _ := regexp.Compile(`(\d+) queries inside InnoDB, (\d+) queries in queue`)
-	rViews, _ := regexp.Compile(`(\d+) read views open inside InnoDB`)
-	rHistory, _ := regexp.Compile(`History list length (\d+)`)
+	// regexp submatches and strings.Split lines alias statusCol's backing array, so every
+	// extracted value must be cloned before storing it: otherwise a few retained digits keep
+	// the entire (up to ~1MB) SHOW ENGINE INNODB STATUS output alive.
 	for _, line := range strings.Split(statusCol, "\n") {
-		if data := rQueries.FindStringSubmatch(line); data != nil {
-			vars["queries_inside_innodb"] = data[1]
-			vars["queries_in_queue"] = data[2]
-		} else if data := rViews.FindStringSubmatch(line); data != nil {
-			vars["read_views_open_inside_innodb"] = data[1]
+		if data := reInnoDBQueries.FindStringSubmatch(line); data != nil {
+			vars["queries_inside_innodb"] = strings.Clone(data[1])
+			vars["queries_in_queue"] = strings.Clone(data[2])
+		} else if data := reInnoDBViews.FindStringSubmatch(line); data != nil {
+			vars["read_views_open_inside_innodb"] = strings.Clone(data[1])
 
-		} else if data := rHistory.FindStringSubmatch(line); data != nil {
-			vars["history_list_lenght_inside_innodb"] = data[1]
+		} else if data := reInnoDBHistory.FindStringSubmatch(line); data != nil {
+			vars["history_list_lenght_inside_innodb"] = strings.Clone(data[1])
 		}
 	}
 	return vars, logs, nil

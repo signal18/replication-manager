@@ -646,6 +646,41 @@ func (cluster *Cluster) StartDatabaseWaitRejoin(server *ServerMonitor) error {
 	return err
 }
 
+// K8SRestartDatabaseServiceWaitRejoin mirrors StartDatabaseWaitRejoin's
+// synchronization contract (spawn WaitRejoin, prime the need-config-fetch
+// cookie, wait for rejoin completion) but drives the restart via
+// K8SRestartDatabaseService -- lighter than the generic
+// StopDatabaseService -> WaitDatabaseFailed -> StartDatabaseService dance
+// (no explicit scale-to-0 step), though not actually zero-downtime: single
+// replica on a ReadWriteOnce PVC means the new pod can't come up until the
+// old one releases the volume either way. WaitRejoin's completion signal
+// (rejoinCond) fires from repman's monitoring loop observing
+// PrevState==stateFailed (srv.go, srv_rejoin.go) -- orchestrator-agnostic,
+// so it fires correctly here too. WaitDatabaseStart alone (raw
+// connectivity) isn't equivalent -- it doesn't confirm the server actually
+// rejoined the replication topology.
+func (cluster *Cluster) K8SRestartDatabaseServiceWaitRejoin(server *ServerMonitor) error {
+	wg2 := new(sync.WaitGroup)
+	wg2.Add(1)
+	go cluster.WaitRejoin(wg2)
+
+	if cluster.Conf.ProvDbStartFetchConfig && server.HasNoConfigFetchCookie() {
+		server.DelNoConfigFetchCookie()
+	} else if !cluster.Conf.ProvDbStartFetchConfig && !server.HasNoConfigFetchCookie() {
+		server.SetNoConfigFetchCookie()
+	}
+
+	err := cluster.K8SRestartDatabaseService(server)
+	if err == nil {
+		// Positive confirmation the pod was genuinely replaced -- see
+		// k8sWaitRolloutCompleteWithClient (prov_k8s_db.go) for why this is
+		// needed in addition to (not instead of) the WaitRejoin wait below.
+		err = cluster.K8SWaitRolloutComplete(server)
+	}
+	wg2.Wait()
+	return err
+}
+
 func (cluster *Cluster) DelayAllSlaves() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "Stopping slaves, injecting data & long transaction")
 	for _, s := range cluster.slaves {

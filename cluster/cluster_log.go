@@ -89,6 +89,7 @@ func (cluster *Cluster) LogSqlGeneralPrintf(level string, url string, from strin
 		Level:     level,
 		Timestamp: stamp,
 		Text:      format,
+		Module:    config.ConstLogModSQL,
 	}
 	cluster.SQLGeneralLog.Add(msg)
 	cluster.SqlGeneralLog.WithFields(log.Fields{"cluster": cluster.Name, "server": url, "module": from}).Info(format)
@@ -101,6 +102,7 @@ func (cluster *Cluster) LogSqlErrorPrintf(level string, url string, err error, f
 		Level:     level,
 		Timestamp: stamp,
 		Text:      logs,
+		Module:    config.ConstLogModSQL,
 	}
 	cluster.SQLErrorLog.Add(msg)
 	cluster.SqlErrorLog.WithFields(log.Fields{"cluster": cluster.Name, "server": url, "module": from, "error": err, "sql": logs}).Error(format)
@@ -114,6 +116,7 @@ func (cluster *Cluster) LogUpdate(line int, level string, format string, args ..
 		Level:     level,
 		Timestamp: stamp,
 		Text:      fmt.Sprintf(format, args...),
+		Module:    config.ConstLogModGeneral,
 	}
 	cluster.Log.Update(line, msg)
 	return line
@@ -216,12 +219,12 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 				Level:     level,
 				Timestamp: stamp,
 				Text:      fmt.Sprintf(httpformat, args...),
+				Module:    module,
 			}
 			line = cluster.htlog.Add(msg)
-			switch module {
-			case config.ConstLogModTask, config.ConstLogModSST, config.ConstLogModBackupStream, config.ConstLogModDbErrors, config.ConstLogModDbSqlErrors, config.ConstLogModDbSlowquery, config.ConstLogModDbOptimize, config.ConstLogModDbAudit, config.ConstLogModRestic:
+			if config.IsTaskLogModule(module) {
 				cluster.LogTask.Add(msg)
-			default:
+			} else {
 				cluster.Log.Add(msg)
 			}
 		}
@@ -392,17 +395,16 @@ func (cluster *Cluster) LogTaskPrintDebug(forcingLog bool, module int, key strin
 				Level:     config.LvlDbg,
 				Timestamp: stamp,
 				Text:      fmt.Sprintf(httpformat, args...),
+				Module:    module,
 			}
 			line = cluster.htlog.Add(msg)
-			switch module {
-			case config.ConstLogModTask, config.ConstLogModSST, config.ConstLogModBackupStream:
+			if config.IsTaskLogModule(module) {
 				if line2, ok := cluster.debugLineMap[key]; ok {
 					cluster.LogTask.Update(line2, msg)
 				} else {
 					cluster.debugLineMap[key] = cluster.LogTask.Add(msg)
 				}
-
-			default:
+			} else {
 				if line2, ok := cluster.debugLineMap[key]; ok {
 					cluster.Log.Update(line2, msg)
 				} else {
@@ -504,6 +506,7 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 			Level:     level,
 			Timestamp: stamp,
 			Text:      httpmsg,
+			Module:    config.ConstLogModGeneral,
 		}
 		line = buf.Add(msg)
 		// Only mirror to the general log when writing to the general buffer.

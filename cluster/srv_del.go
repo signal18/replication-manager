@@ -118,7 +118,20 @@ func (server *ServerMonitor) DelWaitLogicalBackupCookie() error {
 	return server.delCookie("cookie_waitlogicalbackup")
 }
 
-func (server *ServerMonitor) DelWaitPhysicalBackupCookie() error {
+func (server *ServerMonitor) DelWaitXtrabackupCookie() error {
+	return server.delCookie("cookie_waitxtrabackup")
+}
+
+func (server *ServerMonitor) DelWaitMariabackupCookie() error {
+	return server.delCookie("cookie_waitmariabackup")
+}
+
+// delLegacyPhysicalBackupCookie removes the pre-split "cookie_waitphysicalbackup"
+// file that older builds wrote for both xtrabackup and mariabackup tasks.
+// Nothing reads this key anymore, but a node upgraded mid-cycle can still have
+// one on disk; best-effort cleanup here keeps it from confusing anyone poking
+// around the datadir by hand.
+func (server *ServerMonitor) delLegacyPhysicalBackupCookie() error {
 	return server.delCookie("cookie_waitphysicalbackup")
 }
 
@@ -185,6 +198,15 @@ func (server *ServerMonitor) DelBackupTypeCookie(backtype string) error {
 
 func (server *ServerMonitor) DelMaintenance() {
 	server.IsMaintenance = false
+	// Clear the persisted membership too, otherwise a restart/reload would
+	// resurrect maintenance (see newServerMonitor). Not expected to fail here
+	// (IsMaintenance was just true), but log rather than swallow: a silent
+	// failure would mean membership tracking drifted from the runtime flag
+	// without anyone noticing.
+	if err := server.ClusterGroup.RemoveMaintenanceSrv(server); err != nil {
+		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"DelMaintenance: could not clear durable maintenance membership for %s: %s", server.URL, err)
+	}
 	server.ClusterGroup.SetProxyServerMaintenance(server.ServerID)
 }
 

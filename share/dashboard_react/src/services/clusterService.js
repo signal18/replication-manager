@@ -5,6 +5,7 @@ export const clusterService = {
   getClusterData,
   getClusterAlerts,
   getClusterLogs,
+  getClusterLogHistory,
   getClusterMaster,
   getClusterServers,
   getClusterProxies,
@@ -12,6 +13,7 @@ export const clusterService = {
   getTopProcess,
   getOpenSVCStats,
   getOpenSVCPools,
+  getKubeStorageClasses,
   getBackups,
   getBackupStats,
   deleteBackup,
@@ -85,7 +87,7 @@ export const clusterService = {
   reseedStagingFromParent,
 
   // Server management APIs
-  setMaintenanceMode,
+  switchMaintenanceMode,
   jobsUpgrade,
   promoteToLeader,
   setAsUnrated,
@@ -234,6 +236,14 @@ function getClusterLogs(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/topology/http-logs`)
 }
 
+// getClusterLogHistory reads on-disk log history (beyond the in-memory ring
+// buffer) for logType ('general' or 'task' - the only history-backed types,
+// see server/api_cluster.go's handlerMuxWebLog) by adding since/until to the
+// same typed endpoint. params: { since, until, level, module, text, limit }.
+function getClusterLogHistory(clusterName, logType, params, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/topology/logs/${logType}`, params)
+}
+
 function getClusterCertificates(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/certificates`)
 }
@@ -248,6 +258,10 @@ function getOpenSVCStats(clusterName, baseURL) {
 
 function getOpenSVCPools(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/opensvc-pools`)
+}
+
+function getKubeStorageClasses(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/kube-storage-classes`)
 }
 
 function getBackups(clusterName, baseURL) {
@@ -475,7 +489,9 @@ function reseedStagingFromParent(clusterName, baseURL) {
 //#endregion Cluster management APIs
 
 //#region Server management APIs
-function setMaintenanceMode(clusterName, serverId, baseURL) {
+// Hits actions/maintenance, which toggles (server.SwitchMaintenance) -- not a
+// dedicated set action, hence the switch* name rather than set*.
+function switchMaintenanceMode(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/maintenance`)
 }
 
@@ -624,8 +640,8 @@ function unprovisionProxy(clusterName, proxyId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/unprovision`)
 }
 
-function startProxy(clusterName, proxyId, cfgAction, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/start/${cfgAction}`)
+function startProxy(clusterName, proxyId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/start`)
 }
 
 function stopProxy(clusterName, proxyId, baseURL) {
@@ -735,8 +751,8 @@ function monitorAllSchemas(clusterName, baseURL) {
 //#endregion Database service APIs
 
 //#region Test run APIs
-function runSysbench(clusterName, threads, baseURL, test) {
-  const params = `threads=${threads}` + (test ? `&test=${test}` : '')
+function runSysbench(clusterName, threads, baseURL, test, time) {
+  const params = `threads=${threads}` + (test ? `&test=${test}` : '') + (time ? `&time=${time}` : '')
   return getApi(baseURL).get(`clusters/${clusterName}/actions/sysbench?${params}`)
 }
 

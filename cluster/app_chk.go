@@ -91,11 +91,7 @@ func (app *App) GetMonitoringStatus() string {
 			}
 		}
 	}
-	failureThreshold := cluster.Conf.AppErrorDebounceThreshold
-	if failureThreshold <= 0 {
-		// Keep legacy default when the cluster-level override is unset/invalid.
-		failureThreshold = appErrFailureThreshold
-	}
+	failureThreshold := appErrorDebounceThreshold(cluster.Conf)
 	routeEndpoint := func(route config.Route) string {
 		normalized := route
 		normalized.Normalize()
@@ -315,6 +311,12 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr}
+	// A fresh Transport is built per call, so its keep-alive connection (and the
+	// persistConn.readLoop/writeLoop goroutines it spawns) would otherwise never
+	// be closed once this function returns, leaking a socket + goroutines on
+	// every successful check. Close it explicitly, matching the convention used
+	// for the ephemeral arbitrator client in cluster_set.go.
+	defer client.CloseIdleConnections()
 
 	host := route.CName
 	if route.Mode == "port" && route.SourcePort != "" {
@@ -435,8 +437,13 @@ func (app *App) GetAppTCPStatus(route config.Route) error {
 	return nil
 }
 
+// CheckPrimaryRoute mutates app.AppConfig.Deployment.Routes/PrimaryRoute, so
+// it must take app.Mutex: buildAppSubstitutionView (app_get.go) clones these
+// same fields under the same lock to build a race-free copy for template
+// substitution, and that only works if every writer shares the lock.
 func (app *App) CheckPrimaryRoute() {
 	cluster := app.ClusterGroup
+	app.Lock()
 	hasPrimaryRoute := false
 	for _, route := range app.AppConfig.Deployment.Routes {
 		if route.Primary {
@@ -445,9 +452,15 @@ func (app *App) CheckPrimaryRoute() {
 			break
 		}
 	}
+	assignedFirstAsPrimary := false
 	if !hasPrimaryRoute && len(app.AppConfig.Deployment.Routes) > 0 {
 		app.AppConfig.Deployment.Routes[0].Primary = true
 		app.AppConfig.Deployment.PrimaryRoute = app.AppConfig.Deployment.Routes[0]
+		assignedFirstAsPrimary = true
+	}
+	app.Unlock()
+
+	if assignedFirstAsPrimary {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "No primary route defined for app %s, setting first route as primary", app.Name)
 	}
 }

@@ -81,82 +81,240 @@ func (configurator *Configurator) GetConfigReplicationDomain(ClusterName string)
 	return configurator.ClusterConfig.ProvDomain
 }
 
-const memReserveMB int64 = 2048
-
+// getUsableMemoryMB returns the total prov-db-memory in MB. Every share in
+// prov-db-memory-shared-pct is a percentage of this total (single reference,
+// so the shares — caches + threads + pfs + fscache — sum below 100, the
+// remainder being free margin). The "fscache" share is not an engine cache and
+// is not read here: it is held out simply by the engine caches summing to less
+// than 100, leaving that fraction for the reclaimable FS page cache (chiefly
+// the redo log page cache, redo capped at BP/4, plus binlogs, data reads and
+// the tmpfs). This replaced the old fixed 2048MB reserve, absurd at both ends
+// (negative on a 768MB instance, 0.4% on 512GB). The FS cache is not lost
+// memory: the kernel evicts clean pages before any OOM — the anti-spike
+// cushion, since the containers run swap-disabled.
 func (configurator *Configurator) getUsableMemoryMB() (int64, error) {
 	memMB, err := config.ParseUnitMeasurementToInt("M,bytes,required", configurator.ClusterConfig.ProvMem, true)
 	if err != nil {
 		return 0, err
 	}
-	containermem := int64(memMB)
-	usable := containermem - memReserveMB
-	if usable < 0 {
-		usable = 0
+	return int64(memMB), nil
+}
+
+// minEngineMemMB is the floor for any allocated storage-engine buffer, in MB.
+// Below this an engine can drop under its own startup minimum — e.g. InnoDB with
+// a 16K page size refuses to start with innodb_buffer_pool_size under 6 MiB — which
+// is exactly how a small/misresolved prov-db-memory produced innodb_buffer_pool_size=0M
+// and stopped the DB from booting. Every engine that is allocated memory gets at least this.
+const minEngineMemMB int64 = 128
+
+// largestPow2LE returns the largest power of two not exceeding n (0 for n < 1).
+// All generated buffer sizes are rounded down to a power of two: clean,
+// predictable values, and the round-down also trims memory (safer under a cap).
+func largestPow2LE(n int64) int64 {
+	if n < 1 {
+		return 0
 	}
-	return usable, nil
+	p := int64(1)
+	for p*2 <= n {
+		p *= 2
+	}
+	return p
+}
+
+// engineMemMB returns an engine buffer size in MB from the usable memory and the
+// engine's shared-memory percentage, rounded down to a power of two. An enabled
+// engine (pct > 0) never gets less than minEngineMemMB; a disabled engine
+// (pct <= 0) stays at 0 (so we never silently turn on an engine, e.g. the query
+// cache, that is meant to be off).
+func engineMemMB(usableMB, pct int64) int64 {
+	if pct <= 0 {
+		return 0
+	}
+	if v := largestPow2LE(usableMB * pct / 100); v > minEngineMemMB {
+		return v
+	}
+	return minEngineMemMB
 }
 
 func (configurator *Configurator) GetConfigInnoDBBPSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
-		return "128"
+		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(usable*int64(sharedmempcts["innodb"])/100, 10)
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["innodb"])), 10)
 }
 
 func (configurator *Configurator) GetConfigMyISAMKeyBufferSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
-		return "128"
+		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(usable*int64(sharedmempcts["myisam"])/100, 10)
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["myisam"])), 10)
 }
 
 func (configurator *Configurator) GetConfigTokuDBBufferSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
-		return "128"
+		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(usable*int64(sharedmempcts["tokudb"])/100, 10)
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["tokudb"])), 10)
 }
 
 func (configurator *Configurator) GetConfigQueryCacheSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
-		return "128"
+		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(usable*int64(sharedmempcts["querycache"])/100, 10)
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["querycache"])), 10)
 }
 
 func (configurator *Configurator) GetConfigAriaCacheSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
-		return "128"
+		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(usable*int64(sharedmempcts["aria"])/100, 10)
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["aria"])), 10)
 }
 
 func (configurator *Configurator) GetConfigS3CacheSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
-		return "128"
+		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(usable*int64(sharedmempcts["s3"])/100, 10)
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["s3"])), 10)
 }
 
 func (configurator *Configurator) GetConfigRocksDBCacheSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
-		return "128"
+		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(usable*int64(sharedmempcts["rocksdb"])/100, 10)
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["rocksdb"])), 10)
+}
+
+// sessionMemFloorMB is the minimum per-session memory ceiling. Below this even
+// ordinary queries (their sort/join/tmp buffers) would fail; on a small VM the
+// cap still protects the instance because a single runaway session is stopped
+// before it OOM-kills the whole container.
+const sessionMemFloorMB int64 = 64
+
+// GetConfigMaxSessionMemUsedMB returns the per-session memory ceiling
+// (MariaDB max_session_mem_used) in MB, driven by the "threads" share of
+// prov-db-memory-shared-pct so it resizes with prov-db-memory / the DBU — the
+// same percentage model as every engine buffer. It is the native MariaDB safety
+// net for small VMs (#1749 item 3): a session that exceeds it is errored instead
+// of OOM-killing the whole instance, without having to rescale every per-thread
+// buffer. A "threads" share of 0 disables the cap (returns 0 -> the template
+// emits MariaDB's unlimited default), so it has its own off-switch.
+func (configurator *Configurator) GetConfigMaxSessionMemUsedMB() int64 {
+	usable, err := configurator.getUsableMemoryMB()
+	if err != nil {
+		return 0
+	}
+	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
+	pct := int64(sharedmempcts["threads"])
+	if pct <= 0 {
+		return 0 // disabled -> unlimited
+	}
+	if v := largestPow2LE(usable * pct / 100); v > sessionMemFloorMB {
+		return v
+	}
+	return sessionMemFloorMB
+}
+
+// getThreadBudgetMB is the memory bucket for per-thread/session buffers: the
+// "threads" share of prov-db-memory-shared-pct. The threaded buffers below split
+// it via prov-db-memory-threaded-pct (tmp/join/sort).
+func (configurator *Configurator) getThreadBudgetMB() int64 {
+	usable, err := configurator.getUsableMemoryMB()
+	if err != nil {
+		return 0
+	}
+	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
+	return usable * int64(sharedmempcts["threads"]) / 100
+}
+
+// threadedBufferMB sizes one per-thread buffer from the thread budget and its
+// prov-db-memory-threaded-pct share, rounded down to a power of two, floored.
+func (configurator *Configurator) threadedBufferMB(key string, floorMB int64) int64 {
+	threadedpcts, _ := configurator.ClusterConfig.GetMemoryPctThreaded()
+	if v := largestPow2LE(configurator.getThreadBudgetMB() * int64(threadedpcts[key]) / 100); v > floorMB {
+		return v
+	}
+	return floorMB
+}
+
+// GetConfigTmpTableSize is the per-thread in-memory temp table size (also used for
+// max_heap_table_size), sized from the "tmp" threaded share. MB.
+func (configurator *Configurator) GetConfigTmpTableSize() string {
+	return strconv.FormatInt(configurator.threadedBufferMB("tmp", 16), 10)
+}
+
+// GetConfigJoinBufferSize is the per-join per-thread buffer, from the "join" share. MB.
+func (configurator *Configurator) GetConfigJoinBufferSize() string {
+	return strconv.FormatInt(configurator.threadedBufferMB("join", 1), 10)
+}
+
+// GetConfigJoinBufferSpaceLimit caps the total join-buffer memory per query
+// (MariaDB only). Sized at several single join buffers, hard-capped at 1G. MB.
+func (configurator *Configurator) GetConfigJoinBufferSpaceLimit() string {
+	v := configurator.threadedBufferMB("join", 1) * 8
+	if v > 1024 {
+		v = 1024
+	}
+	return strconv.FormatInt(v, 10)
+}
+
+// GetConfigMRRBufferSize is the Multi-Range Read buffer (MariaDB), used by
+// Batched Key Access for modern INDEXED joins — the buffer that effectively
+// replaces join_buffer_size (which now only serves index-less joins). Sized from
+// the same "join" threaded share. MB.
+func (configurator *Configurator) GetConfigMRRBufferSize() string {
+	return strconv.FormatInt(configurator.threadedBufferMB("join", 1), 10)
+}
+
+// GetConfigPFSMemoryMB returns the memory share budgeted to the Performance
+// Schema, from the "pfs" entry of prov-db-memory-shared-pct (default 5 when
+// absent; pfs:0 disables the budget so MariaDB defaults stay untouched).
+func (configurator *Configurator) GetConfigPFSMemoryMB() int64 {
+	usable, err := configurator.getUsableMemoryMB()
+	if err != nil {
+		return 0
+	}
+	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
+	pct, ok := sharedmempcts["pfs"]
+	if !ok {
+		pct = 5
+	}
+	if pct <= 0 {
+		return 0
+	}
+	return usable * int64(pct) / 100
+}
+
+// GetConfigPFSDigestLength derives performance_schema_max_{digest,digest_text,
+// sql_text}_length from the PFS memory budget. The fixed 16384 capture sizing
+// was measured to make P_S preallocate ~727MB at init (history_long consumers
+// with 1000 connections) and OOM small cgroups before InnoDB init (#1749); it
+// is only emitted when the budget affords it, with the MariaDB default (1024)
+// below and an intermediate tier in between.
+func (configurator *Configurator) GetConfigPFSDigestLength() string {
+	budget := configurator.GetConfigPFSMemoryMB()
+	switch {
+	case budget >= 768:
+		return "16384"
+	case budget >= 192:
+		return "4096"
+	default:
+		return "1024"
+	}
 }
 
 func (configurator *Configurator) GetConfigMyISAMKeyBufferSegements() string {
@@ -208,28 +366,39 @@ func (configurator *Configurator) GetConfigInnoDBMaxDirtyPagePctLwm() string {
 	return s10
 }
 
+// redoFloorMB/redoCapMB bound the redo size in MB, both powers of two. The old
+// 1024MB floor produced a redo larger than the whole memory cgroup on small
+// prov-db-memory instances, making crash recovery unaffordable (#1749).
+const redoFloorMB int64 = 128
+const redoCapMB int64 = 16384
+
+// redoPow2MB is largestPow2LE clamped to [redoFloorMB, redoCapMB].
+func redoPow2MB(n int64) int64 {
+	p := largestPow2LE(n)
+	if p < redoFloorMB {
+		p = redoFloorMB
+	}
+	if p > redoCapMB {
+		p = redoCapMB
+	}
+	return p
+}
+
+// GetConfigInnoDBLogFileSize sizes the redo at a power of two around a quarter
+// of the InnoDB buffer pool (BP/4): BP/2 over-allocated the redo (up to 8GB on
+// a 32GB instance), and modern MariaDB/MySQL flushing no longer needs a redo
+// half the buffer pool. Floor 128MB, cap 16GB; the smallredolog tag forces the
+// floor.
 func (configurator *Configurator) GetConfigInnoDBLogFileSize() string {
 	//result in MB
-	var valuemin int64
-	var valuemax int64
-	valuemin = 1024
-	valuemax = 20 * 1024
-	value, err := strconv.ParseInt(configurator.GetConfigInnoDBBPSize(), 10, 64)
-	if err != nil {
-		return "1024"
-	}
-	value = value / 2
-	if value < valuemin {
-		value = valuemin
-	}
-	if value > valuemax {
-		value = valuemax
-	}
 	if configurator.HaveDBTag("smallredolog") {
-		return "128"
+		return strconv.FormatInt(redoFloorMB, 10)
 	}
-	s10 := strconv.FormatInt(value, 10)
-	return s10
+	bp, err := strconv.ParseInt(configurator.GetConfigInnoDBBPSize(), 10, 64)
+	if err != nil {
+		return strconv.FormatInt(redoFloorMB, 10)
+	}
+	return strconv.FormatInt(redoPow2MB(bp/4), 10)
 }
 
 func (configurator *Configurator) GetConfigInnoDBLogBufferSize() string {
@@ -260,19 +429,49 @@ func (configurator *Configurator) GetConfigInnoDBWriteIoThreads() string {
 		return "4"
 	}
 	nbthreads := int(iopsLatency * iops)
-	if nbthreads < 1 {
-		return "1"
+	return strconv.Itoa(clampInnoDBIoThreads(nbthreads))
+}
+
+// innoDBMaxIoThreads is MariaDB/MySQL's hard maximum for innodb_read_io_threads and
+// innodb_write_io_threads (valid range 1..64). A value above it makes the live
+// SET GLOBAL fail out of range -- which is exactly what a large plan would produce
+// (e.g. > 32 DBU of IOPS via Little's-law sizing, or a > 64-core config).
+const innoDBMaxIoThreads = 64
+
+// clampInnoDBIoThreads clamps an innodb io-thread count to the valid [1, 64] range.
+func clampInnoDBIoThreads(n int) int {
+	if n < 1 {
+		return 1
 	}
-	strnbthreads := strconv.Itoa(nbthreads)
-	return strnbthreads
+	if n > innoDBMaxIoThreads {
+		return innoDBMaxIoThreads
+	}
+	return n
 }
 
 func (configurator *Configurator) GetConfigInnoDBReadIoThreads() string {
-	return configurator.ClusterConfig.ProvCores
+	cores, err := strconv.ParseFloat(strings.TrimSpace(configurator.ClusterConfig.ProvCores), 64)
+	if err != nil {
+		return "1"
+	}
+	return strconv.Itoa(clampInnoDBIoThreads(int(cores)))
 }
 
 func (configurator *Configurator) GetConfigInnoDBPurgeThreads() string {
 	return "4"
+}
+
+// GetConfigThreadPoolSize sizes the thread pool to the DB's cpu-core allocation
+// (prov-db-cpu-cores). With thread_handling=pool-of-threads, MariaDB otherwise
+// defaults thread_pool_size to the HOST core count (sysconf _SC_NPROCESSORS_ONLN,
+// which is NOT cgroup-aware), oversizing the pool in a cpu-limited container.
+// thread_pool_size is a dynamic GLOBAL, so it is applied live on a CPU resize.
+func (configurator *Configurator) GetConfigThreadPoolSize() string {
+	cores, err := strconv.ParseFloat(strings.TrimSpace(configurator.ClusterConfig.ProvCores), 64)
+	if err != nil || cores < 1 {
+		return "1"
+	}
+	return strconv.Itoa(int(cores))
 }
 
 func (configurator *Configurator) GetConfigInnoDBLruFlushSize() string {
@@ -305,6 +504,24 @@ func (configurator *Configurator) GetConfigProxyTags() string {
 
 func (configurator *Configurator) GetConfigDBTags() string {
 	return strings.Join(configurator.DBTags, ",")
+}
+
+// GetConfigDBReplicationParallelThreads is slave_parallel_threads for the templates
+// (SVC_CONF_ENV_SLAVE_PARALLEL_THREADS): concurrency, never derived from the cores.
+func (configurator *Configurator) GetConfigDBReplicationParallelThreads() int {
+	if configurator.ClusterConfig.ProvReplicationParallelThreads <= 0 {
+		return 32
+	}
+	return configurator.ClusterConfig.ProvReplicationParallelThreads
+}
+
+// GetConfigDBReplicationDomainParallelThreads is slave_domain_parallel_threads for the
+// templates (SVC_CONF_ENV_SLAVE_DOMAIN_PARALLEL_THREADS); 0 = no per-domain cap.
+func (configurator *Configurator) GetConfigDBReplicationDomainParallelThreads() int {
+	if configurator.ClusterConfig.ProvReplicationDomainParallelThreads < 0 {
+		return 0
+	}
+	return configurator.ClusterConfig.ProvReplicationDomainParallelThreads
 }
 
 func (configurator *Configurator) GetConfigDBExpireLogDays() int {
@@ -375,15 +592,4 @@ func (configurator *Configurator) GetSshUpgradeDBScript() string {
 		return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/package/linux/" + dbtype + "/upgrade"
 	}
 	return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/debian/" + dbtype + "/upgrade"
-}
-
-func (configurator *Configurator) GetSshPrintDefaultDBScript() string {
-	dbtype := "mariadb"
-	if configurator.HaveDBTag("rpm") {
-		return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/redhat/" + dbtype + "/printcfg"
-	}
-	if configurator.HaveDBTag("package") {
-		return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/package/linux/" + dbtype + "/printcfg"
-	}
-	return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/debian/" + dbtype + "/printcfg"
 }

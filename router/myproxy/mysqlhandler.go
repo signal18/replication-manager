@@ -54,35 +54,35 @@ func (h MysqlHandler) HandleQuery(queryStr string) (*Result, error) {
 	case *sqlparser.Select:
 		query, ok = statement.(*sqlparser.Select)
 		if !ok {
-			return nil, fmt.Errorf("convert to select sql failed. sql=%s \n", query)
+			return nil, fmt.Errorf("convert to select sql failed. sql=%v \n", query)
 		}
 		result, err = h.handleSelect(query)
 
 	case *sqlparser.Insert:
 		insert, ok = statement.(*sqlparser.Insert)
 		if !ok {
-			return nil, fmt.Errorf("convert to insert sql failed. sql=%s \n", insert)
+			return nil, fmt.Errorf("convert to insert sql failed. sql=%v \n", insert)
 		}
 		result, err = h.handleInsert(insert)
 
 	case *sqlparser.Update:
 		update, ok = statement.(*sqlparser.Update)
 		if !ok {
-			return nil, fmt.Errorf("convert to update sql failed. sql=%s \n", update)
+			return nil, fmt.Errorf("convert to update sql failed. sql=%v \n", update)
 		}
 		result, err = h.handleUpdate(update)
 
 	case *sqlparser.Delete:
 		delete, ok = statement.(*sqlparser.Delete)
 		if !ok {
-			return nil, fmt.Errorf("convert to delete sql failed. sql=%s \n", delete)
+			return nil, fmt.Errorf("convert to delete sql failed. sql=%v \n", delete)
 		}
 		result, err = h.handleDelete(delete)
 
 	case *sqlparser.Show:
 		query, ok = statement.(*sqlparser.Select)
 		if !ok {
-			return nil, fmt.Errorf("convert to select sql failed. sql=%s \n", query)
+			return nil, fmt.Errorf("convert to select sql failed. sql=%v \n", query)
 		}
 		result, err = h.handleSelect(query)
 

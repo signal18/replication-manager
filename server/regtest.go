@@ -69,7 +69,7 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if testExp == "SUITE" {
 			regtest.CopyConfig(cl, test)
 			repman.InitConfig(*repman.Conf, true)
-			cl.ReloadConfig(repman.Confs["regtest"])
+			repman.ReloadClusterConfig(cl, "regtest")
 			cl = repman.getClusterByName("regtest")
 			if !cl.InitTestCluster(test.ConfigFile, &test) {
 				test.Result = "ERR"
@@ -224,6 +224,12 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testMasterNil" {
 			res = regtest.TestMasterNil(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testRejoinStaleCrashKeepsMaster" {
+			res = regtest.TestRejoinStaleCrashKeepsMaster(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testStagingRecoverNoReadOnly" {
+			res = regtest.TestStagingRecoverNoReadOnly(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testRunSysbenchTPCPerMinuteIncreaseThreads" {
 			res = regtest.TestRunSysbenchTPCPerMinuteIncreaseThreads(cl, test.ConfigFile, &test)
 		}
@@ -254,8 +260,59 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testOpenSVCUpgradeWarnRecovery" {
 			res = regtest.TestOpenSVCUpgradeWarnRecovery(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testRollingRestart" {
+			res = regtest.TestRollingRestart(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testRollingUpgrade" {
+			res = regtest.TestRollingUpgrade(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testRollingReprovReseed" {
+			res = regtest.TestRollingReprovReseed(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testK8SProvisionSchedulerVolumeBinding" {
+			res = regtest.TestK8SProvisionSchedulerVolumeBinding(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testK8SStopStartDatabaseService" {
+			res = regtest.TestK8SStopStartDatabaseService(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testSchemaPlugin" {
 			res = regtest.TestSchemaPlugin(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testConfigPersistBackupOption" {
+			res = regtest.TestConfigPersistBackupOption(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testGraphiteMetricsQueueBound" {
+			res = regtest.TestGraphiteMetricsQueueBound(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testDirectReseedSystemAllEmptyDestination" {
+			res = regtest.TestDirectReseedSystemAllEmptyDestination(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testDirectReseedSystemAllPluginAlreadyActive" {
+			res = regtest.TestDirectReseedSystemAllPluginAlreadyActive(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testDirectReseedSystemAllPreExistingUserAppliedViaAlterUser" {
+			res = regtest.TestDirectReseedSystemAllPreExistingUserAppliedViaAlterUser(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testDirectReseedSystemAllRetainsArtifactOnPhaseTwoFailure" {
+			res = regtest.TestDirectReseedSystemAllRetainsArtifactOnPhaseTwoFailure(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testDirectReseedSystemAllSplitUserSingleAuthority" {
+			res = regtest.TestDirectReseedSystemAllSplitUserSingleAuthority(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped" {
+			res = regtest.TestDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testHaproxyRuntimeAPIDynamicServerLifecycle" {
+			res = regtest.TestHaproxyRuntimeAPIDynamicServerLifecycle(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testProxyReadBackendReconciliation" {
+			res = regtest.TestProxyReadBackendReconciliation(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testMaintenancePersistReload" {
+			res = regtest.TestMaintenancePersistReload(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testAppWarningDebounceAndRecovery" {
+			res = regtest.TestAppWarningDebounceAndRecovery(cl, test.ConfigFile, &test)
 		}
 
 		test.Result = regtest.GetTestResultLabel(res)

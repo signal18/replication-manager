@@ -1150,6 +1150,201 @@ func TestCheckResticErrors_WARN0095Lifecycle(t *testing.T) {
 	}
 }
 
+// newWarn0075TestCluster builds the minimal Cluster+ServerMonitor fixture
+// shared by the StateProcessing/WARN0075 tests below. monitorScheduler and
+// schedulerJobsMode are deliberately parameters (not fixed) so the same
+// fixture can prove the fix is mode-independent.
+func newWarn0075TestCluster(t *testing.T, monitorScheduler bool, schedulerJobsMode string) (*Cluster, *ServerMonitor) {
+	t.Helper()
+	sm := new(state.StateMachine)
+	sm.Init()
+	sm.SetMasterUpAndSync(true, true, true)
+
+	srv := &ServerMonitor{
+		Host:       "127.0.0.1",
+		Port:       "3306",
+		URL:        "127.0.0.1:3306",
+		JobResults: config.NewTasksMap(),
+	}
+
+	cluster := &Cluster{
+		Name:                 "test",
+		Conf:                 &config.Config{MonitorScheduler: monitorScheduler, SchedulerJobsMode: schedulerJobsMode},
+		StateMachine:         sm,
+		WorkloadStateMachine: new(state.StateMachine),
+		SecurityStateMachine: new(state.StateMachine),
+		SchemaStateMachine:   new(state.StateMachine),
+		ConfigStateMachine:   new(state.StateMachine),
+		Servers:              []*ServerMonitor{srv},
+	}
+	cluster.WorkloadStateMachine.Init()
+	cluster.SecurityStateMachine.Init()
+	cluster.SchemaStateMachine.Init()
+	cluster.ConfigStateMachine.Init()
+	srv.ClusterGroup = cluster
+	return cluster, srv
+}
+
+// TestStateProcessing_WARN0075LaunchesWhenArmed proves StateProcessing()
+// launches ProcessReseedLogical for a server that has both WARN0075 open and
+// IsReseeding armed (TrySetInReseedBackup, as JobReseedLogicalBackupPrepare
+// does at request time) -- this is now checked every tick against
+// GetOpenStates(), not an open/resolved edge, so it is independent of
+// MonitorScheduler/SchedulerJobsMode. Runs both the memory-tracked
+// (MonitorScheduler=false) and DB-backed (MonitorScheduler=true,
+// SchedulerJobsMode="sql") configurations to prove neither is special-cased
+// anymore.
+func TestStateProcessing_WARN0075LaunchesWhenArmed(t *testing.T) {
+	cases := []struct {
+		name              string
+		monitorScheduler  bool
+		schedulerJobsMode string
+	}{
+		{"memory-tracked (scheduler off)", false, "sql"},
+		{"memory-tracked (api mode)", true, "api"},
+		{"DB-backed", true, "sql"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cluster, srv := newWarn0075TestCluster(t, tc.monitorScheduler, tc.schedulerJobsMode)
+			task := "reseed" + cluster.Conf.BackupLogicalType
+
+			if ok, _ := srv.TrySetInReseedBackup(task); !ok {
+				t.Fatal("setup: failed to arm server for reseed")
+			}
+
+			cluster.SetState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: "test", ErrFrom: "JOB", ServerUrl: srv.URL})
+			cluster.StateProcessing()
+			cluster.tickWG.Wait()
+
+			// ProcessReseedLogical will fail past the arming check (no master,
+			// no DB conn in this fixture) -- what matters is that it was
+			// reached at all, proven by IsReseeding having been cleared by its
+			// deferred cleanup and JobResults recording the attempt.
+			if srv.HasReseedingState(task) {
+				t.Fatal("expected ProcessReseedLogical to have run and cleared IsReseeding, but it's still armed -- launchLogicalReseed was never reached")
+			}
+			if got := srv.JobResults.Get(task); got == nil {
+				t.Fatal("expected an outcome recorded on JobResults, got none -- launchLogicalReseed was never reached")
+			}
+		})
+	}
+}
+
+// TestStateProcessing_WARN0075StaleTriggerIsNoop is the regression guard for
+// the double-launch bug: once a reseed has actually finished (IsReseeding
+// cleared, win or lose), a later tick that still observes WARN0075 open --
+// e.g. a stale warning that hasn't been cleaned up yet -- must not relaunch
+// ProcessReseedLogical and clobber the recorded result. This is now enforced
+// by the HasReseedingState guard at the top of launchLogicalReseed, not by
+// gating which branch is allowed to fire in which mode.
+func TestStateProcessing_WARN0075StaleTriggerIsNoop(t *testing.T) {
+	cluster, srv := newWarn0075TestCluster(t, false, "sql")
+	task := "reseed" + cluster.Conf.BackupLogicalType
+
+	// Simulate a reseed that already ran to completion: IsReseeding cleared,
+	// a success result recorded, but WARN0075 is still (spuriously) open.
+	srv.JobResults.Set(task, &config.Task{Task: task, Done: 1, State: 3, Result: "success-marker"})
+	cluster.SetState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: "test", ErrFrom: "JOB", ServerUrl: srv.URL})
+
+	cluster.StateProcessing()
+	cluster.tickWG.Wait()
+
+	got := srv.JobResults.Get(task)
+	if got == nil {
+		t.Fatal("expected task result to still be present")
+	}
+	if got.Result != "success-marker" || got.State != 3 {
+		t.Fatalf("stale open WARN0075 relaunched the reseed and clobbered the successful result: got done=%d,state=%d,result=%q", got.Done, got.State, got.Result)
+	}
+}
+
+// TestStateProcessing_WARN0075SurvivesModeFlipMidReseed directly covers the
+// scenario that motivated checking GetOpenStates() every tick instead of an
+// open/resolved edge: MonitorScheduler and SchedulerJobsMode are
+// live-reloadable (see Cluster.SwitchMonitoringScheduler), so an operator can
+// flip mode between the tick WARN0075 opens and a later tick. With an
+// edge-based trigger split by mode, that flip could cause either a
+// double-launch (mode flips to the side whose trigger was previously gated
+// off, and it fires again for an already-finished reseed) or a stall (mode
+// flips to the side that already missed its one edge). Neither can happen
+// now: the trigger doesn't care which mode was active when, only whether the
+// server is currently armed.
+func TestStateProcessing_WARN0075SurvivesModeFlipMidReseed(t *testing.T) {
+	cluster, srv := newWarn0075TestCluster(t, false, "sql") // start memory-tracked
+	task := "reseed" + cluster.Conf.BackupLogicalType
+
+	if ok, _ := srv.TrySetInReseedBackup(task); !ok {
+		t.Fatal("setup: failed to arm server for reseed")
+	}
+	cluster.SetState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: "test", ErrFrom: "JOB", ServerUrl: srv.URL})
+
+	// Tick 1: memory-tracked mode observes the open state and dispatches.
+	cluster.StateProcessing()
+	cluster.tickWG.Wait()
+
+	if srv.HasReseedingState(task) {
+		t.Fatal("tick 1: expected the reseed attempt to have run and cleared IsReseeding")
+	}
+	first := srv.JobResults.Get(task)
+	if first == nil {
+		t.Fatal("tick 1: expected an outcome recorded on JobResults")
+	}
+
+	// Flip live, as an operator toggling monitoring-scheduler mid-reseed would.
+	// WARN0075 may still be open here if whatever normally clears it hasn't
+	// run yet on this tick.
+	cluster.Conf.MonitorScheduler = true
+
+	// Tick 2: DB-backed mode now observes the same (still open) WARN0075. It
+	// must not relaunch -- the server is no longer armed for this task.
+	cluster.StateProcessing()
+	cluster.tickWG.Wait()
+
+	second := srv.JobResults.Get(task)
+	if second == nil {
+		t.Fatal("tick 2: task result unexpectedly disappeared")
+	}
+	if second.Result != first.Result || second.State != first.State {
+		t.Fatalf("mode flip between ticks caused a relaunch: tick1=%+v tick2=%+v", first, second)
+	}
+}
+
+// TestLaunchLogicalReseed_ConcurrentCallsDispatchOnce proves the atomic
+// dispatch flag: two calls to launchLogicalReseed while the server is armed
+// (as would happen if two ticks in a row both observe the same open
+// WARN0075, e.g. right around a MonitorScheduler/SchedulerJobsMode flip)
+// must only ever start ProcessReseedLogical once, never concurrently.
+// HasReseedingState can't distinguish this on its own since it stays true
+// for the whole in-flight duration -- this is what the CompareAndSwap closes.
+func TestLaunchLogicalReseed_ConcurrentCallsDispatchOnce(t *testing.T) {
+	cluster, srv := newWarn0075TestCluster(t, false, "sql")
+	task := "reseed" + cluster.Conf.BackupLogicalType
+
+	if ok, _ := srv.TrySetInReseedBackup(task); !ok {
+		t.Fatal("setup: failed to arm server for reseed")
+	}
+
+	// Manually claim the dispatch flag to simulate "a call from a previous
+	// tick is still in flight" without needing a real slow ProcessReseedLogical.
+	if !srv.logicalReseedDispatching.CompareAndSwap(false, true) {
+		t.Fatal("setup: failed to claim dispatch flag")
+	}
+
+	cluster.launchLogicalReseed(srv)
+	cluster.tickWG.Wait()
+
+	// launchLogicalReseed must have bailed out immediately on the already-claimed
+	// flag: no goroutine spawned, so JobResults is untouched and IsReseeding
+	// is still armed (nothing ran ProcessReseedLogical's cleanup).
+	if got := srv.JobResults.Get(task); got != nil {
+		t.Fatalf("expected no dispatch while flag is claimed, but JobResults was touched: %+v", got)
+	}
+	if !srv.HasReseedingState(task) {
+		t.Fatal("expected IsReseeding to remain armed -- a second dispatch must not have run ProcessReseedLogical")
+	}
+}
+
 // TestCheckResticErrors_WARN0095ResolvesWithoutPstates30 proves that WARN0095
 // resolves in the very next cycle after the init issue clears, without relying
 // on pstates30 preservation to carry the state. This is the regression guard
@@ -2379,5 +2574,74 @@ func TestResticInitRepoWithOptions_ProceedsWhenBucketPreCheckFails(t *testing.T)
 	err := cluster.ResticInitRepoWithOptions(backupmgr.ResticInitOption{})
 	if err == nil {
 		t.Fatal("expected init to still attempt and fail (no real restic binary here), not return nil early")
+	}
+}
+
+// TestPstates30_IncludesRejoinCatalogStates guards the contract documented in
+// doc/monitoring.md: a state whose check runs only every N ticks MUST be listed
+// in pstatesN, or it flaps open/resolve on every intermediate tick and storms
+// alerting. HasCatalogBackupForRejoin runs at heartbeats%30==0 and asserts
+// WARN0190/WARN0191, so both must be preserved by pstates30.
+func TestPstates30_IncludesRejoinCatalogStates(t *testing.T) {
+	// WARN0190/0191: HasCatalogBackupForRejoin. WARN0161/0162:
+	// CheckClusterServiceAgents. WARN0169: CheckOnPremiseSSHKey. WARN0170:
+	// CheckConfiguratorPrerequisites (the 2026-09 client Slack alert storm).
+	// All run only at heartbeats%30==0.
+	for _, want := range []string{"WARN0190", "WARN0191", "WARN0161", "WARN0162", "WARN0169", "WARN0170"} {
+		found := false
+		for _, k := range pstates30 {
+			if k == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("pstates30 must include %s (HasCatalogBackupForRejoin runs every 30 ticks; "+
+				"without preservation the state flaps open/resolve every intermediate tick)", want)
+		}
+	}
+}
+
+// TestRejoinCatalog_WARN0191_PreservedAcrossIntermediateTicks reproduces the
+// alert-storm flap and proves pstates30 preservation fixes it. The check that
+// raises WARN0191 only runs on %30 ticks; on the 29 intermediate ticks the loop
+// calls PreserveState(pstates30...). A control state absent from pstates30 keeps
+// the test honest by verifying it really does resolve when not preserved.
+func TestRejoinCatalog_WARN0191_PreservedAcrossIntermediateTicks(t *testing.T) {
+	sm := new(state.StateMachine)
+	sm.Init()
+
+	// Tick %30==0: HasCatalogBackupForRejoin raises WARN0191 (no physical backup for rejoin).
+	sm.AddState("WARN0191", state.State{ErrType: "WARNING", ErrDesc: "no physical backup", ErrFrom: "JOIN"})
+	// Control: not in pstates30, so it must resolve on the intermediate tick.
+	sm.AddState("WARN9999", state.State{ErrType: "WARNING", ErrDesc: "control unpreserved", ErrFrom: "TEST"})
+	sm.ClearState() // end of tick 30: OldState = {WARN0191, WARN9999}, CurState = {}
+
+	if !sm.IsInState("WARN0191") {
+		t.Fatal("setup: WARN0191 should be open after the %30 tick that raised it")
+	}
+
+	// Intermediate tick (%30 != 0): the check does NOT run, so nothing re-raises the
+	// states. The monitor loop calls PreserveState(pstates30...) (cluster.go:1196).
+	sm.PreserveState(pstates30...)
+
+	resolvedHas := func(key string) bool {
+		for _, s := range sm.GetLastResolvedStates() {
+			if s.ErrKey == key {
+				return true
+			}
+		}
+		return false
+	}
+	if resolvedHas("WARN0191") {
+		t.Fatal("WARN0191 flapped to RESOLVED on an intermediate tick: it must be in pstates30")
+	}
+	if !resolvedHas("WARN9999") {
+		t.Fatal("control WARN9999 should resolve when not preserved; test is not sensitive to the flap")
+	}
+
+	sm.ClearState()
+	if !sm.IsInState("WARN0191") {
+		t.Fatal("WARN0191 dropped after an intermediate tick despite pstates30 preservation")
 	}
 }

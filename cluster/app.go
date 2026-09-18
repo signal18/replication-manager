@@ -15,6 +15,7 @@ import (
 	"os"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -50,6 +51,28 @@ type App struct {
 	Agent         string `json:"agent"`
 	Weight        string `json:"weight"`
 	FailCount     int    `json:"failCount"`
+	// WarnCount counts consecutive Refresh() cycles reporting stateAppWarning,
+	// saturating at appErrorDebounceThreshold(cluster.Conf) -- see the
+	// stateAppWarning case in Refresh(). It is reset on any non-warning
+	// observation (AppRunning, Failed, maintenance) so interrupted warning
+	// streaks cannot accumulate across an unrelated state. Without it, a
+	// single transient check failure flips State (and fires the ALERT log)
+	// immediately. json:"-" is deliberate: AppAPIView does not expose it and
+	// no UI currently reads it -- add it explicitly there (plus GUI/docs
+	// updates) if operators should see the pending warning count.
+	WarnCount int `json:"-"`
+	// Per-app refresh freshness (cluster-level AppRefreshLast* on Cluster
+	// only shows batch-wide timing, not which app is actually slow). Set
+	// via SetRefreshInProgress/SetRefreshResult under app.Mutex -- read
+	// them the same way (App.Lock()/Unlock(), or GetAppAPIView) rather than
+	// directly: these are read from a different goroutine than the one
+	// that writes them (maybeRefreshAppsAsync's worker vs. any status/API
+	// reader).
+	LastRefreshStart      time.Time `json:"lastRefreshStart"`
+	LastRefreshEnd        time.Time `json:"lastRefreshEnd"`
+	LastRefreshDurationMs int64     `json:"lastRefreshDurationMs"`
+	LastRefreshError      string    `json:"lastRefreshError"`
+	RefreshInProgress     bool      `json:"refreshInProgress"`
 	// Route-scoped debounce counters are the single source of truth.
 	AppErrConsecutiveMap map[string]int         `json:"-"`
 	ErrState             map[string]state.State `json:"-"`
@@ -240,6 +263,35 @@ func (app *App) IncAppErrConsecutiveCnt(routeKey string) int {
 	return app.AppErrConsecutiveMap[routeKey]
 }
 
+// IncWarnCount increments WarnCount and returns the new value, saturating it
+// at threshold (threshold <= 0 disables saturation). It is locked (app.Lock())
+// so the read-modify-write is atomic with respect to a concurrent Refresh()
+// on the same App -- unlike GetWarnCount()+1 followed by a separate
+// SetWarnCount() call, which would race.
+func (app *App) IncWarnCount(threshold int) int {
+	app.Lock()
+	defer app.Unlock()
+
+	app.WarnCount++
+	if threshold > 0 && app.WarnCount > threshold {
+		app.WarnCount = threshold
+	}
+	return app.WarnCount
+}
+
+// appErrorDebounceThreshold resolves the effective consecutive-observation
+// count required before a debounced app check commits: the per-route APPERR
+// debounce in GetMonitoringStatus (app_chk.go) and the aggregate
+// AppRunning->AppWarning debounce in Refresh() both call this so a change to
+// the legacy default (appErrFailureThreshold) or to the config fallback rule
+// only needs to happen in one place.
+func appErrorDebounceThreshold(conf *config.Config) int {
+	if conf.AppErrorDebounceThreshold > 0 {
+		return conf.AppErrorDebounceThreshold
+	}
+	return appErrFailureThreshold
+}
+
 func (app *App) ResetAppErrConsecutiveCnt(routeKey string) {
 	app.Lock()
 	defer app.Unlock()
@@ -269,47 +321,103 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 
 func (app *App) Refresh() error {
 	cluster := app.ClusterGroup
+
+	start := time.Now()
+	app.SetRefreshInProgress(true)
+	var refreshErr error
+	defer func() {
+		app.SetRefreshResult(start, time.Now(), refreshErr)
+		app.SetRefreshInProgress(false)
+	}()
+
 	app.CheckPrimaryRoute()
 	appState := app.GetMonitoringStatus()
 	sub, err := cluster.GetAppsSubstitutionJSon(app)
 	if err == nil {
 		app.AppClusterSubstitute = sub
 	}
+	refreshErr = err
 
 	switch appState {
 	case stateMaintenance:
 		app.SetState(stateMaintenance)
+		// A warning streak interrupted by maintenance is not consecutive:
+		// require a fresh run of warning observations once maintenance ends.
+		app.SetWarnCount(0)
 	case stateAppRunning:
 		app.SetState(stateAppRunning)
-		app.FailCount = 0
+		app.SetFailCount(0)
+		app.SetWarnCount(0)
 	case stateFailed:
-		if app.FailCount >= cluster.Conf.MaxFail {
+		if app.GetFailCount() >= cluster.Conf.MaxFail {
 			app.SetState(stateFailed)
 		} else {
 			app.SetState(stateSuspect)
-			app.FailCount++
+			app.SetFailCount(app.GetFailCount() + 1)
 		}
+		// Same reasoning as stateMaintenance: a warning streak interrupted by
+		// a Failed observation is not consecutive.
+		app.SetWarnCount(0)
 	case stateAppWarning:
-		app.SetState(stateAppWarning)
-	}
-
-	// Send alert if state has changed
-	if app.PrevState != app.State {
-		//if cluster.Conf.Verbose {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "app %s state changed from %s to %s", app.Name, app.PrevState, app.State)
-		if app.State != stateSuspect {
-			lvl := "ALERT"
-			if app.State == stateAppRunning {
-				lvl = "ALERTOK"
-			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, lvl, "app %s state changed from %s to %s", app.Name, app.PrevState, app.State)
+		// Debounce like stateFailed above: a single transient check failure
+		// should not flip State (and fire the ALERT log) on its own. Reuses
+		// the same AppErrorDebounceThreshold knob as the per-route APPERR
+		// debounce in GetMonitoringStatus (app_chk.go) via
+		// appErrorDebounceThreshold, so both debounces move together.
+		//
+		// IncWarnCount both increments and saturates atomically under a
+		// single app.Lock() -- GetWarnCount()+SetWarnCount() as two separate
+		// locked calls would race against a concurrent Refresh() on the same
+		// App (BackendsStateChange() calls Refresh() directly and is not
+		// covered by the async single-flight guarantee in
+		// maybeRefreshAppsAsync).
+		warnThreshold := appErrorDebounceThreshold(cluster.Conf)
+		warnCount := app.IncWarnCount(warnThreshold)
+		if warnCount >= warnThreshold {
+			app.SetState(stateAppWarning)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+				"Debounced app %s state change to %s (warn count %d/%d)",
+				app.Name, stateAppWarning, warnCount, warnThreshold)
 		}
+	default:
+		app.SetWarnCount(0)
 	}
 
-	if app.PrevState != app.State {
-		app.SetPrevState(app.State)
+	// CommitStateTransition atomically compares State against PrevState and
+	// advances PrevState under a single app.Lock(), so the ALERT/ALERTOK
+	// decision below sees a consistent (old, new) pair even if another
+	// Refresh() call is racing on this App. It only reports changed=true on
+	// the cycle that actually commits a new State -- e.g. a still-debouncing
+	// AppWarning cycle above never calls SetState, so State==PrevState and no
+	// alert fires below the threshold.
+	if oldState, newState, changed := app.CommitStateTransition(); changed {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "app %s state changed from %s to %s", app.Name, oldState, newState)
+		if lvl := appTransitionAlertLevel(newState); lvl != "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, lvl, "app %s state changed from %s to %s", app.Name, oldState, newState)
+		}
 	}
 	return nil
+}
+
+// appTransitionAlertLevel returns the LogModulePrintf level for a committed
+// App state transition landing on newState, or "" to suppress the alert
+// entirely. stateSuspect is the transient state stateFailed's own
+// FailCount/MaxFail debounce commits below its threshold -- it is not yet a
+// confirmed failure, so it must not alert.
+//
+// Every other landing state -- stateAppRunning (recovery) included -- uses
+// ALERT, matching cluster/srv.go's database state-change logging: the server
+// monitor also always logs ALERT (see srv.go's "Server %s state changed from
+// %s to %s" call) and lets the oldState/newState values themselves
+// distinguish a recovery (e.g. "Failed to Slave") from a new problem, rather
+// than switching level. This keeps the two state-machine logging paths
+// consistent instead of introducing an app-only ALERTOK convention.
+func appTransitionAlertLevel(newState string) string {
+	if newState == stateSuspect {
+		return ""
+	}
+	return "ALERT"
 }
 
 func (app *App) BackendsStateChange() {

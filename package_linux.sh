@@ -16,7 +16,14 @@ git status -bs
 builddir="$(pwd)"/build
 mkdir -p "$builddir"/binaries "$builddir"/package "$builddir"/tar "$builddir"/release
 
-version=$(git describe --tag --abbrev=4 | sed 's/^v//')
+version=$(git describe --tag --abbrev=4 | sed 's/^[vV]//')
+case "$version" in
+  [0-9]*) ;;
+  *)
+    echo "ERROR: version '$version' does not start with a digit (bad tag name?); refusing to package" >&2
+    exit 1
+    ;;
+esac
 head=$(git rev-parse --short HEAD)
 epoch=$(date +%s)
 release=1

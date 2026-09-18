@@ -1,6 +1,6 @@
 #!/bin/bash
 # This script is given as sample and might be overwritten on upgrade
-# The real script is auto generated based on compliance json
+# The real script is auto generated based on compliance json and overwrite by go embed
 
 # %%ENV:GENLINE%%
 
@@ -86,6 +86,7 @@ readonly LOCK_DIR="${TMP_DIR}/locks"
 # Constants
 readonly BATCH_SIZE=5
 readonly MAX_RETRIES=3
+readonly JOB_STATE_MAX_RETRIES=5
 readonly API_LOG_FILE="${LOG_DIR}/api_calls.log"
 readonly LOG_MAX_SIZE=1048576  # 1MB
 
@@ -105,7 +106,7 @@ readonly -a JOBS=(
     "xtrabackup" "mariabackup" "errorlog" "slowquery"
     "auditlog" "sqlerrorlog" "zfssnapback" "optimize"
     "reseedxtrabackup" "reseedmariabackup"
-    "flashbackxtrabackup" "flashbackmariadbackup"
+    "flashbackxtrabackup" "flashbackmariabackup"
     "stop" "restart" "start"
 )
 
@@ -508,18 +509,50 @@ get_task_receiver() {
 report_job_state() {
     local taskname="$1"
     local jobstate="$2"
-    local api_host="$REPLICATION_MANAGER_HOST"
-    local api_port="$REPLICATION_MANAGER_PORT"
+    # Optional: a JSON object (e.g. PARTIAL_RESTORE_JSON) merged into the
+    # POST body under "restore", read by handlerMuxServerJobState
+    # (server/api_database.go) for a physical reseed/flashback task's "done"
+    # report -- API mode's only transport for this metadata, since there is
+    # no jobs-table payload column to write it to in this mode.
+    local restore_json="$3"
 
-    local endpoint="/api/clusters/${CLUSTER_NAME}/servers/${MYSQL_SERVER}/${MYSQL_PORT}/actions/job-state/${taskname}/${jobstate}"
-    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
-
-    local http_code=$(extract_http_code "$response")
-    if [[ "$http_code" != "200" ]]; then
-        send_lines_to_api "Failed to report job state $jobstate for $taskname (HTTP $http_code)" "$taskname" "$LVL_ERROR"
+    # An empty state means the caller has a bug (e.g. an unset result
+    # variable) — the route requires a non-empty {jobstate} path segment, so
+    # sending this would just 404 against a URL like .../job-state/task/.
+    # Fail fast locally instead of spending retries on a request that can
+    # never succeed.
+    if [[ -z "$jobstate" ]]; then
+        send_lines_to_api "report_job_state called with empty state for $taskname" "$taskname" "$LVL_ERROR"
         return 1
     fi
-    return 0
+
+    local api_host="$REPLICATION_MANAGER_HOST"
+    local api_port="$REPLICATION_MANAGER_PORT"
+    local endpoint="/api/clusters/${CLUSTER_NAME}/servers/${MYSQL_SERVER}/${MYSQL_PORT}/actions/job-state/${taskname}/${jobstate}"
+    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\""
+    if [[ -n "$restore_json" ]]; then
+        data="${data},\"restore\":${restore_json}"
+    fi
+    data="${data}}"
+
+    # Retry like send_lines_to_api already does via send_to_api_with_retry.
+    # done/error are terminal — a dropped report there is what leaves a job
+    # stuck with no resolution (the #1690 symptom) — so they get a larger
+    # budget to ride out restart/startup timing. processing/waiting use the
+    # same budget as log lines; losing one of those doesn't strand the job,
+    # since the terminal report (or startup reconciliation) still resolves
+    # it later.
+    local retries="$MAX_RETRIES"
+    case "$jobstate" in
+        done|error) retries="$JOB_STATE_MAX_RETRIES" ;;
+    esac
+
+    if send_to_api_with_retry "$api_host" "$api_port" "$endpoint" "$data" "$retries"; then
+        return 0
+    fi
+
+    send_lines_to_api "Failed to report job state $jobstate for $taskname after $retries attempts" "$taskname" "$LVL_ERROR"
+    return 1
 }
 
 ##################################
@@ -567,6 +600,83 @@ secret_login() {
         # Other error
         return 2
     fi
+}
+
+# resolve_dbu_cgroup: locate the cgroup v2 directory whose memory.current /
+# cpu.stat / io.stat describe this database's resource use. Two sources,
+# orchestrator-agnostic:
+#   1. /svc-cgroup -- an explicit read-only bind the orchestrator provides
+#      (OpenSVC binds the service pg slice there). Preferred when present.
+#   2. Auto-discovery via the database process's own cgroup: find mariadbd/mysqld
+#      and read /proc/<pid>/cgroup (a single "0::<path>" line in cgroup v2), then
+#      /sys/fs/cgroup<path>. Works on-premise (the job runs on the host, so it
+#      sees the DB process and the host cgroupfs) and under Kubernetes when the
+#      pod shares its PID namespace and mounts the host cgroupfs.
+# Echoes the directory, or nothing when neither source is usable (caller skips).
+resolve_dbu_cgroup() {
+    if [[ -r /svc-cgroup/memory.current ]]; then
+        echo /svc-cgroup
+        return 0
+    fi
+    local pid sub base
+    pid=$(pgrep -x mariadbd 2>/dev/null | head -1)
+    [[ -z "$pid" ]] && pid=$(pgrep -x mysqld 2>/dev/null | head -1)
+    [[ -n "$pid" ]] || return 0
+    sub=$(awk -F: '$1=="0"{print $3; exit}' "/proc/$pid/cgroup" 2>/dev/null)
+    [[ -n "$sub" ]] || return 0
+    # Read through the DB process's own mount view first: this reaches the
+    # database container's cgroup under Kubernetes (via a shared PID namespace)
+    # AND the host cgroupfs on-premise (where root is the host). Fall back to the
+    # host cgroupfs path directly.
+    for base in "/proc/$pid/root/sys/fs/cgroup" "/sys/fs/cgroup"; do
+        [[ -r "${base}${sub}/memory.current" ]] && { echo "${base}${sub}"; return 0; }
+    done
+}
+
+# collect_dbu: thin DBU sensor. Reads the database cgroup (see resolve_dbu_cgroup:
+# an orchestrator bind at /svc-cgroup, or the DB process's own cgroup discovered
+# via /proc) plus the datadir df, and pushes the four raw per-axis maxima to
+# repman, which computes the DBU (normalise/pivot/binding) so the client DB CPU
+# is never spent on it. Runs once per dbjobs_new invocation (~60s launcher
+# cadence). cpu/io are rates vs the previous run's cumulative counters, persisted
+# in a checkpoint. Fail-soft: any missing piece just skips the push, never breaks
+# the job run.
+collect_dbu() {
+    local cg
+    cg=$(resolve_dbu_cgroup)
+    [[ -n "$cg" && -r "$cg/memory.current" ]] || return 0   # no readable cgroup -> skip
+
+    local now_epoch mem cpu_usec io_ops disk
+    now_epoch=$(date +%s)
+    mem=$(cat "$cg/memory.current" 2>/dev/null || echo 0)
+    cpu_usec=$(awk '/^usage_usec/{print $2}' "$cg/cpu.stat" 2>/dev/null || echo 0)
+    # io: sum rios+wios across all block devices (operation counts -> iops)
+    io_ops=$(awk '{for(i=1;i<=NF;i++){if($i ~ /^rios=/){sub("rios=","",$i);r+=$i} if($i ~ /^wios=/){sub("wios=","",$i);w+=$i}}} END{printf "%d", r+w+0}' "$cg/io.stat" 2>/dev/null || echo 0)
+    # disk: sum df used over mounts UNDER the datadir only (statfs, no du); this
+    # excludes host bind-mounts (e.g. zoneinfo) and the initdb volume.
+    disk=$(df -B1 2>/dev/null | awk -v d="$DATADIR" 'NR>1 && $NF ~ ("^" d) {s+=$3} END{printf "%d", s+0}')
+
+    local ckpt="$CHECKPOINT_DIR/dbu.checkpoint"
+    local prev_epoch="" prev_cpu="" prev_io=""
+    [[ -s "$ckpt" ]] && read -r prev_epoch prev_cpu prev_io < "$ckpt"
+    echo "$now_epoch $cpu_usec $io_ops" > "$ckpt"
+
+    # First run (no baseline) or clock skew -> just seed the checkpoint, no push.
+    [[ -z "$prev_epoch" ]] && return 0
+    local dt=$((now_epoch - prev_epoch))
+    ((dt <= 0)) && return 0
+
+    local cpu_cores io_iops
+    cpu_cores=$(awk -v c="$cpu_usec" -v p="$prev_cpu" -v dt="$dt" 'BEGIN{printf "%.4f", (c-p)/(dt*1000000)}')
+    io_iops=$(awk -v c="$io_ops" -v p="$prev_io" -v dt="$dt" 'BEGIN{printf "%.4f", (c-p)/dt}')
+
+    local ws we
+    ws=$(date -u -d "@$prev_epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
+    we=$(date -u -d "@$now_epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
+
+    local data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cpu_cores,\"ioMaxIops\":$io_iops,\"diskMaxBytes\":$disk}"
+    local endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/dbu"
+    send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$endpoint" "$data" "application/json" "$TOKEN" >/dev/null 2>&1 || true
 }
 
 # Fetch config receiver information
@@ -1299,14 +1409,23 @@ dblogfile() {
         fi
     fi
 
-    # Extract new lines into temporary file
-    local TMPLOG="$TMPDIR/${JOB}.newlines"
+    # Extract new lines into temporary file (TMP_DIR, not the unset TMPDIR)
+    local TMPLOG="$TMP_DIR/${JOB}.newlines"
     tail -n +"$NEXT_LINE" "$DBLOG" > "$TMPLOG"
 
-    # If DB log has content
+    # If DB log has new content
     if [ -s "$TMPLOG" ]; then
         # Send content via socat
-        socat -u stdio TCP:$ADDRESS < "$TMPLOG" &>"$LOG_DIR/$JOB.process.out"
+        if socat -u stdio TCP:$ADDRESS < "$TMPLOG" &>"$LOG_DIR/$JOB.process.out"; then
+            # Persist the streaming offset: remember the last non-empty line we
+            # just streamed so the next run resumes AFTER it (grep -Fxn on the
+            # source) instead of re-sending the whole file from line 1. Without
+            # this the state file never exists, NEXT_LINE stays 1, and every run
+            # re-streams the entire log -> the collected copy inflates ~100x.
+            local LAST_SENT
+            LAST_SENT=$(grep -v '^$' "$TMPLOG" | tail -n 1)
+            [ -n "$LAST_SENT" ] && printf '%s\n' "$LAST_SENT" > "$STATEFILE"
+        fi
     else
         # Send empty payload
         echo -n | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$JOB.process.out"
@@ -1348,7 +1467,14 @@ doneJob() {
     else
         send_lines_to_api "Job $job ended with state: Error" "$job" "$LVL_ERROR"
     fi
-    $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), state=$jobstate, result=LOAD_FILE('$LOG_DIR/$job.out'), done=$done  WHERE id='$ID';" &
+    # Not backgrounded (no trailing &): this is the final completion write
+    # for the job row. Backgrounding it let the script move on to the next
+    # loop iteration (or exit) before the write landed — if the process
+    # group got reaped at that point (cron/systemd/container exit), the row
+    # was left at state=1/done=0 forever, indistinguishable from a job still
+    # actually running. Nothing after this call does other useful work
+    # concurrently, so there's no benefit to backgrounding it.
+    $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), state=$jobstate, result=LOAD_FILE('$LOG_DIR/$job.out'), done=$done  WHERE id='$ID';"
 }
 
 pauseJob() {
@@ -1393,6 +1519,17 @@ pr_pipe() {
 
 partialRestore() {
     send_lines_to_api "Starting partial restore..." "$job" "$LVL_INFO"
+    # Deliberately NOT seeded from the prepare command's own exit status: that
+    # was tried (folding $? from the mariabackup/xtrabackup --prepare --export
+    # invocation in here) and reverted -- mariabackup/xtrabackup --prepare
+    # --export can return a nonzero exit code from a harmless warning in its
+    # internal --bootstrap sub-invocation while still producing a fully usable
+    # export, so treating that exit code as authoritative caused false-positive
+    # errors on restores that actually succeeded (confirmed: partialRestore
+    # below ran to completion normally in the case that surfaced this). What
+    # actually happened to the prepared files is only knowable by the restore
+    # steps below actually touching them, so PR_STATUS is deliberately judged
+    # solely on those (pr_cmd/pr_pipe), matching SQL mode's doneJob() check.
     PR_STATUS=0
     case "$job" in
     reseed*)
@@ -1469,11 +1606,13 @@ partialRestore() {
         pr_cmd "Move MyISAM files for mysql.$file" mv "$BACKUPDIR/mysql/$file."* "$DATADIR/mysql/"
         pr_cmd "Flush table mysql.$file" $BINARY_CLIENT -e "set sql_log_bin=0;FLUSH TABLE mysql.$file"
     done
-    send_lines_to_api "Setting GTID of the last change..." "$job" "$LVL_DEBUG"
-    local g=""
+    send_lines_to_api "Extracting GTID of the last change..." "$job" "$LVL_DEBUG"
+    local g="" binfile="" binpos=""
     local f
     for f in "$BACKUPDIR/mariadb_backup_binlog_info" "$BACKUPDIR/xtrabackup_binlog_info"; do
         if [[ -f "$f" ]]; then
+            binfile=$(awk '{print $1}' "$f" 2>>"$PR_LOG")
+            binpos=$(awk '{print $2}' "$f" 2>>"$PR_LOG")
             g=$(awk '{print $3}' "$f" 2>>"$PR_LOG")
             [[ -n "$g" ]] && break
         fi
@@ -1498,19 +1637,53 @@ partialRestore() {
     if [[ -n "$g" ]]; then
         g=$(echo "$g" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
     fi
-    if [[ -n "$g" ]]; then
-        pr_cmd "Set GTID of the last change" $BINARY_CLIENT -e "set sql_log_bin=0;set global gtid_slave_pos='$g'"
-    else
-        pr_log "No GTID info found; skip GTID set."
+
+    if [[ -z "$g" ]]; then
+        pr_log "No GTID info found in prepared backup."
     fi
+    local vinfo=""
+    vinfo=$($BINARY_CLIENT -N -e "SELECT VERSION();" 2>>"$PR_LOG")
+    local vendor="mariadb"
+    [[ "$vinfo" != *MariaDB* ]] && vendor="mysql"
+
+    # GTID reset/apply and channel restart are NOT done here in either job
+    # mode. This shell script only extracts the restore-confirmed position
+    # and reports it, structured; repman is the vendor/topology-aware owner
+    # that resets, applies the GTID, and restarts channels once this job
+    # reports done -- via two different transports depending on job mode:
+    #
+    # SQL mode: this job has a jobs-table row, so the metadata goes in its
+    # payload column; repman's AfterJobProcess (cluster/srv_job_backup.go),
+    # driven by the SQL-mode-only terminal-job reconciliation
+    # JobsCheckFinished, reads it from there.
+    #
+    # API mode: there is no jobs-table row (no $ID), so PARTIAL_RESTORE_JSON
+    # (set here, NOT local -- it must survive after this function returns)
+    # is picked up by the "done" report_job_state call below in the main
+    # dispatch loop and sent in that HTTP callback's body instead; repman's
+    # handlerMuxServerJobState (server/api_database.go) reads it from there
+    # and calls the same RecoverPhysicalRestore repman uses for SQL mode.
+    PARTIAL_RESTORE_JSON=$(printf '{"vendor":"%s","gtid":"%s","binLogFile":"%s","binLogPos":"%s"}' \
+        "$vendor" "$g" "$binfile" "$binpos")
+    if [[ "$JOBS_MODE" != "api" && -n "$ID" ]]; then
+        pr_cmd "Report restore metadata" $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs SET payload='$PARTIAL_RESTORE_JSON' WHERE id=$ID;"
+    fi
+
     send_lines_to_api "Flushing privileges..." "$job" "$LVL_DEBUG"
     pr_cmd "Flush privileges" $BINARY_CLIENT -e "set sql_log_bin=0;flush privileges;"
+
+    # Replication restart is intentionally NOT done here, in either job mode
+    # -- repman is the sole restart authority (SQL mode: AfterJobProcess off
+    # the payload column; API mode: handlerMuxServerJobState off this job's
+    # "done" callback body, see PARTIAL_RESTORE_JSON above), and restarts
+    # every channel by its real ConnectionName, symmetric with the
+    # StopAllSlaves() call made before the restore began.
     local mh=""
     mh=$($BINARY_CLIENT -N -e "SHOW SLAVE STATUS" 2>>"$PR_LOG" | awk -F '	' 'NR==1{print $2}')
     if [[ -n "$mh" && "$mh" != "NULL" ]]; then
-        pr_cmd "Start slave" $BINARY_CLIENT -e "set sql_log_bin=0;start slave;"
+        pr_log "Master_Host configured ($mh); leaving channel restart to repman."
     else
-        pr_log "No Master_Host configured; skip start slave."
+        pr_log "No Master_Host configured; leaving channel restart to repman."
     fi
 
     if [[ "$PR_STATUS" -eq 0 ]]; then
@@ -1683,6 +1856,11 @@ if [ "$TOKEN" == "error" ]; then
     exit 1
 fi
 
+# DBU sensor: push the service cgroup + datadir maxima once per run (~60s
+# launcher cadence), BEFORE the job dispatch, so it still fires on a cycle where
+# a backup would later block or early-exit. Thin + fail-soft (see collect_dbu).
+collect_dbu || true
+
 # Clear previous temporary files
 echo "" > "$LOG_DIR/curl_response.txt"
 echo "" > "$LOG_DIR/request.txt"
@@ -1803,7 +1981,7 @@ for job in "${JOBS[@]}"; do
             $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
             partialRestore
             ;;
-        flashbackmariadbackup)
+        flashbackmariabackup)
             rm -rf $BACKUPDIR
             mkdir -p $BACKUPDIR
             socatCleaner
@@ -1854,26 +2032,50 @@ for job in "${JOBS[@]}"; do
 
         # Report job completion
         if [[ "$JOBS_MODE" == "api" ]]; then
-            # Check backup success the same way doneJob does
-            local api_job_result="done"
+            # Check backup success the same way doneJob does.
+            # Not `local`: this code runs in the top-level JOBS loop, not
+            # inside a function — `local` here prints "local: can only be
+            # used in a function" and does not assign. The script has no
+            # set -e, so execution continues with api_job_result left
+            # unset/stale for any job that doesn't hit the case branches
+            # below (e.g. auditlog, sqlerrorlog), which then calls
+            # report_job_state with an empty state and 404s on the route's
+            # non-empty {jobstate} segment.
+            api_job_result="done"
             case "$job" in
             mariabackup|xtrabackup)
                 if ! grep -q '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!' "$LOG_DIR/backup.out" 2>/dev/null; then
                     api_job_result="error"
                 fi
                 ;;
-            reseedmariabackup|reseedxtrabackup)
-                if ! grep -q '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!' "$LOG_DIR/reseed.out" 2>/dev/null; then
-                    api_job_result="error"
-                fi
-                ;;
-            flashbackmariabackup|flashbackxtrabackup)
-                if ! grep -q '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!' "$LOG_DIR/flash.out" 2>/dev/null; then
+            reseedmariabackup|reseedxtrabackup|flashbackmariabackup|flashbackxtrabackup)
+                # Mirrors doneJob()'s SQL-mode check above: PR_STATUS is the
+                # rollup partialRestore() computes from every actual restore
+                # step (pr_cmd/pr_pipe), so it's the authoritative signal here.
+                # Do NOT grep reseed.out/flash.out for "completed OK!" like the
+                # plain mariabackup|xtrabackup case above does -- that banner
+                # is emitted by --backup mode, not guaranteed by the --prepare
+                # --export invocation these tasks use, so a fully successful
+                # partial restore can still lack that exact line.
+                if [ "$PR_STATUS" -ne 0 ]; then
                     api_job_result="error"
                 fi
                 ;;
             esac
-            report_job_state "$job" "$api_job_result"
+            # Physical reseed/flashback: forward the restore metadata
+            # partialRestore() extracted (PARTIAL_RESTORE_JSON, set inside it
+            # unconditionally, not local) so repman can run the same
+            # GTID-apply/channel-restart recovery this mode has no
+            # jobs-table row to carry it through otherwise. See the
+            # PARTIAL_RESTORE_JSON comment in partialRestore().
+            case "$job" in
+            reseedmariabackup|reseedxtrabackup|flashbackmariabackup|flashbackxtrabackup)
+                report_job_state "$job" "$api_job_result" "$PARTIAL_RESTORE_JSON"
+                ;;
+            *)
+                report_job_state "$job" "$api_job_result"
+                ;;
+            esac
             if [[ "$api_job_result" == "done" ]]; then
                 send_lines_to_api "Job $job completed" "$job" "$LVL_INFO"
             else

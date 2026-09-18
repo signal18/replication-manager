@@ -1362,7 +1362,7 @@ func (cluster *Cluster) ReconcileSnapshotMetadataAsync() {
 	if !atomic.CompareAndSwapInt32(&cluster.reconcileSnapshotMetadataInProgress, 0, 1) {
 		return
 	}
-	go func() {
+	cluster.trackTickGoroutine(func() {
 		defer atomic.StoreInt32(&cluster.reconcileSnapshotMetadataInProgress, 0)
 		report, err := cluster.ReconcileSnapshotMetadata()
 		if err != nil {
@@ -1375,5 +1375,5 @@ func (cluster *Cluster) ReconcileSnapshotMetadataAsync() {
 		if len(report.OrphanedMetadata) > 0 {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlDbg, "Reconciliation: %d orphaned metadata entries (stale files for deleted snapshots); enable backup-reconcile-auto-cleanup to remove them", len(report.OrphanedMetadata))
 		}
-	}()
+	})
 }

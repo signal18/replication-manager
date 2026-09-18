@@ -28,6 +28,23 @@ func (cluster *Cluster) OpenSVCGetHaproxyContainerSection(server *HaproxyProxy) 
 			svccontainer["run_args"] = "--sysctl net.ipv4.ip_unprivileged_port_start=0 " + server.ClusterGroup.Conf.ProvProxDockerRunArgs
 			svccontainer["volume_mounts"] = `{name}/init/checkslave:/usr/bin/checkslave:rw {name}/init/checkmaster:/usr/bin/checkmaster:rw /etc/localtime:/etc/localtime:ro {name}/etc/haproxy:/usr/local/etc/haproxy:rw`
 		}
+
+		// The image's default entrypoint/CMD always launches haproxy.cfg
+		// (proxy_cnf_haproxy_runtime_api, no external-check), regardless of
+		// haproxy-mode. externalcheck needs haproxy_check.cfg instead -- it's
+		// the one with checkmaster/checkslave wired in via "option
+		// external-check" -- and "-db" since haproxy_check.cfg's "daemon"
+		// directive would otherwise background the process and let PID 1
+		// exit immediately (same reasoning as k8sProxyDeployment's standby
+		// branch, cluster/prov_k8s_prx.go). Mirrors container#02's
+		// entrypoint/command split above. Distinct from haproxy-mode=standby,
+		// which has no external check at all -- standby's HAProxy runs the
+		// image's default config, and Init() (cluster/prx_haproxy.go) itself
+		// decides read-backend membership from replication state instead.
+		if server.ClusterGroup.Conf.HaproxyMode == "externalcheck" {
+			svccontainer["entrypoint"] = "/bin/sh"
+			svccontainer["command"] = `-c "exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg"`
+		}
 	}
 
 	return svccontainer
@@ -83,6 +100,18 @@ run_args = -v {env.base_dir}/pod` + pod + `/init/checkslave:/usr/bin/checkslave:
 `
 		if dockerMinusRm {
 			vm = vm + ` --rm
+`
+		}
+		// Same gap this templated (collector-API) path shares with
+		// OpenSVCGetHaproxyContainerSection before it was fixed: the image's
+		// default entrypoint/CMD always launches haproxy.cfg
+		// (proxy_cnf_haproxy_runtime_api, no external-check), regardless of
+		// haproxy-mode. externalcheck needs haproxy_check.cfg instead -- see
+		// the comment on OpenSVCGetHaproxyContainerSection above for why
+		// "-db" is required. Kept in sync with that function's override.
+		if cluster.Conf.HaproxyMode == "externalcheck" {
+			vm = vm + `entrypoint = /bin/sh
+command = -c "exec haproxy -W -db -f /usr/local/etc/haproxy/haproxy_check.cfg"
 `
 		}
 	}

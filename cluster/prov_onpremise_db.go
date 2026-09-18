@@ -104,8 +104,30 @@ func (cluster *Cluster) OnPremiseStopDatabaseService(server *ServerMonitor) erro
 	return nil
 }
 
+// OnPremiseUpgradeDatabaseService runs the ssh upgrade script, which handles
+// stop -> package upgrade -> start -> mariadb-upgrade internally but doesn't
+// itself set innodb_fast_shutdown=0 first -- unlike StopDatabaseServiceClean
+// (the container-orchestrator upgrade path's stop step, via
+// rollingUpgradeStopUpdateStart), so that SQL preamble is run here instead,
+// on the still-live connection before the script's own stop happens.
 func (cluster *Cluster) OnPremiseUpgradeDatabaseService(server *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise upgrade database via ssh script")
+
+	if server.Conn != nil {
+		if _, err := server.Conn.Exec("SET GLOBAL innodb_fast_shutdown = 0"); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+				"Failed to set innodb_fast_shutdown=0 on %s: %s", server.URL, err)
+		}
+		if server.IsMaster() && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 4 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"Master %s: issuing SHUTDOWN WAIT FOR ALL SLAVES before upgrade", server.URL)
+			if _, err := server.Conn.Exec("SHUTDOWN WAIT FOR ALL SLAVES"); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+					"SHUTDOWN WAIT FOR ALL SLAVES failed on %s: %s", server.URL, err)
+			}
+		}
+	}
+
 	client, err := cluster.OnPremiseConnect(server)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise upgrade database via ssh failed: %s", err)

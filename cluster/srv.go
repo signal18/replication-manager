@@ -10,12 +10,14 @@
 package cluster
 
 import (
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/crc64"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -163,6 +165,9 @@ type ServerMonitor struct {
 	DBVersion                   *version.Version            `json:"dbVersion"`
 	Version                     int                         `json:"-"`
 	QPS                         int64                       `json:"qps"`
+	ReplicationGroupCommitSize  float64                     `json:"replicationGroupCommitSize"` // avg binlog group commit size over the last tick (Binlog_commits / Binlog_group_commits deltas): the commit concurrency a slave can apply in parallel; 0 when no commit in the tick
+	ReplicationParallelThreads  int64                       `json:"replicationParallelThreads"` // slave_parallel_threads (MariaDB) / slave_parallel_workers (MySQL) as the server runs it -- the workers, to compare with the group commit size
+	lastParallelModeEnforce     time.Time                   `json:"-"` // last STOP/SET/START of slave_parallel_mode by CheckSlaveSettings (rate limit)
 	ReplicationHealth           string                      `json:"replicationHealth"`
 	EventStatus                 []dbhelper.Event            `json:"eventStatus"`
 	FullProcessList             []dbhelper.Processlist      `json:"-"`
@@ -216,6 +221,18 @@ type ServerMonitor struct {
 	BinaryLogPurgeBefore        int64                       `json:"binaryLogPurgeBefore"`
 	MaxSlowQueryTimestamp       int64                       `json:"maxSlowQueryTimestamp"`
 	WorkLoad                    *config.WorkLoadsMap        `json:"workLoad"`
+	DBUConsumed                 *DBUReading                 `json:"dbuConsumed"`
+	// Per-server consumed-vs-reference axis states (set by CheckResourceConsumed, checkState only,
+	// no action). Over = consumed_axis >= ref x (1 - cap-safety-pct/100); under = consumed_axis <=
+	// ref x (cap-shrink-pct/100); dead-band between = status quo. Config ref = THIS server's
+	// resources (raise/shrink this server); plan ref = the cap. The cluster composes cap-up/down
+	// from the *Plan* axes across servers (see Cluster.CheckResourceCapPlan).
+	ResourceConsumedOverConfigAxes  []string `json:"resourceConsumedOverConfigAxes"`  // saturates its config -> raise this server's resources
+	ResourceConsumedUnderConfigAxes []string `json:"resourceConsumedUnderConfigAxes"` // under-uses its config -> shrink this server's resources
+	ResourceConsumedOverPlanAxes    []string `json:"resourceConsumedOverPlanAxes"`    // hits the plan/cap -> contributes to cap-up
+	ResourceConsumedUnderPlanAxes   []string  `json:"resourceConsumedUnderPlanAxes"`   // under the plan/cap -> allows cap-down (only if ALL servers are)
+	BufferPoolMemGrowDue            bool      `json:"bufferPoolMemGrowDue"`            // memory GROW due from buffer-pool PRESSURE (Innodb_buffer_pool_wait_free sustained), NOT occupancy -- folded into the mem axis by CanScaleConfigInPlan(up)
+	bufferPoolPressureSince         time.Time // when continuous buffer-pool pressure began (zero = not under pressure); >= scale-up speed -> BufferPoolMemGrowDue
 	DelayStat                   *ServerDelayStat            `json:"delayStat"`
 	SlaveVariables              SlaveVariables              `json:"slaveVariables"`
 	IsReseeding                 string                      `json:"isReseeding"`
@@ -236,25 +253,36 @@ type ServerMonitor struct {
 	jobsAPIHousekeepingDone     bool // true after schema ensured + jobs table dropped in API mode
 	NeedRefreshJobs             bool
 	lastJobsRefreshAttempt      time.Time
+	lastReconcileAttempt        time.Time
 	PointInTimeMeta             backupmgr.PointInTimeMeta
 	BinaryLogDir                string
 	BinaryLogName               string
 	DBDataDir                   string
 	LastConfigUpdate            config.LastConfigUpdate `json:"lastConfigUpdate"`
 	LastBackupMeta              ServerBackupMeta        `json:"lastBackupMeta"`
+	LastPhysicalRestoreMeta     *PhysicalRestoreMeta    `json:"lastPhysicalRestoreMeta,omitempty"`
 	IsNeedPathCheck             bool
 	HasConfigPathChanged        bool
-	HasConfigDiff               bool       `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config
-	RestartNode                 string     // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
-	RestartRid                  string     // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
-	jobMutex                    sync.Mutex // protects IsRunningJobs flag
-	configGenMutex              sync.Mutex // protects config generation operations
-	backupMetaMutex             sync.Mutex  // protects LastBackupMeta from concurrent Restic callback updates
-	rejoinInProgress            atomic.Bool  // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
-	reseedInfo                  atomic.Value // *ReseedProgress: the in-flight restore's backup (nil when idle) — for the progress state
-	reseedBytes                 atomic.Int64 // raw bytes streamed so far (compressed input; no decompression accounting yet)
-	reseedTotal                 atomic.Int64 // total compressed backup file size (0 = unknown)
-	reseedStart                 atomic.Int64 // unix-nanos the current restore started (for MB/s)
+	HasConfigDiff               bool                                 `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config
+	PendingCgroupShrink         bool                                 `json:"-"`             // a memory live-shrink lowered the buffer pool and is waiting for the async InnoDB resize to complete before shrinking the cgroup (anti-OOM)
+	pendingK8sMemoryResize      atomic.Pointer[K8sMemoryResizeState] // a native Kubernetes Pod memory resize was requested and is awaiting kubelet confirmation (see cluster_resize_k8s.go); written from the resize-dispatch path, read/cleared from the monitor tick -- different goroutines, so atomic not a plain pointer (GetPendingK8sMemoryResize/SetPendingK8sMemoryResize below)
+	RestartNode                 string                               // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
+	RestartRid                  string                               // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
+	jobMutex                    sync.Mutex                           // protects IsRunningJobs flag
+	configGenMutex              sync.Mutex                           // protects config generation operations
+	dbLogMigrateMutex           sync.Mutex                           // serializes concurrent attempts at the lazy legacy->backup-backed fetched DB log migration
+	dbLogMigrated               atomic.Bool                          // set once a migration pass completes with no errors; left false to allow retry after a transient failure
+	backupMetaMutex             sync.Mutex                           // protects LastBackupMeta from concurrent Restic callback updates
+	rejoinInProgress            atomic.Bool                          // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
+	reseedFromRejoin            atomic.Bool                          // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
+	rejoinReseedStart           atomic.Int64                         // unix-nanos when the rejoin armed its reseed; drives the generic "rejoin reseed in progress, started T" state (WARN0189) for methods without byte instrumentation
+	reseedInfo                  atomic.Value                         // *ReseedProgress: the in-flight restore's backup (nil when idle) — for the progress state
+	reseedBytes                 atomic.Int64                         // raw bytes streamed so far (compressed input; no decompression accounting yet)
+	reseedTotal                 atomic.Int64                         // total compressed backup file size (0 = unknown)
+	reseedStart                 atomic.Int64                         // unix-nanos the current restore started (for MB/s)
+	reseedRateWindow            atomic.Value                         // []reseedRateSample: last few per-tick (bytes,time) samples, for a windowed "recent" rate distinct from the lifetime average (reseedBytes/reseedStart) — see restore_progress.go
+	reseedPhase                 atomic.Value                         // string: one of the ReseedPhase* constants (restore_progress.go), physical reseed/flashback only; empty for paths that don't set it
+	logicalReseedDispatching    atomic.Bool                          // claimed for the duration of an in-flight launchLogicalReseed call, so repeated StateProcessing ticks over the same open WARN0075 can't enter ProcessReseedLogical concurrently
 	// Lock ordering (to prevent deadlocks):
 	// 1. Cluster.stateMutex (highest)
 	// 2. ServerMonitor.stateMutex
@@ -363,15 +391,26 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		server.SourceClusterName = cluster.Name
 	}
 
-	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
-		// OpenSVC and Sharding proxy monitoring
-		url = server.Name + server.Domain + ":3306"
+	if server.Domain != "" {
+		// server.Domain comes from GetDomain()/GetDomainHeadCluster()
+		// (cluster_get.go), which already gates per orchestrator -- an empty
+		// Domain here means "don't qualify this name". server.Port, not a
+		// hardcoded "3306": a server can run on a non-default port, and it
+		// was already parsed from the original url two lines above.
+		url = server.Name + server.Domain + ":" + server.Port
 	}
 	var sid uint64
 	//will be overide in Refresh with show variables server_id, used for provisionning configurator for server_id
 	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(url), server.GetCluster().GetCrcTable()), 10), 10, 64)
 	server.ServerID = sid
 	server.Id = fmt.Sprintf("%s%d", "db", sid)
+
+	// newServerList() (cluster_topo.go) rebuilds every *ServerMonitor from
+	// scratch on a reload/config-set (not just startup), which would
+	// otherwise silently drop a pending native Kubernetes resize in flight --
+	// server.Id (just computed above) is deterministic and stable across the
+	// recreation, so a pending resize tracked under it can be restored here.
+	cluster.restorePendingK8sMemoryResize(server)
 
 	if cluster.Conf.TunnelHost != "" {
 		go server.Tunnel()
@@ -435,6 +474,11 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		server.SetIgnoredReadonly(cluster.IsInIgnoredReadonly(server))
 		server.SetPreferedBackup(cluster.IsInPreferedBackupHosts(server))
 		server.SetPrefered(cluster.IsInPreferedHosts(server))
+		// Restore maintenance from durable membership (startup and config
+		// reload both rebuild ServerMonitor here). Set the field directly
+		// rather than calling SetMaintenance(): this is reconciliation, not a
+		// new state transition, so it must not replay the state-change script.
+		server.IsMaintenance = cluster.IsInMaintenanceHosts(server)
 	} else {
 		// Always ignore child cluster
 		server.SetIgnored(true)
@@ -463,16 +507,18 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	// Backup-related metadata
 	go server.FetchLastBackupMetadata()
+
+	// A config reload recreates this ServerMonitor; reload the last DBU reading
+	// from the repman-level store so the DBU metric does not gap (the flapping).
+	// No stored entry (server off / never pushed) leaves DBUConsumed nil.
+	server.RestoreDBUConsumed()
 	return server, err
 }
 
 func (server *ServerMonitor) InitLogTailers() {
 	cluster := server.ClusterGroup
 
-	server.ErrorLogTailer, _ = server.NewLogTailer("error")
-	server.SlowLogTailer, _ = server.NewLogTailer("slow_query")
-	server.AuditLogTailer, _ = server.NewLogTailer("audit")
-	server.SqlErrorLogTailer, _ = server.NewLogTailer("sql_error")
+	server.startLogTailers()
 	server.ErrorLog = s18log.NewHttpLog(cluster.Conf.MonitorErrorLogLength)
 	server.SlowLog = s18log.NewSlowLog(cluster.Conf.MonitorLongQueryLogLength)
 	server.SqlErrorLog = s18log.NewHttpLog(cluster.Conf.MonitorSqlErrorLogLength)
@@ -486,29 +532,206 @@ func (server *ServerMonitor) InitLogTailers() {
 	server.BinlogEventLog = s18log.NewBinlogEventLog(sz)
 }
 
+// startLogTailers opens tail.Tail instances for the four fetched DB log
+// files at their current canonical path (DBLogFilePath). Shared by
+// InitLogTailers (first start) and RestartLogTailers (after a runtime
+// location change).
+func (server *ServerMonitor) startLogTailers() {
+	cluster := server.ClusterGroup
+
+	var err error
+	server.ErrorLogTailer, err = server.NewLogTailer("error")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot open error log tailer for %s: %s", server.URL, err)
+	}
+	server.SlowLogTailer, err = server.NewLogTailer("slow_query")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot open slow query log tailer for %s: %s", server.URL, err)
+	}
+	server.AuditLogTailer, err = server.NewLogTailer("audit")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot open audit log tailer for %s: %s", server.URL, err)
+	}
+	server.SqlErrorLogTailer, err = server.NewLogTailer("sql_error")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot open sql error log tailer for %s: %s", server.URL, err)
+	}
+}
+
+// RestartLogTailers stops the currently running fetched-DB-log tailers and
+// starts fresh ones against the current canonical path for each log type.
+//
+// This is required after a runtime db-log-on-backup-storage change: the
+// existing *tail.Tail instances keep following whatever path they were
+// opened against and never notice a config change on their own -- tail's
+// ReOpen only follows rotation of the SAME path (e.g. a lumberjack rotate),
+// not a switch to a different path, so without this the tailers would keep
+// reading the stale legacy/backup-backed file until repman restarts.
+func (server *ServerMonitor) RestartLogTailers() {
+	for _, t := range []*tail.Tail{server.ErrorLogTailer, server.SlowLogTailer, server.AuditLogTailer, server.SqlErrorLogTailer} {
+		if t == nil {
+			continue
+		}
+		t.Stop()
+		t.Cleanup()
+	}
+
+	server.startLogTailers()
+
+	go server.ErrorLogWatcher()
+	go server.SlowLogWatcher()
+	go server.AuditLogWatcher()
+	go server.SqlErrorLogWatcher()
+}
+
+// NewLogTailer opens a tailer on the canonical path for one fetched DB log
+// file. Size/backup-count rotation (when db-log-rotate is enabled) is owned
+// entirely by the lumberjack-backed writer on the write path
+// (SSTRunReceiverToDBLogFile, TABLE-mode slow-log export) -- including
+// rotating an oversized pre-existing file on its very first write, so there
+// is deliberately no separate startup-time size-rotation policy here.
+//
+// It does still prune old-style rotated files (log_<type>_<timestamp>.log),
+// which predate the lumberjack-backed writer path and use a different
+// naming scheme than lumberjack's own backups (log_<type>-<ts>.log) --
+// lumberjack only ever manages its own scheme, so without this, any files
+// left over in the old scheme would never be cleaned up by anything.
 func (server *ServerMonitor) NewLogTailer(logtype string) (*tail.Tail, error) {
 	cluster := server.ClusterGroup
 
-	logDir := server.Datadir + "/log"
+	kind, ok := DBLogKindFromTailerType(logtype)
+	if !ok {
+		return nil, fmt.Errorf("unknown DB log tailer type %q", logtype)
+	}
+	logDir := server.DBLogDir()
 	logName := "log_" + logtype
-	logfile := fmt.Sprintf("%s/%s.log", logDir, logName)
-	timeFormat := "20060102_150405"
+	logfile := server.DBLogFilePath(kind)
 
-	// Remove old files, prevent too many logs
-	misc.RemoveOldLogFiles(logDir, fmt.Sprintf("%s_", logName), cluster.Conf.LogRotateMaxAge, timeFormat)
+	// Always prune repman's own rotated DB-log history by age -- a perpetual
+	// repman never lets its own log history grow unbounded. This is repman-side
+	// housekeeping and is intentionally NOT gated by db-log-rotate (that flag
+	// governs DB-node-side behavior; see #1667).
+	misc.RemoveOldLogFiles(logDir, fmt.Sprintf("%s_", logName), cluster.Conf.DBLogRotateMaxAge, "20060102_150405")
 
-	logInfo, err := os.Stat(logfile)
-	if os.IsNotExist(err) || logInfo.Size() > int64(server.ClusterGroup.Conf.LogRotateMaxSize*1024*1024) {
-		// If size is bigger than LogRotateMaxSize when init, rotate it
-		if !os.IsNotExist(err) {
-			os.Rename(logfile, fmt.Sprintf("%s/%s_%s.log", logDir, logName, time.Now().Format(timeFormat)))
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rotate %s log for %s on monitor datadir", logName, server.URL)
+	// Self-heal a runaway collected log (broken-deployment artifact) before we
+	// attach the tailer, so we don't reopen/follow a multi-GB file.
+	server.maybeSelfHealOversizedDBLog(logfile)
+
+	if _, err := os.Stat(logfile); os.IsNotExist(err) {
+		nofile, ferr := os.OpenFile(logfile, os.O_WRONLY|os.O_CREATE, 0600)
+		if ferr == nil {
+			nofile.Close()
 		}
-		nofile, _ := os.OpenFile(logfile, os.O_WRONLY|os.O_CREATE, 0600)
-		nofile.Close()
 	}
 
-	return tail.TailFile(logfile, tail.Config{Follow: true, ReOpen: true})
+	// Seek to end on open: follow only lines appended after startup. Without a
+	// Location, hpcloud/tail starts at offset 0 and re-reads the ENTIRE file on
+	// every repman start/restart -- re-parsing and re-fingerprinting every
+	// historical line and re-flooding the in-memory buffer. On a large collected
+	// log that is a pure-waste CPU spike. Standard tail -f semantics: the buffer
+	// is a rolling recent window, so lines appended while repman was down are
+	// intentionally skipped rather than re-processed.
+	return tail.TailFile(logfile, tail.Config{Follow: true, ReOpen: true,
+		Location: &tail.SeekInfo{Offset: 0, Whence: io.SeekEnd}})
+}
+
+// selfHealDBLogCeilingMB is the absolute size above which a repman-side
+// collected DB log is treated as a runaway (a broken-deployment artifact --
+// e.g. left behind by a pre-fix whole-file re-stream) and self-healed: moved
+// aside, the disk reclaimed, a compressed sample kept for forensics. This is
+// repman's OWN housekeeping and is deliberately independent of the
+// db-log-rotate flag (which governs DB-node-side behavior, not this).
+// A var, not a const, so tests can shrink it.
+var selfHealDBLogCeilingMB int64 = 1024
+
+// maybeSelfHealOversizedDBLog reclaims a runaway repman-side collected DB log.
+// Safe only because the inflation root causes are fixed (the dbjob no longer
+// re-streams the whole file, and the tailer no longer re-parses it on start),
+// so the accumulated bulk is confirmed garbage rather than live evidence. It
+// still preserves a compressed sample and raises WARN0208, so the remediation
+// is recorded, not silent.
+func (server *ServerMonitor) maybeSelfHealOversizedDBLog(logfile string) {
+	cluster := server.ClusterGroup
+
+	fi, err := os.Stat(logfile)
+	if err != nil {
+		return // missing/unreadable: nothing to heal
+	}
+	if fi.Size() <= selfHealDBLogCeilingMB*1024*1024 {
+		return
+	}
+	// Don't race an in-flight SST receiver still appending to this exact file.
+	if cluster.IsFileOpenForSSTReceive(logfile) {
+		return
+	}
+
+	ts := time.Now().Format("20060102_150405")
+	backup := strings.TrimSuffix(logfile, ".log") + "_oversize_" + ts + ".log"
+	if err := os.Rename(logfile, backup); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Self-heal: rename of oversized DB log %s failed: %s", logfile, err)
+		return
+	}
+	// Recreate an empty file immediately so the tailer attaches to a fresh log.
+	if f, ferr := os.OpenFile(logfile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600); ferr == nil {
+		f.Close()
+	}
+
+	humanSize := fmt.Sprintf("%.1fGB", float64(fi.Size())/(1024*1024*1024))
+	gz := backup + ".gz"
+	cluster.StateMachine.AddState("WARN0208", state.State{ErrType: "WARNING", ErrKey: "WARN0208", ErrDesc: fmt.Sprintf(clusterError["WARN0208"], logfile, humanSize, gz), ErrFrom: "MON", ServerUrl: server.URL})
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Self-heal: reclaimed runaway collected DB log %s (%s); compressing sample to %s", logfile, humanSize, gz)
+
+	// Compress + remove the moved-aside copy in the background so startup isn't
+	// blocked gzipping gigabytes; keep the .gz as forensic evidence.
+	go func() {
+		if err := gzipFileAndRemove(backup, gz); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Self-heal: gzip of %s failed: %s", backup, err)
+		}
+	}()
+}
+
+// gzipFileAndRemove gzips src into dst, then removes src on success.
+func gzipFileAndRemove(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	gw := gzip.NewWriter(out)
+	if _, err := io.Copy(gw, in); err != nil {
+		gw.Close()
+		return err
+	}
+	if err := gw.Close(); err != nil {
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		return err
+	}
+	return os.Remove(src)
+}
+
+// IsActiveStagingServer reports whether server is the currently configured staging
+// standalone for this cluster. cluster.Conf.StagingServerHost is the single source of
+// truth for which server that is: SetStagingServer() is the only place that assigns
+// cluster.StagingServer, and it always keeps StagingServerHost in sync with it. The live
+// pointer itself is only populated once topology discovery has run (cluster_topo.go), so
+// it can be nil right after a restart or briefly stale after staging-server-host changes
+// via a live config reload - going straight to config avoids depending on it here.
+func (cluster *Cluster) IsActiveStagingServer(server *ServerMonitor) bool {
+	if !cluster.Conf.TopologyStaging {
+		return false
+	}
+
+	stagingSrv := cluster.GetStagingServerFromConfig()
+	return stagingSrv != nil && stagingSrv.Id == server.Id
 }
 
 func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
@@ -644,6 +867,15 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 	// From here we have a new connection
 
+	// Down-to-up transition: server.State here still reflects the previous
+	// tick (nothing below has mutated it yet), so IsDown() correctly means
+	// "was down a moment ago, and this Ping() just got a working
+	// connection" -- see refreshResolvedIP's doc comment for why this is
+	// exactly the transition that matters.
+	if cluster.Conf.MonitoringResolveServerIP && server.IsDown() {
+		server.refreshResolvedIP()
+	}
+
 	//Without topology we should never declare a server failed
 	if (server.State == stateErrorAuth || server.State == stateFailed) && server.GetCluster().GetTopology() == config.TopoUnknown && server.PrevState != stateSuspect {
 		server.SetState(stateSuspect)
@@ -699,10 +931,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	if errss == sql.ErrNoRows || noChannel {
 		// If we have no replication channel found
 		// This is either a master or a standalone server
-		isStagingServer := false
-		if cluster.Conf.TopologyStaging && cluster.StagingServer != nil && cluster.StagingServer.Id == server.Id {
-			isStagingServer = true
-		}
+		isStagingServer := cluster.IsActiveStagingServer(server)
 
 		// stateSuspect intentionally excluded — enabling it would cause false standalone
 		// detection during network glitches (ab0e92ba0, Aug 2021). 2-node clusters
@@ -887,12 +1116,25 @@ func (server *ServerMonitor) Refresh() error {
 	server.CheckVersion()
 
 	if cluster.Conf.MxsBinlogOn {
-		mxsversion, _ := dbhelper.GetMaxscaleVersion(server.Conn)
-		if mxsversion != "" {
+		var isMaxscale bool
+		var mxsVersionNum int
+		if cluster.MaxscaleUsesPinloki() {
+			// pinloki doesn't recognize @@maxscale_version -- it echoes the
+			// literal text back instead of erroring, which used to crash
+			// MariaDBVersion() (nil regex match, unchecked index). Its own
+			// self-ID is @@version_comment = "pinloki"; no numeric version
+			// is available this way, so MxsVersion stays 0.
+			isMaxscale = dbhelper.IsMaxscalePinloki(server.Conn)
+		} else {
+			mxsversion, _ := dbhelper.GetMaxscaleVersion(server.Conn)
+			isMaxscale = mxsversion != ""
+			mxsVersionNum = dbhelper.MariaDBVersion(mxsversion)
+		}
+		if isMaxscale {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Found Maxscale")
 			server.IsMaxscale = true
 			server.IsRelay = true
-			server.MxsVersion = dbhelper.MariaDBVersion(mxsversion)
+			server.MxsVersion = mxsVersionNum
 			server.SetState(stateRelay)
 		} else {
 			server.IsMaxscale = false
@@ -917,35 +1159,87 @@ func (server *ServerMonitor) Refresh() error {
 
 		vars, _, err = dbhelper.GetVariablesCase(server.Conn, server.DBVersion, "LOWER")
 		server.SensitiveVariables = config.FromNormalStringMap(server.SensitiveVariables, vars)
-		server.VariablesMap.SetRuntimeValues(vars)
 		if err != nil {
 			return nil
 		}
 
-		// Update HasConfigDiff flag to indicate if there are differences between deployed and generated config
-		server.HasConfigDiff = server.VariablesMap.HasDifferences()
+		// Configurator config-diff / compliance tracking. Gated by prov-db-config,
+		// the master switch for configurator config tracking: when the client turns
+		// it off, the monitor does no per-tick variable diff, reconcile-drop, or
+		// delta/agree work (T14 off-switch, F2 no monitor burden). SensitiveVariables
+		// above stays ungated — DATADIR/PID_FILE/LOG_ERROR feed jobs regardless.
+		if cluster.Conf.ProvDBConfig {
+			runtimeChanged := server.VariablesMap.SetRuntimeValues(vars)
 
-		// Check if deployed config file was reloaded externally
-		// If so, re-read preserved variables to sync with any changes
-		if server.VariablesMap.HasDeployedChanged() {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-				"Deployed config changed for %s, reloading preserved variables", server.URL)
-
-			if err := server.ReadPreservedVariables(); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-					"Failed to reload preserved variables for %s: %s", server.URL, err)
+			// Once the DB actually runs the compliance value (Runtime == Config), a
+			// previously agreed variable (03_agreed.cnf) has served its purpose — it
+			// only existed to hold a value until the DB restarted with the compliance
+			// value. Drop it so it stops showing as a pending diff. Operator-forced
+			// preserves (PreservedSource != "") are never touched. Gated on a runtime
+			// change: reconciliation can only appear when a runtime value moved, so the
+			// steady state (runtime unchanged tick to tick) skips this walk entirely.
+			if runtimeChanged > 0 {
+				if dropped := server.VariablesMap.DropReconciledAgreed(); len(dropped) > 0 {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+						"Dropped %d reconciled agreed variable(s) on %s: %s", len(dropped), server.URL, strings.Join(dropped, ", "))
+					if err := server.WritePreservedVariables(); err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+							"Failed to rewrite agreed variables after drop for %s: %s", server.URL, err)
+					}
+				}
 			}
 
-			// Refresh delta variables file whenever runtime values are updated
-			// This ensures 02_delta.cnf stays in sync with current deployed state
-			if err := server.WriteDeltaVariables(); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-					"Failed to refresh delta variables for %s: %s", server.URL, err)
-			}
+			// Update HasConfigDiff flag to indicate if there are differences between deployed and generated config
+			server.HasConfigDiff = server.VariablesMap.HasDifferences()
 
-			// Clear the flag after processing
-			server.VariablesMap.ClearDeployedChanged()
+			// Check if deployed config file was reloaded externally
+			// If so, re-read preserved variables to sync with any changes
+			if server.VariablesMap.HasDeployedChanged() {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+					"Deployed config changed for %s, reloading preserved variables", server.URL)
+
+				if err := server.ReadPreservedVariables(); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+						"Failed to reload preserved variables for %s: %s", server.URL, err)
+				}
+
+				// Auto-agree value-differs deltas to the compliance value (opt-in,
+				// prov-db-compliance-auto-agree — the DB-side counterpart of
+				// prov-auto-update-compliance). Runs before the delta is (re)written so
+				// agreed variables route to 03_agreed instead of 02_delta and the DB
+				// adopts them on its next restart. Value-changes only; deprecated /
+				// unknown drops are left for manual review (loose_ hides them, #1495).
+				if cluster.Conf.ProvDBComplianceAutoAgree {
+					if agreed := server.VariablesMap.AutoAgreeValueDeltas(); len(agreed) > 0 {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+							"Auto-agreed %d value-differs delta(s) to compliance on %s: %s", len(agreed), server.URL, strings.Join(agreed, ", "))
+						if err := server.WritePreservedVariables(); err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+								"Failed to write agreed variables after auto-agree for %s: %s", server.URL, err)
+						}
+					}
+				}
+
+				// Refresh delta variables file whenever runtime values are updated
+				// This ensures 02_delta.cnf stays in sync with current deployed state
+				if err := server.WriteDeltaVariables(); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+						"Failed to refresh delta variables for %s: %s", server.URL, err)
+				}
+
+				// Clear the flag after processing
+				server.VariablesMap.ClearDeployedChanged()
+			}
 		}
+
+		// Phase 2 of a live memory shrink: once the async buffer-pool resize has
+		// completed, shrink the cgroup (no-op / single comparison otherwise).
+		cluster.completePendingCgroupShrink(server)
+
+		// Reconcile any pending native Kubernetes Pod memory resize (no-op /
+		// single comparison when nothing is pending). Bounded, non-blocking:
+		// see cluster_resize_k8s.go.
+		cluster.completePendingK8sMemoryResize(server)
 
 		if server.IsNeedPathCheck {
 			server.CheckDBConfigPath()
@@ -1087,6 +1381,18 @@ func (server *ServerMonitor) Refresh() error {
 		if cluster.Conf.MonitorScheduler {
 			server.JobsCheckStates()
 			server.JobsCheckRunning()
+		} else if cluster.Conf.SchedulerJobsMode == "sql" {
+			// SQL mode's job lifecycle is driven entirely by dbjobs_new.sh writing
+			// to the jobs table -- that's its only interface with repman, it has
+			// no other channel to report through. So even with the scheduler off,
+			// this reads that table directly (JobsCheckRunning) rather than
+			// falling back to jobsCheckRunningFromMemory()'s in-memory Done-only
+			// heuristic, which has no notion of SQL state and left WARN0074 stuck
+			// open for a task's entire lifetime instead of resolving when dbjobs
+			// actually picks it up -- see JobsReconcileSQL's doc comment.
+			if err := server.JobsReconcileSQL(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job reconciliation skipped on %s: %s", server.URL, err)
+			}
 		} else {
 			server.jobsCheckRunningFromMemory()
 		}
@@ -1139,7 +1445,14 @@ func (server *ServerMonitor) Refresh() error {
 			server.EngineInnoDB = config.FromNormalStringMap(server.EngineInnoDB, engine)
 			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get engine innodb status %s %s", server.URL, err)
 		}
-		go server.GetPFSQueries()
+		// Gate on the LIVE flag (SwitchMonitorPFS disables it next tick — nothing is even spawned)
+		// AND throttle to every N monitoring ticks: the digest capture is cumulative/slow-moving, so
+		// re-running it every tick just hammers the client. Same modulo-tick idiom and 0=disabled
+		// semantics as BackupReconcileInterval (cluster.go) / ResticFetchRepo.
+		if cluster.Conf.MonitorPFS && cluster.Conf.MonitorPFSQueriesInterval > 0 &&
+			cluster.StateMachine.GetHeartbeats()%int64(cluster.Conf.MonitorPFSQueriesInterval) == 0 {
+			go server.GetPFSQueries()
+		}
 
 		if server.HaveDiskMonitor {
 			server.Disks, logs, err = dbhelper.GetDisks(server.Conn, server.DBVersion)
@@ -1256,6 +1569,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.QPS = (qps - prevqps) / (server.MonitorTime - server.PrevMonitorTime)
 		}
 	}
+	server.refreshReplicationParallelism()
 
 	if server.HasHighNumberSlowQueries() {
 		cluster.SetState("WARN0088", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["WARN0088"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
@@ -1294,7 +1608,7 @@ func (server *ServerMonitor) Refresh() error {
 	server.CheckMaxConnections()
 
 	// Initialize graphite monitoring
-	if cluster.Conf.GraphiteMetrics {
+	if cluster.CanSendGraphiteMetrics() {
 		go server.FetchDatabaseStats()
 	}
 	return nil
@@ -1584,6 +1898,9 @@ func (server *ServerMonitor) FlushTables() (string, error) {
 
 func (server *ServerMonitor) Uprovision() {
 	cluster := server.ClusterGroup
+	// Serialise errorChan use against other provision/unprovision ops (#1769).
+	cluster.provisioningMutex.Lock()
+	defer cluster.provisioningMutex.Unlock()
 	go cluster.OpenSVCUnprovisionDatabaseService(server)
 	if err := <-cluster.errorChan; err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database service %s: %s", server.ServiceName, err)
@@ -2278,4 +2595,99 @@ func (server *ServerMonitor) GetWorkingOrchestratorNode() error {
 	}
 
 	return nil
+}
+
+// refreshResolvedIP keeps IP current for GetServerFromURL's IP-based match
+// (server.IP == url / server.IP+":"+server.Port == url, cluster/cluster_get.go)
+// and for ServerMonitor.RuntimeAPIAddr (cluster/srv_get.go), which
+// haproxy-mode=runtimeapi's Runtime API reconciliation drives HAProxy with
+// once haproxy-api-bootstrap-servers is enabled. SetCredential()
+// (cluster/srv_set.go) already resolves it via this same
+// dbhelper.CheckHostAddr() call -- but only once, at server setup. Nothing
+// ever refreshed it again afterward, so it went stale the moment a server's
+// real address changed.
+//
+// This matters because haproxy-mode=externalcheck's checkmaster/checkslave
+// scripts are invoked by HAProxy with $3 set to the check's *resolved*
+// server address (HAProxy's own external-check substitution semantics), not
+// the hostname configured in haproxy.cfg -- so the script's callback URL
+// contains a raw IP, and GetServerFromURL needs a current IP to match it
+// against. Live-reproduced against a real Kubernetes Deployment (not even a
+// StatefulSet, so every pod recreation gets a brand-new overlay IP from the
+// CNI pool): after a pod restart, checkmaster/checkslave's lookup for that
+// server started returning "Node not Found" indefinitely, since IP still
+// held whatever SetCredential() resolved at the old address -- HAProxy kept
+// reporting a genuinely healthy server as DOWN (or excluded it from the
+// write backend after a failover). OpenSVC/Docker containers rarely trigger
+// this, since their addresses are typically stable across restarts;
+// Kubernetes Pods are the opposite by design, which is why this was never
+// caught before.
+//
+// Called from Ping() only on a down-to-up transition (server.IsDown() was
+// true a moment ago, and this Ping() just got a working connection) -- not
+// on every tick. A server's address has no reason to change while it stays
+// continuously reachable; the moment that actually matters is exactly a
+// reconnect after an outage, which is also when a Kubernetes pod restart
+// would have handed it a new one. This keeps the DNS lookup rare in a
+// healthy cluster instead of paying it every monitoring-ticker for every
+// server. Also gated by monitoring-resolve-server-ip (default true), for an
+// operator who doesn't use haproxy-mode=externalcheck/runtimeapi and wants
+// to skip this lookup entirely even on reconnects.
+//
+// CheckHostAddr itself already short-circuits a literal-IP Host (nothing to
+// resolve) and bounds the lookup with cluster.Conf.DNSTimeout, so a
+// slow/unreachable resolver can't stall Ping(). A resolution failure here is
+// a no-op (best-effort refresh -- must never turn into a new failure mode
+// for Ping() itself, and must never clear a last-known-good IP just because
+// the resolver hiccuped once).
+func (server *ServerMonitor) refreshResolvedIP() {
+	if server.Host == "" {
+		return
+	}
+	cluster := server.ClusterGroup
+	ip, err := dbhelper.CheckHostAddr(server.Host, cluster.Conf.DNSTimeout)
+	if err != nil || ip == "" {
+		return
+	}
+	if ip != server.IP {
+		server.IP = ip
+	}
+}
+
+// refreshReplicationParallelism recomputes the replication parallelism signal from the
+// current and previous status/variables snapshots (pure: no I/O, unit-tested).
+//
+// ReplicationGroupCommitSize = ΔBinlog_commits / ΔBinlog_group_commits over the tick: the
+// average binlog group commit size. Transactions that committed in the same group are known
+// conflict-free, so this is the number of workers a slave can use in parallel on this
+// master's binlog in conservative mode (optimistic goes further; this stays the floor).
+// Graphed against the workers configured (ReplicationParallelThreads); drives the future
+// tuner (#1806). MariaDB-only: MySQL/Percona expose neither counter, so the value stays 0
+// there (the graph title says so). Reset to 0 whenever the delta cannot be computed (no
+// previous snapshot, no commit in the tick, counter reset) so a missed tick never leaves a
+// stale reading in place.
+//
+// ReplicationParallelThreads = slave_parallel_threads (MariaDB) or slave_parallel_workers
+// (MySQL), the workers configured to consume that concurrency.
+func (server *ServerMonitor) refreshReplicationParallelism() {
+	server.ReplicationGroupCommitSize = 0
+	if server.Status != nil && server.PrevStatus != nil {
+		if _, ok := server.PrevStatus.CheckAndGet("BINLOG_GROUP_COMMITS"); ok {
+			dg := server.GetStatusDeltaValue("BINLOG_GROUP_COMMITS")
+			dc := server.GetStatusDeltaValue("BINLOG_COMMITS")
+			// GetStatusDeltaValue does not guard against a counter reset (restart): both
+			// deltas must be non-negative, and no group means no ratio.
+			if dg > 0 && dc >= 0 {
+				server.ReplicationGroupCommitSize = float64(dc) / float64(dg)
+			}
+		}
+	}
+	if server.Variables == nil {
+		return
+	}
+	if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_THREADS"); ok {
+		server.ReplicationParallelThreads, _ = strconv.ParseInt(v, 10, 64)
+	} else if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_WORKERS"); ok {
+		server.ReplicationParallelThreads, _ = strconv.ParseInt(v, 10, 64)
+	}
 }

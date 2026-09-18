@@ -7,7 +7,9 @@
 package cluster
 
 import (
+	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -69,6 +71,143 @@ func (cluster *Cluster) ProvisionDatabaseScript(server *ServerMonitor) error {
 		return err
 	}
 	return nil
+}
+
+// RunDynamicResourceCanChangeScript runs the client-overridable feasibility gate
+// prov-db-dynamic-resource-can-change-script BEFORE any live resize. It prints its
+// verdict on stdout — "yes" (resize possible in place), "no" (not possible, keep
+// current size), or "migration" (not in place, the instance must be relocated to a
+// host with capacity). Empty script means always "yes". Same env contract as the
+// change script (resource values + direction via env, creds via GetExecEnv).
+func (cluster *Cluster) RunDynamicResourceCanChangeScript(server *ServerMonitor, grow bool) (ResizeFeasibility, error) {
+	if cluster.Conf.ProvDBDynamicResourceCanChangeScript == "" {
+		return ResizeYes, nil
+	}
+	direction := "shrink"
+	if grow {
+		direction = "grow"
+	}
+	cfg := &cluster.Configurator
+	scriptCmd := exec.Command(cluster.Conf.ProvDBDynamicResourceCanChangeScript, misc.Unbracket(server.Host), server.Port, direction, cluster.Name)
+	scriptCmd.Env = append(cluster.GetExecEnv(),
+		"REPMAN_RESIZE_DIRECTION="+direction,
+		"REPMAN_PROV_DB_MEMORY="+cfg.GetConfigDBMemory(),
+		"REPMAN_PROV_DB_CORES="+cfg.GetConfigDBCores(),
+		"REPMAN_PROV_DB_DISK_SIZE="+cfg.GetConfigDBDisk(),
+		"REPMAN_PROV_DB_DISK_IOPS="+cfg.GetConfigDBDiskIOPS(),
+		"REPMAN_SERVER_HOST="+misc.Unbracket(server.Host),
+		"REPMAN_SERVER_PORT="+server.Port,
+	)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Dynamic resource can-change check (%s) on %s", direction, server.URL)
+
+	out, err := scriptCmd.Output()
+	verdict := ""
+	for _, line := range strings.Split(string(out), "\n") {
+		if t := strings.TrimSpace(strings.ToLower(line)); t != "" {
+			verdict = t // keep the last non-empty stdout line as the verdict
+		}
+	}
+	switch ResizeFeasibility(verdict) {
+	case ResizeYes:
+		return ResizeYes, nil
+	case ResizeMigration:
+		return ResizeMigration, nil
+	case ResizeNo:
+		return ResizeNo, nil
+	}
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+			"can-change check failed on %s: %s", server.URL, err)
+		return ResizeNo, err
+	}
+	return ResizeNo, fmt.Errorf("can-change script returned an unrecognized verdict %q (expected yes/no/migration)", verdict)
+}
+
+// RunDynamicResourceChangeScript calls the client-overridable
+// prov-db-dynamic-resource-change-script to resize the four provisioned resources
+// (mem, cpu, disk, io) of a RUNNING server live — the real cgroup / disk / io
+// change repman cannot do itself. Per F7 it is a client OVERRIDE that applies in
+// ALL orchestrator cases (OpenSVC / K8s included): when set it takes precedence
+// over the native orchestrator resize.
+//
+// The four target resource values and the direction are passed as environment
+// variables on top of GetExecEnv (which carries the API credentials via env,
+// never argv). Only non-secret context (host, port, direction, cluster) is argv.
+// Directional sequencing is the caller's (ResizeDynamicResources).
+func (cluster *Cluster) RunDynamicResourceChangeScript(server *ServerMonitor, grow bool) error {
+	if cluster.Conf.ProvDBDynamicResourceChangeScript == "" {
+		return nil
+	}
+	direction := "shrink"
+	if grow {
+		direction = "grow"
+	}
+	cfg := &cluster.Configurator
+	scriptCmd := exec.Command(cluster.Conf.ProvDBDynamicResourceChangeScript, misc.Unbracket(server.Host), server.Port, direction, cluster.Name)
+	scriptCmd.Env = append(cluster.GetExecEnv(),
+		"REPMAN_RESIZE_DIRECTION="+direction,
+		"REPMAN_PROV_DB_MEMORY="+cfg.GetConfigDBMemory(),
+		"REPMAN_PROV_DB_CORES="+cfg.GetConfigDBCores(),
+		"REPMAN_PROV_DB_DISK_SIZE="+cfg.GetConfigDBDisk(),
+		"REPMAN_PROV_DB_DISK_IOPS="+cfg.GetConfigDBDiskIOPS(),
+		"REPMAN_SERVER_HOST="+misc.Unbracket(server.Host),
+		"REPMAN_SERVER_PORT="+server.Port,
+	)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Dynamic resource change script (%s) on %s", direction, server.URL)
+
+	stdoutIn, _ := scriptCmd.StdoutPipe()
+	stderrIn, _ := scriptCmd.StderrPipe()
+	scriptCmd.Start()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		server.copyLogs(stdoutIn, config.ConstLogModOrchestrator, config.LvlDbg)
+	}()
+	go func() {
+		defer wg.Done()
+		server.copyLogs(stderrIn, config.ConstLogModOrchestrator, config.LvlDbg)
+	}()
+	wg.Wait()
+	if err := scriptCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
+		return err
+	}
+	return nil
+}
+
+// RunResourceRaisedOverPlanScript fires the client-overridable prov-db-resource-raised-over-plan-script
+// PER SERVICE, when the dynamic resize raises ONE server's resource PAST its plan -- the borrow, where
+// the cgroup cap becomes plan + borrow. Different from the resize change-script (that APPLIES a resize):
+// this signals the client that a specific instance crossed its contract so they can react (bill the
+// overage, alert, migrate). Non-zero exit VETOES the over-plan grow (a client-overridable action);
+// empty script = allowed. Non-secret context is argv (host, port, cluster); plan/target/borrow
+// (DBU per node) ride env. Returns allowed + a short reason.
+func (cluster *Cluster) RunResourceRaisedOverPlanScript(server *ServerMonitor, plan, target float64) (bool, string) {
+	if cluster.Conf.ProvDBResourceRaisedOverPlanScript == "" {
+		return true, ""
+	}
+	borrow := target - plan
+	scriptCmd := exec.Command(cluster.Conf.ProvDBResourceRaisedOverPlanScript,
+		misc.Unbracket(server.Host), server.Port, cluster.Name)
+	scriptCmd.Env = append(cluster.GetExecEnv(),
+		"REPMAN_CLUSTER="+cluster.Name,
+		"REPMAN_SERVER_HOST="+misc.Unbracket(server.Host),
+		"REPMAN_SERVER_PORT="+server.Port,
+		"REPMAN_PLAN_DBU="+strconv.FormatFloat(plan, 'f', 4, 64),
+		"REPMAN_TARGET_DBU="+strconv.FormatFloat(target, 'f', 4, 64),
+		"REPMAN_BORROW_DBU="+strconv.FormatFloat(borrow, 'f', 4, 64),
+	)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"prov-db-resource-raised-over-plan-script on %s: plan %.2f target %.2f borrow %.2f DBU/node",
+		server.URL, plan, target, borrow)
+	if out, err := scriptCmd.CombinedOutput(); err != nil {
+		return false, fmt.Sprintf("prov-db-resource-raised-over-plan-script vetoed the borrow on %s: %v (%s)",
+			server.URL, err, strings.TrimSpace(string(out)))
+	}
+	return true, ""
 }
 
 func (cluster *Cluster) StopDatabaseScript(server *ServerMonitor) error {

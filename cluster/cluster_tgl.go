@@ -416,11 +416,13 @@ func (cluster *Cluster) SwitchProxyServersBackendCompression() {
 func (cluster *Cluster) SwitchProxyServersReadOnMaster() {
 	cluster.Conf.PRXServersReadOnMaster = !cluster.Conf.PRXServersReadOnMaster
 	cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
+	cluster.PushMaxscaleReadOnMaster()
 }
 
 func (cluster *Cluster) SwitchProxyServersReadOnMasterNoSlave() {
 	cluster.Conf.PRXServersReadOnMasterNoSlave = !cluster.Conf.PRXServersReadOnMasterNoSlave
 	cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
+	cluster.PushMaxscaleReadOnMaster()
 }
 
 func (cluster *Cluster) SwitchProxySQL() {
@@ -434,8 +436,33 @@ func (cluster *Cluster) SwitchMdbsProxy() {
 func (cluster *Cluster) SwitchHaProxy() {
 	cluster.Conf.HaproxyOn = !cluster.Conf.HaproxyOn
 }
+
+func (cluster *Cluster) SwitchHaproxyAPIBootstrapServers() {
+	cluster.Conf.HaproxyAPIBootstrapServers = !cluster.Conf.HaproxyAPIBootstrapServers
+	cluster.SetProxiesReprovCookie()
+}
 func (cluster *Cluster) SwitchMaxscaleProxy() {
 	cluster.Conf.MxsOn = !cluster.Conf.MxsOn
+}
+
+func (cluster *Cluster) SwitchMaxscaleRestApi() {
+	cluster.Conf.MxsRestApi = !cluster.Conf.MxsRestApi
+}
+
+func (cluster *Cluster) SwitchMaxscaleDisableMonitor() {
+	cluster.Conf.MxsDisableMonitor = !cluster.Conf.MxsDisableMonitor
+}
+
+func (cluster *Cluster) SwitchMaxscaleServerMatchPort() {
+	cluster.Conf.MxsServerMatchPort = !cluster.Conf.MxsServerMatchPort
+}
+
+func (cluster *Cluster) SwitchMaxscaleBinlog() {
+	cluster.Conf.MxsBinlogOn = !cluster.Conf.MxsBinlogOn
+}
+
+func (cluster *Cluster) SwitchFailoverFalsePositiveMaxscale() {
+	cluster.Conf.CheckFalsePositiveMaxscale = !cluster.Conf.CheckFalsePositiveMaxscale
 }
 
 func (cluster *Cluster) SwitchMyProxy() {
@@ -513,6 +540,14 @@ func (cluster *Cluster) SwitchMonitoringProcesslistInactive() {
 
 func (cluster *Cluster) SwitchMonitoringProcesslistInformationSchema() {
 	cluster.Conf.MonitorProcessListInformationSchema = !cluster.Conf.MonitorProcessListInformationSchema
+}
+
+// SwitchMonitorPFS toggles the master performance_schema monitoring flag at runtime.
+// Previously monitoring-performance-schema had no live switch, so turning it off in the
+// GUI never reached the running loop (the PFS digest capture kept firing). The monitor
+// loop reads cluster.Conf.MonitorPFS live, so flipping it here takes effect next tick.
+func (cluster *Cluster) SwitchMonitorPFS() {
+	cluster.Conf.MonitorPFS = !cluster.Conf.MonitorPFS
 }
 
 func (cluster *Cluster) SwitchCloud18Shared() {

@@ -667,6 +667,12 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
 	svcenv["nodes"] = strings.ReplaceAll(cluster.GetAppAgents(appcnf), ",", " ")
 	svcenv["size"] = cluster.GetAppDisk(appcnf) + "g"
 	svcenv["app_img"] = appcnf.ProvAppDockerImg
+	// APU compute sensor identity (kind=app). NON-secret only: the sensor's derived
+	// `system` API key must NOT live in svcenv (the service config is pushed to git) --
+	// it is injected via the OpenSVC secret channel (secrets_environment), like the DB's
+	// MYSQL_ROOT_PASSWORD.
+	svcenv["sensor_kind"] = string(KindApp)
+	svcenv["sensor_name"] = app.Name
 
 	return svcenv
 }

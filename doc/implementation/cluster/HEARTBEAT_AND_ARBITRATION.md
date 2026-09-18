@@ -179,6 +179,16 @@ Two writers to the same arbitrator row caused flapping: `WriteHeartbeat` (POST `
 
 Previously `ArbitratorElection()` only fired on the split-brain transition (`IsSplitBrainBck != IsSplitBrain`). After the first tick, `IsSplitBrainBck` was updated to match, so subsequent ticks skipped the election. This broke election transfer when one repman was stopped. Fixed: election now runs every tick during split-brain via `arbitratorElection()`.
 
+### ~~SetActiveStatus Goroutine Leak~~ (Fixed, GH-1674)
+
+Because election runs every tick during split-brain (see above), `arbitratorElection()` (`cluster/cluster_split.go`) calls `SetActiveStatus(ConstMonitorActif)` or `SetActiveStatus(ConstMonitorStandby)` on *every* tick the verdict holds, not only on the tick it actually changes — the surrounding code already logs the transition once, but the status write and its scheduler side effect were unconditional.
+
+`utils/cron.Cron.Start()` is not idempotent — it unconditionally does `go c.run()` on the same `*Cron` — so every redundant `SetActiveStatus(sameStatus)` call while a cluster stayed the winner (or loser) leaked another `run()` goroutine for the rest of the process. All leaked goroutines loop over the *same* shared `c.entries` slice (there is no per-goroutine copy), so each one independently fires `Job.Run()` for every entry whose schedule matches — a single scheduled tick gets executed once per leaked goroutine (duplicate backups, optimize/analyze runs, etc.). Since the election re-affirms the same verdict every tick, the leak scaled with the duration of the split brain, not with the number of real transitions — unbounded monitoring-loop growth (F2/F3/F4, T18).
+
+Fixed in `cluster/cluster_set.go`: `SetActiveStatus()` now returns early when the requested status equals `cluster.Status`, making it safe to call redundantly from any caller rather than pushing "only call on an actual transition" bookkeeping onto `arbitratorElection()`. `cron.Cron.Start`/`Stop` remain non-idempotent, and this fix only guards the `SetActiveStatus` path — `SetMonitoringScheduler`, `SwitchMonitoringScheduler`, and `initScheduler` still call `scheduler.Start()`/`Stop()` directly and would need their own guard if a caller ever re-invoked them redundantly.
+
+Regression coverage: `cluster/cluster_set_test.go` exercises a real `*cron.Cron` and asserts via `runtime.NumGoroutine()` diffs that (a) 20 redundant same-status calls after activation add no goroutines, and (b) a real actif↔standby flip still starts/stops the scheduler goroutine. Passes under `go test ./cluster/ -run TestSetActiveStatus -race -count=5`.
+
 ## Known Issues (Current)
 
 ### INSERT OR REPLACE Destroys Election Status
@@ -192,6 +202,10 @@ Both `ArbitratorHandler` (via `arbitratorElection()`, runs during split-brain) a
 ### Server-Level Status Not Derived from Quorum
 
 `repman.Status` is set to Standby at startup (when arbitration enabled) and is only changed by the manual toggle API. It does not reflect the actual quorum state. The GUI Navbar shows split brain state (`"In Majority"` / `"Split Brain"`) based on `repman.SplitBrain`, but this only checks peer reachability — not arbitrator reachability. A full lost-majority state (peer AND arbitrator unreachable) is not surfaced at the server level.
+
+### No Regtest for Repeated Arbitration Reinforcement (GH-1674 follow-up)
+
+The `SetActiveStatus` goroutine-leak fix above has unit coverage (`cluster/cluster_set_test.go`) but no Docker-backed `regtest/` scenario drives a real split-brain incident through many arbitration ticks end to end, per T13. GH-1674 also has no labels or milestone set yet (T11/T12).
 
 ### Split-Brain Badge Scope
 

@@ -103,6 +103,10 @@ func (server *ServerMonitor) SetFailed() {
 
 func (server *ServerMonitor) SetMaster() {
 	cluster := server.ClusterGroup
+	if server.State != stateMaster {
+		// A real promotion (not the per-tick re-assert): anchor the rejoin guards.
+		cluster.MasterChangeTs = time.Now().Unix()
+	}
 	server.SetState(stateMaster)
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Server %s state transition from %s changed to: %s in SetMaster", server.URL, server.PrevState, stateMaster)
 	_, file, no, ok := runtime.Caller(1)
@@ -258,6 +262,9 @@ func (server *ServerMonitor) SetReadWrite() error {
 
 func (server *ServerMonitor) SetMaintenance() {
 	server.IsMaintenance = true
+	// Persist membership so maintenance survives restart/config reload (see
+	// newServerMonitor); AddMaintenanceSrv is a no-op if already tracked.
+	server.ClusterGroup.AddMaintenanceSrv(server)
 	server.ClusterGroup.BashScriptDbServersChangeState(server, stateMaintenance, server.State)
 	server.ClusterGroup.SetProxyServerMaintenance(server.ServerID)
 }
@@ -329,8 +336,8 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 	server.Pass = pass
 	server.URL = url
 	server.Host, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
-	server.IP, err = dbhelper.CheckHostAddr(server.Host)
 	cluster := server.ClusterGroup
+	server.IP, err = dbhelper.CheckHostAddr(server.Host, cluster.Conf.DNSTimeout)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot resolved DNS for host %s, error: %s", server.Host, err.Error())
 	}
@@ -492,8 +499,18 @@ func (server *ServerMonitor) SetWaitLogicalBackupCookie() error {
 	return server.createCookie("cookie_waitlogicalbackup")
 }
 
-func (server *ServerMonitor) SetWaitPhysicalBackupCookie() error {
-	return server.createCookie("cookie_waitphysicalbackup")
+// SetWaitXtrabackupCookie and SetWaitMariabackupCookie are tool-specific so
+// CheckTaskNeeded (cluster/srv_chk.go) can tell which physical backup tool a
+// pending API-mode task actually needs. A single shared cookie here would let
+// dbjobs_new.sh's fixed poll order (xtrabackup checked before mariabackup)
+// claim any pending physical backup as "xtrabackup" regardless of which tool
+// cluster.Conf.BackupPhysicalType actually queued.
+func (server *ServerMonitor) SetWaitXtrabackupCookie() error {
+	return server.createCookie("cookie_waitxtrabackup")
+}
+
+func (server *ServerMonitor) SetWaitMariabackupCookie() error {
+	return server.createCookie("cookie_waitmariabackup")
 }
 
 func (server *ServerMonitor) SetWaitResticReseedCookie() error {
@@ -541,6 +558,12 @@ func (server *ServerMonitor) TryStartLoadingJobList() bool {
 func (server *ServerMonitor) MarkJobsRefreshAttempt(at time.Time) {
 	server.jobRefreshStateMutex.Lock()
 	server.lastJobsRefreshAttempt = at
+	server.jobRefreshStateMutex.Unlock()
+}
+
+func (server *ServerMonitor) MarkTerminalJobsReconcileAttempt(at time.Time) {
+	server.jobRefreshStateMutex.Lock()
+	server.lastReconcileAttempt = at
 	server.jobRefreshStateMutex.Unlock()
 }
 
@@ -594,11 +617,35 @@ func (server *ServerMonitor) SetInReseedBackup(value string) {
 	server.reseedMutex.Lock()
 	defer server.reseedMutex.Unlock()
 	server.IsReseeding = value
+	// Clear on both arm and release: a stale phase from a prior reseed must
+	// never leak into a newly-armed one, and must not linger once idle.
+	server.reseedPhase.Store("")
+	if value == "" {
+		// Physical SST reseed (WaitAndSendSST/WaitAndSendSSTStream) has no
+		// synchronous scope to `defer stopReseedProgress()` from like the
+		// logical/splitdump/direct-stream paths do: beginReseedProgress runs
+		// inside the wait loop, but the actual outcome is only known inside a
+		// detached goroutine, and even that goroutine finishing (SST send done)
+		// isn't "done" -- dbjob still has to prepare/restore (the
+		// applying_backup phase) before this releases. SetInReseedBackup("")
+		// is the one signal common to every reseed path (physical included)
+		// for "actually over now", so hooking cleanup here -- rather than at
+		// each of WaitAndSendSST's several return points -- is what actually
+		// closes the gap: assertReseedProgressStates (restore_progress.go)
+		// raises WARN0189 purely from reseedInfo != nil, independent of
+		// IsReseeding, so leaving reseedInfo set here would keep that WARNING
+		// open indefinitely after a finished/failed/canceled reseed. Redundant
+		// (but harmless) for paths that already defer stopReseedProgress
+		// themselves.
+		server.stopReseedProgress()
+	}
 }
 
 // TrySetInReseedBackup atomically checks if the server is already in a reseeding state
 // and sets it to the new task if not. Returns true if the state was successfully set,
 // false if the server is already reseeding. This prevents concurrent reseed operations.
+// Does not need to clear reseedPhase itself: it only succeeds when IsReseeding=="",
+// a state only reachable via SetInReseedBackup(""), which already cleared it.
 func (server *ServerMonitor) TrySetInReseedBackup(task string) (bool, string) {
 	server.reseedMutex.Lock()
 	defer server.reseedMutex.Unlock()

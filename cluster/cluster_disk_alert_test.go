@@ -153,7 +153,9 @@ func TestCheckDisksUsageDedupsSameMount(t *testing.T) {
 
 	// Both servers' directories resolved to the same stat identity, so the
 	// resulting statlist should only mention the mount once.
-	occurrences := strings.Count(descs[0], "95")
+	// Match the formatted UsedPercent field rather than the bare number: the
+	// randomly generated temporary directory can itself contain "95".
+	occurrences := strings.Count(descs[0], " 95}")
 	if occurrences != 1 {
 		t.Errorf("expected the over-threshold mount to be reported once, got %d occurrences in: %s", occurrences, descs[0])
 	}

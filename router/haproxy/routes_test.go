@@ -25,6 +25,7 @@ const (
 )
 
 func TestConfiguration_GetRoutes(t *testing.T) {
+	requireFixtures(t)
 
 	routes := haConfig.GetRoutes()
 	if routes[0].Name != "test_route_1" {
@@ -33,6 +34,7 @@ func TestConfiguration_GetRoutes(t *testing.T) {
 }
 
 func TestConfiguration_GetRoute(t *testing.T) {
+	requireFixtures(t)
 
 	if route, err := haConfig.GetRoute("test_route_1"); route.Name != "test_route_1" && err == nil {
 		t.Errorf("Failed to get frontend")
@@ -45,6 +47,7 @@ func TestConfiguration_GetRoute(t *testing.T) {
 }
 
 func TestConfiguration_AddRoute(t *testing.T) {
+	requireFixtures(t)
 	j, _ := os.ReadFile(ROUTE_JSON)
 	var route *Route
 	_ = json.Unmarshal(j, &route)
@@ -80,16 +83,17 @@ func TestConfiguration_AddRoute(t *testing.T) {
 }
 
 func TestConfiguration_UpdateRoute(t *testing.T) {
+	requireFixtures(t)
 
 	j, _ := os.ReadFile(ROUTE_JSON)
 	var route *Route
 	if err := json.Unmarshal(j, &route); err != nil {
-		t.Errorf(err.Error())
+		t.Errorf("%v", err)
 	}
 	route.Protocol = "tcp"
 
 	if err := haConfig.UpdateRoute("test_route_2", route); err != nil {
-		t.Errorf(err.Error())
+		t.Errorf("%v", err)
 	}
 
 	if route, err := haConfig.GetRoute("test_route_2"); err != nil && route.Protocol != "tcp" {
@@ -98,6 +102,7 @@ func TestConfiguration_UpdateRoute(t *testing.T) {
 }
 
 func TestConfiguration_GetRouteServices(t *testing.T) {
+	requireFixtures(t)
 
 	if services, err := haConfig.GetRouteServices("test_route_1"); services[0].Name != "service_a" || err != nil {
 		t.Errorf("Failed to get services")
@@ -109,6 +114,7 @@ func TestConfiguration_GetRouteServices(t *testing.T) {
 }
 
 func TestConfiguration_GetRouteService(t *testing.T) {
+	requireFixtures(t)
 
 	if service, err := haConfig.GetRouteService("test_route_1", "service_a"); service.Name != "service_a" || err != nil {
 		t.Errorf("Failed to get service")
@@ -124,6 +130,7 @@ func TestConfiguration_GetRouteService(t *testing.T) {
 }
 
 func TestConfiguration_AddRouteServices(t *testing.T) {
+	requireFixtures(t)
 	j, _ := os.ReadFile(SERVICE_JSON)
 	var services []*Service
 	_ = json.Unmarshal(j, &services)
@@ -145,6 +152,7 @@ func TestConfiguration_AddRouteServices(t *testing.T) {
 }
 
 func TestConfiguration_UpdateRouteService(t *testing.T) {
+	requireFixtures(t)
 	j, _ := os.ReadFile(SERVICE_JSON)
 	var services []*Service
 	_ = json.Unmarshal(j, &services)
@@ -153,12 +161,13 @@ func TestConfiguration_UpdateRouteService(t *testing.T) {
 	service.Weight = 1
 
 	if err := haConfig.UpdateRouteService("test_route_1", services[0].Name, service); err != nil {
-		t.Errorf(err.Error())
+		t.Errorf("%v", err)
 	}
 
 }
 
 func TestConfiguration_UpdateRouteServices(t *testing.T) {
+	requireFixtures(t)
 	j, _ := os.ReadFile(SERVICES_JSON)
 	var services []*Service
 	_ = json.Unmarshal(j, &services)
@@ -170,6 +179,7 @@ func TestConfiguration_UpdateRouteServices(t *testing.T) {
 }
 
 func TestConfiguration_DeleteRouteService(t *testing.T) {
+	requireFixtures(t)
 
 	route := "test_route_1"
 
@@ -187,6 +197,7 @@ func TestConfiguration_DeleteRouteService(t *testing.T) {
 }
 
 func TestConfiguration_GetServiceServers(t *testing.T) {
+	requireFixtures(t)
 
 	if servers, err := haConfig.GetServiceServers("test_route_1", "service_a"); err != nil {
 		t.Errorf("Failed to get servers")
@@ -207,6 +218,7 @@ func TestConfiguration_GetServiceServers(t *testing.T) {
 }
 
 func TestConfiguration_GetServiceServer(t *testing.T) {
+	requireFixtures(t)
 
 	if _, err := haConfig.GetServiceServer("test_route_1", "service_a", "paas.55f73f0d-6087-4964-a70e-b1ca1d5b24cd"); err != nil {
 		t.Errorf("Failed to get server")
@@ -218,6 +230,7 @@ func TestConfiguration_GetServiceServer(t *testing.T) {
 }
 
 func TestConfiguration_AddServiceServer(t *testing.T) {
+	requireFixtures(t)
 
 	route := "test_route_1"
 	service := "service_a"
@@ -228,7 +241,7 @@ func TestConfiguration_AddServiceServer(t *testing.T) {
 	_ = json.Unmarshal(j, &server)
 
 	if err := haConfig.AddServiceServer(route, service, &server); err != nil {
-		t.Errorf(err.Error())
+		t.Errorf("%v", err)
 	}
 
 	if err := haConfig.AddServiceServer(route, service, &server); err != nil {
@@ -251,6 +264,7 @@ func TestConfiguration_AddServiceServer(t *testing.T) {
 }
 
 func TestConfiguration_DeleteServiceServer(t *testing.T) {
+	requireFixtures(t)
 
 	route := "test_route_1"
 	service := "service_a"
@@ -266,6 +280,7 @@ func TestConfiguration_DeleteServiceServer(t *testing.T) {
 }
 
 func TestConfiguration_UpdateServiceServer(t *testing.T) {
+	requireFixtures(t)
 
 	j, _ := os.ReadFile(SERVER_JSON)
 
@@ -277,15 +292,16 @@ func TestConfiguration_UpdateServiceServer(t *testing.T) {
 	serviceName := "service_to_be_updated"
 
 	if err := haConfig.UpdateServiceServer(routeName, serviceName, serverToUpdate, server); err != nil {
-		t.Errorf(err.Error())
+		t.Errorf("%v", err)
 	}
 
 	if server, err := haConfig.GetServiceServer(routeName, serviceName, server.Name); err != nil && server.Port != 1234 {
-		t.Errorf(err.Error())
+		t.Errorf("%v", err)
 	}
 }
 
 func TestConfiguration_DeleteRoute(t *testing.T) {
+	requireFixtures(t)
 
 	if err := haConfig.DeleteRoute("test_route_2"); err != nil {
 		t.Errorf("Failed to delete route")

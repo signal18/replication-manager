@@ -203,7 +203,13 @@ func (cluster *Cluster) AddUser(userform UserForm, delegator string, reloadACL b
 	user := userform.Username
 	roles := userform.Roles
 	grants := userform.Grants
-	pass, _ := cluster.GeneratePassword()
+	// Honour an explicitly-provided password (e.g. the derived system API key, or the
+	// password secretLoginHandler already passes); only generate one when none is given.
+	// Backward-compatible: callers that leave Password empty still get a random password.
+	pass := userform.Password
+	if pass == "" {
+		pass, _ = cluster.GeneratePassword()
+	}
 
 	if delegator != "admin" {
 		duser, dok := cluster.APIUsers[delegator]
@@ -255,6 +261,7 @@ func (cluster *Cluster) AddUser(userform UserForm, delegator string, reloadACL b
 			Level:     config.LvlInfo,
 			Timestamp: time.Now().Format("2006/01/02 15:04:05"),
 			Text:      msg,
+			Module:    config.ConstLogModUncategorized,
 		})
 		if cluster.SecurityLogrus != nil {
 			cluster.SecurityLogrus.WithField("user", user).WithField("delegator", delegator).Info(msg)
@@ -336,6 +343,7 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 			Level:     config.LvlInfo,
 			Timestamp: time.Now().Format("2006/01/02 15:04:05"),
 			Text:      msg,
+			Module:    config.ConstLogModUncategorized,
 		})
 		if cluster.SecurityLogrus != nil {
 			cluster.SecurityLogrus.WithField("user", user).WithField("delegator", delegator).Info(msg)
@@ -376,6 +384,7 @@ func (cluster *Cluster) DropUser(userform UserForm, reloadACL bool) error {
 			Level:     config.LvlInfo,
 			Timestamp: time.Now().Format("2006/01/02 15:04:05"),
 			Text:      msg,
+			Module:    config.ConstLogModUncategorized,
 		})
 		if cluster.SecurityLogrus != nil {
 			cluster.SecurityLogrus.WithField("user", user).Info(msg)

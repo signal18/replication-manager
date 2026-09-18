@@ -8,6 +8,7 @@ import RMIconButton from '../../components/RMIconButton'
 import LogSlider from '../../components/Sliders/LogSlider'
 import RMSlider from '../../components/Sliders/RMSlider'
 import RMSwitch from '../../components/RMSwitch'
+import NumberInput from '../../components/NumberInput'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import styles from './styles.module.scss'
 import CommonModal from '../../components/Modals/CommonModal'
@@ -57,6 +58,12 @@ function LogsSettings({ selectedCluster, user }) {
   const hSyslog = `**Log to SysLog**\n\nForwards all log output to the system syslog daemon in addition to the local log file.\n\nConfig: \`log-syslog\``
   const hLogSql = `**Log SQL in Monitoring**\n\nControls verbosity of SQL statements executed during monitoring cycles.\nAt level 4+ every monitoring SQL statement is logged with its result.\n\nConfig: \`log-level-sql\``
   const hLogLevel = `**Log Level**\n\nGlobal log verbosity for all modules not individually configured.\n0 = disabled, 1 = error, 2 = warning, 3 = info, 4 = debug, 5 = trace\n\nConfig: \`log-level\``
+
+  const hDbLogRotate = `**DB Log Rotation**\n\nRotates and prunes fetched DB logs (\`log_error.log\`, \`log_slow_query.log\`, \`log_sql_error.log\`, \`log_audit.log\`) using the thresholds below.\n\nApplies **only** to fetched DB logs, regardless of whether they use the legacy cluster path or the backup-backed path — it does not affect replication-manager main, security, or internal logs.\n\nDisable this when external \`logrotate\` or custom tooling already manages these files. Disabled by default for compatibility.\n\nConfig: \`db-log-rotate\``
+  const hDbLogOnBackupStorage = `**Use Backup Storage for DB Logs**\n\nMoves fetched DB logs from the legacy per-server cluster working dir to a dedicated subtree under backup-backed storage, which usually sits on a larger partition — helpful for large retained slow logs.\n\nDB log retention stays separate from backup payload files even when this is enabled.\n\nExisting logs are migrated automatically (active file + rotated history) the first time this is turned on; existing files at the destination are never overwritten.\n\nDisabled by default — the legacy cluster path is kept for strict backward compatibility.\n\nConfig: \`db-log-on-backup-storage\``
+  const hDbLogRotateMaxSize = `**DB Log Rotate Max Size (MB)**\n\nActive fetched DB log file size threshold before rotation. Only applies when DB Log Rotation is enabled.\n\nConfig: \`db-log-rotate-max-size\``
+  const hDbLogRotateMaxBackup = `**DB Log Rotate Max Backups**\n\nNumber of rotated fetched DB log files kept per log. Only applies when DB Log Rotation is enabled.\n\nConfig: \`db-log-rotate-max-backup\``
+  const hDbLogRotateMaxAge = `**DB Log Rotate Max Age (days)**\n\nMaximum age in days of rotated fetched DB log files before they are pruned. Only applies when DB Log Rotation is enabled.\n\nConfig: \`db-log-rotate-max-age\``
 
   const hRepStatPrint = `**Log Replication Statistics Print**\n\nLogs current replication delay statistics to the log at each monitoring cycle.\n\nConfig: \`print-delay-stat\``
   const hRepStatPrintHistory = `**Log Replication Statistics Print History**\n\nLogs the full delay statistic history to the log. More verbose than Print Replication Statistics.\n\nConfig: \`print-delay-stat-history\``
@@ -249,6 +256,83 @@ function LogsSettings({ selectedCluster, user }) {
           key: 'Log DB Optimize',
           help: h(lh('Log DB Optimize', 'log-level-database-optimize'), 'Log DB Optimize'),
           value: sl('log-level-database-optimize', 'logLevelDatabaseOptimize')
+        }
+      ]
+    },
+    {
+      key: 'DB Log Retention',
+      value: [
+        {
+          key: 'DB Log Rotation',
+          help: h(hDbLogRotate, 'DB Log Rotation'),
+          value: (
+            <RMSwitch
+              confirmTitle={'Confirm switch settings for db-log-rotate?'}
+              onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'db-log-rotate' }))}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              isChecked={selectedCluster?.config?.dbLogRotate}
+            />
+          )
+        },
+        {
+          key: 'Use Backup Storage for DB Logs',
+          help: h(hDbLogOnBackupStorage, 'Use Backup Storage for DB Logs'),
+          value: (
+            <RMSwitch
+              confirmTitle={'Confirm switch settings for db-log-on-backup-storage?'}
+              onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'db-log-on-backup-storage' }))}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              isChecked={selectedCluster?.config?.dbLogOnBackupStorage}
+            />
+          )
+        },
+        {
+          key: 'DB Log Rotate Max Size (MB)',
+          help: h(hDbLogRotateMaxSize, 'DB Log Rotate Max Size (MB)'),
+          value: (
+            <NumberInput
+              min={1}
+              max={10000}
+              value={selectedCluster?.config?.dbLogRotateMaxSize}
+              showEditButton={true}
+              showConfirmModal={true}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              confirmTitle={`Confirm change DB log rotate max size to: `}
+              onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'db-log-rotate-max-size', value }))}
+            />
+          )
+        },
+        {
+          key: 'DB Log Rotate Max Backups',
+          help: h(hDbLogRotateMaxBackup, 'DB Log Rotate Max Backups'),
+          value: (
+            <NumberInput
+              min={0}
+              max={365}
+              value={selectedCluster?.config?.dbLogRotateMaxBackup}
+              showEditButton={true}
+              showConfirmModal={true}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              confirmTitle={`Confirm change DB log rotate max backups to: `}
+              onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'db-log-rotate-max-backup', value }))}
+            />
+          )
+        },
+        {
+          key: 'DB Log Rotate Max Age (days)',
+          help: h(hDbLogRotateMaxAge, 'DB Log Rotate Max Age (days)'),
+          value: (
+            <NumberInput
+              min={0}
+              max={365}
+              value={selectedCluster?.config?.dbLogRotateMaxAge}
+              showEditButton={true}
+              showConfirmModal={true}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              confirmTitle={`Confirm change DB log rotate max age to: `}
+              onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'db-log-rotate-max-age', value }))}
+            />
+          )
         }
       ]
     },

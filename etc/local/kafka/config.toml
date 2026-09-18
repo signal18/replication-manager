@@ -18,7 +18,7 @@ haproxy-read-port = 3302
 [[MasterSlaveHaproxy.cdc]]
 # cloud_store address
 type = "kafka"
-hosts = "mixr-fr-2.signal18.io:9092"
+hosts = "kafka-1.example.net:9092"
 name = "kafkareplication"
 replication-server-id = 10001
 

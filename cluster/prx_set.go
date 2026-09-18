@@ -20,6 +20,14 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
+// SetID hashes cluster/name/write-port -- the same (address, write-port)
+// pair the API/URL layer already resolves proxies by, so the Id stays
+// stable across upgrades (no reprovision/restart ever changes a proxy's
+// Id). Two different proxy families sharing the same name and write port
+// within one cluster would hash to the same Id; AddProxy (cluster.go)
+// blocks that at registration time instead of silently letting
+// GetProxyFromName (prx_get.go) resolve to whichever one happens to come
+// first in cluster.Proxies.
 func (p *Proxy) SetID() {
 	cluster := p.ClusterGroup
 	p.Id = "px" + strconv.FormatUint(
@@ -29,6 +37,21 @@ func (p *Proxy) SetID() {
 
 func (p *Proxy) SetLock() {
 	p.Lock.Lock()
+}
+
+// SetVersion sets Version under p.Lock. Refresh() implementations on
+// several proxy types (ExternalProxy, MariadbShardProxy, ProxySQLProxy,
+// HaproxyProxy, ProxyJanitor, SphinxProxy) reassign Version every refresh
+// cycle; GetAppsSubstitutionJSon's buildProxySubstitutionView reads it
+// concurrently from a different goroutine (refreshProxies runs
+// independently of app-refresh workers). Locking inside the setter/getter
+// (see GetVersion) means callers never manually pair SetLock()/DelLock()
+// around this field -- a manual pairing left the lock permanently held if
+// anything between the calls ever panicked or returned early.
+func (p *Proxy) SetVersion(v string) {
+	p.Lock.Lock()
+	defer p.Lock.Unlock()
+	p.Version = v
 }
 
 // TODO: clarify where this is used, can maybe be replaced with a Getter

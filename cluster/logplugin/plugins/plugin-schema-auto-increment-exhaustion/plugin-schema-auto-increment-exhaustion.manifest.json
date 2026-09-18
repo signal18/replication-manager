@@ -1,0 +1,28 @@
+{
+  "description": "AUTO_INCREMENT Exhaustion — SCH0004\n\nFlags tables whose AUTO_INCREMENT counter has reached a share (default 95 %) of the capacity of the integer column type holding it (TINYINT 127/255, SMALLINT 32767/65535, MEDIUMINT 8388607/16777215, INT 2147483647/4294967295, BIGINT 2^63-1 / 2^64-1). When the counter reaches the maximum every INSERT fails with \"Duplicate entry ... for key 'PRIMARY'\". The value read is information_schema.TABLES.AUTO_INCREMENT, the next value to be handed out (the schema scan reads it with fresh statistics on every flavor). All tables past the threshold are reported in a single SCH0004 finding per run, sorted by ratio, with the widening ALTER TABLE as remediation (UNSIGNED when the column is signed, then BIGINT UNSIGNED). Wire v4 (auto_increment and column extra on the schema snapshot).",
+  "prerequisites": [
+    {
+      "config_key": "monitoring-schema-columns",
+      "description": "Schema column metadata must be monitored (monitoring-schema-columns=true) — the AUTO_INCREMENT column and its type come from it; without it this check reports nothing"
+    }
+  ],
+  "config_keys": [
+    {
+      "key": "capacity-threshold-pct",
+      "label": "Capacity threshold (%)",
+      "type": "int",
+      "default": "95",
+      "min": 50,
+      "max": 100,
+      "step": 1,
+      "help": "Report a table when its next AUTO_INCREMENT value is at or past this share of the column type's maximum."
+    },
+    {
+      "key": "mask-identifiers",
+      "label": "Mask schema/table/column names",
+      "type": "bool",
+      "default": "false",
+      "help": "Partially obscure schema, table and column names in the finding (e.g. \"window\" -> \"wi???ow\") and drop the ALTER TABLE statements, so the log entry is not directly useful to someone who only has log access (PCI-DSS style deployments)."
+    }
+  ]
+}

@@ -29,7 +29,7 @@ import {
   getBackups,
   getResticCurrentTask
 } from '../../redux/clusterSlice'
-import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale, getGlobalAlerts, getGlobalMetrics, getGlobalLogs } from '../../redux/globalClustersSlice'
+import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale, getGlobalAlerts, getGlobalMetrics, getGlobalLogs, getGlobalJobs } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
 import { isAutoReloadPaused } from '../../utility/autoReloadPause'
 import styles from './styles.module.scss'
@@ -49,6 +49,7 @@ import QueryRules from '../QueryRules'
 import PeerClusterList from '../PeerClusterList'
 import ClustersGlobalSettings from '../ClustersGlobalSettings'
 import GlobalItems, { GlobalLogs } from '../GlobalItems'
+import ResourceManager from '../ResourceManager'
 import AccordionComponent from '../../components/AccordionComponent'
 import Billing from '../Billing'
 import NewClusterModal from '../../components/Modals/NewClusterModal'
@@ -113,6 +114,7 @@ function Home() {
       globalTabsRef.current.push('Settings')
     }
     globalTabsRef.current.push('Dashboard')
+    globalTabsRef.current.push('Resources')
   }, [monitor?.config?.cloud18, monitor?.config?.cloud18DisablePeers, monitor?.config?.cloud18DisableForSale, monitor?.config?.cloud18SubscriptionPlan, loggedUser?.User, isSSOUser])
 
   // For SSO users: if local clusters are empty after loading, advance to Peer,
@@ -248,9 +250,17 @@ function Home() {
       }
       if (globalTabsRef.current[selectedTabRef.current] === 'Dashboard') {
         if (!isPaused) {
+          // Same "10x less often" monitor poll as the other tabs above/below —
+          // without it, anything reading state.globalClusters.monitor (e.g.
+          // the global-logs history-enabled gate) never refreshes while the
+          // user stays parked on this tab.
+          if (intervalTickerRef.current % 10 === 0) {
+            dispatch(getMonitoredData({}))
+          }
           dispatch(getGlobalAlerts({}))
           dispatch(getGlobalMetrics({}))
           dispatch(getGlobalLogs({}))
+          dispatch(getGlobalJobs({}))
         }
       }
     } else if (selectedClusterNameRef.current) {
@@ -428,7 +438,8 @@ function Home() {
                   ...(globalTabsRef.current.includes('Settings')
                     ? [<ClustersGlobalSettings user={loggedUser} />]
                     : []),
-                  <GlobalItems />
+                  <GlobalItems />,
+                  <ResourceManager />
                 ])
           ]}
         />

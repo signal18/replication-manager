@@ -47,6 +47,17 @@ func (cluster *Cluster) SetStatus() {
 	cluster.IsNeedDatabasesConfigChange = cluster.HasRequestDBConfigChange()
 	cluster.IsNeedDatabasesRollingRestart = cluster.HasRequestDBRollingRestart()
 	cluster.IsNeedDatabasesRollingReprov = cluster.HasRequestDBRollingReprov()
+	for _, srv := range cluster.Servers { // per-server over/under x config/plan consumed states
+		if srv != nil {
+			srv.CheckResourceConsumed()
+		}
+	}
+	cluster.CheckResourceCapPlan()                // compose cluster cap-up/down from the per-server plan states
+	cluster.RefreshDBUPlan()                      // DBU plan: project per-node prov-db-dbu into the ResourceManager (DB track)
+	cluster.RefreshComputePlanAPU()               // APU plan: project app-deployment + proxy resources into the ResourceManager (Compute track)
+	cluster.DriveDailyDynamicResize()             // daily-time policy: reconcile live memory in the off-peak window
+	cluster.DriveDynamicResize()                  // dynamic-resize trigger: turn a sustained saturation state into a real resize
+	cluster.CheckDynamicResourceDeploymentReady() // WARN0214 when live resize is on but the container is still docker-capped (not resize-ready)
 	cluster.IsNeedDatabasesRestart = cluster.HasRequestDBRestart()
 	cluster.IsNeedDatabasesReprov = cluster.HasRequestDBReprov()
 	cluster.IsNeedDatabasesConfigChange = cluster.HasRequestDBConfigChange()
@@ -125,14 +136,39 @@ func (cluster *Cluster) SetDBDiskSize(value string) {
 }
 
 func (cluster *Cluster) SetDBCores(value string) {
+	old := cluster.Conf.ProvCores
 	cluster.Configurator.SetDBCores(value)
 	cluster.Conf.ProvCores = cluster.Configurator.GetConfigDBCores()
+	// Live resize: a core change re-tunes the cores-driven DB variables
+	// (innodb_read_io_threads) via SET GLOBAL. The container cpu cgroup limit
+	// resize (pg_cpus) is a follow-up; for now this only re-tunes the DB side.
+	if cluster.Conf.ProvDBDynamicResource {
+		if cluster.Conf.ProvCores != old {
+			newC, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+			oldC, _ := strconv.ParseFloat(old, 64)
+			cluster.lastDynamicResize = time.Now() // a manual change opens the same cooldown as a dynamic step
+			cluster.ResizeDynamicResources(resizeCPU, newC > oldC)
+		}
+		return
+	}
 	cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBMemorySize(value string) {
+	oldMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
 	cluster.Configurator.SetDBMemory(value)
 	cluster.Conf.ProvMem = cluster.Configurator.GetConfigDBMemory()
+	// When live resource resize is enabled, drive it (SET GLOBAL + client
+	// infra hook) instead of a full container recreation. grow is decided from
+	// the memory delta; ResizeDynamicResources no-ops when the feature is off.
+	if cluster.Conf.ProvDBDynamicResource {
+		newMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+		if newMB != oldMB { // skip no-op reloads (would re-run the feasibility script for nothing)
+			cluster.lastDynamicResize = time.Now() // a manual change opens the same cooldown as a dynamic step
+			cluster.ResizeDynamicResources(resizeMemory, newMB > oldMB)
+		}
+		return
+	}
 	cluster.SetDBReprovCookie()
 }
 
@@ -158,8 +194,17 @@ func (cluster *Cluster) SetTagsFromConfigurator() {
 }
 
 func (cluster *Cluster) SetDBDiskIOPS(value string) {
+	old := cluster.Conf.ProvIops
 	cluster.Configurator.SetDBDiskIOPS(value)
 	cluster.Conf.ProvIops = cluster.Configurator.GetConfigDBDiskIOPS()
+	// Live resize: an iops change re-tunes the iops-driven DB variables
+	// (innodb_io_capacity/_max, innodb_write_io_threads) via SET GLOBAL.
+	if cluster.Conf.ProvDBDynamicResource {
+		if cluster.Conf.ProvIops != old {
+			cluster.ResizeDynamicResources(resizeIO, false)
+		}
+		return
+	}
 	cluster.SetDBRestartCookie()
 }
 
@@ -172,6 +217,25 @@ func (cluster *Cluster) SetDBMaxConnections(value string) {
 func (cluster *Cluster) SetDBExpireLogDays(value string) {
 	cluster.Configurator.SetDBExpireLogDays(value)
 	cluster.Conf.ProvExpireLogDays = cluster.Configurator.GetConfigDBExpireLogDays()
+	cluster.SetDBRestartCookie()
+}
+
+// SetDBReplicationParallelThreads sets slave_parallel_threads for the configurator template.
+// Decision 2026-09-16: replication workers do NOT follow the core count -- they idle on the
+// thread pool and their number is the concurrency that hides network/commit latency. The
+// value reaches the running slaves at the next config apply (restart cookie), like the
+// other template-driven replication settings.
+func (cluster *Cluster) SetDBReplicationParallelThreads(value string) {
+	cluster.Configurator.SetDBReplicationParallelThreads(value)
+	cluster.Conf.ProvReplicationParallelThreads = cluster.Configurator.GetConfigDBReplicationParallelThreads()
+	cluster.SetDBRestartCookie()
+}
+
+// SetDBReplicationDomainParallelThreads sets slave_domain_parallel_threads (0 = no per-domain
+// cap); keep 0 on a single-master cluster, otherwise the pool is capped per domain.
+func (cluster *Cluster) SetDBReplicationDomainParallelThreads(value string) {
+	cluster.Configurator.SetDBReplicationDomainParallelThreads(value)
+	cluster.Conf.ProvReplicationDomainParallelThreads = cluster.Configurator.GetConfigDBReplicationDomainParallelThreads()
 	cluster.SetDBRestartCookie()
 }
 
@@ -414,6 +478,77 @@ func (cluster *Cluster) SetIgnoreSrv(IgnoredHostURL string) {
 	}
 	cluster.Conf.IgnoreSrv = strings.Join(ignoresrvlist, ",")
 	// fmt.Printf("Update config ignored server: " + cluster.Conf.IgnoreSrv + "\n")
+}
+
+// SetMaintenanceSrv replaces the durable maintenance-host membership list
+// with newList (a comma-separated set of host tokens, deduplicated; matched
+// EXACTLY -- see maintenanceListHasHost, never by substring), then syncs the
+// runtime IsMaintenance flag for every currently-instantiated server to match
+// it. It trusts newList as the complete intended membership -- it does not
+// filter tokens against cluster.Servers, so a host temporarily absent from
+// the live server list keeps its entry (see AddMaintenanceSrv/
+// RemoveMaintenanceSrv, which build newList by editing the existing token
+// list rather than reconstructing it from live servers). It does not run the
+// db-servers-state-change script or touch proxy backends -- callers
+// (SetMaintenance/DelMaintenance/SwitchMaintenance) own those side effects;
+// this only tracks membership so it survives restart and config reload (see
+// newServerMonitor).
+func (cluster *Cluster) SetMaintenanceSrv(newList string) {
+	seen := make(map[string]bool)
+	var deduped []string
+	for _, tok := range maintenanceTokens(newList) {
+		if seen[tok] {
+			continue
+		}
+		seen[tok] = true
+		deduped = append(deduped, tok)
+	}
+	cluster.Conf.MaintenanceSrv = strings.Join(deduped, ",")
+
+	for _, srv := range cluster.Servers {
+		if srv == nil || srv.GetSourceClusterName() != cluster.Name {
+			continue
+		}
+		srv.IsMaintenance = maintenanceListHasHost(cluster.Conf.MaintenanceSrv, srv.URL, srv.Name)
+	}
+}
+
+// AddMaintenanceSrv adds node to the durable maintenance-host membership and
+// persists it, preserving every other entry already tracked -- including
+// hosts not currently represented in cluster.Servers.
+func (cluster *Cluster) AddMaintenanceSrv(node *ServerMonitor) {
+	if maintenanceListHasHost(cluster.Conf.MaintenanceSrv, node.URL, node.Name) {
+		node.IsMaintenance = true
+		return
+	}
+	entry := strings.ReplaceAll(node.URL, node.Domain+":3306", "")
+	newList := append(maintenanceTokens(cluster.Conf.MaintenanceSrv), entry)
+	cluster.SetMaintenanceSrv(strings.Join(newList, ","))
+	cluster.ConfigManager.SaveConfig(cluster, false)
+}
+
+// RemoveMaintenanceSrv removes node from the durable maintenance-host
+// membership and persists it, preserving every other entry already tracked --
+// including hosts not currently represented in cluster.Servers.
+func (cluster *Cluster) RemoveMaintenanceSrv(node *ServerMonitor) error {
+	if node.SourceClusterName != cluster.Name {
+		return fmt.Errorf("Host is in child cluster. Cannot remove maintenance")
+	}
+
+	if !maintenanceListHasHost(cluster.Conf.MaintenanceSrv, node.URL, node.Name) {
+		return fmt.Errorf("Host not found in maintenance list")
+	}
+
+	var kept []string
+	for _, tok := range maintenanceTokens(cluster.Conf.MaintenanceSrv) {
+		if tok == node.URL || tok == node.Name {
+			continue
+		}
+		kept = append(kept, tok)
+	}
+	cluster.SetMaintenanceSrv(strings.Join(kept, ","))
+	cluster.ConfigManager.SaveConfig(cluster, false)
+	return nil
 }
 
 // Set Ignored for ReadOnly Check
@@ -1126,7 +1261,14 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 			}
 		}
 	case config.ConstProxyMaxscale:
-		cluster.Conf.MxsUser, cluster.Conf.MxsPass = misc.SplitPair(credential)
+		user, pass := misc.SplitPair(credential)
+		var newSecret config.Secret
+		newSecret.OldValue = cluster.Conf.Secrets["maxscale-pass"].Value
+		newSecret.Value = pass
+		cluster.Conf.Secrets["maxscale-pass"] = newSecret
+		cluster.Conf.MxsUser = user
+		cluster.Conf.MxsPass = pass
+		cluster.MarkSecretVersionStoreDirty()
 
 		/*for _, pri := range cluster.Proxies {
 
@@ -1234,6 +1376,9 @@ func (cluster *Cluster) SetUnDiscovered() {
 }
 
 func (cluster *Cluster) SetActiveStatus(status string) {
+	if cluster.Status == status {
+		return
+	}
 	cluster.Status = status
 	if cluster.Conf.MonitorScheduler {
 		if cluster.Status == ConstMonitorActif {
@@ -1382,6 +1527,15 @@ func (cluster *Cluster) SetSysbenchThreads(Threads string) {
 	}
 }
 
+func (cluster *Cluster) SetSysbenchTime(t string) {
+	i, err := strconv.Atoi(t)
+	if err == nil {
+		cluster.Conf.SysbenchTime = i
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error converting sysbench time to int %s", err)
+	}
+}
+
 /*
 Set Service Plan. Log Module : Topology
 */
@@ -1405,12 +1559,30 @@ func (cluster *Cluster) SetServicePlanInfos(theplan string) error {
 			}
 
 			cluster.Conf.ProvServicePlan = theplan
-			cluster.SetDBCores(strconv.Itoa(dbCores))
-			cluster.SetDBMemorySize(strconv.Itoa(dbMemory))
-			cluster.SetDBDiskSize(strconv.Itoa(dbDataSize))
-			cluster.SetDBDiskIOPS(strconv.Itoa(dbIops))
-			cluster.SetProxyCores(strconv.Itoa(plan.PrxCores))
-			cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize))
+			// Provisioning specs are guarded by immutability: a value the
+			// operator has pinned (present in ImmuableFlagMap / immutable.toml)
+			// is a hard lock that attaching or refreshing a service plan must
+			// NOT overwrite. Without this, a plan attach pushed the plan tier
+			// onto prov-db-memory etc.; the immutable-flag reapply then reverted
+			// the Conf side but not the Configurator side, leaving the GUI
+			// showing the plan value (e.g. 4G) while provisioning used the
+			// pinned value (e.g. 768M). To move a pinned spec the operator must
+			// first unpin it. Pricing/SLA/infra descriptors below are plan
+			// metadata, not resource knobs, so they always follow the plan.
+			applyPlanSpec := func(flag string, apply func()) {
+				if cluster.IsVariableImmutable(flag) {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+						"Service plan %s: keeping pinned %s, plan value not applied (variable is immutable)", theplan, flag)
+					return
+				}
+				apply()
+			}
+			applyPlanSpec("prov-db-cpu-cores", func() { cluster.SetDBCores(strconv.Itoa(dbCores)) })
+			applyPlanSpec("prov-db-memory", func() { cluster.SetDBMemorySize(strconv.Itoa(dbMemory)) })
+			applyPlanSpec("prov-db-disk-size", func() { cluster.SetDBDiskSize(strconv.Itoa(dbDataSize)) })
+			applyPlanSpec("prov-db-disk-iops", func() { cluster.SetDBDiskIOPS(strconv.Itoa(dbIops)) })
+			applyPlanSpec("prov-proxy-cpu-cores", func() { cluster.SetProxyCores(strconv.Itoa(plan.PrxCores)) })
+			applyPlanSpec("prov-proxy-disk-size", func() { cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize)) })
 			cluster.SetCloud18MonthlyInfraCost(plan.InfraCost)
 			cluster.SetCloud18MonthlyLicenseCost(plan.LicenceCost)
 			cluster.SetCloud18MonthlySysopsCost(plan.SysCost)
@@ -1583,6 +1755,36 @@ func (cluster *Cluster) SetProvNetCniCluster(value string) error {
 
 func (cluster *Cluster) SetProvOrchestratorCluster(value string) error {
 	cluster.Conf.ProvOrchestratorCluster = value
+	cluster.SetProxiesReprovCookie()
+	return nil
+}
+
+// SetProvKubeStorageClass only affects the PVC built for a server's *next*
+// (re)provision (k8sDatabasePVC, prov_k8s_db.go), same as SetDBDiskSize --
+// so it needs the DB reprov cookie, not the proxy one. Note this only takes
+// effect for a server whose PVC doesn't already exist: k8sDatabasePVC's
+// Create() is a no-op (AlreadyExists) against an existing PVC, and
+// StorageClassName is immutable on a PVC once created -- reprovisioning an
+// existing server alone will never migrate it to a newly-set StorageClass;
+// the old PVC would need to be deleted first (destructive, and today never
+// done automatically -- see k8sUnprovisionDatabaseServiceWithClient's own
+// retention comment).
+func (cluster *Cluster) SetProvKubeStorageClass(value string) error {
+	cluster.Conf.ProvKubeStorageClass = value
+	cluster.SetDBReprovCookie()
+	return nil
+}
+
+// SetProvKubeProxyStorageClass is SetProvKubeStorageClass's proxy-side
+// counterpart (k8sProxyPVC, prov_k8s_prx.go) -- only affects a proxy's
+// *next* (re)provision, so it needs the proxy reprov cookie, not the DB one.
+// Same existing-PVC caveat as SetProvKubeStorageClass applies: proxy PVCs
+// are retained on unprovision (k8sUnprovisionProxyServiceWithClient), so a
+// reprovision of an existing proxy reuses that same PVC and its original
+// StorageClass -- this setting only takes effect for a proxy name whose PVC
+// doesn't exist yet.
+func (cluster *Cluster) SetProvKubeProxyStorageClass(value string) error {
+	cluster.Conf.ProvKubeProxyStorageClass = value
 	cluster.SetProxiesReprovCookie()
 	return nil
 }

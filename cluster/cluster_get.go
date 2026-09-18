@@ -319,8 +319,24 @@ func (cluster *Cluster) GetMysqlServerBinaryPath() string {
 	return fmt.Sprintf("%sd", cluster.Conf.BackupMysqlclientPath) // Add d to the end of the path (mysql to mysqld, mariadb to mariadbd)
 }
 
+// GetDomain returns the DNS suffix appended to a server's short s.Name to
+// build its connectable address (server.Domain / server.Host), gated on
+// prov-net-cni for both orchestrators. OpenSVC's CNI-published
+// ".<namespace>.svc.<domain>" resolves to a real, routable address;
+// Kubernetes' equivalent bare Service name resolves to a virtual,
+// in-cluster-only ClusterIP, so Kubernetes instead routes through a headless
+// Service (k8sHeadlessServiceName) for a real per-pod address. Each branch
+// checks its own orchestrator explicitly so the flag can never leak a
+// domain for a cluster using the other orchestrator (or a third one
+// inheriting the flag from [DEFAULT]).
 func (cluster *Cluster) GetDomain() string {
-	if cluster.Conf.ProvNetCNI {
+	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+		if cluster.Conf.ProvNetCNI {
+			return "." + k8sHeadlessServiceName + "." + cluster.Name + ".svc." + k8sClusterDomain(cluster)
+		}
+		return ""
+	}
+	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 		return "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 	}
 	return ""
@@ -330,8 +346,16 @@ func (cluster *Cluster) GetOrchestrator() string {
 	return cluster.Conf.ProvOrchestrator
 }
 
+// GetDomainHeadCluster is GetDomain for a child cluster resolving its
+// parent (cluster.Conf.ClusterHead).
 func (cluster *Cluster) GetDomainHeadCluster() string {
-	if cluster.Conf.ProvNetCNI {
+	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+		if cluster.Conf.ProvNetCNI {
+			return "." + k8sHeadlessServiceName + "." + cluster.Conf.ClusterHead + ".svc." + k8sClusterDomain(cluster)
+		}
+		return ""
+	}
+	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 		return "." + cluster.Conf.ClusterHead + ".svc." + cluster.Conf.ProvOrchestratorCluster
 	}
 	return ""
@@ -504,6 +528,28 @@ func (cluster *Cluster) GetProxies() proxyList {
 
 func (cluster *Cluster) GetConf() *config.Config {
 	return cluster.Conf
+}
+
+// GetConfigSnapshotForWire returns an independent copy of cluster.Conf with
+// Apps cleared, safe to hand to a generic marshaler (e.g. encoding/json)
+// even while CheckPrimaryRoute or other app-refresh work concurrently
+// mutates AppConfig.Deployment for entries in the live Conf.Apps.
+// cluster.Conf.Apps[i] and the corresponding App's AppConfig are literally
+// the same *config.AppConfig pointer (see GetAppConfig), so any caller that
+// doesn't need the apps list -- e.g. an API response that strips
+// "config.apps" anyway -- should use this instead of reading cluster.Conf
+// directly. config.Config has no embedded lock, so the value copy itself is
+// safe; it's taken under cluster.Lock() because Conf.Apps is reassigned
+// wholesale under that same lock elsewhere (newAppList, cluster_del.go).
+func (cluster *Cluster) GetConfigSnapshotForWire() *config.Config {
+	cluster.Lock()
+	defer cluster.Unlock()
+	if cluster.Conf == nil {
+		return nil
+	}
+	confCopy := *cluster.Conf
+	confCopy.Apps = nil
+	return &confCopy
 }
 
 func (cluster *Cluster) GetWaitTrx() int64 {
@@ -1278,94 +1324,7 @@ func (cluster *Cluster) GetTopMetrics(srvid string) []config.ServerTop {
 		if (srvid != "" && srv.Id != srvid) || srv.IsFailed() {
 			continue
 		}
-		var topheader config.TopHeader
-
-		var graph config.TopGraph
-		graph.Name = "Queries"
-		data := make([]config.TopMetrics, 0)
-		var metric config.TopMetrics
-		metric.Name = "Questions"
-		metric.Value = srv.GetStatusDeltaValue("QUESTIONS")
-		data = append(data, metric)
-		metric.Name = "Selects"
-		metric.Value = srv.GetStatusDeltaValue("COM_SELECT")
-		data = append(data, metric)
-		metric.Name = "Inserts"
-		metric.Value = srv.GetStatusDeltaValue("COM_ISNERT")
-		data = append(data, metric)
-		metric.Name = "Updates"
-		metric.Value = srv.GetStatusDeltaValue("COM_UPDATE")
-		data = append(data, metric)
-		metric.Name = "Deletes"
-		metric.Value = srv.GetStatusDeltaValue("COM_DELETE")
-		data = append(data, metric)
-		//metric.Name = "Replace"
-		//metric.Value = srv.GetStatusDeltaValue("COM_REPLACE")
-		//data = append(data, metric)
-		graph.Data = data
-		topheader.Graphs = append(topheader.Graphs, graph)
-
-		graph.Name = "Rows"
-		data = make([]config.TopMetrics, 0)
-		metric.Name = "Reads"
-		metric.Value = srv.GetStatusDeltaValue("HANDLER_READ_FIRST") + srv.GetStatusDeltaValue("HANDLER_READ_KEY") + srv.GetStatusDeltaValue("HANDLER_READ_NEXT") + srv.GetStatusDeltaValue("HANDLER_READ_PREV") + srv.GetStatusDeltaValue("HANDLER_READ_RND") + srv.GetStatusDeltaValue("HANDLER_READ_RND_NEXT")
-		data = append(data, metric)
-		metric.Name = "Writes"
-		metric.Value = srv.GetStatusDeltaValue("HANDLER_WRITE")
-		data = append(data, metric)
-		metric.Name = "Updates"
-		metric.Value = srv.GetStatusDeltaValue("HANDLER_UPDATE")
-		data = append(data, metric)
-		metric.Name = "Deletes"
-		metric.Value = srv.GetStatusDeltaValue("HANDLER_DELETE")
-		data = append(data, metric)
-		graph.Data = data
-		topheader.Graphs = append(topheader.Graphs, graph)
-
-		graph.Name = "Swap"
-		data = make([]config.TopMetrics, 0)
-		metric.Name = "Tmp Tables"
-		metric.Value = srv.GetStatusDeltaValue("TMP_DISK_TABLES")
-		data = append(data, metric)
-		metric.Name = "Binary Logs"
-		metric.Value = srv.GetStatusDeltaValue("BINLOG_STMT_CACHE_DISK_USE") + srv.GetStatusDeltaValue("BINLOG_CACHE_DISK_USE")
-		data = append(data, metric)
-		metric.Name = "Sorts"
-		metric.Value = srv.GetStatusDeltaValue("SORT_MERGE_PASSES")
-		data = append(data, metric)
-		graph.Data = data
-		topheader.Graphs = append(topheader.Graphs, graph)
-
-		graph.Name = "Transactions"
-		data = make([]config.TopMetrics, 0)
-		metric.Name = "Commits"
-		metric.Value = srv.GetStatusDeltaValue("HANDLER_COMMIT")
-		data = append(data, metric)
-		metric.Name = "Binlog"
-		metric.Value = srv.GetStatusDeltaValue("BINLOG_COMMITS")
-		data = append(data, metric)
-		metric.Name = "Binlog Group"
-		metric.Value = srv.GetStatusDeltaValue("BINLOG_GROUP_COMMITS")
-		data = append(data, metric)
-		graph.Data = data
-		topheader.Graphs = append(topheader.Graphs, graph)
-
-		graph.Name = "Cache Miss"
-		data = make([]config.TopMetrics, 0)
-		metric.Name = "InnoDB"
-		metric.Value = srv.GetStatusDeltaValue("INNODB_BUFFER_POOL_READS")
-		data = append(data, metric)
-		metric.Name = "Aria"
-		metric.Value = srv.GetStatusDeltaValue("ARIA_PAGECACHE_READS")
-		data = append(data, metric)
-		metric.Name = "MyISAM"
-		metric.Value = srv.GetStatusDeltaValue("KEY_READS")
-		data = append(data, metric)
-		metric.Name = "MyROCKS"
-		metric.Value = srv.GetStatusDeltaValue("ROCKSDB_BLOCK_CACHE_DATA_MISS")
-		data = append(data, metric)
-		graph.Data = data
-		topheader.Graphs = append(topheader.Graphs, graph)
+		topheader := srv.TopHeader()
 
 		sv := config.ServerTop{Id: srv.Id, Url: srv.URL, Header: topheader}
 		srvps := srv.FullProcessList

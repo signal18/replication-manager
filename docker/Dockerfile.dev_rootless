@@ -11,8 +11,8 @@ RUN /usr/local/go/bin/go install -v github.com/cweill/gotests/gotests@v1.6.0
 RUN /usr/local/go/bin/go install -v github.com/fatih/gomodifytags@v1.16.0
 RUN /usr/local/go/bin/go install -v github.com/josharian/impl@v1.1.0
 RUN /usr/local/go/bin/go install -v github.com/haya14busa/goplay/cmd/goplay@v1.0.0
-RUN /usr/local/go/bin/go install -v github.com/go-delve/delve/cmd/dlv@latest
-RUN /usr/local/go/bin/go install -v honnef.co/go/tools/cmd/staticcheck@latest
+RUN /usr/local/go/bin/go install -v github.com/go-delve/delve/cmd/dlv@v1.27.1
+RUN /usr/local/go/bin/go install -v honnef.co/go/tools/cmd/staticcheck@v0.7.0
 RUN /usr/local/go/bin/go install -v github.com/moul/gotty-client/cmd/gotty-client@v1.10.0
 
 # Install Node.js 22 from NodeSource

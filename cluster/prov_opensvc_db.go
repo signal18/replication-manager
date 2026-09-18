@@ -170,8 +170,14 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 	ns, kind, svcname := svcparts[0], svcparts[1], svcparts[2]
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"Refreshing OpenSVC template for %s", s.ServiceName)
-	_, err = svc.UpdateObjectV3(ns, kind, svcname, res)
-	return err
+	if _, err = svc.UpdateObjectV3(ns, kind, svcname, res); err != nil {
+		return err
+	}
+	// om3 commits the file synchronously but reloads the instance config
+	// asynchronously: the rolling restart's start issued right after this PUT ran
+	// on the PREVIOUS config and recreated the containers without the pushed
+	// change (#1792, belair 2026-09-14). Return only once the node has loaded it.
+	return svc.WaitObjectConfigSettledV3(s.Agent, ns, kind, svcname, openSVCConfigSettleTimeout)
 }
 
 func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
@@ -349,7 +355,6 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 
 	return nil
 }
-
 
 func (cluster *Cluster) OpenSVCRestartDatabaseService(server *ServerMonitor, node string, rid string) error {
 	svc := cluster.OpenSVCConnect()
@@ -567,8 +572,10 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 			svccontainer["run_args"] = svccontainer["run_args"] + " --user mysql"
 		}
 		if server.ClusterGroup.Conf.ProvDBDockerRunArgsLimit {
-			memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", server.ClusterGroup.Conf.ProvMem, true)
-			memStr := strconv.Itoa(memMB) + "m"
+			// Container memory CAP = DBU tier + 1 overcommit DBU (GetDBContainerMemoryCapMB),
+			// deliberately ABOVE prov-db-memory (which sizes my.cnf) so mariadbd has headroom
+			// and is not OOM-killed when its real footprint exceeds the buffer pool.
+			memStr := strconv.Itoa(server.ClusterGroup.GetDBContainerMemoryCapMB()) + "m"
 			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + memStr + " --memory-swap=" + memStr + " --cpus=" + server.ClusterGroup.Conf.ProvCores + ".0"
 			// this need to find the device with df in container
 			//  --device-read-iops=" + server.ClusterGroup.Conf.ProvIops +".0" --device-write-iops=device" + server.ClusterGroup.Conf.ProvIops
@@ -577,7 +584,7 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["#command"] = "gdb -ex r -ex thread apply all bt -frame-arguments all full --args mariadbd"
 		svccontainer["##docker_image"] = "quay.io/mariadb-foundation/mariadb-debug:10.11-mdev-33798-knielsen-pkgtest"
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/mysql-files:/var/lib/mysql-files:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
-		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
+		svccontainer["environment"] = server.OpenSVCGetDBContainerEnvironment()
 		if server.ClusterGroup.Conf.ProvOpensvcImageForcePull {
 			svccontainer["image_pull_policy"] = "always"
 		}
@@ -593,6 +600,16 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 	return svccontainer
 }
 
+// OpenSVCGetDBContainerEnvironment builds the container#db environment line,
+// appending the shared allocator tuning (GetDBAllocatorEnv, #1749).
+func (server *ServerMonitor) OpenSVCGetDBContainerEnvironment() string {
+	env := "MYSQL_INITDB_SKIP_TZINFO=yes"
+	if preload, arenaMax := server.ClusterGroup.GetDBAllocatorEnv(); preload != "" {
+		env += " LD_PRELOAD=" + preload + " MALLOC_ARENA_MAX=" + arenaMax
+	}
+	return env
+}
+
 func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string {
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvType == "docker" || server.ClusterGroup.Conf.ProvType == "podman" {
@@ -604,6 +621,17 @@ func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string 
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 		svccontainer["run_args"] = server.ClusterGroup.Conf.ProvDBJobsDockerRunArgs
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/jobs:/var/lib/replication-manager-jobs:rw {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw {name}-sec/:/credentials`
+		if server.ClusterGroup.Conf.MonitoringSystemResources {
+			// Bind ONLY this service's pg cgroup slice read-only into the jobs
+			// container at /svc-cgroup, so the system-units sensor reads the
+			// whole-service memory.current/cpu.stat/io.stat. Least privilege: the
+			// sidecar sees only its own service's cgroup -- unlike --cgroupns=host,
+			// which would expose the whole node's cgroup tree (every co-tenant on a
+			// shared host). {namespace}/{svcname} are substituted by OpenSVC like
+			// {name} above. On by default; the flag is the off-switch (T14) if a
+			// bad bind blocks container start on an unexpected cgroup layout.
+			svccontainer["volume_mounts"] += " /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"
+		}
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
 		svccontainer["command"] = "/docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm"
 		svccontainer["entrypoint"] = "/bin/bash"
@@ -658,6 +686,43 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 		svcenv["innodb_buffer_pool_instances"] = server.ClusterGroup.GetConfigInnoDBBPInstances()
 		svcenv["innodb_log_buffer_size"] = "8"*/
 	return svcenv
+}
+
+// OpenSVCGetSensorContainerSection builds the APU (Compute) sensor sidecar shared by
+// proxy and app services. It is a long-running busybox container (detach=true, unlike
+// the one-shot init container) that shares the service netns (container#01, for egress
+// to repman) and has ONLY this service's cgroup slice bound read-only at /svc-cgroup
+// (least privilege, same rationale as the DB jobs container). It runs init/app_job --
+// staged into the config tarball via go:embed share/scripts/app_job.sh and extracted
+// into the shared FS by the init container -- so no image baking and no moduleset edit.
+// The SENSOR_API_KEY comes via the OpenSVC SECRET channel (secrets_environment), never
+// svcenv. Gated by MonitoringSystemResources (the off-switch, T14).
+func (cluster *Cluster) OpenSVCGetSensorContainerSection(kind string, name string) map[string]string {
+	svccontainer := make(map[string]string)
+	if cluster.Conf.ProvType != "docker" && cluster.Conf.ProvType != "podman" {
+		return svccontainer
+	}
+	svccontainer["type"] = "docker"
+	svccontainer["image"] = "busybox"
+	svccontainer["netns"] = "container#01"
+	svccontainer["detach"] = "true"
+	svccontainer["rm"] = "true"
+	svccontainer["entrypoint"] = "/bin/sh"
+	if cluster.Conf.ProvDiskType != "volume" {
+		svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {env.base_dir}:/bootstrap"
+	} else {
+		svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}:/bootstrap"
+	}
+	// Bind ONLY this service's cgroup slice read-only -- NOT --cgroupns=host, which would
+	// expose every co-tenant on a shared node. {namespace}/{svcname} substituted by OpenSVC.
+	svccontainer["volume_mounts"] += " /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"
+	svccontainer["secrets_environment"] = "env/SENSOR_API_KEY"
+	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_URL"
+	svccontainer["environment"] = "MRM_CLUSTER={namespace} SENSOR_KIND=" + kind + " SENSOR_NAME=" + name + " SENSOR_INTERVAL=60"
+	// The init container (detach=false) extracts init/app_job before later containers
+	// start; the wait-loop makes the sidecar robust to ordering/retries regardless.
+	svccontainer["command"] = "-c 'while [ ! -f /bootstrap/init/app_job ]; do sleep 2; done; exec sh /bootstrap/init/app_job'"
+	return svccontainer
 }
 
 func (cluster *Cluster) OpenSVCGetNamespaceContainerSection() map[string]string {
@@ -955,6 +1020,18 @@ func (server *ServerMonitor) GenerateDBTemplateV2() ([]byte, error) {
 func (server *ServerMonitor) GenerateDBTemplateV3() ([]byte, error) {
 
 	svcsection := server.GenerateDBTemplateMap()
+	if !server.ClusterGroup.Conf.ProvDBDockerRunArgsLimit {
+		// The container cap lives on the om3 PG SLICE, not the docker scope (see
+		// WARN0214): same memory ceiling the docker run-args carried (tier + 1 DBU
+		// headroom) plus the cpu quota, so a live pg update can move BOTH axes.
+		// om3 syntax only (v3 template): "<cores*100>%@all" -- see OpenSVCCPUQuotaKeyword.
+		svcsection["DEFAULT"]["pg_mem_limit"] = strconv.FormatInt(int64(server.ClusterGroup.GetDBContainerMemoryCapMB())*1024*1024, 10)
+		if cores, err := strconv.ParseFloat(server.ClusterGroup.Conf.ProvCores, 64); err == nil {
+			if q := OpenSVCCPUQuotaKeyword(cores); q != "" {
+				svcsection["DEFAULT"]["pg_cpu_quota"] = q
+			}
+		}
+	}
 
 	cfg := ini.Empty()
 

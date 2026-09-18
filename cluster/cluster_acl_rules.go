@@ -26,7 +26,7 @@ var databaseACLRules = []ACLRule{
 	{"/actions/run-jobs", nil, []string{config.GrantClusterProcess}},
 	{"/actions/provision", nil, []string{config.GrantProvDBProvision}},
 	{"/actions/update-opensvc-template", nil, []string{config.GrantProvDBProvision}},
-	{"/service-opensvc", nil, []string{config.GrantProvDBProvision}},
+	{"/service/", nil, []string{config.GrantProvDBProvision}},
 	{"/actions/unprovision", nil, []string{config.GrantProvDBUnprovision}},
 	{"/actions/start", nil, []string{config.GrantDBStart}},
 	{"/actions/stop", nil, []string{config.GrantDBStop}},
@@ -89,6 +89,7 @@ var databaseACLRules = []ACLRule{
 	{"/actions/del-maintenance", nil, []string{config.GrantDBMaintenance}},
 	{"/actions/wait-innodb-purge", nil, []string{config.GrantDBMaintenance}},
 	{"/actions/jobs-upgrade", nil, []string{config.GrantDBMaintenance}},
+	{"/actions/upgrade", nil, []string{config.GrantDBMaintenance}},
 
 	// Job dispatch actions (dbjobs script API)
 	{"/needs/", nil, []string{config.GrantDBJobs}},
@@ -245,10 +246,13 @@ var clusterACLRules = []ACLRule{
 	// Cluster Settings
 	{"/settings/actions/reload", nil, []string{config.GrantClusterSettings}},
 	{"/settings/actions/reload-plan-info", nil, []string{config.GrantClusterSettings}},
+	{"/settings/actions/git-push", nil, []string{config.GrantClusterSettings}},
+	{"/settings/actions/git-repair", nil, []string{config.GrantClusterSettings}},
 	{"/settings/actions/accept-compliance", nil, []string{config.GrantDBConfigAcceptCompliance, config.GrantProxyConfigAcceptCompliance}},
 	{"/configurator/compliance-diff", nil, []string{config.GrantDBConfigGet}},
 	{"/settings/actions/switch", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/set", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
+	{"/settings/actions/change-plan-units", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/clear", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/discover", nil, []string{config.GrantClusterSettings}},
 	{"/actions/reset-failover-control", nil, []string{config.GrantClusterSettings}},

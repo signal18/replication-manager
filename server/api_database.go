@@ -177,6 +177,21 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerGetJobEntries)),
 	))
+	// DBU consumed push: the thin system-level sensor running in the DB container
+	// (authenticated via secret-login, same JWT as the other dbjob callbacks)
+	// POSTs the four raw per-axis period maxima; repman computes the DBU here so
+	// the client's DB CPU is never spent on it.
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/dbu", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDBUConsumed)),
+	))
+	// APU consumed push: the thin compute sensor running in an app/proxy jobs
+	// sidecar (same JWT as the dbjob callbacks) POSTs the raw per-axis period maxima
+	// for one stateless Compute unit (kind = app|proxy); repman projects them to APU.
+	router.Handle("/api/clusters/{clusterName}/apu/{kind}/{name}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppAPUConsumed)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/processlist", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerProcesslist)),
@@ -265,7 +280,7 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerMasterStatus)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/service-opensvc", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/service/{orchestrator}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetDatabaseServiceConfig)),
 	))
@@ -1590,6 +1605,11 @@ func (repman *ReplicationManager) handlerMuxServerBackupSlowQueryLog(w http.Resp
 // handlerMuxServerMaintenance handles the HTTP request to toggle maintenance mode on a specific server within a cluster.
 // @Summary Toggle maintenance mode on a server
 // @Description Toggles the maintenance mode on a specified server within a cluster.
+// @Description Maintenance mode is durable: it is written to the cluster's
+// @Description dynamic configuration and restored on process restart or config
+// @Description reload, so a server stays excluded from proxy routing and failover
+// @Description election until maintenance is explicitly cleared. Requires
+// @Description monitoring-save-config=true (the default) to survive a restart.
 // @Tags DatabaseMaintenance
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -1624,6 +1644,12 @@ func (repman *ReplicationManager) handlerMuxServerMaintenance(w http.ResponseWri
 // handlerMuxServerSetMaintenance handles the HTTP request to set a server to maintenance mode.
 // @Summary Set a server to maintenance mode
 // @Description Sets a specified server within a cluster to maintenance mode.
+// @Description Maintenance mode is durable: it is written to the cluster's
+// @Description dynamic configuration and restored on process restart or config
+// @Description reload, so the server stays excluded from proxy routing and
+// @Description failover election until maintenance is explicitly cleared.
+// @Description Requires monitoring-save-config=true (the default) to survive a
+// @Description restart.
 // @Tags DatabaseMaintenance
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -1658,6 +1684,9 @@ func (repman *ReplicationManager) handlerMuxServerSetMaintenance(w http.Response
 // handlerMuxServerDelMaintenance handles the HTTP request to delete maintenance mode on a specific server within a cluster.
 // @Summary Delete maintenance mode on a server
 // @Description Deletes the maintenance mode on a specified server within a cluster.
+// @Description Also clears the durable maintenance membership, so the server does
+// @Description not come back into maintenance on the next process restart or
+// @Description config reload.
 // @Tags DatabaseMaintenance
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -2485,6 +2514,10 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 // @Failure 404 {string} string "Cluster Not Found or Server Not Found"
 // @Failure 501 {string} string "Orchestrator not supported"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/actions/restart [post]
+func restartSupportedForOrchestrator(orchestrator string) bool {
+	return orchestrator == config.ConstOrchestratorOpenSVC || orchestrator == config.ConstOrchestratorKubernetes
+}
+
 func (repman *ReplicationManager) handlerMuxServerRestart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
@@ -2502,9 +2535,17 @@ func (repman *ReplicationManager) handlerMuxServerRestart(w http.ResponseWriter,
 		return
 	}
 
-	if mycluster.GetOrchestrator() != "opensvc" {
+	// CheckRestartContainerCookies (cluster_chk.go), the monitoring-loop
+	// consumer of the cookie this handler sets below, already dispatches
+	// generically through RestartDatabaseService (cluster/prov.go) with no
+	// orchestrator gate of its own -- RestartDatabaseService has had a
+	// Kubernetes branch since #1497's image-pull-policy work, but this
+	// handler blocking Kubernetes here meant the cookie never got set, so
+	// that branch was never actually reachable through the API (confirmed
+	// live: a genuine gap, not by design).
+	if !restartSupportedForOrchestrator(mycluster.GetOrchestrator()) {
 		w.WriteHeader(http.StatusNotImplemented)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Restart is only supported for OpenSVC orchestrator"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "Restart is only supported for OpenSVC and Kubernetes orchestrators"})
 		return
 	}
 
@@ -2588,49 +2629,13 @@ func (repman *ReplicationManager) handlerMuxServerUpgrade(w http.ResponseWriter,
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 			"Upgrading database server %s", node.URL)
 
-		// Set innodb_fast_shutdown=0 while the DB is still running (needed for
-		// major version upgrades). The package manager stop won't set this.
-		if node.Conn != nil {
-			if _, err := node.Conn.Exec("SET GLOBAL innodb_fast_shutdown = 0"); err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-					"Failed to set innodb_fast_shutdown=0 on %s: %s", node.URL, err)
-			}
-			// For masters: wait for all slaves before the upgrade script stops the service
-			if node.IsMaster() && node.DBVersion.IsMariaDB() && node.DBVersion.Major >= 10 && node.DBVersion.Minor >= 4 {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-					"Master %s: issuing SHUTDOWN WAIT FOR ALL SLAVES before upgrade", node.URL)
-				if _, err := node.Conn.Exec("SHUTDOWN WAIT FOR ALL SLAVES"); err != nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-						"SHUTDOWN WAIT FOR ALL SLAVES failed on %s: %s", node.URL, err)
-				}
-			}
-		}
-
-		// Run the upgrade — on-premise scripts handle stop+upgrade+start internally.
-		// Container orchestrators need explicit stop first.
-		if mycluster.GetOrchestrator() == config.ConstOrchestratorOnPremise {
-			if err := mycluster.UpgradeDatabaseService(node); err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-					"Upgrade failed for %s: %s", node.URL, err)
-				return
-			}
-		} else {
-			// Container path: explicit stop then upgrade (start with new image)
-			if err := mycluster.StopDatabaseService(node); err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-					"Upgrade stop failed for %s: %s", node.URL, err)
-				return
-			}
-			if err := mycluster.WaitDatabaseFailed(node); err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-					"Upgrade wait-failed for %s: %s", node.URL, err)
-				return
-			}
-			if err := mycluster.UpgradeDatabaseService(node); err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-					"Upgrade failed for %s: %s", node.URL, err)
-				return
-			}
+		// UpgradeDatabaseService (cluster/prov.go) owns every orchestrator-specific
+		// step itself, OnPremise's SQL preamble included -- nothing left to do here
+		// but trigger it and report the result.
+		if err := mycluster.UpgradeDatabaseService(node); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Upgrade failed for %s: %s", node.URL, err)
+			return
 		}
 
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
@@ -2887,7 +2892,7 @@ func (repman *ReplicationManager) handlerMuxServersIsMasterStatus(w http.Respons
 			return
 		}*/
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil && !mycluster.IsInFailover() && mycluster.IsActive() && node.IsMaster() && !node.IsDown() && !node.IsMaintenance && !node.IsReadOnly() {
+		if node != nil && mycluster.IsActive() && !mycluster.IsInFailover() && node.IsValidMasterCheck() {
 			w.Write([]byte("200 -Valid Master!"))
 			return
 		} else {
@@ -3363,7 +3368,7 @@ func (repman *ReplicationManager) handlerMuxServersPortIsMasterStatus(w http.Res
 			w.Write([]byte("503 -Node not Found!"))
 			return
 		}
-		if node != nil && !mycluster.IsInFailover() && mycluster.IsActive() && node.IsMaster() && !node.IsDown() && !node.IsMaintenance && !node.IsReadOnly() {
+		if node != nil && mycluster.IsActive() && !mycluster.IsInFailover() && node.IsValidMasterCheck() {
 			w.Write([]byte("200 -Valid Master!"))
 			return
 
@@ -3395,7 +3400,7 @@ func (repman *ReplicationManager) handlerMuxServersIsSlaveStatus(w http.Response
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil && mycluster.IsActive() && !node.IsDown() && !node.IsMaintenance && ((node.IsSlave && !node.HasReplicationIssue()) || (node.IsMaster() && node.ClusterGroup.Conf.PRXServersReadOnMaster)) {
+		if node != nil && mycluster.IsActive() && node.IsValidSlaveCheck() {
 			w.Write([]byte("200 -Valid Slave!"))
 			return
 		} else {
@@ -3428,7 +3433,7 @@ func (repman *ReplicationManager) handlerMuxServersPortIsSlaveStatus(w http.Resp
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
-		if node != nil && mycluster.IsActive() && !node.IsDown() && !node.IsMaintenance && ((node.IsSlave && !node.HasReplicationIssue()) || (node.IsMaster() && node.ClusterGroup.Conf.PRXServersReadOnMaster)) {
+		if node != nil && mycluster.IsActive() && node.IsValidSlaveCheck() {
 			w.Write([]byte("200 -Valid Slave!"))
 			return
 		} else {
@@ -3441,6 +3446,39 @@ func (repman *ReplicationManager) handlerMuxServersPortIsSlaveStatus(w http.Resp
 		http.Error(w, "No cluster", 500)
 		return
 	}
+}
+
+// handlerMuxServersPortIsReaderStatus is bug #6's fix (see
+// HAPROXY_LIVE_K8S_TEST_REPORT.md), added as a NEW route deliberately
+// instead of changing handlerMuxServersPortIsSlaveStatus in place: that
+// handler backs two routes ("/api/.../is-slave" and the unprefixed
+// "/clusters/.../slave-status") that HAProxy's external-check command polls
+// continuously in every already-deployed haproxy-mode=externalcheck cluster.
+// Changing its behavior would silently flip live read-backend membership for
+// any existing deployment that already has proxy-servers-read-on-master-
+// no-slave set (even if that flag has always been a no-op for them until
+// now) the moment the binary is upgraded -- a live, continuously-polled
+// health-check contract is not the place for a surprise behavior change.
+// This route is new, so nothing depends on its old behavior; only a proxy
+// that is (re)provisioned after this fix gets a checkslave script pointed at
+// it (see the moduleset's proxy_cnf_checkslave and
+// localhostCheckScriptContent), making the fix opt-in via reprovisioning
+// rather than an instant flip for already-running proxies. See
+// IsValidReaderCheck for how this differs from IsValidSlaveCheck.
+func (repman *ReplicationManager) handlerMuxServersPortIsReaderStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+	if node != nil && mycluster.IsActive() && node.IsValidReaderCheck() {
+		w.Write([]byte("200 -Valid Read Target!"))
+		return
+	}
+	http.Error(w, "-Not a Valid Read Target!", http.StatusServiceUnavailable)
 }
 
 // handlerMuxServersPortBackup handles the HTTP request to perform a physical backup on a specific server port within a cluster.
@@ -3501,7 +3539,16 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if mycluster.Conf.APISecureConfig {
-			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			valid, _ := repman.IsValidClusterACL(r, mycluster)
+			if !valid {
+				// Orchestrator-driven bootstrap (e.g. the K8s init-container
+				// wget in cluster/prov_k8s_db.go) has no JWT to send, only
+				// the HTTP Basic Auth it sends as an Authorization header.
+				if u, p, ok := r.BasicAuth(); ok {
+					valid = mycluster.IsValidACL(u, p, r.URL.Path, "password")
+				}
+			}
+			if !valid {
 				http.Error(w, "No valid ACL", http.StatusForbidden)
 				return
 			}
@@ -4557,44 +4604,80 @@ func (repman *ReplicationManager) handlerMuxSetInnoDBMonitor(w http.ResponseWrit
 	}
 }
 
-// handlerMuxGetDatabaseServiceConfig handles the HTTP request to get the database service configuration of a specific server within a cluster.
-// @Summary Get database service configuration of a server
-// @Description Retrieves the database service configuration of a specified server within a cluster.
+// handlerMuxGetDatabaseServiceConfig handles the HTTP request to get the
+// database service/manifest view of a specific server within a cluster --
+// one route shared by every orchestrator that has such a view, keyed by a
+// {orchestrator} path segment rather than one hardcoded route name per
+// orchestrator (the route used to be literally "service-opensvc", which
+// would have been misleading to also serve Kubernetes content under).
+// OpenSVC returns the raw service config text it would push
+// (GetDatabaseServiceConfig, prov_opensvc_db.go); Kubernetes has no
+// equivalent single "service config" object, so it returns the live
+// Deployment/Service/PVC/Pod manifests as JSON instead
+// (K8SGetDatabaseManifests, #1497 gap 6) -- Content-Type is set
+// accordingly so the caller can tell which shape it got. The path segment
+// must match the cluster's actual configured orchestrator (repman's own
+// config is always authoritative over what a caller requests) -- a
+// mismatch is a 400, not a silent fall-through to whichever branch the
+// caller asked for.
+// @Summary Get database service/manifest view of a server
+// @Description Retrieves the database service configuration or live manifests of a specified server within a cluster: raw OpenSVC service config text, or live Kubernetes manifests as JSON.
 // @Tags Database
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
+// @Param orchestrator path string true "Orchestrator (must match the cluster's configured orchestrator)"
 // @Success 200 {string} string "Database service configuration retrieved successfully"
+// @Failure 400 {string} string "Orchestrator does not match cluster configuration"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/service-opensvc [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/service/{orchestrator} [get]
 func (repman *ReplicationManager) handlerMuxGetDatabaseServiceConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", http.StatusForbidden)
-			return
-		}
-
-		if mycluster.Conf.ProvOrchestrator != "opensvc" {
-			w.Write([]byte(""))
-			return
-		}
-
-		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil {
-			res := mycluster.GetDatabaseServiceConfig(node)
-			w.Write(res)
-		} else {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("503 -Not a Valid Server!"))
-		}
-	} else {
+	if mycluster == nil {
 		http.Error(w, "No cluster", 500)
 		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	status, contentType, body := buildDatabaseServiceConfigResponse(mycluster, vars["serverName"], vars["orchestrator"])
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	w.WriteHeader(status)
+	w.Write(body)
+}
+
+// buildDatabaseServiceConfigResponse is handlerMuxGetDatabaseServiceConfig's
+// orchestrator switch, factored out so it's directly testable without a
+// real JWT (IsValidClusterACL requires one, with no bypass -- matching
+// buildS3ProviderReferencesResponse's "business logic separate from the
+// ACL-gated handler" pattern, api_cluster.go).
+func buildDatabaseServiceConfigResponse(mycluster *cluster.Cluster, serverName, orchestrator string) (status int, contentType string, body []byte) {
+	if orchestrator != mycluster.GetOrchestrator() {
+		return http.StatusBadRequest, "", []byte("Orchestrator does not match cluster configuration")
+	}
+	switch mycluster.GetOrchestrator() {
+	case config.ConstOrchestratorKubernetes:
+		node := mycluster.GetServerFromName(serverName)
+		if node == nil {
+			return http.StatusInternalServerError, "", []byte("503 -Not a Valid Server!")
+		}
+		b, _ := json.Marshal(mycluster.K8SGetDatabaseManifests(node))
+		return http.StatusOK, "application/json", b
+	case config.ConstOrchestratorOpenSVC:
+		node := mycluster.GetServerFromName(serverName)
+		if node == nil {
+			return http.StatusInternalServerError, "", []byte("503 -Not a Valid Server!")
+		}
+		return http.StatusOK, "", mycluster.GetDatabaseServiceConfig(node)
+	default:
+		return http.StatusOK, "", []byte("")
 	}
 }
 
@@ -4774,6 +4857,100 @@ func (repman *ReplicationManager) handlerMuxServersPortConfigReceiver(w http.Res
 // @Failure 500 {string} string "No cluster" or "No server" or "Error decrypting data" or "Error signing token"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/secret-login [post]
 // @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/secret-login [post]
+// handlerMuxServerDBUConsumed receives the DBU sensor push from the DB container:
+// the four raw per-axis period maxima (memory.current, cpu rate, io rate, statfs
+// disk — all read cheaply at the system/cgroup level). repman does the DBU
+// semantics (normalise, pivot, biggest-contributor) so no client DB CPU is spent
+// on it, then stores the reading on the server for Graphite emission on the loop.
+func (repman *ReplicationManager) handlerMuxServerDBUConsumed(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+	if node == nil {
+		http.Error(w, "Server Not Found", 500)
+		return
+	}
+
+	var req struct {
+		WindowStart  time.Time `json:"windowStart"`
+		WindowEnd    time.Time `json:"windowEnd"`
+		MemMaxBytes  int64     `json:"memMaxBytes"`
+		CpuMaxCores  float64   `json:"cpuMaxCores"`
+		IoMaxIops    float64   `json:"ioMaxIops"`
+		DiskMaxBytes int64     `json:"diskMaxBytes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Decode error: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// The handler stays dumb: forward the raw maxima; the cluster's ResourceManager
+	// owns the ratios, converts, and stores (survives reload). Returns the reading
+	// for the debug log below.
+	reading := node.IngestDBUMaxes(req.WindowStart, req.WindowEnd, req.MemMaxBytes, req.CpuMaxCores, req.IoMaxIops, req.DiskMaxBytes)
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+		"DBU consumed %s: %.2f (%s-bound) [cpu=%.2f mem=%.2f io=%.2f disk=%.2f]",
+		node.URL, reading.Dbu, reading.Binding, reading.DbuCpu, reading.DbuMem, reading.DbuIo, reading.DbuDisk)
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// handlerMuxAppAPUConsumed receives the APU compute-sensor push for one stateless
+// Compute unit (an app deployment or a proxy): the sensor in the service's jobs
+// sidecar POSTs the raw per-axis period maxima, repman projects them to APU here
+// (Compute profile) and records them as consumed, so the per-cluster APU graph and
+// AppConsumedByCluster reflect live app/proxy compute. The DB CPU is never spent on it.
+// @Summary Ingest an app/proxy APU compute-sensor push
+// @Description The compute sensor (app/proxy jobs sidecar) POSTs raw cgroup period maxima (mem/cpu/disk) for one Compute unit; repman projects them to APU via the Compute profile and records them as consumed. kind = app | proxy.
+// @Tags ClusterResources
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param kind path string true "Compute kind: app or proxy"
+// @Param name path string true "App deployment or proxy name"
+// @Success 200 {string} string "ingested"
+// @Failure 400 {string} string "Decode error / invalid kind"
+// @Failure 404 {string} string "Cluster not found"
+// @Router /api/clusters/{clusterName}/apu/{kind}/{name} [post]
+func (repman *ReplicationManager) handlerMuxAppAPUConsumed(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusNotFound)
+		return
+	}
+	kind := cluster.ComputeKind(vars["kind"])
+	if kind != cluster.KindApp && kind != cluster.KindProxy {
+		http.Error(w, "Invalid kind (app|proxy)", http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		WindowStart  time.Time `json:"windowStart"`
+		WindowEnd    time.Time `json:"windowEnd"`
+		MemMaxBytes  int64     `json:"memMaxBytes"`
+		CpuMaxCores  float64   `json:"cpuMaxCores"`
+		DiskMaxBytes int64     `json:"diskMaxBytes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Decode error: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	reading := mycluster.IngestAppConsumedAPU(kind, vars["name"], req.WindowStart, req.WindowEnd, req.MemMaxBytes, req.CpuMaxCores, req.DiskMaxBytes)
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+		"APU consumed %s/%s: %.2f (%s-bound) [cpu=%.2f mem=%.2f disk=%.2f]",
+		kind, vars["name"], reading.Apu, reading.Binding, reading.ApuCpu, reading.ApuMem, reading.ApuDisk)
+	w.WriteHeader(http.StatusOK)
+}
+
 func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -4784,7 +4961,7 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 		return
 	}
 
-	_, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+	_, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), errcode)
 		return
@@ -5092,7 +5269,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.Respo
 	if mycluster != nil {
 		defer mycluster.LogPanicToFile("jobs-check")
 
-		node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+		node, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), errcode)
 			return
@@ -5138,7 +5315,7 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 	}
 	defer mycluster.LogPanicToFile("receive-task")
 
-	node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+	node, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), errcode)
 		return
@@ -5166,8 +5343,16 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 			rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
 		}
 	case config.ConstTaskError, config.ConstTaskSlowQuery, config.ConstTaskAuditLog, config.ConstTaskSqlError:
-		dest = node.GetMyBackupDirectory() + taskname
-		rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
+		// Fetched DB log tasks must land in the same canonical, helper-selected
+		// files used by scheduler-mode fetches and log tailers (legacy cluster
+		// dir or backup-backed dir, per db-log-on-backup-storage), not in the
+		// raw backup payload directory, so API-mode and scheduler-mode stay aligned.
+		kind, ok := cluster.DBLogKindFromTaskName(config.TaskName(taskname))
+		if !ok {
+			http.Error(w, "Unknown DB log task: "+taskname, 500)
+			return
+		}
+		rcvPort, err = mycluster.SSTRunReceiverToDBLogFile(node, kind, taskname)
 	case config.ConstTaskReseedXB, config.ConstTaskReseedMB, config.ConstTaskFlashXB, config.ConstTaskFlashMB:
 		dest = node.GetMyBackupDirectory() + taskname
 		rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
@@ -5186,6 +5371,27 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Task receiver port %s opened for %s on %s", rcvPort, taskname, node.Name)
 	w.WriteHeader(200)
 	w.Write([]byte("RECEIVER_PORT=" + rcvPort))
+}
+
+// physicalRestoreJobStateBody is the job-state callback's JSON body, read
+// once and reused for both auth (SecretLoginCheck) and, on a "done" report
+// for a physical reseed/flashback task, the restore metadata partialRestore()
+// (share/scripts/dbjobs_new.sh) extracted from the prepared backup. API mode
+// has no jobs-table row to carry this in (see the payload-column path used
+// in SQL mode, cluster/srv_job_backup.go fetchPhysicalRestoreMeta), so it
+// rides in this same HTTP callback instead.
+type physicalRestoreJobStateBody struct {
+	Restore *cluster.PhysicalRestoreMeta `json:"restore,omitempty"`
+}
+
+// physicalRestoreJobTasks are the task names AfterJobProcess also recognizes
+// in SQL mode (cluster/srv_job_backup.go) -- the only ones a "restore" field
+// in the body is meaningful for.
+var physicalRestoreJobTasks = map[string]bool{
+	"reseedxtrabackup":     true,
+	"reseedmariabackup":    true,
+	"flashbackxtrabackup":  true,
+	"flashbackmariabackup": true,
 }
 
 // handlerMuxServerJobState receives job state updates from the dbjobs script
@@ -5207,7 +5413,7 @@ func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter
 		return
 	}
 
-	node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+	node, decrypted, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), errcode)
 		return
@@ -5224,8 +5430,53 @@ func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter
 	case "processing":
 		node.JobsUpdateState(taskname, "processing", cluster.JobStateRunning, 0)
 	case "done":
-		node.JobsUpdateState(taskname, "completed", cluster.JobStateSuccess, 1)
+		result := "completed"
+		state := cluster.JobStateSuccess
+		if physicalRestoreJobTasks[taskname] {
+			// RecoverPhysicalRestore is the same vendor/topology-aware
+			// GTID-apply and channel-restart owner SQL mode's
+			// AfterJobProcess uses -- API mode has no terminal-job SQL
+			// reconciliation to reach that from, so it runs here instead,
+			// off this same completion callback. The restore metadata rides
+			// inside the encrypted body alongside "secret"/"server", so it
+			// must be parsed from SecretLoginCheck's decrypted payload, not
+			// the raw (still-encrypted, {"data":"..."}) request body.
+			var body physicalRestoreJobStateBody
+			if err := json.Unmarshal([]byte(decrypted), &body); err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+					"Could not parse restore metadata in job-state body for %s on %s: %s", taskname, node.URL, err)
+			}
+			node.SetLastPhysicalRestoreMeta(body.Restore)
+			if warning, err := node.RecoverPhysicalRestore(body.Restore); err != nil {
+				result = "completed: " + err.Error()
+				state = cluster.JobStateErrorAfter
+			} else if warning != "" {
+				result = "completed: " + warning
+			}
+			// SQL mode clears the reseeding-in-progress flag inline via
+			// AfterJobProcess (JobsReconcileSQL polling the jobs table); API
+			// mode has no such table to reconcile from, so this terminal
+			// report is the only place left to release it. Without this, the
+			// server stays permanently marked as reseeding after every
+			// API-mode physical reseed/flashback, blocking all future ones
+			// via TrySetInReseedBackup's "already reseeding" guard.
+			node.FinishReseedJobState(taskname, "job-finished")
+		}
+		// Mirrors AfterJobProcess's SQL-mode completion (cluster/srv_job_backup.go):
+		// API mode has no terminal-job SQL reconciliation to set the backup
+		// cookie from, so it needs the same call here instead. Without it, the
+		// backup silently vanishes from the list on the next restart -- see
+		// MarkBackupPhysicalDone's doc comment for the full mechanism.
+		node.MarkBackupPhysicalDone(taskname)
+		node.JobsUpdateState(taskname, result, state, 1)
 	case "error":
+		if physicalRestoreJobTasks[taskname] {
+			// Mirrors JobsCheckErrors' SQL-mode error path (cluster/srv_job.go):
+			// a reseed/flashback that ends in error must release the reseeding
+			// flag too, or the server is stuck "reseeding" forever with no way
+			// to retry.
+			node.FinishReseedJobState(taskname, "job-error")
+		}
 		node.JobsUpdateState(taskname, "error", cluster.JobStateErrorExec, 1)
 	case "waiting":
 		node.JobsUpdateState(taskname, "waiting", cluster.JobStateHalted, 0)
@@ -5299,7 +5550,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsUpgradeSender(w http.Respo
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+		node, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), errcode)
 			return
@@ -5335,7 +5586,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsCreateTable(w http.Respons
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
+		node, _, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), errcode)
 			return
@@ -5992,7 +6243,7 @@ func (repman *ReplicationManager) handlerMuxPFSJoinWeightsHistory(w http.Respons
 
 	// Apply optional from/to filters (format: YYYYMMDD_HH).
 	fromStr := strings.TrimSpace(r.URL.Query().Get("from"))
-	toStr   := strings.TrimSpace(r.URL.Query().Get("to"))
+	toStr := strings.TrimSpace(r.URL.Query().Get("to"))
 
 	sort.Strings(matches) // lexicographic == chronological for YYYYMMDD_HH
 
@@ -6058,12 +6309,12 @@ func computeSnapshotWeights(fpath, base, token string) (pfsSnapshotWeights, erro
 
 	// Read all PFSSnapshotEntry lines.
 	type snapshotEntry struct {
-		Timestamp   string  `json:"timestamp"`
-		Digest      string  `json:"digest"`
-		DigestText  string  `json:"digestText"`
-		SchemaName  string  `json:"schemaName"`
-		ExecCount   int64   `json:"execCount"`
-		RowsScanned int64   `json:"rowsScanned"`
+		Timestamp   string `json:"timestamp"`
+		Digest      string `json:"digest"`
+		DigestText  string `json:"digestText"`
+		SchemaName  string `json:"schemaName"`
+		ExecCount   int64  `json:"execCount"`
+		RowsScanned int64  `json:"rowsScanned"`
 	}
 
 	type pairKey struct{ a, b string }
@@ -6170,7 +6421,7 @@ func extractTablesFromDigest(digestText, defaultSchema string) []string {
 	// regexp here (it's already imported in the file but we keep this pure).
 	triggers := []string{"from ", "join ", "update ", "into ", "table "}
 
-	seen  := make(map[string]bool)
+	seen := make(map[string]bool)
 	var out []string
 
 	for _, trigger := range triggers {

@@ -171,6 +171,7 @@ include = "/etc/replication-manager/cluster.d"
 # backup-mydumper-path = "/usr/bin/mydumper"
 # backup-myloader-path = "/usr/bin/myloader"
 # backup-restic-binary-path = "/usr/bin/restic"
+# backup-write-stall-timeout = 300 # seconds with no bytes written to the backup output before a logical backup is aborted (dead/hung backup volume); 0 disables. A stall timeout, not a cap on total backup time.
 # backup-restic-timeout = 7200
 # backup-restic-dump-timeout = 0 # 0 uses backup-restic-timeout
 # backup-restic-dir-mode = 700

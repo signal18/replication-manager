@@ -20,6 +20,11 @@ func (cluster *Cluster) RemoveServerFromIndex(index int) {
 	newServers = append(newServers, cluster.Servers[:index]...)
 	newServers = append(newServers, cluster.Servers[index+1:]...)
 	cluster.Servers = newServers
+
+	// The removed server's canonical DB log paths no longer belong to any
+	// current server; close any writers cached for them (see
+	// pruneStaleDBLogWriters -- other still-valid entries are left alone).
+	cluster.pruneStaleDBLogWriters()
 }
 
 func (cluster *Cluster) RemoveServerMonitor(host string, port string) error {
@@ -46,6 +51,10 @@ func (cluster *Cluster) RemoveServerMonitor(host string, port string) error {
 		cluster.Servers = newServers
 		cluster.Unlock()
 		cluster.StateMachine.RemoveFailoverState()
+		// Same as RemoveServerFromIndex: the removed server's canonical DB
+		// log paths no longer belong to any current server, so close any
+		// writers cached for them.
+		cluster.pruneStaleDBLogWriters()
 	} else {
 		return fmt.Errorf("Host with address %s:%s not found in cluster", host, port)
 	}

@@ -730,6 +730,52 @@ func GetUsers(db *sqlx.DB, myver *version.Version) (map[string]*Grant, string, e
 	return vars, query, nil
 }
 
+// GetUserAuthConn is the restore-time-truth counterpart to GetUsers above:
+// pinned *sqlx.Conn, single-account lookup, used by execSplitdumpSingle
+// (cluster/srv_job_backup.go) to decide whether a password-setting statement
+// in a mysql.system-all replay is redundant. Mirrors the
+// GetPluginStatusConn/GetPlugins relationship (plugins.go).
+//
+// exists=false, err=nil means no matching row -- an expected, non-error
+// outcome the caller must branch on (mirrors GetPluginStatusConn's
+// PluginAbsent case), since the account may simply not have been created yet
+// at the point in the replay this is called.
+//
+// The per-flavor/version query text is copied from GetUsers, narrowed to one
+// account via a parameterized WHERE clause instead of selecting every row --
+// deliberately not a new query shape, since GetUsers' branches are already
+// exercised against the supported version/flavor matrix.
+func GetUserAuthConn(ctx context.Context, conn *sqlx.Conn, user, host string, myver *version.Version) (hash string, exists bool, err error) {
+	query := "SELECT password FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	if myver.IsPostgreSQL() {
+		return "", false, fmt.Errorf("GetUserAuthConn is not supported for PostgreSQL")
+	} else if myver.IsMySQLOrPercona() && myver.GreaterEqual("5.7.6") {
+		query = "SELECT authentication_string FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	} else if myver.IsMariaDB() && myver.GreaterEqual("10.4.2") {
+		query = "SELECT u.password FROM mysql.user u WHERE u.user = ? AND u.host = ? LIMIT 1"
+	}
+
+	rows, err := conn.QueryxContext(ctx, query, user, host)
+	if err != nil {
+		return "", false, fmt.Errorf("could not look up user %s@%s: %w", user, host, err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return "", false, fmt.Errorf("error iterating user lookup result: %w", err)
+		}
+		return "", false, nil
+	}
+	if err := rows.Scan(&hash); err != nil {
+		return "", false, fmt.Errorf("could not scan user lookup result: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return "", false, fmt.Errorf("error iterating user lookup result: %w", err)
+	}
+	return hash, true, nil
+}
+
 // GetProxySQLUsers retrieves users from ProxySQL
 func GetProxySQLUsers(db *sqlx.DB) (map[string]Grant, string, error) {
 	vars := make(map[string]Grant)

@@ -72,7 +72,7 @@ func (proxy *ExternalProxy) Refresh() error {
 		//proxy.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxy,config.LvlErr, "Sharding proxy refresh error (%s)", err)
 		return err
 	}
-	proxy.Version = proxy.ShardProxy.Variables.Get("VERSION")
+	proxy.SetVersion(proxy.ShardProxy.Variables.Get("VERSION"))
 	proxyByteOut := proxy.ShardProxy.Status.Get("BYTES_SENT")
 	proxyByteIn := proxy.ShardProxy.Status.Get("BYTES_RECEIVED")
 	proxyCnx := proxy.ShardProxy.Status.Get("THREADS_CREATED")

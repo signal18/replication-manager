@@ -17,6 +17,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -104,24 +105,91 @@ func (app *App) SetNoConfigFetchCookie() error {
 	return app.createCookie("cookie_noconfigfetch")
 }
 
+// SetPrevState is locked (app.Lock()) because it, like SetState, is read
+// cross-goroutine by GetAppAPIView() (cluster/app_get.go) while
+// maybeRefreshAppsAsync's worker concurrently calls it during Refresh().
 func (app *App) SetPrevState(state string) {
+	app.Lock()
+	defer app.Unlock()
 	app.PrevState = state
+}
+
+// SetRefreshInProgress marks whether this app's Refresh() is currently
+// running, under app.Lock() -- meant to be read from a different goroutine
+// than the one that writes it (any status/API reader vs. the
+// maybeRefreshAppsAsync worker calling Refresh()), so it needs to actually
+// be safe to do so.
+func (app *App) SetRefreshInProgress(v bool) {
+	app.Lock()
+	defer app.Unlock()
+	app.RefreshInProgress = v
+}
+
+// SetRefreshResult records one Refresh() call's timing/outcome under
+// app.Lock() -- see SetRefreshInProgress. err is whatever internal error
+// Refresh() captured along the way (currently just
+// GetAppsSubstitutionJSon's); Refresh() itself still always returns nil to
+// its caller, unchanged, so this is purely additive observability.
+func (app *App) SetRefreshResult(start, end time.Time, err error) {
+	app.Lock()
+	defer app.Unlock()
+	app.LastRefreshStart = start
+	app.LastRefreshEnd = end
+	app.LastRefreshDurationMs = end.Sub(start).Milliseconds()
+	if err != nil {
+		app.LastRefreshError = err.Error()
+	} else {
+		app.LastRefreshError = ""
+	}
 }
 
 func (app *App) SetSuspect() {
 	app.State = stateSuspect
 }
 
+// SetFailCount is locked (app.Lock()) -- see SetPrevState.
 func (app *App) SetFailCount(c int) {
+	app.Lock()
+	defer app.Unlock()
 	app.FailCount = c
+}
+
+// SetWarnCount is locked (app.Lock()) -- see SetPrevState.
+func (app *App) SetWarnCount(c int) {
+	app.Lock()
+	defer app.Unlock()
+	app.WarnCount = c
 }
 
 func (app *App) SetCredential(credential string) {
 	app.User, app.Pass = misc.SplitPair(credential)
 }
 
+// SetState is locked (app.Lock()) -- see SetPrevState.
 func (app *App) SetState(v string) {
+	app.Lock()
+	defer app.Unlock()
 	app.State = v
+}
+
+// CommitStateTransition is locked (app.Lock()) -- see SetPrevState. It reads
+// PrevState and State as one atomic pair and, only when they differ, advances
+// PrevState to State, returning (old, new, true). When they already match it
+// returns (State, State, false) without mutating anything. Refresh() uses
+// this instead of separately comparing app.PrevState != app.State and then
+// calling SetState()/SetPrevState() -- two locked calls a concurrent
+// Refresh() on the same App (e.g. via BackendsStateChange(), which bypasses
+// the maybeRefreshAppsAsync single-flight guarantee) could interleave with,
+// causing a spurious or missed transition log/alert.
+func (app *App) CommitStateTransition() (oldState, newState string, changed bool) {
+	app.Lock()
+	defer app.Unlock()
+	oldState, newState = app.PrevState, app.State
+	if oldState != newState {
+		app.PrevState = newState
+		return oldState, newState, true
+	}
+	return oldState, newState, false
 }
 
 func (app *App) SetCluster(c *Cluster) {

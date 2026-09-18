@@ -48,6 +48,14 @@ func (cluster *Cluster) newServerList() error {
 
 	cluster.RefreshDatabaseConfigs()
 	cluster.Unlock()
+
+	// The DB log writer cache is Cluster-scoped and keyed by canonical path
+	// (see getDBLogRotatingWriter), not by *ServerMonitor identity, so an
+	// ordinary reload -- new *ServerMonitor objects for the same, still
+	// monitored hosts -- leaves every still-valid entry alone to be reused.
+	// This only closes entries for hosts that actually dropped out of the
+	// topology.
+	cluster.pruneStaleDBLogWriters()
 	return nil
 }
 
@@ -154,6 +162,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		}
 	}
 	cluster.assertLostEventsStates()
+	cluster.reconcileDeferredRejoinReseeds()
 	cluster.assertRejoinResultStates()
 	cluster.assertReseedProgressStates()
 	if cluster.Conf.Arbitration {
@@ -317,7 +326,11 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					if m := cluster.GetMaster(); m != nil && extra.URL != m.URL && !extra.IsFailed() &&
 						!cluster.IsSplitBrain && !cluster.StateMachine.IsInFailover() && cluster.Conf.Autorejoin {
 						cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00063"], ErrFrom: "TOPO"})
-						extra.RejoinMaster()
+						// Spawn async like every other rejoin edge (srv.go, crash.go): a
+						// rejoin may run a multi-hour reseed and must never block the monitor
+						// tick. rejoinInProgress makes the per-tick spawn safe; finishRejoin
+						// makes it one-shot. This was the last synchronous rejoin caller.
+						go extra.RejoinMaster()
 					}
 				} else if !cluster.IsFailedArbitrator {
 					// Minority fail-safe: a node that cannot confirm authority via the

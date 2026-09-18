@@ -209,7 +209,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 
 		// Send synthetic graphite metric if the plugin produced one.
 		// This ensures history accumulates even before any spike is detected.
-		if result.MetricName != "" && cluster.Conf.GraphiteMetrics && cluster.ClusterGraphite != nil {
+		if result.MetricName != "" && cluster.CanSendGraphiteMetrics() && cluster.ClusterGraphite != nil {
 			m := graphite.NewMetric(
 				result.MetricName,
 				fmt.Sprintf("%d", result.CurrentCount),
@@ -271,6 +271,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 						Level:     "WARN",
 						Timestamp: time.Now().Format("2006/01/02 15:04:05"),
 						Text:      fmt.Sprintf("[%s] %s %s: %s", p.Name(), f.ErrKey, server.URL, f.Description),
+						Module:    config.ConstLogModPlugin,
 					})
 					if cluster.SecurityLogrus != nil {
 						cluster.SecurityLogrus.WithFields(fields).Warn(f.Description)
@@ -287,6 +288,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 						Level:     "WARN",
 						Timestamp: time.Now().Format("2006/01/02 15:04:05"),
 						Text:      fmt.Sprintf("[%s] %s %s: %s", p.Name(), f.ErrKey, server.URL, f.Description),
+						Module:    config.ConstLogModPlugin,
 					})
 					if cluster.WorkloadLogrus != nil {
 						cluster.WorkloadLogrus.WithFields(fields).Warn(f.Description)
@@ -302,6 +304,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 						Level:     "WARN",
 						Timestamp: time.Now().Format("2006/01/02 15:04:05"),
 						Text:      fmt.Sprintf("[%s] %s %s: %s", p.Name(), f.ErrKey, server.URL, f.Description),
+						Module:    config.ConstLogModPlugin,
 					})
 					if cluster.SchemaLogrus != nil {
 						cluster.SchemaLogrus.WithFields(fields).Warn(f.Description)
@@ -419,7 +422,7 @@ func snapshotSlowLog(sl *s18log.SlowLog) []logplugin.StdioSlowMsg {
 	return out
 }
 
-// RefreshSchemaWireTables rebuilds the wire v3 Tables snapshot handed to
+// RefreshSchemaWireTables rebuilds the wire v3/v4 Tables snapshot handed to
 // schema plugins. Called when the schema monitor refreshes the master table
 // dictionary (daily cron by default, plus boot and on-demand runs).
 func (cluster *Cluster) RefreshSchemaWireTables() {
@@ -435,9 +438,29 @@ func (cluster *Cluster) RefreshSchemaWireTables() {
 			Name:         t.TableName,
 			Engine:       t.Engine,
 			RowFormat:    t.RowFormat,
-			Rows:         t.TableRows,
-			DataLength:   t.DataLength,
-			AvgRowLength: t.AvgRowLength,
+			Rows:          t.TableRows,
+			DataLength:    t.DataLength,
+			AvgRowLength:  t.AvgRowLength,
+			IndexLength:   t.IndexLength,
+			AutoIncrement: t.AutoIncrement,
+		}
+		// Wire v4: indexes (information_schema.STATISTICS, needs monitoring-schema-indexes)
+		// for plugin-schema-duplicate-index, in SEQ_IN_INDEX order as dbhelper loads them.
+		for _, ix := range t.TableIndexes {
+			wi := logplugin.StdioTableIndex{
+				Name:    ix.Name,
+				Unique:  ix.Unique,
+				Primary: ix.Name == "PRIMARY",
+				Type:    ix.Type,
+			}
+			for _, ic := range ix.Columns {
+				c := logplugin.StdioIndexColumn{Name: ic.Name}
+				if ic.Prefix != nil {
+					c.SubPart = int(*ic.Prefix)
+				}
+				wi.Columns = append(wi.Columns, c)
+			}
+			wt.Indexes = append(wt.Indexes, wi)
 		}
 		for _, c := range t.TableColumns {
 			col := logplugin.StdioTableColumn{
@@ -446,6 +469,7 @@ func (cluster *Cluster) RefreshSchemaWireTables() {
 				Nullable:      c.Nullable,
 				Compressed:    c.Compressed,
 				AvgByteLength: c.AvgByteLength,
+				Extra:         c.Extra,
 			}
 			if c.Charset != nil {
 				col.Charset = *c.Charset
@@ -602,8 +626,56 @@ func (cluster *Cluster) assertDomainObservabilityStates() {
 	}
 }
 
+// checkResourceScaleWorkloadStates surfaces the per-server resource scale DECISIONS
+// (CanScaleConfigInPlan / CanScalePlan) as workload states, so they appear in the Workload pill
+// and modal -- no new GUI. It rides the monitor-loop state lifecycle (the WorkloadStateMachine is
+// cleared each cycle and re-populated here + by the plugin states). INFO for routine in-plan
+// resource scaling and the cap-down opportunity; WARNING for a plan cap-UP (commercial -- the
+// client is at the plan cap and should raise it). Purely state -- it triggers no resize.
+func (cluster *Cluster) checkResourceScaleWorkloadStates() {
+	sm := cluster.WorkloadStateMachine
+	if sm == nil || cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff {
+		return
+	}
+	// window = the sustain-duration parameter that gates this decision -- named in the message
+	// (with its value) so the operator sees exactly what triggered the state and what to tune.
+	add := func(code, errType, url string, axes []string, window string) {
+		if len(axes) == 0 {
+			return
+		}
+		sm.AddState(code+"@"+url, state.State{
+			ErrType:   errType,
+			ErrKey:    code,
+			ErrDesc:   fmt.Sprintf(clusterError[code], url, strings.Join(axes, ","), window),
+			ErrFrom:   "WORKLOAD",
+			ServerUrl: url,
+		})
+	}
+	// A refused over-plan step is an ERROR: the client's resources cannot follow the load and
+	// nothing will change until the budget, the pool or the plan does. Cluster-wide (the step
+	// is symmetric), keyed on the cluster so it stands as one state, not one per server.
+	if r := cluster.ResourceGrowRefused; r != nil {
+		sm.AddState("ERR00112@"+cluster.Name, state.State{
+			ErrType: "ERROR",
+			ErrKey:  "ERR00112",
+			ErrDesc: fmt.Sprintf(clusterError["ERR00112"], cluster.Name, r.Axis, r.From, r.To, r.TargetDbu, r.Reason),
+			ErrFrom: "WORKLOAD",
+		})
+	}
+	for _, srv := range cluster.Servers {
+		if srv == nil || srv.IsDown() {
+			continue
+		}
+		add("CINF0007", "INFO", srv.URL, srv.CanScaleConfigInPlan(true), cluster.Conf.ScaleUpConfigInPlanSpeed)
+		add("CINF0008", "INFO", srv.URL, srv.CanScaleConfigInPlan(false), cluster.Conf.ScaleDownConfigInPlanSpeed)
+		add("WARN0213", "WARNING", srv.URL, srv.CanScalePlan(true), cluster.Conf.ScaleUpPlanSpeed)
+		add("CINF0009", "INFO", srv.URL, srv.CanScalePlan(false), cluster.Conf.ScaleDownPlanSpeed)
+	}
+}
+
 func (cluster *Cluster) CheckLogPlugins() {
 	cluster.assertDomainObservabilityStates()
+	cluster.checkResourceScaleWorkloadStates() // surface resource scale decisions in the Workload pill
 	if !cluster.Conf.LogPlugin {
 		// WARN0314 — plugins are present on disk but log-plugin is disabled.
 		// Raise an advisory with a direct API link so the operator can enable
@@ -785,11 +857,11 @@ func (cluster *Cluster) GetLogPluginStates(serverURL string) []state.State {
 	SM := cluster.GetStateMachine()
 	opened := SM.GetLastOpenedStates()
 	keys := map[string]bool{
-		logplugin.ErrKeyDBError24h:          true,
-		logplugin.ErrKeySQLError24h:         true,
-		logplugin.ErrKeySlowLog24h:          true,
-		logplugin.ErrKeyAuditDrift:          true,
-		"WARN0205":                           true,
+		logplugin.ErrKeyDBError24h:            true,
+		logplugin.ErrKeySQLError24h:           true,
+		logplugin.ErrKeySlowLog24h:            true,
+		logplugin.ErrKeyAuditDrift:            true,
+		"WARN0205":                            true,
 		logplugin.ErrKeyMissingMonitoringFeed: true,
 	}
 	var out []state.State
@@ -1115,6 +1187,7 @@ func buildMonitoringFlags(cluster *Cluster, server *ServerMonitor) map[string]bo
 		"monitoring-performance-schema-queries": cluster.Conf.MonitorPFSQueries,
 		"monitoring-processlist":                cluster.Conf.MonitorProcessList,
 		"monitoring-schema-columns":             cluster.Conf.MonitorSchemaColumns,
+		"monitoring-schema-indexes":             cluster.Conf.MonitorSchemaIndexes,
 
 		// Auto-detected per-server capability: true only when the MySQL
 		// METADATA_LOCK_INFO plugin is installed and active on this server.
