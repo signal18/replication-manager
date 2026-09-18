@@ -584,8 +584,11 @@ func (cluster *Cluster) SwitchSlavesToMaster(fail bool) {
 }
 
 // LongWriteWait is the tracked fact "a switchover is waiting for long writes to complete on
-// the master". Set by waitLongRunningWrites for the duration of the wait, nil otherwise;
-// CheckFailed asserts WARN0217 on every tick while it is set.
+// the master". Set by waitLongRunningWrites for the duration of the wait, nil otherwise. It
+// is the LIVE signal: the switchover runs on the monitor goroutine (cluster.Run's select on
+// switchoverChan), so no tick, no state processing and no alert happens while it waits; the
+// cluster JSON serves this field directly. The state machine gets WARN0217 like ERR00100:
+// set during the switchover, opened at the first tick after it, with the wait's outcome.
 type LongWriteWait struct {
 	ServerURL string    `json:"serverUrl"`
 	Count     int       `json:"count"`
@@ -607,9 +610,16 @@ func (cluster *Cluster) waitLongRunningWrites(server *ServerMonitor) bool {
 	if qt == 0 {
 		return true
 	}
-	deadline := time.Now().Add(time.Duration(cluster.Conf.SwitchWaitTrx) * time.Second)
-	cluster.SwitchoverLongWriteWait = &LongWriteWait{ServerURL: server.URL, Count: qt, Since: time.Now(), Deadline: deadline}
+	since := time.Now()
+	deadline := since.Add(time.Duration(cluster.Conf.SwitchWaitTrx) * time.Second)
+	cluster.SwitchoverLongWriteWait = &LongWriteWait{ServerURL: server.URL, Count: qt, Since: since, Deadline: deadline}
 	defer func() { cluster.SwitchoverLongWriteWait = nil }()
+	// One WARN0217 per wait, its description rewritten with the outcome before returning
+	// (the last SetState before the next tick is the one that opens).
+	setWaitState := func(outcome string) {
+		cluster.SetState("WARN0217", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0217"], server.URL, qt, cluster.Conf.SwitchWaitWrite, outcome), ErrFrom: "SWITCHOVER", ServerUrl: server.URL})
+	}
+	setWaitState(fmt.Sprintf("waiting up to switchover-wait-trx=%ds for them to complete", cluster.Conf.SwitchWaitTrx))
 	for qt > 0 && time.Now().Before(deadline) {
 		cluster.SwitchoverLongWriteWait = &LongWriteWait{ServerURL: server.URL, Count: qt, Since: cluster.SwitchoverLongWriteWait.Since, Deadline: deadline}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Long updates running on master %s: %d write query/transaction past switchover-wait-write-query=%ds, waiting for them to complete, %ds left of switchover-wait-trx=%ds", server.URL, qt, cluster.Conf.SwitchWaitWrite, int(time.Until(deadline).Seconds()), cluster.Conf.SwitchWaitTrx)
@@ -621,9 +631,11 @@ func (cluster *Cluster) waitLongRunningWrites(server *ServerMonitor) bool {
 	if qt > 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Long updates running on master. Cannot switchover: %d write query/transaction on %s still past switchover-wait-write-query=%ds after switchover-wait-trx=%ds, not killed (rollback time unknown)", qt, server.URL, cluster.Conf.SwitchWaitWrite, cluster.Conf.SwitchWaitTrx)
 		cluster.logLongRunningWrites(server)
+		setWaitState(fmt.Sprintf("still running after switchover-wait-trx=%ds, switchover cancelled", cluster.Conf.SwitchWaitTrx))
 		return false
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Long updates on master %s completed, proceeding with switchover", server.URL)
+	setWaitState(fmt.Sprintf("completed after %ds, switchover proceeding", int(time.Since(since).Seconds())))
 	return true
 }
 
