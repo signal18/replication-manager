@@ -13,6 +13,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/graphite"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 // DBUReading is one period's consumed-DBU picture for a server. DBU is one unit
@@ -27,6 +28,10 @@ import (
 type DBUReading struct {
 	WindowStart time.Time `json:"windowStart"`
 	WindowEnd   time.Time `json:"windowEnd"`
+	// ReceivedAt is stamped by repman when the push lands (IngestDBUMaxes): the freshness
+	// clock, on repman's own time so a skewed sensor clock cannot make a reading look
+	// fresh or stale. Zero on readings built locally (plans, tests) -> WindowEnd is used.
+	ReceivedAt time.Time `json:"receivedAt,omitempty"`
 
 	// Raw per-axis maxima over the period, in native units, as read by the sensor.
 	MemMaxBytes  int64   `json:"memMaxBytes"`  // cgroup memory.current peak
@@ -77,8 +82,44 @@ func (server *ServerMonitor) IngestDBUMaxes(start, end time.Time, memMaxBytes in
 		return DBUReading{}
 	}
 	r := cluster.resources.ComputeUsedDBU(start, end, memMaxBytes, cpuMaxCores, ioMaxIops, diskMaxBytes)
+	r.ReceivedAt = time.Now()
 	server.SetDBUConsumed(r)
 	return r
+}
+
+// resourceSensorFreshnessWindow is how old the last sensor reading may be before it is
+// treated as NO reading. The sensor pushes once per dbjobs launcher run (~60 s), so three
+// missed pushes means the sensor is silent: the jobs container is down, or a long dbjob
+// (backup, reseed, optimize) runs in the same script and starves the push. Without this
+// gate the last reading is FROZEN: the instant axes keep their pre-job value, the DBU
+// series repeats it every tick, and the sustained check sees a flat present line -- a
+// pre-backup "under-used" reading shrank the cap under a running backup, a "saturated"
+// one grew it every minute on a load nobody measured. Shared with the Kubernetes sensor
+// prerequisite check (k8sResourceSensorFreshnessWindow).
+const resourceSensorFreshnessWindow = 3 * time.Minute
+
+// resourceReadingAge is the age of the last sensor reading (0, false when none).
+func (server *ServerMonitor) resourceReadingAge() (time.Duration, bool) {
+	r := server.DBUConsumed
+	if r == nil {
+		return 0, false
+	}
+	at := r.ReceivedAt
+	if at.IsZero() {
+		at = r.WindowEnd
+	}
+	if at.IsZero() {
+		return 0, false
+	}
+	return time.Since(at), true
+}
+
+// ResourceReadingStale reports a reading that exists but is older than the freshness
+// window: the sensor went silent. A missing reading is NOT stale (nothing to distrust;
+// the decisions already treat nil as unmeasured).
+func (server *ServerMonitor) ResourceReadingStale() bool {
+	age, ok := server.resourceReadingAge()
+	return ok && age > resourceSensorFreshnessWindow
 }
 
 // ConsumedDBUForEmit returns the five DBU series values to emit, applying the DBU
@@ -203,6 +244,24 @@ func (server *ServerMonitor) CheckResourceConsumed() {
 	}
 	server.checkBufferPoolPressure() // memory grow signal = pressure (not occupancy), folded into the mem axis
 	if cluster.resources == nil || server.IsDown() || server.DBUConsumed == nil {
+		return
+	}
+	// Freshness gate: a silent sensor leaves the last reading in place; treat it as no
+	// reading (axes stay cleared -> DriveDynamicResize / driveDynamicShrink stand still)
+	// and say why. Re-set every tick while stale, so the state resolves on the next push.
+	//
+	// WARN0218, not WARN0215: this is the orchestrator-agnostic "is the reading itself
+	// fresh" check (ReceivedAt, repman's clock), scoped per server via ServerUrl (storage
+	// key WARN0218@<url>). WARN0215 is CheckK8SResourceSensor's own, unrelated,
+	// cluster-scoped "can the Kubernetes prerequisites even deliver a reading" check
+	// (prov_k8s_db.go) -- the two used to share WARN0215, and PreserveState's prefix
+	// match on the bare code (utils/state/state.go) resurrected this scoped entry on
+	// every throttled k8s recheck tick even after it had genuinely cleared.
+	if server.ResourceReadingStale() {
+		age, _ := server.resourceReadingAge()
+		cluster.SetState("WARN0218", state.State{ErrType: config.LvlWarn, ErrFrom: "MON", ServerUrl: server.URL,
+			ErrDesc: fmt.Sprintf(clusterError["WARN0218"], server.URL,
+				fmt.Sprintf("last reading is %s old (window %s): the sensor pushes once per dbjobs run, a long dbjob or a stopped jobs container starves it; dynamic resize withheld", age.Round(time.Second), resourceSensorFreshnessWindow))})
 		return
 	}
 	clamp := func(p int) float64 {

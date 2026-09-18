@@ -281,6 +281,7 @@ contract; consumption above it is billed as overage, it does not gate the techni
 
 ```
 prov-db-dynamic-resource off, or failover in progress ─────────────▶ nothing
+sensor reading older than 3 min on a server ───────────────────────▶ its axes cleared (WARN0218)
 cooldown: one move per window (up: scale-up speed, down: scale-down speed)
 any server with a memory resize in flight ──────────────────────────▶ wait
 per server: CanScaleConfigInPlan(true)  = axes saturated vs CONFIG
@@ -303,6 +304,70 @@ read its partial last bucket and called "sustained for 5m" two seconds after the
 dropped. A manual `prov-db-*` change stamps the same cooldown as a dynamic step, so the
 driver never undoes an operator's move inside the window (validated dev3 2026-09-16:
 manual 1→2 held, shrink fired at +5m02s).
+
+**Sensor freshness gate (2026-09-17).** The reading the whole loop runs on is pushed by the
+dbjobs launcher (`dbjobs_launcher.sh`: run `dbjobs_new.sh`, sleep 60, loop) at the start of
+each run, from the same script that then runs the dbjobs. A long backup, reseed or optimize
+-- or a stopped jobs container -- therefore leaves the host with its LAST reading and nothing
+to age it: the instant axes kept the pre-job value, `GetDatabaseMetrics` repeated it into
+`dbu.*` every tick (by design, "no gaps"), and `windowExtremum` saw a flat, fully present
+line. Observed consequences: a pre-backup "under-used" reading shrank the cap under the
+running backup (the quota is on the whole slice, so the backup was throttled too); a
+"saturated" one grew it every minute up to the overcommit ceiling on a load nobody
+measured. Memory apply was the only job-gated step (`IsRunningJobs`), CPU/IO were not,
+and none of the decisions knew the reading was frozen.
+
+The gate: `DBUReading.ReceivedAt` is stamped on ingest (repman clock, so a skewed sensor
+clock cannot make a reading look fresh); `resourceSensorFreshnessWindow` = 3 min (three
+missed pushes), shared with the Kubernetes prerequisite check (`k8sResourceSensorFreshnessWindow`,
+was 5) -- one shared THRESHOLD, and now one shared CLOCK too:
+`k8sResourceSensorRuntimeIssue` (`cluster/prov_k8s_db.go`) goes through
+`s.resourceReadingAge()` (`ReceivedAt` preferred, `WindowEnd` fallback) instead of
+`time.Since(s.DBUConsumed.WindowEnd)` directly, so it is no longer vulnerable to sensor
+clock skew either -- regression-tested in
+`TestK8SResourceSensorRuntimeIssue_StaleWindowEndButFreshReceivedAtIsHealthy`
+(`cluster/prov_k8s_test.go`): a `WindowEnd` an hour old with a fresh `ReceivedAt` now
+verdicts healthy. `ServerMonitor.ResourceReadingStale()` is true when a reading EXISTS and
+is older than that; a missing reading is not stale (nil is already "unmeasured"). Three
+effects:
+
+- `CheckResourceConsumed` clears the four axes and raises `WARN0218` (age + likely cause,
+  "dynamic resize withheld"), re-set every tick while stale so it resolves on the next push.
+  Both drivers stand still on their own, since they read those axes -- **except the
+  buffer-pool-pressure mem-grow path**: `checkBufferPoolPressure()` runs BEFORE this gate's
+  early return and sets `BufferPoolMemGrowDue` from `Innodb_buffer_pool_wait_free` (a live
+  DB status counter, independent of the DBU sensor), and `CanScaleConfigInPlan(up)` folds
+  "mem" into the due axes whenever that flag is true regardless of
+  `ResourceConsumedOverConfigAxes`. So a sustained buffer-pool-wait signal can still drive a
+  mem grow via `DriveDynamicResize` even while the DBU reading is stale -- pre-existing
+  behavior this gate doesn't touch, not covered by WARN0218/WARN0215 either. WARN0218 is
+  deliberately a DIFFERENT code from WARN0215 (Kubernetes's own, unrelated, cluster-scoped
+  "can the prerequisites even deliver a reading" check, `CheckK8SResourceSensor` in
+  `cluster/prov_k8s_db.go`): the two used to share WARN0215, and on the 29 out of every
+  30 heartbeats where `CheckK8SResourceSensor` only throttle-preserves its own state
+  (`GetStateMachine().PreserveState("WARN0215")`), that call's prefix match on the raw
+  state key (`utils/state/state.go`, `strings.HasPrefix`, not an exact match) also matched
+  and resurrected this per-server-scoped entry (`WARN0215@<url>`) on ticks where
+  `CheckResourceConsumed` had already found the reading fresh again and correctly stopped
+  setting it -- confirmed live on the kind fixture 2026-09-18: the scoped alert stayed open
+  ~29s after the reading was already fresh, clearing only on the next throttled recheck
+  tick (`k8sResourceSensorCheckEveryNHeartbeats` = 30, one full ~60s cycle at worst).
+  **Compatibility:** `Cluster.SetState` checks `monitor-ignore-errors` against the state
+  key directly (`cluster/cluster_set.go`), so any config, alert routing, or monitoring
+  script that already matches on `WARN0215` for the generic (non-Kubernetes) stale-reading
+  condition must be updated to `WARN0218` -- this is a rename of that condition's code, not
+  an addition. The freshness gate itself only landed 2026-09-17 (this branch, unreleased),
+  so no shipped release ever carried `WARN0215` for this meaning; this note is for anyone
+  who configured against it on an interim/dev build before the split.
+- `GetDatabaseMetrics` emits NO `dbu.*` series while stale: the gap is the truth, and it is
+  what the coverage rule needs -- a decision window that overlaps the silence has < 80 %
+  present samples and is withheld even after the sensor is back. Never-measured and down
+  servers keep their continuous series (min-1 / 0).
+- Kubernetes keeps its own prerequisite check on the same window.
+
+Not done here (follow-ups): push the reading from the launcher loop itself so a long job no
+longer starves it, and gate both drivers on `anyServerRunningJobs` so nothing moves during a
+job even with fresh readings (the memory apply already does).
 
 ### 3. Grow: +1 DBU, in-plan free, over-plan gated
 
@@ -362,6 +427,8 @@ buffer pool up; the over-plan gate runs there for memory). CPU and IO re-tune th
 | WARN0213 | consumption at the **plan** cap for `prov-db-scale-up-plan-speed`: user-facing info to raise the plan by hand; the resize never does it |
 | ERR00112 | a dynamic over-plan step was **refused** (envelope / pool / hook), with the reason |
 | WARN0214 | dynamic resource on but the container is still capped at the docker scope (`prov-db-docker-run-args-limit` on): the live cgroup move cannot bind |
+| WARN0218 | the sensor reading itself is stale (> 3 min, a long dbjob or a stopped jobs container), per server: decisions withheld, the DBU graph shows a gap |
+| WARN0215 | Kubernetes only: the sensor's DELIVERY prerequisites are missing/unconfirmed (Deployment `shareProcessNamespace`→WARN0212 instead, Pod not Running, dbjobs sidecar not Ready, or its own WindowEnd-based staleness check) -- see the Kubernetes section below |
 | resize log (`ResourceResizeLog`) | one record per server per attempt: dimension, direction, applied, feasibility, statements |
 | Resource Manager page: "Overcommit DBU" / "Undercommit DBU" | `diffSeries(sumSeries(dbu.<cluster>.*.dbu), resourcemanager.<C>.plan_dbu)` at query time. A DISPLAY, never a ledger: the embedded `diffSeries` treats an absent plan point as 0, so a plan gap shows the whole consumption as overcommit. Since 2026-09-17 the plan series is emitted by EVERY server with its consumed batch (not the master only), so a bucket with a consumed point always has the plan point (preprod: 100 % of 17 366 "overcommit" points over 7 days were plan gaps, real over-plan = 0). Over-plan accounting for billing comes from `ResourceConsumedOverPlanAxes` / WARN0213 / ERR00112, never from this graph. |
 
@@ -447,7 +514,8 @@ No native primitive: the client change script, or a restart cookie (`scriptResiz
 
 Unit: `TestCanGrowBeyondPlanEnvelopeRoundsUp`, `TestOverPlanGrowAllowedCPUStep`,
 `TestDynamicGrowRefusalIsTrackedState`, `TestDynamicShrinkTargetAlignsToTheDBU`,
-`TestUndercommitFloorDBU`, `TestOpenSVCCPUQuotaKeyword`, the `TestK8sResize_*` /
+`TestUndercommitFloorDBU`, `TestOpenSVCCPUQuotaKeyword`, `TestResourceReadingStale`,
+`TestCheckResourceConsumedWithholdsOnStaleReading`, `TestGetDatabaseMetricsSkipsDBUSeriesWhenStale`, the `TestK8sResize_*` /
 `TestCompletePendingK8sMemoryResize_*` family. Live validation (dev3, 2026-09-15): grow
 1 → 2 fired 2 s after a saturating load, refusal 2 → 3 tracked + ERR00112, cleared after
 one window; #1795 observed on the two non-API nodes.

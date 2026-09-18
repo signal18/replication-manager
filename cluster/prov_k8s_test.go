@@ -1705,6 +1705,28 @@ func TestK8SResourceSensorRuntimeIssue_AllSatisfiedIsHealthy(t *testing.T) {
 	}
 }
 
+// TestK8SResourceSensorRuntimeIssue_StaleWindowEndButFreshReceivedAtIsHealthy is the
+// regression for the sensor-clock-skew gap: k8sResourceSensorRuntimeIssue used to age the
+// reading off the sensor-reported DBUReading.WindowEnd, so a skewed sensor clock could make
+// a reading that just landed on repman look stale to THIS check even though
+// ResourceReadingStale() (srv_dbu.go, ReceivedAt-based) correctly saw it as fresh. Now that
+// this call site goes through resourceReadingAge() too (repman's own clock, ReceivedAt
+// preferred), a stale-looking WindowEnd with a fresh ReceivedAt must verdict healthy.
+func TestK8SResourceSensorRuntimeIssue_StaleWindowEndButFreshReceivedAtIsHealthy(t *testing.T) {
+	cluster := newTestCluster("k8stest")
+	dep, rs := k8sTestController("k8stest", "db1")
+	ready := true
+	client := fake.NewSimpleClientset(dep, rs, k8sSensorTestPod("k8stest", "db1", apiv1.PodRunning, &ready, rs.UID))
+	s := &ServerMonitor{Name: "db1", DBUConsumed: &DBUReading{
+		WindowEnd:  time.Now().Add(-1 * time.Hour), // sensor clock: looks ancient
+		ReceivedAt: time.Now(),                     // repman clock: just landed
+	}}
+
+	if verdict, reason := cluster.k8sResourceSensorRuntimeIssue(context.Background(), client, s); verdict != k8sSensorHealthy {
+		t.Fatalf("expected k8sSensorHealthy: ReceivedAt is fresh even though WindowEnd looks stale (sensor clock skew), got verdict=%v reason=%q", verdict, reason)
+	}
+}
+
 // --- CheckK8SResourceSensor (via checkK8SResourceSensorWithClient): the
 // cluster-wide WARN0212/WARN0215 scan built on top of the per-server checks
 // above ---
