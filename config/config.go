@@ -1024,7 +1024,7 @@ type Config struct {
 	Cloud18DisableForSale                   bool                   `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`
 	Cloud18MarketplacePricingMode           string                 `scope:"server" mapstructure:"cloud18-marketplace-pricing-mode" toml:"cloud18-marketplace-pricing-mode" json:"cloud18MarketplacePricingMode"`
 	Cloud18MarketplaceDBUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-dbu-price" toml:"cloud18-marketplace-dbu-price" json:"cloud18MarketplaceDbuPrice"`
-	Cloud18MarketplaceAppUnitPrice          float64                `scope:"server" mapstructure:"cloud18-marketplace-app-unit-price" toml:"cloud18-marketplace-app-unit-price" json:"cloud18MarketplaceAppUnitPrice"`
+	Cloud18MarketplaceAPUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-apu-price" toml:"cloud18-marketplace-apu-price" json:"cloud18MarketplaceApuPrice"`
 	Cloud18MarketplaceMonthlyInfraCost      float64                `scope:"server" mapstructure:"cloud18-marketplace-monthly-infra-cost" toml:"cloud18-marketplace-monthly-infra-cost" json:"cloud18MarketplaceMonthlyInfraCost"`
 	Cloud18MarketplaceMonthlyLicenseCost    float64                `scope:"server" mapstructure:"cloud18-marketplace-monthly-license-cost" toml:"cloud18-marketplace-monthly-license-cost" json:"cloud18MarketplaceMonthlyLicenseCost"`
 	Cloud18MarketplaceMonthlySysopsCost     float64                `scope:"server" mapstructure:"cloud18-marketplace-monthly-sysops-cost" toml:"cloud18-marketplace-monthly-sysops-cost" json:"cloud18MarketplaceMonthlySysopsCost"`

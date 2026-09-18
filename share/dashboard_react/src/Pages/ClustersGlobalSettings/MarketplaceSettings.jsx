@@ -49,8 +49,8 @@ function MarketplaceSettings({ config }) {
   const hDomainSecret = `**Domain Secret**\n\nAPI key or password for domain management authentication.\nStored encrypted in the replication-manager configuration.\n\nConfig: \`cloud18-domain-secret\``
   const hReloadPlans = `**Reload Plans**\n\nDownload and reapply marketplace service plans from the Cloud18 GitLab repository.\nPlans define available database topologies, resource profiles, and OpenSVC provisioning templates.\nUse the info button to reload plan metadata only without reprovisioning.`
   const hPricingMode = `**Marketplace Pricing Mode**\n\nHow clusters are priced in the Cloud18 marketplace:\n\n- **csv-service-plan** (default): each cluster is priced from a per-cluster service plan downloaded as CSV.\n- **global-unit-pricing**: all clusters are priced from a single global EUR price per Database Unit and per Application Unit — no per-cluster plan.\n\nThe calculator button recomputes and persists each cluster's Database Units and Application Units immediately, instead of waiting for the next periodic save cycle — useful right after switching mode or changing a cluster's sizing.\n\nConfig: \`cloud18-marketplace-pricing-mode\``
-  const hDbuPrice = `**Database Unit Price**\n\nPrice in EUR per Database Unit (1 core / 4GB RAM / 40GB disk / 1000 IOPS).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-dbu-price\``
-  const hAppUnitPrice = `**Application Unit Price**\n\nPrice in EUR per Application Unit (application credits used, plus proxy CPU contribution).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-app-unit-price\``
+  const hDbuPrice = `**DBU Price**\n\nPrice in EUR per DBU, the Database Unit (1 core / 4 GB RAM / 40 GB disk / 1000 IOPS).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-dbu-price\``
+  const hApuPrice = `**APU Price**\n\nPrice in EUR per APU, the Application Unit (1 core / 1 GB RAM / 10 GB disk, no IOPS) consumed by proxies and applications.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-apu-price\``
   const hMonthlyInfraCost = `**Monthly Infrastructure Cost**\n\nGlobal monthly infrastructure cost for this marketplace instance, shared by every cluster it hosts.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-monthly-infra-cost\``
   const hMonthlyLicenseCost = `**Monthly License Cost**\n\nGlobal monthly license cost for this marketplace instance.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-monthly-license-cost\``
   const hMonthlySysopsCost = `**Monthly SysOps Cost**\n\nGlobal monthly system operations cost for this marketplace instance.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-monthly-sysops-cost\``
@@ -79,7 +79,7 @@ function MarketplaceSettings({ config }) {
           <Dropdown
             options={[
               { value: 'csv-service-plan', label: 'CSV Service Plan (per-cluster)' },
-              { value: 'global-unit-pricing', label: 'Global Unit Pricing (EUR / DBU + App Unit)' }
+              { value: 'global-unit-pricing', label: 'Global Unit Pricing (EUR / DBU + APU)' }
             ]}
             selectedValue={pricingMode}
             confirmTitle='Confirm marketplace pricing mode: '
@@ -100,26 +100,26 @@ function MarketplaceSettings({ config }) {
   // form is scannable instead of one long flat list.
   const unitPriceRows = [
     {
-      key: 'Database Unit Price (EUR)',
-      help: h(hDbuPrice, 'Database Unit Price'),
+       key: 'DBU Price (EUR)',
+       help: h(hDbuPrice, 'DBU Price'),
       value: (
         <TextForm
           value={config?.cloud18MarketplaceDbuPrice}
           regexPattern='^\d+(\.\d+)?$'
-          confirmTitle='Confirm Database Unit price (EUR) to '
+           confirmTitle='Confirm DBU price (EUR) to '
           onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-dbu-price', value }))}
         />
       )
     },
     {
-      key: 'Application Unit Price (EUR)',
-      help: h(hAppUnitPrice, 'Application Unit Price'),
+       key: 'APU Price (EUR)',
+       help: h(hApuPrice, 'APU Price'),
       value: (
         <TextForm
-          value={config?.cloud18MarketplaceAppUnitPrice}
+           value={config?.cloud18MarketplaceApuPrice}
           regexPattern='^\d+(\.\d+)?$'
-          confirmTitle='Confirm Application Unit price (EUR) to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-app-unit-price', value }))}
+           confirmTitle='Confirm APU price (EUR) to '
+           onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-apu-price', value }))}
         />
       )
     }

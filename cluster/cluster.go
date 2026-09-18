@@ -1903,7 +1903,7 @@ type ClusterState struct {
 	IsFailable    bool `json:"isFailable"`
 	IsProvisioned bool `json:"isProvisioned"`
 	// Marketplace global-unit-pricing fields — consumed by the BO to price this
-	// cluster from cloud18-marketplace-dbu-price / cloud18-marketplace-app-unit-price.
+	// cluster from cloud18-marketplace-dbu-price / cloud18-marketplace-apu-price.
 	DatabaseUnits    float64 `json:"databaseUnits"`
 	ApplicationUnits float64 `json:"applicationUnits"`
 	// Sponsorship authority summary — safe subset only, mirrored from the

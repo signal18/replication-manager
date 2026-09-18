@@ -250,7 +250,7 @@ written on cluster save so the BO can price = `units × €/unit`.
 
 **Global per-partner pricing settings** (all `scope:"server"`, `server/api_global_settings.go`
 + `MarketplaceSettings.jsx`): `cloud18-marketplace-dbu-price` (€/Database unit),
-`cloud18-marketplace-app-unit-price` (€/Application unit), `cloud18-application-credits(-price)`,
+`cloud18-marketplace-apu-price` (€/APU), `cloud18-application-credits(-price)`,
 plus marketplace-level infra/SLA/cert/currency metadata (moved up from per-plan to per-partner).
 
 **Future work note:** the **Storage** unit, promotion / discount handling in

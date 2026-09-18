@@ -84,7 +84,7 @@ func TestSetRepmanSetting_MarketplaceDBUPrice(t *testing.T) {
 	}
 }
 
-func TestSetRepmanSetting_MarketplaceAppUnitPrice(t *testing.T) {
+func TestSetRepmanSetting_MarketplaceAPUPrice(t *testing.T) {
 	cases := []struct {
 		name    string
 		value   string
@@ -101,7 +101,7 @@ func TestSetRepmanSetting_MarketplaceAppUnitPrice(t *testing.T) {
 				Conf:          &config.Config{Secrets: make(map[string]config.Secret)},
 				ConfigManager: newConfigManagerForTest(),
 			}
-			err := repman.setRepmanSetting("cloud18-marketplace-app-unit-price", tc.value)
+			err := repman.setRepmanSetting("cloud18-marketplace-apu-price", tc.value)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("expected error for value %q, got nil", tc.value)
@@ -111,8 +111,8 @@ func TestSetRepmanSetting_MarketplaceAppUnitPrice(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if repman.Conf.Cloud18MarketplaceAppUnitPrice != tc.want {
-				t.Errorf("Cloud18MarketplaceAppUnitPrice = %v, want %v", repman.Conf.Cloud18MarketplaceAppUnitPrice, tc.want)
+			if repman.Conf.Cloud18MarketplaceAPUPrice != tc.want {
+				t.Errorf("Cloud18MarketplaceAPUPrice = %v, want %v", repman.Conf.Cloud18MarketplaceAPUPrice, tc.want)
 			}
 		})
 	}
