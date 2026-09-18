@@ -7,10 +7,10 @@ import (
 	"github.com/signal18/replication-manager/utils/version"
 )
 
-// The redo log follows a memory step live only on releases that resize it online,
-// as the LAST statement (after the buffer pool) on both grow and shrink; other
-// releases get no statement and a restart-only signal.
-func TestResizeMemorySQL_RedoLogByRelease(t *testing.T) {
+// The redo statement exists only on releases that resize it online; other known
+// releases are restart-only, an unknown release is neither. resizeMemorySQL never
+// carries it: applyRedoLogResize runs it on its own, after the memory statements.
+func TestRedoLogResizeSQL_ByRelease(t *testing.T) {
 	cases := []struct {
 		name        string
 		v           *version.Version
@@ -26,33 +26,63 @@ func TestResizeMemorySQL_RedoLogByRelease(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			cl, s, done := k8sResizeTestServer(t, "redo", "db1")
+			_, s, done := k8sResizeTestServer(t, "redo", "db1")
 			defer done()
-			_ = cl
 			s.DBVersion = c.v
-			for _, grow := range []bool{true, false} {
-				sql := s.resizeMemorySQL(grow)
-				last := sql[len(sql)-1]
-				if c.wantPrefix == "" {
-					for _, st := range sql {
-						if strings.Contains(st, "innodb_log_file_size") || strings.Contains(st, "innodb_redo_log_capacity") {
-							t.Fatalf("grow=%v: no redo statement expected on %s, got %q", grow, c.name, st)
-						}
-					}
-				} else if !strings.HasPrefix(last, c.wantPrefix) || !strings.HasSuffix(last, "*1024*1024") {
-					t.Fatalf("grow=%v: redo must be the last statement %q..., got %q", grow, c.wantPrefix, last)
+			stmt, live := s.redoLogResizeSQL()
+			if c.wantPrefix == "" {
+				if live || stmt != "" {
+					t.Fatalf("no live redo statement expected on %s, got %q", c.name, stmt)
 				}
+			} else if !live || !strings.HasPrefix(stmt, c.wantPrefix) || !strings.HasSuffix(stmt, "*1024*1024") {
+				t.Fatalf("want live %q..., got live=%v %q", c.wantPrefix, live, stmt)
 			}
 			if got := s.redoLogRestartOnly(); got != c.restartOnly {
 				t.Fatalf("redoLogRestartOnly = %v, want %v", got, c.restartOnly)
 			}
+			for _, grow := range []bool{true, false} {
+				for _, st := range s.resizeMemorySQL(grow) {
+					if strings.Contains(st, "innodb_log_file_size") || strings.Contains(st, "innodb_redo_log_capacity") {
+						t.Fatalf("resizeMemorySQL must not carry the redo statement, got %q", st)
+					}
+				}
+			}
 		})
 	}
-	// Unknown release: no statement and no restart signal either.
 	_, s, done := k8sResizeTestServer(t, "redo", "db2")
 	defer done()
 	s.DBVersion = nil
 	if _, live := s.redoLogResizeSQL(); live || s.redoLogRestartOnly() {
 		t.Fatalf("unknown release must neither resize live nor demand a restart")
+	}
+}
+
+// A live redo statement that fails (here: the sqlmock connection rejects every
+// Exec) must fall back to the restart cookie, never leave the redo silently unsized.
+// A restart-only release gets the cookie straight away; an unknown release nothing.
+func TestApplyRedoLogResize_FallsBackToRestart(t *testing.T) {
+	_, s, done := k8sResizeTestServer(t, "redo", "db1")
+	defer done()
+	s.DBVersion = &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 2}
+	if s.HasRestartCookie() {
+		t.Fatalf("no cookie expected before the resize")
+	}
+	if got := s.applyRedoLogResize(); len(got) != 1 || !strings.HasPrefix(got[0], "SET GLOBAL innodb_log_file_size = ") {
+		t.Fatalf("the issued statement must be returned for the resize log, got %v", got)
+	}
+	if !s.HasRestartCookie() {
+		t.Fatalf("a failed live redo resize must schedule a restart")
+	}
+	s.DelRestartCookie()
+
+	s.DBVersion = &version.Version{Flavor: "MariaDB", Major: 10, Minor: 6, Release: 20}
+	if got := s.applyRedoLogResize(); got != nil || !s.HasRestartCookie() {
+		t.Fatalf("a restart-only release must get the cookie and no statement, got %v", got)
+	}
+	s.DelRestartCookie()
+
+	s.DBVersion = nil
+	if got := s.applyRedoLogResize(); got != nil || s.HasRestartCookie() {
+		t.Fatalf("an unknown release must get neither, got %v cookie=%v", got, s.HasRestartCookie())
 	}
 }

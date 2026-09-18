@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 	logsql "github.com/sirupsen/logrus"
 	"gopkg.in/ini.v1"
@@ -320,22 +321,58 @@ func (server *ServerMonitor) resizeMemorySQL(grow bool) []string {
 		others = append(others, fmt.Sprintf("SET GLOBAL query_cache_size = %s*1024*1024", qc))
 	}
 
-	// The redo log follows the memory model (BP/4 as a power of two, #1749) on the
-	// releases that resize it online; ordered after the buffer pool on both grow and
-	// shrink (a shrink waits for the checkpoint and must not sit in front of the
-	// memory release). Other releases get it at the next restart (cookie set by the
-	// callers, see redoLogRestartOnly).
-	redo, live := server.redoLogResizeSQL()
-	var sql []string
+	// The redo log is NOT in this list: applyRedoLogResize runs it on its own, after
+	// these statements, so its failure is seen and falls back to the restart cookie
+	// (ExecScriptSQL only reports error 1238).
 	if grow {
-		sql = append(others, bufferPool)
-	} else {
-		sql = append([]string{bufferPool}, others...)
+		return append(others, bufferPool)
 	}
-	if live {
-		sql = append(sql, redo)
+	return append([]string{bufferPool}, others...)
+}
+
+// applyRedoLogResize makes the redo log follow the memory model (BP/4 as a power of
+// two, #1749) right after the memory statements, on both grow and shrink (a redo
+// shrink waits for the checkpoint and must not sit in front of the memory release).
+// Releases that resize it online get the statement, executed on its own and read
+// back; any failure, or a runtime that did not take the value, falls back to the
+// restart cookie, so a silently failed resize can never leave an oversized redo in a
+// shrunk cgroup. Older releases get the cookie straight away. Returns the statement
+// issued, for the resize log.
+func (server *ServerMonitor) applyRedoLogResize() []string {
+	cluster := server.ClusterGroup
+	stmt, live := server.redoLogResizeSQL()
+	if !live {
+		if server.redoLogRestartOnly() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"Redo log of %s follows the memory step at the next restart (release cannot resize it live)", server.URL)
+			server.SetRestartCookie()
+		}
+		return nil
 	}
-	return sql
+	if server.Conn == nil || server.State == stateFailed {
+		return nil
+	}
+	if _, err := server.Conn.Exec(stmt); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+			"Live redo log resize failed on %s, scheduling restart: %s: %s", server.URL, stmt, err)
+		server.SetRestartCookie()
+		return []string{stmt}
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Apply dynamic config: %s", stmt)
+	// Read the value back: the variable reflects the new size at once on both flavors
+	// (MySQL/Percona finish the file move asynchronously, the capacity is set).
+	name := "INNODB_LOG_FILE_SIZE"
+	if server.DBVersion.IsMySQLOrPercona() {
+		name = "INNODB_REDO_LOG_CAPACITY"
+	}
+	wantMB, _ := strconv.ParseInt(cluster.Configurator.GetConfigInnoDBLogFileSize(), 10, 64)
+	got, _, err := dbhelper.GetVariableByName(server.Conn, name, server.DBVersion)
+	if gotBytes, perr := strconv.ParseInt(got, 10, 64); err != nil || perr != nil || gotBytes != wantMB*1024*1024 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+			"Live redo log resize on %s not taken (%s=%s, wanted %dMB), scheduling restart", server.URL, name, got, wantMB)
+		server.SetRestartCookie()
+	}
+	return []string{stmt}
 }
 
 // redoLogResizeSQL returns the live redo-log resize statement valued from the
@@ -747,9 +784,10 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 			// cgroup only once the pool has actually shrunk, so we never lower the
 			// cgroup below live memory (OOM). Non-blocking: a per-tick comparison.
 			sql := server.resizeMemorySQL(false)
-			if _, needRestart := server.ExecScriptSQL(sql); needRestart || server.redoLogRestartOnly() {
+			if _, needRestart := server.ExecScriptSQL(sql); needRestart {
 				server.SetRestartCookie()
 			}
+			sql = append(sql, server.applyRedoLogResize()...)
 			server.markBufferPoolIssued()
 			server.PendingCgroupShrink = true
 			// applied=false: the DB side is done but the cgroup shrink is deferred.
@@ -764,9 +802,10 @@ func (cluster *Cluster) ResizeDynamicResources(dim resizeDimension, grow bool) {
 // which calls this asynchronously once kubelet confirms a native Pod resize.
 func (cluster *Cluster) applyConfirmedMemoryGrow(server *ServerMonitor, feas ResizeFeasibility) {
 	sql := server.resizeMemorySQL(true)
-	if _, needRestart := server.ExecScriptSQL(sql); needRestart || server.redoLogRestartOnly() {
+	if _, needRestart := server.ExecScriptSQL(sql); needRestart {
 		server.SetRestartCookie()
 	}
+	sql = append(sql, server.applyRedoLogResize()...)
 	server.markBufferPoolIssued()
 	cluster.logResize(server, resizeMemory, true, true, feas, sql)
 }

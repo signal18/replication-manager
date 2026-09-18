@@ -479,13 +479,15 @@ A DB container has **two** distinct memory limits, changed by two different mech
      against the Pod on the monitor tick. No container recreate.
    - the shared orchestration then runs `resizeMemorySQL` (`SET GLOBAL innodb_buffer_pool_size`
      + key_buffer / tmp_table / join_buffer / max_session_mem_used …).
-   - **the redo log follows the memory model live** (#1820): `redoLogResizeSQL` appends, LAST
-     (after the buffer pool, on grow and on shrink), `SET GLOBAL innodb_log_file_size` on
+   - **the redo log follows the memory model live** (#1820): `applyRedoLogResize` runs, on its
+     own right AFTER the memory statements (on grow and on shrink), `SET GLOBAL innodb_log_file_size` on
      MariaDB ≥ 10.9 (online redo resize, MDEV-27812) or `SET GLOBAL innodb_redo_log_capacity`
      on MySQL/Percona ≥ 8.0.30, valued from `GetConfigInnoDBLogFileSize` (BP/4 as a power of
-     two, floor 128 MB, cap 16 GB, #1749). Older releases: no statement, the generated config
-     already carries the size and the memory step sets the restart cookie
-     (`redoLogRestartOnly`). Why last: a redo shrink waits for the checkpoint to pass the new
+     two, floor 128 MB, cap 16 GB, #1749), then READS THE VALUE BACK: an exec error or a runtime
+     that did not take the value falls back to the restart cookie (ExecScriptSQL only reports
+     error 1238, a silently failed redo resize would defeat the anti-OOM point of #1749). Older
+     releases: no statement, the generated config already carries the size and the memory step
+     sets the restart cookie (`redoLogRestartOnly`). Why last: a redo shrink waits for the checkpoint to pass the new
      end and must not sit in front of the memory release; a redo grow needs the new file's
      worth of free disk during the switch. Before this, a memory step moved the buffer pool
      live but left the redo at its boot-time size: after a shrink to 1 DBU the redo could
