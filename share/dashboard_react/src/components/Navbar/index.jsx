@@ -1,4 +1,4 @@
-import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure, Popover, PopoverTrigger, PopoverContent, PopoverArrow, PopoverBody } from '@chakra-ui/react'
+import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure, Popover, PopoverTrigger, PopoverContent, PopoverArrow, PopoverBody, Tooltip } from '@chakra-ui/react'
 import React, { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../redux/authSlice'
@@ -15,7 +15,7 @@ import ConfigModal from '../Modals/ConfigModal'
 import CrashesModal from '../Modals/CrashesModal'
 import ReseedProgressModal from '../Modals/ReseedProgressModal'
 import { FaUserPlus, FaUserCircle } from 'react-icons/fa'
-import { MdSecurity, MdNotificationsOff, MdSchema, MdSettings, MdHistory } from 'react-icons/md'
+import { MdSecurity, MdNotificationsOff, MdSchema, MdSettings, MdHistory, MdHourglassTop } from 'react-icons/md'
 import { HiRefresh } from 'react-icons/hi'
 import { RiSpeedFill } from 'react-icons/ri'
 import InterventionPanel from '../Modals/InterventionPanel'
@@ -400,6 +400,34 @@ function Navbar({ username, user }) {
                   showText={!isMobile}
                 />
               )}
+              {clusterData?.switchoverLongWriteWait && (() => {
+                // LIVE: the switchover long-write guard is waiting on the master. The
+                // cluster object carries switchoverLongWriteWait for the duration of the
+                // wait (null otherwise); no state/alert can open while a switchover runs,
+                // so this field, not clusterAlerts, is the signal. WARN0217 opens after.
+                const w = clusterData.switchoverLongWriteWait
+                const deadline = w.deadline ? new Date(w.deadline).toLocaleTimeString() : ''
+                return (
+                  <Tooltip
+                    as='div'
+                    label={`Switchover waiting for ${w.count} long write${w.count > 1 ? 's' : ''} on ${w.serverUrl} to complete, never killed; cancelled at ${deadline} if still running (switchover-wait-trx)`}>
+                    <Box>
+                      <AlertBadge
+                        colorScheme={'orange'}
+                        icon={MdHourglassTop}
+                        text='Switchover'
+                        count={w.count}
+                        blink={true}
+                        bubbleStyle={{
+                          background: 'var(--chakra-colors-orange-500)',
+                          color: 'white',
+                        }}
+                        showText={!isMobile}
+                      />
+                    </Box>
+                  </Tooltip>
+                )
+              })()}
             </Flex>
           )}
 

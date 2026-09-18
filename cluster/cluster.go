@@ -116,6 +116,7 @@ type Cluster struct {
 	IsNeedProxiesReprov           bool            `json:"isNeedProxiesReprov" groups:"web"`
 	IsNeedProxiesConfigChange     bool            `json:"isNeedProxiesConfigChange" groups:"web"`
 	IsNeedDatabasesRestart        bool            `json:"isNeedDatabasesRestart" groups:"web"`
+	SwitchoverLongWriteWait       *LongWriteWait  `json:"switchoverLongWriteWait" groups:"web"` // tracked fact: a switchover is waiting for long writes on the master; WARN0217 open while non-nil
 	IsNeedDatabasesRollingRestart bool            `json:"isNeedDatabasesRollingRestart" groups:"web"`
 	IsNeedDatabasesRollingReprov  bool            `json:"isNeedDatabasesRollingReprov" groups:"web"`
 	IsNeedResourceCapUp           bool            `json:"isNeedResourceCapUp" groups:"web"`   // composed from the per-server plan states: ANY up server over the plan -> RAISE THE PLAN (cap up). Set by CheckResourceCapPlan

@@ -149,6 +149,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testSwitchoverLongTransactionNoRplCheckNoSemiSync" {
 			res = regtest.TestSwitchoverLongTransactionNoRplCheckNoSemiSync(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testSwitchoverLongTransactionWaitNoRplCheckNoSemiSync" {
+			res = regtest.TestSwitchoverLongTransactionWaitNoRplCheckNoSemiSync(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync" {
 			res = regtest.TestSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync(cl, test.ConfigFile, &test)
 		}

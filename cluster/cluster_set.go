@@ -1831,6 +1831,38 @@ func (cluster *Cluster) SetProxyServersBackendMaxConnections(value string) error
 	return nil
 }
 
+// SetSwitchoverWaitWriteQuery sets switchover-wait-write-query: the number of seconds a
+// write query or an open InnoDB transaction may have been running on the master before a
+// switchover is cancelled (the guard in MasterFailover, CheckLongRunningWrites). At least 1:
+// with 0 every running write matches and no switchover would ever pass.
+func (cluster *Cluster) SetSwitchoverWaitWriteQuery(value string) error {
+	numvalue, err := strconv.Atoi(value)
+	if err != nil {
+		return fmt.Errorf("switchover-wait-write-query: %w", err)
+	}
+	if numvalue < 1 {
+		return fmt.Errorf("switchover-wait-write-query must be at least 1 second, got %d", numvalue)
+	}
+	cluster.Conf.SwitchWaitWrite = numvalue
+	return nil
+}
+
+// SetSwitchoverWaitTrx sets switchover-wait-trx: the seconds a switchover waits, before
+// anything is frozen, for the long writes found by the switchover-wait-write-query guard to
+// complete, then again for the pre-flush of the master tables. At least 1: with 0 the flush
+// timeout fires at once and no switchover would ever pass.
+func (cluster *Cluster) SetSwitchoverWaitTrx(value string) error {
+	numvalue, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return fmt.Errorf("switchover-wait-trx: %w", err)
+	}
+	if numvalue < 1 {
+		return fmt.Errorf("switchover-wait-trx must be at least 1 second, got %d", numvalue)
+	}
+	cluster.Conf.SwitchWaitTrx = numvalue
+	return nil
+}
+
 func (cluster *Cluster) SetSwitchoverWaitRouteChange(value string) error {
 	numvalue, err := strconv.Atoi(value)
 	if err != nil {

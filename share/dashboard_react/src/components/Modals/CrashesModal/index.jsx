@@ -50,7 +50,12 @@ function CrashesModal({ isOpen, closeModal, clusterName, crashes }) {
   // in dark mode. Anything else washes out in one of the two themes.
   const badgeVariant = isLight ? 'subtle' : 'solid'
 
+  // A record finished with "no-divergence" and no captured delta (a switchover, or a
+  // clean re-slave) has nothing to analyze: say so, no Lost Events to view.
+  const noDivergence = (crash) => !crash.deltaAnalyzed && crash.rejoinResult === 'no-divergence'
+
   const verdict = (crash) => {
+    if (noDivergence(crash)) return <Badge variant={badgeVariant} colorScheme='green'>none</Badge>
     if (!crash.deltaAnalyzed) return <Badge variant={badgeVariant} colorScheme='orange'>not analyzed</Badge>
     if (crash.deltaFlashable) return <Badge variant={badgeVariant} colorScheme='green'>flashback-able</Badge>
     return <Badge variant={badgeVariant} colorScheme='red'>not flashback-able</Badge>
@@ -135,9 +140,11 @@ function CrashesModal({ isOpen, closeModal, clusterName, crashes }) {
                         </HStack>
                       </Td>
                       <Td>
-                        <Button size='xs' onClick={() => setViewCrash(crash)}>
-                          Lost Events
-                        </Button>
+                        {!noDivergence(crash) && (
+                          <Button size='xs' onClick={() => setViewCrash(crash)}>
+                            Lost Events
+                          </Button>
+                        )}
                       </Td>
                     </Tr>
                     {expanded === i && (
