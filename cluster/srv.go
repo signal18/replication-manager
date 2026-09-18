@@ -167,7 +167,7 @@ type ServerMonitor struct {
 	QPS                         int64                       `json:"qps"`
 	ReplicationGroupCommitSize  float64                     `json:"replicationGroupCommitSize"` // avg binlog group commit size over the last tick (Binlog_commits / Binlog_group_commits deltas): the commit concurrency a slave can apply in parallel; 0 when no commit in the tick
 	ReplicationParallelThreads  int64                       `json:"replicationParallelThreads"` // slave_parallel_threads (MariaDB) / slave_parallel_workers (MySQL) as the server runs it -- the workers, to compare with the group commit size
-	lastParallelModeEnforce     time.Time                   `json:"-"` // last STOP/SET/START of slave_parallel_mode by CheckSlaveSettings (rate limit)
+	lastParallelModeEnforce     time.Time                   `json:"-"`                          // last STOP/SET/START of slave_parallel_mode by CheckSlaveSettings (rate limit)
 	ReplicationHealth           string                      `json:"replicationHealth"`
 	EventStatus                 []dbhelper.Event            `json:"eventStatus"`
 	FullProcessList             []dbhelper.Processlist      `json:"-"`
@@ -227,62 +227,63 @@ type ServerMonitor struct {
 	// ref x (cap-shrink-pct/100); dead-band between = status quo. Config ref = THIS server's
 	// resources (raise/shrink this server); plan ref = the cap. The cluster composes cap-up/down
 	// from the *Plan* axes across servers (see Cluster.CheckResourceCapPlan).
-	ResourceConsumedOverConfigAxes  []string `json:"resourceConsumedOverConfigAxes"`  // saturates its config -> raise this server's resources
-	ResourceConsumedUnderConfigAxes []string `json:"resourceConsumedUnderConfigAxes"` // under-uses its config -> shrink this server's resources
-	ResourceConsumedOverPlanAxes    []string `json:"resourceConsumedOverPlanAxes"`    // hits the plan/cap -> contributes to cap-up
-	ResourceConsumedUnderPlanAxes   []string  `json:"resourceConsumedUnderPlanAxes"`   // under the plan/cap -> allows cap-down (only if ALL servers are)
-	BufferPoolMemGrowDue            bool      `json:"bufferPoolMemGrowDue"`            // memory GROW due from buffer-pool PRESSURE (Innodb_buffer_pool_wait_free sustained), NOT occupancy -- folded into the mem axis by CanScaleConfigInPlan(up)
-	bufferPoolPressureSince         time.Time // when continuous buffer-pool pressure began (zero = not under pressure); >= scale-up speed -> BufferPoolMemGrowDue
-	DelayStat                   *ServerDelayStat            `json:"delayStat"`
-	SlaveVariables              SlaveVariables              `json:"slaveVariables"`
-	IsReseeding                 string                      `json:"isReseeding"`
-	ReplicationTags             string                      `json:"replicationTags"`
-	JobResults                  *config.TasksMap            `json:"jobResults"`
-	IsInSlowQueryCapture        bool
-	IsInPFSQueryCapture         bool
-	PFSLastSnapshot             time.Time                   // timestamp of last periodic PFS digest snapshot flush
-	PFSLastExplainPurge         time.Time                   // timestamp of last explain cache purge run
-	PFSExplainCache             map[string]PFSExplainRecord // digest → cached explain plan, keyed by digest hash
-	PFSExplainCacheMu           sync.Mutex                  // protects PFSExplainCache against goroutine/monitor-loop races
-	pfsExplainCancel            context.CancelFunc          // cancels any in-flight RunPFSExplainCapture goroutine
-	InPurgingBinaryLog          bool
-	IsBackingUpBinaryLog        bool
-	IsRefreshingBinlog          bool
-	IsRefreshingBinlogMeta      bool
-	IsLoadingJobList            bool
-	jobsAPIHousekeepingDone     bool // true after schema ensured + jobs table dropped in API mode
-	NeedRefreshJobs             bool
-	lastJobsRefreshAttempt      time.Time
-	lastReconcileAttempt        time.Time
-	PointInTimeMeta             backupmgr.PointInTimeMeta
-	BinaryLogDir                string
-	BinaryLogName               string
-	DBDataDir                   string
-	LastConfigUpdate            config.LastConfigUpdate `json:"lastConfigUpdate"`
-	LastBackupMeta              ServerBackupMeta        `json:"lastBackupMeta"`
-	LastPhysicalRestoreMeta     *PhysicalRestoreMeta    `json:"lastPhysicalRestoreMeta,omitempty"`
-	IsNeedPathCheck             bool
-	HasConfigPathChanged        bool
-	HasConfigDiff               bool                                 `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config
-	PendingCgroupShrink         bool                                 `json:"-"`             // a memory live-shrink lowered the buffer pool and is waiting for the async InnoDB resize to complete before shrinking the cgroup (anti-OOM)
-	pendingK8sMemoryResize      atomic.Pointer[K8sMemoryResizeState] // a native Kubernetes Pod memory resize was requested and is awaiting kubelet confirmation (see cluster_resize_k8s.go); written from the resize-dispatch path, read/cleared from the monitor tick -- different goroutines, so atomic not a plain pointer (GetPendingK8sMemoryResize/SetPendingK8sMemoryResize below)
-	RestartNode                 string                               // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
-	RestartRid                  string                               // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
-	jobMutex                    sync.Mutex                           // protects IsRunningJobs flag
-	configGenMutex              sync.Mutex                           // protects config generation operations
-	dbLogMigrateMutex           sync.Mutex                           // serializes concurrent attempts at the lazy legacy->backup-backed fetched DB log migration
-	dbLogMigrated               atomic.Bool                          // set once a migration pass completes with no errors; left false to allow retry after a transient failure
-	backupMetaMutex             sync.Mutex                           // protects LastBackupMeta from concurrent Restic callback updates
-	rejoinInProgress            atomic.Bool                          // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
-	reseedFromRejoin            atomic.Bool                          // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
-	rejoinReseedStart           atomic.Int64                         // unix-nanos when the rejoin armed its reseed; drives the generic "rejoin reseed in progress, started T" state (WARN0189) for methods without byte instrumentation
-	reseedInfo                  atomic.Value                         // *ReseedProgress: the in-flight restore's backup (nil when idle) — for the progress state
-	reseedBytes                 atomic.Int64                         // raw bytes streamed so far (compressed input; no decompression accounting yet)
-	reseedTotal                 atomic.Int64                         // total compressed backup file size (0 = unknown)
-	reseedStart                 atomic.Int64                         // unix-nanos the current restore started (for MB/s)
-	reseedRateWindow            atomic.Value                         // []reseedRateSample: last few per-tick (bytes,time) samples, for a windowed "recent" rate distinct from the lifetime average (reseedBytes/reseedStart) — see restore_progress.go
-	reseedPhase                 atomic.Value                         // string: one of the ReseedPhase* constants (restore_progress.go), physical reseed/flashback only; empty for paths that don't set it
-	logicalReseedDispatching    atomic.Bool                          // claimed for the duration of an in-flight launchLogicalReseed call, so repeated StateProcessing ticks over the same open WARN0075 can't enter ProcessReseedLogical concurrently
+	ResourceConsumedOverConfigAxes  []string         `json:"resourceConsumedOverConfigAxes"`  // saturates its config -> raise this server's resources
+	ResourceConsumedUnderConfigAxes []string         `json:"resourceConsumedUnderConfigAxes"` // under-uses its config -> shrink this server's resources
+	ResourceConsumedOverPlanAxes    []string         `json:"resourceConsumedOverPlanAxes"`    // hits the plan/cap -> contributes to cap-up
+	ResourceConsumedUnderPlanAxes   []string         `json:"resourceConsumedUnderPlanAxes"`   // under the plan/cap -> allows cap-down (only if ALL servers are)
+	BufferPoolMemGrowDue            bool             `json:"bufferPoolMemGrowDue"`            // memory GROW due from buffer-pool PRESSURE (Innodb_buffer_pool_wait_free sustained), NOT occupancy -- folded into the mem axis by CanScaleConfigInPlan(up)
+	bufferPoolPressureSince         time.Time        // when continuous buffer-pool pressure began (zero = not under pressure); >= scale-up speed -> BufferPoolMemGrowDue
+	DelayStat                       *ServerDelayStat `json:"delayStat"`
+	SlaveVariables                  SlaveVariables   `json:"slaveVariables"`
+	IsReseeding                     string           `json:"isReseeding"`
+	ReplicationTags                 string           `json:"replicationTags"`
+	JobResults                      *config.TasksMap `json:"jobResults"`
+	IsInSlowQueryCapture            bool
+	IsInPFSQueryCapture             bool
+	PFSLastSnapshot                 time.Time                   // timestamp of last periodic PFS digest snapshot flush
+	PFSLastExplainPurge             time.Time                   // timestamp of last explain cache purge run
+	PFSExplainCache                 map[string]PFSExplainRecord // digest → cached explain plan, keyed by digest hash
+	PFSExplainCacheMu               sync.Mutex                  // protects PFSExplainCache against goroutine/monitor-loop races
+	pfsExplainCancel                context.CancelFunc          // cancels any in-flight RunPFSExplainCapture goroutine
+	InPurgingBinaryLog              bool
+	IsBackingUpBinaryLog            bool
+	IsRefreshingBinlog              bool
+	IsRefreshingBinlogMeta          bool
+	IsLoadingJobList                bool
+	jobsAPIHousekeepingDone         bool // true after schema ensured + jobs table dropped in API mode
+	NeedRefreshJobs                 bool
+	lastJobsRefreshAttempt          time.Time
+	lastReconcileAttempt            time.Time
+	PointInTimeMeta                 backupmgr.PointInTimeMeta
+	BinaryLogDir                    string
+	BinaryLogName                   string
+	DBDataDir                       string
+	LastConfigUpdate                config.LastConfigUpdate `json:"lastConfigUpdate"`
+	LastBackupMeta                  ServerBackupMeta        `json:"lastBackupMeta"`
+	LastPhysicalRestoreMeta         *PhysicalRestoreMeta    `json:"lastPhysicalRestoreMeta,omitempty"`
+	IsNeedPathCheck                 bool
+	HasConfigPathChanged            bool
+	HasConfigDiff                   bool                                 `json:"hasConfigDiff"`         // Indicates if there are differences between deployed and generated config
+	IssuedBufferPoolBytes           int64                                `json:"issuedBufferPoolBytes"` // the innodb_buffer_pool_size a live memory resize actually SENT (SET GLOBAL); the in-flight gate compares the runtime with THIS, never with the configurator's latest wish (#1822); 0 = nothing issued
+	PendingCgroupShrink             bool                                 `json:"-"`                     // a memory live-shrink lowered the buffer pool and is waiting for the async InnoDB resize to complete before shrinking the cgroup (anti-OOM)
+	pendingK8sMemoryResize          atomic.Pointer[K8sMemoryResizeState] // a native Kubernetes Pod memory resize was requested and is awaiting kubelet confirmation (see cluster_resize_k8s.go); written from the resize-dispatch path, read/cleared from the monitor tick -- different goroutines, so atomic not a plain pointer (GetPendingK8sMemoryResize/SetPendingK8sMemoryResize below)
+	RestartNode                     string                               // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
+	RestartRid                      string                               // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
+	jobMutex                        sync.Mutex                           // protects IsRunningJobs flag
+	configGenMutex                  sync.Mutex                           // protects config generation operations
+	dbLogMigrateMutex               sync.Mutex                           // serializes concurrent attempts at the lazy legacy->backup-backed fetched DB log migration
+	dbLogMigrated                   atomic.Bool                          // set once a migration pass completes with no errors; left false to allow retry after a transient failure
+	backupMetaMutex                 sync.Mutex                           // protects LastBackupMeta from concurrent Restic callback updates
+	rejoinInProgress                atomic.Bool                          // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
+	reseedFromRejoin                atomic.Bool                          // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
+	rejoinReseedStart               atomic.Int64                         // unix-nanos when the rejoin armed its reseed; drives the generic "rejoin reseed in progress, started T" state (WARN0189) for methods without byte instrumentation
+	reseedInfo                      atomic.Value                         // *ReseedProgress: the in-flight restore's backup (nil when idle) — for the progress state
+	reseedBytes                     atomic.Int64                         // raw bytes streamed so far (compressed input; no decompression accounting yet)
+	reseedTotal                     atomic.Int64                         // total compressed backup file size (0 = unknown)
+	reseedStart                     atomic.Int64                         // unix-nanos the current restore started (for MB/s)
+	reseedRateWindow                atomic.Value                         // []reseedRateSample: last few per-tick (bytes,time) samples, for a windowed "recent" rate distinct from the lifetime average (reseedBytes/reseedStart) — see restore_progress.go
+	reseedPhase                     atomic.Value                         // string: one of the ReseedPhase* constants (restore_progress.go), physical reseed/flashback only; empty for paths that don't set it
+	logicalReseedDispatching        atomic.Bool                          // claimed for the duration of an in-flight launchLogicalReseed call, so repeated StateProcessing ticks over the same open WARN0075 can't enter ProcessReseedLogical concurrently
 	// Lock ordering (to prevent deadlocks):
 	// 1. Cluster.stateMutex (highest)
 	// 2. ServerMonitor.stateMutex
