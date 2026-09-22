@@ -6309,6 +6309,7 @@ func (repman *ReplicationManager) handlerMuxClusterOptimize(w http.ResponseWrite
 // @Param threads query string false "Number of threads"
 // @Success 200 {string} string "Successfully triggered sysbench"
 // @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "No proxy configured"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/actions/sysbench [post]
 func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWriter, r *http.Request) {
@@ -6318,6 +6319,11 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+		proxies := mycluster.GetProxies()
+		if len(proxies) == 0 || proxies[0] == nil {
+			http.Error(w, "No proxy configured", http.StatusConflict)
 			return
 		}
 		if r.URL.Query().Get("test") != "" {
