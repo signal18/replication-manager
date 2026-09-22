@@ -6355,6 +6355,11 @@ func (repman *ReplicationManager) handlerMuxClusterSysbenchCleanup(w http.Respon
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
+		proxies := mycluster.GetProxies()
+		if len(proxies) == 0 || proxies[0] == nil {
+			http.Error(w, "No proxy configured", http.StatusConflict)
+			return
+		}
 		if r.URL.Query().Get("test") != "" {
 			mycluster.SetSysbenchTest(r.URL.Query().Get("test"))
 		}
