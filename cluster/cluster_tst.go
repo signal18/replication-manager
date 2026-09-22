@@ -200,10 +200,18 @@ func (cluster *Cluster) ensureSysbenchVersionAvailable() error {
 	return nil
 }
 
+func (cluster *Cluster) getFirstProxy() (DatabaseProxy, error) {
+	proxies := cluster.GetProxies()
+	if len(proxies) == 0 || proxies[0] == nil {
+		return nil, errors.New("No proxy")
+	}
+	return proxies[0], nil
+}
+
 func (cluster *Cluster) PrepareBench() error {
-	prx := cluster.GetProxies()[0]
-	if prx == nil {
-		return errors.New("No proxy")
+	prx, err := cluster.getFirstProxy()
+	if err != nil {
+		return err
 	}
 	if cluster.benchmarkType == "sysbench" {
 		test := "--test=oltp"
@@ -260,12 +268,10 @@ func (cluster *Cluster) PrepareBench() error {
 }
 
 func (cluster *Cluster) CleanupBench() error {
-	proxies := cluster.GetProxies()
-	if len(proxies) == 0 {
-		return errors.New("No proxy")
+	prx, err := cluster.getFirstProxy()
+	if err != nil {
+		return err
 	}
-
-	prx := proxies[0]
 	if cluster.benchmarkType == "sysbench" {
 		if err := cluster.ensureSysbenchVersionAvailable(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench version check failed: %s", err)
@@ -327,9 +333,9 @@ func (cluster *Cluster) ChecksumBench() bool {
 
 func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize string, myTime string, myMode string, scaleGroup ...time.Time) (float64, float64, int, error) {
 	startedAt := time.Now()
-	prx := cluster.GetProxies()[0]
-	if prx == nil {
-		return 0, 0, 0, errors.New("No proxy")
+	prx, err := cluster.getFirstProxy()
+	if err != nil {
+		return 0, 0, 0, err
 	}
 
 	test := "--test=" + myTest
@@ -467,10 +473,13 @@ func (cluster *Cluster) RunBench() error {
 }
 
 func (cluster *Cluster) RunSysbench() error {
-	cluster.CleanupBench()
-	cluster.PrepareBench()
-	cluster.RunBench()
-	return nil
+	if err := cluster.CleanupBench(); err != nil {
+		return err
+	}
+	if err := cluster.PrepareBench(); err != nil {
+		return err
+	}
+	return cluster.RunBench()
 }
 
 // RunSysbenchScaleThreads runs the configured test doubling threads from 1 up to 2×cores.
@@ -479,8 +488,12 @@ func (cluster *Cluster) RunSysbenchScaleThreads() error {
 	scaleGroupTime := time.Now()
 
 	prepareStart := time.Now()
-	cluster.CleanupBench()
-	cluster.PrepareBench()
+	if err := cluster.CleanupBench(); err != nil {
+		return err
+	}
+	if err := cluster.PrepareBench(); err != nil {
+		return err
+	}
 	cluster.LogSysbenchStep("prepare", prepareStart, scaleGroupTime)
 
 	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
@@ -506,15 +519,21 @@ func (cluster *Cluster) RunSysbenchScaleThreads() error {
 	}
 
 	cleanupStart := time.Now()
-	cluster.CleanupBench()
+	if err := cluster.CleanupBench(); err != nil {
+		return err
+	}
 	cluster.LogSysbenchStep("cleanup", cleanupStart, scaleGroupTime)
 
 	return nil
 }
 
 func (cluster *Cluster) RunSysbenchTPCPerMinuteIncreaseThreads() error {
-	cluster.CleanupBench()
-	cluster.PrepareBench()
+	if err := cluster.CleanupBench(); err != nil {
+		return err
+	}
+	if err := cluster.PrepareBench(); err != nil {
+		return err
+	}
 	threads := 1
 	for threads <= 256 {
 		_, _, _, _ = cluster.RunSysBench("tpcc", strconv.Itoa(threads), "1000000", "60", "complex")
