@@ -33,8 +33,22 @@ The **BKU** (backup unit, 2026-09-22) is storage ONLY: it bills the REAL disk us
 on". The BKU has its **own plan** per database, like the DBU plan (client-set); its default is
 **3 × the database's DBU disk**. Usage above the BKU plan is over-commit: billed, never blocked.
 Two kinds: **local** BKU (the cluster's backup cache + archive on the nodes) and **remote** BKU
-(archived on S3/SFTP), each with its own price. Open: whether the plan covers local only, rounding
-over the billing period, the price setting names, the measurement wiring.
+(archived on S3/SFTP), each with its own price.
+
+**Shipped (feat/bku-backup-unit):** `prov-db-bku` (default **6**, per cluster) is `PlanUnitBKU` in
+`ChangePlanUnits` (floor 1, admin lock on its own flag, no resource follow: nothing is provisioned
+from it). `RefreshBackupUnits` (every 30 ticks, `cluster_bku.go`) measures **local** = the real disk
+of the streaming directory `<working-dir>/backups/<cluster>` (walked, never a catalog sum) and
+**remote** = the restic repository raw-data size (`restic stats --mode raw-data`, refreshed by
+`ResticFetchRepo`), converts both at the Storage-profile ratio (20 GB/BKU) into `BKUReading`
+(`backupUnits` in the cluster JSON) and asserts **WARN0219** when local BKU is over the plan
+(over-commit, billed never blocked; in `pstates30`). Graphite every tick:
+`resourcemanager.<CTOKEN>.plan_bku`, `bku.<cluster>.{local,remote,local_bytes,remote_bytes}`
+(raw cluster name segment like `dbu.<cluster>.*`). GUI: Graphs → Resources third chart (local +
+remote bars, plan line) via `ChartGroupedDBU`'s new `axes` prop; Database Configurator →
+Resources "Backup BKU" gauge (`changePlanUnits('BKU')`). Open: whether the plan also covers
+remote, rounding over the billing period, the two price setting names, a node-side backup cache
+if one exists outside the streaming directory.
 
 A database is **not** an app (proxy/phpMyAdmin): little disk, no IOPS lock. Ratios are
 the **operator's rules**, held on the manager as `ratios map[WorkloadProfile]UnitRatios`
