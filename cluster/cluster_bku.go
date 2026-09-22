@@ -99,10 +99,11 @@ func (cluster *Cluster) RefreshBackupUnits() {
 	}
 }
 
-// CollectBackupUnitMetrics emits the BKU series every tick from the cached reading, next to the
-// DBU/APU plan series: resourcemanager.<C>.plan_bku, bku.<C>.{local,remote} (in BKU) and
-// bku.<C>.{local_bytes,remote_bytes}. The plan rides the resourcemanager prefix like plan_dbu
-// and plan_apu; over-commit is derived at query time (local vs plan), never emitted.
+// CollectBackupUnitMetrics emits the BKU series every tick from the cached reading: the plan
+// as resourcemanager.<CTOKEN>.plan_bku (like plan_dbu / plan_apu), the consumed values as
+// bku.<cluster>.{local,remote} (in BKU) and bku.<cluster>.{local_bytes,remote_bytes}, keyed by
+// the RAW cluster name like dbu.<cluster>.* and apu.<cluster>.* so the Graphs page scopes them
+// the same way. Over-commit is derived at query time (local vs plan), never emitted.
 func (cluster *Cluster) CollectBackupUnitMetrics() {
 	r := cluster.BackupUnits
 	if r == nil {
@@ -113,9 +114,9 @@ func (cluster *Cluster) CollectBackupUnitMetrics() {
 	f := func(v float64, prec int) string { return strconv.FormatFloat(v, 'f', prec, 64) }
 	cluster.AddMetrics([]graphite.Metric{
 		graphite.NewMetric(fmt.Sprintf("resourcemanager.%s.plan_bku", ctoken), strconv.Itoa(r.Plan), ts),
-		graphite.NewMetric(fmt.Sprintf("bku.%s.local", ctoken), f(r.BkuLocal, 4), ts),
-		graphite.NewMetric(fmt.Sprintf("bku.%s.remote", ctoken), f(r.BkuRemote, 4), ts),
-		graphite.NewMetric(fmt.Sprintf("bku.%s.local_bytes", ctoken), strconv.FormatInt(r.LocalBytes, 10), ts),
-		graphite.NewMetric(fmt.Sprintf("bku.%s.remote_bytes", ctoken), strconv.FormatInt(r.RemoteBytes, 10), ts),
+		graphite.NewMetric(fmt.Sprintf("bku.%s.local", cluster.Name), f(r.BkuLocal, 4), ts),
+		graphite.NewMetric(fmt.Sprintf("bku.%s.remote", cluster.Name), f(r.BkuRemote, 4), ts),
+		graphite.NewMetric(fmt.Sprintf("bku.%s.local_bytes", cluster.Name), strconv.FormatInt(r.LocalBytes, 10), ts),
+		graphite.NewMetric(fmt.Sprintf("bku.%s.remote_bytes", cluster.Name), strconv.FormatInt(r.RemoteBytes, 10), ts),
 	})
 }

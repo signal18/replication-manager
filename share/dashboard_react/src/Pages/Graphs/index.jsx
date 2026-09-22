@@ -84,6 +84,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           .replaceAll('mysql.*', `mysql.*-${clusterToken}-*`)
           .replaceAll('dbu.*', `dbu.${selectedCluster?.name}.*`)
           .replaceAll('apu.*', `apu.${selectedCluster?.name}.*`)
+          .replaceAll('bku.*', `bku.${selectedCluster?.name}.*`)
       : s
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
 
@@ -95,6 +96,8 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   // DBU (per-node pivot x #nodes), refreshed each tick by repman. Distinct from the plan: a
   // dynamic over-plan grow moves this line, never the plan.
   const configDbu = Number(selectedCluster?.configDbu) || 0
+  // The BKU plan line = prov-db-bku, the per-cluster backup storage reservation (1 BKU = 20 GB).
+  const planBku = parseInt(cfg.provDbBku) || 0
 
   // Window (seconds) and refresh cadence for the d3 line charts, from the same
   // hour/step selectors that drive the cubism graphs.
@@ -345,6 +348,31 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="Consumed APU — proxies + apps (Compute; plan = service-plan APU)"
+       />
+        {/* Backup (BKU) — per-cluster backup storage: local = the cluster's backup cache +
+            archive on disk, remote = what restic holds on S3/SFTP. bku.<cluster>.{local,remote}
+            are already in BKU (20 GB each); the *_bytes series give the real→unit overlay.
+            Plan line = prov-db-bku. Over-commit (local above the plan) is billed, never
+            blocked; remote is billed apart at its own price. */}
+        <ChartGroupedDBU
+         context={context}
+         axes={[
+           { key: 'local', label: 'Local', ratio: 20 * 1024 * 1024 * 1024, light: '#37a06f', dark: '#4dc088' },
+           { key: 'remote', label: 'Remote', ratio: 20 * 1024 * 1024 * 1024, light: '#3f8fd0', dark: '#5aa8e6' },
+         ]}
+         dbuPaths={{
+           local: scope('sumSeries(bku.*.local)'),
+           remote: scope('sumSeries(bku.*.remote)')
+         }}
+         servicePaths={{
+           local: scope('sumSeries(bku.*.local_bytes)'),
+           remote: scope('sumSeries(bku.*.remote_bytes)')
+         }}
+         pivotPath=''
+         planDbu={planBku}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Backup storage — BKU (local cache + archive vs remote archive; plan = prov-db-bku)"
        />
       </GraphSection>
 

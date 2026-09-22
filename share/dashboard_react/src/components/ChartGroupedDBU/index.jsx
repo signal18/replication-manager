@@ -40,6 +40,7 @@ function ChartGroupedDBU({
   planDbu = 1,        // plan line = the commercial contract (service-plan DBU)
   configDbu = 0,      // configured line = the technical allocation (prov-db-* in DBU); 0 = not drawn
   isVisible = true,
+  axes = AXES,        // the bars: default the four DBU axes; BKU passes { local, remote }
 }) {
   const chartRef = useRef(null);
   const abortControllerRef = useRef(new AbortController());
@@ -61,13 +62,13 @@ function ChartGroupedDBU({
 
   const allPaths = useCallback(() => {
     const p = [];
-    AXES.forEach((a) => {
+    axes.forEach((a) => {
       if (dbuPaths[a.key]) p.push(dbuPaths[a.key]);
       if (servicePaths[a.key]) p.push(servicePaths[a.key]);
     });
     if (pivotPath) p.push(pivotPath);
     return p;
-  }, [dbuPaths, servicePaths, pivotPath]);
+  }, [dbuPaths, servicePaths, pivotPath, axes]);
 
   // --- fetch one graphite raw series (same endpoint/parse as ChartMultiMetric) ---
   const fetchOne = async (metricPath) => {
@@ -145,16 +146,16 @@ function ChartGroupedDBU({
       const from = g * groupBy;
       const to = from + groupBy;
       const t = ref[Math.min(from, N - 1)].t;
-      const axes = AXES.map((a) => {
+      const axesData = axes.map((a) => {
         const billed = peakAt(dbuPaths[a.key], from, to);                       // dbu_* (>=1 floored)
         const real = peakAt(servicePaths[a.key], from, to, (x) => x / a.ratio); // service_* -> DBU
         return { key: a.key, billed, real: Math.min(real, Math.max(billed, real)) };
       });
-      const pivot = peakAt(pivotPath, from, to) || Math.max(...axes.map((x) => x.billed), 0);
-      buckets.push({ t, axes, pivot });
+      const pivot = peakAt(pivotPath, from, to) || Math.max(...axesData.map((x) => x.billed), 0);
+      buckets.push({ t, axes: axesData, pivot });
     }
     return buckets;
-  }, [series, dbuPaths, servicePaths, pivotPath]);
+  }, [series, dbuPaths, servicePaths, pivotPath, axes]);
 
   const draw = useCallback(() => {
     const container = chartRef.current;
@@ -199,12 +200,12 @@ function ChartGroupedDBU({
       .call((sel) => sel.selectAll('.tick text').style('fill', colors.muted).style('font-size', '10px'))
       .call((sel) => sel.select('.domain').remove());
 
-    const bw = x.bandwidth() / AXES.length;
+    const bw = x.bandwidth() / axes.length;
 
     buckets.forEach((b, i) => {
       const gx = x(i);
       b.axes.forEach((ax, j) => {
-        const meta = AXES[j];
+        const meta = axes[j];
         const col = isDark ? meta.dark : meta.light;
         const bx = gx + j * bw;
         const billed = Math.max(ax.billed, 0);
@@ -264,7 +265,7 @@ function ChartGroupedDBU({
     // legend
     const legend = svg.append('g').attr('transform', `translate(${margin.left},34)`);
     let lx = 0;
-    AXES.forEach((a, j) => {
+    axes.forEach((a, j) => {
       const col = isDark ? a.dark : a.light;
       const grp = legend.append('g').attr('transform', `translate(${lx},0)`);
       grp.append('rect').attr('width', 10).attr('height', 10).attr('y', -9).attr('fill', col).attr('rx', 2);
