@@ -318,6 +318,7 @@ var ClusterError = map[string]string{
 	"WARN0216":  "Slave %s: could not enforce replication parallel mode %s (SET slave_parallel_mode needs the SQL thread stopped; retried after the cooldown): %s",
 	"WARN0217":  "Switchover long-write guard on %s: %d write query/transaction past switchover-wait-write-query=%ds, %s (never killed)",
 	"WARN0218":  "DBU reading for %s is stale: %s -- monitoring-system-resources is on but the reading cannot be trusted right now",
+	"WARN0219":  "Cluster %s: backup storage %.2f BKU over its BKU plan of %d (local %s on the cluster, remote %s archived); over-commit is billed, never blocked",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",

@@ -122,6 +122,7 @@ type Cluster struct {
 	IsNeedResourceCapUp           bool            `json:"isNeedResourceCapUp" groups:"web"`   // composed from the per-server plan states: ANY up server over the plan -> RAISE THE PLAN (cap up). Set by CheckResourceCapPlan
 	ResourceGrowRefused           *GrowRefusal    `json:"resourceGrowRefused" groups:"web"`   // last dynamic over-plan step refused by the ResourceManager gate (nil = none); tracked state, surfaced as ERR00112 in the workload channel
 	ConfigDbuPerNode              DBUReading      `json:"configDbuPerNode" groups:"web"`      // prov-db-* projected through the ratios: the TECHNICAL cap per node (paramétré axis), refreshed each tick
+	BackupUnits                   *BKUReading     `json:"backupUnits" groups:"web"`           // BKU: per-cluster backup storage vs prov-db-bku (RefreshBackupUnits, every 30 ticks)
 	ConfigDbu                     float64         `json:"configDbu" groups:"web"`             // cluster-wide configured DBU = per-node pivot x #DB nodes; the graph draws it as the "configured" line above the plan
 	IsNeedResourceCapDown         bool            `json:"isNeedResourceCapDown" groups:"web"` // composed: EVERY up server under the plan -> LOWER THE PLAN (cap down); one non-under server breaks it (safe-shrink). Set by CheckResourceCapPlan
 	LastDynamicResizeDay          string          `json:"-"`                                  // YYYY-MM-DD of the last daily-time memory reconcile (DriveDailyDynamicResize); one apply per day per window
@@ -1029,6 +1030,7 @@ var pstates30 = []string{
 	"WARN0169",             // On-premise SSH key (CheckOnPremiseSSHKey runs %30)
 	"WARN0170",             // Configurator prerequisites (CheckConfiguratorPrerequisites runs %30)
 	"WARN0190", "WARN0191", // Rejoin catalog (HasCatalogBackupForRejoin runs %30)
+	"WARN0219", // Backup storage over the BKU plan (RefreshBackupUnits runs %30)
 	"CREDIT01", // Credit related
 }
 
@@ -1240,6 +1242,7 @@ func (cluster *Cluster) tickBody() {
 					goRun(cluster.ResticFetchRepo)
 					goRun(cluster.MonitorVariablesDiff)
 					goRun(cluster.MonitorVariablesChange)
+					goRun(cluster.RefreshBackupUnits) // BKU: local backup disk + restic repo size vs prov-db-bku (WARN0219, preserved via pstates30)
 				}
 				wg.Wait()
 
@@ -1286,8 +1289,9 @@ func (cluster *Cluster) tickBody() {
 					goRun(cluster.CheckClusterServiceAgents)
 				}
 				if cluster.Conf.GraphiteMetrics && heartbeats%5 == 0 {
-					cluster.CollectComputeMetrics()  // queue APU (proxies+apps) BEFORE the flush -> same batch
-					cluster.CollectPerAgentMetrics() // queue per-agent DBU+APU rollup into the same batch
+					cluster.CollectComputeMetrics()    // queue APU (proxies+apps) BEFORE the flush -> same batch
+					cluster.CollectBackupUnitMetrics() // queue BKU (plan, local, remote) into the same batch
+					cluster.CollectPerAgentMetrics()   // queue per-agent DBU+APU rollup into the same batch
 					goRun(func() { cluster.SendGraphiteMetrics() })
 					goRun(cluster.CheckDisksUsage)
 				}

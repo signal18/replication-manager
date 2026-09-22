@@ -22,6 +22,7 @@ type PlanUnit string
 const (
 	PlanUnitDBU PlanUnit = "DBU" // database reservation  -> prov-service-plan-dbu
 	PlanUnitAPU PlanUnit = "APU" // compute reservation   -> prov-service-plan-apu
+	PlanUnitBKU PlanUnit = "BKU" // backup storage reservation, PER CLUSTER -> prov-db-bku
 	// PlanUnitBKU / PlanUnitNEU (backup / network) -- wire when their plan variable lands.
 )
 
@@ -109,6 +110,10 @@ func (cluster *Cluster) applyPlanResourceFollow(unit PlanUnit, cur, target int) 
 		// Proxies (and, once folded in, apps) have no live-resize path: the resource always
 		// follows the plan directly, in both directions.
 		cluster.alignProxyResourceToPlan(target)
+	case PlanUnitBKU:
+		// The BKU plan reserves backup STORAGE, nothing is provisioned from it: the
+		// measurement (RefreshBackupUnits) compares real backup disk with it, over-commit
+		// is billed, never blocked.
 	}
 }
 
@@ -177,6 +182,11 @@ func (cluster *Cluster) planUnitSpec(unit PlanUnit) (cur int, floor int, apply f
 		// (AppPlanByCluster) separately; they are not moved here.
 		return cluster.Conf.ProvProxyApu, 1,
 			func(v int) { cluster.Conf.ProvProxyApu = v }, nil
+	case PlanUnitBKU:
+		// prov-db-bku is the PER-CLUSTER backup storage reservation (backups are of the dataset,
+		// not of each node). Floor 1 BKU. Default 6 (three times the default 2 DBU/node).
+		return cluster.Conf.ProvDbBku, 1,
+			func(v int) { cluster.Conf.ProvDbBku = v }, nil
 	default:
 		return 0, 0, nil, fmt.Errorf("ChangePlanUnits: unit %q not supported yet", unit)
 	}
@@ -184,8 +194,11 @@ func (cluster *Cluster) planUnitSpec(unit PlanUnit) (cur int, floor int, apply f
 
 // planFlag is the config flag name backing a unit's reservation -- the admin-lock target.
 func (cluster *Cluster) planFlag(unit PlanUnit) string {
-	if PlanUnit(strings.ToUpper(string(unit))) == PlanUnitAPU {
+	switch PlanUnit(strings.ToUpper(string(unit))) {
+	case PlanUnitAPU:
 		return "prov-proxy-apu"
+	case PlanUnitBKU:
+		return "prov-db-bku"
 	}
 	return "prov-db-dbu"
 }
