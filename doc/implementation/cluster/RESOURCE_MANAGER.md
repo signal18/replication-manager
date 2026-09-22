@@ -30,8 +30,11 @@ per workload is the **ratio**, not just the price:
 
 The **BKU** (backup unit, 2026-09-22) is storage ONLY: it bills the REAL disk used by backups
 (backup catalog sizes, restic repository size), never a flat "+1 DBU when a backup schedule is
-on". Default floor: **3 BKU per DBU** of the database (three times its DBU disk). Open: rounding
-over the billing period, the price setting name, the measurement wiring.
+on". The BKU has its **own plan** per database, like the DBU plan (client-set); its default is
+**3 × the database's DBU disk**. Usage above the BKU plan is over-commit: billed, never blocked.
+Two kinds: **local** BKU (the cluster's backup cache + archive on the nodes) and **remote** BKU
+(archived on S3/SFTP), each with its own price. Open: whether the plan covers local only, rounding
+over the billing period, the price setting names, the measurement wiring.
 
 A database is **not** an app (proxy/phpMyAdmin): little disk, no IOPS lock. Ratios are
 the **operator's rules**, held on the manager as `ratios map[WorkloadProfile]UnitRatios`
