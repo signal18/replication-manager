@@ -17,14 +17,14 @@ import { useTheme } from '../../ThemeProvider';
 //     the plan still allows. The plan is never moved by a resize; this line is.
 //
 // Native units emitted by srv_snd.go: service_cpu=cores, service_mem=bytes,
-// service_io=iops, service_disk=bytes. 1 DBU = 1 core / 4 GB / 40 GB / 1000 IOPS,
+// service_io=iops, service_disk=bytes. 1 DBU = 1 core / 4 GB / 20 GB / 1000 IOPS,
 // so realDBU = service / ratio (below), and dbu_* already carry max(real,1).
 const GiB = 1024 * 1024 * 1024;
 const AXES = [
   { key: 'cpu', label: 'CPU', ratio: 1, light: '#3f8fd0', dark: '#5aa8e6' },
   { key: 'mem', label: 'Mem', ratio: 4 * GiB, light: '#a21caf', dark: '#d946ef' },
   { key: 'io', label: 'IO', ratio: 1000, light: '#e0603a', dark: '#ef7a54' },
-  { key: 'disk', label: 'Disk', ratio: 40 * GiB, light: '#37a06f', dark: '#4dc088' },
+  { key: 'disk', label: 'Disk', ratio: 20 * GiB, light: '#37a06f', dark: '#4dc088' },
 ];
 
 const TARGET_BUCKETS = 48; // grouped bars stay readable only at a low bucket count -> peak-aggregate

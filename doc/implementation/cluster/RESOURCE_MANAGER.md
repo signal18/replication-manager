@@ -24,9 +24,14 @@ per workload is the **ratio**, not just the price:
 
 | Profile (unit) | cpu | mem | disk | iops |
 |---|---|---|---|---|
-| **Database** (DBU) | 1 | 4 GB | 40 GB | **1000** (locked) |
+| **Database** (DBU) | 1 | 4 GB | **20 GB** (40 until 2026-09-22) | **1000** (locked) |
 | **Compute/App** (APU) | 1 | **1 GB** | **10 GB** | **— (none)** |
-| **Storage** (backup) | low | low | high | low (TBD) |
+| **Storage / Backup** (BKU) | 0 | 0 | **20 GB** (= the DBU disk axis) | 0 |
+
+The **BKU** (backup unit, 2026-09-22) is storage ONLY: it bills the REAL disk used by backups
+(backup catalog sizes, restic repository size), never a flat "+1 DBU when a backup schedule is
+on". Default floor: **3 BKU per DBU** of the database (three times its DBU disk). Open: rounding
+over the billing period, the price setting name, the measurement wiring.
 
 A database is **not** an app (proxy/phpMyAdmin): little disk, no IOPS lock. Ratios are
 the **operator's rules**, held on the manager as `ratios map[WorkloadProfile]UnitRatios`
@@ -66,7 +71,7 @@ Per **service** (a "server" is a DB service; a proxy/app is another kind of serv
   is a **client-set DBU size** (whole DBU units, ratio LOCKED — adjusted by **+1 / −1
   DBU**) and authoritative in its own right: the DBU is **never inferred back** from the
   resources. A **+1 / −1 DBU resizes the resources**: each step adds/removes one whole
-  balanced unit (1 core / 4 GB / 40 GB / 1000 IOPS) at the locked ratio. Raising the plan
+  balanced unit (1 core / 4 GB / 20 GB / 1000 IOPS) at the locked ratio. Raising the plan
   **legitimately provisions the resources to the full tier** — the client reserved them
   *because he needs them*, so setting them to the reservation is the expected behaviour,
   **not** an error. But it is a **claim**, and a claim must **not** be applied live at the
@@ -246,7 +251,7 @@ consumption hovering at the threshold would flap the derived workload state — 
 WorkloadStateMachine needs **hysteresis** (open 85 % / close ~75 %) + `pstatesN` preservation.
 
 **Granularity of a size-up = one DBU-equivalent on the SATURATED axis** (mem +4096 MB, cpu
-+1 core, io +1000 iops, disk +40 GB) — not a whole DBU (would grow idle axes) and not a free
++1 core, io +1000 iops, disk +20 GB) — not a whole DBU (would grow idle axes) and not a free
 native step (would drift off the DBU grid). The grow follows `ResourceCapUpAxes`.
 
 **Vocabulary (settled):** the container cgroup `--memory` cap = the DBU tier × mem-ratio, where

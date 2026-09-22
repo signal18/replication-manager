@@ -18,7 +18,7 @@ import (
 
 // DBUReading is one period's consumed-DBU picture for a server. DBU is one unit
 // projection over native resources; the conversion RATIOS (1 DBU = 1 core / 4 GB /
-// 40 GB / 1000 IOPS by default) live on the ResourceManager -- the point where
+// 20 GB / 1000 IOPS by default) live on the ResourceManager -- the point where
 // resources converge -- so ComputeUsedDBU is a method there, not a package function. The raw per-axis
 // maxima are measured at the SYSTEM level (cgroup + statfs) by a thin sensor in
 // the DB container and pushed here; repman does the DBU semantics (normalisation,

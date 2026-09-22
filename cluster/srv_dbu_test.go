@@ -27,7 +27,7 @@ func TestComputeUsedDBUFromMaxes_BindingPerAxis(t *testing.T) {
 		{"cpu binds", 1 * MB, 4, 10, 1 * GB, 4, "cpu"},
 		{"mem binds", 16384 * MB, 1, 10, 1 * GB, 4, "mem"},
 		{"io binds", 1 * MB, 1, 4000, 1 * GB, 4, "io"},
-		{"disk binds", 1 * MB, 1, 10, 160 * GB, 4, "disk"},
+		{"disk binds", 1 * MB, 1, 10, 80 * GB, 4, "disk"}, // 20 GB per DBU on the disk axis (2026-09-22)
 		// dev3's real shape: 4 cores, tiny mem/io/disk -> cpu-bound at 4 DBU.
 		{"dev3 cpu-bound", 768 * MB, 4, 800, 2 * GB, 4, "cpu"},
 	}
