@@ -1583,6 +1583,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "409": {
+                        "description": "Master is still up; use switchover for a planned role change",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "500": {
                         "description": "No cluster",
                         "schema": {
@@ -2935,6 +2941,12 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "No proxy configured",
                         "schema": {
                             "type": "string"
                         }
@@ -5290,6 +5302,72 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "No substitution variables defined for this app\" or \"Not a valid app\" or \"No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/apu/{kind}/{name}": {
+            "post": {
+                "description": "The compute sensor (app/proxy jobs sidecar) POSTs raw cgroup period maxima (mem/cpu/disk) for one Compute unit; repman projects them to APU via the Compute profile and records them as consumed. kind = app | proxy.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterResources"
+                ],
+                "summary": "Ingest an app/proxy APU compute-sensor push",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Compute kind: app or proxy",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App deployment or proxy name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ingested",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Decode error / invalid kind",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster not found",
                         "schema": {
                             "type": "string"
                         }
@@ -17087,6 +17165,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/settings/actions/change-plan-units/{unit}/{delta}": {
+            "post": {
+                "description": "Moves the cluster's plan (technical resource reservation) for a unit (DBU/APU)\nby a relative delta. Decrease is free down to the floor; increase is validated\n(admin immutable lock; external claim hook) then applied and persisted.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSettings"
+                ],
+                "summary": "Change a cluster plan reservation by a delta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Plan unit: DBU or APU",
+                        "name": "unit",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Relative change (e.g. -3 or 2)",
+                        "name": "delta",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "delta must be an integer",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/settings/actions/discover": {
             "post": {
                 "description": "This endpoint triggers the discovery of settings for the specified cluster.",
@@ -26130,6 +26277,9 @@ const docTemplate = `{
                 "provDbDatadirVersion": {
                     "type": "string"
                 },
+                "provDbDbu": {
+                    "type": "integer"
+                },
                 "provDbDiskDevice": {
                     "type": "string"
                 },
@@ -26233,8 +26383,19 @@ const docTemplate = `{
                     "description": "COMMERCIAL scalability-up barrier: max % the dynamic resource change may auto-grow the plan (plan × (1+pct/100)) before a plan raise is required. Not a technical cap formula (see ResourceManager.CanGrowBeyondPlan)",
                     "type": "integer"
                 },
+                "provDbReplicationDomainParallelThreads": {
+                    "description": "slave_domain_parallel_threads (SVC_CONF_ENV_SLAVE_DOMAIN_PARALLEL_THREADS); 0 = no per-domain cap (MariaDB default)",
+                    "type": "integer"
+                },
+                "provDbReplicationParallelThreads": {
+                    "description": "slave_parallel_threads written by the configurator (template env SVC_CONF_ENV_SLAVE_PARALLEL_THREADS); concurrency to absorb latency, NOT tied to cores",
+                    "type": "integer"
+                },
                 "provDbResourceAlign": {
                     "description": "container memory cap alignment to the DBU tier: \"plan\" (default) / \"up\" / \"off\"",
+                    "type": "string"
+                },
+                "provDbResourceRaisedOverPlanScript": {
                     "type": "string"
                 },
                 "provDbServiceType": {
@@ -26251,6 +26412,10 @@ const docTemplate = `{
                 },
                 "provDbTags": {
                     "type": "string"
+                },
+                "provDbUndercommitPct": {
+                    "description": "scale-down floor: auto-shrink never under floor(plan x (1 - pct/100)) DBU/node, min 1 -- the pendant of prov-db-overcommit-pct",
+                    "type": "integer"
                 },
                 "provDbVolumeData": {
                     "type": "string"
@@ -26300,11 +26465,17 @@ const docTemplate = `{
                 "provOrchestratorEnable": {
                     "type": "string"
                 },
+                "provPlanIncreaseScript": {
+                    "type": "string"
+                },
                 "provProxyAgents": {
                     "type": "string"
                 },
                 "provProxyAgentsFailover": {
                     "type": "string"
+                },
+                "provProxyApu": {
+                    "type": "integer"
                 },
                 "provProxyBootstrapScript": {
                     "type": "string"
@@ -27112,8 +27283,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "createAt": {
-                    "type": "integer",
-                    "format": "int64"
+                    "type": "integer"
                 },
                 "extension": {
                     "type": "string"
@@ -27148,8 +27318,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "createAt": {
-                    "type": "integer",
-                    "format": "int64"
+                    "type": "integer"
                 },
                 "fileIds": {
                     "type": "array",
@@ -28021,6 +28190,20 @@ const docTemplate = `{
                 }
             }
         },
+        "server.globalResourcesAgent": {
+            "type": "object",
+            "properties": {
+                "cores": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
         "server.globalResourcesAxis": {
             "type": "object",
             "properties": {
@@ -28053,6 +28236,10 @@ const docTemplate = `{
         "server.globalResourcesCluster": {
             "type": "object",
             "properties": {
+                "apu": {
+                    "description": "real consumed APU pivot -- the cluster's share of infra APU",
+                    "type": "number"
+                },
                 "cluster": {
                     "type": "string"
                 },
@@ -28072,6 +28259,10 @@ const docTemplate = `{
                 "dbuMem": {
                     "type": "number"
                 },
+                "planApu": {
+                    "description": "the cluster's APU reservation contract (prov-service-plan-apu)",
+                    "type": "number"
+                },
                 "planDbu": {
                     "description": "the cluster's DBU reservation contract (prov-service-plan-dbu)",
                     "type": "number"
@@ -28084,6 +28275,13 @@ const docTemplate = `{
         "server.globalResourcesResponse": {
             "type": "object",
             "properties": {
+                "agentList": {
+                    "description": "Agents the RM has placement for, each with the exact graphite token its per-agent series are\nkeyed on (resourcemanager.agent.\u003ctoken\u003e.{dbu,apu,plan_dbu,plan_apu}) so the GUI targets them.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.globalResourcesAgent"
+                    }
+                },
                 "agents": {
                     "type": "integer"
                 },
@@ -28096,6 +28294,13 @@ const docTemplate = `{
                 "bindingAxis": {
                     "type": "string"
                 },
+                "bindingAxisApu": {
+                    "type": "string"
+                },
+                "capacityApu": {
+                    "description": "APU (Compute) infra view -- the SAME metal projected into APU (1c/1GB/10GB, no IO).",
+                    "type": "number"
+                },
                 "capacityDbu": {
                     "type": "number"
                 },
@@ -28105,13 +28310,22 @@ const docTemplate = `{
                         "$ref": "#/definitions/server.globalResourcesCluster"
                     }
                 },
+                "consumedApu": {
+                    "type": "number"
+                },
                 "consumedDbu": {
                     "type": "number"
                 },
                 "quotaPct": {
                     "type": "number"
                 },
+                "slackApu": {
+                    "type": "number"
+                },
                 "slackDbu": {
+                    "type": "number"
+                },
+                "usableApu": {
                     "type": "number"
                 },
                 "usableDbu": {

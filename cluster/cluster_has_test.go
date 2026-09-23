@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
@@ -31,6 +32,60 @@ func TestCanSendGraphiteMetrics(t *testing.T) {
 				t.Fatalf("CanSendGraphiteMetrics() = %v, want %v", got, c.want)
 			}
 		})
+	}
+}
+
+func TestIsMasterFailed(t *testing.T) {
+	tests := []struct {
+		name  string
+		state string
+		want  bool
+	}{
+		{name: "no master", want: true},
+		{name: "healthy master", state: stateMaster, want: false},
+		{name: "failed master", state: stateFailed, want: true},
+		{name: "suspect master is not failed yet", state: stateSuspect, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cl := &Cluster{Conf: &config.Config{}}
+			if tt.state != "" {
+				master := &ServerMonitor{State: tt.state, ClusterGroup: cl}
+				cl.master = master
+			}
+
+			if got := cl.IsMasterFailed(); got != tt.want {
+				t.Fatalf("IsMasterFailed() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFailoverRejectsHealthyMaster(t *testing.T) {
+	cl := &Cluster{Conf: &config.Config{}}
+	cl.master = &ServerMonitor{State: stateMaster, ClusterGroup: cl}
+
+	if err := cl.Failover(); !errors.Is(err, ErrFailoverMasterHealthy) {
+		t.Fatalf("Failover() error = %v, want %v", err, ErrFailoverMasterHealthy)
+	}
+}
+
+func TestSwitchoverRejectsFailedMaster(t *testing.T) {
+	cl := &Cluster{Conf: &config.Config{}}
+	cl.master = &ServerMonitor{State: stateFailed, ClusterGroup: cl}
+
+	if err := cl.Switchover(""); !errors.Is(err, ErrSwitchoverMasterFailed) {
+		t.Fatalf("Switchover() error = %v, want %v", err, ErrSwitchoverMasterFailed)
+	}
+}
+
+func TestSwitchoverRejectsUnknownPreferredMaster(t *testing.T) {
+	cl := &Cluster{Conf: &config.Config{}}
+	cl.master = &ServerMonitor{State: stateMaster, ClusterGroup: cl}
+
+	if err := cl.Switchover("db3:3306"); !errors.Is(err, ErrPreferredMasterNotFound) {
+		t.Fatalf("Switchover() error = %v, want %v", err, ErrPreferredMasterNotFound)
 	}
 }
 

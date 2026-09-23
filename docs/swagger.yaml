@@ -2557,6 +2557,8 @@ definitions:
         type: string
       provDbDatadirVersion:
         type: string
+      provDbDbu:
+        type: integer
       provDbDiskDevice:
         type: string
       provDbDiskDockerSize:
@@ -2628,9 +2630,20 @@ definitions:
           change may auto-grow the plan (plan × (1+pct/100)) before a plan raise is
           required. Not a technical cap formula (see ResourceManager.CanGrowBeyondPlan)'
         type: integer
+      provDbReplicationDomainParallelThreads:
+        description: slave_domain_parallel_threads (SVC_CONF_ENV_SLAVE_DOMAIN_PARALLEL_THREADS);
+          0 = no per-domain cap (MariaDB default)
+        type: integer
+      provDbReplicationParallelThreads:
+        description: slave_parallel_threads written by the configurator (template
+          env SVC_CONF_ENV_SLAVE_PARALLEL_THREADS); concurrency to absorb latency,
+          NOT tied to cores
+        type: integer
       provDbResourceAlign:
         description: 'container memory cap alignment to the DBU tier: "plan" (default)
           / "up" / "off"'
+        type: string
+      provDbResourceRaisedOverPlanScript:
         type: string
       provDbServiceType:
         type: string
@@ -2642,6 +2655,10 @@ definitions:
         type: string
       provDbTags:
         type: string
+      provDbUndercommitPct:
+        description: 'scale-down floor: auto-shrink never under floor(plan x (1 -
+          pct/100)) DBU/node, min 1 -- the pendant of prov-db-overcommit-pct'
+        type: integer
       provDbVolumeData:
         type: string
       provDbVolumeDocker:
@@ -2674,10 +2691,14 @@ definitions:
         type: boolean
       provOrchestratorEnable:
         type: string
+      provPlanIncreaseScript:
+        type: string
       provProxyAgents:
         type: string
       provProxyAgentsFailover:
         type: string
+      provProxyApu:
+        type: integer
       provProxyBootstrapScript:
         type: string
       provProxyCleanupScript:
@@ -3223,7 +3244,6 @@ definitions:
       channelID:
         type: string
       createAt:
-        format: int64
         type: integer
       extension:
         type: string
@@ -3247,7 +3267,6 @@ definitions:
       channelID:
         type: string
       createAt:
-        format: int64
         type: integer
       fileIds:
         items:
@@ -3828,6 +3847,15 @@ definitions:
       process:
         $ref: '#/definitions/server.globalMetricsProcessInfo'
     type: object
+  server.globalResourcesAgent:
+    properties:
+      cores:
+        type: number
+      name:
+        type: string
+      token:
+        type: string
+    type: object
   server.globalResourcesAxis:
     properties:
       axis:
@@ -3851,6 +3879,9 @@ definitions:
     type: object
   server.globalResourcesCluster:
     properties:
+      apu:
+        description: real consumed APU pivot -- the cluster's share of infra APU
+        type: number
       cluster:
         type: string
       dbu:
@@ -3865,6 +3896,9 @@ definitions:
         type: number
       dbuMem:
         type: number
+      planApu:
+        description: the cluster's APU reservation contract (prov-service-plan-apu)
+        type: number
       planDbu:
         description: the cluster's DBU reservation contract (prov-service-plan-dbu)
         type: number
@@ -3873,6 +3907,13 @@ definitions:
     type: object
   server.globalResourcesResponse:
     properties:
+      agentList:
+        description: |-
+          Agents the RM has placement for, each with the exact graphite token its per-agent series are
+          keyed on (resourcemanager.agent.<token>.{dbu,apu,plan_dbu,plan_apu}) so the GUI targets them.
+        items:
+          $ref: '#/definitions/server.globalResourcesAgent'
+        type: array
       agents:
         type: integer
       axes:
@@ -3881,17 +3922,29 @@ definitions:
         type: array
       bindingAxis:
         type: string
+      bindingAxisApu:
+        type: string
+      capacityApu:
+        description: APU (Compute) infra view -- the SAME metal projected into APU
+          (1c/1GB/10GB, no IO).
+        type: number
       capacityDbu:
         type: number
       clusters:
         items:
           $ref: '#/definitions/server.globalResourcesCluster'
         type: array
+      consumedApu:
+        type: number
       consumedDbu:
         type: number
       quotaPct:
         type: number
+      slackApu:
+        type: number
       slackDbu:
+        type: number
+      usableApu:
         type: number
       usableDbu:
         type: number
@@ -4724,6 +4777,10 @@ paths:
             type: string
         "403":
           description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: Master is still up; use switchover for a planned role change
           schema:
             type: string
         "500":
@@ -5662,6 +5719,10 @@ paths:
             type: string
         "403":
           description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: No proxy configured
           schema:
             type: string
         "500":
@@ -7301,6 +7362,53 @@ paths:
       summary: Get App Substitution Variables
       tags:
       - Apps
+  /api/clusters/{clusterName}/apu/{kind}/{name}:
+    post:
+      consumes:
+      - application/json
+      description: The compute sensor (app/proxy jobs sidecar) POSTs raw cgroup period
+        maxima (mem/cpu/disk) for one Compute unit; repman projects them to APU via
+        the Compute profile and records them as consumed. kind = app | proxy.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: 'Compute kind: app or proxy'
+        in: path
+        name: kind
+        required: true
+        type: string
+      - description: App deployment or proxy name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: ingested
+          schema:
+            type: string
+        "400":
+          description: Decode error / invalid kind
+          schema:
+            type: string
+        "404":
+          description: Cluster not found
+          schema:
+            type: string
+      summary: Ingest an app/proxy APU compute-sensor push
+      tags:
+      - ClusterResources
   /api/clusters/{clusterName}/backups:
     get:
       description: |-
@@ -15465,6 +15573,56 @@ paths:
           schema:
             type: string
       summary: Reload client certificates for a specific cluster
+      tags:
+      - ClusterSettings
+  /api/clusters/{clusterName}/settings/actions/change-plan-units/{unit}/{delta}:
+    post:
+      description: |-
+        Moves the cluster's plan (technical resource reservation) for a unit (DBU/APU)
+        by a relative delta. Decrease is free down to the floor; increase is validated
+        (admin immutable lock; external claim hook) then applied and persisted.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: 'Plan unit: DBU or APU'
+        in: path
+        name: unit
+        required: true
+        type: string
+      - description: Relative change (e.g. -3 or 2)
+        in: path
+        name: delta
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: delta must be an integer
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: error
+          schema:
+            type: string
+      summary: Change a cluster plan reservation by a delta
       tags:
       - ClusterSettings
   /api/clusters/{clusterName}/settings/actions/discover:
