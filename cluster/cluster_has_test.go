@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
@@ -31,6 +32,15 @@ func TestCanSendGraphiteMetrics(t *testing.T) {
 				t.Fatalf("CanSendGraphiteMetrics() = %v, want %v", got, c.want)
 			}
 		})
+	}
+}
+
+func TestFailoverRejectsHealthyMaster(t *testing.T) {
+	cl := &Cluster{Conf: &config.Config{}}
+	cl.master = &ServerMonitor{State: stateMaster, ClusterGroup: cl}
+
+	if err := cl.Failover(); !errors.Is(err, ErrFailoverMasterHealthy) {
+		t.Fatalf("Failover() error = %v, want %v", err, ErrFailoverMasterHealthy)
 	}
 }
 

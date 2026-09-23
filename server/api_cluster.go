@@ -1551,7 +1551,14 @@ func (repman *ReplicationManager) handlerMuxFailover(w http.ResponseWriter, r *h
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		mycluster.MasterFailover(true)
+		if err := mycluster.Failover(); err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, cluster.ErrFailoverMasterHealthy) {
+				status = http.StatusConflict
+			}
+			http.Error(w, err.Error(), status)
+			return
+		}
 	} else {
 
 		http.Error(w, "No cluster", http.StatusInternalServerError)

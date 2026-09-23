@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -593,7 +594,7 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	case v3.ClusterAction_CHECKSUM_ALL_TABLES:
 		go mycluster.CheckAllTableChecksum()
 	case v3.ClusterAction_FAILOVER:
-		mycluster.MasterFailover(true)
+		err = mycluster.Failover()
 	case v3.ClusterAction_MASTER_PHYSICAL_BACKUP:
 		m := mycluster.GetMaster()
 		if m == nil {
@@ -633,6 +634,9 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 
 	if err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "API Error: %s", err)
+		if errors.Is(err, cluster.ErrFailoverMasterHealthy) {
+			return nil, v3.NewError(codes.FailedPrecondition, err).Err()
+		}
 		return nil, v3.NewError(codes.Unknown, err).Err()
 	}
 
