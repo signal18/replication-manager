@@ -60,6 +60,10 @@ func (cluster *Cluster) Switchover(preferredMaster string, targetAlreadyValidate
 	if targetAlreadyValidated || cluster.IsInHostList(preferredMaster) {
 		cluster.SetPrefMaster(preferredMaster)
 	}
-	cluster.MasterFailover(false)
+	if cluster.MasterFailover(false) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Switchover completed successfully")
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Switchover did not complete")
+	}
 	return nil
 }

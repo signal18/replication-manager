@@ -2140,18 +2140,20 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive switchover request")
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "REST API received switchover request")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		r.ParseForm() // Parses the request body
 		newPrefMaster := r.Form.Get("prefmaster")
 		if err := mycluster.Switchover(newPrefMaster, false); err != nil {
 			switch {
 			case errors.Is(err, cluster.ErrPreferredMasterNotFound):
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Switchover rejected: %s", err)
 				http.Error(w, err.Error(), http.StatusBadRequest)
 			case errors.Is(err, cluster.ErrSwitchoverMasterFailed):
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Master failed, cannot initiate switchover")
 				http.Error(w, "Master failed", http.StatusBadRequest)
 			default:
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Switchover request failed: %s", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 			return
