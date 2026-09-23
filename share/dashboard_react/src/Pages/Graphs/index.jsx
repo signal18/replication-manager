@@ -84,7 +84,9 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           .replaceAll('mysql.*', `mysql.*-${clusterToken}-*`)
           .replaceAll('dbu.*', `dbu.${selectedCluster?.name}.*`)
           .replaceAll('apu.*', `apu.${selectedCluster?.name}.*`)
-          .replaceAll('bku.*', `bku.${selectedCluster?.name}.*`)
+          // bku.<cluster>.<series>: no per-unit segment (the BKU is per cluster), so the wildcard
+          // is the cluster itself, not a level under it.
+          .replaceAll('bku.*', `bku.${selectedCluster?.name}`)
       : s
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
 
