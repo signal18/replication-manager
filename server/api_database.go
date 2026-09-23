@@ -1746,7 +1746,7 @@ func (repman *ReplicationManager) handlerMuxServerSwitchover(w http.ResponseWrit
 			if err := mycluster.Switchover(node.URL); err != nil {
 				status := http.StatusInternalServerError
 				message := err.Error()
-				if errors.Is(err, cluster.ErrSwitchoverMasterFailed) {
+				if errors.Is(err, cluster.ErrSwitchoverMasterFailed) || errors.Is(err, cluster.ErrPreferredMasterNotFound) {
 					status = http.StatusBadRequest
 					message = "Leader is failed can not promote"
 				}
