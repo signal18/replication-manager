@@ -1540,7 +1540,6 @@ func (repman *ReplicationManager) handlerMuxResetSla(w http.ResponseWriter, r *h
 // @Param clusterName path string true "Cluster Name"
 // @Success 200 {string} string "Successfully triggered failover"
 // @Failure 403 {string} string "No valid ACL"
-// @Failure 409 {string} string "Master is still up; use switchover for a planned role change"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/actions/failover [post]
 func (repman *ReplicationManager) handlerMuxFailover(w http.ResponseWriter, r *http.Request) {
@@ -1552,14 +1551,7 @@ func (repman *ReplicationManager) handlerMuxFailover(w http.ResponseWriter, r *h
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		if err := mycluster.Failover(); err != nil {
-			status := http.StatusInternalServerError
-			if errors.Is(err, cluster.ErrFailoverMasterHealthy) {
-				status = http.StatusConflict
-			}
-			http.Error(w, err.Error(), status)
-			return
-		}
+		mycluster.MasterFailover(true)
 	} else {
 
 		http.Error(w, "No cluster", http.StatusInternalServerError)
@@ -2141,18 +2133,23 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 			return
 		}
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive switchover request")
+		savedPrefMaster := mycluster.GetPreferedMasterList()
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if mycluster.IsMasterFailed() {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Master failed, cannot initiate switchover")
+			http.Error(w, "Master failed", http.StatusBadRequest)
+			return
+		}
 		r.ParseForm() // Parses the request body
 		newPrefMaster := r.Form.Get("prefmaster")
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "API force for prefered master: %s", newPrefMaster)
-		if err := mycluster.Switchover(newPrefMaster); err != nil {
-			status := http.StatusInternalServerError
-			if errors.Is(err, cluster.ErrSwitchoverMasterFailed) || errors.Is(err, cluster.ErrPreferredMasterNotFound) {
-				status = http.StatusBadRequest
-			}
-			http.Error(w, err.Error(), status)
-			return
+		if mycluster.IsInHostList(newPrefMaster) {
+			mycluster.SetPrefMaster(newPrefMaster)
+		} else {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Prefered master: not found in database servers %s", newPrefMaster)
 		}
+		mycluster.MasterFailover(false)
+		mycluster.SetPrefMaster(savedPrefMaster)
 
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
