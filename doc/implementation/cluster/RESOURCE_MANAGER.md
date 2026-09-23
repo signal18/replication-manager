@@ -37,10 +37,13 @@ Two kinds: **local** BKU (the cluster's local backup, the repman backups directo
 
 **Shipped (feat/bku-backup-unit):** `prov-db-bku` (default **6**, per cluster) is `PlanUnitBKU` in
 `ChangePlanUnits` (floor 1, admin lock on its own flag, no resource follow: nothing is provisioned
-from it). `RefreshBackupUnits` (every 30 ticks, `cluster_bku.go`) measures **local** = the real disk
-of the streaming directory `<working-dir>/backups/<cluster>` (walked, never a catalog sum) and
-**remote** = the restic repository raw-data size (`restic stats --mode raw-data`, refreshed by
-`ResticFetchRepo`), converts both at the Storage-profile ratio (20 GB/BKU) into `BKUReading`
+from it). `RefreshBackupUnits` (every 30 ticks, `cluster_bku.go`) measures **local** = every path of
+`GetBackupDiskPaths` walked on disk (each server's backup directory holding its last backup, plus
+the restic archive when its repository is a local path; a backup kept after its push to the
+archive counts TWICE, it uses the disk twice; never a catalog sum) and **remote** = the restic
+repository raw-data size (`restic stats --mode raw-data`, refreshed by `ResticFetchRepo`) ONLY when
+that repository is S3/SFTP (`resticRepositoryIsRemote`; a local restic repository is local disk),
+converts both at the Storage-profile ratio (20 GB/BKU) into `BKUReading`
 (`backupUnits` in the cluster JSON) and asserts **WARN0219** when local BKU is over the plan
 (over-commit, billed never blocked; in `pstates30`). Graphite every tick:
 `resourcemanager.<CTOKEN>.plan_bku`, `bku.<cluster>.{local,remote,local_bytes,remote_bytes}`

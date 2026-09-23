@@ -42,10 +42,14 @@ func TestPlanUnitBKU(t *testing.T) {
 	}
 }
 
-// The local measurement walks the cluster's streaming directory on disk.
-func TestLocalBackupBytes_WalksStreamingDir(t *testing.T) {
+// The local measurement walks every local backup path of the cluster: each server's backup
+// directory and, with restic on a local repository, the local archive too, so a backup kept
+// after its push counts twice. A remote restic repository is never local; it feeds the
+// remote reading only when restic is on and the backend is S3/SFTP.
+func TestLocalBackupBytes_WalksBackupPaths(t *testing.T) {
 	wd := t.TempDir()
-	c := &Cluster{Name: "t", Conf: &config.Config{WorkingDir: wd}}
+	c := &Cluster{Name: "t", Conf: &config.Config{WorkingDir: wd, BackupRestic: true, BackupResticRepository: "s3:https://s3.example/backups"}}
+	c.Servers = []*ServerMonitor{{Host: "db1", Port: "3306", ClusterGroup: c}}
 	dir := filepath.Join(wd, config.ConstStreamingSubDir, "t", "db1_3306")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -53,13 +57,24 @@ func TestLocalBackupBytes_WalksStreamingDir(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "a.sql.gz"), make([]byte, 1500), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "b.xbstream"), make([]byte, 500), 0o644); err != nil {
+	archive := filepath.Join(wd, config.ConstStreamingSubDir, "archive", "t")
+	if err := os.MkdirAll(archive, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(archive, "data"), make([]byte, 500), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if got := c.localBackupBytes(); got != 2000 {
-		t.Fatalf("local bytes = %d, want 2000", got)
+		t.Fatalf("local bytes = %d, want 2000 (last backup 1500 + local archive 500)", got)
+	}
+	if !c.resticRepositoryIsRemote() {
+		t.Fatalf("s3 repository must be remote")
+	}
+	c.Conf.BackupResticRepository = "/srv/restic"
+	if c.resticRepositoryIsRemote() || c.remoteBackupBytes() != 0 {
+		t.Fatalf("a local restic repository must not feed the remote reading")
 	}
 	if got := (&Cluster{Name: "none", Conf: &config.Config{WorkingDir: wd}}).localBackupBytes(); got != 0 {
-		t.Fatalf("missing dir must read 0, got %d", got)
+		t.Fatalf("no servers, no paths: must read 0, got %d", got)
 	}
 }

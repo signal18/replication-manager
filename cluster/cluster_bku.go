@@ -20,10 +20,13 @@ import (
 // BKUReading is the per-cluster backup storage picture against the BKU plan. One BKU is the
 // DBU disk axis (20 GB by default, the ResourceManager Storage profile) and nothing else.
 // Accounted PER CLUSTER: backups are of the dataset, not of each node. Two kinds:
-//   - local: the local backup the cluster keeps on its own storage (the repman
-//     streaming directory <working-dir>/backups/<cluster>, measured on disk);
-//   - remote: what is archived off the cluster, on S3/SFTP through restic (the repository's
-//     raw-data size, restic stats, refreshed by ResticFetchRepo).
+//   - local: everything the cluster keeps on its own storage: the last backup of each server
+//     in its backup directory (<working-dir>/backups/<cluster>/<host>_<port>) PLUS the restic
+//     archive when its repository is a local path (GetBackupDiskPaths lists both). A backup
+//     kept after its push to the archive counts twice, on purpose: it uses the disk twice.
+//   - remote: the restic repository raw-data size (restic stats, refreshed by ResticFetchRepo)
+//     ONLY when that repository is remote (S3/SFTP); a local restic repository is local disk
+//     and is already in the walk above.
 //
 // Over-commit is the local BKU above the plan: billed, never blocked (same rule as the DBU
 // over-plan). Remote BKU is billed on what is archived, at its own price.
@@ -50,28 +53,38 @@ func (cluster *Cluster) bkuUnitBytes() int64 {
 	return int64(gb * 1024 * 1024 * 1024)
 }
 
-// localBackupBytes is the real disk used by this cluster's local backup: the
-// streaming directory walked on disk (a purge or an aborted job leaves files the catalog does
-// not know), never a catalog sum.
+// localBackupBytes is the real disk used by this cluster's local backup: every path of
+// GetBackupDiskPaths (each server's backup directory, plus the local restic repository when
+// restic is on and its repository is a local path) walked on disk, never a catalog sum (a
+// purge or an aborted job leaves files the catalog does not know).
 func (cluster *Cluster) localBackupBytes() int64 {
-	dir := filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, cluster.Name)
 	var total int64
-	filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+	for _, dir := range cluster.GetBackupDiskPaths() {
+		filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			if info, ierr := d.Info(); ierr == nil {
+				total += info.Size()
+			}
 			return nil
-		}
-		if info, ierr := d.Info(); ierr == nil {
-			total += info.Size()
-		}
-		return nil
-	})
+		})
+	}
 	return total
 }
 
-// remoteBackupBytes is the restic repository raw-data size (restic stats --mode raw-data),
-// whatever the backend (S3, SFTP): what is really held off the cluster.
+// resticRepositoryIsRemote reports whether the restic archive leaves the cluster: the
+// repository is an S3 or SFTP backend. A local path is local disk, counted by the walk.
+func (cluster *Cluster) resticRepositoryIsRemote() bool {
+	repo := strings.TrimSpace(cluster.Conf.BackupResticRepository)
+	return config.IsS3ResticRepository(repo) || config.IsSftpResticRepository(repo)
+}
+
+// remoteBackupBytes is the restic repository raw-data size (restic stats --mode raw-data)
+// when the repository is remote (S3/SFTP): what is really held off the cluster. 0 when restic
+// is off or its repository is a local path (then it is local disk, already walked).
 func (cluster *Cluster) remoteBackupBytes() int64 {
-	if cluster.ResticManager == nil {
+	if cluster.ResticManager == nil || !cluster.Conf.BackupRestic || !cluster.resticRepositoryIsRemote() {
 		return 0
 	}
 	return cluster.ResticManager.BackupStat.TotalSize
