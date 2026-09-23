@@ -5,6 +5,7 @@ import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { setGlobalSetting, reloadClustersPlan, reloadClustersPlanInfo } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
+import Dropdown from '../../components/Dropdown'
 import RMIconButton from '../../components/RMIconButton'
 import { HiOutlineInformationCircle, HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
 import RMButton from '../../components/RMButton'
@@ -21,6 +22,9 @@ function MarketplaceSettings({ config }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null)
   const [shouldRedownload, setShouldRedownload] = useState(true)
+
+  const pricingMode = config?.cloud18MarketplacePricingMode || 'csv-service-plan'
+  const isUnitPricing = pricingMode === 'global-unit-pricing'
 
   const openInfo = (title, content) => {
     setAction({ title, body: <Box className={modalStyles.infoTooltip}><Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown></Box> })
@@ -45,8 +49,52 @@ function MarketplaceSettings({ config }) {
   const hDomainUser = `**Domain User**\n\nUsername for the domain management API (DNS provider, load balancer, etc.) called by the add/drop scripts to automate tenant routing.\n\nConfig: \`cloud18-domain-user\``
   const hDomainSecret = `**Domain Secret**\n\nAPI key or password for domain management authentication.\nStored encrypted in the replication-manager configuration.\n\nConfig: \`cloud18-domain-secret\``
   const hReloadPlans = `**Reload Plans**\n\nDownload and reapply marketplace service plans from the Cloud18 GitLab repository.\nPlans define available database topologies, resource profiles, and OpenSVC provisioning templates.\nUse the info button to reload plan metadata only without reprovisioning.`
+  const hPricingMode = `**Marketplace Pricing Mode**\n\nHow clusters are priced in the Cloud18 marketplace:\n\n- **csv-service-plan** (default): each cluster is priced from a per-cluster service plan downloaded as CSV.\n- **global-unit-pricing**: all clusters are priced from a single global EUR price per Database Unit and per Application Unit — no per-cluster plan.\n\nConfig: \`cloud18-marketplace-pricing-mode\``
+  const hDbuPrice = `**DBU Price**\n\nPrice in EUR per DBU, the Database Unit (1 core / 4 GB RAM / 40 GB disk / 1000 IOPS).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-dbu-price\``
+  const hApuPrice = `**APU Price**\n\nPrice in EUR per APU, the Application Unit (1 core / 1 GB RAM / 10 GB disk, no IOPS) consumed by proxies and applications.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-apu-price\``
 
   const dataObject = [
+    {
+      key: 'Marketplace Pricing Mode',
+      help: h(hPricingMode, 'Marketplace Pricing Mode'),
+      value: (
+        <Dropdown
+          options={[
+            { value: 'csv-service-plan', label: 'CSV Service Plan (per-cluster)' },
+            { value: 'global-unit-pricing', label: 'Global Unit Pricing (EUR / DBU + APU)' }
+          ]}
+          selectedValue={pricingMode}
+          confirmTitle='Confirm marketplace pricing mode: '
+          onChange={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-pricing-mode', value }))}
+        />
+      )
+    },
+    ...(isUnitPricing ? [
+      {
+        key: 'DBU Price (EUR)',
+        help: h(hDbuPrice, 'DBU Price'),
+        value: (
+          <TextForm
+            value={config?.cloud18MarketplaceDbuPrice}
+            regexPattern='^\d+(\.\d+)?$'
+            confirmTitle='Confirm DBU price (EUR) to '
+            onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-dbu-price', value }))}
+          />
+        )
+      },
+      {
+        key: 'APU Price (EUR)',
+        help: h(hApuPrice, 'APU Price'),
+        value: (
+          <TextForm
+            value={config?.cloud18MarketplaceApuPrice}
+            regexPattern='^\d+(\.\d+)?$'
+            confirmTitle='Confirm APU price (EUR) to '
+            onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-apu-price', value }))}
+          />
+        )
+      },
+    ] : []),
     {
       key: 'Platform Description',
       help: h(hPlatformDesc, 'Platform Description'),
@@ -125,7 +173,7 @@ function MarketplaceSettings({ config }) {
         />
       )
     },
-    {
+    ...(!isUnitPricing ? [{
       key: 'Reload Plans',
       help: h(hReloadPlans, 'Reload Plans'),
       value: (
@@ -152,7 +200,7 @@ function MarketplaceSettings({ config }) {
           />
         </Flex>
       )
-    },
+    }] : []),
   ]
 
   return (
