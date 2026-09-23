@@ -20,7 +20,7 @@ import (
 // BKUReading is the per-cluster backup storage picture against the BKU plan. One BKU is the
 // DBU disk axis (20 GB by default, the ResourceManager Storage profile) and nothing else.
 // Accounted PER CLUSTER: backups are of the dataset, not of each node. Two kinds:
-//   - local: the backup cache + archive the cluster keeps on its own storage (the repman
+//   - local: the local backup the cluster keeps on its own storage (the repman
 //     streaming directory <working-dir>/backups/<cluster>, measured on disk);
 //   - remote: what is archived off the cluster, on S3/SFTP through restic (the repository's
 //     raw-data size, restic stats, refreshed by ResticFetchRepo).
@@ -29,7 +29,7 @@ import (
 // over-plan). Remote BKU is billed on what is archived, at its own price.
 type BKUReading struct {
 	Plan        int       `json:"plan"`        // prov-db-bku, per cluster
-	LocalBytes  int64     `json:"localBytes"`  // real disk used by the local backup cache + archive
+	LocalBytes  int64     `json:"localBytes"`  // real disk used by the local backup
 	RemoteBytes int64     `json:"remoteBytes"` // restic repository raw-data size
 	BkuLocal    float64   `json:"bkuLocal"`    // LocalBytes / (BKU disk)
 	BkuRemote   float64   `json:"bkuRemote"`   // RemoteBytes / (BKU disk)
@@ -50,7 +50,7 @@ func (cluster *Cluster) bkuUnitBytes() int64 {
 	return int64(gb * 1024 * 1024 * 1024)
 }
 
-// localBackupBytes is the real disk used by this cluster's local backup cache + archive: the
+// localBackupBytes is the real disk used by this cluster's local backup: the
 // streaming directory walked on disk (a purge or an aborted job leaves files the catalog does
 // not know), never a catalog sum.
 func (cluster *Cluster) localBackupBytes() int64 {

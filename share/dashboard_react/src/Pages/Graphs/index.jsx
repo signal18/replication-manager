@@ -351,7 +351,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="Consumed APU — proxies + apps (Compute; plan = service-plan APU)"
        />
-        {/* Backup (BKU) — per-cluster backup storage: local = the cluster's backup cache +
+        {/* Backup (BKU) — per-cluster backup storage: local = the cluster's local backup +
             archive on disk, remote = what restic holds on S3/SFTP. bku.<cluster>.{local,remote}
             are already in BKU (20 GB each); the *_bytes series give the real→unit overlay.
             Plan line = prov-db-bku. Over-commit (local above the plan) is billed, never
@@ -374,7 +374,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          planDbu={planBku}
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
-         title="Backup storage — BKU (local cache + archive vs remote archive; plan = prov-db-bku)"
+         title="Backup storage — BKU (local backup vs remote archive; plan = prov-db-bku)"
        />
       </GraphSection>
 

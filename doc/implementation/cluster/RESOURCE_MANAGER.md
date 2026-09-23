@@ -32,7 +32,7 @@ The **BKU** (backup unit, 2026-09-22) is storage ONLY: it bills the REAL disk us
 (backup catalog sizes, restic repository size), never a flat "+1 DBU when a backup schedule is
 on". The BKU has its **own plan** per database, like the DBU plan (client-set); its default is
 **3 × the database's DBU disk**. Usage above the BKU plan is over-commit: billed, never blocked.
-Two kinds: **local** BKU (the cluster's backup cache + archive on the nodes) and **remote** BKU
+Two kinds: **local** BKU (the cluster's local backup, the repman backups directory on the local pool) and **remote** BKU
 (archived on S3/SFTP), each with its own price.
 
 **Shipped (feat/bku-backup-unit):** `prov-db-bku` (default **6**, per cluster) is `PlanUnitBKU` in
@@ -47,7 +47,7 @@ of the streaming directory `<working-dir>/backups/<cluster>` (walked, never a ca
 (raw cluster name segment like `dbu.<cluster>.*`). GUI: Graphs → Resources third chart (local +
 remote bars, plan line) via `ChartGroupedDBU`'s new `axes` prop; Database Configurator →
 Resources "Backup BKU" gauge (`changePlanUnits('BKU')`). Open: whether the plan also covers
-remote, rounding over the billing period, the two price setting names, a node-side backup cache
+remote, rounding over the billing period, the two price setting names, a node-side backup directory
 if one exists outside the streaming directory.
 
 A database is **not** an app (proxy/phpMyAdmin): little disk, no IOPS lock. Ratios are
