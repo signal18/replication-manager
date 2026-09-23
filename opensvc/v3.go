@@ -306,7 +306,7 @@ func (collector *Collector) GetObjectConfigFileV3(namespace, kind, service strin
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
-	resp, err := client.GetObjectConfigFile(ctx, namespace, oKind, service, collector.RequestCloserV3())
+	resp, err := client.GetObjectConfigFile(ctx, namespace, oKind, service, nil, collector.RequestCloserV3())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object config for %s/%s/%s: %w", namespace, kind, service, err)
 	}

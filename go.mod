@@ -75,7 +75,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mjibson/go-dsp v0.0.0-20170104183934-49dba8372707
 	github.com/nsf/termbox-go v1.1.1
-	github.com/opensvc/om3/v3 v3.0.0-rc32
+	github.com/opensvc/om3/v3 v3.0.0-rc40
 	github.com/percona/go-mysql v0.0.0-20190307200310-f5cfaf6a5e55
 	github.com/peterbourgon/g2g v0.0.0-20161124161852-0c2bab2b173d
 	github.com/pingcap/dumpling v0.0.0-20200319081211-255ce0d25719
