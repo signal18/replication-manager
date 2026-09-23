@@ -1540,6 +1540,7 @@ func (repman *ReplicationManager) handlerMuxResetSla(w http.ResponseWriter, r *h
 // @Param clusterName path string true "Cluster Name"
 // @Success 200 {string} string "Successfully triggered failover"
 // @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "Master is still up; use switchover for a planned role change"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/actions/failover [post]
 func (repman *ReplicationManager) handlerMuxFailover(w http.ResponseWriter, r *http.Request) {
@@ -2126,7 +2127,7 @@ func (repman *ReplicationManager) handlerMuxSimulateRestore(w http.ResponseWrite
 // @Param clusterName path string true "Cluster Name"
 // @Param prefmaster formData string false "Preferred Master"
 // @Success 200 {string} string "Successfully triggered switchover"
-// @Failure 400 {string} string "Master failed"
+// @Failure 400 {string} string "Master failed or preferred master not found"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/actions/switchover [post]

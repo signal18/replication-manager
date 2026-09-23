@@ -40,7 +40,8 @@ func (cluster *Cluster) Failover() error {
 
 // Switchover applies the legacy REST switchover behavior. An empty preferred
 // master keeps the existing preference. Server-specific REST callers pass
-// targetAlreadyValidated=true because their target was already resolved.
+// targetAlreadyValidated=true only with a non-empty target already resolved
+// from an existing server.
 func (cluster *Cluster) Switchover(preferredMaster string, targetAlreadyValidated bool) error {
 	if cluster.IsMasterFailed() {
 		return ErrSwitchoverMasterFailed
