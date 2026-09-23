@@ -32,9 +32,26 @@ The **BKU** (backup unit, 2026-09-22) is storage ONLY: it bills the REAL disk us
 (backup catalog sizes, restic repository size), never a flat "+1 DBU when a backup schedule is
 on". The BKU has its **own plan** per database, like the DBU plan (client-set); its default is
 **3 × the database's DBU disk**. Usage above the BKU plan is over-commit: billed, never blocked.
-Two kinds: **local** BKU (the cluster's backup cache + archive on the nodes) and **remote** BKU
-(archived on S3/SFTP), each with its own price. Open: whether the plan covers local only, rounding
-over the billing period, the price setting names, the measurement wiring.
+Two kinds: **local** BKU (the cluster's local backup, the repman backups directory on the local pool) and **remote** BKU
+(archived on S3/SFTP), each with its own price.
+
+**Shipped (feat/bku-backup-unit):** `prov-db-bku` (default **6**, per cluster) is `PlanUnitBKU` in
+`ChangePlanUnits` (floor 1, admin lock on its own flag, no resource follow: nothing is provisioned
+from it). `RefreshBackupUnits` (every 30 ticks, `cluster_bku.go`) measures **local** = every path of
+`GetBackupDiskPaths` walked on disk (each server's backup directory holding its last backup, plus
+the restic archive when its repository is a local path; a backup kept after its push to the
+archive counts TWICE, it uses the disk twice; never a catalog sum) and **remote** = the restic
+repository raw-data size (`restic stats --mode raw-data`, refreshed by `ResticFetchRepo`) ONLY when
+that repository is S3/SFTP (`resticRepositoryIsRemote`; a local restic repository is local disk),
+converts both at the Storage-profile ratio (20 GB/BKU) into `BKUReading`
+(`backupUnits` in the cluster JSON) and asserts **WARN0219** when local BKU is over the plan
+(over-commit, billed never blocked; in `pstates30`). Graphite every tick:
+`resourcemanager.<CTOKEN>.plan_bku`, `bku.<cluster>.{local,remote,local_bytes,remote_bytes}`
+(raw cluster name segment like `dbu.<cluster>.*`). GUI: Graphs → Resources third chart (local +
+remote bars, plan line) via `ChartGroupedDBU`'s new `axes` prop; Database Configurator →
+Resources "Backup BKU" gauge (`changePlanUnits('BKU')`). Open: whether the plan also covers
+remote, rounding over the billing period, the two price setting names, a node-side backup directory
+if one exists outside the streaming directory.
 
 A database is **not** an app (proxy/phpMyAdmin): little disk, no IOPS lock. Ratios are
 the **operator's rules**, held on the manager as `ratios map[WorkloadProfile]UnitRatios`
@@ -423,6 +440,20 @@ buffer pool up; the over-plan gate runs there for memory). CPU and IO re-tune th
   (buffer pool down first, deferred cgroup down via `completePendingCgroupShrink`, never
   below live memory); `SetDBCores` re-tunes and moves the cgroup, and derives grow/shrink
   from the delta.
+
+### 4b. Disk: the configuration follows the datadir (2026-09-23, #1825)
+
+There is no live disk resize: `prov-db-disk-size` only sized the volume at provisioning and
+the datadir is NOT bounded by it (dev3: 2 GB declared, 19 GB used; the om3 zfs driver applies
+`size` as a `refquota` on the parent dataset of the volume, which holds the socket and config
+directories, while the `data` dataset underneath is unquota'd). So the disk axis of
+`DriveDynamicResize` is `followDiskUsage`: when a node's measured datadir (`DiskMaxBytes`) is
+over the configured disk (CINF0007 on "disk"), `prov-db-disk-size` becomes the largest node's
+usage in whole GB, ceiling, NO rounding to the DBU grid (cpu/mem/io are not rounded either),
+within the plan for free, past the plan through `overPlanGrowAllowed` (borrow, or ERR00112 on
+axis disk). Applied first and independently of the cpu/mem/io hill-climb. Persisted through the
+dynamic config manager, no reprovision cookie: bookkeeping until the rc40 volume resize action
+follows the value. Disk never shrinks.
 
 ### 5. What the operator sees
 

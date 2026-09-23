@@ -435,6 +435,34 @@ function DBConfigs({ selectedCluster, user }) {
             }}
           />
           <Flex className={styles.resources} flexWrap='wrap'>
+          {/* BKU plan: per-cluster backup storage reservation (1 BKU = 20 GB of backup disk,
+              nothing else). Moved through ChangePlanUnits('BKU') like the DBU/APU plans; the
+              measured local/remote usage is on the Graphs page, over the plan = billed. */}
+          <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
+            minValue={1}
+            maxValue={128}
+            value={parseInt(selectedCluster?.config?.provDbBku) || 0}
+            text={'Backup BKU'}
+            width={150}
+            height={105}
+            hideMinMax={false}
+            showStep={true}
+            step={1}
+            handleStepChange={(value) => {
+              const cur = parseInt(selectedCluster?.config?.provDbBku) || 0
+              const delta = value - cur
+              setConfirmTitle(`Confirm BKU plan to ${value} BKU (${value * 20} GB of backup storage for the cluster)`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () => {
+                  if (delta !== 0) {
+                    dispatch(changePlanUnits({ clusterName: selectedCluster?.name, unit: 'BKU', delta }))
+                  }
+                }
+              )
+            }}
+          />
           <Gauge
             isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={4096}
