@@ -41,6 +41,7 @@ function ChartGroupedDBU({
   configDbu = 0,      // configured line = the technical allocation (prov-db-* in DBU); 0 = not drawn
   isVisible = true,
   axes = AXES,        // the bars: default the four DBU axes; BKU passes { local, remote }
+  unit = 'DBU',       // unit name in the legend (DBU, APU, BKU)
 }) {
   const chartRef = useRef(null);
   const abortControllerRef = useRef(new AbortController());
@@ -275,8 +276,8 @@ function ChartGroupedDBU({
     });
     const dbuGrp = legend.append('g').attr('transform', `translate(${lx},0)`);
     dbuGrp.append('line').attr('x1', 0).attr('x2', 16).attr('y1', -4).attr('y2', -4).attr('stroke', colors.dbu).attr('stroke-width', 2.5);
-    dbuGrp.append('text').attr('x', 20).attr('y', 0).style('fill', colors.muted).style('font-size', '11px').text('DBU (max)');
-  }, [buildBuckets, height, planDbu, configDbu, title, colors, isDark]);
+    dbuGrp.append('text').attr('x', 20).attr('y', 0).style('fill', colors.muted).style('font-size', '11px').text(`${unit} (max)`);
+  }, [buildBuckets, height, planDbu, configDbu, title, colors, isDark, unit, axes]);
 
   useEffect(() => {
     if (!isVisible) return;

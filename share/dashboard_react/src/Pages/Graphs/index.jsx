@@ -346,6 +346,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          }}
          servicePaths={{}}
          pivotPath={scope('sumSeries(apu.*.apu)')}
+         unit='APU'
          planDbu={parseInt(cfg.provServicePlanApu) || 0}
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
@@ -359,9 +360,10 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         <ChartGroupedDBU
          context={context}
          axes={[
-           { key: 'local', label: 'Local', ratio: 20 * 1024 * 1024 * 1024, light: '#37a06f', dark: '#4dc088' },
-           { key: 'remote', label: 'Remote', ratio: 20 * 1024 * 1024 * 1024, light: '#3f8fd0', dark: '#5aa8e6' },
+           { key: 'local', label: 'Last backups', ratio: 20 * 1024 * 1024 * 1024, light: '#37a06f', dark: '#4dc088' },
+           { key: 'remote', label: 'Remote archive', ratio: 20 * 1024 * 1024 * 1024, light: '#3f8fd0', dark: '#5aa8e6' },
          ]}
+         unit='BKU'
          dbuPaths={{
            local: scope('sumSeries(bku.*.local)'),
            remote: scope('sumSeries(bku.*.remote)')
@@ -374,7 +376,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          planDbu={planBku}
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
-         title="Backup storage — BKU (local backup vs remote archive; plan = prov-db-bku)"
+         title="Backup storage — BKU (last backups on the local pool vs remote archive; plan = prov-db-bku)"
        />
       </GraphSection>
 
