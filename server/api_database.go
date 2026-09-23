@@ -1742,7 +1742,7 @@ func (repman *ReplicationManager) handlerMuxServerSwitchover(w http.ResponseWrit
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive switchover request")
-			if err := mycluster.Switchover(node.URL); err != nil {
+			if err := mycluster.Switchover(node.URL, true); err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Master failed, cannot initiate switchover")
 				http.Error(w, "Leader is failed can not promote", http.StatusBadRequest)
 				return

@@ -48,8 +48,28 @@ func TestSwitchoverRejectsFailedMaster(t *testing.T) {
 	cl := &Cluster{Conf: &config.Config{}}
 	cl.master = &ServerMonitor{State: stateFailed, ClusterGroup: cl}
 
-	if err := cl.Switchover(""); !errors.Is(err, ErrSwitchoverMasterFailed) {
+	if err := cl.Switchover("", false); !errors.Is(err, ErrSwitchoverMasterFailed) {
 		t.Fatalf("Switchover() error = %v, want %v", err, ErrSwitchoverMasterFailed)
+	}
+}
+
+func TestSwitchoverKeepsPreferenceForUnknownTarget(t *testing.T) {
+	cl := &Cluster{
+		Name: "cluster",
+		Conf: &config.Config{ActivePassive: true},
+		Servers: []*ServerMonitor{
+			{URL: "db1:3306", SourceClusterName: "cluster", Prefered: true},
+			{URL: "db2:3306", SourceClusterName: "cluster"},
+		},
+		hostList: []string{"db1:3306", "db2:3306"},
+	}
+	cl.master = &ServerMonitor{State: stateMaster, ClusterGroup: cl}
+
+	if err := cl.Switchover("db3:3306", false); err != nil {
+		t.Fatalf("Switchover() error = %v, want nil", err)
+	}
+	if got := cl.GetPreferedMasterList(); got != "db1:3306" {
+		t.Fatalf("preferred master = %q, want %q", got, "db1:3306")
 	}
 }
 

@@ -9,7 +9,11 @@
 
 package cluster
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/signal18/replication-manager/config"
+)
 
 // ErrFailoverMasterHealthy indicates that a planned role change must use switchover.
 var ErrFailoverMasterHealthy = errors.New("Master is still up; use switchover for a planned role change")
@@ -29,9 +33,14 @@ func (cluster *Cluster) Failover() error {
 	return nil
 }
 
-// Switchover applies the legacy REST switchover behavior for all API callers.
-// An empty or unknown preferred master leaves the existing preference intact.
-func (cluster *Cluster) Switchover(preferredMaster string) error {
+// Switchover applies the legacy REST switchover behavior. An empty or unknown
+// preferred master leaves the existing preference intact. Server-specific REST
+// callers pass forcePreferred=true because their target was already resolved.
+func (cluster *Cluster) Switchover(preferredMaster string, forcePreferred bool) error {
+	if preferredMaster != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "API force for prefered master: %s", preferredMaster)
+	}
+
 	if cluster.IsMasterFailed() {
 		return ErrSwitchoverMasterFailed
 	}
@@ -39,7 +48,7 @@ func (cluster *Cluster) Switchover(preferredMaster string) error {
 	savedPrefMaster := cluster.GetPreferedMasterList()
 	defer cluster.SetPrefMaster(savedPrefMaster)
 
-	if cluster.IsInHostList(preferredMaster) {
+	if forcePreferred || cluster.IsInHostList(preferredMaster) {
 		cluster.SetPrefMaster(preferredMaster)
 	}
 	cluster.MasterFailover(false)

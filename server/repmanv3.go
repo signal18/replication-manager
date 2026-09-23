@@ -617,10 +617,7 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 		mycluster.SetTraffic(false)
 	case v3.ClusterAction_SWITCHOVER:
 		preferredMaster := in.Server.GetURI()
-		if preferredMaster != "" {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API force for prefered master: %s", preferredMaster)
-		}
-		err = mycluster.Switchover(preferredMaster)
+		err = mycluster.Switchover(preferredMaster, false)
 	case v3.ClusterAction_SYSBENCH:
 		go mycluster.RunSysbench()
 	case v3.ClusterAction_WAITDATABASES:
