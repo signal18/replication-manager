@@ -14,6 +14,9 @@ import "errors"
 // ErrFailoverMasterHealthy indicates that a planned role change must use switchover.
 var ErrFailoverMasterHealthy = errors.New("Master is still up; use switchover for a planned role change")
 
+// ErrSwitchoverMasterFailed indicates that the current master cannot be used for a planned switchover.
+var ErrSwitchoverMasterFailed = errors.New("Master failed")
+
 // Failover guards the manual/API failover path without changing the
 // monitoring-driven MasterFailover behavior.
 func (cluster *Cluster) Failover() error {
@@ -23,5 +26,22 @@ func (cluster *Cluster) Failover() error {
 
 	// Preserve MasterFailover's existing result handling for API callers.
 	cluster.MasterFailover(true)
+	return nil
+}
+
+// Switchover applies the legacy REST switchover behavior for all API callers.
+// An empty or unknown preferred master leaves the existing preference intact.
+func (cluster *Cluster) Switchover(preferredMaster string) error {
+	if cluster.IsMasterFailed() {
+		return ErrSwitchoverMasterFailed
+	}
+
+	savedPrefMaster := cluster.GetPreferedMasterList()
+	defer cluster.SetPrefMaster(savedPrefMaster)
+
+	if cluster.IsInHostList(preferredMaster) {
+		cluster.SetPrefMaster(preferredMaster)
+	}
+	cluster.MasterFailover(false)
 	return nil
 }

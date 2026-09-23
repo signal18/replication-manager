@@ -44,6 +44,15 @@ func TestFailoverRejectsHealthyMaster(t *testing.T) {
 	}
 }
 
+func TestSwitchoverRejectsFailedMaster(t *testing.T) {
+	cl := &Cluster{Conf: &config.Config{}}
+	cl.master = &ServerMonitor{State: stateFailed, ClusterGroup: cl}
+
+	if err := cl.Switchover(""); !errors.Is(err, ErrSwitchoverMasterFailed) {
+		t.Fatalf("Switchover() error = %v, want %v", err, ErrSwitchoverMasterFailed)
+	}
+}
+
 // TestHasValidReadSlave and TestShouldServeReadsFromMaster guard bug #6
 // (HAPROXY_LIVE_K8S_TEST_REPORT.md): haproxy-mode=externalcheck's checkslave
 // HTTP handler used to only consult PRXServersReadOnMaster, never
