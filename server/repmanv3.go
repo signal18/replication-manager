@@ -618,9 +618,6 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	case v3.ClusterAction_SWITCHOVER:
 		preferredMaster := in.Server.GetURI()
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API force for prefered master: %s", preferredMaster)
-		if preferredMaster == "" {
-			return nil, v3.NewErrorResource(codes.NotFound, v3.ErrServerNotFound, "Server", preferredMaster).Err()
-		}
 		err = mycluster.Switchover(preferredMaster)
 		if errors.Is(err, cluster.ErrPreferredMasterNotFound) {
 			return nil, v3.NewErrorResource(codes.NotFound, v3.ErrServerNotFound, "Server", preferredMaster).Err()
