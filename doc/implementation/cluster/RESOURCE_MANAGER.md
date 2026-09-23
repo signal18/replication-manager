@@ -441,6 +441,20 @@ buffer pool up; the over-plan gate runs there for memory). CPU and IO re-tune th
   below live memory); `SetDBCores` re-tunes and moves the cgroup, and derives grow/shrink
   from the delta.
 
+### 4b. Disk: the configuration follows the datadir (2026-09-23, #1825)
+
+There is no live disk resize: `prov-db-disk-size` only sized the volume at provisioning and
+the datadir is NOT bounded by it (dev3: 2 GB declared, 19 GB used; the om3 zfs driver applies
+`size` as a `refquota` on the parent dataset of the volume, which holds the socket and config
+directories, while the `data` dataset underneath is unquota'd). So the disk axis of
+`DriveDynamicResize` is `followDiskUsage`: when a node's measured datadir (`DiskMaxBytes`) is
+over the configured disk (CINF0007 on "disk"), `prov-db-disk-size` becomes the largest node's
+usage in whole GB, ceiling, NO rounding to the DBU grid (cpu/mem/io are not rounded either),
+within the plan for free, past the plan through `overPlanGrowAllowed` (borrow, or ERR00112 on
+axis disk). Applied first and independently of the cpu/mem/io hill-climb. Persisted through the
+dynamic config manager, no reprovision cookie: bookkeeping until the rc40 volume resize action
+follows the value. Disk never shrinks.
+
 ### 5. What the operator sees
 
 | signal | meaning |

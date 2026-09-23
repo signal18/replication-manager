@@ -243,6 +243,7 @@ const (
 	resizeMemory resizeDimension = iota // prov-db-memory
 	resizeIO                            // prov-db-disk-iops
 	resizeCPU                           // prov-db-cpu-cores
+	resizeDisk                          // prov-db-disk-size (the configuration follows the measured datadir; no live volume resize yet)
 )
 
 func (dim resizeDimension) String() string {
@@ -251,6 +252,8 @@ func (dim resizeDimension) String() string {
 		return "memory"
 	case resizeIO:
 		return "io"
+	case resizeDisk:
+		return "disk"
 	case resizeCPU:
 		return "cpu"
 	}
@@ -948,7 +951,7 @@ func (cluster *Cluster) DriveDynamicResize() {
 	}
 	// Observe which axes are saturated against config, cluster-wide. Also honour the
 	// in-flight gate: never start another step while a memory resize is still converging.
-	cpuDue, memDue, ioDue := false, false, false
+	cpuDue, memDue, ioDue, diskDue := false, false, false, false
 	for _, s := range cluster.Servers {
 		if s == nil {
 			continue
@@ -964,8 +967,16 @@ func (cluster *Cluster) DriveDynamicResize() {
 				memDue = true
 			case "io":
 				ioDue = true
+			case "disk":
+				diskDue = true
 			}
 		}
+	}
+	// Disk is not a throughput lever and never competes with the others: the configured
+	// disk follows what the datadir really holds (#1825). Applied first and on its own; the
+	// cpu/mem/io hill-climb below is untouched by it.
+	if diskDue && cluster.followDiskUsage() {
+		return
 	}
 	if !cpuDue && !memDue && !ioDue {
 		cluster.lastDynamicGrowAxis = ""  // nothing constrained: reset the hill-climb memory
@@ -1201,6 +1212,66 @@ func (cluster *Cluster) growAxisInPlan(axis string, qps float64) bool {
 		return true
 	}
 	return false
+}
+
+// diskFollowTargetGB is the configured disk the measured datadir calls for: the usage itself,
+// in whole gigabytes (the unit of prov-db-disk-size), ceiling. No grid: cpu, memory and iops
+// are not rounded to the DBU either.
+func diskFollowTargetGB(usedBytes int64) int {
+	if usedBytes <= 0 {
+		return 0
+	}
+	return int(math.Ceil(float64(usedBytes) / (1024 * 1024 * 1024)))
+}
+
+// followDiskUsage is the disk axis of the dynamic driver. There is no live disk resize:
+// prov-db-disk-size only sized the volume at provisioning and the datadir is not bounded
+// by it (dev3 2026-09-23: 2 GB declared, 19 GB used). So when the measured datadir of any
+// node is over the configured disk, the CONFIGURATION follows reality: prov-db-disk-size
+// becomes the largest node's usage in whole GB, within the plan for free, past the plan
+// through the same over-plan gate as cpu/io (borrow or ERR00112). Persisted like the other
+// dynamic settings, no reprovision cookie (nothing to recreate: the value is bookkeeping
+// until the volume resize action follows it). Returns true when a step landed.
+func (cluster *Cluster) followDiskUsage() bool {
+	if cluster.resources == nil {
+		return false
+	}
+	unitGB := cluster.resources.Ratios(ProfileDatabase).DiskGBPerUnit
+	var maxUsed int64
+	for _, s := range cluster.Servers {
+		if s == nil || s.IsDown() || s.DBUConsumed == nil {
+			continue
+		}
+		if s.DBUConsumed.DiskMaxBytes > maxUsed {
+			maxUsed = s.DBUConsumed.DiskMaxBytes
+		}
+	}
+	newGB := diskFollowTargetGB(maxUsed)
+	cur, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
+	if newGB <= int(cur) {
+		return false
+	}
+	planPerNode := cluster.GetPlanDBUPerNode().Dbu
+	target := cluster.GetConfigDBUPerNode().Dbu
+	if unitGB > 0 {
+		target = math.Max(target, float64(newGB)/unitGB)
+	}
+	if ok, reason := cluster.overPlanGrowAllowed(target); !ok {
+		cluster.refuseDynamicGrow("disk", resizeDisk, strconv.Itoa(cur), strconv.Itoa(newGB), target, reason)
+		return false
+	}
+	cluster.recordDynamicGrow("disk", cluster.currentClusterQPS())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Dynamic %s DISK follow (datadir %s over the configured disk): prov-db-disk-size %dGB -> %dGB (plan %.2f DBU/node); configuration only, the volume is not resized", growScope(target, planPerNode), humanBytes(maxUsed), cur, newGB, planPerNode)
+	cluster.Configurator.SetDBDisk(strconv.Itoa(newGB))
+	cluster.Conf.ProvDisk = cluster.Configurator.GetConfigDBDisk()
+	cluster.ConfigManager.SaveConfig(cluster, false)
+	for _, s := range cluster.Servers {
+		if s != nil && !s.IsDown() {
+			cluster.logResize(s, resizeDisk, true, true, ResizeYes, nil)
+		}
+	}
+	return true
 }
 
 // GrowRefusal is the tracked state of a dynamic over-plan step the ResourceManager
