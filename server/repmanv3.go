@@ -618,6 +618,9 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	case v3.ClusterAction_SWITCHOVER:
 		preferredMaster := in.Server.GetURI()
 		err = mycluster.Switchover(preferredMaster, false)
+		if errors.Is(err, cluster.ErrPreferredMasterNotFound) {
+			return nil, v3.NewErrorResource(codes.NotFound, v3.ErrServerNotFound, "Server", preferredMaster).Err()
+		}
 	case v3.ClusterAction_SYSBENCH:
 		go mycluster.RunSysbench()
 	case v3.ClusterAction_WAITDATABASES:

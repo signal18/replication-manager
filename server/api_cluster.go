@@ -2144,8 +2144,12 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 		r.ParseForm() // Parses the request body
 		newPrefMaster := r.Form.Get("prefmaster")
 		if err := mycluster.Switchover(newPrefMaster, false); err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Master failed, cannot initiate switchover")
-			http.Error(w, "Master failed", http.StatusBadRequest)
+			if errors.Is(err, cluster.ErrPreferredMasterNotFound) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			} else {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Master failed, cannot initiate switchover")
+				http.Error(w, "Master failed", http.StatusBadRequest)
+			}
 			return
 		}
 

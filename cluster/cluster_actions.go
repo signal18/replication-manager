@@ -11,6 +11,7 @@ package cluster
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -20,6 +21,10 @@ var ErrFailoverMasterHealthy = errors.New("Master is still up; use switchover fo
 
 // ErrSwitchoverMasterFailed indicates that the current master cannot be used for a planned switchover.
 var ErrSwitchoverMasterFailed = errors.New("Master failed")
+
+// ErrPreferredMasterNotFound indicates that an explicitly supplied preferred
+// master is not part of the cluster host list.
+var ErrPreferredMasterNotFound = errors.New("Preferred master not found")
 
 // Failover guards the manual/API failover path without changing the
 // monitoring-driven MasterFailover behavior.
@@ -33,22 +38,25 @@ func (cluster *Cluster) Failover() error {
 	return nil
 }
 
-// Switchover applies the legacy REST switchover behavior. An empty or unknown
-// preferred master leaves the existing preference intact. Server-specific REST
-// callers pass forcePreferred=true because their target was already resolved.
-func (cluster *Cluster) Switchover(preferredMaster string, forcePreferred bool) error {
-	if preferredMaster != "" {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "API force for prefered master: %s", preferredMaster)
-	}
-
+// Switchover applies the legacy REST switchover behavior. An empty preferred
+// master keeps the existing preference. Server-specific REST callers pass
+// targetAlreadyValidated=true because their target was already resolved.
+func (cluster *Cluster) Switchover(preferredMaster string, targetAlreadyValidated bool) error {
 	if cluster.IsMasterFailed() {
 		return ErrSwitchoverMasterFailed
+	}
+	if !targetAlreadyValidated && preferredMaster != "" && !cluster.IsInHostList(preferredMaster) {
+		return fmt.Errorf("%w: %s", ErrPreferredMasterNotFound, preferredMaster)
+	}
+
+	if preferredMaster != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "API force for prefered master: %s", preferredMaster)
 	}
 
 	savedPrefMaster := cluster.GetPreferedMasterList()
 	defer cluster.SetPrefMaster(savedPrefMaster)
 
-	if forcePreferred || cluster.IsInHostList(preferredMaster) {
+	if targetAlreadyValidated || cluster.IsInHostList(preferredMaster) {
 		cluster.SetPrefMaster(preferredMaster)
 	}
 	cluster.MasterFailover(false)
