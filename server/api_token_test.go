@@ -271,3 +271,106 @@ func contains(s, sub string) bool {
 		return false
 	})()
 }
+
+func TestAPITokenReviewFixes(t *testing.T) {
+	repman, cl := newTokenTestManager(t)
+	// #1836 review 1: a token-authenticated GET /api/tokens never returns token strings.
+	full, err := repman.createAPIToken("alice", APITokenForm{Label: "full"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	narrow, err := repman.createAPIToken("alice", APITokenForm{Label: "narrow", Grants: "db-show"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr := httptest.NewRecorder()
+	req := bearerRequest(narrow.Token, "/api/tokens")
+	repman.handlerMuxAPITokens(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /api/tokens via token: %d %s", rr.Code, rr.Body.String())
+	}
+	if contains(rr.Body.String(), full.Token) || contains(rr.Body.String(), narrow.Token) {
+		t.Error("a token-authenticated listing must not carry any token string")
+	}
+	rr = httptest.NewRecorder()
+	req = bearerRequest(narrow.Token, "/api/tokens")
+	req.Method = http.MethodPost
+	repman.handlerMuxAPITokens(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("a token must not mint tokens, got %d", rr.Code)
+	}
+
+	// review 3: a cluster-scoped token whose owner holds cluster-grant can revoke
+	// another user's token covering that cluster, from /api/tokens/{id}.
+	admin := cluster.APIUser{User: "root", Password: "z", Roles: map[string]bool{}}
+	cl.SetUserGrants(&admin, "cluster-grant db-show")
+	cl.APIUsers["root"] = admin
+	adminTok, err := repman.createAPIToken("root", APITokenForm{Label: "ops", Clusters: []string{"c1"}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobTok, _ := repman.createAPIToken("bob", APITokenForm{Label: "bob", Clusters: []string{"c1"}}, "")
+	if _, err := repman.revokeAPIToken(bobTok.ID, "root", bearerRequest(adminTok.Token, "/api/tokens/"+bobTok.ID)); err != nil {
+		t.Errorf("cluster-scoped token with cluster-grant must revoke a token on its cluster: %v", err)
+	}
+
+	// review 4: revoked records past retention are purged on save, fresh ones kept.
+	repman.apiTokens.Lock()
+	repman.apiTokens.tokens[bobTok.ID].RevokedAt = time.Now().Add(-apiTokenRetention - time.Hour)
+	_ = repman.saveAPITokenStoreLocked()
+	_, stillThere := repman.apiTokens.tokens[bobTok.ID]
+	repman.apiTokens.Unlock()
+	if stillThere {
+		t.Error("a revoked record older than the retention must be purged")
+	}
+	if _, err := repman.revokeAPIToken(full.ID, "alice", bearerRequest(full.Token, "/api/tokens/"+full.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if v := repman.listAPITokens("alice", "", false); len(v) < 2 {
+		t.Error("a freshly revoked record stays for the audit trail")
+	}
+}
+
+func TestAPITokenStoreLoadFailureDoesNotWipe(t *testing.T) {
+	// review 2: a corrupt/undecryptable store must not be marked loaded-empty and
+	// then overwritten by the next save.
+	repman, _ := newTokenTestManager(t)
+	tok, err := repman.createAPIToken("alice", APITokenForm{Label: "keep"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(repman.Conf.WorkingDir, apiTokenStore)
+	good, _ := os.ReadFile(path)
+	// A fresh manager with the WRONG key cannot read the store: every operation
+	// fails, nothing is written.
+	bad := &ReplicationManager{
+		Clusters:    repman.Clusters,
+		ClusterList: repman.ClusterList,
+		Conf: &config.Config{
+			WorkingDir:    repman.Conf.WorkingDir,
+			SecretKey:     []byte("wrongwrongwrong1"),
+			APIUserTokens: true,
+		},
+		Logrus: log.New(),
+	}
+	if _, ok := bad.parseAPITokenFromRequest(bearerRequest(tok.Token, "/api/clusters/c1")); ok {
+		t.Fatal("wrong key must not authenticate")
+	}
+	if _, err := bad.createAPIToken("alice", APITokenForm{Label: "new"}, ""); err == nil {
+		t.Error("creating on an unreadable store must fail, not wipe it")
+	}
+	after, _ := os.ReadFile(path)
+	if string(after) != string(good) {
+		t.Fatal("the store on disk was rewritten after a failed load")
+	}
+	bad.apiTokens.Lock()
+	loaded := bad.apiTokens.loaded
+	bad.apiTokens.Unlock()
+	if loaded {
+		t.Error("a failed load must not mark the store loaded")
+	}
+	// The right key still reads everything.
+	if _, ok := repman.parseAPITokenFromRequest(bearerRequest(tok.Token, "/api/clusters/c1")); !ok {
+		t.Error("original manager must still authenticate")
+	}
+}

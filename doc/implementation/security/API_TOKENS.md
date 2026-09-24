@@ -37,6 +37,11 @@ consulted on every request: a bearer whose `jti` is unknown, revoked, expired, o
 no longer exists in any cluster is refused even with a valid signature. `lastUsedAt` is
 updated in memory on every request and persisted at most once a minute per token.
 
+The store is bounded (T18): a revoked or expired record is kept 90 days for the audit trail
+(`apiTokenRetention`) and dropped at the next save. A load failure (unreadable file, wrong
+key) leaves the store *not loaded*: every operation fails and nothing is written, so a
+transient error can never rewrite an empty store over the real one.
+
 ## Authority: intersection, never escalation
 
 - At creation (`createAPIToken`) every requested grant prefix must match a grant the owner
@@ -51,7 +56,9 @@ updated in memory on every request and persisted at most once a minute per token
 - Scope (`tokenURLInScope`): a token scoped to named clusters may only touch
   `/api/clusters/<name>` and `/api/clusters/<name>/...` of those clusters. Global settings,
   peers, cluster add and every other endpoint need the `*` scope.
-- A token cannot issue tokens (POST `/api/tokens` requires an interactive login).
+- A token cannot issue tokens (POST `/api/tokens` requires an interactive login), and a
+  token-authenticated `GET /api/tokens` returns the records without the token strings: a
+  narrowed token must never read back a wider sibling of the same owner.
 
 ## Auth path
 
@@ -79,9 +86,9 @@ token-aware without further changes.
 
 | Where | What |
 | --- | --- |
-| `GET /api/tokens` | the caller's tokens, token strings included |
+| `GET /api/tokens` | the caller's tokens, token strings included for an interactive login only |
 | `POST /api/tokens` | `{label, grants, clusters, expireDays}`; `expireDays` 0 = server default, -1 = never; returns the record with the token |
-| `DELETE /api/tokens/{id}` | revoke: the owner always may; another user needs `cluster-grant` on every cluster the token covers |
+| `DELETE /api/tokens/{id}` | revoke: the owner always may; another user needs `cluster-grant` on every cluster the token covers (for a token-authenticated caller the check is on cluster membership of the scope, `requestACLUserOnCluster`, since the URL is not under a cluster path) |
 | `GET /api/clusters/{name}/tokens` | every token covering the cluster, no token strings, needs `grant-show` there |
 | GUI | Users page, "My API tokens" panel: create (grant picker limited to the grants held, cluster scope, expiry), show, revoke |
 | CLI | `replication-manager-cli token create --label x [--grants "db-show proxy"] [--clusters a,b] [--expire-days N]`, `token list [--cluster name]`, `token revoke <id>`; `--api-token <token>` on every command replaces `--user/--password` |

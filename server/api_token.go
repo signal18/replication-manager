@@ -57,6 +57,9 @@ const (
 	// apiTokenLastUsedFlush bounds disk writes: last-used is persisted at most once
 	// per token per this interval (the in-memory value is always current).
 	apiTokenLastUsedFlush = time.Minute
+	// apiTokenRetention bounds the store (T18): a revoked or expired record is kept
+	// this long for the audit trail, then dropped at the next save.
+	apiTokenRetention = 90 * 24 * time.Hour
 )
 
 // APIToken is a stored token record.
@@ -111,6 +114,18 @@ func (t APIToken) InScope(clusterName string) bool {
 	return false
 }
 
+// deadSince returns when the token stopped being usable (revocation or expiry)
+// and whether it has.
+func (t APIToken) deadSince() (time.Time, bool) {
+	switch {
+	case t.IsRevoked():
+		return t.RevokedAt, true
+	case t.IsExpired():
+		return t.ExpiresAt, true
+	}
+	return time.Time{}, false
+}
+
 func (t APIToken) view(withToken bool) APITokenView {
 	v := APITokenView{APIToken: t, Expired: t.IsExpired(), Revoked: t.IsRevoked()}
 	v.APIToken.Token = ""
@@ -148,31 +163,31 @@ func (repman *ReplicationManager) loadAPITokenStoreLocked() error {
 	if st.loaded {
 		return nil
 	}
-	st.tokens = map[string]*APIToken{}
-	st.lastFlush = map[string]time.Time{}
-	st.loaded = true
+	// `loaded` flips only once the file is read and parsed (or absent): a transient
+	// read/decrypt failure must not leave an empty store that the next save would
+	// write back over the real one.
+	tokens := map[string]*APIToken{}
 	data, err := os.ReadFile(repman.apiTokenStorePath())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	if len(data) == 0 {
-		return nil
+	if err == nil && len(strings.TrimSpace(string(data))) > 0 {
+		p := crypto.Password{Key: repman.Conf.SecretKey, CipherText: strings.TrimSpace(string(data))}
+		if err := p.Decrypt(); err != nil {
+			return fmt.Errorf("api token store: cannot decrypt %s: %w", repman.apiTokenStorePath(), err)
+		}
+		var f apiTokenFile
+		if err := json.Unmarshal([]byte(p.PlainText), &f); err != nil {
+			return fmt.Errorf("api token store: cannot parse %s (wrong key?): %w", repman.apiTokenStorePath(), err)
+		}
+		for i := range f.Tokens {
+			t := f.Tokens[i]
+			tokens[t.ID] = &t
+		}
 	}
-	p := crypto.Password{Key: repman.Conf.SecretKey, CipherText: strings.TrimSpace(string(data))}
-	if err := p.Decrypt(); err != nil {
-		return fmt.Errorf("api token store: cannot decrypt %s: %w", repman.apiTokenStorePath(), err)
-	}
-	var f apiTokenFile
-	if err := json.Unmarshal([]byte(p.PlainText), &f); err != nil {
-		return fmt.Errorf("api token store: cannot parse %s (wrong key?): %w", repman.apiTokenStorePath(), err)
-	}
-	for i := range f.Tokens {
-		t := f.Tokens[i]
-		st.tokens[t.ID] = &t
-	}
+	st.tokens = tokens
+	st.lastFlush = map[string]time.Time{}
+	st.loaded = true
 	return nil
 }
 
@@ -180,7 +195,13 @@ func (repman *ReplicationManager) loadAPITokenStoreLocked() error {
 func (repman *ReplicationManager) saveAPITokenStoreLocked() error {
 	st := &repman.apiTokens
 	f := apiTokenFile{Version: 1}
-	for _, t := range st.tokens {
+	now := time.Now()
+	for id, t := range st.tokens {
+		if end, dead := t.deadSince(); dead && now.Sub(end) > apiTokenRetention {
+			delete(st.tokens, id)
+			delete(st.lastFlush, id)
+			continue
+		}
 		f.Tokens = append(f.Tokens, *t)
 	}
 	sort.Slice(f.Tokens, func(i, j int) bool { return f.Tokens[i].CreatedAt.Before(f.Tokens[j].CreatedAt) })
@@ -380,14 +401,17 @@ func (repman *ReplicationManager) handlerMuxAPITokens(w http.ResponseWriter, r *
 		http.Error(w, "User is not valid", http.StatusForbidden)
 		return
 	}
-	// A token cannot mint tokens: only an interactive login may.
-	if _, viaToken := repman.parseAPITokenFromRequest(r); viaToken && r.Method == http.MethodPost {
+	// A token cannot mint tokens, and a token-authenticated caller never sees
+	// token strings: a narrowed token must not read back a wider sibling. Only an
+	// interactive login may create or display tokens.
+	_, viaToken := repman.parseAPITokenFromRequest(r)
+	if viaToken && r.Method == http.MethodPost {
 		http.Error(w, "An API token cannot issue tokens, log in with your credentials", http.StatusForbidden)
 		return
 	}
 	switch r.Method {
 	case http.MethodGet:
-		repman.jsonResponse(repman.listAPITokens(username, "", true), w)
+		repman.jsonResponse(repman.listAPITokens(username, "", !viaToken), w)
 	case http.MethodPost:
 		var form APITokenForm
 		if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
@@ -644,7 +668,7 @@ func (repman *ReplicationManager) revokeAPIToken(id string, by string, r *http.R
 			if !snapshot.InScope(cl.Name) {
 				continue
 			}
-			u, ok := repman.requestACLUser(r, cl)
+			u, ok := repman.requestACLUserOnCluster(r, cl)
 			if !ok || !u.Grants[config.GrantClusterGrant] {
 				return nil, fmt.Errorf("revoking another user's token needs the cluster-grant grant on %s", cl.Name)
 			}
@@ -683,6 +707,24 @@ func (repman *ReplicationManager) requestACLUser(r *http.Request, cl *cluster.Cl
 		}
 		return cl.GetACLUser(repman.tokenPrincipalFor(t, cl))
 	}
+	return repman.loginACLUser(r, cl)
+}
+
+// requestACLUserOnCluster is requestACLUser for endpoints that are not under a
+// cluster path but act on one (revoking a token covering cluster X from
+// /api/tokens/{id}): a token needs cluster X in its scope, not the URL.
+func (repman *ReplicationManager) requestACLUserOnCluster(r *http.Request, cl *cluster.Cluster) (cluster.APIUser, bool) {
+	if t, ok := repman.parseAPITokenFromRequest(r); ok {
+		if !t.InScope(cl.Name) {
+			return cluster.APIUser{}, false
+		}
+		return cl.GetACLUser(repman.tokenPrincipalFor(t, cl))
+	}
+	return repman.loginACLUser(r, cl)
+}
+
+// loginACLUser is the APIUser view of an interactive (RSA JWT) login.
+func (repman *ReplicationManager) loginACLUser(r *http.Request, cl *cluster.Cluster) (cluster.APIUser, bool) {
 	username := repman.GetUserFromRequest(r)
 	if username == "" {
 		return cluster.APIUser{}, false
