@@ -103,7 +103,7 @@ function CreateTokenModal({ user, isOpen, closeModal, onCreated }) {
   } = useSelector((state) => state)
   const [label, setLabel] = useState('')
   const [labelError, setLabelError] = useState('')
-  const [acls, setAcls] = useState([])
+  const [acls, setAcls] = useState([]) // selection reported by GrantCheckList (names)
   const [allAcls, setAllAcls] = useState([])
   const [clusters, setClusters] = useState([])
   const [allClusters, setAllClusters] = useState(true)
@@ -125,7 +125,6 @@ function CreateTokenModal({ user, isOpen, closeModal, onCreated }) {
       // Only the grants the logged-in user holds somewhere can go into a token.
       const options = serviceAcl.filter((item) => held[item.grant]).map((item) => Object.assign({}, item, { selected: false }))
       setAllAcls(options)
-      setAcls(options)
     }
   }, [serviceAcl, held])
 
@@ -135,7 +134,9 @@ function CreateTokenModal({ user, isOpen, closeModal, onCreated }) {
       return
     }
     setLabelError('')
-    const selected = acls.filter((a) => a.selected).map((a) => a.grant)
+    // GrantCheckList reports the selection as a list of names (group prefixes or
+    // grant names), which is exactly the compact form the server accepts.
+    const selected = (acls || []).map((a) => (typeof a === 'string' ? a : a?.grant)).filter(Boolean)
     dispatch(
       createApiToken({
         label: label.trim(),
