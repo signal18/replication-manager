@@ -56,6 +56,11 @@ transient error can never rewrite an empty store over the real one.
 - Scope (`tokenURLInScope`): a token scoped to named clusters may only touch
   `/api/clusters/<name>` and `/api/clusters/<name>/...` of those clusters. Global settings,
   peers, cluster add and every other endpoint need the `*` scope.
+- Grants: `token-create` (issue tokens for own account; in the default ACL of `admin`, `dba`,
+  sponsors and external dbops) and `token-manage` (list and revoke other users' tokens on a
+  cluster). The `system` service account can never hold them: `createAPIToken` refuses it and
+  `reconcileSystemServiceGrants` strips both on every user load, whatever an ACL string or the
+  user GUI handed it. A machine identity with a derived key must not mint bearer credentials.
 - A token cannot issue tokens (POST `/api/tokens` requires an interactive login), and a
   token-authenticated `GET /api/tokens` returns the records without the token strings: a
   narrowed token must never read back a wider sibling of the same owner.
@@ -88,8 +93,8 @@ token-aware without further changes.
 | --- | --- |
 | `GET /api/tokens` | the caller's tokens, token strings included for an interactive login only |
 | `POST /api/tokens` | `{label, grants, clusters, expireDays}`; `expireDays` 0 = server default, -1 = never; returns the record with the token |
-| `DELETE /api/tokens/{id}` | revoke: the owner always may; another user needs `cluster-grant` on every cluster the token covers (for a token-authenticated caller the check is on cluster membership of the scope, `requestACLUserOnCluster`, since the URL is not under a cluster path) |
-| `GET /api/clusters/{name}/tokens` | every token covering the cluster, no token strings, needs `grant-show` there |
+| `DELETE /api/tokens/{id}` | revoke: the owner always may; another user needs `token-manage` on every cluster the token covers (for a token-authenticated caller the check is on cluster membership of the scope, `requestACLUserOnCluster`, since the URL is not under a cluster path) |
+| `GET /api/clusters/{name}/tokens` | every token covering the cluster, no token strings, needs `token-manage` there |
 | GUI | user pill in the navbar → User Profile modal → "API tokens" button → tokens modal (`components/Modals/ApiTokensModal`): create (grant picker limited to the union of grants held across clusters, cluster scope from the clusters the user has an account on, expiry), show, revoke. Per person, not per cluster. |
 | CLI | `replication-manager-cli token create --label x [--grants "db-show proxy"] [--clusters a,b] [--expire-days N]`, `token list [--cluster name]`, `token revoke <id>`; `--api-token <token>` on every command replaces `--user/--password` |
 | Security log | `api_token_created`, `api_token_revoked`, `api_token_denied` |
@@ -113,7 +118,7 @@ Other login-only helpers made token-aware: `isValidRequest` (used by `/api/clust
 `resolveGlobalRequestIdentity` (global jobs aggregate: needs a global-scope token, whose
 principal is registered on every cluster). The middleware answers a rejected HMAC bearer with
 a plain 401 "API token invalid, revoked, expired or disabled" instead of the RSA parser's
-error. `/tokens` under a cluster is registered in `clusterACLRules` with `grant-show`.
+error. `/tokens` under a cluster is registered in `clusterACLRules` with `token-manage`.
 
 ## Known limits
 

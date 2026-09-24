@@ -384,7 +384,30 @@ func (cluster *Cluster) LoadAPIUsers() error {
 	// a SecretKey change would also drift it). Force it back to the current derived key
 	// here so a config reload can never break the compute sensor's login.
 	cluster.reconcileSystemServicePassword()
+	cluster.reconcileSystemServiceGrants()
 	return nil
+}
+
+// reconcileSystemServiceGrants strips the API-token grants from the `system`
+// service account on every load: a machine identity authenticating with a derived
+// key must never mint or manage bearer credentials, whatever an ACL string or the
+// user-management GUI handed it (issue #1835).
+func (cluster *Cluster) reconcileSystemServiceGrants() {
+	u, ok := cluster.APIUsers["system"]
+	if !ok || u.Grants == nil {
+		return
+	}
+	stripped := false
+	for _, g := range config.GetGrantToken() {
+		if u.Grants[g] {
+			u.Grants[g] = false
+			stripped = true
+		}
+	}
+	if stripped {
+		cluster.APIUsers["system"] = u
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Stripped API token grants from the `system` service account: a machine identity never issues tokens")
+	}
 }
 
 // logUserGrantAssignment writes the resolved grant set for a user to the

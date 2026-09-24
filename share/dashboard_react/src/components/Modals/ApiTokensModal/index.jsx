@@ -233,6 +233,7 @@ function ApiTokensModal({ isOpen, closeModal, user }) {
   const [shown, setShown] = useState(null)
   const [toRevoke, setToRevoke] = useState(null)
   const enabled = monitor?.config?.apiUserTokens !== false
+  const canIssue = Object.values(user?.grants || {}).some((g) => g?.['token-create'])
 
   useEffect(() => {
     if (isOpen) {
@@ -283,7 +284,7 @@ function ApiTokensModal({ isOpen, closeModal, user }) {
           <ModalHeader fontSize='md'>
             <HStack justify='space-between' pr={8}>
               <Text>API tokens of {user?.DisplayName || user?.User || user?.username || ''}</Text>
-              {enabled && (
+              {enabled && canIssue && (
                 <RMButton size='small' onClick={() => setIsCreateOpen(true)}>
                   <HStack spacing={1}>
                     <TbKey />
@@ -306,7 +307,8 @@ function ApiTokensModal({ isOpen, closeModal, user }) {
             )}
             <Text mt={3} fontSize='xs' color='gray.500'>
               A token carries at most the grants you hold and can be limited to some clusters. It stops working the
-              moment it is revoked, when it expires, or when your own grants are removed.
+              moment it is revoked, when it expires, or when your own grants are removed. Issuing needs the
+              token-create grant; listing and revoking other users' tokens needs token-manage.
             </Text>
           </ModalBody>
         </ModalContent>

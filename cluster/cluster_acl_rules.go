@@ -294,8 +294,8 @@ var clusterACLRules = []ACLRule{
 
 	// User Management
 	{"/users/send-credentials", nil, []string{config.GrantGrantShow}},
-	// User-issued API tokens covering the cluster (issue #1835): listing needs grant-show.
-	{"/tokens", nil, []string{config.GrantGrantShow}},
+	// User-issued API tokens covering the cluster (issue #1835): listing needs token-manage.
+	{"/tokens", nil, []string{config.GrantTokenManage}},
 	{"/api/monitor/actions/adduser/", nil, []string{config.GrantGrantAdd}},
 	{"/users/add", nil, []string{config.GrantGrantAdd}},
 	{"/users/update", nil, []string{config.GrantGrantModify}},

@@ -35,6 +35,8 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
     Object.keys(roles[name] || {}).forEach(r => allRoles.add(r))
   })
   const roleList = [...allRoles].sort()
+  // API tokens need the token-create grant on at least one cluster (#1835).
+  const canIssueTokens = clusterNames.some((name) => grants[name]?.['token-create'])
 
   const stickyBg = theme === 'light' ? 'white' : 'gray.800'
 
@@ -75,7 +77,7 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
                 </HStack>
               </RMButton>
               <HStack spacing={3}>
-                {onApiTokens && (
+                {onApiTokens && canIssueTokens && (
                   <RMButton variant='outline' onClick={onApiTokens}>
                     <HStack spacing={1}>
                       <TbKey />

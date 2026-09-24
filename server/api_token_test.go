@@ -24,10 +24,10 @@ func newTokenTestManager(t *testing.T) (*ReplicationManager, *cluster.Cluster) {
 		Grants:   config.GetGrantType(),
 	}
 	alice := cluster.APIUser{User: "alice", Password: "x", Roles: map[string]bool{}}
-	cl.SetUserGrants(&alice, "db-show cluster-switchover grant-show")
+	cl.SetUserGrants(&alice, "db-show cluster-switchover grant-show token")
 	cl.APIUsers["alice"] = alice
 	bob := cluster.APIUser{User: "bob", Password: "y", Roles: map[string]bool{}}
-	cl.SetUserGrants(&bob, "db-show")
+	cl.SetUserGrants(&bob, "db-show token-create")
 	cl.APIUsers["bob"] = bob
 	repman := &ReplicationManager{
 		Clusters:    map[string]*cluster.Cluster{cl.Name: cl},
@@ -140,10 +140,10 @@ func TestAPITokenRevokeExpiryDisabledAndKeyRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := bearerRequest(tok.Token, "/api/clusters/c1")
-	// Bob cannot revoke alice's token without cluster-grant.
+	// Bob cannot revoke alice's token without token-manage.
 	bobTok, _ := repman.createAPIToken("bob", APITokenForm{Label: "bob"}, "")
 	if _, err := repman.revokeAPIToken(tok.ID, "bob", bearerRequest(bobTok.Token, "/api/tokens/"+tok.ID)); err == nil {
-		t.Error("another user without cluster-grant must not revoke")
+		t.Error("another user without token-manage must not revoke")
 	}
 	// Owner revokes: the token dies immediately, principal dropped.
 	if _, err := repman.revokeAPIToken(tok.ID, "alice", r); err != nil {
@@ -303,7 +303,7 @@ func TestAPITokenReviewFixes(t *testing.T) {
 	// review 3: a cluster-scoped token whose owner holds cluster-grant can revoke
 	// another user's token covering that cluster, from /api/tokens/{id}.
 	admin := cluster.APIUser{User: "root", Password: "z", Roles: map[string]bool{}}
-	cl.SetUserGrants(&admin, "cluster-grant db-show")
+	cl.SetUserGrants(&admin, "token db-show")
 	cl.APIUsers["root"] = admin
 	adminTok, err := repman.createAPIToken("root", APITokenForm{Label: "ops", Clusters: []string{"c1"}}, "")
 	if err != nil {
@@ -311,7 +311,7 @@ func TestAPITokenReviewFixes(t *testing.T) {
 	}
 	bobTok, _ := repman.createAPIToken("bob", APITokenForm{Label: "bob", Clusters: []string{"c1"}}, "")
 	if _, err := repman.revokeAPIToken(bobTok.ID, "root", bearerRequest(adminTok.Token, "/api/tokens/"+bobTok.ID)); err != nil {
-		t.Errorf("cluster-scoped token with cluster-grant must revoke a token on its cluster: %v", err)
+		t.Errorf("cluster-scoped token with token-manage must revoke a token on its cluster: %v", err)
 	}
 
 	// review 4: revoked records past retention are purged on save, fresh ones kept.
@@ -428,5 +428,52 @@ func TestAPITokenOnClustersListAndMiddleware(t *testing.T) {
 	}
 	if !cl.IsValidACL(id.Username, "", "/api/clusters/c1", "token") {
 		t.Error("the global identity principal must be registered on the cluster")
+	}
+}
+
+func TestAPITokenGrantsAndSystemAccount(t *testing.T) {
+	repman, cl := newTokenTestManager(t)
+	// No token-create: cannot issue.
+	carol := cluster.APIUser{User: "carol", Password: "c", Roles: map[string]bool{}}
+	cl.SetUserGrants(&carol, "db-show")
+	cl.APIUsers["carol"] = carol
+	if _, err := repman.createAPIToken("carol", APITokenForm{Label: "x"}, ""); err == nil {
+		t.Error("a user without token-create must not issue tokens")
+	}
+	// The system service account never issues tokens, even with the grant in the map.
+	sys := cluster.APIUser{User: "system", Password: "k", Roles: map[string]bool{}}
+	cl.SetUserGrants(&sys, "db proxy token")
+	cl.APIUsers["system"] = sys
+	if _, err := repman.createAPIToken("system", APITokenForm{Label: "x"}, ""); err == nil {
+		t.Error("system must never issue tokens")
+	}
+	// The grants are stripped from system on every user load.
+	cl.Conf.Secrets = map[string]config.Secret{"api-credentials": {Value: "system:k"}, "api-credentials-external": {Value: ""}}
+	cl.Conf.APIUsersACLAllow = "system:db proxy token"
+	if err := cl.LoadAPIUsers(); err != nil {
+		t.Fatal(err)
+	}
+	if u := cl.APIUsers["system"]; u.Grants[config.GrantTokenCreate] || u.Grants[config.GrantTokenManage] {
+		t.Error("token grants must be stripped from system on load")
+	}
+	if !cl.APIUsers["system"].Grants[config.GrantDBShowVariables] {
+		t.Error("other grants of system must be untouched")
+	}
+	// token-manage lists other users' tokens on a cluster; token-create alone does not.
+	cl.APIUsers["alice"] = func() cluster.APIUser {
+		a := cluster.APIUser{User: "alice", Password: "x", Roles: map[string]bool{}}
+		cl.SetUserGrants(&a, "db-show token")
+		return a
+	}()
+	cl.APIUsers["bob"] = func() cluster.APIUser {
+		b := cluster.APIUser{User: "bob", Password: "y", Roles: map[string]bool{}}
+		cl.SetUserGrants(&b, "db-show token-create")
+		return b
+	}()
+	if !cl.IsURLPassACL("alice", "/api/clusters/c1/tokens", false) {
+		t.Error("token-manage must open the cluster tokens listing")
+	}
+	if cl.IsURLPassACL("bob", "/api/clusters/c1/tokens", false) {
+		t.Error("token-create alone must not open the cluster tokens listing")
 	}
 }

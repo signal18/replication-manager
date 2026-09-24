@@ -329,6 +329,16 @@ func (repman *ReplicationManager) parseVerifiedAPIToken(r *http.Request) (*APITo
 	return &cp, true
 }
 
+// userHasGrantAnywhere reports whether the user holds a grant in at least one cluster.
+func (repman *ReplicationManager) userHasGrantAnywhere(username string, grant string) bool {
+	for _, cl := range repman.Clusters {
+		if u, ok := cl.APIUsers[username]; ok && u.Grants[grant] {
+			return true
+		}
+	}
+	return false
+}
+
 func (repman *ReplicationManager) userExists(username string) bool {
 	for _, cl := range repman.Clusters {
 		if _, ok := cl.APIUsers[username]; ok {
@@ -398,7 +408,7 @@ type APITokenForm struct {
 // handlerMuxAPITokens lists (GET) or creates (POST) the caller's own tokens.
 //
 // @Summary List or create the caller's API tokens
-// @Description GET lists the caller's tokens (token strings included, they are the owner's). POST issues a new token narrowed to a subset of the caller's own grants and a cluster scope; the token can never carry a grant the caller does not hold.
+// @Description GET lists the caller's tokens (token strings included for an interactive login). POST (grant token-create, interactive login only) issues a new token narrowed to a subset of the caller's own grants and a cluster scope; the token can never carry a grant the caller does not hold. The system service account can never issue tokens.
 // @Tags Auth
 // @Accept json
 // @Produce json
@@ -428,6 +438,11 @@ func (repman *ReplicationManager) handlerMuxAPITokens(w http.ResponseWriter, r *
 		http.Error(w, "An API token cannot issue tokens, log in with your credentials", http.StatusForbidden)
 		return
 	}
+	if r.Method == http.MethodPost && !repman.userHasGrantAnywhere(username, config.GrantTokenCreate) {
+		repman.logSecurityEvent("api_token_denied", username, r.RemoteAddr, "API token creation refused: no token-create grant")
+		http.Error(w, "No token-create grant", http.StatusForbidden)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		repman.jsonResponse(repman.listAPITokens(username, "", !viaToken), w)
@@ -451,7 +466,7 @@ func (repman *ReplicationManager) handlerMuxAPITokens(w http.ResponseWriter, r *
 }
 
 // handlerMuxAPITokenRevoke revokes one token: its owner always may; another user
-// needs the cluster-grant grant on every cluster the token covers.
+// needs the token-manage grant on every cluster the token covers.
 //
 // @Summary Revoke an API token
 // @Tags Auth
@@ -485,9 +500,9 @@ func (repman *ReplicationManager) handlerMuxAPITokenRevoke(w http.ResponseWriter
 }
 
 // handlerMuxClusterAPITokens lists every token whose scope covers the cluster, for
-// users holding grant-show there (token strings never included).
+// users holding token-manage there (token strings never included).
 //
-// @Summary List the API tokens covering a cluster
+// @Summary List the API tokens covering a cluster (grant token-manage)
 // @Tags Auth
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -508,8 +523,8 @@ func (repman *ReplicationManager) handlerMuxClusterAPITokens(w http.ResponseWrit
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
-	if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantGrantShow] {
-		http.Error(w, "No grant-show grant", http.StatusForbidden)
+	if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantTokenManage] {
+		http.Error(w, "No token-manage grant", http.StatusForbidden)
 		return
 	}
 	_ = username
@@ -543,6 +558,14 @@ func (repman *ReplicationManager) listAPITokens(owner string, clusterName string
 // createAPIToken validates the form against the owner's grants and scope, mints
 // and stores the token.
 func (repman *ReplicationManager) createAPIToken(owner string, form APITokenForm, from string) (*APIToken, error) {
+	// The system service account is a machine identity with a derived key: it
+	// never mints bearer credentials, whatever grants a config may hand it.
+	if owner == "system" {
+		return nil, errors.New("the system service account cannot issue API tokens")
+	}
+	if !repman.userHasGrantAnywhere(owner, config.GrantTokenCreate) {
+		return nil, fmt.Errorf("%s has no token-create grant", owner)
+	}
 	label := strings.TrimSpace(form.Label)
 	if label == "" {
 		return nil, errors.New("label is required")
@@ -665,7 +688,7 @@ func (repman *ReplicationManager) createAPIToken(owner string, form APITokenForm
 }
 
 // revokeAPIToken marks a token revoked. The owner always may; anyone else needs
-// cluster-grant on every cluster the token covers.
+// token-manage on every cluster the token covers.
 func (repman *ReplicationManager) revokeAPIToken(id string, by string, r *http.Request) (*APIToken, error) {
 	st := &repman.apiTokens
 	// Read the record, then authorize OUTSIDE the store lock: requestACLUser parses
@@ -688,8 +711,8 @@ func (repman *ReplicationManager) revokeAPIToken(id string, by string, r *http.R
 				continue
 			}
 			u, ok := repman.requestACLUserOnCluster(r, cl)
-			if !ok || !u.Grants[config.GrantClusterGrant] {
-				return nil, fmt.Errorf("revoking another user's token needs the cluster-grant grant on %s", cl.Name)
+			if !ok || !u.Grants[config.GrantTokenManage] {
+				return nil, fmt.Errorf("revoking another user's token needs the token-manage grant on %s", cl.Name)
 			}
 		}
 	}
