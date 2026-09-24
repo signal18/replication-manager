@@ -90,7 +90,7 @@ token-aware without further changes.
 | `POST /api/tokens` | `{label, grants, clusters, expireDays}`; `expireDays` 0 = server default, -1 = never; returns the record with the token |
 | `DELETE /api/tokens/{id}` | revoke: the owner always may; another user needs `cluster-grant` on every cluster the token covers (for a token-authenticated caller the check is on cluster membership of the scope, `requestACLUserOnCluster`, since the URL is not under a cluster path) |
 | `GET /api/clusters/{name}/tokens` | every token covering the cluster, no token strings, needs `grant-show` there |
-| GUI | cluster "API Tokens" tab (every logged-in user, no grant needed): create (grant picker limited to the grants held, cluster scope, expiry), show, revoke |
+| GUI | user pill in the navbar → User Profile modal → "API tokens" button → tokens modal (`components/Modals/ApiTokensModal`): create (grant picker limited to the union of grants held across clusters, cluster scope from the clusters the user has an account on, expiry), show, revoke. Per person, not per cluster. |
 | CLI | `replication-manager-cli token create --label x [--grants "db-show proxy"] [--clusters a,b] [--expire-days N]`, `token list [--cluster name]`, `token revoke <id>`; `--api-token <token>` on every command replaces `--user/--password` |
 | Security log | `api_token_created`, `api_token_revoked`, `api_token_denied` |
 

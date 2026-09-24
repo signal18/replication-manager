@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Badge,
+  Box,
   Checkbox,
   Code,
   FormControl,
@@ -21,33 +22,44 @@ import {
   NumberInputField,
   Stack,
   Text,
-  Tooltip,
   Wrap,
   WrapItem
 } from '@chakra-ui/react'
-import { TbKey, TbTrash, TbEye, TbCopy } from 'react-icons/tb'
-import { DataTable } from '../../components/DataTable'
-import AccordionComponent from '../../components/AccordionComponent'
-import RMButton from '../../components/RMButton'
-import RMIconButton from '../../components/RMIconButton'
-import ConfirmModal from '../../components/Modals/ConfirmModal'
-import GrantCheckList from '../../components/GrantCheckList'
-import parentStyles from '../../components/Modals/styles.module.scss'
-import styles from './styles.module.scss'
-import { createApiToken, getApiTokens, revokeApiToken } from '../../redux/clusterSlice'
-import { getMonitoredData } from '../../redux/globalClustersSlice'
+import { TbKey, TbTrash, TbEye } from 'react-icons/tb'
+import { DataTable } from '../../DataTable'
+import RMButton from '../../RMButton'
+import RMIconButton from '../../RMIconButton'
+import ConfirmModal from '../ConfirmModal'
+import GrantCheckList from '../../GrantCheckList'
+import parentStyles from '../styles.module.scss'
+import { useTheme } from '../../../ThemeProvider'
+import { createApiToken, getApiTokens, revokeApiToken } from '../../../redux/clusterSlice'
+import { getMonitoredData } from '../../../redux/globalClustersSlice'
 
-// User-issued API tokens (issue #1835): a user issues bearer tokens for
-// themselves, narrowed to a subset of their own grants and a cluster scope.
-// The list is the caller's own tokens; the token string is the owner's, so
-// it can be shown again from the eye icon.
+// User-issued API tokens (issue #1835). Opened from the User Profile panel: a
+// token belongs to the person, not to a cluster. `user` is the logged-in user as
+// the navbar holds it, with `grants` and `roles` keyed by cluster name; the grant
+// picker offers the union of the grants held across those clusters and the
+// cluster picker lists them. The server re-checks everything at creation.
 
 const columnHelper = createColumnHelper()
 
 const fmtDate = (v) => (v && !v.startsWith('0001-') ? new Date(v).toLocaleString() : '-')
 
+// unionGrants flattens the per-cluster grant map into one {grant: true} map.
+const unionGrants = (user) => {
+  const out = {}
+  Object.values(user?.grants || {}).forEach((byGrant) => {
+    Object.entries(byGrant || {}).forEach(([g, v]) => {
+      if (v) out[g] = true
+    })
+  })
+  return out
+}
+
 function TokenDisplayModal({ token, isOpen, closeModal }) {
   const [copied, setCopied] = useState(false)
+  const { theme } = useTheme()
   const copy = () => {
     try {
       navigator.clipboard.writeText(token.token)
@@ -59,14 +71,14 @@ function TokenDisplayModal({ token, isOpen, closeModal }) {
   return (
     <Modal isOpen={isOpen} onClose={closeModal} size='xl'>
       <ModalOverlay />
-      <ModalContent className={parentStyles.modalContent}>
-        <ModalHeader>API token {token.label}</ModalHeader>
+      <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
+        <ModalHeader fontSize='md'>API token {token.label}</ModalHeader>
         <ModalCloseButton />
         <ModalBody>
-          <Text mb={2}>
+          <Text mb={2} fontSize='sm'>
             Use it as <Code>Authorization: Bearer &lt;token&gt;</Code> or with <Code>replication-manager-cli --api-token</Code>.
           </Text>
-          <Code p={2} whiteSpace='pre-wrap' wordBreak='break-all' display='block'>
+          <Code p={2} whiteSpace='pre-wrap' wordBreak='break-all' display='block' fontSize='xs'>
             {token.token}
           </Code>
         </ModalBody>
@@ -85,6 +97,7 @@ function TokenDisplayModal({ token, isOpen, closeModal }) {
 
 function CreateTokenModal({ user, isOpen, closeModal, onCreated }) {
   const dispatch = useDispatch()
+  const { theme } = useTheme()
   const {
     globalClusters: { monitor }
   } = useSelector((state) => state)
@@ -97,7 +110,9 @@ function CreateTokenModal({ user, isOpen, closeModal, onCreated }) {
   const [expireDays, setExpireDays] = useState(monitor?.config?.apiUserTokensDefaultExpireDays ?? 120)
   const [never, setNever] = useState(false)
   const { serviceAcl = [] } = monitor || {}
-  const clusterNames = monitor?.clusters || []
+  const held = useMemo(() => unionGrants(user), [user])
+  const clusterNames = useMemo(() => Object.keys(user?.grants || {}).sort(), [user])
+  const pickerUser = useMemo(() => ({ grants: held, roles: {} }), [held])
 
   useEffect(() => {
     if (monitor === null) {
@@ -106,13 +121,13 @@ function CreateTokenModal({ user, isOpen, closeModal, onCreated }) {
   }, [monitor])
 
   useEffect(() => {
-    if (serviceAcl?.length > 0 && user && allAcls.length === 0) {
-      // Only the grants the logged-in user holds can go into a token.
-      const held = serviceAcl.filter((item) => user.grants?.[item.grant]).map((item) => Object.assign({}, item, { selected: false }))
-      setAllAcls(held)
-      setAcls(held)
+    if (serviceAcl?.length > 0 && allAcls.length === 0) {
+      // Only the grants the logged-in user holds somewhere can go into a token.
+      const options = serviceAcl.filter((item) => held[item.grant]).map((item) => Object.assign({}, item, { selected: false }))
+      setAllAcls(options)
+      setAcls(options)
     }
-  }, [serviceAcl, user])
+  }, [serviceAcl, held])
 
   const handleSubmit = () => {
     if (!label.trim()) {
@@ -139,23 +154,23 @@ function CreateTokenModal({ user, isOpen, closeModal, onCreated }) {
   return (
     <Modal isOpen={isOpen} onClose={closeModal} size='xl'>
       <ModalOverlay />
-      <ModalContent className={parentStyles.modalContent}>
-        <ModalHeader>Create API token</ModalHeader>
+      <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
+        <ModalHeader fontSize='md'>Create API token</ModalHeader>
         <ModalCloseButton />
         <ModalBody>
           <Stack spacing={4}>
             <FormControl isInvalid={!!labelError}>
-              <FormLabel>Label</FormLabel>
-              <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder='ci, mcp, laptop…' maxLength={64} />
+              <FormLabel fontSize='sm'>Label</FormLabel>
+              <Input size='sm' value={label} onChange={(e) => setLabel(e.target.value)} placeholder='ci, mcp, laptop…' maxLength={64} />
               <FormErrorMessage>{labelError}</FormErrorMessage>
             </FormControl>
             <FormControl>
-              <FormLabel>Grants (none selected = every grant you hold)</FormLabel>
-              <GrantCheckList grantOptions={allAcls} onChange={setAcls} parentStyles={parentStyles} user={user} />
+              <FormLabel fontSize='sm'>Grants (none selected = every grant you hold)</FormLabel>
+              <GrantCheckList grantOptions={allAcls} onChange={setAcls} parentStyles={parentStyles} user={pickerUser} />
             </FormControl>
             <FormControl>
-              <FormLabel>Clusters</FormLabel>
-              <Checkbox isChecked={allClusters} onChange={(e) => setAllClusters(e.target.checked)}>
+              <FormLabel fontSize='sm'>Clusters</FormLabel>
+              <Checkbox size='sm' isChecked={allClusters} onChange={(e) => setAllClusters(e.target.checked)}>
                 Every cluster (needed for global settings)
               </Checkbox>
               {!allClusters && (
@@ -163,6 +178,7 @@ function CreateTokenModal({ user, isOpen, closeModal, onCreated }) {
                   {clusterNames.map((name) => (
                     <WrapItem key={name}>
                       <Checkbox
+                        size='sm'
                         isChecked={clusters.includes(name)}
                         onChange={(e) =>
                           setClusters(e.target.checked ? [...clusters, name] : clusters.filter((c) => c !== name))
@@ -175,12 +191,12 @@ function CreateTokenModal({ user, isOpen, closeModal, onCreated }) {
               )}
             </FormControl>
             <FormControl>
-              <FormLabel>Expires in days</FormLabel>
+              <FormLabel fontSize='sm'>Expires in days</FormLabel>
               <HStack>
-                <NumberInput min={1} value={expireDays} isDisabled={never} onChange={(v) => setExpireDays(v)} maxW='120px'>
+                <NumberInput size='sm' min={1} value={expireDays} isDisabled={never} onChange={(v) => setExpireDays(v)} maxW='120px'>
                   <NumberInputField />
                 </NumberInput>
-                <Checkbox isChecked={never} onChange={(e) => setNever(e.target.checked)}>
+                <Checkbox size='sm' isChecked={never} onChange={(e) => setNever(e.target.checked)}>
                   Never expires
                 </Checkbox>
               </HStack>
@@ -200,8 +216,9 @@ function CreateTokenModal({ user, isOpen, closeModal, onCreated }) {
   )
 }
 
-function ApiTokens({ user }) {
+function ApiTokensModal({ isOpen, closeModal, user }) {
   const dispatch = useDispatch()
+  const { theme } = useTheme()
   const {
     cluster: { apiTokens },
     globalClusters: { monitor }
@@ -212,15 +229,16 @@ function ApiTokens({ user }) {
   const enabled = monitor?.config?.apiUserTokens !== false
 
   useEffect(() => {
-    dispatch(getApiTokens())
-  }, [])
+    if (isOpen) {
+      dispatch(getApiTokens())
+    }
+  }, [isOpen])
 
   const columns = useMemo(
     () => [
       columnHelper.accessor((row) => row.label, { cell: (info) => info.getValue(), header: 'Label', id: 'label' }),
       columnHelper.accessor((row) => (row.grants || []).join(' '), { cell: (info) => info.getValue(), header: 'Grants', id: 'grants' }),
       columnHelper.accessor((row) => (row.clusters || []).join(','), { cell: (info) => info.getValue(), header: 'Clusters', id: 'clusters' }),
-      columnHelper.accessor((row) => fmtDate(row.createdAt), { cell: (info) => info.getValue(), header: 'Created', id: 'createdAt' }),
       columnHelper.accessor((row) => fmtDate(row.expiresAt), { cell: (info) => info.getValue(), header: 'Expires', id: 'expiresAt' }),
       columnHelper.accessor((row) => fmtDate(row.lastUsedAt), { cell: (info) => info.getValue(), header: 'Last used', id: 'lastUsedAt' }),
       columnHelper.accessor(
@@ -253,28 +271,40 @@ function ApiTokens({ user }) {
 
   return (
     <>
-      <AccordionComponent
-        heading={'API TOKENS'}
-        allowToggle={false}
-        className={styles.accordion}
-        panelSX={{ overflowX: 'auto', p: 0 }}
-        headerActions={
-          enabled ? (
-            <Tooltip label='Create API token'>
-              <span>
-                <RMIconButton icon={TbKey} tooltip={'Create API token'} px='2' variant='outline' onClick={() => setIsCreateOpen(true)} />
-              </span>
-            </Tooltip>
-          ) : undefined
-        }
-        body={
-          enabled ? (
-            <DataTable key='api-tokens' data={apiTokens || []} columns={columns} className={styles.table} />
-          ) : (
-            <Text p={4}>API tokens are disabled on this server (api-user-tokens).</Text>
-          )
-        }
-      />
+      <Modal isOpen={isOpen} onClose={closeModal} size='4xl'>
+        <ModalOverlay />
+        <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
+          <ModalHeader fontSize='md'>
+            <HStack justify='space-between' pr={8}>
+              <Text>API tokens of {user?.DisplayName || user?.User || user?.username || ''}</Text>
+              {enabled && (
+                <RMButton size='small' onClick={() => setIsCreateOpen(true)}>
+                  <HStack spacing={1}>
+                    <TbKey />
+                    <Text fontSize='sm'>New token</Text>
+                  </HStack>
+                </RMButton>
+              )}
+            </HStack>
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={4}>
+            {enabled ? (
+              <Box overflowX='auto'>
+                <DataTable key='api-tokens' data={apiTokens || []} columns={columns} />
+              </Box>
+            ) : (
+              <Text p={4} fontSize='sm'>
+                API tokens are disabled on this server (api-user-tokens).
+              </Text>
+            )}
+            <Text mt={3} fontSize='xs' color='gray.500'>
+              A token carries at most the grants you hold and can be limited to some clusters. It stops working the
+              moment it is revoked, when it expires, or when your own grants are removed.
+            </Text>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
       {isCreateOpen && (
         <CreateTokenModal user={user} isOpen={isCreateOpen} closeModal={() => setIsCreateOpen(false)} onCreated={(t) => setShown(t)} />
       )}
@@ -294,4 +324,4 @@ function ApiTokens({ user }) {
   )
 }
 
-export default ApiTokens
+export default ApiTokensModal
