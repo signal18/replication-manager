@@ -539,6 +539,9 @@ func (repman *ReplicationManager) handleOriginValidator(origin string) bool {
 }
 
 func (repman *ReplicationManager) isValidRequest(r *http.Request) (bool, error) {
+	if _, ok := repman.parseAPITokenFromRequest(r); ok {
+		return true, nil
+	}
 
 	_, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
@@ -654,6 +657,10 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 }
 
 func (repman *ReplicationManager) GetJWTClaims(r *http.Request) (map[string]string, error) {
+	// An API token has no profile claims: the owner is the identity, AuthType marks it.
+	if t, ok := repman.parseAPITokenFromRequest(r); ok {
+		return map[string]string{"User": t.User, "AuthType": "Token", "TokenID": t.ID, "TokenLabel": t.Label}, nil
+	}
 
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
@@ -1811,8 +1818,14 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 
 func (repman *ReplicationManager) validateTokenMiddleware(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 	// A user-issued API token (signature, expiry and store record checked there).
-	if _, ok := repman.parseAPITokenFromRequest(r); ok {
+	// A bearer that is HMAC-signed but rejected is an API token that is invalid,
+	// revoked, expired or disabled: say so, do not fall through to the RSA parser.
+	if _, isAPIToken, ok := repman.apiTokenFromRequest(r); ok {
 		next(w, r)
+		return
+	} else if isAPIToken {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, "API token invalid, revoked, expired or disabled")
 		return
 	}
 	w.Header().Set("Access-Control-Allow-Origin", "*")

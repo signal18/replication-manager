@@ -108,7 +108,17 @@ cluster-scoped token, direct grant checks through `requestACLUser`, revoke by ow
 another user, expiry, off-switch, owner deletion, key rotation, encrypted store on disk
 (nothing in clear, 0600) reloaded by a fresh manager, cluster scope table.
 
+Other login-only helpers made token-aware: `isValidRequest` (used by `/api/clusters`),
+`GetJWTClaims` (returns `{User, AuthType: "Token", TokenID, TokenLabel}`), and
+`resolveGlobalRequestIdentity` (global jobs aggregate: needs a global-scope token, whose
+principal is registered on every cluster). The middleware answers a rejected HMAC bearer with
+a plain 401 "API token invalid, revoked, expired or disabled" instead of the RSA parser's
+error. `/tokens` under a cluster is registered in `clusterACLRules` with `grant-show`.
+
 ## Known limits
+
+- The gRPC API (`server/repmanv3.go`) and the web terminal (`server/server_tty.go`) still
+  verify the RSA login JWT only: API tokens do not authenticate there.
 
 - One master key for everything: a key rotation kills all tokens at once. A per-token
   generation would need a second secret; not done.

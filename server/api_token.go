@@ -256,9 +256,28 @@ func (repman *ReplicationManager) mintAPIToken(t APIToken) (string, error) {
 // token (no bearer, an RSA login JWT, bad signature, unknown / revoked / expired
 // id, disabled feature). Signature, expiry and store are all checked here.
 func (repman *ReplicationManager) parseAPITokenFromRequest(r *http.Request) (*APIToken, bool) {
-	if !repman.apiTokensEnabled() {
-		return nil, false
+	t, _, ok := repman.apiTokenFromRequest(r)
+	return t, ok
+}
+
+// apiTokenFromRequest is parseAPITokenFromRequest plus whether the bearer LOOKS like
+// an API token (HMAC-signed) at all, so the middleware can answer a rejected token
+// with a clean 401 instead of falling through to the RSA parser's error text.
+func (repman *ReplicationManager) apiTokenFromRequest(r *http.Request) (*APIToken, bool, bool) {
+	isHMAC := false
+	if raw, err := request.AuthorizationHeaderExtractor.ExtractToken(r); err == nil && raw != "" {
+		if unverified, _, err := jwt.NewParser().ParseUnverified(raw, jwt.MapClaims{}); err == nil {
+			_, isHMAC = unverified.Method.(*jwt.SigningMethodHMAC)
+		}
 	}
+	if !repman.apiTokensEnabled() {
+		return nil, isHMAC, false
+	}
+	t, ok := repman.parseVerifiedAPIToken(r)
+	return t, isHMAC, ok
+}
+
+func (repman *ReplicationManager) parseVerifiedAPIToken(r *http.Request) (*APIToken, bool) {
 	tok, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor,
 		func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {

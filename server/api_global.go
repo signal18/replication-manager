@@ -728,6 +728,22 @@ type globalRequestIdentity struct {
 // handling in IsValidClusterACL, kept local here rather than factored into that
 // shared, widely-used function to avoid touching behavior other endpoints rely on.
 func (repman *ReplicationManager) resolveGlobalRequestIdentity(r *http.Request) (globalRequestIdentity, bool) {
+	// An API token needs the global scope here (the aggregate spans every cluster);
+	// its principal is registered on each cluster so the per-cluster IsValidACL calls
+	// resolve it to the narrowed grants (auth method "token", no password).
+	if t, ok := repman.parseAPITokenFromRequest(r); ok {
+		if !t.IsGlobal() {
+			return globalRequestIdentity{}, false
+		}
+		principal := ""
+		for _, cl := range repman.Clusters {
+			principal = repman.tokenPrincipalFor(t, cl)
+		}
+		if principal == "" {
+			return globalRequestIdentity{}, false
+		}
+		return globalRequestIdentity{Username: principal, Password: "", AuthMethod: "token"}, true
+	}
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
 		return vk, nil

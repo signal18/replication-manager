@@ -374,3 +374,59 @@ func TestAPITokenStoreLoadFailureDoesNotWipe(t *testing.T) {
 		t.Error("original manager must still authenticate")
 	}
 }
+
+func TestAPITokenOnClustersListAndMiddleware(t *testing.T) {
+	repman, cl := newTokenTestManager(t)
+	global, err := repman.createAPIToken("alice", APITokenForm{Label: "global"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scoped, err := repman.createAPIToken("alice", APITokenForm{Label: "scoped", Clusters: []string{"c1"}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// /api/clusters lists the clusters the token may see: all for a global token,
+	// none for a cluster-scoped one (the list endpoint is not under a cluster path).
+	rr := httptest.NewRecorder()
+	repman.handlerMuxClusters(rr, bearerRequest(global.Token, "/api/clusters"))
+	if rr.Code != http.StatusOK || !contains(rr.Body.String(), cl.Name) {
+		t.Errorf("global token must list clusters: %d %s", rr.Code, rr.Body.String()[:min(80, len(rr.Body.String()))])
+	}
+	rr = httptest.NewRecorder()
+	repman.handlerMuxClusters(rr, bearerRequest(scoped.Token, "/api/clusters"))
+	if rr.Code != http.StatusOK || contains(rr.Body.String(), cl.Name) {
+		t.Errorf("cluster-scoped token must not see the global list: %d", rr.Code)
+	}
+	// Claims map names the owner and marks the auth type.
+	claims, err := repman.GetJWTClaims(bearerRequest(global.Token, "/api/clusters"))
+	if err != nil || claims["User"] != "alice" || claims["AuthType"] != "Token" {
+		t.Errorf("claims for a token: %v %v", claims, err)
+	}
+	// Middleware: valid token passes, a revoked one gets a clean 401.
+	passed := false
+	repman.validateTokenMiddleware(httptest.NewRecorder(), bearerRequest(global.Token, "/api/clusters"), func(http.ResponseWriter, *http.Request) { passed = true })
+	if !passed {
+		t.Error("a valid token must pass the middleware")
+	}
+	if _, err := repman.revokeAPIToken(global.ID, "alice", bearerRequest(global.Token, "/api/tokens/"+global.ID)); err != nil {
+		t.Fatal(err)
+	}
+	rr = httptest.NewRecorder()
+	passed = false
+	repman.validateTokenMiddleware(rr, bearerRequest(global.Token, "/api/clusters"), func(http.ResponseWriter, *http.Request) { passed = true })
+	if passed || rr.Code != http.StatusUnauthorized || !contains(rr.Body.String(), "revoked") {
+		t.Errorf("a revoked token must get a clean 401: passed=%v code=%d body=%q", passed, rr.Code, rr.Body.String())
+	}
+	// Global identity for the aggregate endpoints: scoped token refused, global accepted.
+	if _, ok := repman.resolveGlobalRequestIdentity(bearerRequest(scoped.Token, "/api/clusters/jobs")); ok {
+		t.Error("a cluster-scoped token must not resolve a global identity")
+	}
+	fresh, _ := repman.createAPIToken("alice", APITokenForm{Label: "global2"}, "")
+	id, ok := repman.resolveGlobalRequestIdentity(bearerRequest(fresh.Token, "/api/clusters/jobs"))
+	if !ok || id.AuthMethod != "token" || !cluster.IsTokenPrincipal(id.Username) {
+		t.Errorf("global token identity: %+v ok=%v", id, ok)
+	}
+	if !cl.IsValidACL(id.Username, "", "/api/clusters/c1", "token") {
+		t.Error("the global identity principal must be registered on the cluster")
+	}
+}
