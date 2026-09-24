@@ -15,6 +15,7 @@ import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { useDispatch, useSelector } from 'react-redux'
 import { HStack } from '@chakra-ui/react'
 import TextInputModal from '../../components/Modals/TextInputModal'
+import ApiTokens from './ApiTokens'
 
 function Users({ selectedCluster, user }) {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
@@ -208,6 +209,7 @@ function Users({ selectedCluster, user }) {
         }
         body={<DataTable key="users" data={data} columns={columns} className={styles.table} />}
       />
+      <ApiTokens user={user} />
       {isAddUserModalOpen && (
         <AddUserModal
           clusterName={selectedCluster?.name}

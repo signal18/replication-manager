@@ -138,6 +138,18 @@ func (cluster *Cluster) IsValidACLQuiet(strUser string, strPassword string, URL 
 }
 
 func (cluster *Cluster) isValidACL(strUser string, strPassword string, URL string, AuthMethod string, errorPrint bool) bool {
+	// An API token (issue #1835) carries no password: the server already verified
+	// its signature and store record, and strUser is the token principal name that
+	// GetACLUser resolves to the narrowed grant set. Only the URL ACL runs.
+	if AuthMethod == "token" {
+		if !IsTokenPrincipal(strUser) {
+			return false
+		}
+		if _, ok := cluster.GetACLUser(strUser); !ok {
+			return false
+		}
+		return cluster.IsURLPassACL(strUser, URL, errorPrint)
+	}
 	user, ok := cluster.APIUsers[strUser]
 	if !ok {
 		return false

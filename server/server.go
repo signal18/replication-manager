@@ -145,6 +145,7 @@ type ReplicationManager struct {
 	GlobalInterventionEntry     *cluster.InterventionEntry  `json:"globalInterventionEntry,omitempty"`
 	ActiveInterventionCount     int                         `json:"activeInterventionCount"`
 	UserAuthTry                 sync.Map                    `json:"-"`
+	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
 	OAuthAccessToken            *oauth2.Token               `json:"-"`
 	ViperConfig                 *viper.Viper                `json:"-"`
 	tlog                        s18log.TermLog
@@ -342,6 +343,8 @@ func (repman *ReplicationManager) SetDefaultFlags(v *viper.Viper) {
 
 func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Config, isClient bool) {
 	flags.IntVar(&conf.TokenTimeout, "api-token-timeout", 48, "Timespan of API Token before expired in hour")
+	flags.BoolVar(&conf.APIUserTokens, "api-user-tokens", true, "Let users issue API tokens for themselves (bearer tokens narrowed to a subset of their grants and a cluster scope, stored encrypted in monitoring-datadir/api-tokens.json)")
+	flags.IntVar(&conf.APIUserTokensDefaultExpireDays, "api-user-tokens-default-expire-days", 120, "Default lifetime in days of a user-issued API token (0 = never expires)")
 
 	var usr string
 	if repman != nil && repman.OsUser != nil {

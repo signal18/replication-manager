@@ -548,6 +548,23 @@ func (repman *ReplicationManager) isValidRequest(r *http.Request) (bool, error) 
 }
 
 func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cluster.Cluster) (bool, string) {
+	// A user-issued API token (api_token.go): no password, the ACL runs under the
+	// token principal so the grants are the token's ∩ the owner's, and the cluster
+	// scope is applied to the URL.
+	if t, ok := repman.parseAPITokenFromRequest(r); ok {
+		if !tokenURLInScope(t, cluster, r.URL.Path) {
+			repman.logSecurityEvent("api_token_denied", t.User, r.RemoteAddr,
+				fmt.Sprintf("API token %s (%s) out of scope for %s on cluster %s", t.ID, t.Label, r.URL.Path, cluster.Name))
+			return false, t.User
+		}
+		principal := repman.tokenPrincipalFor(t, cluster)
+		ok := cluster.IsValidACL(principal, "", r.URL.Path, "token")
+		if !ok {
+			repman.logSecurityEvent("api_token_denied", t.User, r.RemoteAddr,
+				fmt.Sprintf("API token %s (%s) denied on %s (grant not embedded or no longer held)", t.ID, t.Label, r.URL.Path))
+		}
+		return ok, t.User
+	}
 
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
@@ -573,6 +590,9 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 }
 
 func (repman *ReplicationManager) DecryptJWTPassword(r *http.Request) (string, error) {
+	if t, ok := repman.parseAPITokenFromRequest(r); ok {
+		return "", fmt.Errorf("API token %s carries no password", t.ID)
+	}
 
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
@@ -668,6 +688,9 @@ func (repman *ReplicationManager) GetJWTGitLabToken(r *http.Request) (string, er
 }
 
 func (repman *ReplicationManager) GetUserFromRequest(r *http.Request) string {
+	if t, ok := repman.parseAPITokenFromRequest(r); ok {
+		return t.User
+	}
 
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
@@ -701,7 +724,8 @@ func (repman *ReplicationManager) UserHasGlobalGrant(r *http.Request, grant stri
 		return false
 	}
 	for _, cl := range repman.Clusters {
-		if u, ok := cl.APIUsers[username]; ok {
+		// requestACLUser applies an API token's narrowed grants and scope.
+		if u, ok := repman.requestACLUser(r, cl); ok {
 			if u.Grants[grant] {
 				return true
 			}
@@ -1783,6 +1807,11 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 }
 
 func (repman *ReplicationManager) validateTokenMiddleware(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
+	// A user-issued API token (signature, expiry and store record checked there).
+	if _, ok := repman.parseAPITokenFromRequest(r); ok {
+		next(w, r)
+		return
+	}
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	//validate token
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor,

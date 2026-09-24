@@ -2023,7 +2023,7 @@ func (repman *ReplicationManager) splitBrainSimGuard(w http.ResponseWriter, r *h
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return nil, 0, false
 	}
-	if u, ok := mycluster.APIUsers[repman.GetUserFromRequest(r)]; !ok || !u.Grants[config.GrantClusterTest] {
+	if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantClusterTest] {
 		http.Error(w, "No cluster-test grant", http.StatusForbidden)
 		return nil, 0, false
 	}
@@ -8742,8 +8742,7 @@ func (repman *ReplicationManager) handlerMuxResticWipeRepo(w http.ResponseWriter
 		// Enforce GrantDBBackup explicitly: URL-based ACL matching falls back to the
 		// generic /restic rule (GrantClusterProcess) via hierarchical pattern matching,
 		// which would allow users without backup permissions to wipe the repository.
-		username := repman.GetUserFromRequest(r)
-		if u, ok := mycluster.APIUsers[username]; !ok || !u.Grants[config.GrantDBBackup] {
+		if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantDBBackup] {
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
@@ -8816,8 +8815,7 @@ func (repman *ReplicationManager) handlerMuxResticCreateBucket(w http.ResponseWr
 		// Enforce GrantDBBackup explicitly: URL-based ACL matching falls back to the
 		// generic /restic rule (GrantClusterProcess) via hierarchical pattern matching,
 		// which would allow users without backup permissions to mutate remote storage.
-		username := repman.GetUserFromRequest(r)
-		if u, ok := mycluster.APIUsers[username]; !ok || !u.Grants[config.GrantDBBackup] {
+		if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantDBBackup] {
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
