@@ -70,7 +70,7 @@ var tokenCreateCmd = &cobra.Command{
   --clusters comma separated cluster names (default: every cluster you can see, scope "*")
   --expire-days lifetime in days, -1 for never (default: the server setting, 120 days)`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cliInit(false)
+		cliTokenInit()
 		if cliTokenLabel == "" {
 			fmt.Fprintln(os.Stderr, "--label is required")
 			os.Exit(2)
@@ -107,7 +107,7 @@ var tokenListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List your API tokens, or every token covering a cluster with --cluster (needs grant-show there)",
 	Run: func(cmd *cobra.Command, args []string) {
-		cliInit(false)
+		cliTokenInit()
 		path := "/api/tokens"
 		if cliTokenCluster != "" {
 			path = "/api/clusters/" + cliTokenCluster + "/tokens"
@@ -147,7 +147,7 @@ var tokenRevokeCmd = &cobra.Command{
 	Short: "Revoke an API token (yours, or another user's with cluster-grant on its clusters)",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		cliInit(false)
+		cliTokenInit()
 		body, err := cliTokenRequest(http.MethodDelete, "/api/tokens/"+args[0], nil)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -159,6 +159,25 @@ var tokenRevokeCmd = &cobra.Command{
 		}
 		fmt.Printf("token %s revoked\n", args[0])
 	},
+}
+
+// cliTokenInit authenticates only: the token commands need no cluster or server
+// discovery (cliInit would exit with "Servers not found" on an empty monitor).
+func cliTokenInit() {
+	var err error
+	if cliAPIToken != "" {
+		cliToken = cliAPIToken
+		return
+	}
+	cliToken, err = cliLogin()
+	if err != nil {
+		cliPassword = cliGetpasswd()
+		cliToken, err = cliLogin()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+			os.Exit(14)
+		}
+	}
 }
 
 func cliTokenTime(t time.Time) string {
