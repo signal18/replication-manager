@@ -42,6 +42,7 @@ import Configs from '../Configs'
 import Graphs from '../Graphs'
 import Agents from '../Agents'
 import Users from '../Users'
+import ApiTokens from '../Users/ApiTokens'
 import Maintenance from '../Maintenance'
 import Top from '../Top'
 import Shards from '../Shards'
@@ -177,6 +178,8 @@ function Home() {
             if (apiUser.grants['cluster-grant']) {
               authorizedTabs.push('Users')
             }
+            // Every logged-in user may issue API tokens for themselves (#1835).
+            authorizedTabs.push('API Tokens')
             dashboardTabsRef.current = authorizedTabs
           }
         }
@@ -423,7 +426,8 @@ function Home() {
                   ? [<QueryRules selectedCluster={selectedCluster} />]
                   : []),
                 ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} user={user} onOpenSchedulerSettings={openMaintenanceScheduler} onOpenLogsSettings={openLogsSettings} onOpenMonitoringSettings={openMonitoringSettings} />] : []),
-                ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user} />] : [])
+                ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user} />] : []),
+                <ApiTokens user={user} />
               ]
               : [
                   ...(globalTabsRef.current.includes('Clusters Peer')

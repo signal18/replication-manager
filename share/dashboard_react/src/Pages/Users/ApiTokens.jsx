@@ -254,7 +254,7 @@ function ApiTokens({ user }) {
   return (
     <>
       <AccordionComponent
-        heading={'MY API TOKENS'}
+        heading={'API TOKENS'}
         allowToggle={false}
         className={styles.accordion}
         panelSX={{ overflowX: 'auto', p: 0 }}
