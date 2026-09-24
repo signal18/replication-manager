@@ -468,6 +468,9 @@ func (repman *ReplicationManager) apiserver() {
 	repman.apiDatabaseProtectedHandler(router)
 	repman.apiClusterUnprotectedHandler(router)
 	repman.apiClusterProtectedHandler(router)
+	// User-issued API tokens (issue #1835): the HTTPS API router is built here,
+	// separately from the dashboard router in http.go.
+	repman.apiTokenRoutes(router)
 	repman.apiProxyProtectedHandler(router)
 	repman.apiAppProtectedHandler(router)
 
