@@ -165,13 +165,17 @@ function CreateTokenModal({ user, isOpen, closeModal, onCreated }) {
               <Input size='sm' value={label} onChange={(e) => setLabel(e.target.value)} placeholder='ci, mcp, laptop…' maxLength={64} />
               <FormErrorMessage>{labelError}</FormErrorMessage>
             </FormControl>
-            <FormControl>
-              <FormLabel fontSize='sm'>Grants (none selected = every grant you hold)</FormLabel>
+            {/* Plain boxes, not FormControl: a FormControl hands ONE id to every
+                field inside it, so several checkboxes (or a checkbox next to the
+                number input) would share it and a click on one would land on the
+                first — the "Never expires" click focused the days field. */}
+            <Box>
+              <Text fontSize='sm' fontWeight={500} mb={1}>Grants (none selected = every grant you hold)</Text>
               <GrantCheckList grantOptions={allAcls} onChange={setAcls} parentStyles={parentStyles} user={pickerUser} />
-            </FormControl>
-            <FormControl>
-              <FormLabel fontSize='sm'>Clusters</FormLabel>
-              <Checkbox size='sm' isChecked={allClusters} onChange={(e) => setAllClusters(e.target.checked)}>
+            </Box>
+            <Box>
+              <Text fontSize='sm' fontWeight={500} mb={1}>Clusters</Text>
+              <Checkbox id='api-token-all-clusters' size='sm' isChecked={allClusters} onChange={(e) => setAllClusters(e.target.checked)}>
                 Every cluster (needed for global settings)
               </Checkbox>
               {!allClusters && (
@@ -179,6 +183,7 @@ function CreateTokenModal({ user, isOpen, closeModal, onCreated }) {
                   {clusterNames.map((name) => (
                     <WrapItem key={name}>
                       <Checkbox
+                        id={`api-token-cluster-${name}`}
                         size='sm'
                         isChecked={clusters.includes(name)}
                         onChange={(e) =>
@@ -190,18 +195,18 @@ function CreateTokenModal({ user, isOpen, closeModal, onCreated }) {
                   ))}
                 </Wrap>
               )}
-            </FormControl>
-            <FormControl>
-              <FormLabel fontSize='sm'>Expires in days</FormLabel>
+            </Box>
+            <Box>
+              <Text fontSize='sm' fontWeight={500} mb={1}>Expires in days</Text>
               <HStack>
-                <NumberInput size='sm' min={1} value={expireDays} isDisabled={never} onChange={(v) => setExpireDays(v)} maxW='120px'>
+                <NumberInput id='api-token-expire-days' size='sm' min={1} value={expireDays} isDisabled={never} onChange={(v) => setExpireDays(v)} maxW='120px'>
                   <NumberInputField />
                 </NumberInput>
-                <Checkbox size='sm' isChecked={never} onChange={(e) => setNever(e.target.checked)}>
+                <Checkbox id='api-token-never-expires' size='sm' isChecked={never} onChange={(e) => setNever(e.target.checked)}>
                   Never expires
                 </Checkbox>
               </HStack>
-            </FormControl>
+            </Box>
           </Stack>
         </ModalBody>
         <ModalFooter gap={3} margin='auto'>
