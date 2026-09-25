@@ -181,7 +181,7 @@ func (repman *ReplicationManager) attachSelfServiceSponsor(cl *cluster.Cluster, 
 		if u.Grants[config.GrantClusterSettings] {
 			return nil
 		}
-		if u.Password != "" {
+		if u.Password != "" && identity != cl.Conf.Cloud18GitUser {
 			return fmt.Errorf("%s is a local account on %s, an SSO identity cannot take it over", identity, cl.Name)
 		}
 		// Present without an ACL entry of its own (default visitor): re-create

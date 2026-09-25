@@ -1933,9 +1933,18 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 	// Create user and grant for new cluster
 	cl = repman.getClusterByName(vars["clusterName"])
 	if cl != nil {
+		// Start from the main credentials only: the external accounts inherited
+		// from the default section are dropped together with their ACL, so the
+		// ones added below get a fresh entry (UpdateUser can only rewrite an
+		// existing entry; with the ACL blanked but the credentials kept, the
+		// Cloud18 git user used to end up a visitor with every grant discarded).
 		cl.Conf.APIUsersExternal = ""
 		cl.Conf.APIUsersACLAllowExternal = ""
 		cl.Conf.APIUsersACLDiscardExternal = ""
+		if cl.Conf.Secrets != nil {
+			cl.Conf.Secrets["api-credentials-external"] = config.Secret{}
+		}
+		cl.LoadAPIUsers()
 
 		repman.AddLocalAdminUserACL(cl, false)
 
