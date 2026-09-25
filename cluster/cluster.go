@@ -441,6 +441,9 @@ type Cluster struct {
 	// sync.Mutex: newServerList() already holds that lock while calling
 	// newServerMonitor() for every server, so reusing it here would deadlock.
 	k8sPendingMemoryResizes sync.Map `json:"-"`
+	// API-token principals registered by the server per request (issue #1835);
+	// see cluster_acl_token.go. Plain sync.Map for the same reason as above.
+	apiTokenPrincipals sync.Map `json:"-"`
 	// Per-cluster preserved variables (replaces ProvDBConfigPreserveVars mechanism)
 	preservedVars               map[string]string          `json:"-"`
 	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}

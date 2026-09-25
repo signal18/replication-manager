@@ -5,6 +5,7 @@ import {
 import React from 'react'
 import { HiMoon, HiSun } from 'react-icons/hi'
 import { FaUserPlus } from 'react-icons/fa'
+import { TbKey } from 'react-icons/tb'
 import RMButton from '../../RMButton'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
@@ -12,7 +13,7 @@ import parentStyles from '../styles.module.scss'
 // Static checkmark character for grant/role indicators
 const CHECK_MARK = '\u2713'
 
-function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false, onAddUser }) {
+function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false, onAddUser, onApiTokens }) {
   const { theme, toggleTheme } = useTheme()
   const badgeVariant = theme === 'dark' ? 'solid' : 'subtle'
 
@@ -34,6 +35,8 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
     Object.keys(roles[name] || {}).forEach(r => allRoles.add(r))
   })
   const roleList = [...allRoles].sort()
+  // API tokens need the token-create grant on at least one cluster (#1835).
+  const canIssueTokens = clusterNames.some((name) => grants[name]?.['token-create'])
 
   const stickyBg = theme === 'light' ? 'white' : 'gray.800'
 
@@ -74,6 +77,14 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
                 </HStack>
               </RMButton>
               <HStack spacing={3}>
+                {onApiTokens && canIssueTokens && (
+                  <RMButton variant='outline' onClick={onApiTokens}>
+                    <HStack spacing={1}>
+                      <TbKey />
+                      <Text fontSize='sm'>API tokens</Text>
+                    </HStack>
+                  </RMButton>
+                )}
                 {canAddUser && (
                   <RMButton onClick={onAddUser}>
                     <HStack spacing={1}>

@@ -44,6 +44,7 @@ var (
 	cliPort                      string
 	cliCert                      string
 	cliEncryptSecret             string
+	cliAPIToken                  string
 	cliNoCheckCert               bool
 	cliToken                     string
 	cliClusters                  []string
@@ -185,7 +186,10 @@ func cliInit(needcluster bool) {
 		cliSettings.Conf = new(config.Config)
 	}
 
-	if cliEncryptSecret != "" && cfgGroup != "" {
+	if cliAPIToken != "" {
+		// A user-issued API token (issue #1835) is used as-is: no login round-trip.
+		cliToken = cliAPIToken
+	} else if cliEncryptSecret != "" && cfgGroup != "" {
 		cliToken, err = cliSecretLogin()
 		if err != nil {
 			fmt.Printf("\n'%s'\n", err)
@@ -261,6 +265,7 @@ func initServerApiFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	cmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	cmd.Flags().StringVar(&cliEncryptSecret, "enc-secret", "", "Encryption secret")
+	cmd.Flags().StringVar(&cliAPIToken, "api-token", "", "User-issued API token used as bearer instead of user/password login")
 	cmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
 	viper.BindPFlags(cmd.Flags())
 }
@@ -385,6 +390,9 @@ func init() {
 	rootClientCmd.AddCommand(apiCmd)
 	initApiFlags(apiCmd)
 	initClusterFlags(apiCmd)
+
+	rootClientCmd.AddCommand(tokenCmd)
+	initTokenFlags()
 
 	rootClientCmd.AddCommand(regTestCmd)
 	initRegTestFlags(regTestCmd)

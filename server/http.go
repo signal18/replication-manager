@@ -153,6 +153,8 @@ func (repman *ReplicationManager) httpserver() {
 	router.HandleFunc("/api/signup/status", repman.handlerSignupStatus).Methods(http.MethodGet, http.MethodOptions)
 	router.HandleFunc("/api/autologin", repman.autologinHandler)
 	router.HandleFunc("/api/dashboard-token", repman.dashboardTokenHandler)
+	// User-issued API tokens (issue #1835): list/create/revoke, admin list per cluster.
+	repman.apiTokenRoutes(router)
 
 	router.Handle("/api/register", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
