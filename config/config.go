@@ -370,6 +370,12 @@ type Config struct {
 	HttpPort                                 string                       `scope:"server" mapstructure:"http-port" toml:"http-port" json:"httpPort"`
 	HttpServ                                 bool                         `scope:"server" mapstructure:"http-server" toml:"http-server" json:"httpServer"`
 	ApiServ                                  bool                         `scope:"server" mapstructure:"api-server" toml:"api-server" json:"apiServer"`
+	MCPServ                                  bool                         `scope:"server" mapstructure:"mcp-server" toml:"mcp-server" json:"mcpServer"`
+	MCPTransport                             string                       `scope:"server" mapstructure:"mcp-transport" toml:"mcp-transport" json:"mcpTransport"`
+	MCPPort                                  string                       `scope:"server" mapstructure:"mcp-port" toml:"mcp-port" json:"mcpPort"`
+	MCPBindAddr                              string                       `scope:"server" mapstructure:"mcp-bind-address" toml:"mcp-bind-address" json:"mcpBindAddress"`
+	MCPAdvertiseAddr                         string                       `scope:"server" mapstructure:"mcp-advertise-address" toml:"mcp-advertise-address" json:"mcpAdvertiseAddress"`
+	MCPAuthEnabled                           bool                         `scope:"server" mapstructure:"mcp-auth-enabled" toml:"mcp-auth-enabled" json:"mcpAuthEnabled"`
 	HttpRoot                                 string                       `scope:"server" mapstructure:"http-root" toml:"http-root" json:"httpRoot"`
 	HttpAuth                                 bool                         `scope:"server" mapstructure:"http-auth" toml:"http-auth" json:"httpAuth"`
 	HttpUseReact                             bool                         `scope:"server" mapstructure:"http-use-react" toml:"http-use-react" json:"http-use-react"`
@@ -757,6 +763,7 @@ type Config struct {
 	ProvAppCpuCores                           string            `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores" groups:"apps"`
 	ProvAppAgents                             string            `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents" groups:"apps"`
 	ProvAppHATopology                         string            `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology" groups:"apps"`
+	ProvAppVolumePools                        string            `mapstructure:"prov-app-volume-pools" toml:"prov-app-volume-pools" json:"provAppVolumePools" groups:"apps"`
 	ProvAppSizingMode                         string            `mapstructure:"prov-app-sizing-mode" toml:"prov-app-sizing-mode" json:"provAppSizingMode" groups:"apps"`
 	ProvAppTemplateRepo                       string            `mapstructure:"prov-app-template-repo" toml:"prov-app-template-repo" json:"provAppTemplateRepo" groups:"apps"`
 	ProvAppTemplateRepoBranch                 string            `mapstructure:"prov-app-template-repo-branch" toml:"prov-app-template-repo-branch" json:"provAppTemplateRepoBranch" groups:"apps"`
@@ -1021,6 +1028,8 @@ type Config struct {
 	Cloud18LicenseFile                     string                 `scope:"server" mapstructure:"cloud18-license-file" toml:"cloud18-license-file" json:"cloud18LicenseFile"`
 	Cloud18PeerHealthMode                  string                 `scope:"server" mapstructure:"cloud18-peer-health-mode" toml:"cloud18-peer-health-mode" json:"cloud18PeerHealthMode"`
 	Cloud18DisablePeers                    bool                   `scope:"server" mapstructure:"cloud18-disable-peers" toml:"cloud18-disable-peers" json:"cloud18DisablePeers"`
+	Cloud18SelfServiceClusters             bool                   `scope:"server" mapstructure:"cloud18-self-service-clusters" toml:"cloud18-self-service-clusters" json:"cloud18SelfServiceClusters"`
+	Cloud18SelfServiceMaxClustersPerUser   int                    `scope:"server" mapstructure:"cloud18-self-service-max-clusters-per-user" toml:"cloud18-self-service-max-clusters-per-user" json:"cloud18SelfServiceMaxClustersPerUser"`
 	Cloud18DisableForSale                  bool                   `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`
 	Cloud18OpenSysops                      bool                   `mapstructure:"cloud18-open-sysops"  toml:"cloud18-open-sysops" json:"cloud18OpenSysops"`
 	Cloud18DatabaseReadWriteSplitSrvRecord string                 `mapstructure:"cloud18-database-read-write-split-srv-record"  toml:"cloud18-database-read-write-split-srv-record" json:"cloud18DatabaseReadWriteSplitSrvRecord"`

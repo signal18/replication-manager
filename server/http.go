@@ -155,6 +155,12 @@ func (repman *ReplicationManager) httpserver() {
 	router.HandleFunc("/api/dashboard-token", repman.dashboardTokenHandler)
 	// User-issued API tokens (issue #1835): list/create/revoke, admin list per cluster.
 	repman.apiTokenRoutes(router)
+	// MCP server for AI assistants (issue #1838), mounted on this listener.
+	router.PathPrefix("/api/mcp/").HandlerFunc(repman.handlerMuxMCP)
+	router.Handle("/api/cloud18/self-service", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSelfServiceStatus)),
+	))
 
 	router.Handle("/api/register", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),

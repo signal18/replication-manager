@@ -449,53 +449,13 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 		return
 	}
 
-	// Sum unique physical agents (cpu cores + mem) across all clusters -- there is no
-	// repman-wide agent list, so we union each cluster's Agents, deduped by host.
-	repman.Lock()
-	clusters := make([]*cluster.Cluster, 0, len(repman.Clusters))
-	for _, cl := range repman.Clusters {
-		clusters = append(clusters, cl)
-	}
-	repman.Unlock()
-	// repman.Clusters is a map: its iteration order changes on every call. The GUI keys
-	// its stacked graphs (layer order, colours, graphite target list) on this order, so an
-	// unstable payload made every 10s poll re-run the chart effect and blank it ("No data"
-	// flapping). Sort by name so the payload is deterministic across polls.
-	sort.Slice(clusters, func(i, j int) bool { return clusters[i].Name < clusters[j].Name })
-	seen := map[string]bool{}
-	agentCores := map[string]float64{} // per-agent physical cores -- the ceiling for the per-agent stack
-	var sumCores, sumMemMB float64
-	for _, cl := range clusters {
-		for _, a := range cl.Agents {
-			key := a.HostName
-			if key == "" {
-				key = a.Id
-			}
-			if key == "" || seen[key] {
-				continue
-			}
-			seen[key] = true
-			agentCores[key] = float64(a.CpuCores)
-			sumCores += float64(a.CpuCores)
-			// NB: cluster.Agent.MemBytes is populated in MB (OpenSVC asset + on-prem
-			// /proc/meminfo/1024 both store MB), despite the "Bytes" name -- so it is
-			// already the MB we want, no division.
-			sumMemMB += float64(a.MemBytes)
-		}
-	}
-
-	// config override wins when > 0, else the summed agents (agents lack disk/iops/net).
-	pick := func(override, agents float64) (float64, string) {
-		if override > 0 {
-			return override, "config"
-		}
-		return agents, "agents"
-	}
-	cores, srcCpu := pick(repman.Conf.ResourceManagerInfraCpuCores, sumCores)
-	memMB, srcMem := pick(repman.Conf.ResourceManagerInfraMemoryMB, sumMemMB)
-	diskGB, srcDisk := pick(repman.Conf.ResourceManagerInfraDiskGB, 0)
-	iops, srcIo := pick(repman.Conf.ResourceManagerInfraIops, 0)
-	netMbps, srcNet := pick(repman.Conf.ResourceManagerInfraNetworkMbps, 0)
+	// Capacity inputs shared with the self-service pool gate (server_infra_pool.go):
+	// unique physical agents summed, config override winning when > 0.
+	clusters := repman.sortedClusters()
+	in := repman.infraCapacityInputs(clusters)
+	agentCores := in.AgentCores
+	cores, memMB, diskGB, iops, netMbps := in.Cores, in.MemMB, in.DiskGB, in.Iops, in.NetMbps
+	srcCpu, srcMem, srcDisk, srcIo, srcNet := in.Src["cpu"], in.Src["mem"], in.Src["disk"], in.Src["io"], in.Src["net"]
 
 	cpuDBU, memDBU, ioDBU, diskDBU, bindingDBU, bindingAxis := rm.CapacityDBUView(cluster.AgentCapacity{
 		Cores: cores, MemMB: memMB, DiskGB: diskGB, Iops: iops,
@@ -543,7 +503,7 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 
 	resp := globalResourcesResponse{
 		QuotaPct:       quota,
-		Agents:         len(seen),
+		Agents:         len(agentCores),
 		CapacityDBU:    bindingDBU,
 		BindingAxis:    bindingAxis,
 		UsableDBU:      usable,

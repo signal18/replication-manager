@@ -471,6 +471,12 @@ func (repman *ReplicationManager) apiserver() {
 	// User-issued API tokens (issue #1835): the HTTPS API router is built here,
 	// separately from the dashboard router in http.go.
 	repman.apiTokenRoutes(router)
+	// MCP server for AI assistants (issue #1838), mounted on the HTTPS listener too.
+	router.PathPrefix("/api/mcp/").HandlerFunc(repman.handlerMuxMCP)
+	router.Handle("/api/cloud18/self-service", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSelfServiceStatus)),
+	))
 	repman.apiProxyProtectedHandler(router)
 	repman.apiAppProtectedHandler(router)
 
@@ -1894,9 +1900,12 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 
-	username := repman.GetUserFromRequest(r)
-	if username == "" {
-		http.Error(w, "User is not valid", http.StatusInternalServerError)
+	// Authorization (issue #1838): a principal with cluster-create or
+	// prov-cluster creates as before; an SSO identity without them goes through
+	// the self-service rules (switch, orchestrator, per-user limit).
+	username, sso, selfService, status, reason := repman.clusterAddAuthorize(r)
+	if status != 0 {
+		http.Error(w, reason, status)
 		return
 	}
 
@@ -1924,9 +1933,18 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 	// Create user and grant for new cluster
 	cl = repman.getClusterByName(vars["clusterName"])
 	if cl != nil {
+		// Start from the main credentials only: the external accounts inherited
+		// from the default section are dropped together with their ACL, so the
+		// ones added below get a fresh entry (UpdateUser can only rewrite an
+		// existing entry; with the ACL blanked but the credentials kept, the
+		// Cloud18 git user used to end up a visitor with every grant discarded).
 		cl.Conf.APIUsersExternal = ""
 		cl.Conf.APIUsersACLAllowExternal = ""
 		cl.Conf.APIUsersACLDiscardExternal = ""
+		if cl.Conf.Secrets != nil {
+			cl.Conf.Secrets["api-credentials-external"] = config.Secret{}
+		}
+		cl.LoadAPIUsers()
 
 		repman.AddLocalAdminUserACL(cl, false)
 
@@ -1943,8 +1961,19 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 		}
 
 		// Cluster will auto set service when plan is not empty
-		if cForm.Plan != "" {
+		if cForm.Plan != "" && !selfService {
 			cl.SetServicePlan(cForm.Plan)
+		}
+		if sso {
+			// An SSO creator sponsors their cluster (a local creator is covered by
+			// the admin ACL copied above); self-service ones start on the default
+			// unit plan and the partner is informed.
+			if err := repman.attachSelfServiceSponsor(cl, username); err != nil {
+				repman.Logrus.Warnf("self-service: cannot attach sponsor %s to %s: %v", username, cl.Name, err)
+			}
+			if selfService {
+				repman.notifySelfServiceCluster(cl, username, r.RemoteAddr)
+			}
 		}
 
 		cl.Save()

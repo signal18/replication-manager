@@ -12,16 +12,19 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	repmanmcp "github.com/signal18/replication-manager/mcp"
 )
 
 func newTokenTestManager(t *testing.T) (*ReplicationManager, *cluster.Cluster) {
 	t.Helper()
 	dir := t.TempDir()
 	cl := &cluster.Cluster{
-		Name:     "c1",
-		Conf:     &config.Config{},
-		APIUsers: map[string]cluster.APIUser{},
-		Grants:   config.GetGrantType(),
+		Name:           "c1",
+		Conf:           &config.Config{Secrets: map[string]config.Secret{}},
+		APIUsers:       map[string]cluster.APIUser{},
+		Grants:         config.GetGrantType(),
+		Roles:          config.GetRoleType(),
+		SecurityLogrus: log.New(),
 	}
 	alice := cluster.APIUser{User: "alice", Password: "x", Roles: map[string]bool{}}
 	cl.SetUserGrants(&alice, "db-show cluster-switchover grant-show token")
@@ -475,5 +478,125 @@ func TestAPITokenGrantsAndSystemAccount(t *testing.T) {
 	}
 	if cl.IsURLPassACL("bob", "/api/clusters/c1/tokens", false) {
 		t.Error("token-create alone must not open the cluster tokens listing")
+	}
+}
+
+func TestMCPAuthenticateAndAuthorize(t *testing.T) {
+	repman, cl := newTokenTestManager(t)
+	tok, err := repman.createAPIToken("alice", APITokenForm{Label: "mcp", Grants: "db-show", Clusters: []string{"c1"}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := repman.AuthenticateMCP(bearerRequest(tok.Token, "/sse"))
+	if err != nil || p == nil || p.User != "alice" || p.AuthMethod != "token" || p.TokenID != tok.ID {
+		t.Fatalf("token must authenticate: %+v %v", p, err)
+	}
+	// Public cluster endpoint and a db-show read pass; an action does not; another cluster is out of scope.
+	if !repman.AuthorizeMCP(p, "c1", "/api/clusters/c1") {
+		t.Error("cluster visibility must pass")
+	}
+	if !repman.AuthorizeMCP(p, "c1", "/api/clusters/c1/servers/db1/variables") {
+		t.Error("db-show read must pass")
+	}
+	if repman.AuthorizeMCP(p, "c1", "/api/clusters/c1/actions/switchover") {
+		t.Error("switchover is not embedded: must be refused")
+	}
+	if repman.AuthorizeMCP(p, "c2", "/api/clusters/c2") {
+		t.Error("unknown / out-of-scope cluster must be refused")
+	}
+	// Garbage bearer: no principal.
+	if p, err := repman.AuthenticateMCP(bearerRequest("garbage", "/sse")); err == nil || p != nil {
+		t.Error("garbage bearer must not authenticate")
+	}
+	// Revoked token: refused with a clear error.
+	if _, err := repman.revokeAPIToken(tok.ID, "alice", bearerRequest(tok.Token, "/api/tokens/"+tok.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repman.AuthenticateMCP(bearerRequest(tok.Token, "/sse")); err == nil || !contains(err.Error(), "revoked") {
+		t.Errorf("revoked token must be refused clearly, got %v", err)
+	}
+	_ = cl
+}
+
+func TestSelfServiceRules(t *testing.T) {
+	repman, cl := newTokenTestManager(t)
+	repman.Conf.Cloud18 = true
+	repman.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	repman.Conf.Cloud18SelfServiceMaxClustersPerUser = 2
+	// Disabled by default.
+	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "disabled") {
+		t.Errorf("self-service must be off by default, got %v", err)
+	}
+	repman.Conf.Cloud18SelfServiceClusters = true
+	if err := repman.selfServiceCheck("u@x.io"); err != nil {
+		t.Errorf("enabled with no cluster yet must pass, got %v", err)
+	}
+	// Orchestrator gate.
+	repman.Conf.ProvOrchestrator = config.ConstOrchestratorOnPremise
+	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "OpenSVC or Kubernetes") {
+		t.Errorf("onpremise must be refused, got %v", err)
+	}
+	repman.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	// Sponsor attach makes the identity an SSO-only sponsor with the self-service grants.
+	if err := repman.attachSelfServiceSponsor(cl, "u@x.io"); err != nil {
+		t.Fatal(err)
+	}
+	u := cl.APIUsers["u@x.io"]
+	if !u.Roles[config.RoleSponsor] || u.Password != "" {
+		t.Errorf("creator must be a passwordless (SSO-only) sponsor: %+v", u)
+	}
+	if !contains(cl.Conf.APIUsersACLAllowExternal, "u@x.io:") || !contains(cl.Conf.APIUsersACLAllowExternal, ":c1:sponsor") {
+		t.Errorf("sponsor must be persisted in the external ACL, got %q", cl.Conf.APIUsersACLAllowExternal)
+	}
+	if !contains(cl.Conf.APIUsersExternal, "u@x.io:") {
+		t.Error("sponsor must have an external credential entry so SaveAcls keeps it")
+	}
+	// Survives a reload from the persisted strings.
+	cl.LoadAPIUsers()
+	if !cl.APIUsers["u@x.io"].Roles[config.RoleSponsor] {
+		t.Error("sponsor role must survive LoadAPIUsers")
+	}
+	for _, g := range []string{config.GrantClusterCreateMonitor, config.GrantClusterSettings, config.GrantClusterDelete, config.GrantProvCluster, config.GrantProvDBProvision, config.GrantAppDeployment, config.GrantDBShowVariables} {
+		if !u.Grants[g] {
+			t.Errorf("sponsor must hold %s on the cluster", g)
+		}
+	}
+	if u.Grants[config.GrantClusterCreate] || u.Grants[config.GrantGlobalAdminShow] {
+		t.Error("sponsor must not get cluster-create or global grants")
+	}
+	// Limit counts sponsored clusters.
+	c2 := &cluster.Cluster{Name: "c2", Conf: &config.Config{Secrets: map[string]config.Secret{}}, APIUsers: map[string]cluster.APIUser{}, Grants: config.GetGrantType(), Roles: config.GetRoleType(), SecurityLogrus: log.New()}
+	repman.Clusters["c2"] = c2
+	if err := repman.selfServiceCheck("u@x.io"); err != nil {
+		t.Errorf("one of two allowed must pass, got %v", err)
+	}
+	_ = repman.attachSelfServiceSponsor(c2, "u@x.io")
+	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "limit is 2") {
+		t.Errorf("third cluster must be refused with the limit, got %v", err)
+	}
+	st := repman.selfServiceStatusFor("u@x.io")
+	if !st.Enabled || st.Used != 2 || st.Remaining != 0 {
+		t.Errorf("status must reflect usage: %+v", st)
+	}
+	// Another identity is not affected.
+	if err := repman.selfServiceCheck("other@x.io"); err != nil {
+		t.Errorf("limit is per identity, got %v", err)
+	}
+}
+
+// Review finding on #1839: rule patterns match as substrings, so the MCP layer
+// path-escapes arguments. This pins the cluster ACL side: the escaped URL of a
+// smuggled pattern does not authorize, the raw one would.
+func TestACLSubstringInjectionNeedsEscaping(t *testing.T) {
+	repman, cl := newTokenTestManager(t)
+	rot := cluster.APIUser{User: "rot", Password: "z", Roles: map[string]bool{}}
+	cl.SetUserGrants(&rot, config.GrantClusterRotatePasswords)
+	cl.APIUsers["rot"] = rot
+	p := &repmanmcp.Principal{User: "rot", AuthMethod: "password", Auth: "z"}
+	if repman.AuthorizeMCP(p, "c1", "/api/clusters/c1/settings/actions/set/x/x%2Factions%2Frotate-passwords") {
+		t.Fatal("an escaped setting value must not authorize a settings write with the rotate-passwords grant")
+	}
+	if !repman.AuthorizeMCP(p, "c1", "/api/clusters/c1/actions/rotate-passwords") {
+		t.Fatal("the grant itself must still pass its own URL")
 	}
 }

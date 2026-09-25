@@ -665,6 +665,35 @@ Start create an account in https://gitlab.signal18.io
     },
   ] : []
 
+  // Self-service clusters — Cloud18 users reaching this instance through peering
+  // may create a cluster here directly (no subscription / email chain; the
+  // partner is only informed). Only meaningful on OpenSVC / Kubernetes.
+  const selfServiceData = isConnected ? [
+    {
+      key: 'Self-Service Clusters',
+      help: h(`**Self-Service Clusters**\n\nWhen enabled, a Cloud18 user (SSO identity) can create a cluster on this infrastructure directly from their own replication-manager or assistant, without the subscription and email-acceptance chain. The cluster starts on the default unit plan (DBU / APU / BKU) and the creator becomes its sponsor. You are informed by mail and in the security log.\n\nRequires an OpenSVC or Kubernetes orchestrator.\n\nConfig: \`cloud18-self-service-clusters\``, 'Self-Service Clusters'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch settings for cloud18-self-service-clusters?'
+          onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-self-service-clusters' }))}
+          isChecked={config?.cloud18SelfServiceClusters}
+        />
+      )
+    },
+    {
+      key: 'Max Clusters Per User',
+      help: h(`**Max Clusters Per User**\n\nUpper bound of self-service clusters one Cloud18 identity may sponsor on this infrastructure, so that a single user cannot flood it. Counted as the clusters where the identity holds the sponsor role.\n\nDefault 3.\n\nConfig: \`cloud18-self-service-max-clusters-per-user\``, 'Max Clusters Per User'),
+      value: (
+        <TextForm
+          value={config?.cloud18SelfServiceMaxClustersPerUser}
+          type='number'
+          confirmTitle='Confirm max self-service clusters per user to '
+          onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-self-service-max-clusters-per-user', value: v }))}
+        />
+      )
+    },
+  ] : []
+
   return (
     <>
       <Flex justify='space-between' gap='0'>
@@ -683,6 +712,14 @@ Start create an account in https://gitlab.signal18.io
           <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Marketplace</Box>
           <Flex justify='space-between' gap='0'>
             <TableType2 dataArray={marketplaceData} className={styles.tableWithHelp} helpColumn />
+          </Flex>
+        </>
+      )}
+      {selfServiceData.length > 0 && (
+        <>
+          <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Self-Service Clusters</Box>
+          <Flex justify='space-between' gap='0'>
+            <TableType2 dataArray={selfServiceData} className={styles.tableWithHelp} helpColumn />
           </Flex>
         </>
       )}

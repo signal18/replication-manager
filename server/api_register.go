@@ -508,8 +508,7 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 		return
 	}
 
-	claims, err := repman.GetJWTClaims(r)
-	if err != nil || claims["User"] != "admin" {
+	if !repman.isCloud18Admin(r) {
 		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
 		return
 	}
@@ -543,8 +542,6 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 	zone := strings.TrimSpace(strings.ToLower(parts[2]))
 	email := strings.TrimSpace(strings.ToLower(req.Email))
 
-	crmBase := repman.crmBase()
-
 	// Reject if a registration is already in progress
 	if state, _, _ := repman.RegStatus.snapshot(); state == RegStatePending {
 		http.Error(w, `{"error":"a registration is already in progress — poll /api/register/status"}`,
@@ -553,44 +550,16 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 	}
 
 	// Step 1 — create GitLab account
-	step1Bytes, _ := json.Marshal(crmRegisterPayload{
-		Email: email, Password: req.Password,
-		Domain: domain, Subdomain: subdomain, Zone: zone,
-	})
-	step1Req, err := http.NewRequest(http.MethodPost, crmBase+"/api/register", bytes.NewReader(step1Bytes))
+	status, step1Body, err := repman.startCloud18Registration(email, domain, subdomain, zone, req.Password)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"failed to build CRM request: %s"}`, err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err), http.StatusBadGateway)
 		return
 	}
-	step1Req.Header.Set("Content-Type", "application/json")
-	step1Req.Header.Set("Accept", "application/json")
-
-	step1Resp, err := crmHTTPClient30s.Do(step1Req)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"CRM API unreachable: %s"}`, err), http.StatusBadGateway)
-		return
-	}
-	step1Body, _ := io.ReadAll(step1Resp.Body)
-	step1Resp.Body.Close()
-
-	if step1Resp.StatusCode != http.StatusAccepted && step1Resp.StatusCode != http.StatusOK {
-		w.WriteHeader(step1Resp.StatusCode)
+	if status != http.StatusAccepted && status != http.StatusOK {
+		w.WriteHeader(status)
 		w.Write(step1Body)
 		return
 	}
-
-	// Mark pending and launch background poller
-	repman.RegStatus.set(RegStatePending,
-		fmt.Sprintf("GitLab account created — waiting for %s to confirm email (timeout %s)", email, confirmPollTimeout),
-		nil)
-
-	go repman.pollConfirmLoop(crmBase,
-		crmConfirmPayload{Email: email, Password: req.Password, Domain: domain, Subdomain: subdomain, Zone: zone},
-		domain, subdomain, zone, email, req.Password)
-
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-		"register: confirmation email sent to %s — background poller started", email)
-
 	w.WriteHeader(http.StatusAccepted)
 	w.Write(step1Body)
 }
@@ -819,8 +788,7 @@ func (repman *ReplicationManager) handlerRegisterStatus(w http.ResponseWriter, r
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	claims, err := repman.GetJWTClaims(r)
-	if err != nil || claims["User"] != "admin" {
+	if !repman.isCloud18Admin(r) {
 		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
 		return
 	}
@@ -854,8 +822,7 @@ func (repman *ReplicationManager) handlerRegisterConfirm(w http.ResponseWriter, 
 		return
 	}
 
-	claims, err := repman.GetJWTClaims(r)
-	if err != nil || claims["User"] != "admin" {
+	if !repman.isCloud18Admin(r) {
 		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
 		return
 	}
@@ -888,30 +855,16 @@ func (repman *ReplicationManager) handlerRegisterConfirm(w http.ResponseWriter, 
 	zone := strings.TrimSpace(strings.ToLower(parts[2]))
 	email := strings.TrimSpace(strings.ToLower(req.Email))
 
-	crmBase := repman.crmBase()
-
-	gitlabToken, err := githelper.GetGitLabTokenBasicAuth(email, req.Password, repman.Conf.Verbose)
+	status, respBody, err := repman.confirmCloud18Registration(email, domain, subdomain, zone, req.Password)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"could not obtain GitLab token: %s"}`, err), http.StatusBadGateway)
+		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err), http.StatusBadGateway)
 		return
 	}
-
-	status, respBody, err := crmCallConfirm(crmBase, gitlabToken, crmConfirmPayload{
-		Email: email, Password: req.Password,
-		Domain: domain, Subdomain: subdomain, Zone: zone,
-	})
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"CRM API unreachable: %s"}`, err), http.StatusBadGateway)
-		return
-	}
-
 	if status != http.StatusCreated {
 		w.WriteHeader(status)
 		w.Write(respBody)
 		return
 	}
-
-	repman.applyCloudConnect(domain, subdomain, zone, email, req.Password, respBody)
 
 	_, _, result := repman.RegStatus.snapshot()
 	if result != nil {
@@ -1609,8 +1562,7 @@ func (repman *ReplicationManager) handlerGetSubscriptionPlans(w http.ResponseWri
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	claims, err := repman.GetJWTClaims(r)
-	if err != nil || claims["User"] != "admin" {
+	if !repman.isCloud18Admin(r) {
 		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
 		return
 	}
@@ -1654,8 +1606,7 @@ func (repman *ReplicationManager) handlerGetSubscription(w http.ResponseWriter, 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	claims, err := repman.GetJWTClaims(r)
-	if err != nil || claims["User"] != "admin" {
+	if !repman.isCloud18Admin(r) {
 		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
 		return
 	}
@@ -1700,8 +1651,7 @@ func (repman *ReplicationManager) handlerChangeSubscription(w http.ResponseWrite
 		return
 	}
 
-	claims, err := repman.GetJWTClaims(r)
-	if err != nil || claims["User"] != "admin" {
+	if !repman.isCloud18Admin(r) {
 		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
 		return
 	}
@@ -1778,8 +1728,7 @@ func (repman *ReplicationManager) handlerUnregister(w http.ResponseWriter, r *ht
 		return
 	}
 
-	claims, err := repman.GetJWTClaims(r)
-	if err != nil || claims["User"] != "admin" {
+	if !repman.isCloud18Admin(r) {
 		http.Error(w, `{"error":"administrator access required"}`, http.StatusForbidden)
 		return
 	}
@@ -1903,4 +1852,92 @@ func (repman *ReplicationManager) handlerBillingProfile(w http.ResponseWriter, r
 	default:
 		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+// isCloud18Admin gates the Cloud18 registration and subscription endpoints: the
+// global-admin-show grant, evaluated on the caller's EFFECTIVE grants so an API
+// token narrowed below it is refused (before 2026-09-25 the check was the literal
+// user name "admin", which a narrowed token of admin passed). The literal admin
+// login is still accepted for instances with no cluster loaded yet.
+func (repman *ReplicationManager) isCloud18Admin(r *http.Request) bool {
+	if repman.UserHasGlobalGrant(r, config.GrantGlobalAdminShow) {
+		return true
+	}
+	if _, isToken := repman.parseAPITokenFromRequest(r); isToken {
+		return false
+	}
+	claims, err := repman.GetJWTClaims(r)
+	return err == nil && claims["User"] == "admin" && len(repman.Clusters) == 0
+}
+
+// startCloud18Registration is step 1 of the registration, shared by the REST
+// handler and the MCP tool: create the GitLab account through the CRM and start
+// the background poller that waits for the email confirmation. Returns the CRM
+// status and body.
+func (repman *ReplicationManager) startCloud18Registration(email, domain, subdomain, zone, password string) (int, []byte, error) {
+	crmBase := repman.crmBase()
+	if state, _, _ := repman.RegStatus.snapshot(); state == RegStatePending {
+		return http.StatusConflict, []byte(`{"error":"a registration is already in progress — poll /api/register/status"}`), nil
+	}
+	step1Bytes, _ := json.Marshal(crmRegisterPayload{
+		Email: email, Password: password,
+		Domain: domain, Subdomain: subdomain, Zone: zone,
+	})
+	step1Req, err := http.NewRequest(http.MethodPost, crmBase+"/api/register", bytes.NewReader(step1Bytes))
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to build CRM request: %s", err)
+	}
+	step1Req.Header.Set("Content-Type", "application/json")
+	step1Req.Header.Set("Accept", "application/json")
+	step1Resp, err := crmHTTPClient30s.Do(step1Req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("CRM API unreachable: %s", err)
+	}
+	step1Body, _ := io.ReadAll(step1Resp.Body)
+	step1Resp.Body.Close()
+	if step1Resp.StatusCode != http.StatusAccepted && step1Resp.StatusCode != http.StatusOK {
+		return step1Resp.StatusCode, step1Body, nil
+	}
+	repman.regPassword = password
+	repman.RegStatus.set(RegStatePending,
+		fmt.Sprintf("GitLab account created — waiting for %s to confirm email (timeout %s)", email, confirmPollTimeout),
+		nil)
+	go repman.pollConfirmLoop(crmBase,
+		crmConfirmPayload{Email: email, Password: password, Domain: domain, Subdomain: subdomain, Zone: zone},
+		domain, subdomain, zone, email, password)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"register: confirmation email sent to %s — background poller started", email)
+	return step1Resp.StatusCode, step1Body, nil
+}
+
+// parseCloud18URI splits domain.subdomain.zone.
+func parseCloud18URI(uri string) (domain, subdomain, zone string, err error) {
+	parts := strings.SplitN(uri, ".", 3)
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return "", "", "", fmt.Errorf("uri must be in domain.subdomain.zone format (e.g. mycompany.ovh.fr-1)")
+	}
+	return strings.TrimSpace(strings.ToLower(parts[0])), strings.TrimSpace(strings.ToLower(parts[1])), strings.TrimSpace(strings.ToLower(parts[2])), nil
+}
+
+// confirmCloud18Registration is step 2, shared by the REST handler and the MCP
+// tool: obtain the GitLab token, confirm with the CRM and, on 201, connect the
+// instance (applyCloudConnect stores the credentials and the URI).
+func (repman *ReplicationManager) confirmCloud18Registration(email, domain, subdomain, zone, password string) (int, []byte, error) {
+	crmBase := repman.crmBase()
+	gitlabToken, err := githelper.GetGitLabTokenBasicAuth(email, password, repman.Conf.Verbose)
+	if err != nil {
+		return 0, nil, fmt.Errorf("could not obtain GitLab token: %s", err)
+	}
+	status, respBody, err := crmCallConfirm(crmBase, gitlabToken, crmConfirmPayload{
+		Email: email, Password: password,
+		Domain: domain, Subdomain: subdomain, Zone: zone,
+	})
+	if err != nil {
+		return 0, nil, fmt.Errorf("CRM API unreachable: %s", err)
+	}
+	if status == http.StatusCreated {
+		repman.applyCloudConnect(domain, subdomain, zone, email, password, respBody)
+		repman.regPassword = ""
+	}
+	return status, respBody, nil
 }
