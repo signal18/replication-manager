@@ -181,3 +181,16 @@ func (r *recorder) Header() http.Header {
 }
 func (r *recorder) Write(b []byte) (int, error) { return len(b), nil }
 func (r *recorder) WriteHeader(c int)           { r.code = c }
+
+func TestResolveServerByAnyName(t *testing.T) {
+	srv := &cluster.ServerMonitor{Id: "db123", Name: "db1", Host: "db1.c1.svc", Port: "3306", URL: "db1.c1.svc:3306"}
+	cl := &cluster.Cluster{Name: "c1", Servers: []*cluster.ServerMonitor{srv}}
+	for _, name := range []string{"db123", "db1", "db1.c1.svc", "db1.c1.svc:3306"} {
+		if got := resolveServer(cl, name); got != srv {
+			t.Errorf("%q must resolve the server", name)
+		}
+	}
+	if resolveServer(cl, "nope") != nil || resolveServer(cl, "") != nil {
+		t.Error("unknown or empty name must not resolve")
+	}
+}

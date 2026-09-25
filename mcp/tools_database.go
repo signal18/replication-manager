@@ -25,9 +25,9 @@ func (s *MCPServer) getServerHelper(clusterName, serverName string) (*cluster.Cl
 	if cl == nil {
 		return nil, nil, fmt.Errorf("cluster not found: %s", clusterName)
 	}
-	node := cl.GetServerFromName(serverName)
+	node := resolveServer(cl, serverName)
 	if node == nil {
-		return nil, nil, fmt.Errorf("server not found: %s in cluster %s", serverName, clusterName)
+		return nil, nil, fmt.Errorf("server not found: %s in cluster %s (use the name, host or id from get-cluster-topology)", serverName, clusterName)
 	}
 	return cl, node, nil
 }

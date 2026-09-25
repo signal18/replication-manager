@@ -89,7 +89,7 @@ func (s *MCPServer) resolveClusterAndServer(uri string) (*cluster.Cluster, *clus
 	if cl == nil {
 		return nil, nil, fmt.Errorf("cluster not found: %s", clName)
 	}
-	node := cl.GetServerFromName(srvName)
+	node := resolveServer(cl, srvName)
 	if node == nil {
 		return nil, nil, fmt.Errorf("server not found: %s in cluster %s", srvName, clName)
 	}

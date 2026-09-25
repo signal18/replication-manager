@@ -84,3 +84,26 @@ func extractParamsFromURI(uri, template string) map[string]string {
 	}
 	return result
 }
+
+// resolveServer finds a server of a cluster by any name a caller is likely to
+// use: the opaque id (what GetServerFromName matches), the short name shown in
+// the topology ("db1"), the host, host:port, or the URL. An assistant reads
+// "name" from get-cluster-topology and passes it back, so the id alone is not
+// enough.
+func resolveServer(cl *cluster.Cluster, name string) *cluster.ServerMonitor {
+	if cl == nil || name == "" {
+		return nil
+	}
+	if srv := cl.GetServerFromName(name); srv != nil {
+		return srv
+	}
+	for _, srv := range cl.Servers {
+		if srv == nil {
+			continue
+		}
+		if srv.Name == name || srv.Host == name || srv.URL == name || srv.Host+":"+srv.Port == name {
+			return srv
+		}
+	}
+	return nil
+}
