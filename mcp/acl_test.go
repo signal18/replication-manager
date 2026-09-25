@@ -293,3 +293,69 @@ func TestGlobalToolsUseGlobalGrant(t *testing.T) {
 		t.Errorf("no principal must be refused, got %s", out)
 	}
 }
+
+// Review finding: ACL rule patterns are matched as substrings of the URL, so a
+// tool argument must never be able to smuggle another rule's pattern in.
+func TestACLURLEscapesArguments(t *testing.T) {
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{
+		"cluster_name":  "c1",
+		"setting_name":  "x",
+		"setting_value": "x/actions/rotate-passwords",
+	}
+	got := aclURL("c1", toolACLPaths["cluster-set-setting"], req)
+	if strings.Contains(got, "/actions/rotate-passwords") {
+		t.Fatalf("an argument must not inject a rule pattern: %s", got)
+	}
+	if !strings.Contains(got, "x%2Factions%2Frotate-passwords") {
+		t.Errorf("argument must be path-escaped: %s", got)
+	}
+	if got := aclURL("c1/actions/switchover", "/settings", req); strings.Contains(got, "c1/actions") {
+		t.Errorf("cluster name must be escaped too: %s", got)
+	}
+}
+
+// Every placeholder in a template must be an argument the tool declares, so
+// the map and the tool schemas cannot drift silently.
+func TestTemplatePlaceholdersAreToolArguments(t *testing.T) {
+	s, _ := newTestMCP(true, true)
+	tools := map[string]mcp.Tool{}
+	for name, st := range s.mcp.ListTools() {
+		tools[name] = st.Tool
+	}
+	for name, template := range toolACLPaths {
+		tool, ok := tools[name]
+		if !ok {
+			continue // completeness is TestEveryToolHasAnACLMapping's job
+		}
+		for placeholder, arg := range templateArgs {
+			if !strings.Contains(template, placeholder) {
+				continue
+			}
+			if _, declared := tool.InputSchema.Properties[arg]; !declared {
+				t.Errorf("tool %s template %q uses %s but declares no %s argument", name, template, placeholder, arg)
+			}
+		}
+		if i := strings.Index(template, "{"); i >= 0 {
+			ph := template[i : strings.Index(template, "}")+1]
+			if _, known := templateArgs[ph]; !known {
+				t.Errorf("tool %s template %q has unknown placeholder %s", name, template, ph)
+			}
+		}
+	}
+}
+
+// A cluster tool called without cluster_name is refused, not routed through
+// the cluster-less branch.
+func TestClusterToolNeedsClusterName(t *testing.T) {
+	s, f := newTestMCP(true, true)
+	f.allowed["alice /api/clusters/c1"] = true
+	ctx := withPrincipal(context.Background(), &Principal{User: "alice", AuthMethod: "token"})
+	out := call(s, ctx, "get-cluster-health", map[string]any{})
+	if !strings.Contains(out, "needs cluster_name") {
+		t.Fatalf("cluster tool without cluster_name must be refused: %s", out)
+	}
+	if len(f.asked) != 0 {
+		t.Errorf("no ACL lookup must run without a cluster: %v", f.asked)
+	}
+}

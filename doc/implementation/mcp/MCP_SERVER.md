@@ -66,6 +66,31 @@ under the caller's cluster ACL for that endpoint, exactly as the REST call would
   warning. It is the only way to use the `stdio` transport, which carries no bearer; with
   authentication on, `stdio` refuses to start.
 
+## Review fixes (PR #1839 automated review)
+
+- **Argument injection into the ACL URL**: `cluster.matchACLRules` matches rule patterns as
+  substrings of the URL, so a tool argument such as `setting_value =
+  "x/actions/rotate-passwords"` used to make the settings write pass with the
+  rotate-passwords grant. `aclURL` now path-escapes every substituted argument and the
+  cluster name (`aclArg`), so no argument can carry a `/`. Pinned by
+  `TestACLURLEscapesArguments` (mcp) and `TestACLSubstringInjectionNeedsEscaping` (server,
+  real cluster ACL). The REST side has the same substring design behind the
+  `{settingValue:.*}` mux wildcard; anchoring `matchACLRules` is a separate change.
+- **Cluster-less tools are declared, not inferred**: `list-clusters` is mapped with the
+  `global:` form (any authenticated principal); every other tool is cluster-scoped and an
+  empty `cluster_name` is refused before any handler runs (`TestClusterToolNeedsClusterName`).
+- **Transport `both`** refuses to start with `mcp-auth-enabled` like `stdio` does (stdio
+  carries no bearer); stdio is served through `NewStdioServer(...).Listen(ctx, ...)` so
+  `Stop()`'s cancel really ends it.
+- **Template/schema drift**: `cluster-bootstrap-replication` no longer references a
+  `{topology}` argument the tool does not declare; `TestTemplatePlaceholdersAreToolArguments`
+  checks every placeholder against the tool's input schema.
+- Demo compose pulls `signal18/replication-manager:nightly` (no `mcp-server` tag is
+  published).
+- Regtest gate (T13): no `regtest/test_*.go` scenario drives the MCP write tools yet; the
+  write paths were exercised by hand on dev3 (switchover refused/allowed by grant, cluster
+  creation and provisioning). Tracked in #1837.
+
 ## Cloud18 tools (server_cloud18_mcp.go, mcp/tools_cloud18.go)
 
 Repman-global tools mapped with the `global:<grant>` form in `toolACLPaths`: `addTool` asks

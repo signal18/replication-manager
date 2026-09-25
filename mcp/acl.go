@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -84,7 +85,7 @@ func (s *MCPServer) injectPrincipal(ctx context.Context, r *http.Request) contex
 
 // toolACLPaths maps every tool to the REST path it mirrors, relative to
 // /api/clusters/{cluster}. Placeholders: {server}, {proxy}, {setting}, {value},
-// {snapshot}, {task}, {topology}, filled from the tool arguments. A tool absent
+// {snapshot}, {task}, filled (path-escaped) from the tool arguments. A tool absent
 // from this map is refused when authentication is on (fail closed), so adding a
 // tool means adding its line here.
 var toolACLPaths = map[string]string{
@@ -93,7 +94,7 @@ var toolACLPaths = map[string]string{
 	// account with access to the cluster reads them. "" mirrors that: the
 	// cluster's own public URL, which still applies account membership and token
 	// scope.
-	"list-clusters": "", // filtered per cluster in the handler
+	"list-clusters": globalPrefix, // repman-global: any authenticated principal, filtered per cluster in the handler
 	// cloud18 (repman-global): reads for any principal, actions for global-admin-show
 	"get-cloud18-status":              globalPrefix,
 	"get-cloud18-register-status":     globalPrefix,
@@ -132,7 +133,7 @@ var toolACLPaths = map[string]string{
 	"sysbench-cleanup":               "/actions/sysbench-cleanup",
 	"cluster-set-setting":            "/settings/actions/set/{setting}/{value}",
 	"cluster-switch-setting":         "/settings/actions/switch/{setting}",
-	"cluster-bootstrap-replication":  "/actions/replication/bootstrap/{topology}",
+	"cluster-bootstrap-replication":  "/actions/replication/bootstrap",
 	"cluster-cleanup-replication":    "/actions/replication/cleanup",
 	// database, read
 	"get-server-status":       "/servers/{server}/status",
@@ -186,18 +187,32 @@ var toolACLPaths = map[string]string{
 const globalPrefix = "global:"
 
 // aclURL builds the REST URL a tool call mirrors, from its arguments.
+// templateArgs maps a template placeholder to the tool argument that fills it.
+var templateArgs = map[string]string{
+	"{server}":   "server_name",
+	"{proxy}":    "proxy_name",
+	"{setting}":  "setting_name",
+	"{value}":    "setting_value",
+	"{snapshot}": "snapshot_id",
+	"{task}":     "task_id",
+}
+
+// aclArg is one substituted argument: path-escaped, so a value can never
+// carry a "/" (or anything else) that would make the ACL URL contain another
+// rule's pattern. matchACLRules matches rule patterns as substrings, so an
+// unescaped setting_value of "x/actions/rotate-passwords" would otherwise
+// authorize a settings write with the rotate-passwords grant.
+func aclArg(req mcp.CallToolRequest, name string) string {
+	return url.PathEscape(req.GetString(name, ""))
+}
+
 func aclURL(clusterName string, template string, req mcp.CallToolRequest) string {
-	url := "/api/clusters/" + clusterName + template
-	repl := strings.NewReplacer(
-		"{server}", req.GetString("server_name", ""),
-		"{proxy}", req.GetString("proxy_name", ""),
-		"{setting}", req.GetString("setting_name", ""),
-		"{value}", req.GetString("setting_value", ""),
-		"{snapshot}", req.GetString("snapshot_id", ""),
-		"{task}", req.GetString("task_id", ""),
-		"{topology}", req.GetString("topology", ""),
-	)
-	return repl.Replace(url)
+	out := "/api/clusters/" + url.PathEscape(clusterName) + template
+	pairs := make([]string, 0, 2*len(templateArgs))
+	for placeholder, arg := range templateArgs {
+		pairs = append(pairs, placeholder, aclArg(req, arg))
+	}
+	return strings.NewReplacer(pairs...).Replace(out)
 }
 
 // authorize runs the cluster ACL for a principal on a REST URL. With
@@ -236,13 +251,12 @@ func (s *MCPServer) addTool(tool mcp.Tool, handler mcpserver.ToolHandlerFunc) {
 			}
 			return handler(ctx, req)
 		}
+		// Every other tool is cluster-scoped by declaration: cluster-less tools
+		// carry the global: form above, so an empty cluster_name is a refusal,
+		// never a bypass.
 		clusterName := req.GetString("cluster_name", "")
 		if clusterName == "" {
-			// Cluster-less tools (list-clusters) filter per cluster themselves.
-			if p := principalFrom(ctx); p == nil {
-				return mcp.NewToolResultError("unauthenticated: no principal on this request"), nil
-			}
-			return handler(ctx, req)
+			return mcp.NewToolResultErrorf("forbidden: tool %s needs cluster_name", tool.Name), nil
 		}
 		if ok, reason := s.authorize(ctx, clusterName, aclURL(clusterName, template, req)); !ok {
 			return mcp.NewToolResultError(reason), nil

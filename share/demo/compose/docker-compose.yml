@@ -42,7 +42,7 @@ services:
       retries: 3
 
   replication-manager:
-    image: signal18/replication-manager:mcp-server
+    image: signal18/replication-manager:nightly
     ports:
       - "10001:10001"
       - "10007:10007"

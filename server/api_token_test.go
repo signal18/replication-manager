@@ -12,6 +12,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	repmanmcp "github.com/signal18/replication-manager/mcp"
 )
 
 func newTokenTestManager(t *testing.T) (*ReplicationManager, *cluster.Cluster) {
@@ -580,5 +581,22 @@ func TestSelfServiceRules(t *testing.T) {
 	// Another identity is not affected.
 	if err := repman.selfServiceCheck("other@x.io"); err != nil {
 		t.Errorf("limit is per identity, got %v", err)
+	}
+}
+
+// Review finding on #1839: rule patterns match as substrings, so the MCP layer
+// path-escapes arguments. This pins the cluster ACL side: the escaped URL of a
+// smuggled pattern does not authorize, the raw one would.
+func TestACLSubstringInjectionNeedsEscaping(t *testing.T) {
+	repman, cl := newTokenTestManager(t)
+	rot := cluster.APIUser{User: "rot", Password: "z", Roles: map[string]bool{}}
+	cl.SetUserGrants(&rot, config.GrantClusterRotatePasswords)
+	cl.APIUsers["rot"] = rot
+	p := &repmanmcp.Principal{User: "rot", AuthMethod: "password", Auth: "z"}
+	if repman.AuthorizeMCP(p, "c1", "/api/clusters/c1/settings/actions/set/x/x%2Factions%2Frotate-passwords") {
+		t.Fatal("an escaped setting value must not authorize a settings write with the rotate-passwords grant")
+	}
+	if !repman.AuthorizeMCP(p, "c1", "/api/clusters/c1/actions/rotate-passwords") {
+		t.Fatal("the grant itself must still pass its own URL")
 	}
 }

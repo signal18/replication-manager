@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/signal18/replication-manager/cluster"
@@ -186,7 +187,7 @@ func (s *MCPServer) Start(ctx context.Context) error {
 			return fmt.Errorf("MCP stdio transport carries no bearer: set mcp-auth-enabled=false to run it unrestricted, or use the sse transport")
 		}
 		s.logger.Infof("MCP server started: transport=stdio version=%s mode=%s auth=off", s.conf.Version, writeMode)
-		return mcpserver.ServeStdio(s.mcp)
+		return mcpserver.NewStdioServer(s.mcp).Listen(ctx, os.Stdin, os.Stdout)
 	case "sse":
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
@@ -219,8 +220,12 @@ func (s *MCPServer) Start(ctx context.Context) error {
 				s.logger.Errorf("MCP SSE server error: %v", err)
 			}
 		}()
-		// Serve stdio in foreground
-		return mcpserver.ServeStdio(s.mcp)
+		// Serve stdio in foreground: same precondition as the stdio transport,
+		// no bearer travels on stdio.
+		if s.conf.MCPAuthEnabled {
+			return fmt.Errorf("MCP transport both serves stdio, which carries no bearer: set mcp-auth-enabled=false or use the api/sse transport")
+		}
+		return mcpserver.NewStdioServer(s.mcp).Listen(ctx, os.Stdin, os.Stdout)
 	default:
 		return fmt.Errorf("unknown MCP transport: %s", transport)
 	}
