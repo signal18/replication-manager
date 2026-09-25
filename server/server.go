@@ -145,6 +145,7 @@ type ReplicationManager struct {
 	GlobalInterventionEntry     *cluster.InterventionEntry  `json:"globalInterventionEntry,omitempty"`
 	ActiveInterventionCount     int                         `json:"activeInterventionCount"`
 	UserAuthTry                 sync.Map                    `json:"-"`
+	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
 	OAuthAccessToken            *oauth2.Token               `json:"-"`
 	ViperConfig                 *viper.Viper                `json:"-"`
 	tlog                        s18log.TermLog
@@ -342,6 +343,8 @@ func (repman *ReplicationManager) SetDefaultFlags(v *viper.Viper) {
 
 func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Config, isClient bool) {
 	flags.IntVar(&conf.TokenTimeout, "api-token-timeout", 48, "Timespan of API Token before expired in hour")
+	flags.BoolVar(&conf.APIUserTokens, "api-user-tokens", true, "Let users issue API tokens for themselves (bearer tokens narrowed to a subset of their grants and a cluster scope, stored encrypted in monitoring-datadir/api-tokens.json)")
+	flags.IntVar(&conf.APIUserTokensDefaultExpireDays, "api-user-tokens-default-expire-days", 120, "Default lifetime in days of a user-issued API token (0 = never expires)")
 
 	var usr string
 	if repman != nil && repman.OsUser != nil {
@@ -671,7 +674,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.APIPort, "api-port", "10005", "Rest API listen port")
 	flags.StringVar(&conf.APIUsers, "api-credentials", "admin:repman", "Rest API user list user:password,..")
 	flags.StringVar(&conf.APIUsersExternal, "api-credentials-external", "", "Rest API user list user:password,.. as dba:repman,foo:bar")
-	flags.StringVar(&conf.APIUsersACLAllow, "api-credentials-acl-allow", "admin:cluster db proxy prov global grant show sale extrole terminal app,dba:cluster proxy db,foo:", "User acl allow")
+	flags.StringVar(&conf.APIUsersACLAllow, "api-credentials-acl-allow", "admin:cluster db proxy prov global grant show sale extrole terminal app token,dba:cluster proxy db token-create,foo:", "User acl allow")
 	flags.StringVar(&conf.APIUsersACLAllowExternal, "api-credentials-acl-allow-external", "", "User dynamic acl allow")
 	flags.StringVar(&conf.APIUsersACLDiscard, "api-credentials-acl-discard", "", "User acl discard")
 	flags.StringVar(&conf.APIUsersACLDiscardExternal, "api-credentials-acl-discard-external", "", "User dynamic acl discard")

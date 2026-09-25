@@ -1982,6 +1982,53 @@ export const updateGrants = createGuardedAsyncThunk(
   }
 )
 
+// User-issued API tokens (issue #1835)
+export const getApiTokens = createGuardedAsyncThunk(
+  'cluster/getApiTokens',
+  async (_, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.getApiTokens(baseURL)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Loading API tokens failed!`, error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const createApiToken = createGuardedAsyncThunk(
+  'cluster/createApiToken',
+  async ({ label, grants, clusters, expireDays }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.createApiToken({ label, grants, clusters, expireDays }, baseURL)
+      showSuccessBanner(`API token created`, status, thunkAPI)
+      thunkAPI.dispatch(getApiTokens())
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Creating API token failed!`, error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const revokeApiToken = createGuardedAsyncThunk(
+  'cluster/revokeApiToken',
+  async ({ tokenId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.revokeApiToken(tokenId, baseURL)
+      showSuccessBanner(`API token revoked`, status, thunkAPI)
+      thunkAPI.dispatch(getApiTokens())
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Revoking API token failed!`, error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const dropUser = createGuardedAsyncThunk(
   'cluster/dropUser',
   async ({ clusterName, username, grants, roles }, thunkAPI) => {
@@ -2690,6 +2737,7 @@ const initialState = {
   loading: false,
   pendingThunks: {},
   error: null,
+  apiTokens: [],
   clusterApps: null,
   clusterAppStates: null,
   clusterData: null,
@@ -2790,6 +2838,9 @@ export const clusterSlice = createSlice({
     }
   },
   extraReducers: (builder) => {
+    builder.addCase(getApiTokens.fulfilled, (state, action) => {
+      state.apiTokens = Array.isArray(action.payload?.data) ? action.payload.data : []
+    })
     builder.addCase(preserveVariable.fulfilled, (state, action) => {
       // Refresh the variables after preserve/accept/clear action
       // This will be handled by the component dispatching getDatabaseService again
