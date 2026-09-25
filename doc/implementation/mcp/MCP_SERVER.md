@@ -139,7 +139,7 @@ without the subscription / email-acceptance chain; the partner is only informed.
   gets the suffix twice and never resolves, seen on dev3) → `services/actions/provision`,
   which is synchronous on the infrastructure (waits for the databases, bootstraps
   replication, minutes) and covers databases and proxies only, then
-  `POST apps/<app>/actions/provision` for each app (`ProvisionServices` does not provision
+  `POST apps/<app id>/actions/provision` for each app (ids resolved from `topology/apps`, the app routes take the id, not the name) (`ProvisionServices` does not provision
   apps): all of it runs in a goroutine with a 20-minute timeout per call and the outcome
   goes to the log, the tool answers at once with the steps done. On an earlier failing step
   the result carries `failedStep`, so a partial creation is visible and can be dropped by

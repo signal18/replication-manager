@@ -279,8 +279,26 @@ func (repman *ReplicationManager) Cloud18CreateCluster(spec Cloud18ClusterSpec, 
 		default:
 			repman.Logrus.Infof("cloud18-create-cluster %s on %s: databases and proxies provisioned", spec.ClusterName, sess.base)
 		}
+		// The app routes take the app id, not its name: resolve through the topology.
+		ids := map[string]string{}
+		if body, err := slow.mustOK(http.MethodGet, cpath+"/topology/apps", nil); err == nil {
+			var list []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			}
+			if json.Unmarshal(body, &list) == nil {
+				for _, a := range list {
+					ids[a.Name] = a.ID
+				}
+			}
+		}
 		for _, app := range apps {
-			status, body, err := slow.callWithTimeout(http.MethodPost, cpath+"/apps/"+app+"/actions/provision", map[string]any{}, provisionTimeout)
+			id, ok := ids[app]
+			if !ok {
+				repman.Logrus.Warnf("cloud18-create-cluster %s on %s: app %s not found in the topology, not provisioned", spec.ClusterName, sess.base, app)
+				continue
+			}
+			status, body, err := slow.callWithTimeout(http.MethodPost, cpath+"/apps/"+id+"/actions/provision", map[string]any{}, provisionTimeout)
 			if err != nil || status < 200 || status > 299 {
 				repman.Logrus.Warnf("cloud18-create-cluster %s on %s: app %s provision failed (HTTP %d, %v): %s", spec.ClusterName, sess.base, app, status, err, strings.TrimSpace(string(body)))
 				continue
