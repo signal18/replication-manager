@@ -234,7 +234,7 @@ func (repman *ReplicationManager) Cloud18CreateCluster(spec Cloud18ClusterSpec, 
 	cpath := "/api/clusters/" + spec.ClusterName
 	// 2. Database image, best effort: the infrastructure may pin it (immutable
 	// setting), in which case the cluster runs the infrastructure's image.
-	if _, err := sess.mustOK(http.MethodGet, cpath+"/settings/actions/set/prov-db-docker-img/"+url.PathEscape(spec.DBImage), nil); err != nil {
+	if _, err := sess.mustOK(http.MethodGet, cpath+"/settings/actions/set/prov-db-image/"+url.PathEscape(spec.DBImage), nil); err != nil {
 		plan["dbImageNote"] = fmt.Sprintf("the infrastructure kept its own database image (%v)", err)
 		steps = append(steps, "database image left to the infrastructure")
 	} else {
@@ -256,19 +256,36 @@ func (repman *ReplicationManager) Cloud18CreateCluster(spec Cloud18ClusterSpec, 
 		}
 		steps = append(steps, "added "+h["type"]+" "+h["host"])
 	}
-	// 4. Provision everything. The infrastructure's call is synchronous (it
-	// waits for the databases and bootstraps replication, minutes), so it runs
-	// in the background here and the outcome goes to the log.
+	// 4. Provision: databases and proxies through the cluster provision (the
+	// infrastructure's call is synchronous: it waits for the databases and
+	// bootstraps replication, minutes), then each app through its own route.
+	// Runs in the background here, the outcome goes to the log.
+	apps := []string{}
+	for _, h := range plannedHosts(spec) {
+		if h["type"] == "app" {
+			apps = append(apps, h["host"])
+		}
+	}
 	go func() {
 		slow := *sess
 		status, body, err := slow.callWithTimeout(http.MethodGet, cpath+"/services/actions/provision", nil, provisionTimeout)
 		switch {
 		case err != nil:
 			repman.Logrus.Warnf("cloud18-create-cluster %s on %s: provision call failed: %v", spec.ClusterName, sess.base, err)
+			return
 		case status < 200 || status > 299:
 			repman.Logrus.Warnf("cloud18-create-cluster %s on %s: provision answered HTTP %d: %s", spec.ClusterName, sess.base, status, strings.TrimSpace(string(body)))
+			return
 		default:
-			repman.Logrus.Infof("cloud18-create-cluster %s on %s: provisioned", spec.ClusterName, sess.base)
+			repman.Logrus.Infof("cloud18-create-cluster %s on %s: databases and proxies provisioned", spec.ClusterName, sess.base)
+		}
+		for _, app := range apps {
+			status, body, err := slow.callWithTimeout(http.MethodPost, cpath+"/apps/"+app+"/actions/provision", map[string]any{}, provisionTimeout)
+			if err != nil || status < 200 || status > 299 {
+				repman.Logrus.Warnf("cloud18-create-cluster %s on %s: app %s provision failed (HTTP %d, %v): %s", spec.ClusterName, sess.base, app, status, err, strings.TrimSpace(string(body)))
+				continue
+			}
+			repman.Logrus.Infof("cloud18-create-cluster %s on %s: app %s provisioned", spec.ClusterName, sess.base, app)
 		}
 	}()
 	steps = append(steps, "provisioning started")

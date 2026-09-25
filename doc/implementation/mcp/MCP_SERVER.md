@@ -132,13 +132,15 @@ without the subscription / email-acceptance chain; the partner is only informed.
 - `confirm=false` (default) is a dry run: normalized spec, planned services, and the
   infrastructure's `GET /api/cloud18/self-service` for this identity (refused reason or
   remaining slots). `confirm=true` runs: `POST clusters/actions/add/{name}` (no plan) →
-  `settings/actions/set/prov-db-docker-img/<image>` (best effort: a partner may pin the
+  `settings/actions/set/prov-db-image/<image>` (best effort: a partner may pin the
   image as immutable, the result then carries `dbImageNote`) → `actions/addserver/dbN/3306`,
   `.../<proxy>1/3306/<proxy>`, `POST .../<app>N/80/app/<template>` with **short host names**
   (the infrastructure appends `.<cluster>.svc.<orchestrator cluster>` itself; a dotted name
   gets the suffix twice and never resolves, seen on dev3) → `services/actions/provision`,
   which is synchronous on the infrastructure (waits for the databases, bootstraps
-  replication, minutes): it runs in a goroutine with a 20-minute timeout and its outcome
+  replication, minutes) and covers databases and proxies only, then
+  `POST apps/<app>/actions/provision` for each app (`ProvisionServices` does not provision
+  apps): all of it runs in a goroutine with a 20-minute timeout per call and the outcome
   goes to the log, the tool answers at once with the steps done. On an earlier failing step
   the result carries `failedStep`, so a partial creation is visible and can be dropped by
   the sponsor.
