@@ -7,6 +7,7 @@ package repmanmcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/peer"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -38,6 +40,31 @@ type RepmanProvider interface {
 	AuthorizeMCP(p *Principal, clusterName string, url string) bool
 	// LogSecurityEvent writes to the security log (same sink as the REST API).
 	LogSecurityEvent(event, user, remoteAddr, msg string)
+	// AuthorizeMCPGlobal: repman-global tools (no cluster) need a grant held on at
+	// least one cluster, token narrowing and "*" scope applied; "" = any principal.
+	AuthorizeMCPGlobal(p *Principal, grant string) bool
+	// Cloud18 (registration, subscription, marketplace), see server_cloud18_mcp.go.
+	Cloud18Status() map[string]any
+	Cloud18RegisterStatus() map[string]any
+	Cloud18Register(email, uri string) (map[string]any, error)
+	Cloud18RegisterConfirm(email, uri string) (map[string]any, error)
+	Cloud18Unregister() (map[string]any, error)
+	Cloud18SubscriptionPlans() (json.RawMessage, error)
+	Cloud18Subscription() (json.RawMessage, error)
+	Cloud18ChangeSubscription(plan string) (map[string]any, error)
+	Cloud18ClustersForSale() ([]*peer.PeerCluster, error)
+	Cloud18Infrastructures() ([]Cloud18Infrastructure, error)
+}
+
+// Cloud18Infrastructure is one provider infrastructure of the marketplace: a
+// distinct api-public-url among the clusters for sale (defined here so the
+// server package can return it without importing this package's types twice).
+type Cloud18Infrastructure struct {
+	ApiPublicUrl  string   `json:"apiPublicUrl"`
+	Clusters      int      `json:"clustersForSale"`
+	ClusterNames  []string `json:"clusterNames"`
+	Orchestrators []string `json:"orchestrators"`
+	ServicePlans  []string `json:"servicePlans"`
 }
 
 // MCPServer encapsulates the MCP server and its configuration.
@@ -99,6 +126,7 @@ func NewMCPServer(repman RepmanProvider, conf *config.Config, logger *log.Logger
 	// read-write is a property of the account or token, not of the server.
 	s.registerReadOnlyTools()
 	s.registerWriteTools()
+	s.registerCloud18Tools()
 	s.registerPrompts()
 
 	return s

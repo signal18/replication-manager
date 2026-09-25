@@ -93,15 +93,26 @@ var toolACLPaths = map[string]string{
 	// account with access to the cluster reads them. "" mirrors that: the
 	// cluster's own public URL, which still applies account membership and token
 	// scope.
-	"list-clusters":             "", // filtered per cluster in the handler
-	"get-cluster-health":        "",
-	"get-cluster-topology":      "",
-	"get-cluster-settings":      "",
-	"get-cluster-alerts":        "",
-	"get-cluster-logs":          "",
-	"get-cluster-crashes":       "",
-	"check-cluster-error-state": "",
-	"last-crash-lost-event":     "", // REST /servers/{s}/lost-events is served without a specific grant
+	"list-clusters": "", // filtered per cluster in the handler
+	// cloud18 (repman-global): reads for any principal, actions for global-admin-show
+	"get-cloud18-status":              globalPrefix,
+	"get-cloud18-register-status":     globalPrefix,
+	"get-cloud18-subscription":        globalPrefix,
+	"list-cloud18-subscription-plans": globalPrefix,
+	"list-cloud18-infrastructures":    globalPrefix,
+	"list-cloud18-clusters-for-sale":  globalPrefix,
+	"cloud18-register":                globalPrefix + "global-admin-show",
+	"cloud18-register-confirm":        globalPrefix + "global-admin-show",
+	"cloud18-change-subscription":     globalPrefix + "global-admin-show",
+	"cloud18-unregister":              globalPrefix + "global-admin-show",
+	"get-cluster-health":              "",
+	"get-cluster-topology":            "",
+	"get-cluster-settings":            "",
+	"get-cluster-alerts":              "",
+	"get-cluster-logs":                "",
+	"get-cluster-crashes":             "",
+	"check-cluster-error-state":       "",
+	"last-crash-lost-event":           "", // REST /servers/{s}/lost-events is served without a specific grant
 	// cluster, write
 	"cluster-failover":               "/actions/failover",
 	"cluster-switchover":             "/actions/switchover",
@@ -167,6 +178,10 @@ var toolACLPaths = map[string]string{
 	"proxy-unprovision": "/proxies/{proxy}/actions/unprovision",
 }
 
+// globalPrefix marks a repman-global tool (no cluster): the value after it is the
+// grant the caller must hold somewhere ("" = any authenticated principal).
+const globalPrefix = "global:"
+
 // aclURL builds the REST URL a tool call mirrors, from its arguments.
 func aclURL(clusterName string, template string, req mcp.CallToolRequest) string {
 	url := "/api/clusters/" + clusterName + template
@@ -207,6 +222,16 @@ func (s *MCPServer) addTool(tool mcp.Tool, handler mcpserver.ToolHandlerFunc) {
 		}
 		if !mapped {
 			return mcp.NewToolResultErrorf("forbidden: tool %s has no ACL mapping", tool.Name), nil
+		}
+		if strings.HasPrefix(template, globalPrefix) {
+			p := principalFrom(ctx)
+			if p == nil {
+				return mcp.NewToolResultError("unauthenticated: no principal on this request"), nil
+			}
+			if grant := strings.TrimPrefix(template, globalPrefix); !s.repman.AuthorizeMCPGlobal(p, grant) {
+				return mcp.NewToolResultErrorf("forbidden: %s needs the %s grant (a token also needs the every-cluster scope)", p.String(), grant), nil
+			}
+			return handler(ctx, req)
 		}
 		clusterName := req.GetString("cluster_name", "")
 		if clusterName == "" {

@@ -177,6 +177,7 @@ type ReplicationManager struct {
 	v3Config               Repmanv3Config                 `json:"-"`
 	cloud18CheckSum        hash.Hash                      `json:"-"`
 	RegStatus              RegistrationStatus             `json:"-"`
+	regPassword            string                         // GitLab password of the registration in progress (MCP confirm reuses it)
 	clog                   *clog.Logger                   `json:"-"`
 	cApiLog                *clog.Logger                   `json:"-"`
 	Logrus                 *log.Logger                    `json:"-"`

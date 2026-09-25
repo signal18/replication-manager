@@ -10,6 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/peer"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -38,6 +39,32 @@ func (f *fakeRepman) AuthenticateMCP(r *http.Request) (*Principal, error) {
 		return &Principal{User: "alice", AuthMethod: "token", TokenID: "t1"}, nil
 	}
 	return nil, http.ErrNoCookie
+}
+func (f *fakeRepman) AuthorizeMCPGlobal(p *Principal, grant string) bool {
+	f.asked = append(f.asked, p.User+" global:"+grant)
+	return grant == "" || f.allowed[p.User+" global:"+grant]
+}
+func (f *fakeRepman) Cloud18Status() map[string]any         { return map[string]any{"registered": false} }
+func (f *fakeRepman) Cloud18RegisterStatus() map[string]any { return map[string]any{"state": "idle"} }
+func (f *fakeRepman) Cloud18Register(e, u string) (map[string]any, error) {
+	return map[string]any{"state": "pending"}, nil
+}
+func (f *fakeRepman) Cloud18RegisterConfirm(e, u string) (map[string]any, error) {
+	return map[string]any{"state": "complete"}, nil
+}
+func (f *fakeRepman) Cloud18Unregister() (map[string]any, error) { return map[string]any{}, nil }
+func (f *fakeRepman) Cloud18SubscriptionPlans() (json.RawMessage, error) {
+	return json.RawMessage(`[]`), nil
+}
+func (f *fakeRepman) Cloud18Subscription() (json.RawMessage, error) {
+	return json.RawMessage(`{}`), nil
+}
+func (f *fakeRepman) Cloud18ChangeSubscription(p string) (map[string]any, error) {
+	return map[string]any{"plan": p}, nil
+}
+func (f *fakeRepman) Cloud18ClustersForSale() ([]*peer.PeerCluster, error) { return nil, nil }
+func (f *fakeRepman) Cloud18Infrastructures() ([]Cloud18Infrastructure, error) {
+	return []Cloud18Infrastructure{{ApiPublicUrl: "https://infra.example:10005", Clusters: 2}}, nil
 }
 func (f *fakeRepman) AuthorizeMCP(p *Principal, clusterName string, url string) bool {
 	f.asked = append(f.asked, p.User+" "+url)
@@ -226,5 +253,34 @@ func TestAPIHandlerRoutesUnderBasePath(t *testing.T) {
 	// The handler is built once.
 	if s.apiHandler == nil {
 		t.Error("Handler must be cached")
+	}
+}
+
+func TestGlobalToolsUseGlobalGrant(t *testing.T) {
+	s, f := newTestMCP(true, true)
+	ctx := withPrincipal(context.Background(), &Principal{User: "alice", AuthMethod: "token"})
+	// A read: any principal.
+	out := call(s, ctx, "list-cloud18-infrastructures", nil)
+	if !strings.Contains(out, "infra.example") {
+		t.Errorf("read must pass for any principal, got %s", out)
+	}
+	// An action without the grant: refused, the global grant was asked.
+	out = call(s, ctx, "cloud18-register", map[string]any{"email": "a@b.c", "uri": "d.s.z"})
+	if !strings.Contains(out, "forbidden") || !strings.Contains(out, "global-admin-show") {
+		t.Errorf("action without grant must be refused naming the grant, got %s", out)
+	}
+	if f.asked[len(f.asked)-1] != "alice global:global-admin-show" {
+		t.Errorf("global grant must be asked, got %v", f.asked)
+	}
+	// With the grant: the handler runs.
+	f.allowed["alice global:global-admin-show"] = true
+	out = call(s, ctx, "cloud18-register", map[string]any{"email": "a@b.c", "uri": "d.s.z"})
+	if !strings.Contains(out, "pending") {
+		t.Errorf("granted action must run, got %s", out)
+	}
+	// No principal: refused.
+	out = call(s, context.Background(), "get-cloud18-status", nil)
+	if !strings.Contains(out, "unauthenticated") {
+		t.Errorf("no principal must be refused, got %s", out)
 	}
 }

@@ -66,6 +66,26 @@ under the caller's cluster ACL for that endpoint, exactly as the REST call would
   warning. It is the only way to use the `stdio` transport, which carries no bearer; with
   authentication on, `stdio` refuses to start.
 
+## Cloud18 tools (server_cloud18_mcp.go, mcp/tools_cloud18.go)
+
+Repman-global tools mapped with the `global:<grant>` form in `toolACLPaths`: `addTool` asks
+`AuthorizeMCPGlobal(principal, grant)` (grant held on at least one cluster, token narrowing
+applied, a token needs the `*` scope; "" = any authenticated principal). Reads:
+`get-cloud18-status`, `get-cloud18-register-status`, `get-cloud18-subscription`,
+`list-cloud18-subscription-plans`, `list-cloud18-clusters-for-sale`,
+`list-cloud18-infrastructures` (distinct `api-public-url` of the clusters for sale). Actions
+(`global-admin-show`): `cloud18-register`, `cloud18-register-confirm`, `cloud18-unregister`,
+`cloud18-change-subscription`. Prompt `cloud18-onboarding`.
+
+The registration core was extracted from the REST handlers (`startCloud18Registration`,
+`confirmCloud18Registration`) so both paths share it. From MCP the GitLab password is
+generated server-side (`generateCloud18Password`), kept in `regPassword` for the confirm step
+and stored by `applyCloudConnect` on success, never returned. The REST registration and
+subscription endpoints now authorize with `isCloud18Admin` (`global-admin-show` on the
+caller's effective grants, token narrowing applied; the literal `admin` login is still
+accepted when no cluster is loaded) instead of the literal user name `admin`, which a narrowed
+token of admin used to pass.
+
 ## Not done
 
 - The standalone `sse` transport stays plain HTTP: bind it to localhost, or use the default
