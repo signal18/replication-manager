@@ -315,6 +315,51 @@ func (repman *ReplicationManager) Cloud18CreateCluster(spec Cloud18ClusterSpec, 
 	return plan, nil
 }
 
+// Cloud18CreateClusterToken mints, on the infrastructure and as this instance's
+// Cloud18 identity (the sponsor), an API token scoped to one cluster there, so
+// an assistant can be pointed at the infrastructure's own MCP endpoint for that
+// cluster. The token is the sponsor's grants narrowed to what the form asks;
+// it is returned once and never stored here.
+func (repman *ReplicationManager) Cloud18CreateClusterToken(infra, clusterName, label, grants string, expireDays int) (map[string]any, error) {
+	clusterName = strings.TrimSpace(clusterName)
+	if clusterName == "" {
+		return nil, errors.New("cluster_name is required")
+	}
+	if strings.TrimSpace(label) == "" {
+		label = "assistant-" + clusterName
+	}
+	sess, err := repman.peerLogin(infra)
+	if err != nil {
+		return nil, err
+	}
+	form := map[string]any{"label": label, "grants": strings.TrimSpace(grants), "clusters": []string{clusterName}, "expireDays": expireDays}
+	body, err := sess.mustOK(http.MethodPost, "/api/tokens", form)
+	if err != nil {
+		return nil, fmt.Errorf("the infrastructure refused the token (the sponsor needs token-create there): %w", err)
+	}
+	var tok map[string]any
+	if err := json.Unmarshal(body, &tok); err != nil || tok["token"] == nil {
+		return nil, fmt.Errorf("the infrastructure returned no token: %s", strings.TrimSpace(string(body)))
+	}
+	return map[string]any{
+		"infrastructure": sess.base,
+		"cluster":        clusterName,
+		"identity":       repman.Conf.Cloud18GitUser,
+		"id":             tok["id"],
+		"label":          tok["label"],
+		"grants":         tok["grants"],
+		"expiresAt":      tok["expiresAt"],
+		"token":          tok["token"],
+		"mcpUrl":         sess.base + "/api/mcp/sse",
+		"mcpServerConfig": map[string]any{
+			"type":    "sse",
+			"url":     sess.base + "/api/mcp/sse",
+			"headers": map[string]string{"Authorization": "Bearer " + fmt.Sprint(tok["token"])},
+		},
+		"note": "the token is shown once; add mcpServerConfig to the assistant's MCP servers under a name such as the infrastructure's host, then that server exposes the cluster's tools",
+	}, nil
+}
+
 // Cloud18GetCluster reads a cluster on an infrastructure: state, servers, proxies, apps.
 func (repman *ReplicationManager) Cloud18GetCluster(infra, clusterName string) (map[string]any, error) {
 	clusterName = strings.TrimSpace(clusterName)

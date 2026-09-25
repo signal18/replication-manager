@@ -156,6 +156,13 @@ without the subscription / email-acceptance chain; the partner is only informed.
   would end after the first cluster.
 - `get-cloud18-cluster` (infrastructure, cluster_name): flags, servers, proxies, apps through
   the same session, to follow the provisioning. ACL: any authenticated principal.
+- `create-cloud18-cluster-token` (infrastructure, cluster_name, label, grants, expire_days):
+  the answer to "how does the assistant operate the cluster it just created": tokens never
+  cross infrastructures, so the sponsor mints one **on the infrastructure** (`POST
+  /api/tokens` through the peer session, scope = that cluster, grants = the sponsor's ∩
+  requested; the sponsor grants include `token-create` for this reason) and the tool returns
+  the token once plus `mcpServerConfig` (the infrastructure's `/api/mcp/sse` with the bearer)
+  to add as a second MCP server. ACL `global:global-admin-show`. Nothing is stored here.
 
 Tests: `server/api_token_test.go` `TestSelfServiceRules` (off by default, orchestrator gate,
 sponsor account shape, per-identity limit, status); `mcp/acl_test.go` mapping completeness.

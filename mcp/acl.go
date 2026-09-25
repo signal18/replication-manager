@@ -107,6 +107,7 @@ var toolACLPaths = map[string]string{
 	"cloud18-unregister":              globalPrefix + "global-admin-show",
 	"cloud18-create-cluster":          globalPrefix + "global-admin-show",
 	"get-cloud18-cluster":             globalPrefix,
+	"create-cloud18-cluster-token":    globalPrefix + "global-admin-show",
 	"get-cluster-health":              "",
 	"get-cluster-topology":            "",
 	"get-cluster-settings":            "",

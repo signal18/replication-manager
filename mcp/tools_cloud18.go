@@ -194,6 +194,24 @@ func (s *MCPServer) registerCloud18Tools() {
 		},
 	)
 
+	s.addTool(
+		mcp.NewTool("create-cloud18-cluster-token",
+			mcp.WithDescription("Mint, on a Cloud18 infrastructure and as this instance's Cloud18 identity (the sponsor of the cluster), an API token scoped to one cluster there, and return the infrastructure's MCP endpoint configuration to add as a second MCP server. This is how an assistant gets to operate a cluster created with cloud18-create-cluster: tokens never cross infrastructures, the sponsor mints one on the infrastructure that hosts the cluster. The token carries the sponsor's grants on that cluster, narrowed to 'grants' if given; it is returned once and not stored. Needs the global-admin-show grant here; a token also needs the every-cluster scope."),
+			mcp.WithString("infrastructure", mcp.Required(), mcp.Description("api-public-url of the infrastructure hosting the cluster")),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster on that infrastructure")),
+			mcp.WithString("label", mcp.Description("Token label, default assistant-<cluster>")),
+			mcp.WithString("grants", mcp.Description("Compact grant prefixes to narrow to, space separated, e.g. 'db-show cluster-show'; empty = all the sponsor's grants on the cluster")),
+			mcp.WithNumber("expire_days", mcp.Description("Validity in days; 0 = the infrastructure's default (120), -1 = never")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			out, err := s.repman.Cloud18CreateClusterToken(req.GetString("infrastructure", ""), req.GetString("cluster_name", ""), req.GetString("label", ""), req.GetString("grants", ""), req.GetInt("expire_days", 0))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(toJSON(out)), nil
+		},
+	)
+
 	s.mcp.AddPrompt(
 		mcp.NewPrompt("cloud18-onboarding",
 			mcp.WithPromptDescription("Guide a person through registering this instance with Signal18 Cloud18 and choosing a plan"),

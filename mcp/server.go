@@ -57,6 +57,7 @@ type RepmanProvider interface {
 	// Self-service clusters on an infrastructure, see server_cloud18_infra.go.
 	Cloud18CreateCluster(spec Cloud18ClusterSpec, confirm bool) (map[string]any, error)
 	Cloud18GetCluster(infra, clusterName string) (map[string]any, error)
+	Cloud18CreateClusterToken(infra, clusterName, label, grants string, expireDays int) (map[string]any, error)
 }
 
 // Cloud18ClusterSpec is a self-service cluster request on an infrastructure.

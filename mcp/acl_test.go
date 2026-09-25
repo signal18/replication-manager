@@ -66,6 +66,9 @@ func (f *fakeRepman) Cloud18ClustersForSale() ([]*peer.PeerCluster, error) { ret
 func (f *fakeRepman) Cloud18CreateCluster(spec Cloud18ClusterSpec, confirm bool) (map[string]any, error) {
 	return map[string]any{"cluster": spec.ClusterName, "confirm": confirm}, nil
 }
+func (f *fakeRepman) Cloud18CreateClusterToken(infra, name, label, grants string, days int) (map[string]any, error) {
+	return map[string]any{"cluster": name, "token": "x"}, nil
+}
 func (f *fakeRepman) Cloud18GetCluster(infra, name string) (map[string]any, error) {
 	return map[string]any{"cluster": name}, nil
 }
