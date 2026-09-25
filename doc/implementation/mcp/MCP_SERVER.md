@@ -132,10 +132,26 @@ without the subscription / email-acceptance chain; the partner is only informed.
 - `confirm=false` (default) is a dry run: normalized spec, planned services, and the
   infrastructure's `GET /api/cloud18/self-service` for this identity (refused reason or
   remaining slots). `confirm=true` runs: `POST clusters/actions/add/{name}` (no plan) →
-  `settings/actions/set/prov-db-docker-img/<image>` → `actions/addserver/dbN.<name>.svc.cloud18/3306`,
-  `.../<proxy>1.../3306/<proxy>`, `POST .../<app>N.../80/app/<template>` →
-  `services/actions/provision`; returns the steps done and the failing step on error, so a
-  partial creation is visible and can be dropped by the sponsor.
+  `settings/actions/set/prov-db-docker-img/<image>` (best effort: a partner may pin the
+  image as immutable, the result then carries `dbImageNote`) → `actions/addserver/dbN/3306`,
+  `.../<proxy>1/3306/<proxy>`, `POST .../<app>N/80/app/<template>` with **short host names**
+  (the infrastructure appends `.<cluster>.svc.<orchestrator cluster>` itself; a dotted name
+  gets the suffix twice and never resolves, seen on dev3) → `services/actions/provision`,
+  which is synchronous on the infrastructure (waits for the databases, bootstraps
+  replication, minutes): it runs in a goroutine with a 20-minute timeout and its outcome
+  goes to the log, the tool answers at once with the steps done. On an earlier failing step
+  the result carries `failedStep`, so a partial creation is visible and can be dropped by
+  the sponsor.
+- Found while validating on dev3 and fixed in `handlerMuxClusterAdd`: the handler blanked
+  the external ACL strings but kept the inherited external credentials, so the Cloud18 git
+  user "existed" and went through `UpdateUser` (which cannot add an entry) and ended up a
+  visitor with every grant discarded on the cluster it had just created. The external
+  accounts are now reset (credentials, secret and ACL) before admin and the Cloud18 user are
+  re-added. Also: a self-service sponsor is a **passwordless** account
+  (`cluster.AddSSOOnlyUser`), because `IsLocalOnlyAccount` makes any password-protected
+  account unusable by the oidc ACL check; and holding `prov-cluster` only as a sponsor does
+  not open the ordinary creation path (`holdsProvClusterOutsideSponsorship`), or the limit
+  would end after the first cluster.
 - `get-cloud18-cluster` (infrastructure, cluster_name): flags, servers, proxies, apps through
   the same session, to follow the provisioning. ACL: any authenticated principal.
 
