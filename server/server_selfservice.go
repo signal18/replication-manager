@@ -78,6 +78,12 @@ type SelfServiceStatus struct {
 	DefaultDBU   int      `json:"defaultDbu"`
 	DefaultAPU   int      `json:"defaultApu"`
 	DefaultBKU   int      `json:"defaultBku"`
+	// ResourceManager pool: what a new cluster needs and what is free.
+	NeededDBU float64       `json:"neededDbu"`
+	NeededAPU float64       `json:"neededApu"`
+	Pool      InfraUnitPool `json:"pool"`
+	PoolOK    bool          `json:"poolOk"`
+	PoolNote  string        `json:"poolNote,omitempty"`
 }
 
 func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServiceStatus {
@@ -87,12 +93,25 @@ func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServ
 	if remaining < 0 {
 		remaining = 0
 	}
-	return SelfServiceStatus{
+	st := SelfServiceStatus{
 		Enabled: ok, Reason: reason, Orchestrator: repman.Conf.ProvOrchestrator,
 		MaxPerUser: repman.Conf.Cloud18SelfServiceMaxClustersPerUser,
 		Identity:   identity, Used: used, Clusters: names, Remaining: remaining,
 		DefaultDBU: repman.Conf.ProvDbDbu, DefaultAPU: repman.Conf.ProvServicePlanApu, DefaultBKU: repman.Conf.ProvServicePlanBku,
+		Pool: repman.infraUnitPool(), PoolOK: true,
 	}
+	st.NeededDBU, st.NeededAPU = repman.selfServiceUnitsNeeded()
+	if !st.Pool.Known {
+		st.PoolNote = "infrastructure capacity unknown (no agent observed, no resource-manager-infra-* declared): the pool does not gate"
+	} else if err := repman.selfServicePoolCheck(); err != nil {
+		st.PoolOK = false
+		st.PoolNote = err.Error()
+		if st.Enabled {
+			st.Enabled = false
+			st.Reason = err.Error()
+		}
+	}
+	return st
 }
 
 // requestIdentity returns the caller's identity and whether it is an external
@@ -105,6 +124,34 @@ func (repman *ReplicationManager) requestIdentity(r *http.Request) (identity str
 	return claims["User"], claims["AuthType"] == "SSO"
 }
 
+// selfServiceUnitsNeeded is what a self-service cluster reserves on creation:
+// the default plan of a master and a replica (2 × prov-db-dbu) and the default
+// APU (prov-service-plan-apu). BKU is storage only and not pooled.
+func (repman *ReplicationManager) selfServiceUnitsNeeded() (dbu, apu float64) {
+	return float64(2 * repman.Conf.ProvDbDbu), float64(repman.Conf.ProvServicePlanApu)
+}
+
+// selfServicePoolCheck asks the ResourceManager whether the infrastructure's
+// free pool (capacity × quota − Σ plans sold) can hold a new default cluster.
+// An unknown pool (no agent capacity observed, no resource-manager-infra-*
+// declared) cannot gate: the creation goes through and the status says so.
+func (repman *ReplicationManager) selfServicePoolCheck() error {
+	pool := repman.infraUnitPool()
+	if !pool.Known {
+		return nil
+	}
+	needDbu, needApu := repman.selfServiceUnitsNeeded()
+	if needDbu > pool.FreeDbu {
+		return fmt.Errorf("no free DBU on this infrastructure for a new cluster: %.0f DBU needed (2 × prov-db-dbu), %.1f free of %.1f usable (%.1f already planned)",
+			needDbu, pool.FreeDbu, pool.UsableDbu, pool.PlannedDbu)
+	}
+	if needApu > pool.FreeApu {
+		return fmt.Errorf("no free APU on this infrastructure for a new cluster: %.0f APU needed (prov-service-plan-apu), %.1f free of %.1f usable (%.1f already planned)",
+			needApu, pool.FreeApu, pool.UsableApu, pool.PlannedApu)
+	}
+	return nil
+}
+
 // selfServiceCheck decides whether identity may create one more cluster here.
 func (repman *ReplicationManager) selfServiceCheck(identity string) error {
 	if ok, reason := repman.selfServiceCapable(); !ok {
@@ -115,7 +162,7 @@ func (repman *ReplicationManager) selfServiceCheck(identity string) error {
 		return fmt.Errorf("%s already sponsors %d cluster(s) here (%s), the limit is %d per user (cloud18-self-service-max-clusters-per-user); drop one to free a slot",
 			identity, used, strings.Join(names, ", "), repman.Conf.Cloud18SelfServiceMaxClustersPerUser)
 	}
-	return nil
+	return repman.selfServicePoolCheck()
 }
 
 // clusterAddAuthorize decides who may create a cluster (POST

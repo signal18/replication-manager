@@ -140,6 +140,15 @@ without the subscription / email-acceptance chain; the partner is only informed.
   `api-users-acl-allow-external` + `SaveAcls()`.
 - Partner informed: security event `cloud18_self_service_cluster`, cluster WARN log, mail to
   `mail-to` when SMTP is configured (`notifySelfServiceCluster`).
+- **ResourceManager pool gate** (`selfServicePoolCheck`, `server_infra_pool.go`): a new
+  cluster reserves the default plan of a master and a replica (2 × `prov-db-dbu`) plus
+  `prov-service-plan-apu`; it is refused when the infrastructure pool cannot hold it. Pool =
+  capacity (unique agents summed, `resource-manager-infra-*` overrides winning, binding axis
+  through the DBU and APU profiles) × `resource-manager-infra-quota-pct` − Σ every cluster's
+  plan (`GetPlanDbu`, `AppPlanByCluster`). The capacity inputs are shared with
+  `/api/global/resources` (`infraCapacityInputs`). An unknown pool (no agent observed, no
+  override declared) does not gate; the status says so (`poolNote`). Status carries
+  `neededDbu`, `neededApu`, `pool{usable,planned,free}`, `poolOk`.
 - `GET /api/cloud18/self-service` (both routers) answers `SelfServiceStatus` for the caller:
   enabled/reason, orchestrator, limit, used, cluster names, remaining, default units.
 

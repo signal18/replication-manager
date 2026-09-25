@@ -139,3 +139,55 @@ func TestClusterAddAuthorize(t *testing.T) {
 		t.Errorf("erin must still be allowed: status=%d self=%v", status, self)
 	}
 }
+
+// The ResourceManager pool gates self-service: a new cluster needs 2 × prov-db-dbu
+// and prov-service-plan-apu free in the infrastructure pool (capacity × quota − Σ plans).
+func TestSelfServicePoolGate(t *testing.T) {
+	repman, cl := newTokenTestManager(t)
+	repman.Conf.Cloud18 = true
+	repman.Conf.Cloud18SelfServiceClusters = true
+	repman.Conf.Cloud18SelfServiceMaxClustersPerUser = 3
+	repman.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	repman.Conf.ProvDbDbu = 1
+	repman.Conf.ProvServicePlanApu = 1
+	// No capacity known: the pool cannot gate.
+	if err := repman.selfServiceCheck("u@x.io"); err != nil {
+		t.Fatalf("unknown pool must not gate: %v", err)
+	}
+	st := repman.selfServiceStatusFor("u@x.io")
+	if st.Pool.Known || !st.PoolOK || st.PoolNote == "" {
+		t.Errorf("status must say the pool is unknown: %+v", st)
+	}
+	// 3 cores / 12 GB declared: 3 DBU (1c/4GB) and 3 APU (1c/1GB, memory not binding).
+	repman.resourceManager = cluster.NewResourceManager()
+	repman.Conf.ResourceManagerInfraCpuCores = 3
+	repman.Conf.ResourceManagerInfraMemoryMB = 12288
+	pool := repman.infraUnitPool()
+	if !pool.Known || pool.UsableDbu != 3 || pool.UsableApu != 3 {
+		t.Fatalf("pool must be 3 DBU / 3 APU: %+v", pool)
+	}
+	if err := repman.selfServiceCheck("u@x.io"); err != nil {
+		t.Errorf("2 DBU needed of 3 free must pass: %v", err)
+	}
+	// A cluster already planned at 2 DBU leaves 1 free: refused.
+	cl.Conf.ProvServicePlanDbu = 2
+	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "no free DBU") {
+		t.Errorf("1 DBU free must refuse a 2 DBU cluster, got %v", err)
+	}
+	st = repman.selfServiceStatusFor("u@x.io")
+	if st.Enabled || st.PoolOK || st.Pool.FreeDbu != 1 || st.NeededDBU != 2 {
+		t.Errorf("status must expose the refusal and the pool: %+v", st)
+	}
+	// Quota halves the usable pool.
+	cl.Conf.ProvServicePlanDbu = 0
+	repman.resourceManager.SetQuotaPct(50)
+	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "no free DBU") {
+		t.Errorf("1.5 usable DBU must refuse a 2 DBU cluster, got %v", err)
+	}
+	// APU gate: plenty of DBU, no APU left.
+	repman.resourceManager.SetQuotaPct(0)
+	repman.Conf.ProvServicePlanApu = 4
+	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "no free APU") {
+		t.Errorf("4 APU needed of 3 must refuse, got %v", err)
+	}
+}
