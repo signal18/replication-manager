@@ -4,7 +4,7 @@
       "type": "sse",
       "url": "http://localhost:10007/sse",
       "headers": {
-        "Authorization": "Bearer ${REPLICATION_MANAGER_MCP_TOKEN}"
+        "Authorization": "Bearer ${REPLICATION_MANAGER_API_TOKEN}"
       }
     }
   }

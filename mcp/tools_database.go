@@ -34,7 +34,7 @@ func (s *MCPServer) getServerHelper(clusterName, serverName string) (*cluster.Cl
 
 // registerDatabaseReadTools registers read-only database/server tools.
 func (s *MCPServer) registerDatabaseReadTools() {
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("get-server-status",
 			mcp.WithDescription("Get all SHOW STATUS variables for a specific server. Key fields: Seconds_Behind_Master (replication lag), Slave_IO_Running/Slave_SQL_Running (replication threads), Threads_running (active queries), Questions (query rate), Com_select/insert/update/delete (query type breakdown), Handler_read_rnd_next (table scan indicator), Innodb_buffer_pool_read_requests vs reads (buffer pool hit rate). Use server_name in host:port format (e.g. db1:3306)."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -49,7 +49,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("get-server-variables",
 			mcp.WithDescription("Get all SHOW VARIABLES for a specific server. Key variables to review: innodb_buffer_pool_size (should be ~70% of RAM), slave_parallel_workers (parallel replication), sync_binlog and innodb_flush_log_at_trx_commit (durability vs performance), long_query_time (slow query threshold), max_connections, tmp_table_size/max_heap_table_size (temp table limits). Useful for tuning analysis and comparing configuration across nodes."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -64,7 +64,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("get-server-processlist",
 			mcp.WithDescription("Get the current process list (SHOW FULL PROCESSLIST) for a server: all active connections with query text, state, user, database, and execution time. Use to identify long-running queries, blocked connections, or replication threads. Returns the process ID needed for server-kill-query. Check this first when a server appears slow or overloaded."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -79,7 +79,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("get-server-slow-queries",
 			mcp.WithDescription("Get slow query digest entries from Performance Schema (events_statements_summary_by_digest). Returns normalized query patterns with total/average execution time, call count, rows examined, and rows sent. Use to identify the top queries contributing to latency. Requires performance_schema=ON on the server. More useful than the raw slow log for identifying query patterns."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -94,7 +94,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("get-server-error-log",
 			mcp.WithDescription("Get the MariaDB/MySQL error log buffer for a specific server. Contains startup/shutdown events, InnoDB recovery messages, replication errors, crash information, and plugin errors. Use when a server behaves unexpectedly or after a restart to see what happened. This is the database server's own log, not the replication-manager orchestrator log (use get-cluster-logs for that)."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -109,7 +109,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("get-server-tables",
 			mcp.WithDescription("Get the list of all user tables across all databases on a server, with metadata (engine, row count, data size, index size). Useful for identifying large tables, MyISAM tables that should be InnoDB, or tables lacking primary keys (required for row-based replication). Compare across master and replicas to detect schema drift."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -124,7 +124,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("check-server-is-master",
 			mcp.WithDescription("Check whether a specific server is currently the active master (read-write primary) for the cluster. Returns is_master=true/false. Use to confirm which server is writable before directing traffic, or to verify a switchover/failover completed correctly."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -144,7 +144,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("check-server-is-slave",
 			mcp.WithDescription("Check whether a specific server is currently an active replica (read-only, replicating from master). Returns is_slave=true/false. Use to confirm replication topology after a switchover/failover, or to verify a server is replicating before adding it to a read replica pool."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -162,7 +162,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("check-server-is-late",
 			mcp.WithDescription("Check if a replica has replication lag above the failover-max-slave-delay threshold. Returns is_late=true/false and seconds_behind (current lag in seconds). A lagging replica cannot be safely promoted during failover. Use this to identify which replicas are eligible for promotion, or to monitor lag trends. 0 seconds means fully in sync."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -184,7 +184,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 
 // registerDatabaseWriteTools registers write/action database tools.
 func (s *MCPServer) registerDatabaseWriteTools() {
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("server-start",
 			mcp.WithDescription("Start a stopped database server in the cluster. replication-manager will issue the start command via the configured service manager (systemd, OpenSVC, Docker, etc.). After starting, the monitoring loop will detect the server and attempt to rejoin it to replication. Requires mcp-write-enabled=true."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -200,7 +200,7 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("server-stop",
 			mcp.WithDescription("Stop a running database server. If the server is the current master, this will trigger failure detection and potentially automatic failover depending on failover-mode. Consider using server-set-maintenance first to prevent unwanted failover, or use cluster-switchover to safely move the master role before stopping. Requires mcp-write-enabled=true."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -216,7 +216,7 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("server-restart",
 			mcp.WithDescription("Restart a specific database server. Queues a restart in the monitoring loop (sets restart cookie). For a safe restart of the current master without downtime, use cluster-rolling-restart instead. Requires mcp-write-enabled=true."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -233,7 +233,7 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("server-backup-physical",
 			mcp.WithDescription("Trigger a physical backup on a specific server (not necessarily the master). Preferred target is a replica to avoid I/O impact on the master. Uses Mariabackup or xtrabackup as configured. Use cluster-physical-backup to target the master automatically. Requires mcp-write-enabled=true."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -249,7 +249,7 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("server-optimize",
 			mcp.WithDescription("Run OPTIMIZE TABLE on all user tables on a specific server. Reclaims fragmented InnoDB space and rebuilds indexes. Run on replicas first during off-peak hours to minimize impact. Avoid running on the master during peak traffic. Requires mcp-write-enabled=true."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -265,7 +265,7 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("server-set-maintenance",
 			mcp.WithDescription("Toggle maintenance mode for a server (on/off). A server in maintenance state is excluded from HA logic: replication-manager will not trigger failover if this server goes down, and will not try to reconfigure it. Use before stopping or patching a server to prevent unwanted failover. Call again to exit maintenance mode. Returns the new maintenance state. Requires mcp-write-enabled=true."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -284,7 +284,7 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("server-set-read-only",
 			mcp.WithDescription("Set a server to read-only mode (SET GLOBAL read_only=ON). Prevents writes on a replica that may have been accidentally set writable, or prepares the current master for a manual switchover. Note: replication-manager's monitoring loop manages read_only automatically — this may be overridden on the next monitoring tick. Requires mcp-write-enabled=true."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -300,7 +300,7 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("server-set-read-write",
 			mcp.WithDescription("Set a server to read-write mode (SET GLOBAL read_only=OFF). Use only when you intend this server to accept writes — typically only the master should be read-write. Setting a replica to read-write while replication is running risks data inconsistency. For safe master promotion, use cluster-switchover instead. Requires mcp-write-enabled=true."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
@@ -316,7 +316,7 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 		},
 	)
 
-	s.mcp.AddTool(
+	s.addTool(
 		mcp.NewTool("server-kill-query",
 			mcp.WithDescription("Kill a specific query or connection on a server by process ID (KILL QUERY <id>). Use get-server-processlist first to find the process ID of the query to kill. Useful for terminating long-running queries, blocked transactions, or idle connections. Killing the replication SQL thread process_id will break replication — avoid killing system processes. Requires mcp-write-enabled=true."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),

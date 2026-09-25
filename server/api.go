@@ -112,13 +112,6 @@ func (repman *ReplicationManager) initKeys() {
 	//	fmt.Println(string(verificationKey))
 }
 
-// GetJWTVerificationKey returns the PEM-encoded RSA public key used to
-// verify JWTs issued by /api/login. Exposed for in-process callers (e.g.
-// the MCP server) that need to validate the same Bearer tokens.
-func (repman *ReplicationManager) GetJWTVerificationKey() []byte {
-	return verificationKey
-}
-
 //STRUCT DEFINITIONS
 
 type userCredentials struct {

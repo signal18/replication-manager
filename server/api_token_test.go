@@ -477,3 +477,40 @@ func TestAPITokenGrantsAndSystemAccount(t *testing.T) {
 		t.Error("token-create alone must not open the cluster tokens listing")
 	}
 }
+
+func TestMCPAuthenticateAndAuthorize(t *testing.T) {
+	repman, cl := newTokenTestManager(t)
+	tok, err := repman.createAPIToken("alice", APITokenForm{Label: "mcp", Grants: "db-show", Clusters: []string{"c1"}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := repman.AuthenticateMCP(bearerRequest(tok.Token, "/sse"))
+	if err != nil || p == nil || p.User != "alice" || p.AuthMethod != "token" || p.TokenID != tok.ID {
+		t.Fatalf("token must authenticate: %+v %v", p, err)
+	}
+	// Public cluster endpoint and a db-show read pass; an action does not; another cluster is out of scope.
+	if !repman.AuthorizeMCP(p, "c1", "/api/clusters/c1") {
+		t.Error("cluster visibility must pass")
+	}
+	if !repman.AuthorizeMCP(p, "c1", "/api/clusters/c1/servers/db1/variables") {
+		t.Error("db-show read must pass")
+	}
+	if repman.AuthorizeMCP(p, "c1", "/api/clusters/c1/actions/switchover") {
+		t.Error("switchover is not embedded: must be refused")
+	}
+	if repman.AuthorizeMCP(p, "c2", "/api/clusters/c2") {
+		t.Error("unknown / out-of-scope cluster must be refused")
+	}
+	// Garbage bearer: no principal.
+	if p, err := repman.AuthenticateMCP(bearerRequest("garbage", "/sse")); err == nil || p != nil {
+		t.Error("garbage bearer must not authenticate")
+	}
+	// Revoked token: refused with a clear error.
+	if _, err := repman.revokeAPIToken(tok.ID, "alice", bearerRequest(tok.Token, "/api/tokens/"+tok.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repman.AuthenticateMCP(bearerRequest(tok.Token, "/sse")); err == nil || !contains(err.Error(), "revoked") {
+		t.Errorf("revoked token must be refused clearly, got %v", err)
+	}
+	_ = cl
+}

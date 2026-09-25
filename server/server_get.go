@@ -7,8 +7,15 @@
 package server
 
 import (
+	"fmt"
+	"net/http"
+	"strings"
+
+	jwt "github.com/golang-jwt/jwt/v5"
+	"github.com/golang-jwt/jwt/v5/request"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	repmanmcp "github.com/signal18/replication-manager/mcp"
 )
 
 func (repman *ReplicationManager) HasActiveCluster() bool {
@@ -190,4 +197,78 @@ func (repman *ReplicationManager) GetDockerRepoImage(reponame string, version st
 // This is used to identify the default cluster in the configuration
 func (repman *ReplicationManager) GetName() string {
 	return "default"
+}
+
+// AuthenticateMCP resolves the bearer of an MCP request into a principal
+// (issue #1838): a user-issued API token (#1835) or an interactive login JWT,
+// the same two credentials the REST API accepts. The password claim of a login
+// JWT and the token record travel in Principal.Auth so AuthorizeMCP can re-run
+// the cluster ACL exactly as IsValidClusterACL does.
+func (repman *ReplicationManager) AuthenticateMCP(r *http.Request) (*repmanmcp.Principal, error) {
+	if t, isAPIToken, ok := repman.apiTokenFromRequest(r); ok {
+		return &repmanmcp.Principal{User: t.User, AuthMethod: "token", TokenID: t.ID, TokenLabel: t.Label, Remote: r.RemoteAddr, Auth: t}, nil
+	} else if isAPIToken {
+		return nil, fmt.Errorf("API token invalid, revoked, expired or disabled")
+	}
+	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
+		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
+		return vk, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, fmt.Errorf("unexpected JWT claims")
+	}
+	info, ok := claims["CustomUserInfo"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("JWT carries no user")
+	}
+	user, _ := info["Name"].(string)
+	password, _ := info["Password"].(string)
+	method := "password"
+	if profile, ok := info["profile"].(string); ok && strings.Contains(profile, repman.Conf.OAuthProvider) {
+		user, _ = info["email"].(string)
+		method = "oidc"
+	}
+	if user == "" {
+		return nil, fmt.Errorf("JWT carries no user name")
+	}
+	return &repmanmcp.Principal{User: user, AuthMethod: method, Remote: r.RemoteAddr, Auth: password}, nil
+}
+
+// AuthorizeMCP runs the cluster ACL for a principal on the REST URL an MCP tool
+// mirrors. For an API token the scope and the narrowed grants apply, as on REST.
+func (repman *ReplicationManager) AuthorizeMCP(p *repmanmcp.Principal, clusterName string, url string) bool {
+	if p == nil {
+		return false
+	}
+	cl := repman.getClusterByName(clusterName)
+	if cl == nil {
+		return false
+	}
+	ok := false
+	switch p.AuthMethod {
+	case "token":
+		t, isToken := p.Auth.(*APIToken)
+		if !isToken || t == nil {
+			return false
+		}
+		if tokenURLInScope(t, cl, url) {
+			ok = cl.IsValidACLQuiet(repman.tokenPrincipalFor(t, cl), "", url, "token")
+		}
+	default:
+		password, _ := p.Auth.(string)
+		ok = cl.IsValidACLQuiet(p.User, password, url, p.AuthMethod)
+	}
+	if !ok {
+		repman.logSecurityEvent("mcp_denied", p.User, p.Remote, fmt.Sprintf("MCP %s denied on %s", p.String(), url))
+	}
+	return ok
+}
+
+// LogSecurityEvent exposes the security log to the MCP package.
+func (repman *ReplicationManager) LogSecurityEvent(event, user, remoteAddr, msg string) {
+	repman.logSecurityEvent(event, user, remoteAddr, msg)
 }

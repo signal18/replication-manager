@@ -30,10 +30,14 @@ type RepmanProvider interface {
 	SetClusterSetting(cl *cluster.Cluster, key, value string) error
 	// SwitchClusterSetting toggles a boolean configuration key for a cluster.
 	SwitchClusterSetting(cl *cluster.Cluster, key string) error
-	// GetJWTVerificationKey returns the PEM-encoded RSA public key used to
-	// verify Bearer JWTs issued by /api/login. Used to authenticate MCP
-	// SSE/message requests against the same credential as the REST API.
-	GetJWTVerificationKey() []byte
+	// AuthenticateMCP resolves the bearer of an MCP HTTP request (interactive
+	// login JWT or user-issued API token) into a Principal, or an error (#1838).
+	AuthenticateMCP(r *http.Request) (*Principal, error)
+	// AuthorizeMCP runs the cluster ACL for the principal on the REST URL a
+	// tool mirrors, exactly as the REST API would; denials are logged there.
+	AuthorizeMCP(p *Principal, clusterName string, url string) bool
+	// LogSecurityEvent writes to the security log (same sink as the REST API).
+	LogSecurityEvent(event, user, remoteAddr, msg string)
 }
 
 // MCPServer encapsulates the MCP server and its configuration.
@@ -106,7 +110,10 @@ func (s *MCPServer) Start(ctx context.Context) error {
 
 	switch transport {
 	case "stdio":
-		s.logger.Infof("MCP server started: transport=stdio version=%s mode=%s auth=n/a", s.conf.Version, writeMode)
+		if s.conf.MCPAuthEnabled {
+			return fmt.Errorf("MCP stdio transport carries no bearer: set mcp-auth-enabled=false to run it unrestricted, or use the sse transport")
+		}
+		s.logger.Infof("MCP server started: transport=stdio version=%s mode=%s auth=off", s.conf.Version, writeMode)
 		return mcpserver.ServeStdio(s.mcp)
 	case "sse", "":
 		ln, err := net.Listen("tcp", addr)
@@ -115,6 +122,7 @@ func (s *MCPServer) Start(ctx context.Context) error {
 		}
 		s.sseServer = mcpserver.NewSSEServer(s.mcp,
 			mcpserver.WithBaseURL(baseURL),
+			mcpserver.WithSSEContextFunc(s.injectPrincipal),
 		)
 		handler := s.buildHTTPHandler(s.sseServer)
 		s.httpServer = &http.Server{Addr: addr, Handler: handler}
@@ -128,6 +136,7 @@ func (s *MCPServer) Start(ctx context.Context) error {
 		}
 		s.sseServer = mcpserver.NewSSEServer(s.mcp,
 			mcpserver.WithBaseURL(baseURL),
+			mcpserver.WithSSEContextFunc(s.injectPrincipal),
 		)
 		handler := s.buildHTTPHandler(s.sseServer)
 		s.httpServer = &http.Server{Addr: addr, Handler: handler}
@@ -151,10 +160,10 @@ func (s *MCPServer) Start(ctx context.Context) error {
 // emitted because the endpoint is exposed without credentials.
 func (s *MCPServer) buildHTTPHandler(sse *mcpserver.SSEServer) http.Handler {
 	if !s.conf.MCPAuthEnabled {
-		s.logger.Warnf("MCP server: --mcp-auth-enabled=false; /sse and /message are exposed without authentication")
+		s.logger.Warnf("MCP server: --mcp-auth-enabled=false; /sse and /message are exposed without authentication and every tool runs unrestricted")
 		return sse
 	}
-	return authMiddleware(sse, s.repman.GetJWTVerificationKey(), s.logger)
+	return authMiddleware(sse, s.repman, s.logger)
 }
 
 // Stop shuts down the MCP server.

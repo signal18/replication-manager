@@ -58,12 +58,8 @@ func (s *MCPServer) registerStaticResources() {
 			mcp.WithMIMEType("application/json"),
 		),
 		func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-			clusters := s.repman.GetClusters()
-			names := make([]string, 0, len(clusters))
-			for name := range clusters {
-				names = append(names, name)
-			}
-			return jsonResource(req.Params.URI, names), nil
+			// Only the clusters the caller may see (account there, token scope).
+			return jsonResource(req.Params.URI, s.visibleClusterNames(ctx)), nil
 		},
 	)
 }
@@ -102,7 +98,7 @@ func (s *MCPServer) resolveClusterAndServer(uri string) (*cluster.Cluster, *clus
 
 // registerClusterResourceTemplates registers per-cluster resource templates.
 func (s *MCPServer) registerClusterResourceTemplates() {
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}", "Cluster Details",
 			mcp.WithTemplateDescription("Details and state of a specific cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -116,7 +112,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/settings", "Cluster Settings",
 			mcp.WithTemplateDescription("Configuration settings for a specific cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -130,7 +126,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/tags", "Cluster Tags",
 			mcp.WithTemplateDescription("Tags associated with a specific cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -144,7 +140,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/topology/servers", "Cluster Servers",
 			mcp.WithTemplateDescription("All database servers in the cluster topology"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -158,7 +154,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/topology/master", "Cluster Master",
 			mcp.WithTemplateDescription("Current master server of the cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -172,7 +168,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/topology/slaves", "Cluster Replicas",
 			mcp.WithTemplateDescription("Replica servers in the cluster topology"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -186,7 +182,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/topology/proxies", "Cluster Proxies",
 			mcp.WithTemplateDescription("Proxy servers in the cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -200,7 +196,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/topology/logs", "Cluster Logs",
 			mcp.WithTemplateDescription("Recent log entries for the cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -214,7 +210,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/topology/alerts", "Cluster Alerts",
 			mcp.WithTemplateDescription("Open errors and warnings for the cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -231,7 +227,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/topology/crashes", "Cluster Crashes",
 			mcp.WithTemplateDescription("Recorded crash events for the cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -245,7 +241,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/health", "Cluster Health",
 			mcp.WithTemplateDescription("Peer health status for the cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -259,7 +255,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/backups", "Cluster Backups",
 			mcp.WithTemplateDescription("Backup metadata for the cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -273,7 +269,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/backups/stats", "Backup Statistics",
 			mcp.WithTemplateDescription("Backup statistics for the cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -287,7 +283,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/restic/snapshots", "Restic Snapshots",
 			mcp.WithTemplateDescription("Restic backup snapshots for the cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -301,7 +297,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/restic/task-queue", "Restic Task Queue",
 			mcp.WithTemplateDescription("Restic task queue status for the cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -316,7 +312,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/jobs", "Cluster Jobs",
 			mcp.WithTemplateDescription("Scheduled and running jobs for the cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -331,7 +327,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/queryrules", "Query Rules",
 			mcp.WithTemplateDescription("Query routing rules for the cluster"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -348,7 +344,7 @@ func (s *MCPServer) registerClusterResourceTemplates() {
 
 // registerServerResourceTemplates registers per-server resource templates.
 func (s *MCPServer) registerServerResourceTemplates() {
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/servers/{serverName}/status", "Server Status",
 			mcp.WithTemplateDescription("Status variables for a specific database server"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -362,7 +358,7 @@ func (s *MCPServer) registerServerResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/servers/{serverName}/variables", "Server Variables",
 			mcp.WithTemplateDescription("Configuration variables for a specific database server"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -376,7 +372,7 @@ func (s *MCPServer) registerServerResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/servers/{serverName}/processlist", "Server Processlist",
 			mcp.WithTemplateDescription("Active queries and connections on a specific database server"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -390,7 +386,7 @@ func (s *MCPServer) registerServerResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/servers/{serverName}/slow-queries", "Slow Queries",
 			mcp.WithTemplateDescription("Slow query log entries for a specific database server"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -404,7 +400,7 @@ func (s *MCPServer) registerServerResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/servers/{serverName}/tables", "Server Tables",
 			mcp.WithTemplateDescription("Table list for a specific database server"),
 			mcp.WithTemplateMIMEType("application/json"),
@@ -418,7 +414,7 @@ func (s *MCPServer) registerServerResourceTemplates() {
 		},
 	)
 
-	s.mcp.AddResourceTemplate(
+	s.addResourceTemplate(
 		mcp.NewResourceTemplate("repman://clusters/{clusterName}/servers/{serverName}/error-log", "Server Error Log",
 			mcp.WithTemplateDescription("Error log entries for a specific database server"),
 			mcp.WithTemplateMIMEType("application/json"),

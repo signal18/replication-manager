@@ -1,7 +1,8 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017-2021 SIGNAL18 CLOUD SAS
-// Author: Guillaume Lefranc <guillaume@signal18.io>
-// License: GNU General Public License, version 3.
+// Copyright 2017-2026 SIGNAL18 CLOUD SAS
+// Authors: Guillaume Lefranc <guillaume@signal18.io>
+//          Stephane Varoqui  <svaroqui@gmail.com>
+// This source code is licensed under the GNU General Public License, version 3.
 
 package repmanmcp
 
@@ -9,45 +10,29 @@ import (
 	"fmt"
 	"net/http"
 
-	jwt "github.com/golang-jwt/jwt/v5"
-	"github.com/golang-jwt/jwt/v5/request"
 	log "github.com/sirupsen/logrus"
 )
 
-// authMiddleware wraps an http.Handler and requires a valid Bearer JWT
-// signed by the replication-manager REST API on every request. The token
-// is the same one issued by POST /api/login.
-//
-// On missing or invalid tokens the middleware writes 401 Unauthorized
-// and does not call the wrapped handler. On success the request is
-// forwarded unchanged.
-func authMiddleware(next http.Handler, verificationKey []byte, logger *log.Logger) http.Handler {
+// authMiddleware gates the SSE and message endpoints: the bearer must resolve to
+// a principal through the server's own authentication (an interactive login JWT
+// from POST /api/login, or a user-issued API token, #1835). The per-tool
+// authorization happens later in acl.go; this only refuses anonymous callers.
+func authMiddleware(next http.Handler, repman RepmanProvider, logger *log.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor,
-			func(t *jwt.Token) (interface{}, error) {
-				vk, perr := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
-				if perr != nil {
-					return nil, perr
-				}
-				return vk, nil
-			})
-
-		if err != nil {
-			logger.Warnf("MCP auth: rejected request from %s: %v", r.RemoteAddr, err)
-			w.Header().Set("WWW-Authenticate", `Bearer realm="replication-manager-mcp"`)
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprintf(w, "Unauthorized: %s\n", err.Error())
-			return
-		}
-		if !token.Valid {
-			logger.Warnf("MCP auth: invalid token from %s", r.RemoteAddr)
+		p, err := repman.AuthenticateMCP(r)
+		if err != nil || p == nil {
+			reason := "no valid bearer"
+			if err != nil {
+				reason = err.Error()
+			}
+			logger.Warnf("MCP auth: rejected request from %s: %s", r.RemoteAddr, reason)
+			repman.LogSecurityEvent("mcp_auth_failure", "", r.RemoteAddr, "MCP request rejected: "+reason)
 			w.Header().Set("WWW-Authenticate", `Bearer realm="replication-manager-mcp", error="invalid_token"`)
 			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprintln(w, "Unauthorized: token is not valid")
+			fmt.Fprintf(w, "Unauthorized: %s\n", reason)
 			return
 		}
-
-		logger.Debugf("MCP auth: accepted request from %s for %s", r.RemoteAddr, r.URL.Path)
+		logger.Debugf("MCP auth: %s from %s on %s", p.String(), r.RemoteAddr, r.URL.Path)
 		next.ServeHTTP(w, r)
 	})
 }
