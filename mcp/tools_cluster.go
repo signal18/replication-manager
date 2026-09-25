@@ -372,6 +372,66 @@ func (s *MCPServer) registerClusterWriteTools() {
 	)
 
 	s.addTool(
+		mcp.NewTool("run-sysbench",
+			mcp.WithDescription("Run a sysbench benchmark against the cluster through its proxy (a proxy must be configured). Optional test (sysbench script name, e.g. oltp_read_write), time in seconds and threads; threads=0 scales from 1 thread up to twice the cores and records each step. Prepares the schema, runs, and logs the result in the cluster benchmark history; the previous bench data is cleaned first. Runs in the background; read get-cluster-logs for the result. Needs the cluster-bench or cluster-test grant."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("test", mcp.Description("sysbench test name, empty keeps the cluster setting sysbench-test")),
+			mcp.WithString("time", mcp.Description("duration in seconds, empty keeps sysbench-time")),
+			mcp.WithString("threads", mcp.Description("thread count, 0 = scale 1..2×cores, empty keeps sysbench-threads")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			if len(cl.Proxies) == 0 {
+				return mcp.NewToolResultError("no proxy configured on this cluster: sysbench runs through the proxy"), nil
+			}
+			if v := req.GetString("test", ""); v != "" {
+				cl.SetSysbenchTest(v)
+			}
+			if v := req.GetString("time", ""); v != "" {
+				cl.SetSysbenchTime(v)
+			}
+			threads := req.GetString("threads", "")
+			if threads == "0" {
+				go func() {
+					if err := cl.RunSysbenchScaleThreads(); err != nil {
+						s.logger.Errorf("MCP run-sysbench scale on %s: %v", cl.Name, err)
+					}
+				}()
+				return mcp.NewToolResultText(`{"status":"sysbench thread-scaling run initiated"}`), nil
+			}
+			if threads != "" {
+				cl.SetSysbenchThreads(threads)
+			}
+			go func() {
+				if err := cl.RunSysbench(); err != nil {
+					s.logger.Errorf("MCP run-sysbench on %s: %v", cl.Name, err)
+				}
+			}()
+			return mcp.NewToolResultText(`{"status":"sysbench run initiated"}`), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("sysbench-cleanup",
+			mcp.WithDescription("Drop the sysbench benchmark schema and data from the cluster. Needs the cluster-bench or cluster-test grant."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			if err := cl.CleanupBench(); err != nil {
+				return mcp.NewToolResultErrorf("sysbench cleanup failed: %v", err), nil
+			}
+			return mcp.NewToolResultText(`{"status":"sysbench data cleaned"}`), nil
+		},
+	)
+
+	s.addTool(
 		mcp.NewTool("cluster-set-setting",
 			mcp.WithDescription("Set a named configuration key to a specific value for a cluster. Use get-cluster-settings first to see available keys and their current values. Common examples: failover-mode=automatic/manual, failover-max-slave-delay=30, db-servers-prefered-master=host:port. Changes take effect immediately without restart.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),

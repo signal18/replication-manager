@@ -114,6 +114,8 @@ var toolACLPaths = map[string]string{
 	"cluster-stop-traffic":           "/actions/stop-traffic",
 	"cluster-physical-backup":        "/actions/master-physical-backup",
 	"cluster-checksum-tables":        "/actions/checksum-all-tables",
+	"run-sysbench":                   "/actions/sysbench",
+	"sysbench-cleanup":               "/actions/sysbench-cleanup",
 	"cluster-set-setting":            "/settings/actions/set/{setting}/{value}",
 	"cluster-switch-setting":         "/settings/actions/switch/{setting}",
 	"cluster-bootstrap-replication":  "/actions/replication/bootstrap/{topology}",

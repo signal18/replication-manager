@@ -22,7 +22,8 @@ monitored clusters. Library `github.com/mark3labs/mcp-go`. Package `mcp/`
   (`restartMCPServer`), auth and transport being fixed at creation.
 - Tools call repman **in process** through the `RepmanProvider` interface (implemented by
   `*server.ReplicationManager` in `server/server_get.go`), not through the REST API.
-- 64 tools: 24 cluster, 22 database, 12 backup, 6 proxy, all registered (added 2026-09-25:
+- 66 tools: 26 cluster, 22 database, 12 backup, 6 proxy, all registered (added 2026-09-25:
+  `run-sysbench`, `sysbench-cleanup`,
   `last-crash-lost-event`, `server-backup-logical`, `server-logical-backup-splitdump`,
   `server-restore-logical-backup`, `server-restore-physical-backup`). There is no global
   read-only switch (removed 2026-09-25): read-only versus read-write is a property of the
