@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/signal18/replication-manager/cluster"
 )
 
 // registerReadOnlyTools registers all read-only MCP tools (Phase 1).
@@ -128,6 +129,42 @@ func (s *MCPServer) registerClusterReadTools() {
 				return errResult, nil
 			}
 			return mcp.NewToolResultText(toJSON(cl.GetCrashes())), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("last-crash-lost-event",
+			mcp.WithDescription("Get the lost events of the last crash of a server: the transactions the old master had committed but that never reached the promoted replica, captured as a binlog delta at rejoin and decoded to SQL. Returns the crash record (when, who was promoted, GTID positions, delta counters: transactions, row events, DDL, statement DML, flashable), the decoded delta text (first page) and the rejoin methods available. Use it to assess data loss after a failover and decide between replaying or flashing back the delta. No crash record means no data was lost on that server."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("server_name", mcp.Required(), mcp.Description("The old master: server name, host or id as shown by get-cluster-crashes")),
+			mcp.WithString("file", mcp.Description("\"delta\" (default) for the lost events, \"flashback\" for their inverse")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, node, err := s.getServerHelper(req.GetString("cluster_name", ""), req.GetString("server_name", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			crash := cl.GetLatestCrashForServer(node.URL)
+			if crash == nil {
+				return mcp.NewToolResultText(`{"crash":null,"message":"no crash record for this server: nothing was lost"}`), nil
+			}
+			path := crash.DeltaDecoded
+			if req.GetString("file", "") == "flashback" {
+				path = crash.DeltaFlashbackDecoded
+			}
+			var page *cluster.LostEventsPage
+			if path != "" {
+				page, err = cluster.ReadLostEventsPage(path, 0, 64*1024)
+				if err != nil {
+					return mcp.NewToolResultErrorf("could not read decoded lost events: %v", err), nil
+				}
+			}
+			return mcp.NewToolResultText(toJSON(map[string]interface{}{
+				"crash":         crash,
+				"file":          path,
+				"page":          page,
+				"rejoinMethods": cl.RejoinMethodsStatus(),
+			})), nil
 		},
 	)
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 )
 
 // getServerHelper retrieves a cluster and ServerMonitor by name.
@@ -246,6 +247,82 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 			}
 			go node.JobBackupPhysical()
 			return mcp.NewToolResultText(`{"status":"physical backup initiated"}`), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("server-backup-logical",
+			mcp.WithDescription("Trigger a logical backup (mysqldump or mydumper, as configured by backup-logical-type) on a specific server, preferably a replica. Runs in the background; follow it with list-backups. Needs the db-backup grant."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name, host or id as shown by get-cluster-topology")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			_, node, err := s.getServerHelper(req.GetString("cluster_name", ""), req.GetString("server_name", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			go node.JobBackupLogical(context.Background())
+			return mcp.NewToolResultText(`{"status":"logical backup initiated"}`), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("server-logical-backup-splitdump",
+			mcp.WithDescription("Trigger a logical mysqldump backup in splitdump format (one directory with one file per table, mydumper-like, restorable in parallel) on a specific server. Requires backup-logical-type=mysqldump and backup-mysqldump-splitdump=true on the cluster; refused otherwise, with the setting to change. Runs in the background; follow it with list-backups. Needs the db-backup grant."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name, host or id as shown by get-cluster-topology")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, node, err := s.getServerHelper(req.GetString("cluster_name", ""), req.GetString("server_name", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			if cl.Conf.BackupLogicalType != config.ConstBackupLogicalTypeMysqldump {
+				return mcp.NewToolResultErrorf("splitdump needs backup-logical-type=mysqldump, the cluster uses %s", cl.Conf.BackupLogicalType), nil
+			}
+			if !cl.Conf.BackupMysqldumpSplitDump {
+				return mcp.NewToolResultError("splitdump is off: switch backup-mysqldump-splitdump on the cluster first (cluster-switch-setting, needs cluster-settings)"), nil
+			}
+			go node.JobBackupLogical(context.Background())
+			return mcp.NewToolResultText(`{"status":"logical splitdump backup initiated"}`), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("server-restore-logical-backup",
+			mcp.WithDescription("Restore (reseed) a server from the cluster's last logical backup: the server is rebuilt from the dump and re-attached to replication. Destructive for the target server's current data. Use only on a replica that is broken or diverged. Runs in the background; follow it with get-cluster-topology and get-cluster-logs. Needs the db-restore grant."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name, host or id as shown by get-cluster-topology")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			_, node, err := s.getServerHelper(req.GetString("cluster_name", ""), req.GetString("server_name", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			go func() {
+				if err := node.JobReseedLogicalBackup(context.Background(), "default"); err != nil {
+					s.logger.Errorf("MCP server-restore-logical-backup %s: %v", node.URL, err)
+				}
+			}()
+			return mcp.NewToolResultText(`{"status":"logical restore initiated"}`), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("server-restore-physical-backup",
+			mcp.WithDescription("Restore (reseed) a server from the cluster's last physical backup (Mariabackup/xtrabackup): the server's data directory is replaced and replication re-attached. Destructive for the target server's current data. Use only on a replica that is broken or diverged. Runs in the background; follow it with get-cluster-topology and get-cluster-logs. Needs the db-restore grant."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name, host or id as shown by get-cluster-topology")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			_, node, err := s.getServerHelper(req.GetString("cluster_name", ""), req.GetString("server_name", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			if err := node.JobReseedPhysicalBackup("default"); err != nil {
+				return mcp.NewToolResultErrorf("physical restore refused: %v", err), nil
+			}
+			return mcp.NewToolResultText(`{"status":"physical restore initiated"}`), nil
 		},
 	)
 

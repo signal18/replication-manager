@@ -84,12 +84,13 @@ func TestACLURLBuilding(t *testing.T) {
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"cluster_name": "c1", "server_name": "db1", "setting_name": "failover-mode", "setting_value": "manual", "snapshot_id": "abc"}
 	cases := map[string]string{
-		"cluster-switchover":   "/api/clusters/c1/actions/switchover",
-		"get-server-variables": "/api/clusters/c1/servers/db1/variables",
-		"cluster-set-setting":  "/api/clusters/c1/settings/actions/set/failover-mode/manual",
-		"restic-purge":         "/api/clusters/c1/restic/purge/abc",
-		"get-cluster-settings": "/api/clusters/c1",
-		"get-cluster-topology": "/api/clusters/c1",
+		"cluster-switchover":             "/api/clusters/c1/actions/switchover",
+		"get-server-variables":           "/api/clusters/c1/servers/db1/variables",
+		"cluster-set-setting":            "/api/clusters/c1/settings/actions/set/failover-mode/manual",
+		"restic-purge":                   "/api/clusters/c1/restic/purge/abc",
+		"get-cluster-settings":           "/api/clusters/c1",
+		"get-cluster-topology":           "/api/clusters/c1",
+		"server-restore-physical-backup": "/api/clusters/c1/servers/db1/actions/reseed/physicalbackup",
 	}
 	for tool, want := range cases {
 		if got := aclURL("c1", toolACLPaths[tool], req); got != want {
