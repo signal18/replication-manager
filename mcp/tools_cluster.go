@@ -74,7 +74,7 @@ func (s *MCPServer) registerClusterReadTools() {
 
 	s.addTool(
 		mcp.NewTool("get-cluster-settings",
-			mcp.WithDescription("Get the full configuration for a cluster. Useful for verifying current settings such as failover-mode (manual/automatic), replication topology, backup schedule, proxy configuration, and mcp-write-enabled status."),
+			mcp.WithDescription("Get the full configuration for a cluster. Useful for verifying current settings such as failover-mode (manual/automatic), replication topology, backup schedule, proxy configuration."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -157,7 +157,7 @@ func (s *MCPServer) registerClusterReadTools() {
 func (s *MCPServer) registerClusterWriteTools() {
 	s.addTool(
 		mcp.NewTool("cluster-failover",
-			mcp.WithDescription("Trigger an emergency failover: promotes the best available replica to master when the current master is unreachable or failed. This is destructive and may involve minimal data loss depending on replication mode. ALWAYS prefer cluster-switchover when the master is still accessible. Only use failover when the master is confirmed Failed or unreachable. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Trigger an emergency failover: promotes the best available replica to master when the current master is unreachable or failed. This is destructive and may involve minimal data loss depending on replication mode. ALWAYS prefer cluster-switchover when the master is still accessible. Only use failover when the master is confirmed Failed or unreachable.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -172,7 +172,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-switchover",
-			mcp.WithDescription("Perform a planned, zero-data-loss master change. The current master is gracefully demoted to replica, and the best available replica (or the one specified in preferred_master) is promoted to master. Use this for planned maintenance, host rotation, or hardware moves. Requires the cluster to be healthy and replicas to be in sync. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Perform a planned, zero-data-loss master change. The current master is gracefully demoted to replica, and the best available replica (or the one specified in preferred_master) is promoted to master. Use this for planned maintenance, host rotation, or hardware moves. Requires the cluster to be healthy and replicas to be in sync.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("preferred_master", mcp.Description("Optional: preferred replica host:port to promote (e.g. db2:3306). If omitted, replication-manager picks the best candidate.")),
 		),
@@ -197,7 +197,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-rolling-restart",
-			mcp.WithDescription("Restart all database nodes in the cluster one at a time, preserving availability. Replicas are restarted first, then a switchover is performed before restarting the current master. Use after applying OS patches or configuration changes that require a restart. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Restart all database nodes in the cluster one at a time, preserving availability. Replicas are restarted first, then a switchover is performed before restarting the current master. Use after applying OS patches or configuration changes that require a restart.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -212,7 +212,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-optimize",
-			mcp.WithDescription("Run OPTIMIZE TABLE on all user tables across all nodes in the cluster. Reclaims fragmented space in InnoDB tablespaces and rebuilds indexes. Safe to run on replicas without interrupting replication. Long-running on large databases. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Run OPTIMIZE TABLE on all user tables across all nodes in the cluster. Reclaims fragmented space in InnoDB tablespaces and rebuilds indexes. Safe to run on replicas without interrupting replication. Long-running on large databases.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -227,7 +227,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-rotate-passwords",
-			mcp.WithDescription("Rotate all internal database account passwords (replication user, monitoring user, etc.) across the cluster. Updates replication-manager's configuration and reconfigures replication with new credentials. Use for periodic security rotation or after a credential compromise. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Rotate all internal database account passwords (replication user, monitoring user, etc.) across the cluster. Updates replication-manager's configuration and reconfigures replication with new credentials. Use for periodic security rotation or after a credential compromise.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -242,7 +242,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-reset-failover-control",
-			mcp.WithDescription("Reset the failover counter and cooldown timer for the cluster. replication-manager limits automatic failovers via failover-limit (max count) and failover-time-limit (cooldown). If these limits are reached, automatic failover stops until reset. Use this to re-enable automatic failover after the limits have been reached. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Reset the failover counter and cooldown timer for the cluster. replication-manager limits automatic failovers via failover-limit (max count) and failover-time-limit (cooldown). If these limits are reached, automatic failover stops until reset. Use this to re-enable automatic failover after the limits have been reached.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -257,7 +257,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-reset-sla",
-			mcp.WithDescription("Reset the SLA (Service Level Agreement) uptime counters for the cluster. replication-manager tracks availability time since last failover. Reset this after a planned maintenance window or after resolving an incident to start a fresh uptime measurement. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Reset the SLA (Service Level Agreement) uptime counters for the cluster. replication-manager tracks availability time since last failover. Reset this after a planned maintenance window or after resolving an incident to start a fresh uptime measurement.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -272,7 +272,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-start-traffic",
-			mcp.WithDescription("Re-enable application traffic to the cluster by opening the proxy backends. Use this after resolving an issue that required traffic to be stopped, or after a maintenance window. Proxies (ProxySQL, MaxScale, HAProxy) will resume routing connections to the master. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Re-enable application traffic to the cluster by opening the proxy backends. Use this after resolving an issue that required traffic to be stopped, or after a maintenance window. Proxies (ProxySQL, MaxScale, HAProxy) will resume routing connections to the master.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -287,7 +287,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-stop-traffic",
-			mcp.WithDescription("Halt application traffic to the cluster by draining the proxy backends. No new connections will be routed until cluster-start-traffic is called. Use for emergency traffic isolation, maintenance windows, or before a disruptive operation. Does not stop the database servers themselves. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Halt application traffic to the cluster by draining the proxy backends. No new connections will be routed until cluster-start-traffic is called. Use for emergency traffic isolation, maintenance windows, or before a disruptive operation. Does not stop the database servers themselves.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -302,7 +302,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-physical-backup",
-			mcp.WithDescription("Trigger a physical (binary-level) backup on the master node using the configured backup tool (Mariabackup, xtrabackup). Physical backups are faster to restore than logical backups for large datasets. The backup is stored in the configured backup directory and tracked in the backup registry. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Trigger a physical (binary-level) backup on the master node using the configured backup tool (Mariabackup, xtrabackup). Physical backups are faster to restore than logical backups for large datasets. The backup is stored in the configured backup directory and tracked in the backup registry.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -321,7 +321,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-checksum-tables",
-			mcp.WithDescription("Run CHECKSUM TABLE on all user tables across the cluster to verify data consistency between master and replicas. Useful for detecting replication drift or data corruption. Results are logged. This is a read-intensive operation — schedule during low-traffic periods on large databases. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Run CHECKSUM TABLE on all user tables across the cluster to verify data consistency between master and replicas. Useful for detecting replication drift or data corruption. Results are logged. This is a read-intensive operation — schedule during low-traffic periods on large databases.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -336,7 +336,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-set-setting",
-			mcp.WithDescription("Set a named configuration key to a specific value for a cluster. Use get-cluster-settings first to see available keys and their current values. Common examples: failover-mode=automatic/manual, failover-max-slave-delay=30, db-servers-prefered-master=host:port. Changes take effect immediately without restart. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Set a named configuration key to a specific value for a cluster. Use get-cluster-settings first to see available keys and their current values. Common examples: failover-mode=automatic/manual, failover-max-slave-delay=30, db-servers-prefered-master=host:port. Changes take effect immediately without restart.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("setting_name", mcp.Required(), mcp.Description("Configuration key name (e.g. failover-mode, failover-max-slave-delay)")),
 			mcp.WithString("setting_value", mcp.Required(), mcp.Description("New value for the setting")),
@@ -365,7 +365,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-switch-setting",
-			mcp.WithDescription("Toggle a boolean configuration key for the cluster (true→false or false→true). Use for boolean settings like failover-at-sync, replication-use-ssl, monitoring-pause. Use cluster-set-setting for non-boolean values. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Toggle a boolean configuration key for the cluster (true→false or false→true). Use for boolean settings like failover-at-sync, replication-use-ssl, monitoring-pause. Use cluster-set-setting for non-boolean values.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("setting_name", mcp.Required(), mcp.Description("Boolean configuration key name to toggle (e.g. failover-at-sync, replication-use-ssl)")),
 		),
@@ -391,7 +391,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-bootstrap-replication",
-			mcp.WithDescription("Configure replication between cluster nodes for the first time, or after a cluster-cleanup-replication. Sets up the server marked as db-servers-prefered-master as master and connects all other servers as replicas. Pass clean=true to stop and reset existing replication before reconfiguring. Use this when servers are running but replication is not yet configured. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Configure replication between cluster nodes for the first time, or after a cluster-cleanup-replication. Sets up the server marked as db-servers-prefered-master as master and connects all other servers as replicas. Pass clean=true to stop and reset existing replication before reconfiguring. Use this when servers are running but replication is not yet configured.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("clean",
 				mcp.Description("Set to 'true' to stop and reset existing replication before bootstrapping (default: false)"),
@@ -413,7 +413,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-cleanup-replication",
-			mcp.WithDescription("Remove all replication configuration from all cluster nodes: stops replication threads, resets slave/master status, and clears replication credentials. IRREVERSIBLE — use only when you intend to rebuild the cluster topology from scratch with cluster-bootstrap-replication. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Remove all replication configuration from all cluster nodes: stops replication threads, resets slave/master status, and clears replication credentials. IRREVERSIBLE — use only when you intend to rebuild the cluster topology from scratch with cluster-bootstrap-replication.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

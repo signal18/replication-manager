@@ -19,13 +19,12 @@ monitored clusters. Library `github.com/mark3labs/mcp-go`. Package `mcp/`
   `mcp-advertise-address`); `stdio`; `both` (sse + stdio).
 - All `mcp-*` settings are server scope and applied live from the global settings GUI card
   "AI Assistant (MCP)" or the global settings API: a change stops and rebuilds the MCP server
-  (`restartMCPServer`), tools, auth and transport being fixed at creation.
+  (`restartMCPServer`), auth and transport being fixed at creation.
 - Tools call repman **in process** through the `RepmanProvider` interface (implemented by
   `*server.ReplicationManager` in `server/server_get.go`), not through the REST API.
-- 59 tools: 23 cluster, 18 database, 12 backup, 6 proxy. Read tools always registered;
-  write tools (failover, switchover, rolling restart, settings, replication bootstrap and
-  cleanup, server start/stop/restart, restic init/purge/unlock, proxy provision…) only with
-  `mcp-write-enabled=true` (server scope, not settable through a tool).
+- 59 tools: 23 cluster, 18 database, 12 backup, 6 proxy, all registered. There is no global
+  read-only switch (removed 2026-09-25): read-only versus read-write is a property of the
+  account or token the assistant authenticates with, decided per tool by the cluster ACL.
 - Resources `repman://status`, `repman://version`, `repman://clusters`,
   `repman://clusters/{name}/...`; prompts for common diagnostics.
 

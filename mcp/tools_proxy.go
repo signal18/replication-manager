@@ -74,7 +74,7 @@ func (s *MCPServer) registerProxyReadTools() {
 func (s *MCPServer) registerProxyWriteTools() {
 	s.addTool(
 		mcp.NewTool("proxy-start",
-			mcp.WithDescription("Start a stopped proxy service. replication-manager will start the proxy process via the configured service manager and then reconfigure its backends to match the current topology. Use list-proxies to find the proxy_name. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Start a stopped proxy service. replication-manager will start the proxy process via the configured service manager and then reconfigure its backends to match the current topology. Use list-proxies to find the proxy_name.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("proxy_name", mcp.Required(), mcp.Description("Proxy name from list-proxies")),
 		),
@@ -90,7 +90,7 @@ func (s *MCPServer) registerProxyWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("proxy-stop",
-			mcp.WithDescription("Stop a running proxy service. This will immediately cut all application connections routed through this proxy. Use cluster-stop-traffic for a safer drain-first approach. Use list-proxies to find the proxy_name. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Stop a running proxy service. This will immediately cut all application connections routed through this proxy. Use cluster-stop-traffic for a safer drain-first approach. Use list-proxies to find the proxy_name.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("proxy_name", mcp.Required(), mcp.Description("Proxy name from list-proxies")),
 		),
@@ -106,7 +106,7 @@ func (s *MCPServer) registerProxyWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("proxy-provision",
-			mcp.WithDescription("Provision a proxy service from scratch: deploy the proxy process via the configured orchestrator (Docker, OpenSVC) and configure its backends for the current cluster topology. Use for initial setup or after proxy-unprovision. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Provision a proxy service from scratch: deploy the proxy process via the configured orchestrator (Docker, OpenSVC) and configure its backends for the current cluster topology. Use for initial setup or after proxy-unprovision.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("proxy_name", mcp.Required(), mcp.Description("Proxy name from list-proxies")),
 		),
@@ -122,7 +122,7 @@ func (s *MCPServer) registerProxyWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("proxy-unprovision",
-			mcp.WithDescription("Remove a provisioned proxy service: stop the proxy and tear down its deployment (container, service unit). Use proxy-stop if you only want to stop the process. Use this only when decommissioning a proxy permanently. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Remove a provisioned proxy service: stop the proxy and tear down its deployment (container, service unit). Use proxy-stop if you only want to stop the process. Use this only when decommissioning a proxy permanently.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("proxy_name", mcp.Required(), mcp.Description("Proxy name from list-proxies")),
 		),

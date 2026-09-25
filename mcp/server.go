@@ -94,10 +94,11 @@ func NewMCPServer(repman RepmanProvider, conf *config.Config, logger *log.Logger
 	)
 
 	s.registerResources()
+	// Every tool is registered; whether a caller may run one is decided per user
+	// by the cluster ACL (acl.go), never by a global switch: read-only versus
+	// read-write is a property of the account or token, not of the server.
 	s.registerReadOnlyTools()
-	if conf.MCPWriteEnabled {
-		s.registerWriteTools()
-	}
+	s.registerWriteTools()
 	s.registerPrompts()
 
 	return s
@@ -123,10 +124,7 @@ func (s *MCPServer) Start(ctx context.Context) error {
 		baseURL = fmt.Sprintf("http://%s:%s", baseHost, s.conf.MCPPort)
 	}
 
-	writeMode := "read-only"
-	if s.conf.MCPWriteEnabled {
-		writeMode = "read-write"
-	}
+	writeMode := "per-user ACL"
 
 	authMode := "off"
 	if s.conf.MCPAuthEnabled {

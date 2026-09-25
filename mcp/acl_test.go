@@ -49,7 +49,7 @@ func newTestMCP(auth bool, write bool) (*MCPServer, *fakeRepman) {
 		clusters: map[string]*cluster.Cluster{"c1": {Name: "c1"}, "c2": {Name: "c2"}},
 		allowed:  map[string]bool{},
 	}
-	conf := &config.Config{MCPAuthEnabled: auth, MCPWriteEnabled: write, Version: "test"}
+	conf := &config.Config{MCPAuthEnabled: auth, Version: "test"}
 	return NewMCPServer(f, conf, log.New()), f
 }
 

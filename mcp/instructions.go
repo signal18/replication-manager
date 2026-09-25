@@ -42,7 +42,7 @@ Key replication fields to check:
 A planned, graceful master change with zero data loss. Use when the master is healthy
 and you want to promote a specific replica (e.g. for maintenance). The old master
 becomes a replica automatically. Requires: cluster healthy, replica in sync, interactive
-mode or mcp-write-enabled=true.
+mode; what you may do is decided by the grants of the account or API token you authenticate with.
 
 **Failover**
 An emergency promotion when the master is unreachable or crashed. May involve minimal
@@ -96,7 +96,7 @@ When diagnosing a problem, always start with:
 Before any write operation (switchover, failover, bootstrap):
 - Confirm the cluster name with list-clusters
 - Check health and topology first
-- Verify mcp-write-enabled=true in get-cluster-settings
+- A tool answering "forbidden" means your account or token lacks the grant for it; ask for a wider grant, do not retry
 
 Common error codes:
 - ERR00010: No slave found in topology (cluster is standalone or replication broken)
@@ -109,7 +109,7 @@ Common error codes:
 
 ## Write operations
 
-Write tools are only available when mcp-write-enabled=true on the server.
+Write tools run only if your account or token holds the matching grant (for example cluster-switchover); otherwise they answer "forbidden".
 Destructive or irreversible operations: failover, cleanup-replication.
 Safe/reversible: switchover, set-setting, start/stop traffic, rotate-passwords.
 Always prefer switchover over failover when the master is reachable.

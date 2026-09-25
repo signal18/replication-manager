@@ -93,7 +93,7 @@ func (s *MCPServer) registerBackupReadTools() {
 func (s *MCPServer) registerBackupWriteTools() {
 	s.addTool(
 		mcp.NewTool("restic-init",
-			mcp.WithDescription("Initialize a new Restic repository for the cluster at the configured repository path (local or S3). Must be run once before any backup can be stored. The repository is encrypted with the password from backup-restic-password. If the repository already exists this will return an error — only call on first setup. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Initialize a new Restic repository for the cluster at the configured repository path (local or S3). Must be run once before any backup can be stored. The repository is encrypted with the password from backup-restic-password. If the repository already exists this will return an error — only call on first setup.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -110,7 +110,7 @@ func (s *MCPServer) registerBackupWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("restic-fetch",
-			mcp.WithDescription("Refresh the local snapshot metadata cache from the Restic repository. Run this if list-restic-snapshots shows stale or missing data. replication-manager caches snapshot metadata locally; this forces a re-read from the actual repository (local disk or S3). Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Refresh the local snapshot metadata cache from the Restic repository. Run this if list-restic-snapshots shows stale or missing data. replication-manager caches snapshot metadata locally; this forces a re-read from the actual repository (local disk or S3).."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -125,7 +125,7 @@ func (s *MCPServer) registerBackupWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("restic-purge",
-			mcp.WithDescription("Delete a specific Restic snapshot by ID and run 'restic prune' to reclaim disk space. Get the snapshot_id from list-restic-snapshots. Deletion is permanent and irreversible. The repository must not be locked (check get-restic-task-queue). Use to manually enforce retention or remove a corrupted snapshot. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Delete a specific Restic snapshot by ID and run 'restic prune' to reclaim disk space. Get the snapshot_id from list-restic-snapshots. Deletion is permanent and irreversible. The repository must not be locked (check get-restic-task-queue). Use to manually enforce retention or remove a corrupted snapshot.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("snapshot_id", mcp.Required(), mcp.Description("Restic snapshot short ID from list-restic-snapshots (e.g. a1b2c3d4)")),
 		),
@@ -150,7 +150,7 @@ func (s *MCPServer) registerBackupWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("restic-unlock",
-			mcp.WithDescription("Remove stale lock files from the Restic repository. Restic locks the repository during operations; a crash or kill can leave a stale lock that blocks all subsequent operations. Only run this if you are certain no Restic process is actively running — check get-restic-task-queue first. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Remove stale lock files from the Restic repository. Restic locks the repository during operations; a crash or kill can leave a stale lock that blocks all subsequent operations. Only run this if you are certain no Restic process is actively running — check get-restic-task-queue first.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -165,7 +165,7 @@ func (s *MCPServer) registerBackupWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("restic-task-queue-pause",
-			mcp.WithDescription("Pause the Restic task queue, preventing new backup tasks from starting. Currently running tasks will complete. Use before planned maintenance on the backup storage, or to temporarily stop scheduled backups without disabling the backup system entirely. Resume with restic-task-queue-resume. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Pause the Restic task queue, preventing new backup tasks from starting. Currently running tasks will complete. Use before planned maintenance on the backup storage, or to temporarily stop scheduled backups without disabling the backup system entirely. Resume with restic-task-queue-resume.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -180,7 +180,7 @@ func (s *MCPServer) registerBackupWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("restic-task-queue-resume",
-			mcp.WithDescription("Resume the Restic task queue after it was paused with restic-task-queue-pause. Queued tasks will begin executing in order. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Resume the Restic task queue after it was paused with restic-task-queue-pause. Queued tasks will begin executing in order.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -195,7 +195,7 @@ func (s *MCPServer) registerBackupWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("restic-task-cancel",
-			mcp.WithDescription("Cancel a pending or running Restic task by its integer task ID. Get the task ID from get-restic-task-queue. Cancelling a running backup task may leave the repository in an inconsistent state — run restic-unlock afterwards if subsequent operations report a lock error. Requires mcp-write-enabled=true."),
+			mcp.WithDescription("Cancel a pending or running Restic task by its integer task ID. Get the task ID from get-restic-task-queue. Cancelling a running backup task may leave the repository in an inconsistent state — run restic-unlock afterwards if subsequent operations report a lock error.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("task_id", mcp.Required(), mcp.Description("Integer task ID from get-restic-task-queue")),
 		),

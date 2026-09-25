@@ -766,7 +766,6 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MCPPort, "mcp-port", "10007", "MCP standalone SSE listen port (transport sse/both only)")
 	flags.StringVar(&conf.MCPBindAddr, "mcp-bind-address", "localhost", "MCP server bind address")
 	flags.StringVar(&conf.MCPAdvertiseAddr, "mcp-advertise-address", "", "MCP public base URL (e.g. http://repman.example.com:10007); overrides mcp-bind-address for SSE endpoint advertisements (useful behind Docker port mappings or reverse proxies)")
-	flags.BoolVar(&conf.MCPWriteEnabled, "mcp-write-enabled", false, "Enable write/action tools in MCP (Phase 2)")
 	flags.BoolVar(&conf.MCPAuthEnabled, "mcp-auth-enabled", true, "Require a bearer on MCP /sse and /message: an interactive login JWT or a user-issued API token (token create); every tool then runs under that user's cluster ACL. false = unrestricted (needed for stdio transport")
 
 	flags.StringVar(&conf.BindAddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")

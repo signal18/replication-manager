@@ -538,9 +538,6 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "mcp-auth-enabled":
 		repman.Conf.MCPAuthEnabled = isactive
 		repman.restartMCPServer()
-	case "mcp-write-enabled":
-		repman.Conf.MCPWriteEnabled = isactive
-		repman.restartMCPServer()
 	case "arbitration-external":
 		if isactive && !repman.Conf.IsEligibleForArbitration() {
 			return errors.New("arbitration requires a registered Cloud18 account with a support or partner subscription plan")
@@ -631,9 +628,6 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.restartMCPServer()
 	case "mcp-auth-enabled":
 		repman.Conf.MCPAuthEnabled = !repman.Conf.MCPAuthEnabled
-		repman.restartMCPServer()
-	case "mcp-write-enabled":
-		repman.Conf.MCPWriteEnabled = !repman.Conf.MCPWriteEnabled
 		repman.restartMCPServer()
 	case "arbitration-external":
 		if !repman.Conf.Arbitration && !repman.Conf.IsEligibleForArbitration() {
