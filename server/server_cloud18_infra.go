@@ -71,6 +71,10 @@ func (repman *ReplicationManager) peerLogin(infra string) (*peerSession, error) 
 
 // call performs one API call on the infrastructure.
 func (s *peerSession) call(method, path string, payload any) (int, []byte, error) {
+	return s.callWithTimeout(method, path, payload, peerCallTimeout)
+}
+
+func (s *peerSession) callWithTimeout(method, path string, payload any, timeout time.Duration) (int, []byte, error) {
 	var body io.Reader
 	if payload != nil {
 		b, err := json.Marshal(payload)
@@ -88,7 +92,7 @@ func (s *peerSession) call(method, path string, payload any) (int, []byte, error
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	client := &http.Client{Timeout: peerCallTimeout}
+	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, nil, fmt.Errorf("%s %s: %w", method, path, err)
@@ -149,21 +153,26 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 	return spec, nil
 }
 
-// plannedHosts lists the services the tool will add, in order.
+// plannedHosts lists the services the tool will add, in order. Hosts are short
+// names: the infrastructure appends its own service domain
+// (.<cluster>.svc.<orchestrator cluster>) to every server, proxy and app.
 func plannedHosts(spec Cloud18ClusterSpec) []map[string]string {
 	out := []map[string]string{}
-	suffix := "." + spec.ClusterName + ".svc.cloud18"
 	for i := 1; i <= spec.DBCount; i++ {
-		out = append(out, map[string]string{"type": "database", "host": fmt.Sprintf("db%d%s", i, suffix), "port": "3306", "image": spec.DBImage})
+		out = append(out, map[string]string{"type": "database", "host": fmt.Sprintf("db%d", i), "port": "3306", "image": spec.DBImage})
 	}
 	if spec.Proxy != "none" {
-		out = append(out, map[string]string{"type": spec.Proxy, "host": spec.Proxy + "1" + suffix, "port": "3306"})
+		out = append(out, map[string]string{"type": spec.Proxy, "host": spec.Proxy + "1", "port": "3306"})
 	}
 	for i, app := range spec.Apps {
-		out = append(out, map[string]string{"type": "app", "host": fmt.Sprintf("%s%d%s", app, i+1, suffix), "port": "80", "template": app})
+		out = append(out, map[string]string{"type": "app", "host": fmt.Sprintf("%s%d", app, i+1), "port": "80", "template": app})
 	}
 	return out
 }
+
+// provisionTimeout bounds the infrastructure's synchronous provision call,
+// which waits for the databases to come up and bootstraps replication.
+const provisionTimeout = 20 * time.Minute
 
 // Cloud18CreateCluster plans (confirm=false) or creates (confirm=true) a cluster
 // on an infrastructure, as this instance's Cloud18 identity.
@@ -223,11 +232,14 @@ func (repman *ReplicationManager) Cloud18CreateCluster(spec Cloud18ClusterSpec, 
 	}
 	steps = append(steps, "cluster created")
 	cpath := "/api/clusters/" + spec.ClusterName
-	// 2. Database image.
+	// 2. Database image, best effort: the infrastructure may pin it (immutable
+	// setting), in which case the cluster runs the infrastructure's image.
 	if _, err := sess.mustOK(http.MethodGet, cpath+"/settings/actions/set/prov-db-docker-img/"+url.PathEscape(spec.DBImage), nil); err != nil {
-		return fail("set database image", err)
+		plan["dbImageNote"] = fmt.Sprintf("the infrastructure kept its own database image (%v)", err)
+		steps = append(steps, "database image left to the infrastructure")
+	} else {
+		steps = append(steps, "database image "+spec.DBImage)
 	}
-	steps = append(steps, "database image "+spec.DBImage)
 	// 3. Servers, proxy, apps.
 	for _, h := range plannedHosts(spec) {
 		var err error
@@ -244,10 +256,21 @@ func (repman *ReplicationManager) Cloud18CreateCluster(spec Cloud18ClusterSpec, 
 		}
 		steps = append(steps, "added "+h["type"]+" "+h["host"])
 	}
-	// 4. Provision everything.
-	if _, err := sess.mustOK(http.MethodGet, cpath+"/services/actions/provision", nil); err != nil {
-		return fail("provision", err)
-	}
+	// 4. Provision everything. The infrastructure's call is synchronous (it
+	// waits for the databases and bootstraps replication, minutes), so it runs
+	// in the background here and the outcome goes to the log.
+	go func() {
+		slow := *sess
+		status, body, err := slow.callWithTimeout(http.MethodGet, cpath+"/services/actions/provision", nil, provisionTimeout)
+		switch {
+		case err != nil:
+			repman.Logrus.Warnf("cloud18-create-cluster %s on %s: provision call failed: %v", spec.ClusterName, sess.base, err)
+		case status < 200 || status > 299:
+			repman.Logrus.Warnf("cloud18-create-cluster %s on %s: provision answered HTTP %d: %s", spec.ClusterName, sess.base, status, strings.TrimSpace(string(body)))
+		default:
+			repman.Logrus.Infof("cloud18-create-cluster %s on %s: provisioned", spec.ClusterName, sess.base)
+		}
+	}()
 	steps = append(steps, "provisioning started")
 	plan["steps"] = steps
 	plan["next"] = "follow with get-cloud18-cluster; provisioning takes a few minutes"
@@ -281,13 +304,10 @@ func (repman *ReplicationManager) Cloud18GetCluster(infra, clusterName string) (
 	} else {
 		return nil, err
 	}
-	for _, part := range []string{"servers", "proxies"} {
+	for _, part := range []string{"servers", "proxies", "apps"} {
 		if body, err := sess.mustOK(http.MethodGet, cpath+"/topology/"+part, nil); err == nil {
 			out[part] = json.RawMessage(body)
 		}
-	}
-	if body, err := sess.mustOK(http.MethodGet, cpath+"/apps", nil); err == nil {
-		out["apps"] = json.RawMessage(body)
 	}
 	return out, nil
 }
