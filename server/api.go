@@ -1900,27 +1900,13 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 
-	username := repman.GetUserFromRequest(r)
-	if username == "" {
-		http.Error(w, "User is not valid", http.StatusInternalServerError)
+	// Authorization (issue #1838): a principal with cluster-create or
+	// prov-cluster creates as before; an SSO identity without them goes through
+	// the self-service rules (switch, orchestrator, per-user limit).
+	username, sso, selfService, status, reason := repman.clusterAddAuthorize(r)
+	if status != 0 {
+		http.Error(w, reason, status)
 		return
-	}
-	// Authorization (issue #1838): a local account needs cluster-create or
-	// prov-cluster; an SSO identity without them goes through the self-service
-	// rules (switch, orchestrator, per-user limit) and becomes the sponsor.
-	selfService := false
-	if !repman.UserHasGlobalGrant(r, config.GrantClusterCreate) && !repman.UserHasGlobalGrant(r, config.GrantProvCluster) {
-		identity, sso := repman.requestIdentity(r)
-		if !sso {
-			http.Error(w, "No valid ACL: cluster-create or prov-cluster grant required", http.StatusForbidden)
-			return
-		}
-		if err := repman.selfServiceCheck(identity); err != nil {
-			repman.logSecurityEvent("cloud18_self_service_denied", identity, r.RemoteAddr, err.Error())
-			http.Error(w, err.Error(), http.StatusForbidden)
-			return
-		}
-		selfService = true
 	}
 
 	var cForm cluster.ClusterForm
@@ -1969,12 +1955,16 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 		if cForm.Plan != "" && !selfService {
 			cl.SetServicePlan(cForm.Plan)
 		}
-		if selfService {
-			// The creator sponsors their cluster; it starts on the default unit plan.
+		if sso {
+			// An SSO creator sponsors their cluster (a local creator is covered by
+			// the admin ACL copied above); self-service ones start on the default
+			// unit plan and the partner is informed.
 			if err := repman.attachSelfServiceSponsor(cl, username); err != nil {
 				repman.Logrus.Warnf("self-service: cannot attach sponsor %s to %s: %v", username, cl.Name, err)
 			}
-			repman.notifySelfServiceCluster(cl, username, r.RemoteAddr)
+			if selfService {
+				repman.notifySelfServiceCluster(cl, username, r.RemoteAddr)
+			}
 		}
 
 		cl.Save()

@@ -18,11 +18,12 @@ func newTokenTestManager(t *testing.T) (*ReplicationManager, *cluster.Cluster) {
 	t.Helper()
 	dir := t.TempDir()
 	cl := &cluster.Cluster{
-		Name:     "c1",
-		Conf:     &config.Config{},
-		APIUsers: map[string]cluster.APIUser{},
-		Grants:   config.GetGrantType(),
-		Roles:    config.GetRoleType(),
+		Name:           "c1",
+		Conf:           &config.Config{Secrets: map[string]config.Secret{}},
+		APIUsers:       map[string]cluster.APIUser{},
+		Grants:         config.GetGrantType(),
+		Roles:          config.GetRoleType(),
+		SecurityLogrus: log.New(),
 	}
 	alice := cluster.APIUser{User: "alice", Password: "x", Roles: map[string]bool{}}
 	cl.SetUserGrants(&alice, "db-show cluster-switchover grant-show token")
@@ -541,7 +542,18 @@ func TestSelfServiceRules(t *testing.T) {
 	}
 	u := cl.APIUsers["u@x.io"]
 	if !u.Roles[config.RoleSponsor] || u.Password != "" {
-		t.Errorf("creator must be an SSO-only sponsor: %+v", u)
+		t.Errorf("creator must be a passwordless (SSO-only) sponsor: %+v", u)
+	}
+	if !contains(cl.Conf.APIUsersACLAllowExternal, "u@x.io:") || !contains(cl.Conf.APIUsersACLAllowExternal, ":c1:sponsor") {
+		t.Errorf("sponsor must be persisted in the external ACL, got %q", cl.Conf.APIUsersACLAllowExternal)
+	}
+	if !contains(cl.Conf.APIUsersExternal, "u@x.io:") {
+		t.Error("sponsor must have an external credential entry so SaveAcls keeps it")
+	}
+	// Survives a reload from the persisted strings.
+	cl.LoadAPIUsers()
+	if !cl.APIUsers["u@x.io"].Roles[config.RoleSponsor] {
+		t.Error("sponsor role must survive LoadAPIUsers")
 	}
 	for _, g := range []string{config.GrantClusterCreateMonitor, config.GrantClusterSettings, config.GrantClusterDelete, config.GrantProvCluster, config.GrantProvDBProvision, config.GrantAppDeployment, config.GrantDBShowVariables} {
 		if !u.Grants[g] {
@@ -552,7 +564,7 @@ func TestSelfServiceRules(t *testing.T) {
 		t.Error("sponsor must not get cluster-create or global grants")
 	}
 	// Limit counts sponsored clusters.
-	c2 := &cluster.Cluster{Name: "c2", Conf: &config.Config{}, APIUsers: map[string]cluster.APIUser{}, Grants: config.GetGrantType(), Roles: config.GetRoleType()}
+	c2 := &cluster.Cluster{Name: "c2", Conf: &config.Config{Secrets: map[string]config.Secret{}}, APIUsers: map[string]cluster.APIUser{}, Grants: config.GetGrantType(), Roles: config.GetRoleType(), SecurityLogrus: log.New()}
 	repman.Clusters["c2"] = c2
 	if err := repman.selfServiceCheck("u@x.io"); err != nil {
 		t.Errorf("one of two allowed must pass, got %v", err)

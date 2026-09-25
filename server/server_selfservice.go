@@ -118,6 +118,46 @@ func (repman *ReplicationManager) selfServiceCheck(identity string) error {
 	return nil
 }
 
+// clusterAddAuthorize decides who may create a cluster (POST
+// /api/clusters/actions/add): a principal holding cluster-create or
+// prov-cluster anywhere (local account, SSO identity or token) creates as
+// before; an SSO identity without them goes through the self-service rules.
+// status is 0 when allowed, otherwise the HTTP status and reason to answer.
+func (repman *ReplicationManager) clusterAddAuthorize(r *http.Request) (identity string, sso bool, selfService bool, status int, reason string) {
+	identity, sso = repman.requestIdentity(r)
+	if identity == "" {
+		return "", false, false, http.StatusInternalServerError, "User is not valid"
+	}
+	if repman.UserHasGlobalGrant(r, config.GrantClusterCreate) {
+		return identity, sso, false, 0, ""
+	}
+	// prov-cluster also opens the route (ACL table), but a sponsor holds it on
+	// their own self-service clusters: only prov-cluster held elsewhere counts,
+	// or the limit would end after the first cluster.
+	if repman.UserHasGlobalGrant(r, config.GrantProvCluster) && (!sso || repman.holdsProvClusterOutsideSponsorship(identity)) {
+		return identity, sso, false, 0, ""
+	}
+	if !sso {
+		return identity, false, false, http.StatusForbidden, "No valid ACL: cluster-create or prov-cluster grant required"
+	}
+	if err := repman.selfServiceCheck(identity); err != nil {
+		repman.logSecurityEvent("cloud18_self_service_denied", identity, r.RemoteAddr, err.Error())
+		return identity, true, false, http.StatusForbidden, err.Error()
+	}
+	return identity, true, true, 0, ""
+}
+
+// holdsProvClusterOutsideSponsorship reports whether identity has prov-cluster
+// on a cluster it does not sponsor.
+func (repman *ReplicationManager) holdsProvClusterOutsideSponsorship(identity string) bool {
+	for _, cl := range repman.Clusters {
+		if u, ok := cl.APIUsers[identity]; ok && u.Grants[config.GrantProvCluster] && !u.Roles[config.RoleSponsor] {
+			return true
+		}
+	}
+	return false
+}
+
 // CreateSelfServiceSponsorForm is the creator's account on their own cluster:
 // the sponsor role plus what populating, provisioning and dropping it needs.
 func (repman *ReplicationManager) CreateSelfServiceSponsorForm(identity string) cluster.UserForm {
@@ -128,21 +168,39 @@ func (repman *ReplicationManager) CreateSelfServiceSponsorForm(identity string) 
 	}
 }
 
-// attachSelfServiceSponsor makes the SSO identity the sponsor of the new cluster.
-// Password stays empty so the account remains SSO-only (IsLocalOnlyAccount).
+// attachSelfServiceSponsor makes the creator the sponsor of the new cluster,
+// through the same path as any external account (api-credentials-external +
+// api-users-acl-allow-external, which is what SaveAcls persists and
+// LoadAPIUsers reads back) but passwordless, so only an SSO login can act as it
+// (a password-protected account is local-only for the oidc ACL check). An
+// identity already holding cluster-settings on the cluster (e.g. the instance's
+// own Cloud18 user, sysops on every cluster) is left untouched.
 func (repman *ReplicationManager) attachSelfServiceSponsor(cl *cluster.Cluster, identity string) error {
 	form := repman.CreateSelfServiceSponsorForm(identity)
-	u := cluster.APIUser{User: identity, Password: "", Grants: map[string]bool{}, Roles: map[string]bool{}}
-	cl.SetUserGrants(&u, form.Grants)
-	cl.SetUserRoles(&u, form.Roles)
-	u.Roles[config.RoleSponsor] = true // the limit counts on this role
-	cl.APIUsers[identity] = u
-	// Persist through the external ACL so the account survives a reload.
-	if cl.Conf.APIUsersACLAllowExternal != "" {
-		cl.Conf.APIUsersACLAllowExternal += ","
+	if u, ok := cl.APIUsers[identity]; ok {
+		if u.Grants[config.GrantClusterSettings] {
+			return nil
+		}
+		if u.Password != "" {
+			return fmt.Errorf("%s is a local account on %s, an SSO identity cannot take it over", identity, cl.Name)
+		}
+		// Present without an ACL entry of its own (default visitor): re-create
+		// it as the sponsor rather than editing an entry that may not exist.
+		form.Grants = cl.AppendGrants(form.Grants, &u)
+		form.Roles = cl.AppendRoles(form.Roles, &u)
+		if err := cl.DropUser(cluster.UserForm{Username: identity}, false); err != nil {
+			return err
+		}
 	}
-	cl.Conf.APIUsersACLAllowExternal += identity + ":" + form.Grants + ":" + form.Roles
+	if err := cl.AddSSOOnlyUser(form, "admin", false); err != nil {
+		return err
+	}
+	cl.LoadAPIUsers()
 	cl.SaveAcls()
+	cl.Save()
+	if u, ok := cl.APIUsers[identity]; !ok || !u.Roles[config.RoleSponsor] {
+		return fmt.Errorf("sponsor role not applied to %s on %s", identity, cl.Name)
+	}
 	return nil
 }
 
