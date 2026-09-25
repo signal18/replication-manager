@@ -44,6 +44,10 @@ under the caller's cluster ACL for that endpoint, exactly as the REST call would
   (`tokenPrincipalFor`, scope through `tokenURLInScope`) for a token, so a token narrowed to
   `db-show` on one cluster sees over MCP exactly what it sees over REST. Denials are
   answered as tool errors and logged as `mcp_denied` in the security log.
+- The REST topology endpoints (`/topology/servers`, alerts, logs, crashes, proxies) are
+  served by the unprotected handler group, readable by any account with access to the
+  cluster; the matching tools therefore map to the cluster's own URL (visibility), which
+  keeps MCP at parity with REST rather than stricter.
 - **Fail closed**: a tool without an entry in `toolACLPaths` is refused when authentication
   is on; `TestEveryToolHasAnACLMapping` keeps the map and the registry in sync.
 - `list-clusters` and the `repman://clusters` resource only list clusters the caller may see

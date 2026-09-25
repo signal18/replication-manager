@@ -89,6 +89,7 @@ func TestACLURLBuilding(t *testing.T) {
 		"cluster-set-setting":  "/api/clusters/c1/settings/actions/set/failover-mode/manual",
 		"restic-purge":         "/api/clusters/c1/restic/purge/abc",
 		"get-cluster-settings": "/api/clusters/c1",
+		"get-cluster-topology": "/api/clusters/c1",
 	}
 	for tool, want := range cases {
 		if got := aclURL("c1", toolACLPaths[tool], req); got != want {

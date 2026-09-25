@@ -88,15 +88,19 @@ func (s *MCPServer) injectPrincipal(ctx context.Context, r *http.Request) contex
 // from this map is refused when authentication is on (fail closed), so adding a
 // tool means adding its line here.
 var toolACLPaths = map[string]string{
-	// cluster, read
+	// cluster, read. The REST topology endpoints (/topology/servers, alerts,
+	// logs, crashes, proxies) are served by the unprotected handler group: any
+	// account with access to the cluster reads them. "" mirrors that: the
+	// cluster's own public URL, which still applies account membership and token
+	// scope.
 	"list-clusters":             "", // filtered per cluster in the handler
 	"get-cluster-health":        "",
-	"get-cluster-topology":      "/topology/servers",
+	"get-cluster-topology":      "",
 	"get-cluster-settings":      "",
-	"get-cluster-alerts":        "/topology/alerts",
-	"get-cluster-logs":          "/topology/logs",
-	"get-cluster-crashes":       "/topology/crashes",
-	"check-cluster-error-state": "/topology/alerts",
+	"get-cluster-alerts":        "",
+	"get-cluster-logs":          "",
+	"get-cluster-crashes":       "",
+	"check-cluster-error-state": "",
 	// cluster, write
 	"cluster-failover":               "/actions/failover",
 	"cluster-switchover":             "/actions/switchover",
@@ -148,7 +152,7 @@ var toolACLPaths = map[string]string{
 	"restic-task-queue-resume": "/restic/task-queue/resume",
 	"restic-task-cancel":       "/restic/task-queue/cancel/{task}",
 	// proxy
-	"list-proxies":      "/topology/proxies",
+	"list-proxies":      "",
 	"get-proxy":         "/proxies/{proxy}",
 	"proxy-start":       "/proxies/{proxy}/actions/start",
 	"proxy-stop":        "/proxies/{proxy}/actions/stop",
