@@ -99,6 +99,36 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/cloud18/self-service": {
+            "get": {
+                "description": "Whether this instance accepts self-service cluster creation from Cloud18 users, the per-user limit, and how many clusters the caller already sponsors here.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cloud18"
+                ],
+                "summary": "Self-service cluster status for the caller",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.SelfServiceStatus"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters": {
             "get": {
                 "description": "Fetches the list of clusters that the user has access to based on ACL.",
@@ -25222,6 +25252,12 @@ const docTemplate = `{
                 "cloud18SalesUnsubscribeScript": {
                     "type": "string"
                 },
+                "cloud18SelfServiceClusters": {
+                    "type": "boolean"
+                },
+                "cloud18SelfServiceMaxClustersPerUser": {
+                    "type": "integer"
+                },
                 "cloud18Shared": {
                     "type": "boolean"
                 },
@@ -25957,6 +25993,24 @@ const docTemplate = `{
                 "maxscalemBinaryPath": {
                     "type": "string"
                 },
+                "mcpAdvertiseAddress": {
+                    "type": "string"
+                },
+                "mcpAuthEnabled": {
+                    "type": "boolean"
+                },
+                "mcpBindAddress": {
+                    "type": "string"
+                },
+                "mcpPort": {
+                    "type": "string"
+                },
+                "mcpServer": {
+                    "type": "boolean"
+                },
+                "mcpTransport": {
+                    "type": "string"
+                },
                 "measurement": {
                     "type": "boolean"
                 },
@@ -26414,6 +26468,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "provAppTemplateRepoUser": {
+                    "type": "string"
+                },
+                "provAppVolumePools": {
                     "type": "string"
                 },
                 "provAutoUpdateCompliance": {
@@ -28203,6 +28260,47 @@ const docTemplate = `{
                 },
                 "useTempDir": {
                     "type": "boolean"
+                }
+            }
+        },
+        "server.SelfServiceStatus": {
+            "type": "object",
+            "properties": {
+                "clusters": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "defaultApu": {
+                    "type": "integer"
+                },
+                "defaultBku": {
+                    "type": "integer"
+                },
+                "defaultDbu": {
+                    "type": "integer"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "identity": {
+                    "type": "string"
+                },
+                "maxClustersPerUser": {
+                    "type": "integer"
+                },
+                "orchestrator": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "remaining": {
+                    "type": "integer"
+                },
+                "used": {
+                    "type": "integer"
                 }
             }
         },

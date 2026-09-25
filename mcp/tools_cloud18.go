@@ -9,6 +9,7 @@ package repmanmcp
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -141,6 +142,51 @@ func (s *MCPServer) registerCloud18Tools() {
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			out, err := s.repman.Cloud18Infrastructures()
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(toJSON(out)), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("cloud18-create-cluster",
+			mcp.WithDescription("Create a database cluster on a Cloud18 infrastructure (self-service): as this instance's Cloud18 identity, on the partner's replication-manager, create the cluster on the infrastructure's default unit plan (DBU/APU/BKU, no service plan), set the database image, add the database nodes, the proxy and the apps from their templates, and provision. Without confirm=true it only returns the plan: services to create, the infrastructure's self-service status for this identity (enabled, per-user limit, remaining slots). With confirm=true it creates: this is billable consumption on the infrastructure; the partner is informed. The partner enforces a per-user limit (3 by default). Needs the global-admin-show grant here; a token also needs the every-cluster scope."),
+			mcp.WithString("infrastructure", mcp.Required(), mcp.Description("api-public-url of the infrastructure, from list-cloud18-infrastructures")),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the new cluster (letters, digits, dashes)")),
+			mcp.WithString("db_image", mcp.Description("Database docker image, default mariadb:lts (latest MariaDB long-term-support release)")),
+			mcp.WithNumber("db_count", mcp.Description("Number of database nodes, default 2 (a master and a replica), max 5")),
+			mcp.WithString("proxy", mcp.Description("haproxy (default), proxysql or none")),
+			mcp.WithString("apps", mcp.Description("Comma-separated app template names to deploy, e.g. phpmyadmin")),
+			mcp.WithBoolean("confirm", mcp.Description("false (default): plan only; true: create")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			spec := Cloud18ClusterSpec{
+				Infrastructure: req.GetString("infrastructure", ""),
+				ClusterName:    req.GetString("cluster_name", ""),
+				DBImage:        req.GetString("db_image", ""),
+				DBCount:        req.GetInt("db_count", 0),
+				Proxy:          req.GetString("proxy", ""),
+			}
+			if apps := req.GetString("apps", ""); apps != "" {
+				spec.Apps = strings.Split(apps, ",")
+			}
+			out, err := s.repman.Cloud18CreateCluster(spec, req.GetBool("confirm", false))
+			if err != nil {
+				return mcp.NewToolResultErrorf("%s\n%s", err.Error(), toJSON(out)), nil
+			}
+			return mcp.NewToolResultText(toJSON(out)), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("get-cloud18-cluster",
+			mcp.WithDescription("Read a cluster on a Cloud18 infrastructure as this instance's Cloud18 identity: provisioning state, health flags, servers, proxies and apps. Use it after cloud18-create-cluster to follow the provisioning."),
+			mcp.WithString("infrastructure", mcp.Required(), mcp.Description("api-public-url of the infrastructure")),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster on that infrastructure")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			out, err := s.repman.Cloud18GetCluster(req.GetString("infrastructure", ""), req.GetString("cluster_name", ""))
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}

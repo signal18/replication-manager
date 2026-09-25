@@ -54,6 +54,19 @@ type RepmanProvider interface {
 	Cloud18ChangeSubscription(plan string) (map[string]any, error)
 	Cloud18ClustersForSale() ([]*peer.PeerCluster, error)
 	Cloud18Infrastructures() ([]Cloud18Infrastructure, error)
+	// Self-service clusters on an infrastructure, see server_cloud18_infra.go.
+	Cloud18CreateCluster(spec Cloud18ClusterSpec, confirm bool) (map[string]any, error)
+	Cloud18GetCluster(infra, clusterName string) (map[string]any, error)
+}
+
+// Cloud18ClusterSpec is a self-service cluster request on an infrastructure.
+type Cloud18ClusterSpec struct {
+	Infrastructure string   `json:"infrastructure"` // api-public-url from list-cloud18-infrastructures
+	ClusterName    string   `json:"clusterName"`
+	DBImage        string   `json:"dbImage"` // default mariadb:lts
+	DBCount        int      `json:"dbCount"` // default 2
+	Proxy          string   `json:"proxy"`   // haproxy (default), proxysql, none
+	Apps           []string `json:"apps"`    // app template names, e.g. phpmyadmin
 }
 
 // Cloud18Infrastructure is one provider infrastructure of the marketplace: a

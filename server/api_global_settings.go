@@ -535,6 +535,8 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "mcp-server":
 		repman.Conf.MCPServ = isactive
 		repman.restartMCPServer()
+	case "cloud18-self-service-clusters":
+		repman.Conf.Cloud18SelfServiceClusters = isactive
 	case "mcp-auth-enabled":
 		repman.Conf.MCPAuthEnabled = isactive
 		repman.restartMCPServer()
@@ -566,6 +568,12 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.MonitoringLogAPILogin = isactive
 	case "monitoring-log-api-login-silent-users":
 		repman.Conf.MonitoringLogAPILoginSilentUsers = value
+	case "cloud18-self-service-max-clusters-per-user":
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n < 0 {
+			return fmt.Errorf("cloud18-self-service-max-clusters-per-user must be a positive integer, got %q", value)
+		}
+		repman.Conf.Cloud18SelfServiceMaxClustersPerUser = n
 	case "mcp-transport":
 		if value != "api" && value != "sse" && value != "stdio" && value != "both" {
 			return errors.New("mcp-transport must be api, sse, stdio or both")
@@ -626,6 +634,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 	case "mcp-server":
 		repman.Conf.MCPServ = !repman.Conf.MCPServ
 		repman.restartMCPServer()
+	case "cloud18-self-service-clusters":
+		repman.Conf.Cloud18SelfServiceClusters = !repman.Conf.Cloud18SelfServiceClusters
 	case "mcp-auth-enabled":
 		repman.Conf.MCPAuthEnabled = !repman.Conf.MCPAuthEnabled
 		repman.restartMCPServer()

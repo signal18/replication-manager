@@ -63,6 +63,12 @@ func (f *fakeRepman) Cloud18ChangeSubscription(p string) (map[string]any, error)
 	return map[string]any{"plan": p}, nil
 }
 func (f *fakeRepman) Cloud18ClustersForSale() ([]*peer.PeerCluster, error) { return nil, nil }
+func (f *fakeRepman) Cloud18CreateCluster(spec Cloud18ClusterSpec, confirm bool) (map[string]any, error) {
+	return map[string]any{"cluster": spec.ClusterName, "confirm": confirm}, nil
+}
+func (f *fakeRepman) Cloud18GetCluster(infra, name string) (map[string]any, error) {
+	return map[string]any{"cluster": name}, nil
+}
 func (f *fakeRepman) Cloud18Infrastructures() ([]Cloud18Infrastructure, error) {
 	return []Cloud18Infrastructure{{ApiPublicUrl: "https://infra.example:10005", Clusters: 2}}, nil
 }

@@ -22,6 +22,7 @@ func newTokenTestManager(t *testing.T) (*ReplicationManager, *cluster.Cluster) {
 		Conf:     &config.Config{},
 		APIUsers: map[string]cluster.APIUser{},
 		Grants:   config.GetGrantType(),
+		Roles:    config.GetRoleType(),
 	}
 	alice := cluster.APIUser{User: "alice", Password: "x", Roles: map[string]bool{}}
 	cl.SetUserGrants(&alice, "db-show cluster-switchover grant-show token")
@@ -513,4 +514,59 @@ func TestMCPAuthenticateAndAuthorize(t *testing.T) {
 		t.Errorf("revoked token must be refused clearly, got %v", err)
 	}
 	_ = cl
+}
+
+func TestSelfServiceRules(t *testing.T) {
+	repman, cl := newTokenTestManager(t)
+	repman.Conf.Cloud18 = true
+	repman.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	repman.Conf.Cloud18SelfServiceMaxClustersPerUser = 2
+	// Disabled by default.
+	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "disabled") {
+		t.Errorf("self-service must be off by default, got %v", err)
+	}
+	repman.Conf.Cloud18SelfServiceClusters = true
+	if err := repman.selfServiceCheck("u@x.io"); err != nil {
+		t.Errorf("enabled with no cluster yet must pass, got %v", err)
+	}
+	// Orchestrator gate.
+	repman.Conf.ProvOrchestrator = config.ConstOrchestratorOnPremise
+	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "OpenSVC or Kubernetes") {
+		t.Errorf("onpremise must be refused, got %v", err)
+	}
+	repman.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	// Sponsor attach makes the identity an SSO-only sponsor with the self-service grants.
+	if err := repman.attachSelfServiceSponsor(cl, "u@x.io"); err != nil {
+		t.Fatal(err)
+	}
+	u := cl.APIUsers["u@x.io"]
+	if !u.Roles[config.RoleSponsor] || u.Password != "" {
+		t.Errorf("creator must be an SSO-only sponsor: %+v", u)
+	}
+	for _, g := range []string{config.GrantClusterCreateMonitor, config.GrantClusterSettings, config.GrantClusterDelete, config.GrantProvCluster, config.GrantProvDBProvision, config.GrantAppDeployment, config.GrantDBShowVariables} {
+		if !u.Grants[g] {
+			t.Errorf("sponsor must hold %s on the cluster", g)
+		}
+	}
+	if u.Grants[config.GrantClusterCreate] || u.Grants[config.GrantGlobalAdminShow] {
+		t.Error("sponsor must not get cluster-create or global grants")
+	}
+	// Limit counts sponsored clusters.
+	c2 := &cluster.Cluster{Name: "c2", Conf: &config.Config{}, APIUsers: map[string]cluster.APIUser{}, Grants: config.GetGrantType(), Roles: config.GetRoleType()}
+	repman.Clusters["c2"] = c2
+	if err := repman.selfServiceCheck("u@x.io"); err != nil {
+		t.Errorf("one of two allowed must pass, got %v", err)
+	}
+	_ = repman.attachSelfServiceSponsor(c2, "u@x.io")
+	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "limit is 2") {
+		t.Errorf("third cluster must be refused with the limit, got %v", err)
+	}
+	st := repman.selfServiceStatusFor("u@x.io")
+	if !st.Enabled || st.Used != 2 || st.Remaining != 0 {
+		t.Errorf("status must reflect usage: %+v", st)
+	}
+	// Another identity is not affected.
+	if err := repman.selfServiceCheck("other@x.io"); err != nil {
+		t.Errorf("limit is per identity, got %v", err)
+	}
 }

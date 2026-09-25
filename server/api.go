@@ -473,6 +473,10 @@ func (repman *ReplicationManager) apiserver() {
 	repman.apiTokenRoutes(router)
 	// MCP server for AI assistants (issue #1838), mounted on the HTTPS listener too.
 	router.PathPrefix("/api/mcp/").HandlerFunc(repman.handlerMuxMCP)
+	router.Handle("/api/cloud18/self-service", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSelfServiceStatus)),
+	))
 	repman.apiProxyProtectedHandler(router)
 	repman.apiAppProtectedHandler(router)
 
@@ -1901,6 +1905,23 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 		http.Error(w, "User is not valid", http.StatusInternalServerError)
 		return
 	}
+	// Authorization (issue #1838): a local account needs cluster-create or
+	// prov-cluster; an SSO identity without them goes through the self-service
+	// rules (switch, orchestrator, per-user limit) and becomes the sponsor.
+	selfService := false
+	if !repman.UserHasGlobalGrant(r, config.GrantClusterCreate) && !repman.UserHasGlobalGrant(r, config.GrantProvCluster) {
+		identity, sso := repman.requestIdentity(r)
+		if !sso {
+			http.Error(w, "No valid ACL: cluster-create or prov-cluster grant required", http.StatusForbidden)
+			return
+		}
+		if err := repman.selfServiceCheck(identity); err != nil {
+			repman.logSecurityEvent("cloud18_self_service_denied", identity, r.RemoteAddr, err.Error())
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		selfService = true
+	}
 
 	var cForm cluster.ClusterForm
 
@@ -1945,8 +1966,15 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 		}
 
 		// Cluster will auto set service when plan is not empty
-		if cForm.Plan != "" {
+		if cForm.Plan != "" && !selfService {
 			cl.SetServicePlan(cForm.Plan)
+		}
+		if selfService {
+			// The creator sponsors their cluster; it starts on the default unit plan.
+			if err := repman.attachSelfServiceSponsor(cl, username); err != nil {
+				repman.Logrus.Warnf("self-service: cannot attach sponsor %s to %s: %v", username, cl.Name, err)
+			}
+			repman.notifySelfServiceCluster(cl, username, r.RemoteAddr)
 		}
 
 		cl.Save()

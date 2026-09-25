@@ -86,7 +86,66 @@ caller's effective grants, token narrowing applied; the literal `admin` login is
 accepted when no cluster is loaded) instead of the literal user name `admin`, which a narrowed
 token of admin used to pass.
 
+## Self-service clusters on an infrastructure (server_selfservice.go, server_cloud18_infra.go)
+
+Decided 2026-09-25: a Cloud18 user may create a cluster on a partner infrastructure directly,
+without the subscription / email-acceptance chain; the partner is only informed. Two sides.
+
+**Partner side** (the infrastructure hosting the cluster), `server/server_selfservice.go`:
+
+- Off by default: `cloud18-self-service-clusters` (server scope, GUI Cloud settings), and only
+  when registered with Cloud18 and `prov-orchestrator` is `opensvc` or `kube`
+  (`selfServiceCapable`).
+- Limit: `cloud18-self-service-max-clusters-per-user` (default 3), counted per SSO identity as
+  the clusters where that identity holds the `sponsor` role (`countSponsoredClusters`), so a
+  malicious user cannot flood the marketplace listing. Dropping a cluster frees a slot.
+- `POST /api/clusters/actions/add/{name}` (`handlerMuxClusterAdd`) used to accept any
+  authenticated user with no grant and never added the creator to the cluster. Now a local
+  account needs `cluster-create` or `prov-cluster`; an SSO identity (JWT `AuthType=SSO`,
+  i.e. a peer logged in with its Cloud18 GitLab credentials) without them goes through
+  `selfServiceCheck`. Denials are logged `cloud18_self_service_denied`.
+- No service plan: the cluster starts on the instance defaults `prov-db-dbu`,
+  `prov-service-plan-apu`, `prov-service-plan-bku` (the `plan` field of the form is ignored
+  for self-service).
+- The creator becomes the `sponsor` of the new cluster with `selfServiceSponsorGrants`
+  (`cluster-create-monitor cluster-settings cluster-delete cluster-show prov app-deployment
+  db show proxy grant-show extrole token-create`): enough to populate, provision, use and drop
+  it, nothing on other clusters, no `cluster-create` (so no further clusters through that
+  account). The account has an empty password (SSO-only) and is persisted through
+  `api-users-acl-allow-external` + `SaveAcls()`.
+- Partner informed: security event `cloud18_self_service_cluster`, cluster WARN log, mail to
+  `mail-to` when SMTP is configured (`notifySelfServiceCluster`).
+- `GET /api/cloud18/self-service` (both routers) answers `SelfServiceStatus` for the caller:
+  enabled/reason, orchestrator, limit, used, cluster names, remaining, default units.
+
+**Consumer side** (the instance of the user, driving the assistant),
+`server/server_cloud18_infra.go`, tools in `mcp/tools_cloud18.go`:
+
+- `cloud18-create-cluster` (infrastructure = `api-public-url` from
+  `list-cloud18-infrastructures`, cluster_name, db_image default `mariadb:lts`, db_count
+  default 2, proxy `haproxy`|`proxysql`|`none`, apps = template names, confirm). ACL
+  `global:global-admin-show`.
+- `peerLogin` logs into the infrastructure with this instance's Cloud18 GitLab credentials
+  (same as the dashboard peer proxy, `PeerLogin`); the infrastructure only accepts URLs known
+  to `PeerManager` (`HasPeerURL`). The bearer of that session is the SSO JWT the partner
+  evaluates.
+- `confirm=false` (default) is a dry run: normalized spec, planned services, and the
+  infrastructure's `GET /api/cloud18/self-service` for this identity (refused reason or
+  remaining slots). `confirm=true` runs: `POST clusters/actions/add/{name}` (no plan) →
+  `settings/actions/set/prov-db-docker-img/<image>` → `actions/addserver/dbN.<name>.svc.cloud18/3306`,
+  `.../<proxy>1.../3306/<proxy>`, `POST .../<app>N.../80/app/<template>` →
+  `services/actions/provision`; returns the steps done and the failing step on error, so a
+  partial creation is visible and can be dropped by the sponsor.
+- `get-cloud18-cluster` (infrastructure, cluster_name): flags, servers, proxies, apps through
+  the same session, to follow the provisioning. ACL: any authenticated principal.
+
+Tests: `server/api_token_test.go` `TestSelfServiceRules` (off by default, orchestrator gate,
+sponsor account shape, per-identity limit, status); `mcp/acl_test.go` mapping completeness.
+
 ## Not done
+
+- The consumer tools are not covered by an end-to-end unit test (they need a live partner);
+  validated by hand against dev3.
 
 - The standalone `sse` transport stays plain HTTP: bind it to localhost, or use the default
   `api` transport which rides the HTTPS listener.

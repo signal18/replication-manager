@@ -1710,6 +1710,10 @@ definitions:
         type: string
       cloud18SalesUnsubscribeScript:
         type: string
+      cloud18SelfServiceClusters:
+        type: boolean
+      cloud18SelfServiceMaxClustersPerUser:
+        type: integer
       cloud18Shared:
         type: boolean
       cloud18SlaProvisionTime:
@@ -2201,6 +2205,18 @@ definitions:
         type: integer
       maxscalemBinaryPath:
         type: string
+      mcpAdvertiseAddress:
+        type: string
+      mcpAuthEnabled:
+        type: boolean
+      mcpBindAddress:
+        type: string
+      mcpPort:
+        type: string
+      mcpServer:
+        type: boolean
+      mcpTransport:
+        type: string
       measurement:
         type: boolean
       measurementAutoClampLimit:
@@ -2506,6 +2522,8 @@ definitions:
       provAppTemplateRepoTimeout:
         type: integer
       provAppTemplateRepoUser:
+        type: string
+      provAppVolumePools:
         type: string
       provAutoUpdateCompliance:
         type: boolean
@@ -3730,6 +3748,33 @@ definitions:
       useTempDir:
         type: boolean
     type: object
+  server.SelfServiceStatus:
+    properties:
+      clusters:
+        items:
+          type: string
+        type: array
+      defaultApu:
+        type: integer
+      defaultBku:
+        type: integer
+      defaultDbu:
+        type: integer
+      enabled:
+        type: boolean
+      identity:
+        type: string
+      maxClustersPerUser:
+        type: integer
+      orchestrator:
+        type: string
+      reason:
+        type: string
+      remaining:
+        type: integer
+      used:
+        type: integer
+    type: object
   server.appTemplateContentResponse:
     properties:
       content:
@@ -4200,6 +4245,28 @@ paths:
       summary: Toggle server active/standby (server-level, calm-period switchover)
       tags:
       - Monitor
+  /api/cloud18/self-service:
+    get:
+      description: Whether this instance accepts self-service cluster creation from
+        Cloud18 users, the per-user limit, and how many clusters the caller already
+        sponsors here.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.SelfServiceStatus'
+      summary: Self-service cluster status for the caller
+      tags:
+      - Cloud18
   /api/clusters:
     get:
       description: Fetches the list of clusters that the user has access to based
