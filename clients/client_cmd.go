@@ -144,7 +144,6 @@ var versionClientCmd = &cobra.Command{
 	},
 }
 
-
 var cliConn = http.Client{
 	Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
 	Timeout:   1800 * time.Second,
@@ -400,7 +399,6 @@ func init() {
 	initConfiguratorFlags(configuratorCmd)
 
 	rootClientCmd.AddCommand(versionClientCmd)
-
 
 	rootClientCmd.AddCommand(printDefaultsCmd)
 	initPrintDefaultsFlags(printDefaultsCmd)
