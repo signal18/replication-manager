@@ -273,8 +273,13 @@ replication afterward. Add a binlog/PITR scenario when binlog encryption lands.
 
 ## Repository coordination before implementation
 
-Before code starts, reconcile this scope with existing backup-encryption work
-already present in remote branches. In particular, do not merge an
-environment/config/API fallback or key-ring design into this delivery without
-an explicit scope change. File the required labelled issue, work from current
-`origin/develop`, and implement through a reviewed PR.
+Tracked by the existing labelled issue #1110 ("Backup encryption in
+maintenance jobs"); no new issue needed. Implementation continues on
+`feat/local-backup-encryption`, branched fresh off `origin/develop`.
+
+The `backup-encryption` branch is an earlier, superseded exploration
+(OpenSSL AES-256-CBC, an explicit `backup-encryption-passphrase`/`-keyring`
+config override, per-file restore mode, a CLI decrypt command). It
+contradicts this delivery's single-key/no-override/no-keyring policy above
+and must not be merged forward as-is; treat it as reference only, not a base
+to build on.
