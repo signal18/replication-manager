@@ -471,6 +471,8 @@ func (repman *ReplicationManager) apiserver() {
 	// User-issued API tokens (issue #1835): the HTTPS API router is built here,
 	// separately from the dashboard router in http.go.
 	repman.apiTokenRoutes(router)
+	// MCP server for AI assistants (issue #1838), mounted on the HTTPS listener too.
+	router.PathPrefix("/api/mcp/").HandlerFunc(repman.handlerMuxMCP)
 	repman.apiProxyProtectedHandler(router)
 	repman.apiAppProtectedHandler(router)
 

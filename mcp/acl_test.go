@@ -194,3 +194,36 @@ func TestResolveServerByAnyName(t *testing.T) {
 		t.Error("unknown or empty name must not resolve")
 	}
 }
+
+func TestAPIHandlerRoutesUnderBasePath(t *testing.T) {
+	s, _ := newTestMCP(true, false)
+	h := s.Handler()
+	// Unauthenticated: the middleware answers 401 before any routing.
+	rec := &recorder{}
+	r, _ := http.NewRequest("GET", APIBasePath+"/sse", nil)
+	h.ServeHTTP(rec, r)
+	if rec.code != http.StatusUnauthorized {
+		t.Errorf("unauthenticated /api/mcp/sse must be 401, got %d", rec.code)
+	}
+	// Authenticated message call without a session: routed to the message
+	// endpoint (JSON-RPC error), proving the base path is honoured.
+	rec = &recorder{}
+	r, _ = http.NewRequest("POST", APIBasePath+"/message", nil)
+	r.Header.Set("Authorization", "Bearer good")
+	h.ServeHTTP(rec, r)
+	if rec.code == http.StatusNotFound || rec.code == http.StatusUnauthorized {
+		t.Errorf("authenticated /api/mcp/message must reach the MCP server, got %d", rec.code)
+	}
+	// Anything else under the prefix is a 404 from the MCP server itself.
+	rec = &recorder{}
+	r, _ = http.NewRequest("GET", APIBasePath+"/nope", nil)
+	r.Header.Set("Authorization", "Bearer good")
+	h.ServeHTTP(rec, r)
+	if rec.code != http.StatusNotFound {
+		t.Errorf("unknown path under the prefix must be 404, got %d", rec.code)
+	}
+	// The handler is built once.
+	if s.apiHandler == nil {
+		t.Error("Handler must be cached")
+	}
+}

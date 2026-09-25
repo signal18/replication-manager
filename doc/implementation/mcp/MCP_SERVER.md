@@ -10,9 +10,16 @@ An MCP (Model Context Protocol) server embedded in the repman binary so an AI as
 monitored clusters. Library `github.com/mark3labs/mcp-go`. Package `mcp/`
 (`repmanmcp`).
 
-- Started with `mcp-server=true`. Transport `mcp-transport`: `sse` (default, HTTP on
-  `mcp-bind-address:mcp-port`, default localhost:10007, advertised as `mcp-advertise-address`),
-  `stdio`, or `both`.
+- Started with `mcp-server=true`. Transport `mcp-transport`: `api` (default) mounts the SSE
+  endpoints on the API listeners themselves, `/api/mcp/sse` and `/api/mcp/message` on both the
+  HTTP (10001, behind haproxy) and HTTPS (10005) servers (`handlerMuxMCP`, `MCPServer.Handler`
+  built with `WithStaticBasePath("/api/mcp")` and a relative message endpoint), so TLS, the
+  public URL and the bearer handling are the API's own; `sse` keeps a standalone plain-HTTP
+  listener on `mcp-bind-address:mcp-port` (default localhost:10007, advertised as
+  `mcp-advertise-address`); `stdio`; `both` (sse + stdio).
+- All `mcp-*` settings are server scope and applied live from the global settings GUI card
+  "AI Assistant (MCP)" or the global settings API: a change stops and rebuilds the MCP server
+  (`restartMCPServer`), tools, auth and transport being fixed at creation.
 - Tools call repman **in process** through the `RepmanProvider` interface (implemented by
   `*server.ReplicationManager` in `server/server_get.go`), not through the REST API.
 - 59 tools: 23 cluster, 18 database, 12 backup, 6 proxy. Read tools always registered;
@@ -59,7 +66,8 @@ under the caller's cluster ACL for that endpoint, exactly as the REST call would
 
 ## Not done
 
-- TLS on the SSE port: bind to localhost or front it with the HTTPS listener.
+- The standalone `sse` transport stays plain HTTP: bind it to localhost, or use the default
+  `api` transport which rides the HTTPS listener.
 - The gRPC API and the web terminal remain login-JWT only, as noted in
   `doc/implementation/security/API_TOKENS.md`.
 

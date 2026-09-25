@@ -2,7 +2,7 @@
   "mcpServers": {
     "replication-manager": {
       "type": "sse",
-      "url": "http://localhost:10007/sse",
+      "url": "https://localhost:10005/api/mcp/sse",
       "headers": {
         "Authorization": "Bearer ${REPLICATION_MANAGER_API_TOKEN}"
       }

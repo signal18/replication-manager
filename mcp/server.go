@@ -49,6 +49,31 @@ type MCPServer struct {
 	httpServer *http.Server
 	cancelFunc context.CancelFunc
 	logger     *log.Logger
+	// apiHandler serves the SSE transport mounted on the API servers themselves
+	// (transport "api", the default): /api/mcp/sse and /api/mcp/message on the
+	// HTTP and HTTPS listeners, so TLS, the public URL and the bearer handling
+	// are the API's own. Built once, on first use.
+	apiHandler http.Handler
+}
+
+// APIBasePath is where the MCP endpoints live on the API servers.
+const APIBasePath = "/api/mcp"
+
+// Handler returns the http.Handler to mount on the API routers under
+// APIBasePath. The message endpoint advertised in the SSE handshake is relative
+// (/api/mcp/message?sessionId=…), so it is valid whatever host, port or scheme
+// the client used.
+func (s *MCPServer) Handler() http.Handler {
+	if s.apiHandler != nil {
+		return s.apiHandler
+	}
+	sse := mcpserver.NewSSEServer(s.mcp,
+		mcpserver.WithStaticBasePath(APIBasePath),
+		mcpserver.WithUseFullURLForMessageEndpoint(false),
+		mcpserver.WithSSEContextFunc(s.injectPrincipal),
+	)
+	s.apiHandler = s.buildHTTPHandler(sse)
+	return s.apiHandler
 }
 
 // NewMCPServer creates and configures a new MCPServer instance.
@@ -109,13 +134,20 @@ func (s *MCPServer) Start(ctx context.Context) error {
 	}
 
 	switch transport {
+	case "api", "":
+		// Mounted on the API servers (server/http.go, server/api.go): nothing to
+		// listen on here. Block until stopped so the caller's goroutine matches
+		// the other transports.
+		s.logger.Infof("MCP server started: transport=api endpoint=%s/sse on the HTTP and HTTPS API listeners version=%s mode=%s auth=%s", APIBasePath, s.conf.Version, writeMode, authMode)
+		<-ctx.Done()
+		return nil
 	case "stdio":
 		if s.conf.MCPAuthEnabled {
 			return fmt.Errorf("MCP stdio transport carries no bearer: set mcp-auth-enabled=false to run it unrestricted, or use the sse transport")
 		}
 		s.logger.Infof("MCP server started: transport=stdio version=%s mode=%s auth=off", s.conf.Version, writeMode)
 		return mcpserver.ServeStdio(s.mcp)
-	case "sse", "":
+	case "sse":
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
 			return fmt.Errorf("MCP server failed to bind %s: %w", addr, err)

@@ -170,6 +170,7 @@ type ReplicationManager struct {
 	grpcServer             *grpc.Server                   `json:"-"`
 	grpcWrapped            *grpcweb.WrappedGrpcServer     `json:"-"`
 	mcpServer              *repmanmcp.MCPServer           `json:"-"`
+	mcpMutex               sync.Mutex                     `json:"-"`
 	httpServer             *http.Server                   `json:"-"`
 	apiServer              *http.Server                   `json:"-"`
 	V3Up                   chan bool                      `json:"-"`
@@ -761,8 +762,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.ApiServ, "api-server", true, "Start the API HTTPS server")
 	flags.BoolVar(&conf.ApiSwaggerEnabled, "api-swagger-enabled", true, "Start the API with Swagger")
 	flags.BoolVar(&conf.MCPServ, "mcp-server", false, "Start MCP server for AI assistant integration")
-	flags.StringVar(&conf.MCPTransport, "mcp-transport", "sse", "MCP transport: stdio, sse, or both")
-	flags.StringVar(&conf.MCPPort, "mcp-port", "10007", "MCP server HTTP/SSE listen port")
+	flags.StringVar(&conf.MCPTransport, "mcp-transport", "api", "MCP transport: api (mounted on the HTTP and HTTPS API listeners at /api/mcp, default), sse (own listener on mcp-port), stdio, or both (sse + stdio)")
+	flags.StringVar(&conf.MCPPort, "mcp-port", "10007", "MCP standalone SSE listen port (transport sse/both only)")
 	flags.StringVar(&conf.MCPBindAddr, "mcp-bind-address", "localhost", "MCP server bind address")
 	flags.StringVar(&conf.MCPAdvertiseAddr, "mcp-advertise-address", "", "MCP public base URL (e.g. http://repman.example.com:10007); overrides mcp-bind-address for SSE endpoint advertisements (useful behind Docker port mappings or reverse proxies)")
 	flags.BoolVar(&conf.MCPWriteEnabled, "mcp-write-enabled", false, "Enable write/action tools in MCP (Phase 2)")
@@ -2859,12 +2860,7 @@ func (repman *ReplicationManager) Run() error {
 
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)
 	if repman.Conf.MCPServ {
-		repman.mcpServer = repmanmcp.NewMCPServer(repman, repman.Conf, repman.Logrus)
-		go func() {
-			if err := repman.mcpServer.Start(context.Background()); err != nil {
-				repman.Logrus.Errorf("MCP server error: %v", err)
-			}
-		}()
+		repman.startMCPServer()
 	}
 
 	if repman.Conf.ApiServ {
@@ -4198,7 +4194,7 @@ func (repman *ReplicationManager) Stop() {
 
 	if repman.mcpServer != nil {
 		repman.Logrus.Info("Stop: stopping MCP server")
-		repman.mcpServer.Stop()
+		repman.stopMCPServer()
 	}
 
 	if repman.MemProfile != "" {
@@ -4972,4 +4968,56 @@ func (repman *ReplicationManager) InitSharedAppTemplates() {
 				"InitSharedAppTemplates: cannot write %s: %v", dest, err)
 		}
 	}
+}
+
+// startMCPServer creates and starts the MCP server from the current settings
+// (issue #1838). With the default transport "api" it only registers the tools:
+// the endpoints are served by the API listeners through handlerMuxMCP.
+func (repman *ReplicationManager) startMCPServer() {
+	repman.mcpMutex.Lock()
+	defer repman.mcpMutex.Unlock()
+	if repman.mcpServer != nil {
+		return
+	}
+	repman.mcpServer = repmanmcp.NewMCPServer(repman, repman.Conf, repman.Logrus)
+	srv := repman.mcpServer
+	go func() {
+		if err := srv.Start(context.Background()); err != nil {
+			repman.Logrus.Errorf("MCP server error: %v", err)
+		}
+	}()
+}
+
+// stopMCPServer stops and forgets the MCP server; /api/mcp answers 404 afterwards.
+func (repman *ReplicationManager) stopMCPServer() {
+	repman.mcpMutex.Lock()
+	defer repman.mcpMutex.Unlock()
+	if repman.mcpServer == nil {
+		return
+	}
+	repman.mcpServer.Stop()
+	repman.mcpServer = nil
+}
+
+// restartMCPServer applies a changed mcp-* setting live: tools, auth and
+// transport are fixed at creation, so the server is rebuilt.
+func (repman *ReplicationManager) restartMCPServer() {
+	repman.stopMCPServer()
+	if repman.Conf.MCPServ {
+		repman.startMCPServer()
+	}
+}
+
+// handlerMuxMCP serves /api/mcp/* on the HTTP and HTTPS API listeners: the SSE
+// stream and the message endpoint, behind the MCP bearer middleware (login JWT
+// or API token) and the per-tool ACL. 404 when the MCP server is off.
+func (repman *ReplicationManager) handlerMuxMCP(w http.ResponseWriter, r *http.Request) {
+	repman.mcpMutex.Lock()
+	srv := repman.mcpServer
+	repman.mcpMutex.Unlock()
+	if srv == nil || !repman.Conf.MCPServ {
+		http.Error(w, "MCP server is not enabled (mcp-server)", http.StatusNotFound)
+		return
+	}
+	srv.Handler().ServeHTTP(w, r)
 }

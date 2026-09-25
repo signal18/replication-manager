@@ -59,6 +59,11 @@ function GlobalSettings({ config }) {
   const hSwagger = `**Enable API Swagger**\n\nServes the interactive API explorer at \`/api-docs/\`.\n\nConfig: \`api-swagger-enabled\``
   const hLogApiLogin = `**Log API Login**\n\nRecords every API login in the security log.\n\nConfig: \`monitoring-log-api-login\``
   const hLogApiSilent = `**Log API Login Silent Users**\n\nComma-separated users whose logins are not recorded (health probes, internal accounts).\n\nConfig: \`monitoring-log-api-login-silent-users\``
+  const hMcpServer = `**MCP Server**\n\nExpose the clusters to AI assistants through the Model Context Protocol. With the default transport the endpoints live on this API at \`/api/mcp/sse\` and \`/api/mcp/message\`, HTTP and HTTPS alike. Every tool runs under the caller's own ACL (login JWT or API token). Applied live.\n\nConfig: \`mcp-server\``
+  const hMcpAuth = `**MCP Authentication**\n\nRequire a bearer (login JWT or API token) on the MCP endpoints and run every tool under that user's cluster ACL. Off = every tool unrestricted, for the stdio transport only. Applied live.\n\nConfig: \`mcp-auth-enabled\``
+  const hMcpWrite = `**MCP Action Tools**\n\nRegister the action tools (failover, switchover, settings, restic, proxies…). They still need the caller's grants. Applied live.\n\nConfig: \`mcp-write-enabled\``
+  const hMcpTransport = `**MCP Transport**\n\n\`api\` (default): mounted on the HTTP and HTTPS API listeners. \`sse\`: own plain-HTTP listener on the MCP port. \`stdio\`, \`both\` (sse + stdio). Applied live.\n\nConfig: \`mcp-transport\``
+  const hMcpPort = `**MCP Port / Bind / Advertise**\n\nOnly for the \`sse\` transport: listen port, bind address, and the public base URL announced to clients when it differs.\n\nConfig: \`mcp-port\`, \`mcp-bind-address\`, \`mcp-advertise-address\``
 
   useEffect(() => {
     // Re-render when the config prop changes
@@ -386,6 +391,86 @@ function GlobalSettings({ config }) {
     },
   ]
 
+  const mcpData = [
+    {
+      key: 'MCP Server',
+      help: h(hMcpServer, 'MCP Server'),
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch global settings for MCP Server?'}
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'mcp-server', setRefresh }))}
+          isChecked={config?.mcpServer}
+        />
+      )
+    },
+    {
+      key: 'MCP Authentication',
+      help: h(hMcpAuth, 'MCP Authentication'),
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch global settings for MCP Authentication?'}
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'mcp-auth-enabled', setRefresh }))}
+          isChecked={config?.mcpAuthEnabled}
+        />
+      )
+    },
+    {
+      key: 'MCP Action Tools',
+      help: h(hMcpWrite, 'MCP Action Tools'),
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch global settings for MCP Action Tools?'}
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'mcp-write-enabled', setRefresh }))}
+          isChecked={config?.mcpWriteEnabled}
+        />
+      )
+    },
+    {
+      key: 'MCP Transport',
+      help: h(hMcpTransport, 'MCP Transport'),
+      value: (
+        <TextForm
+          value={config?.mcpTransport}
+          confirmTitle={`Confirm change 'mcp-transport' to `}
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'mcp-transport', value }))}
+        />
+      )
+    },
+    {
+      key: 'MCP Port (sse transport)',
+      help: h(hMcpPort, 'MCP Port'),
+      value: (
+        <TextForm
+          value={config?.mcpPort}
+          confirmTitle={`Confirm change 'mcp-port' to `}
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'mcp-port', value }))}
+        />
+      )
+    },
+    {
+      key: 'MCP Bind Address (sse transport)',
+      help: h(hMcpPort, 'MCP Bind Address'),
+      value: (
+        <TextForm
+          value={config?.mcpBindAddress}
+          confirmTitle={`Confirm change 'mcp-bind-address' to `}
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'mcp-bind-address', value }))}
+        />
+      )
+    },
+    {
+      key: 'MCP Advertise Address (sse transport)',
+      help: h(hMcpPort, 'MCP Advertise Address'),
+      value: (
+        <TextForm
+          value={config?.mcpAdvertiseAddress}
+          confirmTitle={`Confirm change 'mcp-advertise-address' to `}
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'mcp-advertise-address', value: value || '{undefined}' }))}
+        />
+      )
+    },
+  ]
+
   const settingsCard = (heading, data) => (
     <AccordionComponent
       heading={heading}
@@ -404,6 +489,7 @@ function GlobalSettings({ config }) {
       {settingsCard('Global Settings', generalData)}
       {settingsCard('Alerts', alertsData)}
       {settingsCard('Logs', logsData)}
+      {settingsCard('AI Assistant (MCP)', mcpData)}
       <CommonModal isOpen={isCommonModalOpen} closeModal={() => setIsCommonModalOpen(false)} title={action.title} body={action.body} size='xl' />
       {isInterventionModalOpen && (
         <InterventionModal
