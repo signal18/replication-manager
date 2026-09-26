@@ -685,7 +685,7 @@ Start create an account in https://gitlab.signal18.io
       help: h(`**Max Clusters Per User**\n\nUpper bound of self-service clusters one Cloud18 identity may sponsor on this infrastructure, so that a single user cannot flood it. Counted as the clusters where the identity holds the sponsor role.\n\nDefault 3.\n\nConfig: \`cloud18-self-service-max-clusters-per-user\``, 'Max Clusters Per User'),
       value: (
         <TextForm
-          value={config?.cloud18SelfServiceMaxClustersPerUser}
+          value={String(config?.cloud18SelfServiceMaxClustersPerUser ?? '')}
           type='number'
           confirmTitle='Confirm max self-service clusters per user to '
           onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-self-service-max-clusters-per-user', value: v }))}

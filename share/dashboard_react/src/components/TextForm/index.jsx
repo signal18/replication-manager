@@ -38,8 +38,9 @@ function TextForm({ onSave, id, type, label, value, loading, maxLength = 120, cl
 
   const treeValues = useMemo(() => {
     let newValue = ['/']
-    if (currentValue) {
-      newValue = currentValue.split(',').map(item => item.trim())
+    // A numeric value (e.g. a settings row with type='number') has no split.
+    if (currentValue !== undefined && currentValue !== null && currentValue !== '') {
+      newValue = String(currentValue).split(',').map(item => item.trim())
     }
     return newValue
   }, [currentValue])
