@@ -9,19 +9,32 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-// One BKU is 20 GiB of disk and nothing else; over-commit is the local BKU above the plan,
-// remote is counted apart and never enters the over-commit.
+// One BKU is 20 GiB of disk and nothing else; the archive is local + remote, over-commit is
+// the total above the plan, billing is max(plan, ceil(total)) at the BKU price.
 func TestComputeBKU(t *testing.T) {
 	unit := int64(20 * 1024 * 1024 * 1024)
-	r := computeBKU(6, 7*unit, 3*unit, unit, time.Now())
-	if r.BkuLocal != 7 || r.BkuRemote != 3 || r.OverCommit != 1 {
-		t.Fatalf("local=%v remote=%v over=%v, want 7 3 1", r.BkuLocal, r.BkuRemote, r.OverCommit)
+	r := computeBKU(6, 7*unit, 3*unit, unit, 2.5, time.Now())
+	if r.BkuLocal != 7 || r.BkuRemote != 3 || r.BkuTotal != 10 || r.OverCommit != 4 {
+		t.Fatalf("local=%v remote=%v total=%v over=%v, want 7 3 10 4", r.BkuLocal, r.BkuRemote, r.BkuTotal, r.OverCommit)
 	}
-	r = computeBKU(6, 2*unit, 50*unit, unit, time.Now())
-	if r.OverCommit != 0 {
-		t.Fatalf("remote storage must not count as over-commit of the local plan, got %v", r.OverCommit)
+	if r.BilledUnits != 10 || r.MonthlyCost != 25 {
+		t.Fatalf("billed=%d cost=%v, want 10 units at 2.5 = 25", r.BilledUnits, r.MonthlyCost)
 	}
-	if r = computeBKU(6, unit, 0, 0, time.Now()); r.BkuLocal != 0 {
+	// Under the plan: the plan is billed, no over-commit.
+	r = computeBKU(6, 2*unit, unit, unit, 2.5, time.Now())
+	if r.OverCommit != 0 || r.BilledUnits != 6 || r.MonthlyCost != 15 {
+		t.Fatalf("under plan: over=%v billed=%d cost=%v, want 0 6 15", r.OverCommit, r.BilledUnits, r.MonthlyCost)
+	}
+	// Remote alone can put the archive over the plan.
+	r = computeBKU(6, 2*unit, 50*unit, unit, 0, time.Now())
+	if r.OverCommit != 46 || r.BilledUnits != 52 || r.MonthlyCost != 0 {
+		t.Fatalf("remote over plan: over=%v billed=%d cost=%v, want 46 52 0 (not priced)", r.OverCommit, r.BilledUnits, r.MonthlyCost)
+	}
+	// Fractions round up to the next whole unit.
+	if r = computeBKU(1, unit+unit/2, 0, unit, 1, time.Now()); r.BilledUnits != 2 {
+		t.Fatalf("1.5 BKU must bill 2, got %d", r.BilledUnits)
+	}
+	if r = computeBKU(6, unit, 0, 0, 1, time.Now()); r.BkuLocal != 0 {
 		t.Fatalf("a zero unit must not divide")
 	}
 }

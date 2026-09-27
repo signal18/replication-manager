@@ -46,7 +46,21 @@ function MarketplaceSettings({ config }) {
   const hDomainSecret = `**Domain Secret**\n\nAPI key or password for domain management authentication.\nStored encrypted in the replication-manager configuration.\n\nConfig: \`cloud18-domain-secret\``
   const hReloadPlans = `**Reload Plans**\n\nDownload and reapply marketplace service plans from the Cloud18 GitLab repository.\nPlans define available database topologies, resource profiles, and OpenSVC provisioning templates.\nUse the info button to reload plan metadata only without reprovisioning.`
 
+  const hBkuPrice = `**BKU Price**\n\nPrice of one Backup Unit per month, in Eur. One BKU is 20 GB of backup storage. The backup archive of a cluster is its **last local backups plus its remote restic archive**: both count against the cluster's BKU plan (\`prov-db-bku\`), and the billed units are the plan or the archive rounded up to the next unit, whichever is larger. 0 = backups are not priced.\n\nConfig: \`cloud18-marketplace-bku-price\``
+
   const dataObject = [
+    {
+      key: 'BKU Price (Eur / month)',
+      help: h(hBkuPrice, 'BKU Price'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18MarketplaceBkuPrice ?? '')}
+          type='number'
+          confirmTitle='Confirm BKU price (Eur per backup unit per month) to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-bku-price', value }))}
+        />
+      )
+    },
     {
       key: 'Platform Description',
       help: h(hPlatformDesc, 'Platform Description'),

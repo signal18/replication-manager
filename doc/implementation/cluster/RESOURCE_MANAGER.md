@@ -33,7 +33,11 @@ The **BKU** (backup unit, 2026-09-22) is storage ONLY: it bills the REAL disk us
 on". The BKU has its **own plan** per database, like the DBU plan (client-set); its default is
 **3 × the database's DBU disk**. Usage above the BKU plan is over-commit: billed, never blocked.
 Two kinds: **local** BKU (the cluster's local backup, the repman backups directory on the local pool) and **remote** BKU
-(archived on S3/SFTP), each with its own price.
+(archived on S3/SFTP). **Decision 2026-09-27: the archive is local + remote, both count against the plan and are
+priced together** at `cloud18-marketplace-bku-price` (Eur/BKU/month, server scope, GUI Settings → Marketplace);
+`BKUReading` carries `bkuTotal`, `overCommit = max(0, total − plan)`, `billedUnits = max(plan, ceil(total))`,
+`unitPrice`, `monthlyCost`; series `bku.<cluster>.{total,billed}` added. Named like Ahmad's
+`cloud18-marketplace-dbu-price` / `-apu-price` (branch marketplace-pricing) so the three merge as one family.
 
 **Shipped (feat/bku-backup-unit):** `prov-db-bku` (default **6**, per cluster) is `PlanUnitBKU` in
 `ChangePlanUnits` (floor 1, admin lock on its own flag, no resource follow: nothing is provisioned

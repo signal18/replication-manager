@@ -574,6 +574,12 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return fmt.Errorf("cloud18-self-service-max-clusters-per-user must be a positive integer, got %q", value)
 		}
 		repman.Conf.Cloud18SelfServiceMaxClustersPerUser = n
+	case "cloud18-marketplace-bku-price":
+		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || f < 0 {
+			return fmt.Errorf("cloud18-marketplace-bku-price must be a positive number of Eur per BKU, got %q", value)
+		}
+		repman.Conf.Cloud18MarketplaceBKUPrice = f
 	case "mcp-transport":
 		if value != "api" && value != "sse" && value != "stdio" && value != "both" {
 			return errors.New("mcp-transport must be api, sse, stdio or both")

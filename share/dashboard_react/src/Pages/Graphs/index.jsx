@@ -355,8 +355,8 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         {/* Backup (BKU) — per-cluster backup storage: local = the cluster's local backup +
             archive on disk, remote = what restic holds on S3/SFTP. bku.<cluster>.{local,remote}
             are already in BKU (20 GB each); the *_bytes series give the real→unit overlay.
-            Plan line = prov-db-bku. Over-commit (local above the plan) is billed, never
-            blocked; remote is billed apart at its own price. */}
+            Plan line = prov-db-bku. The archive = local + remote; over-commit (archive above
+            the plan) is billed, never blocked, at cloud18-marketplace-bku-price per BKU. */}
         <ChartGroupedDBU
          context={context}
          axes={[
