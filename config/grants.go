@@ -45,29 +45,29 @@ const (
 // Grant constants
 
 const (
-	GrantDBStart           string = "db-start"
-	GrantDBStop            string = "db-stop"
-	GrantDBKill            string = "db-kill"
-	GrantDBOptimize        string = "db-optimize"
-	GrantDBAnalyse         string = "db-analyse"
-	GrantDBReplication     string = "db-replication"
-	GrantDBBackup          string = "db-backup"
-	GrantDBRestore         string = "db-restore"
-	GrantDBReadOnly        string = "db-readonly"
-	GrantDBLogs            string = "db-logs"
-	GrantDBShowVariables   string = "db-show-variables"
-	GrantDBShowStatus      string = "db-show-status"
-	GrantDBShowSchema      string = "db-show-schema"
-	GrantDBShowProcess     string = "db-show-process"
-	GrantDBShowLogs        string = "db-show-logs"
-	GrantDBCapture         string = "db-capture"
-	GrantDBMaintenance     string = "db-maintenance"
-	GrantDBConfigCreate    string = "db-config-create"
-	GrantDBConfigRessource string = "db-config-ressource"
-	GrantDBConfigFlag               string = "db-config-flag"
-	GrantDBConfigGet                string = "db-config-get"
-	GrantDBConfigAcceptCompliance   string = "db-config-accept-compliance"
-	GrantDBJobs                     string = "db-jobs"
+	GrantDBStart                  string = "db-start"
+	GrantDBStop                   string = "db-stop"
+	GrantDBKill                   string = "db-kill"
+	GrantDBOptimize               string = "db-optimize"
+	GrantDBAnalyse                string = "db-analyse"
+	GrantDBReplication            string = "db-replication"
+	GrantDBBackup                 string = "db-backup"
+	GrantDBRestore                string = "db-restore"
+	GrantDBReadOnly               string = "db-readonly"
+	GrantDBLogs                   string = "db-logs"
+	GrantDBShowVariables          string = "db-show-variables"
+	GrantDBShowStatus             string = "db-show-status"
+	GrantDBShowSchema             string = "db-show-schema"
+	GrantDBShowProcess            string = "db-show-process"
+	GrantDBShowLogs               string = "db-show-logs"
+	GrantDBCapture                string = "db-capture"
+	GrantDBMaintenance            string = "db-maintenance"
+	GrantDBConfigCreate           string = "db-config-create"
+	GrantDBConfigRessource        string = "db-config-ressource"
+	GrantDBConfigFlag             string = "db-config-flag"
+	GrantDBConfigGet              string = "db-config-get"
+	GrantDBConfigAcceptCompliance string = "db-config-accept-compliance"
+	GrantDBJobs                   string = "db-jobs"
 
 	GrantClusterCreate             string = "cluster-create"
 	GrantClusterDelete             string = "cluster-delete"
@@ -105,13 +105,13 @@ const (
 	GrantClusterAlert              string = "cluster-alert"
 	GrantClusterDocker             string = "cluster-docker"
 
-	GrantProxyConfigCreate    string = "proxy-config-create"
-	GrantProxyConfigGet       string = "proxy-config-get"
-	GrantProxyConfigRessource string = "proxy-config-ressource"
-	GrantProxyConfigFlag               string = "proxy-config-flag"
-	GrantProxyConfigAcceptCompliance   string = "proxy-config-accept-compliance"
-	GrantProxyStart           string = "proxy-start"
-	GrantProxyStop            string = "proxy-stop"
+	GrantProxyConfigCreate           string = "proxy-config-create"
+	GrantProxyConfigGet              string = "proxy-config-get"
+	GrantProxyConfigRessource        string = "proxy-config-ressource"
+	GrantProxyConfigFlag             string = "proxy-config-flag"
+	GrantProxyConfigAcceptCompliance string = "proxy-config-accept-compliance"
+	GrantProxyStart                  string = "proxy-start"
+	GrantProxyStop                   string = "proxy-stop"
 
 	GrantAppConfig     string = "app-config"
 	GrantAppDocker     string = "app-docker"
@@ -153,110 +153,117 @@ const (
 	GrantTerminalProxy    string = "terminal-proxy"
 	GrantTerminalApp      string = "terminal-app"
 	GrantTerminalGlobal   string = "terminal-global" // Can use global terminal
+
+	// User-issued API tokens (issue #1835). Never granted to the `system` service
+	// account: a machine identity must not mint or manage bearer credentials.
+	GrantTokenCreate string = "token-create" // Can issue API tokens for own account
+	GrantTokenManage string = "token-manage" // Can list and revoke other users' tokens on the cluster
 )
 
 // GetGrantType returns the full map of all known grant identifiers.
 func GetGrantType() map[string]string {
 	return map[string]string{
-		GrantDBStart:                   GrantDBStart,
-		GrantDBStop:                    GrantDBStop,
-		GrantDBKill:                    GrantDBKill,
-		GrantDBOptimize:                GrantDBOptimize,
-		GrantDBAnalyse:                 GrantDBAnalyse,
-		GrantDBReplication:             GrantDBReplication,
-		GrantDBBackup:                  GrantDBBackup,
-		GrantDBRestore:                 GrantDBRestore,
-		GrantDBReadOnly:                GrantDBReadOnly,
-		GrantDBLogs:                    GrantDBLogs,
-		GrantDBCapture:                 GrantDBCapture,
-		GrantDBMaintenance:             GrantDBMaintenance,
-		GrantDBConfigCreate:            GrantDBConfigCreate,
-		GrantDBConfigRessource:         GrantDBConfigRessource,
-		GrantDBConfigFlag:              GrantDBConfigFlag,
-		GrantDBConfigAcceptCompliance:  GrantDBConfigAcceptCompliance,
-		GrantDBConfigGet:               GrantDBConfigGet,
-		GrantDBJobs:                    GrantDBJobs,
-		GrantDBShowVariables:           GrantDBShowVariables,
-		GrantDBShowStatus:              GrantDBShowStatus,
-		GrantDBShowSchema:              GrantDBShowSchema,
-		GrantDBShowProcess:             GrantDBShowProcess,
-		GrantDBShowLogs:                GrantDBShowLogs,
-		GrantClusterCreate:             GrantClusterCreate,
-		GrantClusterDelete:             GrantClusterDelete,
-		GrantClusterCreateMonitor:      GrantClusterCreateMonitor,
-		GrantClusterDropMonitor:        GrantClusterDropMonitor,
-		GrantClusterFailover:           GrantClusterFailover,
-		GrantClusterSwitchover:         GrantClusterSwitchover,
-		GrantClusterRolling:            GrantClusterRolling,
-		GrantClusterSettings:           GrantClusterSettings,
-		GrantClusterResourceSensor:     GrantClusterResourceSensor,
-		GrantClusterGrant:              GrantClusterGrant,
-		GrantClusterReplication:        GrantClusterReplication,
-		GrantClusterRejoinUnsafe:       GrantClusterRejoinUnsafe,
-		GrantClusterAnalyze:            GrantClusterAnalyze,
-		GrantClusterChecksum:           GrantClusterChecksum,
-		GrantClusterChecksumRepair:     GrantClusterChecksumRepair,
-		GrantClusterSharding:           GrantClusterSharding,
-		GrantClusterCertificatesRotate: GrantClusterCertificatesRotate,
-		GrantClusterCertificatesReload: GrantClusterCertificatesReload,
-		GrantClusterBench:              GrantClusterBench,
-		GrantClusterTest:               GrantClusterTest,
-		GrantClusterTraffic:            GrantClusterTraffic,
-		GrantClusterProcess:            GrantClusterProcess,
-		GrantClusterDebug:              GrantClusterDebug,
-		GrantClusterShowBackups:        GrantClusterShowBackups,
-		GrantClusterShowJobs:           GrantClusterShowJobs,
-		GrantClusterShowAgents:         GrantClusterShowAgents,
-		GrantClusterShowGraphs:         GrantClusterShowGraphs,
-		GrantClusterConfigGraphs:       GrantClusterConfigGraphs,
-		GrantClusterShowRoutes:         GrantClusterShowRoutes,
-		GrantClusterShowCertificates:   GrantClusterShowCertificates,
-		GrantClusterResetSLA:           GrantClusterResetSLA,
-		GrantClusterRotatePasswords:    GrantClusterRotatePasswords,
-		GrantClusterStaging:            GrantClusterStaging,
-		GrantClusterAlert:              GrantClusterAlert,
-		GrantClusterDocker:             GrantClusterDocker,
-		GrantProxyConfigCreate:         GrantProxyConfigCreate,
-		GrantProxyConfigGet:            GrantProxyConfigGet,
-		GrantProxyConfigRessource:      GrantProxyConfigRessource,
-		GrantProxyConfigFlag:                GrantProxyConfigFlag,
-		GrantProxyConfigAcceptCompliance:    GrantProxyConfigAcceptCompliance,
-		GrantProxyStart:                GrantProxyStart,
-		GrantProxyStop:                 GrantProxyStop,
-		GrantProvSettings:              GrantProvSettings,
-		GrantProvCluster:               GrantProvCluster,
-		GrantProvClusterProvision:      GrantProvClusterProvision,
-		GrantProvClusterUnprovision:    GrantProvClusterUnprovision,
-		GrantProvDBUnprovision:         GrantProvDBUnprovision,
-		GrantProvDBProvision:           GrantProvDBProvision,
-		GrantProvProxyProvision:        GrantProvProxyProvision,
-		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
-		GrantProvAppProvision:          GrantProvAppProvision,
-		GrantProvAppUnprovision:        GrantProvAppUnprovision,
-		GrantAppConfig:                 GrantAppConfig,
-		GrantAppDocker:                 GrantAppDocker,
-		GrantAppDeployment:             GrantAppDeployment,
-		GrantAppStart:                  GrantAppStart,
-		GrantAppStop:                   GrantAppStop,
-		GrantAppGit:                    GrantAppGit,
-		GrantGlobalGrant:               GrantGlobalGrant,
-		GrantGlobalSettings:            GrantGlobalSettings,
-		GrantGlobalAdminShow:           GrantGlobalAdminShow,
-		GrantGlobalAdminConf:           GrantGlobalAdminConf,
-		GrantSalesValidate:             GrantSalesValidate,
-		GrantSalesRefuse:               GrantSalesRefuse,
-		GrantSalesUnsubscribe:          GrantSalesUnsubscribe,
-		GrantExternalRole:              GrantExternalRole,
-		GrantGrantShow:                 GrantGrantShow,
-		GrantGrantAdd:                  GrantGrantAdd,
-		GrantGrantModify:               GrantGrantModify,
-		GrantGrantDrop:                 GrantGrantDrop,
-		GrantGrantGlobal:               GrantGrantGlobal,
-		GrantShow:                      GrantShow,
-		GrantTerminalDatabase:          GrantTerminalDatabase,
-		GrantTerminalProxy:             GrantTerminalProxy,
-		GrantTerminalApp:               GrantTerminalApp,
-		GrantTerminalGlobal:            GrantTerminalGlobal,
+		GrantDBStart:                     GrantDBStart,
+		GrantDBStop:                      GrantDBStop,
+		GrantDBKill:                      GrantDBKill,
+		GrantDBOptimize:                  GrantDBOptimize,
+		GrantDBAnalyse:                   GrantDBAnalyse,
+		GrantDBReplication:               GrantDBReplication,
+		GrantDBBackup:                    GrantDBBackup,
+		GrantDBRestore:                   GrantDBRestore,
+		GrantDBReadOnly:                  GrantDBReadOnly,
+		GrantDBLogs:                      GrantDBLogs,
+		GrantDBCapture:                   GrantDBCapture,
+		GrantDBMaintenance:               GrantDBMaintenance,
+		GrantDBConfigCreate:              GrantDBConfigCreate,
+		GrantDBConfigRessource:           GrantDBConfigRessource,
+		GrantDBConfigFlag:                GrantDBConfigFlag,
+		GrantDBConfigAcceptCompliance:    GrantDBConfigAcceptCompliance,
+		GrantDBConfigGet:                 GrantDBConfigGet,
+		GrantDBJobs:                      GrantDBJobs,
+		GrantDBShowVariables:             GrantDBShowVariables,
+		GrantDBShowStatus:                GrantDBShowStatus,
+		GrantDBShowSchema:                GrantDBShowSchema,
+		GrantDBShowProcess:               GrantDBShowProcess,
+		GrantDBShowLogs:                  GrantDBShowLogs,
+		GrantClusterCreate:               GrantClusterCreate,
+		GrantClusterDelete:               GrantClusterDelete,
+		GrantClusterCreateMonitor:        GrantClusterCreateMonitor,
+		GrantClusterDropMonitor:          GrantClusterDropMonitor,
+		GrantClusterFailover:             GrantClusterFailover,
+		GrantClusterSwitchover:           GrantClusterSwitchover,
+		GrantClusterRolling:              GrantClusterRolling,
+		GrantClusterSettings:             GrantClusterSettings,
+		GrantClusterResourceSensor:       GrantClusterResourceSensor,
+		GrantClusterGrant:                GrantClusterGrant,
+		GrantClusterReplication:          GrantClusterReplication,
+		GrantClusterRejoinUnsafe:         GrantClusterRejoinUnsafe,
+		GrantClusterAnalyze:              GrantClusterAnalyze,
+		GrantClusterChecksum:             GrantClusterChecksum,
+		GrantClusterChecksumRepair:       GrantClusterChecksumRepair,
+		GrantClusterSharding:             GrantClusterSharding,
+		GrantClusterCertificatesRotate:   GrantClusterCertificatesRotate,
+		GrantClusterCertificatesReload:   GrantClusterCertificatesReload,
+		GrantClusterBench:                GrantClusterBench,
+		GrantClusterTest:                 GrantClusterTest,
+		GrantClusterTraffic:              GrantClusterTraffic,
+		GrantClusterProcess:              GrantClusterProcess,
+		GrantClusterDebug:                GrantClusterDebug,
+		GrantClusterShowBackups:          GrantClusterShowBackups,
+		GrantClusterShowJobs:             GrantClusterShowJobs,
+		GrantClusterShowAgents:           GrantClusterShowAgents,
+		GrantClusterShowGraphs:           GrantClusterShowGraphs,
+		GrantClusterConfigGraphs:         GrantClusterConfigGraphs,
+		GrantClusterShowRoutes:           GrantClusterShowRoutes,
+		GrantClusterShowCertificates:     GrantClusterShowCertificates,
+		GrantClusterResetSLA:             GrantClusterResetSLA,
+		GrantClusterRotatePasswords:      GrantClusterRotatePasswords,
+		GrantClusterStaging:              GrantClusterStaging,
+		GrantClusterAlert:                GrantClusterAlert,
+		GrantClusterDocker:               GrantClusterDocker,
+		GrantProxyConfigCreate:           GrantProxyConfigCreate,
+		GrantProxyConfigGet:              GrantProxyConfigGet,
+		GrantProxyConfigRessource:        GrantProxyConfigRessource,
+		GrantProxyConfigFlag:             GrantProxyConfigFlag,
+		GrantProxyConfigAcceptCompliance: GrantProxyConfigAcceptCompliance,
+		GrantProxyStart:                  GrantProxyStart,
+		GrantProxyStop:                   GrantProxyStop,
+		GrantProvSettings:                GrantProvSettings,
+		GrantProvCluster:                 GrantProvCluster,
+		GrantProvClusterProvision:        GrantProvClusterProvision,
+		GrantProvClusterUnprovision:      GrantProvClusterUnprovision,
+		GrantProvDBUnprovision:           GrantProvDBUnprovision,
+		GrantProvDBProvision:             GrantProvDBProvision,
+		GrantProvProxyProvision:          GrantProvProxyProvision,
+		GrantProvProxyUnprovision:        GrantProvProxyUnprovision,
+		GrantProvAppProvision:            GrantProvAppProvision,
+		GrantProvAppUnprovision:          GrantProvAppUnprovision,
+		GrantAppConfig:                   GrantAppConfig,
+		GrantAppDocker:                   GrantAppDocker,
+		GrantAppDeployment:               GrantAppDeployment,
+		GrantAppStart:                    GrantAppStart,
+		GrantAppStop:                     GrantAppStop,
+		GrantAppGit:                      GrantAppGit,
+		GrantGlobalGrant:                 GrantGlobalGrant,
+		GrantGlobalSettings:              GrantGlobalSettings,
+		GrantGlobalAdminShow:             GrantGlobalAdminShow,
+		GrantGlobalAdminConf:             GrantGlobalAdminConf,
+		GrantSalesValidate:               GrantSalesValidate,
+		GrantSalesRefuse:                 GrantSalesRefuse,
+		GrantSalesUnsubscribe:            GrantSalesUnsubscribe,
+		GrantExternalRole:                GrantExternalRole,
+		GrantGrantShow:                   GrantGrantShow,
+		GrantGrantAdd:                    GrantGrantAdd,
+		GrantGrantModify:                 GrantGrantModify,
+		GrantGrantDrop:                   GrantGrantDrop,
+		GrantGrantGlobal:                 GrantGrantGlobal,
+		GrantShow:                        GrantShow,
+		GrantTerminalDatabase:            GrantTerminalDatabase,
+		GrantTerminalProxy:               GrantTerminalProxy,
+		GrantTerminalApp:                 GrantTerminalApp,
+		GrantTerminalGlobal:              GrantTerminalGlobal,
+		GrantTokenCreate:                 GrantTokenCreate,
+		GrantTokenManage:                 GrantTokenManage,
 	}
 }
 
@@ -482,6 +489,22 @@ func HasAllTerminalGrants(grants map[string]bool) bool {
 	return true
 }
 
+func GetGrantToken() []string {
+	return []string{
+		GrantTokenCreate,
+		GrantTokenManage,
+	}
+}
+
+func HasAllTokenGrants(grants map[string]bool) bool {
+	for _, grant := range GetGrantToken() {
+		if !grants[grant] {
+			return false
+		}
+	}
+	return true
+}
+
 func GetCompactGrants(grants map[string]bool) ([]string, []string) {
 	var compactGrants []string
 	var compactDiscardGrants []string
@@ -675,6 +698,27 @@ func GetCompactGrants(grants map[string]bool) ([]string, []string) {
 		}
 	}
 
+	// Token
+	tmp = make([]string, 0)
+	counter = 0
+	if HasAllTokenGrants(grants) {
+		compactGrants = append(compactGrants, "token")
+	} else {
+		for _, grant := range GetGrantToken() {
+			if grants[grant] {
+				compactGrants = append(compactGrants, grant)
+				counter++
+			} else {
+				tmp = append(tmp, grant)
+			}
+		}
+		if counter == 0 {
+			compactDiscardGrants = append(compactDiscardGrants, "token")
+		} else {
+			compactDiscardGrants = append(compactDiscardGrants, tmp...)
+		}
+	}
+
 	if grants["show"] {
 		compactGrants = append(compactGrants, "show")
 	} else {
@@ -728,9 +772,9 @@ func GetDefaultAllowDiscardACL(role string) (string, string) {
 	case RoleDBOps:
 		return "*", "cluster prov sales global"
 	case RoleSponsor:
-		return "db show proxy grant extrole sales-unsubscribe app", ""
+		return "db show proxy grant extrole sales-unsubscribe app token-create", ""
 	case RoleExtDBOps:
-		return "db show proxy grant", "extrole"
+		return "db show proxy grant token-create", "extrole"
 	default:
 		return "show", ""
 	}

@@ -598,6 +598,9 @@ func (repman *ReplicationManager) PushAllConfigsToGit() error {
 	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "*/variable-diff.json")
 	// Event log instance-local state and crash-safe temp files never travel.
 	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "event-log-state.json")
+	// User-issued API tokens store (encrypted, instance-local; never in config git).
+	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "api-tokens.json")
+	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "api-tokens.json.tmp")
 	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "*.new")
 	// The .config isolated clone is replaced by the config event log
 	// (doc/implementation/config/CONFIG_EVENT_LOG.md); drop leftovers.

@@ -294,6 +294,8 @@ var clusterACLRules = []ACLRule{
 
 	// User Management
 	{"/users/send-credentials", nil, []string{config.GrantGrantShow}},
+	// User-issued API tokens covering the cluster (issue #1835): listing needs token-manage.
+	{"/tokens", nil, []string{config.GrantTokenManage}},
 	{"/api/monitor/actions/adduser/", nil, []string{config.GrantGrantAdd}},
 	{"/users/add", nil, []string{config.GrantGrantAdd}},
 	{"/users/update", nil, []string{config.GrantGrantModify}},
@@ -340,7 +342,7 @@ var terminalACLRules = []ACLRule{
 // Returns true if access granted, false otherwise
 // Logs detailed information about missing grants when access is denied
 func (cluster *Cluster) checkACLRule(strUser string, rule ACLRule, URL string) (bool, string) {
-	user, ok := cluster.APIUsers[strUser]
+	user, ok := cluster.GetACLUser(strUser)
 	if !ok {
 		return false, "user not found"
 	}
@@ -472,7 +474,7 @@ var dbLogPaths = []string{
 
 // checkDBLogAccess checks if user has access to database log paths
 func (cluster *Cluster) checkDBLogAccess(strUser string, URL string) bool {
-	if !cluster.APIUsers[strUser].Grants[config.GrantDBLogs] {
+	if u, ok := cluster.GetACLUser(strUser); !ok || !u.Grants[config.GrantDBLogs] {
 		return false
 	}
 

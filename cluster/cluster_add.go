@@ -200,14 +200,27 @@ func (cluster *Cluster) AppendRoles(roles string, user *APIUser) string {
 }
 
 func (cluster *Cluster) AddUser(userform UserForm, delegator string, reloadACL bool) error {
+	return cluster.addUser(userform, delegator, reloadACL, true)
+}
+
+// AddSSOOnlyUser adds an account with no password: it can only act through an
+// SSO (GitLab) login, never with a local password (isValidACL,
+// IsLocalOnlyAccount). Used for self-service sponsors (issue #1838).
+func (cluster *Cluster) AddSSOOnlyUser(userform UserForm, delegator string, reloadACL bool) error {
+	userform.Password = ""
+	return cluster.addUser(userform, delegator, reloadACL, false)
+}
+
+func (cluster *Cluster) addUser(userform UserForm, delegator string, reloadACL bool, generatePassword bool) error {
 	user := userform.Username
 	roles := userform.Roles
 	grants := userform.Grants
 	// Honour an explicitly-provided password (e.g. the derived system API key, or the
 	// password secretLoginHandler already passes); only generate one when none is given.
-	// Backward-compatible: callers that leave Password empty still get a random password.
+	// Backward-compatible: callers that leave Password empty still get a random password,
+	// unless the caller asked for a passwordless (SSO-only) account.
 	pass := userform.Password
-	if pass == "" {
+	if pass == "" && generatePassword {
 		pass, _ = cluster.GeneratePassword()
 	}
 

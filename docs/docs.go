@@ -99,6 +99,36 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/cloud18/self-service": {
+            "get": {
+                "description": "Whether this instance accepts self-service cluster creation from Cloud18 users, the per-user limit, and how many clusters the caller already sponsors here.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cloud18"
+                ],
+                "summary": "Self-service cluster status for the caller",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.SelfServiceStatus"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters": {
             "get": {
                 "description": "Fetches the list of clusters that the user has access to based on ACL.",
@@ -1583,6 +1613,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "409": {
+                        "description": "Master is still up; use switchover for a planned role change",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "500": {
                         "description": "No cluster",
                         "schema": {
@@ -2870,7 +2906,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Master failed",
+                        "description": "Master failed or preferred master not found",
                         "schema": {
                             "type": "string"
                         }
@@ -2935,6 +2971,12 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "No proxy configured",
                         "schema": {
                             "type": "string"
                         }
@@ -5290,6 +5332,72 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "No substitution variables defined for this app\" or \"Not a valid app\" or \"No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/apu/{kind}/{name}": {
+            "post": {
+                "description": "The compute sensor (app/proxy jobs sidecar) POSTs raw cgroup period maxima (mem/cpu/disk) for one Compute unit; repman projects them to APU via the Compute profile and records them as consumed. kind = app | proxy.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterResources"
+                ],
+                "summary": "Ingest an app/proxy APU compute-sensor push",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Compute kind: app or proxy",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App deployment or proxy name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ingested",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Decode error / invalid kind",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster not found",
                         "schema": {
                             "type": "string"
                         }
@@ -17087,6 +17195,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/settings/actions/change-plan-units/{unit}/{delta}": {
+            "post": {
+                "description": "Moves the cluster's plan (technical resource reservation) for a unit (DBU/APU)\nby a relative delta. Decrease is free down to the floor; increase is validated\n(admin immutable lock; external claim hook) then applied and persisted.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSettings"
+                ],
+                "summary": "Change a cluster plan reservation by a delta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Plan unit: DBU or APU",
+                        "name": "unit",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Relative change (e.g. -3 or 2)",
+                        "name": "delta",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "delta must be an integer",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/settings/actions/discover": {
             "post": {
                 "description": "This endpoint triggers the discovery of settings for the specified cluster.",
@@ -18927,6 +19104,51 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/tokens": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "List the API tokens covering a cluster (grant token-manage)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/server.APITokenView"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "type": "string"
                         }
@@ -21397,6 +21619,164 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tokens": {
+            "get": {
+                "description": "GET lists the caller's tokens (token strings included for an interactive login). POST (grant token-create, interactive login only) issues a new token narrowed to a subset of the caller's own grants and a cluster scope; the token can never carry a grant the caller does not hold. The system service account can never issue tokens.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "List or create the caller's API tokens",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Token form (POST)",
+                        "name": "token",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/server.APITokenForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/server.APITokenView"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "GET lists the caller's tokens (token strings included for an interactive login). POST (grant token-create, interactive login only) issues a new token narrowed to a subset of the caller's own grants and a cluster scope; the token can never carry a grant the caller does not hold. The system service account can never issue tokens.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "List or create the caller's API tokens",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Token form (POST)",
+                        "name": "token",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/server.APITokenForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/server.APITokenView"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tokens/{tokenID}": {
+            "delete": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Revoke an API token",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Token id",
+                        "name": "tokenID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.APITokenView"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "string"
                         }
                     }
                 }
@@ -24202,6 +24582,12 @@ const docTemplate = `{
                 "apiTokenTimeout": {
                     "type": "integer"
                 },
+                "apiUserTokens": {
+                    "type": "boolean"
+                },
+                "apiUserTokensDefaultExpireDays": {
+                    "type": "integer"
+                },
                 "app": {
                     "type": "boolean"
                 },
@@ -24865,6 +25251,12 @@ const docTemplate = `{
                 },
                 "cloud18SalesUnsubscribeScript": {
                     "type": "string"
+                },
+                "cloud18SelfServiceClusters": {
+                    "type": "boolean"
+                },
+                "cloud18SelfServiceMaxClustersPerUser": {
+                    "type": "integer"
                 },
                 "cloud18Shared": {
                     "type": "boolean"
@@ -25601,6 +25993,24 @@ const docTemplate = `{
                 "maxscalemBinaryPath": {
                     "type": "string"
                 },
+                "mcpAdvertiseAddress": {
+                    "type": "string"
+                },
+                "mcpAuthEnabled": {
+                    "type": "boolean"
+                },
+                "mcpBindAddress": {
+                    "type": "string"
+                },
+                "mcpPort": {
+                    "type": "string"
+                },
+                "mcpServer": {
+                    "type": "boolean"
+                },
+                "mcpTransport": {
+                    "type": "string"
+                },
                 "measurement": {
                     "type": "boolean"
                 },
@@ -26060,6 +26470,9 @@ const docTemplate = `{
                 "provAppTemplateRepoUser": {
                     "type": "string"
                 },
+                "provAppVolumePools": {
+                    "type": "string"
+                },
                 "provAutoUpdateCompliance": {
                     "type": "boolean"
                 },
@@ -26129,6 +26542,9 @@ const docTemplate = `{
                 },
                 "provDbDatadirVersion": {
                     "type": "string"
+                },
+                "provDbDbu": {
+                    "type": "integer"
                 },
                 "provDbDiskDevice": {
                     "type": "string"
@@ -26233,8 +26649,19 @@ const docTemplate = `{
                     "description": "COMMERCIAL scalability-up barrier: max % the dynamic resource change may auto-grow the plan (plan × (1+pct/100)) before a plan raise is required. Not a technical cap formula (see ResourceManager.CanGrowBeyondPlan)",
                     "type": "integer"
                 },
+                "provDbReplicationDomainParallelThreads": {
+                    "description": "slave_domain_parallel_threads (SVC_CONF_ENV_SLAVE_DOMAIN_PARALLEL_THREADS); 0 = no per-domain cap (MariaDB default)",
+                    "type": "integer"
+                },
+                "provDbReplicationParallelThreads": {
+                    "description": "slave_parallel_threads written by the configurator (template env SVC_CONF_ENV_SLAVE_PARALLEL_THREADS); concurrency to absorb latency, NOT tied to cores",
+                    "type": "integer"
+                },
                 "provDbResourceAlign": {
                     "description": "container memory cap alignment to the DBU tier: \"plan\" (default) / \"up\" / \"off\"",
+                    "type": "string"
+                },
+                "provDbResourceRaisedOverPlanScript": {
                     "type": "string"
                 },
                 "provDbServiceType": {
@@ -26251,6 +26678,10 @@ const docTemplate = `{
                 },
                 "provDbTags": {
                     "type": "string"
+                },
+                "provDbUndercommitPct": {
+                    "description": "scale-down floor: auto-shrink never under floor(plan x (1 - pct/100)) DBU/node, min 1 -- the pendant of prov-db-overcommit-pct",
+                    "type": "integer"
                 },
                 "provDbVolumeData": {
                     "type": "string"
@@ -26300,11 +26731,17 @@ const docTemplate = `{
                 "provOrchestratorEnable": {
                     "type": "string"
                 },
+                "provPlanIncreaseScript": {
+                    "type": "string"
+                },
                 "provProxyAgents": {
                     "type": "string"
                 },
                 "provProxyAgentsFailover": {
                     "type": "string"
+                },
+                "provProxyApu": {
+                    "type": "integer"
                 },
                 "provProxyBootstrapScript": {
                     "type": "string"
@@ -27475,6 +27912,87 @@ const docTemplate = `{
                 }
             }
         },
+        "server.APITokenForm": {
+            "type": "object",
+            "properties": {
+                "clusters": {
+                    "description": "empty or [\"*\"] = every cluster the owner can see",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "expireDays": {
+                    "description": "0 = server default (api-user-tokens-default-expire-days); -1 = never",
+                    "type": "integer"
+                },
+                "grants": {
+                    "description": "compact prefixes, space separated, e.g. \"db-show proxy\"; empty = all of the owner's grants",
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.APITokenView": {
+            "type": "object",
+            "properties": {
+                "clusters": {
+                    "description": "cluster scope; [\"*\"] = all",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdFrom": {
+                    "type": "string"
+                },
+                "expired": {
+                    "type": "boolean"
+                },
+                "expiresAt": {
+                    "type": "string"
+                },
+                "grants": {
+                    "description": "compact grant prefixes requested by the owner",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "lastUsedAt": {
+                    "type": "string"
+                },
+                "lastUsedFrom": {
+                    "type": "string"
+                },
+                "revoked": {
+                    "type": "boolean"
+                },
+                "revokedAt": {
+                    "type": "string"
+                },
+                "revokedBy": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                },
+                "user": {
+                    "type": "string"
+                }
+            }
+        },
         "server.ApiResponse": {
             "type": "object",
             "properties": {
@@ -27742,6 +28260,47 @@ const docTemplate = `{
                 },
                 "useTempDir": {
                     "type": "boolean"
+                }
+            }
+        },
+        "server.SelfServiceStatus": {
+            "type": "object",
+            "properties": {
+                "clusters": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "defaultApu": {
+                    "type": "integer"
+                },
+                "defaultBku": {
+                    "type": "integer"
+                },
+                "defaultDbu": {
+                    "type": "integer"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "identity": {
+                    "type": "string"
+                },
+                "maxClustersPerUser": {
+                    "type": "integer"
+                },
+                "orchestrator": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "remaining": {
+                    "type": "integer"
+                },
+                "used": {
+                    "type": "integer"
                 }
             }
         },
@@ -28021,6 +28580,20 @@ const docTemplate = `{
                 }
             }
         },
+        "server.globalResourcesAgent": {
+            "type": "object",
+            "properties": {
+                "cores": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
         "server.globalResourcesAxis": {
             "type": "object",
             "properties": {
@@ -28053,6 +28626,10 @@ const docTemplate = `{
         "server.globalResourcesCluster": {
             "type": "object",
             "properties": {
+                "apu": {
+                    "description": "real consumed APU pivot -- the cluster's share of infra APU",
+                    "type": "number"
+                },
                 "cluster": {
                     "type": "string"
                 },
@@ -28072,6 +28649,10 @@ const docTemplate = `{
                 "dbuMem": {
                     "type": "number"
                 },
+                "planApu": {
+                    "description": "the cluster's APU reservation contract (prov-service-plan-apu)",
+                    "type": "number"
+                },
                 "planDbu": {
                     "description": "the cluster's DBU reservation contract (prov-service-plan-dbu)",
                     "type": "number"
@@ -28084,6 +28665,13 @@ const docTemplate = `{
         "server.globalResourcesResponse": {
             "type": "object",
             "properties": {
+                "agentList": {
+                    "description": "Agents the RM has placement for, each with the exact graphite token its per-agent series are\nkeyed on (resourcemanager.agent.\u003ctoken\u003e.{dbu,apu,plan_dbu,plan_apu}) so the GUI targets them.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.globalResourcesAgent"
+                    }
+                },
                 "agents": {
                     "type": "integer"
                 },
@@ -28096,6 +28684,13 @@ const docTemplate = `{
                 "bindingAxis": {
                     "type": "string"
                 },
+                "bindingAxisApu": {
+                    "type": "string"
+                },
+                "capacityApu": {
+                    "description": "APU (Compute) infra view -- the SAME metal projected into APU (1c/1GB/10GB, no IO).",
+                    "type": "number"
+                },
                 "capacityDbu": {
                     "type": "number"
                 },
@@ -28105,13 +28700,22 @@ const docTemplate = `{
                         "$ref": "#/definitions/server.globalResourcesCluster"
                     }
                 },
+                "consumedApu": {
+                    "type": "number"
+                },
                 "consumedDbu": {
                     "type": "number"
                 },
                 "quotaPct": {
                     "type": "number"
                 },
+                "slackApu": {
+                    "type": "number"
+                },
                 "slackDbu": {
+                    "type": "number"
+                },
+                "usableApu": {
                     "type": "number"
                 },
                 "usableDbu": {

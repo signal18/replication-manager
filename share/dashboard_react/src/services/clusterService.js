@@ -209,7 +209,28 @@ export const clusterService = {
   // S3 provider sync APIs
   syncS3ProviderPreview,
   syncS3ProviderApply,
+
+  // User-issued API tokens (issue #1835)
+  getApiTokens,
+  createApiToken,
+  revokeApiToken,
+  getClusterApiTokens,
 }
+
+//#region User-issued API tokens
+function getApiTokens(baseURL) {
+  return getApi(baseURL).get('tokens')
+}
+function createApiToken({ label, grants, clusters, expireDays }, baseURL) {
+  return getApi(baseURL).post('tokens', { label, grants, clusters, expireDays })
+}
+function revokeApiToken(tokenId, baseURL) {
+  return getApi(baseURL).delete(`tokens/${tokenId}`)
+}
+function getClusterApiTokens(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/tokens`)
+}
+//#endregion
 
 //#region Cluster data APIs
 function getClusterData(clusterName, baseURL) {

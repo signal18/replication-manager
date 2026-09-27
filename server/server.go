@@ -57,6 +57,7 @@ import (
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/etc"
 	"github.com/signal18/replication-manager/graphite"
+	repmanmcp "github.com/signal18/replication-manager/mcp"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/regtest"
@@ -145,6 +146,7 @@ type ReplicationManager struct {
 	GlobalInterventionEntry     *cluster.InterventionEntry  `json:"globalInterventionEntry,omitempty"`
 	ActiveInterventionCount     int                         `json:"activeInterventionCount"`
 	UserAuthTry                 sync.Map                    `json:"-"`
+	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
 	OAuthAccessToken            *oauth2.Token               `json:"-"`
 	ViperConfig                 *viper.Viper                `json:"-"`
 	tlog                        s18log.TermLog
@@ -167,12 +169,15 @@ type ReplicationManager struct {
 	VersionConfs           map[string]*config.ConfVersion `json:"-"`
 	grpcServer             *grpc.Server                   `json:"-"`
 	grpcWrapped            *grpcweb.WrappedGrpcServer     `json:"-"`
+	mcpServer              *repmanmcp.MCPServer           `json:"-"`
+	mcpMutex               sync.Mutex                     `json:"-"`
 	httpServer             *http.Server                   `json:"-"`
 	apiServer              *http.Server                   `json:"-"`
 	V3Up                   chan bool                      `json:"-"`
 	v3Config               Repmanv3Config                 `json:"-"`
 	cloud18CheckSum        hash.Hash                      `json:"-"`
 	RegStatus              RegistrationStatus             `json:"-"`
+	regPassword            string                         // GitLab password of the registration in progress (MCP confirm reuses it)
 	clog                   *clog.Logger                   `json:"-"`
 	cApiLog                *clog.Logger                   `json:"-"`
 	Logrus                 *log.Logger                    `json:"-"`
@@ -342,6 +347,8 @@ func (repman *ReplicationManager) SetDefaultFlags(v *viper.Viper) {
 
 func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Config, isClient bool) {
 	flags.IntVar(&conf.TokenTimeout, "api-token-timeout", 48, "Timespan of API Token before expired in hour")
+	flags.BoolVar(&conf.APIUserTokens, "api-user-tokens", true, "Let users issue API tokens for themselves (bearer tokens narrowed to a subset of their grants and a cluster scope, stored encrypted in monitoring-datadir/api-tokens.json)")
+	flags.IntVar(&conf.APIUserTokensDefaultExpireDays, "api-user-tokens-default-expire-days", 120, "Default lifetime in days of a user-issued API token (0 = never expires)")
 
 	var usr string
 	if repman != nil && repman.OsUser != nil {
@@ -671,7 +678,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.APIPort, "api-port", "10005", "Rest API listen port")
 	flags.StringVar(&conf.APIUsers, "api-credentials", "admin:repman", "Rest API user list user:password,..")
 	flags.StringVar(&conf.APIUsersExternal, "api-credentials-external", "", "Rest API user list user:password,.. as dba:repman,foo:bar")
-	flags.StringVar(&conf.APIUsersACLAllow, "api-credentials-acl-allow", "admin:cluster db proxy prov global grant show sale extrole terminal app,dba:cluster proxy db,foo:", "User acl allow")
+	flags.StringVar(&conf.APIUsersACLAllow, "api-credentials-acl-allow", "admin:cluster db proxy prov global grant show sale extrole terminal app token,dba:cluster proxy db token-create,foo:", "User acl allow")
 	flags.StringVar(&conf.APIUsersACLAllowExternal, "api-credentials-acl-allow-external", "", "User dynamic acl allow")
 	flags.StringVar(&conf.APIUsersACLDiscard, "api-credentials-acl-discard", "", "User acl discard")
 	flags.StringVar(&conf.APIUsersACLDiscardExternal, "api-credentials-acl-discard-external", "", "User dynamic acl discard")
@@ -755,6 +762,12 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.HttpServ, "http-server", true, "Start the HTTP server")
 	flags.BoolVar(&conf.ApiServ, "api-server", true, "Start the API HTTPS server")
 	flags.BoolVar(&conf.ApiSwaggerEnabled, "api-swagger-enabled", true, "Start the API with Swagger")
+	flags.BoolVar(&conf.MCPServ, "mcp-server", false, "Start MCP server for AI assistant integration")
+	flags.StringVar(&conf.MCPTransport, "mcp-transport", "api", "MCP transport: api (mounted on the HTTP and HTTPS API listeners at /api/mcp, default), sse (own listener on mcp-port), stdio, or both (sse + stdio)")
+	flags.StringVar(&conf.MCPPort, "mcp-port", "10007", "MCP standalone SSE listen port (transport sse/both only)")
+	flags.StringVar(&conf.MCPBindAddr, "mcp-bind-address", "localhost", "MCP server bind address")
+	flags.StringVar(&conf.MCPAdvertiseAddr, "mcp-advertise-address", "", "MCP public base URL (e.g. http://repman.example.com:10007); overrides mcp-bind-address for SSE endpoint advertisements (useful behind Docker port mappings or reverse proxies)")
+	flags.BoolVar(&conf.MCPAuthEnabled, "mcp-auth-enabled", true, "Require a bearer on MCP /sse and /message: an interactive login JWT or a user-issued API token (token create); every tool then runs under that user's cluster ACL. false = unrestricted (needed for stdio transport")
 
 	flags.StringVar(&conf.BindAddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")
 	flags.StringVar(&conf.HttpPort, "http-port", "10001", "HTTP monitor to listen on this port")
@@ -1214,6 +1227,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18PeerHealthMode, "cloud18-peer-health-mode", "pulling", "Peer health polling scope. pulling (DEFAULT) and smart both serve the for-sale catalog from the BO-aggregated peer.json and live-poll ONLY clusters this instance has a relationship to — own fleet (registering user) + delegated + active-session users' clusters + sale workflows. An instance with no such relationship (a fresh/browsing client) opens no peer connections. peering is a legacy full-mesh that live-polls EVERY peer incl. the for-sale catalog (O(N^2); opt-in only, never for clients). partner plan auto-promotes pulling->smart.")
 	flags.BoolVar(&conf.Cloud18DisablePeers, "cloud18-disable-peers", false, "Hide peer clusters from dashboard")
 	flags.BoolVar(&conf.Cloud18DisableForSale, "cloud18-disable-for-sale", false, "Hide clusters for sale from marketplace (paid plans only)")
+	flags.BoolVar(&conf.Cloud18SelfServiceClusters, "cloud18-self-service-clusters", false, "Let registered Cloud18 users reaching this instance through peering create clusters here without subscription acceptance; the partner is only informed (OpenSVC and Kubernetes orchestrators)")
+	flags.IntVar(&conf.Cloud18SelfServiceMaxClustersPerUser, "cloud18-self-service-max-clusters-per-user", 3, "Clusters a Cloud18 user may sponsor on this instance through self-service")
 	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
 	flags.StringVar(&conf.Cloud18SubscriptionPlan, "cloud18-subscription-plan", "free", "Cloud18 subscription plan code (validated by CRM)")
 	flags.StringVar(&conf.Cloud18LicenseFile, "cloud18-license-file", "", "Path to a signed offline license (license.json; detached signature license.sig alongside). When set, the instance sources its Cloud18 plan from this file instead of the CRM — for air-gapped/PCI instances. Verified with plugin-signing-public-key. Empty = normal online CRM path")
@@ -2847,6 +2862,10 @@ func (repman *ReplicationManager) Run() error {
 	repman.ensureLoginUpgradeInfra()
 
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)
+	if repman.Conf.MCPServ {
+		repman.startMCPServer()
+	}
+
 	if repman.Conf.ApiServ {
 		go repman.apiserver()
 	} else {
@@ -4176,6 +4195,11 @@ func (repman *ReplicationManager) Stop() {
 		}
 	}
 
+	if repman.mcpServer != nil {
+		repman.Logrus.Info("Stop: stopping MCP server")
+		repman.stopMCPServer()
+	}
+
 	if repman.MemProfile != "" {
 		f, err := os.Create(repman.MemProfile)
 		if err != nil {
@@ -4947,4 +4971,56 @@ func (repman *ReplicationManager) InitSharedAppTemplates() {
 				"InitSharedAppTemplates: cannot write %s: %v", dest, err)
 		}
 	}
+}
+
+// startMCPServer creates and starts the MCP server from the current settings
+// (issue #1838). With the default transport "api" it only registers the tools:
+// the endpoints are served by the API listeners through handlerMuxMCP.
+func (repman *ReplicationManager) startMCPServer() {
+	repman.mcpMutex.Lock()
+	defer repman.mcpMutex.Unlock()
+	if repman.mcpServer != nil {
+		return
+	}
+	repman.mcpServer = repmanmcp.NewMCPServer(repman, repman.Conf, repman.Logrus)
+	srv := repman.mcpServer
+	go func() {
+		if err := srv.Start(context.Background()); err != nil {
+			repman.Logrus.Errorf("MCP server error: %v", err)
+		}
+	}()
+}
+
+// stopMCPServer stops and forgets the MCP server; /api/mcp answers 404 afterwards.
+func (repman *ReplicationManager) stopMCPServer() {
+	repman.mcpMutex.Lock()
+	defer repman.mcpMutex.Unlock()
+	if repman.mcpServer == nil {
+		return
+	}
+	repman.mcpServer.Stop()
+	repman.mcpServer = nil
+}
+
+// restartMCPServer applies a changed mcp-* setting live: tools, auth and
+// transport are fixed at creation, so the server is rebuilt.
+func (repman *ReplicationManager) restartMCPServer() {
+	repman.stopMCPServer()
+	if repman.Conf.MCPServ {
+		repman.startMCPServer()
+	}
+}
+
+// handlerMuxMCP serves /api/mcp/* on the HTTP and HTTPS API listeners: the SSE
+// stream and the message endpoint, behind the MCP bearer middleware (login JWT
+// or API token) and the per-tool ACL. 404 when the MCP server is off.
+func (repman *ReplicationManager) handlerMuxMCP(w http.ResponseWriter, r *http.Request) {
+	repman.mcpMutex.Lock()
+	srv := repman.mcpServer
+	repman.mcpMutex.Unlock()
+	if srv == nil || !repman.Conf.MCPServ {
+		http.Error(w, "MCP server is not enabled (mcp-server)", http.StatusNotFound)
+		return
+	}
+	srv.Handler().ServeHTTP(w, r)
 }

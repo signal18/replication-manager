@@ -532,6 +532,14 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.ApiServ = isactive
 	case "api-swagger-enabled":
 		repman.Conf.ApiSwaggerEnabled = isactive
+	case "mcp-server":
+		repman.Conf.MCPServ = isactive
+		repman.restartMCPServer()
+	case "cloud18-self-service-clusters":
+		repman.Conf.Cloud18SelfServiceClusters = isactive
+	case "mcp-auth-enabled":
+		repman.Conf.MCPAuthEnabled = isactive
+		repman.restartMCPServer()
 	case "arbitration-external":
 		if isactive && !repman.Conf.IsEligibleForArbitration() {
 			return errors.New("arbitration requires a registered Cloud18 account with a support or partner subscription plan")
@@ -560,6 +568,27 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.MonitoringLogAPILogin = isactive
 	case "monitoring-log-api-login-silent-users":
 		repman.Conf.MonitoringLogAPILoginSilentUsers = value
+	case "cloud18-self-service-max-clusters-per-user":
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n < 0 {
+			return fmt.Errorf("cloud18-self-service-max-clusters-per-user must be a positive integer, got %q", value)
+		}
+		repman.Conf.Cloud18SelfServiceMaxClustersPerUser = n
+	case "mcp-transport":
+		if value != "api" && value != "sse" && value != "stdio" && value != "both" {
+			return errors.New("mcp-transport must be api, sse, stdio or both")
+		}
+		repman.Conf.MCPTransport = value
+		repman.restartMCPServer()
+	case "mcp-port":
+		repman.Conf.MCPPort = value
+		repman.restartMCPServer()
+	case "mcp-bind-address":
+		repman.Conf.MCPBindAddr = value
+		repman.restartMCPServer()
+	case "mcp-advertise-address":
+		repman.Conf.MCPAdvertiseAddr = value
+		repman.restartMCPServer()
 	case "cloud18-peer-health-mode":
 		if value == "peering" || value == "smart" || value == "pulling" {
 			// scope:"server" — persisted to default.toml by SaveDynamic (value != default).
@@ -602,6 +631,14 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.ApiServ = !repman.Conf.ApiServ
 	case "api-swagger-enabled":
 		repman.Conf.ApiSwaggerEnabled = !repman.Conf.ApiSwaggerEnabled
+	case "mcp-server":
+		repman.Conf.MCPServ = !repman.Conf.MCPServ
+		repman.restartMCPServer()
+	case "cloud18-self-service-clusters":
+		repman.Conf.Cloud18SelfServiceClusters = !repman.Conf.Cloud18SelfServiceClusters
+	case "mcp-auth-enabled":
+		repman.Conf.MCPAuthEnabled = !repman.Conf.MCPAuthEnabled
+		repman.restartMCPServer()
 	case "arbitration-external":
 		if !repman.Conf.Arbitration && !repman.Conf.IsEligibleForArbitration() {
 			return errors.New("arbitration requires a registered Cloud18 account with a support or partner subscription plan")

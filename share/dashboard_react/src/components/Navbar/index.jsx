@@ -28,6 +28,7 @@ import RMIconButton from '../RMIconButton'
 import TagPill from '../TagPill'
 import { useTheme } from '../../ThemeProvider'
 import AddUserModal from '../Modals/AddUserModal'
+import ApiTokensModal from '../Modals/ApiTokensModal'
 import MattermostIntegration from '../../Pages/Mattermost';
 import { getMeetInfo, logoutFromMeet, resetMeetError } from '../../redux/meetSlice';
 import { selectMeetUIState } from '../../redux/memoize'
@@ -53,6 +54,7 @@ function Navbar({ username, user }) {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [isInterventionPanelOpen, setIsInterventionPanelOpen] = useState(false)
   const [isUserInfoPanelOpen, setIsUserInfoPanelOpen] = useState(false)
+  const [isApiTokensOpen, setIsApiTokensOpen] = useState(false)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
   const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
   const [showImageLogo, setShowImageLogo] = useState(true)
@@ -567,7 +569,14 @@ function Navbar({ username, user }) {
             setIsUserInfoPanelOpen(false)
             handleLogout()
           }}
+          onApiTokens={() => {
+            setIsUserInfoPanelOpen(false)
+            setIsApiTokensOpen(true)
+          }}
         />
+      )}
+      {isApiTokensOpen && (
+        <ApiTokensModal isOpen={isApiTokensOpen} closeModal={() => setIsApiTokensOpen(false)} user={user} />
       )}
     </>
   )

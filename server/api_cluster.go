@@ -1540,6 +1540,7 @@ func (repman *ReplicationManager) handlerMuxResetSla(w http.ResponseWriter, r *h
 // @Param clusterName path string true "Cluster Name"
 // @Success 200 {string} string "Successfully triggered failover"
 // @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "Master is still up; use switchover for a planned role change"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/actions/failover [post]
 func (repman *ReplicationManager) handlerMuxFailover(w http.ResponseWriter, r *http.Request) {
@@ -1551,7 +1552,14 @@ func (repman *ReplicationManager) handlerMuxFailover(w http.ResponseWriter, r *h
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		mycluster.MasterFailover(true)
+		if err := mycluster.Failover(); err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, cluster.ErrFailoverMasterHealthy) {
+				status = http.StatusConflict
+			}
+			http.Error(w, err.Error(), status)
+			return
+		}
 	} else {
 
 		http.Error(w, "No cluster", http.StatusInternalServerError)
@@ -2015,7 +2023,7 @@ func (repman *ReplicationManager) splitBrainSimGuard(w http.ResponseWriter, r *h
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return nil, 0, false
 	}
-	if u, ok := mycluster.APIUsers[repman.GetUserFromRequest(r)]; !ok || !u.Grants[config.GrantClusterTest] {
+	if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantClusterTest] {
 		http.Error(w, "No cluster-test grant", http.StatusForbidden)
 		return nil, 0, false
 	}
@@ -2119,7 +2127,7 @@ func (repman *ReplicationManager) handlerMuxSimulateRestore(w http.ResponseWrite
 // @Param clusterName path string true "Cluster Name"
 // @Param prefmaster formData string false "Preferred Master"
 // @Success 200 {string} string "Successfully triggered switchover"
-// @Failure 400 {string} string "Master failed"
+// @Failure 400 {string} string "Master failed or preferred master not found"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/actions/switchover [post]
@@ -2132,24 +2140,24 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive switchover request")
-		savedPrefMaster := mycluster.GetPreferedMasterList()
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "REST API received switchover request")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		if mycluster.IsMasterFailed() {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Master failed, cannot initiate switchover")
-			http.Error(w, "Master failed", http.StatusBadRequest)
-			return
-		}
 		r.ParseForm() // Parses the request body
 		newPrefMaster := r.Form.Get("prefmaster")
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "API force for prefered master: %s", newPrefMaster)
-		if mycluster.IsInHostList(newPrefMaster) {
-			mycluster.SetPrefMaster(newPrefMaster)
-		} else {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Prefered master: not found in database servers %s", newPrefMaster)
+		if err := mycluster.Switchover(newPrefMaster, false); err != nil {
+			switch {
+			case errors.Is(err, cluster.ErrPreferredMasterNotFound):
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Switchover rejected: %s", err)
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			case errors.Is(err, cluster.ErrSwitchoverMasterFailed):
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Master failed, cannot initiate switchover")
+				http.Error(w, "Master failed", http.StatusBadRequest)
+			default:
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Switchover request failed: %s", err)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
 		}
-		mycluster.MasterFailover(false)
-		mycluster.SetPrefMaster(savedPrefMaster)
 
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
@@ -8734,8 +8742,7 @@ func (repman *ReplicationManager) handlerMuxResticWipeRepo(w http.ResponseWriter
 		// Enforce GrantDBBackup explicitly: URL-based ACL matching falls back to the
 		// generic /restic rule (GrantClusterProcess) via hierarchical pattern matching,
 		// which would allow users without backup permissions to wipe the repository.
-		username := repman.GetUserFromRequest(r)
-		if u, ok := mycluster.APIUsers[username]; !ok || !u.Grants[config.GrantDBBackup] {
+		if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantDBBackup] {
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
@@ -8808,8 +8815,7 @@ func (repman *ReplicationManager) handlerMuxResticCreateBucket(w http.ResponseWr
 		// Enforce GrantDBBackup explicitly: URL-based ACL matching falls back to the
 		// generic /restic rule (GrantClusterProcess) via hierarchical pattern matching,
 		// which would allow users without backup permissions to mutate remote storage.
-		username := repman.GetUserFromRequest(r)
-		if u, ok := mycluster.APIUsers[username]; !ok || !u.Grants[config.GrantDBBackup] {
+		if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantDBBackup] {
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}

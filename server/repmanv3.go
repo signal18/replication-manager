@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -593,7 +594,7 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	case v3.ClusterAction_CHECKSUM_ALL_TABLES:
 		go mycluster.CheckAllTableChecksum()
 	case v3.ClusterAction_FAILOVER:
-		mycluster.MasterFailover(true)
+		err = mycluster.Failover()
 	case v3.ClusterAction_MASTER_PHYSICAL_BACKUP:
 		m := mycluster.GetMaster()
 		if m == nil {
@@ -615,13 +616,10 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	case v3.ClusterAction_STOP_TRAFFIC:
 		mycluster.SetTraffic(false)
 	case v3.ClusterAction_SWITCHOVER:
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API force for prefered master: %s", in.Server.GetURI())
-		if mycluster.IsInHostList(in.Server.GetURI()) {
-			mycluster.SetPrefMaster(in.Server.GetURI())
-			mycluster.MasterFailover(false)
-			return emptyResponse()
-		} else {
-			return nil, v3.NewErrorResource(codes.NotFound, v3.ErrServerNotFound, "Server", in.Server.GetURI()).Err()
+		preferredMaster := in.Server.GetURI()
+		err = mycluster.Switchover(preferredMaster, false)
+		if errors.Is(err, cluster.ErrPreferredMasterNotFound) {
+			return nil, v3.NewErrorResource(codes.NotFound, v3.ErrServerNotFound, "Server", preferredMaster).Err()
 		}
 	case v3.ClusterAction_SYSBENCH:
 		go mycluster.RunSysbench()
@@ -633,6 +631,12 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 
 	if err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "API Error: %s", err)
+		if errors.Is(err, cluster.ErrFailoverMasterHealthy) {
+			return nil, v3.NewError(codes.FailedPrecondition, err).Err()
+		}
+		if errors.Is(err, cluster.ErrSwitchoverMasterFailed) {
+			return nil, v3.NewError(codes.FailedPrecondition, err).Err()
+		}
 		return nil, v3.NewError(codes.Unknown, err).Err()
 	}
 
