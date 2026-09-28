@@ -51,7 +51,15 @@ instance (Stéphane 2026-09-28, asymmetric on purpose):** `cloud18-marketplace-o
 price, over, under)` in `cluster_bku.go`: consumed > plan → plan×price + (consumed−plan)×price×over/100;
 else consumed×price + (plan−consumed)×price×under/100 (100/100 = flat max(plan, consumed)). Applies to
 every unit family with a plan (DBU, APU, BKU); the **BAU is outside the ratios** (pure usage, no plan).
-DBU/APU costs are not computed anywhere yet, the ratios are stored and shown for them. `BKUReading` carries
+DBU costs are not computed anywhere yet. **APU billing (Stéphane 2026-09-28, `cluster_apu_billing.go`):** the
+measured side (compute sensor) stays honest at 0 when nothing pushed; the BILLABLE side floors every running unit:
+an app counts at least its **agent count** in APU (flex = one instance per agent behind the load balancer, failover
+= one instance + the drbd-replicated volume on every agent; the rule of Ahmad's `ComputeApplicationUnits`), a proxy
+at least 1, a down unit 0; billable = Σ max(floor, ceil(measured)). The app PLAN is the per-instance shape (floor
+1 APU) × the agent count too (`RefreshComputePlanAPU`, `appInstanceCount`). `APUBilling` (`computeUnits` in the
+cluster JSON, refreshed each tick after the plan) carries plan, units, runningUnits, floorUnits, measuredApu,
+billableUnits, over/underPlanUnits, the price + ratios and monthlyCost; series `resourcemanager.<C>.billed_apu`
+next to `plan_apu`. Live on preprod crm: 5 apps on 3/3/3/1/3 agents + 2 proxies = 15 billable. `BKUReading` carries
 `overCommit = max(0, local − plan)`, `consumedUnits = ceil(local)`, `billedUnits = max(plan, consumed)`,
 `overPlanUnits`, `underPlanUnits`, `unitPrice`, `overPricePct`, `underPricePct`, `monthlyCost`; `BAUReading` (`backupArchiveUnits` in the cluster JSON, `cluster_bau.go`)
 carries `bytes`, `units`, `billedUnits = ceil(units)`, `priced`, `unitPrice`, `monthlyCost`.

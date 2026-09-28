@@ -122,6 +122,12 @@ func (cluster *Cluster) CollectComputeMetrics() {
 	metrics = append(metrics, graphite.NewMetric(
 		fmt.Sprintf("resourcemanager.%s.plan_apu", ctoken),
 		strconv.FormatFloat(planAPU, 'f', 4, 64), ts))
+	// The billable APU (floor 1 per running instance, see cluster_apu_billing.go): what the
+	// asymmetric price applies to, next to the plan so over/under-commit derive at query time.
+	if b := cluster.ComputeUnits; b != nil {
+		metrics = append(metrics, graphite.NewMetric(
+			fmt.Sprintf("resourcemanager.%s.billed_apu", ctoken), strconv.Itoa(b.BillableUnits), ts))
+	}
 
 	if len(metrics) > 0 {
 		cluster.AddMetrics(metrics)

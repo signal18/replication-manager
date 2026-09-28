@@ -124,6 +124,7 @@ type Cluster struct {
 	ConfigDbuPerNode              DBUReading      `json:"configDbuPerNode" groups:"web"`      // prov-db-* projected through the ratios: the TECHNICAL cap per node (paramétré axis), refreshed each tick
 	BackupUnits                   *BKUReading     `json:"backupUnits" groups:"web"`           // BKU: per-cluster local backup storage vs prov-db-bku (RefreshBackupUnits, every 30 ticks)
 	BackupArchiveUnits            *BAUReading     `json:"backupArchiveUnits" groups:"web"`    // BAU: per-cluster remote archive on S3/SFTP, no plan (RefreshBackupUnits, every 30 ticks)
+	ComputeUnits                  *APUBilling     `json:"computeUnits" groups:"web"`          // APU billing: apps + proxies, floor 1 per instance, vs prov-service-plan-apu (RefreshComputeBilling, each tick)
 	ConfigDbu                     float64         `json:"configDbu" groups:"web"`             // cluster-wide configured DBU = per-node pivot x #DB nodes; the graph draws it as the "configured" line above the plan
 	IsNeedResourceCapDown         bool            `json:"isNeedResourceCapDown" groups:"web"` // composed: EVERY up server under the plan -> LOWER THE PLAN (cap down); one non-under server breaks it (safe-shrink). Set by CheckResourceCapPlan
 	LastDynamicResizeDay          string          `json:"-"`                                  // YYYY-MM-DD of the last daily-time memory reconcile (DriveDailyDynamicResize); one apply per day per window

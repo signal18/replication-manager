@@ -1179,6 +1179,15 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 			r = cluster.resources.ComputeUsedAPU(now, now,
 				int64(cr.MemMBPerUnit)*1024*1024, cr.CoresPerUnit, int64(cr.DiskGBPerUnit)*1024*1024*1024)
 		}
+		// The shape is PER INSTANCE and an app occupies every one of its agents: a flex app
+		// runs one instance per agent behind the load balancer, a failover app runs one
+		// instance but replicates its volume (drbd) on every agent. Either way the reservation
+		// is the shape x the agent count (Stéphane 2026-09-28, the rule of Ahmad's
+		// ComputeApplicationUnits on marketplace-pricing).
+		if n := cluster.appInstanceCount(app); n > 1 {
+			r = cluster.resources.ComputeUsedAPU(now, now,
+				r.MemMaxBytes*int64(n), r.CpuMaxCores*float64(n), r.DiskMaxBytes*int64(n))
+		}
 		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}
 		cluster.resources.SetAppPlan(k, &r)
 		if app.Agent != "" {
@@ -1215,6 +1224,23 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 	// per-instance inputs; the client moves those (prov-proxy-apu / per-app), never this directly,
 	// so it stays a real cluster number without re-locking in /etc.
 	cluster.Conf.ProvServicePlanApu = int(cluster.resources.AppPlanByCluster(cluster.Name).Apu + 0.5)
+	cluster.RefreshComputeBilling()
+}
+
+// appInstanceCount is how many agents an app occupies (its instances when flex, its
+// replicated volume placements when failover): the app's agents, else the cluster app
+// agents, else the cluster agents; never under 1.
+func (cluster *Cluster) appInstanceCount(app *App) int {
+	n := 0
+	for _, a := range strings.Split(cluster.GetAppAgents(app.AppConfig), ",") {
+		if strings.TrimSpace(a) != "" {
+			n++
+		}
+	}
+	if n < 1 {
+		n = 1
+	}
+	return n
 }
 
 func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {
