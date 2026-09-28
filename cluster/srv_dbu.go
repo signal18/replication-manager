@@ -439,6 +439,26 @@ func (cluster *Cluster) RefreshDBUPlan() {
 	// operator sees resources raised over the plan (dynamic over-plan grow) as the state it is.
 	cluster.ConfigDbuPerNode = cluster.GetConfigDBUPerNode()
 	cluster.ConfigDbu = math.Round(cluster.ConfigDbuPerNode.Dbu*float64(len(cluster.Servers))*100) / 100
+	// Ledger: what the DB track holds ABOVE its plan (the configured resources over the plan
+	// reservation, per node × nodes) is BORROWED from the unreserved capacity.
+	if cluster.resources != nil {
+		plan := cluster.GetPlanDBUPerNode()
+		var b PhysicalUsage
+		n := float64(len(cluster.Servers))
+		if d := cluster.ConfigDbuPerNode.CpuMaxCores - plan.CpuMaxCores; d > 0 {
+			b.CpuCores = d * n
+		}
+		if d := cluster.ConfigDbuPerNode.MemMaxBytes - plan.MemMaxBytes; d > 0 {
+			b.MemBytes = int64(float64(d) * n)
+		}
+		if d := cluster.ConfigDbuPerNode.IoMaxIops - plan.IoMaxIops; d > 0 {
+			b.IoIops = d * n
+		}
+		if d := cluster.ConfigDbuPerNode.DiskMaxBytes - plan.DiskMaxBytes; d > 0 {
+			b.DiskBytes = int64(float64(d) * n)
+		}
+		cluster.resources.SetBorrowed(cluster.Name, "db", b)
+	}
 }
 
 // GetDBContainerMemoryCapMB returns the cgroup --memory cap (MB) for the DB container.

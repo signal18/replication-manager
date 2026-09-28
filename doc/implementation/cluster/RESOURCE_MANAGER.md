@@ -63,6 +63,22 @@ declared setting, like `prov-db-disk-size`, nothing read back from OpenSVC) × t
 and the surcharge/reduction), a storage app's (`app-s3-provider`, the profile, settable per app in the GUI) is
 **producer BAU** (`producerUnits`, no plan). Series `bku.<c>.app_disk[_bytes]`, `bau.<c>.producer[_bytes]`.
 
+**The physical ledger, two pots and the precedence rule (Stéphane 2026-09-28, `resource_ledger.go`):** DBU, APU and
+BKU are strongly correlated (the same metal through three ratios), so a unit's free pot is computed by subtracting
+what the OTHER units hold, and there are TWO limits because a plan is a guarantee: **plan pot** = capacity × quota −
+Σ plans (every cluster, DBU + APU + BKU, physical) gates a PLAN INCREASE (`ResourceManager.CanPlanIncrease`, called by
+`Cluster.CanPlanIncrease` in `ChangePlanUnits`: DBU delta × #nodes, APU delta × #proxies, BKU delta); **over-commit
+pot** = capacity − Σ plans − Σ borrowed gates a BORROW above an existing plan (`CanBorrow`, called in
+`resourceManagerGrowCheck` after the commercial ceiling). Neither pot reads consumption. Inputs: the server feeds
+`SetInfraCapacity` from `ProduceContractedCapacityState`; each cluster tick feeds `SetBorrowed(cluster,"db")` = configured
+DB resources over the DBU plan × nodes (`srv_dbu.go`); the 30-tick BKU refresh feeds `SetStoragePlan` + `SetBorrowed(…,"bku")`
+= backup usage over the BKU plan. **Precedence (documented rule): a plan increase always wins over borrowed resources.**
+A sale admitted into the plan pot may drive the over-commit pot negative: `Ledger().Overdrawn`, GWARN017 names the
+borrowing clusters, `CanBorrow` refuses any further loan; the automatic shrink-back of the borrowed part is the
+follow-up (today the dynamic driver only shrinks on under-use). The archive class (BAU) has no capacity source yet, no
+BAU pot. `/api/global/resources` carries `ledger`; the Resource Manager page shows the table and the three unit pots;
+`infraUnitPool` (self-service gate) takes its free DBU/APU from the ledger's plan pot instead of per-unit double counts.
+
 **Compute sensor for apps + proxies = the om3 daemon's pg metrics (`cluster_compute_sensor.go`, 2026-09-28,
 Stéphane's go; he noted I should have asked sidecar-vs-orchestrator first):** every 10 ticks the cluster GETs
 `https://<agent>:<daemon port>/metrics/pg` (Prometheus text, no auth, verified remote 200 on preprod) for the

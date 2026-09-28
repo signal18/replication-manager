@@ -128,6 +128,54 @@ function ResourceManager() {
         </Table>
       </Box>
 
+      {data.ledger?.known && (() => {
+        const L = data.ledger
+        const gb = (b) => fmt((b || 0) / 1024 / 1024 / 1024)
+        const mb = (b) => fmt((b || 0) / 1024 / 1024)
+        const rows = [
+          { axis: 'cpu', unit: 'cores', f: (x) => fmt(x?.cores) },
+          { axis: 'mem', unit: 'MB', f: (x) => mb(x?.memBytes) },
+          { axis: 'io', unit: 'iops', f: (x) => fmt(x?.iops) },
+          { axis: 'disk (NVMe)', unit: 'GB', f: (x) => gb(x?.diskBytes) },
+        ]
+        const neg = (v) => (v < 0 ? { color: 'var(--danger-color, #e0603a)', fontWeight: 600 } : {})
+        return (
+          <Box mt={6}>
+            <Text fontSize='md' fontWeight='bold' mb={1}>Physical ledger — one metal, two pots</Text>
+            <Text fontSize='xs' opacity={0.6} mb={2}>
+              DBU, APU and BKU share the same metal. Plan pot = capacity × {fmt(L.quotaPct)} % quota − every plan sold (a plan is a guarantee: only other plans bind it). Over-commit pot = capacity − every plan − everything already borrowed (a loan above a plan, never a sale). Precedence: a plan increase always wins over borrowed resources; when the over-commit pot goes negative the borrowed part must give way (GWARN017).
+            </Text>
+            <Box overflowX='auto'>
+              <Table size='sm' variant='simple'>
+                <Thead><Tr><Th>Axis</Th><Th isNumeric>Capacity</Th><Th isNumeric>Sellable (quota)</Th><Th isNumeric>Reserved (plans)</Th><Th isNumeric>Borrowed</Th><Th isNumeric>Plan pot</Th><Th isNumeric>Over-commit pot</Th><Th>Unit</Th></Tr></Thead>
+                <Tbody>
+                  {rows.map((r) => (
+                    <Tr key={r.axis}>
+                      <Td textTransform='uppercase' fontWeight='semibold'>{r.axis}</Td>
+                      <Td isNumeric>{r.f(L.capacity)}</Td>
+                      <Td isNumeric>{r.f(L.sellable)}</Td>
+                      <Td isNumeric>{r.f(L.reserved)}</Td>
+                      <Td isNumeric>{r.f(L.borrowed)}</Td>
+                      <Td isNumeric style={neg(L.planPot?.[r.axis === 'cpu' ? 'cores' : r.axis === 'mem' ? 'memBytes' : r.axis === 'io' ? 'iops' : 'diskBytes'])}>{r.f(L.planPot)}</Td>
+                      <Td isNumeric style={neg(L.overCommitPot?.[r.axis === 'cpu' ? 'cores' : r.axis === 'mem' ? 'memBytes' : r.axis === 'io' ? 'iops' : 'diskBytes'])}>{r.f(L.overCommitPot)}</Td>
+                      <Td>{r.unit}</Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </Box>
+            <Flex gap={6} wrap='wrap' mt={2}>
+              <Text fontSize='sm'>Reserved: <b>{fmt(L.reservedUnits?.dbu)} DBU</b> · <b>{fmt(L.reservedUnits?.apu)} APU</b> · <b>{fmt(L.reservedUnits?.bku)} BKU</b></Text>
+              <Text fontSize='sm'>Free to sell (plan pot): <b style={neg(L.planPotUnits?.dbu)}>{fmt(L.planPotUnits?.dbu)} DBU</b> · <b style={neg(L.planPotUnits?.apu)}>{fmt(L.planPotUnits?.apu)} APU</b> · <b style={neg(L.planPotUnits?.bku)}>{fmt(L.planPotUnits?.bku)} BKU</b></Text>
+              <Text fontSize='sm'>Free to borrow (over-commit pot): <b style={neg(L.borrowPot?.dbu)}>{fmt(L.borrowPot?.dbu)} DBU</b> · <b style={neg(L.borrowPot?.apu)}>{fmt(L.borrowPot?.apu)} APU</b> · <b style={neg(L.borrowPot?.bku)}>{fmt(L.borrowPot?.bku)} BKU</b></Text>
+            </Flex>
+            {L.overdrawn && (
+              <Text fontSize='xs' color='var(--danger-color, #e0603a)' mt={1}>Overdrawn: borrowed resources exceed the unreserved capacity. Plans take precedence, the borrowed part must give way; no further borrow is admitted.</Text>
+            )}
+          </Box>
+        )
+      })()}
+
       {data.clusters && data.clusters.length > 0 && (() => {
         const sumReal = data.clusters.reduce((s, c) => s + (c.dbu || 0), 0)
         const sumPlan = data.clusters.reduce((s, c) => s + (c.planDbu || 0), 0)

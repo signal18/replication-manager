@@ -45,6 +45,13 @@ type ResourceManager struct {
 	capacity map[string]*AgentCapacity // per agent (node) name
 	quotaPct float64                   // resource-manager-infra-quota-pct: share of the metal repman may take
 
+	// The physical ledger (resource_ledger.go): infra-wide capacity, the BKU plans and what
+	// each cluster holds above its plans, so the plan pot and the over-commit pot of every
+	// unit are derived from ONE ledger and never double count the shared metal.
+	infraCapacity *AgentCapacity
+	storagePlan   map[string]int           // cluster -> prov-db-bku (BKU plan, units)
+	borrowed      map[string]PhysicalUsage // cluster|track -> resources granted above the plan
+
 	// Unit ratios per workload profile -- owned by the manager, because it is the
 	// point where native resources converge and get projected into units. A database
 	// is NOT an app: each profile locks a DIFFERENT resource ratio (see
@@ -115,6 +122,8 @@ func NewResourceManager() *ResourceManager {
 		appPlan:     make(map[AppKey]*APUReading),
 		appAgent:    make(map[AppKey]string),
 		capacity:    make(map[string]*AgentCapacity),
+		storagePlan: make(map[string]int),
+		borrowed:    make(map[string]PhysicalUsage),
 		// Default per-profile ratios (the operator's rules; configurable, not locked).
 		// DB from CLOUD18_CREDIT_MODEL.md; Compute mem = 2 GB (NOT the doc's 4 GB): with
 		// refund, contractualising 4 GB for a light app/proxy is wasteful -- reserve

@@ -545,6 +545,11 @@ func (cluster *Cluster) resourceManagerGrowCheck(server *ServerMonitor, target f
 	if ok, reason := cluster.resources.CanGrowBeyondPlan(target, plan, cluster.Conf.ProvDBOvercommitPct); !ok {
 		return false, reason
 	}
+	// Physical ledger: the step is a BORROW above the plan, it must fit the over-commit pot
+	// (capacity minus every plan minus what is already borrowed); plans take precedence.
+	if ok, reason := cluster.resources.CanBorrow(ProfileDatabase, target-plan); !ok {
+		return false, reason
+	}
 	// Physical free pool on the node -- only gate when the agent capacity is known.
 	if ceiling, ok := cluster.resources.UsableCeilingDBU(server.Agent); ok {
 		used := cluster.resources.ConsumedByAgent(server.Agent).Dbu

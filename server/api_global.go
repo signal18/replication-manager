@@ -385,14 +385,15 @@ type globalResourcesAxis struct {
 // expose no disk/iops/network). The binding axis is the SCARCEST (min); usable =
 // capacity x quota%; slack = usable - consumed. This is the claim's first gate.
 type globalResourcesResponse struct {
-	QuotaPct    float64               `json:"quotaPct"`
-	Agents      int                   `json:"agents"`
-	Axes        []globalResourcesAxis `json:"axes"`
-	CapacityDBU float64               `json:"capacityDbu"`
-	BindingAxis string                `json:"bindingAxis"`
-	UsableDBU   float64               `json:"usableDbu"`
-	ConsumedDBU float64               `json:"consumedDbu"`
-	SlackDBU    float64               `json:"slackDbu"`
+	Ledger      cluster.ResourceLedger `json:"ledger"` // the physical ledger: plan pot + over-commit pot, every unit from ONE metal
+	QuotaPct    float64                `json:"quotaPct"`
+	Agents      int                    `json:"agents"`
+	Axes        []globalResourcesAxis  `json:"axes"`
+	CapacityDBU float64                `json:"capacityDbu"`
+	BindingAxis string                 `json:"bindingAxis"`
+	UsableDBU   float64                `json:"usableDbu"`
+	ConsumedDBU float64                `json:"consumedDbu"`
+	SlackDBU    float64                `json:"slackDbu"`
 	// APU (Compute) infra view -- the SAME metal projected into APU (1c/1GB/10GB, no IO).
 	CapacityAPU    float64                  `json:"capacityApu"`
 	BindingAxisApu string                   `json:"bindingAxisApu"`
@@ -502,6 +503,7 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 	}
 
 	resp := globalResourcesResponse{
+		Ledger:         rm.Ledger(),
 		QuotaPct:       quota,
 		Agents:         len(agentCores),
 		CapacityDBU:    bindingDBU,

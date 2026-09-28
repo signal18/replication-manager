@@ -108,5 +108,11 @@ func (repman *ReplicationManager) infraUnitPool() InfraUnitPool {
 	}
 	pool.FreeDbu = pool.UsableDbu - pool.PlannedDbu
 	pool.FreeApu = pool.UsableApu - pool.PlannedApu
+	// The ledger knows what the OTHER units already reserved on the same metal: its plan pot
+	// is the honest free figure (usable minus every plan, DBU + APU + BKU, physical).
+	if l := rm.Ledger(); l.Known {
+		pool.FreeDbu = l.PlanPotUnits.Dbu
+		pool.FreeApu = l.PlanPotUnits.Apu
+	}
 	return pool
 }

@@ -616,6 +616,27 @@ func (repman *ReplicationManager) ProduceContractedCapacityState() {
 	if repman.Conf.ResourceManagerInfraMemoryMB > 0 {
 		capMemMB = repman.Conf.ResourceManagerInfraMemoryMB
 	}
+	// Feed the physical ledger (plan pot / over-commit pot) with the same capacity, plus the
+	// disk and iops the agents do not report (config overrides only).
+	repman.resourceManager.SetInfraCapacity(&cluster.AgentCapacity{
+		Cores: capCores, MemMB: capMemMB,
+		DiskGB: repman.Conf.ResourceManagerInfraDiskGB, Iops: repman.Conf.ResourceManagerInfraIops,
+	})
+	// The ledger's precedence rule: once a plan sale leaves the over-commit pot negative,
+	// the clusters holding resources above their plan must give them back. Surface it as a
+	// global state naming them; the borrow gate already refuses any further loan.
+	if l := repman.resourceManager.Ledger(); l.Known && l.Overdrawn {
+		var who []string
+		for _, cl := range clusters {
+			if b := repman.resourceManager.BorrowedByCluster(cl.Name); b != (cluster.PhysicalUsage{}) {
+				who = append(who, fmt.Sprintf("%s (%.1f cores, %.0f MB, %.0f GB)", cl.Name, b.CpuCores, float64(b.MemBytes)/1024/1024, float64(b.DiskBytes)/1024/1024/1024))
+			}
+		}
+		repman.SetState("GWARN017", state.State{ErrType: "WARNING", ErrKey: "GWARN017",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN017"], fmt.Sprintf("over-commit pot %.1f cores / %.0f MB / %.0f GB; borrowed by %s",
+				l.OverCommitPot.Cores, l.OverCommitPot.MemBytes/1024/1024, l.OverCommitPot.DiskBytes/1024/1024/1024, strings.Join(who, ", "))),
+			ErrFrom: "REPMAN"})
+	}
 	q := repman.Conf.ResourceManagerInfraQuotaPct / 100.0
 	if q <= 0 {
 		q = 1

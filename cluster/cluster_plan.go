@@ -40,6 +40,25 @@ const (
 //
 // It is validation + hooking only. The plan is a client-set config variable; the dynamic
 // config manager persists it (SaveConfig) and the resource keeps living under the cap.
+// CanPlanIncrease asks the physical ledger whether `delta` more units of a plan can be SOLD:
+// the per-instance delta is multiplied by the instances it applies to (DBU per node ×
+// #nodes, APU per proxy × #proxies, BKU per cluster) and must fit the plan pot on every
+// axis. A plan is a guarantee: only other plans bind it, never consumption or borrows.
+func (cluster *Cluster) CanPlanIncrease(unit PlanUnit, delta int) (bool, string) {
+	if cluster.resources == nil || delta <= 0 {
+		return true, ""
+	}
+	switch unit {
+	case PlanUnitDBU:
+		return cluster.resources.CanPlanIncrease(ProfileDatabase, float64(delta*len(cluster.Servers)))
+	case PlanUnitAPU:
+		return cluster.resources.CanPlanIncrease(ProfileCompute, float64(delta*len(cluster.Proxies)))
+	case PlanUnitBKU:
+		return cluster.resources.CanPlanIncrease(ProfileStorage, float64(delta))
+	}
+	return true, ""
+}
+
 func (cluster *Cluster) ChangePlanUnits(unit PlanUnit, delta int) error {
 	if delta == 0 {
 		return nil
@@ -63,7 +82,10 @@ func (cluster *Cluster) ChangePlanUnits(unit PlanUnit, delta int) error {
 	if !cluster.CanPlanChange(unit) {
 		return fmt.Errorf("plan %s is admin-locked (immutable) for this cluster; the reservation cannot be changed", unit)
 	}
-	if target > cur { // increase -> prov-plan-increase-script may still refuse it
+	if target > cur { // increase -> the plan pot, then prov-plan-increase-script may still refuse it
+		if ok, reason := cluster.CanPlanIncrease(unit, target-cur); !ok {
+			return fmt.Errorf("plan increase refused for %s: %s", unit, reason)
+		}
 		if err := cluster.RunPlanIncreaseScript(unit, cur, target); err != nil {
 			return fmt.Errorf("plan increase refused for %s by prov-plan-increase-script: %w", unit, err)
 		}

@@ -167,6 +167,16 @@ func (cluster *Cluster) RefreshBackupUnits() {
 	d := cluster.appDiskAccounting(unit)
 	r := computeBKU(cluster.Conf.ProvDbBku, cluster.localBackupBytes(), unit, d.computeBytes, d.computeUnits, cluster.Conf.Cloud18MarketplaceBKUPrice, cluster.Conf.Cloud18MarketplaceOvercommitPricePct, cluster.Conf.Cloud18MarketplaceUndercommitPricePct, now)
 	cluster.BackupUnits = r
+	if cluster.resources != nil {
+		// Ledger: the BKU plan is a reservation on the NVMe disk axis; storage used above it
+		// is borrowed from the unreserved capacity (disk really written, nothing to shrink).
+		cluster.resources.SetStoragePlan(cluster.Name, r.Plan)
+		var b PhysicalUsage
+		if r.OverCommit > 0 {
+			b.DiskBytes = int64(r.OverCommit * float64(unit))
+		}
+		cluster.resources.SetBorrowed(cluster.Name, "bku", b)
+	}
 	cluster.BackupArchiveUnits = computeBAU(cluster.remoteBackupBytes(), unit, d.producerBytes, d.producerUnits, cluster.bauUnitPrice(), now)
 	if r.OverCommit > 0 {
 		cluster.SetState("WARN0219", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0219"], cluster.Name, r.BkuLocal, r.Plan, humanBytes(r.LocalBytes)), ErrFrom: "BACKUP"})
