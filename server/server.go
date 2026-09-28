@@ -1021,6 +1021,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.BackupEstimateSize, "backup-estimate-size", false, "To estimate size of backup before processing backup")
 	flags.IntVar(&conf.BackupGrowthPercentage, "backup-growth-percentage", 50, "Percentage of growth according to last backup to check required space. 0 means no growth from last backup. Default 50 percent growth")
 	flags.IntVar(&conf.BackupEstimateSizePercentage, "backup-estimate-size-percentage", 150, "Size ratio estimation for backup using information schema data and index size. Default 150 (50 percent bigger than size from query)")
+	flags.BoolVar(&conf.BackupEncryptionEnabled, "backup-encryption-enabled", false, "Encrypt newly created local backup artifacts (OpenSSL AES-256-CBC format) with the database root password (db-servers-credential)")
 	flags.BoolVar(&conf.BackupKeepUntilValid, "backup-keep-until-valid", false, "Backup will rename previous backup to .old before removing after new backup valid")
 	flags.StringVar(&conf.BackupMyDumperPath, "backup-mydumper-path", "", "Path to mydumper binary")
 	flags.StringVar(&conf.BackupMyLoaderPath, "backup-myloader-path", "", "Path to myloader binary")

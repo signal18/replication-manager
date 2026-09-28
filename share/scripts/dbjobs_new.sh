@@ -1446,7 +1446,9 @@ doneJob() {
     done=1
     case "$job" in
     mariabackup | xtrabackup )
-        matches=$(sed -n '/[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!/p' $LOG_DIR/backup.out)
+        # mariabackup: "YYYY-MM-DD HH:MM:SS completed OK!"
+        # xtrabackup 8.x: "<iso timestamp> 0 [Note] [MY-011825] [Xtrabackup] completed OK!"
+        matches=$(grep -E '([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}|\[Xtrabackup\]) completed OK!' $LOG_DIR/backup.out)
         if [ ! -n "$matches" ]; then
             jobstate=5
             done=0
@@ -1997,7 +1999,7 @@ for job in "${JOBS[@]}"; do
             ;;
         mariabackup)
             cd /docker-entrypoint-initdb.d
-            $MARIADB_BACKUP --innobackupex --defaults-file=$MYSQL_CONF/my.cnf --databases-exclude=.system --protocol=TCP $DB_CONN_PARAMETERS --stream=xbstream 2>"$LOG_DIR/backup.out" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
+            $MARIADB_BACKUP --innobackupex --defaults-file="$MYSQL_CONF/my.cnf" --databases-exclude=.system --protocol=TCP --user="$USER" --host="$MYSQL_SERVER" --password="$PASSWORD" --port="$MYSQL_PORT" --stream=xbstream 2>"$LOG_DIR/backup.out" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
             ;;
         errorlog)
             dblogfile "$ERRORLOG" "$job"
@@ -2044,7 +2046,7 @@ for job in "${JOBS[@]}"; do
             api_job_result="done"
             case "$job" in
             mariabackup|xtrabackup)
-                if ! grep -q '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!' "$LOG_DIR/backup.out" 2>/dev/null; then
+                if ! grep -qE '([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}|\[Xtrabackup\]) completed OK!' "$LOG_DIR/backup.out" 2>/dev/null; then
                     api_job_result="error"
                 fi
                 ;;

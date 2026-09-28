@@ -2869,6 +2869,11 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.BackupEstimateSize = !mycluster.Conf.BackupEstimateSize
 	case "backup-restic-purge-oldest-on-disk-space":
 		mycluster.Conf.BackupResticPurgeOldestOnDiskSpace = !mycluster.Conf.BackupResticPurgeOldestOnDiskSpace
+	case "backup-encryption-enabled":
+		mycluster.Conf.BackupEncryptionEnabled = !mycluster.Conf.BackupEncryptionEnabled
+		// Encryption turns secret versioning on: record the current root
+		// password on the next tick.
+		mycluster.MarkSecretVersionStoreDirty()
 	case "monitoring-pause":
 		mycluster.SwitchMonitoringPause()
 	case "monitoring-save-config":
@@ -4751,6 +4756,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupCheckFreeSpace = applyIsActive(mycluster.Conf.BackupCheckFreeSpace, isactive)
 	case "backup-estimate-size":
 		mycluster.Conf.BackupEstimateSize = applyIsActive(mycluster.Conf.BackupEstimateSize, isactive)
+	case "backup-encryption-enabled":
+		mycluster.Conf.BackupEncryptionEnabled = applyIsActive(mycluster.Conf.BackupEncryptionEnabled, isactive)
+		// Encryption turns secret versioning on: record the current root
+		// password on the next tick.
+		mycluster.MarkSecretVersionStoreDirty()
 	case "monitoring-pause":
 		mycluster.Conf.MonitorPause = applyIsActive(mycluster.Conf.MonitorPause, isactive)
 	case "monitoring-save-config":

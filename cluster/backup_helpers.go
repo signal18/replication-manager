@@ -601,7 +601,13 @@ func (cluster *Cluster) DeleteBackupByID(backupID int64) (*backupmgr.BackupMetad
 		if cluster.isBackupMetaInProgress(meta, server) {
 			return nil, fmt.Errorf("%w: %d", ErrBackupInProgress, backupID)
 		}
-		if err := os.RemoveAll(meta.Dest); err != nil {
+		var err error
+		if isEncryptedBackupArtifact(meta.Dest) {
+			err = cluster.removeBackupArtifactWithSidecar(meta.Dest)
+		} else {
+			err = os.RemoveAll(meta.Dest)
+		}
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -661,6 +667,10 @@ func (cluster *Cluster) PurgeExpiredAdhocBackups() {
 				backupDir := server.GetMyBackupDirectory()
 				if !isPathWithinBase(backupDir, meta.Dest) {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Skip removing ad-hoc backup path %s on %s: outside backup directory", meta.Dest, server.URL)
+				} else if isEncryptedBackupArtifact(meta.Dest) {
+					if err := cluster.removeBackupArtifactWithSidecar(meta.Dest); err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed removing ad-hoc backup path %s on %s: %s", meta.Dest, server.URL, err)
+					}
 				} else if err := os.RemoveAll(meta.Dest); err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed removing ad-hoc backup path %s on %s: %s", meta.Dest, server.URL, err)
 				}

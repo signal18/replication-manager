@@ -598,7 +598,12 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, uncom
 	}
 	defer client.Close()
 
-	if strings.HasSuffix(backupfile, "gz") && uncompress {
+	// The gzip-vs-raw decision is about the LOGICAL artifact (the ".gz"
+	// suffix survives compression, not encryption): an encrypted compressed
+	// backup is named "*.gz.enc", not "*.gz", but openRestoreArtifactStream
+	// already transparently decrypts it inside either sender below, so the
+	// only question left here is whether the decrypted bytes are gzip.
+	if strings.HasSuffix(logicalArtifactName(backupfile), "gz") && uncompress {
 		err = cluster.SSTRunSendGzip(client, backupfile, sv, progress)
 	} else {
 		err = cluster.SSTRunSendFile(client, backupfile, sv, progress)
@@ -675,7 +680,7 @@ func (cluster *Cluster) sstSendStream(client net.Conn, sourceName string, opener
 	}
 
 	streamReader := reader
-	if uncompress && strings.HasSuffix(strings.ToLower(sourceName), ".gz") {
+	if uncompress && strings.HasSuffix(strings.ToLower(logicalArtifactName(sourceName)), ".gz") {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST stream decompressing gzip source: %s", sourceName)
 		gzReader, err := gzip.NewReader(reader)
 		if err != nil {
@@ -725,7 +730,9 @@ func (cluster *Cluster) sstSendStream(client net.Conn, sourceName string, opener
 
 func (cluster *Cluster) SSTRunSendGzip(client net.Conn, backupfile string, sv *ServerMonitor, progress *SSTProgressSink) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST sending file: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
-	file, err := os.Open(backupfile)
+	// openRestoreArtifactStream transparently decrypts as it streams when
+	// only an encrypted "<backupfile>.enc" sibling exists on disk.
+	file, _, err := cluster.openRestoreArtifactStream(backupfile)
 	if err != nil {
 		return fmt.Errorf("SST to server %s failed to open backup file, err: %s ", sv.URL, err)
 	}
@@ -754,20 +761,27 @@ func (cluster *Cluster) SSTRunSendGzip(client net.Conn, backupfile string, sv *S
 	// Read and send data in chunks
 	for {
 		n, err := fz.Read(sendBuffer)
-		if err != nil && err != io.EOF {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to read decompressed data: %v", err)
-		}
 		if n > 0 {
 			// Send the chunk to the network connection
-			if bts, err := client.Write(sendBuffer[:n]); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to write chunk at position %d: %v", total, err)
-			} else {
-				total = total + uint64(bts)
-				progress.AddBytes(int64(bts))
+			bts, werr := client.Write(sendBuffer[:n])
+			if werr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to write chunk at position %d: %v", total, werr)
+				return fmt.Errorf("SST to server %s failed writing chunk at position %d: %w", sv.URL, total, werr)
 			}
+			total = total + uint64(bts)
+			progress.AddBytes(int64(bts))
 		}
 		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			// A non-EOF error (e.g. a damaged .enc artifact failing
+			// decryption, or a corrupted gzip stream) must abort
+			// the transfer, not loop forever re-reading the same terminal
+			// error -- and must not fall through to the unconditional
+			// success log/return below.
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to read decompressed data: %v", err)
+			return fmt.Errorf("SST to server %s failed reading decompressed data: %w", sv.URL, err)
 		}
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup has been sent, closing connection!")
@@ -776,7 +790,9 @@ func (cluster *Cluster) SSTRunSendGzip(client net.Conn, backupfile string, sv *S
 }
 
 func (cluster *Cluster) SSTRunSendFile(client net.Conn, backupfile string, sv *ServerMonitor, progress *SSTProgressSink) error {
-	file, err := os.Open(backupfile)
+	// openRestoreArtifactStream transparently decrypts as it streams when
+	// only an encrypted "<backupfile>.enc" sibling exists on disk.
+	file, size, err := cluster.openRestoreArtifactStream(backupfile)
 	if os.IsNotExist(err) && cluster.Conf.CompressBackups {
 		backupfile = strings.Replace(backupfile, "xbtream", "gz", 1)
 		return cluster.SSTRunSendGzip(client, backupfile, sv, progress)
@@ -789,9 +805,7 @@ func (cluster *Cluster) SSTRunSendFile(client net.Conn, backupfile string, sv *S
 	// Sent here means the file's bytes go over the wire unmodified (no
 	// decompress-then-send, unlike SSTRunSendGzip), so the on-disk size is a
 	// trustworthy total for the progress bar. No-op when progress is nil.
-	if fi, err := file.Stat(); err == nil {
-		progress.SetTotal(fi.Size())
-	}
+	progress.SetTotal(size)
 
 	bufSize := cluster.Conf.SSTSendBuffer
 	readaheadDepth := 4 // number of chunks to prefetch
@@ -824,7 +838,19 @@ func (cluster *Cluster) SSTRunSendFile(client net.Conn, backupfile string, sv *S
 		select {
 		case buf, ok := <-ch:
 			if !ok {
-				// all done
+				// The producer closes ch (deferred) only after it has
+				// already sent any read error to the buffered errCh and
+				// returned -- that send happens-before this close in
+				// program order, so a non-blocking check here can never
+				// race it: if a real read error occurred (e.g. a damaged/
+				// tampered .enc artifact failing decryption), it is
+				// already sitting in errCh and must not be missed in favor
+				// of reporting a truncated transfer as a success.
+				select {
+				case err := <-errCh:
+					return fmt.Errorf("read error: %w", err)
+				default:
+				}
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo,
 					"Backup has been sent (%d bytes), closing connection!", total)
 				close(done)
@@ -858,7 +884,7 @@ func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor, pr
 	}
 	defer client.Close()
 
-	if strings.HasSuffix(backupfile, "gz") {
+	if strings.HasSuffix(logicalArtifactName(backupfile), "gz") {
 		err = cluster.SSTRunSendGzip(client, backupfile, sv, progress)
 	} else {
 		err = cluster.SSTRunSendFile(client, backupfile, sv, progress)

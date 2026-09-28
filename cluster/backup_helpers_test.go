@@ -943,6 +943,72 @@ func TestDeleteBackupByIDSuccess(t *testing.T) {
 	}
 }
 
+func TestDeleteBackupByIDRemovesEncryptedIntegritySidecar(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	dest := filepath.Join(server.GetMyBackupDirectory(), "mysqldump.sql.gz.enc")
+	if err := os.WriteFile(dest, []byte("ciphertext"), 0600); err != nil {
+		t.Fatalf("create encrypted backup: %v", err)
+	}
+	sidecar := backupmgr.IntegritySidecarPath(dest)
+	if err := os.WriteFile(sidecar, []byte("hmac-sha256-v1:"+strings.Repeat("0", 64)+"\n"), 0600); err != nil {
+		t.Fatalf("create integrity sidecar: %v", err)
+	}
+	meta := &backupmgr.BackupMetadata{
+		Id:         time.Now().UnixNano(),
+		BackupTool: config.ConstBackupLogicalTypeMysqldump,
+		BackupLine: backupmgr.BackupLineDefault,
+		Source:     server.URL,
+		Dest:       dest,
+		Encrypted:  true,
+	}
+	cluster.BackupMetaMap.Set(meta.Id, meta)
+	if err := os.WriteFile(server.backupMetaFilePath(meta), []byte("{}"), 0600); err != nil {
+		t.Fatalf("create metadata: %v", err)
+	}
+	if _, err := cluster.DeleteBackupByID(meta.Id); err != nil {
+		t.Fatalf("delete encrypted backup: %v", err)
+	}
+	if fileExists(dest) || fileExists(sidecar) {
+		t.Fatalf("encrypted backup and integrity sidecar must delete together")
+	}
+}
+
+func TestPurgeExpiredAdhocBackupRemovesEncryptedIntegritySidecar(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	dest := filepath.Join(server.GetMyBackupDirectory(), "adhoc.sql.gz.enc")
+	if err := os.WriteFile(dest, []byte("ciphertext"), 0600); err != nil {
+		t.Fatalf("create encrypted backup: %v", err)
+	}
+	sidecar := backupmgr.IntegritySidecarPath(dest)
+	if err := os.WriteFile(sidecar, []byte("hmac-sha256-v1:"+strings.Repeat("0", 64)+"\n"), 0600); err != nil {
+		t.Fatalf("create integrity sidecar: %v", err)
+	}
+	meta := &backupmgr.BackupMetadata{
+		Id:            time.Now().UnixNano(),
+		BackupTool:    config.ConstBackupLogicalTypeMysqldump,
+		BackupLine:    backupmgr.BackupLineAdhoc,
+		RetentionDays: 1,
+		Completed:     true,
+		EndTime:       time.Now().Add(-48 * time.Hour),
+		Source:        server.URL,
+		Dest:          dest,
+		Encrypted:     true,
+	}
+	metaPath := server.backupMetaFilePath(meta)
+	payload, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("marshal metadata: %v", err)
+	}
+	if err := os.WriteFile(metaPath, payload, 0600); err != nil {
+		t.Fatalf("create metadata: %v", err)
+	}
+	cluster.BackupMetaMap.Set(meta.Id, meta)
+	cluster.PurgeExpiredAdhocBackups()
+	if fileExists(dest) || fileExists(sidecar) || fileExists(metaPath) {
+		t.Fatalf("expired encrypted backup, sidecar, and metadata must delete together")
+	}
+}
+
 func TestDeleteBackupByIDInProgress(t *testing.T) {
 	cluster, server := newTestClusterServer(t)
 	cluster.InLogicalBackup = true

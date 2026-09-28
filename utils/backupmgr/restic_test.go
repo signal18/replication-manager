@@ -340,6 +340,26 @@ func TestAppendAndQueueHelpers(t *testing.T) {
 	}
 }
 
+func TestAddBackupTaskWithCallbackPreservesExistingOptions(t *testing.T) {
+	repo := newPausedRepo(t)
+	repo.ShutdownWorker()
+
+	repo.AddBackupTaskWithCallback("/data", []string{"tag1"}, "host1")
+	legacy := repo.TaskQueue[len(repo.TaskQueue)-1].BackupOpt
+	if legacy == nil || len(legacy.Exclude) != 0 {
+		t.Fatalf("legacy callback task unexpectedly excludes paths: %+v", legacy)
+	}
+
+	repo.AddBackupTaskWithOptions(ResticBackupOption{
+		DirPath: "/data",
+		Exclude: []string{"*.partial"},
+	})
+	encrypted := repo.TaskQueue[len(repo.TaskQueue)-1].BackupOpt
+	if encrypted == nil || len(encrypted.Exclude) != 1 || encrypted.Exclude[0] != "*.partial" {
+		t.Fatalf("explicit backup exclusions not preserved: %+v", encrypted)
+	}
+}
+
 func TestMoveTaskHelpers(t *testing.T) {
 	repo := newPausedRepo(t)
 	repo.TaskQueue = []*ResticTask{

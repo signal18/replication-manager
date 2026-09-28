@@ -422,6 +422,9 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	}
 
 	cluster := server.ClusterGroup
+	if err := cluster.preflightBackupEncryptionKey(); err != nil {
+		return err
+	}
 	if !cluster.waitForBackupSlot() {
 		return errors.New("backup canceled: cluster shutting down")
 	}
@@ -462,19 +465,37 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 		dest = dest + backupext
 		if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
-			exec.Command("mv", dest, dest+".old").Run()
+			oldSrc := cluster.previousBackupArtifactPath(dest)
+			if isEncryptedBackupArtifact(oldSrc) {
+				cluster.renameBackupArtifactWithSidecar(oldSrc, oldSrc+".old")
+			} else {
+				exec.Command("mv", oldSrc, oldSrc+".old").Run()
+			}
 		}
-		port, err = cluster.SSTRunReceiverToGZip(server, dest, ConstJobCreateFile, cluster.Conf.BackupPhysicalType)
+		port, err = cluster.SSTRunReceiverToGZip(server, cluster.prepareBackupStaging(dest), ConstJobCreateFile, cluster.Conf.BackupPhysicalType)
 	} else {
 		dest = dest + backupext
 		if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
-			exec.Command("mv", dest, dest+".old").Run()
+			oldSrc := cluster.previousBackupArtifactPath(dest)
+			if isEncryptedBackupArtifact(oldSrc) {
+				cluster.renameBackupArtifactWithSidecar(oldSrc, oldSrc+".old")
+			} else {
+				exec.Command("mv", oldSrc, oldSrc+".old").Run()
+			}
 		}
-		port, err = cluster.SSTRunReceiverToFile(server, dest, ConstJobCreateFile, cluster.Conf.BackupPhysicalType)
+		port, err = cluster.SSTRunReceiverToFile(server, cluster.prepareBackupStaging(dest), ConstJobCreateFile, cluster.Conf.BackupPhysicalType)
+	}
+	// The receiver writes to staging when encryption is on; metadata tracks
+	// it until JobFinishReceiveFile publishes or discards it.
+	if cluster.Conf.BackupEncryptionEnabled {
+		dest = dest + partialSuffixForCleanup
 	}
 
 	if err != nil {
+		if isBackupStagingPath(dest) {
+			os.RemoveAll(dest)
+		}
 		cluster.SetInPhysicalBackupState(false)
 		return nil
 	}
@@ -560,7 +581,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 
 	bckserver := cluster.GetBackupServer()
 	if bckserver != nil && bckserver.HasBackupTypeCookie(backtype) {
-		if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
+		if cluster.backupArtifactExists(bckserver.GetMyBackupDirectory() + file) {
 			backupfile = bckserver.GetMyBackupDirectory() + file
 			useMaster = false
 		} else {
@@ -570,7 +591,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 	}
 
 	if useMaster {
-		if _, err := os.Stat(backupfile); err != nil {
+		if !cluster.backupArtifactExists(backupfile) {
 			//Remove false cookie
 			master.DelBackupTypeCookie(backtype)
 			return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", backtype)
@@ -655,6 +676,19 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 
 	return nil
 }
+
+// pipeDecryptReadCloser pairs a decrypted plaintext reader over a Restic dump
+// pipe with that pipe's underlying *io.PipeReader, so closing it (as any
+// io.ReadCloser consumer is expected to) also releases the pipe and lets the
+// DumpSnapshot producer goroutine feeding it unwind instead of blocking
+// forever on a write nobody will ever read.
+type pipeDecryptReadCloser struct {
+	plaintext io.Reader
+	pipe      *io.PipeReader
+}
+
+func (p *pipeDecryptReadCloser) Read(b []byte) (int, error) { return p.plaintext.Read(b) }
+func (p *pipeDecryptReadCloser) Close() error               { return p.pipe.Close() }
 
 func (server *ServerMonitor) JobReseedPhysicalBackupWithPayload(backtype, backupPath string, extraPayload map[string]string) error {
 	cluster := server.ClusterGroup
@@ -798,7 +832,7 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 
 	bckserver := cluster.GetBackupServer()
 	if bckserver != nil && bckserver.HasBackupTypeCookie(cluster.Conf.BackupPhysicalType) {
-		if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
+		if cluster.backupArtifactExists(bckserver.GetMyBackupDirectory() + file) {
 			backupfile = bckserver.GetMyBackupDirectory() + file
 			useSelfBackup = false
 		} else {
@@ -808,7 +842,7 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 	}
 
 	if useSelfBackup {
-		if _, err := os.Stat(backupfile); err != nil {
+		if !cluster.backupArtifactExists(backupfile) {
 			//Remove false cookie
 			server.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
 			return fmt.Errorf("Cancelling flashback. No backup file found on master for %s", cluster.Conf.BackupPhysicalType)
@@ -1193,7 +1227,7 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 	}
 
 	if useMaster {
-		if _, err := os.Stat(backupfile); err != nil {
+		if !cluster.backupArtifactExists(backupfile) {
 			//Remove false cookie
 			master.DelBackupTypeCookie(backtype)
 			return nil, fmt.Errorf("No backup file found on master for %s", backtype)
@@ -1497,6 +1531,16 @@ func findExistingBackupPath(server *ServerMonitor, candidates []string) (string,
 		if _, err := os.Stat(path); err == nil {
 			return path, true
 		}
+		// An encrypted backup replaces the plaintext artifact with a
+		// ".enc"/".tar.enc" sibling (see finalizeBackupEncryption); the
+		// caller's later open/decrypt (openRestoreArtifactStream /
+		// resolveRestoreArtifactPath) resolves it from this same path.
+		if _, err := os.Stat(path + ".enc"); err == nil {
+			return path, true
+		}
+		if _, err := os.Stat(path + ".tar.enc"); err == nil {
+			return path, true
+		}
 	}
 	return "", false
 }
@@ -1530,8 +1574,24 @@ func resolveLogicalBackupPathFromMeta(server *ServerMonitor, backtype string) (s
 }
 
 func isSplitDumpDir(path string) (bool, error) {
+	// An encrypted mysqldump directory artifact is only ever a splitdump
+	// (finalizeBackupEncryption archives directories to ".tar.enc"). The
+	// path may be the encrypted name itself (metadata Dest) or the
+	// plaintext-style name with an encrypted sibling (discovery fallback
+	// when no metadata is loaded, e.g. a fresh Repman host).
+	if strings.HasSuffix(path, ".tar.enc") {
+		return true, nil
+	}
 	info, err := os.Stat(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			if fileExists(path + ".tar.enc") {
+				return true, nil
+			}
+			if fileExists(path + ".enc") {
+				return false, nil
+			}
+		}
 		return false, err
 	}
 	if !info.IsDir() {
@@ -2609,6 +2669,13 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 		ctx = context.Background()
 	}
 
+	resolvedPath, cleanup, rerr := server.resolveRestoreArtifactPath(backupPath)
+	if rerr != nil {
+		return fmt.Errorf("[%s] Failed to resolve backup artifact for reseed: %s", server.URL, rerr)
+	}
+	defer cleanup()
+	backupPath = resolvedPath
+
 	_, sqlLogBin, err := server.buildLogicalRestorePreamble()
 	if err != nil {
 		return err
@@ -2921,7 +2988,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 				}
 			}
 			if useMaster {
-				if _, err := os.Stat(backupfile); err != nil {
+				if !cluster.backupArtifactExists(backupfile) {
 					master.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
 					noBackupErr := fmt.Errorf("Cancelling reseed. No logical %s backup found on any node", backtype)
 					server.JobsUpdateStateRuntimeOnly(task, noBackupErr.Error(), 5, 1)
@@ -3056,6 +3123,14 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 	cluster := server.ClusterGroup
 	start := time.Now()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (myloader) started at %s for: %s", start.Format(time.RFC3339), server.URL)
+
+	resolvedDir, cleanup, err := server.resolveRestoreArtifactPath(backupdir)
+	if err != nil {
+		return fmt.Errorf("[%s] Failed to resolve backup artifact for reseed: %s", server.URL, err)
+	}
+	defer cleanup()
+	backupdir = resolvedDir
+
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalLoadThreads)
 
 	if restoreUser {
@@ -3137,18 +3212,18 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 
 	server.StopSlave()
 
-	gzfile, err := os.Open(backupfile)
+	// openRestoreArtifactStream transparently decrypts as it streams when
+	// only an encrypted "<backupfile>.enc" sibling exists on disk; it never
+	// materializes a second plaintext dump.
+	gzfile, total, err := server.openRestoreArtifactStream(backupfile)
 	if err != nil {
 		return fmt.Errorf("[%s] Failed opening backup file in backup server for reseed:  %s ", server.URL, err)
 	}
+	defer gzfile.Close()
 
 	// Progress: count compressed bytes streamed out of the file size so the per-tick
 	// reseed state reports "<streamed> streamed out of <total> compressed backup at
 	// <rate>/s". Rate is rolling (per tick) since it varies a lot by table.
-	var total int64
-	if fi, e := gzfile.Stat(); e == nil {
-		total = fi.Size()
-	}
 	counted := server.startReseedProgress(&ReseedProgress{Backup: backupfile}, gzfile, total)
 	defer server.stopReseedProgress()
 
@@ -3711,10 +3786,21 @@ func (server *ServerMonitor) GetMyBackupDirectory() string {
 	s3dir := server.GetMyBackupDirectoryPath()
 
 	if _, err := os.Stat(s3dir); os.IsNotExist(err) {
-		err := os.MkdirAll(s3dir, os.ModePerm)
+		mode := os.FileMode(os.ModePerm)
+		if cluster.Conf.BackupEncryptionEnabled {
+			// Encrypted backup jobs use a short plaintext staging period, so
+			// their directories must not be group/world readable.
+			mode = 0700
+		}
+		err := os.MkdirAll(s3dir, mode)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Create backup path failed: %s: %s", s3dir, err)
 		}
+	}
+
+	if cluster.Conf.BackupEncryptionEnabled {
+		cluster.cleanupStaleEncryptionArtifacts()
+		cluster.tightenBackupDirectoryPermissionsOnce(s3dir)
 	}
 
 	return s3dir
@@ -4512,6 +4598,9 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	}
 
 	cluster := server.ClusterGroup
+	if err := cluster.preflightBackupEncryptionKey(); err != nil {
+		return err
+	}
 
 	backupLine := server.resolveBackupLine(opts)
 	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
@@ -4643,7 +4732,10 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Ad-hoc backup with backup-save-script using unique destination %s", filename)
 		}
 
-		// Override backup tool and destination
+		// Override backup tool and destination. With encryption on the
+		// script writes to a ".partial" staging name (see
+		// prepareBackupStaging).
+		filename = cluster.prepareBackupStaging(filename)
 		server.LastBackupMeta.Logical.BackupTool = task
 		server.LastBackupMeta.Logical.Dest = filename
 
@@ -4690,23 +4782,37 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 			if oldV != nil {
 				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
 			}
-			server.LastBackupMeta.Logical.Dest = dest
+			// The producer writes to staging; the .old rotation below still
+			// targets the published artifact names.
+			stagedFile := cluster.prepareBackupStaging(filename)
+			stagedDir := cluster.prepareBackupStaging(outputdir)
+			server.LastBackupMeta.Logical.Dest = cluster.prepareBackupStaging(dest)
 			server.LastBackupMeta.Logical.Compressed = compressed
 			server.LastBackupMeta.Logical.SplitDump = cluster.Conf.BackupMysqldumpSplitDump
 			if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 				if cluster.Conf.BackupMysqldumpSplitDump {
-					exec.Command("mv", outputdir, outputdir+".old").Run()
+					oldSrc := cluster.previousBackupArtifactPath(outputdir)
+					if isEncryptedBackupArtifact(oldSrc) {
+						cluster.renameBackupArtifactWithSidecar(oldSrc, oldSrc+".old")
+					} else {
+						exec.Command("mv", oldSrc, oldSrc+".old").Run()
+					}
 				} else {
-					exec.Command("mv", filename, filename+".old").Run()
+					oldSrc := cluster.previousBackupArtifactPath(filename)
+					if isEncryptedBackupArtifact(oldSrc) {
+						cluster.renameBackupArtifactWithSidecar(oldSrc, oldSrc+".old")
+					} else {
+						exec.Command("mv", oldSrc, oldSrc+".old").Run()
+					}
 				}
 			}
 
 			allowRotate := cluster.Conf.BackupKeepUntilValid && !isAdhoc
 			if cluster.Conf.BackupMysqldumpSplitDump {
-				err = server.JobBackupMysqldump(ctx, task, outputdir, allowRotate)
+				err = server.JobBackupMysqldump(ctx, task, stagedDir, allowRotate)
 			} else {
-				err = server.JobBackupMysqldump(ctx, task, filename, allowRotate)
+				err = server.JobBackupMysqldump(ctx, task, stagedFile, allowRotate)
 			}
 			if err != nil {
 				result := err.Error()
@@ -4720,9 +4826,9 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 				if e2 := updateJobState(task, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
-				checkPath := filename
+				checkPath := stagedFile
 				if cluster.Conf.BackupMysqldumpSplitDump {
-					checkPath = outputdir
+					checkPath = stagedDir
 				}
 				_, e3 := os.Stat(checkPath)
 				if e3 == nil {
@@ -4743,13 +4849,19 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 			if oldV != nil {
 				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
 			}
-			server.LastBackupMeta.Logical.Dest = outputdir
+			stagedDir := cluster.prepareBackupStaging(outputdir)
+			server.LastBackupMeta.Logical.Dest = stagedDir
 			if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
-				exec.Command("mv", outputdir, outputdir+".old").Run()
+				oldSrc := cluster.previousBackupArtifactPath(outputdir)
+				if isEncryptedBackupArtifact(oldSrc) {
+					cluster.renameBackupArtifactWithSidecar(oldSrc, oldSrc+".old")
+				} else {
+					exec.Command("mv", oldSrc, oldSrc+".old").Run()
+				}
 			}
 
-			err = server.JobBackupDumpling(outputdir + "/")
+			err = server.JobBackupDumpling(stagedDir + "/")
 			if err != nil {
 				if e2 := updateJobState(task, err.Error(), 5, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
@@ -4758,7 +4870,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 				if e2 := updateJobState(task, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
-				_, e3 := os.Stat(outputdir)
+				_, e3 := os.Stat(stagedDir)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
 					server.LastBackupMeta.Logical.GetSizeAndFileCount()
@@ -4777,13 +4889,19 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 			if oldV != nil {
 				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
 			}
-			server.LastBackupMeta.Logical.Dest = outputdir
+			stagedDir := cluster.prepareBackupStaging(outputdir)
+			server.LastBackupMeta.Logical.Dest = stagedDir
 			server.LastBackupMeta.Logical.Compressed = true
 			if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
-				exec.Command("mv", outputdir, outputdir+".old").Run()
+				oldSrc := cluster.previousBackupArtifactPath(outputdir)
+				if isEncryptedBackupArtifact(oldSrc) {
+					cluster.renameBackupArtifactWithSidecar(oldSrc, oldSrc+".old")
+				} else {
+					exec.Command("mv", oldSrc, oldSrc+".old").Run()
+				}
 			}
-			err = server.JobBackupMyDumper(outputdir + "/")
+			err = server.JobBackupMyDumper(stagedDir + "/")
 			if err != nil {
 				if e2 := updateJobState(task, err.Error(), 5, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
@@ -4793,7 +4911,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 
-				_, e3 := os.Stat(outputdir)
+				_, e3 := os.Stat(stagedDir)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
 					server.LastBackupMeta.Logical.GetSizeAndFileCount()
@@ -4816,6 +4934,17 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 				}
 			}
 		}
+	}
+
+	if err == nil {
+		if encErr := server.finalizeBackupEncryption(server.LastBackupMeta.Logical, "logical"); encErr != nil {
+			err = encErr
+			server.reportBackupEncryptionFailure(server.LastBackupMeta.Logical, "logical", encErr)
+		}
+	}
+	if err != nil {
+		// A failed job never leaves its plaintext staging output behind.
+		cluster.discardBackupStaging(server.LastBackupMeta.Logical)
 	}
 
 	server.WriteBackupMetadata(backupmgr.BackupMethodLogical)
@@ -5062,8 +5191,18 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, u
 		resticHost = ""
 	}
 
-	// Add backup task asynchronously with callback to update metadata
-	resultCh := cluster.ResticManager.AddBackupTaskWithCallback(backupPath, tags, resticHost)
+	// Add backup task asynchronously with callback to update metadata. Only
+	// encrypted local backup jobs use plaintext staging, so preserve the
+	// existing Restic task arguments when encryption is disabled.
+	backupOpt := backupmgr.ResticBackupOption{
+		DirPath: backupPath,
+		Tags:    tags,
+		Host:    resticHost,
+	}
+	if cluster.Conf.BackupEncryptionEnabled {
+		backupOpt.Exclude = []string{"*.partial"}
+	}
+	resultCh := cluster.ResticManager.AddBackupTaskWithOptions(backupOpt)
 
 	// Launch goroutine to wait for result and update metadata
 	go func() {
@@ -5118,6 +5257,9 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	cluster := server.ClusterGroup
 	var err error
 
+	if err := cluster.preflightBackupEncryptionKey(); err != nil {
+		return err
+	}
 	if !server.IsMaster() {
 		err = errors.New("Cancelling backup because server is not master")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s", err.Error())
@@ -5167,7 +5309,10 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	server.SetBackingUpBinaryLog(true)
 	defer server.SetBackingUpBinaryLog(false)
 
-	params := append(cluster.GetBinlogCredentials(server), "--read-from-remote-server", "--raw", "--server-id=10000", "--result-file="+server.GetMyBackupDirectory())
+	// With encryption on, mysqlbinlog writes into the ".partial" staging
+	// directory; only finalizeBinlogCopy publishes the encrypted copy.
+	copyDir := server.binlogCopyDir()
+	params := append(cluster.GetBinlogCredentials(server), "--read-from-remote-server", "--raw", "--server-id=10000", "--result-file="+copyDir)
 	params = append(params, server.GetSSLClientParam("client-binlog")...)
 	params = append(params, binlogfile)
 	cmdrun := exec.Command(cluster.GetMysqlBinlogPath(), misc.RemoveEmptyString(params)...)
@@ -5178,6 +5323,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 
 	if err := cmdrun.Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqlbinlog command: %s at %s", err, strings.Replace(cmdrun.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
+		server.discardBinlogCopy(copyDir, binlogfile)
 		return err
 	}
 
@@ -5199,7 +5345,17 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	if err := cmdrun.Wait(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed to backup binlogs of %s,%s", server.URL, err.Error())
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), "="+cluster.GetRplPass(), "=XXXX"))
+		server.discardBinlogCopy(copyDir, binlogfile)
 		return err
+	}
+
+	// Encryption always runs on a successful copy, purge batch or not: a
+	// purge-triggered fetch (JobBackupBinlogPurge re-downloading a missing
+	// retained binlog) still produces a plaintext file on disk that must not
+	// be left unencrypted just because it came from the purge path.
+	if _, encErr := server.finalizeBinlogCopy(copyDir, binlogfile); encErr != nil {
+		cluster.SetState("WARN0219", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0219"], server.URL, "binlog", encErr.Error()), ErrFrom: "JOB", ServerUrl: server.URL})
+		return encErr
 	}
 
 	//Skip copying to resting when purge due to batching
@@ -5243,7 +5399,7 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 	for binlogfilestop < binlogfilestart {
 		if binlogfilestop > 0 {
 			filename := prefix + "." + fmt.Sprintf("%06d", binlogfilestop)
-			if _, err := os.Stat(server.GetMyBackupDirectory() + "/" + filename); os.IsNotExist(err) {
+			if !cluster.backupArtifactExists(server.GetMyBackupDirectory() + "/" + filename) {
 				if _, ok := server.BinaryLogFiles.CheckAndGet(filename); ok {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup master missing binlog of %s,%s", server.URL, filename)
 					//Set true to skip sending to resting multiple times
@@ -5260,11 +5416,28 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 	}
 
 	for _, file := range files {
-		_, ok := keeping[file.Name()]
+		if isBackupIntegritySidecar(file.Name()) {
+			continue
+		}
+		// An encrypted retained binlog is named "<logical-name>.enc" on disk;
+		// keeping is keyed by the logical name, so the lookup (and the
+		// removal-tracking below) must compare against that, not the raw
+		// on-disk name, or a perfectly retained encrypted binlog gets
+		// purged here and then re-fetched as a fresh, separately-encrypted
+		// copy on the next cycle.
+		logicalName := logicalArtifactName(file.Name())
+		_, ok := keeping[logicalName]
 		if strings.HasPrefix(file.Name(), prefix) && !ok {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Purging binlog file from backup dir %s", file.Name())
-			if err := os.Remove(server.GetMyBackupDirectory() + "/" + file.Name()); err == nil {
-				server.BinaryLogMetaToRemove = append(server.BinaryLogMetaToRemove, file.Name())
+			path := server.GetMyBackupDirectory() + "/" + file.Name()
+			var removeErr error
+			if isEncryptedBackupArtifact(path) {
+				removeErr = cluster.removeBackupArtifactWithSidecar(path)
+			} else {
+				removeErr = os.Remove(path)
+			}
+			if removeErr == nil {
+				server.BinaryLogMetaToRemove = append(server.BinaryLogMetaToRemove, logicalName)
 			}
 		}
 	}
@@ -6012,6 +6185,9 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 
 func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool) error {
 	cluster := server.ClusterGroup
+	if err := cluster.preflightBackupEncryptionKey(); err != nil {
+		return err
+	}
 	if !server.IsMaster() {
 		return errors.New("Copy only master binlog")
 	}
@@ -6050,7 +6226,8 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 	defer client.Close()
 
 	remotefile := server.GetBinaryLogDir() + "/" + binlogfile
-	localfile := server.GetMyBackupDirectory() + "/" + binlogfile
+	copyDir := server.binlogCopyDir()
+	localfile := filepath.Join(copyDir, binlogfile)
 
 	fileinfo, err := client.Sftp().Stat(remotefile)
 	if err != nil {
@@ -6061,23 +6238,34 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 	err = client.Sftp().Download(remotefile, localfile)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Download binlog error:  %s", err)
+		server.discardBinlogCopy(copyDir, binlogfile)
 		return err
 	}
 
 	localinfo, err := os.Stat(localfile)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while getting backed up binlog file [%s] stat:  %s", localfile, err)
+		server.discardBinlogCopy(copyDir, binlogfile)
 		return err
 	}
 
 	if fileinfo.Size() != localinfo.Size() {
 		err := errors.New("Remote filesize is different with downloaded filesize")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while getting backed up binlog file [%s] stat:  %s", localfile, err)
+		server.discardBinlogCopy(copyDir, binlogfile)
 		return err
+	}
+
+	// Encryption runs on every successful copy, purge batch or not (same as
+	// JobBackupBinlog): a purge-triggered fetch must not stay plaintext.
+	if _, encErr := server.finalizeBinlogCopy(copyDir, binlogfile); encErr != nil {
+		cluster.SetState("WARN0219", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0219"], server.URL, "binlog", encErr.Error()), ErrFrom: "JOB", ServerUrl: server.URL})
+		return encErr
 	}
 
 	//Skip copying to resting when purge due to batching
 	if !isPurge {
+
 		if idx := slices.Index(server.BinaryLogMetaToWrite, binlogfile); idx == -1 {
 			server.BinaryLogMetaToWrite = append(server.BinaryLogMetaToWrite, binlogfile)
 		}
@@ -6469,7 +6657,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		}
 
 		if useMaster {
-			if _, err := os.Stat(backupfile); err != nil {
+			if !cluster.backupArtifactExists(backupfile) {
 				//Remove false cookie
 				master.DelBackupTypeCookie(backupType)
 				return fmt.Errorf("No backup file found on master for %s", backupType)
@@ -6660,6 +6848,27 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 					}
 					_ = pw.Close()
 				}()
+
+				// A snapshot taken after this server's own backup-encryption
+				// ran (finalizeBackupEncryption) stores the .enc artifact,
+				// not the plaintext xbstream -- decrypt the raw restic
+				// stream before it reaches the SST sender, which otherwise
+				// has no idea it's ciphertext.
+				if strings.HasSuffix(strings.ToLower(resticSourcePath), ".enc") {
+					// A stream cannot be retried: use the most likely password.
+					password, err := cluster.backupStreamRestorePassword(resticSourcePath)
+					if err != nil {
+						pr.CloseWithError(err)
+						return nil, 0, fmt.Errorf("cannot restore encrypted restic stream %s: %w", resticSourcePath, err)
+					}
+					decrypted, err := backupmgr.DecryptStream(pr, password)
+					if err != nil {
+						pr.CloseWithError(err)
+						return nil, 0, fmt.Errorf("failed to decrypt restic stream %s: %w", resticSourcePath, err)
+					}
+					return &pipeDecryptReadCloser{plaintext: decrypted, pipe: pr}, expectedSize, nil
+				}
+
 				return pr, expectedSize, nil
 			}
 
@@ -6682,14 +6891,14 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 		}
 
 		backupfile = payloadBackupPath
-		if _, err := os.Stat(backupfile); err != nil {
-			return fmt.Errorf("Cancelling reseed. Payload backup path not found for %s: %s", task, err)
+		if !cluster.backupArtifactExists(backupfile) {
+			return fmt.Errorf("Cancelling reseed. Payload backup path not found for %s: %s", task, backupfile)
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Using payload backup path %s for %s", backupfile, task)
 	} else {
 		bckserver := cluster.GetBackupServer()
 		if bckserver != nil && bckserver.HasBackupTypeCookie(backupType) {
-			if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
+			if cluster.backupArtifactExists(bckserver.GetMyBackupDirectory() + file) {
 				backupfile = bckserver.GetMyBackupDirectory() + file
 				useMaster = false
 			} else {
@@ -6699,7 +6908,7 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 		}
 
 		if useMaster {
-			if _, err := os.Stat(backupfile); err != nil {
+			if !cluster.backupArtifactExists(backupfile) {
 				//Remove false cookie
 				master.DelBackupTypeCookie(backupType)
 				return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", backupType)
@@ -6752,7 +6961,7 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 
 	bckserver := cluster.GetBackupServer()
 	if bckserver != nil && bckserver.HasBackupTypeCookie(cluster.Conf.BackupPhysicalType) {
-		if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
+		if cluster.backupArtifactExists(bckserver.GetMyBackupDirectory() + file) {
 			backupfile = bckserver.GetMyBackupDirectory() + file
 			useSelfBackup = false
 		} else {
@@ -6762,7 +6971,7 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 	}
 
 	if useSelfBackup {
-		if _, err := os.Stat(backupfile); err != nil {
+		if !cluster.backupArtifactExists(backupfile) {
 			//Remove false cookie
 			server.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
 			return fmt.Errorf("Cancelling flashback. No backup file found for %s", cluster.Conf.BackupPhysicalType)
@@ -6837,7 +7046,13 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 		lastmeta.GetSizeAndFileCount()
 		lastmeta.EndTime = time.Now()
 	}
-	if strings.TrimSpace(lastmeta.Dest) != "" {
+	// Skip once encrypted: Dest is now a .enc/.tar.enc artifact whose bytes
+	// are ciphertext (or, for a directory, a single tar.enc file rather
+	// than the original tree), so neither the extension nor the magic-byte
+	// sniff in DetectCompressionFromDest can see the real payload anymore --
+	// it would misdetect a compressed dump as uncompressed. The producer
+	// already recorded the true Compressed value before encryption ran.
+	if strings.TrimSpace(lastmeta.Dest) != "" && !lastmeta.Encrypted {
 		compressed, err := backupmgr.DetectCompressionFromDest(lastmeta.Dest)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to detect compression for %s: %s", lastmeta.Dest, err)
@@ -6868,9 +7083,18 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 		// Releases backupMetaMutex while polling and re-acquires before we mutate below; see
 		// the waitForBinlogMeta contract -- this is the self-deadlock fix.
 		server.waitForBinlogMeta(lastmeta)
-		lastmeta.Completed = true
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Metadata completed: %v", lastmeta)
-		cluster.BackupPostScript(server, backtype, lastmeta.Dest)
+		if lastmeta.EncryptionFailed {
+			// The underlying backup tool succeeded (that's why task.State is
+			// 3/4), but a post-producer encryption step failed and already
+			// marked this metadata Completed=false -- do not let the tool's
+			// own job state re-derive Completed=true here and publish a
+			// failed-encryption backup as a successful, Restic-eligible one.
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup encryption failed for %s; writing metadata as incomplete", server.URL)
+		} else {
+			lastmeta.Completed = true
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Metadata completed: %v", lastmeta)
+			cluster.BackupPostScript(server, backtype, lastmeta.Dest)
+		}
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Error occured in backup, writing incomplete metadata for backup in %s", server.URL)
 	}
@@ -6902,12 +7126,36 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 			// Delete previous meta with same type
 			cluster.BackupMetaMap.Delete(lastmeta.Previous)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
-			exec.Command("rm", "-r", lastmeta.Dest+".old").Run()
+			oldSibling := cluster.resolveOldSiblingPath(lastmeta.Dest)
+			if isEncryptedBackupArtifact(oldSibling) {
+				cluster.removeBackupArtifactWithSidecar(oldSibling)
+			} else {
+				exec.Command("rm", "-r", oldSibling).Run()
+			}
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Error occured in backup, rolling back to old backup.")
-			exec.Command("mv", lastmeta.Dest, lastmeta.Dest+".err").Run()
-			exec.Command("mv", lastmeta.Dest+".old", lastmeta.Dest).Run()
-			exec.Command("rm", "-r", lastmeta.Dest+".err").Run()
+			// The previous run's artifact is restored to ITS OWN prior name
+			// (just the ".old" suffix stripped), not to lastmeta.Dest: this
+			// run's encryption state (and therefore Dest's suffix) can differ
+			// from the previous run's, so lastmeta.Dest is not necessarily
+			// the name the restored bytes are actually valid under.
+			oldSibling := cluster.resolveOldSiblingPath(lastmeta.Dest)
+			restoredPath := strings.TrimSuffix(oldSibling, ".old")
+			if isEncryptedBackupArtifact(lastmeta.Dest) {
+				cluster.renameBackupArtifactWithSidecar(lastmeta.Dest, lastmeta.Dest+".err")
+			} else {
+				exec.Command("mv", lastmeta.Dest, lastmeta.Dest+".err").Run()
+			}
+			if isEncryptedBackupArtifact(oldSibling) {
+				cluster.renameBackupArtifactWithSidecar(oldSibling, restoredPath)
+			} else {
+				exec.Command("mv", oldSibling, restoredPath).Run()
+			}
+			if isEncryptedBackupArtifact(lastmeta.Dest + ".err") {
+				cluster.removeBackupArtifactWithSidecar(lastmeta.Dest + ".err")
+			} else {
+				exec.Command("rm", "-r", lastmeta.Dest+".err").Run()
+			}
 
 			// Revert to previous meta with same type
 			cluster.BackupMetaMap.Delete(lastmeta.Id)
@@ -6987,7 +7235,19 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		// file receipt can happen before the poll runs, causing a race where
 		// restic was skipped ("physical backup not completed").
 		if server.LastBackupMeta.Physical != nil {
-			server.LastBackupMeta.Physical.Completed = true
+			if server.LastBackupMeta.Physical.SourceJobFailed && isBackupStagingPath(server.LastBackupMeta.Physical.Dest) {
+				// The DB-side backup job already reported an error.
+				server.reportBackupEncryptionFailure(server.LastBackupMeta.Physical, "physical", errors.New("the backup job reported an error"))
+			} else if isEmptyBackupStaging(server.LastBackupMeta.Physical.Dest) {
+				// No sender connected or nothing was streamed: never publish
+				// an empty artifact as a valid encrypted backup.
+				server.reportBackupEncryptionFailure(server.LastBackupMeta.Physical, "physical", errors.New("no data received from the backup stream"))
+			} else {
+				server.LastBackupMeta.Physical.Completed = true
+				if encErr := server.finalizeBackupEncryption(server.LastBackupMeta.Physical, "physical"); encErr != nil {
+					server.reportBackupEncryptionFailure(server.LastBackupMeta.Physical, "physical", encErr)
+				}
+			}
 		}
 		server.WriteBackupMetadata(backupmgr.BackupMethodPhysical)
 		if server.LastBackupMeta.Physical != nil && !server.LastBackupMeta.Physical.StartTime.IsZero() {
@@ -7001,7 +7261,7 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 
 		// Transition from traditional backup lock to Restic lock atomically
 		// Set Restic flag BEFORE clearing physical backup flag
-		resticEnabled := server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.ResticEnabled
+		resticEnabled := server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.ResticEnabled && server.LastBackupMeta.Physical.Completed
 		backupLine := backupmgr.BackupLineDefault
 		if server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.BackupLine != "" {
 			backupLine = server.LastBackupMeta.Physical.BackupLine
