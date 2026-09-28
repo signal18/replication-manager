@@ -6,6 +6,7 @@ package cluster
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"io"
 	"net"
 	"net/http"
@@ -48,12 +49,30 @@ type pgScrape struct {
 }
 
 var (
-	pgCacheMu sync.Mutex
-	pgCache   = map[string]pgScrape{} // by agent
-	pgLast    = map[string]pgPoint{}  // by agent + "|" + path: previous sample for the cpu delta
+	pgCacheMu    sync.Mutex
+	pgCache      = map[string]pgScrape{} // by agent
+	pgLast       = map[string]pgPoint{}  // by agent + "|" + path: previous sample for the cpu delta
+	pgReachable  = map[string]bool{}     // by agent: last known reachability, logged on transition
+	pgHTTPClient *http.Client
 )
 
 const pgCacheTTL = 5 * time.Second
+
+// pgClient is the HTTP/1.1 TLS client for the daemon's metrics page. The daemon does NOT
+// negotiate HTTP/2 on that path (curl --http2 and --http2-prior-knowledge both fall back to
+// 1.1 on preprod), so the collector's http2.Transport client cannot be reused; the page needs
+// no client certificate either (an unauthenticated GET answers 200).
+func pgClient() *http.Client {
+	pgCacheMu.Lock()
+	defer pgCacheMu.Unlock()
+	if pgHTTPClient == nil {
+		pgHTTPClient = &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, ForceAttemptHTTP2: false, MaxIdleConns: 8, IdleConnTimeout: 60 * time.Second},
+		}
+	}
+	return pgHTTPClient
+}
 
 // parsePgMetrics extracts the cpu and memory counters per service path from the exposition.
 func parsePgMetrics(body []byte, at time.Time) map[string]pgPoint {
@@ -208,8 +227,7 @@ func (cluster *Cluster) ScrapeComputeSensors() {
 		return
 	}
 	svc := cluster.OpenSVCConnect()
-	client := svc.GetHttpClient()
-	client.Timeout = 10 * time.Second
+	client := pgClient()
 	scrapes := map[string]pgScrape{}
 	for _, u := range units {
 		for _, agent := range u.agents {
@@ -217,9 +235,17 @@ func (cluster *Cluster) ScrapeComputeSensors() {
 				continue
 			}
 			s, err := cluster.fetchPgMetrics(client, agent, svc.Port)
+			pgCacheMu.Lock()
+			was, known := pgReachable[agent]
+			pgReachable[agent] = err == nil
+			pgCacheMu.Unlock()
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg, "Compute sensor: agent %s pg metrics not read: %s", agent, err)
+				if !known || was {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Compute sensor: agent %s (%s:%s) pg metrics unreachable: %s", agent, agentAddress(agent, cluster.Conf.ProvHost), svc.Port, err)
+				}
 				s = pgScrape{}
+			} else if !known || !was {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "Compute sensor: agent %s pg metrics reachable, %d cgroup slices", agent, len(s.points))
 			}
 			scrapes[agent] = s
 		}
