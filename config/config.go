@@ -1032,6 +1032,9 @@ type Config struct {
 	Cloud18SelfServiceClusters             bool                   `scope:"server" mapstructure:"cloud18-self-service-clusters" toml:"cloud18-self-service-clusters" json:"cloud18SelfServiceClusters"`
 	Cloud18SelfServiceMaxClustersPerUser   int                    `scope:"server" mapstructure:"cloud18-self-service-max-clusters-per-user" toml:"cloud18-self-service-max-clusters-per-user" json:"cloud18SelfServiceMaxClustersPerUser"`
 	Cloud18DisableForSale                  bool                   `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`
+	Cloud18MarketplacePricingMode          string                 `scope:"server" mapstructure:"cloud18-marketplace-pricing-mode" toml:"cloud18-marketplace-pricing-mode" json:"cloud18MarketplacePricingMode"`
+	Cloud18MarketplaceDBUPrice             float64                `scope:"server" mapstructure:"cloud18-marketplace-dbu-price" toml:"cloud18-marketplace-dbu-price" json:"cloud18MarketplaceDbuPrice"`
+	Cloud18MarketplaceAPUPrice             float64                `scope:"server" mapstructure:"cloud18-marketplace-apu-price" toml:"cloud18-marketplace-apu-price" json:"cloud18MarketplaceApuPrice"`
 	Cloud18MarketplaceBKUPrice             float64                `scope:"server" mapstructure:"cloud18-marketplace-bku-price" toml:"cloud18-marketplace-bku-price" json:"cloud18MarketplaceBkuPrice"`
 	Cloud18MarketplaceBAUPrice             float64                `scope:"server" mapstructure:"cloud18-marketplace-bau-price" toml:"cloud18-marketplace-bau-price" json:"cloud18MarketplaceBauPrice"`
 	Cloud18MarketplaceBAUClientStorage     bool                   `mapstructure:"cloud18-marketplace-bau-client-storage" toml:"cloud18-marketplace-bau-client-storage" json:"cloud18MarketplaceBauClientStorage"`
@@ -1537,6 +1540,11 @@ const (
 	ConstBackupBinlogTypeSSH         string = "ssh"
 	ConstBackupBinlogTypeScript      string = "script"
 	ConstBackupBinlogTypeGoMySQL     string = "gomysql"
+)
+
+const (
+	ConstMarketplacePricingModeCsvServicePlan    string = "csv-service-plan"
+	ConstMarketplacePricingModeGlobalUnitPricing string = "global-unit-pricing"
 )
 
 /*
