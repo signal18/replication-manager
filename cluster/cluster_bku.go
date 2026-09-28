@@ -172,7 +172,7 @@ func (cluster *Cluster) RefreshBackupUnits() {
 		// is borrowed from the unreserved capacity (disk really written, nothing to shrink).
 		cluster.resources.SetStoragePlan(cluster.Name, r.Plan)
 		var b PhysicalUsage
-		if r.OverCommit > 0 {
+		if r.OverCommit > 0 && cluster.IsProvision {
 			b.DiskBytes = int64(r.OverCommit * float64(unit))
 		}
 		cluster.resources.SetBorrowed(cluster.Name, "bku", b)

@@ -440,11 +440,16 @@ func (cluster *Cluster) RefreshDBUPlan() {
 	cluster.ConfigDbuPerNode = cluster.GetConfigDBUPerNode()
 	cluster.ConfigDbu = math.Round(cluster.ConfigDbuPerNode.Dbu*float64(len(cluster.Servers))*100) / 100
 	// Ledger: what the DB track holds ABOVE its plan (the configured resources over the plan
-	// reservation, per node × nodes) is BORROWED from the unreserved capacity.
+	// reservation, per node × nodes) is BORROWED from the unreserved capacity. Only a
+	// PROVISIONED cluster holds anything: an unprovisioned one has a plan (reserved) but no
+	// resources granted, so it borrows nothing.
 	if cluster.resources != nil {
 		plan := cluster.GetPlanDBUPerNode()
 		var b PhysicalUsage
 		n := float64(len(cluster.Servers))
+		if !cluster.IsProvision {
+			n = 0
+		}
 		if d := cluster.ConfigDbuPerNode.CpuMaxCores - plan.CpuMaxCores; d > 0 {
 			b.CpuCores = d * n
 		}
