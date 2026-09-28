@@ -53,11 +53,11 @@ function MarketplaceSettings({ config }) {
   const hDbuPrice = `**DBU Price**\n\nPrice in EUR per DBU, the Database Unit (1 core / 4 GB RAM / 40 GB disk / 1000 IOPS).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-dbu-price\``
   const hApuPrice = `**APU Price**\n\nPrice in EUR per APU, the Application Unit (1 core / 1 GB RAM / 10 GB disk, no IOPS) consumed by proxies and applications.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-apu-price\``
 
-  const hBkuPrice = `**BKU Price**\n\nPrice of one Backup Unit per month, in Eur. One BKU is 20 GB of **local** backup storage: the last backup of each server on the cluster's own pool, plus the restic archive when its repository is a local path. It is counted against the cluster's BKU plan (\`prov-db-bku\`); the billed units are the plan or the usage rounded up to the next unit, whichever is larger. 0 = local backups are not priced.\n\nConfig: \`cloud18-marketplace-bku-price\``
-  const hBauPrice = `**BAU Price**\n\nPrice of one Backup Archive Unit per month, in Eur. One BAU is 20 GB of **remote** archive: what restic holds off the cluster on S3 or SFTP, after deduplication. There is no plan: the archive is billed on usage, rounded up to the next unit. The price applies to Signal18 or partner storage only; a cluster that brought its own remote storage (*Cloud18 → Remote archive on client storage*) is tracked but never priced. 0 = the remote archive is not priced.\n\nConfig: \`cloud18-marketplace-bau-price\``
+  const hBkuPrice = `**BKU Price**\n\nPrice of one Backup Unit per month, in Eur. One BKU is 20 GB of **local** storage on the cluster's NVMe pool: the last backup of each server, the restic archive when its repository is a local path, and the declared volumes of the cluster's applications times the agents holding a copy (a failover app replicates its volume on every agent), rounded up per app. Disk only: no cpu, no memory. It is counted against the cluster's BKU plan (\`prov-db-bku\`); the billed units are the plan or the usage rounded up to the next unit, whichever is larger. 0 = local backups are not priced.\n\nConfig: \`cloud18-marketplace-bku-price\``
+  const hBauPrice = `**BAU Price**\n\nPrice of one Backup Archive Unit per month, in Eur. One BAU is 20 GB of **archive** storage, two roles: as consumer, what restic holds off the cluster on S3 or SFTP, after deduplication; as producer, the declared volume of a storage application (*S3 provider* in the app settings, e.g. minio) that hosts an archive for others. There is no plan: billed on usage, rounded up to the next unit. The price applies to Signal18 or partner storage only; a cluster that brought its own remote storage (*Cloud18 → Remote archive on client storage*) is tracked but never priced. 0 = the remote archive is not priced.\n\nConfig: \`cloud18-marketplace-bau-price\``
 
-  const hOverPct = `**Over-commit Price Ratio**\n\nPrice of a unit consumed **above** the plan, in percent of the unit price. 150 means an over-plan unit costs one and a half times the unit price. Applies to every unit family with a plan (DBU, APU, BKU); the BAU has no plan and is pure usage, so it is never marked up. Global to this replication-manager instance.\n\nConfig: \`cloud18-marketplace-overcommit-price-pct\` (default 150)`
-  const hUnderPct = `**Under-commit Price Ratio**\n\nPrice of a plan unit left **unconsumed**, in percent of the unit price. 80 means a fifth of the unit price is given back on each unused plan unit; 100 bills the plan in full whatever is consumed. The pendant of the over-commit ratio, asymmetric on purpose. Global to this replication-manager instance.\n\nConfig: \`cloud18-marketplace-undercommit-price-pct\` (default 80)`
+  const hOverPct = `**Over-commit Price Ratio**\n\nSurcharge on a unit consumed **above** the plan, in percent of the unit price. 150 means an over-plan unit costs 2.5 times the unit price. Applies to every unit family with a plan (DBU, APU, BKU); the BAU has no plan and is pure usage, so it is never marked up. Global to this replication-manager instance.\n\nConfig: \`cloud18-marketplace-overcommit-price-pct\` (default 150)`
+  const hUnderPct = `**Under-commit Price Ratio**\n\nReduction on a plan unit left **unconsumed**, in percent of the unit price. 80 means an unused plan unit costs 0.2 times the unit price; 0 bills the plan in full whatever is consumed. The pendant of the over-commit ratio, asymmetric on purpose. Global to this replication-manager instance.\n\nConfig: \`cloud18-marketplace-undercommit-price-pct\` (default 80)`
 
   const dataObject = [
     {
@@ -126,7 +126,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
-      key: 'Over-commit Price Ratio (%)',
+      key: 'Over-commit Surcharge (%)',
       help: h(hOverPct, 'Over-commit Price Ratio'),
       value: (
         <TextForm
@@ -138,7 +138,7 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
-      key: 'Under-commit Price Ratio (%)',
+      key: 'Under-commit Reduction (%)',
       help: h(hUnderPct, 'Under-commit Price Ratio'),
       value: (
         <TextForm

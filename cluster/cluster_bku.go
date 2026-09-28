@@ -29,17 +29,26 @@ import (
 // archive, measured apart as BAU (BAUReading, cluster_bau.go), with its own price and no plan.
 // Over-commit is the local usage above the plan: billed, never blocked (same rule as the DBU
 // over-plan). Billing is ASYMMETRIC around the plan, with the instance-wide price ratios
-// (cloud18-marketplace-overcommit-price-pct, default 150, and -undercommit-price-pct, default
-// 80), on whole units consumed = ceil(local) at cloud18-marketplace-bku-price Eur/BKU/month:
+// (cloud18-marketplace-overcommit-price-pct = surcharge, default 150 -> 2.5x, and
+// -undercommit-price-pct = reduction, default 80 -> 0.2x), on whole units consumed =
+// ceil(local backups) + app disk units, at cloud18-marketplace-bku-price Eur/BKU/month:
 //
-//	consumed > plan:  plan × price + (consumed − plan) × price × over/100
-//	consumed <= plan: consumed × price + (plan − consumed) × price × under/100
+//	consumed > plan:  plan × price + (consumed − plan) × price × (1 + over/100)
+//	consumed <= plan: consumed × price + (plan − consumed) × price × (1 − under/100)
+//
+// App disk (Stéphane 2026-09-28): the volumes of the cluster's apps live on the same NVMe pool
+// as the backups and are billed in BKU, cpu and memory free: the allocated volume size × the
+// number of agents holding a copy (a failover app replicates its volume on every agent, a flex
+// app has one per instance), rounded up per app. A storage app (app-s3-provider) is the
+// producer of an archive: its volume is BAU, not BKU (see cluster_bau.go).
 type BKUReading struct {
 	Plan           int       `json:"plan"`           // prov-db-bku, per cluster
 	LocalBytes     int64     `json:"localBytes"`     // real disk used by the local backup
 	BkuLocal       float64   `json:"bkuLocal"`       // LocalBytes / (BKU disk)
-	OverCommit     float64   `json:"overCommit"`     // max(0, BkuLocal - Plan)
-	ConsumedUnits  int       `json:"consumedUnits"`  // ceil(BkuLocal), the whole units billed on usage
+	AppDiskBytes   int64     `json:"appDiskBytes"`   // Σ allocated volume × copies of the compute apps (not S3 providers)
+	AppDiskUnits   int       `json:"appDiskUnits"`   // Σ per app ceil(volume × copies / BKU disk)
+	OverCommit     float64   `json:"overCommit"`     // max(0, BkuLocal + AppDiskUnits - Plan)
+	ConsumedUnits  int       `json:"consumedUnits"`  // ceil(BkuLocal) + AppDiskUnits, the whole units billed on usage
 	BilledUnits    int       `json:"billedUnits"`    // max(Plan, ConsumedUnits), the units a flat price would charge
 	OverPlanUnits  int       `json:"overPlanUnits"`  // max(0, ConsumedUnits - Plan), priced at the over-commit ratio
 	UnderPlanUnits int       `json:"underPlanUnits"` // max(0, Plan - ConsumedUnits), priced at the under-commit ratio
@@ -100,9 +109,10 @@ func (cluster *Cluster) remoteBackupBytes() int64 {
 	return cluster.ResticManager.BackupStat.TotalSize
 }
 
-// planUnitCost is the monthly cost of a unit family with a plan, asymmetric around it: the
-// plan is charged at the unit price, units consumed above it at over% of the price, plan
-// units left unconsumed at under% of the price (so 100/100 is a flat max(plan, consumed)).
+// planUnitCost is the monthly cost of a unit family with a plan, asymmetric around it
+// (Stéphane 2026-09-28): the plan is charged at the unit price; a unit consumed above the
+// plan carries a SURCHARGE of over% (150 = 2.5x the unit price); a plan unit left unconsumed
+// gets a REDUCTION of under% (80 = 0.2x the unit price). 0/0 is a flat max(plan, consumed).
 func planUnitCost(plan, consumed int, unitPrice float64, overPct, underPct int) float64 {
 	if plan < 0 {
 		plan = 0
@@ -111,22 +121,30 @@ func planUnitCost(plan, consumed int, unitPrice float64, overPct, underPct int) 
 		consumed = 0
 	}
 	if consumed > plan {
-		return float64(plan)*unitPrice + float64(consumed-plan)*unitPrice*float64(overPct)/100
+		return float64(plan)*unitPrice + float64(consumed-plan)*unitPrice*float64(100+overPct)/100
 	}
-	return float64(consumed)*unitPrice + float64(plan-consumed)*unitPrice*float64(underPct)/100
+	reducedPct := 100 - underPct
+	if reducedPct < 0 {
+		reducedPct = 0
+	}
+	return float64(consumed)*unitPrice + float64(plan-consumed)*unitPrice*float64(reducedPct)/100
 }
 
-// computeBKU builds the local reading from the measured bytes, the plan and the price ratios.
-func computeBKU(plan int, localBytes, unitBytes int64, unitPrice float64, overPct, underPct int, now time.Time) *BKUReading {
-	r := &BKUReading{Plan: plan, LocalBytes: localBytes, UnitBytes: unitBytes, UnitPrice: unitPrice, OverPricePct: overPct, UnderPricePct: underPct, UpdatedAt: now}
+// computeBKU builds the local reading from the measured backup bytes, the app disk (bytes and
+// per-app rounded units), the plan and the price ratios.
+func computeBKU(plan int, localBytes, unitBytes int64, appDiskBytes int64, appDiskUnits int, unitPrice float64, overPct, underPct int, now time.Time) *BKUReading {
+	r := &BKUReading{Plan: plan, LocalBytes: localBytes, UnitBytes: unitBytes, AppDiskBytes: appDiskBytes, AppDiskUnits: appDiskUnits, UnitPrice: unitPrice, OverPricePct: overPct, UnderPricePct: underPct, UpdatedAt: now}
 	if unitBytes > 0 {
 		r.BkuLocal = float64(localBytes) / float64(unitBytes)
 	}
-	r.OverCommit = math.Max(0, r.BkuLocal-float64(plan))
-	r.ConsumedUnits = int(math.Ceil(r.BkuLocal))
+	if r.AppDiskUnits < 0 {
+		r.AppDiskUnits = 0
+	}
+	r.ConsumedUnits = int(math.Ceil(r.BkuLocal)) + r.AppDiskUnits
 	if r.ConsumedUnits < 0 {
 		r.ConsumedUnits = 0
 	}
+	r.OverCommit = math.Max(0, r.BkuLocal+float64(r.AppDiskUnits)-float64(plan))
 	if plan < 0 {
 		plan = 0
 	}
@@ -146,9 +164,10 @@ func computeBKU(plan int, localBytes, unitBytes int64, unitPrice float64, overPc
 func (cluster *Cluster) RefreshBackupUnits() {
 	now := time.Now()
 	unit := cluster.bkuUnitBytes()
-	r := computeBKU(cluster.Conf.ProvDbBku, cluster.localBackupBytes(), unit, cluster.Conf.Cloud18MarketplaceBKUPrice, cluster.Conf.Cloud18MarketplaceOvercommitPricePct, cluster.Conf.Cloud18MarketplaceUndercommitPricePct, now)
+	d := cluster.appDiskAccounting(unit)
+	r := computeBKU(cluster.Conf.ProvDbBku, cluster.localBackupBytes(), unit, d.computeBytes, d.computeUnits, cluster.Conf.Cloud18MarketplaceBKUPrice, cluster.Conf.Cloud18MarketplaceOvercommitPricePct, cluster.Conf.Cloud18MarketplaceUndercommitPricePct, now)
 	cluster.BackupUnits = r
-	cluster.BackupArchiveUnits = computeBAU(cluster.remoteBackupBytes(), unit, cluster.bauUnitPrice(), now)
+	cluster.BackupArchiveUnits = computeBAU(cluster.remoteBackupBytes(), unit, d.producerBytes, d.producerUnits, cluster.bauUnitPrice(), now)
 	if r.OverCommit > 0 {
 		cluster.SetState("WARN0219", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0219"], cluster.Name, r.BkuLocal, r.Plan, humanBytes(r.LocalBytes)), ErrFrom: "BACKUP"})
 	}
@@ -169,6 +188,8 @@ func (cluster *Cluster) CollectBackupUnitMetrics() {
 			graphite.NewMetric(fmt.Sprintf("resourcemanager.%s.plan_bku", ctoken), strconv.Itoa(r.Plan), ts),
 			graphite.NewMetric(fmt.Sprintf("bku.%s.local", cluster.Name), f(r.BkuLocal, 4), ts),
 			graphite.NewMetric(fmt.Sprintf("bku.%s.local_bytes", cluster.Name), strconv.FormatInt(r.LocalBytes, 10), ts),
+			graphite.NewMetric(fmt.Sprintf("bku.%s.app_disk", cluster.Name), strconv.Itoa(r.AppDiskUnits), ts),
+			graphite.NewMetric(fmt.Sprintf("bku.%s.app_disk_bytes", cluster.Name), strconv.FormatInt(r.AppDiskBytes, 10), ts),
 			graphite.NewMetric(fmt.Sprintf("bku.%s.billed", cluster.Name), strconv.Itoa(r.BilledUnits), ts),
 		})
 	}
@@ -176,6 +197,8 @@ func (cluster *Cluster) CollectBackupUnitMetrics() {
 		cluster.AddMetrics([]graphite.Metric{
 			graphite.NewMetric(fmt.Sprintf("bau.%s.units", cluster.Name), f(a.Units, 4), ts),
 			graphite.NewMetric(fmt.Sprintf("bau.%s.bytes", cluster.Name), strconv.FormatInt(a.Bytes, 10), ts),
+			graphite.NewMetric(fmt.Sprintf("bau.%s.producer", cluster.Name), strconv.Itoa(a.ProducerUnits), ts),
+			graphite.NewMetric(fmt.Sprintf("bau.%s.producer_bytes", cluster.Name), strconv.FormatInt(a.ProducerBytes, 10), ts),
 			graphite.NewMetric(fmt.Sprintf("bau.%s.billed", cluster.Name), strconv.Itoa(a.BilledUnits), ts),
 		})
 	}

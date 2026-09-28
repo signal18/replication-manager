@@ -45,21 +45,26 @@ Prices: `cloud18-marketplace-bku-price` and `cloud18-marketplace-bau-price` (Eur
 server scope, GUI Settings → Marketplace), named like Ahmad's `cloud18-marketplace-dbu-price` /
 `-apu-price` (branch marketplace-pricing) so the four merge as one family. **Price ratios, global to the
 instance (Stéphane 2026-09-28, asymmetric on purpose):** `cloud18-marketplace-overcommit-price-pct`
-(default **150**: a unit consumed above the plan costs 1.5× the unit price) and
-`cloud18-marketplace-undercommit-price-pct` (default **80**: a plan unit left unconsumed is billed at
-0.8×, a fifth given back). Both server scope, GUI Settings → Marketplace. `planUnitCost(plan, consumed,
-price, over, under)` in `cluster_bku.go`: consumed > plan → plan×price + (consumed−plan)×price×over/100;
-else consumed×price + (plan−consumed)×price×under/100 (100/100 = flat max(plan, consumed)). Applies to
+= SURCHARGE (default **150**: a unit consumed above the plan costs 2.5× the unit price) and
+`cloud18-marketplace-undercommit-price-pct` = REDUCTION (default **80**: a plan unit left unconsumed is
+billed at 0.2×). Both server scope, GUI Settings → Marketplace. `planUnitCost(plan, consumed, price, over,
+under)` in `cluster_bku.go`: consumed > plan → plan×price + (consumed−plan)×price×(1+over/100); else
+consumed×price + (plan−consumed)×price×(1−under/100) (0/0 = flat max(plan, consumed)). Applies to
 every unit family with a plan (DBU, APU, BKU); the **BAU is outside the ratios** (pure usage, no plan).
 DBU costs are not computed anywhere yet. **APU billing (Stéphane 2026-09-28, `cluster_apu_billing.go`):** the
 measured side (compute sensor) stays honest at 0 when nothing pushed; the BILLABLE side floors every running unit:
-an app counts at least its **agent count** in APU (flex = one instance per agent behind the load balancer, failover
-= one instance + the drbd-replicated volume on every agent; the rule of Ahmad's `ComputeApplicationUnits`), a proxy
-at least 1, a down unit 0; billable = Σ max(floor, ceil(measured)). The app PLAN is the per-instance shape (floor
-1 APU) × the agent count too (`RefreshComputePlanAPU`, `appInstanceCount`). `APUBilling` (`computeUnits` in the
+an app counts at least its **running instances** in APU (`appInstanceCount`: flex = one per agent behind the load
+balancer, failover = ONE, "failover consume disk, no memory, no cpu"), a proxy at least 1, a down unit 0; billable =
+Σ max(floor, ceil(measured)). The app PLAN is the per-instance shape (floor 1 APU) × the instances
+(`RefreshComputePlanAPU`). **App disk is billed apart, cpu/memory free** (`cluster_app_volume.go`,
+`appDiskAccounting`, every 30 ticks with the BKU): the DECLARED `prov-app-disk-size` (every unit bills from its
+declared setting, like `prov-db-disk-size`, nothing read back from OpenSVC) × the agents holding a copy
+(`appCopyCount`), rounded up per app; a compute app's disk joins the **BKU** (`appDiskUnits`, counted in the plan
+and the surcharge/reduction), a storage app's (`app-s3-provider`, the profile, settable per app in the GUI) is
+**producer BAU** (`producerUnits`, no plan). Series `bku.<c>.app_disk[_bytes]`, `bau.<c>.producer[_bytes]`. `APUBilling` (`computeUnits` in the
 cluster JSON, refreshed each tick after the plan) carries plan, units, runningUnits, floorUnits, measuredApu,
 billableUnits, over/underPlanUnits, the price + ratios and monthlyCost; series `resourcemanager.<C>.billed_apu`
-next to `plan_apu`. Live on preprod crm: 5 apps on 3/3/3/1/3 agents + 2 proxies = 15 billable. `BKUReading` carries
+next to `plan_apu`. Live on preprod crm (instances 1/3/1/1/3 + 2 proxies): 11 APU billable; api + dolibarr + arbitrator + phpmyadmin 1 BKU each (12 GB declared × copies); minio 103 BAU as producer once flagged S3 provider (2048 declared) or 1 while its app config says 20. `BKUReading` carries
 `overCommit = max(0, local − plan)`, `consumedUnits = ceil(local)`, `billedUnits = max(plan, consumed)`,
 `overPlanUnits`, `underPlanUnits`, `unitPrice`, `overPricePct`, `underPricePct`, `monthlyCost`; `BAUReading` (`backupArchiveUnits` in the cluster JSON, `cluster_bau.go`)
 carries `bytes`, `units`, `billedUnits = ceil(units)`, `priced`, `unitPrice`, `monthlyCost`.

@@ -355,6 +355,20 @@ func (cluster *Cluster) OwnGatewayRoutes(gateway string) [][]config.Route {
 	return cluster.allAppRoutes()
 }
 
+// refreshAppS3Providers rebuilds the S3 provider host:port list from the app configs (after
+// an app-s3-provider flip), the same list newAppList builds at load.
+func (cluster *Cluster) refreshAppS3Providers() {
+	providers := make([]string, 0)
+	for _, app := range cluster.Apps {
+		if app != nil && app.AppConfig != nil && app.AppConfig.AppS3Provider {
+			providers = append(providers, app.GetHost()+":"+app.GetPort())
+		}
+	}
+	cluster.Lock()
+	cluster.AppS3Providers = providers
+	cluster.Unlock()
+}
+
 // pruneEjectedAppsLocked removes entries from cluster.Apps that no longer have
 // a corresponding AppConfig in cluster.Conf.Apps.  Caller must hold the cluster
 // lock.  Rebuilds AppS3Providers and bumps appListEpoch.
@@ -1179,11 +1193,10 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 			r = cluster.resources.ComputeUsedAPU(now, now,
 				int64(cr.MemMBPerUnit)*1024*1024, cr.CoresPerUnit, int64(cr.DiskGBPerUnit)*1024*1024*1024)
 		}
-		// The shape is PER INSTANCE and an app occupies every one of its agents: a flex app
-		// runs one instance per agent behind the load balancer, a failover app runs one
-		// instance but replicates its volume (drbd) on every agent. Either way the reservation
-		// is the shape x the agent count (Stéphane 2026-09-28, the rule of Ahmad's
-		// ComputeApplicationUnits on marketplace-pricing).
+		// The shape is PER INSTANCE: a flex app runs one instance per agent behind the load
+		// balancer (N x the shape), a failover app runs ONE instance (its standby agents only
+		// hold a copy of its volume, billed as disk in BKU, never as cpu/memory here).
+		// Stéphane 2026-09-28: "failover consume disk, no memory, no cpu".
 		if n := cluster.appInstanceCount(app); n > 1 {
 			r = cluster.resources.ComputeUsedAPU(now, now,
 				r.MemMaxBytes*int64(n), r.CpuMaxCores*float64(n), r.DiskMaxBytes*int64(n))
@@ -1227,10 +1240,10 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 	cluster.RefreshComputeBilling()
 }
 
-// appInstanceCount is how many agents an app occupies (its instances when flex, its
-// replicated volume placements when failover): the app's agents, else the cluster app
-// agents, else the cluster agents; never under 1.
-func (cluster *Cluster) appInstanceCount(app *App) int {
+// appCopyCount is how many agents hold the app's volume: the app's agents, else the cluster
+// app agents, else the cluster agents; never under 1. A failover app replicates its volume
+// on every one of them, a flex app has one volume per instance.
+func (cluster *Cluster) appCopyCount(app *App) int {
 	n := 0
 	for _, a := range strings.Split(cluster.GetAppAgents(app.AppConfig), ",") {
 		if strings.TrimSpace(a) != "" {
@@ -1241,6 +1254,16 @@ func (cluster *Cluster) appInstanceCount(app *App) int {
 		n = 1
 	}
 	return n
+}
+
+// appInstanceCount is how many instances of the app RUN, the compute it really consumes:
+// one per agent when flex (load balanced), exactly one when failover (the standby agents
+// hold a volume copy, no cpu, no memory).
+func (cluster *Cluster) appInstanceCount(app *App) int {
+	if cluster.GetAppHATopology(app.AppConfig) == "flex" {
+		return cluster.appCopyCount(app)
+	}
+	return 1
 }
 
 func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {

@@ -398,6 +398,11 @@ func (app *App) SetSetting(key, value string) error {
 		}
 	case "prov-app-ha-topology":
 		app.AppConfig.ProvAppHATopology = value
+	case "app-s3-provider":
+		// The storage profile: the app hosts an archive for others (minio). Its volume is
+		// billed as producer BAU, not BKU, and it stays a compute unit for its cores/memory.
+		app.AppConfig.AppS3Provider = value == "true" || value == "1" || value == "on"
+		app.ClusterGroup.refreshAppS3Providers()
 	case "prov-app-cpu-cores":
 		app.AppConfig.ProvAppCpuCores = value
 		if app.effectiveSizingMode() == config.AppSizingModeManual {

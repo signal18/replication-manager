@@ -16,6 +16,7 @@ import CopyTextModal from '../../../../components/Modals/CopyTextModal';
 import ConfirmModal from '../../../../components/Modals/ConfirmModal';
 import { convertSize } from '../../../../utility/common';
 import Gauge from '../../../../components/Gauge';
+import RMSwitch from '../../../../components/RMSwitch';
 
 function AppUnitSlider({ value, min, max, step, isDisabled, formatFn, onChange }) {
   const [draft, setDraft] = useState(null)
@@ -87,7 +88,8 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   const {
     provAppDockerImg = '', provAppDockerCmd = '', provAppTemplate = '',
     provAppAgents = '', provAppHaTopology = '', provAppCreditPlanned = 0,
-    provAppSizingMode: appSizingMode = '', provAppCpuCores = '', provAppMemory = '', provAppDiskSize = ''
+    provAppSizingMode: appSizingMode = '', provAppCpuCores = '', provAppMemory = '', provAppDiskSize = '',
+    appS3Provider = false
   } = appConfig;
 
   // Effective mode resolution mirrors backend logic:
@@ -205,6 +207,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   }, [clusterName, appId, dispatch])
 
   const onHATopologyChange = useCallback((value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: value })) }, [clusterName, appId, dispatch])
+  const onS3ProviderChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-s3-provider', value: appS3Provider ? 'false' : 'true' })) }, [clusterName, appId, appS3Provider, dispatch])
   const onPreviewTemplate = useCallback(() => {
     if (!provAppTemplate) {
       return
@@ -334,6 +337,16 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
             onChange={onHATopologyChange}
             options={haTopologyOptions}
             selectedValue={provAppHaTopology}
+          />
+        )
+      },
+      {
+        key: 'S3 Provider (storage app)',
+        value: (
+          <RMSwitch
+            confirmTitle={`Confirm switch app-s3-provider to ${appS3Provider ? 'off' : 'on'}?`}
+            onChange={onS3ProviderChange}
+            isChecked={!!appS3Provider}
           />
         )
       },
@@ -471,6 +484,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     onSaveAppAsTemplate, templateOptions, provAppTemplate, onPreviewTemplate,
     onResetAppFromTemplate, onRefreshAndResetAppFromTemplate,
     agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions,
+    appS3Provider, onS3ProviderChange,
     isUnitMode, isManualMode, isLegacyMode,
     appSizingMode, clusterSizingMode, provAppSizingMode,
     isLegacyAppInUnitCluster, derivedUnitFromResources,
