@@ -27,17 +27,26 @@ per workload is the **ratio**, not just the price:
 | **Database** (DBU) | 1 | 4 GB | **20 GB** (40 until 2026-09-22) | **1000** (locked) |
 | **Compute/App** (APU) | 1 | **1 GB** | **10 GB** | **— (none)** |
 | **Storage / Backup** (BKU) | 0 | 0 | **20 GB** (= the DBU disk axis) | 0 |
+| **Remote archive** (BAU) | 0 | 0 | **20 GB** (same quantity as the BKU) | 0 |
 
 The **BKU** (backup unit, 2026-09-22) is storage ONLY: it bills the REAL disk used by backups
 (backup catalog sizes, restic repository size), never a flat "+1 DBU when a backup schedule is
 on". The BKU has its **own plan** per database, like the DBU plan (client-set); its default is
 **3 × the database's DBU disk**. Usage above the BKU plan is over-commit: billed, never blocked.
-Two kinds: **local** BKU (the cluster's local backup, the repman backups directory on the local pool) and **remote** BKU
-(archived on S3/SFTP). **Decision 2026-09-27: the archive is local + remote, both count against the plan and are
-priced together** at `cloud18-marketplace-bku-price` (Eur/BKU/month, server scope, GUI Settings → Marketplace);
-`BKUReading` carries `bkuTotal`, `overCommit = max(0, total − plan)`, `billedUnits = max(plan, ceil(total))`,
-`unitPrice`, `monthlyCost`; series `bku.<cluster>.{total,billed}` added. Named like Ahmad's
-`cloud18-marketplace-dbu-price` / `-apu-price` (branch marketplace-pricing) so the three merge as one family.
+The BKU is the **local** backup only (the cluster's own storage: the repman backups directory on
+the local pool). What is archived **off** the cluster is a unit of its own, the **BAU** (Backup
+Archive Unit, decision 2026-09-28, superseding a one-day 2026-09-27 attempt to fold the remote
+archive into the BKU): the same 20 GB quantity, **no plan** (tracked and billed on usage,
+`ceil(units)`, never warned about), its own price `cloud18-marketplace-bau-price`. The BAU price
+applies to **Signal18 or partner storage only**: a cluster whose remote repository is the
+client's own storage declares it with `cloud18-marketplace-bau-client-storage` (per cluster,
+GUI Settings → Cloud18 → "Remote Archive On Client Storage") and its BAU are tracked, never priced.
+Prices: `cloud18-marketplace-bku-price` and `cloud18-marketplace-bau-price` (Eur/unit/month,
+server scope, GUI Settings → Marketplace), named like Ahmad's `cloud18-marketplace-dbu-price` /
+`-apu-price` (branch marketplace-pricing) so the four merge as one family. `BKUReading` carries
+`overCommit = max(0, local − plan)`, `billedUnits = max(plan, ceil(local))`, `unitPrice`,
+`monthlyCost`; `BAUReading` (`backupArchiveUnits` in the cluster JSON, `cluster_bau.go`)
+carries `bytes`, `units`, `billedUnits = ceil(units)`, `priced`, `unitPrice`, `monthlyCost`.
 
 **Shipped (feat/bku-backup-unit):** `prov-db-bku` (default **6**, per cluster) is `PlanUnitBKU` in
 `ChangePlanUnits` (floor 1, admin lock on its own flag, no resource follow: nothing is provisioned
@@ -47,15 +56,17 @@ the restic archive when its repository is a local path; a backup kept after its 
 archive counts TWICE, it uses the disk twice; never a catalog sum) and **remote** = the restic
 repository raw-data size (`restic stats --mode raw-data`, refreshed by `ResticFetchRepo`) ONLY when
 that repository is S3/SFTP (`resticRepositoryIsRemote`; a local restic repository is local disk),
-converts both at the Storage-profile ratio (20 GB/BKU) into `BKUReading`
-(`backupUnits` in the cluster JSON) and asserts **WARN0219** when local BKU is over the plan
-(over-commit, billed never blocked; in `pstates30`). Graphite every tick:
-`resourcemanager.<CTOKEN>.plan_bku`, `bku.<cluster>.{local,remote,local_bytes,remote_bytes}`
-(raw cluster name segment like `dbu.<cluster>.*`). GUI: Graphs → Resources third chart (local +
-remote bars, plan line) via `ChartGroupedDBU`'s new `axes` prop; Database Configurator →
-Resources "Backup BKU" gauge (`changePlanUnits('BKU')`). Open: whether the plan also covers
-remote, rounding over the billing period, the two price setting names, a node-side backup directory
-if one exists outside the streaming directory.
+converts local at the Storage-profile ratio (20 GB/BKU) into `BKUReading` (`backupUnits` in
+the cluster JSON) and asserts **WARN0219** when local BKU is over the plan (over-commit, billed
+never blocked; in `pstates30`), and remote at the same ratio into `BAUReading`
+(`backupArchiveUnits`; no plan, no state). Graphite every tick: `resourcemanager.<CTOKEN>.plan_bku`,
+`bku.<cluster>.{local,local_bytes,billed}`, `bau.<cluster>.{units,bytes,billed}` (raw cluster
+name segment like `dbu.<cluster>.*`). GUI: Graphs → Resources third chart (local bars, plan line)
+and fourth chart (BAU remote bars, no plan line) via `ChartGroupedDBU`'s `axes` prop;
+Database Configurator → Resources "Backup BKU" gauge (`changePlanUnits('BKU')`). Open: rounding
+over the billing period, a node-side backup directory if one exists outside the streaming
+directory, whether the client-storage declaration should be reconciled against the
+repository endpoint (today it is self-declared, like the subscription plan).
 
 A database is **not** an app (proxy/phpMyAdmin): little disk, no IOPS lock. Ratios are
 the **operator's rules**, held on the manager as `ratios map[WorkloadProfile]UnitRatios`

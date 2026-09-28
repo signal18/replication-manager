@@ -580,6 +580,12 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return fmt.Errorf("cloud18-marketplace-bku-price must be a positive number of Eur per BKU, got %q", value)
 		}
 		repman.Conf.Cloud18MarketplaceBKUPrice = f
+	case "cloud18-marketplace-bau-price":
+		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || f < 0 {
+			return fmt.Errorf("cloud18-marketplace-bau-price must be a positive number of Eur per BAU, got %q", value)
+		}
+		repman.Conf.Cloud18MarketplaceBAUPrice = f
 	case "mcp-transport":
 		if value != "api" && value != "sse" && value != "stdio" && value != "both" {
 			return errors.New("mcp-transport must be api, sse, stdio or both")

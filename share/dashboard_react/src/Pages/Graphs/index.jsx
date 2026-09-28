@@ -87,6 +87,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           // bku.<cluster>.<series>: no per-unit segment (the BKU is per cluster), so the wildcard
           // is the cluster itself, not a level under it.
           .replaceAll('bku.*', `bku.${selectedCluster?.name}`)
+          .replaceAll('bau.*', `bau.${selectedCluster?.name}`)
       : s
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
 
@@ -352,31 +353,43 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="Consumed APU — proxies + apps (Compute; plan = service-plan APU)"
        />
-        {/* Backup (BKU) — per-cluster backup storage: local = the cluster's local backup +
-            archive on disk, remote = what restic holds on S3/SFTP. bku.<cluster>.{local,remote}
-            are already in BKU (20 GB each); the *_bytes series give the real→unit overlay.
-            Plan line = prov-db-bku. The archive = local + remote; over-commit (archive above
-            the plan) is billed, never blocked, at cloud18-marketplace-bku-price per BKU. */}
+        {/* Backup (BKU) — per-cluster LOCAL backup storage: the last backup of each server on
+            the cluster's pool + the restic archive when its repository is a local path.
+            bku.<cluster>.local is already in BKU (20 GB); local_bytes gives the real→unit
+            overlay. Plan line = prov-db-bku. Over-commit (local above the plan) is billed,
+            never blocked, at cloud18-marketplace-bku-price per BKU. */}
         <ChartGroupedDBU
          context={context}
          axes={[
-           { key: 'local', label: 'Last backups', ratio: 20 * 1024 * 1024 * 1024, light: '#37a06f', dark: '#4dc088' },
-           { key: 'remote', label: 'Remote archive', ratio: 20 * 1024 * 1024 * 1024, light: '#3f8fd0', dark: '#5aa8e6' },
+           { key: 'local', label: 'Local backups', ratio: 20 * 1024 * 1024 * 1024, light: '#37a06f', dark: '#4dc088' },
          ]}
          unit='BKU'
-         dbuPaths={{
-           local: scope('sumSeries(bku.*.local)'),
-           remote: scope('sumSeries(bku.*.remote)')
-         }}
-         servicePaths={{
-           local: scope('sumSeries(bku.*.local_bytes)'),
-           remote: scope('sumSeries(bku.*.remote_bytes)')
-         }}
+         dbuPaths={{ local: scope('sumSeries(bku.*.local)') }}
+         servicePaths={{ local: scope('sumSeries(bku.*.local_bytes)') }}
          pivotPath=''
          planDbu={planBku}
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
-         title="Backup storage — BKU (last backups on the local pool vs remote archive; plan = prov-db-bku)"
+         title="Backup storage — BKU (local backups on the cluster pool; plan = prov-db-bku)"
+       />
+        {/* Backup archive (BAU) — what restic holds OFF the cluster on S3/SFTP, after
+            deduplication. Same 20 GB unit, NO plan (no plan line): tracked and billed on
+            usage at cloud18-marketplace-bau-price, unless the cluster's remote repository is
+            the client's own storage (cloud18-marketplace-bau-client-storage: tracked, not
+            priced). */}
+        <ChartGroupedDBU
+         context={context}
+         axes={[
+           { key: 'remote', label: 'Remote archive', ratio: 20 * 1024 * 1024 * 1024, light: '#3f8fd0', dark: '#5aa8e6' },
+         ]}
+         unit='BAU'
+         dbuPaths={{ remote: scope('sumSeries(bau.*.units)') }}
+         servicePaths={{ remote: scope('sumSeries(bau.*.bytes)') }}
+         pivotPath=''
+         planDbu={0}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Backup archive — BAU (remote restic archive on S3/SFTP; no plan, billed on usage)"
        />
       </GraphSection>
 

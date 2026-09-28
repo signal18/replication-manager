@@ -129,6 +129,7 @@ function CloudSettings({ selectedCluster, user }) {
   }, [monitor?.servicePlans, monitor?.partners])
 
   const hForSale = `**For Sale**\n\nMakes this cluster available on the Cloud18 marketplace.\nWhen enabled, other Cloud18 users can discover and subscribe to this cluster.\n\nConfig: \`cloud18-shared\``
+  const hBauClientStorage = `**Remote Archive On Client Storage**\n\nDeclares that this cluster's remote backup repository (restic on S3 or SFTP) is the client's own storage, not Signal18 or partner infrastructure.\nThe remote archive is still measured in BAU (Backup Archive Units, 20 GB each) but never priced.\n\nConfig: \`cloud18-marketplace-bau-client-storage\``
   const hPlan = `**Cluster Plan**\n\nSelects the service plan applied to this cluster on the Cloud18 marketplace.\nThe plan defines available resources, SLA level, and pricing.\nUse the play button to re-apply the current plan or the refresh button to reload plan information.\n\nConfig: \`prov-service-plan\``
   const hRWSplit = `**Cloud18 Database Read-Write-Split SRV Record**\n\nDNS SRV record used to route read-write-split traffic to this cluster on Cloud18.\n\nConfig: \`cloud18-database-read-write-split-srv-record\``
   const hRW = `**Cloud18 Database Read-Write SRV Record**\n\nDNS SRV record used to route read-write traffic to this cluster on Cloud18.\n\nConfig: \`cloud18-database-read-write-srv-record\``
@@ -147,6 +148,11 @@ function CloudSettings({ selectedCluster, user }) {
         key: 'For Sale',
         help: h(hForSale, 'For Sale'),
         value: (<RMSwitch confirmTitle={'Confirm switch settings for cloud18-shared?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-shared' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.cloud18Shared} />)
+      },
+      {
+        key: 'Remote Archive On Client Storage',
+        help: h(hBauClientStorage, 'Remote Archive On Client Storage'),
+        value: (<RMSwitch confirmTitle={'Confirm switch settings for cloud18-marketplace-bau-client-storage?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-marketplace-bau-client-storage' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.cloud18MarketplaceBauClientStorage} />)
       },
       {
         key: 'Cluster Plan',

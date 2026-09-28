@@ -2991,6 +2991,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.SwitchMailSmtpTlsSkipVerify()
 	case "cloud18-shared":
 		mycluster.Conf.SwitchCloud18Shared()
+	case "cloud18-marketplace-bau-client-storage":
+		mycluster.Conf.SwitchCloud18MarketplaceBAUClientStorage()
 	case "cloud18-open-dbops":
 		mycluster.SwitchCloud18OpenDbops()
 	case "cloud18-subscribed-dbops":
@@ -5057,6 +5059,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MailSMTPTLSSkipVerify = applyIsActive(mycluster.Conf.MailSMTPTLSSkipVerify, isactive)
 	case "cloud18-shared":
 		mycluster.Conf.Cloud18Shared = applyIsActive(mycluster.Conf.Cloud18Shared, isactive)
+	case "cloud18-marketplace-bau-client-storage":
+		mycluster.Conf.Cloud18MarketplaceBAUClientStorage = applyIsActive(mycluster.Conf.Cloud18MarketplaceBAUClientStorage, isactive)
 	case "cloud18-open-dbops":
 		mycluster.Conf.Cloud18OpenDbops = applyIsActive(mycluster.Conf.Cloud18OpenDbops, isactive)
 	case "cloud18-open-sysops":

@@ -17,38 +17,33 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-// BKUReading is the per-cluster backup storage picture against the BKU plan. One BKU is the
-// DBU disk axis (20 GB by default, the ResourceManager Storage profile) and nothing else.
-// Accounted PER CLUSTER: backups are of the dataset, not of each node. Two kinds:
-//   - local: everything the cluster keeps on its own storage: the last backup of each server
-//     in its backup directory (<working-dir>/backups/<cluster>/<host>_<port>) PLUS the restic
-//     archive when its repository is a local path (GetBackupDiskPaths lists both). A backup
-//     kept after its push to the archive counts twice, on purpose: it uses the disk twice.
-//   - remote: the restic repository raw-data size (restic stats, refreshed by ResticFetchRepo)
-//     ONLY when that repository is remote (S3/SFTP); a local restic repository is local disk
-//     and is already in the walk above.
+// BKUReading is the per-cluster LOCAL backup storage picture against the BKU plan. One BKU is
+// the DBU disk axis (20 GB by default, the ResourceManager Storage profile) and nothing else.
+// Accounted PER CLUSTER: backups are of the dataset, not of each node. Local = everything the
+// cluster keeps on its own storage: the last backup of each server in its backup directory
+// (<working-dir>/backups/<cluster>/<host>_<port>) PLUS the restic archive when its repository
+// is a local path (GetBackupDiskPaths lists both). A backup kept after its push to the archive
+// counts twice, on purpose: it uses the disk twice.
 //
-// The backup archive is local + remote: both count against the plan (decision 2026-09-27,
-// the remote archive is part of the BKU archive price, not priced apart). Over-commit is the
-// total above the plan: billed, never blocked (same rule as the DBU over-plan). Billing:
-// max(plan, ceil(total)) units at cloud18-marketplace-bku-price Eur/BKU/month.
+// What leaves the cluster (the restic repository on S3/SFTP) is NOT a BKU: it is the remote
+// archive, measured apart as BAU (BAUReading, cluster_bau.go), with its own price and no plan.
+// Over-commit is the local usage above the plan: billed, never blocked (same rule as the DBU
+// over-plan). Billing: max(plan, ceil(local)) units at cloud18-marketplace-bku-price
+// Eur/BKU/month.
 type BKUReading struct {
 	Plan        int       `json:"plan"`        // prov-db-bku, per cluster
 	LocalBytes  int64     `json:"localBytes"`  // real disk used by the local backup
-	RemoteBytes int64     `json:"remoteBytes"` // restic repository raw-data size
 	BkuLocal    float64   `json:"bkuLocal"`    // LocalBytes / (BKU disk)
-	BkuRemote   float64   `json:"bkuRemote"`   // RemoteBytes / (BKU disk)
-	BkuTotal    float64   `json:"bkuTotal"`    // BkuLocal + BkuRemote: the archive
-	OverCommit  float64   `json:"overCommit"`  // max(0, BkuTotal - Plan)
-	BilledUnits int       `json:"billedUnits"` // max(Plan, ceil(BkuTotal))
+	OverCommit  float64   `json:"overCommit"`  // max(0, BkuLocal - Plan)
+	BilledUnits int       `json:"billedUnits"` // max(Plan, ceil(BkuLocal))
 	UnitPrice   float64   `json:"unitPrice"`   // cloud18-marketplace-bku-price, Eur per BKU per month (0 = not priced)
 	MonthlyCost float64   `json:"monthlyCost"` // BilledUnits × UnitPrice
 	UnitBytes   int64     `json:"unitBytes"`   // bytes per BKU, from the Storage profile ratio
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
-// bkuUnitBytes is the disk quantity of one BKU: the Storage profile ratio when a manager is
-// wired, 20 GiB otherwise.
+// bkuUnitBytes is the disk quantity of one BKU (and of one BAU: the same 20 GB): the Storage
+// profile ratio when a manager is wired, 20 GiB otherwise.
 func (cluster *Cluster) bkuUnitBytes() int64 {
 	gb := 20.0
 	if cluster.resources != nil {
@@ -96,16 +91,14 @@ func (cluster *Cluster) remoteBackupBytes() int64 {
 	return cluster.ResticManager.BackupStat.TotalSize
 }
 
-// computeBKU builds the reading from the measured bytes and the plan.
-func computeBKU(plan int, localBytes, remoteBytes, unitBytes int64, unitPrice float64, now time.Time) *BKUReading {
-	r := &BKUReading{Plan: plan, LocalBytes: localBytes, RemoteBytes: remoteBytes, UnitBytes: unitBytes, UnitPrice: unitPrice, UpdatedAt: now}
+// computeBKU builds the local reading from the measured bytes and the plan.
+func computeBKU(plan int, localBytes, unitBytes int64, unitPrice float64, now time.Time) *BKUReading {
+	r := &BKUReading{Plan: plan, LocalBytes: localBytes, UnitBytes: unitBytes, UnitPrice: unitPrice, UpdatedAt: now}
 	if unitBytes > 0 {
 		r.BkuLocal = float64(localBytes) / float64(unitBytes)
-		r.BkuRemote = float64(remoteBytes) / float64(unitBytes)
 	}
-	r.BkuTotal = r.BkuLocal + r.BkuRemote
-	r.OverCommit = math.Max(0, r.BkuTotal-float64(plan))
-	r.BilledUnits = int(math.Max(float64(plan), math.Ceil(r.BkuTotal)))
+	r.OverCommit = math.Max(0, r.BkuLocal-float64(plan))
+	r.BilledUnits = int(math.Max(float64(plan), math.Ceil(r.BkuLocal)))
 	if r.BilledUnits < 0 {
 		r.BilledUnits = 0
 	}
@@ -113,38 +106,44 @@ func computeBKU(plan int, localBytes, remoteBytes, unitBytes int64, unitPrice fl
 	return r
 }
 
-// RefreshBackupUnits measures the cluster's backup storage and asserts WARN0219 when the local
-// backup disk is over the BKU plan. Runs every 30 ticks (disk walk); the state is preserved on
-// the intermediate ticks through pstates30.
+// RefreshBackupUnits measures the cluster's backup storage, local (BKU) and remote archive
+// (BAU), and asserts WARN0219 when the local backup disk is over the BKU plan. Runs every 30
+// ticks (disk walk); the state is preserved on the intermediate ticks through pstates30. The
+// remote archive has no plan, so no state: it is tracked and priced, never warned about.
 func (cluster *Cluster) RefreshBackupUnits() {
-	r := computeBKU(cluster.Conf.ProvDbBku, cluster.localBackupBytes(), cluster.remoteBackupBytes(), cluster.bkuUnitBytes(), cluster.Conf.Cloud18MarketplaceBKUPrice, time.Now())
+	now := time.Now()
+	unit := cluster.bkuUnitBytes()
+	r := computeBKU(cluster.Conf.ProvDbBku, cluster.localBackupBytes(), unit, cluster.Conf.Cloud18MarketplaceBKUPrice, now)
 	cluster.BackupUnits = r
+	cluster.BackupArchiveUnits = computeBAU(cluster.remoteBackupBytes(), unit, cluster.bauUnitPrice(), now)
 	if r.OverCommit > 0 {
-		cluster.SetState("WARN0219", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0219"], cluster.Name, r.BkuTotal, r.Plan, humanBytes(r.LocalBytes), humanBytes(r.RemoteBytes)), ErrFrom: "BACKUP"})
+		cluster.SetState("WARN0219", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0219"], cluster.Name, r.BkuLocal, r.Plan, humanBytes(r.LocalBytes)), ErrFrom: "BACKUP"})
 	}
 }
 
-// CollectBackupUnitMetrics emits the BKU series every tick from the cached reading: the plan
-// as resourcemanager.<CTOKEN>.plan_bku (like plan_dbu / plan_apu), the consumed values as
-// bku.<cluster>.{local,remote} (in BKU) and bku.<cluster>.{local_bytes,remote_bytes}, keyed by
-// the RAW cluster name like dbu.<cluster>.* and apu.<cluster>.* so the Graphs page scopes them
-// the same way, plus bku.<cluster>.{total,billed}. Over-commit is derived at query time
-// (total vs plan), never emitted.
+// CollectBackupUnitMetrics emits the BKU and BAU series every tick from the cached readings:
+// the plan as resourcemanager.<CTOKEN>.plan_bku (like plan_dbu / plan_apu), the local backup
+// as bku.<cluster>.{local,local_bytes,billed} and the remote archive as
+// bau.<cluster>.{units,bytes,billed}, keyed by the RAW cluster name like dbu.<cluster>.* and
+// apu.<cluster>.* so the Graphs page scopes them the same way. Over-commit is derived at
+// query time (local vs plan), never emitted.
 func (cluster *Cluster) CollectBackupUnitMetrics() {
-	r := cluster.BackupUnits
-	if r == nil {
-		return
-	}
 	ts := time.Now().Unix()
-	ctoken := strings.ToUpper(computeTokenReplacer.Replace(cluster.Name))
 	f := func(v float64, prec int) string { return strconv.FormatFloat(v, 'f', prec, 64) }
-	cluster.AddMetrics([]graphite.Metric{
-		graphite.NewMetric(fmt.Sprintf("resourcemanager.%s.plan_bku", ctoken), strconv.Itoa(r.Plan), ts),
-		graphite.NewMetric(fmt.Sprintf("bku.%s.local", cluster.Name), f(r.BkuLocal, 4), ts),
-		graphite.NewMetric(fmt.Sprintf("bku.%s.remote", cluster.Name), f(r.BkuRemote, 4), ts),
-		graphite.NewMetric(fmt.Sprintf("bku.%s.total", cluster.Name), f(r.BkuTotal, 4), ts),
-		graphite.NewMetric(fmt.Sprintf("bku.%s.billed", cluster.Name), strconv.Itoa(r.BilledUnits), ts),
-		graphite.NewMetric(fmt.Sprintf("bku.%s.local_bytes", cluster.Name), strconv.FormatInt(r.LocalBytes, 10), ts),
-		graphite.NewMetric(fmt.Sprintf("bku.%s.remote_bytes", cluster.Name), strconv.FormatInt(r.RemoteBytes, 10), ts),
-	})
+	if r := cluster.BackupUnits; r != nil {
+		ctoken := strings.ToUpper(computeTokenReplacer.Replace(cluster.Name))
+		cluster.AddMetrics([]graphite.Metric{
+			graphite.NewMetric(fmt.Sprintf("resourcemanager.%s.plan_bku", ctoken), strconv.Itoa(r.Plan), ts),
+			graphite.NewMetric(fmt.Sprintf("bku.%s.local", cluster.Name), f(r.BkuLocal, 4), ts),
+			graphite.NewMetric(fmt.Sprintf("bku.%s.local_bytes", cluster.Name), strconv.FormatInt(r.LocalBytes, 10), ts),
+			graphite.NewMetric(fmt.Sprintf("bku.%s.billed", cluster.Name), strconv.Itoa(r.BilledUnits), ts),
+		})
+	}
+	if a := cluster.BackupArchiveUnits; a != nil {
+		cluster.AddMetrics([]graphite.Metric{
+			graphite.NewMetric(fmt.Sprintf("bau.%s.units", cluster.Name), f(a.Units, 4), ts),
+			graphite.NewMetric(fmt.Sprintf("bau.%s.bytes", cluster.Name), strconv.FormatInt(a.Bytes, 10), ts),
+			graphite.NewMetric(fmt.Sprintf("bau.%s.billed", cluster.Name), strconv.Itoa(a.BilledUnits), ts),
+		})
+	}
 }
