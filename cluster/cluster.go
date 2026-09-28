@@ -1242,8 +1242,7 @@ func (cluster *Cluster) tickBody() {
 				cluster.trackTickGoroutine(cluster.maybeRefreshAppsAsync)
 				if heartbeats%10 == 0 {
 					goRun(cluster.MonitorTableSchemaDiff)
-					goRun(cluster.ScrapeComputeSensors) // APU sensor: om3 per-service cgroup metrics of the apps + proxies (cluster_compute_sensor.go)
-					goRun(cluster.ScrapeComputeSensors) // APU sensor: om3 per-service cgroup metrics of the apps + proxies (cluster_compute_sensor.go)
+					cluster.trackTickGoroutine(cluster.ScrapeComputeSensors) // APU sensor: om3 per-service cgroup metrics of the apps + proxies (cluster_compute_sensor.go); HTTP to the agents, never waited by the tick
 				}
 				if heartbeats%30 == 0 {
 					goRun(cluster.ResticFetchRepo)
