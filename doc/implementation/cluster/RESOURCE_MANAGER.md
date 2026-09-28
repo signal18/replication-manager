@@ -43,9 +43,17 @@ client's own storage declares it with `cloud18-marketplace-bau-client-storage` (
 GUI Settings → Cloud18 → "Remote Archive On Client Storage") and its BAU are tracked, never priced.
 Prices: `cloud18-marketplace-bku-price` and `cloud18-marketplace-bau-price` (Eur/unit/month,
 server scope, GUI Settings → Marketplace), named like Ahmad's `cloud18-marketplace-dbu-price` /
-`-apu-price` (branch marketplace-pricing) so the four merge as one family. `BKUReading` carries
-`overCommit = max(0, local − plan)`, `billedUnits = max(plan, ceil(local))`, `unitPrice`,
-`monthlyCost`; `BAUReading` (`backupArchiveUnits` in the cluster JSON, `cluster_bau.go`)
+`-apu-price` (branch marketplace-pricing) so the four merge as one family. **Price ratios, global to the
+instance (Stéphane 2026-09-28, asymmetric on purpose):** `cloud18-marketplace-overcommit-price-pct`
+(default **150**: a unit consumed above the plan costs 1.5× the unit price) and
+`cloud18-marketplace-undercommit-price-pct` (default **80**: a plan unit left unconsumed is billed at
+0.8×, a fifth given back). Both server scope, GUI Settings → Marketplace. `planUnitCost(plan, consumed,
+price, over, under)` in `cluster_bku.go`: consumed > plan → plan×price + (consumed−plan)×price×over/100;
+else consumed×price + (plan−consumed)×price×under/100 (100/100 = flat max(plan, consumed)). Applies to
+every unit family with a plan (DBU, APU, BKU); the **BAU is outside the ratios** (pure usage, no plan).
+DBU/APU costs are not computed anywhere yet, the ratios are stored and shown for them. `BKUReading` carries
+`overCommit = max(0, local − plan)`, `consumedUnits = ceil(local)`, `billedUnits = max(plan, consumed)`,
+`overPlanUnits`, `underPlanUnits`, `unitPrice`, `overPricePct`, `underPricePct`, `monthlyCost`; `BAUReading` (`backupArchiveUnits` in the cluster JSON, `cluster_bau.go`)
 carries `bytes`, `units`, `billedUnits = ceil(units)`, `priced`, `unitPrice`, `monthlyCost`.
 
 **Shipped (feat/bku-backup-unit):** `prov-db-bku` (default **6**, per cluster) is `PlanUnitBKU` in

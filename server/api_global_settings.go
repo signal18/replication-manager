@@ -609,6 +609,16 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return fmt.Errorf("cloud18-marketplace-bau-price must be a positive number of Eur per BAU, got %q", value)
 		}
 		repman.Conf.Cloud18MarketplaceBAUPrice = f
+	case "cloud18-marketplace-overcommit-price-pct", "cloud18-marketplace-undercommit-price-pct":
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n < 0 {
+			return fmt.Errorf("%s must be a positive percent of the unit price, got %q", name, value)
+		}
+		if name == "cloud18-marketplace-overcommit-price-pct" {
+			repman.Conf.Cloud18MarketplaceOvercommitPricePct = n
+		} else {
+			repman.Conf.Cloud18MarketplaceUndercommitPricePct = n
+		}
 	case "mcp-transport":
 		if value != "api" && value != "sse" && value != "stdio" && value != "both" {
 			return errors.New("mcp-transport must be api, sse, stdio or both")

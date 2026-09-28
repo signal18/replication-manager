@@ -1038,6 +1038,8 @@ type Config struct {
 	Cloud18MarketplaceBKUPrice             float64                `scope:"server" mapstructure:"cloud18-marketplace-bku-price" toml:"cloud18-marketplace-bku-price" json:"cloud18MarketplaceBkuPrice"`
 	Cloud18MarketplaceBAUPrice             float64                `scope:"server" mapstructure:"cloud18-marketplace-bau-price" toml:"cloud18-marketplace-bau-price" json:"cloud18MarketplaceBauPrice"`
 	Cloud18MarketplaceBAUClientStorage     bool                   `mapstructure:"cloud18-marketplace-bau-client-storage" toml:"cloud18-marketplace-bau-client-storage" json:"cloud18MarketplaceBauClientStorage"`
+	Cloud18MarketplaceOvercommitPricePct   int                    `scope:"server" mapstructure:"cloud18-marketplace-overcommit-price-pct" toml:"cloud18-marketplace-overcommit-price-pct" json:"cloud18MarketplaceOvercommitPricePct"`
+	Cloud18MarketplaceUndercommitPricePct  int                    `scope:"server" mapstructure:"cloud18-marketplace-undercommit-price-pct" toml:"cloud18-marketplace-undercommit-price-pct" json:"cloud18MarketplaceUndercommitPricePct"`
 	Cloud18OpenSysops                      bool                   `mapstructure:"cloud18-open-sysops"  toml:"cloud18-open-sysops" json:"cloud18OpenSysops"`
 	Cloud18DatabaseReadWriteSplitSrvRecord string                 `mapstructure:"cloud18-database-read-write-split-srv-record"  toml:"cloud18-database-read-write-split-srv-record" json:"cloud18DatabaseReadWriteSplitSrvRecord"`
 	Cloud18DatabaseReadSrvRecord           string                 `mapstructure:"cloud18-database-read-srv-record"  toml:"cloud18-database-read-srv-record" json:"cloud18DatabaseReadSrvRecord"`

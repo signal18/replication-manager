@@ -56,6 +56,9 @@ function MarketplaceSettings({ config }) {
   const hBkuPrice = `**BKU Price**\n\nPrice of one Backup Unit per month, in Eur. One BKU is 20 GB of **local** backup storage: the last backup of each server on the cluster's own pool, plus the restic archive when its repository is a local path. It is counted against the cluster's BKU plan (\`prov-db-bku\`); the billed units are the plan or the usage rounded up to the next unit, whichever is larger. 0 = local backups are not priced.\n\nConfig: \`cloud18-marketplace-bku-price\``
   const hBauPrice = `**BAU Price**\n\nPrice of one Backup Archive Unit per month, in Eur. One BAU is 20 GB of **remote** archive: what restic holds off the cluster on S3 or SFTP, after deduplication. There is no plan: the archive is billed on usage, rounded up to the next unit. The price applies to Signal18 or partner storage only; a cluster that brought its own remote storage (*Cloud18 → Remote archive on client storage*) is tracked but never priced. 0 = the remote archive is not priced.\n\nConfig: \`cloud18-marketplace-bau-price\``
 
+  const hOverPct = `**Over-commit Price Ratio**\n\nPrice of a unit consumed **above** the plan, in percent of the unit price. 150 means an over-plan unit costs one and a half times the unit price. Applies to every unit family with a plan (DBU, APU, BKU); the BAU has no plan and is pure usage, so it is never marked up. Global to this replication-manager instance.\n\nConfig: \`cloud18-marketplace-overcommit-price-pct\` (default 150)`
+  const hUnderPct = `**Under-commit Price Ratio**\n\nPrice of a plan unit left **unconsumed**, in percent of the unit price. 80 means a fifth of the unit price is given back on each unused plan unit; 100 bills the plan in full whatever is consumed. The pendant of the over-commit ratio, asymmetric on purpose. Global to this replication-manager instance.\n\nConfig: \`cloud18-marketplace-undercommit-price-pct\` (default 80)`
+
   const dataObject = [
     {
       key: 'Marketplace Pricing Mode',
@@ -119,6 +122,30 @@ function MarketplaceSettings({ config }) {
           type='number'
           confirmTitle='Confirm BAU price (Eur per backup archive unit per month) to '
           onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-bau-price', value }))}
+        />
+      )
+    },
+    {
+      key: 'Over-commit Price Ratio (%)',
+      help: h(hOverPct, 'Over-commit Price Ratio'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18MarketplaceOvercommitPricePct ?? '')}
+          type='number'
+          confirmTitle='Confirm over-commit price ratio (% of the unit price) to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-overcommit-price-pct', value }))}
+        />
+      )
+    },
+    {
+      key: 'Under-commit Price Ratio (%)',
+      help: h(hUnderPct, 'Under-commit Price Ratio'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18MarketplaceUndercommitPricePct ?? '')}
+          type='number'
+          confirmTitle='Confirm under-commit price ratio (% of the unit price) to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-undercommit-price-pct', value }))}
         />
       )
     },

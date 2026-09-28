@@ -28,18 +28,27 @@ import (
 // What leaves the cluster (the restic repository on S3/SFTP) is NOT a BKU: it is the remote
 // archive, measured apart as BAU (BAUReading, cluster_bau.go), with its own price and no plan.
 // Over-commit is the local usage above the plan: billed, never blocked (same rule as the DBU
-// over-plan). Billing: max(plan, ceil(local)) units at cloud18-marketplace-bku-price
-// Eur/BKU/month.
+// over-plan). Billing is ASYMMETRIC around the plan, with the instance-wide price ratios
+// (cloud18-marketplace-overcommit-price-pct, default 150, and -undercommit-price-pct, default
+// 80), on whole units consumed = ceil(local) at cloud18-marketplace-bku-price Eur/BKU/month:
+//
+//	consumed > plan:  plan × price + (consumed − plan) × price × over/100
+//	consumed <= plan: consumed × price + (plan − consumed) × price × under/100
 type BKUReading struct {
-	Plan        int       `json:"plan"`        // prov-db-bku, per cluster
-	LocalBytes  int64     `json:"localBytes"`  // real disk used by the local backup
-	BkuLocal    float64   `json:"bkuLocal"`    // LocalBytes / (BKU disk)
-	OverCommit  float64   `json:"overCommit"`  // max(0, BkuLocal - Plan)
-	BilledUnits int       `json:"billedUnits"` // max(Plan, ceil(BkuLocal))
-	UnitPrice   float64   `json:"unitPrice"`   // cloud18-marketplace-bku-price, Eur per BKU per month (0 = not priced)
-	MonthlyCost float64   `json:"monthlyCost"` // BilledUnits × UnitPrice
-	UnitBytes   int64     `json:"unitBytes"`   // bytes per BKU, from the Storage profile ratio
-	UpdatedAt   time.Time `json:"updatedAt"`
+	Plan           int       `json:"plan"`           // prov-db-bku, per cluster
+	LocalBytes     int64     `json:"localBytes"`     // real disk used by the local backup
+	BkuLocal       float64   `json:"bkuLocal"`       // LocalBytes / (BKU disk)
+	OverCommit     float64   `json:"overCommit"`     // max(0, BkuLocal - Plan)
+	ConsumedUnits  int       `json:"consumedUnits"`  // ceil(BkuLocal), the whole units billed on usage
+	BilledUnits    int       `json:"billedUnits"`    // max(Plan, ConsumedUnits), the units a flat price would charge
+	OverPlanUnits  int       `json:"overPlanUnits"`  // max(0, ConsumedUnits - Plan), priced at the over-commit ratio
+	UnderPlanUnits int       `json:"underPlanUnits"` // max(0, Plan - ConsumedUnits), priced at the under-commit ratio
+	UnitPrice      float64   `json:"unitPrice"`      // cloud18-marketplace-bku-price, Eur per BKU per month (0 = not priced)
+	OverPricePct   int       `json:"overPricePct"`   // cloud18-marketplace-overcommit-price-pct
+	UnderPricePct  int       `json:"underPricePct"`  // cloud18-marketplace-undercommit-price-pct
+	MonthlyCost    float64   `json:"monthlyCost"`    // the asymmetric formula above
+	UnitBytes      int64     `json:"unitBytes"`      // bytes per BKU, from the Storage profile ratio
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 // bkuUnitBytes is the disk quantity of one BKU (and of one BAU: the same 20 GB): the Storage
@@ -91,18 +100,42 @@ func (cluster *Cluster) remoteBackupBytes() int64 {
 	return cluster.ResticManager.BackupStat.TotalSize
 }
 
-// computeBKU builds the local reading from the measured bytes and the plan.
-func computeBKU(plan int, localBytes, unitBytes int64, unitPrice float64, now time.Time) *BKUReading {
-	r := &BKUReading{Plan: plan, LocalBytes: localBytes, UnitBytes: unitBytes, UnitPrice: unitPrice, UpdatedAt: now}
+// planUnitCost is the monthly cost of a unit family with a plan, asymmetric around it: the
+// plan is charged at the unit price, units consumed above it at over% of the price, plan
+// units left unconsumed at under% of the price (so 100/100 is a flat max(plan, consumed)).
+func planUnitCost(plan, consumed int, unitPrice float64, overPct, underPct int) float64 {
+	if plan < 0 {
+		plan = 0
+	}
+	if consumed < 0 {
+		consumed = 0
+	}
+	if consumed > plan {
+		return float64(plan)*unitPrice + float64(consumed-plan)*unitPrice*float64(overPct)/100
+	}
+	return float64(consumed)*unitPrice + float64(plan-consumed)*unitPrice*float64(underPct)/100
+}
+
+// computeBKU builds the local reading from the measured bytes, the plan and the price ratios.
+func computeBKU(plan int, localBytes, unitBytes int64, unitPrice float64, overPct, underPct int, now time.Time) *BKUReading {
+	r := &BKUReading{Plan: plan, LocalBytes: localBytes, UnitBytes: unitBytes, UnitPrice: unitPrice, OverPricePct: overPct, UnderPricePct: underPct, UpdatedAt: now}
 	if unitBytes > 0 {
 		r.BkuLocal = float64(localBytes) / float64(unitBytes)
 	}
 	r.OverCommit = math.Max(0, r.BkuLocal-float64(plan))
-	r.BilledUnits = int(math.Max(float64(plan), math.Ceil(r.BkuLocal)))
-	if r.BilledUnits < 0 {
-		r.BilledUnits = 0
+	r.ConsumedUnits = int(math.Ceil(r.BkuLocal))
+	if r.ConsumedUnits < 0 {
+		r.ConsumedUnits = 0
 	}
-	r.MonthlyCost = float64(r.BilledUnits) * unitPrice
+	if plan < 0 {
+		plan = 0
+	}
+	if r.ConsumedUnits > plan {
+		r.BilledUnits, r.OverPlanUnits = r.ConsumedUnits, r.ConsumedUnits-plan
+	} else {
+		r.BilledUnits, r.UnderPlanUnits = plan, plan-r.ConsumedUnits
+	}
+	r.MonthlyCost = planUnitCost(plan, r.ConsumedUnits, unitPrice, overPct, underPct)
 	return r
 }
 
@@ -113,7 +146,7 @@ func computeBKU(plan int, localBytes, unitBytes int64, unitPrice float64, now ti
 func (cluster *Cluster) RefreshBackupUnits() {
 	now := time.Now()
 	unit := cluster.bkuUnitBytes()
-	r := computeBKU(cluster.Conf.ProvDbBku, cluster.localBackupBytes(), unit, cluster.Conf.Cloud18MarketplaceBKUPrice, now)
+	r := computeBKU(cluster.Conf.ProvDbBku, cluster.localBackupBytes(), unit, cluster.Conf.Cloud18MarketplaceBKUPrice, cluster.Conf.Cloud18MarketplaceOvercommitPricePct, cluster.Conf.Cloud18MarketplaceUndercommitPricePct, now)
 	cluster.BackupUnits = r
 	cluster.BackupArchiveUnits = computeBAU(cluster.remoteBackupBytes(), unit, cluster.bauUnitPrice(), now)
 	if r.OverCommit > 0 {

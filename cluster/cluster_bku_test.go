@@ -10,26 +10,36 @@ import (
 )
 
 // One BKU is 20 GiB of disk and nothing else; the BKU is the LOCAL backup only, over-commit is
-// the local usage above the plan, billing is max(plan, ceil(local)) at the BKU price.
+// the local usage above the plan, billing is asymmetric around the plan: over-plan units at
+// over% of the price, unused plan units at under% (100/100 = flat max(plan, ceil(local))).
 func TestComputeBKU(t *testing.T) {
 	unit := int64(20 * 1024 * 1024 * 1024)
-	r := computeBKU(6, 10*unit, unit, 2.5, time.Now())
-	if r.BkuLocal != 10 || r.OverCommit != 4 {
-		t.Fatalf("local=%v over=%v, want 10 4", r.BkuLocal, r.OverCommit)
+	// Flat ratios: 10 units over a plan of 6 bill 10 at 2.5.
+	r := computeBKU(6, 10*unit, unit, 2.5, 100, 100, time.Now())
+	if r.BkuLocal != 10 || r.OverCommit != 4 || r.ConsumedUnits != 10 || r.OverPlanUnits != 4 || r.UnderPlanUnits != 0 {
+		t.Fatalf("local=%v over=%v consumed=%d overUnits=%d underUnits=%d, want 10 4 10 4 0", r.BkuLocal, r.OverCommit, r.ConsumedUnits, r.OverPlanUnits, r.UnderPlanUnits)
 	}
 	if r.BilledUnits != 10 || r.MonthlyCost != 25 {
 		t.Fatalf("billed=%d cost=%v, want 10 units at 2.5 = 25", r.BilledUnits, r.MonthlyCost)
 	}
-	// Under the plan: the plan is billed, no over-commit.
-	r = computeBKU(6, 2*unit, unit, 2.5, time.Now())
-	if r.OverCommit != 0 || r.BilledUnits != 6 || r.MonthlyCost != 15 {
-		t.Fatalf("under plan: over=%v billed=%d cost=%v, want 0 6 15", r.OverCommit, r.BilledUnits, r.MonthlyCost)
+	// Asymmetric defaults 150/80: the 4 over-plan units cost 1.5x -> 6x2.5 + 4x2.5x1.5 = 30.
+	if r = computeBKU(6, 10*unit, unit, 2.5, 150, 80, time.Now()); r.MonthlyCost != 30 || r.OverPricePct != 150 {
+		t.Fatalf("over plan at 150%%: cost=%v pct=%d, want 30 150", r.MonthlyCost, r.OverPricePct)
+	}
+	// Under the plan at 150/80: 2 consumed + 4 unused at 0.8 -> 2x2.5 + 4x2.5x0.8 = 13.
+	r = computeBKU(6, 2*unit, unit, 2.5, 150, 80, time.Now())
+	if r.OverCommit != 0 || r.BilledUnits != 6 || r.UnderPlanUnits != 4 || r.MonthlyCost != 13 {
+		t.Fatalf("under plan: over=%v billed=%d underUnits=%d cost=%v, want 0 6 4 13", r.OverCommit, r.BilledUnits, r.UnderPlanUnits, r.MonthlyCost)
+	}
+	// Flat under-commit (100) bills the plan in full.
+	if r = computeBKU(6, 2*unit, unit, 2.5, 150, 100, time.Now()); r.MonthlyCost != 15 {
+		t.Fatalf("under plan at 100%%: cost=%v, want 15", r.MonthlyCost)
 	}
 	// Fractions round up to the next whole unit; no price = no cost.
-	if r = computeBKU(1, unit+unit/2, unit, 0, time.Now()); r.BilledUnits != 2 || r.MonthlyCost != 0 {
-		t.Fatalf("1.5 BKU must bill 2 at no cost, got %d %v", r.BilledUnits, r.MonthlyCost)
+	if r = computeBKU(1, unit+unit/2, unit, 0, 150, 80, time.Now()); r.ConsumedUnits != 2 || r.BilledUnits != 2 || r.MonthlyCost != 0 {
+		t.Fatalf("1.5 BKU must bill 2 at no cost, got %d %d %v", r.ConsumedUnits, r.BilledUnits, r.MonthlyCost)
 	}
-	if r = computeBKU(6, unit, 0, 1, time.Now()); r.BkuLocal != 0 {
+	if r = computeBKU(6, unit, 0, 1, 150, 80, time.Now()); r.BkuLocal != 0 {
 		t.Fatalf("a zero unit must not divide")
 	}
 }
