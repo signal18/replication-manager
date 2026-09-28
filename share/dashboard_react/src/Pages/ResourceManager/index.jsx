@@ -251,6 +251,63 @@ function ResourceManager() {
             metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(resourcemanager.${carbonHost(c.cluster)}.plan_apu,sumSeries(apu.${c.cluster}.*.apu)),0)`)}
             metricLabels={data.clusters.map((c) => c.cluster)}
           />
+          <Text fontSize='md' fontWeight='bold' mt={6} mb={1}>Storage (BKU) — local backups + app disk on the NVMe pool</Text>
+          <Text fontSize='xs' opacity={0.6} mb={1}>
+            Consumed = bku.&lt;cluster&gt;.local + bku.&lt;cluster&gt;.app_disk (20 GB units; app disk = declared prov-app-disk-size × copies, per app) · Plan = resourcemanager.&lt;cluster&gt;.plan_bku (prov-db-bku)
+          </Text>
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Consumed BKU (per cluster)'
+            metricPaths={data.clusters.map((c) => `sumSeries(bku.${c.cluster}.local,bku.${c.cluster}.app_disk)`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
+          />
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Plan BKU (per cluster)'
+            metricPaths={data.clusters.map((c) => `resourcemanager.${carbonHost(c.cluster)}.plan_bku`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
+          />
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Overcommit BKU (consumed > plan, per cluster; billed with the surcharge, never blocked)'
+            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(sumSeries(bku.${c.cluster}.local,bku.${c.cluster}.app_disk),resourcemanager.${carbonHost(c.cluster)}.plan_bku),0)`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
+          />
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Undercommit BKU (plan > consumed, per cluster; billed with the reduction)'
+            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(resourcemanager.${carbonHost(c.cluster)}.plan_bku,sumSeries(bku.${c.cluster}.local,bku.${c.cluster}.app_disk)),0)`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
+          />
+          <Text fontSize='md' fontWeight='bold' mt={6} mb={1}>Archive (BAU) — remote archive, consumer + producer, no plan</Text>
+          <Text fontSize='xs' opacity={0.6} mb={1}>
+            Consumer = bau.&lt;cluster&gt;.units (what the cluster holds on S3/SFTP) · Producer = bau.&lt;cluster&gt;.producer (declared volumes of its S3-provider apps) · Billed = bau.&lt;cluster&gt;.billed, on usage
+          </Text>
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Consumer BAU (per cluster)'
+            metricPaths={data.clusters.map((c) => `bau.${c.cluster}.units`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
+          />
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Producer BAU (per cluster)'
+            metricPaths={data.clusters.map((c) => `bau.${c.cluster}.producer`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
+          />
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Billed BAU (consumer + producer, rounded up, per cluster)'
+            metricPaths={data.clusters.map((c) => `bau.${c.cluster}.billed`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
+          />
           <Flex gap={4} wrap='wrap' mt={2}>
             {data.clusters.map((c, i) => (
               <Flex key={c.cluster} align='center' gap={1}>
