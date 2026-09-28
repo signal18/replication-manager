@@ -61,7 +61,21 @@ balancer, failover = ONE, "failover consume disk, no memory, no cpu"), a proxy a
 declared setting, like `prov-db-disk-size`, nothing read back from OpenSVC) × the agents holding a copy
 (`appCopyCount`), rounded up per app; a compute app's disk joins the **BKU** (`appDiskUnits`, counted in the plan
 and the surcharge/reduction), a storage app's (`app-s3-provider`, the profile, settable per app in the GUI) is
-**producer BAU** (`producerUnits`, no plan). Series `bku.<c>.app_disk[_bytes]`, `bau.<c>.producer[_bytes]`. `APUBilling` (`computeUnits` in the
+**producer BAU** (`producerUnits`, no plan). Series `bku.<c>.app_disk[_bytes]`, `bau.<c>.producer[_bytes]`.
+
+**Compute sensor for apps + proxies = the om3 daemon's pg metrics (`cluster_compute_sensor.go`, 2026-09-28,
+Stéphane's go; he noted I should have asked sidecar-vs-orchestrator first):** every 10 ticks the cluster GETs
+`https://<agent>:<daemon port>/metrics/pg` (Prometheus text, no auth, verified remote 200 on preprod) for the
+agents of its apps and proxies (per-agent cache 5 s shared by the clusters), keeps
+`opensvc_pg_cgroup_cpu_usage_usec` (cumulative → Δ/Δt = cores) and `opensvc_pg_cgroup_memory_current_bytes`
+per `path=<ns>/svc/<name>` (one cgroup slice per SERVICE, so the shared namespace never mixes the apps; the
+slice holds every container of the service; volumes are their own path), sums a flex app over its agents, and
+feeds `IngestAppConsumedAPU` (the path the sidecar pushed to). No IO counter is exported → disk 0 (billed
+apart, declared). **Daemon snapshot refreshed every ~15 s** (measured): a scrape on an unchanged snapshot is
+skipped (`samePgSnapshot`), the delta spans two distinct snapshots. Previous sample per agent+path is a
+package-level map, no struct field. Off switch: `monitoring-system-resources`. The proxy sidecar sensor
+(`container#sensor`, SENSOR_API_KEY) is superseded; it was never delivered on preprod (services provisioned
+before it, config never re-pushed). `APUBilling` (`computeUnits` in the
 cluster JSON, refreshed each tick after the plan) carries plan, units, runningUnits, floorUnits, measuredApu,
 billableUnits, over/underPlanUnits, the price + ratios and monthlyCost; series `resourcemanager.<C>.billed_apu`
 next to `plan_apu`. Live on preprod crm (instances 1/3/1/1/3 + 2 proxies): 11 APU billable; api + dolibarr + arbitrator + phpmyadmin 1 BKU each (12 GB declared × copies); minio 103 BAU as producer once flagged S3 provider (2048 declared) or 1 while its app config says 20. `BKUReading` carries
