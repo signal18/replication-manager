@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -115,6 +116,28 @@ func coresBetween(prev, cur pgPoint) float64 {
 	return (cur.cpuUsec - prev.cpuUsec) / 1e6 / dt
 }
 
+// agentAddress is the host to reach an agent's daemon: the agent name as configured when it
+// carries a domain, else the short name with the domain of the configured opensvc-host
+// (preprod: agents are "s18-fr-4" and only "s18-fr-4.signal18.io" resolves from the repman
+// container, opensvc-host being "s18-fr-6.signal18.io:1215").
+func agentAddress(agent, collectorHost string) string {
+	agent = strings.TrimSpace(agent)
+	if strings.Contains(agent, ".") || agent == "" {
+		return agent
+	}
+	host := collectorHost
+	if i := strings.LastIndex(host, ":"); i > 0 {
+		host = host[:i]
+	}
+	if net.ParseIP(host) != nil {
+		return agent // an IP lends no domain
+	}
+	if i := strings.Index(host, "."); i > 0 {
+		return agent + host[i:]
+	}
+	return agent
+}
+
 // fetchPgMetrics returns the agent's parsed metrics, from the cache when fresh.
 func (cluster *Cluster) fetchPgMetrics(client *http.Client, agent, port string) (pgScrape, error) {
 	pgCacheMu.Lock()
@@ -123,7 +146,7 @@ func (cluster *Cluster) fetchPgMetrics(client *http.Client, agent, port string) 
 		return s, nil
 	}
 	pgCacheMu.Unlock()
-	req, err := http.NewRequest("GET", "https://"+agent+":"+port+"/metrics/pg", nil)
+	req, err := http.NewRequest("GET", "https://"+agentAddress(agent, cluster.Conf.ProvHost)+":"+port+"/metrics/pg", nil)
 	if err != nil {
 		return pgScrape{}, err
 	}

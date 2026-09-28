@@ -64,3 +64,20 @@ func TestSamePgSnapshot(t *testing.T) {
 		t.Fatalf("a moved counter is a new snapshot")
 	}
 }
+
+// A short agent name takes the domain of the configured opensvc-host; a name with a domain
+// or an opensvc-host without one is left as is.
+func TestAgentAddress(t *testing.T) {
+	if a := agentAddress("s18-fr-4", "s18-fr-6.signal18.io:1215"); a != "s18-fr-4.signal18.io" {
+		t.Fatalf("got %q", a)
+	}
+	if a := agentAddress("s18-fr-4.other.net", "s18-fr-6.signal18.io:1215"); a != "s18-fr-4.other.net" {
+		t.Fatalf("got %q", a)
+	}
+	if a := agentAddress("node1", "10.0.0.6:1215"); a != "node1" {
+		t.Fatalf("an IP opensvc-host lends no domain, got %q", a)
+	}
+	if a := agentAddress("node1", "localhost:1215"); a != "node1" {
+		t.Fatalf("got %q", a)
+	}
+}
