@@ -1078,12 +1078,17 @@ func (cluster *Cluster) driveDynamicShrink() {
 	}
 }
 
-// dynamicResizeCoresPerDBU / dynamicResizeMemMBPerDBU are the Database-profile ratios the
-// dynamic moves use (1 core / 4 GB per DBU, the same constants growAxisInPlan steps by).
-const (
-	dynamicResizeCoresPerDBU = 1
-	dynamicResizeMemMBPerDBU = 4096
-)
+// dbuRatioInts is the Database (DBU) ratio as whole cores / MB per unit for the dynamic
+// moves, from the ResourceManager (resource-manager-ratio-dbu), never a constant.
+func (cluster *Cluster) dbuRatioInts() (coresPerDBU, memMBPerDBU int) {
+	r := mustRatio(DefaultRatioDBU)
+	if cluster != nil && cluster.resources != nil {
+		if rr := cluster.resources.Ratios(ProfileDatabase); rr.CoresPerUnit > 0 || rr.MemMBPerUnit > 0 {
+			r = rr
+		}
+	}
+	return int(r.CoresPerUnit + 0.5), int(r.MemMBPerUnit + 0.5)
+}
 
 // dynamicShrinkTarget is the pure decision of the aligned move down on an axis: from the
 // current config to the smallest whole number of DBU that keeps the peak consumption of every
@@ -1124,14 +1129,16 @@ func (cluster *Cluster) dynamicShrinkTarget(axis string) (from, to string, ok bo
 	switch axis {
 	case "cpu":
 		cur, _ := strconv.Atoi(cluster.Conf.ProvCores)
-		newC := int(targetDbu) * dynamicResizeCoresPerDBU
+		coresPerDBU, _ := cluster.dbuRatioInts()
+		newC := int(targetDbu) * coresPerDBU
 		if cur <= newC {
 			return strconv.Itoa(cur), strconv.Itoa(cur), false
 		}
 		return strconv.Itoa(cur), strconv.Itoa(newC), true
 	case "mem":
 		curMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
-		newMB := int(targetDbu) * dynamicResizeMemMBPerDBU
+		_, memMBPerDBU := cluster.dbuRatioInts()
+		newMB := int(targetDbu) * memMBPerDBU
 		if int(curMB) <= newMB {
 			return strconv.Itoa(int(curMB)), strconv.Itoa(int(curMB)), false
 		}
@@ -1182,7 +1189,8 @@ func (cluster *Cluster) growAxisInPlan(axis string, qps float64) bool {
 		if int(curMB) >= ceilMB {
 			return false
 		}
-		newMB := int(curMB) + 4096 // +1 DBU of memory
+		_, memMBPerDBU := cluster.dbuRatioInts()
+		newMB := int(curMB) + memMBPerDBU // +1 DBU of memory
 		if newMB > ceilMB {
 			newMB = ceilMB
 		}
