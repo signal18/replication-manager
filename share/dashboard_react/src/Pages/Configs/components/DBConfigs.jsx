@@ -42,7 +42,9 @@ function DBUSlider({ value, isDisabled, onChange, nbNodes = 1 }) {
   const dbu = posToDbu(pos) // PER-NODE DBU (the configurator is per-cluster: all nodes identical)
   const total = dbu * nbNodes // plan total = per-node x node count
 
-  const dbuRatio = getUnitRatios(selectedCluster).database // resource-manager-ratio-dbu, from the server
+  // resource-manager-ratio-dbu, from the server: the slider is rendered outside DBConfigs, so
+  // it reads the selected cluster from the store itself.
+  const dbuRatio = getUnitRatios(useSelector((state) => state?.cluster?.clusterData)).database
   const formatDBU = useCallback((d) => {
     const mem = d * (dbuRatio.memMBPerUnit || 0)
     const memLabel = mem >= 1024 ? `${mem / 1024}GB` : `${mem}MB`
