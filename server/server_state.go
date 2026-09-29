@@ -590,6 +590,9 @@ func (repman *ReplicationManager) ProduceContractedCapacityState() {
 	var cCores, cMemMB, capCores, capMemMB float64
 	seen := map[string]bool{}
 	for _, cl := range clusters {
+		if !cl.IsProvision {
+			continue // an unprovisioned cluster reserves nothing on the infrastructure
+		}
 		// Both contracts are the per-instance reservation ROLLUPS, not the legacy single
 		// numbers: DBU = Σ per-node prov-db-dbu (PlanByCluster); APU = Σ proxies at prov-proxy-apu
 		// + Σ apps at their own config (AppPlanByCluster).

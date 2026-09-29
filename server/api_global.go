@@ -394,7 +394,7 @@ type globalResourcesResponse struct {
 	UsableDBU   float64                `json:"usableDbu"`
 	ConsumedDBU float64                `json:"consumedDbu"`
 	SlackDBU    float64                `json:"slackDbu"`
-	// APU (Compute) infra view -- the SAME metal projected into APU (1c/1GB/10GB, no IO).
+	// APU (Compute) infra view -- the SAME metal projected into APU (1c/2GB/10GB, no IO).
 	CapacityAPU    float64                  `json:"capacityApu"`
 	BindingAxisApu string                   `json:"bindingAxisApu"`
 	UsableAPU      float64                  `json:"usableApu"`
@@ -481,6 +481,9 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 	// Per-cluster consumed breakdown (stacks up to the infra consumed), DBU + APU.
 	var perCluster []globalResourcesCluster
 	for _, cl := range clusters {
+		if !cl.IsProvision {
+			continue // an unprovisioned cluster reserves and consumes nothing: not in the infra view
+		}
 		a := rm.ConsumedByCluster(cl.Name)
 		plan := float64(cl.GetPlanDbu()) // explicit prov-service-plan-dbu, else auto (per-node × nodes)
 		apuPlan := rm.AppPlanByCluster(cl.Name)

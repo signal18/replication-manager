@@ -132,7 +132,7 @@ func NewResourceManager() *ResourceManager {
 		// the other axes; it bills the REAL disk used by backups, floor 3 BKU per DBU.
 		ratios: map[WorkloadProfile]UnitRatios{
 			ProfileDatabase: {CoresPerUnit: 1.0, MemMBPerUnit: 4096.0, DiskGBPerUnit: 20.0, IopsPerUnit: 1000.0}, // disk 20 GB (was 40 until 2026-09-22)
-			ProfileCompute:  {CoresPerUnit: 1.0, MemMBPerUnit: 1024.0, DiskGBPerUnit: 10.0, IopsPerUnit: 0.0},    // 1GB, no IOPS (proxies/light apps; scale by taking more APU)
+			ProfileCompute:  {CoresPerUnit: 1.0, MemMBPerUnit: 2048.0, DiskGBPerUnit: 10.0, IopsPerUnit: 0.0},    // 2GB (Stéphane 2026-09-29: 1 GB per core is not enough), no IOPS (proxies/light apps; scale by taking more APU)
 			ProfileStorage:  {CoresPerUnit: 0.0, MemMBPerUnit: 0.0, DiskGBPerUnit: 20.0, IopsPerUnit: 0.0},       // BKU: disk only
 		},
 	}
@@ -799,7 +799,7 @@ func (m *ResourceManager) CapacityDBUView(c AgentCapacity) (cpu, mem, io, disk, 
 
 // CapacityAPUView projects a raw infra capacity into APU per axis (Compute profile -- no IO),
 // returning the BINDING = scarcest axis. The APU twin of CapacityDBUView: the SAME metal, the
-// Compute ratios (1c/1GB/10GB). Exported so the global GUI can show APU headroom alongside DBU.
+// Compute ratios (1c/2GB/10GB). Exported so the global GUI can show APU headroom alongside DBU.
 func (m *ResourceManager) CapacityAPUView(c AgentCapacity) (cpu, mem, disk, binding float64, bindingAxis string) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

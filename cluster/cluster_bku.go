@@ -170,7 +170,11 @@ func (cluster *Cluster) RefreshBackupUnits() {
 	if cluster.resources != nil {
 		// Ledger: the BKU plan is a reservation on the NVMe disk axis; storage used above it
 		// is borrowed from the unreserved capacity (disk really written, nothing to shrink).
-		cluster.resources.SetStoragePlan(cluster.Name, r.Plan)
+		if cluster.IsProvision {
+			cluster.resources.SetStoragePlan(cluster.Name, r.Plan)
+		} else {
+			cluster.resources.SetStoragePlan(cluster.Name, 0) // unprovisioned: reserves nothing
+		}
 		var b PhysicalUsage
 		if r.OverCommit > 0 && cluster.IsProvision {
 			b.DiskBytes = int64(r.OverCommit * float64(unit))

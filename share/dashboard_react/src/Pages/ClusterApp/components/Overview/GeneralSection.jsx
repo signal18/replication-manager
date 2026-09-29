@@ -108,7 +108,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   const isLegacyAppInUnitCluster = isUnitMode && appSizingMode !== 'unit'
 
   const baseCore = 1
-  const baseMem = 4096
+  const baseMem = 2048 // 1 APU = 1 core / 2 GB / 10 GB (config.AppUnitMemMB)
   const baseDisk = 10
 
   // Derive unit from raw stored resources (used for legacy apps that haven't been normalised yet).

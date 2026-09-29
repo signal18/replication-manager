@@ -1175,6 +1175,23 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 		return
 	}
 	now := time.Now()
+	// An UNPROVISIONED cluster reserves nothing (see RefreshDBUPlan): clear its app and proxy
+	// plans so no rollup counts them, then materialize a zero contract.
+	if !cluster.IsProvision {
+		for _, app := range cluster.Apps {
+			if app != nil {
+				cluster.resources.SetAppPlan(AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}, nil)
+			}
+		}
+		for _, prx := range cluster.Proxies {
+			if prx != nil {
+				cluster.resources.SetAppPlan(AppKey{Cluster: cluster.Name, App: prx.GetName(), Kind: KindProxy}, nil)
+			}
+		}
+		cluster.Conf.ProvServicePlanApu = 0
+		cluster.RefreshComputeBilling()
+		return
+	}
 	for _, app := range cluster.Apps {
 		if app == nil {
 			continue

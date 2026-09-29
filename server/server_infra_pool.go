@@ -103,6 +103,9 @@ func (repman *ReplicationManager) infraUnitPool() InfraUnitPool {
 		pool.UsableApu = bindingAPU * quota / 100.0
 	}
 	for _, cl := range clusters {
+		if !cl.IsProvision {
+			continue // an unprovisioned cluster reserves nothing on the infrastructure
+		}
 		pool.PlannedDbu += float64(cl.GetPlanDbu())
 		pool.PlannedApu += rm.AppPlanByCluster(cl.Name).Apu
 	}

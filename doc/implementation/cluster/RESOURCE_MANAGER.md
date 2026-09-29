@@ -25,7 +25,7 @@ per workload is the **ratio**, not just the price:
 | Profile (unit) | cpu | mem | disk | iops |
 |---|---|---|---|---|
 | **Database** (DBU) | 1 | 4 GB | **20 GB** (40 until 2026-09-22) | **1000** (locked) |
-| **Compute/App** (APU) | 1 | **1 GB** | **10 GB** | **— (none)** |
+| **Compute/App** (APU) | 1 | **2 GB** (1 GB until 2026-09-29) | **10 GB** | **— (none)** |
 | **Storage / Backup** (BKU) | 0 | 0 | **20 GB** (= the DBU disk axis) | 0 |
 | **Remote archive** (BAU) | 0 | 0 | **20 GB** (same quantity as the BKU) | 0 |
 

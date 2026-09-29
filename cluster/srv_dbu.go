@@ -410,6 +410,13 @@ func (cluster *Cluster) RefreshDBUPlan() {
 		if server == nil {
 			continue
 		}
+		// An UNPROVISIONED cluster reserves nothing on the infrastructure (Stéphane 2026-09-29):
+		// its plan is a configured intent, not a delivered contract. A nil reading is skipped by
+		// every rollup (PlanByCluster, the ledger, GWARN016) and the plan reappears at provisioning.
+		if !cluster.IsProvision {
+			cluster.resources.SetPlan(ResourceKey{Cluster: cluster.Name, Server: server.URL}, nil)
+			continue
+		}
 		reading := cluster.resources.ComputeUsedDBU(now, now,
 			int64(float64(dbu)*r.MemMBPerUnit)*1024*1024,
 			float64(dbu)*r.CoresPerUnit,

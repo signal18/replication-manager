@@ -78,7 +78,7 @@ function ResourceManager() {
       </Flex>
 
       <Text fontSize='sm' opacity={0.7} mb={1}>
-        Compute (APU) — the same metal, 1c/1GB/10GB (no IO) · binding axis:{' '}
+        Compute (APU) — the same metal, 1c/2GB/10GB (no IO) · binding axis:{' '}
         <Text as='span' fontWeight='bold' textTransform='uppercase'>{data.bindingAxisApu || '—'}</Text>
       </Text>
       <Flex gap={8} wrap='wrap' mb={4}>
