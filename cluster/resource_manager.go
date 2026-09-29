@@ -306,6 +306,10 @@ func (m *ResourceManager) ComputeUsedAPU(start, end time.Time, memMaxBytes int64
 func (m *ResourceManager) SetAppConsumed(k AppKey, r *APUReading) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if r == nil { // nil = no reading: drop the key, never store a nil the sums would dereference
+		delete(m.appConsumed, k)
+		return
+	}
 	m.appConsumed[k] = r
 }
 
@@ -320,6 +324,10 @@ func (m *ResourceManager) GetAppConsumed(k AppKey) *APUReading {
 func (m *ResourceManager) SetAppPlan(k AppKey, r *APUReading) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if r == nil { // nil = no plan (unprovisioned, or a stateful app): drop the key
+		delete(m.appPlan, k)
+		return
+	}
 	m.appPlan[k] = r
 }
 
@@ -417,6 +425,9 @@ type APUAggregate struct {
 func sumAPUReadings(readings []*APUReading) APUAggregate {
 	var a APUAggregate
 	for _, r := range readings {
+		if r == nil {
+			continue
+		}
 		a.ApuCpu += r.ApuCpu
 		a.ApuMem += r.ApuMem
 		a.ApuDisk += r.ApuDisk
@@ -749,6 +760,9 @@ func (m *ResourceManager) PlanByCluster(clusterName string) DBUAggregate {
 func sumReadings(readings []*DBUReading) DBUAggregate {
 	var a DBUAggregate
 	for _, r := range readings {
+		if r == nil {
+			continue
+		}
 		a.DbuCpu += r.DbuCpu
 		a.DbuMem += r.DbuMem
 		a.DbuIo += r.DbuIo
@@ -903,7 +917,9 @@ func (m *ResourceManager) ConsumedInfra() DBUAggregate {
 	defer m.mu.RUnlock()
 	readings := make([]*DBUReading, 0, len(m.consumed))
 	for _, r := range m.consumed {
-		readings = append(readings, r)
+		if r != nil {
+			readings = append(readings, r)
+		}
 	}
 	return sumReadings(readings)
 }
@@ -915,7 +931,9 @@ func (m *ResourceManager) AppConsumedInfra() APUAggregate {
 	defer m.mu.RUnlock()
 	readings := make([]*APUReading, 0, len(m.appConsumed))
 	for _, r := range m.appConsumed {
-		readings = append(readings, r)
+		if r != nil {
+			readings = append(readings, r)
+		}
 	}
 	return sumAPUReadings(readings)
 }

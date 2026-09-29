@@ -59,6 +59,13 @@ func TestRefreshComputePlanAPU_StatefulAppIsDBU(t *testing.T) {
 	if cl.resources.GetAppConsumed(k) != nil {
 		t.Fatalf("a stateful app must hold no APU consumption")
 	}
+	// The infra-wide sums must survive a stateful app (preprod 2026-09-29: a nil APU entry
+	// stored for minio made /api/global/resources panic -> 500).
+	if got := cl.resources.AppConsumedInfra().Units; got != 0 {
+		t.Fatalf("infra APU consumed units = %d, want 0 (stateful app is on the DBU track)", got)
+	}
+	_ = cl.resources.ConsumedInfra()
+	_ = cl.resources.Ledger()
 
 	// Switch it off: the plan moves back to APU (2 cores, 8 GB = 4 APU, 20 GB = 2 -> 4 APU).
 	minio.AppConfig.AppStateful = false
