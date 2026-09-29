@@ -5,9 +5,9 @@
 package cluster
 
 import (
-	"sort"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
