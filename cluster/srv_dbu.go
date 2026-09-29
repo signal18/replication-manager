@@ -5,6 +5,7 @@
 package cluster
 
 import (
+	"sort"
 	"fmt"
 	"math"
 	"strconv"
@@ -282,6 +283,41 @@ func (server *ServerMonitor) CheckResourceConsumed() {
 	server.ResourceConsumedUnderConfigAxes = dropMem(consumedAxes(c, cfg, lo, false))
 	server.ResourceConsumedOverPlanAxes = dropMem(consumedAxes(c, plan, hi, true))
 	server.ResourceConsumedUnderPlanAxes = dropMem(consumedAxes(c, plan, lo, false))
+	// Memory has its own DOWN signal, a STATE not a click (Stéphane 2026-09-29, after a plan
+	// decrease left curepipe at 16 GB): the configured memory sits above the plan AND the
+	// buffer pool shows no pressure. Occupancy says nothing about memory (the pool fills
+	// whatever it is given), pressure does. While that state holds, "mem" joins the
+	// under-config axes and the existing in-plan shrink (driveDynamicShrink, sustained over
+	// prov-db-scale-down-config-in-plan-speed, floored by the undercommit floor and the
+	// consumption headroom) brings the memory down, buffer pool first then cgroup.
+	if server.memoryOverPlanNoPressure(cfg, plan) {
+		server.ResourceConsumedUnderConfigAxes = appendAxis(server.ResourceConsumedUnderConfigAxes, "mem")
+		cluster.SetState("CINF0010", state.State{ErrType: "INFO", ErrFrom: "WORKLOAD", ServerUrl: server.URL,
+			ErrDesc: fmt.Sprintf(clusterError["CINF0010"], server.URL, cfg.DbuMem, plan.DbuMem, cluster.Conf.ScaleDownConfigInPlanSpeed)})
+	}
+}
+
+// memoryOverPlanNoPressure is the memory scale-DOWN state: the configured memory exceeds the
+// plan on the memory axis and the buffer pool has shown no pressure (no wait-free growth
+// pending nor sustained). Pure, so the rule is unit-testable.
+func (server *ServerMonitor) memoryOverPlanNoPressure(cfg, plan DBUReading) bool {
+	if plan.DbuMem <= 0 || cfg.DbuMem <= plan.DbuMem+1e-9 {
+		return false
+	}
+	return !server.BufferPoolMemGrowDue && server.bufferPoolPressureSince.IsZero()
+}
+
+// appendAxis adds an axis once, keeping the stable cpu/mem/io/disk order of consumedAxes.
+func appendAxis(axes []string, axis string) []string {
+	for _, a := range axes {
+		if a == axis {
+			return axes
+		}
+	}
+	order := map[string]int{"cpu": 0, "mem": 1, "io": 2, "disk": 3}
+	out := append(append([]string{}, axes...), axis)
+	sort.Slice(out, func(i, j int) bool { return order[out[i]] < order[out[j]] })
+	return out
 }
 
 // checkBufferPoolPressure sets the memory GROW signal from buffer-pool PRESSURE (not occupancy,

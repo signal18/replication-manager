@@ -63,6 +63,15 @@ declared setting, like `prov-db-disk-size`, nothing read back from OpenSVC) × t
 and the surcharge/reduction), a storage app's (`app-s3-provider`, the profile, settable per app in the GUI) is
 **producer BAU** (`producerUnits`, no plan). Series `bku.<c>.app_disk[_bytes]`, `bau.<c>.producer[_bytes]`.
 
+**Memory scale-DOWN is a state (Stéphane 2026-09-29, curepipe stayed at 16 GB after a plan decrease under
+dynamic resources):** memory was dropped from every under-use axis (occupancy means nothing, the pool fills what it
+is given) so nothing ever shrank it in-plan. Now `ServerMonitor.memoryOverPlanNoPressure` = configured memory DBU
+> plan memory DBU AND no buffer-pool pressure (`BufferPoolMemGrowDue` false, no pressure timer) opens **CINF0010**
+per server every tick and folds `mem` into `ResourceConsumedUnderConfigAxes`; the existing `driveDynamicShrink`
+(all live servers, sustained over `prov-db-scale-down-config-in-plan-speed`) then runs `shrinkAxisInPlan("mem")`:
+target = ceil(peak/headroom) floored by `UndercommitFloorDBU` (1 DBU for a plan of 1), applied through
+`SetDBMemorySize` (buffer pool first, deferred cgroup). No one-shot at the plan click.
+
 **The physical ledger, two pots and the precedence rule (Stéphane 2026-09-28, `resource_ledger.go`):** DBU, APU and
 BKU are strongly correlated (the same metal through three ratios), so a unit's free pot is computed by subtracting
 what the OTHER units hold, and there are TWO limits because a plan is a guarantee: **plan pot** = capacity × quota −

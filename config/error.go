@@ -312,6 +312,7 @@ var ClusterError = map[string]string{
 	"CINF0006":  "Schema monitoring in progress",
 	"CINF0007":  "Server %s: consumption of axes %s reached its config limit, scale UP needed (in-plan, prov-db-scale-up-config-in-plan-speed %s time)",
 	"CINF0008":  "Server %s: consumption of axes %s well under its config, scale DOWN possible (in-plan, prov-db-scale-down-config-in-plan-speed %s time)",
+	"CINF0010":  "Server %s: memory configured %.2f DBU over its plan %.2f with no buffer-pool pressure, memory scale DOWN possible (in-plan, prov-db-scale-down-config-in-plan-speed %s time)",
 	"CINF0009":  "Server %s: consumption of axes %s well under the plan, plan cap-down possible (prov-db-scale-down-plan-speed %s time)",
 	"WARN0213":  "Server %s: consumption of axes %s reached the plan cap, plan cap-UP needed -- raise the plan (prov-db-scale-up-plan-speed %s time)",
 	"WARN0214":  "Cluster %s: prov-db-dynamic-resource is ON but the container is still capped at the DOCKER SCOPE (prov-db-docker-run-args-limit ON) -- a live cgroup resize cannot take effect (the docker run-arg limit binds, not the om3 PG slice); move the cap to the PG slice (set prov-db-docker-run-args-limit OFF) and rolling-restart to recreate the container resize-ready",
