@@ -199,13 +199,18 @@ port, root bypasses read_only) then landed on db2, binlogged under db2's server 
 replica died on the GTID strict-mode collision. The standby was correctly standby: those two
 DECISIONS had no active gate. The fix is at the decision level only, no primitive is gated:
 
-- `cluster_topo.go`, last-non-slave fallback: on a standby, `standbyDesignateMaster` keeps the
-  last-known master whatever the local view says (a demoted master or a replica mid-repair
-  both look like a "last non slave" for a few ticks), takes the local candidate only when none
-  is known, never touches read_only. The active's branch is unchanged, it only logs the
-  designation when it changes (it used to log every tick).
-- `prx_haproxy.go`: a standby never repoints `service_write/leader` (the per-row fix and the
-  missing-leader fix), it reads the proxy and logs at debug.
+- `cluster_topo.go`, last-non-slave fallback: in CALM a standby (`standbyDesignateMaster`)
+  keeps the last-known master whatever the local view says (a demoted master or a replica
+  mid-repair both look like a "last non slave" for a few ticks) and takes the local candidate
+  only when none is known; it never touches read_only. It DOES re-designate when the master
+  moved on it: in split brain, or once its last-known master has become a replica
+  (`LostArbitration` attached the fenced old master to the winner's master): the standby's
+  role is then to follow the winner (Stéphane 2026-09-29: "the role of the passive is to shoot
+  in the head the old master that moved on the winner, but only on split brain"). The
+  active's branch is unchanged, it only logs the designation when it changes.
+- `prx_haproxy.go`: in calm a standby never repoints `service_write/leader`; in split brain,
+  or when the leader row is a fenced old master now attached as a replica, it repoints it off
+  that node as before.
 - The traffic marker is deliberately NOT gated (Stéphane: "traffic on all sides is what proves
   it was wrong"): the marker landing on the demoted master is the evidence.
 - Regtest `testSwitchoverNoDivergenceOnOldMaster`: after a switchover, five marker injections

@@ -994,11 +994,13 @@ func (proxy *HaproxyProxy) Refresh() error {
 						} else {
 							if !srv.IsMaster() {
 								master := cluster.GetMaster()
-								if master != nil && !cluster.IsActive() {
-									// STANDBY (GH-1847): the leader is the active's to set; a standby's
-									// view can lag and repointing it re-routed writes to a demoted
-									// master on preprod. Read, never reconcile.
-									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "Standby: haproxy %s leader differs from this monitor's master %s %s, not repointing", proxy.Host+":"+proxy.Port, master.Host, master.Port)
+								if master != nil && !cluster.IsActive() && !cluster.IsSplitBrain && !srv.IsSlave {
+									// STANDBY in calm (GH-1847): the leader is the active's to set; a
+									// standby's view can lag and repointing it re-routed writes to a
+									// demoted master on preprod. In split brain, or when the leader
+									// row is a fenced old master now attached as a replica, the standby
+									// DOES repoint it off that node: that is its role.
+									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "Standby: haproxy %s leader differs from this monitor's master %s %s, not repointing in calm", proxy.Host+":"+proxy.Port, master.Host, master.Port)
 								} else if master != nil {
 									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s %s", proxy.Host+":"+proxy.Port, master.Host, master.Port)
 									res, err := haRuntime.SetMaster(cluster.Conf.HaproxyAPIWriteBackend, master.RuntimeAPIAddr(writeRowResolverBacked), master.Port)
@@ -1237,8 +1239,8 @@ func (proxy *HaproxyProxy) Refresh() error {
 			}
 		} else {
 			master := cluster.GetMaster()
-			if master != nil && master.IsLeader() && !cluster.IsActive() {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "Standby: haproxy %s has no leader for master %s, not setting it (GH-1847)", proxy.Host+":"+proxy.Port, master.URL)
+			if master != nil && master.IsLeader() && !cluster.IsActive() && !cluster.IsSplitBrain {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "Standby: haproxy %s has no leader for master %s, not setting it in calm (GH-1847)", proxy.Host+":"+proxy.Port, master.URL)
 			} else if master != nil && master.IsLeader() {
 				writeResolverBacked := resolverBackedPool[cluster.Conf.HaproxyAPIWriteBackend+"/leader"]
 				res, err := haRuntime.SetMaster(cluster.Conf.HaproxyAPIWriteBackend, master.RuntimeAPIAddr(writeResolverBacked), master.Port)

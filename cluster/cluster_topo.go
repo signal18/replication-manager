@@ -975,15 +975,26 @@ func (cluster *Cluster) SetReadWriteAsMaster() bool {
 	return found
 }
 
-// standbyDesignateMaster is the standby's side of the last-non-slave fallback (GH-1847):
-// keep the last-known master when there is one, take the local candidate only when none is
-// known (provisional until this monitor is active and rediscovers), log on change only,
-// never touch read_only.
+// standbyDesignateMaster is the standby's side of the last-non-slave fallback (GH-1847).
+// In calm a standby keeps its last-known master whatever its view says tick after tick (a
+// demoted master or a replica mid-repair both look like a "last non slave" for a few ticks)
+// and takes the local candidate only when it knows none. It DOES re-designate when the
+// master moved on it: in split brain, or once its last-known master has become a replica
+// (LostArbitration attached the fenced old master to the winner's master, the standby's
+// role is then to follow the winner and repoint its proxies off the fenced node). Never
+// touches read_only: the winner already opened its master.
 func (cluster *Cluster) standbyDesignateMaster(local *ServerMonitor) {
-	if cluster.master != nil || local == nil {
+	if local == nil || cluster.master == local {
 		return
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Standby: no master known for %s, %s taken from the local view (provisional, nothing written)", cluster.Name, local.URL)
+	if cluster.master != nil && !cluster.IsSplitBrain && !cluster.master.IsSlave {
+		return // calm and the last-known master still stands: a standby never re-designates
+	}
+	why := "no master known, taken from the local view (provisional)"
+	if cluster.master != nil {
+		why = "the last-known master " + cluster.master.URL + " moved (split brain or attached as a replica), following the winner"
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Standby: master of %s is %s: %s, nothing written", cluster.Name, local.URL, why)
 	cluster.master = local
 	cluster.master.SetMaster()
 }
