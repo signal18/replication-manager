@@ -79,6 +79,24 @@ there too (`IngestAppConsumedAPU` → `ComputeUsedDBU`). The ledger reserves it 
 `billed_stateful_dbu`; `/api/global/resources` rows carry `statefulDbu` / `planStatefulDbu`. Minio on crm:
 2 cores / 8 GB / 20 GB failover → 2 DBU (was 4 APU under the 2 GB APU ratio).
 
+**No credits (Stéphane 2026-09-29, "those credits should not be here", removed on #1827).** The app credit
+model of July 2025 (`prov-app-credit-planned` / `-used` per app, `cloud18-application-credits` cap + price
+per cluster, the used/planned totals, the self-rebasing cap, `CheckAppsCredit` / `CheckAvailableCredit`,
+states CREDIT01-04, `StartBillingCycle`) was a second contract next to the ResourceManager: it stored the
+unit count as a field (planned = units × agents, so an agent change desynchronised it: 3 credits for 2
+agents on the two phpmyadmins) and gated on a per-cluster cap the ledger already covers. Rule: **what is
+declared lives in the config (the per-instance shape `prov-app-cpu-cores` / `-memory` / `-disk-size`), what
+is tracked lives in graphite, the unit count is DERIVED, never stored.** So: the plan of an app is the shape
+projected at the ratio × instances (`RefreshComputePlanAPU`), billed from it; the GUI "App Unit" slider is a
+sizing HELPER, the `prov-app-units` app setting writes the three prov-app-* values at the ratio of the app's
+profile (`applyUnitShape`, Compute or Database when `app-stateful`) and arms a reprovision — it stores no
+count; the displayed count comes back from the shape (`deriveUnitFromStoredResources`, App → Overview → Infra
+Resources, `AppUnits.jsx`). Per-unit tracking: `apu.<c>.<unit>.plan_apu` (compute units), `plan_dbu` + `dbu`
+(stateful apps) next to the consumed `apu.<c>.<unit>.apu*` series (`computeUnitPlanMetrics`). The old keys
+are ignored at load (no struct field) and dropped from the app file at its next save; `ClearAppProvisioned`
+keeps the cookie bookkeeping of the former `ClearAppProvisionedCredits`. The CRM sponsor credits
+(`/api/credits/personal`, registration) are a different thing and untouched.
+
 **Memory scale-DOWN is a state (Stéphane 2026-09-29, curepipe stayed at 16 GB after a plan decrease under
 dynamic resources):** memory was dropped from every under-use axis (occupancy means nothing, the pool fills what it
 is given) so nothing ever shrank it in-plan. Now `ServerMonitor.memoryOverPlanNoPressure` = configured memory DBU
@@ -220,9 +238,8 @@ Per **service** (a "server" is a DB service; a proxy/app is another kind of serv
   Per-unit pricing instead sets a few €/unit and **derives every price across all workload
   profiles** (CLOUD18_CREDIT_MODEL.md §2.1). The `ServicePlan` stays a provisioning
   template, not a unit contract (the self-declared tier `Cloud18SubscriptionPlan` sits
-  alongside it). When the dedicated
-  DBU/APU plan field is added it mirrors the app credit model (`Cloud18ApplicationCredits*`
-  → `Cloud18DatabaseCredits*`; `prov-app-credit-planned` → the DB plan).
+  alongside it). The DB plan is `prov-db-dbu` per database (client-set whole DBU); apps have
+  NO plan field at all, their plan is derived (see "No credits" below).
 
 Aggregated views (`DBUAggregate`: per-axis + a global pivot = the binding axis):
 - `ConsumedByCluster` / `ConsumedByAgent`
@@ -785,8 +802,7 @@ them — `ChartGroupedDBU` (grouped bars per axis: real conso → DBU, pivot max
 line = the configurator ceiling the GUI reads but does not own).
 Follow-ups: `SetPlan` wiring — the plan is a **client-set DBU size** (whole units); a
 **+1/−1 DBU resizes `prov-db-*`** at the locked ratio (except admin-immutable resources)
-and is **NOT** derived from them; future dedicated `Cloud18DatabaseCredits*` vars mirror
-the app credit model, driven by `AddDBU`/`RemoveDBU`. Also `SetServerAgent` /
+and is **NOT** derived from them, driven by `AddDBU`/`RemoveDBU`. Also `SetServerAgent` /
 `SetAgentCapacity` from physical monitoring (#1778),
 per-cluster/agent/minute **emission** (the data), then the burst/overcommit **policy**
 and the heatmap.
@@ -958,7 +974,7 @@ impossible (no `io.max` in om3 pg); "unset resets the slice" and `pg reset` do *
 any om3 release up to rc36 — always write explicit values.
 
 **Vocabulary:** units are **DBU**/**APU**; classes **controlled**/**uncontrolled**; never
-"credits" (the app system's own accounting) or "tier".
+"credits" (the former app accounting, removed 2026-09-29) or "tier".
 
 ## om3 process-group facts (checked on opensvc/om3 up to v3.0.0-rc36, 2026-09-14)
 

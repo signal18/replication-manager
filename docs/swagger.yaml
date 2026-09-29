@@ -728,6 +728,17 @@ definitions:
       whitelist:
         type: string
     type: object
+  cluster.LedgerAxes:
+    properties:
+      cores:
+        type: number
+      diskBytes:
+        type: number
+      iops:
+        type: number
+      memBytes:
+        type: number
+    type: object
   cluster.PFSExplainRecord:
     properties:
       capturedAt:
@@ -813,6 +824,54 @@ definitions:
           $ref: '#/definitions/cluster.RemediationEntry'
         type: array
     type: object
+  cluster.ResourceLedger:
+    properties:
+      borrowPot:
+        allOf:
+        - $ref: '#/definitions/cluster.UnitPots'
+        description: over-commit pot per unit (smallest axis)
+      borrowed:
+        allOf:
+        - $ref: '#/definitions/cluster.LedgerAxes'
+        description: Σ resources granted above the plans (DB config over plan, BKU
+          usage over plan)
+      capacity:
+        allOf:
+        - $ref: '#/definitions/cluster.LedgerAxes'
+        description: the metal (agents summed, config override winning)
+      known:
+        type: boolean
+      overCommitPot:
+        allOf:
+        - $ref: '#/definitions/cluster.LedgerAxes'
+        description: capacity − reserved − borrowed
+      overdrawn:
+        description: 'an over-commit pot axis is negative: borrowed resources must
+          give way'
+        type: boolean
+      planPot:
+        allOf:
+        - $ref: '#/definitions/cluster.LedgerAxes'
+        description: sellable − reserved
+      planPotUnits:
+        allOf:
+        - $ref: '#/definitions/cluster.UnitPots'
+        description: plan pot per unit (smallest axis)
+      quotaPct:
+        type: number
+      reserved:
+        allOf:
+        - $ref: '#/definitions/cluster.LedgerAxes'
+        description: Σ plans of every cluster, DBU + APU + BKU, physical
+      reservedUnits:
+        allOf:
+        - $ref: '#/definitions/cluster.UnitPots'
+        description: Σ plans per unit, as sold (DBU, APU, BKU)
+      sellable:
+        allOf:
+        - $ref: '#/definitions/cluster.LedgerAxes'
+        description: 'capacity × quota: what plans may add up to'
+    type: object
   cluster.ResticEnsureBucketResult:
     properties:
       bucket:
@@ -859,6 +918,27 @@ definitions:
         type: string
       result:
         type: string
+    type: object
+  cluster.UnitPots:
+    properties:
+      apu:
+        type: number
+      bku:
+        type: number
+      dbu:
+        type: number
+    type: object
+  cluster.UnitRatios:
+    properties:
+      coresPerUnit:
+        type: number
+      diskGBPerUnit:
+        type: number
+      iopsPerUnit:
+        description: 0 = axis excluded
+        type: number
+      memMBPerUnit:
+        type: number
     type: object
   cluster.UserForm:
     properties:
@@ -910,6 +990,13 @@ definitions:
         type: string
       appS3Provider:
         type: boolean
+      appStateful:
+        description: |-
+          AppStateful: the app holds data (minio, a storage service), so it is accounted on the
+          Database profile as whole DBU (reserved in the DBU pool, billed at the DBU price), not
+          as APU. A template default (cloud18-templates minio) inherited at creation, overridable
+          per app in the GUI.
+        type: boolean
       deployment:
         $ref: '#/definitions/config.Deployment'
       provAppAgents:
@@ -918,10 +1005,6 @@ definitions:
         type: string
       provAppCpuCores:
         type: string
-      provAppCreditPlanned:
-        type: integer
-      provAppCreditUsed:
-        type: integer
       provAppDiskIops:
         type: string
       provAppDiskSize:
@@ -1606,14 +1689,6 @@ definitions:
         type: string
       cloud18AlertSlackUser:
         type: string
-      cloud18ApplicationCredits:
-        type: integer
-      cloud18ApplicationCreditsPlanned:
-        type: integer
-      cloud18ApplicationCreditsPrice:
-        type: integer
-      cloud18ApplicationCreditsUsed:
-        type: integer
       cloud18CostCurrency:
         type: string
       cloud18CrmApiUrl:
@@ -1678,6 +1753,22 @@ definitions:
           the instance sources its plan from this signed file instead of the CRM (for
           air-gapped/PCI instances). Empty = normal online CRM path.
         type: string
+      cloud18MarketplaceApuPrice:
+        type: number
+      cloud18MarketplaceBauClientStorage:
+        type: boolean
+      cloud18MarketplaceBauPrice:
+        type: number
+      cloud18MarketplaceBkuPrice:
+        type: number
+      cloud18MarketplaceDbuPrice:
+        type: number
+      cloud18MarketplaceOvercommitPricePct:
+        type: integer
+      cloud18MarketplacePricingMode:
+        type: string
+      cloud18MarketplaceUndercommitPricePct:
+        type: integer
       cloud18MonthlyDbopsCost:
         type: number
       cloud18MonthlyExternalDbopsCost:
@@ -2550,6 +2641,8 @@ definitions:
         type: string
       provDbBinaryTarballName:
         type: string
+      provDbBku:
+        type: integer
       provDbBootstrapScript:
         type: string
       provDbCapSafetyPct:
@@ -2977,6 +3070,12 @@ definitions:
         type: number
       resourceManagerInfraQuotaPct:
         type: number
+      resourceManagerRatioApu:
+        type: string
+      resourceManagerRatioBku:
+        type: string
+      resourceManagerRatioDbu:
+        type: string
       scaleDownConfigInPlanSpeed:
         description: sustain duration before scaling DOWN a server's config resources
           within the plan. Default 5m
@@ -3675,6 +3774,23 @@ definitions:
       uuid:
         type: string
     type: object
+  server.InfraUnitPool:
+    properties:
+      freeApu:
+        type: number
+      freeDbu:
+        type: number
+      known:
+        type: boolean
+      plannedApu:
+        type: number
+      plannedDbu:
+        type: number
+      usableApu:
+        type: number
+      usableDbu:
+        type: number
+    type: object
   server.MeetAlertMessage:
     properties:
       message:
@@ -3766,8 +3882,19 @@ definitions:
         type: string
       maxClustersPerUser:
         type: integer
+      neededApu:
+        type: number
+      neededDbu:
+        description: 'ResourceManager pool: what a new cluster needs and what is free.'
+        type: number
       orchestrator:
         type: string
+      pool:
+        $ref: '#/definitions/server.InfraUnitPool'
+      poolNote:
+        type: string
+      poolOk:
+        type: boolean
       reason:
         type: string
       remaining:
@@ -4010,8 +4137,14 @@ definitions:
       planDbu:
         description: the cluster's DBU reservation contract (prov-service-plan-dbu)
         type: number
+      planStatefulDbu:
+        description: their DBU reservation, own line (never in planDbu)
+        type: number
       servers:
         type: integer
+      statefulDbu:
+        description: real consumed DBU of the stateful apps (app-stateful)
+        type: number
     type: object
   server.globalResourcesResponse:
     properties:
@@ -4034,7 +4167,7 @@ definitions:
         type: string
       capacityApu:
         description: APU (Compute) infra view -- the SAME metal projected into APU
-          (1c/1GB/10GB, no IO).
+          (1c/2GB/10GB, no IO).
         type: number
       capacityDbu:
         type: number
@@ -4046,12 +4179,22 @@ definitions:
         type: number
       consumedDbu:
         type: number
+      ledger:
+        allOf:
+        - $ref: '#/definitions/cluster.ResourceLedger'
+        description: 'the physical ledger: plan pot + over-commit pot, every unit
+          from ONE metal'
       quotaPct:
         type: number
       slackApu:
         type: number
       slackDbu:
         type: number
+      unitRatios:
+        additionalProperties:
+          $ref: '#/definitions/cluster.UnitRatios'
+        description: the manager's ratios, the page's only source of unit arithmetic
+        type: object
       usableApu:
         type: number
       usableDbu:

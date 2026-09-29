@@ -213,7 +213,6 @@ func (cluster *Cluster) RemoveAppMonitor(host string, port string) error {
 		}
 		cluster.Unlock()
 		cluster.StateMachine.RemoveFailoverState()
-		cluster.recomputeAppCredits()
 	} else {
 		return fmt.Errorf("App with address %s:%s not found in cluster", host, port)
 	}

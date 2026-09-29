@@ -1105,7 +1105,7 @@ func (repman *ReplicationManager) handlerMuxAppUnprovision(w http.ResponseWriter
 				http.Error(w, fmt.Sprintf("Can not unprovision app service: %s", err), http.StatusInternalServerError)
 				return
 			}
-			mycluster.ClearAppProvisionedCredits(node)
+			mycluster.ClearAppProvisioned(node)
 		} else {
 			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
@@ -3733,7 +3733,7 @@ func applyTemplateOwnedProjection(dst, src *config.AppConfig, templateName strin
 	// Template ownership projection (Milestone 1):
 	// - Preserved (live app identity / unrelated):
 	//   AppHost, AppPort, AppHostsIPV6, AppDbUser, AppDbPass, AppDbSchema,
-	//   AppS3Provider, ProvAppCreditUsed, ProvAppCreditPlanned.
+	//   AppS3Provider, AppStateful.
 	// - Template-owned (overwritten from validated template):
 	//   Deployment, AppConfigVersion, ProvAppTemplate, ProvAppDockerImg,
 	//   ProvAppDockerCmd, ProvAppType, ProvAppMem, ProvAppCpuCores,

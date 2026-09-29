@@ -921,12 +921,9 @@ func (cluster *Cluster) InitFromConf() {
 			cluster.SetProxyServerMaintenance(server.ServerID)
 		}
 	}
-	persistRebasedAppCreditCap := false
 	err = cluster.newAppList()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set app list %s", err)
-	} else if cluster.rebaseAppCreditCap() {
-		persistRebasedAppCreditCap = true
 	}
 	//Loading configuration compliances
 	err = cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
@@ -953,12 +950,6 @@ func (cluster *Cluster) InitFromConf() {
 	// users, restic paths, ACLs), emitting transient config change events
 	// that then replay on peers.
 	cluster.initConfigDone.Store(true)
-	if persistRebasedAppCreditCap {
-		if _, saveErr := cluster.SaveConfigFile(); saveErr != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-				"Failed to reconcile credit cap at startup: %s", saveErr)
-		}
-	}
 
 	cluster.Conf.TopologyTarget = cluster.GetTopologyFromConf()
 }
@@ -1038,7 +1029,6 @@ var pstates30 = []string{
 	"WARN0170",             // Configurator prerequisites (CheckConfiguratorPrerequisites runs %30)
 	"WARN0190", "WARN0191", // Rejoin catalog (HasCatalogBackupForRejoin runs %30)
 	"WARN0219", // Local backup storage over the BKU plan (RefreshBackupUnits runs %30)
-	"CREDIT01", // Credit related
 }
 
 var pstates3600 = []string{
@@ -1269,7 +1259,6 @@ func (cluster *Cluster) tickBody() {
 					goRun(cluster.CheckComplianceUpdate)
 					goRun(cluster.ReloadDockerRepos)
 				}
-				goRun(cluster.CheckAppsCredit)
 				goRun(cluster.CheckWaitRunJobSSH)
 				goRun(cluster.CheckDummyConfigSendCookies)
 				goRun(cluster.CheckRestartContainerCookies)
@@ -1286,7 +1275,6 @@ func (cluster *Cluster) tickBody() {
 					goRun(cluster.CheckCanSaveDynamicConfig)
 					goRun(cluster.CheckIsOverwrite)
 					goRun(cluster.CheckAllBackupEstimatedSize)
-					goRun(cluster.CheckAvailableCredit)
 					goRun(cluster.CheckOpenSVCTresholds)
 					goRun(cluster.JobsCheckSchedulerTable)
 					goRun(cluster.CheckOnPremiseSSHKey)
@@ -1911,64 +1899,17 @@ type ClusterState struct {
 	IsProvisioned bool `json:"isProvisioned"`
 }
 
-// recomputeAppCredits recomputes Cloud18ApplicationCreditsUsed and
-// Cloud18ApplicationCreditsPlanned from the current per-app values.
-// Must be called without the cluster lock held.
-func (cluster *Cluster) recomputeAppCredits() {
-	cluster.Lock()
-	used := 0
-	planned := 0
-	for _, app := range cluster.Apps {
-		used += app.AppConfig.ProvAppCreditUsed
-		planned += app.AppConfig.ProvAppCreditPlanned
-	}
-	cluster.Unlock()
-	cluster.Conf.Cloud18ApplicationCreditsUsed = used
-	cluster.Conf.Cloud18ApplicationCreditsPlanned = planned
-}
-
-// rebaseAppCreditCap raises Cloud18ApplicationCredits to the current used total
-// when actual provisioned usage has outgrown the persisted cap.
-func (cluster *Cluster) rebaseAppCreditCap() bool {
-	if cluster.Conf.Cloud18ApplicationCreditsUsed <= cluster.Conf.Cloud18ApplicationCredits {
-		return false
-	}
-	cluster.Conf.Cloud18ApplicationCredits = cluster.Conf.Cloud18ApplicationCreditsUsed
-	return true
-}
-
-// ClearAppProvisionedCredits zeros the used credits for app, removes its provision
-// cookie, refreshes cluster totals, and persists the cleared state so restart
-// rebuilds stay correct. Call this after a successful unprovision.
-func (cluster *Cluster) ClearAppProvisionedCredits(app *App) {
+// ClearAppProvisioned removes the provision cookie and marks the app explicitly
+// unprovisioned (so the status-cycle backfill does not re-cookie it while it briefly
+// still appears running), then persists. Call this after a successful unprovision.
+func (cluster *Cluster) ClearAppProvisioned(app *App) {
 	if app == nil {
 		return
 	}
-	app.AppConfig.ProvAppCreditUsed = 0
 	app.DelProvisionCookie()
-	// Mark explicitly unprovisioned so the status-cycle backfill in IsAppProvisioned
-	// does not re-credit the app if it still briefly appears running.
 	app.SetUnprovisionCookie()
-	cluster.recomputeAppCredits()
 	if _, err := cluster.SaveApp(app, ""); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Failed to persist credit clear for %s: %s", app.Name, err)
-	}
-}
-
-// StartBillingCycle is called when a new sponsorship cycle is accepted.
-// It recomputes totals from apps and, if current usage is below the cap,
-// lowers the cap to match usage (including zero), then persists the new cap.
-// Failures are logged but never propagated — sponsorship is already committed
-// by the time this runs, so a persist failure must not misreport the outcome.
-func (cluster *Cluster) StartBillingCycle() {
-	cluster.recomputeAppCredits()
-	used := cluster.Conf.Cloud18ApplicationCreditsUsed
-	cap := cluster.Conf.Cloud18ApplicationCredits
-	if cap > 0 && used < cap {
-		cluster.Conf.Cloud18ApplicationCredits = used
-		if _, err := cluster.SaveConfigFile(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to persist billing cycle cap: %s", err)
-		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Failed to persist unprovision of %s: %s", app.Name, err)
 	}
 }
 
@@ -3463,12 +3404,6 @@ func (c *Cluster) AddApp(app *App) error {
 	c.bumpAppListVersion()
 	c.Unlock()
 
-	c.recomputeAppCredits()
-	if app.AppConfig.ProvAppCreditPlanned > app.AppConfig.ProvAppCreditUsed {
-		if app.HasProvisionCookie() {
-			app.SetReprovCookie()
-		}
-	}
 	return nil
 }
 

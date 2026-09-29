@@ -220,7 +220,7 @@ func (app *App) deriveUnitFromStoredResources() int {
 	cores, _ := strconv.Atoi(app.AppConfig.ProvAppCpuCores)
 	memMB, _ := config.ParseUnitMeasurementToInt("M", app.AppConfig.ProvAppMem, false)
 	diskGB, _ := config.ParseUnitMeasurementToInt("G", app.AppConfig.ProvAppDisk, false)
-	unitCores, unitMemMB, unitDiskGB := app.ClusterGroup.computeRatioInts()
+	unitCores, unitMemMB, unitDiskGB := app.unitRatioInts()
 	unitFromCores, unitFromMem, unitFromDisk := 1, 1, 1
 	if unitCores > 0 && cores > unitCores {
 		unitFromCores = (cores + unitCores - 1) / unitCores
@@ -248,30 +248,9 @@ func (app *App) SetSetting(key, value string) error {
 	case "prov-app-docker-cmd":
 		app.AppConfig.ProvAppDockerCmd = value
 	case "prov-app-agents":
-		if app.effectiveSizingMode() == config.AppSizingModeUnit {
-			// Unit mode only: preserve App Unit per agent, recalculate total credits.
-			// Save previous agents so we can roll back if credit recalculation fails.
-			oldCount := len(app.GetAppAgents())
-			oldUnit := 1
-			if app.preservedLegacyInUnitPolicy() {
-				oldUnit = app.deriveUnitFromStoredResources()
-			} else if oldCount > 0 && app.AppConfig.ProvAppCreditPlanned > 0 {
-				oldUnit = app.AppConfig.ProvAppCreditPlanned / oldCount
-			}
-			prevAgents := app.AppConfig.ProvAppAgents
-			app.AppConfig.ProvAppAgents = value
-			newCount := len(app.GetAppAgents())
-			if newCount == 0 {
-				newCount = 1
-			}
-			if err := app.SetAppProvisionByCredit(oldUnit * newCount); err != nil {
-				app.AppConfig.ProvAppAgents = prevAgents
-				return fmt.Errorf("agent change rejected: %w", err)
-			}
-		} else {
-			// Legacy ("") and Manual: just update agents, no credit recalculation
-			app.AppConfig.ProvAppAgents = value
-		}
+		// The shape (prov-app-cpu-cores/memory/disk) is PER INSTANCE and never depends on
+		// the agent count; the instances follow the topology (flex = agents, failover = 1).
+		app.AppConfig.ProvAppAgents = value
 	case "prov-app-template":
 		app.AppConfig.ProvAppTemplate = value
 	case "app-port":
@@ -282,27 +261,19 @@ func (app *App) SetSetting(key, value string) error {
 		app.AppConfig.AppDbPass = value
 	case "app-db-schema":
 		app.AppConfig.AppDbSchema = value
-	case "prov-app-credit-planned":
-		effectiveMode := app.effectiveSizingMode()
-		if effectiveMode == config.AppSizingModeManual {
-			return errors.New("prov-app-credit-planned cannot be set in manual mode; use CPU/memory/disk controls instead")
+	case "prov-app-units":
+		// The unit sizing HELPER, not a store (Stéphane 2026-09-29: the unit count is derived,
+		// tracked in graphite, never a field): N whole units per instance -> the three declared
+		// prov-app-* values at the manager's ratio of the app's profile (Compute, or Database
+		// when app-stateful). Manual mode keeps the hand-typed shape.
+		if app.effectiveSizingMode() == config.AppSizingModeManual {
+			return errors.New("prov-app-units cannot be set in manual mode; use CPU/memory/disk controls instead")
 		}
-		creditPlanSize, err := strconv.Atoi(value)
-		if err != nil {
-			return errors.New("invalid credit planned value: " + value)
+		units, err := strconv.Atoi(value)
+		if err != nil || units < 1 {
+			return errors.New("invalid units value: " + value + " (whole number >= 1)")
 		}
-		if creditPlanSize < 1 {
-			return errors.New("credit planned must be greater than or equal to 1")
-		}
-		if effectiveMode == "" {
-			if err := app.SetAppProvisionByLegacyCredit(creditPlanSize); err != nil {
-				return err
-			}
-		} else {
-			if err := app.SetAppProvisionByCredit(creditPlanSize); err != nil {
-				return err
-			}
-		}
+		app.applyUnitShape(units)
 	case "prov-app-sizing-mode":
 		if value == "" {
 			prevAppMode := app.AppConfig.ProvAppSizingMode
@@ -318,15 +289,7 @@ func (app *App) SetSetting(key, value string) error {
 					app.AppConfig.ProvAppSizingMode = prevAppMode
 					return errors.New("cannot inherit unit mode: no agents configured")
 				}
-				appUnit := app.deriveUnitFromStoredResources()
-				creditPlanSize := appUnit * numAgents
-				app.AppConfig.ProvAppCreditPlanned = creditPlanSize
-				unitCores, unitMemMB, unitDiskGB := app.ClusterGroup.computeRatioInts()
-				app.AppConfig.ProvAppCpuCores = strconv.Itoa(appUnit * unitCores)
-				app.AppConfig.ProvAppMem = strconv.Itoa(appUnit * unitMemMB)
-				app.AppConfig.ProvAppDisk = strconv.Itoa(appUnit * unitDiskGB)
-				app.SetReprovCookie()
-				app.ClusterGroup.recomputeAppCredits()
+				app.applyUnitShape(app.deriveUnitFromStoredResources())
 			}
 			return nil
 		}
@@ -336,17 +299,10 @@ func (app *App) SetSetting(key, value string) error {
 		prevAppMode := app.AppConfig.ProvAppSizingMode
 		oldMode := app.effectiveSizingMode()
 		app.AppConfig.ProvAppSizingMode = value
-		// When switching any non-unit mode (legacy "" or manual) → unit:
-		// derive best-fit units from current resources and force-apply resource formula.
-		// We do not call SetAppProvisionByCredit here because its early-exit on matching
-		// credit count would leave resources at old values if the derived credit count
-		// happens to equal the stored planned credits.
+		// When switching any non-unit mode (legacy "" or manual) -> unit: derive the
+		// best-fit whole units from the current shape and snap the shape onto the unit
+		// grid (applyUnitShape), so a unit-managed app always sits on whole units.
 		if value == config.AppSizingModeUnit && oldMode != config.AppSizingModeUnit {
-			numAgents := len(app.GetAppAgents())
-			if numAgents == 0 {
-				app.AppConfig.ProvAppSizingMode = prevAppMode
-				return errors.New("cannot switch to unit mode: no agents configured")
-			}
 			var cores int
 			if app.AppConfig.ProvAppCpuCores != "" {
 				var parseErr error
@@ -392,12 +348,7 @@ func (app *App) SetSetting(key, value string) error {
 			if unitFromDisk > appUnit {
 				appUnit = unitFromDisk
 			}
-			creditPlanSize := appUnit * numAgents
-			app.AppConfig.ProvAppCreditPlanned = creditPlanSize
-			app.AppConfig.ProvAppCpuCores = strconv.Itoa(appUnit * unitCores)
-			app.AppConfig.ProvAppMem = strconv.Itoa(appUnit * unitMemMB)
-			app.AppConfig.ProvAppDisk = strconv.Itoa(appUnit * unitDiskGB)
-			app.SetReprovCookie()
+			app.applyUnitShape(appUnit)
 		}
 	case "prov-app-ha-topology":
 		app.AppConfig.ProvAppHATopology = value
@@ -434,8 +385,6 @@ func (app *App) SetSetting(key, value string) error {
 	default:
 		return errors.New("unknown setting: " + key)
 	}
-
-	app.ClusterGroup.recomputeAppCredits()
 	return nil
 }
 
@@ -490,84 +439,36 @@ func (app *App) UpdateVariable(vIndex int, field, newValue string) error {
 	return nil
 }
 
-func (app *App) SetAppProvisionByCredit(creditPlanSize int) error {
-
-	if creditPlanSize == app.AppConfig.ProvAppCreditPlanned {
-		return nil
+// applyUnitShape writes the declared shape of ONE instance from a whole unit count at the
+// manager's ratio of the app's profile (Database when app-stateful, else Compute), and
+// arms a reprovision. The count itself is not stored: it is re-derived from the shape
+// (deriveUnitFromStoredResources) and tracked as the app's plan series in graphite.
+func (app *App) applyUnitShape(units int) {
+	if units < 1 {
+		units = 1
 	}
-
-	numAgents := len(app.GetAppAgents())
-
-	if numAgents == 0 {
-		return errors.New("no agents available for flex provisioning")
-	}
-	if creditPlanSize%numAgents != 0 {
-		return fmt.Errorf("credit planned (%d) must be a multiple of the number of agents (%d)", creditPlanSize, numAgents)
-	}
-
-	app.AppConfig.ProvAppCreditPlanned = creditPlanSize
-
-	// Unit mode only: apply the App Unit resource formula and trigger reprovision.
-	// Legacy and manual modes are dispatched to their own helpers before this function
-	// is called, so reaching here in a non-unit mode is a no-op.
-	if app.effectiveSizingMode() == config.AppSizingModeUnit {
-		unitsPerAgent := creditPlanSize / numAgents
-		unitCores, unitMemMB, unitDiskGB := app.ClusterGroup.computeRatioInts()
-		app.AppConfig.ProvAppCpuCores = strconv.Itoa(unitsPerAgent * unitCores)
-		app.AppConfig.ProvAppMem = strconv.Itoa(unitsPerAgent * unitMemMB)
-		app.AppConfig.ProvAppDisk = strconv.Itoa(unitsPerAgent * unitDiskGB)
-		app.SetReprovCookie()
-	}
-
-	return nil
-}
-
-// SetAppProvisionByLegacyCredit is the exact origin/develop SetAppProvisionByCredit
-// logic preserved for legacy-mode apps (ProvAppSizingMode == ""). It uses only the
-// app-level cluster defaults (ProvAppCpuCores / ProvAppMem / ProvAppDisk) with no
-// fallback to the DB-level Prov* fields, matching pre-split behavior exactly.
-func (app *App) SetAppProvisionByLegacyCredit(creditPlanSize int) error {
-	if creditPlanSize == app.AppConfig.ProvAppCreditPlanned {
-		return nil
-	}
-
-	numAgents := len(app.GetAppAgents())
-	if numAgents == 0 {
-		return errors.New("no agents available for flex provisioning")
-	}
-	if creditPlanSize%numAgents != 0 {
-		return errors.New("credit planned must be a multiple of the number of agents for flex provisioning")
-	}
-
-	provCredit := creditPlanSize / numAgents
-
-	baseCore, err := config.ParseUnitMeasurementToInt("0", app.ClusterGroup.Conf.ProvAppCpuCores, true)
-	if err != nil {
-		return err
-	}
-	baseMemory, err := config.ParseUnitMeasurementToInt("M", app.ClusterGroup.Conf.ProvAppMem, true)
-	if err != nil {
-		return err
-	}
-	baseDisk, err := config.ParseUnitMeasurementToInt("G", app.ClusterGroup.Conf.ProvAppDisk, true)
-	if err != nil {
-		return err
-	}
-
-	app.AppConfig.ProvAppCreditPlanned = creditPlanSize
-	app.AppConfig.ProvAppCpuCores = strconv.Itoa(provCredit * baseCore)
-	app.AppConfig.ProvAppMem = strconv.Itoa(provCredit * baseMemory)
-	app.AppConfig.ProvAppDisk = strconv.Itoa(provCredit * baseDisk)
-
+	unitCores, unitMemMB, unitDiskGB := app.unitRatioInts()
+	app.AppConfig.ProvAppCpuCores = strconv.Itoa(units * unitCores)
+	app.AppConfig.ProvAppMem = strconv.Itoa(units * unitMemMB)
+	app.AppConfig.ProvAppDisk = strconv.Itoa(units * unitDiskGB)
 	app.SetReprovCookie()
-
-	return nil
 }
 
-func (app *App) ApplyPlannedCredits() {
-	if app.AppConfig.ProvAppCreditPlanned != app.AppConfig.ProvAppCreditUsed {
-		app.AppConfig.ProvAppCreditUsed = app.AppConfig.ProvAppCreditPlanned
+// unitRatioInts is the whole cores / MB / GB per unit for THIS app: the Database ratio
+// for a stateful app (DBU), the Compute ratio otherwise (APU).
+func (app *App) unitRatioInts() (cores, memMB, diskGB int) {
+	if app.AppConfig != nil && app.AppConfig.AppStateful {
+		c, m := app.ClusterGroup.dbuRatioInts()
+		d := 0
+		if app.ClusterGroup.resources != nil {
+			d = int(app.ClusterGroup.resources.Ratios(ProfileDatabase).DiskGBPerUnit + 0.5)
+		}
+		if d <= 0 {
+			d = int(mustRatio(DefaultRatioDBU).DiskGBPerUnit + 0.5)
+		}
+		return c, m, d
 	}
+	return app.ClusterGroup.computeRatioInts()
 }
 
 func (app *App) SetRouteStatuses(routeStatuses []config.RouteStatus) {

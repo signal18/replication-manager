@@ -119,9 +119,6 @@ prov-app-agents-failover = "agent-c"
 	if !node.AppConfig.AppS3Provider {
 		t.Fatalf("app s3 provider flag must be preserved")
 	}
-	if node.AppConfig.ProvAppCreditUsed != 11 || node.AppConfig.ProvAppCreditPlanned != 22 {
-		t.Fatalf("credit fields must be preserved, got used=%d planned=%d", node.AppConfig.ProvAppCreditUsed, node.AppConfig.ProvAppCreditPlanned)
-	}
 }
 
 func TestResetAppFromTemplate_TemplateOwnedFieldsAreUpdated(t *testing.T) {
@@ -453,8 +450,6 @@ func seedAppConfigForTemplateResetTests() *config.AppConfig {
 		ProvAppAgents:         "orig-agent",
 		ProvAppHATopology:     "orig-ha",
 		ProvAppAgentsFailover: "orig-failover",
-		ProvAppCreditUsed:     11,
-		ProvAppCreditPlanned:  22,
 		AppHost:               "orig-host",
 		AppHostsIPV6:          "::1",
 		AppPort:               "8443",

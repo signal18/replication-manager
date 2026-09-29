@@ -150,22 +150,6 @@ func (cluster *Cluster) newAppList() error {
 
 	cluster.LoadAllAppTemplateMD5Provisioned()
 
-	// Backfill ProvAppCreditUsed for apps that are provisioned but whose saved
-	// value is zero — this covers apps created before credit persistence was added.
-	// We only save when the value actually changes so restarts after backfill are
-	// no-ops.
-	for _, app := range cluster.Apps {
-		if app.HasProvisionCookie() && app.AppConfig.ProvAppCreditUsed == 0 && app.AppConfig.ProvAppCreditPlanned > 0 {
-			app.AppConfig.ProvAppCreditUsed = app.AppConfig.ProvAppCreditPlanned
-			if _, err := cluster.SaveApp(app, ""); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
-					"Failed to persist backfilled credit usage for %s: %s", app.Name, err)
-			}
-		}
-	}
-
-	cluster.recomputeAppCredits()
-
 	return nil
 }
 
@@ -182,9 +166,6 @@ func (c *Cluster) initializeAppForRegistration(app *App) error {
 	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"New application monitored %s: %s:%s", app.GetType(), app.GetHost(), app.GetPort())
 	app.SetState(stateSuspect)
-	if app.AppConfig.ProvAppCreditPlanned == 0 {
-		app.AppConfig.ProvAppCreditPlanned = len(app.GetAppAgents())
-	}
 	return nil
 }
 
@@ -315,8 +296,6 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 	flags.StringVar(&conf.AppDbPass, "app-db-pass", "", "App Database Password")
 	flags.StringVar(&conf.AppDbSchema, "app-db-schema", "", "App Database Schema")
 	flags.BoolVar(&conf.AppS3Provider, "app-s3-provider", false, "Whether the app is an S3 provider, default is false.")
-	flags.IntVar(&conf.ProvAppCreditPlanned, "prov-app-credit-planned", 0, "Planned App Credit for the application, default is 0.")
-	flags.IntVar(&conf.ProvAppCreditUsed, "prov-app-credit-used", 0, "Used App Credit for the application, default is 0.")
 }
 
 func (app *App) Refresh() error {

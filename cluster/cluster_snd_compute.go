@@ -82,6 +82,26 @@ func (cluster *Cluster) computeUnitMetrics(name string, r *APUReading, down bool
 	}
 }
 
+// computeUnitPlanMetrics is the PLAN side of one compute unit, next to its consumed
+// series: the derived reservation (shape x instances) as apu.<C>.<name>.plan_apu for a
+// Compute unit, or plan_dbu / dbu for a stateful app on the DBU track. No field on the
+// app: the unit count is tracked here, never stored (Stéphane 2026-09-29).
+func (cluster *Cluster) computeUnitPlanMetrics(name string, k AppKey, ts int64) []graphite.Metric {
+	token := cluster.Name + "." + computeTokenReplacer.Replace(name)
+	f := func(v float64) string { return strconv.FormatFloat(v, 'f', 4, 64) }
+	var out []graphite.Metric
+	if r := cluster.resources.GetAppPlan(k); r != nil {
+		out = append(out, graphite.NewMetric(fmt.Sprintf("apu.%s.plan_apu", token), f(r.Apu), ts))
+	}
+	if r := cluster.resources.GetStatefulPlan(k); r != nil {
+		out = append(out, graphite.NewMetric(fmt.Sprintf("apu.%s.plan_dbu", token), f(r.Dbu), ts))
+	}
+	if r := cluster.resources.GetStatefulConsumed(k); r != nil {
+		out = append(out, graphite.NewMetric(fmt.Sprintf("apu.%s.dbu", token), f(r.Dbu), ts))
+	}
+	return out
+}
+
 // CollectComputeMetrics queues the APU series for every Compute unit (proxies + apps)
 // into the graphite batch, once per graphite tick. The twin of the per-server
 // FetchDatabaseStats path, but stateless units have no ServerMonitor, so the cluster
@@ -99,6 +119,7 @@ func (cluster *Cluster) CollectComputeMetrics() {
 		}
 		k := AppKey{Cluster: cluster.Name, App: prx.GetName(), Kind: KindProxy}
 		metrics = append(metrics, cluster.computeUnitMetrics(prx.GetName(), cluster.resources.GetAppConsumed(k), prx.IsDown(), ts)...)
+		metrics = append(metrics, cluster.computeUnitPlanMetrics(prx.GetName(), k, ts)...)
 	}
 	for _, app := range cluster.Apps {
 		if app == nil {
@@ -106,6 +127,7 @@ func (cluster *Cluster) CollectComputeMetrics() {
 		}
 		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}
 		metrics = append(metrics, cluster.computeUnitMetrics(app.Name, cluster.resources.GetAppConsumed(k), app.IsDown(), ts)...)
+		metrics = append(metrics, cluster.computeUnitPlanMetrics(app.Name, k, ts)...)
 	}
 
 	// Cluster-level APU PLAN contract, the Compute mirror of resourcemanager.<C>.plan_dbu:

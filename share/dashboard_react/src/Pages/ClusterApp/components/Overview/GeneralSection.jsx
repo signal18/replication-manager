@@ -88,7 +88,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   }, [dockerTemplates])
   const {
     provAppDockerImg = '', provAppDockerCmd = '', provAppTemplate = '',
-    provAppAgents = '', provAppHaTopology = '', provAppCreditPlanned = 0,
+    provAppAgents = '', provAppHaTopology = '',
     provAppSizingMode: appSizingMode = '', provAppCpuCores = '', provAppMemory = '', provAppDiskSize = '',
     appS3Provider = false, appStateful = false
   } = appConfig;
@@ -108,12 +108,15 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   // Preserve raw stored values on read; the first unit-based write normalizes them.
   const isLegacyAppInUnitCluster = isUnitMode && appSizingMode !== 'unit'
 
-  // 1 APU = the server's Compute ratio (resource-manager-ratio-apu), never a number typed here.
+  // 1 unit = the manager's ratio of the app's PROFILE (resource-manager-ratio-apu, or
+  // -dbu when the app is stateful), never a number typed here.
   const clusterData = useSelector((state) => state.cluster?.clusterData)
-  const apuRatio = getUnitRatios(clusterData).compute
-  const baseCore = apuRatio.coresPerUnit || 1
-  const baseMem = apuRatio.memMBPerUnit || 1
-  const baseDisk = apuRatio.diskGBPerUnit || 1
+  const ratios = getUnitRatios(clusterData)
+  const unitRatio = appStateful ? ratios.database : ratios.compute
+  const unitName = appStateful ? 'DBU' : 'APU'
+  const baseCore = unitRatio.coresPerUnit || 1
+  const baseMem = unitRatio.memMBPerUnit || 1
+  const baseDisk = unitRatio.diskGBPerUnit || 1
 
   // Derive unit from raw stored resources (used for legacy apps that haven't been normalised yet).
   const derivedUnitFromResources = useMemo(() => {
@@ -126,40 +129,19 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
       memMB ? memMB / baseMem : 0,
       diskGB ? diskGB / baseDisk : 0
     )))
-  }, [provAppCpuCores, provAppMemory, provAppDiskSize])
+  }, [provAppCpuCores, provAppMemory, provAppDiskSize, baseCore, baseMem, baseDisk])
 
-  const creditStep = useMemo(() => {
-    const raw = provAppAgents
-    const list = typeof raw === 'string' ? raw.split(',').filter((a) => a.trim()) : (Array.isArray(raw) ? raw.filter(Boolean) : [])
-    return list.length || 1
-  }, [provAppAgents])
-
-  const clusterCredits = config?.cloud18ApplicationCredits || 0
-  const clusterCreditsUsed = config?.cloud18ApplicationCreditsUsed || 0
-  const clusterCreditsAvailable = clusterCredits > 0 ? clusterCredits - clusterCreditsUsed + provAppCreditPlanned : 0
-
-  const appUnitIsValid = isLegacyAppInUnitCluster
-    ? true
-    : isUnitMode && creditStep > 0 && provAppCreditPlanned > 0
-    ? provAppCreditPlanned % creditStep === 0
-    : true
-  const appUnitValue = (appUnitIsValid && creditStep > 0 && provAppCreditPlanned > 0)
-    ? (isLegacyAppInUnitCluster ? derivedUnitFromResources : provAppCreditPlanned / creditStep)
-    : (isLegacyAppInUnitCluster ? derivedUnitFromResources : 0)
+  // The unit count is DERIVED from the declared shape, never stored (tracked in graphite
+  // as apu.<cluster>.<app>.plan_apu / plan_dbu). The slider is a sizing helper: it writes
+  // the three prov-app-* values at the ratio through the prov-app-units setting.
   const maxAppUnit = 256
-
-  const sliderDisplayValue = useMemo(() => {
-    if (isUnitMode && !isLegacyAppInUnitCluster && appUnitIsValid && creditStep > 0 && provAppCreditPlanned > 0) {
-      return provAppCreditPlanned / creditStep
-    }
-    return derivedUnitFromResources || 1
-  }, [isUnitMode, isLegacyAppInUnitCluster, appUnitIsValid, creditStep, provAppCreditPlanned, derivedUnitFromResources])
+  const sliderDisplayValue = derivedUnitFromResources || 1
 
   const formatAppUnit = useCallback((unit) => {
     const mem = unit * baseMem
     const memLabel = mem >= 1024 ? `${mem / 1024}GB` : `${mem}MB`
-    return `${unit} App Unit — ${unit * baseCore} cores, ${memLabel} mem, ${unit * baseDisk}GB disk per agent`
-  }, [])
+    return `${unit} ${unitName} — ${unit * baseCore} cores, ${memLabel} mem, ${unit * baseDisk}GB disk per instance`
+  }, [unitName, baseCore, baseMem, baseDisk])
 
   const agentList = useMemo(() => {
     const raw = config?.provAppAgents || config?.provDbAgents
@@ -206,7 +188,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     const newList = Array.isArray(value)
       ? value.filter(Boolean)
       : (typeof value === 'string' ? value.split(',').filter(a => a.trim()) : [])
-    // Always dispatch agent update; backend handles credit recalculation for unit mode
+    // The shape is per instance: an agent change never resizes anything.
     dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-agents', value: newList.join(',') }))
   }, [clusterName, appId, dispatch])
 
@@ -324,9 +306,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
             values={provAppAgents}
             confirm={true}
             splitConfirm={true}
-            confirmTitle={isUnitMode && !isLegacyAppInUnitCluster
-              ? `Confirm agent change — App Unit stays at ${appUnitValue || 1} per agent, planned credits will be updated`
-              : `Confirm agent change`}
+            confirmTitle={`Confirm agent change (the per-instance shape is unchanged; a flex app runs one instance per agent)`}
             onChange={onAgentsChange}
             parentStyles={styles}
           />
@@ -373,12 +353,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
         <Flex direction='column' gap={4} w='100%'>
           {isUnitMode && isLegacyAppInUnitCluster && (
             <Text fontSize='xs' color='orange.500'>
-              Legacy resource values preserved. The next App Unit edit will normalize this app (derived: {derivedUnitFromResources} App Unit).
-            </Text>
-          )}
-          {isUnitMode && !appUnitIsValid && (
-            <Text fontSize='sm' color='red.500'>
-              Inconsistent state: {provAppCreditPlanned} credit{provAppCreditPlanned !== 1 ? 's' : ''} cannot be evenly distributed across {creditStep} agent{creditStep !== 1 ? 's' : ''}. Update agents or credits to resolve.
+              Legacy resource values preserved. The next unit edit snaps this app onto whole {unitName} (derived: {derivedUnitFromResources} {unitName}).
             </Text>
           )}
           <AppUnitSlider
@@ -389,21 +364,18 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
             step={1}
             formatFn={formatAppUnit}
             onChange={(unit) => {
-              const credits = unit * creditStep
               const needsModeSwitch = provAppSizingMode !== 'unit'
-              const exceedsPool = clusterCredits > 0 && clusterCreditsAvailable > 0 && credits > clusterCreditsAvailable
-              const poolWarning = exceedsPool ? ` — ⚠ exceeds available pool (${Math.floor(clusterCreditsAvailable / creditStep)} App Unit free)` : ''
               setAppUnitConfirmState({
                 isOpen: true,
                 title: needsModeSwitch
-                  ? `Switch to App Unit: ${unit} App Unit — ${formatAppUnit(unit)} × ${creditStep} agent(s) = ${credits} credits${poolWarning}`
-                  : `Confirm App Unit change to ${unit} — ${formatAppUnit(unit)} × ${creditStep} agent(s) = ${credits} credits${poolWarning}`,
+                  ? `Switch to unit sizing: ${formatAppUnit(unit)} (reprovision needed)`
+                  : `Confirm ${formatAppUnit(unit)} (reprovision needed)`,
                 handler: () => {
-                  const saveCredits = () => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-credit-planned', value: credits }))
+                  const saveUnits = () => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-units', value: unit }))
                   if (needsModeSwitch) {
-                    dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-sizing-mode', value: 'unit' })).unwrap().then(saveCredits)
+                    dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-sizing-mode', value: 'unit' })).unwrap().then(saveUnits)
                   } else {
-                    saveCredits()
+                    saveUnits()
                   }
                 }
               })
@@ -504,9 +476,8 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     appSizingMode, clusterSizingMode, provAppSizingMode,
     isLegacyAppInUnitCluster, derivedUnitFromResources,
     substitution, user,
-    sliderDisplayValue, appUnitValue, appUnitIsValid, maxAppUnit, creditStep, formatAppUnit, clusterName, appId, dispatch,
-    provAppCreditPlanned, provAppCpuCores, provAppMemory, provAppDiskSize,
-    clusterCreditsAvailable, clusterCredits,
+    sliderDisplayValue, maxAppUnit, formatAppUnit, unitName, clusterName, appId, dispatch,
+    provAppCpuCores, provAppMemory, provAppDiskSize,
   ])
 
   return (
@@ -574,8 +545,6 @@ GeneralSection.propTypes = {
     provAppMemory: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
     provAppDiskSize: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
     provAppSizingMode: PropTypes.string,
-    cloud18ApplicationCredits: PropTypes.number,
-    cloud18ApplicationCreditsUsed: PropTypes.number,
   }),
   appConfig: PropTypes.shape({
     provAppDockerImg: PropTypes.string,
@@ -583,7 +552,6 @@ GeneralSection.propTypes = {
     provAppTemplate: PropTypes.string,
     provAppAgents: PropTypes.oneOfType([PropTypes.array, PropTypes.string]),
     provAppHaTopology: PropTypes.string,
-    provAppCreditPlanned: PropTypes.number,
     provAppSizingMode: PropTypes.string,
     provAppCpuCores: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
     provAppMemory: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),

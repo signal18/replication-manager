@@ -1059,10 +1059,6 @@ type Config struct {
 	Cloud18AlertSlackURL                   string                 `mapstructure:"cloud18-alert-slack-url"  toml:"cloud18-alert-slack-url" json:"cloud18AlertSlackUrl"`
 	Cloud18AlertSlackUser                  string                 `mapstructure:"cloud18-alert-slack-user"  toml:"cloud18-alert-slack-user" json:"cloud18AlertSlackUser"`
 	Cloud18HealthRefreshInterval           int                    `mapstructure:"cloud18-health-refresh-interval"  toml:"cloud18-health-refresh-interval" json:"cloud18HealthRefreshInterval"`
-	Cloud18ApplicationCredits              int                    `mapstructure:"cloud18-application-credits" toml:"Cloud18-application-credits" json:"cloud18ApplicationCredits"`
-	Cloud18ApplicationCreditsUsed          int                    `mapstructure:"-" toml:"-" json:"cloud18ApplicationCreditsUsed"`
-	Cloud18ApplicationCreditsPlanned       int                    `mapstructure:"-" toml:"-" json:"cloud18ApplicationCreditsPlanned"`
-	Cloud18ApplicationCreditsPrice         int                    `mapstructure:"cloud18-application-credits-price" toml:"Cloud18-application-credits-price" json:"cloud18ApplicationCreditsPrice"`
 	ProvRegister                           bool                   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
 	ProvAdminUser                          string                 `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
 	Measurement                            bool                   `mapstructure:"measurement" toml:"measurement" json:"measurement"`
@@ -1121,8 +1117,6 @@ type AppConfig struct {
 	ProvAppAgents         string `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
 	ProvAppHATopology     string `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology"`
 	ProvAppAgentsFailover string `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
-	ProvAppCreditUsed     int    `mapstructure:"prov-app-credit-used" toml:"prov-app-credit-used" json:"provAppCreditUsed"`
-	ProvAppCreditPlanned  int    `mapstructure:"prov-app-credit-planned" toml:"prov-app-credit-planned" json:"provAppCreditPlanned"`
 	ProvAppSizingMode     string `mapstructure:"prov-app-sizing-mode" toml:"prov-app-sizing-mode" json:"provAppSizingMode"`
 	AppHost               string `mapstructure:"app-host" toml:"app-host" json:"appHost"`
 	AppHostsIPV6          string `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`

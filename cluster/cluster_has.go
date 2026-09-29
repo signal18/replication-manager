@@ -229,14 +229,6 @@ func (cluster *Cluster) IsAppProvisioned() bool {
 					cluster.SetState("APPERR006", state.State{ErrType: "WARNING", ErrDesc: clusterError["APPERR006"], ErrFrom: "TOPO", ServerUrl: app.GetURL()})
 				}
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can App Connect creating cookie %s: %s", app.GetURL(), app.GetState())
-				if app.AppConfig.ProvAppCreditUsed == 0 && app.AppConfig.ProvAppCreditPlanned > 0 {
-					app.AppConfig.ProvAppCreditUsed = app.AppConfig.ProvAppCreditPlanned
-					if _, err := cluster.SaveApp(app, ""); err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
-							"Failed to persist backfilled credit usage for %s: %s", app.Name, err)
-					}
-					cluster.recomputeAppCredits()
-				}
 			} else if !app.IsRunning() {
 				return false
 			}

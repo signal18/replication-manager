@@ -1011,7 +1011,6 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 			}
 		}
 	}
-	cluster.recomputeAppCredits()
 	appAdded = false
 	return nil
 }
@@ -2135,13 +2134,5 @@ func (cluster *Cluster) EnqueueRefreshAppTemplateMD5(app *App) {
 		// Enqueued successfully
 	default:
 		// Channel full — drop silently
-	}
-}
-
-func (cluster *Cluster) CheckAppsCredit() {
-	for _, app := range cluster.Apps {
-		if app != nil {
-			app.CheckAppCredits()
-		}
 	}
 }
