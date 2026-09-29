@@ -13,6 +13,7 @@ import (
 )
 
 var tests = []string{
+	"testSwitchoverNoDivergenceOnOldMaster",
 	"testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync",
 	"testSwitchoverLongTransactionNoRplCheckNoSemiSync",
 	"testSwitchoverLongTransactionWaitNoRplCheckNoSemiSync",

@@ -189,6 +189,42 @@ Fixed in `cluster/cluster_set.go`: `SetActiveStatus()` now returns early when th
 
 Regression coverage: `cluster/cluster_set_test.go` exercises a real `*cron.Cron` and asserts via `runtime.NumGoroutine()` diffs that (a) 20 redundant same-status calls after activation add no goroutines, and (b) a real actif↔standby flip still starts/stops the scheduler goroutine. Passes under `go test ./cluster/ -run TestSetActiveStatus -race -count=5`.
 
+## A standby never designates nor opens a master (GH-1847)
+
+Preprod belair, 2026-09-27 11:30 UTC: the active switched db2 → db1; two seconds later the
+STANDBY (repman-dr), whose topology discovery still saw db2 as "last non slave", ran
+`SET GLOBAL read_only=0` on db2 and its HAProxy refresh repointed `service_write/leader` on both
+proxies back to db2. The active's traffic marker (`InjectProxiesTraffic`, through the proxy RW
+port, root bypasses read_only) then landed on db2, binlogged under db2's server id, and the
+replica died on the GTID strict-mode collision. The standby was correctly standby: those two
+DECISIONS had no active gate. The fix is at the decision level only, no primitive is gated:
+
+- `cluster_topo.go`, last-non-slave fallback: in CALM a standby (`standbyDesignateMaster`)
+  keeps the last-known master whatever the local view says (a demoted master or a replica
+  mid-repair both look like a "last non slave" for a few ticks) and takes the local candidate
+  only when none is known; it never touches read_only. It DOES re-designate when the master
+  moved on it: in split brain, or once its last-known master has become a replica
+  (`LostArbitration` attached the fenced old master to the winner's master): the standby's
+  role is then to follow the winner (Stéphane 2026-09-29: "the role of the passive is to shoot
+  in the head the old master that moved on the winner, but only on split brain"). The
+  active's branch is unchanged, it only logs the designation when it changes.
+- `prx_haproxy.go`: in calm a standby never repoints `service_write/leader`; in split brain,
+  or when the leader row is a fenced old master now attached as a replica, it repoints it off
+  that node as before.
+- A standby never purges binlogs (`CheckSlavesReplicationsPurge`) and never drives a dynamic
+  resize (`DriveDynamicResize`, `DriveDailyDynamicResize`): both are the active's decisions
+  (Stéphane 2026-09-29). The binlog-scan streamer seen under the `[purge]` log module on the
+  DR (`ScanBinlogQueryEvents`) is the log plugins' read-only Binlog Dump, not the purge; it
+  reconnects on its own after a database restart and stays ungated.
+- A standby never enforces settings on a server (`CheckSlaveSettings`, `CheckMasterSettings`:
+  semisync install, binlog format, heartbeat, GTID/exec/parallel modes, sync, checksum are all
+  SET GLOBAL decided from this monitor's view); the active does it.
+- The traffic marker is deliberately NOT gated (Stéphane: "traffic on all sides is what proves
+  it was wrong"): the marker landing on the demoted master is the evidence.
+- Regtest `testSwitchoverNoDivergenceOnOldMaster`: after a switchover, five marker injections
+  through the proxies must not add an own-origin GTID on the demoted master and every replica
+  keeps its SQL thread.
+
 ## Known Issues (Current)
 
 ### INSERT OR REPLACE Destroys Election Status

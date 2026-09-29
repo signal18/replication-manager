@@ -272,6 +272,11 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	}
 	sl := server
 	cluster := server.ClusterGroup
+	// A standby never enforces settings on a replica (GH-1847): every force-* below is a
+	// SET GLOBAL / plugin install decided from THIS monitor's view; the active does it.
+	if !cluster.IsActive() {
+		return
+	}
 	master := cluster.GetMaster()
 	if cluster.Conf.ForceSlaveSemisync && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "DEBUG", "Enforce semisync on slave %s", sl.URL)
@@ -432,6 +437,9 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 
 // CheckMasterSettings check master variables & enforce if set
 func (server *ServerMonitor) CheckMasterSettings() {
+	if cluster := server.ClusterGroup; cluster != nil && !cluster.IsActive() {
+		return // a standby never enforces settings on the master (GH-1847)
+	}
 	if server.IsIgnored() {
 		return
 	}
