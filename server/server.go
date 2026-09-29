@@ -108,6 +108,7 @@ type ReplicationManager struct {
 	StateMachine                 *state.StateMachine                `json:"stateMachine" groups:"web"`
 	clusterHeartbeatTrackingLock sync.RWMutex                       `json:"-"`
 	clusterHeartbeatTracking     map[string]clusterHeartbeatTracker `json:"-"`
+	clustersReady                atomic.Bool                        `json:"-"` // set once every cluster's Init (ACL users loaded) is done: /api/login answers 503 before, never 401
 	gitSyncBusy                  atomic.Bool                        `json:"-"`
 	cloud18PullBusy              atomic.Bool                        `json:"-"`
 	peerHealthBusy               atomic.Bool                        `json:"-"`
@@ -2946,6 +2947,13 @@ func (repman *ReplicationManager) Run() error {
 			go cl.Run()
 		}
 	}
+	// The HTTP listener is up since before phase 1, so a login arriving during the phases found
+	// no cluster (no ACL users yet) and was refused as "invalid credentials": three of those
+	// from the standby peer reconnecting one second after the listener opened locked the admin
+	// account for every client, dashboard included (preprod 2026-09-29, 11:39 and 11:55 UTC).
+	// The ACL users load in phase 1 (initCluster); the flag is raised once every cluster is
+	// initialised (phases 1-4 done). Before, loginHandler answers 503 "starting".
+	repman.clustersReady.Store(true)
 
 	// Send initial email
 	repman.SendClustersInitMail()
