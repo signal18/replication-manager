@@ -47,35 +47,85 @@ type apuBillingUnit struct {
 }
 
 // computeAPUBilling folds the units into the cluster picture.
-func computeAPUBilling(units []apuBillingUnit, plan int, unitPrice float64, overPct, underPct int, now time.Time) *APUBilling {
-	b := &APUBilling{Plan: plan, Units: len(units), UnitPrice: unitPrice, OverPricePct: overPct, UnderPricePct: underPct, UpdatedAt: now}
+// StatefulBilling is the DBU twin of APUBilling for the STATEFUL apps of a cluster
+// (app-stateful, e.g. minio): same floor rule (1 unit per running instance), same
+// over/under ratios around the plan, but the unit is the DBU and the price
+// cloud18-marketplace-dbu-price. Its plan is the sum of the stateful apps' planned DBU,
+// never the databases' prov-service-plan-dbu: the two stay separate lines.
+type StatefulBilling struct {
+	Plan           int       `json:"plan"`           // Σ planned DBU of the stateful apps (StatefulPlanByCluster, rounded)
+	Units          int       `json:"units"`          // stateful apps in the cluster
+	RunningUnits   int       `json:"runningUnits"`   // of which not down
+	FloorUnits     int       `json:"floorUnits"`     // Σ floors of the running units (instances)
+	MeasuredDbu    float64   `json:"measuredDbu"`    // Σ measured DBU (sensor, Database ratio), 0 when unmeasured
+	BillableUnits  int       `json:"billableUnits"`  // Σ max(floor, ceil(measured)) per running unit
+	OverPlanUnits  int       `json:"overPlanUnits"`  // max(0, BillableUnits - Plan)
+	UnderPlanUnits int       `json:"underPlanUnits"` // max(0, Plan - BillableUnits)
+	UnitPrice      float64   `json:"unitPrice"`      // cloud18-marketplace-dbu-price, Eur per DBU per month (0 = not priced)
+	OverPricePct   int       `json:"overPricePct"`
+	UnderPricePct  int       `json:"underPricePct"`
+	MonthlyCost    float64   `json:"monthlyCost"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+// unitBilling is the unit-agnostic result of the floor/measured/plan arithmetic shared
+// by the APU (compute) and DBU (stateful) tracks -- one rule, two prices.
+type unitBilling struct {
+	Units, Running, Floor int
+	Measured              float64
+	Billable, Over, Under int
+	Cost                  float64
+}
+
+func computeUnitBilling(units []apuBillingUnit, plan int, unitPrice float64, overPct, underPct int) unitBilling {
+	b := unitBilling{Units: len(units)}
 	for _, u := range units {
 		if u.Down {
 			continue
 		}
-		b.RunningUnits++
+		b.Running++
 		floor := u.Floor
 		if floor < 1 {
 			floor = 1
 		}
-		b.FloorUnits += floor
-		b.MeasuredApu += math.Max(0, u.Measured)
+		b.Floor += floor
+		b.Measured += math.Max(0, u.Measured)
 		billable := int(math.Ceil(math.Max(0, u.Measured)))
 		if billable < floor {
 			billable = floor
 		}
-		b.BillableUnits += billable
+		b.Billable += billable
 	}
 	if plan < 0 {
 		plan = 0
 	}
-	if b.BillableUnits > plan {
-		b.OverPlanUnits = b.BillableUnits - plan
+	if b.Billable > plan {
+		b.Over = b.Billable - plan
 	} else {
-		b.UnderPlanUnits = plan - b.BillableUnits
+		b.Under = plan - b.Billable
 	}
-	b.MonthlyCost = planUnitCost(plan, b.BillableUnits, unitPrice, overPct, underPct)
+	b.Cost = planUnitCost(plan, b.Billable, unitPrice, overPct, underPct)
 	return b
+}
+
+func computeAPUBilling(units []apuBillingUnit, plan int, unitPrice float64, overPct, underPct int, now time.Time) *APUBilling {
+	if plan < 0 {
+		plan = 0
+	}
+	u := computeUnitBilling(units, plan, unitPrice, overPct, underPct)
+	return &APUBilling{Plan: plan, Units: u.Units, RunningUnits: u.Running, FloorUnits: u.Floor, MeasuredApu: u.Measured,
+		BillableUnits: u.Billable, OverPlanUnits: u.Over, UnderPlanUnits: u.Under,
+		UnitPrice: unitPrice, OverPricePct: overPct, UnderPricePct: underPct, MonthlyCost: u.Cost, UpdatedAt: now}
+}
+
+func computeStatefulBilling(units []apuBillingUnit, plan int, unitPrice float64, overPct, underPct int, now time.Time) *StatefulBilling {
+	if plan < 0 {
+		plan = 0
+	}
+	u := computeUnitBilling(units, plan, unitPrice, overPct, underPct)
+	return &StatefulBilling{Plan: plan, Units: u.Units, RunningUnits: u.Running, FloorUnits: u.Floor, MeasuredDbu: u.Measured,
+		BillableUnits: u.Billable, OverPlanUnits: u.Over, UnderPlanUnits: u.Under,
+		UnitPrice: unitPrice, OverPricePct: overPct, UnderPricePct: underPct, MonthlyCost: u.Cost, UpdatedAt: now}
 }
 
 // RefreshComputeBilling rebuilds ComputeUnits from the cluster's apps and proxies, the
@@ -86,12 +136,21 @@ func (cluster *Cluster) RefreshComputeBilling() {
 		return
 	}
 	units := make([]apuBillingUnit, 0, len(cluster.Apps)+len(cluster.Proxies))
+	stateful := make([]apuBillingUnit, 0)
 	for _, app := range cluster.Apps {
 		if app == nil {
 			continue
 		}
+		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}
 		u := apuBillingUnit{Name: app.Name, Floor: cluster.appInstanceCount(app), Down: app.IsDown()}
-		if r := cluster.resources.GetAppConsumed(AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}); r != nil {
+		if app.AppConfig != nil && app.AppConfig.AppStateful {
+			if r := cluster.resources.GetStatefulConsumed(k); r != nil {
+				u.Measured = r.Dbu
+			}
+			stateful = append(stateful, u)
+			continue
+		}
+		if r := cluster.resources.GetAppConsumed(k); r != nil {
 			u.Measured = r.Apu
 		}
 		units = append(units, u)
@@ -107,5 +166,9 @@ func (cluster *Cluster) RefreshComputeBilling() {
 		units = append(units, u)
 	}
 	cluster.ComputeUnits = computeAPUBilling(units, cluster.Conf.ProvServicePlanApu, cluster.Conf.Cloud18MarketplaceAPUPrice,
+		cluster.Conf.Cloud18MarketplaceOvercommitPricePct, cluster.Conf.Cloud18MarketplaceUndercommitPricePct, time.Now())
+	// Stateful apps: their own DBU line, plan = Σ their planned DBU (never the DB plan).
+	statefulPlan := int(cluster.resources.StatefulPlanByCluster(cluster.Name).Dbu + 0.5)
+	cluster.StatefulUnits = computeStatefulBilling(stateful, statefulPlan, cluster.Conf.Cloud18MarketplaceDBUPrice,
 		cluster.Conf.Cloud18MarketplaceOvercommitPricePct, cluster.Conf.Cloud18MarketplaceUndercommitPricePct, time.Now())
 }

@@ -219,7 +219,7 @@ function ResourceManager() {
               {data.clusters.map((c, i) => (
                 <Flex key={c.cluster} align='center' gap={1}>
                   <Box w='11px' h='11px' borderRadius='2px' style={{ background: colorFor(i) }} />
-                  <Text fontSize='xs'>{c.cluster} <Text as='span' opacity={0.6}>· real {fmt(c.dbu)} / plan {fmt(c.planDbu)}</Text></Text>
+                  <Text fontSize='xs'>{c.cluster} <Text as='span' opacity={0.6}>· real {fmt(c.dbu)} / plan {fmt(c.planDbu)}{c.planStatefulDbu > 0 ? ` · stateful apps ${fmt(c.statefulDbu)} / plan ${fmt(c.planStatefulDbu)} DBU` : ''}</Text></Text>
                 </Flex>
               ))}
             </Flex>

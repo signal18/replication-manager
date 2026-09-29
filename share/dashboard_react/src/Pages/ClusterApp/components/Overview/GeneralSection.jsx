@@ -90,7 +90,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     provAppDockerImg = '', provAppDockerCmd = '', provAppTemplate = '',
     provAppAgents = '', provAppHaTopology = '', provAppCreditPlanned = 0,
     provAppSizingMode: appSizingMode = '', provAppCpuCores = '', provAppMemory = '', provAppDiskSize = '',
-    appS3Provider = false
+    appS3Provider = false, appStateful = false
   } = appConfig;
 
   // Effective mode resolution mirrors backend logic:
@@ -212,6 +212,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
 
   const onHATopologyChange = useCallback((value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: value })) }, [clusterName, appId, dispatch])
   const onS3ProviderChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-s3-provider', value: appS3Provider ? 'false' : 'true' })) }, [clusterName, appId, appS3Provider, dispatch])
+  const onStatefulChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-stateful', value: appStateful ? 'false' : 'true' })) }, [clusterName, appId, appStateful, dispatch])
   const onPreviewTemplate = useCallback(() => {
     if (!provAppTemplate) {
       return
@@ -354,6 +355,16 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
           />
         )
       },
+      {
+        key: 'Stateful (accounted as DBU)',
+        value: (
+          <RMSwitch
+            confirmTitle={`Confirm switch app-stateful to ${appStateful ? 'off' : 'on'}? A stateful app reserves and bills whole DBU (Database ratio) instead of APU.`}
+            onChange={onStatefulChange}
+            isChecked={!!appStateful}
+          />
+        )
+      },
     ]
 
     rows.push({
@@ -488,7 +499,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     onSaveAppAsTemplate, templateOptions, provAppTemplate, onPreviewTemplate,
     onResetAppFromTemplate, onRefreshAndResetAppFromTemplate,
     agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions,
-    appS3Provider, onS3ProviderChange,
+    appS3Provider, onS3ProviderChange, appStateful, onStatefulChange,
     isUnitMode, isManualMode, isLegacyMode,
     appSizingMode, clusterSizingMode, provAppSizingMode,
     isLegacyAppInUnitCluster, derivedUnitFromResources,

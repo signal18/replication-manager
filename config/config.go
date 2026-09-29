@@ -1132,6 +1132,11 @@ type AppConfig struct {
 	AppDbPassClear        string `mapstructure:"app-db-pass-clear" toml:"-" json:"-" app:"-"`
 	AppDbSchema           string `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema" groups:"apps"`
 	AppS3Provider         bool   `mapstructure:"app-s3-provider" toml:"app-s3-provider" json:"appS3Provider"`
+	// AppStateful: the app holds data (minio, a storage service), so it is accounted on the
+	// Database profile as whole DBU (reserved in the DBU pool, billed at the DBU price), not
+	// as APU. A template default (cloud18-templates minio) inherited at creation, overridable
+	// per app in the GUI.
+	AppStateful bool `mapstructure:"app-stateful" toml:"app-stateful" json:"appStateful"`
 	// AppConfigVersion is the explicit persisted migration marker stamped by
 	// cluster.CanonicalizeAppContent. 0/missing means unflagged legacy (V1)
 	// content; AppConfigVersionV2 means content already matches the V1 -> V2

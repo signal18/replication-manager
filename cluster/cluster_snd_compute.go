@@ -128,6 +128,17 @@ func (cluster *Cluster) CollectComputeMetrics() {
 		metrics = append(metrics, graphite.NewMetric(
 			fmt.Sprintf("resourcemanager.%s.billed_apu", ctoken), strconv.Itoa(b.BillableUnits), ts))
 	}
+	// Stateful apps (app-stateful): their own DBU plan and billed lines, next to the DB
+	// plan_dbu but never summed into it.
+	if cluster.resources != nil {
+		metrics = append(metrics, graphite.NewMetric(
+			fmt.Sprintf("resourcemanager.%s.plan_stateful_dbu", ctoken),
+			strconv.FormatFloat(cluster.resources.StatefulPlanByCluster(cluster.Name).Dbu, 'f', 4, 64), ts))
+	}
+	if b := cluster.StatefulUnits; b != nil {
+		metrics = append(metrics, graphite.NewMetric(
+			fmt.Sprintf("resourcemanager.%s.billed_stateful_dbu", ctoken), strconv.Itoa(b.BillableUnits), ts))
+	}
 
 	if len(metrics) > 0 {
 		cluster.AddMetrics(metrics)

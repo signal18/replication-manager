@@ -63,6 +63,22 @@ declared setting, like `prov-db-disk-size`, nothing read back from OpenSVC) × t
 and the surcharge/reduction), a storage app's (`app-s3-provider`, the profile, settable per app in the GUI) is
 **producer BAU** (`producerUnits`, no plan). Series `bku.<c>.app_disk[_bytes]`, `bau.<c>.producer[_bytes]`.
 
+**Stateful apps are DBU (Stéphane 2026-09-29, "minio should account as DBU because it is a stateful service").**
+`app-stateful` (config.AppConfig, TOML/JSON, so a TEMPLATE seeds it: cloud18-templates `minio/minio.toml` carries
+`app-stateful = true` + `app-s3-provider = true`; an existing app takes it through *reset from template* or the
+per-app switch, App → Overview → Stateful, `app_set.go`). When on, `RefreshComputePlanAPU` projects the SAME
+declared shape with the Database ratio (`computePlanDBUReading`, io axis 0, floor 1 DBU, × `appInstanceCount`)
+and stores it on the ResourceManager's stateful track (`statefulPlan`/`statefulConsumed`, `DBUReading`-typed,
+same `AppKey`/`appAgent` placement) while clearing the APU plan of that key; the compute sensor's push is routed
+there too (`IngestAppConsumedAPU` → `ComputeUsedDBU`). The ledger reserves it in the **DBU pool**
+(`ReservedUnits.Dbu`, physical axes incl. io), every physical rollup (cluster/agent plan + consumed,
+`ClusterResourceView.Stateful/StatefulPlan`) includes it, and billing is its own line: `cluster.StatefulUnits`
+(`StatefulBilling`, json `statefulUnits`; plan = Σ stateful planned DBU, NEVER the databases'
+`prov-service-plan-dbu`; floor 1 per running instance; price `cloud18-marketplace-dbu-price`; the shared
+`computeUnitBilling` arithmetic with the APU track). Series `resourcemanager.<C>.plan_stateful_dbu` /
+`billed_stateful_dbu`; `/api/global/resources` rows carry `statefulDbu` / `planStatefulDbu`. Minio on crm:
+2 cores / 8 GB / 20 GB failover → 2 DBU (was 4 APU under the 2 GB APU ratio).
+
 **Memory scale-DOWN is a state (Stéphane 2026-09-29, curepipe stayed at 16 GB after a plan decrease under
 dynamic resources):** memory was dropped from every under-use axis (occupancy means nothing, the pool fills what it
 is given) so nothing ever shrank it in-plan. Now `ServerMonitor.memoryOverPlanNoPressure` = configured memory DBU

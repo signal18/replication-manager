@@ -429,6 +429,9 @@ type globalResourcesCluster struct {
 	Apu     float64 `json:"apu"`     // real consumed APU pivot -- the cluster's share of infra APU
 	PlanApu float64 `json:"planApu"` // the cluster's APU reservation contract (prov-service-plan-apu)
 	Servers int     `json:"servers"`
+
+	StatefulDbu     float64 `json:"statefulDbu"`     // real consumed DBU of the stateful apps (app-stateful)
+	PlanStatefulDbu float64 `json:"planStatefulDbu"` // their DBU reservation, own line (never in planDbu)
 }
 
 // handlerMuxGlobalResources returns the ResourceManager infra-wide capacity-vs-consumed
@@ -489,13 +492,16 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 		plan := float64(cl.GetPlanDbu()) // explicit prov-service-plan-dbu, else auto (per-node × nodes)
 		apuPlan := rm.AppPlanByCluster(cl.Name)
 		apuCons := rm.AppConsumedByCluster(cl.Name)
-		if a.Servers == 0 && a.Dbu == 0 && plan == 0 && apuPlan.Apu == 0 && apuCons.Apu == 0 {
+		stPlan := rm.StatefulPlanByCluster(cl.Name)
+		stCons := rm.StatefulConsumedByCluster(cl.Name)
+		if a.Servers == 0 && a.Dbu == 0 && plan == 0 && apuPlan.Apu == 0 && apuCons.Apu == 0 && stPlan.Dbu == 0 && stCons.Dbu == 0 {
 			continue
 		}
 		perCluster = append(perCluster, globalResourcesCluster{
 			Cluster: cl.Name, Dbu: a.Dbu, DbuCpu: a.DbuCpu, DbuMem: a.DbuMem,
 			DbuIo: a.DbuIo, DbuDisk: a.DbuDisk, PlanDbu: plan,
 			Apu: apuCons.Apu, PlanApu: apuPlan.Apu, Servers: a.Servers,
+			StatefulDbu: stCons.Dbu, PlanStatefulDbu: stPlan.Dbu,
 		})
 	}
 	sort.Slice(perCluster, func(i, j int) bool { return perCluster[i].PlanDbu > perCluster[j].PlanDbu })

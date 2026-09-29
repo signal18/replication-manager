@@ -41,6 +41,13 @@ type ResourceManager struct {
 	appPlan     map[AppKey]*APUReading // planned/allocated, per app -- the app's technical contract
 	appAgent    map[AppKey]string      // which agent an app runs on
 
+	// Stateful apps (app-stateful): app deployments accounted on the DATABASE profile, as
+	// DBU. Same AppKey (Kind app) and same appAgent placement as the Compute track, but
+	// DBU-typed readings so they never mix with APU on the wire; the ledger reserves them
+	// in the DBU pool.
+	statefulConsumed map[AppKey]*DBUReading
+	statefulPlan     map[AppKey]*DBUReading
+
 	// Shared physical side (both DB servers and apps are placed on agents).
 	capacity map[string]*AgentCapacity // per agent (node) name
 	quotaPct float64                   // resource-manager-infra-quota-pct: share of the metal repman may take
@@ -115,15 +122,17 @@ type AgentCapacity struct {
 // NewResourceManager builds an empty authority. Wired once in server.initCluster.
 func NewResourceManager() *ResourceManager {
 	return &ResourceManager{
-		consumed:    make(map[ResourceKey]*DBUReading),
-		plan:        make(map[ResourceKey]*DBUReading),
-		serverAgent: make(map[ResourceKey]string),
-		appConsumed: make(map[AppKey]*APUReading),
-		appPlan:     make(map[AppKey]*APUReading),
-		appAgent:    make(map[AppKey]string),
-		capacity:    make(map[string]*AgentCapacity),
-		storagePlan: make(map[string]int),
-		borrowed:    make(map[string]PhysicalUsage),
+		consumed:         make(map[ResourceKey]*DBUReading),
+		plan:             make(map[ResourceKey]*DBUReading),
+		serverAgent:      make(map[ResourceKey]string),
+		appConsumed:      make(map[AppKey]*APUReading),
+		appPlan:          make(map[AppKey]*APUReading),
+		appAgent:         make(map[AppKey]string),
+		statefulConsumed: make(map[AppKey]*DBUReading),
+		statefulPlan:     make(map[AppKey]*DBUReading),
+		capacity:         make(map[string]*AgentCapacity),
+		storagePlan:      make(map[string]int),
+		borrowed:         make(map[string]PhysicalUsage),
 		// Default per-profile ratios (the operator's rules; configurable, not locked).
 		// DB from CLOUD18_CREDIT_MODEL.md; Compute mem = 2 GB (NOT the doc's 4 GB): with
 		// refund, contractualising 4 GB for a light app/proxy is wasteful -- reserve
@@ -326,6 +335,69 @@ func (m *ResourceManager) SetAppAgent(k AppKey, agent string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.appAgent[k] = agent
+}
+
+// SetStatefulPlan records a stateful app's planned DBU (nil clears it: not stateful, or
+// unprovisioned). Mirror of SetAppPlan on the DBU-typed track.
+func (m *ResourceManager) SetStatefulPlan(k AppKey, r *DBUReading) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if r == nil {
+		delete(m.statefulPlan, k)
+		return
+	}
+	m.statefulPlan[k] = r
+}
+
+// GetStatefulPlan returns a stateful app's planned DBU, or nil.
+func (m *ResourceManager) GetStatefulPlan(k AppKey) *DBUReading {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.statefulPlan[k]
+}
+
+// SetStatefulConsumed records a stateful app's latest measured DBU (nil clears it).
+func (m *ResourceManager) SetStatefulConsumed(k AppKey, r *DBUReading) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if r == nil {
+		delete(m.statefulConsumed, k)
+		return
+	}
+	m.statefulConsumed[k] = r
+}
+
+// GetStatefulConsumed returns a stateful app's last DBU reading, or nil.
+func (m *ResourceManager) GetStatefulConsumed(k AppKey) *DBUReading {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.statefulConsumed[k]
+}
+
+// StatefulPlanByCluster sums the planned DBU of a cluster's stateful apps.
+func (m *ResourceManager) StatefulPlanByCluster(clusterName string) DBUAggregate {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var readings []*DBUReading
+	for k, r := range m.statefulPlan {
+		if k.Cluster == clusterName && r != nil {
+			readings = append(readings, r)
+		}
+	}
+	return sumReadings(readings)
+}
+
+// StatefulConsumedByCluster sums the measured DBU of a cluster's stateful apps.
+func (m *ResourceManager) StatefulConsumedByCluster(clusterName string) DBUAggregate {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var readings []*DBUReading
+	for k, r := range m.statefulConsumed {
+		if k.Cluster == clusterName && r != nil {
+			readings = append(readings, r)
+		}
+	}
+	return sumReadings(readings)
 }
 
 // APUAggregate is the summed Compute picture for a set of units (apps + proxies).
@@ -937,6 +1009,11 @@ func (m *ResourceManager) ClusterPhysicalConsumed(clusterName string) PhysicalUs
 			p.add(r.Physical())
 		}
 	}
+	for k, r := range m.statefulConsumed {
+		if k.Cluster == clusterName && r != nil {
+			p.add(r.Physical())
+		}
+	}
 	return p
 }
 
@@ -951,6 +1028,11 @@ func (m *ResourceManager) ClusterPhysicalPlan(clusterName string) PhysicalUsage 
 		}
 	}
 	for k, r := range m.appPlan {
+		if k.Cluster == clusterName && r != nil {
+			p.add(r.Physical())
+		}
+	}
+	for k, r := range m.statefulPlan {
 		if k.Cluster == clusterName && r != nil {
 			p.add(r.Physical())
 		}
@@ -980,6 +1062,11 @@ func (m *ResourceManager) agentPhysicalConsumedLocked(agent string) PhysicalUsag
 			p.add(r.Physical())
 		}
 	}
+	for k, r := range m.statefulConsumed {
+		if m.appAgent[k] == agent && r != nil {
+			p.add(r.Physical())
+		}
+	}
 	return p
 }
 
@@ -994,6 +1081,11 @@ func (m *ResourceManager) AgentPhysicalPlan(agent string) PhysicalUsage {
 		}
 	}
 	for k, r := range m.appPlan {
+		if m.appAgent[k] == agent && r != nil {
+			p.add(r.Physical())
+		}
+	}
+	for k, r := range m.statefulPlan {
 		if m.appAgent[k] == agent && r != nil {
 			p.add(r.Physical())
 		}
@@ -1073,6 +1165,9 @@ type ClusterResourceView struct {
 	Apu     APUAggregate `json:"apu"`     // consumed APU (apps + proxies)
 	ApuPlan APUAggregate `json:"apuPlan"` // planned APU
 
+	Stateful     DBUAggregate `json:"stateful"`     // consumed DBU of the stateful apps (app-stateful)
+	StatefulPlan DBUAggregate `json:"statefulPlan"` // planned DBU of the stateful apps: their own DBU line, never folded into the DB plan
+
 	// Physical composition across BOTH tracks -- the only correct cross-track sum.
 	Physical     PhysicalUsage `json:"physical"`     // consumed, both tracks
 	PhysicalPlan PhysicalUsage `json:"physicalPlan"` // planned, both tracks
@@ -1131,6 +1226,22 @@ func (m *ResourceManager) ClusterResource(clusterName string) ClusterResourceVie
 			}
 		}
 	}
+
+	var stCons, stPlan []*DBUReading
+	for k, r := range m.statefulConsumed {
+		if k.Cluster == clusterName && r != nil {
+			stCons = append(stCons, r)
+			v.Physical.add(r.Physical())
+		}
+	}
+	for k, r := range m.statefulPlan {
+		if k.Cluster == clusterName && r != nil {
+			stPlan = append(stPlan, r)
+			v.PhysicalPlan.add(r.Physical())
+		}
+	}
+	v.Stateful = sumReadings(stCons)
+	v.StatefulPlan = sumReadings(stPlan)
 
 	v.Dbu = sumReadings(dbuCons)
 	v.DbuPlan = sumReadings(dbuPlan)

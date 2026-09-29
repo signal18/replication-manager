@@ -186,6 +186,16 @@ func (m *ResourceManager) Ledger() ResourceLedger {
 			l.ReservedUnits.Apu += r.Apu
 		}
 	}
+	for _, r := range m.statefulPlan { // stateful apps: DBU pool, physical axes incl. io
+		if r != nil {
+			p := axesOf(r.Physical())
+			reserved.Cores += p.Cores
+			reserved.MemBytes += p.MemBytes
+			reserved.Iops += p.Iops
+			reserved.DiskBytes += p.DiskBytes
+			l.ReservedUnits.Dbu += r.Dbu
+		}
+	}
 	bkuUnit := m.unitAxes(ProfileStorage)
 	for _, u := range m.storagePlan {
 		reserved.DiskBytes += float64(u) * bkuUnit.DiskBytes

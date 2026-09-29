@@ -124,6 +124,7 @@ type Cluster struct {
 	ConfigDbuPerNode              DBUReading                     `json:"configDbuPerNode" groups:"web"`      // prov-db-* projected through the ratios: the TECHNICAL cap per node (paramétré axis), refreshed each tick
 	BackupUnits                   *BKUReading                    `json:"backupUnits" groups:"web"`           // BKU: per-cluster local backup storage vs prov-db-bku (RefreshBackupUnits, every 30 ticks)
 	BackupArchiveUnits            *BAUReading                    `json:"backupArchiveUnits" groups:"web"`    // BAU: per-cluster remote archive on S3/SFTP, no plan (RefreshBackupUnits, every 30 ticks)
+	StatefulUnits                 *StatefulBilling               `json:"statefulUnits" groups:"web"`         // DBU billing of the stateful apps (app-stateful), own line next to computeUnits
 	ComputeUnits                  *APUBilling                    `json:"computeUnits" groups:"web"`          // APU billing: apps + proxies, floor 1 per instance, vs prov-service-plan-apu (RefreshComputeBilling, each tick)
 	UnitRatios                    map[WorkloadProfile]UnitRatios `json:"unitRatios" groups:"web"`            // the manager's ratios (database/compute/storage): the dashboard's ONLY source for unit arithmetic
 	ConfigDbu                     float64                        `json:"configDbu" groups:"web"`             // cluster-wide configured DBU = per-node pivot x #DB nodes; the graph draws it as the "configured" line above the plan

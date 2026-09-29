@@ -1156,10 +1156,41 @@ func (cluster *Cluster) IngestAppConsumedAPU(kind ComputeKind, name string, star
 	if cluster == nil || cluster.resources == nil {
 		return APUReading{}
 	}
-	r := cluster.resources.ComputeUsedAPU(start, end, memMaxBytes, cpuMaxCores, diskMaxBytes)
 	k := AppKey{Cluster: cluster.Name, App: name, Kind: kind}
+	if kind == KindApp && cluster.appIsStateful(name) {
+		// Stateful app: the same cgroup maxima, projected with the DATABASE ratio (io axis
+		// unmeasured by the pg sensor -> 0) and stored on the DBU track.
+		d := cluster.resources.ComputeUsedDBU(start, end, memMaxBytes, cpuMaxCores, 0, diskMaxBytes)
+		cluster.resources.SetStatefulConsumed(k, &d)
+		cluster.resources.SetAppConsumed(k, nil)
+		return APUReading{}
+	}
+	r := cluster.resources.ComputeUsedAPU(start, end, memMaxBytes, cpuMaxCores, diskMaxBytes)
 	cluster.resources.SetAppConsumed(k, &r)
+	cluster.resources.SetStatefulConsumed(k, nil)
 	return r
+}
+
+// appIsStateful reports whether the named app deployment is accounted on the Database
+// profile (app-stateful, e.g. minio from the cloud18 template).
+func (cluster *Cluster) appIsStateful(name string) bool {
+	for _, app := range cluster.Apps {
+		if app != nil && app.Name == name && app.AppConfig != nil && app.AppConfig.AppStateful {
+			return true
+		}
+	}
+	return false
+}
+
+// computePlanDBUReading is the stateful-app twin of computePlanAPUReading: the declared
+// prov-app-* shape projected with the Database ratio. An app declares no IOPS, so the io
+// axis is 0 and the unit follows cores, memory or disk.
+func (cluster *Cluster) computePlanDBUReading(now time.Time, memStr, coresStr, diskStr string) DBUReading {
+	memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", memStr, true)
+	diskGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", diskStr, true)
+	cores, _ := strconv.ParseFloat(strings.TrimSpace(coresStr), 64)
+	return cluster.resources.ComputeUsedDBU(now, now,
+		int64(memMB)*1024*1024, cores, 0, int64(diskGB)*1024*1024*1024)
 }
 
 // RefreshComputePlanAPU projects the PLANNED resources of every stateless Compute
@@ -1181,6 +1212,7 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 		for _, app := range cluster.Apps {
 			if app != nil {
 				cluster.resources.SetAppPlan(AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}, nil)
+				cluster.resources.SetStatefulPlan(AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}, nil)
 			}
 		}
 		for _, prx := range cluster.Proxies {
@@ -1196,6 +1228,31 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 		if app == nil {
 			continue
 		}
+		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}
+		if app.AppConfig != nil && app.AppConfig.AppStateful {
+			// STATEFUL app (app-stateful, e.g. minio): the same declared shape and the same
+			// instance rule, but on the DATABASE profile -> whole DBU, reserved in the DBU
+			// pool and billed at the DBU price (Stéphane 2026-09-29: "minio should account
+			// as DBU because it is a stateful service"). Floor 1 DBU per instance.
+			d := cluster.computePlanDBUReading(now,
+				cluster.GetAppMemory(app.AppConfig), cluster.GetAppCores(app.AppConfig), cluster.GetAppDisk(app.AppConfig))
+			if d.Dbu < 1 {
+				dr := cluster.resources.Ratios(ProfileDatabase)
+				d = cluster.resources.ComputeUsedDBU(now, now,
+					int64(dr.MemMBPerUnit)*1024*1024, dr.CoresPerUnit, 0, int64(dr.DiskGBPerUnit)*1024*1024*1024)
+			}
+			if n := cluster.appInstanceCount(app); n > 1 {
+				d = cluster.resources.ComputeUsedDBU(now, now,
+					d.MemMaxBytes*int64(n), d.CpuMaxCores*float64(n), 0, d.DiskMaxBytes*int64(n))
+			}
+			cluster.resources.SetStatefulPlan(k, &d)
+			cluster.resources.SetAppPlan(k, nil)
+			if app.Agent != "" {
+				cluster.resources.SetAppAgent(k, app.Agent)
+			}
+			continue
+		}
+		cluster.resources.SetStatefulPlan(k, nil)
 		// PER-APP sizing: each app reserves from its OWN AppConfig (GetApp* fall back to the
 		// cluster default only when the app sets nothing), so a dev php (~0) and a prod php
 		// (large) are distinct reservations -- not a cluster average. This is the app class:
@@ -1218,7 +1275,6 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 			r = cluster.resources.ComputeUsedAPU(now, now,
 				r.MemMaxBytes*int64(n), r.CpuMaxCores*float64(n), r.DiskMaxBytes*int64(n))
 		}
-		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}
 		cluster.resources.SetAppPlan(k, &r)
 		if app.Agent != "" {
 			cluster.resources.SetAppAgent(k, app.Agent)
