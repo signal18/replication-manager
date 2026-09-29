@@ -332,13 +332,22 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 						// makes it one-shot. This was the last synchronous rejoin caller.
 						go extra.RejoinMaster()
 					}
+				} else if !cluster.IsFailedArbitrator && !cluster.IsActive() {
+					// STANDBY (GH-1847): its view can lag the active's by seconds (a demoted
+					// master, a replica mid-repair, both looked like the "last non slave" on
+					// preprod). A standby never re-designates a master from its own view and
+					// never opens one to writes: it keeps its last-known master, takes the
+					// local candidate only when it knows none, and rediscovers as active.
+					cluster.standbyDesignateMaster(cluster.Servers[k])
 				} else if !cluster.IsFailedArbitrator {
 					// Minority fail-safe: a node that cannot confirm authority via the
 					// arbitrator (IsFailedArbitrator) must NOT rediscover / re-designate
 					// the master from its own untrusted view — it holds its last-known
 					// topology and does nothing. Only the trusted majority rediscovers.
 					// Either no other master or multi-master topology
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s was set master as last non slave", sv.URL)
+					if cluster.master != cluster.Servers[k] {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s was set master as last non slave", sv.URL)
+					}
 					if len(cluster.Servers) == 1 {
 						cluster.Topology = config.TopoActivePassive
 					}
@@ -964,4 +973,17 @@ func (cluster *Cluster) SetReadWriteAsMaster() bool {
 	}
 
 	return found
+}
+
+// standbyDesignateMaster is the standby's side of the last-non-slave fallback (GH-1847):
+// keep the last-known master when there is one, take the local candidate only when none is
+// known (provisional until this monitor is active and rediscovers), log on change only,
+// never touch read_only.
+func (cluster *Cluster) standbyDesignateMaster(local *ServerMonitor) {
+	if cluster.master != nil || local == nil {
+		return
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Standby: no master known for %s, %s taken from the local view (provisional, nothing written)", cluster.Name, local.URL)
+	cluster.master = local
+	cluster.master.SetMaster()
 }

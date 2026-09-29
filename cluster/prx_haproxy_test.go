@@ -5629,6 +5629,7 @@ func TestSetAddrFailedRecognizesRealHaproxySuccessResponses(t *testing.T) {
 // logged at ERROR despite the correction having genuinely succeeded.
 func TestHaproxyRefreshMasterFixIPChangeNotMisreportedAsError(t *testing.T) {
 	cluster := setupTestCluster(t, 2)
+	cluster.Status = ConstMonitorActif // the leader fix is the ACTIVE's decision (GH-1847)
 	defer cleanupTestCluster(t, cluster)
 
 	cluster.StateMachine = new(state.StateMachine)
@@ -5767,6 +5768,7 @@ func TestHaproxyRefreshMasterFixIPChangeNotMisreportedAsError(t *testing.T) {
 // synchronously for it.
 func TestHaproxyRefreshGenuineMasterFixFailureRecordedAsStateNotFlooded(t *testing.T) {
 	cluster := setupTestCluster(t, 2)
+	cluster.Status = ConstMonitorActif // the leader fix is the ACTIVE's decision (GH-1847)
 	defer cleanupTestCluster(t, cluster)
 
 	cluster.StateMachine = new(state.StateMachine)

@@ -189,6 +189,29 @@ Fixed in `cluster/cluster_set.go`: `SetActiveStatus()` now returns early when th
 
 Regression coverage: `cluster/cluster_set_test.go` exercises a real `*cron.Cron` and asserts via `runtime.NumGoroutine()` diffs that (a) 20 redundant same-status calls after activation add no goroutines, and (b) a real actif↔standby flip still starts/stops the scheduler goroutine. Passes under `go test ./cluster/ -run TestSetActiveStatus -race -count=5`.
 
+## A standby never designates nor opens a master (GH-1847)
+
+Preprod belair, 2026-09-27 11:30 UTC: the active switched db2 → db1; two seconds later the
+STANDBY (repman-dr), whose topology discovery still saw db2 as "last non slave", ran
+`SET GLOBAL read_only=0` on db2 and its HAProxy refresh repointed `service_write/leader` on both
+proxies back to db2. The active's traffic marker (`InjectProxiesTraffic`, through the proxy RW
+port, root bypasses read_only) then landed on db2, binlogged under db2's server id, and the
+replica died on the GTID strict-mode collision. The standby was correctly standby: those two
+DECISIONS had no active gate. The fix is at the decision level only, no primitive is gated:
+
+- `cluster_topo.go`, last-non-slave fallback: on a standby, `standbyDesignateMaster` keeps the
+  last-known master whatever the local view says (a demoted master or a replica mid-repair
+  both look like a "last non slave" for a few ticks), takes the local candidate only when none
+  is known, never touches read_only. The active's branch is unchanged, it only logs the
+  designation when it changes (it used to log every tick).
+- `prx_haproxy.go`: a standby never repoints `service_write/leader` (the per-row fix and the
+  missing-leader fix), it reads the proxy and logs at debug.
+- The traffic marker is deliberately NOT gated (Stéphane: "traffic on all sides is what proves
+  it was wrong"): the marker landing on the demoted master is the evidence.
+- Regtest `testSwitchoverNoDivergenceOnOldMaster`: after a switchover, five marker injections
+  through the proxies must not add an own-origin GTID on the demoted master and every replica
+  keeps its SQL thread.
+
 ## Known Issues (Current)
 
 ### INSERT OR REPLACE Destroys Election Status
