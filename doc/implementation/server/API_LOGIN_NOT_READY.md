@@ -12,8 +12,9 @@ that were first blamed produced no failure at all.
 login arriving in that window is judged against an empty cluster list and called a bad
 password.
 
-**Fix.** `ReplicationManager.clustersReady` (atomic) is set right after phase 4, once every
-cluster's `Init`, `LoadAPIUsers` included, is done. Until then `loginHandler` answers
+**Fix.** `ReplicationManager.clustersReady` (atomic) is set once every cluster is initialised,
+phases 1 to 4 done (the ACL users load in phase 1, `initCluster`; phase 4 only launches the
+monitoring goroutines). Until then `loginHandler` answers
 **503 Service Unavailable** with `Retry-After: 5` and returns before touching the attempt
 counter. Nothing can count it as a failure. Test: `TestLoginNotReadyAnswers503AndCountsNothing`.
 

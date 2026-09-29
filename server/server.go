@@ -2951,7 +2951,8 @@ func (repman *ReplicationManager) Run() error {
 	// no cluster (no ACL users yet) and was refused as "invalid credentials": three of those
 	// from the standby peer reconnecting one second after the listener opened locked the admin
 	// account for every client, dashboard included (preprod 2026-09-29, 11:39 and 11:55 UTC).
-	// From here on the ACLs exist; before, loginHandler answers 503 "starting".
+	// The ACL users load in phase 1 (initCluster); the flag is raised once every cluster is
+	// initialised (phases 1-4 done). Before, loginHandler answers 503 "starting".
 	repman.clustersReady.Store(true)
 
 	// Send initial email
