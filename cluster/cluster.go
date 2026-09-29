@@ -102,35 +102,36 @@ type Cluster struct {
 	IsSplitBrainBck   bool   `json:"-"`
 	SplitBrainStartTs int64  `json:"splitBrainStartTs" groups:"web"` // unix ts when the current/last split brain began; used to filter a peer crash to THIS split
 
-	injectTrafficTableReady       map[string]bool `json:"-"` // dml marker schema created once per proxy target
-	IsFailedArbitrator            bool            `json:"isFailedArbitrator" groups:"web"`
-	IsLostMajority                bool            `json:"isLostMajority" groups:"web"`
-	IsDown                        bool            `json:"isDown" groups:"web"`
-	IsClusterDown                 bool            `json:"isClusterDown" groups:"web"`
-	IsMasterDown                  bool            `json:"isMasterDown" groups:"web"`
-	IsAllDbUp                     bool            `json:"isAllDbUp" groups:"web"`
-	IsFailable                    bool            `json:"isFailable" groups:"web"`
-	IsPostgres                    bool            `json:"isPostgres" groups:"web"`
-	IsProvision                   bool            `json:"isProvision" groups:"web"`
-	IsNeedProxiesRestart          bool            `json:"isNeedProxiesRestart" groups:"web"`
-	IsNeedProxiesReprov           bool            `json:"isNeedProxiesReprov" groups:"web"`
-	IsNeedProxiesConfigChange     bool            `json:"isNeedProxiesConfigChange" groups:"web"`
-	IsNeedDatabasesRestart        bool            `json:"isNeedDatabasesRestart" groups:"web"`
-	SwitchoverLongWriteWait       *LongWriteWait  `json:"switchoverLongWriteWait" groups:"web"` // tracked fact: a switchover is waiting for long writes on the master; WARN0217 open while non-nil
-	IsNeedDatabasesRollingRestart bool            `json:"isNeedDatabasesRollingRestart" groups:"web"`
-	IsNeedDatabasesRollingReprov  bool            `json:"isNeedDatabasesRollingReprov" groups:"web"`
-	IsNeedResourceCapUp           bool            `json:"isNeedResourceCapUp" groups:"web"`   // composed from the per-server plan states: ANY up server over the plan -> RAISE THE PLAN (cap up). Set by CheckResourceCapPlan
-	ResourceGrowRefused           *GrowRefusal    `json:"resourceGrowRefused" groups:"web"`   // last dynamic over-plan step refused by the ResourceManager gate (nil = none); tracked state, surfaced as ERR00112 in the workload channel
-	ConfigDbuPerNode              DBUReading      `json:"configDbuPerNode" groups:"web"`      // prov-db-* projected through the ratios: the TECHNICAL cap per node (paramétré axis), refreshed each tick
-	BackupUnits                   *BKUReading     `json:"backupUnits" groups:"web"`           // BKU: per-cluster local backup storage vs prov-db-bku (RefreshBackupUnits, every 30 ticks)
-	BackupArchiveUnits            *BAUReading     `json:"backupArchiveUnits" groups:"web"`    // BAU: per-cluster remote archive on S3/SFTP, no plan (RefreshBackupUnits, every 30 ticks)
-	ComputeUnits                  *APUBilling     `json:"computeUnits" groups:"web"`          // APU billing: apps + proxies, floor 1 per instance, vs prov-service-plan-apu (RefreshComputeBilling, each tick)
-	ConfigDbu                     float64         `json:"configDbu" groups:"web"`             // cluster-wide configured DBU = per-node pivot x #DB nodes; the graph draws it as the "configured" line above the plan
-	IsNeedResourceCapDown         bool            `json:"isNeedResourceCapDown" groups:"web"` // composed: EVERY up server under the plan -> LOWER THE PLAN (cap down); one non-under server breaks it (safe-shrink). Set by CheckResourceCapPlan
-	LastDynamicResizeDay          string          `json:"-"`                                  // YYYY-MM-DD of the last daily-time memory reconcile (DriveDailyDynamicResize); one apply per day per window
-	lastDynamicResize             time.Time       `json:"-"`                                  // last dynamic in-plan grow (DriveDynamicResize); cooldown = one step per scale-up window
-	lastDynamicGrowAxis           string          `json:"-"`                                  // axis of the last dynamic grow ("cpu"/"mem"/"io"); drives the QPS-feedback mem->io escalation
-	qpsBeforeDynamicGrow          float64         `json:"-"`                                  // cluster QPS sampled just before that grow; next window compares to detect a plateau
+	injectTrafficTableReady       map[string]bool                `json:"-"` // dml marker schema created once per proxy target
+	IsFailedArbitrator            bool                           `json:"isFailedArbitrator" groups:"web"`
+	IsLostMajority                bool                           `json:"isLostMajority" groups:"web"`
+	IsDown                        bool                           `json:"isDown" groups:"web"`
+	IsClusterDown                 bool                           `json:"isClusterDown" groups:"web"`
+	IsMasterDown                  bool                           `json:"isMasterDown" groups:"web"`
+	IsAllDbUp                     bool                           `json:"isAllDbUp" groups:"web"`
+	IsFailable                    bool                           `json:"isFailable" groups:"web"`
+	IsPostgres                    bool                           `json:"isPostgres" groups:"web"`
+	IsProvision                   bool                           `json:"isProvision" groups:"web"`
+	IsNeedProxiesRestart          bool                           `json:"isNeedProxiesRestart" groups:"web"`
+	IsNeedProxiesReprov           bool                           `json:"isNeedProxiesReprov" groups:"web"`
+	IsNeedProxiesConfigChange     bool                           `json:"isNeedProxiesConfigChange" groups:"web"`
+	IsNeedDatabasesRestart        bool                           `json:"isNeedDatabasesRestart" groups:"web"`
+	SwitchoverLongWriteWait       *LongWriteWait                 `json:"switchoverLongWriteWait" groups:"web"` // tracked fact: a switchover is waiting for long writes on the master; WARN0217 open while non-nil
+	IsNeedDatabasesRollingRestart bool                           `json:"isNeedDatabasesRollingRestart" groups:"web"`
+	IsNeedDatabasesRollingReprov  bool                           `json:"isNeedDatabasesRollingReprov" groups:"web"`
+	IsNeedResourceCapUp           bool                           `json:"isNeedResourceCapUp" groups:"web"`   // composed from the per-server plan states: ANY up server over the plan -> RAISE THE PLAN (cap up). Set by CheckResourceCapPlan
+	ResourceGrowRefused           *GrowRefusal                   `json:"resourceGrowRefused" groups:"web"`   // last dynamic over-plan step refused by the ResourceManager gate (nil = none); tracked state, surfaced as ERR00112 in the workload channel
+	ConfigDbuPerNode              DBUReading                     `json:"configDbuPerNode" groups:"web"`      // prov-db-* projected through the ratios: the TECHNICAL cap per node (paramétré axis), refreshed each tick
+	BackupUnits                   *BKUReading                    `json:"backupUnits" groups:"web"`           // BKU: per-cluster local backup storage vs prov-db-bku (RefreshBackupUnits, every 30 ticks)
+	BackupArchiveUnits            *BAUReading                    `json:"backupArchiveUnits" groups:"web"`    // BAU: per-cluster remote archive on S3/SFTP, no plan (RefreshBackupUnits, every 30 ticks)
+	ComputeUnits                  *APUBilling                    `json:"computeUnits" groups:"web"`          // APU billing: apps + proxies, floor 1 per instance, vs prov-service-plan-apu (RefreshComputeBilling, each tick)
+	UnitRatios                    map[WorkloadProfile]UnitRatios `json:"unitRatios" groups:"web"`            // the manager's ratios (database/compute/storage): the dashboard's ONLY source for unit arithmetic
+	ConfigDbu                     float64                        `json:"configDbu" groups:"web"`             // cluster-wide configured DBU = per-node pivot x #DB nodes; the graph draws it as the "configured" line above the plan
+	IsNeedResourceCapDown         bool                           `json:"isNeedResourceCapDown" groups:"web"` // composed: EVERY up server under the plan -> LOWER THE PLAN (cap down); one non-under server breaks it (safe-shrink). Set by CheckResourceCapPlan
+	LastDynamicResizeDay          string                         `json:"-"`                                  // YYYY-MM-DD of the last daily-time memory reconcile (DriveDailyDynamicResize); one apply per day per window
+	lastDynamicResize             time.Time                      `json:"-"`                                  // last dynamic in-plan grow (DriveDynamicResize); cooldown = one step per scale-up window
+	lastDynamicGrowAxis           string                         `json:"-"`                                  // axis of the last dynamic grow ("cpu"/"mem"/"io"); drives the QPS-feedback mem->io escalation
+	qpsBeforeDynamicGrow          float64                        `json:"-"`                                  // cluster QPS sampled just before that grow; next window compares to detect a plateau
 	// Per-axis consumed-vs-reference detail is PER SERVER (ServerMonitor.ResourceConsumedOver/UnderConfigAxes for raise/shrink resources, .ResourceConsumedOver/UnderPlanAxes composed here).
 	IsNeedDatabasesReprov        bool                `json:"isNeedDatabasesReprov" groups:"web"`
 	IsNeedDatabasesConfigChange  bool                `json:"isNeedDatabasesConfigChange" groups:"web"`

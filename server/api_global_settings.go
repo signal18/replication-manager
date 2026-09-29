@@ -597,6 +597,23 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return fmt.Errorf("cloud18-self-service-max-clusters-per-user must be a positive integer, got %q", value)
 		}
 		repman.Conf.Cloud18SelfServiceMaxClustersPerUser = n
+	case "resource-manager-ratio-dbu", "resource-manager-ratio-apu", "resource-manager-ratio-bku":
+		if _, err := cluster.ParseUnitRatios(value); err != nil {
+			return fmt.Errorf("%s: %w (format cores=1,mem=4g,disk=20g,iops=1000)", name, err)
+		}
+		switch name {
+		case "resource-manager-ratio-dbu":
+			repman.Conf.ResourceManagerRatioDBU = value
+		case "resource-manager-ratio-apu":
+			repman.Conf.ResourceManagerRatioAPU = value
+		default:
+			repman.Conf.ResourceManagerRatioBKU = value
+		}
+		if repman.resourceManager != nil {
+			if err := repman.resourceManager.ApplyRatioSettings(repman.Conf.ResourceManagerRatioDBU, repman.Conf.ResourceManagerRatioAPU, repman.Conf.ResourceManagerRatioBKU); err != nil {
+				return err
+			}
+		}
 	case "cloud18-marketplace-bku-price":
 		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
 		if err != nil || f < 0 {

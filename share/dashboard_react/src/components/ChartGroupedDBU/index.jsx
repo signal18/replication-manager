@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Box } from '@chakra-ui/react';
 import * as d3 from 'd3';
 import { useTheme } from '../../ThemeProvider';
+import { dbuAxes, getUnitRatios } from '../../utility/unitRatios';
 
 // ChartGroupedDBU renders the per-server DBU picture as REQUESTED (see design):
 //   - 4 grouped bars per time bucket, one per resource axis (CPU / Mem / IO / Disk);
@@ -19,13 +20,9 @@ import { useTheme } from '../../ThemeProvider';
 // Native units emitted by srv_snd.go: service_cpu=cores, service_mem=bytes,
 // service_io=iops, service_disk=bytes. 1 DBU = 1 core / 4 GB / 20 GB / 1000 IOPS,
 // so realDBU = service / ratio (below), and dbu_* already carry max(real,1).
-const GiB = 1024 * 1024 * 1024;
-const AXES = [
-  { key: 'cpu', label: 'CPU', ratio: 1, light: '#3f8fd0', dark: '#5aa8e6' },
-  { key: 'mem', label: 'Mem', ratio: 4 * GiB, light: '#a21caf', dark: '#d946ef' },
-  { key: 'io', label: 'IO', ratio: 1000, light: '#e0603a', dark: '#ef7a54' },
-  { key: 'disk', label: 'Disk', ratio: 20 * GiB, light: '#37a06f', dark: '#4dc088' },
-];
+// Default axes carry no ratio of their own (ratio 1, i.e. no real→unit overlay): pages pass
+// axes built from the server's ratios through the utility (dbuAxes / apuAxes).
+const AXES = dbuAxes(getUnitRatios(null).database);
 
 const TARGET_BUCKETS = 48; // grouped bars stay readable only at a low bucket count -> peak-aggregate
 

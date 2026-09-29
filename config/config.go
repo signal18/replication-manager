@@ -733,6 +733,9 @@ type Config struct {
 	ProvServicePlanApu                        int               `mapstructure:"prov-service-plan-apu" toml:"prov-service-plan-apu" json:"provServicePlanApu"`
 	ProvServicePlanBpu                        int               `mapstructure:"prov-service-plan-bpu" toml:"prov-service-plan-bpu" json:"provServicePlanBpu"`
 	ProvServicePlanBku                        int               `mapstructure:"prov-service-plan-bku" toml:"prov-service-plan-bku" json:"provServicePlanBku"`
+	ResourceManagerRatioDBU                   string            `scope:"server" mapstructure:"resource-manager-ratio-dbu" toml:"resource-manager-ratio-dbu" json:"resourceManagerRatioDbu"`
+	ResourceManagerRatioAPU                   string            `scope:"server" mapstructure:"resource-manager-ratio-apu" toml:"resource-manager-ratio-apu" json:"resourceManagerRatioApu"`
+	ResourceManagerRatioBKU                   string            `scope:"server" mapstructure:"resource-manager-ratio-bku" toml:"resource-manager-ratio-bku" json:"resourceManagerRatioBku"`
 	ResourceManagerInfraQuotaPct              float64           `scope:"server" mapstructure:"resource-manager-infra-quota-pct" toml:"resource-manager-infra-quota-pct" json:"resourceManagerInfraQuotaPct"`
 	ResourceManagerInfraCpuCores              float64           `scope:"server" mapstructure:"resource-manager-infra-cpu-cores" toml:"resource-manager-infra-cpu-cores" json:"resourceManagerInfraCpuCores"`
 	ResourceManagerInfraMemoryMB              float64           `scope:"server" mapstructure:"resource-manager-infra-memory-mb" toml:"resource-manager-infra-memory-mb" json:"resourceManagerInfraMemoryMb"`
@@ -1327,14 +1330,8 @@ const (
 	AppSizingModeManual = "manual"
 )
 
-// Fixed resource quantities that define one App Unit.
-const (
-	// App Unit == APU (same concept): 1 core / 2 GB / 10 GB, matching ProfileCompute in
-	// the ResourceManager. Kept in sync -- an app unit and a proxy APU are one thing.
-	AppUnitCpuCores = 1    // 1 core per App Unit
-	AppUnitMemMB    = 2048 // 2 GB per App Unit (in MB) -- unified with APU (1 GB until 2026-09-29, 4 GB before)
-	AppUnitDiskGB   = 10   // 10 GB per App Unit
-)
+// The App Unit == APU quantities are NOT constants any more: they are the ResourceManager's
+// Compute ratio, fed from resource-manager-ratio-apu (Cluster.computeRatioInts).
 const (
 	ConstProxyMaxscale    string = "maxscale"
 	ConstProxyHaproxy     string = "haproxy"

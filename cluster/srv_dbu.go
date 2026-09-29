@@ -400,6 +400,7 @@ func (cluster *Cluster) RefreshDBUPlan() {
 	if cluster == nil || cluster.resources == nil {
 		return
 	}
+	cluster.UnitRatios = cluster.resources.AllRatios()
 	now := time.Now()
 	dbu := cluster.Conf.ProvDbDbu
 	if dbu < 1 {

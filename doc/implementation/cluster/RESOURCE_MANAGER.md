@@ -119,10 +119,17 @@ over the billing period, a node-side backup directory if one exists outside the 
 directory, whether the client-storage declaration should be reconciled against the
 repository endpoint (today it is self-declared, like the subscription plan).
 
-A database is **not** an app (proxy/phpMyAdmin): little disk, no IOPS lock. Ratios are
-the **operator's rules**, held on the manager as `ratios map[WorkloadProfile]UnitRatios`
-and **configurable** (`SetProfileRatios`) — the product does not hard-lock them; the
-marketplace "lock" is a commercial policy, nothing is contracted outside these ratios.
+A database is **not** an app (proxy/phpMyAdmin): little disk, no IOPS lock. **The ratios are SETTINGS,
+one source (Stéphane 2026-09-29: "I see constants in your code, I don't get why this is not variables"):**
+`resource-manager-ratio-dbu` (default `cores=1,mem=4g,disk=20g,iops=1000`), `resource-manager-ratio-apu`
+(`cores=1,mem=2g,disk=10g`), `resource-manager-ratio-bku` (`disk=20g`, BAU shares it), server scope, GUI
+Settings → Marketplace, parsed by `ParseUnitRatios` (`resource_ratios.go`), applied to the manager at startup
+and on change (`ApplyRatioSettings`, a bad value keeps the previous ratio). Every consumer reads the manager:
+the projections, the ledger, the billing, the app unit sizing (`computeRatioInts`, the former `config.AppUnit*`
+constants are gone), and the DASHBOARD through `cluster.unitRatios` / `globalResources.unitRatios`
+(`utility/unitRatios.js`: charts axes, configurator lines, app base; no fallback numbers in JS). The table
+above documents the defaults only; the marketplace "lock" is a commercial policy, nothing is contracted
+outside these ratios.
 An axis with ratio 0 is excluded (never binds) — that is how Compute drops IOPS.
 
 **Network is a planned 5th axis, but NOT a cgroup axis.** cgroup v1 `net_cls`/`net_prio`

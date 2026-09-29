@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react'
 import '../../styles/_graphite.scss'
 import styles from '../../styles/Graphs.module.scss';
 import { Flex } from '@chakra-ui/react'
+import { getUnitRatios, dbuAxes, apuAxes, diskBytesPerUnit } from '../../utility/unitRatios'
 import Graphite from '../../components/Graphite'
 import Dropdown from '../../components/Dropdown'
 import ChartLatchTracing from '../../components/ChartLatchTracing';
@@ -101,6 +102,9 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   const configDbu = Number(selectedCluster?.configDbu) || 0
   // The BKU plan line = prov-db-bku, the per-cluster backup storage reservation (1 BKU = 20 GB).
   const planBku = parseInt(cfg.provDbBku) || 0
+  // Unit ratios from the server (resource-manager-ratio-*): the charts' only source.
+  const ratios = getUnitRatios(selectedCluster)
+  const storageUnitBytes = diskBytesPerUnit(ratios.storage)
 
   // Window (seconds) and refresh cadence for the d3 line charts, from the same
   // hour/step selectors that drive the cubism graphs.
@@ -324,6 +328,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
            io: scope('sumSeries(dbu.*.service_io)'),
            disk: scope('sumSeries(dbu.*.service_disk)')
          }}
+         axes={dbuAxes(ratios.database)}
          pivotPath={scope('sumSeries(dbu.*.dbu)')}
          planDbu={planDbu}
          configDbu={configDbu}
@@ -346,6 +351,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
            disk: scope('sumSeries(apu.*.apu_disk)')
          }}
          servicePaths={{}}
+         axes={apuAxes(ratios.compute)}
          pivotPath={scope('sumSeries(apu.*.apu)')}
          unit='APU'
          planDbu={parseInt(cfg.provServicePlanApu) || 0}
@@ -361,7 +367,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         <ChartGroupedDBU
          context={context}
          axes={[
-           { key: 'local', label: 'Local backups', ratio: 20 * 1024 * 1024 * 1024, light: '#37a06f', dark: '#4dc088' },
+           { key: 'local', label: 'Local backups', ratio: storageUnitBytes, light: '#37a06f', dark: '#4dc088' },
          ]}
          unit='BKU'
          dbuPaths={{ local: scope('sumSeries(bku.*.local)') }}
@@ -380,7 +386,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         <ChartGroupedDBU
          context={context}
          axes={[
-           { key: 'remote', label: 'Remote archive', ratio: 20 * 1024 * 1024 * 1024, light: '#3f8fd0', dark: '#5aa8e6' },
+           { key: 'remote', label: 'Remote archive', ratio: storageUnitBytes, light: '#3f8fd0', dark: '#5aa8e6' },
          ]}
          unit='BAU'
          dbuPaths={{ remote: scope('sumSeries(bau.*.units)') }}

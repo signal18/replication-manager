@@ -75,10 +75,10 @@ const (
 // equals one unit. A zero axis means "not part of this unit" (e.g. Compute has no
 // IOPS lock) -- that axis is excluded from the projection and never binds.
 type UnitRatios struct {
-	CoresPerUnit  float64
-	MemMBPerUnit  float64
-	DiskGBPerUnit float64
-	IopsPerUnit   float64 // 0 = axis excluded
+	CoresPerUnit  float64 `json:"coresPerUnit"`
+	MemMBPerUnit  float64 `json:"memMBPerUnit"`
+	DiskGBPerUnit float64 `json:"diskGBPerUnit"`
+	IopsPerUnit   float64 `json:"iopsPerUnit"` // 0 = axis excluded
 }
 
 // ResourceKey materializes the two-part identity of a per-server reading: the cluster and
@@ -131,9 +131,11 @@ func NewResourceManager() *ResourceManager {
 		// 2026-09-22): storage ONLY, the same disk quantity as the DBU disk axis, zero on
 		// the other axes; it bills the REAL disk used by backups, floor 3 BKU per DBU.
 		ratios: map[WorkloadProfile]UnitRatios{
-			ProfileDatabase: {CoresPerUnit: 1.0, MemMBPerUnit: 4096.0, DiskGBPerUnit: 20.0, IopsPerUnit: 1000.0}, // disk 20 GB (was 40 until 2026-09-22)
-			ProfileCompute:  {CoresPerUnit: 1.0, MemMBPerUnit: 2048.0, DiskGBPerUnit: 10.0, IopsPerUnit: 0.0},    // 2GB (Stéphane 2026-09-29: 1 GB per core is not enough), no IOPS (proxies/light apps; scale by taking more APU)
-			ProfileStorage:  {CoresPerUnit: 0.0, MemMBPerUnit: 0.0, DiskGBPerUnit: 20.0, IopsPerUnit: 0.0},       // BKU: disk only
+			// Built-in defaults; the settings resource-manager-ratio-dbu/-apu/-bku override them at
+			// startup and on change (ApplyRatioSettings). Never type a ratio anywhere else.
+			ProfileDatabase: mustRatio(DefaultRatioDBU),
+			ProfileCompute:  mustRatio(DefaultRatioAPU),
+			ProfileStorage:  mustRatio(DefaultRatioBKU),
 		},
 	}
 }

@@ -220,15 +220,16 @@ func (app *App) deriveUnitFromStoredResources() int {
 	cores, _ := strconv.Atoi(app.AppConfig.ProvAppCpuCores)
 	memMB, _ := config.ParseUnitMeasurementToInt("M", app.AppConfig.ProvAppMem, false)
 	diskGB, _ := config.ParseUnitMeasurementToInt("G", app.AppConfig.ProvAppDisk, false)
+	unitCores, unitMemMB, unitDiskGB := app.ClusterGroup.computeRatioInts()
 	unitFromCores, unitFromMem, unitFromDisk := 1, 1, 1
-	if cores > config.AppUnitCpuCores {
-		unitFromCores = (cores + config.AppUnitCpuCores - 1) / config.AppUnitCpuCores
+	if unitCores > 0 && cores > unitCores {
+		unitFromCores = (cores + unitCores - 1) / unitCores
 	}
-	if memMB > config.AppUnitMemMB {
-		unitFromMem = (memMB + config.AppUnitMemMB - 1) / config.AppUnitMemMB
+	if unitMemMB > 0 && memMB > unitMemMB {
+		unitFromMem = (memMB + unitMemMB - 1) / unitMemMB
 	}
-	if diskGB > config.AppUnitDiskGB {
-		unitFromDisk = (diskGB + config.AppUnitDiskGB - 1) / config.AppUnitDiskGB
+	if unitDiskGB > 0 && diskGB > unitDiskGB {
+		unitFromDisk = (diskGB + unitDiskGB - 1) / unitDiskGB
 	}
 	appUnit := unitFromCores
 	if unitFromMem > appUnit {
@@ -320,9 +321,10 @@ func (app *App) SetSetting(key, value string) error {
 				appUnit := app.deriveUnitFromStoredResources()
 				creditPlanSize := appUnit * numAgents
 				app.AppConfig.ProvAppCreditPlanned = creditPlanSize
-				app.AppConfig.ProvAppCpuCores = strconv.Itoa(appUnit * config.AppUnitCpuCores)
-				app.AppConfig.ProvAppMem = strconv.Itoa(appUnit * config.AppUnitMemMB)
-				app.AppConfig.ProvAppDisk = strconv.Itoa(appUnit * config.AppUnitDiskGB)
+				unitCores, unitMemMB, unitDiskGB := app.ClusterGroup.computeRatioInts()
+				app.AppConfig.ProvAppCpuCores = strconv.Itoa(appUnit * unitCores)
+				app.AppConfig.ProvAppMem = strconv.Itoa(appUnit * unitMemMB)
+				app.AppConfig.ProvAppDisk = strconv.Itoa(appUnit * unitDiskGB)
 				app.SetReprovCookie()
 				app.ClusterGroup.recomputeAppCredits()
 			}
@@ -372,15 +374,16 @@ func (app *App) SetSetting(key, value string) error {
 					return fmt.Errorf("cannot switch to unit mode: unparseable disk %q: %w", app.AppConfig.ProvAppDisk, parseErr)
 				}
 			}
+			unitCores, unitMemMB, unitDiskGB := app.ClusterGroup.computeRatioInts()
 			unitFromCores, unitFromMem, unitFromDisk := 1, 1, 1
-			if cores > config.AppUnitCpuCores {
-				unitFromCores = (cores + config.AppUnitCpuCores - 1) / config.AppUnitCpuCores
+			if unitCores > 0 && cores > unitCores {
+				unitFromCores = (cores + unitCores - 1) / unitCores
 			}
-			if memMB > config.AppUnitMemMB {
-				unitFromMem = (memMB + config.AppUnitMemMB - 1) / config.AppUnitMemMB
+			if unitMemMB > 0 && memMB > unitMemMB {
+				unitFromMem = (memMB + unitMemMB - 1) / unitMemMB
 			}
-			if diskGB > config.AppUnitDiskGB {
-				unitFromDisk = (diskGB + config.AppUnitDiskGB - 1) / config.AppUnitDiskGB
+			if unitDiskGB > 0 && diskGB > unitDiskGB {
+				unitFromDisk = (diskGB + unitDiskGB - 1) / unitDiskGB
 			}
 			appUnit := unitFromCores
 			if unitFromMem > appUnit {
@@ -391,9 +394,9 @@ func (app *App) SetSetting(key, value string) error {
 			}
 			creditPlanSize := appUnit * numAgents
 			app.AppConfig.ProvAppCreditPlanned = creditPlanSize
-			app.AppConfig.ProvAppCpuCores = strconv.Itoa(appUnit * config.AppUnitCpuCores)
-			app.AppConfig.ProvAppMem = strconv.Itoa(appUnit * config.AppUnitMemMB)
-			app.AppConfig.ProvAppDisk = strconv.Itoa(appUnit * config.AppUnitDiskGB)
+			app.AppConfig.ProvAppCpuCores = strconv.Itoa(appUnit * unitCores)
+			app.AppConfig.ProvAppMem = strconv.Itoa(appUnit * unitMemMB)
+			app.AppConfig.ProvAppDisk = strconv.Itoa(appUnit * unitDiskGB)
 			app.SetReprovCookie()
 		}
 	case "prov-app-ha-topology":
@@ -504,9 +507,10 @@ func (app *App) SetAppProvisionByCredit(creditPlanSize int) error {
 	// is called, so reaching here in a non-unit mode is a no-op.
 	if app.effectiveSizingMode() == config.AppSizingModeUnit {
 		unitsPerAgent := creditPlanSize / numAgents
-		app.AppConfig.ProvAppCpuCores = strconv.Itoa(unitsPerAgent * config.AppUnitCpuCores)
-		app.AppConfig.ProvAppMem = strconv.Itoa(unitsPerAgent * config.AppUnitMemMB)
-		app.AppConfig.ProvAppDisk = strconv.Itoa(unitsPerAgent * config.AppUnitDiskGB)
+		unitCores, unitMemMB, unitDiskGB := app.ClusterGroup.computeRatioInts()
+		app.AppConfig.ProvAppCpuCores = strconv.Itoa(unitsPerAgent * unitCores)
+		app.AppConfig.ProvAppMem = strconv.Itoa(unitsPerAgent * unitMemMB)
+		app.AppConfig.ProvAppDisk = strconv.Itoa(unitsPerAgent * unitDiskGB)
 		app.SetReprovCookie()
 	}
 

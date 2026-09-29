@@ -1,7 +1,8 @@
 import { Box, Flex, Slider, SliderFilledTrack, SliderThumb, SliderTrack, Text, Tooltip } from '@chakra-ui/react'
 import TextForm from '../../../../components/TextForm';
 import styles from './styles.module.scss';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
+import { getUnitRatios } from '../../../../utility/unitRatios';
 import TableType2 from '../../../../components/TableType2';
 import { previewAppTemplateContent, previewResetAppTemplateImpact, resetAppFromTemplate, saveAppAsTemplate, setAppSetting } from '../../../../redux/settingsSlice';
 import Checkboxes from '../../../../components/Checkboxes/Checkboxes';
@@ -107,9 +108,12 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   // Preserve raw stored values on read; the first unit-based write normalizes them.
   const isLegacyAppInUnitCluster = isUnitMode && appSizingMode !== 'unit'
 
-  const baseCore = 1
-  const baseMem = 2048 // 1 APU = 1 core / 2 GB / 10 GB (config.AppUnitMemMB)
-  const baseDisk = 10
+  // 1 APU = the server's Compute ratio (resource-manager-ratio-apu), never a number typed here.
+  const clusterData = useSelector((state) => state.cluster?.clusterData)
+  const apuRatio = getUnitRatios(clusterData).compute
+  const baseCore = apuRatio.coresPerUnit || 1
+  const baseMem = apuRatio.memMBPerUnit || 1
+  const baseDisk = apuRatio.diskGBPerUnit || 1
 
   // Derive unit from raw stored resources (used for legacy apps that haven't been normalised yet).
   const derivedUnitFromResources = useMemo(() => {

@@ -1119,6 +1119,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.ProvServicePlanApu, "prov-service-plan-apu", 4, "Per-cluster APU service plan = the SUM of the deployment plans (proxies at prov-proxy-apu + apps at their own config). Materialized/recomputed each tick -- the real cluster contract number readers use (GUI/API/GWARN016). The client moves the per-deployment reservations, not this. 1 APU = 1 core / 1GB / 10GB, no IOPS.")
 	flags.IntVar(&conf.ProvServicePlanBpu, "prov-service-plan-bpu", 1, "Service plan in Public-network/Bandwidth Units (BPU reservation contract; public network capacity, maps to cloud18-infra-public-bandwidth). Default 1.")
 	flags.IntVar(&conf.ProvServicePlanBku, "prov-service-plan-bku", 1, "Service plan in Backup Units (BKU reservation contract; storage/backup profile, disk-dominant). Default 1.")
+	flags.StringVar(&conf.ResourceManagerRatioDBU, "resource-manager-ratio-dbu", cluster.DefaultRatioDBU, "What one DBU (Database Unit) is made of: cores=,mem=,disk=,iops= (mem in m/g, disk in g/t). The ONE source of the ratio, for the resource manager, the billing and the dashboard")
+	flags.StringVar(&conf.ResourceManagerRatioAPU, "resource-manager-ratio-apu", cluster.DefaultRatioAPU, "What one APU (Application Unit, proxies and apps) is made of: cores=,mem=,disk= (no iops)")
+	flags.StringVar(&conf.ResourceManagerRatioBKU, "resource-manager-ratio-bku", cluster.DefaultRatioBKU, "What one BKU/BAU (storage unit) is made of: disk= only")
 	flags.Float64Var(&conf.ResourceManagerInfraQuotaPct, "resource-manager-infra-quota-pct", 90, "Share of the physical metal (0-100) repman's ResourceManager may allocate, protecting non-repman workloads on the agent. Default 90.")
 	flags.Float64Var(&conf.ResourceManagerInfraCpuCores, "resource-manager-infra-cpu-cores", 0, "ResourceManager infra capacity override: total CPU cores. 0 = unset (use the monitored value).")
 	flags.Float64Var(&conf.ResourceManagerInfraMemoryMB, "resource-manager-infra-memory-mb", 0, "ResourceManager infra capacity override: total memory in MB. 0 = unset (use the monitored value).")
@@ -3536,6 +3539,9 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	// Global policy: the share of the metal repman may allocate (protects non-repman
 	// workloads). resource-manager-* family (repman-side / on-prem first-class, NOT cloud18).
 	repman.resourceManager.SetQuotaPct(repman.Conf.ResourceManagerInfraQuotaPct)
+	if err := repman.resourceManager.ApplyRatioSettings(repman.Conf.ResourceManagerRatioDBU, repman.Conf.ResourceManagerRatioAPU, repman.Conf.ResourceManagerRatioBKU); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s (built-in defaults kept for the profiles that failed)", err)
+	}
 	repman.currentCluster.SetResourceManager(repman.resourceManager)
 
 	if repman.currentCluster.Conf.SecretKey == nil {

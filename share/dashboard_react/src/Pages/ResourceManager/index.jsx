@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Box, Flex, Text, Table, Thead, Tbody, Tr, Th, Td, Progress, Badge } from '@chakra-ui/react'
 import { globalClustersService } from '../../services/globalClustersService'
 import ChartBarStack from '../../components/ChartBarStack'
+import { getUnitRatios, describeUnit } from '../../utility/unitRatios'
 
 const CLUSTER_COLORS = ['#3f8fd0', '#8b5cf6', '#e0603a', '#37a06f', '#d99a2b', '#5aa8e6', '#a98bff', '#ef7a54', '#4dc088', '#eabb52']
 const colorFor = (i) => CLUSTER_COLORS[i % CLUSTER_COLORS.length]
@@ -78,7 +79,7 @@ function ResourceManager() {
       </Flex>
 
       <Text fontSize='sm' opacity={0.7} mb={1}>
-        Compute (APU) — the same metal, 1c/2GB/10GB (no IO) · binding axis:{' '}
+        Compute (APU) — the same metal, 1 APU = {describeUnit(getUnitRatios(data).compute)} · binding axis:{' '}
         <Text as='span' fontWeight='bold' textTransform='uppercase'>{data.bindingAxisApu || '—'}</Text>
       </Text>
       <Flex gap={8} wrap='wrap' mb={4}>
