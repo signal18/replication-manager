@@ -773,6 +773,15 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Not ready: the clusters and their ACL users are still loading (the listener starts
+	// before them). A login now cannot be judged, so it must not be counted as a bad
+	// password by anyone: 503 with Retry-After, never 401.
+	if !repman.clustersReady.Load() {
+		w.Header().Set("Retry-After", "5")
+		http.Error(w, "replication-manager is starting, authentication not ready: retry in a few seconds", http.StatusServiceUnavailable)
+		return
+	}
+
 	// Rate-limit: lock account after 3 failures within 3 minutes.
 	if v, ok := repman.UserAuthTry.Load(user.Username); ok {
 		authT := v.(authTry)
