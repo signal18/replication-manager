@@ -216,6 +216,9 @@ DECISIONS had no active gate. The fix is at the decision level only, no primitiv
   (Stéphane 2026-09-29). The binlog-scan streamer seen under the `[purge]` log module on the
   DR (`ScanBinlogQueryEvents`) is the log plugins' read-only Binlog Dump, not the purge; it
   reconnects on its own after a database restart and stays ungated.
+- A standby never enforces settings on a server (`CheckSlaveSettings`, `CheckMasterSettings`:
+  semisync install, binlog format, heartbeat, GTID/exec/parallel modes, sync, checksum are all
+  SET GLOBAL decided from this monitor's view); the active does it.
 - The traffic marker is deliberately NOT gated (Stéphane: "traffic on all sides is what proves
   it was wrong"): the marker landing on the demoted master is the evidence.
 - Regtest `testSwitchoverNoDivergenceOnOldMaster`: after a switchover, five marker injections
