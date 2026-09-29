@@ -848,6 +848,10 @@ func (cluster *Cluster) completePendingCgroupShrink(server *ServerMonitor) {
 // off-peak window instead of at an arbitrary moment. No-op for scale-speed, off outside the
 // window, and at most one apply per day (LastDynamicResizeDay).
 func (cluster *Cluster) DriveDailyDynamicResize() {
+	// A standby never resizes (GH-1847): the dynamic resource driver is the active's decision.
+	if !cluster.IsActive() {
+		return
+	}
 	if !cluster.Conf.ProvDBDynamicResource || cluster.Conf.ProvDBDynamicResizePolicy != config.ConstResizePolicyDailyTime {
 		return
 	}
@@ -936,6 +940,10 @@ func (cluster *Cluster) currentClusterQPS() float64 {
 // never touched here (we raise resources, not the plan). Gated by prov-db-dynamic-resource;
 // never runs during a failover, never stacks on an unconverged memory resize.
 func (cluster *Cluster) DriveDynamicResize() {
+	// A standby never resizes (GH-1847): the dynamic resource driver is the active's decision.
+	if !cluster.IsActive() {
+		return
+	}
 	if !cluster.Conf.ProvDBDynamicResource || cluster.IsInFailover() {
 		return
 	}

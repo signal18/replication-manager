@@ -161,6 +161,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testSwitchoverNoReadOnlyNoRplCheck" {
 			res = regtest.TestSwitchoverNoReadOnlyNoRplCheck(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testSwitchoverNoDivergenceOnOldMaster" {
+			res = regtest.TestSwitchoverNoDivergenceOnOldMaster(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testSwitchoverReadOnlyNoRplCheck" {
 			res = regtest.TestSwitchoverReadOnlyNoRplCheck(cl, test.ConfigFile, &test)
 		}

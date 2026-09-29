@@ -332,13 +332,22 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 						// makes it one-shot. This was the last synchronous rejoin caller.
 						go extra.RejoinMaster()
 					}
+				} else if !cluster.IsFailedArbitrator && !cluster.IsActive() {
+					// STANDBY (GH-1847): its view can lag the active's by seconds (a demoted
+					// master, a replica mid-repair, both looked like the "last non slave" on
+					// preprod). A standby never re-designates a master from its own view and
+					// never opens one to writes: it keeps its last-known master, takes the
+					// local candidate only when it knows none, and rediscovers as active.
+					cluster.standbyDesignateMaster(cluster.Servers[k])
 				} else if !cluster.IsFailedArbitrator {
 					// Minority fail-safe: a node that cannot confirm authority via the
 					// arbitrator (IsFailedArbitrator) must NOT rediscover / re-designate
 					// the master from its own untrusted view — it holds its last-known
 					// topology and does nothing. Only the trusted majority rediscovers.
 					// Either no other master or multi-master topology
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s was set master as last non slave", sv.URL)
+					if cluster.master != cluster.Servers[k] {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s was set master as last non slave", sv.URL)
+					}
 					if len(cluster.Servers) == 1 {
 						cluster.Topology = config.TopoActivePassive
 					}
@@ -754,6 +763,11 @@ func (cluster *Cluster) MultipleSlavesUp(candidate *ServerMonitor) bool {
 }
 
 func (cluster *Cluster) CheckSlavesReplicationsPurge() {
+	// A standby never purges binlogs (GH-1847): PURGE BINARY LOGS is the active's decision,
+	// taken from ITS view of every replica's position.
+	if !cluster.IsActive() {
+		return
+	}
 	if cluster.IsInFailover() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel checking replication, cluster is in failover")
 		return
@@ -964,4 +978,28 @@ func (cluster *Cluster) SetReadWriteAsMaster() bool {
 	}
 
 	return found
+}
+
+// standbyDesignateMaster is the standby's side of the last-non-slave fallback (GH-1847).
+// In calm a standby keeps its last-known master whatever its view says tick after tick (a
+// demoted master or a replica mid-repair both look like a "last non slave" for a few ticks)
+// and takes the local candidate only when it knows none. It DOES re-designate when the
+// master moved on it: in split brain, or once its last-known master has become a replica
+// (LostArbitration attached the fenced old master to the winner's master, the standby's
+// role is then to follow the winner and repoint its proxies off the fenced node). Never
+// touches read_only: the winner already opened its master.
+func (cluster *Cluster) standbyDesignateMaster(local *ServerMonitor) {
+	if local == nil || cluster.master == local {
+		return
+	}
+	if cluster.master != nil && !cluster.IsSplitBrain && !cluster.master.IsSlave {
+		return // calm and the last-known master still stands: a standby never re-designates
+	}
+	why := "no master known, taken from the local view (provisional)"
+	if cluster.master != nil {
+		why = "the last-known master " + cluster.master.URL + " moved (split brain or attached as a replica), following the winner"
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Standby: master of %s is %s: %s, nothing written", cluster.Name, local.URL, why)
+	cluster.master = local
+	cluster.master.SetMaster()
 }
