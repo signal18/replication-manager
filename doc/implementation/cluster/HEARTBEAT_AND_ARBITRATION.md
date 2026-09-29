@@ -211,6 +211,11 @@ DECISIONS had no active gate. The fix is at the decision level only, no primitiv
 - `prx_haproxy.go`: in calm a standby never repoints `service_write/leader`; in split brain,
   or when the leader row is a fenced old master now attached as a replica, it repoints it off
   that node as before.
+- A standby never purges binlogs (`CheckSlavesReplicationsPurge`) and never drives a dynamic
+  resize (`DriveDynamicResize`, `DriveDailyDynamicResize`): both are the active's decisions
+  (Stéphane 2026-09-29). The binlog-scan streamer seen under the `[purge]` log module on the
+  DR (`ScanBinlogQueryEvents`) is the log plugins' read-only Binlog Dump, not the purge; it
+  reconnects on its own after a database restart and stays ungated.
 - The traffic marker is deliberately NOT gated (Stéphane: "traffic on all sides is what proves
   it was wrong"): the marker landing on the demoted master is the evidence.
 - Regtest `testSwitchoverNoDivergenceOnOldMaster`: after a switchover, five marker injections

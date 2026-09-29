@@ -763,6 +763,11 @@ func (cluster *Cluster) MultipleSlavesUp(candidate *ServerMonitor) bool {
 }
 
 func (cluster *Cluster) CheckSlavesReplicationsPurge() {
+	// A standby never purges binlogs (GH-1847): PURGE BINARY LOGS is the active's decision,
+	// taken from ITS view of every replica's position.
+	if !cluster.IsActive() {
+		return
+	}
 	if cluster.IsInFailover() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel checking replication, cluster is in failover")
 		return
