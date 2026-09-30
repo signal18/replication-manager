@@ -14,6 +14,10 @@ import RMIconButton from '../../components/RMIconButton'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock } from 'react-icons/hi'
 import { showWarningToast } from '../../redux/toastSlice'
+import { changePlanUnits } from '../../redux/settingsSlice'
+import Gauge from '../../components/Gauge'
+import { Text } from '@chakra-ui/react'
+import { getUnitRatios } from '../../utility/unitRatios'
 
 const QueueMoveForm = React.memo(({ list = [], currentId, onChange = (dir, afterId) => { } }) => {
   const [direction, setDirection] = useState('first');
@@ -132,6 +136,14 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
   const [snapshotData, setSnapshotData] = useState([])
   const [queueData, setQueueData] = useState([])
   const [confirmState, setConfirmState] = useState({ isOpen: false, title: '', payload: null })
+  // BKU plan (prov-db-bku): the per-cluster backup storage reservation, a PLAN not a resource,
+  // so it lives with the backups, not among the configurator's resource gauges. The measured
+  // side (backupUnits, every 30 ticks) is shown next to it; over the plan = billed.
+  const [bkuConfirm, setBkuConfirm] = useState({ isOpen: false, title: '', delta: 0 })
+  const clusterData = useSelector((state) => state.cluster?.clusterData)
+  const bkuGB = getUnitRatios(clusterData).storage.diskGBPerUnit || 20
+  const bku = selectedCluster?.backupUnits
+  const bkuPlan = parseInt(selectedCluster?.config?.provDbBku) || 0
   const { isOpen: isConfirmModalOpen, title, payload } = confirmState
 
   const dispatch = useDispatch()
@@ -583,6 +595,33 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         headerActions={settingsButton(onOpenBackupSettings, 'Open Backup Settings')}
         body={
           <VStack className={styles.snapshotContainer}>
+            <HStack w='100%' align='center' spacing={6} flexWrap='wrap'>
+              <Gauge
+                isDisabled={user?.grants['cluster-settings'] == false}
+                minValue={1}
+                maxValue={128}
+                value={bkuPlan}
+                text={'Backup plan (BKU)'}
+                width={150}
+                height={105}
+                hideMinMax={false}
+                showStep={true}
+                step={1}
+                handleStepChange={(value) => {
+                  const delta = value - bkuPlan
+                  if (delta === 0) return
+                  setBkuConfirm({ isOpen: true, delta, title: `Confirm the backup plan at ${value} BKU (${value * bkuGB} GB of backup storage reserved for the cluster)` })
+                }}
+              />
+              <Text fontSize='sm'>
+                1 BKU = {bkuGB} GB of backup disk, nothing else. Plan {bkuPlan} BKU.
+                {bku ? ` Used: local backups ${formatBytes(bku.localBytes)} (${(bku.bkuLocal || 0).toFixed(2)} BKU)` : ''}
+                {bku && bku.appDiskUnits > 0 ? `, app volumes ${bku.appDiskUnits} BKU` : ''}
+                {bku ? `; billed ${bku.billedUnits} BKU` : ''}
+                {bku && bku.overPlanUnits > 0 ? ` (${bku.overPlanUnits} over the plan)` : ''}
+                {bku && bku.underPlanUnits > 0 ? ` (${bku.underPlanUnits} unused)` : ''}
+              </Text>
+            </HStack>
             <TableType3 dataArray={backupDataStats} className={styles.statsTable} />
             <DataTable key="backups" data={data} columns={columns} className={styles.table} />
           </VStack>
@@ -649,6 +688,9 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       {(!section || section === 'backup') && backupSection}
       {(!section || section === 'jobs') && jobsSection}
       {!section && logsSection}
+      {bkuConfirm.isOpen && <ConfirmModal title={bkuConfirm.title} isOpen={bkuConfirm.isOpen}
+        onConfirmClick={() => { dispatch(changePlanUnits({ clusterName: selectedCluster?.name, unit: 'BKU', delta: bkuConfirm.delta })); setBkuConfirm({ isOpen: false, title: '', delta: 0 }) }}
+        closeModal={() => setBkuConfirm({ isOpen: false, title: '', delta: 0 })} />}
       {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} body={<DynamicForm
         payload={payload}
         queueData={queueData}
