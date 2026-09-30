@@ -41,6 +41,10 @@ type ResourceResizer interface {
 	CanConfigResize(server *ServerMonitor, grow bool) (ResizeFeasibility, error)
 	// ConfigResize applies the infra resize live and reports whether it was applied.
 	ConfigResize(server *ServerMonitor, grow bool) (bool, error)
+	// ResizeDisk grows the server's data volume to gb (prov-db-disk-size). Applied
+	// reports whether the orchestrator took the request live; false with no error means
+	// the backend has no live path and a reprovision was scheduled instead.
+	ResizeDisk(server *ServerMonitor, gb int) (bool, error)
 }
 
 // scriptResizer is the client-overridable backend (F7): used in every
@@ -67,6 +71,13 @@ func (r scriptResizer) ConfigResize(server *ServerMonitor, grow bool) (bool, err
 	return true, nil
 }
 
+func (r scriptResizer) ResizeDisk(server *ServerMonitor, gb int) (bool, error) {
+	r.cluster.LogModulePrintf(r.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"no live disk resize through the change script, scheduling reprovision on %s", server.URL)
+	server.SetReprovCookie()
+	return false, nil
+}
+
 // openSVCResizer resizes the container cgroup live through the OpenSVC PG update
 // API (om3 v3). The client can-change script (if any) still gates feasibility.
 type openSVCResizer struct{ cluster *Cluster }
@@ -77,6 +88,10 @@ func (r openSVCResizer) CanConfigResize(server *ServerMonitor, grow bool) (Resiz
 
 func (r openSVCResizer) ConfigResize(server *ServerMonitor, grow bool) (bool, error) {
 	return r.cluster.openSVCResize(server, grow)
+}
+
+func (r openSVCResizer) ResizeDisk(server *ServerMonitor, gb int) (bool, error) {
+	return r.cluster.openSVCResizeDisk(server, gb)
 }
 
 // restartResizer has no live resize path: it schedules a restart so the new size
@@ -99,10 +114,20 @@ func (r restartResizer) ConfigResize(server *ServerMonitor, grow bool) (bool, er
 	return false, nil
 }
 
+func (r restartResizer) ResizeDisk(server *ServerMonitor, gb int) (bool, error) {
+	r.cluster.LogModulePrintf(r.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"%s, scheduling reprovision on %s for the disk", r.reason, server.URL)
+	server.SetReprovCookie()
+	return false, nil
+}
+
 // resourceResizer returns the resizer for this cluster. A client change-script
 // overrides in every orchestrator case (F7); otherwise the native per-orchestrator
 // backend is used, following the prov.go orchestrator idiom (T7).
 func (cluster *Cluster) resourceResizer() ResourceResizer {
+	if cluster.resizerOverride != nil {
+		return cluster.resizerOverride // tests
+	}
 	if cluster.Conf.ProvDBDynamicResourceChangeScript != "" {
 		return scriptResizer{cluster}
 	}
@@ -156,29 +181,9 @@ func OpenSVCCPUQuotaKeyword(cores float64) string {
 // cpu live resizes. v3 only (the caller checks IsV3).
 func (cluster *Cluster) openSVCApplyPGKeywords(server *ServerMonitor, kv map[string]string) error {
 	svc := cluster.OpenSVCConnect()
-	svcparts := strings.SplitN(server.ServiceName, "/", 3)
-	if len(svcparts) != 3 {
-		return fmt.Errorf("invalid service name %q, expected namespace/kind/name", server.ServiceName)
-	}
-	ns, kind, svcname := svcparts[0], svcparts[1], svcparts[2]
-
 	// 1. Write the PG keywords into the service config.
-	raw, err := svc.GetObjectConfigFileV3(ns, kind, svcname)
+	ns, kind, svcname, err := cluster.openSVCWriteServiceKeywords(server, "DEFAULT", kv)
 	if err != nil {
-		return err
-	}
-	cfg, err := ini.LoadSources(ini.LoadOptions{IgnoreInlineComment: true}, bytes.NewReader(raw))
-	if err != nil {
-		return fmt.Errorf("failed to parse service config for %s: %w", server.ServiceName, err)
-	}
-	for k, v := range kv {
-		cfg.Section("DEFAULT").Key(k).SetValue(v)
-	}
-	var buf bytes.Buffer
-	if _, err = cfg.WriteTo(&buf); err != nil {
-		return err
-	}
-	if _, err = svc.UpdateObjectV3(ns, kind, svcname, buf.Bytes()); err != nil {
 		return err
 	}
 
@@ -190,6 +195,65 @@ func (cluster *Cluster) openSVCApplyPGKeywords(server *ServerMonitor, kv map[str
 
 	// 3. Apply the new cgroup limits live on the running node.
 	return svc.PGUpdateInstanceV3(server.Agent, server.ServiceName, "")
+}
+
+// openSVCWriteServiceKeywords rewrites keywords of one section of the server's service
+// config and PUTs it back (the om3 config is the source of truth; the daemon reloads it).
+// Returns the namespace, kind and name of the service for the caller's next action.
+func (cluster *Cluster) openSVCWriteServiceKeywords(server *ServerMonitor, section string, kv map[string]string) (ns, kind, svcname string, err error) {
+	svc := cluster.OpenSVCConnect()
+	svcparts := strings.SplitN(server.ServiceName, "/", 3)
+	if len(svcparts) != 3 {
+		return "", "", "", fmt.Errorf("invalid service name %q, expected namespace/kind/name", server.ServiceName)
+	}
+	ns, kind, svcname = svcparts[0], svcparts[1], svcparts[2]
+	raw, err := svc.GetObjectConfigFileV3(ns, kind, svcname)
+	if err != nil {
+		return ns, kind, svcname, err
+	}
+	cfg, err := ini.LoadSources(ini.LoadOptions{IgnoreInlineComment: true}, bytes.NewReader(raw))
+	if err != nil {
+		return ns, kind, svcname, fmt.Errorf("failed to parse service config for %s: %w", server.ServiceName, err)
+	}
+	for k, v := range kv {
+		cfg.Section(section).Key(k).SetValue(v)
+	}
+	var buf bytes.Buffer
+	if _, err = cfg.WriteTo(&buf); err != nil {
+		return ns, kind, svcname, err
+	}
+	if _, err = svc.UpdateObjectV3(ns, kind, svcname, buf.Bytes()); err != nil {
+		return ns, kind, svcname, err
+	}
+	return ns, kind, svcname, nil
+}
+
+// openSVCResizeDisk grows the server's data volume live (#1854): env.size on the service
+// (what volume#01 declares, so a later provision agrees) then the om3 resize action on the
+// volume object <ns>/vol/<svcname>, which writes the size into the volume config and grows
+// the chain down to the head dataset. Grow only (om3 rc40). The cap that the tree really
+// gets follows the zfs quota keyword and moves with the coming om3 release; until then the
+// action moves the head's refquota. v3 only: v2 has no resize action, reprovision instead.
+func (cluster *Cluster) openSVCResizeDisk(server *ServerMonitor, gb int) (bool, error) {
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"OpenSVC v2 has no volume resize, scheduling reprovision on %s", server.URL)
+		server.SetReprovCookie()
+		return false, nil
+	}
+	size := strconv.Itoa(gb) + "g"
+	ns, _, svcname, err := cluster.openSVCWriteServiceKeywords(server, "env", map[string]string{"size": size})
+	if err != nil {
+		return false, err
+	}
+	id, err := svc.ResizeVolumeV3(ns, svcname, size)
+	if err != nil {
+		return false, err
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"OpenSVC volume resize queued on %s: %s/vol/%s -> %s (orchestration %s)", server.URL, ns, svcname, size, id)
+	return true, nil
 }
 
 // openSVCResize moves the container MEMORY cap on the om3 PG slice live (pg_mem_limit
@@ -1283,16 +1347,49 @@ func (cluster *Cluster) followDiskUsage() bool {
 	}
 	cluster.recordDynamicGrow("disk", cluster.currentClusterQPS())
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-		"Dynamic %s DISK follow (datadir %s over the configured disk): prov-db-disk-size %dGB -> %dGB (plan %.2f DBU/node); configuration only, the volume is not resized", growScope(target, planPerNode), humanBytes(maxUsed), cur, newGB, planPerNode)
+		"Dynamic %s DISK follow (datadir %s over the configured disk): prov-db-disk-size %dGB -> %dGB (plan %.2f DBU/node)", growScope(target, planPerNode), humanBytes(maxUsed), cur, newGB, planPerNode)
 	cluster.Configurator.SetDBDisk(strconv.Itoa(newGB))
 	cluster.Conf.ProvDisk = cluster.Configurator.GetConfigDBDisk()
 	cluster.ConfigManager.SaveConfig(cluster, false)
-	for _, s := range cluster.Servers {
-		if s != nil && !s.IsDown() {
-			cluster.logResize(s, resizeDisk, true, true, ResizeYes, nil)
-		}
-	}
+	cluster.applyDiskResize(int(cur), newGB)
 	return true
+}
+
+// DiskResizeRefusal is the tracked state of a volume grow the orchestrator refused on one
+// server (no quota on the volume, a target under what the datasets hold, a pool without
+// room, a v2 daemon): set by applyDiskResize, cleared by the next step that goes through
+// on that server, surfaced each tick as WARN0220 (checkResourceScaleWorkloadStates).
+type DiskResizeRefusal struct {
+	From   string    `json:"from"`
+	To     string    `json:"to"`
+	Reason string    `json:"reason"`
+	Since  time.Time `json:"since"`
+}
+
+// applyDiskResize is the glue between the declared disk (prov-db-disk-size, just moved
+// from fromGB to toGB by the follow rule, the setter or a plan change) and the volumes:
+// every up server's data volume is asked to grow to the new size through the resizer.
+// A refusal is a tracked state, never a retry loop: the next move asks again.
+func (cluster *Cluster) applyDiskResize(fromGB, toGB int) {
+	if toGB <= fromGB {
+		return // om3 grows only; a lower declaration keeps the reprov path of the setter
+	}
+	rz := cluster.resourceResizer()
+	for _, s := range cluster.Servers {
+		if s == nil || s.IsDown() {
+			continue
+		}
+		applied, err := rz.ResizeDisk(s, toGB)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+				"Disk resize %dGB -> %dGB refused on %s: %s", fromGB, toGB, s.URL, err)
+			s.DiskResizeRefused = &DiskResizeRefusal{From: strconv.Itoa(fromGB), To: strconv.Itoa(toGB), Reason: err.Error(), Since: time.Now()}
+			cluster.logResize(s, resizeDisk, true, false, ResizeNo, nil)
+			continue
+		}
+		s.DiskResizeRefused = nil
+		cluster.logResize(s, resizeDisk, true, applied, ResizeYes, nil)
+	}
 }
 
 // GrowRefusal is the tracked state of a dynamic over-plan step the ResourceManager

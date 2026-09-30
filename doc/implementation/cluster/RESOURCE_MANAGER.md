@@ -79,6 +79,25 @@ there too (`IngestAppConsumedAPU` → `ComputeUsedDBU`). The ledger reserves it 
 `billed_stateful_dbu`; `/api/global/resources` rows carry `statefulDbu` / `planStatefulDbu`. Minio on crm:
 2 cores / 8 GB / 20 GB failover → 2 DBU (was 4 APU under the 2 GB APU ratio).
 
+**Disk is dynamic too (#1854, 2026-09-30, `applyDiskResize`).** `prov-db-disk-size` used to be a paper
+number on the virtual pool dbssd (volumes created with size 0, no refquota: curepipe's 50 GB = 2.5 DBU "over
+plan" bounded nothing) and the disk-follow rule only moved the declaration. Now every move of the declared
+disk that GROWS it -- the follow rule (`followDiskUsage`), the setter `SetDBDiskSize` when
+`prov-db-dynamic-resource` is on (a plan change on the disk axis goes through it), -- asks each up server's
+volume to grow: `ResourceResizer.ResizeDisk(server, gb)`. OpenSVC v3 (`openSVCResizeDisk`): `env.size` is
+rewritten on the service (what `volume#01.size` declares, so a later provision agrees;
+`openSVCWriteServiceKeywords`, shared with the pg keywords), then `ResizeVolumeV3` posts the om3 resize
+action on the VOLUME object `<ns>/vol/<svcname>` (rc40 `om vol resize SIZE`: the size lands in the vol config,
+every node converges, the answer is a queued orchestration). Grow only: a smaller declaration keeps the
+reprovision cookie. Script / restart / Kubernetes resizers schedule a reprovision (PVC expansion is a later
+step). A refusal (no refquota, target under what the datasets hold, v2 daemon, pool full) is a tracked
+per-server state `ServerMonitor.DiskResizeRefused` surfaced each tick as **WARN0220**, cleared by the next
+grow that goes through; no retry loop. What the tree really gets: the dbssd template now carries
+`quota = x1` on the parent dataset (the `$(100% * size)` expression form is refused by rc40, "quota:
+invalid size"); rc40's zfs driver moves only the head's refquota on resize, the quota follows in the om3
+release OpenSVC announced, existing volumes then get `quota = x1` as a catch-up. Test:
+`TestApplyDiskResize_GrowsUpServersAndTracksRefusal`. Validated on dev3 (reprovisioned on the new template).
+
 **No credits (Stéphane 2026-09-29, "those credits should not be here", removed on #1827).** The app credit
 model of July 2025 (`prov-app-credit-planned` / `-used` per app, `cloud18-application-credits` cap + price
 per cluster, the used/planned totals, the self-rebasing cap, `CheckAppsCredit` / `CheckAvailableCredit`,

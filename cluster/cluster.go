@@ -119,7 +119,8 @@ type Cluster struct {
 	SwitchoverLongWriteWait       *LongWriteWait                 `json:"switchoverLongWriteWait" groups:"web"` // tracked fact: a switchover is waiting for long writes on the master; WARN0217 open while non-nil
 	IsNeedDatabasesRollingRestart bool                           `json:"isNeedDatabasesRollingRestart" groups:"web"`
 	IsNeedDatabasesRollingReprov  bool                           `json:"isNeedDatabasesRollingReprov" groups:"web"`
-	IsNeedResourceCapUp           bool                           `json:"isNeedResourceCapUp" groups:"web"`   // composed from the per-server plan states: ANY up server over the plan -> RAISE THE PLAN (cap up). Set by CheckResourceCapPlan
+	IsNeedResourceCapUp           bool                           `json:"isNeedResourceCapUp" groups:"web"` // composed from the per-server plan states: ANY up server over the plan -> RAISE THE PLAN (cap up). Set by CheckResourceCapPlan
+	resizerOverride               ResourceResizer                // tests: a fake resizer in place of resourceResizer()
 	ResourceGrowRefused           *GrowRefusal                   `json:"resourceGrowRefused" groups:"web"`   // last dynamic over-plan step refused by the ResourceManager gate (nil = none); tracked state, surfaced as ERR00112 in the workload channel
 	ConfigDbuPerNode              DBUReading                     `json:"configDbuPerNode" groups:"web"`      // prov-db-* projected through the ratios: the TECHNICAL cap per node (paramétré axis), refreshed each tick
 	BackupUnits                   *BKUReading                    `json:"backupUnits" groups:"web"`           // BKU: per-cluster local backup storage vs prov-db-bku (RefreshBackupUnits, every 30 ticks)

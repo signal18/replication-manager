@@ -434,10 +434,10 @@ func (cluster *Cluster) RefreshSchemaWireTables() {
 	tables := make([]logplugin.StdioTable, 0, len(dict))
 	for _, t := range dict {
 		wt := logplugin.StdioTable{
-			Schema:       t.TableSchema,
-			Name:         t.TableName,
-			Engine:       t.Engine,
-			RowFormat:    t.RowFormat,
+			Schema:        t.TableSchema,
+			Name:          t.TableName,
+			Engine:        t.Engine,
+			RowFormat:     t.RowFormat,
 			Rows:          t.TableRows,
 			DataLength:    t.DataLength,
 			AvgRowLength:  t.AvgRowLength,
@@ -665,6 +665,15 @@ func (cluster *Cluster) checkResourceScaleWorkloadStates() {
 	for _, srv := range cluster.Servers {
 		if srv == nil || srv.IsDown() {
 			continue
+		}
+		if r := srv.DiskResizeRefused; r != nil {
+			sm.AddState("WARN0220@"+srv.URL, state.State{
+				ErrType:   "WARNING",
+				ErrKey:    "WARN0220",
+				ErrDesc:   fmt.Sprintf(clusterError["WARN0220"], srv.URL, r.From, r.To, r.Reason),
+				ErrFrom:   "WORKLOAD",
+				ServerUrl: srv.URL,
+			})
 		}
 		add("CINF0007", "INFO", srv.URL, srv.CanScaleConfigInPlan(true), cluster.Conf.ScaleUpConfigInPlanSpeed)
 		add("CINF0008", "INFO", srv.URL, srv.CanScaleConfigInPlan(false), cluster.Conf.ScaleDownConfigInPlanSpeed)

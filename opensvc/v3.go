@@ -852,6 +852,30 @@ func (collector *Collector) PGUpdateInstanceV3(node, svc, rid string) error {
 	return nil
 }
 
+// ResizeVolumeV3 asks the daemon to GROW the volume object <namespace>/vol/<name> to size
+// ("50g"): POST .../vol/<name>/action/resize (om3 rc40, `om vol resize SIZE`). The size is
+// written to the volume configuration and every node converges to it; the answer is a
+// queued orchestration, not a result: the volume's own status tells whether it landed. A
+// resize only grows, and on rc40 the zfs driver moves the refquota of the head dataset
+// (the quota keyword follows in a later om3 release). Returns the orchestration id.
+func (collector *Collector) ResizeVolumeV3(namespace, volname, size string) (string, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+	body := apiv3.PostObjectActionResize{Size: &size}
+	resp, err := client.PostObjectActionResizeWithResponse(ctx, namespace, apiv3.Kind("vol"), volname, &apiv3.PostObjectActionResizeParams{}, body, collector.RequestCloserV3())
+	if err != nil {
+		return "", err
+	}
+	if resp.JSON200 != nil {
+		return resp.JSON200.OrchestrationID.String(), nil
+	}
+	return "", fmt.Errorf("volume resize refused on %s/vol/%s (size %s): status %d: %s", namespace, volname, size, resp.StatusCode(), strings.TrimSpace(string(resp.Body)))
+}
+
 func (collector *Collector) StopServiceV3(cluster, svc string) error {
 
 	svcparts := strings.SplitN(svc, "/", 3)

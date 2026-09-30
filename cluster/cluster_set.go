@@ -128,10 +128,17 @@ func (cluster *Cluster) SetInteractive(check bool) {
 }
 
 func (cluster *Cluster) SetDBDiskSize(value string) {
-
+	oldGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
 	cluster.Configurator.SetDBDisk(value)
 	cluster.Conf.ProvDisk = cluster.Configurator.GetConfigDBDisk()
-
+	newGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
+	// Live grow (#1854): with the dynamic resource on, a bigger declared disk grows the
+	// volumes through the orchestrator instead of asking for a reprovision. A smaller one
+	// still needs the reprovision: volumes only grow.
+	if cluster.Conf.ProvDBDynamicResource && newGB > oldGB {
+		cluster.applyDiskResize(int(oldGB), int(newGB))
+		return
+	}
 	cluster.SetDBReprovCookie()
 }
 

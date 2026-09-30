@@ -265,6 +265,7 @@ type ServerMonitor struct {
 	HasConfigPathChanged            bool
 	HasConfigDiff                   bool                                 `json:"hasConfigDiff"`         // Indicates if there are differences between deployed and generated config
 	IssuedBufferPoolBytes           int64                                `json:"issuedBufferPoolBytes"` // the innodb_buffer_pool_size a live memory resize actually SENT (SET GLOBAL); the in-flight gate compares the runtime with THIS, never with the configurator's latest wish (#1822); 0 = nothing issued
+	DiskResizeRefused               *DiskResizeRefusal                   `json:"diskResizeRefused"`     // tracked: the last volume grow the orchestrator refused on this server (WARN0220), nil once one goes through
 	PendingCgroupShrink             bool                                 `json:"-"`                     // a memory live-shrink lowered the buffer pool and is waiting for the async InnoDB resize to complete before shrinking the cgroup (anti-OOM)
 	pendingK8sMemoryResize          atomic.Pointer[K8sMemoryResizeState] // a native Kubernetes Pod memory resize was requested and is awaiting kubelet confirmation (see cluster_resize_k8s.go); written from the resize-dispatch path, read/cleared from the monitor tick -- different goroutines, so atomic not a plain pointer (GetPendingK8sMemoryResize/SetPendingK8sMemoryResize below)
 	RestartNode                     string                               // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
