@@ -4,7 +4,7 @@ import { sizeOf, convertObjectToArray, formatBytes, formatDate, getBackupMethod,
 import AccordionComponent from '../../components/AccordionComponent'
 import { DataTable } from '../../components/DataTable'
 import styles from './styles.module.scss'
-import { Box, HStack, Progress, Tooltip, useDisclosure, VStack } from '@chakra-ui/react'
+import { Box, Flex, HStack, Progress, Slider, SliderFilledTrack, SliderThumb, SliderTrack, Tooltip, useDisclosure, VStack } from '@chakra-ui/react'
 import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
 import { TaskLogs } from '../Dashboard/components/Logs'
@@ -14,8 +14,8 @@ import RMIconButton from '../../components/RMIconButton'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock } from 'react-icons/hi'
 import { showWarningToast } from '../../redux/toastSlice'
+import PropTypes from 'prop-types'
 import { changePlanUnits } from '../../redux/settingsSlice'
-import Gauge from '../../components/Gauge'
 import { Text } from '@chakra-ui/react'
 import { getUnitRatios } from '../../utility/unitRatios'
 
@@ -129,6 +129,83 @@ const resticTaskDetail = (row) => {
   }
 }
 
+
+// BKUSlider is the backup plan bar, the BKU twin of the configurator's DBUSlider: the
+// per-cluster reservation prov-db-bku on a linear 1..BKU_MAX scale. What the user must read
+// at a glance is the GB LIMIT the plan gives them and how much of it is used: the plan in
+// GB, the usage bar in GB against it, and the billing consequence (over the plan is billed
+// at the over-commit surcharge, unused plan at the reduced rate).
+const BKU_MAX = 128
+function BKUSlider({ value, isDisabled, onChange, unitGB, bku }) {
+  const [draft, setDraft] = useState(null)
+  const [showTooltip, setShowTooltip] = useState(false)
+  const plan = draft !== null ? draft : value
+  const planGB = plan * unitGB
+  const usedBytes = bku ? (bku.localBytes || 0) + (bku.appDiskBytes || 0) : 0
+  const usedGB = usedBytes / (1024 * 1024 * 1024)
+  const pct = planGB > 0 ? (usedGB / planGB) * 100 : 0
+  const fmt = (n) => `${n} BKU = ${n * unitGB} GB of backup storage for the cluster`
+  return (
+    <Box w='100%'>
+      <Flex justify='space-between' mb={1} align='start'>
+        <Box>
+          <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Backup storage plan (BKU) — per cluster</Text>
+          <Text fontSize='11px' color='gray.500'>1 BKU = {unitGB} GB of backup disk, nothing else. Counts the local backups and the application volumes. Above the plan is billed at the over-commit surcharge; unused plan is billed at the reduced rate.</Text>
+        </Box>
+        <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>plan {plan} BKU = {planGB} GB</Text>
+      </Flex>
+      <Slider
+        min={1}
+        max={BKU_MAX}
+        step={1}
+        value={plan}
+        isDisabled={isDisabled}
+        onChange={(v) => setDraft(v)}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        onChangeEnd={(v) => {
+          setDraft(null)
+          if (v !== value && onChange) onChange(v)
+        }}
+      >
+        <SliderTrack h='8px' borderRadius='full' bg='gray.200'>
+          <SliderFilledTrack bg='blue.400' />
+        </SliderTrack>
+        <Tooltip label={fmt(plan)} placement='top' isOpen={showTooltip || draft !== null} hasArrow>
+          <SliderThumb boxSize={5} bg='blue.500' />
+        </Tooltip>
+      </Slider>
+      <Flex justify='space-between' mt={1}>
+        <Text fontSize='9px' color='gray.500'>1 BKU = {unitGB} GB</Text>
+        <Text fontSize='9px' color='gray.500'>{BKU_MAX} BKU = {BKU_MAX * unitGB} GB</Text>
+      </Flex>
+      {bku && (
+        <Box mt={2}>
+          <Flex justify='space-between' mb={1}>
+            <Text fontSize='sm' color='var(--text-color)'>
+              Used {usedGB.toFixed(1)} GB of {planGB} GB ({pct.toFixed(0)}%) — local backups {formatBytes(bku.localBytes || 0)}{bku.appDiskBytes > 0 ? `, application volumes ${formatBytes(bku.appDiskBytes)}` : ''}
+            </Text>
+            <Text fontSize='sm' fontWeight='semibold' color={bku.overPlanUnits > 0 ? 'red.500' : 'var(--text-color)'}>
+              {bku.overPlanUnits > 0
+                ? `${bku.overPlanUnits} BKU over the plan (${bku.overPlanUnits * unitGB} GB): billed ${bku.billedUnits} BKU`
+                : bku.underPlanUnits > 0
+                  ? `${bku.underPlanUnits} BKU of plan unused (${bku.underPlanUnits * unitGB} GB free): billed ${bku.billedUnits} BKU`
+                  : `at the plan: billed ${bku.billedUnits} BKU`}
+            </Text>
+          </Flex>
+          <Progress value={Math.min(pct, 100)} size='sm' borderRadius='full' colorScheme={pct >= 100 ? 'red' : pct >= 80 ? 'orange' : 'blue'} />
+        </Box>
+      )}
+    </Box>
+  )
+}
+BKUSlider.propTypes = {
+  value: PropTypes.number,
+  isDisabled: PropTypes.bool,
+  onChange: PropTypes.func,
+  unitGB: PropTypes.number,
+  bku: PropTypes.object,
+}
 
 // section: undefined = full page, 'backup' = backup accordions only, 'jobs' = jobs accordion only
 function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onOpenSchedulerSettings, onOpenLogsSettings }) {
@@ -595,33 +672,17 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         headerActions={settingsButton(onOpenBackupSettings, 'Open Backup Settings')}
         body={
           <VStack className={styles.snapshotContainer}>
-            <HStack w='100%' align='center' spacing={6} flexWrap='wrap'>
-              <Gauge
-                isDisabled={user?.grants['cluster-settings'] == false}
-                minValue={1}
-                maxValue={128}
-                value={bkuPlan}
-                text={'Backup plan (BKU)'}
-                width={150}
-                height={105}
-                hideMinMax={false}
-                showStep={true}
-                step={1}
-                handleStepChange={(value) => {
-                  const delta = value - bkuPlan
-                  if (delta === 0) return
-                  setBkuConfirm({ isOpen: true, delta, title: `Confirm the backup plan at ${value} BKU (${value * bkuGB} GB of backup storage reserved for the cluster)` })
-                }}
-              />
-              <Text fontSize='sm'>
-                1 BKU = {bkuGB} GB of backup disk, nothing else. Plan {bkuPlan} BKU.
-                {bku ? ` Used: local backups ${formatBytes(bku.localBytes)} (${(bku.bkuLocal || 0).toFixed(2)} BKU)` : ''}
-                {bku && bku.appDiskUnits > 0 ? `, app volumes ${bku.appDiskUnits} BKU` : ''}
-                {bku ? `; billed ${bku.billedUnits} BKU` : ''}
-                {bku && bku.overPlanUnits > 0 ? ` (${bku.overPlanUnits} over the plan)` : ''}
-                {bku && bku.underPlanUnits > 0 ? ` (${bku.underPlanUnits} unused)` : ''}
-              </Text>
-            </HStack>
+            <BKUSlider
+              isDisabled={user?.grants['cluster-settings'] == false}
+              value={bkuPlan || 1}
+              unitGB={bkuGB}
+              bku={bku}
+              onChange={(value) => {
+                const delta = value - bkuPlan
+                if (delta === 0) return
+                setBkuConfirm({ isOpen: true, delta, title: `Confirm the backup plan at ${value} BKU = ${value * bkuGB} GB of backup storage for the cluster (above it is billed at the over-commit surcharge)` })
+              }}
+            />
             <TableType3 dataArray={backupDataStats} className={styles.statsTable} />
             <DataTable key="backups" data={data} columns={columns} className={styles.table} />
           </VStack>
