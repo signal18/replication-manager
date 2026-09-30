@@ -3099,6 +3099,18 @@ func (repman *ReplicationManager) Run() error {
 				if repman.gitSyncBusy.CompareAndSwap(false, true) {
 					go func() {
 						defer repman.gitSyncBusy.Store(false)
+						// Cycle timing (#1852): a cycle longer than the gate period is
+						// what makes the next gate find it busy (GWARN013). Say WHERE the
+						// time went instead of guessing at the network.
+						cycleStart := time.Now()
+						var saveDur, gitDur time.Duration
+						period := time.Duration(repman.Conf.MonitoringTicker) * 60 * time.Second
+						defer func() {
+							if total := time.Since(cycleStart); total > period {
+								repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
+									"Config sync cycle took %s, longer than its %s period: save %s, git push %s", total.Round(time.Millisecond), period, saveDur.Round(time.Millisecond), gitDur.Round(time.Millisecond))
+							}
+						}()
 
 						// 1. SAVE phase. The active/standby authority for config-sync is
 						// the server (repman.Status, gated above), not the per-cluster
@@ -3135,6 +3147,7 @@ func (repman *ReplicationManager) Run() error {
 							}
 						}()
 						savewg.Wait()
+						saveDur = time.Since(cycleStart)
 
 						// Local config persistence (the SAVE phase above) is done and is
 						// INDEPENDENT of git: it must always run on the active repman. Only the
@@ -3170,7 +3183,12 @@ func (repman *ReplicationManager) Run() error {
 						// replayed changes land in this same cycle. See
 						// doc/implementation/config/CONFIG_EVENT_LOG.md.
 						repman.ReplayPeerConfigEvents()
+						if safetyDue {
+							repman.ConfigManager.ForceFullStage() // the periodic safety push re-stages everything
+						}
+						gitStart := time.Now()
 						repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+						gitDur = time.Since(gitStart)
 					}()
 				} else {
 					repman.SetState("GWARN013@gitsync", state.State{ErrType: "WARNING", ErrKey: "GWARN013", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN013"], "git config sync"), ErrFrom: "REPMAN"})
