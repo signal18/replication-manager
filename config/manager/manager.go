@@ -3,6 +3,7 @@ package manager
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -46,7 +47,6 @@ type GitAddTask struct {
 	W         *git.Worktree
 	WaitGroup *sync.WaitGroup
 }
-
 
 // Push Manager
 type GitManager struct {
@@ -227,7 +227,11 @@ func (cmm *CommitManager) addFileToCommit(task GitAddTask) {
 	}
 
 	start := time.Now()
-	if _, err := task.W.Add(task.Filename); err == nil {
+	// SkipStatus: go-git's Add computes the FULL worktree status (walk + hash of every file)
+	// before staging one path -- 2-3.5 s per file on a ~650-file checkout, x67 files per
+	// cycle = 2.5 min, longer than the 120 s gate period (#1852). The index update alone
+	// is what we want.
+	if err := task.W.AddWithOptions(&git.AddOptions{Path: task.Filename, SkipStatus: true}); err == nil {
 		cmm.logger.Debugf("none", config.ConstLogModGit, "File %s added in: %s", task.Filename, time.Since(start))
 	} else {
 		cmm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot add %s: %s", task.Filename, err)
@@ -262,18 +266,27 @@ func (cmm *CommitManager) Stop() {
 // ConfigManager controls config saves & Git push
 type ConfigManager struct {
 	logger      *config.LogrusWrapper
-	configWg    *sync.WaitGroup            // Tracks ongoing config saves
-	gitMutex    *sync.Mutex                // Blocks new saves during Git push
-	gitStatusMu sync.RWMutex               // Protects gitStatus
-	gitStatus   GitHealthSnapshot          // Latest git health snapshot
-	stopOnce    sync.Once                  // Ensures Stop() runs only once
-	isStopping  atomic.Bool                // Prevents new saves after stopping
-	gitManager  *GitManager                // Pull Push manager
+	configWg    *sync.WaitGroup   // Tracks ongoing config saves
+	gitMutex    *sync.Mutex       // Blocks new saves during Git push
+	gitStatusMu sync.RWMutex      // Protects gitStatus
+	gitStatus   GitHealthSnapshot // Latest git health snapshot
+	stopOnce    sync.Once         // Ensures Stop() runs only once
+	isStopping  atomic.Bool       // Prevents new saves after stopping
+	gitManager  *GitManager       // Pull Push manager
 
 	// agents.json churns every monitoring cycle (agent load/status) but BO only
 	// needs periodic cores/mem — throttle its git staging to bound .git growth.
 	agentsStagedMu sync.Mutex
 	agentsStagedAt map[string]time.Time // per-cluster last time agents.json was staged
+
+	// Stage only what changed (#1852): pushedHash is the content hash of every file as
+	// of the last SUCCESSFUL push, pendingHash what this cycle staged; a file whose
+	// content matches pushedHash is not re-staged, so an unchanged fleet makes no
+	// commit. Both only touched from the single processGitPush goroutine (no lock).
+	// forceStageAll (set by the gate's safety cycle) stages everything once.
+	pushedHash    map[string]string
+	pendingHash   map[string]string
+	forceStageAll atomic.Bool
 
 	// syncStampHook, if set, is invoked after a git push/pull task completes
 	// SUCCESSFULLY (op = "push"|"pull") with the completion time. The real push/pull
@@ -292,6 +305,8 @@ func NewConfigManager(logger *config.LogrusWrapper) *ConfigManager {
 		configWg:       &sync.WaitGroup{},
 		gitManager:     NewGitManager(logger),
 		agentsStagedAt: make(map[string]time.Time),
+		pushedHash:     make(map[string]string),
+		pendingHash:    make(map[string]string),
 	}
 
 	newcm.gitManager.cond = sync.NewCond(newcm.gitManager.mutex)
@@ -401,6 +416,7 @@ func (cm *ConfigManager) UpdateLoggerConfig(clustername string, conf *config.Con
 //     on its next cycle. Non-blocking, no I/O.
 //   - wait=true  → run the persist synchronously (SaveCallBack) for callers that
 //     must block (shutdown, register).
+//
 // See doc/implementation/config/CONFIG_SYNC.md.
 func (cm *ConfigManager) SaveConfig(cluster ClusterConfig, wait bool) {
 	clustername := cluster.GetName()
@@ -1210,14 +1226,14 @@ func (cm *ConfigManager) ensureGitignoreLines(conf *config.Config, patterns []st
 // cleartext anyway (F9/F10). See issue #1712.
 func (cm *ConfigManager) AddDataDirsToGitignore(conf *config.Config) {
 	cm.ensureGitignoreLines(conf, []string{
-		"backups/",       // top-level backup catalog
-		"*/backup/",      // per-cluster backup dir (<cluster>/backup)
-		"graphite/",      // embedded carbon whisper DB
-		"*.log",          // repman + maintenance logs
-		"goroutine.txt",  // debug goroutine dumps
-		".cache/",        // top-level cache
-		"*/.cache/",      // per-cluster caches
-		"*.pem",          // TLS certs/keys — never in config git cleartext
+		"backups/",      // top-level backup catalog
+		"*/backup/",     // per-cluster backup dir (<cluster>/backup)
+		"graphite/",     // embedded carbon whisper DB
+		"*.log",         // repman + maintenance logs
+		"goroutine.txt", // debug goroutine dumps
+		".cache/",       // top-level cache
+		"*/.cache/",     // per-cluster caches
+		"*.pem",         // TLS certs/keys — never in config git cleartext
 		"*.p12",
 		"*.p12-cert.pem",
 	})
@@ -1365,6 +1381,42 @@ func (cm *ConfigManager) AddConfigSyncToGitignore(conf *config.Config) {
 	}
 }
 
+// ForceFullStage makes the next push stage every file regardless of the content hash
+// (the gate's periodic safety push, git-monitoring-ticker).
+func (cm *ConfigManager) ForceFullStage() {
+	cm.forceStageAll.Store(true)
+}
+
+// stageIfChanged enqueues rel (relative to root) for staging unless its content is the
+// one already pushed. Returns true when staged. A file that cannot be read is skipped
+// (it may have been removed between the ReadDir and now).
+func (cm *ConfigManager) stageIfChanged(w *git.Worktree, cluster, rel, root string, force bool, cwg *sync.WaitGroup) bool {
+	data, err := os.ReadFile(filepath.Join(root, rel))
+	if err != nil {
+		cm.logger.Debugf("none", config.ConstLogModGit, "Not staging %s: %s", rel, err)
+		return false
+	}
+	sum := fmt.Sprintf("%x", sha256.Sum256(data))
+	if !force {
+		if prev, ok := cm.pushedHash[rel]; ok && prev == sum {
+			return false
+		}
+	}
+	cm.pendingHash[rel] = sum
+	cwg.Add(1)
+	cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: cluster, Filename: rel, W: w, WaitGroup: cwg})
+	return true
+}
+
+// promoteStagedHashes records this cycle's staged content as pushed (call after a
+// successful push, or an empty commit: the remote already holds that content).
+func (cm *ConfigManager) promoteStagedHashes() {
+	for k, v := range cm.pendingHash {
+		cm.pushedHash[k] = v
+	}
+	cm.pendingHash = make(map[string]string)
+}
+
 func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []string) error {
 	url := conf.GitUrl
 	tok := conf.GetDecryptedValue("git-acces-token")
@@ -1473,6 +1525,15 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 
 	allstart := time.Now()
 	cwg := sync.WaitGroup{}
+	force := cm.forceStageAll.Swap(false)
+	staged, skipped := 0, 0
+	stage := func(cluster, rel string) {
+		if cm.stageIfChanged(w, cluster, rel, path, force, &cwg) {
+			staged++
+		} else {
+			skipped++
+		}
+	}
 	// Add specific files without using AddGlob
 	for _, name := range clusterList {
 		dirPath := filepath.Join(path, name)
@@ -1494,14 +1555,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 				continue
 			}
 			if filepath.Ext(file.Name()) == ".toml" {
-				fpath := filepath.Join(name, file.Name())
-				_, err := file.Info()
-				if err != nil {
-					cm.logger.Warnf("none", config.ConstLogModGit, "Error getting file info for %s: %s", fpath, err)
-					continue
-				}
-				cwg.Add(1)
-				cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: fpath, W: w, WaitGroup: &cwg})
+				stage(name, filepath.Join(name, file.Name()))
 			}
 		}
 
@@ -1514,9 +1568,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		if appFiles, err := os.ReadDir(filepath.Join(dirPath, "apps")); err == nil {
 			for _, file := range appFiles {
 				if filepath.Ext(file.Name()) == ".toml" {
-					fpath := filepath.Join(name, "apps", file.Name())
-					cwg.Add(1)
-					cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: fpath, W: w, WaitGroup: &cwg})
+					stage(name, filepath.Join(name, "apps", file.Name()))
 				}
 			}
 		}
@@ -1527,8 +1579,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		for _, jsonFile := range []string{"queryrules.json", "clusterstate.json"} {
 			jsonPath := filepath.Join(name, jsonFile)
 			if _, err := os.Stat(filepath.Join(path, jsonPath)); !os.IsNotExist(err) {
-				cwg.Add(1)
-				cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: jsonPath, W: w, WaitGroup: &cwg})
+				stage(name, jsonPath)
 			}
 		}
 
@@ -1538,23 +1589,20 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		if cm.shouldStageAgents(name) {
 			agentsPath := filepath.Join(name, "agents.json")
 			if _, err := os.Stat(filepath.Join(path, agentsPath)); !os.IsNotExist(err) {
-				cwg.Add(1)
-				cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: agentsPath, W: w, WaitGroup: &cwg})
+				stage(name, agentsPath)
 			}
 		}
 
 		// Add restic.config.bak if it exists (this will store the restic config which is crucial in case of missing restic config)
 		if _, err := os.Stat(filepath.Join(path, name, "restic.config.bak")); !os.IsNotExist(err) {
-			cwg.Add(1)
-			cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: filepath.Join(name, "restic.config.bak"), W: w, WaitGroup: &cwg})
+			stage(name, filepath.Join(name, "restic.config.bak"))
 		}
 	}
 
 	// Add default.toml if it exists
 	defaultToml := "default.toml"
 	if _, err := os.Stat(filepath.Join(path, defaultToml)); !os.IsNotExist(err) {
-		cwg.Add(1)
-		cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: "default", Filename: defaultToml, W: w, WaitGroup: &cwg})
+		stage("default", defaultToml)
 	}
 
 	// Add this instance's config event log (event-changed.<id>.log): peers
@@ -1567,14 +1615,17 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 			if e.IsDir() || !strings.HasPrefix(e.Name(), "event-changed.") || !strings.HasSuffix(e.Name(), ".log") {
 				continue
 			}
-			cwg.Add(1)
-			cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: "default", Filename: e.Name(), W: w, WaitGroup: &cwg})
+			stage("default", e.Name())
 		}
 	}
 
 	cwg.Wait()
 
-	cm.logger.Debugf("none", config.ConstLogModGit, "Total file add took: %s", time.Since(allstart))
+	cm.logger.Debugf("none", config.ConstLogModGit, "Staged %d changed files (%d unchanged skipped, force=%v) in %s", staged, skipped, force, time.Since(allstart))
+	if staged == 0 {
+		// Nothing changed since the last push: no commit, no push, no history growth.
+		return nil
+	}
 
 	if cm.gitManager.CommitManager.IsStopping.Load() {
 		cm.logger.Info("none", config.ConstLogModGit, "CommitManager is stopping, cancelling commit")
@@ -1616,6 +1667,11 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 
 	if errors.Is(err, git.NoErrAlreadyUpToDate) {
 		err = nil
+	}
+	if err == nil {
+		cm.promoteStagedHashes() // the remote holds this content now
+	} else {
+		cm.pendingHash = make(map[string]string) // retry the same files next cycle
 	}
 	return err
 }
