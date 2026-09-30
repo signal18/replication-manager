@@ -144,13 +144,13 @@ function BKUSlider({ value, isDisabled, onChange, unitGB, bku }) {
   const usedBytes = bku ? (bku.localBytes || 0) + (bku.appDiskBytes || 0) : 0
   const usedGB = usedBytes / (1024 * 1024 * 1024)
   const pct = planGB > 0 ? (usedGB / planGB) * 100 : 0
-  const fmt = (n) => `${n} BKU = ${n * unitGB} GB of backup storage for the cluster`
+  const fmt = (n) => `${n} BKU = ${n * unitGB} GB of local backup storage`
   return (
     <Box w='100%'>
       <Flex justify='space-between' mb={1} align='start'>
         <Box>
           <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Backup storage plan (BKU) — per cluster</Text>
-          <Text fontSize='11px' color='gray.500'>1 BKU = {unitGB} GB of backup disk, nothing else. Counts the local backups and the application volumes kept on the cluster.</Text>
+          <Text fontSize='11px' color='gray.500'>1 BKU = {unitGB} GB of local backup storage: the replication-manager backups kept on the infrastructure and the extra physical disk replicated for failover applications. Exceeding the plan is monitored as over-commit and raises the alert WARN0219.</Text>
         </Box>
         <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>plan {plan} BKU = {planGB} GB</Text>
       </Flex>
@@ -183,11 +183,11 @@ function BKUSlider({ value, isDisabled, onChange, unitGB, bku }) {
         <Box mt={2}>
           <Flex justify='space-between' mb={1}>
             <Text fontSize='sm' color='var(--text-color)'>
-              Used {usedGB.toFixed(1)} GB of {planGB} GB ({pct.toFixed(0)}%) — local backups {formatBytes(bku.localBytes || 0)}{bku.appDiskBytes > 0 ? `, application volumes ${formatBytes(bku.appDiskBytes)}` : ''}
+              Used {usedGB.toFixed(1)} GB of {planGB} GB ({pct.toFixed(0)}%) — backups {formatBytes(bku.localBytes || 0)}{bku.appDiskBytes > 0 ? `, failover application disks ${formatBytes(bku.appDiskBytes)}` : ''}
             </Text>
             <Text fontSize='sm' fontWeight='semibold' color={bku.overPlanUnits > 0 ? 'red.500' : 'var(--text-color)'}>
               {bku.overPlanUnits > 0
-                ? `${bku.overPlanUnits * unitGB} GB over the plan (${bku.overPlanUnits} BKU)`
+                ? `${bku.overPlanUnits * unitGB} GB over the plan (${bku.overPlanUnits} BKU), WARN0219 open`
                 : bku.underPlanUnits > 0
                   ? `${bku.underPlanUnits * unitGB} GB left in the plan (${bku.underPlanUnits} BKU)`
                   : 'at the plan'}
@@ -680,7 +680,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
               onChange={(value) => {
                 const delta = value - bkuPlan
                 if (delta === 0) return
-                setBkuConfirm({ isOpen: true, delta, title: `Confirm the backup plan at ${value} BKU = ${value * bkuGB} GB of backup storage for the cluster` })
+                setBkuConfirm({ isOpen: true, delta, title: `Confirm the backup plan at ${value} BKU = ${value * bkuGB} GB of local backup storage for the cluster` })
               }}
             />
             <TableType3 dataArray={backupDataStats} className={styles.statsTable} />
