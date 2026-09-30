@@ -347,7 +347,7 @@ function Home() {
     const allSections = [
       'isGeneralOpen', 'isRepFailOverOpen', 'isRepConfigOpen', 'isMonitoringOpen',
       'isAlertsOpen', 'isLogsOpen', 'isPluginsOpen', 'isRejoinOpen', 'isProxiesOpen',
-      'isGraphsOpen', 'isCloud18Open', 'isSchedulerOpen', 'isBackupOpen',
+      'isGraphsOpen', 'isCloud18Open', 'isSchedulerOpen', 'isBackupOpen', 'isArchiveOpen',
       'isS3ProvidersOpen', 'isAppTemplateRepoOpen'
     ]
     allSections.forEach((key) => localStorage.setItem(key, JSON.stringify(visibleSections.includes(key))))
@@ -359,7 +359,8 @@ function Home() {
     }
   }
 
-  const openBackupSettings = () => openSettingsSection(['isBackupOpen', 'isS3ProvidersOpen'])
+  const openBackupSettings = () => openSettingsSection(['isBackupOpen'])
+  const openArchiveSettings = () => openSettingsSection(['isArchiveOpen', 'isS3ProvidersOpen'])
   const openSchedulerSettings = () => openSettingsSection(['isSchedulerOpen'])
   const openTopologySettings = () => openSettingsSection(['isGeneralOpen'])
   const openProxiesSettings = () => openSettingsSection(['isProxiesOpen'])
@@ -416,7 +417,7 @@ function Home() {
                   ? [<Agents user={user} selectedCluster={selectedCluster} />]
                   : []),
                 ...(user?.grants['cluster-show-backups']
-                  ? [<Maintenance user={user} selectedCluster={selectedCluster} onOpenBackupSettings={openBackupSettings} onOpenSchedulerSettings={openSchedulerSettings} onOpenLogsSettings={openLogsSettings} />]
+                  ? [<Maintenance user={user} selectedCluster={selectedCluster} onOpenBackupSettings={openBackupSettings} onOpenArchiveSettings={openArchiveSettings} onOpenSchedulerSettings={openSchedulerSettings} onOpenLogsSettings={openLogsSettings} />]
                   : []),
                 ...(user?.grants['db-show-process'] ? [<Top selectedCluster={selectedCluster} onOpenMonitoringSettings={openMonitoringSettings} onOpenTopologySettings={openTopologySettings} />] : []),
                 ...(selectedCluster?.config?.proxysql && user?.grants['cluster-show-agents']

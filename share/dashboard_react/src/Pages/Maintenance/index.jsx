@@ -219,7 +219,7 @@ BKUSlider.propTypes = {
 }
 
 // section: undefined = full page, 'backup' = backup accordions only, 'jobs' = jobs accordion only
-function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onOpenSchedulerSettings, onOpenLogsSettings }) {
+function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onOpenArchiveSettings, onOpenSchedulerSettings, onOpenLogsSettings }) {
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
   const [queueData, setQueueData] = useState([])
@@ -706,7 +706,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         className={styles.accordion}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
-        headerActions={settingsButton(onOpenBackupSettings, 'Open Backup Settings')}
+        headerActions={settingsButton(onOpenArchiveSettings || onOpenBackupSettings, 'Open Archive Settings')}
         body={
           <VStack className={styles.snapshotContainer}>
             <Box className={styles.repoRow}>
