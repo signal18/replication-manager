@@ -132,10 +132,11 @@ func (cluster *Cluster) SetDBDiskSize(value string) {
 	cluster.Configurator.SetDBDisk(value)
 	cluster.Conf.ProvDisk = cluster.Configurator.GetConfigDBDisk()
 	newGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
-	// Live grow (#1854): with the dynamic resource on, a bigger declared disk grows the
-	// volumes through the orchestrator instead of asking for a reprovision. A smaller one
-	// still needs the reprovision: volumes only grow.
-	if cluster.Conf.ProvDBDynamicResource && newGB > oldGB {
+	// Live move (#1854): with the dynamic resource on, the declared disk moves the volumes
+	// through the orchestrator instead of asking for a reprovision, up or down (a shrink
+	// the orchestrator does not honour yet is tracked as WARN0221, never a reprovision:
+	// it is data). Without it, the reprovision path as before.
+	if cluster.Conf.ProvDBDynamicResource && newGB != oldGB {
 		cluster.applyDiskResize(int(oldGB), int(newGB))
 		return
 	}

@@ -666,6 +666,15 @@ func (cluster *Cluster) checkResourceScaleWorkloadStates() {
 		if srv == nil || srv.IsDown() {
 			continue
 		}
+		if q := srv.DiskQuotaAbove; q != nil {
+			sm.AddState("WARN0221@"+srv.URL, state.State{
+				ErrType:   "WARNING",
+				ErrKey:    "WARN0221",
+				ErrDesc:   fmt.Sprintf(clusterError["WARN0221"], srv.URL, humanBytes(q.VolumeBytes), q.DeclaredGB),
+				ErrFrom:   "WORKLOAD",
+				ServerUrl: srv.URL,
+			})
+		}
 		if r := srv.DiskResizeRefused; r != nil {
 			sm.AddState("WARN0220@"+srv.URL, state.State{
 				ErrType:   "WARNING",

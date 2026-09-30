@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -874,6 +875,52 @@ func (collector *Collector) ResizeVolumeV3(namespace, volname, size string) (str
 		return resp.JSON200.OrchestrationID.String(), nil
 	}
 	return "", fmt.Errorf("volume resize refused on %s/vol/%s (size %s): status %d: %s", namespace, volname, size, resp.StatusCode(), strings.TrimSpace(string(resp.Body)))
+}
+
+// GetVolumeSizeV3 reads DEFAULT.size of the volume object <namespace>/vol/<name> in bytes
+// (om3 writes it as "4gi", "3g" or a plain byte count).
+func (collector *Collector) GetVolumeSizeV3(namespace, volname string) (int64, error) {
+	raw, err := collector.GetObjectConfigFileV3(namespace, "vol", volname)
+	if err != nil {
+		return 0, err
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "size") {
+			continue
+		}
+		kv := strings.SplitN(line, "=", 2)
+		if len(kv) != 2 || strings.TrimSpace(kv[0]) != "size" {
+			continue
+		}
+		return ParseOpenSVCSize(strings.TrimSpace(kv[1]))
+	}
+	return 0, fmt.Errorf("no DEFAULT.size in %s/vol/%s", namespace, volname)
+}
+
+// ParseOpenSVCSize parses an om3 size expression ("4gi", "3g", "512m", "1t", "4294967296")
+// into bytes; the k/m/g/t suffixes are binary multiples, as om3 evaluates them.
+func ParseOpenSVCSize(s string) (int64, error) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return 0, fmt.Errorf("empty size")
+	}
+	mult := int64(1)
+	for _, suf := range []struct {
+		s string
+		m int64
+	}{{"tib", 1 << 40}, {"gib", 1 << 30}, {"mib", 1 << 20}, {"kib", 1 << 10}, {"tb", 1 << 40}, {"gb", 1 << 30}, {"mb", 1 << 20}, {"kb", 1 << 10}, {"ti", 1 << 40}, {"gi", 1 << 30}, {"mi", 1 << 20}, {"ki", 1 << 10}, {"t", 1 << 40}, {"g", 1 << 30}, {"m", 1 << 20}, {"k", 1 << 10}} {
+		if strings.HasSuffix(s, suf.s) {
+			mult = suf.m
+			s = strings.TrimSuffix(s, suf.s)
+			break
+		}
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid size %q: %w", s, err)
+	}
+	return int64(f * float64(mult)), nil
 }
 
 // WaitVolumeResizeV3 follows the queued resize of <namespace>/vol/<name> through the

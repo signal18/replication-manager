@@ -82,14 +82,13 @@ there too (`IngestAppConsumedAPU` → `ComputeUsedDBU`). The ledger reserves it 
 **Disk is dynamic too (#1854, 2026-09-30, `applyDiskResize`).** `prov-db-disk-size` used to be a paper
 number on the virtual pool dbssd (volumes created with size 0, no refquota: curepipe's 50 GB = 2.5 DBU "over
 plan" bounded nothing) and the disk-follow rule only moved the declaration. Now every move of the declared
-disk that GROWS it -- the follow rule (`followDiskUsage`), the setter `SetDBDiskSize` when
-`prov-db-dynamic-resource` is on (a plan change on the disk axis goes through it), -- asks each up server's
-volume to grow: `ResourceResizer.ResizeDisk(server, gb)`. OpenSVC v3 (`openSVCResizeDisk`): `env.size` is
+disk -- the follow rule (`followDiskUsage`), the shrink rule (`driveDynamicShrink`, disk axis), the setter
+`SetDBDiskSize` when `prov-db-dynamic-resource` is on (a plan change on the disk axis goes through it) --
+asks each up server's volume to follow: `ResourceResizer.ResizeDisk(server, gb)`. OpenSVC v3 (`openSVCResizeDisk`): `env.size` is
 rewritten on the service (what `volume#01.size` declares, so a later provision agrees;
 `openSVCWriteServiceKeywords`, shared with the pg keywords), then `ResizeVolumeV3` posts the om3 resize
 action on the VOLUME object `<ns>/vol/<svcname>` (rc40 `om vol resize SIZE`: the size lands in the vol config,
-every node converges, the answer is a queued orchestration). Grow only: a smaller declaration keeps the
-reprovision cookie. Script / restart / Kubernetes resizers schedule a reprovision (PVC expansion is a later
+every node converges, the answer is a queued orchestration). Script / restart / Kubernetes resizers schedule a reprovision (PVC expansion is a later
 step). A refusal (no refquota, target under what the datasets hold, v2 daemon, pool full) is a tracked
 per-server state `ServerMonitor.DiskResizeRefused` surfaced each tick as **WARN0220**, cleared by the next
 grow that goes through; no retry loop. What the tree really gets: the dbssd template now carries
@@ -97,6 +96,22 @@ grow that goes through; no retry loop. What the tree really gets: the dbssd temp
 invalid size"); rc40's zfs driver moves only the head's refquota on resize, the quota follows in the om3
 release OpenSVC announced, existing volumes then get `quota = x1` as a catch-up. Test:
 `TestApplyDiskResize_GrowsUpServersAndTracksRefusal`. Validated on dev3 (reprovisioned on the new template).
+
+**Disk shrinks toward the plan (2026-09-30, "downsizing the disk based on real usage to the plan DBU").**
+The shrink rule (`driveDynamicShrink`) now carries a third axis after mem and cpu: when every live server has
+been under-used on disk for `prov-db-scale-down-config-in-plan-speed`, `dynamicShrinkTarget("disk")` lands
+`prov-db-disk-size` in one move on the larger of the **plan's disk** (20 GB × plan DBU per node) and the peak
+datadir occupancy (`DBUConsumed.DbuDisk`) plus the safety headroom, on the DBU grid. The plan is the floor:
+data is a guarantee, the undercommit floor of cpu/mem (`prov-db-undercommit-pct`) does not apply, a disk
+never goes under what the plan promises. The move goes through the same glue (`SetDBDiskSize` →
+`applyDiskResize` → `ResizeDisk`), down as well as up. On om3 rc40 the resize action grows only ("asking for
+less is nothing to do"): `openSVCResizeDisk` reads the volume's `DEFAULT.size` back after the wait
+(`GetVolumeSizeV3`) and, when the volume stays above the declaration, sets the tracked per-server state
+`ServerMonitor.DiskQuotaAbove` surfaced each tick as **WARN0221** ("the declaration moved, the quota did
+not"), cleared once a later resize lands the volume at or under the declared disk: the om3 release that lowers
+a quota down to the used data (asked of OpenSVC with the quota-follows-size fix). A shrink never sets the
+reprovision cookie: it is data, nothing is rebuilt for a smaller number. Tests: `TestDynamicShrinkTargetDisk`,
+`TestApplyDiskResize_GrowsUpServersAndTracksRefusal` (both directions).
 
 **No credits (Stéphane 2026-09-29, "those credits should not be here", removed on #1827).** The app credit
 model of July 2025 (`prov-app-credit-planned` / `-used` per app, `cloud18-application-credits` cap + price

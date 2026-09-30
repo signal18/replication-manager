@@ -228,12 +228,14 @@ func (cluster *Cluster) openSVCWriteServiceKeywords(server *ServerMonitor, secti
 	return ns, kind, svcname, nil
 }
 
-// openSVCResizeDisk grows the server's data volume live (#1854): env.size on the service
+// openSVCResizeDisk moves the server's data volume live (#1854): env.size on the service
 // (what volume#01 declares, so a later provision agrees) then the om3 resize action on the
-// volume object <ns>/vol/<svcname>, which writes the size into the volume config and grows
-// the chain down to the head dataset. Grow only (om3 rc40). The cap that the tree really
-// gets follows the zfs quota keyword and moves with the coming om3 release; until then the
-// action moves the head's refquota. v3 only: v2 has no resize action, reprovision instead.
+// volume object <ns>/vol/<svcname>, which writes the size into the volume config and moves
+// the chain down to the head dataset. Up or down: rc40 grows only, so a shrink comes back
+// with the volume untouched and is tracked (WARN0221) until the om3 release that lowers a
+// quota down to the used data. The cap that the tree really gets follows the zfs quota
+// keyword and moves with that same release; until then the action moves the head's
+// refquota. v3 only: v2 has no resize action, reprovision instead.
 func (cluster *Cluster) openSVCResizeDisk(server *ServerMonitor, gb int) (bool, error) {
 	svc := cluster.OpenSVCConnect()
 	if !svc.IsV3() {
@@ -261,6 +263,19 @@ func (cluster *Cluster) openSVCResizeDisk(server *ServerMonitor, gb int) (bool, 
 	}
 	switch outcome {
 	case "idle":
+		// Read the size back: rc40's action grows only ("asking for less is nothing to
+		// do"), so a shrink comes back "idle" with the volume untouched. That is a tracked
+		// state (WARN0221), cleared once a later resize brings the volume to the
+		// declared disk -- the om3 release that lowers a quota down to the used data.
+		if volBytes, verr := svc.GetVolumeSizeV3(ns, svcname); verr == nil {
+			if volBytes > int64(gb)*1024*1024*1024 {
+				server.DiskQuotaAbove = &DiskQuotaAbove{DeclaredGB: gb, VolumeBytes: volBytes, Since: time.Now()}
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+					"OpenSVC volume %s/vol/%s stays at %s above the declared %dGB on %s: the orchestrator does not shrink yet", ns, svcname, humanBytes(volBytes), gb, server.URL)
+				return false, nil
+			}
+			server.DiskQuotaAbove = nil
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 			"OpenSVC volume resize done on %s: %s/vol/%s is %s", server.URL, ns, svcname, size)
 		return true, nil
@@ -1135,7 +1150,7 @@ func (cluster *Cluster) driveDynamicShrink() {
 	if !cluster.lastDynamicResize.IsZero() && time.Since(cluster.lastDynamicResize) < d {
 		return // one move per scale-down window, up or down
 	}
-	cpuUnder, memUnder := true, true
+	cpuUnder, memUnder, diskUnder := true, true, true
 	live := 0
 	for _, s := range cluster.Servers {
 		if s == nil || s.State == stateFailed || s.State == stateUnconn {
@@ -1148,6 +1163,7 @@ func (cluster *Cluster) driveDynamicShrink() {
 		}
 		cpuUnder = cpuUnder && under["cpu"]
 		memUnder = memUnder && under["mem"]
+		diskUnder = diskUnder && under["disk"]
 	}
 	if live == 0 {
 		return
@@ -1156,8 +1172,12 @@ func (cluster *Cluster) driveDynamicShrink() {
 	if memUnder && cluster.shrinkAxisInPlan("mem") {
 		return
 	}
-	if cpuUnder {
-		cluster.shrinkAxisInPlan("cpu")
+	if cpuUnder && cluster.shrinkAxisInPlan("cpu") {
+		return
+	}
+	// Disk last: a declaration move plus a quota move, no runtime impact on the DB.
+	if diskUnder {
+		cluster.shrinkAxisInPlan("disk")
 	}
 }
 
@@ -1176,7 +1196,8 @@ func (cluster *Cluster) dbuRatioInts() (coresPerDBU, memMBPerDBU int) {
 // dynamicShrinkTarget is the pure decision of the aligned move down on an axis: from the
 // current config to the smallest whole number of DBU that keeps the peak consumption of every
 // live server under the high-water mark (1 - prov-db-cap-safety-pct), never under the
-// undercommit floor (UndercommitFloorDBU of the plan per node, itself >= 1 DBU). ok=false when
+// undercommit floor (UndercommitFloorDBU of the plan per node, itself >= 1 DBU) -- for the
+// disk axis never under the PLAN itself (data is the guarantee). ok=false when
 // the aligned target is not below the current config (already aligned, or the load needs
 // what is configured). Servers without a consumed reading are ignored (no evidence, no move
 // on their behalf); if none has one, nothing moves.
@@ -1196,6 +1217,8 @@ func (cluster *Cluster) dynamicShrinkTarget(axis string) (from, to string, ok bo
 			v = s.DBUConsumed.DbuCpu
 		case "mem":
 			v = s.DBUConsumed.DbuMem
+		case "disk":
+			v = s.DBUConsumed.DbuDisk
 		}
 		if v > peakDbu {
 			peakDbu = v
@@ -1226,8 +1249,34 @@ func (cluster *Cluster) dynamicShrinkTarget(axis string) (from, to string, ok bo
 			return strconv.Itoa(int(curMB)), strconv.Itoa(int(curMB)), false
 		}
 		return strconv.Itoa(int(curMB)), strconv.Itoa(newMB), true
+	case "disk":
+		// The disk shrinks toward the PLAN, never under it (Stéphane 2026-09-30: "downsizing
+		// the disk based on real usage to the plan DBU"): the plan is the guarantee, the
+		// undercommit floor does not apply to data. Target = the larger of the plan's disk
+		// and the peak datadir + headroom, on the DBU grid.
+		if planDbu := cluster.GetPlanDBUPerNode().Dbu; targetDbu < planDbu {
+			targetDbu = math.Ceil(planDbu - 1e-9)
+		}
+		curGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
+		diskGBPerDBU := cluster.dbuDiskGBPerUnit()
+		newGB := int(targetDbu) * diskGBPerDBU
+		if int(curGB) <= newGB {
+			return strconv.Itoa(int(curGB)), strconv.Itoa(int(curGB)), false
+		}
+		return strconv.Itoa(int(curGB)), strconv.Itoa(newGB), true
 	}
 	return "", "", false
+}
+
+// dbuDiskGBPerUnit is the Database ratio's disk per DBU in whole GB (resource-manager-ratio-dbu).
+func (cluster *Cluster) dbuDiskGBPerUnit() int {
+	r := mustRatio(DefaultRatioDBU)
+	if cluster != nil && cluster.resources != nil {
+		if rr := cluster.resources.Ratios(ProfileDatabase); rr.DiskGBPerUnit > 0 {
+			r = rr
+		}
+	}
+	return int(r.DiskGBPerUnit + 0.5)
 }
 
 // shrinkAxisInPlan applies the aligned move down on an axis through its setter (which runs
@@ -1251,6 +1300,10 @@ func (cluster *Cluster) shrinkAxisInPlan(axis string) bool {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 			"Dynamic MEMORY shrink (all servers under-used for %s, aligned to the DBU): prov-db-memory %sMB -> %sMB", cluster.Conf.ScaleDownConfigInPlanSpeed, from, to)
 		cluster.SetDBMemorySize(to)
+	case "disk":
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"Dynamic DISK shrink (all servers under-used for %s, toward the plan, aligned to the DBU): prov-db-disk-size %sGB -> %sGB", cluster.Conf.ScaleDownConfigInPlanSpeed, from, to)
+		cluster.SetDBDiskSize(to)
 	}
 	return true
 }
@@ -1385,14 +1438,25 @@ type DiskResizeRefusal struct {
 	Since  time.Time `json:"since"`
 }
 
+// DiskQuotaAbove is the tracked state of a volume the orchestrator did not shrink to the
+// declared disk (rc40's resize only grows): the declaration moved down, the volume's size
+// did not. Surfaced each tick as WARN0221, cleared when a later resize lands the volume
+// at or under the declaration.
+type DiskQuotaAbove struct {
+	DeclaredGB  int       `json:"declaredGb"`
+	VolumeBytes int64     `json:"volumeBytes"`
+	Since       time.Time `json:"since"`
+}
+
 // applyDiskResize is the glue between the declared disk (prov-db-disk-size, just moved
 // from fromGB to toGB by the follow rule, the setter or a plan change) and the volumes:
 // every up server's data volume is asked to grow to the new size through the resizer.
 // A refusal is a tracked state, never a retry loop: the next move asks again.
 func (cluster *Cluster) applyDiskResize(fromGB, toGB int) {
-	if toGB <= fromGB {
-		return // om3 grows only; a lower declaration keeps the reprov path of the setter
+	if toGB == fromGB {
+		return
 	}
+	grow := toGB > fromGB
 	rz := cluster.resourceResizer()
 	for _, s := range cluster.Servers {
 		if s == nil || s.IsDown() {
@@ -1403,11 +1467,11 @@ func (cluster *Cluster) applyDiskResize(fromGB, toGB int) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
 				"Disk resize %dGB -> %dGB refused on %s: %s", fromGB, toGB, s.URL, err)
 			s.DiskResizeRefused = &DiskResizeRefusal{From: strconv.Itoa(fromGB), To: strconv.Itoa(toGB), Reason: err.Error(), Since: time.Now()}
-			cluster.logResize(s, resizeDisk, true, false, ResizeNo, nil)
+			cluster.logResize(s, resizeDisk, grow, false, ResizeNo, nil)
 			continue
 		}
 		s.DiskResizeRefused = nil
-		cluster.logResize(s, resizeDisk, true, applied, ResizeYes, nil)
+		cluster.logResize(s, resizeDisk, grow, applied, ResizeYes, nil)
 	}
 }
 
