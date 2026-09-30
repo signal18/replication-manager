@@ -12,7 +12,11 @@ import DatabaseJobs from './DatabaseJobs'
 import { deleteBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock } from 'react-icons/hi'
+import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle } from 'react-icons/hi'
+import CommonModal from '../../components/Modals/CommonModal'
+import modalStyles from '../../components/Modals/styles.module.scss'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { showWarningToast } from '../../redux/toastSlice'
 import PropTypes from 'prop-types'
 import { changePlanUnits } from '../../redux/settingsSlice'
@@ -136,9 +140,15 @@ const resticTaskDetail = (row) => {
 // GB and the usage bar in GB against it. No pricing here: the product is not only a cloud
 // offer; what a unit costs, when it does, is the marketplace's business (Resource Manager).
 const BKU_MAX = 128
+const bkuHelp = (unitGB) => `**Backup storage plan (BKU)**
+
+1 BKU = ${unitGB} GB of local backup storage: the replication-manager backups kept on the infrastructure and the extra physical disk replicated for failover applications.
+
+Exceeding the plan is monitored as over-commit and raises the alert WARN0219.`
 function BKUSlider({ value, isDisabled, onChange, unitGB, bku }) {
   const [draft, setDraft] = useState(null)
   const [showTooltip, setShowTooltip] = useState(false)
+  const [isHelpOpen, setIsHelpOpen] = useState(false)
   const plan = draft !== null ? draft : value
   const planGB = plan * unitGB
   const usedBytes = bku ? (bku.localBytes || 0) + (bku.appDiskBytes || 0) : 0
@@ -148,10 +158,10 @@ function BKUSlider({ value, isDisabled, onChange, unitGB, bku }) {
   return (
     <Box w='100%'>
       <Flex justify='space-between' mb={1} align='start'>
-        <Box>
+        <HStack spacing={1}>
           <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Backup storage plan (BKU) — per cluster</Text>
-          <Text fontSize='11px' color='gray.500'>1 BKU = {unitGB} GB of local backup storage: the replication-manager backups kept on the infrastructure and the extra physical disk replicated for failover applications. Exceeding the plan is monitored as over-commit and raises the alert WARN0219.</Text>
-        </Box>
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => setIsHelpOpen(true)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
+        </HStack>
         <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>plan {plan} BKU = {planGB} GB</Text>
       </Flex>
       <Slider
@@ -196,6 +206,7 @@ function BKUSlider({ value, isDisabled, onChange, unitGB, bku }) {
           <Progress value={Math.min(pct, 100)} size='sm' borderRadius='full' colorScheme={pct >= 100 ? 'red' : pct >= 80 ? 'orange' : 'blue'} />
         </Box>
       )}
+      <CommonModal isOpen={isHelpOpen} closeModal={() => setIsHelpOpen(false)} title='Backup storage plan (BKU)' body={<Box className={modalStyles.infoTooltip}><Markdown remarkPlugins={[remarkGfm]}>{bkuHelp(unitGB)}</Markdown></Box>} size='xl' />
     </Box>
   )
 }
