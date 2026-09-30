@@ -148,6 +148,7 @@ const (
 	GrantSalesValidate    string = "sales-validate"    // Can validate sales
 	GrantSalesRefuse      string = "sales-refuse"      // Can refuse sales
 	GrantSalesUnsubscribe string = "sales-unsubscribe" // Can unsubscribe sales
+	GrantSalesPricing     string = "sales-pricing"     // Can change how a cluster or an app is METERED and priced (app-stateful, app-s3-provider, cloud18-marketplace-bau-client-storage): the provider's call, never the cluster owner's (sponsor)
 
 	GrantTerminalDatabase string = "terminal-db"
 	GrantTerminalProxy    string = "terminal-proxy"
@@ -251,6 +252,7 @@ func GetGrantType() map[string]string {
 		GrantSalesValidate:               GrantSalesValidate,
 		GrantSalesRefuse:                 GrantSalesRefuse,
 		GrantSalesUnsubscribe:            GrantSalesUnsubscribe,
+		GrantSalesPricing:                GrantSalesPricing,
 		GrantExternalRole:                GrantExternalRole,
 		GrantGrantShow:                   GrantGrantShow,
 		GrantGrantAdd:                    GrantGrantAdd,
@@ -440,6 +442,7 @@ func GetGrantSales() []string {
 		GrantSalesValidate,
 		GrantSalesRefuse,
 		GrantSalesUnsubscribe,
+		GrantSalesPricing,
 	}
 }
 

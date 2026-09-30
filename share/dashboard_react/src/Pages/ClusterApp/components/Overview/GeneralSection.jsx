@@ -329,9 +329,10 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
         key: 'S3 Provider (storage app)',
         value: (
           <RMSwitch
-            confirmTitle={`Confirm switch app-s3-provider to ${appS3Provider ? 'off' : 'on'}?`}
+            confirmTitle={`Confirm switch app-s3-provider to ${appS3Provider ? 'off' : 'on'}? (metering rule: requires the sales-pricing grant)`}
             onChange={onS3ProviderChange}
             isChecked={!!appS3Provider}
+            isDisabled={user?.grants['sales-pricing'] == false}
           />
         )
       },
@@ -339,9 +340,10 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
         key: 'Stateful (accounted as DBU)',
         value: (
           <RMSwitch
-            confirmTitle={`Confirm switch app-stateful to ${appStateful ? 'off' : 'on'}? A stateful app reserves and bills whole DBU (Database ratio) instead of APU.`}
+            confirmTitle={`Confirm switch app-stateful to ${appStateful ? 'off' : 'on'}? A stateful app reserves and bills whole DBU (Database ratio) instead of APU. (metering rule: requires the sales-pricing grant)`}
             onChange={onStatefulChange}
             isChecked={!!appStateful}
+            isDisabled={user?.grants['sales-pricing'] == false}
           />
         )
       },

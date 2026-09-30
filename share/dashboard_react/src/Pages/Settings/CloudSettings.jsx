@@ -152,7 +152,7 @@ function CloudSettings({ selectedCluster, user }) {
       {
         key: 'Remote Archive On Client Storage',
         help: h(hBauClientStorage, 'Remote Archive On Client Storage'),
-        value: (<RMSwitch confirmTitle={'Confirm switch settings for cloud18-marketplace-bau-client-storage?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-marketplace-bau-client-storage' }))} isDisabled={user?.grants['cluster-settings'] == false} isChecked={selectedCluster?.config?.cloud18MarketplaceBauClientStorage} />)
+        value: (<RMSwitch confirmTitle={'Confirm switch settings for cloud18-marketplace-bau-client-storage?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-marketplace-bau-client-storage' }))} isDisabled={user?.grants['sales-pricing'] == false} isChecked={selectedCluster?.config?.cloud18MarketplaceBauClientStorage} />)
       },
       {
         key: 'Cluster Plan',

@@ -535,6 +535,19 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 	// Check GLOBAL settings FIRST (before specific cluster routing)
 	// Global settings URLs: /api/clusters/settings/... (not cluster-specific)
 	// These require GrantGlobalSettings and should NOT fall through to cluster rules
+	// Metering/pricing settings are decided by their exclusive rule, before any generic
+	// settings table can grant them (see pricingACLRules).
+	for _, rule := range pricingACLRules {
+		if strings.Contains(URL, rule.URLPattern) {
+			if cluster.matchACLRules(strUser, URL, []ACLRule{rule}) {
+				return true
+			}
+			if errorPrint {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL pricing check failed for user %s : %s (requires %s)", strUser, URL, config.GrantSalesPricing)
+			}
+			return false
+		}
+	}
 	if strings.HasPrefix(URL, "/api/clusters/settings") {
 		return cluster.matchACLRules(strUser, URL, globalSettingsACLRules)
 	}
