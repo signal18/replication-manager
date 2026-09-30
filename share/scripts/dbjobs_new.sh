@@ -137,6 +137,14 @@ BINARY_DUMP=""
 # Partial restore status tracking
 PR_STATUS=0
 PR_LOG=""
+PR_SKIPPED=()
+PR_RUN_ID=""
+PR_DEFS=""
+PR_IS_REPLICA=0
+PR_EVENTS_READABLE=1
+PR_DISABLE_ON_REPLICA="DISABLE ON SLAVE"
+PR_FILEBASE=""
+PR_NEWFILES=""
 
 TOKEN=""
 
@@ -1532,6 +1540,606 @@ pr_pipe() {
     fi
 }
 
+# pr_try runs a restore step whose failure the caller handles itself (a
+# skip-and-report via pr_skip) instead of counting it against PR_STATUS the
+# way pr_cmd does.
+pr_try() {
+    local d="$1"
+    shift
+    pr_log "CMD: $d"
+    "$@" >>"$PR_LOG" 2>&1
+    local r=$?
+    if [[ $r -ne 0 ]]; then
+        pr_log "FAILED: $d (exit $r)"
+    fi
+    return $r
+}
+
+# pr_skip records a table the partial restore could not bring back. Its
+# backup files stay in $BACKUPDIR and nothing of it is left in $DATADIR.
+pr_skip() {
+    pr_log "SKIPPED $1: $2"
+    PR_SKIPPED+=("$1")
+    PR_STATUS=1
+}
+
+# Every restore statement runs outside the binlog and without foreign key
+# checks: tables come back one by one, so a child table is created, discarded
+# or imported while the parent it references may not be back yet.
+readonly PR_SQL_INIT="set sql_log_bin=0;set foreign_key_checks=0;"
+
+# pr_list_databases prints the databases of the prepared backup to restore,
+# as listed by the backup's own server (pr_export_definitions), never from
+# the backup's directory layout: MySQL 8 keeps internal folders there
+# (#innodb_redo, #innodb_temp) that must never be taken for a database.
+# Prints nothing until the list has been exported.
+pr_list_databases() {
+    [[ -f "$PR_DEFS/.databases" ]] && cat "$PR_DEFS/.databases"
+}
+
+# pr_export_definitions reads the exact definition of every table and view of
+# the prepared backup from the backup itself: a temporary read-only server is
+# started on it (socket only, no grants, no binlog, innodb_read_only) and each
+# SHOW CREATE is saved under $PR_DEFS/<db>/, with a per-database list of
+# "name<TAB>type<TAB>engine". This is the backup-time definition -- foreign
+# keys, partitioning, generated columns and views included -- so it cannot
+# drift from the tablespaces being imported, whatever changed on the master
+# since. The server runs on its own directory (a copy of the small mysql/
+# schema, links to everything else) so the prepared backup is not modified.
+pr_export_definitions() {
+    local ro="$DATADIR/.system/mrm_defs_ro" run="$DATADIR/.system/mrm_defs_run" sock="$DATADIR/.system/mrm_defs_run/mariadbd.sock" bin f n db t type engine
+    bin=$(command -v mariadbd || command -v mysqld || ls /usr/sbin/mariadbd /usr/sbin/mysqld 2>/dev/null | head -1)
+    if [[ ! -x "$bin" ]]; then
+        pr_log "ERROR: no mariadbd/mysqld binary to read the backup definitions."
+        return 1
+    fi
+    # Everything the server writes -- pid file, error log, socket, temporary
+    # files, Aria log copies -- lives in its own mysql-owned directory on the
+    # datadir volume ($DATADIR/.system itself is root-owned), never in the
+    # container's /tmp, which is not a declared volume.
+    rm -rf "$ro" "$run" "$PR_DEFS"
+    mkdir -p "$ro" "$run/aria" "$run/tmp" "$PR_DEFS"
+    # MySQL 8 (xtrabackup) prepared backups carry no redo log (an empty
+    # #innodb_redo/), and a --innodb-read-only server cannot create one. Its
+    # small system tablespaces are then copied, and a first "priming" start
+    # without the user databases creates the redo log in the temporary
+    # directory; the user databases are only linked in for the read-only start.
+    local prime=0
+    [[ -d "$BACKUPDIR/#innodb_redo" ]] && ! compgen -G "$BACKUPDIR/#innodb_redo/*" >/dev/null && prime=1
+    local userdirs=()
+    for f in "$BACKUPDIR"/*; do
+        n=$(basename "$f")
+        case "$n" in
+        mysql) cp -a "$f" "$ro/mysql" ;;
+        # Copies of the backup's Aria logs, so the copied mysql/ Aria tables
+        # match them: with an empty Aria log they count as moved from another
+        # server and mysql.proc (read by views calling stored functions, e.g.
+        # sys) fails to open.
+        aria_log*) cp -a "$f" "$run/aria/$n" ;;
+        backup-my.cnf | xtrabackup_* | mariadb_backup_* | binlog.* | ib_buffer_pool | ibtmp1) ;;
+        "#innodb_redo" | "#innodb_temp") mkdir -p "$ro/$n" ;;
+        *)
+            if [[ $prime -eq 1 && -d "$f" ]]; then
+                userdirs+=("$n")
+            elif [[ $prime -eq 1 ]]; then
+                cp -a "$f" "$ro/$n"
+            else
+                ln -s "$f" "$ro/$n"
+            fi
+            ;;
+        esac
+    done
+    # The server is started with the backup's own accounts and the event
+    # scheduler OFF (no event can run, but event definitions stay readable;
+    # --skip-grant-tables disables the scheduler entirely and hides them).
+    # backup-my.cnf holds the InnoDB layout of the backup (page size, log and
+    # undo settings), plus keys only the backup tool knows (xtrabackup 8 writes
+    # server_uuid): every option is made loose- so unknown ones are ignored.
+    sed -E 's/^([A-Za-z_][A-Za-z0-9_-]*)/loose-\1/' "$BACKUPDIR/backup-my.cnf" >"$run/backup.cnf"
+    local args=(--defaults-file="$run/backup.cnf" --datadir="$ro" --socket="$sock" --skip-networking
+        --event-scheduler=OFF --innodb-read-only=1 --read-only=1 --skip-log-bin
+        --loose-skip-slave-start --loose-skip-replica-start --loose-mysqlx=OFF
+        --innodb-buffer-pool-size=64M --pid-file="$run/mariadbd.pid" --log-error="$run/mariadbd.err" --tmpdir="$run/tmp")
+    if [[ $isr -eq 1 ]]; then
+        chown -R mysql:mysql "$ro" "$run"
+        chown -h mysql:mysql "$ro"/*
+        args+=(--user=mysql)
+    fi
+    args+=(--loose-aria-log-dir-path="$run/aria")
+    local cli="${BINARY_CLIENT%% *}" ro_client="" up=0 i attempt
+    if [[ $prime -eq 1 ]]; then
+        local pargs=("${args[@]}")
+        pargs=("${pargs[@]/--innodb-read-only=1/--innodb-read-only=0}")
+        pr_log "CMD: Priming start on the backup's system tablespaces (creates the redo log; no user database attached)"
+        "$bin" "${pargs[@]}" --loose-innodb-buffer-pool-load-at-startup=OFF --loose-innodb-buffer-pool-dump-at-shutdown=OFF >>"$PR_LOG" 2>&1 &
+        local ppid=$!
+        for i in $(seq 1 240); do
+            [[ -S "$sock" ]] && break
+            kill -0 $ppid 2>/dev/null || break
+            sleep 0.5
+        done
+        kill -TERM $ppid 2>/dev/null
+        for i in $(seq 1 240); do
+            kill -0 $ppid 2>/dev/null || break
+            sleep 0.5
+        done
+        if kill -0 $ppid 2>/dev/null || ! compgen -G "$ro/#innodb_redo/*" >/dev/null; then
+            pr_log "ERROR: the priming start did not create a redo log."
+            kill -9 $ppid 2>/dev/null
+            rm -rf "$ro" "$run"
+            return 1
+        fi
+        for n in "${userdirs[@]}"; do
+            ln -s "$BACKUPDIR/$n" "$ro/$n"
+        done
+        [[ $isr -eq 1 ]] && chown -h mysql:mysql "$ro"/*
+    fi
+    PR_EVENTS_READABLE=1
+    for attempt in accounts skip-grants; do
+        if [[ "$attempt" == "skip-grants" ]]; then
+            # None of our credentials opens the backup's accounts (e.g. the
+            # root password changed since the backup): read everything but
+            # the events, which this mode cannot show.
+            pr_log "No login into the backup's accounts; restarting it with --skip-grant-tables (events cannot be read that way)."
+            args+=(--skip-grant-tables)
+            PR_EVENTS_READABLE=0
+        fi
+        pr_log "CMD: Start read-only server on the prepared backup to read its definitions ($attempt)"
+        "$bin" "${args[@]}" >>"$PR_LOG" 2>&1 &
+        up=0
+        for i in $(seq 1 240); do
+            [[ -S "$sock" ]] && { up=1; break; }
+            sleep 0.5
+        done
+        [[ $up -eq 0 ]] && break
+        # The socket can appear before the server accepts logins: retry
+        # until a login works or every credential is actually refused.
+        local out denied
+        for i in $(seq 1 60); do
+            denied=0
+            for ro_client in "$cli -uroot -S $sock" "$cli -u$USER -p$PASSWORD -S $sock"; do
+                if out=$($ro_client -N -e "SELECT 1" 2>&1); then
+                    break 3
+                fi
+                [[ "$out" == *"ERROR 1045"* || "$out" == *"ERROR 1698"* ]] && denied=$((denied + 1))
+            done
+            [[ $denied -eq 2 ]] && break
+            sleep 0.5
+        done
+        ro_client=""
+        [[ "$attempt" == "skip-grants" ]] && break
+        kill "$(cat "$run/mariadbd.pid" 2>/dev/null)" 2>/dev/null
+        for i in $(seq 1 120); do
+            [[ -S "$sock" ]] || break
+            sleep 0.5
+        done
+    done
+    [[ -z "$ro_client" ]] && up=0
+    local rc=0
+    if [[ $up -eq 0 ]]; then
+        pr_log "ERROR: the read-only server on the prepared backup did not start."
+        rc=1
+    else
+        # sys is created by the server itself and tied to its version.
+        if ! $ro_client -N -B -e "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('mysql','performance_schema','information_schema','sys','replication_manager_schema') ORDER BY schema_name" >"$PR_DEFS/.databases" 2>>"$PR_LOG"; then
+            pr_log "ERROR: cannot list the databases of the backup."
+            rm -f "$PR_DEFS/.databases"
+            rc=1
+        fi
+        for db in $(pr_list_databases); do
+            mkdir -p "$PR_DEFS/$db"
+            if ! $ro_client -N -B -e "SELECT table_name, table_type, IFNULL(engine,'') FROM information_schema.tables WHERE table_schema='$db' ORDER BY table_name" >"$PR_DEFS/$db/.list" 2>>"$PR_LOG"; then
+                pr_log "ERROR: cannot list the tables of $db in the backup."
+                rc=1
+                continue
+            fi
+            while IFS=$'\t' read -r t type engine; do
+                [[ -z "$t" ]] && continue
+                if [[ "$type" == "VIEW" ]]; then
+                    $ro_client -N -B -r -e "SHOW CREATE VIEW \`$db\`.\`$t\`" 2>>"$PR_LOG" |
+                        sed -e '1s/^[^\t]*\t//' -e '$s/\t[^\t]*\t[^\t]*$//' >"$PR_DEFS/$db/$t.sql"
+                else
+                    $ro_client -N -B -r -e "SHOW CREATE TABLE \`$db\`.\`$t\`" 2>>"$PR_LOG" |
+                        sed -e '1s/^[^\t]*\t//' >"$PR_DEFS/$db/$t.sql"
+                fi
+                if [[ ! -s "$PR_DEFS/$db/$t.sql" ]]; then
+                    pr_log "ERROR: no definition for $db.$t in the backup."
+                    rc=1
+                fi
+            done <"$PR_DEFS/$db/.list"
+            # DROP DATABASE also drops the stored routines and events of db,
+            # so they are exported too: "type<TAB>name" in .routines, the
+            # CREATE statement in .routines.d/<type>.<name>.sql and its
+            # sql_mode in .routines.d/<type>.<name>.mode.
+            mkdir -p "$PR_DEFS/$db/.routines.d"
+            # Triggers are exported as SQL too: MySQL 8 keeps them in its data
+            # dictionary (no .TRG files); one method for both keeps it simple.
+            local trg_q="SELECT 'TRIGGER', trigger_name FROM information_schema.triggers WHERE trigger_schema='$db'"
+            if [[ $PR_EVENTS_READABLE -eq 1 ]]; then
+                $ro_client -N -B -e "SELECT routine_type, routine_name FROM information_schema.routines WHERE routine_schema='$db' UNION ALL SELECT 'EVENT', event_name FROM information_schema.events WHERE event_schema='$db' UNION ALL $trg_q" >"$PR_DEFS/$db/.routines" 2>>"$PR_LOG" || rc=1
+            else
+                $ro_client -N -B -e "SELECT routine_type, routine_name FROM information_schema.routines WHERE routine_schema='$db' UNION ALL $trg_q" >"$PR_DEFS/$db/.routines" 2>>"$PR_LOG" || rc=1
+                $ro_client -N -B -e "SELECT name FROM mysql.event WHERE db='$db'" >"$PR_DEFS/$db/.events_unreadable" 2>>"$PR_LOG" || rc=1
+            fi
+            local rtype rname out cols
+            while IFS=$'\t' read -r rtype rname; do
+                [[ -z "$rname" ]] && continue
+                out="$PR_DEFS/$db/.routines.d/$rtype.$rname"
+                # SHOW CREATE {FUNCTION|PROCEDURE|TRIGGER}: name, sql_mode, CREATE,
+                # then 3 charset columns (TRIGGER: plus a creation time column).
+                # SHOW CREATE EVENT: name, sql_mode, time_zone, CREATE, 3 charset columns.
+                cols=2
+                [[ "$rtype" == "EVENT" ]] && cols=3
+                $ro_client -N -B -r -e "SHOW CREATE $rtype \`$db\`.\`$rname\`" >"$out.raw" 2>>"$PR_LOG"
+                head -1 "$out.raw" | cut -f2 >"$out.mode"
+                local tail_cols=3
+                [[ "$rtype" == "TRIGGER" ]] && tail_cols=4
+                sed -e "1s/^\([^\t]*\t\)\{$cols\}//" -e "\$s/\(\t[^\t]*\)\{$tail_cols\}\$//" "$out.raw" >"$out.sql"
+                rm -f "$out.raw"
+                if [[ ! -s "$out.sql" ]]; then
+                    pr_log "ERROR: no definition for $rtype $db.$rname in the backup."
+                    rc=1
+                fi
+            done <"$PR_DEFS/$db/.routines"
+        done
+        $ro_client -e "SHUTDOWN" >/dev/null 2>&1
+    fi
+    for i in $(seq 1 120); do
+        [[ -f "$run/mariadbd.pid" ]] && kill -0 "$(cat "$run/mariadbd.pid" 2>/dev/null)" 2>/dev/null || break
+        sleep 0.5
+    done
+    if [[ -f "$run/mariadbd.pid" ]] && kill -0 "$(cat "$run/mariadbd.pid" 2>/dev/null)" 2>/dev/null; then
+        pr_log "ERROR: the read-only server did not stop; killing it."
+        kill -9 "$(cat "$run/mariadbd.pid")" 2>/dev/null
+        rc=1
+    fi
+    cat "$run/mariadbd.err" >>"$PR_LOG" 2>/dev/null
+    rm -rf "$ro" "$run" "$sock"
+    return $rc
+}
+
+pr_create_from_definition() {
+    local db="$1" t="$2" file="$PR_DEFS/$1/$2.sql"
+    pr_log "CMD: Create $db.$t from its backup definition"
+    { printf '%sUSE `%s`;\n' "$PR_SQL_INIT" "$db"; cat "$file"; printf ';\n'; } | $BINARY_CLIENT >>"$PR_LOG" 2>&1
+    local r=$?
+    if [[ $r -ne 0 ]]; then
+        pr_log "FAILED: Create $db.$t from its backup definition (exit $r)"
+    fi
+    return $r
+}
+
+# pr_master_host prints the configured master of this server, empty when
+# it is not a replica. SHOW REPLICA STATUS (MariaDB >= 10.5, MySQL >= 8.0.22,
+# the only form MySQL 8.4 knows) first, SHOW SLAVE STATUS for older servers;
+# the column is Master_Host on MariaDB, Source_Host on MySQL.
+pr_master_host() {
+    local st h
+    st=$($BINARY_CLIENT -e "SHOW REPLICA STATUS\G" 2>/dev/null) || st=$($BINARY_CLIENT -e "SHOW SLAVE STATUS\G" 2>>"$PR_LOG")
+    h=$(echo "$st" | awk -F': ' '/^ *(Master|Source)_Host:/{print $2; exit}')
+    [[ "$h" == "NULL" ]] && h=""
+    echo "$h"
+}
+
+# pr_restore_routines recreates the stored functions, procedures and events
+# of db from their backup definitions, each with its original sql_mode. On a
+# replica an event is created DISABLE ON SLAVE, as replication itself does:
+# an enabled event would run, and write, on the replica.
+pr_restore_routines() {
+    local db="$1" rtype rname base mode def
+    if [[ -s "$PR_DEFS/$db/.events_unreadable" ]]; then
+        while read -r rname; do
+            [[ -n "$rname" ]] && pr_skip "EVENT $db.$rname" "event definitions cannot be read without the backup's accounts"
+        done <"$PR_DEFS/$db/.events_unreadable"
+    fi
+    [[ -s "$PR_DEFS/$db/.routines" ]] || return 0
+    while IFS=$'\t' read -r rtype rname; do
+        [[ -z "$rname" ]] && continue
+        base="$PR_DEFS/$db/.routines.d/$rtype.$rname"
+        mode=$(cat "$base.mode" 2>/dev/null)
+        def=$(cat "$base.sql")
+        if [[ "$rtype" == "EVENT" && $PR_IS_REPLICA -eq 1 ]]; then
+            def=$(printf '%s' "$def" | sed -E "0,/ (ENABLE|DISABLE ON SLAVE|DISABLE ON REPLICA|DISABLE) (ON COMPLETION|COMMENT|DO)/s// $PR_DISABLE_ON_REPLICA \\2/")
+        fi
+        pr_log "CMD: Create $rtype $db.$rname from its backup definition"
+        if ! printf '%s\nDELIMITER ;;\nSET SESSION sql_mode=%s;;\nUSE `%s`;;\n%s;;\n' "$PR_SQL_INIT" "'$mode'" "$db" "$def" | $BINARY_CLIENT >>"$PR_LOG" 2>&1; then
+            pr_skip "$rtype $db.$rname" "cannot recreate it from its backup definition"
+        fi
+    done <"$PR_DEFS/$db/.routines"
+}
+
+# pr_recreate_database drops and recreates db. An earlier failed restore can
+# leave files the server does not know (orphan .ibd/.cfg, stub .frm), which
+# make DROP DATABASE fail with errno 39 after it has dropped every table it
+# knows. Only once the server lists no table left in db are those files
+# moved to a quarantine directory and the drop retried.
+pr_recreate_database() {
+    local db="$1"
+    pr_try "Drop database $db" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP DATABASE IF EXISTS \`$db\`"
+    # Files the server does not know (orphans of an earlier failed restore)
+    # outlive the drop: MariaDB then fails the DROP (errno 39), MySQL 8 drops
+    # the schema but leaves the folder and refuses the CREATE (ERROR 3678).
+    # Only once the server lists no table left in db are they moved to a
+    # quarantine directory.
+    # Quarantine only ever applies to a real database folder of the backup:
+    # never to server-internal folders (#innodb_redo holds the live redo
+    # log), hidden folders, system schemas or links.
+    local may_quarantine=1
+    case "$db" in
+    "#"* | .* | mysql | sys | performance_schema | information_schema | replication_manager_schema) may_quarantine=0 ;;
+    esac
+    grep -qxF -- "$db" "$PR_DEFS/.databases" 2>/dev/null || may_quarantine=0
+    [[ -L "$DATADIR/$db" ]] && may_quarantine=0
+    if [[ $may_quarantine -eq 1 && -d "$DATADIR/$db" ]]; then
+        local left
+        left=$($BINARY_CLIENT -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$db'" 2>>"$PR_LOG")
+        if [[ "$left" == "0" ]]; then
+            local q="$DATADIR/.system/orphan-quarantine-$PR_RUN_ID/$db"
+            mkdir -p "$q"
+            pr_try "Quarantine leftover files of $db into $q" bash -c "shopt -s dotglob nullglob; f=(\"$DATADIR/$db\"/*); [[ \${#f[@]} -eq 0 ]] || mv \"\${f[@]}\" \"$q\"/"
+            pr_try "Drop database $db (after quarantine)" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP DATABASE IF EXISTS \`$db\`"
+            rmdir "$DATADIR/$db" 2>/dev/null
+        fi
+    fi
+    pr_cmd "Create database $db" $BINARY_CLIENT -e "${PR_SQL_INIT}CREATE DATABASE \`$db\`"
+}
+
+# pr_import_partitions fills the partitions of the (empty, just recreated)
+# partitioned table db.t from the backup. MariaDB cannot DISCARD/IMPORT the
+# tablespace of a partitioned table as a whole (ERROR 1031), so each partition
+# is imported into a non-partitioned staging table of the same structure and
+# swapped in with EXCHANGE PARTITION -- still a hot replace, on every version.
+# Returns non-zero on the first failure; the caller drops the table.
+pr_import_partitions() {
+    local db="$1" t="$2" src="$BACKUPDIR/$1" dst="$DATADIR/$1"
+    shift 2
+    local f p stage ext moved
+    for f in "$@"; do
+        p="${f#*#[Pp]#}"
+        stage="mrm_pivo_${RANDOM}${RANDOM}"
+        moved=()
+        if ! pr_try "Create staging table for $db.$t partition $p" $BINARY_CLIENT -e "${PR_SQL_INIT}CREATE TABLE \`$db\`.\`$stage\` LIKE \`$db\`.\`$t\`; ALTER TABLE \`$db\`.\`$stage\` REMOVE PARTITIONING; ALTER TABLE \`$db\`.\`$stage\` DISCARD TABLESPACE"; then
+            pr_try "Drop staging table $db.$stage" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP TABLE IF EXISTS \`$db\`.\`$stage\`"
+            return 1
+        fi
+        for ext in ibd cfg exp; do
+            if [[ -f "$src/$f.$ext" ]] && pr_try "Move $f.$ext for $db.$t" mv "$src/$f.$ext" "$dst/$stage.$ext"; then
+                moved+=("$ext")
+            fi
+        done
+        if pr_try "Import partition $p of $db.$t" $BINARY_CLIENT -e "${PR_SQL_INIT}ALTER TABLE \`$db\`.\`$stage\` IMPORT TABLESPACE" &&
+            pr_try "Exchange partition $p of $db.$t" $BINARY_CLIENT -e "${PR_SQL_INIT}ALTER TABLE \`$db\`.\`$t\` EXCHANGE PARTITION \`$p\` WITH TABLE \`$db\`.\`$stage\`"; then
+            pr_try "Drop staging table $db.$stage" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP TABLE IF EXISTS \`$db\`.\`$stage\`"
+            continue
+        fi
+        for ext in "${moved[@]}"; do
+            mv "$dst/$stage.$ext" "$src/$f.$ext" 2>>"$PR_LOG"
+        done
+        pr_try "Drop staging table $db.$stage" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP TABLE IF EXISTS \`$db\`.\`$stage\`"
+        return 1
+    done
+    return 0
+}
+
+# pr_create_and_locate creates db.t from its backup definition and finds the
+# file base name the server gave it: a table whose name is not plain ASCII is
+# stored encoded on disk (n-dash as n@002ddash, "n space" as n@0020space), so
+# the backup's files cannot be found from the table name. The files that
+# appear in the database folder with the CREATE are the server's own answer.
+# Sets PR_FILEBASE and PR_NEWFILES; fails, dropping the table again, unless
+# exactly one base name appeared -- it never guesses which files to import.
+pr_create_and_locate() {
+    local db="$1" t="$2" dst="$DATADIR/$1" before after base
+    before=$(ls -1A "$dst" 2>/dev/null | sort)
+    pr_create_from_definition "$db" "$t" || return 1
+    after=$(ls -1A "$dst" 2>/dev/null | sort)
+    # Not the table's own files: MySQL 8 serialized dictionary files
+    # (<table>_<id>.sdi) and InnoDB's auxiliary FULLTEXT index tablespaces
+    # (FTS_<table id>_*.ibd), which the index rebuilds on its own.
+    PR_NEWFILES=$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after") | grep -v -e '\.sdi$' -e '^FTS_')
+    base=$(printf '%s\n' "$PR_NEWFILES" | grep . | sed -E 's/\.[^.]+$//; s/#[Pp]#.*$//' | sort -u)
+    if [[ $(printf '%s\n' "$base" | grep -c .) -ne 1 ]]; then
+        pr_log "ERROR: cannot tell which files belong to $db.$t (created: $(printf '%s ' $PR_NEWFILES))."
+        pr_try "Drop $db.$t" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP TABLE IF EXISTS \`$db\`.\`$t\`"
+        return 1
+    fi
+    PR_FILEBASE="$base"
+    return 0
+}
+
+# pr_restore_innodb_table recreates db.t from its backup definition and
+# imports its tablespace (every partition of a partitioned table). The backup
+# must hold exactly the tablespaces the recreated table has -- same file base
+# name, same partitions -- or nothing is imported. A table whose import is
+# refused is dropped again and reported, and its files are taken back out of
+# the datadir, so neither an orphan tablespace nor a half-imported table
+# remains.
+pr_restore_innodb_table() {
+    local db="$1" t="$2" src="$BACKUPDIR/$1" dst="$DATADIR/$1"
+    local f ext enc names=() moved=() created_parts backup_parts
+
+    if ! pr_create_and_locate "$db" "$t"; then
+        pr_skip "$db.$t" "cannot create the table from its backup definition"
+        return
+    fi
+    enc="$PR_FILEBASE"
+    created_parts=$(printf '%s\n' "$PR_NEWFILES" | grep -E "#[Pp]#.*\.ibd$" | sed 's/\.ibd$//' | sort)
+    backup_parts=$(cd "$src" && ls -1 -- "$enc#P#"*.ibd "$enc#p#"*.ibd 2>/dev/null | sed 's/\.ibd$//' | sort)
+    if [[ -n "$created_parts" || -n "$backup_parts" ]]; then
+        if [[ "$created_parts" != "$backup_parts" ]]; then
+            pr_try "Drop $db.$t (partitions differ from the backup)" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP TABLE IF EXISTS \`$db\`.\`$t\`"
+            pr_skip "$db.$t" "the backup's partition tablespaces do not match its definition"
+            return
+        fi
+        mapfile -t names <<<"$backup_parts"
+        if pr_import_partitions "$db" "$t" "${names[@]}"; then
+            pr_log "Restored partitioned $db.$t (${#names[@]} partitions)."
+        else
+            pr_try "Drop $db.$t after failed partition import" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP TABLE IF EXISTS \`$db\`.\`$t\`"
+            pr_skip "$db.$t" "partition import failed"
+        fi
+        return
+    fi
+    if [[ ! -f "$src/$enc.ibd" ]]; then
+        pr_try "Drop $db.$t (no tablespace in the backup)" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP TABLE IF EXISTS \`$db\`.\`$t\`"
+        pr_skip "$db.$t" "no tablespace $enc.ibd in the backup"
+        return
+    fi
+    if ! pr_try "Discard tablespace $db.$t" $BINARY_CLIENT -e "${PR_SQL_INIT}ALTER TABLE \`$db\`.\`$t\` DISCARD TABLESPACE"; then
+        pr_try "Drop $db.$t after failed discard" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP TABLE IF EXISTS \`$db\`.\`$t\`"
+        pr_skip "$db.$t" "DISCARD TABLESPACE failed"
+        return
+    fi
+    for ext in ibd cfg exp; do
+        if [[ -f "$src/$enc.$ext" ]] && pr_try "Move $enc.$ext for $db.$t" mv "$src/$enc.$ext" "$dst/$enc.$ext"; then
+            moved+=("$enc.$ext")
+        fi
+    done
+    if pr_try "Import tablespace for $db.$t" $BINARY_CLIENT -e "${PR_SQL_INIT}ALTER TABLE \`$db\`.\`$t\` IMPORT TABLESPACE"; then
+        return
+    fi
+    for f in "${moved[@]}"; do
+        mv "$dst/$f" "$src/$f" 2>>"$PR_LOG"
+    done
+    pr_try "Drop $db.$t after failed import" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP TABLE IF EXISTS \`$db\`.\`$t\`"
+    pr_skip "$db.$t" "IMPORT TABLESPACE failed"
+}
+
+# pr_restore_file_table restores a non-InnoDB table (MyISAM, Aria, CSV, ...).
+# The table is first created from its backup definition to learn the file
+# name the server uses for it (names can be stored encoded). With a .frm in
+# the backup (MariaDB), that probe table is dropped again and the backup's own
+# files -- .frm included -- are moved in as they are: an Aria table keeps its
+# identity in them, and a fresh table given another server's data files is
+# reported corrupt. Without a .frm (MySQL 8), the table must live in the data
+# dictionary, so the created table stays and only its data files are
+# replaced. Either way CHECK TABLE must pass before it counts as restored.
+pr_restore_file_table() {
+    local db="$1" t="$2" engine="$3" src="$BACKUPDIR/$1" dst="$DATADIR/$1" enc f n=0
+    if ! pr_create_and_locate "$db" "$t"; then
+        pr_skip "$db.$t" "cannot create the table from its backup definition"
+        return
+    fi
+    enc="$PR_FILEBASE"
+    if [[ -f "$src/$enc.frm" ]]; then
+        pr_try "Drop the probe table $db.$t" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP TABLE IF EXISTS \`$db\`.\`$t\`"
+        for f in "$src/$enc".*; do
+            [[ -e "$f" ]] || continue
+            pr_try "Move $(basename "$f") for $db.$t" mv -f "$f" "$dst/" && n=$((n + 1))
+        done
+        # An Aria table copied from another server still carries that
+        # server's log sequence numbers and is refused as corrupt until
+        # zerofilled -- MariaDB's documented step for moving Aria tables
+        # between servers. The rows are not changed.
+        if [[ "$engine" == "Aria" ]]; then
+            local aria_chk
+            aria_chk=$(command -v aria_chk || command -v mariadb-aria-chk)
+            if [[ -n "$aria_chk" ]]; then
+                pr_try "Zerofill Aria table $db.$t" "$aria_chk" --zerofill --silent "$dst/$enc"
+                [[ $isr -eq 1 ]] && chown mysql:mysql "$dst/$enc".*
+            else
+                pr_log "No aria_chk binary to zerofill $db.$t."
+            fi
+        fi
+    else
+        pr_try "Close $db.$t" $BINARY_CLIENT -e "${PR_SQL_INIT}FLUSH TABLE \`$db\`.\`$t\`"
+        for f in "$src/$enc".*; do
+            [[ -e "$f" ]] || continue
+            case "$f" in *.sdi | *.par) continue ;; esac
+            pr_try "Replace $(basename "$f") for $db.$t" mv -f "$f" "$dst/" && n=$((n + 1))
+        done
+    fi
+    pr_try "Flush table $db.$t" $BINARY_CLIENT -e "${PR_SQL_INIT}FLUSH TABLE \`$db\`.\`$t\`"
+    local chk
+    chk=$($BINARY_CLIENT -N -B -e "${PR_SQL_INIT}CHECK TABLE \`$db\`.\`$t\`" 2>>"$PR_LOG" | awk -F'\t' 'END{print $3" "$4}')
+    if [[ $n -eq 0 || "$chk" != "status OK" ]]; then
+        pr_log "CHECK TABLE $db.$t: ${chk:-no result}; $n file(s) from the backup."
+        pr_try "Drop $db.$t" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP TABLE IF EXISTS \`$db\`.\`$t\`"
+        pr_skip "$db.$t" "$engine files missing from the backup or failing CHECK TABLE"
+    fi
+}
+
+# pr_restore_memory_table recreates a MEMORY table. Its rows only ever live in
+# RAM, so no backup holds them (a server restart empties it just the same).
+# It is opened once here, inside the restore's binlog-free session: MariaDB
+# logs an implicit DELETE the first time a MEMORY table is opened, which on a
+# replica would otherwise land in its binlog as an errant transaction.
+pr_restore_memory_table() {
+    local db="$1" t="$2"
+    if ! pr_create_from_definition "$db" "$t"; then
+        pr_skip "$db.$t" "cannot create the table from its backup definition"
+        return
+    fi
+    pr_try "Open MEMORY table $db.$t without binary logging" $BINARY_CLIENT -e "${PR_SQL_INIT}SELECT 1 FROM \`$db\`.\`$t\` LIMIT 0"
+    pr_log "MEMORY table $db.$t recreated empty: its rows are never part of a backup."
+}
+
+# pr_verify_restore compares what now exists on the server with what the
+# backup contained -- every table, sequence, view, routine, event and
+# trigger of every restored database. Anything missing fails the restore, so
+# repman does not put the node back into replication incomplete.
+pr_verify_restore() {
+    local db want have missing rc=0
+    for db in $(pr_list_databases); do
+        want=$(cut -f1 "$PR_DEFS/$db/.list" | sort)
+        have=$($BINARY_CLIENT -N -B -e "SELECT table_name FROM information_schema.tables WHERE table_schema='$db'" 2>>"$PR_LOG" | sort)
+        missing=$(comm -23 <(printf '%s\n' "$want") <(printf '%s\n' "$have") | grep .)
+        if [[ -s "$PR_DEFS/$db/.routines" ]]; then
+            want=$(sort "$PR_DEFS/$db/.routines")
+            have=$($BINARY_CLIENT -N -B -e "SELECT routine_type, routine_name FROM information_schema.routines WHERE routine_schema='$db' UNION ALL SELECT 'EVENT', event_name FROM information_schema.events WHERE event_schema='$db' UNION ALL SELECT 'TRIGGER', trigger_name FROM information_schema.triggers WHERE trigger_schema='$db'" 2>>"$PR_LOG" | sort)
+            missing+=$'\n'$(comm -23 <(printf '%s\n' "$want") <(printf '%s\n' "$have") | grep . | tr '\t' ' ')
+        fi
+        missing=$(printf '%s\n' "$missing" | grep .)
+        if [[ -n "$missing" ]]; then
+            pr_log "VERIFY FAILED for $db, missing: $(printf '%s; ' $missing)"
+            rc=1
+        fi
+    done
+    if [[ $rc -eq 0 ]]; then
+        pr_log "Verified: every table, view, routine, event and trigger of the backup exists on the server."
+    else
+        PR_STATUS=1
+    fi
+    return $rc
+}
+
+
+# pr_preflight checks, before anything in the datadir is touched, that the
+# prepare succeeded and that every table of the backup has a definition and
+# a supported layout. A failure leaves the server exactly as it was.
+pr_preflight() {
+    local prep_log="$1" db t type engine rc=0
+    if ! grep -q "completed OK!" "$prep_log" 2>/dev/null; then
+        pr_log "ERROR: the backup prepare did not complete (no 'completed OK!' in $prep_log); nothing was changed."
+        return 1
+    fi
+    if [[ ! -f "$PR_DEFS/.databases" ]]; then
+        pr_log "ERROR: no database list was exported from the backup."
+        return 1
+    fi
+    for db in $(pr_list_databases); do
+        # A name the server stores encoded on disk (e.g. my-db as my@002ddb)
+        # has no folder of that name: refuse rather than guess the files.
+        if [[ ! -d "$BACKUPDIR/$db" || -L "$BACKUPDIR/$db" ]]; then
+            pr_log "ERROR: database $db has no folder of that name in the backup."
+            rc=1
+            continue
+        fi
+        while IFS=$'\t' read -r t type engine; do
+            [[ -z "$t" ]] && continue
+            if [[ ! -s "$PR_DEFS/$db/$t.sql" ]]; then
+                pr_log "ERROR: no backup definition for $db.$t."
+                rc=1
+            fi
+            if [[ "$engine" == "InnoDB" ]] && { compgen -G "$BACKUPDIR/$db/$t#P#*#SP#*.ibd" || compgen -G "$BACKUPDIR/$db/$t#p#*#sp#*.ibd"; } >/dev/null; then
+                pr_log "ERROR: $db.$t is subpartitioned; EXCHANGE PARTITION cannot hot-replace subpartitions."
+                rc=1
+            fi
+        done <"$PR_DEFS/$db/.list"
+    done
+    return $rc
+}
+
 partialRestore() {
     send_lines_to_api "Starting partial restore..." "$job" "$LVL_INFO"
     # Deliberately NOT seeded from the prepare command's own exit status: that
@@ -1569,55 +2177,74 @@ partialRestore() {
         pr_log "Skipping chown of backup directory; not running as root."
     fi
 
-    local bhc=""
-    bhc=$($BINARY_CLIENT -N -e "SELECT COUNT(*) FROM information_schema.plugins WHERE plugin_name='BLACKHOLE' AND plugin_status='ACTIVE';" 2>>"$PR_LOG")
-    local bhr=$?
-    if [[ $bhr -ne 0 ]]; then
-        pr_log "ERROR: Failed to check BLACKHOLE plugin status (exit $bhr)."
+    PR_SKIPPED=()
+    PR_RUN_ID=$(date -u +%Y%m%d%H%M%S)
+    PR_DEFS="$BACKUPDIR/.mrm_defs"
+
+    # Nothing in the datadir is touched until the backup is known to be
+    # prepared and every definition has been read from it.
+    send_lines_to_api "Reading table definitions from the backup..." "$job" "$LVL_DEBUG"
+    if ! pr_export_definitions || ! pr_preflight "$PR_LOG"; then
         PR_STATUS=1
-        pr_cmd "Install BLACKHOLE plugin" $BINARY_CLIENT -e "set sql_log_bin=0;install plugin BLACKHOLE soname 'ha_blackhole.so'"
-    elif [[ "$bhc" == "0" ]]; then
-        pr_cmd "Install BLACKHOLE plugin" $BINARY_CLIENT -e "set sql_log_bin=0;install plugin BLACKHOLE soname 'ha_blackhole.so'"
-    else
-        pr_log "BLACKHOLE plugin already installed."
+        pr_log "Partial restore aborted before any change to the datadir."
+        echo "Partial restore aborted before any change. See $PR_LOG." >>"$LOG_DIR/$job.out"
+        send_lines_to_api "Partial restore aborted before any change to the datadir." "$job" "$LVL_ERROR"
+        return $PR_STATUS
     fi
 
-    local oe=(exp cfg TRG)
-    local de=(MYD CSV)
-
-    for dir in $(ls -d $BACKUPDIR/*/ | xargs -n 1 basename | grep -vE 'mysql|performance_schema|replication_manager_schema'); do
-        pr_log "Restoring database $dir."
-        send_lines_to_api "Restoring $dir..." "$job" "$LVL_DEBUG"
-        pr_cmd "Create database $dir" $BINARY_CLIENT -e "set sql_log_bin=0;drop database IF EXISTS $dir; CREATE DATABASE $dir;"
-
-        for file in $(find $BACKUPDIR/$dir/ -name "*.ibd" | xargs -n 1 basename | cut -d'.' --complement -f2-); do
-            pr_pipe "Create FRM stub for $dir.$file" "cat \"$BACKUPDIR/$dir/$file.frm\" | sed -e 's/\\x06\\x00\\x49\\x6E\\x6E\\x6F\\x44\\x42\\x00\\x00\\x00/\\x09\\x00\\x42\\x4C\\x41\\x43\\x4B\\x48\\x4F\\x4C\\x45/g' >\"$DATADIR/$dir/mrm_pivo.frm\""
-            if [[ $isr -eq 1 ]]; then
-                pr_cmd "Chown FRM stub for $dir.$file" chown "$(db_owner mysql:mysql)" "$DATADIR/$dir/mrm_pivo.frm"
+    local db t type engine views=() mh
+    PR_IS_REPLICA=0
+    mh=$(pr_master_host)
+    [[ -n "$mh" ]] && PR_IS_REPLICA=1
+    # MySQL spells it DISABLE ON REPLICA (the SLAVE form is deprecated there).
+    PR_DISABLE_ON_REPLICA="DISABLE ON SLAVE"
+    if ! $BINARY_CLIENT -N -e "SELECT VERSION()" 2>/dev/null | grep -qi mariadb; then
+        PR_DISABLE_ON_REPLICA="DISABLE ON REPLICA"
+    fi
+    for db in $(pr_list_databases); do
+        pr_log "Restoring database $db."
+        send_lines_to_api "Restoring $db..." "$job" "$LVL_DEBUG"
+        pr_recreate_database "$db"
+        while IFS=$'\t' read -r t type engine; do
+            [[ -z "$t" ]] && continue
+            if [[ "$type" == "VIEW" ]]; then
+                views+=("$db.$t")
+            elif [[ "$engine" == "InnoDB" ]]; then
+                pr_restore_innodb_table "$db" "$t"
+            elif [[ "$engine" == "MEMORY" ]]; then
+                pr_restore_memory_table "$db" "$t"
             else
-                pr_log "Skipping chown for $dir.$file; not running as root."
+                pr_restore_file_table "$db" "$t" "$engine"
             fi
-            pr_cmd "Prepare table $dir.$file for import" $BINARY_CLIENT -e "set sql_log_bin=0;ALTER TABLE $dir.mrm_pivo  engine=innodb;RENAME TABLE $dir.mrm_pivo TO $dir.$file; ALTER TABLE $dir.$file DISCARD TABLESPACE;"
-            pr_cmd "Move .ibd for $dir.$file" mv "$BACKUPDIR/$dir/$file.ibd" "$DATADIR/$dir/$file.ibd"
-            for ext in "${oe[@]}"; do
-                local s="$BACKUPDIR/$dir/$file.$ext"
-                local d="$DATADIR/$dir/$file.$ext"
-                if [[ -f "$s" ]]; then
-                    pr_cmd "Move .$ext for $dir.$file" mv "$s" "$d"
-                else
-                    pr_log "Skipping .$ext for $dir.$file (not found)."
-                fi
-            done
-            pr_cmd "Import tablespace for $dir.$file" $BINARY_CLIENT -e "set sql_log_bin=0;ALTER TABLE $dir.$file IMPORT TABLESPACE"
-        done
-        for ext in "${de[@]}"; do
-            for file in $(find $BACKUPDIR/$dir/ -name "*.$ext" | xargs -n 1 basename | cut -d'.' --complement -f2-); do
-                pr_cmd "Move $ext files for $dir.$file" mv "$BACKUPDIR/$dir/$file."* "$DATADIR/$dir/"
-                pr_cmd "Flush table $dir.$file" $BINARY_CLIENT -e "set sql_log_bin=0;FLUSH TABLE $dir.$file"
-            done
-        done
+        done <"$PR_DEFS/$db/.list"
     done
-    for file in $(find $BACKUPDIR/mysql/ -name "*.MYD" | xargs -n 1 basename | cut -d'.' --complement -f2-); do
+    # Routines before views: a view may call a stored function.
+    for db in $(pr_list_databases); do
+        pr_restore_routines "$db"
+    done
+    # Views last: they may select from tables of any database. A view on
+    # another view can fail until that one exists, hence a few passes.
+    local pass pending=("${views[@]}") retry
+    for pass in 1 2 3 4 5; do
+        retry=()
+        for t in "${pending[@]}"; do
+            db="${t%%.*}"
+            if ! pr_create_from_definition "$db" "${t#*.}"; then
+                retry+=("$t")
+            fi
+        done
+        pending=("${retry[@]}")
+        [[ ${#pending[@]} -eq 0 ]] && break
+    done
+    for t in "${pending[@]}"; do
+        pr_skip "$t" "view could not be recreated"
+    done
+    pr_verify_restore
+    if [[ ${#PR_SKIPPED[@]} -gt 0 ]]; then
+        pr_log "Objects not restored (${#PR_SKIPPED[@]}): ${PR_SKIPPED[*]}"
+        send_lines_to_api "Partial restore could not restore ${#PR_SKIPPED[@]} object(s): ${PR_SKIPPED[*]}" "$job" "$LVL_ERROR"
+    fi
+    for file in $(find $BACKUPDIR/mysql/ -name "*.MYD" | xargs -r -n 1 basename | cut -d'.' --complement -f2-); do
         pr_cmd "Move MyISAM files for mysql.$file" mv "$BACKUPDIR/mysql/$file."* "$DATADIR/mysql/"
         pr_cmd "Flush table mysql.$file" $BINARY_CLIENT -e "set sql_log_bin=0;FLUSH TABLE mysql.$file"
     done
@@ -1694,7 +2321,7 @@ partialRestore() {
     # every channel by its real ConnectionName, symmetric with the
     # StopAllSlaves() call made before the restore began.
     local mh=""
-    mh=$($BINARY_CLIENT -N -e "SHOW SLAVE STATUS" 2>>"$PR_LOG" | awk -F '	' 'NR==1{print $2}')
+    mh=$(pr_master_host)
     if [[ -n "$mh" && "$mh" != "NULL" ]]; then
         pr_log "Master_Host configured ($mh); leaving channel restart to repman."
     else
@@ -2012,7 +2639,7 @@ for job in "${JOBS[@]}"; do
             ;;
         mariabackup)
             cd /docker-entrypoint-initdb.d
-            $MARIADB_BACKUP --innobackupex --defaults-file="$MYSQL_CONF/my.cnf" --databases-exclude=.system --protocol=TCP --user="$USER" --host="$MYSQL_SERVER" --password="$PASSWORD" --port="$MYSQL_PORT" --stream=xbstream 2>"$LOG_DIR/backup.out" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
+            $MARIADB_BACKUP --innobackupex --defaults-file="$MYSQL_CONF/my.cnf" --databases-exclude=.system --protocol=TCP --user="$USER" --host="$MYSQL_SERVER" --password="$PASSWORD" --port="$MYSQL_PORT" --stream=xbstream "$LOG_DIR/" 2>"$LOG_DIR/backup.out" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
             ;;
         errorlog)
             dblogfile "$ERRORLOG" "$job"
