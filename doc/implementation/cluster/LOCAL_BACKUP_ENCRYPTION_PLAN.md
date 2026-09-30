@@ -2,7 +2,7 @@
 
 ## Scope
 
-`backup-encryption-enabled` encrypts local backup artifacts written by
+`backup-encryption` encrypts local backup artifacts written by
 Replication Manager. It is independent of Restic repository encryption and
 does not change the Restic repository password or its configuration.
 
@@ -22,7 +22,7 @@ it does not encrypt database files in place.
 Enable local backup encryption per cluster:
 
 ```toml
-backup-encryption-enabled = true
+backup-encryption = true
 ```
 
 The encryption password is the database root password resolved by

@@ -32,7 +32,7 @@ func TestIsMonitoringSecretVersioningEnabled(t *testing.T) {
 	})
 
 	t.Run("backup encryption turns versioning on", func(t *testing.T) {
-		conf := &Config{MonitoringSecretVersioning: false, BackupEncryptionEnabled: true}
+		conf := &Config{MonitoringSecretVersioning: false, BackupEncryption: true}
 		if !conf.IsMonitoringSecretVersioningEnabled() {
 			t.Fatalf("expected secret versioning enabled when backup encryption is enabled")
 		}

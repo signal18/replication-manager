@@ -1179,7 +1179,7 @@ func (cluster *Cluster) tickBody() {
 		cluster.CheckInterventionSchedule()
 
 		if cluster.runOnceAfterTopology {
-			if cluster.Conf.BackupEncryptionEnabled {
+			if cluster.Conf.BackupEncryption {
 				// Once per process: removes encryption staging left by a crash
 				// or kill at startup, before any encrypted backup job runs.
 				cluster.trackTickGoroutine(cluster.cleanupStaleEncryptionArtifacts)

@@ -48,7 +48,7 @@ type BackupMetadata struct {
 	IntegrityAlgo     string         `json:"integrityAlgo,omitempty"`
 	EncryptionKey     string         `json:"encryptionKey"`
 	// EncryptionFailed is an in-memory-only signal (never persisted) set when
-	// backup-encryption-enabled but the post-producer encryption step failed.
+	// backup-encryption but the post-producer encryption step failed.
 	// It exists solely so WriteBackupMetadata does not re-derive Completed=true
 	// from the underlying backup tool's own job state (which has no idea
 	// encryption ran or failed) and publish a failed-encryption backup as a

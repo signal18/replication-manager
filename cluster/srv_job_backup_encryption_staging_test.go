@@ -31,7 +31,7 @@ func newEncryptionTestCluster(t *testing.T, pass string) *Cluster {
 		WorkingDir: filepath.Join(t.TempDir(), "enc"),
 		Conf: &config.Config{
 			WorkingDir:              t.TempDir(),
-			BackupEncryptionEnabled: true,
+			BackupEncryption: true,
 			Secrets:                 map[string]config.Secret{"db-servers-credential": {Value: "root:" + pass}},
 		},
 		StateMachine: &state.StateMachine{},
@@ -72,7 +72,7 @@ func TestPrepareBackupStaging(t *testing.T) {
 		t.Fatalf("stale staging output was not removed")
 	}
 
-	c.Conf.BackupEncryptionEnabled = false
+	c.Conf.BackupEncryption = false
 	if got := c.prepareBackupStaging(dest); got != dest {
 		t.Fatalf("encryption off must write to dest itself, got %q", got)
 	}
@@ -80,7 +80,7 @@ func TestPrepareBackupStaging(t *testing.T) {
 
 func TestEncryptionDisabledLeavesExistingBackupDirectoryUntouched(t *testing.T) {
 	c, server := newStagingTestServer(t)
-	c.Conf.BackupEncryptionEnabled = false
+	c.Conf.BackupEncryption = false
 	dir := server.GetMyBackupDirectoryPath()
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatalf("create backup directory: %v", err)
@@ -169,7 +169,7 @@ func TestFinalizeStagingWithEncryptionSwitchedOff(t *testing.T) {
 	staging := c.prepareBackupStaging(dest)
 	os.WriteFile(staging, []byte("dump"), 0600)
 
-	c.Conf.BackupEncryptionEnabled = false
+	c.Conf.BackupEncryption = false
 	meta := &backupmgr.BackupMetadata{Dest: staging}
 	if err := server.finalizeBackupEncryption(meta, "logical"); err != nil {
 		t.Fatalf("finalizeBackupEncryption: %v", err)
@@ -310,7 +310,7 @@ func TestFinalizeBinlogCopyFromStaging(t *testing.T) {
 	}
 
 	// Encryption off: copies go straight to the backup directory.
-	c.Conf.BackupEncryptionEnabled = false
+	c.Conf.BackupEncryption = false
 	if got := server.binlogCopyDir(); filepath.Clean(got) != filepath.Clean(server.GetMyBackupDirectory()) {
 		t.Fatalf("encryption off must copy into the backup directory, got %q", got)
 	}

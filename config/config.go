@@ -834,7 +834,7 @@ type Config struct {
 	BackupEstimateSize                        bool              `mapstructure:"backup-estimate-size" toml:"backup-estimate-size" json:"backupEstimateSize"`
 	BackupEstimateSizePercentage              int               `mapstructure:"backup-estimate-size-percentage" toml:"backup-estimate-size-percentage" json:"backupEstimateSizePercentage"`
 	BackupGrowthPercentage                    int               `mapstructure:"backup-growth-percentage" toml:"backup-growth-percentage" json:"backupGrowthPercentage"`
-	BackupEncryptionEnabled                   bool              `mapstructure:"backup-encryption-enabled" toml:"backup-encryption-enabled" json:"backupEncryptionEnabled"`
+	BackupEncryption                          bool              `mapstructure:"backup-encryption" toml:"backup-encryption" json:"backupEncryption"`
 	SchedulerDatabaseLogsTableRotate          bool              `mapstructure:"scheduler-db-servers-logs-table-rotate" toml:"scheduler-db-servers-logs-table-rotate" json:"schedulerDbServersLogsTableRotate"`
 	SchedulerDatabaseLogsTableRotateCron      string            `mapstructure:"scheduler-db-servers-logs-table-rotate-cron" toml:"scheduler-db-servers-logs-table-rotate-cron" json:"schedulerDbServersLogsTableRotateCron"`
 	SchedulerMaintenanceDatabaseLogsTableKeep int               `mapstructure:"scheduler-db-servers-logs-table-keep" toml:"scheduler-db-servers-logs-table-keep" json:"schedulerDatabaseLogsTableKeep"`
@@ -2099,7 +2099,7 @@ func (conf *Config) IsMonitoringSecretVersioningEnabled() bool {
 		return false
 	}
 
-	return conf.MonitoringSecretVersioning || conf.BackupEncryptionEnabled
+	return conf.MonitoringSecretVersioning || conf.BackupEncryption
 }
 
 func (conf *Config) GenerateKey(Logger *logrus.Logger) error {

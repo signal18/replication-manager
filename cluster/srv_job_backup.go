@@ -488,7 +488,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	}
 	// The receiver writes to staging when encryption is on; metadata tracks
 	// it until JobFinishReceiveFile publishes or discards it.
-	if cluster.Conf.BackupEncryptionEnabled {
+	if cluster.Conf.BackupEncryption {
 		dest = dest + partialSuffixForCleanup
 	}
 
@@ -3787,7 +3787,7 @@ func (server *ServerMonitor) GetMyBackupDirectory() string {
 
 	if _, err := os.Stat(s3dir); os.IsNotExist(err) {
 		mode := os.FileMode(os.ModePerm)
-		if cluster.Conf.BackupEncryptionEnabled {
+		if cluster.Conf.BackupEncryption {
 			// Encrypted backup jobs use a short plaintext staging period, so
 			// their directories must not be group/world readable.
 			mode = 0700
@@ -3798,7 +3798,7 @@ func (server *ServerMonitor) GetMyBackupDirectory() string {
 		}
 	}
 
-	if cluster.Conf.BackupEncryptionEnabled {
+	if cluster.Conf.BackupEncryption {
 		cluster.cleanupStaleEncryptionArtifacts()
 		cluster.tightenBackupDirectoryPermissionsOnce(s3dir)
 	}
@@ -5199,7 +5199,7 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, u
 		Tags:    tags,
 		Host:    resticHost,
 	}
-	if cluster.Conf.BackupEncryptionEnabled {
+	if cluster.Conf.BackupEncryption {
 		backupOpt.Exclude = []string{"*.partial"}
 	}
 	resultCh := cluster.ResticManager.AddBackupTaskWithOptions(backupOpt)

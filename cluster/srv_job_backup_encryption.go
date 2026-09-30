@@ -30,7 +30,7 @@ const backupPermissionsMigratedMarker = ".backup-encryption-permissions-migrated
 
 // tightenBackupDirectoryPermissionsOnce chmods every pre-existing directory
 // under dir to 0700 and every pre-existing file to 0600, exactly once ever
-// (guarded by backupPermissionsMigratedMarker), when backup-encryption-enabled
+// (guarded by backupPermissionsMigratedMarker), when backup-encryption
 // is turned on. This exists because GetMyBackupDirectory()/os.MkdirAll only
 // ever set the mode of a directory at the moment it is *created* — an
 // upgrade with backups from before this feature (or from before encryption
@@ -154,7 +154,7 @@ func (cluster *Cluster) localEncryptionTempDir() string {
 // would otherwise rename it to a non-".partial" name). With encryption off it
 // is dest itself, unchanged from before.
 func (cluster *Cluster) prepareBackupStaging(dest string) string {
-	if !cluster.Conf.BackupEncryptionEnabled {
+	if !cluster.Conf.BackupEncryption {
 		return dest
 	}
 	staging := dest + partialSuffixForCleanup
@@ -454,7 +454,7 @@ func (server *ServerMonitor) withdrawFailedPhysicalBackup(meta *backupmgr.Backup
 }
 
 // finalizeBackupEncryption encrypts a completed backup artifact in place
-// when backup-encryption-enabled is set. It follows the plan's publication
+// when backup-encryption is set. It follows the plan's publication
 // rule: encrypt to a .partial sibling, close, atomically rename to the
 // final .enc/.tar.enc path, and only then remove the plaintext source. On
 // success it rewrites meta.Dest to the new path and sets the encryption
@@ -473,7 +473,7 @@ func (server *ServerMonitor) withdrawFailedPhysicalBackup(meta *backupmgr.Backup
 // wasting a potentially large dump/copy. Call this first, before starting
 // the backup tool, and abort immediately on error.
 func (cluster *Cluster) preflightBackupEncryptionKey() error {
-	if !cluster.Conf.BackupEncryptionEnabled {
+	if !cluster.Conf.BackupEncryption {
 		return nil
 	}
 	_, err := cluster.backupEncryptionPassword()
@@ -485,7 +485,7 @@ func (server *ServerMonitor) finalizeBackupEncryption(meta *backupmgr.BackupMeta
 	if meta == nil || meta.Dest == "" {
 		return nil
 	}
-	if !cluster.Conf.BackupEncryptionEnabled {
+	if !cluster.Conf.BackupEncryption {
 		// Encryption was switched off while this job ran: publish the
 		// staged output under its normal plaintext name.
 		if isBackupStagingPath(meta.Dest) {
@@ -582,7 +582,7 @@ func (server *ServerMonitor) reportBackupEncryptionFailure(meta *backupmgr.Backu
 // left untouched.
 func (server *ServerMonitor) finalizeBinlogFileEncryption(plainPath string) (string, error) {
 	cluster := server.ClusterGroup
-	if !cluster.Conf.BackupEncryptionEnabled {
+	if !cluster.Conf.BackupEncryption {
 		return plainPath, nil
 	}
 
@@ -612,7 +612,7 @@ const binlogStagingDirName = ".binlog" + partialSuffixForCleanup
 // directory otherwise.
 func (server *ServerMonitor) binlogCopyDir() string {
 	dir := server.GetMyBackupDirectory()
-	if !server.ClusterGroup.Conf.BackupEncryptionEnabled {
+	if !server.ClusterGroup.Conf.BackupEncryption {
 		return dir
 	}
 	staging := filepath.Join(dir, binlogStagingDirName) + "/"
@@ -632,7 +632,7 @@ func (server *ServerMonitor) finalizeBinlogCopy(copyDir, binlog string) (string,
 	if filepath.Clean(copyDir) == filepath.Clean(backupDir) {
 		return server.finalizeBinlogFileEncryption(src)
 	}
-	if !cluster.Conf.BackupEncryptionEnabled {
+	if !cluster.Conf.BackupEncryption {
 		// Encryption switched off mid-copy: publish as plaintext.
 		dest := filepath.Join(backupDir, binlog)
 		if err := os.Rename(src, dest); err != nil {
@@ -862,7 +862,7 @@ func (cluster *Cluster) openEncryptedFileStream(encFile string) (io.ReadCloser, 
 // next backup's encryption step would then clobber the previous encrypted
 // artifact in place with no .old copy ever made.
 func (cluster *Cluster) previousBackupArtifactPath(dest string) string {
-	if cluster.Conf.BackupEncryptionEnabled {
+	if cluster.Conf.BackupEncryption {
 		if fileExists(dest + ".enc") {
 			return dest + ".enc"
 		}
