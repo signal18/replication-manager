@@ -876,6 +876,56 @@ func (collector *Collector) ResizeVolumeV3(namespace, volname, size string) (str
 	return "", fmt.Errorf("volume resize refused on %s/vol/%s (size %s): status %d: %s", namespace, volname, size, resp.StatusCode(), strings.TrimSpace(string(resp.Body)))
 }
 
+// WaitVolumeResizeV3 follows the queued resize of <namespace>/vol/<name> through the
+// instance monitors: "resizing" while a stage runs, then "idle" when the volume converged
+// or "resize failed" when a stage refused (the reason is in the volume's om logs). Returns
+// the final monitor state, or "timeout" when nothing settled within timeout.
+func (collector *Collector) WaitVolumeResizeV3(namespace, volname string, timeout time.Duration) (string, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return "", err
+	}
+	path := apiv3.PathOptional(namespace + "/vol/" + volname)
+	deadline := time.Now().Add(timeout)
+	sawResizing := false
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+		resp, err := client.GetInstancesWithResponse(ctx, &apiv3.GetInstancesParams{Path: &path}, collector.RequestCloserV3())
+		cancel()
+		if err != nil {
+			return "", err
+		}
+		failed, resizing := false, false
+		if resp.JSON200 != nil {
+			for _, it := range resp.JSON200.Items {
+				if it.Data.Monitor == nil {
+					continue
+				}
+				switch it.Data.Monitor.State.String() {
+				case "resize failed":
+					failed = true
+				case "resizing":
+					resizing = true
+				}
+			}
+		}
+		if failed {
+			return "resize failed", nil
+		}
+		if resizing {
+			sawResizing = true
+		} else if sawResizing || time.Since(deadline.Add(-timeout)) > 4*time.Second {
+			// settled (idle everywhere) after a resize was seen, or nothing ever started
+			// resizing in the first seconds: the orchestration is done either way.
+			return "idle", nil
+		}
+		if time.Now().After(deadline) {
+			return "timeout", nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
+
 func (collector *Collector) StopServiceV3(cluster, svc string) error {
 
 	svcparts := strings.SplitN(svc, "/", 3)

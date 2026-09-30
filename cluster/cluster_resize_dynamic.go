@@ -253,8 +253,27 @@ func (cluster *Cluster) openSVCResizeDisk(server *ServerMonitor, gb int) (bool, 
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"OpenSVC volume resize queued on %s: %s/vol/%s -> %s (orchestration %s)", server.URL, ns, svcname, size, id)
-	return true, nil
+	// The action is a queued orchestration: read its outcome from the instance monitors
+	// so a refusal is tracked (WARN0220), not assumed applied.
+	outcome, err := svc.WaitVolumeResizeV3(ns, svcname, openSVCVolumeResizeTimeout)
+	if err != nil {
+		return false, fmt.Errorf("resize queued (%s) but its outcome could not be read: %w", id, err)
+	}
+	switch outcome {
+	case "idle":
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"OpenSVC volume resize done on %s: %s/vol/%s is %s", server.URL, ns, svcname, size)
+		return true, nil
+	case "resize failed":
+		return false, fmt.Errorf("the orchestrator's instance resize of %s/vol/%s to %s failed (see: om %s/vol/%s logs)", ns, svcname, size, ns, svcname)
+	default:
+		return false, fmt.Errorf("the resize of %s/vol/%s to %s did not settle within %s (orchestration %s)", ns, svcname, size, openSVCVolumeResizeTimeout, id)
+	}
 }
+
+// openSVCVolumeResizeTimeout bounds how long a disk step waits for the queued volume
+// resize to settle: a zfs refquota move is instantaneous, a replicated chain a few seconds.
+const openSVCVolumeResizeTimeout = 60 * time.Second
 
 // openSVCResize moves the container MEMORY cap on the om3 PG slice live (pg_mem_limit
 // + pg update) — no restart. Only available on OpenSVC v3 (pg update is a v3 action);
