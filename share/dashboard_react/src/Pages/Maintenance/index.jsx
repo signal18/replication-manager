@@ -133,8 +133,8 @@ const resticTaskDetail = (row) => {
 // BKUSlider is the backup plan bar, the BKU twin of the configurator's DBUSlider: the
 // per-cluster reservation prov-db-bku on a linear 1..BKU_MAX scale. What the user must read
 // at a glance is the GB LIMIT the plan gives them and how much of it is used: the plan in
-// GB, the usage bar in GB against it, and the billing consequence (over the plan is billed
-// at the over-commit surcharge, unused plan at the reduced rate).
+// GB and the usage bar in GB against it. No pricing here: the product is not only a cloud
+// offer; what a unit costs, when it does, is the marketplace's business (Resource Manager).
 const BKU_MAX = 128
 function BKUSlider({ value, isDisabled, onChange, unitGB, bku }) {
   const [draft, setDraft] = useState(null)
@@ -150,7 +150,7 @@ function BKUSlider({ value, isDisabled, onChange, unitGB, bku }) {
       <Flex justify='space-between' mb={1} align='start'>
         <Box>
           <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Backup storage plan (BKU) — per cluster</Text>
-          <Text fontSize='11px' color='gray.500'>1 BKU = {unitGB} GB of backup disk, nothing else. Counts the local backups and the application volumes. Above the plan is billed at the over-commit surcharge; unused plan is billed at the reduced rate.</Text>
+          <Text fontSize='11px' color='gray.500'>1 BKU = {unitGB} GB of backup disk, nothing else. Counts the local backups and the application volumes kept on the cluster.</Text>
         </Box>
         <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>plan {plan} BKU = {planGB} GB</Text>
       </Flex>
@@ -187,10 +187,10 @@ function BKUSlider({ value, isDisabled, onChange, unitGB, bku }) {
             </Text>
             <Text fontSize='sm' fontWeight='semibold' color={bku.overPlanUnits > 0 ? 'red.500' : 'var(--text-color)'}>
               {bku.overPlanUnits > 0
-                ? `${bku.overPlanUnits} BKU over the plan (${bku.overPlanUnits * unitGB} GB): billed ${bku.billedUnits} BKU`
+                ? `${bku.overPlanUnits * unitGB} GB over the plan (${bku.overPlanUnits} BKU)`
                 : bku.underPlanUnits > 0
-                  ? `${bku.underPlanUnits} BKU of plan unused (${bku.underPlanUnits * unitGB} GB free): billed ${bku.billedUnits} BKU`
-                  : `at the plan: billed ${bku.billedUnits} BKU`}
+                  ? `${bku.underPlanUnits * unitGB} GB left in the plan (${bku.underPlanUnits} BKU)`
+                  : 'at the plan'}
             </Text>
           </Flex>
           <Progress value={Math.min(pct, 100)} size='sm' borderRadius='full' colorScheme={pct >= 100 ? 'red' : pct >= 80 ? 'orange' : 'blue'} />
@@ -680,7 +680,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
               onChange={(value) => {
                 const delta = value - bkuPlan
                 if (delta === 0) return
-                setBkuConfirm({ isOpen: true, delta, title: `Confirm the backup plan at ${value} BKU = ${value * bkuGB} GB of backup storage for the cluster (above it is billed at the over-commit surcharge)` })
+                setBkuConfirm({ isOpen: true, delta, title: `Confirm the backup plan at ${value} BKU = ${value * bkuGB} GB of backup storage for the cluster` })
               }}
             />
             <TableType3 dataArray={backupDataStats} className={styles.statsTable} />
