@@ -342,7 +342,7 @@ var GlobalError = map[string]string{
 	"GERR004":  "Server arbitration not eligible: %s",
 	"GERR005":  "ReplicationManager has %d cluster(s) with open blockers: %s",
 	"GWARN012": "ReplicationManager cannot reach Meet support service: %s",
-	"GWARN013": "Periodic %s task still running from previous cycle — possible network hang",
+	"GWARN013": "Periodic %s task still running from the previous cycle: the cycle is longer than its period (see the cycle timing log; a hung pull/push hits its own timeout)",
 	"GWARN014": "Instance not registered on Cloud18 (%s) — some community features may be disabled",
 	"GWARN015": "Offline license invalid — plan falls back to free: %s",
 	"GWARN016": "Total contracted capacity reached the resource limit: %s",
