@@ -888,7 +888,9 @@ func (cm *ConfigManager) cloneRepositoryWithBootstrap(path string, conf *config.
 	if errors.Is(cloneErr, transport.ErrEmptyRemoteRepository) {
 		return cm.initRepositoryForEmptyRemote(path, cloneopt.URL)
 	}
-
+	if cloneErr == nil {
+		cm.ForceFullStage() // fresh checkout: pushedHash is meaningless until the next full push
+	}
 	return repo, cloneErr
 }
 
@@ -1120,6 +1122,7 @@ func (cm *ConfigManager) RefreshGitMetadata(conf *config.Config) error {
 		Password: tok,
 	}
 
+	cm.ForceFullStage() // the metadata is about to be replaced: re-stage everything on the next push
 	tmpBase := filepath.Join(path, ".tmp")
 	if err := os.MkdirAll(tmpBase, 0o755); err != nil {
 		return fmt.Errorf("cannot create metadata temp base %s: %w", tmpBase, err)
@@ -1381,8 +1384,12 @@ func (cm *ConfigManager) AddConfigSyncToGitignore(conf *config.Config) {
 	}
 }
 
-// ForceFullStage makes the next push stage every file regardless of the content hash
-// (the gate's periodic safety push, git-monitoring-ticker).
+// ForceFullStage makes the next push stage every file regardless of the content hash.
+// Called whenever the local repository no longer matches what pushedHash remembers: a
+// (re)clone (CloneConfigFromGit, cloneRepositoryWithBootstrap, RefreshGitMetadata) or a
+// reset of the local branch onto the remote head. NOT tied to the gate's safety push:
+// on preprod git-monitoring-ticker=30 s made the safety push due at every gate, which
+// would re-stage everything every cycle and void the gate.
 func (cm *ConfigManager) ForceFullStage() {
 	cm.forceStageAll.Store(true)
 }
@@ -1519,6 +1526,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 				cm.logger.Warnf("none", config.ConstLogModGit, "Reset to remote head failed (continuing): %v", resetErr)
 			} else {
 				cm.logger.Debugf("none", config.ConstLogModGit, "Local branch rebased onto remote head %s before commit", remoteRef.Hash().String()[:8])
+				cm.forceStageAll.Store(true) // the index moved under us: re-stage everything this cycle
 			}
 		}
 	}
@@ -1728,7 +1736,9 @@ func (cm *ConfigManager) ShallowClone(conf *config.Config) error {
 	})
 
 	cm.logger.Debugf("none", config.ConstLogModGit, "Shallow clone took: %s", time.Since(clonestart))
-
+	if err == nil {
+		cm.ForceFullStage() // fresh checkout: re-stage everything on the next push
+	}
 	return err
 }
 

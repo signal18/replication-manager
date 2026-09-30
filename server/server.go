@@ -3173,9 +3173,6 @@ func (repman *ReplicationManager) Run() error {
 						// replayed changes land in this same cycle. See
 						// doc/implementation/config/CONFIG_EVENT_LOG.md.
 						repman.ReplayPeerConfigEvents()
-						if safetyDue {
-							repman.ConfigManager.ForceFullStage() // the periodic safety push re-stages everything
-						}
 						gitStart := time.Now()
 						repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
 						gitDur = time.Since(gitStart)
