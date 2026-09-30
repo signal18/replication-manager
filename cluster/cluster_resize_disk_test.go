@@ -50,6 +50,13 @@ func TestApplyDiskResize_GrowsUpServersAndTracksRefusal(t *testing.T) {
 		t.Fatalf("db2 refusal must be tracked: %+v", db2.DiskResizeRefused)
 	}
 
+	// A refused grow back at or above the volume clears a stale quota-above state.
+	db2.DiskQuotaAbove = &DiskQuotaAbove{DeclaredGB: 50, VolumeBytes: 60 << 30}
+	c.applyDiskResize(50, 60)
+	if db2.DiskQuotaAbove != nil {
+		t.Fatalf("a declaration back at the volume's size must clear the quota-above state")
+	}
+
 	// The next grow that goes through clears the refusal.
 	delete(rz.refuse, "db2:3306")
 	c.applyDiskResize(60, 70)

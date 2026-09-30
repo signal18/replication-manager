@@ -1482,6 +1482,11 @@ func (cluster *Cluster) applyDiskResize(fromGB, toGB int) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
 				"Disk resize %dGB -> %dGB refused on %s: %s", fromGB, toGB, s.URL, err)
 			s.DiskResizeRefused = &DiskResizeRefusal{From: strconv.Itoa(fromGB), To: strconv.Itoa(toGB), Reason: err.Error(), Since: time.Now()}
+			// The declaration moved back at or above the volume: the quota-above state no
+			// longer describes anything, whatever the orchestrator said about this move.
+			if q := s.DiskQuotaAbove; q != nil && int64(toGB)*1024*1024*1024 >= q.VolumeBytes {
+				s.DiskQuotaAbove = nil
+			}
 			cluster.logResize(s, resizeDisk, grow, false, ResizeNo, nil)
 			continue
 		}
