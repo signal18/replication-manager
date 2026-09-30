@@ -604,6 +604,10 @@ type DBUAggregate struct {
 func (m *ResourceManager) SetConsumed(k ResourceKey, r *DBUReading) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if r == nil { // no reading (server off, or forgotten after unprovision): drop the key
+		delete(m.consumed, k)
+		return
+	}
 	m.consumed[k] = r
 }
 

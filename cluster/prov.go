@@ -360,9 +360,7 @@ func (cluster *Cluster) Unprovision() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
-			prx.DelProvisionCookie()
-			prx.DelRestartCookie()
-			prx.DelReprovisionCookie()
+			cluster.ForgetProxyInstance(prx) // clean slate: datadir (cookies included)
 			if hprx, ok := prx.(*HaproxyProxy); ok {
 				hprx.delProvisionedBootstrapServers()
 			}
@@ -391,10 +389,7 @@ func (cluster *Cluster) Unprovision() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unprovision error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Unprovision done for database %s", cluster.Name+"/svc/"+server.Name)
-			server.DelProvisionCookie()
-			server.DelRestartCookie()
-			server.DelReprovisionCookie()
-			server.DelConfigPathCookie()
+			cluster.ForgetInstance(server) // clean slate: datadir, crash events, tracked state (cookies included)
 		}
 	}
 	err := cluster.WaitClusterStop()
@@ -432,9 +427,7 @@ func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
 	cluster.UnprovisionProxyScript(prx)
 	err := <-cluster.errorChan
 	if err == nil {
-		prx.DelProvisionCookie()
-		prx.DelReprovisionCookie()
-		prx.DelRestartCookie()
+		cluster.ForgetProxyInstance(prx) // clean slate: datadir (cookies included)
 		if hprx, ok := prx.(*HaproxyProxy); ok {
 			hprx.delProvisionedBootstrapServers()
 		}
@@ -464,9 +457,7 @@ func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error 
 	cluster.UnprovisionDatabaseScript(server)
 	err := <-cluster.errorChan
 	if err == nil {
-		server.DelProvisionCookie()
-		server.DelReprovisionCookie()
-		server.DelRestartCookie()
+		cluster.ForgetInstance(server) // clean slate: datadir, crash events, tracked state (cookies included)
 	} else {
 		return err
 	}
