@@ -251,6 +251,20 @@ func (cluster *Cluster) openSVCResizeDisk(server *ServerMonitor, gb int) (bool, 
 	}
 	id, err := svc.ResizeVolumeV3(ns, svcname, size)
 	if err != nil {
+		// rc40 answers a shrink with 400 "<vol> is configured to hold Xgi, and a resize
+		// only grows": that is not a refusal of the move but the orchestrator not
+		// shrinking yet -- the declaration moved (env.size), the volume did not: tracked
+		// as WARN0221 until the om3 release that lowers a quota down to the used data.
+		if strings.Contains(err.Error(), "resize only grows") {
+			volBytes, verr := svc.GetVolumeSizeV3(ns, svcname)
+			if verr != nil {
+				volBytes = -1
+			}
+			server.DiskQuotaAbove = &DiskQuotaAbove{DeclaredGB: gb, VolumeBytes: volBytes, Since: time.Now()}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"OpenSVC volume %s/vol/%s stays at %s above the declared %dGB on %s: the orchestrator does not shrink yet", ns, svcname, humanBytes(volBytes), gb, server.URL)
+			return false, nil
+		}
 		return false, err
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
@@ -269,6 +283,7 @@ func (cluster *Cluster) openSVCResizeDisk(server *ServerMonitor, gb int) (bool, 
 		// declared disk -- the om3 release that lowers a quota down to the used data.
 		if volBytes, verr := svc.GetVolumeSizeV3(ns, svcname); verr == nil {
 			if volBytes > int64(gb)*1024*1024*1024 {
+				server.DiskResizeRefused = nil
 				server.DiskQuotaAbove = &DiskQuotaAbove{DeclaredGB: gb, VolumeBytes: volBytes, Since: time.Now()}
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 					"OpenSVC volume %s/vol/%s stays at %s above the declared %dGB on %s: the orchestrator does not shrink yet", ns, svcname, humanBytes(volBytes), gb, server.URL)
