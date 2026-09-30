@@ -142,7 +142,6 @@ PR_RUN_ID=""
 PR_DEFS=""
 PR_IS_REPLICA=0
 PR_EVENTS_READABLE=1
-PR_DISABLE_ON_REPLICA="DISABLE ON SLAVE"
 PR_FILEBASE=""
 PR_NEWFILES=""
 
@@ -1212,8 +1211,10 @@ remove_run_lockdir() {
         done
     fi
 
-    # Remove the run lockdir if it exists
+    # Remove the run lockdir if it exists (with the owner PID a job's
+    # lockdir holds, see recoverDeadJobs)
     if [ -d "$run_lockdir" ]; then
+        rm -f "$run_lockdir/pid"
         rmdir "$run_lockdir"
     fi
 
@@ -1500,6 +1501,113 @@ doneJob() {
     $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), state=$jobstate, result=LOAD_FILE('$LOG_DIR/$job.out'), done=$done  WHERE id='$ID';"
 }
 
+# receiveBackup unpacks the backup stream repman sends into $BACKUPDIR, on the
+# datadir volume, with the given unpack tool (mbstream or xbstream). The
+# unpacked size is not known in advance (repman only knows the compressed
+# file), and a reseed must never fill the disk the running server writes to:
+# RECEIVE_MIN_FREE_PCT percent of the volume stays free. The stream is capped
+# at the free space above that reserve, measured when it starts (head -c, so
+# no transfer speed can overshoot it), and free space is also checked while
+# it arrives (other writers use the volume too). When either stops it, the
+# partial backup is removed and PR_STATUS=1; returns 1. A broken stream is
+# otherwise caught later by the prepare check.
+readonly RECEIVE_MIN_FREE_PCT=10
+receiveBackup() {
+    local unpack="$1" sub total avail floor budget count="$LOG_DIR/$job.received" got i
+    read -r total avail < <(df -P -B1 "$DATADIR" 2>/dev/null | awk 'NR==2{print $2, $4}')
+    floor=$((${total:-0} * RECEIVE_MIN_FREE_PCT / 100))
+    budget=$((${avail:-0} - floor))
+    if [[ -z "$avail" || $budget -le 0 ]]; then
+        receiveBackupStop "$avail" "$total"
+        return 1
+    fi
+    rm -f "$count"
+    (socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT |
+        head -c "$budget" | tee >(wc -c >"$count") | $unpack -x -C "$BACKUPDIR") &
+    sub=$!
+    while kill -0 "$sub" 2>/dev/null; do
+        read -r total avail < <(df -P -B1 "$DATADIR" 2>/dev/null | awk 'NR==2{print $2, $4}')
+        if [[ -n "$avail" && "$avail" -lt "$floor" ]]; then
+            # socat, head, tee and the unpack tool are children of the
+            # subshell (read from /proc: ps is not in every image).
+            kill $(grep -l "^PPid:[[:space:]]*$sub\$" /proc/[0-9]*/status 2>/dev/null | cut -d/ -f3) "$sub" 2>/dev/null
+            wait "$sub" 2>/dev/null
+            socatCleaner
+            receiveBackupStop "$avail" "$total"
+            return 1
+        fi
+        sleep 1
+    done
+    wait "$sub" 2>/dev/null
+    for i in $(seq 1 50); do
+        [[ -s "$count" ]] && break
+        sleep 0.1
+    done
+    got=$(cat "$count" 2>/dev/null)
+    rm -f "$count"
+    if [[ "${got:-0}" -ge "$budget" ]]; then
+        receiveBackupStop "$((avail))" "$total"
+        return 1
+    fi
+    return 0
+}
+
+receiveBackupStop() {
+    local avail="${1:-0}" total="${2:-0}" msg
+    rm -rf "$BACKUPDIR"
+    msg="Backup transfer stopped: it would leave less than ${RECEIVE_MIN_FREE_PCT}% free on the datadir volume ($((avail / 1048576)) MiB free of $((total / 1048576)) MiB when stopped). The partial backup was removed; nothing in the datadir was changed. Free space, or restore on a larger volume."
+    echo "$msg" >>"$LOG_DIR/$job.out"
+    case "$job" in
+    reseed*) echo "$msg" >>"$LOG_DIR/reseed.out" ;;
+    flashback*) echo "$msg" >>"$LOG_DIR/flash.out" ;;
+    esac
+    send_lines_to_api "$msg" "$job" "$LVL_ERROR"
+    PR_STATUS=1
+}
+
+# recoverDeadJobs ends every job whose dbjobs run died without ending it
+# (SIGKILL, OOM kill, a timeout): its .run lockdir is left behind holding the
+# PID of a process that no longer runs dbjobs. repman would otherwise keep
+# the job open forever and refuse every new run of it ("Concurrent reseed
+# blocked"). The job is reported as failed through the usual channel, so
+# repman clears its state exactly as for any job ending in error. Its log
+# lock file goes too: the dead run's log follower never removed it, and it
+# would stop the next run of the job from streaming its log. A reseed or
+# flashback killed while reading the backup's definitions also leaves its
+# temporary server running; it is stopped here. A lockdir without a PID
+# (written by an older dbjobs) is left alone.
+recoverDeadJobs() {
+    local d job pid cmd msg
+    for d in "$LOG_DIR"/*.run; do
+        [[ -d "$d" && -f "$d/pid" ]] || continue
+        job=$(basename "$d" .run)
+        [[ " ${JOBS[*]} " == *" $job "* ]] || continue
+        pid=$(cat "$d/pid" 2>/dev/null)
+        [[ "$pid" =~ ^[0-9]+$ ]] || continue
+        cmd=$(tr '\0' ' ' 2>/dev/null <"/proc/$pid/cmdline")
+        # Still running (a concurrent dbjobs run owns it).
+        [[ "$pid" != "$$" && "$cmd" == *dbjobs* ]] && continue
+        msg="Job $job was interrupted: its dbjobs run (pid $pid) ended without finishing it."
+        echo "$msg" >>"$LOG_DIR/$job.out"
+        send_lines_to_api "$msg" "$job" "$LVL_ERROR"
+        case "$job" in
+        reseed* | flashback*)
+            PR_LOG="$LOG_DIR/$job.out"
+            pr_stop_stale_definition_server
+            PR_LOG=""
+            ;;
+        esac
+        if [[ "$JOBS_MODE" == "api" ]]; then
+            report_job_state "$job" "error"
+        else
+            $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs SET end=NOW(), state=5, done=0, result='$msg' WHERE task='$job' AND done=0 AND state IN (1,2);"
+        fi
+        rm -f "$d/pid"
+        rmdir "$d" 2>/dev/null
+        rm -f "$LOCK_DIR/${job}_lockfile"
+    done
+}
+
 pauseJob() {
     if [[ "$JOBS_MODE" == "api" ]]; then
         report_job_state "$job" "waiting"
@@ -1586,6 +1694,26 @@ pr_list_databases() {
 # drift from the tablespaces being imported, whatever changed on the master
 # since. The server runs on its own directory (a copy of the small mysql/
 # schema, links to everything else) so the prepared backup is not modified.
+# pr_stop_stale_definition_server stops a temporary definition server left
+# running by an earlier restore that died (killed job, timeout): nothing else
+# would ever stop it. It is recognised by its --datadir, which only that
+# server uses, so the live server is never touched.
+pr_stop_stale_definition_server() {
+    local ro="$DATADIR/.system/mrm_defs_ro" p pids=() i
+    for p in /proc/[0-9]*; do
+        tr '\0' '\n' <"$p/cmdline" 2>/dev/null | grep -qxF -- "--datadir=$ro" && pids+=("${p#/proc/}")
+    done
+    [[ ${#pids[@]} -eq 0 ]] && return 0
+    pr_log "Stopping ${#pids[@]} temporary server(s) left by an earlier restore: ${pids[*]}"
+    kill -TERM "${pids[@]}" 2>/dev/null
+    for i in $(seq 1 60); do
+        kill -0 "${pids[@]}" 2>/dev/null || return 0
+        sleep 0.5
+    done
+    kill -9 "${pids[@]}" 2>/dev/null
+    return 0
+}
+
 pr_export_definitions() {
     local ro="$DATADIR/.system/mrm_defs_ro" run="$DATADIR/.system/mrm_defs_run" sock="$DATADIR/.system/mrm_defs_run/mariadbd.sock" bin f n db t type engine
     bin=$(command -v mariadbd || command -v mysqld || ls /usr/sbin/mariadbd /usr/sbin/mysqld 2>/dev/null | head -1)
@@ -1597,6 +1725,7 @@ pr_export_definitions() {
     # files, Aria log copies -- lives in its own mysql-owned directory on the
     # datadir volume ($DATADIR/.system itself is root-owned), never in the
     # container's /tmp, which is not a declared volume.
+    pr_stop_stale_definition_server
     rm -rf "$ro" "$run" "$PR_DEFS"
     mkdir -p "$ro" "$run/aria" "$run/tmp" "$PR_DEFS"
     # MySQL 8 (xtrabackup) prepared backups carry no redo log (an empty
@@ -1639,14 +1768,19 @@ pr_export_definitions() {
     local args=(--defaults-file="$run/backup.cnf" --datadir="$ro" --socket="$sock" --skip-networking
         --event-scheduler=OFF --innodb-read-only=1 --read-only=1 --skip-log-bin
         --loose-skip-slave-start --loose-skip-replica-start --loose-mysqlx=OFF
-        --innodb-buffer-pool-size=64M --pid-file="$run/mariadbd.pid" --log-error="$run/mariadbd.err" --tmpdir="$run/tmp")
+        --innodb-buffer-pool-size=64M --pid-file="$run/mariadbd.pid" --log-error="$run/mariadbd.err" --tmpdir="$run/tmp"
+        --loose-skip-ssl)
     if [[ $isr -eq 1 ]]; then
         chown -R mysql:mysql "$ro" "$run"
         chown -h mysql:mysql "$ro"/*
         args+=(--user=mysql)
     fi
     args+=(--loose-aria-log-dir-path="$run/aria")
-    local cli="${BINARY_CLIENT%% *}" ro_client="" up=0 i attempt
+    # No TLS on the socket-only server: MariaDB >= 11.4 would otherwise
+    # generate a certificate at startup that its own client verifies and can
+    # refuse ("certificate is not yet valid" on a small clock step). Clients
+    # that do not know the option ignore it (loose-).
+    local cli="${BINARY_CLIENT%% *} --loose-skip-ssl" ro_client="" up=0 i attempt
     if [[ $prime -eq 1 ]]; then
         local pargs=("${args[@]}")
         pargs=("${pargs[@]/--innodb-read-only=1/--innodb-read-only=0}")
@@ -1678,9 +1812,9 @@ pr_export_definitions() {
     for attempt in accounts skip-grants; do
         if [[ "$attempt" == "skip-grants" ]]; then
             # None of our credentials opens the backup's accounts (e.g. the
-            # root password changed since the backup): read everything but
-            # the events, which this mode cannot show.
-            pr_log "No login into the backup's accounts; restarting it with --skip-grant-tables (events cannot be read that way)."
+            # root password changed since the backup). MariaDB cannot show
+            # events in this mode (MySQL 8 can: checked once it is up).
+            pr_log "No login into the backup's accounts; restarting it with --skip-grant-tables (MariaDB cannot show events that way)."
             args+=(--skip-grant-tables)
             PR_EVENTS_READABLE=0
         fi
@@ -1715,6 +1849,16 @@ pr_export_definitions() {
         done
     done
     [[ -z "$ro_client" ]] && up=0
+    # MySQL 8 keeps events in its data dictionary (no mysql.event table) and
+    # shows them in this mode. MariaDB answers information_schema.events
+    # with no rows instead of an error, so an empty answer proves nothing:
+    # with a mysql.event table present the events stay unreadable.
+    if [[ $up -eq 1 && $PR_EVENTS_READABLE -eq 0 ]] &&
+        ! $ro_client -N -e "SELECT 1 FROM mysql.event LIMIT 0" >/dev/null 2>&1 &&
+        $ro_client -N -e "SELECT COUNT(*) FROM information_schema.events" >/dev/null 2>>"$PR_LOG"; then
+        pr_log "Events are readable in --skip-grant-tables mode on this server (data dictionary)."
+        PR_EVENTS_READABLE=1
+    fi
     local rc=0
     if [[ $up -eq 0 ]]; then
         pr_log "ERROR: the read-only server on the prepared backup did not start."
@@ -1784,6 +1928,9 @@ pr_export_definitions() {
         done
         $ro_client -e "SHUTDOWN" >/dev/null 2>&1
     fi
+    # Whatever happened above, the server is asked to stop by signal too
+    # (a refused SHUTDOWN would otherwise leave it running).
+    kill -TERM "$(cat "$run/mariadbd.pid" 2>/dev/null)" 2>/dev/null
     for i in $(seq 1 120); do
         [[ -f "$run/mariadbd.pid" ]] && kill -0 "$(cat "$run/mariadbd.pid" 2>/dev/null)" 2>/dev/null || break
         sleep 0.5
@@ -1826,7 +1973,7 @@ pr_master_host() {
 # replica an event is created DISABLE ON SLAVE, as replication itself does:
 # an enabled event would run, and write, on the replica.
 pr_restore_routines() {
-    local db="$1" rtype rname base mode def
+    local db="$1" rtype rname base mode def disable variants done_ok
     if [[ -s "$PR_DEFS/$db/.events_unreadable" ]]; then
         while read -r rname; do
             [[ -n "$rname" ]] && pr_skip "EVENT $db.$rname" "event definitions cannot be read without the backup's accounts"
@@ -1838,13 +1985,25 @@ pr_restore_routines() {
         base="$PR_DEFS/$db/.routines.d/$rtype.$rname"
         mode=$(cat "$base.mode" 2>/dev/null)
         def=$(cat "$base.sql")
+        variants=("$def")
         if [[ "$rtype" == "EVENT" && $PR_IS_REPLICA -eq 1 ]]; then
-            def=$(printf '%s' "$def" | sed -E "0,/ (ENABLE|DISABLE ON SLAVE|DISABLE ON REPLICA|DISABLE) (ON COMPLETION|COMMENT|DO)/s// $PR_DISABLE_ON_REPLICA \\2/")
+            # The spelling depends on the server: MariaDB and MySQL 8.0 know
+            # DISABLE ON SLAVE, newer MySQL DISABLE ON REPLICA. A refused
+            # CREATE changes nothing, so each is simply tried in turn.
+            variants=()
+            for disable in "DISABLE ON SLAVE" "DISABLE ON REPLICA"; do
+                variants+=("$(printf '%s' "$def" | sed -E "0,/ (ENABLE|DISABLE ON SLAVE|DISABLE ON REPLICA|DISABLE) (ON COMPLETION|COMMENT|DO)/s// $disable \\2/")")
+            done
         fi
         pr_log "CMD: Create $rtype $db.$rname from its backup definition"
-        if ! printf '%s\nDELIMITER ;;\nSET SESSION sql_mode=%s;;\nUSE `%s`;;\n%s;;\n' "$PR_SQL_INIT" "'$mode'" "$db" "$def" | $BINARY_CLIENT >>"$PR_LOG" 2>&1; then
-            pr_skip "$rtype $db.$rname" "cannot recreate it from its backup definition"
-        fi
+        done_ok=0
+        for def in "${variants[@]}"; do
+            if printf '%s\nDELIMITER ;;\nSET SESSION sql_mode=%s;;\nUSE `%s`;;\n%s;;\n' "$PR_SQL_INIT" "'$mode'" "$db" "$def" | $BINARY_CLIENT >>"$PR_LOG" 2>&1; then
+                done_ok=1
+                break
+            fi
+        done
+        [[ $done_ok -eq 1 ]] || pr_skip "$rtype $db.$rname" "cannot recreate it from its backup definition"
     done <"$PR_DEFS/$db/.routines"
 }
 
@@ -2104,15 +2263,19 @@ pr_verify_restore() {
 }
 
 
-# pr_preflight checks, before anything in the datadir is touched, that the
-# prepare succeeded and that every table of the backup has a definition and
-# a supported layout. A failure leaves the server exactly as it was.
-pr_preflight() {
-    local prep_log="$1" db t type engine rc=0
-    if ! grep -q "completed OK!" "$prep_log" 2>/dev/null; then
-        pr_log "ERROR: the backup prepare did not complete (no 'completed OK!' in $prep_log); nothing was changed."
+# pr_prepare_ok and pr_preflight check, before anything in the datadir is
+# touched, that the prepare succeeded (before a server is ever started on the
+# backup) and that every table of the backup has a definition and a
+# supported layout. A failure leaves the server exactly as it was.
+pr_prepare_ok() {
+    if ! grep -q "completed OK!" "$1" 2>/dev/null; then
+        pr_log "ERROR: the backup prepare did not complete (no 'completed OK!' in $1); nothing was changed."
         return 1
     fi
+}
+
+pr_preflight() {
+    local db t type engine rc=0
     if [[ ! -f "$PR_DEFS/.databases" ]]; then
         pr_log "ERROR: no database list was exported from the backup."
         return 1
@@ -2184,7 +2347,7 @@ partialRestore() {
     # Nothing in the datadir is touched until the backup is known to be
     # prepared and every definition has been read from it.
     send_lines_to_api "Reading table definitions from the backup..." "$job" "$LVL_DEBUG"
-    if ! pr_export_definitions || ! pr_preflight "$PR_LOG"; then
+    if ! pr_prepare_ok "$PR_LOG" || ! pr_export_definitions || ! pr_preflight; then
         PR_STATUS=1
         pr_log "Partial restore aborted before any change to the datadir."
         echo "Partial restore aborted before any change. See $PR_LOG." >>"$LOG_DIR/$job.out"
@@ -2196,11 +2359,6 @@ partialRestore() {
     PR_IS_REPLICA=0
     mh=$(pr_master_host)
     [[ -n "$mh" ]] && PR_IS_REPLICA=1
-    # MySQL spells it DISABLE ON REPLICA (the SLAVE form is deprecated there).
-    PR_DISABLE_ON_REPLICA="DISABLE ON SLAVE"
-    if ! $BINARY_CLIENT -N -e "SELECT VERSION()" 2>/dev/null | grep -qi mariadb; then
-        PR_DISABLE_ON_REPLICA="DISABLE ON REPLICA"
-    fi
     for db in $(pr_list_databases); do
         pr_log "Restoring database $db."
         send_lines_to_api "Restoring $db..." "$job" "$LVL_DEBUG"
@@ -2329,6 +2487,14 @@ partialRestore() {
     fi
 
     if [[ "$PR_STATUS" -eq 0 ]]; then
+        # The backup is no longer needed: without this it would hold about
+        # its whole size on the datadir volume until the next reseed. After a
+        # failure it is kept, to investigate. Quarantined leftovers of
+        # earlier failed restores are bounded to the newest three.
+        pr_try "Remove the restored backup $BACKUPDIR" rm -rf "$BACKUPDIR"
+        ls -1dt "$DATADIR"/.system/orphan-quarantine-* 2>/dev/null | tail -n +4 | while read -r f; do
+            pr_try "Remove old quarantine $f" rm -rf "$f"
+        done
         echo "Partial restore completed successfully. See $PR_LOG." >>"$LOG_DIR/$job.out"
         send_lines_to_api "Partial restore done." "$job" "$LVL_INFO"
     else
@@ -2508,6 +2674,8 @@ echo "" > "$LOG_DIR/curl_response.txt"
 echo "" > "$LOG_DIR/request.txt"
 echo "" > "$LOG_DIR/encrypt.txt"
 
+recoverDeadJobs
+
 jobsCheck
 checkresult=$?
 if [ "$checkresult" != "2" ]; then
@@ -2579,6 +2747,7 @@ for job in "${JOBS[@]}"; do
         rm -f "$CHECKPOINT_DIR/$job.checkpoint"
 
         mkdir -p "$LOG_DIR/$job.run"
+        echo "$$" >"$LOG_DIR/$job.run/pid"
         process_log_file "$job" &
         trap 'remove_run_lockdir "$job"' EXIT
         echo "Processing $job"
@@ -2598,9 +2767,10 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
-            $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
-            partialRestore
+            if receiveBackup xbstream; then
+                $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
+                partialRestore
+            fi
             ;;
         reseedmariabackup)
             rm -rf $BACKUPDIR
@@ -2608,10 +2778,11 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | mbstream -x -C $BACKUPDIR
-            # mbstream -p, --parallel
-            $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
-            partialRestore
+            if receiveBackup mbstream; then
+                # mbstream -p, --parallel
+                $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
+                partialRestore
+            fi
             ;;
         flashbackxtrabackup)
             rm -rf $BACKUPDIR
@@ -2619,9 +2790,10 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
-            $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
-            partialRestore
+            if receiveBackup xbstream; then
+                $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
+                partialRestore
+            fi
             ;;
         flashbackmariabackup)
             rm -rf $BACKUPDIR
@@ -2629,9 +2801,10 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,accept-timeout=600,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
-            $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
-            partialRestore
+            if receiveBackup xbstream; then
+                $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
+                partialRestore
+            fi
             ;;
         xtrabackup)
             cd /docker-entrypoint-initdb.d

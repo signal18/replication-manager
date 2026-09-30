@@ -521,7 +521,7 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 		rows.Scan(&t.Id, &t.Task, &t.Done, &t.State)
 
 		if t.State <= 3 && t.Done == 0 {
-			return 0, fmt.Errorf("Failed to retrieve data on jobs table: %v", err)
+			return 0, fmt.Errorf("Task %s is still open in the jobs table (id %d, state %d): wait for it to end or cancel it", task, t.Id, t.State)
 		}
 	}
 	rows.Close()
