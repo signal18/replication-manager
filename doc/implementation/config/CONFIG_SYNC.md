@@ -107,8 +107,10 @@ every 4 min on the active (the "git-sync starvation" of the monitoring loop).
 - `addFileToCommit` stages with `AddWithOptions{Path, SkipStatus: true}`: the index update alone.
 - `stageIfChanged`: a file is enqueued only when its content hash differs from `pushedHash` (the
   content as of the last SUCCESSFUL push, promoted from `pendingHash` after the push; a failed push
-  drops `pendingHash` so the same files retry). Zero staged files → no commit, no push. The gate's
-  periodic safety push (`safetyDue`) calls `ForceFullStage()` and re-stages everything once.
+  drops `pendingHash` so the same files retry). Zero staged files → no commit, no push. `ForceFullStage()` re-stages everything once
+  after a (re)clone, a metadata refresh or a reset of the local branch onto the remote head — the
+  cases where the remote may not hold what `pushedHash` remembers. It is deliberately NOT tied to
+  the gate's safety push: on preprod `git-monitoring-ticker=30` makes that push due at every gate.
   Log line per cycle: `Staged N changed files (M unchanged skipped, force=..) in X`.
 - The gate times its phases and logs at WARN `Config sync cycle took X, longer than its Y period:
   save A, git push B` when a cycle overruns; GWARN013's text no longer asserts a network hang (a
