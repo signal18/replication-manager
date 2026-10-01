@@ -162,6 +162,9 @@ var toolACLPaths = map[string]string{
 	"database-optimize":                 "/servers/{server}/actions/optimize",
 	"database-set-maintenance":          "/servers/{server}/actions/maintenance",
 	"database-set-read-only":            "/servers/{server}/actions/toggle-read-only",
+	"database-set-prefered-master":      "/servers/{server}/actions/set-prefered",
+	"database-set-ignored-master":       "/servers/{server}/actions/set-ignored",
+	"database-set-unrated-master":       "/servers/{server}/actions/set-unrated",
 	"database-set-read-write":           "/servers/{server}/actions/toggle-read-only",
 	"database-kill-query":               "/servers/{server}/actions/kill-query",
 	// backup, read

@@ -431,6 +431,55 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 	)
 
 	s.addTool(
+		mcp.NewTool("database-set-prefered-master",
+			mcp.WithDescription("Mark a database server as a preferred master: on the next failover or switchover the election picks it first among the candidates, when it is healthy and not too late. Adds it to the cluster's preferred list (prefmaster), it does not trigger a switchover. Undo with database-set-unrated-master."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name in host:port format (e.g. db2:3306)")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, node, err := s.getServerHelper(req.GetString("cluster_name", ""), req.GetString("server_name", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			cl.AddPrefMaster(node)
+			return mcp.NewToolResultText(toJSON(map[string]interface{}{"status": "server set as preferred master", "server": node.URL, "prefmaster": cl.Conf.PrefMaster})), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("database-set-ignored-master",
+			mcp.WithDescription("Mark a database server as ignored for the master election: it is never promoted by a failover or a switchover (a reporting or backup replica, a node on a weaker host). Adds it to the cluster's ignored list (ignore-servers); replication keeps running on it. Undo with database-set-unrated-master."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name in host:port format (e.g. db3:3306)")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, node, err := s.getServerHelper(req.GetString("cluster_name", ""), req.GetString("server_name", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			cl.AddIgnoreSrv(node)
+			return mcp.NewToolResultText(toJSON(map[string]interface{}{"status": "server ignored for the master election", "server": node.URL, "ignoreServers": cl.Conf.IgnoreSrv})), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("database-set-unrated-master",
+			mcp.WithDescription("Remove a database server from both the preferred and the ignored lists of the master election, back to an ordinary candidate. The undo of database-set-prefered-master and database-set-ignored-master."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name in host:port format (e.g. db2:3306)")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, node, err := s.getServerHelper(req.GetString("cluster_name", ""), req.GetString("server_name", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			_ = cl.RemovePrefMaster(node)
+			_ = cl.RemoveIgnoreSrv(node)
+			return mcp.NewToolResultText(toJSON(map[string]interface{}{"status": "server unrated for the master election", "server": node.URL, "prefmaster": cl.Conf.PrefMaster, "ignoreServers": cl.Conf.IgnoreSrv})), nil
+		},
+	)
+
+	s.addTool(
 		mcp.NewTool("database-set-read-write",
 			mcp.WithDescription("Set a server to read-write mode (SET GLOBAL read_only=OFF). Use only when you intend this server to accept writes — typically only the master should be read-write. Setting a replica to read-write while replication is running risks data inconsistency. For safe master promotion, use cluster-switchover instead.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
