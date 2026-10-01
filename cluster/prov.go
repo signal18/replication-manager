@@ -512,7 +512,12 @@ func (cluster *Cluster) UpgradeDatabaseService(server *ServerMonitor) error {
 // when off, or when the orchestrator/API has no full-deployment push (OpenSVC v2 legacy).
 // Called SYNCHRONOUSLY from the rolling loop and returns its error directly -- it must NOT
 // go through cluster.errorChan (per-op cross-talk, issue #1769).
-func (cluster *Cluster) UpgradeDatabaseDeploymentOnStart(server *ServerMonitor) error {
+//
+// keepImage (the rolling RESTART): the service keeps the image it runs, whatever
+// prov-db-image says -- a restart never changes the database version, only the rolling
+// upgrade does (#1861: curepipe 2026-10-01, prov-db-image "latest" re-rendered on a
+// restart put two replicas on a stale local 11.7.2 under an 11.8.8 master).
+func (cluster *Cluster) UpgradeDatabaseDeploymentOnStart(server *ServerMonitor, keepImage bool) error {
 	if !cluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart {
 		return nil
 	}
@@ -520,8 +525,17 @@ func (cluster *Cluster) UpgradeDatabaseDeploymentOnStart(server *ServerMonitor) 
 	case config.ConstOrchestratorOpenSVC:
 		// Full re-render + push exists only on the v3 API; the v2 legacy path keeps a
 		// restart deployment-neutral rather than failing it.
-		if svc := cluster.OpenSVCConnect(); !svc.IsV3() {
+		svc := cluster.OpenSVCConnect()
+		if !svc.IsV3() {
 			return nil
+		}
+		if keepImage {
+			if img := cluster.openSVCCurrentDatabaseImage(server); img != "" && img != cluster.Conf.ProvDbImg {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+					"Restart keeps the image %s runs (%s), prov-db-image %s is for the rolling upgrade", server.URL, img, cluster.Conf.ProvDbImg)
+				server.DeployImageOverride = img
+				defer func() { server.DeployImageOverride = "" }()
+			}
 		}
 		return cluster.OpenSVCUpdateDatabaseTemplate(server)
 	case config.ConstOrchestratorKubernetes:
@@ -531,10 +545,45 @@ func (cluster *Cluster) UpgradeDatabaseDeploymentOnStart(server *ServerMonitor) 
 		// stopped phase, which satisfies that. The K8s container RESOURCE baseline and the
 		// live in-place pod resize are owned by the k8sResizer (cluster_resize_k8s.go): that
 		// stays a separate mechanism and is NOT re-implemented here.
-		return cluster.K8SUpdateDatabaseServiceConfig(server, false)
+		return cluster.k8sUpdateDatabaseServiceConfigKeepImage(server, keepImage)
 	default:
 		return nil
 	}
+}
+
+// openSVCCurrentDatabaseImage reads env.docker_image from the service's current
+// configuration on the orchestrator: the image the service runs today.
+func (cluster *Cluster) openSVCCurrentDatabaseImage(server *ServerMonitor) string {
+	svc := cluster.OpenSVCConnect()
+	parts := strings.SplitN(server.ServiceName, "/", 3)
+	if len(parts) != 3 {
+		return ""
+	}
+	raw, err := svc.GetObjectConfigFileV3(parts[0], parts[1], parts[2])
+	if err != nil {
+		return ""
+	}
+	return openSVCConfigValue(string(raw), "env", "docker_image")
+}
+
+// openSVCConfigValue reads key under [section] of an om3 config file (INI, "key = value").
+func openSVCConfigValue(raw, section, key string) string {
+	in := false
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") {
+			in = line == "["+section+"]"
+			continue
+		}
+		if !in || strings.HasPrefix(line, "#") {
+			continue
+		}
+		kv := strings.SplitN(line, "=", 2)
+		if len(kv) == 2 && strings.TrimSpace(kv[0]) == key {
+			return strings.TrimSpace(kv[1])
+		}
+	}
+	return ""
 }
 
 // StopDatabaseServiceClean stops the database with innodb_fast_shutdown=0 for

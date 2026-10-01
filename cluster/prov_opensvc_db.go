@@ -652,7 +652,7 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 	}
 	svcenv["nodes"] = agent.HostName
 	svcenv["size"] = server.ClusterGroup.Conf.ProvDisk + "g"
-	svcenv["docker_image"] = server.ClusterGroup.Conf.ProvDbImg
+	svcenv["docker_image"] = server.deployImage()
 	ips := strings.Split(server.ClusterGroup.Conf.ProvGateway, ".")
 	masks := strings.Split(server.ClusterGroup.Conf.ProvNetmask, ".")
 	for i, mask := range masks {
@@ -1257,4 +1257,13 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
 		}
 	}
 	return vm
+}
+
+// deployImage is the image a deployment render uses: the running image a rolling restart
+// pinned on the server (#1861), else prov-db-image.
+func (server *ServerMonitor) deployImage() string {
+	if server.DeployImageOverride != "" {
+		return server.DeployImageOverride
+	}
+	return server.ClusterGroup.Conf.ProvDbImg
 }

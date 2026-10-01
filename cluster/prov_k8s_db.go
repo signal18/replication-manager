@@ -1460,6 +1460,21 @@ func (cluster *Cluster) K8SForceRepullDatabaseService(s *ServerMonitor) error {
 // a live pod's image would race the Deployment controller's own rollout
 // against the caller's explicit stop/start.
 func (cluster *Cluster) k8sUpdateDatabaseServiceConfigWithClient(client kubernetes.Interface, name string, forcePull bool) error {
+	return cluster.k8sUpdateDatabaseServiceConfigWithClientImage(client, name, forcePull, false)
+}
+
+// k8sUpdateDatabaseServiceConfigKeepImage is the rolling-restart entry: the Deployment is
+// re-rendered with the image its main container runs today, not prov-db-image (#1861).
+func (cluster *Cluster) k8sUpdateDatabaseServiceConfigKeepImage(s *ServerMonitor, keepImage bool) error {
+	client, err := cluster.K8SConnectAPI()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
+		return err
+	}
+	return cluster.k8sUpdateDatabaseServiceConfigWithClientImage(client, s.Name, false, keepImage)
+}
+
+func (cluster *Cluster) k8sUpdateDatabaseServiceConfigWithClientImage(client kubernetes.Interface, name string, forcePull bool, keepImage bool) error {
 	deploymentsClient := client.AppsV1().Deployments(cluster.Name)
 	dep, err := deploymentsClient.Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
@@ -1487,10 +1502,12 @@ func (cluster *Cluster) k8sUpdateDatabaseServiceConfigWithClient(client kubernet
 	jobsName := name + "-dbjobs"
 	hasMain := false
 	hasJobs := false
+	currentImage := ""
 	for _, c := range dep.Spec.Template.Spec.Containers {
 		switch c.Name {
 		case name:
 			hasMain = true
+			currentImage = c.Image
 		case jobsName:
 			hasJobs = true
 		}
@@ -1506,6 +1523,9 @@ func (cluster *Cluster) k8sUpdateDatabaseServiceConfigWithClient(client kubernet
 		pullPolicy = apiv1.PullAlways
 	}
 	image := cluster.Conf.ProvDbImg
+	if keepImage && currentImage != "" {
+		image = currentImage // a restart keeps the running image (#1861)
+	}
 
 	container := func(cname string) map[string]interface{} {
 		return map[string]interface{}{

@@ -265,6 +265,7 @@ type ServerMonitor struct {
 	HasConfigPathChanged            bool
 	HasConfigDiff                   bool                                 `json:"hasConfigDiff"`         // Indicates if there are differences between deployed and generated config
 	IssuedBufferPoolBytes           int64                                `json:"issuedBufferPoolBytes"` // the innodb_buffer_pool_size a live memory resize actually SENT (SET GLOBAL); the in-flight gate compares the runtime with THIS, never with the configurator's latest wish (#1822); 0 = nothing issued
+	DeployImageOverride             string                               `json:"-"`                     // set by a rolling restart: render the deployment with the image the service runs, not prov-db-image (#1861)
 	DiskQuotaAbove                  *DiskQuotaAbove                      `json:"diskQuotaAbove"`        // tracked: the volume stays above the declared disk after a shrink the orchestrator ignored (WARN0221)
 	DiskResizeRefused               *DiskResizeRefusal                   `json:"diskResizeRefused"`     // tracked: the last volume grow the orchestrator refused on this server (WARN0220), nil once one goes through
 	PendingCgroupShrink             bool                                 `json:"-"`                     // a memory live-shrink lowered the buffer pool and is waiting for the async InnoDB resize to complete before shrinking the cgroup (anti-OOM)

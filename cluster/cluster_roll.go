@@ -228,6 +228,7 @@ func (cluster *Cluster) RollingRestart() error {
 					return err
 				}
 			} else {
+				stoppedAt := time.Now()
 				err := cluster.StopDatabaseService(slave)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.URL, err)
@@ -237,7 +238,7 @@ func (cluster *Cluster) RollingRestart() error {
 					return err
 				}
 
-				err = cluster.WaitDatabaseFailed(slave)
+				err = cluster.WaitDatabaseFailedOrRestarted(slave, stoppedAt)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling stop slave does not transit Failed %s %s", slave.URL, err)
 					if maintenanceEnabled {
@@ -250,7 +251,7 @@ func (cluster *Cluster) RollingRestart() error {
 				// env) so the slave comes up on the CURRENT OpenSVC service config, not the
 				// one written at the last provision. prov-orchestrator-deployment-upgrade-on-start
 				// (default on); non-fatal -- a push failure just leaves the previous cap.
-				if uerr := cluster.UpgradeDatabaseDeploymentOnStart(slave); uerr != nil {
+				if uerr := cluster.UpgradeDatabaseDeploymentOnStart(slave, true); uerr != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: deployment upgrade on start failed on slave %s (continuing): %s", slave.URL, uerr)
 				}
 				err = cluster.StartDatabaseWaitRejoin(slave)
@@ -313,6 +314,7 @@ func (cluster *Cluster) RollingRestart() error {
 			return err
 		}
 	} else {
+		stoppedAt := time.Now()
 		err := cluster.StopDatabaseService(master)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master stop failed %s %s", master.URL, err)
@@ -321,7 +323,7 @@ func (cluster *Cluster) RollingRestart() error {
 			}
 			return err
 		}
-		err = cluster.WaitDatabaseFailed(master)
+		err = cluster.WaitDatabaseFailedOrRestarted(master, stoppedAt)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not transit suspect %s %s", master.URL, err)
 			if maintenanceEnabled {
@@ -332,7 +334,7 @@ func (cluster *Cluster) RollingRestart() error {
 		// Reapply the deployment (the plan-driven container cap, image, run_args, env)
 		// so the old master comes up on the CURRENT OpenSVC service config.
 		// prov-orchestrator-deployment-upgrade-on-start (default on); non-fatal.
-		if uerr := cluster.UpgradeDatabaseDeploymentOnStart(master); uerr != nil {
+		if uerr := cluster.UpgradeDatabaseDeploymentOnStart(master, true); uerr != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: deployment upgrade on start failed on old master %s (continuing): %s", master.URL, uerr)
 		}
 		err = cluster.StartDatabaseWaitRejoin(master)
@@ -424,11 +426,12 @@ func (cluster *Cluster) rollingUpgradeStopUpdateStart(server *ServerMonitor, for
 	if !isKubernetes {
 		updateConfig()
 	}
+	stoppedAt := time.Now()
 	if err := stop(server); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade (%s): stop failed on %s: %s", phase, server.URL, err)
 		return err
 	}
-	if err := cluster.WaitDatabaseFailed(server); err != nil {
+	if err := cluster.WaitDatabaseFailedOrRestarted(server, stoppedAt); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade (%s): %s does not transit failed: %s", phase, server.URL, err)
 		return err
 	}

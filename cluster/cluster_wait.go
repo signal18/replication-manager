@@ -307,3 +307,32 @@ func (cluster *Cluster) WaitAlertDisable() {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Alerting is enabled from scheduler")
 	cluster.IsAlertDisable = false
 }
+
+// WaitDatabaseFailedOrRestarted is WaitDatabaseFailed for the rolling operations: the
+// orchestrator may bring an instance back on its own seconds after repman's instance
+// stop (om3 keeps the local expectation "started"), before the monitor has marked it
+// Failed -- curepipe 2026-10-01: db3 restarted 10 s after the stop and the wait timed
+// out at Maintenance, aborting the upgrade. A database seen up again with an uptime
+// younger than the stop counts as stopped-and-restarted, and the caller goes on.
+func (cluster *Cluster) WaitDatabaseFailedOrRestarted(server *ServerMonitor, since time.Time) error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state failed or restart on %s", server.URL)
+	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
+	defer ticker.Stop()
+	for i := int64(0); i < cluster.Conf.MonitorWaitRetry; i++ {
+		<-ticker.C
+		if server.IsInStateFailed() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state failed reach on %s", server.URL)
+			return nil
+		}
+		if !server.IsDown() && server.Conn != nil {
+			if up := server.GetDatabaseUptime(); up > 0 && up < int64(time.Since(since).Seconds())+2 {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+					"%s restarted by the orchestrator %ds after the stop (uptime %ds): counted as stopped and restarted", server.URL, int(time.Since(since).Seconds()), up)
+				return nil
+			}
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state failed on %s %d current state:%s", server.URL, i+1, server.State)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Wait state failed timeout on %s", server.URL)
+	return errors.New("Failed to wait state failed")
+}
