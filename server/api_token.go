@@ -64,19 +64,23 @@ const (
 
 // APIToken is a stored token record.
 type APIToken struct {
-	ID           string    `json:"id"`
-	User         string    `json:"user"`
-	Label        string    `json:"label"`
-	Grants       []string  `json:"grants"`   // compact grant prefixes requested by the owner
-	Clusters     []string  `json:"clusters"` // cluster scope; ["*"] = all
-	CreatedAt    time.Time `json:"createdAt"`
-	CreatedFrom  string    `json:"createdFrom"`
-	ExpiresAt    time.Time `json:"expiresAt,omitempty"`
-	LastUsedAt   time.Time `json:"lastUsedAt,omitempty"`
-	LastUsedFrom string    `json:"lastUsedFrom,omitempty"`
-	RevokedAt    time.Time `json:"revokedAt,omitempty"`
-	RevokedBy    string    `json:"revokedBy,omitempty"`
-	Token        string    `json:"token"` // the bearer string, kept so it reloads and can be shown again to its owner
+	ID          string    `json:"id"`
+	User        string    `json:"user"`
+	Label       string    `json:"label"`
+	Grants      []string  `json:"grants"`   // compact grant prefixes requested by the owner
+	Clusters    []string  `json:"clusters"` // cluster scope; ["*"] = all
+	CreatedAt   time.Time `json:"createdAt"`
+	CreatedFrom string    `json:"createdFrom"`
+	// OwnerAuthType is how the owner was authenticated when the token was issued
+	// ("SSO" or "Local"): a token issued by a Cloud18 identity keeps that identity
+	// for the self-service rules, which need an SSO caller.
+	OwnerAuthType string    `json:"ownerAuthType,omitempty"`
+	ExpiresAt     time.Time `json:"expiresAt,omitempty"`
+	LastUsedAt    time.Time `json:"lastUsedAt,omitempty"`
+	LastUsedFrom  string    `json:"lastUsedFrom,omitempty"`
+	RevokedAt     time.Time `json:"revokedAt,omitempty"`
+	RevokedBy     string    `json:"revokedBy,omitempty"`
+	Token         string    `json:"token"` // the bearer string, kept so it reloads and can be shown again to its owner
 }
 
 // APITokenView is what the API returns: the token string is only included when
@@ -452,7 +456,13 @@ func (repman *ReplicationManager) handlerMuxAPITokens(w http.ResponseWriter, r *
 			http.Error(w, "Error in request: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		t, err := repman.createAPIToken(username, form, r.RemoteAddr)
+		// The owner's auth type travels with the token: an SSO owner's token stays
+		// an SSO identity for the self-service rules.
+		ownerAuthType := ""
+		if claims, err := repman.GetJWTClaims(r); err == nil {
+			ownerAuthType = claims["AuthType"]
+		}
+		t, err := repman.createAPITokenAs(username, ownerAuthType, form, r.RemoteAddr)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -558,6 +568,13 @@ func (repman *ReplicationManager) listAPITokens(owner string, clusterName string
 // createAPIToken validates the form against the owner's grants and scope, mints
 // and stores the token.
 func (repman *ReplicationManager) createAPIToken(owner string, form APITokenForm, from string) (*APIToken, error) {
+	return repman.createAPITokenAs(owner, "", form, from)
+}
+
+// createAPITokenAs issues a token for owner authenticated as ownerAuthType ("SSO",
+// "Local" or "" when unknown): the type travels with the token so an SSO owner's
+// token is still an SSO identity for self-service.
+func (repman *ReplicationManager) createAPITokenAs(owner, ownerAuthType string, form APITokenForm, from string) (*APIToken, error) {
 	// The system service account is a machine identity with a derived key: it
 	// never mints bearer credentials, whatever grants a config may hand it.
 	if owner == "system" {
@@ -668,6 +685,9 @@ func (repman *ReplicationManager) createAPIToken(owner string, form APITokenForm
 		CreatedAt:   now,
 		CreatedFrom: from,
 		ExpiresAt:   expires,
+	}
+	if ownerAuthType == "SSO" {
+		t.OwnerAuthType = ownerAuthType
 	}
 	t.Token, err = repman.mintAPIToken(t)
 	if err != nil {

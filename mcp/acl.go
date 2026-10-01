@@ -137,6 +137,8 @@ var toolACLPaths = map[string]string{
 	"cluster-cleanup-replication":    "/actions/replication/cleanup",
 	// database, read
 	"get-server-status":       "/servers/{server}/status",
+	"get-server-replication":  "/servers/{server}/all-slaves-status",
+	"get-server-version":      "/servers/{server}",
 	"get-server-variables":    "/servers/{server}/variables",
 	"get-server-processlist":  "/servers/{server}/processlist",
 	"get-server-slow-queries": "/servers/{server}/slow-queries",

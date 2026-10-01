@@ -51,6 +51,59 @@ func (s *MCPServer) registerDatabaseReadTools() {
 	)
 
 	s.addTool(
+		mcp.NewTool("get-server-replication",
+			mcp.WithDescription("Get the replication picture of a server: its role (master, slave, standalone, failed), every replication channel it consumes (SHOW ALL SLAVES STATUS: master host, IO/SQL thread state, Seconds_Behind_Master, last errors, GTID positions) and what it serves as a master (SHOW MASTER STATUS: binlog file, position, GTID). Use it before any failover, switchover or rejoin decision, and to explain a lag or a stopped replica. Use server_name in host:port format (e.g. db1:3306)."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name in host:port format (e.g. db1:3306)")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			_, node, err := s.getServerHelper(req.GetString("cluster_name", ""), req.GetString("server_name", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			out := map[string]any{
+				"server":       node.URL,
+				"state":        node.State,
+				"isMaster":     node.IsMaster(),
+				"isSlave":      node.IsSlave,
+				"isDown":       node.IsDown(),
+				"replications": node.GetAllSlavesStatus(),
+				"masterStatus": node.GetMasterStatus(),
+			}
+			return mcp.NewToolResultText(toJSON(out)), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("get-server-version",
+			mcp.WithDescription("Get the database engine and version of a server: flavor (MariaDB, MySQL, Percona, PostgreSQL), major.minor.release, the full version string the server reports, and the image it was provisioned from (prov-db-image). Use it to check upgrade paths, feature availability per release and version skew between the nodes of a cluster. Use server_name in host:port format (e.g. db1:3306)."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name in host:port format (e.g. db1:3306)")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, node, err := s.getServerHelper(req.GetString("cluster_name", ""), req.GetString("server_name", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			out := map[string]any{
+				"server":       node.URL,
+				"state":        node.State,
+				"isDown":       node.IsDown(),
+				"image":        cl.Conf.ProvDbImg,
+				"version":      nil,
+				"versionShort": "",
+				"versionFull":  "",
+			}
+			if v := node.DBVersion; v != nil {
+				out["version"] = v
+				out["versionShort"] = v.ToString()
+				out["versionFull"] = v.ToFullString()
+			}
+			return mcp.NewToolResultText(toJSON(out)), nil
+		},
+	)
+
+	s.addTool(
 		mcp.NewTool("get-server-variables",
 			mcp.WithDescription("Get all SHOW VARIABLES for a specific server. Key variables to review: innodb_buffer_pool_size (should be ~70% of RAM), slave_parallel_workers (parallel replication), sync_binlog and innodb_flush_log_at_trx_commit (durability vs performance), long_query_time (slow query threshold), max_connections, tmp_table_size/max_heap_table_size (temp table limits). Useful for tuning analysis and comparing configuration across nodes."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),

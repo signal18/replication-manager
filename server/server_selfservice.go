@@ -191,7 +191,8 @@ func (repman *ReplicationManager) requestIdentity(r *http.Request) (identity str
 	if err != nil {
 		return "", false
 	}
-	return claims["User"], claims["AuthType"] == "SSO"
+	// An API token issued by an SSO identity stays that identity (OwnerAuthType).
+	return claims["User"], claims["AuthType"] == "SSO" || claims["OwnerAuthType"] == "SSO"
 }
 
 // selfServiceUnitsNeeded is what a self-service cluster reserves on creation:

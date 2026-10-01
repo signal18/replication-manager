@@ -670,7 +670,7 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 func (repman *ReplicationManager) GetJWTClaims(r *http.Request) (map[string]string, error) {
 	// An API token has no profile claims: the owner is the identity, AuthType marks it.
 	if t, ok := repman.parseAPITokenFromRequest(r); ok {
-		return map[string]string{"User": t.User, "AuthType": "Token", "TokenID": t.ID, "TokenLabel": t.Label}, nil
+		return map[string]string{"User": t.User, "AuthType": "Token", "OwnerAuthType": t.OwnerAuthType, "TokenID": t.ID, "TokenLabel": t.Label}, nil
 	}
 
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
