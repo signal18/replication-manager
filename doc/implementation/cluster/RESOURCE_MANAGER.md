@@ -1085,3 +1085,19 @@ statement per cluster" table on the Resource Manager page, MCP `get-cluster-pric
 `get-cloud18-cluster-price` (reads the cluster route on the remote infrastructure). Tests
 `TestUnitRate`, `TestResourceManagerBillingAccrualAndStatement` (accrual, gap, reload, backfill,
 rollover).
+
+## Per axis: grow and shrink as the code runs them (2026-10-01)
+
+`DriveDynamicResize` (cluster_resize_dynamic.go) each tick, active only, not in failover, one step per
+scale-up window, never while a memory resize is in flight. Evidence = the per-server tracked states
+`ResourceConsumedOverConfigAxes` / `ResourceConsumedUnderConfigAxes` sustained over the window
+(`canScaleSustained`, graphite-backed for windows over 1 min), plus `BufferPoolMemGrowDue` for memory.
+
+| axis | grow (growAxisInPlan) | gate | shrink (driveDynamicShrink / dynamicShrinkTarget) | floor | applied by |
+|---|---|---|---|---|---|
+| cpu | priority 1 when cpu is due: +1 core | overPlanGrowAllowed (envelope, node pool, client hook) else ERR00112 | all servers under cpu: smallest DBU keeping the peak under the mark | UndercommitFloorDBU | SetDBCores → SET GLOBAL re-tune + openSVCResizeCPU (pg_cpu_quota) |
+| mem | when mem or io is due and no plateau: +1 DBU of memory, clamped to GetDBContainerMemoryCapMB | in-flight gate; over plan by ResizeDynamicResources | first in the shrink order | UndercommitFloorDBU | SetDBMemorySize → buffer pool live, pg_mem_limit deferred on shrink, redo follows |
+| io | only after a memory step that bought no QPS (plateau check) or memory at its ceiling: +1000 IOPS | overPlanGrowAllowed | all servers under io: plan or peak+margin on the grid | the plan (cap, not consumption) | SetDBDiskIOPS → innodb_io_capacity/_max, write threads; no cgroup primitive |
+| disk | followDiskUsage: declaration follows the datadir in whole GB, applied first and alone | within plan free, else the envelope | all servers under disk: plan or peak+margin on the grid | the plan | SetDBDiskSize → applyDiskResize → om3 volume resize (grow only on rc40, WARN0220 refusal, WARN0221 quota above) |
+
+Shrink order: mem, cpu, disk, io, one axis per tick, only when nothing is saturated.
