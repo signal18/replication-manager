@@ -7,11 +7,13 @@ package repmanmcp
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/releases"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -284,8 +286,78 @@ func (s *MCPServer) registerClusterWriteTools() {
 			if errResult != nil {
 				return errResult, nil
 			}
-			cl.RollingRestart()
-			return mcp.NewToolResultText(`{"status":"rolling restart initiated"}`), nil
+			// Asynchronous like the API route: a rolling operation lasts minutes.
+			go cl.RollingRestart()
+			return mcp.NewToolResultText(`{"status":"rolling restart started"}`), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("cluster-rolling-reprov",
+			mcp.WithDescription("Reprovision every database node of the cluster one at a time, preserving availability: each replica is unprovisioned, provisioned again from the current configuration (image, resources, config template) and reseeded from the master, then a switchover moves the master role and the old master goes through the same cycle. Refused when autorejoin is off, since a reprovisioned replica is empty until the rejoin reseeds it. Use it when a provisioning change cannot be applied by a restart (volume layout, image repository, service template)."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			if !cl.Conf.Autorejoin {
+				return mcp.NewToolResultError("rolling reprovision refused: autorejoin is off on " + cl.Name + ", a reprovisioned replica would stay empty; switch autorejoin on first"), nil
+			}
+			go cl.RollingReprov()
+			return mcp.NewToolResultText(`{"status":"rolling reprovision started"}`), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("cluster-rolling-jobs-upgrade",
+			mcp.WithDescription("Upgrade the jobs sidecar (the container running backups, restores and database jobs) of every node, one at a time. The database containers are not restarted."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			cl.SetRollingJobsUpgradeState()
+			return mcp.NewToolResultText(`{"status":"rolling jobs upgrade started"}`), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("cluster-rolling-upgrade",
+			mcp.WithDescription("Upgrade the database engine of every node one at a time, preserving availability, to a release line chosen by target: patch (same line, latest release, the image is pulled again), next-minor (next published line of the same major, 11.4 to 11.5), next-lts (next long-term line, 11.4 to 11.8), next-major (first line of the next major, 11.x to 12.0), version (the line or tag given in version). Without confirm the tool only answers the plan: current version per node, target line and image, whether the tag exists on the registry, node order, warnings (a major move needs mariadb-upgrade, there is no rolling way back). With confirm=true it sets prov-db-image to the target and starts the rolling upgrade, replicas first, then a switchover and the old master. On-premise clusters run the configured upgrade script instead of an image change."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("target", mcp.Description("patch (default), next-minor, next-lts, next-major or version")),
+			mcp.WithString("version", mcp.Description("with target=version: the line or tag to move to, e.g. 11.8 or 11.8.3")),
+			mcp.WithBoolean("confirm", mcp.Description("false (default): answer the plan only; true: start the rolling upgrade")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			plan, err := s.rollingUpgradePlan(ctx, cl, req.GetString("target", releases.TargetPatch), req.GetString("version", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			if !req.GetBool("confirm", false) {
+				plan["status"] = "plan only: call again with confirm=true to start"
+				return mcp.NewToolResultText(toJSON(plan)), nil
+			}
+			if plan["tagChecked"] == true && plan["tagExists"] == false {
+				plan["status"] = "refused: the target image tag does not exist on the registry"
+				return mcp.NewToolResultError(toJSON(plan)), nil
+			}
+			if cl.GetOrchestrator() != config.ConstOrchestratorOnPremise {
+				if img, _ := plan["targetImage"].(string); img != "" && img != cl.Conf.ProvDbImg {
+					cl.SetProvDBImage(img)
+				}
+			}
+			go cl.RollingUpgrade()
+			plan["status"] = "rolling upgrade started"
+			return mcp.NewToolResultText(toJSON(plan)), nil
 		},
 	)
 
@@ -629,4 +701,112 @@ func alertsOf(sm *state.StateMachine) map[string]interface{} {
 		return map[string]interface{}{"errors": []state.StateHttp{}, "warnings": []state.StateHttp{}}
 	}
 	return map[string]interface{}{"errors": sm.GetOpenErrors(), "warnings": sm.GetOpenWarnings()}
+}
+
+// rollingUpgradePlan resolves the target line from the shared release table and
+// describes what a rolling upgrade would do, without touching the cluster.
+func (s *MCPServer) rollingUpgradePlan(ctx context.Context, cl *cluster.Cluster, target, explicit string) (map[string]interface{}, error) {
+	return rollingUpgradePlan(ctx, cl, target, explicit)
+}
+
+// tagExists is the registry check, a variable so tests never reach the network.
+var tagExists = releases.TagExists
+
+func rollingUpgradePlan(ctx context.Context, cl *cluster.Cluster, target, explicit string) (map[string]interface{}, error) {
+	table, source, err := releases.Load(cl.Conf.ShareDir + "/plugins/data")
+	if err != nil {
+		return nil, err
+	}
+	repo, tag := releases.SplitImage(cl.Conf.ProvDbImg)
+	flavor := releases.FlavorOfImage(cl.Conf.ProvDbImg)
+	var current releases.Line
+	nodes := []map[string]interface{}{}
+	currentKnown := false
+	for _, srv := range cl.Servers {
+		if srv == nil {
+			continue
+		}
+		n := map[string]interface{}{"server": srv.URL, "state": srv.State, "version": ""}
+		if v := srv.DBVersion; v != nil {
+			n["version"] = v.ToString()
+			if srv.IsMaster() || !currentKnown {
+				current = releases.Line{Major: v.Major, Minor: v.Minor}
+				currentKnown = true
+				if v.Flavor != "" {
+					flavor = strings.ToLower(v.Flavor)
+				}
+			}
+		}
+		nodes = append(nodes, n)
+	}
+	if !currentKnown {
+		if l, err := releases.ParseLine(tag); err == nil && tag != "" && tag != "latest" && tag != "lts" {
+			current = l
+		} else {
+			return nil, fmt.Errorf("current release line unknown: no node reports a version and prov-db-image %q carries no line", cl.Conf.ProvDbImg)
+		}
+	}
+	next, err := table.Resolve(flavor, current, target, explicit)
+	if err != nil {
+		return nil, err
+	}
+	targetTag := next.String()
+	if strings.ToLower(strings.TrimSpace(target)) == releases.TargetVersion && strings.Count(strings.TrimSpace(explicit), ".") >= 2 {
+		targetTag = strings.TrimSpace(explicit)
+	}
+	if strings.EqualFold(target, releases.TargetPatch) || target == "" {
+		if tag != "" {
+			targetTag = tag
+		}
+	}
+	targetImage := repo + ":" + targetTag
+	warnings := []string{}
+	if next.Major > current.Major {
+		warnings = append(warnings, "major upgrade: the engine runs mariadb-upgrade (MARIADB_AUTO_UPGRADE) on first start, check it in the error log of each node; there is no rolling way back to "+current.String())
+	} else if current.Less(next) {
+		warnings = append(warnings, "no rolling way back to "+current.String()+" once a replica runs "+next.String()+": replication from a newer master to an older replica is not supported")
+	}
+	if !table.IsLTS(flavor, next) && next != current {
+		warnings = append(warnings, next.String()+" is not a long-term line for "+flavor+" (lts: "+strings.Join(table.LTS[flavor], ", ")+")")
+	}
+	onprem := cl.GetOrchestrator() == config.ConstOrchestratorOnPremise
+	if onprem {
+		warnings = append(warnings, "on-premise orchestrator: the image is not changed, the rolling upgrade runs onpremise-ssh-upgrade-db-script on each node")
+	}
+	exists, checked := false, false
+	if !onprem {
+		var cerr error
+		exists, checked, cerr = tagExists(ctx, repo, targetTag)
+		if cerr != nil {
+			checked = false
+			warnings = append(warnings, "registry check failed: "+cerr.Error())
+		}
+	}
+	order := []string{}
+	for _, sl := range cl.GetSlaves() {
+		if sl != nil {
+			order = append(order, sl.URL)
+		}
+	}
+	if m := cl.GetMaster(); m != nil {
+		order = append(order, "switchover", m.URL)
+	}
+	return map[string]interface{}{
+		"cluster":      cl.Name,
+		"orchestrator": cl.GetOrchestrator(),
+		"flavor":       flavor,
+		"currentImage": cl.Conf.ProvDbImg,
+		"currentLine":  current.String(),
+		"currentIsLTS": table.IsLTS(flavor, current),
+		"nodes":        nodes,
+		"target":       target,
+		"targetLine":   next.String(),
+		"targetImage":  targetImage,
+		"targetIsLTS":  table.IsLTS(flavor, next),
+		"tagChecked":   checked,
+		"tagExists":    exists,
+		"order":        order,
+		"warnings":     warnings,
+		"releaseTable": source,
+	}, nil
 }

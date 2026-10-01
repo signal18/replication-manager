@@ -2,8 +2,8 @@
 //
 //	HasLastLTS — the server version is a known active LTS release
 //
-// The plugin has a built-in LTS list compiled in via go:embed (lts-versions.json
-// next to this file). When PluginDataDir contains a newer lts-versions.json —
+// The LTS list is the shared release table utils/releases (lts-versions.json
+// built in), also used by the MCP rolling-upgrade targets. When PluginDataDir contains a newer lts-versions.json —
 // refreshed periodically from the Signal18 back-office — that file takes
 // priority so the LTS list stays current without a repman upgrade.
 //
@@ -20,23 +20,14 @@
 package main
 
 import (
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster/logplugin/plugins/wire"
+	"github.com/signal18/replication-manager/utils/releases"
 )
-
-//go:embed lts-versions.json
-var defaultLTSData []byte
-
-type ltsData struct {
-	Updated string              `json:"updated"`
-	LTS     map[string][]string `json:"lts"`
-}
 
 func main() {
 	var req wire.Request
@@ -46,21 +37,10 @@ func main() {
 	}
 
 	// Prefer the on-disk file (periodically refreshed) over the compiled-in default.
-	raw := defaultLTSData
-	source := "built-in"
-	if req.PluginDataDir != "" {
-		dataFile := filepath.Join(req.PluginDataDir, "lts-versions.json")
-		if disk, err := os.ReadFile(dataFile); err == nil {
-			raw = disk
-			source = dataFile
-		}
-	}
-
-	var data ltsData
-	if err := json.Unmarshal(raw, &data); err != nil {
+	data, source, err := releases.Load(req.PluginDataDir)
+	if err != nil {
 		json.NewEncoder(os.Stdout).Encode(wire.Response{ScoreChecks: []wire.ScoreCheck{
-			{Tag: "HasLastLTS", Pass: false,
-				Detail: fmt.Sprintf("bad lts-versions.json (%s): %v", source, err)},
+			{Tag: "HasLastLTS", Pass: false, Detail: err.Error()},
 		}})
 		return
 	}

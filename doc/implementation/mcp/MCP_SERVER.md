@@ -259,3 +259,20 @@ minimum `level` (default warning; STATE/ALERT rank as warning so they are never 
 Why: the assistant's context is the scarce resource; a 200-line INFO dump hides the one
 WARN that matters, and the module in an alert names the log to open next.
 Test `TestFilterLogEntries`.
+
+## Rolling tools and the release table (2026-10-01)
+
+`cluster-rolling-reprov`, `cluster-rolling-jobs-upgrade` and `cluster-rolling-upgrade` join
+`cluster-rolling-restart` on the `/actions/rolling/{action}` route; all four are asynchronous
+like the API (the restart tool used to block the MCP call for the whole operation).
+`cluster-rolling-upgrade` takes a `target` in release lines: `patch`, `next-minor`, `next-lts`,
+`next-major`, `version` (+ `version`), and `confirm`. Without confirm it answers the plan from
+`rollingUpgradePlan`: current line (master's `DBVersion`, else the image tag), target line from
+`utils/releases` (`Table.Resolve`), target image = same repository + line, registry check
+(`releases.TagExists`, Docker Hub manifest HEAD, "not checked" for another registry), node
+order, warnings (major = mariadb-upgrade, no rolling way back, non-LTS line, on-premise = script
+path). With confirm it refuses a tag the registry does not have, sets `prov-db-image`
+(`SetProvDBImage`) and starts `RollingUpgrade`. The release table `utils/releases/lts-versions.json`
+(lts + published lines per flavor) is shared with plugin-score-lts and overridable from
+`<share>/plugins/data/lts-versions.json`. Tests `TestResolveTargets`, `TestRollingUpgradePlan`.
+The doc tables are regenerated with `doc/implementation/mcp/gen_tool_tables.py`.
