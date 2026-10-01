@@ -195,7 +195,7 @@ func (s *MCPServer) registerCloud18Tools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("create-cloud18-cluster-token",
+		mcp.NewTool("cloud18-create-cluster-token",
 			mcp.WithDescription("Mint, on a Cloud18 infrastructure and as this instance's Cloud18 identity (the sponsor of the cluster), an API token scoped to one cluster there, and return the infrastructure's MCP endpoint configuration to add as a second MCP server. This is how an assistant gets to operate a cluster created with cloud18-create-cluster: tokens never cross infrastructures, the sponsor mints one on the infrastructure that hosts the cluster. The token carries the sponsor's grants on that cluster, narrowed to 'grants' if given; it is returned once and not stored. Needs the global-admin-show grant here; a token also needs the every-cluster scope."),
 			mcp.WithString("infrastructure", mcp.Required(), mcp.Description("api-public-url of the infrastructure hosting the cluster")),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster on that infrastructure")),

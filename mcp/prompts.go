@@ -120,7 +120,7 @@ Collect the following information:
 2. Call get-cluster-local-backup-stats to get aggregated backup statistics.
 3. Call list-cluster-archive-backups to get Restic snapshot inventory.
 4. Call get-cluster-archive-stats to get repository size and deduplication stats.
-5. Call get-cluster-archive-task-queue to check for pending or failed backup tasks.
+5. Call list-cluster-archive-tasks to check for pending or failed backup tasks.
 
 Report should include:
 - Date and type of the most recent successful backup

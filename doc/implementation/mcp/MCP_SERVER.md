@@ -208,7 +208,7 @@ without the subscription / email-acceptance chain; the partner is only informed.
   would end after the first cluster.
 - `get-cloud18-cluster` (infrastructure, cluster_name): flags, servers, proxies, apps through
   the same session, to follow the provisioning. ACL: any authenticated principal.
-- `create-cloud18-cluster-token` (infrastructure, cluster_name, label, grants, expire_days):
+- `cloud18-create-cluster-token` (infrastructure, cluster_name, label, grants, expire_days):
   the answer to "how does the assistant operate the cluster it just created": tokens never
   cross infrastructures, so the sponsor mints one **on the infrastructure** (`POST
   /api/tokens` through the peer session, scope = that cluster, grants = the sponsor's ∩
@@ -235,3 +235,14 @@ sponsor account shape, per-identity limit, status); `mcp/acl_test.go` mapping co
 without principal or grant and passed with it, visibility of clusters, middleware 401 and
 security event); `server/api_token_test.go` `TestMCPAuthenticateAndAuthorize` (token
 authenticates, scope and grants applied, revoked token refused).
+
+## Tool naming rules (2026-10-01)
+
+Set with Stéphane after three renames in a row ("we need rules"): (1) reads are
+`<verb>-<domain>-<object>` with `list-` for several entries, `get-` for one object, `check-`
+for a verdict; (2) actions are `<domain>-<verb>[-<object>]`; (3) domains are the API's,
+`cluster`, `database` (never "server", to contrast with `proxy`), `proxy`, `cloud18`;
+(4) product words only (`local` / `archive` backups, never `restic`); (5) parameters
+`cluster_name`, `server_name` (host:port), `proxy_name`, `task_id`; (6) one tool = one REST
+route in `acl.go` (`TestEveryToolHasAnACLMapping`). No aliases: the tools were not in a
+release when renamed. The user doc states the same rules under 3.8.6.

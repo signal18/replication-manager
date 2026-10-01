@@ -108,7 +108,7 @@ var toolACLPaths = map[string]string{
 	"cloud18-unregister":                globalPrefix + "global-admin-show",
 	"cloud18-create-cluster":            globalPrefix + "global-admin-show",
 	"get-cloud18-cluster":               globalPrefix,
-	"create-cloud18-cluster-token":      globalPrefix + "global-admin-show",
+	"cloud18-create-cluster-token":      globalPrefix + "global-admin-show",
 	"get-cluster-health":                "",
 	"get-cluster-topology":              "",
 	"get-cluster-settings":              "",
@@ -166,7 +166,7 @@ var toolACLPaths = map[string]string{
 	"get-cluster-local-backup-stats": "/backups/stats",
 	"list-cluster-archive-backups":   "/restic/snapshots",
 	"get-cluster-archive-stats":      "/restic/stats",
-	"get-cluster-archive-task-queue": "/restic/task-queue",
+	"list-cluster-archive-tasks":     "/restic/task-queue",
 	// backup, write
 	"cluster-archive-init":              "/restic/init",
 	"cluster-archive-fetch":             "/restic/fetch",
