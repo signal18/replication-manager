@@ -70,8 +70,8 @@ function DynamicConfigSettings({ selectedCluster, user }) {
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-apply-dynamic-config?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-apply-dynamic-config' }))} isDisabled={disabled} isChecked={cfg.provDBApplyDynamicConfig} />)
     },
     {
-      key: 'Apply Dynamic Resource Resize',
-      help: h(`**Dynamic Resource Resize**\n\nWhen on, a provisioned-memory change (e.g. a DBU/plan resize) is applied to the RUNNING database live (SET GLOBAL + cgroup via orchestrator/client hook) instead of a restart. Restart-only vars still schedule a restart. Optional hooks: \`prov-db-dynamic-resource-can-change-script\` (feasibility) and \`prov-db-dynamic-resource-change-script\` (does the infra resize).\n\nConfig: \`prov-db-dynamic-resource\``, 'Apply Dynamic Resource Resize'),
+      key: 'Apply Dynamic Config On Resource Resize',
+      help: h(`**Dynamic Resource Resize**\n\nWhen on, a provisioned-memory change (e.g. a DBU/plan resize) is applied to the RUNNING database live (SET GLOBAL + cgroup via orchestrator/client hook) instead of a restart. Restart-only vars still schedule a restart. Optional hooks: \`prov-db-dynamic-resource-can-change-script\` (feasibility) and \`prov-db-dynamic-resource-change-script\` (does the infra resize).\n\nConfig: \`prov-db-dynamic-resource\``, 'Apply Dynamic Config On Resource Resize'),
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-dynamic-resource?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-dynamic-resource' }))} isDisabled={disabled} isChecked={cfg.provDbDynamicResource} />)
     },
     {
@@ -81,7 +81,7 @@ function DynamicConfigSettings({ selectedCluster, user }) {
     },
     {
       key: 'Dynamic Resize Policy',
-      help: h(`**Dynamic Resize Policy**\n\nWHEN a live memory resize (Apply Dynamic Resource Resize) is applied:\n\n- **scale-speed** (default): as saturation dictates, throttled by the Scale Speeds below.\n- **daily-time**: deferred to a fixed daily clock time (Dynamic Resize Daily Time), so any InnoDB buffer-pool-resize stall is contained to an off-peak hour.\n\nCPU/IO tuning is unaffected (no stall).\n\nConfig: \`prov-db-dynamic-resize-policy\``, 'Dynamic Resize Policy'),
+      help: h(`**Dynamic Resize Policy**\n\nWHEN a live memory resize (Apply Dynamic Config On Resource Resize) is applied:\n\n- **scale-speed** (default): as saturation dictates, throttled by the Scale Speeds below.\n- **daily-time**: deferred to a fixed daily clock time (Dynamic Resize Daily Time), so any InnoDB buffer-pool-resize stall is contained to an off-peak hour.\n\nCPU/IO tuning is unaffected (no stall).\n\nConfig: \`prov-db-dynamic-resize-policy\``, 'Dynamic Resize Policy'),
       value: (
         <Dropdown
           options={[{ value: 'scale-speed', label: 'scale-speed (default)' }, { value: 'daily-time', label: 'daily-time' }]}
