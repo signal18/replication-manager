@@ -91,7 +91,7 @@ function switchGlobalSetting(setting) {
 }
 
 function setGlobalSetting(setting, value) {
-  return getApi().get(`clusters/settings/actions/set/${setting}/${value}`)
+  return getApi().get(`clusters/settings/actions/set/${setting}/${encodeURIComponent(value)}`)
 }
 
 function clearGlobalSetting(setting) {

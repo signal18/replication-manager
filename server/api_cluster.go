@@ -3061,6 +3061,10 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 	setting := vars["settingName"]
 	value := ""
 	if settingValue, ok := vars["settingValue"]; ok {
+		// The GUI clears a text setting with the literal "{undefined}".
+		if settingValue == "{undefined}" {
+			settingValue = ""
+		}
 		value = settingValue
 	}
 

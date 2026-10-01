@@ -245,6 +245,11 @@ func (repman *ReplicationManager) apiserver() {
 	var err error
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
+	// No path cleaning: a setting value carried in the path may start with a slash
+	// (an absolute script path), and cleaning turned ".../set/name//tmp/x.sh" into a
+	// 301 to "/tmp" without its leading slash. A doubled slash or a ".." is now
+	// matched as typed (404 when nothing matches) instead of redirected.
+	router.SkipClean(true)
 
 	router.Use(repman.RecoveryMiddleware)
 	//router.HandleFunc("/", repman.handlerApp)
