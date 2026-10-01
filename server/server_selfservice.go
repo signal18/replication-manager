@@ -7,11 +7,16 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
@@ -84,6 +89,9 @@ type SelfServiceStatus struct {
 	Pool      InfraUnitPool `json:"pool"`
 	PoolOK    bool          `json:"poolOk"`
 	PoolNote  string        `json:"poolNote,omitempty"`
+	// Borrowed: the pool could not guarantee the units but the over-commit pot can lend them
+	// (cloud18-self-service-clusters-can-borrow): the creation goes through without guarantee.
+	Borrowed bool `json:"borrowed"`
 }
 
 func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServiceStatus {
@@ -103,16 +111,78 @@ func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServ
 	st.NeededDBU, st.NeededAPU = repman.selfServiceUnitsNeeded()
 	if !st.Pool.Known {
 		st.PoolNote = "infrastructure capacity unknown (no agent observed, no resource-manager-infra-* declared): the pool does not gate"
-	} else if err := repman.selfServicePoolCheck(); err != nil {
+	} else if note, err := repman.selfServicePoolCheck(); err != nil {
 		st.PoolOK = false
 		st.PoolNote = err.Error()
 		if st.Enabled {
 			st.Enabled = false
 			st.Reason = err.Error()
 		}
+	} else if note != "" {
+		st.Borrowed = true
+		st.PoolNote = note
+	}
+	if st.Enabled {
+		if err := repman.runSelfServiceEnabledScript(identity, used, st.NeededDBU, st.NeededAPU); err != nil {
+			st.Enabled = false
+			st.Reason = err.Error()
+		}
 	}
 	return st
 }
+
+// runSelfServiceEnabledScript is the client-overridable gate on a self-service creation
+// (cloud18-self-service-clusters-enabled-script): run after the switch, the registration and
+// the orchestrator checks, before the per-user limit and the pool. Argv carries the identity
+// and the orchestrator; the pool figures ride env. A non-zero exit, or a timeout, vetoes the
+// creation and the first output line (or the error) is the reason; an empty script allows.
+// The script can only refuse more than the switch, never open what the switch closes.
+func (repman *ReplicationManager) runSelfServiceEnabledScript(identity string, sponsored int, needDbu, needApu float64) error {
+	script := strings.TrimSpace(repman.Conf.Cloud18SelfServiceClustersEnabledScript)
+	if script == "" {
+		return nil
+	}
+	pool := repman.infraUnitPool()
+	borrowDbu, borrowApu := 0.0, 0.0
+	if rm := repman.resourceManager; rm != nil {
+		if l := rm.Ledger(); l.Known {
+			borrowDbu, borrowApu = l.BorrowPot.Dbu, l.BorrowPot.Apu
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), selfServiceScriptTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, script, identity, repman.Conf.ProvOrchestrator)
+	f := func(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) }
+	cmd.Env = append(os.Environ(),
+		"REPMAN_IDENTITY="+identity,
+		"REPMAN_ORCHESTRATOR="+repman.Conf.ProvOrchestrator,
+		"REPMAN_SPONSORED_CLUSTERS="+strconv.Itoa(sponsored),
+		"REPMAN_NEEDED_DBU="+f(needDbu),
+		"REPMAN_NEEDED_APU="+f(needApu),
+		"REPMAN_FREE_DBU="+f(pool.FreeDbu),
+		"REPMAN_FREE_APU="+f(pool.FreeApu),
+		"REPMAN_BORROW_DBU="+f(borrowDbu),
+		"REPMAN_BORROW_APU="+f(borrowApu),
+	)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("cloud18-self-service-clusters-enabled-script did not answer within %s: creation refused", selfServiceScriptTimeout)
+	}
+	reason := strings.TrimSpace(string(out))
+	if i := strings.IndexByte(reason, '\n'); i >= 0 {
+		reason = strings.TrimSpace(reason[:i])
+	}
+	if reason == "" {
+		reason = err.Error()
+	}
+	return fmt.Errorf("cloud18-self-service-clusters-enabled-script refused the creation for %s: %s", identity, reason)
+}
+
+// selfServiceScriptTimeout bounds the enabled-script: a hang is a veto, never a stuck login.
+const selfServiceScriptTimeout = 30 * time.Second
 
 // requestIdentity returns the caller's identity and whether it is an external
 // SSO (Cloud18 / GitLab) identity rather than a local account.
@@ -135,21 +205,59 @@ func (repman *ReplicationManager) selfServiceUnitsNeeded() (dbu, apu float64) {
 // free pool (capacity × quota − Σ plans sold) can hold a new default cluster.
 // An unknown pool (no agent capacity observed, no resource-manager-infra-*
 // declared) cannot gate: the creation goes through and the status says so.
-func (repman *ReplicationManager) selfServicePoolCheck() error {
+// With cloud18-self-service-clusters-can-borrow, a pool that cannot guarantee the units
+// asks the over-commit pot instead (CanBorrow: capacity minus every plan minus what is
+// already borrowed): the creation goes through on borrowed capacity and the note says so.
+func (repman *ReplicationManager) selfServicePoolCheck() (borrowNote string, err error) {
 	pool := repman.infraUnitPool()
 	if !pool.Known {
-		return nil
+		return "", nil
 	}
 	needDbu, needApu := repman.selfServiceUnitsNeeded()
+	var short error
 	if needDbu > pool.FreeDbu {
-		return fmt.Errorf("no free DBU on this infrastructure for a new cluster: %.0f DBU needed (2 × prov-db-dbu), %.1f free of %.1f usable (%.1f already planned)",
+		short = fmt.Errorf("no free DBU on this infrastructure for a new cluster: %.0f DBU needed (2 × prov-db-dbu), %.1f free of %.1f usable (%.1f already planned)",
 			needDbu, pool.FreeDbu, pool.UsableDbu, pool.PlannedDbu)
-	}
-	if needApu > pool.FreeApu {
-		return fmt.Errorf("no free APU on this infrastructure for a new cluster: %.0f APU needed (prov-service-plan-apu), %.1f free of %.1f usable (%.1f already planned)",
+	} else if needApu > pool.FreeApu {
+		short = fmt.Errorf("no free APU on this infrastructure for a new cluster: %.0f APU needed (prov-service-plan-apu), %.1f free of %.1f usable (%.1f already planned)",
 			needApu, pool.FreeApu, pool.UsableApu, pool.PlannedApu)
 	}
-	return nil
+	if short == nil {
+		return "", nil
+	}
+	if !repman.Conf.Cloud18SelfServiceClustersCanBorrow || repman.resourceManager == nil {
+		return "", short
+	}
+	if ok, why := repman.resourceManager.CanBorrow(cluster.ProfileDatabase, needDbu); !ok {
+		return "", fmt.Errorf("%s; cannot borrow either: %s", short, why)
+	}
+	if ok, why := repman.resourceManager.CanBorrow(cluster.ProfileCompute, needApu); !ok {
+		return "", fmt.Errorf("%s; cannot borrow either: %s", short, why)
+	}
+	return fmt.Sprintf("created on borrowed capacity: %.0f DBU and %.0f APU not guaranteed (%s; cloud18-self-service-clusters-can-borrow)", needDbu, needApu, short), nil
+}
+
+// selfServiceBornDynamic makes a self-service cluster dynamic from its first save on the
+// orchestrators that can resize live: config changes applied with SET GLOBAL and the
+// resources following the load (prov-db-apply-dynamic-config, prov-db-dynamic-resource).
+// The container cap follows the orchestrator: OpenSVC resizes the PG slice, so the docker
+// run-args cap is dropped (or WARN0214 would stand); Kubernetes resizes the Pod in place
+// only with a requests/limits pair, which that same switch declares. Other orchestrators
+// are left as the instance defaults say.
+func (repman *ReplicationManager) selfServiceBornDynamic(cl *cluster.Cluster) {
+	switch cl.Conf.ProvOrchestrator {
+	case config.ConstOrchestratorOpenSVC:
+		cl.Conf.ProvDBDockerRunArgsLimit = false
+	case config.ConstOrchestratorKubernetes:
+		cl.Conf.ProvDBDockerRunArgsLimit = true
+	default:
+		return
+	}
+	cl.Conf.ProvDBApplyDynamicConfig = true
+	cl.Conf.ProvDBDynamicResource = true
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Self-service cluster born dynamic on %s: prov-db-apply-dynamic-config and prov-db-dynamic-resource on, prov-db-docker-run-args-limit=%t",
+		cl.Conf.ProvOrchestrator, cl.Conf.ProvDBDockerRunArgsLimit)
 }
 
 // selfServiceCheck decides whether identity may create one more cluster here.
@@ -158,11 +266,16 @@ func (repman *ReplicationManager) selfServiceCheck(identity string) error {
 		return errors.New(reason)
 	}
 	used, names := repman.countSponsoredClusters(identity)
+	needDbu, needApu := repman.selfServiceUnitsNeeded()
+	if err := repman.runSelfServiceEnabledScript(identity, used, needDbu, needApu); err != nil {
+		return err
+	}
 	if used >= repman.Conf.Cloud18SelfServiceMaxClustersPerUser {
 		return fmt.Errorf("%s already sponsors %d cluster(s) here (%s), the limit is %d per user (cloud18-self-service-max-clusters-per-user); drop one to free a slot",
 			identity, used, strings.Join(names, ", "), repman.Conf.Cloud18SelfServiceMaxClustersPerUser)
 	}
-	return repman.selfServicePoolCheck()
+	_, err := repman.selfServicePoolCheck()
+	return err
 }
 
 // clusterAddAuthorize decides who may create a cluster (POST

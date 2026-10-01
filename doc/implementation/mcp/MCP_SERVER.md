@@ -124,6 +124,24 @@ without the subscription / email-acceptance chain; the partner is only informed.
 - Limit: `cloud18-self-service-max-clusters-per-user` (default 3), counted per SSO identity as
   the clusters where that identity holds the `sponsor` role (`countSponsoredClusters`), so a
   malicious user cannot flood the marketplace listing. Dropping a cluster frees a slot.
+- Enabled-script: `cloud18-self-service-clusters-enabled-script` (server scope), run by
+  `runSelfServiceEnabledScript` inside `selfServiceCheck` after `selfServiceCapable` and before
+  the per-user limit and the pool, and again by `selfServiceStatusFor` so the status endpoint
+  tells the truth. argv = identity, orchestrator; env REPMAN_IDENTITY/ORCHESTRATOR/
+  SPONSORED_CLUSTERS/NEEDED_DBU/NEEDED_APU/FREE_DBU/FREE_APU/BORROW_DBU/BORROW_APU.
+  Non-zero exit or a 30 s timeout = veto, reason = first output line (or the error). Can only
+  refuse more than the switch.
+- Can-borrow: `cloud18-self-service-clusters-can-borrow` (server scope). `selfServicePoolCheck`
+  returns `(borrowNote, err)`: when the plan pot is short and the flag is on, `CanBorrow` on the
+  Database profile for the DBU and the Compute profile for the APU decides; both ok = created on
+  borrowed capacity, `SelfServiceStatus.Borrowed = true` and the note carries the figures; either
+  short = refused with "cannot borrow either". The cluster still gets the default plan, so the
+  ledger shows the plan pot further overdrawn: the honest figure.
+- Born dynamic: `selfServiceBornDynamic` runs in `handlerMuxClusterAdd` on the self-service branch
+  before the first `cl.Save()`: on OpenSVC `prov-db-docker-run-args-limit` off (PG slice governs,
+  no WARN0214), on Kubernetes on (requests/limits pair = the in-place Pod resizer's opt-in), then
+  `prov-db-apply-dynamic-config` and `prov-db-dynamic-resource` on. Other orchestrators untouched.
+  Tests: `TestSelfServiceCanBorrow`, `TestSelfServiceEnabledScript`, `TestSelfServiceBornDynamic`.
 - `POST /api/clusters/actions/add/{name}` (`handlerMuxClusterAdd`) used to accept any
   authenticated user with no grant and never added the creator to the cluster. Now a local
   account needs `cluster-create` or `prov-cluster`; an SSO identity (JWT `AuthType=SSO`,

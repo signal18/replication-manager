@@ -25390,6 +25390,12 @@
                 "cloud18SelfServiceClusters": {
                     "type": "boolean"
                 },
+                "cloud18SelfServiceClustersCanBorrow": {
+                    "type": "boolean"
+                },
+                "cloud18SelfServiceClustersEnabledScript": {
+                    "type": "string"
+                },
                 "cloud18SelfServiceMaxClustersPerUser": {
                     "type": "integer"
                 },
@@ -28439,6 +28445,10 @@
         "server.SelfServiceStatus": {
             "type": "object",
             "properties": {
+                "borrowed": {
+                    "description": "Borrowed: the pool could not guarantee the units but the over-commit pot can lend them\n(cloud18-self-service-clusters-can-borrow): the creation goes through without guarantee.",
+                    "type": "boolean"
+                },
                 "clusters": {
                     "type": "array",
                     "items": {

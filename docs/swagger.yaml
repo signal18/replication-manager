@@ -1803,6 +1803,10 @@ definitions:
         type: string
       cloud18SelfServiceClusters:
         type: boolean
+      cloud18SelfServiceClustersCanBorrow:
+        type: boolean
+      cloud18SelfServiceClustersEnabledScript:
+        type: string
       cloud18SelfServiceMaxClustersPerUser:
         type: integer
       cloud18Shared:
@@ -3866,6 +3870,11 @@ definitions:
     type: object
   server.SelfServiceStatus:
     properties:
+      borrowed:
+        description: |-
+          Borrowed: the pool could not guarantee the units but the over-commit pot can lend them
+          (cloud18-self-service-clusters-can-borrow): the creation goes through without guarantee.
+        type: boolean
       clusters:
         items:
           type: string

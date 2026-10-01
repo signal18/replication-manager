@@ -1981,6 +1981,7 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 				repman.Logrus.Warnf("self-service: cannot attach sponsor %s to %s: %v", username, cl.Name, err)
 			}
 			if selfService {
+				repman.selfServiceBornDynamic(cl)
 				repman.notifySelfServiceCluster(cl, username, r.RemoteAddr)
 			}
 		}

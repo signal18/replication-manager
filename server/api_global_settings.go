@@ -591,6 +591,10 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.MonitoringLogAPILogin = isactive
 	case "monitoring-log-api-login-silent-users":
 		repman.Conf.MonitoringLogAPILoginSilentUsers = value
+	case "cloud18-self-service-clusters-enabled-script":
+		repman.Conf.Cloud18SelfServiceClustersEnabledScript = strings.TrimSpace(value)
+	case "cloud18-self-service-clusters-can-borrow":
+		repman.Conf.Cloud18SelfServiceClustersCanBorrow = isactive
 	case "cloud18-self-service-max-clusters-per-user":
 		n, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil || n < 0 {
@@ -698,6 +702,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.restartMCPServer()
 	case "cloud18-self-service-clusters":
 		repman.Conf.Cloud18SelfServiceClusters = !repman.Conf.Cloud18SelfServiceClusters
+	case "cloud18-self-service-clusters-can-borrow":
+		repman.Conf.Cloud18SelfServiceClustersCanBorrow = !repman.Conf.Cloud18SelfServiceClustersCanBorrow
 	case "mcp-auth-enabled":
 		repman.Conf.MCPAuthEnabled = !repman.Conf.MCPAuthEnabled
 		repman.restartMCPServer()

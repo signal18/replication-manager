@@ -692,6 +692,28 @@ Start create an account in https://gitlab.signal18.io
         />
       )
     },
+    {
+      key: 'Self-Service Enabled Script',
+      help: h(`**Self-Service Enabled Script**\n\nYour own gate on every self-service creation, run after the switch and the orchestrator check, before the per-user limit and the pool. Arguments: the identity and the orchestrator. Environment: \`REPMAN_IDENTITY\`, \`REPMAN_ORCHESTRATOR\`, \`REPMAN_SPONSORED_CLUSTERS\`, \`REPMAN_NEEDED_DBU\`, \`REPMAN_NEEDED_APU\`, \`REPMAN_FREE_DBU\`, \`REPMAN_FREE_APU\`, \`REPMAN_BORROW_DBU\`, \`REPMAN_BORROW_APU\`.\n\nA non-zero exit refuses the creation and the first line printed is the reason shown to the user; a timeout (30 s) refuses too. The script can only refuse more than the switch, never open what it closes. Empty: no script.\n\nConfig: \`cloud18-self-service-clusters-enabled-script\``, 'Self-Service Enabled Script'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18SelfServiceClustersEnabledScript ?? '')}
+          confirmTitle='Confirm self-service enabled script to '
+          onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-self-service-clusters-enabled-script', value: v }))}
+        />
+      )
+    },
+    {
+      key: 'Self-Service Can Borrow',
+      help: h(`**Self-Service Can Borrow**\n\nWhen the plan pot (capacity × quota minus every plan sold) cannot guarantee the default units of a new cluster, let it be created on the over-commit pot instead: capacity minus every plan minus what is already borrowed. The cluster then runs without guarantee and the self-service status says so (borrowed). Off: a pool without room refuses the creation.\n\nConfig: \`cloud18-self-service-clusters-can-borrow\``, 'Self-Service Can Borrow'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch settings for cloud18-self-service-clusters-can-borrow?'
+          onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-self-service-clusters-can-borrow' }))}
+          isChecked={config?.cloud18SelfServiceClustersCanBorrow}
+        />
+      )
+    },
   ] : []
 
   return (
