@@ -246,3 +246,16 @@ for a verdict; (2) actions are `<domain>-<verb>[-<object>]`; (3) domains are the
 `cluster_name`, `server_name` (host:port), `proxy_name`, `task_id`; (6) one tool = one REST
 route in `acl.go` (`TestEveryToolHasAnACLMapping`). No aliases: the tools were not in a
 release when renamed. The user doc states the same rules under 3.8.6.
+
+## Alerts and logs per module (2026-10-01)
+
+`get-cluster-alerts` reads the four state machines (`GetStateMachine()` = ha,
+`WorkloadStateMachine`, `SecurityStateMachine`, `SchemaStateMachine`), `module` selects one or
+`all` groups them; a nil machine answers empty lists. `list-cluster-logs` mirrors
+`/topology/logs/{logType}` through `GetWebLogsByType` and filters in `filterLogEntries`:
+minimum `level` (default warning; STATE/ALERT rank as warning so they are never hidden),
+`module` by tag name (`config.GetTagsForLog`, exposed in each entry instead of the id),
+`limit` newest first (the ring buffers hold the newest at index 0, empty slots skipped).
+Why: the assistant's context is the scarce resource; a 200-line INFO dump hides the one
+WARN that matters, and the module in an alert names the log to open next.
+Test `TestFilterLogEntries`.

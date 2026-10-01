@@ -7,9 +7,13 @@ package repmanmcp
 
 import (
 	"context"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 // registerReadOnlyTools registers all read-only MCP tools (Phase 1).
@@ -89,32 +93,70 @@ func (s *MCPServer) registerClusterReadTools() {
 
 	s.addTool(
 		mcp.NewTool("get-cluster-alerts",
-			mcp.WithDescription("Get all currently active errors and warnings for a cluster. Errors indicate critical problems (e.g. ERR00012=no master, ERR00021=cluster down, ERR00076=replication stopped). Warnings indicate non-critical issues (e.g. WARN0108=default password, WARN0111=no logical backup). Always check this when diagnosing a problem."),
+			mcp.WithDescription("Get the open errors and warnings of a cluster, per module. Modules: ha (topology, replication, failover: e.g. ERR00012=no master, ERR00021=cluster down, ERR00076=replication stopped), workload (query storms, tmp-table and sort pressure, PFS coverage, spikes), security (audit, authentication, hardening findings), schema (schema advisory findings). Default all: one object keyed by module, each with its errors and warnings; the module tells which log to open next with list-cluster-logs (log_type=general for ha). Always check this first when diagnosing a problem."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("module", mcp.Description("ha, workload, security, schema or all (default all)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
 			if errResult != nil {
 				return errResult, nil
 			}
-			return mcp.NewToolResultText(toJSON(map[string]interface{}{
-				"errors":   cl.GetStateMachine().GetOpenErrors(),
-				"warnings": cl.GetStateMachine().GetOpenWarnings(),
-			})), nil
+			module := strings.ToLower(strings.TrimSpace(req.GetString("module", "all")))
+			machines := map[string]*state.StateMachine{
+				"ha":       cl.GetStateMachine(),
+				"workload": cl.WorkloadStateMachine,
+				"security": cl.SecurityStateMachine,
+				"schema":   cl.SchemaStateMachine,
+			}
+			if module != "all" && module != "" {
+				sm, ok := machines[module]
+				if !ok {
+					return mcp.NewToolResultError("unknown module " + module + ": use ha, workload, security, schema or all"), nil
+				}
+				return mcp.NewToolResultText(toJSON(alertsOf(sm))), nil
+			}
+			out := map[string]interface{}{}
+			for name, sm := range machines {
+				out[name] = alertsOf(sm)
+			}
+			return mcp.NewToolResultText(toJSON(out)), nil
 		},
 	)
 
 	s.addTool(
 		mcp.NewTool("list-cluster-logs",
-			mcp.WithDescription("Get recent orchestrator log entries for a cluster. Useful for seeing what replication-manager has been doing: topology changes, failover attempts, replication corrections, backup jobs. Complements get-cluster-alerts which shows current state rather than history."),
+			mcp.WithDescription("List recent log entries of a cluster, newest first, from one of its logs. log_type: general (topology, failover, replication corrections, config changes, orchestrator actions; the HA alerts' log), task (backup, restore and database jobs), workload (query storms, PFS digest coverage, tmp-table and sort findings), security (audit, authentication and hardening findings), schema (schema advisory findings), ddl (schema changes seen on the databases), variable-change (server variables that changed), sysbench. Filter with level (minimum level, default warning: only warnings and errors come back; use info or debug when you need the narrative), module (the log module tag such as topology, orchestrator, backup, config, task) and limit (default 50). Complements get-cluster-alerts, which is the current state; this is the history."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("log_type", mcp.Description("general (default), task, workload, security, schema, ddl, variable-change, sysbench")),
+			mcp.WithString("level", mcp.Description("minimum level: error, warning (default), info, debug")),
+			mcp.WithString("module", mcp.Description("only entries of this log module tag (e.g. topology, orchestrator, backup, config)")),
+			mcp.WithNumber("limit", mcp.Description("maximum entries, newest first (default 50)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
 			if errResult != nil {
 				return errResult, nil
 			}
-			return mcp.NewToolResultText(toJSON(cl.Log.Buffer)), nil
+			logType := strings.ToLower(strings.TrimSpace(req.GetString("log_type", "general")))
+			if logType == "" {
+				logType = "general"
+			}
+			buf := cl.GetWebLogsByType(logType)
+			if buf == nil {
+				return mcp.NewToolResultError("unknown log_type " + logType + ": use general, task, workload, security, schema, ddl, variable-change or sysbench"), nil
+			}
+			hl, ok := buf.(*s18log.HttpLog)
+			if !ok {
+				return mcp.NewToolResultText(toJSON(buf)), nil
+			}
+			limit := int(req.GetFloat("limit", 50))
+			entries := filterLogEntries(hl.Buffer, req.GetString("level", "warning"), req.GetString("module", ""), limit)
+			return mcp.NewToolResultText(toJSON(map[string]interface{}{
+				"logType": logType,
+				"count":   len(entries),
+				"entries": entries,
+			})), nil
 		},
 	)
 
@@ -525,4 +567,66 @@ func (s *MCPServer) registerClusterWriteTools() {
 			return mcp.NewToolResultText(`{"status":"replication cleanup initiated"}`), nil
 		},
 	)
+}
+
+// logEntry is one log line as the assistant sees it: the module by name, not by id.
+type logEntry struct {
+	Timestamp string `json:"timestamp"`
+	Level     string `json:"level"`
+	Module    string `json:"module"`
+	Text      string `json:"text"`
+}
+
+// logLevelRank orders the levels a buffer entry carries; unknown levels (STATE,
+// ALERT...) rank with warnings so a filter never hides them by accident.
+func logLevelRank(level string) int {
+	switch strings.ToUpper(strings.TrimSpace(level)) {
+	case "DEBUG", "DBG", "TRACE":
+		return 0
+	case "INFO":
+		return 1
+	case "WARN", "WARNING":
+		return 2
+	case "ERROR", "ERR", "FATAL", "PANIC":
+		return 3
+	}
+	return 2
+}
+
+// filterLogEntries keeps the buffer entries at or above minLevel, of the given module
+// tag when one is asked, newest first (the ring buffers hold the newest at index 0),
+// up to limit (<= 0 = 50). Empty ring slots are skipped.
+func filterLogEntries(buf []s18log.HttpMessage, minLevel, module string, limit int) []logEntry {
+	if limit <= 0 {
+		limit = 50
+	}
+	min := logLevelRank(minLevel)
+	module = strings.ToLower(strings.TrimSpace(module))
+	out := make([]logEntry, 0, limit)
+	for _, m := range buf {
+		if m.Text == "" {
+			continue
+		}
+		if logLevelRank(m.Level) < min {
+			continue
+		}
+		tag := config.GetTagsForLog(m.Module)
+		if module != "" && strings.ToLower(tag) != module {
+			continue
+		}
+		out = append(out, logEntry{Timestamp: m.Timestamp, Level: m.Level, Module: tag, Text: m.Text})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+// alertsOf is one state machine's open errors and warnings; a nil machine (feature
+// off) answers empty lists, never a panic.
+func alertsOf(sm *state.StateMachine) map[string]interface{} {
+	if sm == nil {
+		return map[string]interface{}{"errors": []state.StateHttp{}, "warnings": []state.StateHttp{}}
+	}
+	return map[string]interface{}{"errors": sm.GetOpenErrors(), "warnings": sm.GetOpenWarnings()}
 }

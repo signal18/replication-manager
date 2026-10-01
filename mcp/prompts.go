@@ -40,7 +40,7 @@ Follow these steps in order:
    a. Call check-database-is-master or check-database-is-slave to confirm role.
    b. Call check-database-is-late to check replication lag.
    c. If lag exists, call get-database-status to look at Seconds_Behind_Master and IO/SQL thread states.
-5. Call list-cluster-logs to review recent orchestrator log entries for warnings or errors.
+5. Call list-cluster-logs (log_type=general, level=warning) to review the recent orchestrator warnings and errors; drop to level=info only if the sequence of events matters.
 6. Call list-cluster-crashes to check for recent failover events.
 
 Summarize findings with:
