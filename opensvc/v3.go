@@ -1077,6 +1077,10 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 			rpparams = params.ToRunParams()
 		}
 		resp, err = client.PostInstanceActionRun(ctx, node, namespace, oKind, service, rpparams, collector.RequestCloserV3())
+	case "freeze":
+		resp, err = client.PostInstanceActionFreeze(ctx, node, namespace, oKind, service, nil, collector.RequestCloserV3())
+	case "unfreeze":
+		resp, err = client.PostInstanceActionUnfreeze(ctx, node, namespace, oKind, service, nil, collector.RequestCloserV3())
 	case "clear":
 		resp, err = client.PostInstanceClear(ctx, node, namespace, oKind, service, collector.RequestCloserV3())
 	default:
@@ -1100,6 +1104,27 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 	}
 
 	return body, nil
+}
+
+// FreezeInstanceV3 freezes one instance: the daemon's HA orchestration leaves it alone, so a
+// user stop holds whatever status refresh lands during the stop (om3 rc40, opensvc/om3#1142).
+func (collector *Collector) FreezeInstanceV3(node, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+	_, err := collector.handleInstanceActionV3(node, svcparts[0], svcparts[1], svcparts[2], "freeze", nil)
+	return err
+}
+
+// UnfreezeInstanceV3 gives the instance back to the orchestration.
+func (collector *Collector) UnfreezeInstanceV3(node, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+	_, err := collector.handleInstanceActionV3(node, svcparts[0], svcparts[1], svcparts[2], "unfreeze", nil)
+	return err
 }
 
 func (collector *Collector) ClearInstanceV3(node, svc string) error {

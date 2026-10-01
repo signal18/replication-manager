@@ -228,22 +228,26 @@ func (cluster *Cluster) RollingRestart() error {
 					return err
 				}
 			} else {
-				stoppedAt := time.Now()
+				if ferr := cluster.FreezeDatabaseService(slave); ferr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: freeze failed on %s: %s (going on unfrozen)", slave.URL, ferr)
+				}
 				err := cluster.StopDatabaseService(slave)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.URL, err)
 					if maintenanceEnabled {
 						slave.SwitchMaintenance()
 					}
+					_ = cluster.UnfreezeDatabaseService(slave)
 					return err
 				}
 
-				err = cluster.WaitDatabaseFailedOrRestarted(slave, stoppedAt)
+				err = cluster.WaitDatabaseFailed(slave)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling stop slave does not transit Failed %s %s", slave.URL, err)
 					if maintenanceEnabled {
 						slave.SwitchMaintenance()
 					}
+					_ = cluster.UnfreezeDatabaseService(slave)
 					return err
 				}
 
@@ -255,6 +259,9 @@ func (cluster *Cluster) RollingRestart() error {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: deployment upgrade on start failed on slave %s (continuing): %s", slave.URL, uerr)
 				}
 				err = cluster.StartDatabaseWaitRejoin(slave)
+				if uerr := cluster.UnfreezeDatabaseService(slave); uerr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: unfreeze failed on %s: %s", slave.URL, uerr)
+				}
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
 					if maintenanceEnabled {
@@ -314,21 +321,25 @@ func (cluster *Cluster) RollingRestart() error {
 			return err
 		}
 	} else {
-		stoppedAt := time.Now()
+		if ferr := cluster.FreezeDatabaseService(master); ferr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: freeze failed on %s: %s (going on unfrozen)", master.URL, ferr)
+		}
 		err := cluster.StopDatabaseService(master)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master stop failed %s %s", master.URL, err)
 			if maintenanceEnabled {
 				master.SwitchMaintenance()
 			}
+			_ = cluster.UnfreezeDatabaseService(master)
 			return err
 		}
-		err = cluster.WaitDatabaseFailedOrRestarted(master, stoppedAt)
+		err = cluster.WaitDatabaseFailed(master)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not transit suspect %s %s", master.URL, err)
 			if maintenanceEnabled {
 				master.SwitchMaintenance()
 			}
+			_ = cluster.UnfreezeDatabaseService(master)
 			return err
 		}
 		// Reapply the deployment (the plan-driven container cap, image, run_args, env)
@@ -338,6 +349,9 @@ func (cluster *Cluster) RollingRestart() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: deployment upgrade on start failed on old master %s (continuing): %s", master.URL, uerr)
 		}
 		err = cluster.StartDatabaseWaitRejoin(master)
+		if uerr := cluster.UnfreezeDatabaseService(master); uerr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: unfreeze failed on %s: %s", master.URL, uerr)
+		}
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not restart %s %s", master.URL, err)
 			if maintenanceEnabled {
@@ -426,12 +440,20 @@ func (cluster *Cluster) rollingUpgradeStopUpdateStart(server *ServerMonitor, for
 	if !isKubernetes {
 		updateConfig()
 	}
-	stoppedAt := time.Now()
+	// Frozen for the stop/start: the orchestrator must not undo the stop (opensvc/om3#1142).
+	if err := cluster.FreezeDatabaseService(server); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling upgrade (%s): freeze failed on %s: %s (going on unfrozen)", phase, server.URL, err)
+	}
+	defer func() {
+		if err := cluster.UnfreezeDatabaseService(server); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling upgrade (%s): unfreeze failed on %s: %s", phase, server.URL, err)
+		}
+	}()
 	if err := stop(server); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade (%s): stop failed on %s: %s", phase, server.URL, err)
 		return err
 	}
-	if err := cluster.WaitDatabaseFailedOrRestarted(server, stoppedAt); err != nil {
+	if err := cluster.WaitDatabaseFailed(server); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade (%s): %s does not transit failed: %s", phase, server.URL, err)
 		return err
 	}

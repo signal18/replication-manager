@@ -1254,3 +1254,35 @@ func (cluster *Cluster) ReloadOpenSVCDaemonNodeStats() error {
 	}
 	return nil
 }
+
+// FreezeDatabaseService holds the orchestrator off a database instance for the duration of
+// a rolling stop/start. On om3 rc40 a status refresh racing an instance stop clears the
+// stopped flag and the HA orchestration restarts the instance ~8 s later (opensvc/om3#1142,
+// curepipe 2026-10-01); a frozen instance stays down whatever the refresh sees (proven on
+// dev3). No-op on the other orchestrators and on OpenSVC v2.
+func (cluster *Cluster) FreezeDatabaseService(server *ServerMonitor) error {
+	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC || cluster.Conf.ProvOpensvcUseCollectorAPI {
+		return nil
+	}
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		return nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"OpenSVC V3 instance freeze for %s on node %s (rolling operation)", server.URL, server.Agent)
+	return svc.FreezeInstanceV3(server.Agent, server.ServiceName)
+}
+
+// UnfreezeDatabaseService gives the instance back to the orchestration after the start.
+func (cluster *Cluster) UnfreezeDatabaseService(server *ServerMonitor) error {
+	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC || cluster.Conf.ProvOpensvcUseCollectorAPI {
+		return nil
+	}
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		return nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"OpenSVC V3 instance unfreeze for %s on node %s", server.URL, server.Agent)
+	return svc.UnfreezeInstanceV3(server.Agent, server.ServiceName)
+}
