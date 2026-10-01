@@ -452,19 +452,21 @@ function ClusterPriceTable() {
         Per unit family: plan, over-commit and under-commit in unit-months integrated per monitoring period, then → projected to the end of the month from the current tick; cost = unit price × (plan + over-commit × (100 + over %)/100 − under-commit × under %/100).
       </Text>
       <Box overflowX='auto'>
-        <table style={{ fontSize: '12px', borderCollapse: 'collapse', minWidth: '720px' }}>
+        <table style={{ fontSize: '12px', borderCollapse: 'collapse', minWidth: '1100px' }}>
           <thead>
             <tr style={{ opacity: 0.7 }}>
               <th style={{ textAlign: 'left', padding: '2px 8px' }}>Cluster</th>
               <th style={{ textAlign: 'left', padding: '2px 8px' }}>Partner</th>
               <th style={{ textAlign: 'left', padding: '2px 8px' }}>Sponsors</th>
               <th style={{ textAlign: 'left', padding: '2px 8px' }}>Family</th>
-              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Plan</th>
-              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Over</th>
-              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Under</th>
+              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Plan units</th>
+              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Over units</th>
+              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Under units</th>
               <th style={{ textAlign: 'right', padding: '2px 8px' }}>Unit price</th>
-              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Accrued</th>
-              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Projected month</th>
+              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Plan €</th>
+              <th style={{ textAlign: 'right', padding: '2px 8px' }}>+ Over €</th>
+              <th style={{ textAlign: 'right', padding: '2px 8px' }}>− Under €</th>
+              <th style={{ textAlign: 'right', padding: '2px 8px' }}>= Total €</th>
             </tr>
           </thead>
           <tbody>
@@ -480,14 +482,18 @@ function ClusterPriceTable() {
                     <td style={{ padding: '2px 8px', textAlign: 'right' }}>{um(u.monthOverCommit)} <Text as='span' opacity={0.6}>→ {um(u.projectedOverCommit)}</Text></td>
                     <td style={{ padding: '2px 8px', textAlign: 'right' }}>{um(u.monthUnderCommit)} <Text as='span' opacity={0.6}>→ {um(u.projectedUnderCommit)}</Text></td>
                     <td style={{ padding: '2px 8px', textAlign: 'right' }}>{u.priced ? eur(u.unitPrice) : 'not priced'}</td>
-                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{u.priced ? eur(u.monthCost) : ''}</td>
-                    <td style={{ padding: '2px 8px', textAlign: 'right', opacity: 0.7 }}>{u.priced ? eur(u.projectedCost) : ''}</td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{u.priced ? <>{eur(u.monthPlanCost)} <Text as='span' opacity={0.6}>→ {eur(u.projectedPlanCost)}</Text></> : ''}</td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{u.priced ? <>+{eur(u.monthOverCost)} <Text as='span' opacity={0.6}>→ +{eur(u.projectedOverCost)}</Text></> : ''}</td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{u.priced ? <>−{eur(u.monthUnderCredit)} <Text as='span' opacity={0.6}>→ −{eur(u.projectedUnderCredit)}</Text></> : ''}</td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right', fontWeight: 'bold' }}>{u.priced ? <>{eur(u.monthCost)} <Text as='span' fontWeight='normal' opacity={0.6}>→ {eur(u.projectedCost)}</Text></> : ''}</td>
                   </tr>
                 ))}
                 <tr style={{ fontWeight: 'bold' }}>
-                  <td colSpan={7} style={{ padding: '2px 8px', textAlign: 'right', opacity: 0.8 }}>{c.cluster} this month</td>
-                  <td style={{ padding: '2px 8px', textAlign: 'right' }}>{eur(c.monthCost)}</td>
-                  <td style={{ padding: '2px 8px', textAlign: 'right' }}>{eur(c.projected)} <Text as='span' fontWeight='normal' opacity={0.6}>({eur(c.rate)}/month now)</Text></td>
+                  <td colSpan={8} style={{ padding: '2px 8px', textAlign: 'right', opacity: 0.8 }}>{c.cluster} this month</td>
+                  <td style={{ padding: '2px 8px', textAlign: 'right' }}>{eur((c.units || []).reduce((a, u) => a + (u.priced ? u.monthPlanCost : 0), 0))} <Text as='span' fontWeight='normal' opacity={0.6}>→ {eur((c.units || []).reduce((a, u) => a + (u.priced ? u.projectedPlanCost : 0), 0))}</Text></td>
+                  <td style={{ padding: '2px 8px', textAlign: 'right' }}>+{eur((c.units || []).reduce((a, u) => a + (u.priced ? u.monthOverCost : 0), 0))} <Text as='span' fontWeight='normal' opacity={0.6}>→ +{eur((c.units || []).reduce((a, u) => a + (u.priced ? u.projectedOverCost : 0), 0))}</Text></td>
+                  <td style={{ padding: '2px 8px', textAlign: 'right' }}>−{eur((c.units || []).reduce((a, u) => a + (u.priced ? u.monthUnderCredit : 0), 0))} <Text as='span' fontWeight='normal' opacity={0.6}>→ −{eur((c.units || []).reduce((a, u) => a + (u.priced ? u.projectedUnderCredit : 0), 0))}</Text></td>
+                  <td style={{ padding: '2px 8px', textAlign: 'right' }}>{eur(c.monthCost)} <Text as='span' fontWeight='normal' opacity={0.6}>→ {eur(c.projected)}</Text></td>
                 </tr>
               </React.Fragment>
             ))}

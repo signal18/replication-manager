@@ -60,7 +60,7 @@ func (cluster *Cluster) BillingUsage() []UnitUsage {
 	}
 	// Archives: priced unless the client brought its own storage; before the first
 	// reading of the day there are no units yet, the price still shows.
-	ar := UnitUsage{Family: BillingFamilyArchive, Unit: "BAU", Priced: !c.Cloud18MarketplaceBAUClientStorage, UnitPrice: c.Cloud18MarketplaceBAUPrice}
+	ar := UnitUsage{Family: BillingFamilyArchive, Unit: "BAU", NoPlan: true, Priced: !c.Cloud18MarketplaceBAUClientStorage, UnitPrice: c.Cloud18MarketplaceBAUPrice}
 	if b := cluster.BackupArchiveUnits; b != nil {
 		ar.Billable, ar.Priced = float64(b.BilledUnits), b.Priced
 		if b.UnitPrice > 0 {

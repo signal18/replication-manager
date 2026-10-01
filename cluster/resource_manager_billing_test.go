@@ -41,12 +41,13 @@ func TestResourceManagerBillingAccrualAndStatement(t *testing.T) {
 	usage := []UnitUsage{
 		{Family: BillingFamilyDatabase, Unit: "DBU", Plan: 4, Billable: 4, Priced: true},
 		{Family: BillingFamilyCompute, Unit: "APU", Plan: 4, Billable: 6, Priced: true},
-		{Family: BillingFamilyArchive, Unit: "BAU", Plan: 0, Billable: 3, Priced: false},
+		{Family: BillingFamilyArchive, Unit: "BAU", NoPlan: true, Plan: 0, Billable: 3, Priced: false},
 		{Family: BillingFamilyBackup, Unit: "BKU", Plan: 2, Billable: 2, Priced: true, UnitPrice: 30, OverPct: 150, UnderPct: 80},
+		{Family: "bau_priced", Unit: "BAU", NoPlan: true, Billable: 3, Priced: true, UnitPrice: 2},
 	}
 	metrics := m.RecordUsage("belair", id, usage, t0) // first tick: dt = 0
-	if len(metrics) != 16 {
-		t.Fatalf("4 series × 4 families: %d", len(metrics))
+	if len(metrics) != 20 {
+		t.Fatalf("4 series × 5 families: %d", len(metrics))
 	}
 	m.RecordUsage("belair", id, usage, t0.Add(60*time.Second))
 	m.RecordUsage("belair", id, usage, t0.Add(120*time.Second))
@@ -67,6 +68,10 @@ func TestResourceManagerBillingAccrualAndStatement(t *testing.T) {
 	if ap.OverCommit != 2 || !near(ap.Rate, 20+2*5*1.5) || !near(ap.MonthOverCommit, 2*120/monthSec) {
 		t.Fatalf("compute: 2 over at 150%%: %+v", ap)
 	}
+	// The price splits: plan 20, + over 15, − under 0 = 35; accrued the same way.
+	if !near(ap.PlanCost, 20) || !near(ap.OverCost, 15) || ap.UnderCredit != 0 || !near(ap.MonthPlanCost+ap.MonthOverCost-ap.MonthUnderCredit, ap.MonthCost) {
+		t.Fatalf("cost split: %+v", ap)
+	}
 	if ar := cs.Units[2]; ar.Priced || ar.Rate != 0 || ar.Billable != 3 {
 		t.Fatalf("unpriced archives keep the units: %+v", ar)
 	}
@@ -74,7 +79,11 @@ func TestResourceManagerBillingAccrualAndStatement(t *testing.T) {
 	if bk := cs.Units[3]; bk.UnitPrice != 30 || bk.OverCommitPct != 150 || !near(bk.Rate, 60) {
 		t.Fatalf("the row's own price must apply: %+v", bk)
 	}
-	if !near(cs.Rate, 135) || !near(st.MonthCost, cs.MonthCost) || st.Projected <= st.MonthCost {
+	// Pure usage: billed units × price, never over or under a plan.
+	if pa := cs.Units[4]; pa.OverCommit != 0 || pa.UnderCommit != 0 || !near(pa.Rate, 6) {
+		t.Fatalf("archives are pure usage: %+v", pa)
+	}
+	if !near(cs.Rate, 141) || !near(st.MonthCost, cs.MonthCost) || st.Projected <= st.MonthCost {
 		t.Fatalf("totals and projection: %+v", st)
 	}
 	// Projection per component: the plan of the last tick carried over the time left.

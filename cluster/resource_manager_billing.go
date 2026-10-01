@@ -74,6 +74,8 @@ type UnitUsage struct {
 	Plan     float64
 	Billable float64
 	Priced   bool
+	// NoPlan: pure usage (archives), billed at the unit price with no over/under-commit.
+	NoPlan bool
 	// The price the cluster applies (its own configuration, the same the unit readings
 	// use); 0 = the manager's default price list.
 	UnitPrice         float64
@@ -99,11 +101,17 @@ type UnitBillingRow struct {
 	OverCommitPct    int     `json:"overCommitPct"`
 	UnderCommitPct   int     `json:"underCommitPct"`
 	Priced           bool    `json:"priced"`
-	Rate             float64 `json:"rate"` // EUR per month at the last tick
+	Rate             float64 `json:"rate"`        // EUR per month at the last tick = planCost + overCost − underCredit
+	PlanCost         float64 `json:"planCost"`    // plan × price, per month, at the last tick
+	OverCost         float64 `json:"overCost"`    // + over-commit × price × (100+over%)/100
+	UnderCredit      float64 `json:"underCredit"` // − under-commit × price × under%/100
 	MonthPlan        float64 `json:"monthPlan"`
 	MonthOverCommit  float64 `json:"monthOverCommit"`
 	MonthUnderCommit float64 `json:"monthUnderCommit"`
-	MonthCost        float64 `json:"monthCost"`
+	MonthCost        float64 `json:"monthCost"` // = monthPlanCost + monthOverCost − monthUnderCredit
+	MonthPlanCost    float64 `json:"monthPlanCost"`
+	MonthOverCost    float64 `json:"monthOverCost"`
+	MonthUnderCredit float64 `json:"monthUnderCredit"`
 	// Projection to the end of the month: each component as it stands at the last tick
 	// carried over the time left (plan count of every tick, over-commit and under-commit
 	// projected per unit), then priced: projectedCost = monthCost + rate × time left.
@@ -111,8 +119,12 @@ type UnitBillingRow struct {
 	ProjectedOverCommit  float64 `json:"projectedOverCommit"`
 	ProjectedUnderCommit float64 `json:"projectedUnderCommit"`
 	ProjectedCost        float64 `json:"projectedCost"`
+	ProjectedPlanCost    float64 `json:"projectedPlanCost"`
+	ProjectedOverCost    float64 `json:"projectedOverCost"`
+	ProjectedUnderCredit float64 `json:"projectedUnderCredit"`
 	// accrued unit-seconds and EUR·seconds-per-month, the integrals before division
-	planSec, overSec, underSec, rateSec float64
+	planSec, overSec, underSec, rateSec      float64
+	planCostSec, overCostSec, underCreditSec float64
 }
 
 // ClusterStatement is one cluster's rows for the month.
@@ -126,8 +138,9 @@ type ClusterStatement struct {
 	Projected float64          `json:"projected"` // MonthCost + Rate × the time left
 	FirstSeen time.Time        `json:"firstSeen"`
 	LastSeen  time.Time        `json:"lastSeen"`
-	// Accrued unit-seconds per family, kept on disk so a reload continues the month.
-	Accrued map[string][4]float64 `json:"accrued"`
+	// Accrued unit-seconds per family, kept on disk so a reload continues the month:
+	// plan, over, under, rate, planCost, overCost, underCredit.
+	Accrued map[string][7]float64 `json:"accrued"`
 }
 
 // MonthStatement is the file the back office invoices from.
@@ -241,6 +254,7 @@ func (m *ResourceManager) loadMonthLocked(now time.Time) error {
 			r := &cs.Units[i]
 			if a, ok := cs.Accrued[r.Family]; ok {
 				r.planSec, r.overSec, r.underSec, r.rateSec = a[0], a[1], a[2], a[3]
+				r.planCostSec, r.overCostSec, r.underCreditSec = a[4], a[5], a[6]
 			}
 		}
 	}
@@ -284,7 +298,7 @@ func (m *ResourceManager) RecordUsage(cluster string, id ClusterIdentity, usage 
 	}
 	cs, ok := b.stmt.Clusters[cluster]
 	if !ok {
-		cs = &ClusterStatement{Cluster: cluster, FirstSeen: now, Accrued: map[string][4]float64{}}
+		cs = &ClusterStatement{Cluster: cluster, FirstSeen: now, Accrued: map[string][7]float64{}}
 		b.stmt.Clusters[cluster] = cs
 	}
 	cs.Partner = id.Partner
@@ -318,26 +332,44 @@ func (m *ResourceManager) RecordUsage(cluster string, id ClusterIdentity, usage 
 			row.UnitPrice, row.OverCommitPct, row.UnderCommitPct = u.UnitPrice, u.OverPct, u.UnderPct
 		}
 		row.Priced = u.Priced && row.UnitPrice > 0
-		row.OverCommit = math.Max(0, u.Billable-u.Plan)
-		row.UnderCommit = math.Max(0, u.Plan-u.Billable)
-		if row.Priced {
-			row.Rate = unitRate(u.Plan, u.Billable, row.UnitPrice, row.OverCommitPct, row.UnderCommitPct)
+		if u.NoPlan {
+			// Pure usage: no plan to be over or under, the unit price and nothing else.
+			row.Plan, row.OverCommitPct, row.UnderCommitPct = 0, 0, 0
+			if row.Priced {
+				row.PlanCost = u.Billable * row.UnitPrice
+			}
+		} else {
+			row.OverCommit = math.Max(0, u.Billable-u.Plan)
+			row.UnderCommit = math.Max(0, u.Plan-u.Billable)
+			if row.Priced {
+				row.PlanCost = u.Plan * row.UnitPrice
+				row.OverCost = row.OverCommit * row.UnitPrice * float64(100+row.OverCommitPct) / 100
+				row.UnderCredit = row.UnderCommit * row.UnitPrice * float64(row.UnderCommitPct) / 100
+			}
 		}
+		row.Rate = row.PlanCost + row.OverCost - row.UnderCredit
 		// Continue the family's integrals from the statement.
 		for _, old := range cs.Units {
 			if old.Family == u.Family {
 				row.planSec, row.overSec, row.underSec, row.rateSec = old.planSec, old.overSec, old.underSec, old.rateSec
+				row.planCostSec, row.overCostSec, row.underCreditSec = old.planCostSec, old.overCostSec, old.underCreditSec
 			}
 		}
 		row.planSec += u.Plan * dt
 		row.overSec += row.OverCommit * dt
 		row.underSec += row.UnderCommit * dt
 		row.rateSec += row.Rate * dt
+		row.planCostSec += row.PlanCost * dt
+		row.overCostSec += row.OverCost * dt
+		row.underCreditSec += row.UnderCredit * dt
 		row.MonthPlan = row.planSec / monthSeconds
 		row.MonthOverCommit = row.overSec / monthSeconds
 		row.MonthUnderCommit = row.underSec / monthSeconds
 		row.MonthCost = row.rateSec / monthSeconds
-		cs.Accrued[u.Family] = [4]float64{row.planSec, row.overSec, row.underSec, row.rateSec}
+		row.MonthPlanCost = row.planCostSec / monthSeconds
+		row.MonthOverCost = row.overCostSec / monthSeconds
+		row.MonthUnderCredit = row.underCreditSec / monthSeconds
+		cs.Accrued[u.Family] = [7]float64{row.planSec, row.overSec, row.underSec, row.rateSec, row.planCostSec, row.overCostSec, row.underCreditSec}
 		cs.Rate += row.Rate
 		rows = append(rows, row)
 		base := fmt.Sprintf("billing.%s.%s.", tok, u.Family)
@@ -374,6 +406,9 @@ func (m *ResourceManager) recomputeTotalsLocked(now time.Time) {
 			r.ProjectedOverCommit = r.MonthOverCommit + r.OverCommit*left
 			r.ProjectedUnderCommit = r.MonthUnderCommit + r.UnderCommit*left
 			r.ProjectedCost = r.MonthCost + r.Rate*left
+			r.ProjectedPlanCost = r.MonthPlanCost + r.PlanCost*left
+			r.ProjectedOverCost = r.MonthOverCost + r.OverCost*left
+			r.ProjectedUnderCredit = r.MonthUnderCredit + r.UnderCredit*left
 			cs.MonthCost += r.MonthCost
 		}
 		cs.Projected = cs.MonthCost + cs.Rate*(monthSeconds-elapsed)/monthSeconds
@@ -535,8 +570,14 @@ func (m *ResourceManager) BackfillFromGraphite(clusters []string, now time.Time)
 			if v, a, s, err := billingRender(base+"rate", from, until); err == nil {
 				r.rateSec = integrateSeries(v, a, s)
 			}
-			cs.Accrued[r.Family] = [4]float64{r.planSec, r.overSec, r.underSec, r.rateSec}
+			// The cost components are recomputed from the re-integrated units at the row's
+			// current price: an exact split when the price held over the month.
+			r.planCostSec = r.planSec * r.UnitPrice
+			r.overCostSec = r.overSec * r.UnitPrice * float64(100+r.OverCommitPct) / 100
+			r.underCreditSec = r.underSec * r.UnitPrice * float64(r.UnderCommitPct) / 100
+			cs.Accrued[r.Family] = [7]float64{r.planSec, r.overSec, r.underSec, r.rateSec, r.planCostSec, r.overCostSec, r.underCreditSec}
 			r.MonthPlan, r.MonthOverCommit, r.MonthUnderCommit, r.MonthCost = r.planSec/monthSeconds, r.overSec/monthSeconds, r.underSec/monthSeconds, r.rateSec/monthSeconds
+			r.MonthPlanCost, r.MonthOverCost, r.MonthUnderCredit = r.planCostSec/monthSeconds, r.overCostSec/monthSeconds, r.underCreditSec/monthSeconds
 			done++
 		}
 	}
