@@ -1165,7 +1165,7 @@ func (cluster *Cluster) driveDynamicShrink() {
 	if !cluster.lastDynamicResize.IsZero() && time.Since(cluster.lastDynamicResize) < d {
 		return // one move per scale-down window, up or down
 	}
-	cpuUnder, memUnder, diskUnder := true, true, true
+	cpuUnder, memUnder, diskUnder, ioUnder := true, true, true, true
 	live := 0
 	for _, s := range cluster.Servers {
 		if s == nil || s.State == stateFailed || s.State == stateUnconn {
@@ -1179,6 +1179,7 @@ func (cluster *Cluster) driveDynamicShrink() {
 		cpuUnder = cpuUnder && under["cpu"]
 		memUnder = memUnder && under["mem"]
 		diskUnder = diskUnder && under["disk"]
+		ioUnder = ioUnder && under["io"]
 	}
 	if live == 0 {
 		return
@@ -1190,9 +1191,12 @@ func (cluster *Cluster) driveDynamicShrink() {
 	if cpuUnder && cluster.shrinkAxisInPlan("cpu") {
 		return
 	}
-	// Disk last: a declaration move plus a quota move, no runtime impact on the DB.
-	if diskUnder {
-		cluster.shrinkAxisInPlan("disk")
+	// Disk and IOPS last: declaration moves, no runtime impact on the DB.
+	if diskUnder && cluster.shrinkAxisInPlan("disk") {
+		return
+	}
+	if ioUnder {
+		cluster.shrinkAxisInPlan("io")
 	}
 }
 
@@ -1234,6 +1238,8 @@ func (cluster *Cluster) dynamicShrinkTarget(axis string) (from, to string, ok bo
 			v = s.DBUConsumed.DbuMem
 		case "disk":
 			v = s.DBUConsumed.DbuDisk
+		case "io":
+			v = s.DBUConsumed.DbuIo
 		}
 		if v > peakDbu {
 			peakDbu = v
@@ -1279,8 +1285,32 @@ func (cluster *Cluster) dynamicShrinkTarget(axis string) (from, to string, ok bo
 			return strconv.Itoa(int(curGB)), strconv.Itoa(int(curGB)), false
 		}
 		return strconv.Itoa(int(curGB)), strconv.Itoa(newGB), true
+	case "io":
+		// IOPS is a cap, not consumption: like the disk it shrinks toward the PLAN and never
+		// under it (the IO grow is the only way above, on a genuine bottleneck).
+		if planDbu := cluster.GetPlanDBUPerNode().Dbu; targetDbu < planDbu {
+			targetDbu = math.Ceil(planDbu - 1e-9)
+		}
+		cur, _ := strconv.Atoi(strings.TrimSpace(cluster.Conf.ProvIops))
+		iopsPerDBU := cluster.dbuIopsPerUnit()
+		newI := int(targetDbu) * iopsPerDBU
+		if cur <= newI {
+			return strconv.Itoa(cur), strconv.Itoa(cur), false
+		}
+		return strconv.Itoa(cur), strconv.Itoa(newI), true
 	}
 	return "", "", false
+}
+
+// dbuIopsPerUnit is the Database ratio's IOPS per DBU (resource-manager-ratio-dbu).
+func (cluster *Cluster) dbuIopsPerUnit() int {
+	r := mustRatio(DefaultRatioDBU)
+	if cluster != nil && cluster.resources != nil {
+		if rr := cluster.resources.Ratios(ProfileDatabase); rr.IopsPerUnit > 0 {
+			r = rr
+		}
+	}
+	return int(r.IopsPerUnit + 0.5)
 }
 
 // dbuDiskGBPerUnit is the Database ratio's disk per DBU in whole GB (resource-manager-ratio-dbu).
@@ -1319,6 +1349,10 @@ func (cluster *Cluster) shrinkAxisInPlan(axis string) bool {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 			"Dynamic DISK shrink (all servers under-used for %s, toward the plan, aligned to the DBU): prov-db-disk-size %sGB -> %sGB", cluster.Conf.ScaleDownConfigInPlanSpeed, from, to)
 		cluster.SetDBDiskSize(to)
+	case "io":
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+			"Dynamic IO shrink (all servers under-used for %s, toward the plan, aligned to the DBU): prov-db-disk-iops %s -> %s", cluster.Conf.ScaleDownConfigInPlanSpeed, from, to)
+		cluster.SetDBDiskIOPS(to)
 	}
 	return true
 }

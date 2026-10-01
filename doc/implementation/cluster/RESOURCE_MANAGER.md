@@ -97,6 +97,15 @@ invalid size"); rc40's zfs driver moves only the head's refquota on resize, the 
 release OpenSVC announced, existing volumes then get `quota = x1` as a catch-up. Test:
 `TestApplyDiskResize_GrowsUpServersAndTracksRefusal`. Validated on dev3 (reprovisioned on the new template).
 
+**IOPS shrinks toward the plan too (2026-10-01).** `driveDynamicShrink` carries a fourth axis after disk:
+when every live server has been under its configured IOPS for the scale-down window (the same tracked
+state `ResourceConsumedUnderConfigAxes`, "io"), `dynamicShrinkTarget("io")` lands `prov-db-disk-iops` on the
+larger of the plan's IOPS (1000 × plan DBU per node) and the peak IO consumption plus the safety headroom,
+on the DBU grid. IOPS is a cap, pure configuration on the database, so the move is a setter call
+(`SetDBDiskIOPS`) with no runtime impact; the IO grow (+1 DBU on a genuine bottleneck) stays the only way
+above the plan. Test `TestDynamicShrinkTargetIO`. Preprod 2026-10-01: belair pinned at 2000 IOPS over a
+1 DBU plan = 2 DBU billed per node until this shrink.
+
 **Disk shrinks toward the plan (2026-09-30, "downsizing the disk based on real usage to the plan DBU").**
 The shrink rule (`driveDynamicShrink`) now carries a third axis after mem and cpu: when every live server has
 been under-used on disk for `prov-db-scale-down-config-in-plan-speed`, `dynamicShrinkTarget("disk")` lands

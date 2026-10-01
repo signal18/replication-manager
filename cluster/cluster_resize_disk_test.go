@@ -126,3 +126,37 @@ func TestDynamicShrinkTargetDisk(t *testing.T) {
 		t.Fatalf("no consumed reading must not move the disk")
 	}
 }
+
+// The IOPS shrink target: a cap, so toward the plan and never under it, on the DBU grid
+// from the peak IO consumption plus the safety headroom.
+func TestDynamicShrinkTargetIO(t *testing.T) {
+	newCluster := func(iops string, planDbu int, used []float64) *Cluster {
+		cl := &Cluster{Name: "t", resources: NewResourceManager(), Conf: &config.Config{}}
+		cl.Conf.ProvCores = "1"
+		cl.Conf.ProvMem = "4096"
+		cl.Conf.ProvIops = iops
+		cl.Conf.ProvDisk = "20"
+		cl.Conf.ProvDbDbu = planDbu
+		cl.Conf.ProvDBCapSafetyPct = 15
+		cl.Conf.ProvDBUndercommitPct = 50
+		for _, u := range used {
+			cl.Servers = append(cl.Servers, &ServerMonitor{URL: "db:3306", State: stateSlave, DBUConsumed: &DBUReading{DbuIo: u}})
+		}
+		return cl
+	}
+	// belair: 2000 IOPS declared over a 1 DBU plan, ~100 IOPS used -> back to the plan's 1000.
+	cl := newCluster("2000", 1, []float64{0.1, 0.08})
+	if from, to, ok := cl.dynamicShrinkTarget("io"); !ok || from != "2000" || to != "1000" {
+		t.Fatalf("2000 IOPS at 0.1 DBU used must land on the 1 DBU plan (1000), got %s->%s ok=%v", from, to, ok)
+	}
+	// Peak 1500 IOPS used (1.5 DBU): ceil(1.5/0.85) = 2 DBU = 2000, nothing to do.
+	cl = newCluster("2000", 1, []float64{0.2, 1.5})
+	if _, _, ok := cl.dynamicShrinkTarget("io"); ok {
+		t.Fatalf("a real IO peak keeps the cap")
+	}
+	// Never under the plan even when the undercommit floor would allow it.
+	cl = newCluster("2000", 2, []float64{0.1})
+	if _, _, ok := cl.dynamicShrinkTarget("io"); ok {
+		t.Fatalf("at the plan: nothing to do")
+	}
+}
