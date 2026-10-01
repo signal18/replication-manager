@@ -1,6 +1,11 @@
 package releases
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestResolveTargets(t *testing.T) {
 	tb, src, err := Load("")
@@ -40,5 +45,30 @@ func TestResolveTargets(t *testing.T) {
 	}
 	if r, tag := SplitImage("registry.local:5000/db/mariadb:11.4"); r != "registry.local:5000/db/mariadb" || tag != "11.4" {
 		t.Errorf("split image with a registry port: %s %s", r, tag)
+	}
+}
+
+// An override without the newer "lines" key keeps its own LTS list and takes the
+// built-in lines, so next-minor / next-major still resolve.
+func TestLoadOverrideWithoutLines(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "lts-versions.json"), []byte(`{"updated":"2026-01-01","lts":{"mariadb":["10.11","11.4","11.8","12.3"]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tb, src, err := Load(dir)
+	if err != nil || src == "built-in" {
+		t.Fatalf("override must load: %v %s", err, src)
+	}
+	if !tb.IsLTS("mariadb", Line{12, 3}) || tb.IsLTS("mariadb", Line{10, 6}) {
+		t.Fatalf("the override's LTS list wins: %v", tb.LTS)
+	}
+	if l, err := tb.Resolve("mariadb", Line{11, 8}, "next-major", ""); err != nil || l.String() != "12.0" {
+		t.Fatalf("built-in lines must fill the missing key: %v %v", l, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "lts-versions.json"), []byte(`{broken`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if tb, src, err := Load(dir); err != nil || !strings.Contains(src, "unreadable") || len(tb.Lines["mariadb"]) == 0 {
+		t.Fatalf("a broken override falls back to the built-in table: %v %s", err, src)
 	}
 }

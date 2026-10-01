@@ -42,7 +42,31 @@ func Load(dataDir string) (Table, string, error) {
 		}
 	}
 	var t Table
-	if err := json.Unmarshal(raw, &t); err != nil {
+	if err := json.Unmarshal(raw, &t); err == nil && source != "built-in" {
+		// An override older than this binary may lack a key (the "lines" list came
+		// after "lts"): the built-in table fills what the override does not carry,
+		// per flavor, so a partial file never empties a target.
+		var b Table
+		if err2 := json.Unmarshal(builtin, &b); err2 == nil {
+			if t.LTS == nil {
+				t.LTS = map[string][]string{}
+			}
+			if t.Lines == nil {
+				t.Lines = map[string][]string{}
+			}
+			for f, v := range b.LTS {
+				if len(t.LTS[f]) == 0 {
+					t.LTS[f] = v
+				}
+			}
+			for f, v := range b.Lines {
+				if len(t.Lines[f]) == 0 {
+					t.Lines[f] = v
+				}
+			}
+		}
+		return t, source, nil
+	} else if err != nil {
 		if source != "built-in" {
 			// A broken override never hides the built-in table.
 			t = Table{}
