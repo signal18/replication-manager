@@ -26169,6 +26169,9 @@ const docTemplate = `{
                 "measurementAutoClampLimit": {
                     "type": "boolean"
                 },
+                "monitoringAddMonitorScript": {
+                    "type": "string"
+                },
                 "monitoringAddress": {
                     "type": "string"
                 },
@@ -26228,6 +26231,9 @@ const docTemplate = `{
                 },
                 "monitoringDiskUsagePct": {
                     "type": "integer"
+                },
+                "monitoringDropMonitorScript": {
+                    "type": "string"
                 },
                 "monitoringErrorLogLength": {
                     "type": "integer"

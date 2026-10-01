@@ -25,6 +25,11 @@ func (cluster *Cluster) AddSeededServer(srv string) error {
 	if strings.Contains(cluster.Conf.Hosts, srv) {
 		return errors.New("Server already exists")
 	}
+	if host, port, ok := strings.Cut(srv, ":"); ok {
+		if err := cluster.RunAddMonitorScript(cluster.monitorHookDatabase(host, port, nil)); err != nil {
+			return err
+		}
+	}
 
 	hosts := strings.Split(cluster.Conf.Hosts, ",")
 
@@ -98,6 +103,9 @@ func (cluster *Cluster) AddProxyTag(tag string) {
 }
 
 func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user string, password string) error {
+	if err := cluster.RunAddMonitorScript(cluster.monitorHookProxy(prx, srv, port, nil)); err != nil {
+		return err
+	}
 	switch prx {
 	case config.ConstProxyHaproxy:
 		cluster.Conf.HaproxyOn = true

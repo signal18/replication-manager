@@ -26158,6 +26158,9 @@
                 "measurementAutoClampLimit": {
                     "type": "boolean"
                 },
+                "monitoringAddMonitorScript": {
+                    "type": "string"
+                },
                 "monitoringAddress": {
                     "type": "string"
                 },
@@ -26217,6 +26220,9 @@
                 },
                 "monitoringDiskUsagePct": {
                     "type": "integer"
+                },
+                "monitoringDropMonitorScript": {
+                    "type": "string"
                 },
                 "monitoringErrorLogLength": {
                     "type": "integer"

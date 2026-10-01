@@ -934,6 +934,9 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 	appcnf := cluster.NewAppConfig(srv, port)
 	appcnf.ProvAppDockerImg = dockerImg
 	appcnf.ProvAppTemplate = template
+	if err := cluster.RunAddMonitorScript(cluster.monitorHookApp(appcnf, nil)); err != nil {
+		return err
+	}
 	if appended := cluster.appendConfAppIfAbsent(appcnf); !appended {
 		return errors.New("App already exists. If you want to add new deployment, please use the app deployment menu")
 	}

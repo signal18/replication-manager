@@ -438,6 +438,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MonitorSchemaIgnoreTables, "monitoring-schema-ignore-tables", "", "Comma separated list of tables to ignore for schema change monitoring. Use db_name.table_name pattern")
 	flags.StringVar(&conf.MonitorChecksumIgnoreTables, "monitoring-checksum-ignore-tables", "replication_manager_schema.jobs,replication_manager_schema.table_checksum", "Comma separated list of tables to ignore for data checksum monitoring. Use db_name.table_name pattern")
 	flags.StringVar(&conf.MonitorSchemaChangeScript, "monitoring-schema-change-script", "", "Monitor schema change external script")
+	flags.StringVar(&conf.MonitoringAddMonitorScript, "monitoring-add-monitor-script", "", "Script run before a database, proxy or app monitor is added (argv: cluster, type, name, version, units; env REPMAN_MONITOR_*, REPMAN_RESOURCE_*); a non-zero exit refuses the add, its first output line is the reason")
+	flags.StringVar(&conf.MonitoringDropMonitorScript, "monitoring-drop-monitor-script", "", "Script run after a database, proxy or app monitor is dropped, same contract as monitoring-add-monitor-script, informative only")
 	flags.StringVar(&conf.MonitoringSSLCert, "monitoring-ssl-cert", "", "HTTPS & API TLS certificate")
 	flags.StringVar(&conf.MonitoringSSLKey, "monitoring-ssl-key", "", "HTTPS & API TLS key")
 	flags.StringVar(&conf.MonitoringKeyPath, "monitoring-key-path", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")

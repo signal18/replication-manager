@@ -107,6 +107,8 @@ type Config struct {
 	MonitorChecksumIgnoreTables              string                       `mapstructure:"monitoring-checksum-ignore-tables" toml:"monitoring-checksum-ingore-tables" json:"monitoringChecksumIngoreTables"`
 	MonitorQueryRules                        bool                         `mapstructure:"monitoring-query-rules" toml:"monitoring-query-rules" json:"monitoringQueryRules"`
 	MonitorSchemaChangeScript                string                       `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script" json:"monitoringSchemaChangeScript"`
+	MonitoringAddMonitorScript               string                       `mapstructure:"monitoring-add-monitor-script" toml:"monitoring-add-monitor-script" json:"monitoringAddMonitorScript"`
+	MonitoringDropMonitorScript              string                       `mapstructure:"monitoring-drop-monitor-script" toml:"monitoring-drop-monitor-script" json:"monitoringDropMonitorScript"`
 	MonitorCheckGrants                       bool                         `mapstructure:"monitoring-check-grants" toml:"monitoring-check-grants" json:"monitoringCheckGrants"`
 	MonitorProcessList                       bool                         `mapstructure:"monitoring-processlist" toml:"monitoring-processlist" json:"monitoringProcesslist"`
 	MonitorProcessListLimit                  string                       `mapstructure:"monitoring-processlist-limit" toml:"monitoring-processlist-limit" json:"monitoringProcesslistLimit"`

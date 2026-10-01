@@ -31,12 +31,14 @@ func (cluster *Cluster) RemoveServerMonitor(host string, port string) error {
 	newServers := make([]*ServerMonitor, 0)
 	newList := make([]string, 0)
 	index := -1
+	var dropped *ServerMonitor
 	//Find the index
 	for i, srv := range cluster.Servers {
 
 		//Skip the server
 		if srv.Host == host && srv.Port == port {
 			index = i
+			dropped = srv
 			continue
 		}
 
@@ -55,6 +57,7 @@ func (cluster *Cluster) RemoveServerMonitor(host string, port string) error {
 		// log paths no longer belong to any current server, so close any
 		// writers cached for them.
 		cluster.pruneStaleDBLogWriters()
+		cluster.RunDropMonitorScript(cluster.monitorHookDatabase(host, port, dropped))
 	} else {
 		return fmt.Errorf("Host with address %s:%s not found in cluster", host, port)
 	}
@@ -137,9 +140,11 @@ func (cluster *Cluster) RemoveProxyMonitor(prx string, host string, port string)
 	newProxies := make([]DatabaseProxy, 0)
 	index := -1
 	var prxhost string
+	var dropped DatabaseProxy
 	for i, pr := range cluster.Proxies {
 		if pr.GetHost() == host && pr.GetPort() == port {
 			index = i
+			dropped = pr
 			prxhost = pr.GetName() // use name since host might be altered by provNetCNI
 			break                  // found the proxy
 		}
@@ -164,6 +169,7 @@ func (cluster *Cluster) RemoveProxyMonitor(prx string, host string, port string)
 		}
 		cluster.Unlock()
 		cluster.StateMachine.RemoveFailoverState()
+		cluster.RunDropMonitorScript(cluster.monitorHookProxy(prx, host, port, dropped))
 	} else {
 		return fmt.Errorf("Proxy host with address %s:%s not found in cluster", host, port)
 	}
@@ -213,6 +219,7 @@ func (cluster *Cluster) RemoveAppMonitor(host string, port string) error {
 		}
 		cluster.Unlock()
 		cluster.StateMachine.RemoveFailoverState()
+		cluster.RunDropMonitorScript(cluster.monitorHookApp(appcnf, app))
 	} else {
 		return fmt.Errorf("App with address %s:%s not found in cluster", host, port)
 	}

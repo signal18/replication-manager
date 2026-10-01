@@ -2316,6 +2316,8 @@ definitions:
         type: boolean
       measurementAutoClampLimit:
         type: boolean
+      monitoringAddMonitorScript:
+        type: string
       monitoringAddress:
         type: string
       monitoringAlertTrigger:
@@ -2356,6 +2358,8 @@ definitions:
         type: boolean
       monitoringDiskUsagePct:
         type: integer
+      monitoringDropMonitorScript:
+        type: string
       monitoringErrorLogLength:
         type: integer
       monitoringGlobalHeartbeatStallThreshold:
