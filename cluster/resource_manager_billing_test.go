@@ -42,10 +42,11 @@ func TestResourceManagerBillingAccrualAndStatement(t *testing.T) {
 		{Family: BillingFamilyDatabase, Unit: "DBU", Plan: 4, Billable: 4, Priced: true},
 		{Family: BillingFamilyCompute, Unit: "APU", Plan: 4, Billable: 6, Priced: true},
 		{Family: BillingFamilyArchive, Unit: "BAU", Plan: 0, Billable: 3, Priced: false},
+		{Family: BillingFamilyBackup, Unit: "BKU", Plan: 2, Billable: 2, Priced: true, UnitPrice: 30, OverPct: 150, UnderPct: 80},
 	}
 	metrics := m.RecordUsage("belair", id, usage, t0) // first tick: dt = 0
-	if len(metrics) != 12 {
-		t.Fatalf("4 series × 3 families: %d", len(metrics))
+	if len(metrics) != 16 {
+		t.Fatalf("4 series × 4 families: %d", len(metrics))
 	}
 	m.RecordUsage("belair", id, usage, t0.Add(60*time.Second))
 	m.RecordUsage("belair", id, usage, t0.Add(120*time.Second))
@@ -69,8 +70,18 @@ func TestResourceManagerBillingAccrualAndStatement(t *testing.T) {
 	if ar := cs.Units[2]; ar.Priced || ar.Rate != 0 || ar.Billable != 3 {
 		t.Fatalf("unpriced archives keep the units: %+v", ar)
 	}
-	if !near(cs.Rate, 75) || !near(st.MonthCost, cs.MonthCost) || st.Projected <= st.MonthCost {
+	// A row carrying its cluster's price overrides the manager's default list.
+	if bk := cs.Units[3]; bk.UnitPrice != 30 || bk.OverCommitPct != 150 || !near(bk.Rate, 60) {
+		t.Fatalf("the row's own price must apply: %+v", bk)
+	}
+	if !near(cs.Rate, 135) || !near(st.MonthCost, cs.MonthCost) || st.Projected <= st.MonthCost {
 		t.Fatalf("totals and projection: %+v", st)
+	}
+	// Projection per component: the plan of the last tick carried over the time left.
+	start, _ := monthBounds(t0)
+	left := (monthSec - t0.Add(120*time.Second).Sub(start).Seconds()) / monthSec
+	if !near(db.ProjectedPlan, db.MonthPlan+4*left) || !near(ap.ProjectedOverCommit, ap.MonthOverCommit+2*left) || !near(db.ProjectedCost, db.MonthCost+40*left) {
+		t.Fatalf("projected components: %+v %+v", db, ap)
 	}
 	// A pause longer than maxTick is not billed as if the reading had held.
 	m.RecordUsage("belair", id, usage, t0.Add(2*time.Hour))

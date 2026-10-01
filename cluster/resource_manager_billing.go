@@ -74,6 +74,10 @@ type UnitUsage struct {
 	Plan     float64
 	Billable float64
 	Priced   bool
+	// The price the cluster applies (its own configuration, the same the unit readings
+	// use); 0 = the manager's default price list.
+	UnitPrice         float64
+	OverPct, UnderPct int
 }
 
 // ClusterIdentity is who pays whom, captured with every tick.
@@ -100,6 +104,13 @@ type UnitBillingRow struct {
 	MonthOverCommit  float64 `json:"monthOverCommit"`
 	MonthUnderCommit float64 `json:"monthUnderCommit"`
 	MonthCost        float64 `json:"monthCost"`
+	// Projection to the end of the month: each component as it stands at the last tick
+	// carried over the time left (plan count of every tick, over-commit and under-commit
+	// projected per unit), then priced: projectedCost = monthCost + rate × time left.
+	ProjectedPlan        float64 `json:"projectedPlan"`
+	ProjectedOverCommit  float64 `json:"projectedOverCommit"`
+	ProjectedUnderCommit float64 `json:"projectedUnderCommit"`
+	ProjectedCost        float64 `json:"projectedCost"`
 	// accrued unit-seconds and EUR·seconds-per-month, the integrals before division
 	planSec, overSec, underSec, rateSec float64
 }
@@ -125,7 +136,7 @@ type MonthStatement struct {
 	Currency    string                       `json:"currency"`
 	Final       bool                         `json:"final"`
 	ElapsedPct  float64                      `json:"elapsedPct"`
-	Prices      BillingPrices                `json:"prices"`
+	Prices      BillingPrices                `json:"defaultPrices"` // the instance's price list; each row carries the price its cluster applied
 	GeneratedAt time.Time                    `json:"generatedAt"`
 	Clusters    map[string]*ClusterStatement `json:"clusters"`
 	MonthCost   float64                      `json:"monthCost"`
@@ -303,11 +314,14 @@ func (m *ResourceManager) RecordUsage(cluster string, id ClusterIdentity, usage 
 	for _, u := range usage {
 		row := UnitBillingRow{Family: u.Family, Unit: u.Unit, Plan: u.Plan, Billable: u.Billable,
 			UnitPrice: b.prices.of(u.Family), OverCommitPct: b.prices.OverPct, UnderCommitPct: b.prices.UnderPct}
+		if u.UnitPrice > 0 {
+			row.UnitPrice, row.OverCommitPct, row.UnderCommitPct = u.UnitPrice, u.OverPct, u.UnderPct
+		}
 		row.Priced = u.Priced && row.UnitPrice > 0
 		row.OverCommit = math.Max(0, u.Billable-u.Plan)
 		row.UnderCommit = math.Max(0, u.Plan-u.Billable)
 		if row.Priced {
-			row.Rate = unitRate(u.Plan, u.Billable, row.UnitPrice, b.prices.OverPct, b.prices.UnderPct)
+			row.Rate = unitRate(u.Plan, u.Billable, row.UnitPrice, row.OverCommitPct, row.UnderCommitPct)
 		}
 		// Continue the family's integrals from the statement.
 		for _, old := range cs.Units {
@@ -351,9 +365,15 @@ func (m *ResourceManager) recomputeTotalsLocked(now time.Time) {
 	b.stmt.ElapsedPct = math.Round(elapsed/monthSeconds*1000) / 10
 	b.stmt.Prices = b.prices
 	b.stmt.MonthCost, b.stmt.Rate = 0, 0
+	left := (monthSeconds - elapsed) / monthSeconds
 	for _, cs := range b.stmt.Clusters {
 		cs.MonthCost = 0
-		for _, r := range cs.Units {
+		for i := range cs.Units {
+			r := &cs.Units[i]
+			r.ProjectedPlan = r.MonthPlan + r.Plan*left
+			r.ProjectedOverCommit = r.MonthOverCommit + r.OverCommit*left
+			r.ProjectedUnderCommit = r.MonthUnderCommit + r.UnderCommit*left
+			r.ProjectedCost = r.MonthCost + r.Rate*left
 			cs.MonthCost += r.MonthCost
 		}
 		cs.Projected = cs.MonthCost + cs.Rate*(monthSeconds-elapsed)/monthSeconds

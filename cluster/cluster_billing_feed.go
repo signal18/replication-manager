@@ -5,7 +5,6 @@
 package cluster
 
 import (
-	"math"
 	"sort"
 	"time"
 
@@ -17,53 +16,56 @@ import (
 // family, and who sponsors it; it pushes that to the ResourceManager every tick, which
 // prices it and keeps the month statement (resource_manager_billing.go).
 
-func unitPivot(p PhysicalUsage, r UnitRatios) float64 {
-	v := 0.0
-	if r.CoresPerUnit > 0 {
-		v = math.Max(v, p.CpuCores/r.CoresPerUnit)
-	}
-	if r.MemMBPerUnit > 0 {
-		v = math.Max(v, float64(p.MemBytes)/1024/1024/r.MemMBPerUnit)
-	}
-	if r.IopsPerUnit > 0 {
-		v = math.Max(v, p.IoIops/r.IopsPerUnit)
-	}
-	if r.DiskGBPerUnit > 0 {
-		v = math.Max(v, float64(p.DiskBytes)/1024/1024/1024/r.DiskGBPerUnit)
-	}
-	return v
-}
-
 // BillingUsage is the plan and the billable units of the five families at this tick: the
 // database plan against what the servers hold (config DBU when provisioned, plan +
 // borrowed never less), and the four unit objects the cluster already maintains.
 func (cluster *Cluster) BillingUsage() []UnitUsage {
+	// Billable = what the servers really hold: the config DBU per node (the pivot of
+	// the allocated axes), which the dynamic resize moves above the plan (borrow) or
+	// below it (shrink). An unprovisioned cluster holds nothing: it is billed its plan.
 	plan := float64(cluster.GetPlanDbu())
 	billable := plan
 	if cluster.IsProvision && len(cluster.Servers) > 0 {
-		billable = cluster.GetConfigDBUPerNode().Dbu * float64(len(cluster.Servers))
-		if cluster.resources != nil {
-			if b := cluster.resources.BorrowedByCluster(cluster.Name); b != (PhysicalUsage{}) {
-				billable = math.Max(billable, plan+unitPivot(b, cluster.resources.Ratios(ProfileDatabase)))
-			}
+		if cfg := cluster.GetConfigDBUPerNode().Dbu; cfg > 0 {
+			billable = cfg * float64(len(cluster.Servers))
 		}
 	}
-	out := []UnitUsage{{Family: BillingFamilyDatabase, Unit: "DBU", Plan: plan, Billable: billable, Priced: true}}
-	st := UnitUsage{Family: BillingFamilyStateful, Unit: "DBU", Priced: true}
+	// Prices: the cluster's own configuration, the same values its unit readings price
+	// with (a server-scope setting can differ between the instance file and a cluster's
+	// file; the reading and the statement must agree).
+	c := cluster.Conf
+	over, under := c.Cloud18MarketplaceOvercommitPricePct, c.Cloud18MarketplaceUndercommitPricePct
+	out := []UnitUsage{{Family: BillingFamilyDatabase, Unit: "DBU", Plan: plan, Billable: billable, Priced: true,
+		UnitPrice: c.Cloud18MarketplaceDBUPrice, OverPct: over, UnderPct: under}}
+	st := UnitUsage{Family: BillingFamilyStateful, Unit: "DBU", Priced: true, UnitPrice: c.Cloud18MarketplaceDBUPrice, OverPct: over, UnderPct: under}
 	if b := cluster.StatefulUnits; b != nil {
 		st.Plan, st.Billable = float64(b.Plan), float64(b.BillableUnits)
+		if b.UnitPrice > 0 {
+			st.UnitPrice, st.OverPct, st.UnderPct = b.UnitPrice, b.OverPricePct, b.UnderPricePct
+		}
 	}
-	co := UnitUsage{Family: BillingFamilyCompute, Unit: "APU", Priced: true}
+	co := UnitUsage{Family: BillingFamilyCompute, Unit: "APU", Priced: true, UnitPrice: c.Cloud18MarketplaceAPUPrice, OverPct: over, UnderPct: under}
 	if b := cluster.ComputeUnits; b != nil {
 		co.Plan, co.Billable = float64(b.Plan), float64(b.BillableUnits)
+		if b.UnitPrice > 0 {
+			co.UnitPrice, co.OverPct, co.UnderPct = b.UnitPrice, b.OverPricePct, b.UnderPricePct
+		}
 	}
-	bk := UnitUsage{Family: BillingFamilyBackup, Unit: "BKU", Priced: true}
+	bk := UnitUsage{Family: BillingFamilyBackup, Unit: "BKU", Priced: true, UnitPrice: c.Cloud18MarketplaceBKUPrice, OverPct: over, UnderPct: under}
 	if b := cluster.BackupUnits; b != nil {
 		bk.Plan, bk.Billable = float64(b.Plan), float64(b.BilledUnits)
+		if b.UnitPrice > 0 {
+			bk.UnitPrice, bk.OverPct, bk.UnderPct = b.UnitPrice, b.OverPricePct, b.UnderPricePct
+		}
 	}
-	ar := UnitUsage{Family: BillingFamilyArchive, Unit: "BAU"}
+	// Archives: priced unless the client brought its own storage; before the first
+	// reading of the day there are no units yet, the price still shows.
+	ar := UnitUsage{Family: BillingFamilyArchive, Unit: "BAU", Priced: !c.Cloud18MarketplaceBAUClientStorage, UnitPrice: c.Cloud18MarketplaceBAUPrice}
 	if b := cluster.BackupArchiveUnits; b != nil {
 		ar.Billable, ar.Priced = float64(b.BilledUnits), b.Priced
+		if b.UnitPrice > 0 {
+			ar.UnitPrice = b.UnitPrice
+		}
 	}
 	return append(out, st, co, bk, ar)
 }

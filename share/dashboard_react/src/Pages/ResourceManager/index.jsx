@@ -449,7 +449,7 @@ function ClusterPriceTable() {
         )}
       </Flex>
       <Text fontSize='xs' opacity={0.6} mb={2}>
-        Per unit family: plan, over-commit and under-commit in unit-months, integrated per monitoring period; cost = unit price × (plan + over-commit × (100 + over %)/100 − under-commit × under %/100).
+        Per unit family: plan, over-commit and under-commit in unit-months integrated per monitoring period, then → projected to the end of the month from the current tick; cost = unit price × (plan + over-commit × (100 + over %)/100 − under-commit × under %/100).
       </Text>
       <Box overflowX='auto'>
         <table style={{ fontSize: '12px', borderCollapse: 'collapse', minWidth: '720px' }}>
@@ -463,7 +463,8 @@ function ClusterPriceTable() {
               <th style={{ textAlign: 'right', padding: '2px 8px' }}>Over</th>
               <th style={{ textAlign: 'right', padding: '2px 8px' }}>Under</th>
               <th style={{ textAlign: 'right', padding: '2px 8px' }}>Unit price</th>
-              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Cost</th>
+              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Accrued</th>
+              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Projected month</th>
             </tr>
           </thead>
           <tbody>
@@ -475,23 +476,25 @@ function ClusterPriceTable() {
                     <td style={{ padding: '2px 8px' }}>{i === 0 ? (c.partner || '—') : ''}</td>
                     <td style={{ padding: '2px 8px' }}>{i === 0 ? ((c.sponsors || []).join(', ') || '—') : ''}</td>
                     <td style={{ padding: '2px 8px' }}>{famLabel[u.family] || u.family} <Text as='span' opacity={0.6}>({u.unit})</Text></td>
-                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{um(u.monthPlan)}</td>
-                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{um(u.monthOverCommit)}</td>
-                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{um(u.monthUnderCommit)}</td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{um(u.monthPlan)} <Text as='span' opacity={0.6}>→ {um(u.projectedPlan)}</Text></td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{um(u.monthOverCommit)} <Text as='span' opacity={0.6}>→ {um(u.projectedOverCommit)}</Text></td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{um(u.monthUnderCommit)} <Text as='span' opacity={0.6}>→ {um(u.projectedUnderCommit)}</Text></td>
                     <td style={{ padding: '2px 8px', textAlign: 'right' }}>{u.priced ? eur(u.unitPrice) : 'not priced'}</td>
                     <td style={{ padding: '2px 8px', textAlign: 'right' }}>{u.priced ? eur(u.monthCost) : ''}</td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right', opacity: 0.7 }}>{u.priced ? eur(u.projectedCost) : ''}</td>
                   </tr>
                 ))}
-                <tr style={{ opacity: 0.8 }}>
-                  <td colSpan={8} style={{ padding: '2px 8px', textAlign: 'right' }}>accrued {eur(c.monthCost)} · rate {eur(c.rate)} /month · projected {eur(c.projected)}</td>
-                  <td />
+                <tr style={{ fontWeight: 'bold' }}>
+                  <td colSpan={7} style={{ padding: '2px 8px', textAlign: 'right', opacity: 0.8 }}>{c.cluster} this month</td>
+                  <td style={{ padding: '2px 8px', textAlign: 'right' }}>{eur(c.monthCost)}</td>
+                  <td style={{ padding: '2px 8px', textAlign: 'right' }}>{eur(c.projected)} <Text as='span' fontWeight='normal' opacity={0.6}>({eur(c.rate)}/month now)</Text></td>
                 </tr>
               </React.Fragment>
             ))}
           </tbody>
         </table>
       </Box>
-      <Text fontSize='xs' opacity={0.6} mt={1}>Infrastructure total: accrued {eur(st.monthCost)} · rate {eur(st.rate)} /month · projected {eur(st.projected)}</Text>
+      <Text fontSize='sm' fontWeight='bold' mt={2}>Infrastructure: accrued {eur(st.monthCost)} · projected month {eur(st.projected)} <Text as='span' fontWeight='normal' opacity={0.6}>({eur(st.rate)}/month now)</Text></Text>
     </Box>
   )
 }
