@@ -464,7 +464,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 					Containers: []apiv1.Container{
 						{
 							Name:            s.Name,
-							Image:           cluster.Conf.ProvDbImg,
+							Image:           cluster.deployImage(),
 							ImagePullPolicy: k8sImagePullPolicy(cluster),
 							Resources:       cluster.k8sDatabaseContainerResources(),
 							Ports: []apiv1.ContainerPort{
@@ -506,7 +506,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 						// TCP.
 						{
 							Name:      s.Name + "-dbjobs",
-							Image:     cluster.Conf.ProvDbImg,
+							Image:     cluster.deployImage(),
 							Resources: cluster.k8sDBJobsContainerResources(),
 							// Guarded, not a direct exec: on a server with nothing
 							// ever persisted (a first boot with repman
@@ -999,6 +999,7 @@ func (cluster *Cluster) k8sResourceSensorRuntimeIssue(ctx context.Context, clien
 }
 
 func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
+	cluster.ResolveDatabaseImage(false) // the deployment carries a release, not a pointer (#1862)
 
 	client, err := cluster.K8SConnectAPI()
 	if err != nil {
@@ -1522,7 +1523,7 @@ func (cluster *Cluster) k8sUpdateDatabaseServiceConfigWithClientImage(client kub
 	if forcePull {
 		pullPolicy = apiv1.PullAlways
 	}
-	image := cluster.Conf.ProvDbImg
+	image := cluster.deployImage()
 	if keepImage && currentImage != "" {
 		image = currentImage // a restart keeps the running image (#1861)
 	}
