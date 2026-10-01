@@ -750,6 +750,9 @@ func rollingUpgradePlan(ctx context.Context, cl *cluster.Cluster, target, explic
 	if err != nil {
 		return nil, err
 	}
+	if next.Less(current) {
+		return nil, fmt.Errorf("downgrade from %s to %s refused: a rolling upgrade only moves forward (a replica older than its master cannot replicate and the data dictionary does not go back); restore a backup taken on %s instead", current, next, next)
+	}
 	targetTag := next.String()
 	if strings.ToLower(strings.TrimSpace(target)) == releases.TargetVersion && strings.Count(strings.TrimSpace(explicit), ".") >= 2 {
 		targetTag = strings.TrimSpace(explicit)

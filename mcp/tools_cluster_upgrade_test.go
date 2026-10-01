@@ -2,6 +2,7 @@ package repmanmcp
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/cluster"
@@ -50,6 +51,9 @@ func TestRollingUpgradePlan(t *testing.T) {
 	}
 	if _, err := rollingUpgradePlan(context.Background(), cl, "sideways", ""); err == nil {
 		t.Fatalf("unknown target must fail")
+	}
+	if _, err := rollingUpgradePlan(context.Background(), cl, "version", "10.11"); err == nil || !strings.Contains(err.Error(), "downgrade") {
+		t.Fatalf("a lower line must be refused as a downgrade, got %v", err)
 	}
 	cl.Conf.ProvDbImg = "mariadb:latest"
 	if _, err := rollingUpgradePlan(context.Background(), cl, "next-minor", ""); err == nil {
