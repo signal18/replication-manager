@@ -515,6 +515,9 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		return true
 	case "/api/clusters/" + cluster.Name + "/topology/http-logs":
 		return true
+	case "/api/clusters/" + cluster.Name + "/price":
+		// The cluster's month statement: read-only, for any authenticated user of the cluster.
+		return true
 	}
 
 	// Configurator read-only endpoints — no specific grant required beyond auth.
