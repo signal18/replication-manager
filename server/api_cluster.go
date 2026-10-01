@@ -3796,7 +3796,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "prov-sphinx-img":
 		mycluster.SetProvSphinxImage(value)
 	case "prov-db-image":
-		mycluster.SetProvDBImage(value)
+		err = mycluster.SetProvDBImage(value)
 	case "prov-db-disk-type":
 		mycluster.SetProvDbDiskType(value)
 	case "prov-db-disk-fs":

@@ -345,7 +345,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-rolling-upgrade",
-			mcp.WithDescription("Upgrade the database engine of every node one at a time, preserving availability, to a release line chosen by target: patch (same line, latest release, the image is pulled again), next-minor (next published line of the same major, 11.4 to 11.5), next-lts (next long-term line, 11.4 to 11.8), next-major (first line of the next major, 11.x to 12.0), version (the line or tag given in version). Without confirm the tool only answers the plan: current version per node, target line and image, whether the tag exists on the registry, node order, warnings (a major move needs mariadb-upgrade, there is no rolling way back). With confirm=true it sets prov-db-image to the target and starts the rolling upgrade, replicas first, then a switchover and the old master. On-premise clusters run the configured upgrade script instead of an image change."),
+			mcp.WithDescription("Upgrade the database engine of every node one at a time, preserving availability, to a release line chosen by target: patch (same line, latest release, the image is pulled again), next-minor (next published line of the same major, 11.4 to 11.5), next-lts (next long-term line, 11.4 to 11.8), next-major (first line of the next major, 11.x to 12.0), version (the line or tag given in version). Without confirm the tool only answers the plan: current version per node, target line and image, whether the tag exists on the registry, node order, warnings (a major move needs mariadb-upgrade, there is no rolling way back). With confirm=true it chains what takes several API calls: it sets prov-db-image to the target, on OpenSVC it pushes the service definition of every node so the new image is in place (inert until the node restarts), then it starts the rolling upgrade, replicas first, then a switchover and the old master. A pinned image (immutable prov-db-docker-img) is refused. On-premise clusters run the configured upgrade script instead of an image change."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("target", mcp.Description("patch (default), next-minor, next-lts, next-major or version")),
 			mcp.WithString("version", mcp.Description("with target=version: the line or tag to move to, e.g. 11.8 or 11.8.3")),
@@ -370,7 +370,25 @@ func (s *MCPServer) registerClusterWriteTools() {
 			}
 			if cl.GetOrchestrator() != config.ConstOrchestratorOnPremise {
 				if img, _ := plan["targetImage"].(string); img != "" && img != cl.Conf.ProvDbImg {
-					cl.SetProvDBImage(img)
+					if err := cl.SetProvDBImage(img); err != nil {
+						plan["status"] = "refused: " + err.Error()
+						return mcp.NewToolResultError(toJSON(plan)), nil
+					}
+				}
+				// On OpenSVC the rolling upgrade re-pulls the image the service definition
+				// carries (image_pull_policy patched in place, 0da40bd3e); the declared image
+				// reaches the service through the same push as the update-opensvc-template
+				// action, node by node, inert until the upgrade restarts the node.
+				if cl.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
+					for _, srv := range cl.Servers {
+						if srv == nil {
+							continue
+						}
+						if err := cl.OpenSVCUpdateDatabaseTemplate(srv); err != nil {
+							plan["status"] = "refused: service definition push failed on " + srv.URL + ": " + err.Error()
+							return mcp.NewToolResultError(toJSON(plan)), nil
+						}
+					}
 				}
 			}
 			go cl.RollingUpgrade()
@@ -791,8 +809,19 @@ func rollingUpgradePlan(ctx context.Context, cl *cluster.Cluster, target, explic
 		warnings = append(warnings, next.String()+" is not a long-term line for "+flavor+" (lts: "+strings.Join(table.LTS[flavor], ", ")+")")
 	}
 	onprem := cl.GetOrchestrator() == config.ConstOrchestratorOnPremise
-	if onprem {
+	steps := []string{"set prov-db-image to the target image"}
+	switch {
+	case onprem:
+		steps = []string{"run onpremise-ssh-upgrade-db-script on each node"}
 		warnings = append(warnings, "on-premise orchestrator: the image is not changed, the rolling upgrade runs onpremise-ssh-upgrade-db-script on each node")
+	case cl.GetOrchestrator() == config.ConstOrchestratorOpenSVC:
+		steps = append(steps, "push the service definition of every node (update-opensvc-template), inert until the node restarts")
+	}
+	if !onprem {
+		steps = append(steps, "rolling upgrade: pull the image and restart each replica, switchover, pull and restart the old master")
+		if targetImage != cl.Conf.ProvDbImg && cl.IsVariableImmutable("prov-db-docker-img") {
+			warnings = append(warnings, "prov-db-image "+cl.Conf.ProvDbImg+" is pinned in the immutable configuration (cluster.d): confirm is refused until the operator changes the pin")
+		}
 	}
 	exists, checked := false, false
 	if !onprem {
@@ -827,6 +856,7 @@ func rollingUpgradePlan(ctx context.Context, cl *cluster.Cluster, target, explic
 		"tagChecked":   checked,
 		"tagExists":    exists,
 		"order":        order,
+		"steps":        steps,
 		"warnings":     warnings,
 		"releaseTable": source,
 	}, nil

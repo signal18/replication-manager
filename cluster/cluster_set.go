@@ -1980,7 +1980,13 @@ func (cluster *Cluster) SetProvOrchestrator(value string) error {
 	return nil
 }
 
+// SetProvDBImage declares the database image. A pinned image (prov-db-docker-img in the
+// immutable cluster.d config) is not moved by a setting or a rolling upgrade: the operator
+// changes the pin first (#1862).
 func (cluster *Cluster) SetProvDBImage(value string) error {
+	if value != cluster.Conf.ProvDbImg && cluster.IsVariableImmutable("prov-db-docker-img") {
+		return fmt.Errorf("prov-db-image %s is pinned in the immutable configuration: %s not applied, change the pin first", cluster.Conf.ProvDbImg, value)
+	}
 	cluster.Conf.ProvDbImg = value
 	cluster.SetDBReprovCookie()
 	return nil

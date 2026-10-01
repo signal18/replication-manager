@@ -271,8 +271,14 @@ like the API (the restart tool used to block the MCP call for the whole operatio
 `utils/releases` (`Table.Resolve`), target image = same repository + line, registry check
 (`releases.TagExists`, Docker Hub manifest HEAD, "not checked" for another registry), node
 order, warnings (major = mariadb-upgrade, no rolling way back, non-LTS line, on-premise = script
-path). With confirm it refuses a tag the registry does not have, sets `prov-db-image`
-(`SetProvDBImage`) and starts `RollingUpgrade`. The release table `utils/releases/lts-versions.json`
+path) and the `steps` the confirm chains. With confirm it refuses a tag the registry does
+not have, sets `prov-db-image` (`SetProvDBImage`, refused when `prov-db-docker-img` is
+immutable: a pin is changed by the operator, #1862), on OpenSVC pushes the service
+definition of every node (`OpenSVCUpdateDatabaseTemplate`, the `update-opensvc-template`
+action: the rolling upgrade itself only patches `image_pull_policy` in place, 0da40bd3e, so
+the declared image has to be in the service before the node restarts) and starts
+`RollingUpgrade`. That is the point of the tool over the API: one call for the setting, the
+per-node push and the rolling action. A rolling restart never changes the image (#1861). The release table `utils/releases/lts-versions.json`
 (lts + published lines per flavor) is shared with plugin-score-lts and overridable from
 `<share>/plugins/data/lts-versions.json`. Tests `TestResolveTargets`, `TestRollingUpgradePlan`.
 The doc tables are regenerated with `doc/implementation/mcp/gen_tool_tables.py`.

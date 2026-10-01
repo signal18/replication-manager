@@ -60,3 +60,32 @@ func TestRollingUpgradePlan(t *testing.T) {
 		t.Fatalf("no node version and a tag without a line must fail, not guess")
 	}
 }
+
+func TestRollingUpgradePlanStepsAndPin(t *testing.T) {
+	tagExists = func(ctx context.Context, repo, tag string) (bool, bool, error) { return true, true, nil }
+	defer func() { tagExists = releases.TagExists }()
+	cl := &cluster.Cluster{Name: "t", Conf: &config.Config{ProvDbImg: "mariadb:11.4", ShareDir: t.TempDir(), ProvOrchestrator: config.ConstOrchestratorOpenSVC,
+		ImmuableFlagMap: map[string]interface{}{"prov-db-docker-img": "mariadb:11.4"}}}
+	plan, err := rollingUpgradePlan(context.Background(), cl, "next-lts", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps := plan["steps"].([]string)
+	if len(steps) != 3 || !strings.Contains(steps[1], "update-opensvc-template") {
+		t.Fatalf("OpenSVC steps = %v", steps)
+	}
+	if ws := strings.Join(plan["warnings"].([]string), "\n"); !strings.Contains(ws, "pinned") {
+		t.Fatalf("pinned image not reported: %v", plan["warnings"])
+	}
+	if err := cl.SetProvDBImage("mariadb:11.8"); err == nil || cl.Conf.ProvDbImg != "mariadb:11.4" {
+		t.Fatalf("pinned image moved: err=%v image=%s", err, cl.Conf.ProvDbImg)
+	}
+	if err := cl.SetProvDBImage("mariadb:11.4"); err != nil {
+		t.Fatalf("same value on a pinned image must pass: %v", err)
+	}
+	cl.Conf.ImmuableFlagMap = nil
+	plan, _ = rollingUpgradePlan(context.Background(), cl, "next-lts", "")
+	if ws := strings.Join(plan["warnings"].([]string), "\n"); strings.Contains(ws, "pinned") {
+		t.Fatalf("unpinned image reported pinned: %v", plan["warnings"])
+	}
+}
