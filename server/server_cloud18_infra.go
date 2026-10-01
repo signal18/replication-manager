@@ -391,3 +391,40 @@ func (repman *ReplicationManager) Cloud18GetCluster(infra, clusterName string) (
 	}
 	return out, nil
 }
+
+// ClusterPrice is the local cluster's rows of the running month statement (the MCP
+// get-cluster-price tool; same answer as GET /api/clusters/{clusterName}/price).
+func (repman *ReplicationManager) ClusterPrice(clusterName string) (map[string]any, error) {
+	if repman.resourceManager == nil {
+		return nil, errors.New("resource manager not ready")
+	}
+	cs, ok := repman.resourceManager.ClusterStatementOf(clusterName, time.Now())
+	if !ok {
+		return nil, fmt.Errorf("no statement yet for %s: the first monitoring tick has not pushed its usage", clusterName)
+	}
+	st, _ := repman.resourceManager.Statement("", time.Now())
+	return map[string]any{"month": st.Month, "elapsedPct": st.ElapsedPct, "currency": st.Currency, "prices": st.Prices, "cluster": cs}, nil
+}
+
+// Cloud18GetClusterPrice reads a cluster's month statement on an infrastructure, as this
+// instance's Cloud18 identity: what the infrastructure's resource manager integrated.
+func (repman *ReplicationManager) Cloud18GetClusterPrice(infra, clusterName string) (map[string]any, error) {
+	clusterName = strings.TrimSpace(clusterName)
+	if clusterName == "" {
+		return nil, errors.New("cluster_name is required")
+	}
+	sess, err := repman.peerLogin(infra)
+	if err != nil {
+		return nil, err
+	}
+	body, err := sess.mustOK(http.MethodGet, "/api/clusters/"+clusterName+"/price", nil)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("price of %s on %s: %w", clusterName, sess.base, err)
+	}
+	out["infrastructure"] = sess.base
+	return out, nil
+}

@@ -6782,6 +6782,55 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/price": {
+            "get": {
+                "description": "The cluster's month statement: partner, sponsors and, per unit family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price, EUR accrued, rate and projection. Integrated per monitoring period by the resource manager.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Price of a cluster for the running month",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.ClusterStatement"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No statement yet",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/proxies/{proxyName}": {
             "get": {
                 "description": "Shows the proxies for that specific named cluster",
@@ -20752,6 +20801,96 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/global/price": {
+            "get": {
+                "description": "The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Month billing statement of the infrastructure",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.MonthStatement"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No statement for that month",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/global/price/{month}": {
+            "get": {
+                "description": "The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Month billing statement of the infrastructure",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Month YYYY-MM (default: the running month)",
+                        "name": "month",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.MonthStatement"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No statement for that month",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/global/resources": {
             "get": {
                 "produces": [
@@ -23758,6 +23897,33 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.BillingPrices": {
+            "type": "object",
+            "properties": {
+                "apu": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "bau": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "bku": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "dbu": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "overPct": {
+                    "type": "integer"
+                },
+                "underPct": {
+                    "type": "integer"
+                }
+            }
+        },
         "cluster.ClusterForm": {
             "type": "object",
             "properties": {
@@ -23769,6 +23935,58 @@ const docTemplate = `{
                 },
                 "plan": {
                     "type": "string"
+                }
+            }
+        },
+        "cluster.ClusterStatement": {
+            "type": "object",
+            "properties": {
+                "accrued": {
+                    "description": "Accrued unit-seconds per family, kept on disk so a reload continues the month.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "number",
+                            "format": "float64"
+                        }
+                    }
+                },
+                "cluster": {
+                    "type": "string"
+                },
+                "firstSeen": {
+                    "type": "string"
+                },
+                "lastSeen": {
+                    "type": "string"
+                },
+                "monthCost": {
+                    "description": "EUR accrued this month",
+                    "type": "number"
+                },
+                "partner": {
+                    "type": "string"
+                },
+                "projected": {
+                    "description": "MonthCost + Rate × the time left",
+                    "type": "number"
+                },
+                "rate": {
+                    "description": "EUR per month at the last tick",
+                    "type": "number"
+                },
+                "sponsors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "units": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.UnitBillingRow"
+                    }
                 }
             }
         },
@@ -23810,6 +24028,44 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "memBytes": {
+                    "type": "number"
+                }
+            }
+        },
+        "cluster.MonthStatement": {
+            "type": "object",
+            "properties": {
+                "clusters": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/cluster.ClusterStatement"
+                    }
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "elapsedPct": {
+                    "type": "number"
+                },
+                "final": {
+                    "type": "boolean"
+                },
+                "generatedAt": {
+                    "type": "string"
+                },
+                "month": {
+                    "type": "string"
+                },
+                "monthCost": {
+                    "type": "number"
+                },
+                "prices": {
+                    "$ref": "#/definitions/cluster.BillingPrices"
+                },
+                "projected": {
+                    "type": "number"
+                },
+                "rate": {
                     "type": "number"
                 }
             }
@@ -24094,6 +24350,57 @@ const docTemplate = `{
                 },
                 "result": {
                     "type": "string"
+                }
+            }
+        },
+        "cluster.UnitBillingRow": {
+            "type": "object",
+            "properties": {
+                "billable": {
+                    "type": "number"
+                },
+                "family": {
+                    "type": "string"
+                },
+                "monthCost": {
+                    "type": "number"
+                },
+                "monthOverCommit": {
+                    "type": "number"
+                },
+                "monthPlan": {
+                    "type": "number"
+                },
+                "monthUnderCommit": {
+                    "type": "number"
+                },
+                "overCommit": {
+                    "type": "number"
+                },
+                "overCommitPct": {
+                    "type": "integer"
+                },
+                "plan": {
+                    "type": "number"
+                },
+                "priced": {
+                    "type": "boolean"
+                },
+                "rate": {
+                    "description": "EUR per month at the last tick",
+                    "type": "number"
+                },
+                "underCommit": {
+                    "type": "number"
+                },
+                "underCommitPct": {
+                    "type": "integer"
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "unitPrice": {
+                    "type": "number"
                 }
             }
         },
@@ -28144,6 +28451,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "lastUsedFrom": {
+                    "type": "string"
+                },
+                "ownerAuthType": {
+                    "description": "OwnerAuthType is how the owner was authenticated when the token was issued\n(\"SSO\" or \"Local\"): a token issued by a Cloud18 identity keeps that identity\nfor the self-service rules, which need an SSO caller.",
                     "type": "string"
                 },
                 "revoked": {

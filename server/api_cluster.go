@@ -778,6 +778,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAlerts)),
 	))
+	router.Handle("/api/clusters/{clusterName}/price", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterPrice)),
+	))
 	router.Handle("/api/clusters/{clusterName}/topology/crashes", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCrashes)),
@@ -11073,4 +11077,41 @@ func (repman *ReplicationManager) toggleServerActiveStatus() error {
 		}
 	}
 	return nil
+}
+
+// handlerMuxClusterPrice answers one cluster's rows of the running month statement.
+// @Summary Price of a cluster for the running month
+// @Description The cluster's month statement: partner, sponsors and, per unit family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price, EUR accrued, rate and projection. Integrated per monitoring period by the resource manager.
+// @Tags Cluster
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} cluster.ClusterStatement
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "No statement yet"
+// @Router /api/clusters/{clusterName}/price [get]
+func (repman *ReplicationManager) handlerMuxClusterPrice(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if repman.resourceManager == nil {
+		http.Error(w, "ResourceManager not ready", http.StatusServiceUnavailable)
+		return
+	}
+	cs, ok := repman.resourceManager.ClusterStatementOf(mycluster.Name, time.Now())
+	if !ok {
+		http.Error(w, "No statement yet for "+mycluster.Name+": the first monitoring tick has not pushed its usage", http.StatusNotFound)
+		return
+	}
+	st, _ := repman.resourceManager.Statement("", time.Now())
+	out := map[string]any{"month": st.Month, "elapsedPct": st.ElapsedPct, "currency": st.Currency, "prices": st.Prices, "cluster": cs}
+	repman.jsonResponse(out, w)
 }

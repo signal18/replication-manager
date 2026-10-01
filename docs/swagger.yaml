@@ -703,6 +703,25 @@ definitions:
       weight:
         type: string
     type: object
+  cluster.BillingPrices:
+    properties:
+      apu:
+        format: float64
+        type: number
+      bau:
+        format: float64
+        type: number
+      bku:
+        format: float64
+        type: number
+      dbu:
+        format: float64
+        type: number
+      overPct:
+        type: integer
+      underPct:
+        type: integer
+    type: object
   cluster.ClusterForm:
     properties:
       clusterName:
@@ -711,6 +730,43 @@ definitions:
         type: string
       plan:
         type: string
+    type: object
+  cluster.ClusterStatement:
+    properties:
+      accrued:
+        additionalProperties:
+          items:
+            format: float64
+            type: number
+          type: array
+        description: Accrued unit-seconds per family, kept on disk so a reload continues
+          the month.
+        type: object
+      cluster:
+        type: string
+      firstSeen:
+        type: string
+      lastSeen:
+        type: string
+      monthCost:
+        description: EUR accrued this month
+        type: number
+      partner:
+        type: string
+      projected:
+        description: MonthCost + Rate × the time left
+        type: number
+      rate:
+        description: EUR per month at the last tick
+        type: number
+      sponsors:
+        items:
+          type: string
+        type: array
+      units:
+        items:
+          $ref: '#/definitions/cluster.UnitBillingRow'
+        type: array
     type: object
   cluster.Diff:
     properties:
@@ -737,6 +793,31 @@ definitions:
       iops:
         type: number
       memBytes:
+        type: number
+    type: object
+  cluster.MonthStatement:
+    properties:
+      clusters:
+        additionalProperties:
+          $ref: '#/definitions/cluster.ClusterStatement'
+        type: object
+      currency:
+        type: string
+      elapsedPct:
+        type: number
+      final:
+        type: boolean
+      generatedAt:
+        type: string
+      month:
+        type: string
+      monthCost:
+        type: number
+      prices:
+        $ref: '#/definitions/cluster.BillingPrices'
+      projected:
+        type: number
+      rate:
         type: number
     type: object
   cluster.PFSExplainRecord:
@@ -918,6 +999,40 @@ definitions:
         type: string
       result:
         type: string
+    type: object
+  cluster.UnitBillingRow:
+    properties:
+      billable:
+        type: number
+      family:
+        type: string
+      monthCost:
+        type: number
+      monthOverCommit:
+        type: number
+      monthPlan:
+        type: number
+      monthUnderCommit:
+        type: number
+      overCommit:
+        type: number
+      overCommitPct:
+        type: integer
+      plan:
+        type: number
+      priced:
+        type: boolean
+      rate:
+        description: EUR per month at the last tick
+        type: number
+      underCommit:
+        type: number
+      underCommitPct:
+        type: integer
+      unit:
+        type: string
+      unitPrice:
+        type: number
     type: object
   cluster.UnitPots:
     properties:
@@ -3668,6 +3783,12 @@ definitions:
       lastUsedAt:
         type: string
       lastUsedFrom:
+        type: string
+      ownerAuthType:
+        description: |-
+          OwnerAuthType is how the owner was authenticated when the token was issued
+          ("SSO" or "Local"): a token issued by a Cloud18 identity keeps that identity
+          for the self-service rules, which need an SSO caller.
         type: string
       revoked:
         type: boolean
@@ -8643,6 +8764,42 @@ paths:
       summary: Reload external log plugins for a cluster
       tags:
       - ClusterSettings
+  /api/clusters/{clusterName}/price:
+    get:
+      description: 'The cluster''s month statement: partner, sponsors and, per unit
+        family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit
+        in unit-months, unit price, EUR accrued, rate and projection. Integrated per
+        monitoring period by the resource manager.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cluster.ClusterStatement'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: No statement yet
+          schema:
+            type: string
+      summary: Price of a cluster for the running month
+      tags:
+      - Cluster
   /api/clusters/{clusterName}/proxies/{proxyName}:
     get:
       description: Shows the proxies for that specific named cluster
@@ -18683,6 +18840,74 @@ paths:
           schema:
             type: string
       summary: Get global metrics
+      tags:
+      - Global
+  /api/global/price:
+    get:
+      description: 'The price of every cluster for the month, integrated per monitoring
+        period: per cluster the partner, the sponsors and, per unit family (DBU, stateful
+        DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit
+        price and EUR. Running month by default, a past month with /{month} (YYYY-MM).
+        Requires global-admin-show.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cluster.MonthStatement'
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+        "404":
+          description: No statement for that month
+          schema:
+            type: string
+      summary: Month billing statement of the infrastructure
+      tags:
+      - Global
+  /api/global/price/{month}:
+    get:
+      description: 'The price of every cluster for the month, integrated per monitoring
+        period: per cluster the partner, the sponsors and, per unit family (DBU, stateful
+        DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit
+        price and EUR. Running month by default, a past month with /{month} (YYYY-MM).
+        Requires global-admin-show.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: 'Month YYYY-MM (default: the running month)'
+        in: path
+        name: month
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cluster.MonthStatement'
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+        "404":
+          description: No statement for that month
+          schema:
+            type: string
+      summary: Month billing statement of the infrastructure
       tags:
       - Global
   /api/global/resources:

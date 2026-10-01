@@ -3563,6 +3563,17 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	// Global policy: the share of the metal repman may allocate (protects non-repman
 	// workloads). resource-manager-* family (repman-side / on-prem first-class, NOT cloud18).
 	repman.resourceManager.SetQuotaPct(repman.Conf.ResourceManagerInfraQuotaPct)
+	repman.resourceManager.SetPrices(repman.billingPrices())
+	if repman.Conf.WorkingDir != "" {
+		logf := func(format string, args ...interface{}) {
+			if repman.Logrus != nil {
+				repman.Logrus.WithFields(log.Fields{"module": "billing"}).Infof(format, args...)
+			}
+		}
+		if err := repman.resourceManager.SetBillingDir(repman.Conf.WorkingDir+"/billing", logf); err != nil {
+			logf("billing statements: %v", err)
+		}
+	}
 	if err := repman.resourceManager.ApplyRatioSettings(repman.Conf.ResourceManagerRatioDBU, repman.Conf.ResourceManagerRatioAPU, repman.Conf.ResourceManagerRatioBKU); err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s (built-in defaults kept for the profiles that failed)", err)
 	}

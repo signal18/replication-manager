@@ -1038,3 +1038,41 @@ when made configurable), T18 (Graphite is the bounded history, no in-memory buff
 T20 (one conversion source — reconcile `ComputeUsedDBUPerNode`), T6 (GUI for the editable
 capacity). Commercial axis (refund %, overage, tiered price) stacks on top and never
 gates the technical path.
+
+## Billing: the month statement (2026-10-01)
+
+Owned by the ResourceManager (`cluster/resource_manager_billing.go`), not by the clusters:
+the manager holds every cluster's plans, consumption and borrows, receives the unit prices
+(`SetPrices` from cloud18-marketplace-*-price and the over/under-commit percentages, refreshed
+at every capacity tick) and is the one place that prices usage.
+
+**Rule (Stéphane):** the price is the INTEGRAL over every monitoring period since the first
+of the month of each unit family's rate, `rate = unit price × [plan + over × (100+over%)/100 −
+under × under%/100]`, over = max(0, billable − plan), under = max(0, plan − billable). Five
+families: `dbu` (database plan vs what the servers hold: config DBU when provisioned, plan +
+borrowed never less, `BillingUsage` in cluster_billing_feed.go), `stateful_dbu`, `apu`, `bku`,
+`bau` (no plan, priced only on the partner's storage).
+
+**Feed:** every tick, with its compute metrics batch, a cluster calls `RecordUsage(name,
+identity, usage, now)`: the manager prices the rows, accrues `Δt` (bounded by 5 min: a pause is
+not billed as if the last reading had held) into the running **month statement**, and hands back
+the `billing.<CLUSTER>.<family>.{plan,over,under,rate}` series for the graphs. Identity =
+partner (this infrastructure's Cloud18 domain/subdomain-zone) + sponsor identities (role
+sponsor, emails for SSO), captured with every tick so a cluster dropped on the 12th keeps its
+12 days.
+
+**Statement file = the record for the back office:** `<working dir>/billing/billing-YYYY-MM.json`
+(`MonthStatement`: month, prices, per cluster partner / sponsors / rows with the unit-months and
+EUR, totals, projection), written atomically every minute (`Tick`, from
+ProduceContractedCapacityState) and reloaded at start; at the month change the file is closed
+`final: true` and one line per cluster goes to the log (module billing). Graphite retention for
+`billing.*` is 35 days (share/schemas.conf) so a restart can re-integrate the month to date of
+every live cluster from the series (`BackfillFromGraphite`, once, when graphite answers): memory is
+the working copy, the file is the truth for a dropped cluster, graphite the recovery.
+
+**API/GUI/MCP:** `GET /api/global/price[/{YYYY-MM}]` (global-admin-show; running or past month, +
+the list of months on disk), `GET /api/clusters/{clusterName}/price` (cluster ACL), the "Month
+statement per cluster" table on the Resource Manager page, MCP `get-cluster-price` and
+`get-cloud18-cluster-price` (reads the cluster route on the remote infrastructure). Tests
+`TestUnitRate`, `TestResourceManagerBillingAccrualAndStatement` (accrual, gap, reload, backfill,
+rollover).

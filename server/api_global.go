@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/gorilla/mux"
 	"io"
 	"net/http"
 	"os"
@@ -928,4 +929,45 @@ func (repman *ReplicationManager) handlerMuxGlobalJobs(w http.ResponseWriter, r 
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(out)
+}
+
+// billingPrices is the infrastructure's price list for the ResourceManager.
+func (repman *ReplicationManager) billingPrices() cluster.BillingPrices {
+	c := repman.Conf
+	return cluster.BillingPrices{DBU: c.Cloud18MarketplaceDBUPrice, APU: c.Cloud18MarketplaceAPUPrice, BKU: c.Cloud18MarketplaceBKUPrice, BAU: c.Cloud18MarketplaceBAUPrice,
+		OverPct: c.Cloud18MarketplaceOvercommitPricePct, UnderPct: c.Cloud18MarketplaceUndercommitPricePct}
+}
+
+// handlerMuxGlobalPrice answers the month statement: every cluster's rows (partner,
+// sponsors, per unit family plan / over-commit / under-commit in unit-months, unit price,
+// EUR) and the totals, for the running month or a past one.
+// @Summary Month billing statement of the infrastructure
+// @Description The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.
+// @Tags Global
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param month path string false "Month YYYY-MM (default: the running month)"
+// @Success 200 {object} cluster.MonthStatement
+// @Failure 403 {string} string "Forbidden"
+// @Failure 404 {string} string "No statement for that month"
+// @Router /api/global/price [get]
+// @Router /api/global/price/{month} [get]
+func (repman *ReplicationManager) handlerMuxGlobalPrice(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if !repman.UserHasGlobalGrant(r, config.GrantGlobalAdminShow) {
+		http.Error(w, "Forbidden: requires "+config.GrantGlobalAdminShow+" grant", http.StatusForbidden)
+		return
+	}
+	if repman.resourceManager == nil {
+		http.Error(w, "ResourceManager not ready", http.StatusServiceUnavailable)
+		return
+	}
+	month := mux.Vars(r)["month"]
+	st, err := repman.resourceManager.Statement(month, time.Now())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	out := map[string]any{"statement": st, "months": repman.resourceManager.StatementMonths()}
+	repman.jsonResponse(out, w)
 }

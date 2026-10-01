@@ -58,6 +58,9 @@ type RepmanProvider interface {
 	// Self-service clusters on an infrastructure, see server_cloud18_infra.go.
 	Cloud18CreateCluster(spec Cloud18ClusterSpec, confirm bool) (map[string]any, error)
 	Cloud18GetCluster(infra, clusterName string) (map[string]any, error)
+	// Billing (resource manager month statement): local cluster, and a cluster on an infrastructure.
+	ClusterPrice(clusterName string) (map[string]any, error)
+	Cloud18GetClusterPrice(infra, clusterName string) (map[string]any, error)
 	Cloud18CreateClusterToken(infra, clusterName, label, grants string, expireDays int) (map[string]any, error)
 }
 

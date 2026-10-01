@@ -161,6 +161,9 @@ func (cluster *Cluster) CollectComputeMetrics() {
 		metrics = append(metrics, graphite.NewMetric(
 			fmt.Sprintf("resourcemanager.%s.billed_stateful_dbu", ctoken), strconv.Itoa(b.BillableUnits), ts))
 	}
+	// Billing feed: plan and billable units per family to the ResourceManager, which prices
+	// them, accrues the month statement and hands back the billing.* series for the graphs.
+	metrics = append(metrics, cluster.pushBillingUsage(time.Now())...)
 
 	if len(metrics) > 0 {
 		cluster.AddMetrics(metrics)

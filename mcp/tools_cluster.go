@@ -127,6 +127,24 @@ func (s *MCPServer) registerClusterReadTools() {
 	)
 
 	s.addTool(
+		mcp.NewTool("get-cluster-price",
+			mcp.WithDescription("Get what a cluster costs this month on this infrastructure, in EUR, as the resource manager integrates it per monitoring period: the partner and the sponsors, and per unit family (database plan in DBU, stateful applications in DBU, applications and proxies in APU, local backups in BKU, archives in BAU) the plan, the over-commit and the under-commit in unit-months, the unit price, the EUR accrued, the current rate and the projection to the end of the month. A family the infrastructure does not price answers priced=false."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			out, err := s.repman.ClusterPrice(cl.Name)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(toJSON(out)), nil
+		},
+	)
+
+	s.addTool(
 		mcp.NewTool("list-cluster-logs",
 			mcp.WithDescription("List recent log entries of a cluster, newest first, from one of its logs. log_type: general (topology, failover, replication corrections, config changes, orchestrator actions; the HA alerts' log), task (backup, restore and database jobs), workload (query storms, PFS digest coverage, tmp-table and sort findings), security (audit, authentication and hardening findings), schema (schema advisory findings), ddl (schema changes seen on the databases), variable-change (server variables that changed), sysbench. Filter with level (minimum level, default warning: only warnings and errors come back; use info or debug when you need the narrative), module (the log module tag such as topology, orchestrator, backup, config, task) and limit (default 50). Complements get-cluster-alerts, which is the current state; this is the history."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),

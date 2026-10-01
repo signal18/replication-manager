@@ -616,6 +616,17 @@ func (repman *ReplicationManager) ProduceContractedCapacityState() {
 	}
 	// Feed the physical ledger (plan pot / over-commit pot) with the same capacity, plus the
 	// disk and iops the agents do not report (config overrides only).
+	// Billing: the prices in force, the statement clock (save every minute, month
+	// rollover) and, once graphite answers, the re-integration of the month to date.
+	repman.resourceManager.SetPrices(repman.billingPrices())
+	repman.resourceManager.Tick(time.Now())
+	if repman.Conf.GraphiteMetrics && repman.Conf.GraphiteEmbedded {
+		names := make([]string, 0, len(clusters))
+		for _, cl := range clusters {
+			names = append(names, cl.Name)
+		}
+		repman.resourceManager.BackfillFromGraphite(names, time.Now())
+	}
 	repman.resourceManager.SetInfraCapacity(&cluster.AgentCapacity{
 		Cores: capCores, MemMB: capMemMB,
 		DiskGB: repman.Conf.ResourceManagerInfraDiskGB, Iops: repman.Conf.ResourceManagerInfraIops,

@@ -9,6 +9,7 @@ export const globalClustersService = {
   getGlobalAlerts,
   getGlobalMetrics,
   getGlobalResources,
+  getGlobalPrice,
   getGlobalLogs,
   getGlobalLogHistory,
   getGlobalJobs,
@@ -51,6 +52,10 @@ function getGlobalMetrics(baseURL) {
 
 function getGlobalResources(baseURL) {
   return getApi(baseURL).get('global/resources')
+}
+
+function getGlobalPrice(baseURL, month) {
+  return getApi(baseURL).get(month ? `global/price/${month}` : 'global/price')
 }
 
 function getGlobalLogs(baseURL) {

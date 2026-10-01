@@ -399,11 +399,99 @@ function ResourceManager() {
         </Box>
       )}
 
+      <ClusterPriceTable />
+
       <Text fontSize='xs' opacity={0.6} mt={3}>
         Source “agents” = summed from the physical agents (cpu/mem); “config” = a
         resource-manager-infra-* override. disk/iops/network have no per-agent source yet,
         so they show only when overridden.
       </Text>
+    </Box>
+  )
+}
+
+// Month statement per cluster (GET /api/global/price): the resource manager integrates,
+// per monitoring period since the first of the month, each unit family's plan,
+// over-commit and under-commit at the infrastructure's unit prices. Shown only when a
+// statement exists; families the infrastructure does not price show their units only.
+function ClusterPriceTable() {
+  const [data, setData] = useState(null)
+  const [month, setMonth] = useState('')
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await globalClustersService.getGlobalPrice(undefined, month)
+        if (alive) setData(res?.data || null)
+      } catch (e) {
+        if (alive) setData(null)
+      }
+    })()
+    return () => { alive = false }
+  }, [month])
+  const st = data?.statement
+  if (!st || !st.clusters) return null
+  const rows = Object.values(st.clusters).sort((a, b) => a.cluster.localeCompare(b.cluster))
+  if (rows.length === 0) return null
+  const eur = (v) => (Number(v) || 0).toFixed(2)
+  const um = (v) => (Number(v) || 0).toFixed(3)
+  const famLabel = { dbu: 'Databases', stateful_dbu: 'Stateful apps', apu: 'Apps & proxies', bku: 'Local backups', bau: 'Archives' }
+  return (
+    <Box mt={6}>
+      <Flex align='center' gap={3} mb={1}>
+        <Text fontSize='md' fontWeight='bold'>Month statement per cluster</Text>
+        <Text fontSize='xs' opacity={0.6}>{st.month} · {st.elapsedPct}% elapsed · {st.final ? 'final' : 'running'} · {st.currency}</Text>
+        {data?.months && data.months.length > 1 && (
+          <select value={month} onChange={(e) => setMonth(e.target.value)} style={{ fontSize: '12px', background: 'transparent', color: 'inherit' }}>
+            <option value=''>running month</option>
+            {data.months.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        )}
+      </Flex>
+      <Text fontSize='xs' opacity={0.6} mb={2}>
+        Per unit family: plan, over-commit and under-commit in unit-months, integrated per monitoring period; cost = unit price × (plan + over-commit × (100 + over %)/100 − under-commit × under %/100).
+      </Text>
+      <Box overflowX='auto'>
+        <table style={{ fontSize: '12px', borderCollapse: 'collapse', minWidth: '720px' }}>
+          <thead>
+            <tr style={{ opacity: 0.7 }}>
+              <th style={{ textAlign: 'left', padding: '2px 8px' }}>Cluster</th>
+              <th style={{ textAlign: 'left', padding: '2px 8px' }}>Partner</th>
+              <th style={{ textAlign: 'left', padding: '2px 8px' }}>Sponsors</th>
+              <th style={{ textAlign: 'left', padding: '2px 8px' }}>Family</th>
+              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Plan</th>
+              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Over</th>
+              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Under</th>
+              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Unit price</th>
+              <th style={{ textAlign: 'right', padding: '2px 8px' }}>Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((c) => (
+              <React.Fragment key={c.cluster}>
+                {(c.units || []).map((u, i) => (
+                  <tr key={c.cluster + u.family} style={{ borderTop: i === 0 ? '1px solid var(--border-color, #444)' : 'none' }}>
+                    <td style={{ padding: '2px 8px', fontWeight: i === 0 ? 'bold' : 'normal' }}>{i === 0 ? c.cluster : ''}</td>
+                    <td style={{ padding: '2px 8px' }}>{i === 0 ? (c.partner || '—') : ''}</td>
+                    <td style={{ padding: '2px 8px' }}>{i === 0 ? ((c.sponsors || []).join(', ') || '—') : ''}</td>
+                    <td style={{ padding: '2px 8px' }}>{famLabel[u.family] || u.family} <Text as='span' opacity={0.6}>({u.unit})</Text></td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{um(u.monthPlan)}</td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{um(u.monthOverCommit)}</td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{um(u.monthUnderCommit)}</td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{u.priced ? eur(u.unitPrice) : 'not priced'}</td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right' }}>{u.priced ? eur(u.monthCost) : ''}</td>
+                  </tr>
+                ))}
+                <tr style={{ opacity: 0.8 }}>
+                  <td colSpan={8} style={{ padding: '2px 8px', textAlign: 'right' }}>accrued {eur(c.monthCost)} · rate {eur(c.rate)} /month · projected {eur(c.projected)}</td>
+                  <td />
+                </tr>
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </Box>
+      <Text fontSize='xs' opacity={0.6} mt={1}>Infrastructure total: accrued {eur(st.monthCost)} · rate {eur(st.rate)} /month · projected {eur(st.projected)}</Text>
     </Box>
   )
 }

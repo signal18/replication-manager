@@ -67,6 +67,10 @@ type ResourceManager struct {
 	// product does not hard-lock them) -- the marketplace "lock" is a commercial
 	// policy, not a code constant -- so a partner/operator can retune or add profiles.
 	ratios map[WorkloadProfile]UnitRatios
+
+	// Billing: prices, the running month statement and its persistence
+	// (resource_manager_billing.go).
+	bill *billingState
 }
 
 // WorkloadProfile classifies a consumer so the right unit ratio applies.

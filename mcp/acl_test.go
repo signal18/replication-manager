@@ -72,6 +72,12 @@ func (f *fakeRepman) Cloud18CreateClusterToken(infra, name, label, grants string
 func (f *fakeRepman) Cloud18GetCluster(infra, name string) (map[string]any, error) {
 	return map[string]any{"cluster": name}, nil
 }
+func (f *fakeRepman) ClusterPrice(name string) (map[string]any, error) {
+	return map[string]any{"cluster": name, "monthCost": 0.0}, nil
+}
+func (f *fakeRepman) Cloud18GetClusterPrice(infra, name string) (map[string]any, error) {
+	return map[string]any{"cluster": name, "monthCost": 0.0}, nil
+}
 func (f *fakeRepman) Cloud18Infrastructures() ([]Cloud18Infrastructure, error) {
 	return []Cloud18Infrastructure{{ApiPublicUrl: "https://infra.example:10005", Clusters: 2}}, nil
 }

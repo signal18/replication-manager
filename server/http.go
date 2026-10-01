@@ -386,6 +386,14 @@ func (repman *ReplicationManager) httpserver() {
 			negroni.HandlerFunc(repman.validateTokenMiddleware),
 			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalResources)),
 		))
+		router.Handle("/api/global/price", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalPrice)),
+		))
+		router.Handle("/api/global/price/{month}", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalPrice)),
+		))
 		router.Handle("/api/global/http-logs", negroni.New(
 			negroni.HandlerFunc(repman.validateTokenMiddleware),
 			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalLogs)),
