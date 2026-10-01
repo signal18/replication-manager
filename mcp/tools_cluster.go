@@ -133,7 +133,7 @@ func (s *MCPServer) registerClusterReadTools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("last-crash-lost-event",
+		mcp.NewTool("get-cluster-last-crash-lost-event",
 			mcp.WithDescription("Get the lost events of the last crash of a server: the transactions the old master had committed but that never reached the promoted replica, captured as a binlog delta at rejoin and decoded to SQL. Returns the crash record (when, who was promoted, GTID positions, delta counters: transactions, row events, DDL, statement DML, flashable), the decoded delta text (first page) and the rejoin methods available. Use it to assess data loss after a failover and decide between replaying or flashing back the delta. No crash record means no data was lost on that server."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("server_name", mcp.Required(), mcp.Description("The old master: server name, host or id as shown by get-cluster-crashes")),
@@ -372,7 +372,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("run-sysbench",
+		mcp.NewTool("cluster-sysbench-run",
 			mcp.WithDescription("Run a sysbench benchmark against the cluster through its proxy (a proxy must be configured). Optional test (sysbench script name, e.g. oltp_read_write), time in seconds and threads; threads=0 scales from 1 thread up to twice the cores and records each step. Prepares the schema, runs, and logs the result in the cluster benchmark history; the previous bench data is cleaned first. Runs in the background; read get-cluster-logs for the result. Needs the cluster-bench or cluster-test grant."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("test", mcp.Description("sysbench test name, empty keeps the cluster setting sysbench-test")),
@@ -397,7 +397,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 			if threads == "0" {
 				go func() {
 					if err := cl.RunSysbenchScaleThreads(); err != nil {
-						s.logger.Errorf("MCP run-sysbench scale on %s: %v", cl.Name, err)
+						s.logger.Errorf("MCP cluster-sysbench-run scale on %s: %v", cl.Name, err)
 					}
 				}()
 				return mcp.NewToolResultText(`{"status":"sysbench thread-scaling run initiated"}`), nil
@@ -407,7 +407,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 			}
 			go func() {
 				if err := cl.RunSysbench(); err != nil {
-					s.logger.Errorf("MCP run-sysbench on %s: %v", cl.Name, err)
+					s.logger.Errorf("MCP cluster-sysbench-run on %s: %v", cl.Name, err)
 				}
 			}()
 			return mcp.NewToolResultText(`{"status":"sysbench run initiated"}`), nil
@@ -415,7 +415,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("sysbench-cleanup",
+		mcp.NewTool("cluster-sysbench-cleanup",
 			mcp.WithDescription("Drop the sysbench benchmark schema and data from the cluster. Needs the cluster-bench or cluster-test grant."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),

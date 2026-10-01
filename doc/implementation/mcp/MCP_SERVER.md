@@ -23,9 +23,9 @@ monitored clusters. Library `github.com/mark3labs/mcp-go`. Package `mcp/`
 - Tools call repman **in process** through the `RepmanProvider` interface (implemented by
   `*server.ReplicationManager` in `server/server_get.go`), not through the REST API.
 - 66 tools: 26 cluster, 22 database, 12 backup, 6 proxy, all registered (added 2026-09-25:
-  `run-sysbench`, `sysbench-cleanup`,
-  `last-crash-lost-event`, `server-backup-logical`, `server-logical-backup-splitdump`,
-  `server-restore-logical-backup`, `server-restore-physical-backup`). There is no global
+  `cluster-sysbench-run`, `cluster-sysbench-cleanup`,
+  `get-cluster-last-crash-lost-event`, `database-backup-logical`, `database-logical-backup-splitdump`,
+  `database-restore-logical-backup`, `database-restore-physical-backup`). There is no global
   read-only switch (removed 2026-09-25): read-only versus read-write is a property of the
   account or token the assistant authenticates with, decided per tool by the cluster ACL.
 - Resources `repman://status`, `repman://version`, `repman://clusters`,
