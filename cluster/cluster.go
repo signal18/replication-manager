@@ -1509,6 +1509,7 @@ func (cluster *Cluster) StateProcessing() {
 		cluster.LogPrintAllStates()
 		cluster.LogPrintAllWorkloadStates()
 		cluster.LogPrintAllSecurityStates()
+		cluster.LogPrintAllSchemaStates()
 
 		// trigger action on resolving states
 		ostates := cluster.StateMachine.GetOpenStates()

@@ -718,6 +718,19 @@ Wire version 3 adds two things:
    Logs"): both live under the Schema section of the dashboard, separate from
    the general/HA log.
 
+   **State transitions follow the same routing (2026-10-01).** The per-tick
+   printers (`LogPrintAllWorkloadStates`, `LogPrintAllSecurityStates`,
+   `LogPrintAllSchemaStates`, `cluster_log.go`) write each machine's OPENED /
+   RESOLV lines to its own buffer AND its own daemon logger (`WorkloadLogrus`,
+   `SecurityLogrus`, `SchemaLogrus`), never to `cluster.Logrus`, the terminal
+   buffer or the general live buffer. Before that, `logPrintStateTo` picked the
+   HTTP buffer per machine but always wrote the daemon line to the main
+   `replication-manager.log`, which is what the GUI's "Load older" history pages
+   through: every workload state (WTAG, WARN0205, tmp-table / error storms...)
+   showed up in the cluster log as a raw WARNING. The schema machine had no
+   printer at all. A missing dedicated logger falls back to the main one.
+   Test: `TestStatePrinterRoutesByBuffer`.
+
 ### Shipped schema-advisory plugins
 
 | Plugin | Key | What it flags |
