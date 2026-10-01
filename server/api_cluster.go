@@ -4010,9 +4010,17 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "monitoring-schema-change-script":
 		mycluster.Conf.MonitorSchemaChangeScript = value
 	case "monitoring-add-monitor-script":
-		mycluster.Conf.MonitoringAddMonitorScript = value
+		// The GUI clears a text setting with "{undefined}": an empty script, never a
+		// path named "{undefined}" that would veto every add.
+		if value == "{undefined}" {
+			value = ""
+		}
+		mycluster.Conf.MonitoringAddMonitorScript = strings.TrimSpace(value)
 	case "monitoring-drop-monitor-script":
-		mycluster.Conf.MonitoringDropMonitorScript = value
+		if value == "{undefined}" {
+			value = ""
+		}
+		mycluster.Conf.MonitoringDropMonitorScript = strings.TrimSpace(value)
 	case "api-token-timeout":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.SetApiTokenTimeout(val)
