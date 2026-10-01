@@ -105,7 +105,7 @@ func (s *MCPServer) registerClusterReadTools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("get-cluster-logs",
+		mcp.NewTool("list-cluster-logs",
 			mcp.WithDescription("Get recent orchestrator log entries for a cluster. Useful for seeing what replication-manager has been doing: topology changes, failover attempts, replication corrections, backup jobs. Complements get-cluster-alerts which shows current state rather than history."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
@@ -119,7 +119,7 @@ func (s *MCPServer) registerClusterReadTools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("get-cluster-crashes",
+		mcp.NewTool("list-cluster-crashes",
 			mcp.WithDescription("Get the history of crash and failover events for a cluster. Each entry records when the master was lost, which replica was promoted, and the GTID state at the time. Use this to understand past incidents and assess data loss risk."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
@@ -136,7 +136,7 @@ func (s *MCPServer) registerClusterReadTools() {
 		mcp.NewTool("get-cluster-last-crash-lost-event",
 			mcp.WithDescription("Get the lost events of the last crash of a server: the transactions the old master had committed but that never reached the promoted replica, captured as a binlog delta at rejoin and decoded to SQL. Returns the crash record (when, who was promoted, GTID positions, delta counters: transactions, row events, DDL, statement DML, flashable), the decoded delta text (first page) and the rejoin methods available. Use it to assess data loss after a failover and decide between replaying or flashing back the delta. No crash record means no data was lost on that server."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
-			mcp.WithString("server_name", mcp.Required(), mcp.Description("The old master: server name, host or id as shown by get-cluster-crashes")),
+			mcp.WithString("server_name", mcp.Required(), mcp.Description("The old master: server name, host or id as shown by list-cluster-crashes")),
 			mcp.WithString("file", mcp.Description("\"delta\" (default) for the lost events, \"flashback\" for their inverse")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -373,7 +373,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-sysbench-run",
-			mcp.WithDescription("Run a sysbench benchmark against the cluster through its proxy (a proxy must be configured). Optional test (sysbench script name, e.g. oltp_read_write), time in seconds and threads; threads=0 scales from 1 thread up to twice the cores and records each step. Prepares the schema, runs, and logs the result in the cluster benchmark history; the previous bench data is cleaned first. Runs in the background; read get-cluster-logs for the result. Needs the cluster-bench or cluster-test grant."),
+			mcp.WithDescription("Run a sysbench benchmark against the cluster through its proxy (a proxy must be configured). Optional test (sysbench script name, e.g. oltp_read_write), time in seconds and threads; threads=0 scales from 1 thread up to twice the cores and records each step. Prepares the schema, runs, and logs the result in the cluster benchmark history; the previous bench data is cleaned first. Runs in the background; read list-cluster-logs for the result. Needs the cluster-bench or cluster-test grant."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("test", mcp.Description("sysbench test name, empty keeps the cluster setting sysbench-test")),
 			mcp.WithString("time", mcp.Description("duration in seconds, empty keeps sysbench-time")),

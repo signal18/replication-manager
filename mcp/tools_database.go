@@ -66,7 +66,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("get-database-processlist",
+		mcp.NewTool("list-database-processes",
 			mcp.WithDescription("Get the current process list (SHOW FULL PROCESSLIST) for a server: all active connections with query text, state, user, database, and execution time. Use to identify long-running queries, blocked connections, or replication threads. Returns the process ID needed for database-kill-query. Check this first when a server appears slow or overloaded."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name in host:port format (e.g. db1:3306)")),
@@ -81,7 +81,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("get-database-slow-queries",
+		mcp.NewTool("list-database-slow-queries",
 			mcp.WithDescription("Get slow query digest entries from Performance Schema (events_statements_summary_by_digest). Returns normalized query patterns with total/average execution time, call count, rows examined, and rows sent. Use to identify the top queries contributing to latency. Requires performance_schema=ON on the server. More useful than the raw slow log for identifying query patterns."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name in host:port format (e.g. db1:3306)")),
@@ -96,8 +96,8 @@ func (s *MCPServer) registerDatabaseReadTools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("get-database-error-log",
-			mcp.WithDescription("Get the MariaDB/MySQL error log buffer for a specific server. Contains startup/shutdown events, InnoDB recovery messages, replication errors, crash information, and plugin errors. Use when a server behaves unexpectedly or after a restart to see what happened. This is the database server's own log, not the replication-manager orchestrator log (use get-cluster-logs for that)."),
+		mcp.NewTool("list-database-error-log",
+			mcp.WithDescription("Get the MariaDB/MySQL error log buffer for a specific server. Contains startup/shutdown events, InnoDB recovery messages, replication errors, crash information, and plugin errors. Use when a server behaves unexpectedly or after a restart to see what happened. This is the database server's own log, not the replication-manager orchestrator log (use list-cluster-logs for that)."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name in host:port format (e.g. db1:3306)")),
 		),
@@ -111,7 +111,7 @@ func (s *MCPServer) registerDatabaseReadTools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("get-database-tables",
+		mcp.NewTool("list-database-tables",
 			mcp.WithDescription("Get the list of all user tables across all databases on a server, with metadata (engine, row count, data size, index size). Useful for identifying large tables, MyISAM tables that should be InnoDB, or tables lacking primary keys (required for row-based replication). Compare across master and replicas to detect schema drift."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name in host:port format (e.g. db1:3306)")),
@@ -305,7 +305,7 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("database-backup-logical",
-			mcp.WithDescription("Trigger a logical backup (mysqldump or mydumper, as configured by backup-logical-type) on a specific server, preferably a replica. Runs in the background; follow it with get-cluster-local-backups. Needs the db-backup grant."),
+			mcp.WithDescription("Trigger a logical backup (mysqldump or mydumper, as configured by backup-logical-type) on a specific server, preferably a replica. Runs in the background; follow it with list-cluster-local-backups. Needs the db-backup grant."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name, host or id as shown by get-cluster-topology")),
 		),
@@ -321,7 +321,7 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("database-logical-backup-splitdump",
-			mcp.WithDescription("Trigger a logical mysqldump backup in splitdump format (one directory with one file per table, mydumper-like, restorable in parallel) on a specific server. Requires backup-logical-type=mysqldump and backup-mysqldump-splitdump=true on the cluster; refused otherwise, with the setting to change. Runs in the background; follow it with get-cluster-local-backups. Needs the db-backup grant."),
+			mcp.WithDescription("Trigger a logical mysqldump backup in splitdump format (one directory with one file per table, mydumper-like, restorable in parallel) on a specific server. Requires backup-logical-type=mysqldump and backup-mysqldump-splitdump=true on the cluster; refused otherwise, with the setting to change. Runs in the background; follow it with list-cluster-local-backups. Needs the db-backup grant."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name, host or id as shown by get-cluster-topology")),
 		),
@@ -343,7 +343,7 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("database-restore-logical-backup",
-			mcp.WithDescription("Restore (reseed) a server from the cluster's last logical backup: the server is rebuilt from the dump and re-attached to replication. Destructive for the target server's current data. Use only on a replica that is broken or diverged. Runs in the background; follow it with get-cluster-topology and get-cluster-logs. Needs the db-restore grant."),
+			mcp.WithDescription("Restore (reseed) a server from the cluster's last logical backup: the server is rebuilt from the dump and re-attached to replication. Destructive for the target server's current data. Use only on a replica that is broken or diverged. Runs in the background; follow it with get-cluster-topology and list-cluster-logs. Needs the db-restore grant."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name, host or id as shown by get-cluster-topology")),
 		),
@@ -363,7 +363,7 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("database-restore-physical-backup",
-			mcp.WithDescription("Restore (reseed) a server from the cluster's last physical backup (Mariabackup/xtrabackup): the server's data directory is replaced and replication re-attached. Destructive for the target server's current data. Use only on a replica that is broken or diverged. Runs in the background; follow it with get-cluster-topology and get-cluster-logs. Needs the db-restore grant."),
+			mcp.WithDescription("Restore (reseed) a server from the cluster's last physical backup (Mariabackup/xtrabackup): the server's data directory is replaced and replication re-attached. Destructive for the target server's current data. Use only on a replica that is broken or diverged. Runs in the background; follow it with get-cluster-topology and list-cluster-logs. Needs the db-restore grant."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name, host or id as shown by get-cluster-topology")),
 		),
@@ -448,10 +448,10 @@ func (s *MCPServer) registerDatabaseWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("database-kill-query",
-			mcp.WithDescription("Kill a specific query or connection on a server by process ID (KILL QUERY <id>). Use get-database-processlist first to find the process ID of the query to kill. Useful for terminating long-running queries, blocked transactions, or idle connections. Killing the replication SQL thread process_id will break replication — avoid killing system processes.."),
+			mcp.WithDescription("Kill a specific query or connection on a server by process ID (KILL QUERY <id>). Use list-database-processes first to find the process ID of the query to kill. Useful for terminating long-running queries, blocked transactions, or idle connections. Killing the replication SQL thread process_id will break replication — avoid killing system processes.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("server_name", mcp.Required(), mcp.Description("Server name in host:port format (e.g. db1:3306)")),
-			mcp.WithString("process_id", mcp.Required(), mcp.Description("Process ID from get-database-processlist to kill")),
+			mcp.WithString("process_id", mcp.Required(), mcp.Description("Process ID from list-database-processes to kill")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			_, node, err := s.getServerHelper(req.GetString("cluster_name", ""), req.GetString("server_name", ""))

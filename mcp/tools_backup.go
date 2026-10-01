@@ -15,7 +15,7 @@ import (
 // registerBackupReadTools registers read-only backup/restic tools.
 func (s *MCPServer) registerBackupReadTools() {
 	s.addTool(
-		mcp.NewTool("get-cluster-local-backups",
+		mcp.NewTool("list-cluster-local-backups",
 			mcp.WithDescription("List all registered physical and logical backups for a cluster. Each entry includes backup type (physical/logical), start time, completion time, server it was taken from, size, and storage location. Use this to verify recent backups exist before a failover, or to find backup files for restore. Check for WARN0111/WARN0112 alerts if no backups appear."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
@@ -30,7 +30,7 @@ func (s *MCPServer) registerBackupReadTools() {
 
 	s.addTool(
 		mcp.NewTool("get-cluster-local-backup-stats",
-			mcp.WithDescription("Get aggregated backup statistics for a cluster: total backup count, last successful backup time, backup frequency, and retention compliance. Use to assess RPO (Recovery Point Objective) — how much data could be lost if recovery is needed now. Complements get-cluster-local-backups which shows individual entries."),
+			mcp.WithDescription("Get aggregated backup statistics for a cluster: total backup count, last successful backup time, backup frequency, and retention compliance. Use to assess RPO (Recovery Point Objective) — how much data could be lost if recovery is needed now. Complements list-cluster-local-backups which shows individual entries."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -43,7 +43,7 @@ func (s *MCPServer) registerBackupReadTools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("get-cluster-archive-backups",
+		mcp.NewTool("list-cluster-archive-backups",
 			mcp.WithDescription("List all Restic snapshots stored in the cluster's Restic repository. Each snapshot has a short ID, creation time, hostname, and tags. Restic provides encrypted, deduplicated backups stored locally or in S3. Use the snapshot ID with cluster-archive-purge to remove specific snapshots. Call cluster-archive-fetch first if the list appears empty or stale."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
@@ -110,7 +110,7 @@ func (s *MCPServer) registerBackupWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-archive-fetch",
-			mcp.WithDescription("Refresh the local snapshot metadata cache from the Restic repository. Run this if get-cluster-archive-backups shows stale or missing data. replication-manager caches snapshot metadata locally; this forces a re-read from the actual repository (local disk or S3).."),
+			mcp.WithDescription("Refresh the local snapshot metadata cache from the Restic repository. Run this if list-cluster-archive-backups shows stale or missing data. replication-manager caches snapshot metadata locally; this forces a re-read from the actual repository (local disk or S3).."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -125,9 +125,9 @@ func (s *MCPServer) registerBackupWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-archive-purge",
-			mcp.WithDescription("Delete a specific Restic snapshot by ID and run 'restic prune' to reclaim disk space. Get the snapshot_id from get-cluster-archive-backups. Deletion is permanent and irreversible. The repository must not be locked (check get-cluster-archive-task-queue). Use to manually enforce retention or remove a corrupted snapshot.."),
+			mcp.WithDescription("Delete a specific Restic snapshot by ID and run 'restic prune' to reclaim disk space. Get the snapshot_id from list-cluster-archive-backups. Deletion is permanent and irreversible. The repository must not be locked (check get-cluster-archive-task-queue). Use to manually enforce retention or remove a corrupted snapshot.."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
-			mcp.WithString("snapshot_id", mcp.Required(), mcp.Description("Restic snapshot short ID from get-cluster-archive-backups (e.g. a1b2c3d4)")),
+			mcp.WithString("snapshot_id", mcp.Required(), mcp.Description("Restic snapshot short ID from list-cluster-archive-backups (e.g. a1b2c3d4)")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))

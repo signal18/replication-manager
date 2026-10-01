@@ -40,8 +40,8 @@ Follow these steps in order:
    a. Call check-database-is-master or check-database-is-slave to confirm role.
    b. Call check-database-is-late to check replication lag.
    c. If lag exists, call get-database-status to look at Seconds_Behind_Master and IO/SQL thread states.
-5. Call get-cluster-logs to review recent orchestrator log entries for warnings or errors.
-6. Call get-cluster-crashes to check for recent failover events.
+5. Call list-cluster-logs to review recent orchestrator log entries for warnings or errors.
+6. Call list-cluster-crashes to check for recent failover events.
 
 Summarize findings with:
 - Current master and replica count
@@ -83,7 +83,7 @@ Check the following conditions before recommending or executing a failover:
    - failover-mode (automatic vs. manual)
    - failover-max-slave-delay threshold
    - failover-limit and current failover count
-5. Call get-cluster-local-backups to confirm a recent backup exists before the failover.
+5. Call list-cluster-local-backups to confirm a recent backup exists before the failover.
 6. Call get-cluster-error-states to check for pre-existing alerts.
 
 Report:
@@ -116,9 +116,9 @@ Report:
 
 Collect the following information:
 
-1. Call get-cluster-local-backups to get all registered physical and logical backups.
+1. Call list-cluster-local-backups to get all registered physical and logical backups.
 2. Call get-cluster-local-backup-stats to get aggregated backup statistics.
-3. Call get-cluster-archive-backups to get Restic snapshot inventory.
+3. Call list-cluster-archive-backups to get Restic snapshot inventory.
 4. Call get-cluster-archive-stats to get repository size and deduplication stats.
 5. Call get-cluster-archive-task-queue to check for pending or failed backup tasks.
 
@@ -165,8 +165,8 @@ Steps:
    - slave_parallel_workers (parallel replication configuration)
    - innodb_flush_log_at_trx_commit (disk I/O impact)
    - sync_binlog
-4. Call get-database-processlist on the master to identify long-running transactions.
-5. Call get-database-slow-queries on the master to identify heavy write operations.
+4. Call list-database-processes on the master to identify long-running transactions.
+5. Call list-database-slow-queries on the master to identify heavy write operations.
 
 Analysis should cover:
 - Which replicas are lagging and by how much
@@ -203,8 +203,8 @@ Analysis should cover:
 
 Steps:
 
-1. Call get-database-processlist for "%s" to see active queries and their duration.
-2. Call get-database-slow-queries for "%s" to retrieve slow query log entries from Performance Schema.
+1. Call list-database-processes for "%s" to see active queries and their duration.
+2. Call list-database-slow-queries for "%s" to retrieve slow query log entries from Performance Schema.
 3. Call get-database-status for "%s" to check:
    - Questions, Com_select, Com_insert, Com_update, Com_delete rates
    - Handler_read_* counters (table scan indicators)
