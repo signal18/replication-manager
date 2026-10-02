@@ -942,7 +942,7 @@ func (repman *ReplicationManager) billingPrices() cluster.BillingPrices {
 // sponsors, per unit family plan / over-commit / under-commit in unit-months, unit price,
 // EUR) and the totals, for the running month or a past one.
 // @Summary Month billing statement of the infrastructure
-// @Description The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.
+// @Description The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.
 // @Tags Global
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -1017,7 +1017,7 @@ type UserUnitsTotal struct {
 // the money is the provider's, the Cloud18 domain): one line per cluster and unit family
 // for the clusters the user sponsors or has access to, with a total per unit kind.
 // @Summary Units consumed this month by the logged user
-// @Description For every cluster the logged user sponsors or has access to, like an invoice: per unit family (DBU, stateful DBU, APU, BKU, BAU) the units declared and, in unit-months so far, the reserved (plan, debit), the borrowed (over the plan, debit), the unused (under the plan, credit), the net, and the end-of-month projection; totals per unit kind and overall. On a Cloud18 instance each line also carries the amount in EUR at the cluster's unit price (+ debit, - credit) and its projection; elsewhere units only.
+// @Description For every cluster the logged user sponsors or has access to, like an invoice: per unit family (DBU, failover DBU, APU, BKU, BAU) the units declared and, in unit-months so far, the reserved (plan, debit), the borrowed (over the plan, debit), the unused (under the plan, credit), the net, and the end-of-month projection; totals per unit kind and overall. On a Cloud18 instance each line also carries the amount in EUR at the cluster's unit price (+ debit, - credit) and its projection; elsewhere units only.
 // @Tags Users
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)

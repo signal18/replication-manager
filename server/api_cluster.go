@@ -11155,7 +11155,7 @@ func (repman *ReplicationManager) toggleServerActiveStatus() error {
 
 // handlerMuxClusterPrice answers one cluster's rows of the running month statement.
 // @Summary Price of a cluster for the running month
-// @Description The cluster's month statement: partner, sponsors and, per unit family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price, EUR accrued, rate and projection. Integrated per monitoring period by the resource manager.
+// @Description The cluster's month statement: partner, sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price, EUR accrued, rate and projection. Integrated per monitoring period by the resource manager.
 // @Tags Cluster
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)

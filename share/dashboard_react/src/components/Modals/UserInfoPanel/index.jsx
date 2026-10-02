@@ -44,14 +44,14 @@ function ConsumedUnits({ theme }) {
           {clusters.map((c) => {
             const cr = rows.filter((r) => r.cluster === c && (r.plan > 0 || r.debit > 0 || r.credit > 0))
             const sub = cr.reduce((a, r) => ({ debit: a.debit + r.debit, credit: a.credit + r.credit, net: a.net + r.net, pnet: a.pnet + r.projectedNet, amount: a.amount + (r.amount || 0), pamount: a.pamount + (r.projectedAmount || 0) }), { debit: 0, credit: 0, net: 0, pnet: 0, amount: 0, pamount: 0 })
-            const unitName = (r) => r.unit + (r.family === 'stateful_dbu' ? ' stateful' : '')
+            const unitName = (r) => r.unit + (r.family === 'stateful_dbu' ? ' failover' : '')
             const lines = []
             cr.forEach((r) => {
               lines.push(<Tr key={c + r.family + '-r'}><Td>{c}{r.sponsor ? <Badge ml={2} size='sm' colorScheme='purple'>sponsor</Badge> : null}</Td><Td>{unitName(r)} reserved</Td><Td isNumeric>{r.plan}</Td><Td isNumeric>{f(r.reserved)}</Td><Td isNumeric></Td><Td isNumeric>{f(r.projectedReserved)}</Td>{priced && <Td isNumeric>{e(r.reservedAmount, '+')}</Td>}{priced && <Td isNumeric>{e(r.projectedReservedAmount, '+')}</Td>}</Tr>)
               if (r.borrowed > 0) lines.push(<Tr key={c + r.family + '-b'}><Td></Td><Td>{unitName(r)} borrowed</Td><Td isNumeric></Td><Td isNumeric>{f(r.borrowed)}</Td><Td isNumeric></Td><Td isNumeric>{f(r.projectedBorrowed)}</Td>{priced && <Td isNumeric>{e(r.borrowedAmount, '+')}</Td>}{priced && <Td isNumeric>{e(r.projectedBorrowedAmount, '+')}</Td>}</Tr>)
               if (r.unused > 0) lines.push(<Tr key={c + r.family + '-u'}><Td></Td><Td>{unitName(r)} unused</Td><Td isNumeric></Td><Td isNumeric></Td><Td isNumeric>{f(r.unused)}</Td><Td isNumeric>-{f(r.projectedUnused)}</Td>{priced && <Td isNumeric>{e(r.unusedAmount, '-')}</Td>}{priced && <Td isNumeric>{e(r.projectedUnusedAmount, '-')}</Td>}</Tr>)
             })
-            lines.push(<Tr key={c + '-total'} fontWeight={600}><Td>{c} total</Td><Td>net {f(sub.net)}</Td><Td></Td><Td isNumeric>{f(sub.debit)}</Td><Td isNumeric>{f(sub.credit)}</Td><Td isNumeric>{f(sub.pnet)}</Td>{priced && <Td isNumeric>{e(sub.amount)}</Td>}{priced && <Td isNumeric>{e(sub.pamount)}</Td>}</Tr>)
+            lines.push(<Tr key={c + '-total'} fontWeight={700} bg={theme === 'light' ? 'gray.100' : 'rgba(255,255,255,0.08)'}><Td>{c} total</Td><Td>net {f(sub.net)} unit-months</Td><Td></Td><Td isNumeric>{f(sub.debit)}</Td><Td isNumeric>{f(sub.credit)}</Td><Td isNumeric>{f(sub.pnet)}</Td>{priced && <Td isNumeric>{e(sub.amount)}</Td>}{priced && <Td isNumeric>{e(sub.pamount)}</Td>}</Tr>)
             return lines
           })}
           {(data.totals || []).map((t) => (
@@ -96,9 +96,9 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
   const stickyBg = theme === 'light' ? 'white' : 'gray.800'
 
   return (
-    <Modal isOpen={isOpen} onClose={closeModal} size='xl'>
+    <Modal isOpen={isOpen} onClose={closeModal} size='6xl'>
       <ModalOverlay />
-      <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
+      <ModalContent maxW='fit-content' minW='40rem' className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
         <ModalHeader fontSize='md'>User Profile</ModalHeader>
         <ModalCloseButton />
         <ModalBody pb={4}>

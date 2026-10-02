@@ -8949,7 +8949,7 @@ paths:
   /api/clusters/{clusterName}/price:
     get:
       description: 'The cluster''s month statement: partner, sponsors and, per unit
-        family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit
+        family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit
         in unit-months, unit price, EUR accrued, rate and projection. Integrated per
         monitoring period by the resource manager.'
       parameters:
@@ -19027,7 +19027,7 @@ paths:
   /api/global/price:
     get:
       description: 'The price of every cluster for the month, integrated per monitoring
-        period: per cluster the partner, the sponsors and, per unit family (DBU, stateful
+        period: per cluster the partner, the sponsors and, per unit family (DBU, failover
         DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit
         price and EUR. Running month by default, a past month with /{month} (YYYY-MM).
         Requires global-admin-show.'
@@ -19059,7 +19059,7 @@ paths:
   /api/global/price/{month}:
     get:
       description: 'The price of every cluster for the month, integrated per monitoring
-        period: per cluster the partner, the sponsors and, per unit family (DBU, stateful
+        period: per cluster the partner, the sponsors and, per unit family (DBU, failover
         DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit
         price and EUR. Running month by default, a past month with /{month} (YYYY-MM).
         Requires global-admin-show.'
@@ -19194,7 +19194,7 @@ paths:
   /api/me/units:
     get:
       description: 'For every cluster the logged user sponsors or has access to, like
-        an invoice: per unit family (DBU, stateful DBU, APU, BKU, BAU) the units declared
+        an invoice: per unit family (DBU, failover DBU, APU, BKU, BAU) the units declared
         and, in unit-months so far, the reserved (plan, debit), the borrowed (over
         the plan, debit), the unused (under the plan, credit), the net, and the end-of-month
         projection; totals per unit kind and overall. On a Cloud18 instance each line

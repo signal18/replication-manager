@@ -6879,7 +6879,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/price": {
             "get": {
-                "description": "The cluster's month statement: partner, sponsors and, per unit family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price, EUR accrued, rate and projection. Integrated per monitoring period by the resource manager.",
+                "description": "The cluster's month statement: partner, sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price, EUR accrued, rate and projection. Integrated per monitoring period by the resource manager.",
                 "produces": [
                     "application/json"
                 ],
@@ -20898,7 +20898,7 @@ const docTemplate = `{
         },
         "/api/global/price": {
             "get": {
-                "description": "The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.",
+                "description": "The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.",
                 "produces": [
                     "application/json"
                 ],
@@ -20940,7 +20940,7 @@ const docTemplate = `{
         },
         "/api/global/price/{month}": {
             "get": {
-                "description": "The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.",
+                "description": "The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.",
                 "produces": [
                     "application/json"
                 ],
@@ -21139,7 +21139,7 @@ const docTemplate = `{
         },
         "/api/me/units": {
             "get": {
-                "description": "For every cluster the logged user sponsors or has access to, like an invoice: per unit family (DBU, stateful DBU, APU, BKU, BAU) the units declared and, in unit-months so far, the reserved (plan, debit), the borrowed (over the plan, debit), the unused (under the plan, credit), the net, and the end-of-month projection; totals per unit kind and overall. On a Cloud18 instance each line also carries the amount in EUR at the cluster's unit price (+ debit, - credit) and its projection; elsewhere units only.",
+                "description": "For every cluster the logged user sponsors or has access to, like an invoice: per unit family (DBU, failover DBU, APU, BKU, BAU) the units declared and, in unit-months so far, the reserved (plan, debit), the borrowed (over the plan, debit), the unused (under the plan, credit), the net, and the end-of-month projection; totals per unit kind and overall. On a Cloud18 instance each line also carries the amount in EUR at the cluster's unit price (+ debit, - credit) and its projection; elsewhere units only.",
                 "produces": [
                     "application/json"
                 ],

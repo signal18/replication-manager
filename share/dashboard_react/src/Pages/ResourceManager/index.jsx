@@ -435,7 +435,7 @@ function ClusterPriceTable() {
   if (rows.length === 0) return null
   const eur = (v) => (Number(v) || 0).toFixed(2)
   const um = (v) => (Number(v) || 0).toFixed(3)
-  const famLabel = { dbu: 'Databases', stateful_dbu: 'Stateful apps', apu: 'Apps & proxies', bku: 'Local backups', bau: 'Archives' }
+  const famLabel = { dbu: 'Databases', stateful_dbu: 'Failover apps', apu: 'Apps & proxies', bku: 'Local backups', bau: 'Archives' }
   return (
     <Box mt={6}>
       <Flex align='center' gap={3} mb={1}>
