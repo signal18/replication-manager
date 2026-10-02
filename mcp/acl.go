@@ -184,12 +184,18 @@ var toolACLPaths = map[string]string{
 	"cluster-archive-task-queue-resume": "/restic/task-queue/resume",
 	"cluster-archive-task-cancel":       "/restic/task-queue/cancel/{task}",
 	// proxy
-	"list-proxies":      "",
-	"get-proxy":         "/proxies/{proxy}",
-	"proxy-start":       "/proxies/{proxy}/actions/start",
-	"proxy-stop":        "/proxies/{proxy}/actions/stop",
-	"proxy-provision":   "/proxies/{proxy}/actions/provision",
-	"proxy-unprovision": "/proxies/{proxy}/actions/unprovision",
+	"list-proxies": "",
+	"get-proxy":    "/proxies/{proxy}",
+	// apps (generic app deployment from a template, #1827)
+	"list-app-templates": "/templates/apps",
+	"list-cluster-apps":  "/topology/apps",
+	"app-add":            "/actions/addserver/{name}/{port}/app/{template}",
+	"app-provision":      "/apps/{app}/actions/provision",
+	"app-unprovision":    "/apps/{app}/actions/unprovision",
+	"proxy-start":        "/proxies/{proxy}/actions/start",
+	"proxy-stop":         "/proxies/{proxy}/actions/stop",
+	"proxy-provision":    "/proxies/{proxy}/actions/provision",
+	"proxy-unprovision":  "/proxies/{proxy}/actions/unprovision",
 }
 
 // globalPrefix marks a repman-global tool (no cluster): the value after it is the
@@ -205,6 +211,10 @@ var templateArgs = map[string]string{
 	"{value}":    "setting_value",
 	"{snapshot}": "snapshot_id",
 	"{task}":     "task_id",
+	"{app}":      "app_name",
+	"{name}":     "name",
+	"{port}":     "port",
+	"{template}": "template",
 }
 
 // aclArg is one substituted argument: path-escaped, so a value can never

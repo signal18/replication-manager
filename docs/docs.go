@@ -24028,6 +24028,10 @@ const docTemplate = `{
                 "type": {
                     "type": "string"
                 },
+                "url": {
+                    "description": "https://\u003cprimary route cname\u003e/ once routed, else the internal http://host:port/",
+                    "type": "string"
+                },
                 "version": {
                     "type": "string"
                 },
@@ -29050,6 +29054,12 @@ const docTemplate = `{
         "server.SelfServiceStatus": {
             "type": "object",
             "properties": {
+                "appTemplates": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "borrowed": {
                     "description": "Borrowed: the pool could not guarantee the units but the over-commit pot can lend them\n(cloud18-self-service-clusters-can-borrow): the creation goes through without guarantee.",
                     "type": "boolean"
@@ -29069,8 +29079,15 @@ const docTemplate = `{
                 "defaultDbu": {
                     "type": "integer"
                 },
+                "domain": {
+                    "description": "The infrastructure identity and the app templates it can deploy, so a client\nplans an app and renders its URL (the template's primary route CNAME is\n\u003capp\u003e.\u003ccluster\u003e.\u003csubDomain\u003e-\u003czone\u003e.\u003cdomain\u003e.cloud18.io) before creating anything.",
+                    "type": "string"
+                },
                 "enabled": {
                     "type": "boolean"
+                },
+                "gatewayDomain": {
+                    "type": "string"
                 },
                 "identity": {
                     "type": "string"
@@ -29103,8 +29120,14 @@ const docTemplate = `{
                 "remaining": {
                     "type": "integer"
                 },
+                "subDomain": {
+                    "type": "string"
+                },
                 "used": {
                     "type": "integer"
+                },
+                "zone": {
+                    "type": "string"
                 }
             }
         },

@@ -823,3 +823,31 @@ func (app *App) GetVolumes(resolved bool) []string {
 func (app *App) GetS3Endpoint() string {
 	return app.GetHost() + ":" + app.GetPort()
 }
+
+// GetPublicURL is where the app answers: https (or the route's protocol) on the
+// primary route's CNAME when the app has one, else the internal address, reachable
+// from the cluster network only. GetURL above is the bare host:port.
+func (app *App) GetPublicURL() string {
+	if app == nil {
+		return ""
+	}
+	if app.AppConfig != nil {
+		for _, route := range app.AppConfig.Deployment.Routes {
+			if route.Primary && route.CName != "" && !strings.Contains(route.CName, "(") {
+				proto := strings.ToLower(route.Protocol)
+				if proto == "" {
+					proto = "https"
+				}
+				return proto + "://" + route.CName + "/"
+			}
+		}
+	}
+	if app.Host == "" {
+		return ""
+	}
+	port := app.Port
+	if port == "" {
+		port = "80"
+	}
+	return "http://" + app.Host + ":" + port + "/"
+}

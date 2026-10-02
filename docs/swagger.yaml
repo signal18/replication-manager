@@ -707,6 +707,10 @@ definitions:
         type: string
       type:
         type: string
+      url:
+        description: https://<primary route cname>/ once routed, else the internal
+          http://host:port/
+        type: string
       version:
         type: string
       weight:
@@ -4104,6 +4108,10 @@ definitions:
     type: object
   server.SelfServiceStatus:
     properties:
+      appTemplates:
+        items:
+          type: string
+        type: array
       borrowed:
         description: |-
           Borrowed: the pool could not guarantee the units but the over-commit pot can lend them
@@ -4119,8 +4127,16 @@ definitions:
         type: integer
       defaultDbu:
         type: integer
+      domain:
+        description: |-
+          The infrastructure identity and the app templates it can deploy, so a client
+          plans an app and renders its URL (the template's primary route CNAME is
+          <app>.<cluster>.<subDomain>-<zone>.<domain>.cloud18.io) before creating anything.
+        type: string
       enabled:
         type: boolean
+      gatewayDomain:
+        type: string
       identity:
         type: string
       maxClustersPerUser:
@@ -4142,8 +4158,12 @@ definitions:
         type: string
       remaining:
         type: integer
+      subDomain:
+        type: string
       used:
         type: integer
+      zone:
+        type: string
     type: object
   server.appTemplateContentResponse:
     properties:

@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -83,6 +84,14 @@ type SelfServiceStatus struct {
 	DefaultDBU   int      `json:"defaultDbu"`
 	DefaultAPU   int      `json:"defaultApu"`
 	DefaultBKU   int      `json:"defaultBku"`
+	// The infrastructure identity and the app templates it can deploy, so a client
+	// plans an app and renders its URL (the template's primary route CNAME is
+	// <app>.<cluster>.<subDomain>-<zone>.<domain>.cloud18.io) before creating anything.
+	Domain        string   `json:"domain"`
+	SubDomain     string   `json:"subDomain"`
+	Zone          string   `json:"zone"`
+	GatewayDomain string   `json:"gatewayDomain"`
+	AppTemplates  []string `json:"appTemplates"`
 	// ResourceManager pool: what a new cluster needs and what is free.
 	NeededDBU float64       `json:"neededDbu"`
 	NeededAPU float64       `json:"neededApu"`
@@ -107,6 +116,8 @@ func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServ
 		Identity:   identity, Used: used, Clusters: names, Remaining: remaining,
 		DefaultDBU: repman.Conf.ProvDbDbu, DefaultAPU: repman.Conf.ProvServicePlanApu, DefaultBKU: repman.Conf.ProvServicePlanBku,
 		Pool: repman.infraUnitPool(), PoolOK: true,
+		Domain: repman.Conf.Cloud18Domain, SubDomain: repman.Conf.Cloud18SubDomain, Zone: repman.Conf.Cloud18SubDomainZone,
+		GatewayDomain: repman.Conf.Cloud18GatewayDomainName, AppTemplates: repman.ListAppTemplates(nil),
 	}
 	st.NeededDBU, st.NeededAPU = repman.selfServiceUnitsNeeded()
 	if !st.Pool.Known {
@@ -399,4 +410,58 @@ func (repman *ReplicationManager) handlerMuxSelfServiceStatus(w http.ResponseWri
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(repman.selfServiceStatusFor(identity))
+}
+
+// ListAppTemplates is every app template this instance can deploy: the repository
+// cache (prov-app-template-repo, refreshed lazily) and the cluster's local files
+// (cl may be nil). Names are the template paths, "phpmyadmin/phpmyadmin".
+func (repman *ReplicationManager) ListAppTemplates(cl *cluster.Cluster) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	add := func(n string) {
+		n = strings.TrimSpace(n)
+		if n != "" && !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
+	if cl != nil {
+		if local, err := repman.GetAppTemplatesFromLocal(cl.Name); err == nil {
+			for _, n := range local {
+				add(n)
+			}
+		}
+	}
+	if list, err := repman.Conf.LoadAppTemplateListWithRefresh(false); err == nil {
+		for _, n := range list {
+			add(n)
+		}
+	}
+	add("dummy")
+	sort.Strings(out)
+	return out
+}
+
+// ResolveAppTemplate maps a short app name to a template of the list: an exact
+// name, "<name>/<name>", or the only template whose last path element is the name.
+// "" when none matches.
+func ResolveAppTemplate(name string, templates []string) string {
+	name = strings.TrimSpace(strings.ToLower(name))
+	if name == "" {
+		return ""
+	}
+	candidates := []string{}
+	for _, t := range templates {
+		lt := strings.ToLower(t)
+		if lt == name || lt == name+"/"+name {
+			return t
+		}
+		if strings.HasSuffix(lt, "/"+name) {
+			candidates = append(candidates, t)
+		}
+	}
+	if len(candidates) == 1 {
+		return candidates[0]
+	}
+	return ""
 }

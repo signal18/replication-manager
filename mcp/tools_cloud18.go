@@ -157,7 +157,7 @@ func (s *MCPServer) registerCloud18Tools() {
 			mcp.WithString("db_image", mcp.Description("Database docker image, default mariadb:lts (latest MariaDB long-term-support release)")),
 			mcp.WithNumber("db_count", mcp.Description("Number of database nodes, default 2 (a master and a replica), max 5")),
 			mcp.WithString("proxy", mcp.Description("haproxy (default), proxysql or none")),
-			mcp.WithString("apps", mcp.Description("Comma-separated app template names to deploy, e.g. phpmyadmin")),
+			mcp.WithString("apps", mcp.Description("Comma-separated app template names to deploy, resolved against the infrastructure's templates (phpmyadmin finds phpmyadmin/phpmyadmin); default phpmyadmin, none to deploy no app. The answer gives each app's URL, live once provisioned")),
 			mcp.WithBoolean("confirm", mcp.Description("false (default): plan only; true: create")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

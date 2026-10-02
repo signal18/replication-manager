@@ -281,3 +281,21 @@ the plan reports `targetRelease` (what the target tag points at today) and `curr
 (lts + published lines per flavor) is shared with plugin-score-lts and overridable from
 `<share>/plugins/data/lts-versions.json`. Tests `TestResolveTargets`, `TestRollingUpgradePlan`.
 The doc tables are regenerated with `doc/implementation/mcp/gen_tool_tables.py`.
+
+## App tools and phpMyAdmin by default (2026-10-02)
+
+Domain `app`, one tool = one route: `list-app-templates` (`GET /templates/apps`: the
+repository cache of `prov-app-template-repo` plus the cluster's local templates, names as
+template paths such as `phpmyadmin/phpmyadmin`), `list-cluster-apps` (`GET /topology/apps`,
+with each app's `url`), `app-add` (`POST /actions/addserver/{name}/{port}/app/{template}`,
+a short name resolves against the list, an unknown template is refused, never turned into a
+docker image), `app-provision` / `app-unprovision` (`/apps/{app}/actions/...`, OpenSVC,
+asynchronous). `App.URL` (`GetPublicURL`): the protocol and CNAME of the primary route once
+the app has one (`https://<app>.<cluster>.<subDomain>-<zone>.<domain>.cloud18.io/`), else
+the internal `http://host:port/`; refreshed every tick, in the topology JSON for the GUI.
+
+`cloud18-create-cluster` deploys `phpmyadmin` by default (`apps=none` to opt out), resolves
+the app names against the infrastructure's `appTemplates` (the self-service status now
+carries them with the identity `domain` / `subDomain` / `zone` / `gatewayDomain`), refuses
+a template the infrastructure does not have, and answers `apps: [{name, template, url}]`,
+the URL the template's primary route gives once provisioned.

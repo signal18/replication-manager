@@ -40,6 +40,7 @@ type App struct {
 	Host          string `json:"host" groups:"apps"`
 	HostIPV6      string `json:"hostIPV6"`
 	Port          string `json:"port" groups:"apps"`
+	URL           string `json:"url" groups:"apps"` // https://<primary route cname>/ once routed, else the internal http://host:port/
 	User          string `json:"-"`
 	Pass          string `json:"-"`
 	Version       string `json:"version" groups:"apps"`
@@ -299,6 +300,7 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 }
 
 func (app *App) Refresh() error {
+	app.URL = app.GetPublicURL()
 	cluster := app.ClusterGroup
 
 	start := time.Now()
