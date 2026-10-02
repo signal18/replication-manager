@@ -46,6 +46,8 @@ func TestOpenSVCDatabaseIdentity(t *testing.T) {
 		{"run as beats the mysql legacy rule", "mysql:8.4", "1234", "", want{"999:999", " --user 1234:1234", initBase, "--user 0:0"}},
 		{"chown beats the percona default", "percona/percona-server:8.4", "", "999", want{"999:999", "", owner("999", "999"), "--user 0:0"}},
 		{"invalid values are handled as empty", "mariadb:11.8", "mysql", "x:y", want{"999:999", "", initBase, ""}},
+		// an invalid value is logged and handled as empty, which on a Percona Server image is still 1001
+		{"invalid values on percona fall back to its 1001", "percona/percona-server:8.4", "mysql", "x:y", want{"1001:1001", "", owner("1001", "1001"), "--user 0:0"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cluster := newIdentityCluster(tc.image, tc.runAs, tc.chown)

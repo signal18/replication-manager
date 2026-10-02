@@ -1006,6 +1006,9 @@ func (server *ServerMonitor) OpenSVCGetZFSSnapshotSection() map[string]string {
 	return svcsnap
 }
 
+// OpenSVCGetVolumeDataSection is the data volume of a database service (volume#01 of
+// GenerateDBTemplateMap only). Its owner is prov-db-volume-uid (dbVolumeOwner): a proxy
+// service must not reuse this section, its data keeps the legacy 999 owner.
 func (cluster *Cluster) OpenSVCGetVolumeDataSection() map[string]string {
 	svcvol := make(map[string]string)
 	ownerUID, ownerGID, _ := cluster.dbVolumeOwner()

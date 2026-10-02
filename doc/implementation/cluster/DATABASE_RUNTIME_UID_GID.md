@@ -61,6 +61,21 @@ are refused: they would resolve through the image's passwd, and Kubernetes only
 takes numbers. replication-manager does not infer an image's user from its tag
 or mutate the image.
 
+## Upgrade note
+
+With both settings empty, MariaDB and MySQL images are rendered exactly as before. **Percona Server
+images are the exception**: with no setting, the data volume owner is now `1001:1001` instead of
+`999:999`, and the dbjobs containers run as root instead of the image's own user. This takes effect when
+the database service is reprovisioned (a running service keeps its old definition), and the bootstrap then
+chowns the existing datadir to 1001. Before, such a service had a 999-owned volume and a process running as
+the image's 1001, which cannot write to it on a new volume.
+
+The Percona Server image is recognized by its name: any image whose name contains `percona`, case
+insensitive, whatever the registry, path or tag, so a custom or private image such as
+`registry.example/percona-custom:8.4` matches too. For such an image that really runs as another account,
+set `prov-db-volume-uid` explicitly to that account (for example `999`): a set value always wins over the
+name-based default.
+
 ## Two independent settings
 
 `dbRunAs` and `dbVolumeOwner` (cluster/prov.go) resolve each setting once and every
@@ -167,6 +182,11 @@ after a custom owner.
 
 A running service keeps its old definition until it is reprovisioned.
 
+The bootstrap chown is recursive over `/bootstrap/data`, as it was before this change
+(`chown -R 999:999`), whereas the Kubernetes init command only touches entries that differ. On a very
+large datadir the OpenSVC bootstrap can therefore take long; aligning it with the Kubernetes approach is
+possible but was left out to keep this change minimal.
+
 ## Kubernetes
 
 `k8sDBIdentity` (cluster/prov_k8s_db.go):
@@ -222,7 +242,15 @@ jobs failed with `Permission denied`. dbjobs needs root for more than reading: r
 as 1001 on Percona fails (its self-upgrade writes to the init directory, owned by the
 replication-manager UID from the archive, and the configuration print creates
 `/bootstrap/dummy`). There is no setting for the jobs user: a non-root value breaks the
-jobs, and on OpenSVC a `--user` in `prov-db-jobs-docker-run-args` already overrides it.
+jobs, and on OpenSVC a `--user` in `prov-db-jobs-docker-run-args` already overrides it; Kubernetes has no
+equivalent override.
+
+Trust boundary: the jobs container runs the scripts it fetches from the replication-manager server as
+root, inside a container that is not privileged and only sees the volumes of its own service (datadir,
+configuration, init, run directory and the credentials secret). For MariaDB and MySQL images this is not a
+widening, since their default user is root; for Percona Server images (default user 1001) it is. The scripts
+already run with the database credentials, so the trust placed in the replication-manager server as their
+source is unchanged; root only adds the ability to read and chown the whole datadir, which the jobs need.
 With both settings empty on a MariaDB or MySQL image nothing is added (the image's own
 user is root).
 
