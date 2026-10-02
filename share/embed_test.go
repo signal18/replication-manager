@@ -196,21 +196,12 @@ func TestOpenSVCHaproxyModulesetStandbyBackendsUseConfiguredNames(t *testing.T) 
 	}
 }
 
-// TestOpenSVCMysqlGtidModulesetIsVersionIndependent guards the generated
-// with_rep_mysqlgtid.cnf (opensvc/moduleset_mariadb.svc.mrm.db.json, var_name
-// "db_cnf_rep_with_mysqlgtid"). mysqld reads the [mysqld-<major.minor>] group of
-// its own version only, so a template made of per-version groups (it had 5.6,
-// 5.7 and 8.0, and no 8.4) leaves any other version with gtid_mode=OFF, and a
-// replica using AUTO_POSITION then cannot attach. The template is one [mysqld]
-// block instead, and every option in it carries the loose- prefix: the variables
-// renamed or removed between 5.7 and 8.4 (master_info_repository,
-// relay_log_info_repository, slave_parallel_workers -> replica_parallel_workers,
-// sync_master_info -> sync_source_info) in their legacy and their modern name, and
-// gtid_mode, enforce_gtid_consistency and relay_log_recovery too. A server applies
-// the options it knows and ignores the others, where a plain unknown name makes it
-// refuse to start ("unknown variable 'relay_log_info_repository=table'" on 8.4, or
-// 'gtid_mode' on a MariaDB server that was given this tag by mistake).
-func TestOpenSVCMysqlGtidModulesetIsVersionIndependent(t *testing.T) {
+// dbModulesetTemplates returns the generated file content ("fmt") of every
+// variable called name in the embedded DB moduleset
+// (opensvc/moduleset_mariadb.svc.mrm.db.json). Several variables may share a
+// name (the default_path template exists once per path layout).
+func dbModulesetTemplates(t *testing.T, name string) []string {
+	t.Helper()
 	data, err := EmbededDbModuleFS.ReadFile("opensvc/moduleset_mariadb.svc.mrm.db.json")
 	if err != nil {
 		t.Fatalf("could not read embedded moduleset_mariadb.svc.mrm.db.json: %s", err)
@@ -229,45 +220,81 @@ func TestOpenSVCMysqlGtidModulesetIsVersionIndependent(t *testing.T) {
 	fmts := []string{}
 	for _, rs := range moduleset.Rulesets {
 		for _, v := range rs.Variables {
-			if v.Name != "db_cnf_rep_with_mysqlgtid" {
+			if v.Name != name {
 				continue
 			}
 			var file struct {
 				Fmt string `json:"fmt"`
 			}
 			if err := json.Unmarshal([]byte(v.Value), &file); err != nil {
-				t.Fatalf("db_cnf_rep_with_mysqlgtid value is not a JSON file description: %s", err)
+				t.Fatalf("%s value is not a JSON file description: %s", name, err)
 			}
 			fmts = append(fmts, file.Fmt)
 		}
 	}
-	if len(fmts) != 1 {
-		t.Fatalf("expected exactly one db_cnf_rep_with_mysqlgtid template, found %d", len(fmts))
-	}
+	return fmts
+}
 
-	// option name -> value, "-" and "_" being the same in a mysqld option name
-	options := map[string]string{}
-	groups := []string{}
-	for _, line := range strings.Split(fmts[0], "\n") {
+// cnfGroups parses a generated cnf file into its groups in file order
+// (order, "[mysqld-8.0]" -> "mysqld-8.0") and, per group, option -> values (a
+// list, to see an option set twice). "-" and "_" are the same in a mysqld option
+// name, so names are normalized to "_".
+func cnfGroups(cnf string) (order []string, groups map[string]map[string][]string) {
+	groups = map[string]map[string][]string{}
+	current := ""
+	for _, line := range strings.Split(cnf, "\n") {
 		line = strings.TrimSpace(line)
 		switch {
 		case line == "" || strings.HasPrefix(line, "#"):
 		case strings.HasPrefix(line, "["):
-			groups = append(groups, line)
+			current = strings.Trim(line, "[]")
+			if _, ok := groups[current]; !ok {
+				groups[current] = map[string][]string{}
+				order = append(order, current)
+			}
 		default:
 			name, value, _ := strings.Cut(line, "=")
-			options[strings.ReplaceAll(strings.TrimSpace(name), "-", "_")] = strings.TrimSpace(value)
+			name = strings.ReplaceAll(strings.TrimSpace(name), "-", "_")
+			if groups[current] == nil { // an option before any group
+				groups[current] = map[string][]string{}
+				order = append(order, current)
+			}
+			groups[current][name] = append(groups[current][name], strings.TrimSpace(value))
 		}
 	}
-	if len(groups) != 1 || groups[0] != "[mysqld]" {
-		t.Fatalf("template must be a single [mysqld] block (a version group such as [mysqld-8.0] is not read by other versions), got groups %v", groups)
+	return order, groups
+}
+
+// TestOpenSVCMysqlGtidModulesetIsVersionIndependent guards the generated
+// with_rep_mysqlgtid.cnf (var_name "db_cnf_rep_with_mysqlgtid"). mysqld reads
+// the [mysqld-<major.minor>] group of its own version only, so a template made
+// of per-version groups (it had 5.6, 5.7 and 8.0, and no 8.4) leaves any other
+// version with gtid_mode=OFF, and a replica using AUTO_POSITION then cannot
+// attach. The template is one [mysqld] block instead, and every option in it
+// carries the loose- prefix: the variables renamed or removed between 5.7 and
+// 8.4 (master_info_repository, relay_log_info_repository,
+// slave_parallel_workers -> replica_parallel_workers, sync_master_info ->
+// sync_source_info) in their legacy and their modern name, and gtid_mode,
+// enforce_gtid_consistency and relay_log_recovery too. A server applies the
+// options it knows and ignores the others, where a plain unknown name makes it
+// refuse to start ("unknown variable 'relay_log_info_repository=table'" on 8.4,
+// or 'gtid_mode' on a MariaDB server that was given this tag by mistake).
+func TestOpenSVCMysqlGtidModulesetIsVersionIndependent(t *testing.T) {
+	fmts := dbModulesetTemplates(t, "db_cnf_rep_with_mysqlgtid")
+	if len(fmts) != 1 {
+		t.Fatalf("expected exactly one db_cnf_rep_with_mysqlgtid template, found %d", len(fmts))
 	}
+	order, groups := cnfGroups(fmts[0])
+	if len(order) != 1 || order[0] != "mysqld" {
+		t.Fatalf("template must be a single [mysqld] block (a version group such as [mysqld-8.0] is not read by other versions), got groups %v", order)
+	}
+	options := groups["mysqld"]
 
 	for name, want := range map[string]string{
 		"loose_gtid_mode": "ON", "loose_enforce_gtid_consistency": "ON", "loose_relay_log_recovery": "ON",
 	} {
-		if got := options[name]; got != want {
-			t.Errorf("%s = %q, want %q", name, got, want)
+		if got := options[name]; len(got) != 1 || got[0] != want {
+			t.Errorf("%s = %v, want %q", name, got, want)
 		}
 	}
 	for name := range options {
@@ -282,5 +309,42 @@ func TestOpenSVCMysqlGtidModulesetIsVersionIndependent(t *testing.T) {
 		if _, ok := options[name]; !ok {
 			t.Errorf("template lost %s (legacy and modern names must both be present)", name)
 		}
+	}
+	// One spelling, the one the rest of the loose- options use: the "-" form.
+	if strings.Contains(fmts[0], "loose_") {
+		t.Errorf("template mixes loose- and loose_ spellings:\n%s", fmts[0])
+	}
+}
+
+// TestOpenSVCDefaultPathModulesetKeepsUndoInDatadirOnMySQL8 guards the generated
+// default_path.cnf of the split-path layout (var_name "db_cnf_default_path", the
+// one that moves the datadir contents under .system). MySQL 8 finds undo
+// tablespaces by scanning folders and skips hidden ones such as .system, so the
+// undo directory has to stay in the datadir for 8.0 and 8.4 or a restart after
+// initialize fails (MY-013039, #1857). Everything else keeps its undo files under
+// .system, spelled without the stray leading "/" it used to have ("/./.system/..."),
+// and slave_load_tmpdir is set once (it was set twice, with two values).
+func TestOpenSVCDefaultPathModulesetKeepsUndoInDatadirOnMySQL8(t *testing.T) {
+	split := []string{}
+	for _, cnf := range dbModulesetTemplates(t, "db_cnf_default_path") {
+		if strings.Contains(cnf, "innodb_undo_directory") {
+			split = append(split, cnf)
+		}
+	}
+	if len(split) != 1 {
+		t.Fatalf("expected exactly one default_path template that sets the undo directory, found %d", len(split))
+	}
+	_, groups := cnfGroups(split[0])
+
+	for _, group := range []string{"mysqld-8.0", "mysqld-8.4"} {
+		if got := groups[group]["loose_innodb_undo_directory"]; len(got) != 1 || got[0] != "./" {
+			t.Errorf("[%s] loose_innodb_undo_directory = %v, want [./] (undo must stay in the datadir on MySQL 8)", group, got)
+		}
+	}
+	if got := groups["mysqld"]["loose_innodb_undo_directory"]; len(got) != 1 || got[0] != "./.system/innodb/undo" {
+		t.Errorf("[mysqld] loose_innodb_undo_directory = %v, want [./.system/innodb/undo] (no stray leading slash)", got)
+	}
+	if got := groups["mysqld"]["slave_load_tmpdir"]; len(got) != 1 {
+		t.Errorf("[mysqld] slave_load_tmpdir is set %d times (%v), want once", len(got), got)
 	}
 }

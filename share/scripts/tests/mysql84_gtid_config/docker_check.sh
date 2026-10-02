@@ -24,12 +24,14 @@
 #          file that only has [mysqld-8.0] / [mysqld-5.7] groups (the state before the fix) on 8.4,
 #          and for a block with plain (non-loose-) options on MariaDB.
 set -u
+for tool in docker python3; do command -v "$tool" >/dev/null || { echo "FAIL: $tool is required"; exit 2; }; done
 cd "$(dirname "$0")/../../../.." || exit 2
 MODULESET=share/opensvc/moduleset_mariadb.svc.mrm.db.json
 IMAGES=("$@"); [ ${#IMAGES[@]} -eq 0 ] && IMAGES=(mysql:5.7 mysql:8.0 mysql:8.4 percona/percona-server:8.0 percona/percona-server:8.4 mariadb:10.11)
 WORK=$(mktemp -d); NET=gtidcnf_net_$$; PW=pw; fail=0
 SRC=gtidcnf_src_$$; REP=gtidcnf_rep_$$
-cleanup() { docker rm -f $SRC $REP >/dev/null 2>&1; docker network rm "$NET" >/dev/null 2>&1; sudo rm -rf "$WORK" 2>/dev/null || rm -rf "$WORK"; }
+drop_servers() { docker rm -f $SRC $REP >/dev/null 2>&1; docker volume rm -f ${SRC}_data ${REP}_data >/dev/null 2>&1; }
+cleanup() { drop_servers; docker network rm "$NET" >/dev/null 2>&1; rm -rf "$WORK"; }
 trap cleanup EXIT
 
 if [ -n "${GTID_CNF:-}" ]; then
@@ -56,18 +58,19 @@ echo "--- template under test:"; sed 's/^/    /' "$WORK/gtid.cnf"
 q() { docker exec "$1" sh -c 'c=$(command -v mariadb || command -v mysql); exec "$c" -uroot -p"$0" -N -B -e "$1"' "$PW" "$2" 2>&1 | grep -v -E 'jemalloc|Using a password'; }
 wait_up() { for _ in $(seq 1 80); do sleep 3; docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null | grep -q true || return 1; q "$1" 'select 1' | grep -q '^1$' && return 0; done; return 1; }
 start() { # name image serverid
-  local d="$WORK/data_$1"; mkdir -p "$d"; local uid=999; [[ $2 == percona* ]] && uid=1001
+  # The data directory is a named volume: Docker gives an empty volume the owner of the image's
+  # /var/lib/mysql (mysql, 999 or 1001 for Percona), so no chown and no sudo are needed.
+  local uid=999; [[ $2 == percona* ]] && uid=1001
   local extra=(); [[ $2 == *:5.* ]] && extra=(--log-slave-updates=ON)   # 5.x needs it for gtid_mode=ON; 8.x logs replica updates by default
-  sudo chown "$uid:$uid" "$d" 2>/dev/null || chown "$uid:$uid" "$d"
   docker run -d --name "$1" --network "$NET" --user "$uid:$uid" -e MYSQL_ROOT_PASSWORD=$PW -e MARIADB_ROOT_PASSWORD=$PW \
-    -v "$WORK/gtid.cnf:/etc/mysql/conf.d/gtid.cnf:ro" -v "$d:/var/lib/mysql" "$2" \
-    --defaults-extra-file=/etc/mysql/conf.d/gtid.cnf --server-id="$3" --log-bin=binlog "${extra[@]}" >/dev/null 2>&1
+    -v "$WORK/gtid.cnf:/etc/mysql/conf.d/gtid.cnf:ro" -v "$1_data:/var/lib/mysql" "$2" \
+    --defaults-extra-file=/etc/mysql/conf.d/gtid.cnf --server-id="$3" --log-bin=binlog ${extra[@]+"${extra[@]}"} >/dev/null 2>&1
 }
 
 docker network create "$NET" >/dev/null
 for img in "${IMAGES[@]}"; do
   echo "=== $img"
-  docker rm -f $SRC $REP >/dev/null 2>&1; sudo rm -rf "$WORK"/data_* 2>/dev/null
+  drop_servers
   if [[ $img == mariadb* ]]; then
     start $SRC "$img" 11
     if wait_up $SRC; then echo "  ok:   $(q $SRC 'select @@version') starts with the template (MySQL options ignored: $(docker logs $SRC 2>&1 | grep -c 'unknown variable'))"
@@ -78,8 +81,8 @@ for img in "${IMAGES[@]}"; do
   if ! wait_up $SRC || ! wait_up $REP; then
     echo "  FAIL: a server did not start: $(docker logs $SRC 2>&1 | grep -iE 'unknown variable|ERROR' | grep -v jemalloc | head -1 | cut -c1-170)"; fail=1; continue
   fi
-  ver=$(q $REP 'select @@version'); mm=$(echo "$ver" | sed -E 's/^([0-9]+)\.([0-9]+)\.([0-9]+).*/\1 \2 \3/')
-  set -- $mm; maj=$1 min=$2 pat=$3
+  ver=$(q $REP 'select @@version')
+  read -r maj min pat <<<"$(echo "$ver" | sed -E 's/^([0-9]+)\.([0-9]+)\.([0-9]+).*/\1 \2 \3/')"
   if [ "$maj" -gt 8 ] || { [ "$maj" -eq 8 ] && [ "$min" -ge 4 ]; }; then reset='RESET BINARY LOGS AND GTIDS'; else reset='RESET MASTER'; fi
   for n in $SRC $REP; do
     v=$(q $n 'select concat(@@gtid_mode,"/",@@enforce_gtid_consistency,"/",@@relay_log_recovery)')
@@ -95,10 +98,14 @@ for img in "${IMAGES[@]}"; do
     q $REP "CHANGE REPLICATION SOURCE TO SOURCE_HOST='$SRC', SOURCE_USER='root', SOURCE_PASSWORD='$PW', SOURCE_AUTO_POSITION=1, GET_SOURCE_PUBLIC_KEY=1; START REPLICA;" >/dev/null
   fi
   q $SRC 'create database t; create table t.x(i int primary key); insert into t.x values (1)' >/dev/null
-  sleep 7
-  st=$(q $REP 'select service_state from performance_schema.replication_connection_status')
-  rows=$(q $REP 'select count(*) from t.x')
-  sg=$(q $SRC 'select @@global.gtid_executed'); rg=$(q $REP 'select @@global.gtid_executed')
+  # Poll (up to 60 s) until the replica is connected, has the row and the GTID sets are equal.
+  for _ in $(seq 1 30); do
+    st=$(q $REP 'select service_state from performance_schema.replication_connection_status')
+    rows=$(q $REP 'select count(*) from t.x' | grep -E '^[0-9]+$' || echo 0)
+    sg=$(q $SRC 'select @@global.gtid_executed'); rg=$(q $REP 'select @@global.gtid_executed')
+    [ "$st" = "ON" ] && [ "$rows" = "1" ] && [ -n "$sg" ] && [ "$sg" = "$rg" ] && break
+    sleep 2
+  done
   [ "$st" = "ON" ] && [ "$rows" = "1" ] && [ -n "$sg" ] && [ "$sg" = "$rg" ] \
     && echo "  ok:   replica attached with AUTO_POSITION, write replicated, gtid_executed equal ($sg)" \
     || { echo "  FAIL: io=$st rows=$rows source=$sg replica=$rg"; fail=1; }
