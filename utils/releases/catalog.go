@@ -234,9 +234,43 @@ func (c *Catalog) Resolve(repo, flavor, tag string) string {
 
 // Rolling upgrade targets, each a method of the list.
 const (
-	TargetLastLTS   = "last-lts"   // GetLastMajorLTS
-	TargetLastMinor = "last-minor" // GetLastMinor, same as patch
+	TargetLastLTS       = "last-lts"       // GetLastMajorLTS
+	TargetLastMinor     = "last-minor"     // GetLastMinor, same as patch
+	TargetPreviousMinor = "previous-minor" // GetPreviousMinor: a downgrade to the line below, same major
+	TargetPreviousMajor = "previous-major" // GetPreviousMajor: a downgrade to the highest line of the previous major
 )
+
+// GetPreviousMinor is the newest release of the line just below the current one in the
+// same major (11.8 -> 11.7.x): a downgrade within the major.
+func (c *Catalog) GetPreviousMinor(repo string, current Line) (string, error) {
+	var prev *Line
+	for _, l := range c.Lines(repo) {
+		if l.Major == current.Major && l.Less(current) && (prev == nil || prev.Less(l)) {
+			x := l
+			prev = &x
+		}
+	}
+	if prev == nil {
+		return "", fmt.Errorf("no line before %s in the %s %d series in the image list (%s)", current, repo, current.Major, c.Source)
+	}
+	return c.GetLastMinor(repo, *prev)
+}
+
+// GetPreviousMajor is the newest release of the highest line of the previous major
+// (12.x -> 11.8.x): a downgrade across a major.
+func (c *Catalog) GetPreviousMajor(repo string, current Line) (string, error) {
+	var prev *Line
+	for _, l := range c.Lines(repo) {
+		if l.Major < current.Major && (prev == nil || prev.Less(l)) {
+			x := l
+			prev = &x
+		}
+	}
+	if prev == nil {
+		return "", fmt.Errorf("no line of a major before %d for %s in the image list (%s)", current.Major, repo, c.Source)
+	}
+	return c.GetLastMinor(repo, *prev)
+}
 
 // Target is the release a rolling upgrade moves to from the current line.
 func (c *Catalog) Target(repo, flavor string, current Line, target, explicit string) (string, error) {
@@ -251,6 +285,10 @@ func (c *Catalog) Target(repo, flavor string, current Line, target, explicit str
 		return c.GetNextMajorLTS(repo, flavor, current)
 	case TargetLastLTS:
 		return c.GetLastMajorLTS(repo, flavor)
+	case TargetPreviousMinor:
+		return c.GetPreviousMinor(repo, current)
+	case TargetPreviousMajor:
+		return c.GetPreviousMajor(repo, current)
 	case TargetVersion:
 		explicit = strings.TrimSpace(explicit)
 		if explicit == "" {
@@ -268,7 +306,7 @@ func (c *Catalog) Target(repo, flavor string, current Line, target, explicit str
 		}
 		return explicit, nil // a line absent from the list comes back unchanged
 	}
-	return "", fmt.Errorf("unknown target %q: use %s, %s, %s, %s, %s or %s", target, TargetPatch, TargetNextMinor, TargetNextLTS, TargetNextMajor, TargetLastLTS, TargetVersion)
+	return "", fmt.Errorf("unknown target %q: use %s, %s, %s, %s, %s, %s, %s or %s", target, TargetPatch, TargetNextMinor, TargetNextLTS, TargetNextMajor, TargetLastLTS, TargetPreviousMinor, TargetPreviousMajor, TargetVersion)
 }
 
 // LineOf is the line of a release tag.

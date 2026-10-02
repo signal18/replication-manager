@@ -51,6 +51,14 @@ func TestCatalogMethods(t *testing.T) {
 		v, err := c.Target("mariadb", "mariadb", l("11.8"), target, "")
 		check("Target "+target, v, err, want)
 	}
+	for target, want := range map[string]string{"previous-minor": "11.5.2", "previous-major": "11.8.9"} {
+		cur := "12.0"
+		if target == "previous-minor" {
+			cur = "11.8"
+		}
+		v, err := c.Target("mariadb", "mariadb", l(cur), target, "")
+		check("Target "+target, v, err, want)
+	}
 	v, err = c.Target("mariadb", "mariadb", l("11.4"), "version", "11.8")
 	check("Target version 11.8", v, err, "11.8.9")
 	v, err = c.Target("mariadb", "mariadb", l("11.4"), "version", "11.8.8")

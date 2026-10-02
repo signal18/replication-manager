@@ -23,8 +23,10 @@ type fakeRepman struct {
 	events   []string
 }
 
-func (f *fakeRepman) GetClusters() map[string]*cluster.Cluster                 { return f.clusters }
-func (f *fakeRepman) ListAppTemplates(cl *cluster.Cluster) []string           { return []string{"dummy", "phpmyadmin/phpmyadmin"} }
+func (f *fakeRepman) GetClusters() map[string]*cluster.Cluster { return f.clusters }
+func (f *fakeRepman) ListAppTemplates(cl *cluster.Cluster) []string {
+	return []string{"dummy", "phpmyadmin/phpmyadmin"}
+}
 func (f *fakeRepman) GetClusterByName(n string) *cluster.Cluster               { return f.clusters[n] }
 func (f *fakeRepman) GetVersion() string                                       { return "test" }
 func (f *fakeRepman) GetFullVersion() string                                   { return "test" }

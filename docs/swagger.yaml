@@ -5753,13 +5753,16 @@ paths:
         type: string
       - description: 'upgrade only: the release to move to, a method of the image
           list: patch (default: the declared prov-db-image resolved by the list),
-          next-minor, next-lts, next-major, last-lts, version'
+          next-minor, next-lts, next-major, last-lts, previous-minor, previous-major
+          (downgrades), version'
         enum:
         - patch
         - next-minor
         - next-lts
         - next-major
         - last-lts
+        - previous-minor
+        - previous-major
         - version
         in: query
         name: target
@@ -5813,13 +5816,15 @@ paths:
         required: true
         type: string
       - description: patch (default), next-minor, next-lts, next-major, last-lts,
-          version
+          previous-minor, previous-major, version
         enum:
         - patch
         - next-minor
         - next-lts
         - next-major
         - last-lts
+        - previous-minor
+        - previous-major
         - version
         in: query
         name: target
