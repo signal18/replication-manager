@@ -974,33 +974,50 @@ func (repman *ReplicationManager) handlerMuxGlobalPrice(w http.ResponseWriter, r
 
 // UserUnitsRow is one cluster / unit family line of what the logged user consumed this month.
 type UserUnitsRow struct {
-	Cluster         string  `json:"cluster"`
-	Family          string  `json:"family"`
-	Unit            string  `json:"unit"`
-	Plan            float64 `json:"plan"`            // units declared right now
-	Debit           float64 `json:"debit"`           // unit-months so far: plan + over-commit
-	Credit          float64 `json:"credit"`          // unit-months so far: under-commit
-	Net             float64 `json:"net"`             // debit - credit
-	ProjectedDebit  float64 `json:"projectedDebit"`  // end of month at the current rate
-	ProjectedCredit float64 `json:"projectedCredit"` //
-	ProjectedNet    float64 `json:"projectedNet"`    //
-	Sponsor         bool    `json:"sponsor"`         // the user holds the sponsor role on this cluster
+	Cluster                 string  `json:"cluster"`
+	Family                  string  `json:"family"`
+	Unit                    string  `json:"unit"`
+	Plan                    float64 `json:"plan"`              // units declared right now
+	Reserved                float64 `json:"reserved"`          // unit-months so far of the plan: a debit line
+	Borrowed                float64 `json:"borrowed"`          // unit-months so far over the plan: a debit line
+	Unused                  float64 `json:"unused"`            // unit-months so far under the plan: a credit line
+	Debit                   float64 `json:"debit"`             // reserved + borrowed
+	Credit                  float64 `json:"credit"`            // unused
+	Net                     float64 `json:"net"`               // debit - credit
+	ProjectedReserved       float64 `json:"projectedReserved"` // end of month at the current rate
+	ProjectedBorrowed       float64 `json:"projectedBorrowed"` //
+	ProjectedUnused         float64 `json:"projectedUnused"`   //
+	ProjectedNet            float64 `json:"projectedNet"`      //
+	Sponsor                 bool    `json:"sponsor"`           // the user holds the sponsor role on this cluster
+	UnitPrice               float64 `json:"unitPrice"`         // the cluster's unit price, per unit-month
+	ReservedAmount          float64 `json:"reservedAmount"`    // EUR so far, + (debit)
+	BorrowedAmount          float64 `json:"borrowedAmount"`    // EUR so far, + (debit)
+	UnusedAmount            float64 `json:"unusedAmount"`      // EUR so far, - (credit), given positive
+	Amount                  float64 `json:"amount"`            // reserved + borrowed - unused
+	ProjectedReservedAmount float64 `json:"projectedReservedAmount"`
+	ProjectedBorrowedAmount float64 `json:"projectedBorrowedAmount"`
+	ProjectedUnusedAmount   float64 `json:"projectedUnusedAmount"`
+	ProjectedAmount         float64 `json:"projectedAmount"`
 }
 
 // UserUnitsTotal is the sum of the rows of one unit kind (DBU, APU, BKU, BAU) or of all.
 type UserUnitsTotal struct {
-	Unit         string  `json:"unit"`
-	Debit        float64 `json:"debit"`
-	Credit       float64 `json:"credit"`
-	Net          float64 `json:"net"`
-	ProjectedNet float64 `json:"projectedNet"`
+	Unit            string  `json:"unit"`
+	Debit           float64 `json:"debit"`
+	Credit          float64 `json:"credit"`
+	Net             float64 `json:"net"`
+	ProjectedNet    float64 `json:"projectedNet"`
+	DebitAmount     float64 `json:"debitAmount"`     // EUR, Cloud18 only
+	CreditAmount    float64 `json:"creditAmount"`    // EUR, given positive
+	Amount          float64 `json:"amount"`          // EUR net
+	ProjectedAmount float64 `json:"projectedAmount"` // EUR net at the end of the month
 }
 
 // handlerMuxMyUnits answers what the logged user consumed this month, in units (no price:
 // the money is the provider's, the Cloud18 domain): one line per cluster and unit family
 // for the clusters the user sponsors or has access to, with a total per unit kind.
 // @Summary Units consumed this month by the logged user
-// @Description For every cluster the logged user sponsors or has access to: per unit family (DBU, stateful DBU, APU, BKU, BAU) the units declared, the debit (plan + over-commit, in unit-months so far), the credit (under-commit), the net, and the end-of-month projection; totals per unit kind and overall. No amount: units only.
+// @Description For every cluster the logged user sponsors or has access to, like an invoice: per unit family (DBU, stateful DBU, APU, BKU, BAU) the units declared and, in unit-months so far, the reserved (plan, debit), the borrowed (over the plan, debit), the unused (under the plan, credit), the net, and the end-of-month projection; totals per unit kind and overall. On a Cloud18 instance each line also carries the amount in EUR at the cluster's unit price (+ debit, - credit) and its projection; elsewhere units only.
 // @Tags Users
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -1015,6 +1032,9 @@ func (repman *ReplicationManager) handlerMuxMyUnits(w http.ResponseWriter, r *ht
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// The amounts (EUR) appear only on a Cloud18 instance (the money is the provider's);
+	// elsewhere the answer is units only.
+	priced := repman.Conf.Cloud18
 	rows := []UserUnitsRow{}
 	totals := map[string]*UserUnitsTotal{}
 	all := &UserUnitsTotal{Unit: "all"}
@@ -1040,10 +1060,19 @@ func (repman *ReplicationManager) handlerMuxMyUnits(w http.ResponseWriter, r *ht
 		}
 		for _, u := range cs.Units {
 			row := UserUnitsRow{Cluster: name, Family: u.Family, Unit: u.Unit, Plan: u.Plan,
-				Debit: u.MonthPlan + u.MonthOverCommit, Credit: u.MonthUnderCommit,
-				ProjectedDebit: u.ProjectedPlan + u.ProjectedOverCommit, ProjectedCredit: u.ProjectedUnderCommit, Sponsor: sponsor}
+				Reserved: u.MonthPlan, Borrowed: u.MonthOverCommit, Unused: u.MonthUnderCommit,
+				ProjectedReserved: u.ProjectedPlan, ProjectedBorrowed: u.ProjectedOverCommit, ProjectedUnused: u.ProjectedUnderCommit, Sponsor: sponsor}
+			row.Debit = row.Reserved + row.Borrowed
+			row.Credit = row.Unused
 			row.Net = row.Debit - row.Credit
-			row.ProjectedNet = row.ProjectedDebit - row.ProjectedCredit
+			row.ProjectedNet = row.ProjectedReserved + row.ProjectedBorrowed - row.ProjectedUnused
+			if priced {
+				row.UnitPrice = u.UnitPrice
+				row.ReservedAmount, row.BorrowedAmount, row.UnusedAmount = u.MonthPlanCost, u.MonthOverCost, u.MonthUnderCredit
+				row.Amount = row.ReservedAmount + row.BorrowedAmount - row.UnusedAmount
+				row.ProjectedReservedAmount, row.ProjectedBorrowedAmount, row.ProjectedUnusedAmount = u.ProjectedPlanCost, u.ProjectedOverCost, u.ProjectedUnderCredit
+				row.ProjectedAmount = row.ProjectedReservedAmount + row.ProjectedBorrowedAmount - row.ProjectedUnusedAmount
+			}
 			rows = append(rows, row)
 			t := totals[u.Unit]
 			if t == nil {
@@ -1055,6 +1084,10 @@ func (repman *ReplicationManager) handlerMuxMyUnits(w http.ResponseWriter, r *ht
 				x.Credit += row.Credit
 				x.Net += row.Net
 				x.ProjectedNet += row.ProjectedNet
+				x.DebitAmount += row.ReservedAmount + row.BorrowedAmount
+				x.CreditAmount += row.UnusedAmount
+				x.Amount += row.Amount
+				x.ProjectedAmount += row.ProjectedAmount
 			}
 		}
 	}
@@ -1069,7 +1102,7 @@ func (repman *ReplicationManager) handlerMuxMyUnits(w http.ResponseWriter, r *ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"user": user, "month": st.Month, "elapsedPct": st.ElapsedPct, "generatedAt": st.GeneratedAt,
+		"user": user, "month": st.Month, "priced": priced, "currency": st.Currency, "elapsedPct": st.ElapsedPct, "generatedAt": st.GeneratedAt,
 		"rows": rows, "totals": byUnit, "total": all,
 	})
 }

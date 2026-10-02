@@ -21128,7 +21128,7 @@
         },
         "/api/me/units": {
             "get": {
-                "description": "For every cluster the logged user sponsors or has access to: per unit family (DBU, stateful DBU, APU, BKU, BAU) the units declared, the debit (plan + over-commit, in unit-months so far), the credit (under-commit), the net, and the end-of-month projection; totals per unit kind and overall. No amount: units only.",
+                "description": "For every cluster the logged user sponsors or has access to, like an invoice: per unit family (DBU, stateful DBU, APU, BKU, BAU) the units declared and, in unit-months so far, the reserved (plan, debit), the borrowed (over the plan, debit), the unused (under the plan, credit), the net, and the end-of-month projection; totals per unit kind and overall. On a Cloud18 instance each line also carries the amount in EUR at the cluster's unit price (+ debit, - credit) and its projection; elsewhere units only.",
                 "produces": [
                     "application/json"
                 ],
