@@ -406,3 +406,16 @@ func TestQuoteMySQLString(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateDBHostAcceptsWildcardAndIPv6(t *testing.T) {
+	for _, h := range []string{"%", "10.0.0.%", "::1", "app.ns.svc.cloud18"} {
+		if err := validateDBHost(h); err != nil {
+			t.Errorf("validateDBHost(%q): %v", h, err)
+		}
+	}
+	for _, h := range []string{"a`b", ""} {
+		if err := validateDBHost(h); err == nil {
+			t.Errorf("validateDBHost(%q) must be refused", h)
+		}
+	}
+}

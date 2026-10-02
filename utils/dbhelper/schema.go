@@ -1150,7 +1150,7 @@ func CreateUser(db *sqlx.DB, myver *version.Version, user_host string, user_name
 	if err := ValidateIdentifier(user_name); err != nil {
 		return "", fmt.Errorf("invalid username: %w", err)
 	}
-	if err := ValidateIdentifier(user_host); err != nil {
+	if err := validateDBHost(user_host); err != nil { // hosts take '%' and ':' (IPv6), unlike identifiers (#1870)
 		return "", fmt.Errorf("invalid host: %w", err)
 	}
 
