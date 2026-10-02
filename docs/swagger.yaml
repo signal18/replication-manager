@@ -34,12 +34,21 @@ definitions:
         type: string
       encryptionKey:
         type: string
+      encryptionKeyVersion:
+        description: |-
+          EncryptionKeyVersion is the secret_store.json version of
+          db-servers-credential whose password encrypted the artifact (0 when
+          unknown). A version number only, never the password: restore uses it
+          to pick the right historic root password after a password change.
+        type: integer
       endTime:
         type: string
       fileCount:
         type: integer
       id:
         type: integer
+      integrityAlgo:
+        type: string
       metaFile:
         type: string
       previous:
@@ -1638,6 +1647,8 @@ definitions:
         type: integer
       backupDiskTresholdWarn:
         type: integer
+      backupEncryption:
+        type: boolean
       backupEstimateSize:
         type: boolean
       backupEstimateSizePercentage:
@@ -19180,6 +19191,35 @@ paths:
       summary: User login
       tags:
       - Auth
+  /api/me/units:
+    get:
+      description: 'For every cluster the logged user sponsors or has access to: per
+        unit family (DBU, stateful DBU, APU, BKU, BAU) the units declared, the debit
+        (plan + over-commit, in unit-months so far), the credit (under-commit), the
+        net, and the end-of-month projection; totals per unit kind and overall. No
+        amount: units only.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: No statement
+          schema:
+            type: string
+      summary: Units consumed this month by the logged user
+      tags:
+      - Users
   /api/monitor:
     get:
       consumes:

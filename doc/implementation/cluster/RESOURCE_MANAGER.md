@@ -1072,6 +1072,8 @@ partner (this infrastructure's Cloud18 domain/subdomain-zone) + sponsor identiti
 sponsor, emails for SSO), captured with every tick so a cluster dropped on the 12th keeps its
 12 days.
 
+**Consumed units of the logged user:** `GET /api/me/units` (any logged user; `handlerMuxMyUnits`) answers, for the clusters the user sponsors or has access to, one line per unit family with the units declared, the debit (plan + over-commit, unit-months so far), the credit (under-commit), the net and the end-of-month projection, plus totals per unit kind; no amount, units only (the money is the provider's). Shown in the GUI under the user pill, *Consumed* tab (`UserInfoPanel`).
+
 **Statement file = the record for the back office:** `<working dir>/Units.log` (JSON; the running month, rewritten every minute, never staged by the periodic git sync; at the month rollover the closed month is committed and pushed ONCE to the git sync repository, "Units statement YYYY-MM final", then the file starts the new month — past months are the git history of `Units.log`; `GET /api/global/price/{month}` serves the current month only), formerly `billing/billing-YYYY-MM.json`
 (`MonthStatement`: month, prices, per cluster partner / sponsors / rows with the unit-months and
 EUR, totals, projection), written atomically every minute (`Tick`, from

@@ -21137,6 +21137,43 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/me/units": {
+            "get": {
+                "description": "For every cluster the logged user sponsors or has access to: per unit family (DBU, stateful DBU, APU, BKU, BAU) the units declared, the debit (plan + over-commit, in unit-months so far), the credit (under-commit), the net, and the end-of-month projection; totals per unit kind and overall. No amount: units only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Units consumed this month by the logged user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "No statement",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/monitor": {
             "get": {
                 "description": "This endpoint processes the replication manager requests, validates cluster ACLs, and returns the cluster list in JSON format.",
@@ -23011,6 +23048,10 @@ const docTemplate = `{
                 "encryptionKey": {
                     "type": "string"
                 },
+                "encryptionKeyVersion": {
+                    "description": "EncryptionKeyVersion is the secret_store.json version of\ndb-servers-credential whose password encrypted the artifact (0 when\nunknown). A version number only, never the password: restore uses it\nto pick the right historic root password after a password change.",
+                    "type": "integer"
+                },
                 "endTime": {
                     "type": "string"
                 },
@@ -23019,6 +23060,9 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "integer"
+                },
+                "integrityAlgo": {
+                    "type": "string"
                 },
                 "metaFile": {
                     "type": "string"
@@ -25381,6 +25425,9 @@ const docTemplate = `{
                 },
                 "backupDiskTresholdWarn": {
                     "type": "integer"
+                },
+                "backupEncryption": {
+                    "type": "boolean"
                 },
                 "backupEstimateSize": {
                     "type": "boolean"

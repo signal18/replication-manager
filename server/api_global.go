@@ -971,3 +971,105 @@ func (repman *ReplicationManager) handlerMuxGlobalPrice(w http.ResponseWriter, r
 	out := map[string]any{"statement": st, "months": repman.resourceManager.StatementMonths()}
 	repman.jsonResponse(out, w)
 }
+
+// UserUnitsRow is one cluster / unit family line of what the logged user consumed this month.
+type UserUnitsRow struct {
+	Cluster         string  `json:"cluster"`
+	Family          string  `json:"family"`
+	Unit            string  `json:"unit"`
+	Plan            float64 `json:"plan"`            // units declared right now
+	Debit           float64 `json:"debit"`           // unit-months so far: plan + over-commit
+	Credit          float64 `json:"credit"`          // unit-months so far: under-commit
+	Net             float64 `json:"net"`             // debit - credit
+	ProjectedDebit  float64 `json:"projectedDebit"`  // end of month at the current rate
+	ProjectedCredit float64 `json:"projectedCredit"` //
+	ProjectedNet    float64 `json:"projectedNet"`    //
+	Sponsor         bool    `json:"sponsor"`         // the user holds the sponsor role on this cluster
+}
+
+// UserUnitsTotal is the sum of the rows of one unit kind (DBU, APU, BKU, BAU) or of all.
+type UserUnitsTotal struct {
+	Unit         string  `json:"unit"`
+	Debit        float64 `json:"debit"`
+	Credit       float64 `json:"credit"`
+	Net          float64 `json:"net"`
+	ProjectedNet float64 `json:"projectedNet"`
+}
+
+// handlerMuxMyUnits answers what the logged user consumed this month, in units (no price:
+// the money is the provider's, the Cloud18 domain): one line per cluster and unit family
+// for the clusters the user sponsors or has access to, with a total per unit kind.
+// @Summary Units consumed this month by the logged user
+// @Description For every cluster the logged user sponsors or has access to: per unit family (DBU, stateful DBU, APU, BKU, BAU) the units declared, the debit (plan + over-commit, in unit-months so far), the credit (under-commit), the net, and the end-of-month projection; totals per unit kind and overall. No amount: units only.
+// @Tags Users
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Success 200 {object} map[string]interface{}
+// @Failure 500 {string} string "No statement"
+// @Router /api/me/units [get]
+func (repman *ReplicationManager) handlerMuxMyUnits(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	user := repman.GetUserFromRequest(r)
+	st, err := repman.resourceManager.Statement("", time.Now())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	rows := []UserUnitsRow{}
+	totals := map[string]*UserUnitsTotal{}
+	all := &UserUnitsTotal{Unit: "all"}
+	names := make([]string, 0, len(st.Clusters))
+	for name := range st.Clusters {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		cs := st.Clusters[name]
+		sponsor := false
+		for _, s := range cs.Sponsors {
+			if strings.EqualFold(s, user) {
+				sponsor = true
+			}
+		}
+		access := false
+		if cl := repman.getClusterByName(name); cl != nil {
+			_, access = cl.APIUsers[user]
+		}
+		if !sponsor && !access {
+			continue
+		}
+		for _, u := range cs.Units {
+			row := UserUnitsRow{Cluster: name, Family: u.Family, Unit: u.Unit, Plan: u.Plan,
+				Debit: u.MonthPlan + u.MonthOverCommit, Credit: u.MonthUnderCommit,
+				ProjectedDebit: u.ProjectedPlan + u.ProjectedOverCommit, ProjectedCredit: u.ProjectedUnderCommit, Sponsor: sponsor}
+			row.Net = row.Debit - row.Credit
+			row.ProjectedNet = row.ProjectedDebit - row.ProjectedCredit
+			rows = append(rows, row)
+			t := totals[u.Unit]
+			if t == nil {
+				t = &UserUnitsTotal{Unit: u.Unit}
+				totals[u.Unit] = t
+			}
+			for _, x := range []*UserUnitsTotal{t, all} {
+				x.Debit += row.Debit
+				x.Credit += row.Credit
+				x.Net += row.Net
+				x.ProjectedNet += row.ProjectedNet
+			}
+		}
+	}
+	units := []string{}
+	for k := range totals {
+		units = append(units, k)
+	}
+	sort.Strings(units)
+	byUnit := []UserUnitsTotal{}
+	for _, k := range units {
+		byUnit = append(byUnit, *totals[k])
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"user": user, "month": st.Month, "elapsedPct": st.ElapsedPct, "generatedAt": st.GeneratedAt,
+		"rows": rows, "totals": byUnit, "total": all,
+	})
+}

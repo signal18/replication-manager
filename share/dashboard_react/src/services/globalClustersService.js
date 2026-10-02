@@ -10,6 +10,7 @@ export const globalClustersService = {
   getGlobalMetrics,
   getGlobalResources,
   getGlobalPrice,
+  getMyUnits,
   getGlobalLogs,
   getGlobalLogHistory,
   getGlobalJobs,
@@ -166,4 +167,8 @@ function setServerActiveStatus(baseURL) {
 
 function fetchDynamicClustersFromGit() {
   return getApi().post('clusters/actions/fetch-dynamic-from-git')
+}
+
+function getMyUnits(baseURL) {
+  return getApi(baseURL).get('me/units')
 }

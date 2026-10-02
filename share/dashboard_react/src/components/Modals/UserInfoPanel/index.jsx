@@ -1,8 +1,10 @@
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton,
-  Box, VStack, HStack, Text, Badge, Divider, Table, Thead, Tbody, Tr, Th, Td
+  Box, VStack, HStack, Text, Badge, Divider, Table, Thead, Tbody, Tr, Th, Td,
+  Tabs, TabList, TabPanels, Tab, TabPanel, Spinner
 } from '@chakra-ui/react'
-import React from 'react'
+import React, { useEffect, useState } from 'react'
+import { globalClustersService } from '../../../services/globalClustersService'
 import { HiMoon, HiSun } from 'react-icons/hi'
 import { FaUserPlus } from 'react-icons/fa'
 import { TbKey } from 'react-icons/tb'
@@ -12,6 +14,58 @@ import parentStyles from '../styles.module.scss'
 
 // Static checkmark character for grant/role indicators
 const CHECK_MARK = '\u2713'
+
+// ConsumedUnits: what the logged user consumed this month, in units (debit = plan +
+// over-commit, credit = under-commit, unit-months so far), per cluster and unit, with a
+// total per unit kind. No amount here: the money is the provider's.
+function ConsumedUnits({ theme }) {
+  const [data, setData] = useState(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let alive = true
+    globalClustersService.getMyUnits(undefined).then((res) => { if (alive) setData(res.data) }).catch((e) => { if (alive) setError(e?.message || 'failed') })
+    return () => { alive = false }
+  }, [])
+  const f = (v) => (v === undefined || v === null ? '-' : Number(v).toFixed(3))
+  const muted = theme === 'light' ? 'gray.600' : 'gray.400'
+  if (error) return <Text fontSize='sm' color='red.400'>{error}</Text>
+  if (!data) return <Spinner size='sm' />
+  const rows = data.rows || []
+  if (rows.length === 0) return <Text fontSize='sm' color={muted}>No cluster consumed units for {data.user} in {data.month}.</Text>
+  const clusters = [...new Set(rows.map((r) => r.cluster))]
+  return (
+    <VStack align='stretch' spacing={3}>
+      <Text fontSize='sm' color={muted}>Month {data.month}, {Number(data.elapsedPct || 0).toFixed(1)}% elapsed. Debit = plan + over-commit, credit = under-commit, in unit-months so far; net = debit - credit; projected = end of month at the current rate.</Text>
+      <Table size='sm' variant='simple'>
+        <Thead><Tr><Th>Cluster</Th><Th>Unit</Th><Th isNumeric>Declared</Th><Th isNumeric>Debit</Th><Th isNumeric>Credit</Th><Th isNumeric>Net</Th><Th isNumeric>Projected net</Th></Tr></Thead>
+        <Tbody>
+          {clusters.map((c) => {
+            const cr = rows.filter((r) => r.cluster === c && (r.plan > 0 || r.debit > 0 || r.credit > 0))
+            const sub = cr.reduce((a, r) => ({ debit: a.debit + r.debit, credit: a.credit + r.credit, net: a.net + r.net, pnet: a.pnet + r.projectedNet }), { debit: 0, credit: 0, net: 0, pnet: 0 })
+            return [
+              ...cr.map((r) => (
+                <Tr key={c + r.family}>
+                  <Td>{c}{r.sponsor ? <Badge ml={2} size='sm' colorScheme='purple'>sponsor</Badge> : null}</Td>
+                  <Td>{r.unit}{r.family === 'stateful_dbu' ? ' (stateful app)' : ''}</Td>
+                  <Td isNumeric>{r.plan}</Td><Td isNumeric>{f(r.debit)}</Td><Td isNumeric>{f(r.credit)}</Td><Td isNumeric>{f(r.net)}</Td><Td isNumeric>{f(r.projectedNet)}</Td>
+                </Tr>
+              )),
+              <Tr key={c + '-total'} fontWeight={600}><Td>{c} total</Td><Td></Td><Td></Td><Td isNumeric>{f(sub.debit)}</Td><Td isNumeric>{f(sub.credit)}</Td><Td isNumeric>{f(sub.net)}</Td><Td isNumeric>{f(sub.pnet)}</Td></Tr>
+            ]
+          })}
+          {(data.totals || []).map((t) => (
+            <Tr key={'u-' + t.unit} fontWeight={600} bg={theme === 'light' ? 'gray.50' : 'rgba(255,255,255,0.05)'}>
+              <Td>Total {t.unit}</Td><Td>{t.unit}</Td><Td></Td><Td isNumeric>{f(t.debit)}</Td><Td isNumeric>{f(t.credit)}</Td><Td isNumeric>{f(t.net)}</Td><Td isNumeric>{f(t.projectedNet)}</Td>
+            </Tr>
+          ))}
+          {data.total && (
+            <Tr fontWeight={700}><Td>Total</Td><Td>all units</Td><Td></Td><Td isNumeric>{f(data.total.debit)}</Td><Td isNumeric>{f(data.total.credit)}</Td><Td isNumeric>{f(data.total.net)}</Td><Td isNumeric>{f(data.total.projectedNet)}</Td></Tr>
+          )}
+        </Tbody>
+      </Table>
+    </VStack>
+  )
+}
 
 function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false, onAddUser, onApiTokens }) {
   const { theme, toggleTheme } = useTheme()
@@ -47,6 +101,10 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
         <ModalHeader fontSize='md'>User Profile</ModalHeader>
         <ModalCloseButton />
         <ModalBody pb={4}>
+          <Tabs size='sm' variant='enclosed'>
+            <TabList><Tab>Profile</Tab><Tab>Consumed</Tab></TabList>
+            <TabPanels>
+            <TabPanel px={0}>
           <VStack align='stretch' spacing={4}>
 
             <Box p={3} borderRadius='md' bg={theme === 'light' ? 'gray.50' : 'rgba(255,255,255,0.05)'}>
@@ -182,6 +240,12 @@ function UserInfoPanel({ isOpen, closeModal, user, onLogout, canAddUser = false,
             )}
 
           </VStack>
+            </TabPanel>
+            <TabPanel px={0}>
+              <ConsumedUnits theme={theme} />
+            </TabPanel>
+            </TabPanels>
+          </Tabs>
         </ModalBody>
       </ModalContent>
     </Modal>
