@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"strings"
 	"math"
 	"os"
 	"path/filepath"
@@ -98,7 +99,7 @@ func TestResourceManagerBillingAccrualAndStatement(t *testing.T) {
 		t.Fatalf("a 2 h gap must accrue nothing: %v vs %v", cs2.Units[0].MonthCost, db.MonthCost)
 	}
 	// Reload from the file continues the accruals.
-	if _, err := os.Stat(filepath.Join(dir, "billing-2026-10.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, UnitsLogName)); err != nil {
 		t.Fatalf("statement file must exist: %v", err)
 	}
 	m2 := NewResourceManager()
@@ -128,7 +129,20 @@ func TestResourceManagerBillingAccrualAndStatement(t *testing.T) {
 	}
 	// Month change: the running month is closed as final, the new one starts empty.
 	nov := time.Date(2026, 11, 1, 0, 0, 10, 0, time.UTC)
+	pushed := []string{}
+	m2.SetFinalPush(func(path, month string) error {
+		raw, _ := os.ReadFile(path)
+		if !strings.Contains(string(raw), "\"final\": true") || !strings.HasSuffix(path, UnitsLogName) {
+			t.Fatalf("the rollover pushes the FINAL %s: path=%s", UnitsLogName, path)
+		}
+		pushed = append(pushed, month)
+		return nil
+	})
 	m2.Tick(nov)
+	m2.Tick(nov.Add(time.Minute))
+	if len(pushed) != 1 || pushed[0] != "2026-10" {
+		t.Fatalf("the closed month is pushed once: %v", pushed)
+	}
 	past, err := m2.Statement("2026-10", nov)
 	if err != nil || !past.Final || past.Clusters["belair"] == nil {
 		t.Fatalf("October must be closed as final: %v %+v", err, past)

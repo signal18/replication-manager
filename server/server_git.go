@@ -1732,3 +1732,43 @@ func (repman *ReplicationManager) ShallowClone() error {
 
 	return err
 }
+
+// PushUnitsLogToGit commits and pushes the closed month's Units.log to the git sync
+// repository, once, at the month rollover (the periodic sync never stages it: the file
+// is rewritten every minute and *.log is ignored; an explicit Add bypasses the ignore
+// like the event-changed logs above). No git configured: nothing to do.
+func (repman *ReplicationManager) PushUnitsLogToGit(path, month string) error {
+	if repman.Conf.GitUrl == "" {
+		return nil // no git sync configured: the file stays local
+	}
+	dir := repman.Conf.WorkingDir
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		return fmt.Errorf("no git repository in %s", dir)
+	}
+	r, err := git.PlainOpen(dir)
+	if err != nil {
+		return err
+	}
+	w, err := r.Worktree()
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return err
+	}
+	if _, err := w.Add(rel); err != nil {
+		return fmt.Errorf("cannot add %s: %w", rel, err)
+	}
+	if _, err := w.Commit("Units statement "+month+" final", &git.CommitOptions{
+		Author: &git_obj.Signature{Name: "Replication Manager", When: time.Now()},
+	}); err != nil {
+		return fmt.Errorf("cannot commit %s: %w", rel, err)
+	}
+	auth := &git_https.BasicAuth{Username: repman.Conf.GitUsername, Password: repman.Conf.GetDecryptedValue("git-acces-token")}
+	if err := r.Push(&git.PushOptions{Auth: auth}); err != nil && err != git.NoErrAlreadyUpToDate {
+		return fmt.Errorf("cannot push %s: %w", rel, err)
+	}
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "%s of %s pushed to git", rel, month)
+	return nil
+}

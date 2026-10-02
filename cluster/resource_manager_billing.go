@@ -10,7 +10,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -160,6 +159,7 @@ type MonthStatement struct {
 type billingState struct {
 	prices    BillingPrices
 	dir       string
+	pushFinal func(path, month string) error // called ONCE at the month rollover with the final Units.log (pushed to the git sync repository)
 	month     string
 	stmt      *MonthStatement
 	lastTick  map[string]time.Time
@@ -222,8 +222,21 @@ func monthBounds(t time.Time) (start time.Time, seconds float64) {
 	return start, start.AddDate(0, 1, 0).Sub(start).Seconds()
 }
 
+// UnitsLogName is the statement file: the running month's unit usage, in the working
+// directory, rewritten every minute; the closed month is pushed once to the git sync
+// repository at the rollover (Stéphane 2026-10-02), then the file starts the new month.
+// Past months live in the git history of that file.
+const UnitsLogName = "Units.log"
+
 func (m *ResourceManager) statementPath(month string) string {
-	return filepath.Join(m.billing().dir, "billing-"+month+".json")
+	return filepath.Join(m.billing().dir, UnitsLogName)
+}
+
+// SetFinalPush names what pushes the closed month's Units.log once at the rollover.
+func (m *ResourceManager) SetFinalPush(f func(path, month string) error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.billing().pushFinal = f
 }
 
 func (m *ResourceManager) loadMonthLocked(now time.Time) error {
@@ -244,6 +257,9 @@ func (m *ResourceManager) loadMonthLocked(now time.Time) error {
 	var st MonthStatement
 	if err := json.Unmarshal(raw, &st); err != nil {
 		return fmt.Errorf("billing statement %s unreadable, starting the month from the series: %w", b.month, err)
+	}
+	if st.Month != b.month {
+		return nil // Units.log holds another month (the closed one): this month starts fresh
 	}
 	if st.Clusters == nil {
 		st.Clusters = map[string]*ClusterStatement{}
@@ -450,6 +466,13 @@ func (m *ResourceManager) rolloverLocked(now time.Time) {
 		for name, cs := range b.stmt.Clusters {
 			b.logf("Billing statement %s closed for cluster %s (partner %s, sponsors %s): %.2f EUR", b.month, name, cs.Partner, strings.Join(cs.Sponsors, ","), cs.MonthCost)
 		}
+		if b.pushFinal != nil && b.dir != "" {
+			if err := b.pushFinal(m.statementPath(b.month), b.month); err != nil {
+				b.logf("%s of %s not pushed to git: %v", UnitsLogName, b.month, err)
+			} else {
+				b.logf("%s of %s pushed to git once, the file now starts %s", UnitsLogName, b.month, monthKey(now))
+			}
+		}
 	}
 	b.lastTick = map[string]time.Time{}
 	if err := m.loadMonthLocked(now); err != nil {
@@ -489,11 +512,14 @@ func (m *ResourceManager) Statement(month string, now time.Time) (*MonthStatemen
 		return &cp, nil
 	}
 	if b.dir == "" {
-		return nil, fmt.Errorf("no billing directory: past statements are not kept")
+		return nil, fmt.Errorf("no working directory: past statements are not kept")
 	}
 	raw, err := os.ReadFile(m.statementPath(month))
 	if err != nil {
 		return nil, fmt.Errorf("no statement for %s: %w", month, err)
+	}
+	if err == nil && !strings.Contains(string(raw), "\"month\": \""+month+"\"") {
+		return nil, fmt.Errorf("no statement for %s on disk: past months are the history of %s in the git sync repository", month, UnitsLogName)
 	}
 	var st MonthStatement
 	if err := json.Unmarshal(raw, &st); err != nil {
@@ -589,23 +615,11 @@ func (m *ResourceManager) BackfillFromGraphite(clusters []string, now time.Time)
 
 // StatementMonths lists the months with a statement on disk, newest first.
 func (m *ResourceManager) StatementMonths() []string {
-	m.mu.RLock()
-	dir := m.billing().dir
-	m.mu.RUnlock()
-	if dir == "" {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b := m.billing()
+	if b.month == "" {
 		return nil
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var out []string
-	for _, e := range entries {
-		n := e.Name()
-		if strings.HasPrefix(n, "billing-") && strings.HasSuffix(n, ".json") {
-			out = append(out, strings.TrimSuffix(strings.TrimPrefix(n, "billing-"), ".json"))
-		}
-	}
-	sort.Sort(sort.Reverse(sort.StringSlice(out)))
-	return out
+	return []string{b.month} // past months: the git history of Units.log
 }

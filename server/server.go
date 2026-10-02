@@ -3573,9 +3573,10 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 				repman.Logrus.WithFields(log.Fields{"module": "billing"}).Infof(format, args...)
 			}
 		}
-		if err := repman.resourceManager.SetBillingDir(repman.Conf.WorkingDir+"/billing", logf); err != nil {
-			logf("billing statements: %v", err)
+		if err := repman.resourceManager.SetBillingDir(repman.Conf.WorkingDir, logf); err != nil {
+			logf("%s: %v", cluster.UnitsLogName, err)
 		}
+		repman.resourceManager.SetFinalPush(repman.PushUnitsLogToGit)
 	}
 	if err := repman.resourceManager.ApplyRatioSettings(repman.Conf.ResourceManagerRatioDBU, repman.Conf.ResourceManagerRatioAPU, repman.Conf.ResourceManagerRatioBKU); err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s (built-in defaults kept for the profiles that failed)", err)
