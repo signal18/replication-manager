@@ -1024,6 +1024,7 @@ func (server *ServerMonitor) JobsCheckErrors(Conn *sqlx.Conn) error {
 			}
 		case "xtrabackup", "mariabackup":
 			cluster.SetState("WARN0115", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0115"], ErrFrom: "JOB", ServerUrl: server.URL})
+			server.failEncryptedPhysicalBackup(result.String)
 		}
 	}
 

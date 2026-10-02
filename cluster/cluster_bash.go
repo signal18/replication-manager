@@ -355,6 +355,9 @@ func (cluster *Cluster) BinlogRotationScript(srv *ServerMonitor) error {
 }
 
 func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, isPurge bool) error {
+	if err := cluster.preflightBackupEncryptionKey(); err != nil {
+		return err
+	}
 	if !server.IsMaster() {
 		return errors.New("Copy only master binlog")
 	}
@@ -381,12 +384,22 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 	if cluster.Conf.BinlogCopyScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Calling binlog copy script on %s. Binlog: %s", server.URL, binlog)
 		var out []byte
-		out, err := exec.Command(cluster.Conf.BinlogCopyScript, cluster.Name, server.Host, server.Port, strconv.Itoa(cluster.Conf.OnPremiseSSHPort), server.GetBinaryLogDir(), server.GetMyBackupDirectory(), binlog).CombinedOutput()
+		// With encryption on the script copies into the ".partial" staging
+		// directory; only finalizeBinlogCopy publishes the encrypted copy.
+		copyDir := server.binlogCopyDir()
+		out, err := exec.Command(cluster.Conf.BinlogCopyScript, cluster.Name, server.Host, server.Port, strconv.Itoa(cluster.Conf.OnPremiseSSHPort), server.GetBinaryLogDir(), copyDir, binlog).CombinedOutput()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+			server.discardBinlogCopy(copyDir, binlog)
 		} else {
+			// Encrypt every successful copy, purge batch or not.
+			if _, encErr := server.finalizeBinlogCopy(copyDir, binlog); encErr != nil {
+				cluster.SetState("WARN0219", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0219"], server.URL, "binlog", encErr.Error()), ErrFrom: "JOB", ServerUrl: server.URL})
+				return encErr
+			}
 			// Skip backup to restic if in purge binlog
 			if !isPurge {
+
 				if idx := slices.Index(server.BinaryLogMetaToWrite, binlog); idx == -1 {
 					server.BinaryLogMetaToWrite = append(server.BinaryLogMetaToWrite, binlog)
 				}
