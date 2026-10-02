@@ -964,6 +964,16 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 	app.CheckPrimaryRoute()
 
 	if template != "" {
+		// Database auto-create (#1870): a template referencing {{app.db.*}} gets its
+		// schema, user and password defaulted before the substitution runs.
+		if appDbWanted(appcnf, content) {
+			appcnf.AppDbAutoCreate = true
+			if err := cluster.ApplyAppDbDefaults(appcnf); err != nil {
+				rollbackAddedApp()
+				return err
+			}
+			app.AppClusterSubstitute = ""
+		}
 		resolvedContent, err := cluster.ParseTemplateContent(app, content)
 		if err != nil {
 			rollbackAddedApp()
@@ -992,6 +1002,10 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		err = newViper.Unmarshal(appcnf)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", template, err)
+			rollbackAddedApp()
+			return err
+		}
+		if err := cluster.ApplyAppDbDefaults(appcnf); err != nil { // app-db-auto-create set by the template itself
 			rollbackAddedApp()
 			return err
 		}

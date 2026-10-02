@@ -90,7 +90,8 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     provAppDockerImg = '', provAppDockerCmd = '', provAppTemplate = '', provAppStartTimeout = '',
     provAppAgents = '', provAppHaTopology = '',
     provAppSizingMode: appSizingMode = '', provAppCpuCores = '', provAppMemory = '', provAppDiskSize = '',
-    appS3Provider = false, appStateful = false
+    appS3Provider = false, appStateful = false,
+    appDbAutoCreate = false, appDbOwned = false, appDbSchema = '', appDbUser = ''
   } = appConfig;
 
   // Effective mode resolution mirrors backend logic:
@@ -195,6 +196,11 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
 
   const onHATopologyChange = useCallback((value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: value })) }, [clusterName, appId, dispatch])
   const onS3ProviderChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-s3-provider', value: appS3Provider ? 'false' : 'true' })) }, [clusterName, appId, appS3Provider, dispatch])
+  const onDbAutoCreateChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-db-auto-create', value: appDbAutoCreate ? 'false' : 'true' })) }, [clusterName, appId, appDbAutoCreate, dispatch])
+  const onDbOwnedChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-db-owned', value: appDbOwned ? 'false' : 'true' })) }, [clusterName, appId, appDbOwned, dispatch])
+  const onSaveDbSchema = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-db-schema', value: value })), [clusterName, appId, dispatch])
+  const onSaveDbUser = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-db-user', value: value })), [clusterName, appId, dispatch])
+  const onSaveDbPass = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-db-pass', value: value })), [clusterName, appId, dispatch])
   const onStatefulChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-stateful', value: appStateful ? 'false' : 'true' })) }, [clusterName, appId, appStateful, dispatch])
   const onPreviewTemplate = useCallback(() => {
     if (!provAppTemplate) {
@@ -349,6 +355,62 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
           />
         )
       },
+      {
+        key: 'Database (auto-create)',
+        value: (
+          <RMSwitch
+            confirmTitle={`Confirm switch app-db-auto-create to ${appDbAutoCreate ? 'off' : 'on'}? On: the app asks the cluster for its own schema, user and password, created at provision; an existing schema or user is never touched (refused, APPERR008).`}
+            onChange={onDbAutoCreateChange}
+            isChecked={!!appDbAutoCreate}
+          />
+        )
+      },
+      ...(appDbAutoCreate ? [
+        {
+          key: 'Database Schema',
+          value: (
+            <TextForm
+              value={appDbSchema}
+              confirmTitle="Database Schema Change"
+              confirmBody='Schema created for the app at provision ("{{app.db.schema}}" in templates). Change "app-db-schema" to: '
+              onSave={onSaveDbSchema}
+            />
+          )
+        },
+        {
+          key: 'Database User',
+          value: (
+            <TextForm
+              value={appDbUser}
+              confirmTitle="Database User Change"
+              confirmBody='User created for the app at provision ("{{app.db.user}}" in templates). Change "app-db-user" to: '
+              onSave={onSaveDbUser}
+            />
+          )
+        },
+        {
+          key: 'Database Password',
+          value: (
+            <TextForm
+              value=''
+              placeholder='generated at add; enter a value to rotate'
+              confirmTitle="Database Password Change"
+              confirmBody='Stored encrypted; on an owned database the user password is rotated at once. Change "app-db-pass" to: '
+              onSave={onSaveDbPass}
+            />
+          )
+        },
+        {
+          key: 'Database Owned',
+          value: (
+            <RMSwitch
+              confirmTitle={`Confirm switch app-db-owned to ${appDbOwned ? 'off' : 'on'}? The ownership mark set by the provision that created the schema and the user; set it by hand only when they belong to this app.`}
+              onChange={onDbOwnedChange}
+              isChecked={!!appDbOwned}
+            />
+          )
+        },
+      ] : []),
       {
         key: 'Stateful (accounted as DBU)',
         value: (

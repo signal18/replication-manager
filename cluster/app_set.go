@@ -265,7 +265,19 @@ func (app *App) SetSetting(key, value string) error {
 	case "app-db-user":
 		app.AppConfig.AppDbUser = value
 	case "app-db-pass":
-		app.AppConfig.AppDbPass = value
+		// stored encrypted; on an owned database the user password is rotated at once (#1870)
+		app.AppConfig.AppDbPass = app.ClusterGroup.Conf.GetEncryptedString(app.ClusterGroup.Conf.GetDecryptedPassword("app-db-pass", value))
+		if err := app.ClusterGroup.RotateAppDatabasePassword(app); err != nil {
+			return err
+		}
+	case "app-db-auto-create":
+		app.AppConfig.AppDbAutoCreate = value == "true" || value == "1" || value == "on"
+		if err := app.ClusterGroup.ApplyAppDbDefaults(app.AppConfig); err != nil {
+			return err
+		}
+	case "app-db-owned":
+		// the ownership mark: an operator asserts the schema and user belong to this app
+		app.AppConfig.AppDbOwned = value == "true" || value == "1" || value == "on"
 	case "app-db-schema":
 		app.AppConfig.AppDbSchema = value
 	case "prov-app-units":
@@ -397,6 +409,16 @@ func (app *App) SetSetting(key, value string) error {
 
 func (app *App) SwitchSetting(key string) error {
 	switch key {
+	case "app-db-auto-create":
+		if app.AppConfig.AppDbAutoCreate {
+			return app.SetSetting(key, "false")
+		}
+		return app.SetSetting(key, "true")
+	case "app-db-owned":
+		if app.AppConfig.AppDbOwned {
+			return app.SetSetting(key, "false")
+		}
+		return app.SetSetting(key, "true")
 	default:
 		return errors.New("unknown setting: " + key)
 	}

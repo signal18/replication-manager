@@ -1134,7 +1134,13 @@ type AppConfig struct {
 	AppDbPass             string `mapstructure:"app-db-pass" toml:"app-db-pass" json:"appDbPass" groups:"apps"`
 	AppDbPassClear        string `mapstructure:"app-db-pass-clear" toml:"-" json:"-" app:"-"`
 	AppDbSchema           string `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema" groups:"apps"`
-	AppS3Provider         bool   `mapstructure:"app-s3-provider" toml:"app-s3-provider" json:"appS3Provider"`
+	// AppDbAutoCreate (#1870): the app asks the cluster for its own schema, user and password
+	// ({{app.db.*}} template keys); created at provision, never on foreign objects.
+	AppDbAutoCreate bool `mapstructure:"app-db-auto-create" toml:"app-db-auto-create" json:"appDbAutoCreate" groups:"apps"`
+	// AppDbOwned: the ownership mark, set by the provision that created the schema and the user;
+	// without it an existing schema or user is never touched (APPERR008).
+	AppDbOwned    bool `mapstructure:"app-db-owned" toml:"app-db-owned" json:"appDbOwned" groups:"apps"`
+	AppS3Provider bool `mapstructure:"app-s3-provider" toml:"app-s3-provider" json:"appS3Provider"`
 	// AppStateful: the app holds data (minio, a storage service), so it is accounted on the
 	// Database profile as whole DBU (reserved in the DBU pool, billed at the DBU price), not
 	// as APU. A template default (cloud18-templates minio) inherited at creation, overridable

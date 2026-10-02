@@ -287,12 +287,13 @@ The doc tables are regenerated with `doc/implementation/mcp/gen_tool_tables.py`.
 Domain `app`, one tool = one route: `list-app-templates` (`GET /templates/apps`: the
 repository cache of `prov-app-template-repo` plus the cluster's local templates, names as
 template paths such as `phpmyadmin/phpmyadmin`), `list-cluster-apps` (`GET /topology/apps`,
-with each app's `url`), `app-add` (`POST /actions/addserver/{name}/{port}/app/{template}`,
+with each app's `url` and, when the app asked the cluster for a database (#1870), its `db` object), `app-add` (`POST /actions/addserver/{name}/{port}/app/{template}`,
 a short name resolves against the list, an unknown template is refused, never turned into a
 docker image), `app-provision` / `app-unprovision` (`/apps/{app}/actions/...`, OpenSVC,
 asynchronous). `App.URL` (`GetPublicURL`): the protocol and CNAME of the primary route once
 the app has one (`https://<app>.<cluster>.<subDomain>-<zone>.<domain>.cloud18.io/`), else
 the internal `http://host:port/`; refreshed every tick, in the topology JSON for the GUI.
+Lifecycle (2026-10-02): `app-start`, `app-stop`, `app-restart` (`POST /apps/{app}/actions/start|stop|restart`, optional node) and `app-resize` (`prov-app-units` through `/apps/{app}/settings/actions/set/prov-app-units/{value}`: the plan in whole units, cores/memory/disk at the ratio; the answer says a reprovision is needed to apply it, since `OpenSVCProvisionAppV3` reuses an existing service definition).
 
 `cloud18-create-cluster` deploys `phpmyadmin` by default (`apps=none` to opt out), resolves
 the app names against the infrastructure's `appTemplates` (the self-service status now

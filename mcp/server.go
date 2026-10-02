@@ -149,6 +149,7 @@ func NewMCPServer(repman RepmanProvider, conf *config.Config, logger *log.Logger
 	s.registerWriteTools()
 	s.registerCloud18Tools()
 	s.registerAppTools()
+	s.registerAppLifecycleTools()
 	s.registerPrompts()
 
 	return s

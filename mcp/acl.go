@@ -192,6 +192,10 @@ var toolACLPaths = map[string]string{
 	"app-add":            "/actions/addserver/{name}/{port}/app/{template}",
 	"app-provision":      "/apps/{app}/actions/provision",
 	"app-unprovision":    "/apps/{app}/actions/unprovision",
+	"app-start":          "/apps/{app}/actions/start",
+	"app-stop":           "/apps/{app}/actions/stop",
+	"app-restart":        "/apps/{app}/actions/restart",
+	"app-resize":         "/apps/{app}/settings/actions/set/prov-app-units/{units}",
 	"proxy-start":        "/proxies/{proxy}/actions/start",
 	"proxy-stop":         "/proxies/{proxy}/actions/stop",
 	"proxy-provision":    "/proxies/{proxy}/actions/provision",
@@ -215,6 +219,7 @@ var templateArgs = map[string]string{
 	"{name}":     "name",
 	"{port}":     "port",
 	"{template}": "template",
+	"{units}":    "units", // app-resize: the plan in whole units (prov-app-units)
 }
 
 // aclArg is one substituted argument: path-escaped, so a value can never

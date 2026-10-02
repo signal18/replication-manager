@@ -34,13 +34,14 @@ import (
 // same app, regardless of whether the racing field is itself group-tagged.
 // buildAppSubstitutionView instead produces an independent copy up front.
 type appSubstitutionView struct {
-	Id        string            `json:"id" groups:"apps"`
-	Name      string            `json:"name" groups:"apps"`
-	Type      string            `json:"type" groups:"apps"`
-	Host      string            `json:"host" groups:"apps"`
-	Port      string            `json:"port" groups:"apps"`
-	Version   string            `json:"version" groups:"apps"`
-	AppConfig *config.AppConfig `json:"config" groups:"apps"`
+	Id        string                 `json:"id" groups:"apps"`
+	Name      string                 `json:"name" groups:"apps"`
+	Type      string                 `json:"type" groups:"apps"`
+	Host      string                 `json:"host" groups:"apps"`
+	Port      string                 `json:"port" groups:"apps"`
+	Version   string                 `json:"version" groups:"apps"`
+	AppConfig *config.AppConfig      `json:"config" groups:"apps"`
+	Db        *appDbSubstitutionView `json:"db,omitempty" groups:"apps"` // {{app.db.*}}, present only when the app asked for a database (#1870)
 }
 
 // cloneAppConfigForSubstitution returns an independent copy of cnf, safe to
@@ -209,6 +210,7 @@ func (app *App) buildAppSubstitutionView() *appSubstitutionView {
 	}
 	app.Lock()
 	view.AppConfig = cloneAppConfigForSubstitution(app.AppConfig)
+	view.Db = appDbView(app.AppConfig)
 	app.Unlock()
 	return view
 }

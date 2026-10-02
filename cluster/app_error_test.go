@@ -158,15 +158,27 @@ func TestGetMonitoringStatusDebouncesOncePerRouteInvocation(t *testing.T) {
 	}
 }
 
-func TestGetMonitoringStatusNoRoutesEmitsImmediately(t *testing.T) {
+func TestGetMonitoringStatusNoRoutesProbesAppPort(t *testing.T) {
+	// No route: the app lives on the cluster network only and is probed over TCP on its
+	// port, with the same debounce as a route; port 1 on 127.0.0.1 never answers.
 	app := newMonitoringTestApp(nil)
+	app.AppConfig.AppPort = "1"
 
+	for i := 1; i <= 2; i++ {
+		status := app.GetMonitoringStatus()
+		if status != stateAppRunning {
+			t.Fatalf("expected debounced state %s on iteration %d, got %s", stateAppRunning, i, status)
+		}
+		if _, ok := app.ErrState[ErrAppTCPConnectFailed]; ok {
+			t.Fatalf("did not expect %s before threshold, iteration %d", ErrAppTCPConnectFailed, i)
+		}
+	}
 	status := app.GetMonitoringStatus()
 	if status != stateFailed {
-		t.Fatalf("expected state %s, got %s", stateFailed, status)
+		t.Fatalf("expected state %s at threshold, got %s", stateFailed, status)
 	}
-	if _, ok := app.ErrState[ErrAppConnectFailed]; !ok {
-		t.Fatalf("expected immediate %s for no routes", ErrAppConnectFailed)
+	if _, ok := app.ErrState[ErrAppTCPConnectFailed]; !ok {
+		t.Fatalf("expected %s at threshold for the app port probe", ErrAppTCPConnectFailed)
 	}
 }
 
@@ -242,15 +254,20 @@ func TestGetMonitoringStatusSuccessOnOneRouteDoesNotResetOtherRouteDebounce(t *t
 
 func TestGetMonitoringStatusNoRoutesClearsAllRouteDebounceCounters(t *testing.T) {
 	app := newMonitoringTestApp([]config.Route{{Protocol: "tcp", CName: "127.0.0.1", Port: "1", Primary: true}})
+	app.AppConfig.AppPort = "1"
 	app.GetMonitoringStatus()
 	if len(app.AppErrConsecutiveMap) == 0 {
 		t.Fatalf("expected route debounce counters to be populated before reset")
 	}
 
+	// routes removed: their counters go, only the app-port probe counter remains
 	app.AppConfig.Deployment.Routes = nil
 	app.GetMonitoringStatus()
-	if len(app.AppErrConsecutiveMap) != 0 {
-		t.Fatalf("expected all route debounce counters to be cleared, got %d", len(app.AppErrConsecutiveMap))
+	if len(app.AppErrConsecutiveMap) != 1 {
+		t.Fatalf("expected only the app-port probe counter, got %d: %v", len(app.AppErrConsecutiveMap), app.AppErrConsecutiveMap)
+	}
+	if _, ok := app.AppErrConsecutiveMap["app-port"]; !ok {
+		t.Fatalf("expected the app-port probe counter, got %v", app.AppErrConsecutiveMap)
 	}
 }
 

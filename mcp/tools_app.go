@@ -6,6 +6,7 @@ package repmanmcp
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -27,7 +28,13 @@ func appView(a *cluster.App) map[string]any {
 			}
 			return ""
 		}(),
-		"url":         a.GetPublicURL(),
+		"url": a.GetPublicURL(),
+		"db": func() any { // the database the app asked the cluster for (#1870), nil otherwise
+			if a.AppConfig == nil || !a.AppConfig.AppDbAutoCreate {
+				return nil
+			}
+			return map[string]any{"schema": a.AppConfig.AppDbSchema, "user": a.AppConfig.AppDbUser, "owned": a.AppConfig.AppDbOwned, "error": a.DbProvisionError}
+		}(),
 		"provisioned": a.HasProvisionCookie(), "running": a.IsRunning(),
 	}
 }
@@ -152,6 +159,92 @@ func (s *MCPServer) registerAppTools() {
 			},
 		)
 	}
+}
+
+// registerAppLifecycleTools: start, stop, restart one app on its orchestrator and
+// resize its plan; one tool = one REST route (#1870 follow-up, Stéphane 2026-10-02).
+func (s *MCPServer) registerAppLifecycleTools() {
+	for _, action := range []string{"start", "stop", "restart"} {
+		action := action
+		s.addTool(
+			mcp.NewTool("app-"+action,
+				mcp.WithDescription(map[string]string{
+					"start":   "Start a provisioned application of the cluster on the orchestrator (all its nodes, or one node). Asynchronous: list-cluster-apps gives the state.",
+					"stop":    "Stop a running application of the cluster on the orchestrator (all its nodes, or one node); the service stays provisioned. Asynchronous.",
+					"restart": "Restart a running application of the cluster on the orchestrator (all its nodes, or one node). Asynchronous.",
+				}[action]),
+				mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+				mcp.WithString("app_name", mcp.Required(), mcp.Description("Name or id of the app (list-cluster-apps)")),
+				mcp.WithString("node", mcp.Description("One orchestrator node (agent) only; empty = every node of the app")),
+			),
+			func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+				if errResult != nil {
+					return errResult, nil
+				}
+				if cl.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
+					return mcp.NewToolResultError("app " + action + " is implemented for the OpenSVC orchestrator only"), nil
+				}
+				a := appByNameOrID(cl, req.GetString("app_name", ""))
+				if a == nil {
+					return mcp.NewToolResultError("app not found: " + req.GetString("app_name", "")), nil
+				}
+				if !a.HasProvisionCookie() {
+					return mcp.NewToolResultError("app " + a.Name + " is not provisioned: call app-provision first"), nil
+				}
+				node := strings.TrimSpace(req.GetString("node", ""))
+				var err error
+				switch action {
+				case "start":
+					err = cl.OpenSVCStartAppService(a, node)
+				case "stop":
+					err = cl.OpenSVCStopAppService(a, node)
+				case "restart":
+					err = cl.OpenSVCRestartAppService(a, node, "")
+				}
+				if err != nil {
+					return mcp.NewToolResultError("app " + action + " " + a.Name + ": " + err.Error()), nil
+				}
+				return mcp.NewToolResultText(toJSON(map[string]any{"cluster": cl.Name, "app": appView(a), "node": node, "status": action + " requested"})), nil
+			},
+		)
+	}
+
+	s.addTool(
+		mcp.NewTool("app-resize",
+			mcp.WithDescription("Resize the plan of an application: the number of whole units (APU, or DBU for a stateful app) it is sized at; the declared cores, memory and disk follow the infrastructure's ratio. The running service keeps its shape until the app is reprovisioned (app-unprovision then app-provision); the answer says so. Refused in manual sizing mode."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("app_name", mcp.Required(), mcp.Description("Name or id of the app (list-cluster-apps)")),
+			mcp.WithNumber("units", mcp.Required(), mcp.Description("Whole units per instance, >= 1")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			a := appByNameOrID(cl, req.GetString("app_name", ""))
+			if a == nil {
+				return mcp.NewToolResultError("app not found: " + req.GetString("app_name", "")), nil
+			}
+			units := req.GetInt("units", 0)
+			if units < 1 {
+				return mcp.NewToolResultError("units must be a whole number >= 1"), nil
+			}
+			if err := a.SetSetting("prov-app-units", strconv.Itoa(units)); err != nil {
+				return mcp.NewToolResultError("app-resize " + a.Name + ": " + err.Error()), nil
+			}
+			if cl.ConfigManager != nil {
+				cl.ConfigManager.SaveConfig(cl, false)
+			}
+			out := map[string]any{"cluster": cl.Name, "app": appView(a), "units": units,
+				"cpu_cores": a.AppConfig.ProvAppCpuCores, "memory_mb": a.AppConfig.ProvAppMem, "disk_gb": a.AppConfig.ProvAppDisk,
+				"reprov_needed": a.HasReprovCookie(), "status": "plan set"}
+			if a.HasProvisionCookie() {
+				out["next"] = "the service keeps its current shape: call app-unprovision then app-provision to apply the new one"
+			}
+			return mcp.NewToolResultText(toJSON(out)), nil
+		},
+	)
 }
 
 // resolveAppTemplate maps a short app name to a template of the list: an exact

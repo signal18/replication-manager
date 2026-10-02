@@ -2044,3 +2044,14 @@ func attachJoinWeight(tablemap map[string]*Table, keyA, keyB string, pct float64
 		JoinWeightPct: pct,
 	})
 }
+
+// CreateDatabaseIfNotExists creates a schema for an application (#1870); the
+// identifier is validated then quoted, the statement is returned for the SQL log.
+func CreateDatabaseIfNotExists(db *sqlx.DB, schema string) (string, error) {
+	if err := ValidateIdentifier(schema); err != nil {
+		return "", fmt.Errorf("invalid schema name: %w", err)
+	}
+	query := "CREATE DATABASE IF NOT EXISTS " + QuoteMySQLIdentifier(schema)
+	_, err := db.Exec(query)
+	return query, err
+}

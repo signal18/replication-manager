@@ -1550,6 +1550,10 @@ type S3Mount struct {
 	VolumeName   string `mapstructure:"volumename" toml:"volumename" json:"volumename" groups:"apps"`
 	VolumeDir    string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" groups:"apps"`
 	ProviderName string `mapstructure:"providername" toml:"providername" json:"providerName,omitempty" groups:"apps"`
+	// Uid / Gid: the owner the mounted files are presented as inside the container
+	// (the mount sidecar's --uid/--gid); empty = 33 (www-data), the historical value.
+	Uid string `mapstructure:"uid" toml:"uid,omitempty" json:"uid,omitempty" groups:"apps"`
+	Gid string `mapstructure:"gid" toml:"gid,omitempty" json:"gid,omitempty" groups:"apps"`
 
 	Node   S3Node  `mapstructure:"-" toml:"-" json:"-"`
 	Volume *Volume `mapstructure:"-" toml:"-" json:"-"`
@@ -1576,6 +1580,21 @@ func GetS3SecretKeys() []string {
 	return []string{
 		S3VarSuffixSecretKey,
 	}
+}
+
+// MountUid / MountGid: the sidecar owner flags, 33 (www-data) when unset (#1870, ERPNext runs as 1000).
+func (s *S3Mount) MountUid() string {
+	if strings.TrimSpace(s.Uid) == "" {
+		return "33"
+	}
+	return strings.TrimSpace(s.Uid)
+}
+
+func (s *S3Mount) MountGid() string {
+	if strings.TrimSpace(s.Gid) == "" {
+		return "33"
+	}
+	return strings.TrimSpace(s.Gid)
 }
 
 func (s *S3Mount) GetVariablePrefix() string {

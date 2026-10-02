@@ -332,6 +332,13 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Found app agent %s. Creating maps", agent.Node_name)
 
+	// Database auto-create (#1870): the schema and the user exist before the service runs;
+	// a refusal (foreign schema or user) aborts the provision.
+	if err := cluster.ProvisionAppDatabase(app); err != nil {
+		cluster.errorChan <- err
+		return err
+	}
+
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI && svc.IsV3() {
 		err = cluster.OpenSVCProvisionAppV3(app, svc, agent)
 		if err != nil {
@@ -787,7 +794,7 @@ func (cluster *Cluster) OpenSVCGetAppS3MountContainerSection(app *App, s3m *conf
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
 		diskname := s3m.GetSourceVolumeName()
 		svccontainer["volume_mounts"] = fmt.Sprintf("%s:/mnt:rw,rshared", filepath.Join(diskname, s3m.VolumeDir))
-		svccontainer["run_command"] = "-o allow_other -o nonempty --use-content-type --uid 33 --gid 33 -f"
+		svccontainer["run_command"] = "-o allow_other -o nonempty --use-content-type --uid " + s3m.MountUid() + " --gid " + s3m.MountGid() + " -f"
 		svccontainer["blocking_post_provision"] = "sleep 3"
 		svccontainer["blocking_post_start"] = "sleep 3"
 	}

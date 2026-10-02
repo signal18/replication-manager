@@ -483,6 +483,37 @@ func validateStandaloneCustomEndpointCredentials(accessKey, secretKey string) er
 	return nil
 }
 
+// s3ProviderAppCredentials returns the root credentials an S3 provider app exposes
+// through its variables, whatever the product: MinIO (MINIO_ROOT_USER /
+// MINIO_ROOT_PASSWORD), RustFS (RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY) or the AWS
+// names (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), plus its region variable when
+// it has one (REGION, MINIO_REGION, RUSTFS_REGION, AWS_REGION).
+func s3ProviderAppCredentials(s3node *cluster.App) (access, secret, region *config.VariableMapping, err error) {
+	if s3node == nil || s3node.AppConfig == nil || s3node.AppConfig.Deployment == nil {
+		return nil, nil, nil, fmt.Errorf("S3 endpoint app has no deployment")
+	}
+	dep := s3node.AppConfig.Deployment
+	pairs := [][2]string{{"MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD"}, {"RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"}, {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}}
+	for _, pair := range pairs {
+		a, errA := dep.GetVariableByName(pair[0], false)
+		k, errK := dep.GetVariableByName(pair[1], false)
+		if errA == nil && a != nil && errK == nil && k != nil {
+			access, secret = a, k
+			break
+		}
+	}
+	if access == nil || secret == nil {
+		return nil, nil, nil, fmt.Errorf("S3 endpoint app %s exposes no root credentials (MINIO_ROOT_USER/MINIO_ROOT_PASSWORD, RUSTFS_ACCESS_KEY/RUSTFS_SECRET_KEY or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY)", s3node.Name)
+	}
+	for _, name := range []string{"REGION", "MINIO_REGION", "RUSTFS_REGION", "AWS_REGION"} {
+		if r, errR := dep.GetVariableByName(name, false); errR == nil && r != nil {
+			region = r
+			break
+		}
+	}
+	return access, secret, region, nil
+}
+
 // hydrateS3MountFromProvider applies provider-managed fields to a provider-linked
 // mount using ProviderName as the server-side authority.
 //
@@ -524,20 +555,16 @@ func hydrateS3MountFromProvider(mycluster *cluster.Cluster, mount *config.S3Moun
 		if s3node == nil {
 			return fmt.Errorf("provider %q references unknown app endpoint %q", providerName, provider.ProviderApp)
 		}
-		acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
-		if err != nil || acckey == nil {
-			return fmt.Errorf("S3 endpoint app does not have MINIO_ROOT_USER variable set")
-		}
-		secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
-		if err != nil || secretkey == nil {
-			return fmt.Errorf("S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set")
+		acckey, secretkey, providerRegion, err := s3ProviderAppCredentials(s3node)
+		if err != nil {
+			return err
 		}
 
 		mount.Endpoint = provider.ProviderApp
 		mount.AccessKey = acckey.Value
 		mount.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(mount.Name, secretkey.Value))
 
-		region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
+		region := providerRegion
 		if region != nil {
 			mount.Region = region.Value
 		} else {
@@ -2366,18 +2393,12 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 
 		if s3node != nil && strings.TrimSpace(row.ProviderName) == "" {
 			// Derive credentials from sibling app only when endpoint resolved to an app.
-			acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
-			if err != nil || acckey == nil {
-				http.Error(w, "S3 endpoint app does not have MINIO_ROOT_USER variable set", http.StatusInternalServerError)
+			acckey, secretkey, region, err := s3ProviderAppCredentials(s3node)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 			row.AccessKey = acckey.Value
-
-			secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
-			if err != nil || secretkey == nil {
-				http.Error(w, "S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set", http.StatusInternalServerError)
-				return
-			}
 
 			// Contract: mount SecretKey remains encrypted at rest in app config/API payloads.
 			// The sibling app variable may arrive plaintext or encrypted depending on source;
@@ -2385,7 +2406,6 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			// re-encrypts for this mount storage slot.
 			row.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(row.Name, secretkey.Value))
 
-			region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
 			if region != nil {
 				row.Region = region.Value
 			}
@@ -2792,22 +2812,15 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					s3node, _ := mycluster.GetAppByURL(newValue)
 					if s3node != nil {
 						// Sibling-app endpoint: derive credentials from the app's variables.
-						acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
-						if err != nil || acckey == nil {
-							http.Error(w, "S3 endpoint app does not have MINIO_ROOT_USER variable set", http.StatusInternalServerError)
-							return
-						}
-
-						secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
-						if err != nil || secretkey == nil {
-							http.Error(w, "S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set", http.StatusInternalServerError)
+						acckey, secretkey, region, err := s3ProviderAppCredentials(s3node)
+						if err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
 							return
 						}
 
 						s3Mount.AccessKey = acckey.Value
 						s3Mount.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(s3Mount.Name, secretkey.Value))
 
-						region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
 						if region != nil {
 							s3Mount.Region = region.Value
 						} else {

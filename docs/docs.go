@@ -23968,6 +23968,10 @@ const docTemplate = `{
                 "datadir": {
                     "type": "string"
                 },
+                "dbProvisionError": {
+                    "description": "last app database auto-create refusal (#1870), \"\" once one goes through",
+                    "type": "string"
+                },
                 "failCount": {
                     "type": "integer"
                 },
@@ -24761,6 +24765,14 @@ const docTemplate = `{
                     "description": "AppConfigVersion is the explicit persisted migration marker stamped by\ncluster.CanonicalizeAppContent. 0/missing means unflagged legacy (V1)\ncontent; AppConfigVersionV2 means content already matches the V1 -\u003e V2\nmigration baseline and does not need re-canonicalizing for shape alone.",
                     "type": "integer"
                 },
+                "appDbAutoCreate": {
+                    "description": "AppDbAutoCreate (#1870): the app asks the cluster for its own schema, user and password\n({{app.db.*}} template keys); created at provision, never on foreign objects.",
+                    "type": "boolean"
+                },
+                "appDbOwned": {
+                    "description": "AppDbOwned: the ownership mark, set by the provision that created the schema and the user;\nwithout it an existing schema or user is never touched (APPERR008).",
+                    "type": "boolean"
+                },
                 "appDbPass": {
                     "type": "string"
                 },
@@ -25043,6 +25055,9 @@ const docTemplate = `{
                 "endpoint": {
                     "type": "string"
                 },
+                "gid": {
+                    "type": "string"
+                },
                 "mountdir": {
                     "type": "string"
                 },
@@ -25056,6 +25071,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "secretkey": {
+                    "type": "string"
+                },
+                "uid": {
+                    "description": "Uid / Gid: the owner the mounted files are presented as inside the container\n(the mount sidecar's --uid/--gid); empty = 33 (www-data), the historical value.",
                     "type": "string"
                 },
                 "volumedir": {

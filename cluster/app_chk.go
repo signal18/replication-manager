@@ -75,8 +75,13 @@ func buildLocalCheckKey(appHost string, route config.Route) string {
 func (app *App) GetMonitoringStatus() string {
 	cluster := app.ClusterGroup
 	routes := app.GetAppConfig().Deployment.Routes
-	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict}
+	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict, ErrAppDbProvision}
 	errStates := make(map[string]state.State)
+
+	// Database auto-create (#1870): a refused provision stays visible until one goes through.
+	if msg := app.DbProvisionError; msg != "" {
+		errStates[ErrAppDbProvision] = state.State{ErrType: "WARN", ErrKey: ErrAppDbProvision, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppDbProvision], app.GetId(), msg), ServerUrl: app.Host}
+	}
 
 	// Gateway conflict check: surface the conflict as WARN state and let the rest
 	// of the monitoring checks run — local reachability is independent of gateway
@@ -123,6 +128,7 @@ func (app *App) GetMonitoringStatus() string {
 		// No route: the app lives on the cluster network only (a database, a cache). It
 		// is up when its port answers, probed over TCP on the app host.
 		probe := config.Route{Name: "app-port", Protocol: "tcp", Port: app.AppConfig.AppPort}
+		app.ResetAppErrConsecutiveCntExcept("app-port") // routes gone: their debounce counters go with them
 		if err := app.GetAppLocalTCPStatus(probe); err != nil {
 			debouncedRecordAppErr("app-port", []state.State{{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), app.GetHost()+":"+app.AppConfig.AppPort+": "+err.Error()), ServerUrl: app.Host}}, err)
 		} else {

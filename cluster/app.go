@@ -30,6 +30,7 @@ const (
 	ErrAppTCPConnectFailed = "APPERR003"
 	ErrAppUnsupportedProto = "APPERR004"
 	ErrAppGatewayConflict  = "APPERR005"
+	ErrAppDbProvision      = "APPERR008" // database auto-create refused or failed (#1870)
 	appErrFailureThreshold = 3
 )
 
@@ -74,6 +75,7 @@ type App struct {
 	LastRefreshEnd        time.Time `json:"lastRefreshEnd"`
 	LastRefreshDurationMs int64     `json:"lastRefreshDurationMs"`
 	LastRefreshError      string    `json:"lastRefreshError"`
+	DbProvisionError      string    `json:"dbProvisionError"` // last app database auto-create refusal (#1870), "" once one goes through
 	RefreshInProgress     bool      `json:"refreshInProgress"`
 	// Route-scoped debounce counters are the single source of truth.
 	AppErrConsecutiveMap map[string]int         `json:"-"`
@@ -278,6 +280,21 @@ func appErrorDebounceThreshold(conf *config.Config) int {
 		return conf.AppErrorDebounceThreshold
 	}
 	return appErrFailureThreshold
+}
+
+// ResetAppErrConsecutiveCntExcept drops every debounce counter but the kept keys.
+func (app *App) ResetAppErrConsecutiveCntExcept(keep ...string) {
+	app.Lock()
+	defer app.Unlock()
+	kept := map[string]bool{}
+	for _, k := range keep {
+		kept[k] = true
+	}
+	for k := range app.AppErrConsecutiveMap {
+		if !kept[k] {
+			delete(app.AppErrConsecutiveMap, k)
+		}
+	}
 }
 
 func (app *App) ResetAppErrConsecutiveCnt(routeKey string) {
