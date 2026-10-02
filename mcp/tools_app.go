@@ -58,7 +58,7 @@ func (s *MCPServer) registerAppTools() {
 				return errResult, nil
 			}
 			out := []map[string]any{}
-			for _, a := range cl.Apps {
+			for _, a := range cl.GetAppsCopy() {
 				if a != nil {
 					out = append(out, appView(a))
 				}
@@ -132,12 +132,24 @@ func (s *MCPServer) registerAppTools() {
 				}
 				switch action {
 				case "provision":
-					go cl.InitAppService(a)
+					if a.IsRunning() {
+						return mcp.NewToolResultText(toJSON(map[string]any{"cluster": cl.Name, "app": appView(a), "status": "already running, nothing to provision"})), nil
+					}
+					if a.HasProvisionCookie() {
+						return mcp.NewToolResultText(toJSON(map[string]any{"cluster": cl.Name, "app": appView(a), "status": "already provisioned or provisioning, not started again"})), nil
+					}
+					go func() {
+						if err := cl.InitAppService(a); err != nil {
+							cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "MCP app-provision %s: %s", a.Name, err)
+						}
+					}()
 				case "unprovision":
 					go func() {
-						if err := cl.OpenSVCUnprovisionAppService(a); err == nil {
-							cl.ClearAppProvisioned(a)
+						if err := cl.OpenSVCUnprovisionAppService(a); err != nil {
+							cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "MCP app-unprovision %s: %s", a.Name, err)
+							return
 						}
+						cl.ClearAppProvisioned(a)
 					}()
 				}
 				return mcp.NewToolResultText(toJSON(map[string]any{"cluster": cl.Name, "app": appView(a), "status": action + " started"})), nil
@@ -172,9 +184,16 @@ func resolveAppTemplate(name string, templates []string) string {
 // appByNameOrID: the REST routes take the app id, people and the tools use its name.
 func appByNameOrID(cl *cluster.Cluster, key string) *cluster.App {
 	key = strings.TrimSpace(key)
-	for _, a := range cl.Apps {
-		if a != nil && (a.Id == key || a.Name == key || a.Host == key) {
-			return a
+	apps := cl.GetAppsCopy()
+	for _, match := range []func(*cluster.App) bool{
+		func(a *cluster.App) bool { return a.Id == key },
+		func(a *cluster.App) bool { return a.Name == key },
+		func(a *cluster.App) bool { return a.Host == key },
+	} {
+		for _, a := range apps {
+			if a != nil && match(a) {
+				return a
+			}
 		}
 	}
 	return nil

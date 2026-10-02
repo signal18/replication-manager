@@ -19,8 +19,13 @@ import (
 // a backup newer than the binary log retention so the reseeded node can catch up.
 // Each missing condition is one tracked state (WARN0222 backup, WARN0223 method,
 // WARN0224 binlog), open while it holds, resolved when it no longer does.
+type ReseedIssue struct {
+	Code string // WARN0222 (no usable backup), WARN0223 (reseed method), WARN0224 (binary logs), "" (no primary)
+	Text string
+}
+
 type ReseedReadiness struct {
-	Issues        []string
+	Issues        []ReseedIssue
 	LogicalFresh  bool // a completed logical backup of the primary newer than the retention
 	PhysicalFresh bool // same for a physical backup
 	Retention     time.Duration
@@ -67,17 +72,17 @@ func (cluster *Cluster) GetReseedReadiness() ReseedReadiness {
 	r := ReseedReadiness{}
 	master := cluster.GetMaster()
 	if master == nil {
-		r.Issues = append(r.Issues, "no primary")
+		r.Issues = append(r.Issues, ReseedIssue{Text: "no primary"})
 		return r
 	}
 	switch {
 	case !master.HaveBinlog:
-		r.Issues = append(r.Issues, fmt.Sprintf(clusterError["WARN0224"], "log_bin is off on "+master.URL))
+		r.Issues = append(r.Issues, ReseedIssue{Code: "WARN0224", Text: fmt.Sprintf(clusterError["WARN0224"], "log_bin is off on "+master.URL)})
 	case !cluster.Conf.BackupBinlogs:
-		r.Issues = append(r.Issues, fmt.Sprintf(clusterError["WARN0224"], "backup-binlogs is off"))
+		r.Issues = append(r.Issues, ReseedIssue{Code: "WARN0224", Text: fmt.Sprintf(clusterError["WARN0224"], "backup-binlogs is off")})
 	}
 	if !cluster.Conf.AutorejoinLogicalBackup && !cluster.Conf.AutorejoinPhysicalBackup {
-		r.Issues = append(r.Issues, clusterError["WARN0223"])
+		r.Issues = append(r.Issues, ReseedIssue{Code: "WARN0223", Text: clusterError["WARN0223"]})
 	}
 	r.Retention = binlogRetention(master)
 	master.backupMetaMutex.Lock()
@@ -101,7 +106,7 @@ func (cluster *Cluster) GetReseedReadiness() ReseedReadiness {
 		if r.Retention > 0 {
 			ret = "binary log retention " + r.Retention.String()
 		}
-		r.Issues = append(r.Issues, fmt.Sprintf(clusterError["WARN0222"], strings.Join(parts, ", ")+", "+ret))
+		r.Issues = append(r.Issues, ReseedIssue{Code: "WARN0222", Text: fmt.Sprintf(clusterError["WARN0222"], strings.Join(parts, ", ")+", "+ret)})
 	}
 	return r
 }
@@ -109,15 +114,18 @@ func (cluster *Cluster) GetReseedReadiness() ReseedReadiness {
 // CheckReseedReadiness opens the readiness states every tick while their condition
 // holds; a state not set on a tick resolves.
 func (cluster *Cluster) CheckReseedReadiness() {
-	r := cluster.GetReseedReadiness()
-	for _, issue := range r.Issues {
-		switch {
-		case strings.HasPrefix(issue, "Cluster: no backup usable"):
-			cluster.SetState("WARN0222", state.State{ErrType: "WARNING", ErrDesc: issue, ErrFrom: "CHECK"})
-		case strings.HasPrefix(issue, "Cluster: the reseed method"):
-			cluster.SetState("WARN0223", state.State{ErrType: "WARNING", ErrDesc: issue, ErrFrom: "CHECK"})
-		case strings.HasPrefix(issue, "Cluster: binary logs"):
-			cluster.SetState("WARN0224", state.State{ErrType: "WARNING", ErrDesc: issue, ErrFrom: "CHECK"})
+	for _, issue := range cluster.GetReseedReadiness().Issues {
+		if issue.Code != "" {
+			cluster.SetState(issue.Code, state.State{ErrType: "WARNING", ErrDesc: issue.Text, ErrFrom: "CHECK"})
 		}
 	}
+}
+
+// IssueTexts is the readiness issues as text, for a plan or an error.
+func (r ReseedReadiness) IssueTexts() []string {
+	out := make([]string, 0, len(r.Issues))
+	for _, i := range r.Issues {
+		out = append(out, i.Text)
+	}
+	return out
 }

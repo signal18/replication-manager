@@ -860,24 +860,40 @@ func (cluster *Cluster) RollingJobsUpgrade() error {
 // rollingReseedWait. A node that armed no reseed returns at once.
 const rollingReseedWait = 4 * time.Hour
 
+// rollingReseedArmWait is how long the loop gives the rejoin to arm a reseed on a node
+// that is not yet a healthy replica, before taking "nothing armed" as "nothing to do".
+const rollingReseedArmWait = 3 * time.Minute
+
 func (cluster *Cluster) waitRollingReseed(server *ServerMonitor, since int64) error {
 	deadline := time.Now().Add(rollingReseedWait)
+	armDeadline := time.Now().Add(rollingReseedArmWait)
 	logged := false
-	for server.reseedFromRejoin.Load() || server.IsReseeding != "" {
-		if !logged {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling reprov: waiting for the reseed of %s to complete", server.URL)
-			logged = true
+	healthy := func() bool {
+		if !server.IsSlave || server.IsFailed() || cluster.master == nil {
+			return false
 		}
+		m, _ := cluster.GetMasterFromReplication(server)
+		return m != nil && m.URL == cluster.master.URL
+	}
+	for {
 		if failure := server.ReseedFailedSince(since); failure != "" {
 			return fmt.Errorf("reseed of %s failed: %s", server.URL, failure)
+		}
+		armed := server.reseedFromRejoin.Load() || server.IsReseeding != ""
+		if !armed {
+			// Nothing in flight: done when the node replicates from the master, or when
+			// the rejoin had a grace period to arm a reseed and armed none (a node that
+			// needed no reseed); never on the empty node the rejoin has not looked at yet.
+			if healthy() || time.Now().After(armDeadline) {
+				return nil
+			}
+		} else if !logged {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling reprov: waiting for the reseed of %s to complete", server.URL)
+			logged = true
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("reseed of %s not completed after %s", server.URL, rollingReseedWait)
 		}
 		time.Sleep(5 * time.Second)
 	}
-	if failure := server.ReseedFailedSince(since); failure != "" {
-		return fmt.Errorf("reseed of %s failed: %s", server.URL, failure)
-	}
-	return nil
 }

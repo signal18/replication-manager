@@ -24,11 +24,11 @@ func readinessCluster(t *testing.T) (*Cluster, *ServerMonitor) {
 func TestReseedReadiness(t *testing.T) {
 	cl, m := readinessCluster(t)
 	r := cl.GetReseedReadiness()
-	if len(r.Issues) != 1 || !strings.Contains(r.Issues[0], "no backup usable") || r.Retention != 7*24*time.Hour {
+	if len(r.Issues) != 1 || !strings.Contains(r.Issues[0].Text, "no backup usable") || r.Retention != 7*24*time.Hour {
 		t.Fatalf("no backup yet: %+v", r)
 	}
 	m.LastBackupMeta.Logical = &backupmgr.BackupMetadata{Completed: true, EndTime: time.Now().Add(-8 * 24 * time.Hour)}
-	if r := cl.GetReseedReadiness(); len(r.Issues) != 1 || !strings.Contains(r.Issues[0], "older") && !strings.Contains(r.Issues[0], "no backup usable") {
+	if r := cl.GetReseedReadiness(); len(r.Issues) != 1 || !strings.Contains(r.Issues[0].Text, "older") && !strings.Contains(r.Issues[0].Text, "no backup usable") {
 		t.Fatalf("a backup older than the retention is not usable: %+v", r)
 	}
 	m.LastBackupMeta.Logical = &backupmgr.BackupMetadata{EndTime: time.Now().Add(-2 * time.Hour)} // failed job, metadata written anyway
@@ -40,17 +40,17 @@ func TestReseedReadiness(t *testing.T) {
 		t.Fatalf("fresh logical backup: %+v", r)
 	}
 	cl.Conf.AutorejoinLogicalBackup = false
-	if r := cl.GetReseedReadiness(); len(r.Issues) != 1 || !strings.Contains(r.Issues[0], "reseed method") {
+	if r := cl.GetReseedReadiness(); len(r.Issues) != 1 || !strings.Contains(r.Issues[0].Text, "reseed method") {
 		t.Fatalf("direct dump is not a reseed method for a major move: %+v", r)
 	}
 	cl.Conf.AutorejoinLogicalBackup = true
 	cl.Conf.BackupBinlogs = false
-	if r := cl.GetReseedReadiness(); len(r.Issues) != 1 || !strings.Contains(r.Issues[0], "binary logs are not monitored") {
+	if r := cl.GetReseedReadiness(); len(r.Issues) != 1 || !strings.Contains(r.Issues[0].Text, "binary logs are not monitored") {
 		t.Fatalf("backup-binlogs off: %+v", r)
 	}
 	cl.Conf.BackupBinlogs = true
 	m.HaveBinlog = false
-	if r := cl.GetReseedReadiness(); len(r.Issues) != 1 || !strings.Contains(r.Issues[0], "log_bin is off") {
+	if r := cl.GetReseedReadiness(); len(r.Issues) != 1 || !strings.Contains(r.Issues[0].Text, "log_bin is off") {
 		t.Fatalf("log_bin off: %+v", r)
 	}
 	m.HaveBinlog = true

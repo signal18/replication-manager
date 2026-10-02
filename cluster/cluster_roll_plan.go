@@ -118,6 +118,7 @@ func (cluster *Cluster) PlanRollingUpgrade(target, explicit string) (*RollingUpg
 		target = releases.TargetPatch
 	}
 	var release string
+	pointerGuess := "" // latest / lts resolved by the newest release of the list, no digest
 	switch strings.ToLower(strings.TrimSpace(target)) {
 	case releases.TargetPatch, releases.TargetLastMinor:
 		// The default upgrade follows the DECLARED image, not the line the nodes run:
@@ -125,6 +126,9 @@ func (cluster *Cluster) PlanRollingUpgrade(target, explicit string) (*RollingUpg
 		// mean in the list, an explicit release to itself, an unknown tag to itself.
 		// So declaring a higher line and running the default upgrade moves there.
 		release = cat.Resolve(repo, flavor, tag)
+		if (tag == "latest" || tag == "lts") && release != tag && !cat.HasDigest(repo, tag) {
+			pointerGuess = tag
+		}
 	default:
 		var err error
 		if release, err = cat.Target(repo, flavor, current, target, explicit); err != nil {
@@ -184,7 +188,7 @@ func (cluster *Cluster) PlanRollingUpgrade(target, explicit string) (*RollingUpg
 		// must be logical: a physical backup of the newer major does not restore into
 		// the older one.
 		r := cluster.GetReseedReadiness()
-		issues := append([]string{}, r.Issues...)
+		issues := r.IssueTexts()
 		if next.Major < current.Major && !r.LogicalFresh && len(issues) == 0 {
 			issues = append(issues, "a downgrade across a major needs a logical backup of the primary newer than the binary log retention (a physical backup of "+current.String()+" does not restore into "+next.String()+"), arm autorejoin-logical-backup and take one")
 		}
@@ -196,6 +200,9 @@ func (cluster *Cluster) PlanRollingUpgrade(target, explicit string) (*RollingUpg
 		warnings = append(warnings, "major upgrade in place: each node restarts on the new release with its data directory and the engine runs mariadb-upgrade on that first start (MARIADB_AUTO_UPGRADE=1 in the container environment, MariaDB images), check it in the error log of each node; there is no rolling way back to "+current.String())
 	} else if current.Less(next) && mechanic == "upgrade" {
 		warnings = append(warnings, "no rolling way back to "+current.String()+" once a replica runs "+next.String()+": replication from a newer master to an older replica is not supported")
+	}
+	if pointerGuess != "" {
+		warnings = append(warnings, "prov-db-image "+declared+" resolved to "+release+" as the newest release of the "+cat.Source+": the list carries no digest for "+pointerGuess+", so this is what the list knows, not what the registry serves under "+pointerGuess+" today")
 	}
 	if !cat.InList(repo, release) {
 		warnings = append(warnings, repo+":"+release+" is not in the "+cat.Source+": the orchestrator pulls what the registry has under that name")
@@ -268,6 +275,17 @@ func (cluster *Cluster) PrepareRollingUpgrade(target, explicit string) (*Rolling
 	if cluster.GetOrchestrator() == config.ConstOrchestratorOnPremise {
 		return plan, nil
 	}
+	// The image list is the only source of releases: a release it does not know is
+	// refused before anything is declared or pushed (a typo would only fail at the pull,
+	// after the definitions carry it).
+	if cat, err := cluster.ImageCatalog(); err == nil {
+		if repo, release := releases.SplitImage(plan.TargetImage); !cat.InList(repo, release) {
+			return plan, fmt.Errorf("release %s is not in the %s: refresh the image list or move to a line it knows", plan.TargetImage, plan.ImageList)
+		}
+	}
+	// Declaration and record first (the definitions render from them), pushes next; a
+	// failed push restores the declaration and the record so nothing stays half done.
+	prevImg, prevRecord := cluster.Conf.ProvDbImg, cluster.Conf.ProvDbImgResolved
 	if plan.DeclaredAfter != plan.CurrentImage {
 		if err := cluster.SetProvDBImage(plan.DeclaredAfter); err != nil {
 			return plan, err
@@ -287,7 +305,11 @@ func (cluster *Cluster) PrepareRollingUpgrade(target, explicit string) (*Rolling
 				continue
 			}
 			if err := cluster.OpenSVCUpdateDatabaseTemplate(srv); err != nil {
-				return plan, fmt.Errorf("service definition push failed on %s: %w", srv.URL, err)
+				cluster.Conf.ProvDbImg, cluster.Conf.ProvDbImgResolved = prevImg, prevRecord
+				cluster.Save()
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+					"Rolling upgrade (%s): service definition push failed on %s, declaration restored to %s: %s", target, srv.URL, prevImg, err)
+				return plan, fmt.Errorf("service definition push failed on %s, declaration restored: %w", srv.URL, err)
 			}
 		}
 	}

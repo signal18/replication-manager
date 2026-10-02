@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	gitconfig "github.com/go-git/go-git/v5/config"
 	git_obj "github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
@@ -1737,9 +1738,9 @@ func (repman *ReplicationManager) ShallowClone() error {
 // repository, once, at the month rollover (the periodic sync never stages it: the file
 // is rewritten every minute and *.log is ignored; an explicit Add bypasses the ignore
 // like the event-changed logs above). No git configured: nothing to do.
-func (repman *ReplicationManager) PushUnitsLogToGit(path, month string) error {
+func (repman *ReplicationManager) PushUnitsLogToGit(ctx context.Context, path, month string) error {
 	if repman.Conf.GitUrl == "" {
-		return nil // no git sync configured: the file stays local
+		return nil // no git sync configured: the snapshot stays local (and is kept)
 	}
 	dir := repman.Conf.WorkingDir
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
@@ -1760,13 +1761,22 @@ func (repman *ReplicationManager) PushUnitsLogToGit(path, month string) error {
 	if _, err := w.Add(rel); err != nil {
 		return fmt.Errorf("cannot add %s: %w", rel, err)
 	}
-	if _, err := w.Commit("Units statement "+month+" final", &git.CommitOptions{
+	_, err = w.Commit("Units statement "+month+" final", &git.CommitOptions{
 		Author: &git_obj.Signature{Name: "Replication Manager", When: time.Now()},
-	}); err != nil {
+	})
+	if err != nil && err != git.ErrEmptyCommit {
 		return fmt.Errorf("cannot commit %s: %w", rel, err)
 	}
+	head, err := r.Head()
+	if err != nil {
+		return err
+	}
 	auth := &git_https.BasicAuth{Username: repman.Conf.GitUsername, Password: repman.Conf.GetDecryptedValue("git-acces-token")}
-	if err := r.Push(&git.PushOptions{Auth: auth}); err != nil && err != git.NoErrAlreadyUpToDate {
+	err = r.PushContext(ctx, &git.PushOptions{
+		RemoteName: "origin", Auth: auth,
+		RefSpecs: []gitconfig.RefSpec{gitconfig.RefSpec(head.Name().String() + ":" + head.Name().String())},
+	})
+	if err != nil && err != git.NoErrAlreadyUpToDate {
 		return fmt.Errorf("cannot push %s: %w", rel, err)
 	}
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "%s of %s pushed to git", rel, month)

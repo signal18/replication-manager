@@ -1,6 +1,8 @@
 package cluster
 
 import (
+	"errors"
+	"context"
 	"math"
 	"os"
 	"path/filepath"
@@ -130,20 +132,52 @@ func TestResourceManagerBillingAccrualAndStatement(t *testing.T) {
 	// Month change: the running month is closed as final, the new one starts empty.
 	nov := time.Date(2026, 11, 1, 0, 0, 10, 0, time.UTC)
 	pushed := []string{}
-	m2.SetFinalPush(func(path, month string) error {
+	fail := true
+	m2.SetFinalPush(func(ctx context.Context, path, month string) error {
 		raw, _ := os.ReadFile(path)
-		if !strings.Contains(string(raw), "\"final\": true") || !strings.HasSuffix(path, UnitsLogName) {
-			t.Fatalf("the rollover pushes the FINAL %s: path=%s", UnitsLogName, path)
+		if !strings.Contains(string(raw), "\"final\": true") || !strings.HasSuffix(path, "Units."+month+".log") {
+			t.Fatalf("the rollover pushes the FINAL snapshot of the month: path=%s", path)
+		}
+		if fail {
+			return errors.New("remote down")
 		}
 		pushed = append(pushed, month)
 		return nil
 	})
-	m2.Tick(nov)
-	m2.Tick(nov) // a second tick of the new month pushes nothing more
+	m2.Tick(nov) // rollover: Units.2026-10.log written, Units.log starts November
+	if _, err := os.Stat(filepath.Join(dir, "Units.2026-10.log")); err != nil {
+		t.Fatalf("the closed month has its snapshot: %v", err)
+	}
+	m2.PushPending(context.Background()) // remote down: the snapshot stays, nothing lost
+	if _, err := os.Stat(filepath.Join(dir, "Units.2026-10.log")); err != nil || len(pushed) != 0 {
+		t.Fatalf("a failed push keeps the snapshot: err=%v pushed=%v", err, pushed)
+	}
+	fail = false
+	m2.PushPending(context.Background())
+	m2.PushPending(context.Background()) // nothing left to push
 	if len(pushed) != 1 || pushed[0] != "2026-10" {
 		t.Fatalf("the closed month is pushed once: %v", pushed)
 	}
-	past, err := m2.Statement("2026-10", nov)
+	if _, err := os.Stat(filepath.Join(dir, "Units.2026-10.log")); !os.IsNotExist(err) {
+		t.Fatalf("a pushed snapshot is removed: %v", err)
+	}
+	// A restart across the rollover: Units.log still holds October, the next load
+	// closes it (snapshot written) and starts the month fresh.
+	raw, _ := os.ReadFile(filepath.Join(dir, UnitsLogName))
+	octRaw := strings.Replace(string(raw), "\"month\": \"2026-11\"", "\"month\": \"2026-10\"", 1)
+	os.WriteFile(filepath.Join(dir, UnitsLogName), []byte(octRaw), 0o644)
+	m3 := NewResourceManager()
+	m3.SetPrices(BillingPrices{DBU: 10, APU: 5, OverPct: 50, UnderPct: 50})
+	if err := m3.SetBillingDir(dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	m3.mu.Lock()
+	_ = m3.loadMonthLocked(nov)
+	m3.mu.Unlock()
+	if _, err := os.Stat(filepath.Join(dir, "Units.2026-10.log")); err != nil {
+		t.Fatalf("a past month found at startup is closed into its snapshot: %v", err)
+	}
+	past, err := m3.Statement("2026-10", nov)
 	if err != nil || !past.Final || past.Clusters["belair"] == nil {
 		t.Fatalf("October must be closed as final: %v %+v", err, past)
 	}

@@ -305,3 +305,10 @@ func CompareReleases(a, b string) int {
 	}
 	return 0
 }
+
+// HasDigest says whether the list carries the digest of a pointer tag (latest, lts): the
+// delivered back-office list does, the embedded one does not, and a pointer resolved
+// without it is the newest release of the list, a guess the plan says out loud.
+func (c *Catalog) HasDigest(repo, pointer string) bool {
+	return c.byDigest(repo, pointer) != ""
+}

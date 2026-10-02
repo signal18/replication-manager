@@ -5,13 +5,16 @@
 package cluster
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/signal18/replication-manager/graphite"
@@ -159,7 +162,9 @@ type MonthStatement struct {
 type billingState struct {
 	prices    BillingPrices
 	dir       string
-	pushFinal func(path, month string) error // called ONCE at the month rollover with the final Units.log (pushed to the git sync repository)
+	pushFinal func(ctx context.Context, path, month string) error // pushes a closed month's snapshot (Units.<month>.log) to the git sync repository; never called under the lock
+	pushing   atomic.Bool                                         // one push at a time
+	lastPush  time.Time                                           // last push attempt, retried every pushRetry while a snapshot is pending
 	month     string
 	stmt      *MonthStatement
 	lastTick  map[string]time.Time
@@ -223,20 +228,103 @@ func monthBounds(t time.Time) (start time.Time, seconds float64) {
 }
 
 // UnitsLogName is the statement file: the running month's unit usage, in the working
-// directory, rewritten every minute; the closed month is pushed once to the git sync
-// repository at the rollover (Stéphane 2026-10-02), then the file starts the new month.
-// Past months live in the git history of that file.
+// directory, rewritten every minute, never staged by the periodic git sync. At the
+// rollover (or at startup when the file holds a past month) the closed month is written
+// to its snapshot Units.<month>.log, pushed to the git sync repository once it can be
+// (outside the lock, bounded, retried every pushRetry until it lands), and the snapshot
+// is removed; the file then starts the new month. Past months are the Units.<month>.log
+// files of the git sync repository.
 const UnitsLogName = "Units.log"
 
-func (m *ResourceManager) statementPath(month string) string {
+// pushRetry bounds how often a pending snapshot is pushed again after a failure.
+const pushRetry = 10 * time.Minute
+
+func (m *ResourceManager) statementPath() string {
 	return filepath.Join(m.billing().dir, UnitsLogName)
 }
 
-// SetFinalPush names what pushes the closed month's Units.log once at the rollover.
-func (m *ResourceManager) SetFinalPush(f func(path, month string) error) {
+// closedStatementPath is the snapshot of a closed month, kept until pushed.
+func (m *ResourceManager) closedStatementPath(month string) string {
+	return filepath.Join(m.billing().dir, "Units."+month+".log")
+}
+
+// SetFinalPush names what pushes a closed month's snapshot to git. The callback runs
+// outside the manager's lock with a bounded context; an error keeps the snapshot and
+// the push is retried later.
+func (m *ResourceManager) SetFinalPush(f func(ctx context.Context, path, month string) error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.billing().pushFinal = f
+}
+
+// closeMonthLocked writes a closed month's snapshot (final) next to Units.log.
+func (m *ResourceManager) closeMonthLocked(st *MonthStatement, now time.Time) {
+	b := m.billing()
+	st.Final = true
+	st.ElapsedPct = 100
+	st.GeneratedAt = now
+	raw, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		b.logf("statement %s not closed: %v", st.Month, err)
+		return
+	}
+	path := m.closedStatementPath(st.Month)
+	if err := os.WriteFile(path+".tmp", raw, 0o644); err == nil {
+		err = os.Rename(path+".tmp", path)
+	}
+	if err != nil {
+		b.logf("statement %s not closed: %v", st.Month, err)
+		return
+	}
+	for name, cs := range st.Clusters {
+		b.logf("Billing statement %s closed for cluster %s (partner %s, sponsors %s): %.2f EUR", st.Month, name, cs.Partner, strings.Join(cs.Sponsors, ","), cs.MonthCost)
+	}
+}
+
+// pendingClosedMonths lists the snapshots not yet pushed, oldest first.
+func (m *ResourceManager) pendingClosedMonths(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		n := e.Name()
+		if strings.HasPrefix(n, "Units.") && strings.HasSuffix(n, ".log") && n != UnitsLogName && !strings.HasSuffix(n, ".tmp") {
+			out = append(out, strings.TrimSuffix(strings.TrimPrefix(n, "Units."), ".log"))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// PushPending pushes the closed months whose snapshot is still on disk, one push at a
+// time, never under the manager's lock; a snapshot is removed once its push succeeded.
+// Called by Tick in a goroutine, and directly by tests.
+func (m *ResourceManager) PushPending(ctx context.Context) {
+	m.mu.Lock()
+	b := m.billing()
+	dir, push := b.dir, b.pushFinal
+	m.mu.Unlock()
+	if dir == "" || push == nil || !b.pushing.CompareAndSwap(false, true) {
+		return
+	}
+	defer b.pushing.Store(false)
+	for _, month := range m.pendingClosedMonths(dir) {
+		path := filepath.Join(dir, "Units."+month+".log")
+		pctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		err := push(pctx, path, month)
+		cancel()
+		if err != nil {
+			b.logf("Units.%s.log not pushed to git, kept and retried in %s: %v", month, pushRetry, err)
+			return
+		}
+		if rerr := os.Remove(path); rerr != nil && !os.IsNotExist(rerr) {
+			b.logf("Units.%s.log pushed to git but not removed: %v", month, rerr)
+		} else {
+			b.logf("Units.%s.log pushed to git once, snapshot removed", month)
+		}
+	}
 }
 
 func (m *ResourceManager) loadMonthLocked(now time.Time) error {
@@ -247,7 +335,7 @@ func (m *ResourceManager) loadMonthLocked(now time.Time) error {
 	if b.dir == "" {
 		return nil
 	}
-	raw, err := os.ReadFile(m.statementPath(b.month))
+	raw, err := os.ReadFile(m.statementPath())
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -259,7 +347,14 @@ func (m *ResourceManager) loadMonthLocked(now time.Time) error {
 		return fmt.Errorf("billing statement %s unreadable, starting the month from the series: %w", b.month, err)
 	}
 	if st.Month != b.month {
-		return nil // Units.log holds another month (the closed one): this month starts fresh
+		// Units.log holds a past month (a restart across the rollover): close it now,
+		// its snapshot gets pushed like any other, and this month starts fresh.
+		if st.Month != "" {
+			if _, err := os.Stat(m.closedStatementPath(st.Month)); os.IsNotExist(err) {
+				m.closeMonthLocked(&st, now)
+			}
+		}
+		return nil
 	}
 	if st.Clusters == nil {
 		st.Clusters = map[string]*ClusterStatement{}
@@ -445,7 +540,7 @@ func (m *ResourceManager) saveLocked(now time.Time) error {
 	if err != nil {
 		return err
 	}
-	path := m.statementPath(b.stmt.Month)
+	path := m.statementPath()
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
 		return err
@@ -457,22 +552,8 @@ func (m *ResourceManager) saveLocked(now time.Time) error {
 func (m *ResourceManager) rolloverLocked(now time.Time) {
 	b := m.billing()
 	if b.loaded && b.stmt != nil && b.month != "" && b.month != monthKey(now) {
-		b.stmt.Final = true
-		b.stmt.ElapsedPct = 100
-		b.stmt.GeneratedAt = now
-		if err := m.saveLocked(now); err != nil {
-			b.logf("billing statement %s not closed: %v", b.month, err)
-		}
-		for name, cs := range b.stmt.Clusters {
-			b.logf("Billing statement %s closed for cluster %s (partner %s, sponsors %s): %.2f EUR", b.month, name, cs.Partner, strings.Join(cs.Sponsors, ","), cs.MonthCost)
-		}
-		if b.pushFinal != nil && b.dir != "" {
-			if err := b.pushFinal(m.statementPath(b.month), b.month); err != nil {
-				b.logf("%s of %s not pushed to git: %v", UnitsLogName, b.month, err)
-			} else {
-				b.logf("%s of %s pushed to git once, the file now starts %s", UnitsLogName, b.month, monthKey(now))
-			}
-		}
+		m.recomputeTotalsLocked(now)
+		m.closeMonthLocked(b.stmt, now) // the snapshot; the push happens outside the lock (PushPending)
 	}
 	b.lastTick = map[string]time.Time{}
 	if err := m.loadMonthLocked(now); err != nil {
@@ -484,17 +565,24 @@ func (m *ResourceManager) rolloverLocked(now time.Time) {
 // even when no cluster pushes.
 func (m *ResourceManager) Tick(now time.Time) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	b := m.billing()
 	if !b.loaded || b.month != monthKey(now) {
 		m.rolloverLocked(now)
-		return
-	}
-	if b.dir != "" && now.Sub(b.lastSave) >= b.saveEvery {
+	} else if b.dir != "" && now.Sub(b.lastSave) >= b.saveEvery {
 		m.recomputeTotalsLocked(now)
 		if err := m.saveLocked(now); err != nil {
 			b.logf("billing statement %s not saved: %v", b.month, err)
 		}
+	}
+	// A closed month still on disk is pushed outside the lock, bounded, at most every
+	// pushRetry: the monitor path never waits on a git remote (F2).
+	due := b.dir != "" && b.pushFinal != nil && now.Sub(b.lastPush) >= pushRetry && len(m.pendingClosedMonths(b.dir)) > 0
+	if due {
+		b.lastPush = now
+	}
+	m.mu.Unlock()
+	if due {
+		go m.PushPending(context.Background())
 	}
 }
 
@@ -514,12 +602,9 @@ func (m *ResourceManager) Statement(month string, now time.Time) (*MonthStatemen
 	if b.dir == "" {
 		return nil, fmt.Errorf("no working directory: past statements are not kept")
 	}
-	raw, err := os.ReadFile(m.statementPath(month))
+	raw, err := os.ReadFile(m.closedStatementPath(month))
 	if err != nil {
-		return nil, fmt.Errorf("no statement for %s: %w", month, err)
-	}
-	if err == nil && !strings.Contains(string(raw), "\"month\": \""+month+"\"") {
-		return nil, fmt.Errorf("no statement for %s on disk: past months are the history of %s in the git sync repository", month, UnitsLogName)
+		return nil, fmt.Errorf("no statement for %s on disk: a closed month is Units.%s.log in the git sync repository once pushed", month, month)
 	}
 	var st MonthStatement
 	if err := json.Unmarshal(raw, &st); err != nil {
@@ -618,8 +703,16 @@ func (m *ResourceManager) StatementMonths() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	b := m.billing()
-	if b.month == "" {
-		return nil
+	out := []string{}
+	if b.month != "" {
+		out = append(out, b.month)
 	}
-	return []string{b.month} // past months: the git history of Units.log
+	if b.dir != "" {
+		for _, p := range m.pendingClosedMonths(b.dir) {
+			if p != b.month {
+				out = append(out, p) // closed, pushed later; the rest is the git sync repository
+			}
+		}
+	}
+	return out
 }
