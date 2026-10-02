@@ -20,6 +20,8 @@ func TestRollingUpgradePlan(t *testing.T) {
 		return tag != "12.0", true, nil
 	}
 	defer func() { tagExists = releases.TagExists }()
+	resolveTag = func(ctx context.Context, repo, tag string) (string, string, bool, error) { return tag + ".7", "sha256:x", true, nil }
+	defer func() { resolveTag = releases.ResolveTag }()
 	cl := &cluster.Cluster{Name: "t", Conf: &config.Config{ProvDbImg: "mariadb:11.4", ShareDir: t.TempDir(), ProvOrchestrator: config.ConstOrchestratorOpenSVC}}
 	plan, err := rollingUpgradePlan(context.Background(), cl, "next-lts", "")
 	if err != nil {
@@ -64,6 +66,8 @@ func TestRollingUpgradePlan(t *testing.T) {
 func TestRollingUpgradePlanStepsAndPin(t *testing.T) {
 	tagExists = func(ctx context.Context, repo, tag string) (bool, bool, error) { return true, true, nil }
 	defer func() { tagExists = releases.TagExists }()
+	resolveTag = func(ctx context.Context, repo, tag string) (string, string, bool, error) { return "11.8.9", "sha256:x", true, nil }
+	defer func() { resolveTag = releases.ResolveTag }()
 	cl := &cluster.Cluster{Name: "t", Conf: &config.Config{ProvDbImg: "mariadb:11.4", ShareDir: t.TempDir(), ProvOrchestrator: config.ConstOrchestratorOpenSVC,
 		ImmuableFlagMap: map[string]interface{}{"prov-db-docker-img": "mariadb:11.4"}}}
 	plan, err := rollingUpgradePlan(context.Background(), cl, "next-lts", "")
@@ -73,6 +77,9 @@ func TestRollingUpgradePlanStepsAndPin(t *testing.T) {
 	steps := plan["steps"].([]string)
 	if len(steps) != 3 || !strings.Contains(steps[1], "update-opensvc-template") {
 		t.Fatalf("OpenSVC steps = %v", steps)
+	}
+	if plan["targetRelease"] != "mariadb:11.8.9" {
+		t.Fatalf("target release = %v", plan["targetRelease"])
 	}
 	if ws := strings.Join(plan["warnings"].([]string), "\n"); !strings.Contains(ws, "pinned") {
 		t.Fatalf("pinned image not reported: %v", plan["warnings"])

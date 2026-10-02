@@ -667,6 +667,7 @@ type Config struct {
 	ProvGateway                               string            `mapstructure:"prov-db-net-gateway" toml:"prov-db-net-gateway" json:"provDbNetGateway"`
 	ProvUseIpv6                               bool              `mapstructure:"prov-use-ipv6" toml:"prov-use-ipv6" json:"provUseIpv6"`
 	ProvDbImg                                 string            `mapstructure:"prov-db-docker-img" toml:"prov-db-docker-img" json:"provDbDockerImg"`
+	ProvDbImgResolved                         string            `mapstructure:"prov-db-docker-img-resolved" toml:"prov-db-docker-img-resolved" json:"provDbDockerImgResolved"`
 	ProvDBDockerTmpfsSize                     string            `measurement:"M,bytes" mapstructure:"prov-db-docker-tmpfs-size" toml:"prov-db-docker-tmpfs-size" json:"provDbDockerTmpfsSize"`
 	ProvDBDockerRunArgs                       string            `mapstructure:"prov-db-docker-run-args" toml:"prov-db-docker-run-args" json:"provDbDockerRunArgs"`
 	ProvDBDockerRunArgsLimit                  bool              `mapstructure:"prov-db-docker-run-args-limit" toml:"prov-db-docker-run-args-limit" json:"provDbDockerRunArgsLimit"`

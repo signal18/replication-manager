@@ -278,7 +278,10 @@ definition of every node (`OpenSVCUpdateDatabaseTemplate`, the `update-opensvc-t
 action: the rolling upgrade itself only patches `image_pull_policy` in place, 0da40bd3e, so
 the declared image has to be in the service before the node restarts) and starts
 `RollingUpgrade`. That is the point of the tool over the API: one call for the setting, the
-per-node push and the rolling action. A rolling restart never changes the image (#1861). The release table `utils/releases/lts-versions.json`
+per-node push and the rolling action. A rolling restart never changes the image (#1861). The
+declared image is resolved to a release before the push (`ResolveDatabaseImage`, the service
+definition never carries a pointer, `doc/implementation/cluster/DATABASE_IMAGE_PINNING.md`);
+the plan reports `targetRelease` (what the target tag points at today) and `currentRelease`. The release table `utils/releases/lts-versions.json`
 (lts + published lines per flavor) is shared with plugin-score-lts and overridable from
 `<share>/plugins/data/lts-versions.json`. Tests `TestResolveTargets`, `TestRollingUpgradePlan`.
 The doc tables are regenerated with `doc/implementation/mcp/gen_tool_tables.py`.
