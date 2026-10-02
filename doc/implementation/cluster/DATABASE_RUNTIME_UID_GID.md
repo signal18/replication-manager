@@ -39,6 +39,11 @@ Both are strings, default empty, with the same value format:
 | `"1001:999"` | UID 1001, GID 999 |
 | `"0"` / `"0:0"` | root, taken literally |
 
+Root is taken literally by the volume owner, the bootstrap chown, the Kubernetes init chown and `--user`/`runAsUser`. The one
+exception is the jobs script `db_owner` (see Jobs container): it falls back to the legacy owner for the few files it
+writes when the datadir is owned by root, because with the official MariaDB and MySQL images a root-owned datadir is one
+that is about to become 999's.
+
 Empty means, per setting:
 
 - `prov-db-run-as-uid` empty: no identity is rendered. OpenSVC gives `--user mysql` to
@@ -94,6 +99,9 @@ repman does not force the owner to follow the user, nor the other way round:
 - running as a UID that has no access to a volume owned by another UID (for example
   `prov-db-run-as-uid = 1234` with the legacy 999 owner) is the operator's choice, and mysqld
   then reports `Permission denied`; set `prov-db-volume-uid` to the same numbers to avoid it.
+  replication-manager logs a warning at provisioning time in that case (a non-root run-as UID that
+  differs from the volume owner, or, on Kubernetes, a non-root run-as UID with no managed owner), and does
+  not correct it (`TestDBRunAsVolumeMismatch`).
 
 An explicit `--user` (or `--user=`, `-u`) in `prov-db-docker-run-args` on OpenSVC
 wins over `prov-db-run-as-uid` (it is also how an operator gives a user *name*, which

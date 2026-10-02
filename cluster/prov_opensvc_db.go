@@ -181,6 +181,7 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 }
 
 func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
+	cluster.warnDBRunAsVolumeMismatch()
 	svc := cluster.OpenSVCConnect()
 	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
 	if err != nil {

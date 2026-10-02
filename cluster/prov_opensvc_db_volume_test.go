@@ -174,3 +174,57 @@ func TestOpenSVCDBContainerExplicitUserWinsOverConfiguredPair(t *testing.T) {
 		t.Errorf("bootstrap must still receive the configured owner, got %q", env)
 	}
 }
+
+func TestDBVolumeOwner(t *testing.T) {
+	for _, tc := range []struct {
+		name, image, value string
+		uid, gid           int
+		managed            bool
+	}{
+		{"empty is the legacy owner", "mariadb:11.8", "", 999, 999, false},
+		{"empty on a Percona Server image", "percona/percona-server:8.4", "", 1001, 1001, true},
+		{"empty on a private image whose name contains percona", "registry.example/Percona-custom:8.4", "", 1001, 1001, true},
+		{"a value wins over the Percona default", "percona/percona-server:8.4", "999", 999, 999, true},
+		{"uid:gid", "mariadb:11.8", "1234:1235", 1234, 1235, true},
+		{"root is literal", "mariadb:11.8", "0", 0, 0, true},
+		{"invalid on MariaDB is the legacy owner", "mariadb:11.8", "mysql", 999, 999, false},
+		{"invalid on Percona is its 1001, the error being logged", "percona/percona-server:8.4", "x:y", 1001, 1001, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			uid, gid, managed := newIdentityCluster(tc.image, "", tc.value).dbVolumeOwner()
+			if uid != tc.uid || gid != tc.gid || managed != tc.managed {
+				t.Fatalf("dbVolumeOwner = %d:%d managed=%v, want %d:%d managed=%v", uid, gid, managed, tc.uid, tc.gid, tc.managed)
+			}
+		})
+	}
+}
+
+// The process UID and the volume owner are independent settings, so a mismatch is only reported.
+func TestDBRunAsVolumeMismatch(t *testing.T) {
+	for _, tc := range []struct {
+		name, orchestrator, image, runAs, volume string
+		warn                                     bool
+	}{
+		{"nothing set", config.ConstOrchestratorOpenSVC, "mariadb:11.8", "", "", false},
+		{"root with the legacy owner", config.ConstOrchestratorOpenSVC, "mariadb:11.8", "0", "", false},
+		{"non-root with no owner on OpenSVC", config.ConstOrchestratorOpenSVC, "mariadb:11.8", "1234", "", true},
+		{"same uid", config.ConstOrchestratorOpenSVC, "mariadb:11.8", "1234", "1234", false},
+		{"same uid, other gid", config.ConstOrchestratorOpenSVC, "mariadb:11.8", "1234", "1234:999", false},
+		{"legacy owner equals the run-as uid", config.ConstOrchestratorOpenSVC, "mariadb:11.8", "999", "", false},
+		{"different uids", config.ConstOrchestratorOpenSVC, "mariadb:11.8", "2000", "999:1001", true},
+		{"Percona default owner 1001", config.ConstOrchestratorOpenSVC, "percona/percona-server:8.4", "1001", "", false},
+		{"Percona with another run-as uid", config.ConstOrchestratorOpenSVC, "percona/percona-server:8.4", "1234", "", true},
+		{"Kubernetes, no owner managed", config.ConstOrchestratorKubernetes, "mariadb:11.8", "1234", "", true},
+		{"Kubernetes, even 999 needs an owner", config.ConstOrchestratorKubernetes, "mariadb:11.8", "999", "", true},
+		{"Kubernetes, same uid", config.ConstOrchestratorKubernetes, "mariadb:11.8", "1234", "1234", false},
+		{"Kubernetes, root", config.ConstOrchestratorKubernetes, "mariadb:11.8", "0", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cluster := newIdentityCluster(tc.image, tc.runAs, tc.volume)
+			cluster.Conf.ProvOrchestrator = tc.orchestrator
+			if msg := cluster.dbRunAsVolumeMismatch(); (msg != "") != tc.warn {
+				t.Fatalf("dbRunAsVolumeMismatch = %q, want a warning: %v", msg, tc.warn)
+			}
+		})
+	}
+}

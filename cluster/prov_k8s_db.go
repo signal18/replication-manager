@@ -1063,6 +1063,7 @@ func (cluster *Cluster) k8sResourceSensorRuntimeIssue(ctx context.Context, clien
 }
 
 func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
+	cluster.warnDBRunAsVolumeMismatch()
 
 	client, err := cluster.K8SConnectAPI()
 	if err != nil {

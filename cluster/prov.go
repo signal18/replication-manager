@@ -1308,6 +1308,34 @@ func (cluster *Cluster) dbVolumeOwner() (uid, gid int, managed bool) {
 	return 999, 999, false
 }
 
+// dbRunAsVolumeMismatch describes, and is empty when there is nothing to say, a
+// configuration where the database runs as a non-root UID (prov-db-run-as-uid)
+// that does not own its data volume (prov-db-volume-uid, or the legacy 999 owner
+// of OpenSVC, or whatever the storage gives on Kubernetes when the owner is not
+// managed): mysqld then cannot write its datadir. The two settings are
+// independent on purpose, so this is only reported, never corrected.
+func (cluster *Cluster) dbRunAsVolumeMismatch() string {
+	runUID, _, set := cluster.dbRunAs()
+	if !set || runUID == 0 {
+		return ""
+	}
+	ownerUID, ownerGID, managed := cluster.dbVolumeOwner()
+	switch {
+	case !managed && cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes:
+		return fmt.Sprintf("prov-db-run-as-uid runs the database as UID %d but prov-db-volume-uid is not set: the data volume keeps the owner the storage gives it and mysqld may not be able to write its datadir; set prov-db-volume-uid to %d", runUID, runUID)
+	case ownerUID != runUID:
+		return fmt.Sprintf("prov-db-run-as-uid runs the database as UID %d but the data volume is owned by %d:%d: mysqld may not be able to write its datadir; set prov-db-volume-uid to %d", runUID, ownerUID, ownerGID, runUID)
+	}
+	return ""
+}
+
+// warnDBRunAsVolumeMismatch logs dbRunAsVolumeMismatch once per provisioning.
+func (cluster *Cluster) warnDBRunAsVolumeMismatch() {
+	if msg := cluster.dbRunAsVolumeMismatch(); msg != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "%s", msg)
+	}
+}
+
 // dbIdentityManaged tells whether replication-manager manages the database
 // identity in any way (a run-as user, an owner, or a Percona Server image). The
 // dbjobs containers then run as root: they must read and chown a datadir that
