@@ -247,6 +247,13 @@ func (app *App) SetSetting(key, value string) error {
 		app.AppConfig.ProvAppDockerImg = value
 	case "prov-app-docker-cmd":
 		app.AppConfig.ProvAppDockerCmd = value
+	case "prov-app-start-timeout":
+		if value != "" {
+			if _, err := time.ParseDuration(value); err != nil {
+				return fmt.Errorf("prov-app-start-timeout %q: a duration such as 10m or 1h is expected", value)
+			}
+		}
+		app.AppConfig.ProvAppStartTimeout = value
 	case "prov-app-agents":
 		// The shape (prov-app-cpu-cores/memory/disk) is PER INSTANCE and never depends on
 		// the agent count; the instances follow the topology (flex = agents, failover = 1).

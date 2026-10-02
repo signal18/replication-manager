@@ -87,7 +87,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     return [{ name: 'Select Template', value: '' }, ...templateList.map(item => ({ name: item, value: item }))]
   }, [dockerTemplates])
   const {
-    provAppDockerImg = '', provAppDockerCmd = '', provAppTemplate = '',
+    provAppDockerImg = '', provAppDockerCmd = '', provAppTemplate = '', provAppStartTimeout = '',
     provAppAgents = '', provAppHaTopology = '',
     provAppSizingMode: appSizingMode = '', provAppCpuCores = '', provAppMemory = '', provAppDiskSize = '',
     appS3Provider = false, appStateful = false
@@ -152,6 +152,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
 
   const onSaveDockerImage = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-img', value: value })), [clusterName, appId, dispatch])
   const onSaveDockerCmd = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-cmd', value: value })), [clusterName, appId, dispatch])
+  const onSaveStartTimeout = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-start-timeout', value: value })), [clusterName, appId, dispatch])
   const onSaveAppAsTemplate = useCallback(() => dispatch(saveAppAsTemplate({ clusterName: clusterName, appId: appId, template: appName })), [clusterName, appId, appName, dispatch])
   const onResetAppFromTemplate = useCallback((value) => {
     const templateName = typeof value === 'string' ? value : value?.value || value?.name || ''
@@ -229,6 +230,18 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
             confirmTitle="Docker Image Change"
             confirmBody='Are you sure you want to change "prov-app-docker-img" to: '
             onSave={onSaveDockerImage}
+          />
+        )
+      },
+      {
+        key: 'Start Timeout',
+        value: (
+          <TextForm
+            value={provAppStartTimeout}
+            placeholder='cluster default (prov-app-start-timeout, 30m)'
+            confirmTitle="Start Timeout Change"
+            confirmBody='Start and image pull timeout of the container in the orchestrator (10m, 1h). Change "prov-app-start-timeout" to: '
+            onSave={onSaveStartTimeout}
           />
         )
       },

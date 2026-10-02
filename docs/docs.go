@@ -24834,6 +24834,10 @@ const docTemplate = `{
                 "provAppSizingMode": {
                     "type": "string"
                 },
+                "provAppStartTimeout": {
+                    "description": "om3 start_timeout and pull_timeout of the app container (10m, 1h); empty = the cluster default",
+                    "type": "string"
+                },
                 "provAppTemplate": {
                     "type": "string"
                 }
@@ -27194,6 +27198,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provAppSizingMode": {
+                    "type": "string"
+                },
+                "provAppStartTimeout": {
                     "type": "string"
                 },
                 "provAppTemplateRepo": {

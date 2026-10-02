@@ -767,6 +767,7 @@ type Config struct {
 	AppErrorDebounceThreshold                 int               `mapstructure:"app-error-debounce-threshold" toml:"app-error-debounce-threshold" json:"appErrorDebounceThreshold"`
 	AppRefreshConcurrency                     int               `mapstructure:"app-refresh-concurrency" toml:"app-refresh-concurrency" json:"appRefreshConcurrency"`
 	ProvAppMem                                string            `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory" groups:"apps"`
+	ProvAppStartTimeout                       string            `mapstructure:"prov-app-start-timeout" toml:"prov-app-start-timeout" json:"provAppStartTimeout" groups:"apps"`
 	ProvAppDisk                               string            `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize" groups:"apps"`
 	ProvAppCpuCores                           string            `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores" groups:"apps"`
 	ProvAppAgents                             string            `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents" groups:"apps"`
@@ -1117,6 +1118,7 @@ type AppConfig struct {
 	ProvAppDiskType       string `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
 	ProvAppDockerImg      string `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
 	ProvAppDockerCmd      string `mapstructure:"prov-app-docker-cmd" toml:"prov-app-docker-cmd" json:"provAppDockerCmd"`
+	ProvAppStartTimeout   string `mapstructure:"prov-app-start-timeout" toml:"prov-app-start-timeout" json:"provAppStartTimeout"` // om3 start_timeout and pull_timeout of the app container (10m, 1h); empty = the cluster default
 	ProvAppRouteAddr      string `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
 	ProvAppRoutePort      string `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
 	ProvAppRouteMask      string `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
