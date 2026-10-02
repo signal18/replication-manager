@@ -483,13 +483,6 @@ func (cluster *Cluster) RollingUpgrade() error {
 		return errors.New("No master found for rolling upgrade")
 	}
 	masterID := master.Id
-	// The upgrade is the one path that moves the release: resolve the declared image
-	// again and pin the service definitions on the result (#1862). Unresolved, the pull
-	// could not reach the registry either: stop before touching a node.
-	if err := cluster.ResolveDatabaseImage(true); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: cannot resolve prov-db-image %s: %s", cluster.Conf.ProvDbImg, err)
-		return err
-	}
 
 	// Loop 1 — pull: force PullAlways (K8s) / image_pull_policy=always (OpenSVC)
 	// and restart every slave so the orchestrator re-pulls the new image. Maintenance

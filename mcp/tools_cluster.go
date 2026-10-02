@@ -375,15 +375,10 @@ func (s *MCPServer) registerClusterWriteTools() {
 						return mcp.NewToolResultError(toJSON(plan)), nil
 					}
 				}
-				// The declared image is resolved to a release and the service definitions are
-				// pinned on it (#1862): on OpenSVC through the same push as the
-				// update-opensvc-template action, node by node, inert until the upgrade
-				// restarts the node; the rolling upgrade re-pulls what the definition carries.
-				if err := cl.ResolveDatabaseImage(true); err != nil {
-					plan["status"] = "refused: " + err.Error()
-					return mcp.NewToolResultError(toJSON(plan)), nil
-				}
-				plan["resolvedImage"] = cl.Conf.ProvDbImgResolved
+				// On OpenSVC the rolling upgrade re-pulls the image the service definition
+				// carries (image_pull_policy patched in place, 0da40bd3e); the declared image
+				// reaches the service through the same push as the update-opensvc-template
+				// action, node by node, inert until the upgrade restarts the node.
 				if cl.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 					for _, srv := range cl.Servers {
 						if srv == nil {
@@ -753,9 +748,6 @@ func (s *MCPServer) rollingUpgradePlan(ctx context.Context, cl *cluster.Cluster,
 // tagExists is the registry check, a variable so tests never reach the network.
 var tagExists = releases.TagExists
 
-// resolveTag is releases.ResolveTag, a variable for tests.
-var resolveTag = releases.ResolveTag
-
 func rollingUpgradePlan(ctx context.Context, cl *cluster.Cluster, target, explicit string) (map[string]interface{}, error) {
 	table, source, err := releases.Load(cl.Conf.ShareDir + "/plugins/data")
 	if err != nil {
@@ -817,7 +809,7 @@ func rollingUpgradePlan(ctx context.Context, cl *cluster.Cluster, target, explic
 		warnings = append(warnings, next.String()+" is not a long-term line for "+flavor+" (lts: "+strings.Join(table.LTS[flavor], ", ")+")")
 	}
 	onprem := cl.GetOrchestrator() == config.ConstOrchestratorOnPremise
-	steps := []string{"set prov-db-image to the target image, resolve it to a release and pin the service definitions on it"}
+	steps := []string{"set prov-db-image to the target image"}
 	switch {
 	case onprem:
 		steps = []string{"run onpremise-ssh-upgrade-db-script on each node"}
@@ -832,21 +824,12 @@ func rollingUpgradePlan(ctx context.Context, cl *cluster.Cluster, target, explic
 		}
 	}
 	exists, checked := false, false
-	targetRelease := ""
 	if !onprem {
 		var cerr error
 		exists, checked, cerr = tagExists(ctx, repo, targetTag)
 		if cerr != nil {
 			checked = false
 			warnings = append(warnings, "registry check failed: "+cerr.Error())
-		}
-		if exists {
-			// The service definition is pinned on the release the tag points at (#1862).
-			if e, _, ok, rerr := resolveTag(ctx, repo, targetTag); rerr != nil {
-				warnings = append(warnings, "target not resolved to a release: "+rerr.Error())
-			} else if ok {
-				targetRelease = repo + ":" + e
-			}
 		}
 	}
 	order := []string{}
@@ -859,24 +842,22 @@ func rollingUpgradePlan(ctx context.Context, cl *cluster.Cluster, target, explic
 		order = append(order, "switchover", m.URL)
 	}
 	return map[string]interface{}{
-		"cluster":        cl.Name,
-		"orchestrator":   cl.GetOrchestrator(),
-		"flavor":         flavor,
-		"currentImage":   cl.Conf.ProvDbImg,
-		"currentLine":    current.String(),
-		"currentIsLTS":   table.IsLTS(flavor, current),
-		"nodes":          nodes,
-		"target":         target,
-		"targetLine":     next.String(),
-		"targetImage":    targetImage,
-		"targetRelease":  targetRelease,
-		"currentRelease": cl.Conf.ProvDbImgResolved,
-		"targetIsLTS":    table.IsLTS(flavor, next),
-		"tagChecked":     checked,
-		"tagExists":      exists,
-		"order":          order,
-		"steps":          steps,
-		"warnings":       warnings,
-		"releaseTable":   source,
+		"cluster":      cl.Name,
+		"orchestrator": cl.GetOrchestrator(),
+		"flavor":       flavor,
+		"currentImage": cl.Conf.ProvDbImg,
+		"currentLine":  current.String(),
+		"currentIsLTS": table.IsLTS(flavor, current),
+		"nodes":        nodes,
+		"target":       target,
+		"targetLine":   next.String(),
+		"targetImage":  targetImage,
+		"targetIsLTS":  table.IsLTS(flavor, next),
+		"tagChecked":   checked,
+		"tagExists":    exists,
+		"order":        order,
+		"steps":        steps,
+		"warnings":     warnings,
+		"releaseTable": source,
 	}, nil
 }

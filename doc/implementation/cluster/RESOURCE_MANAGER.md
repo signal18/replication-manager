@@ -779,9 +779,7 @@ A DB container has **two** distinct memory limits, changed by two different mech
 **`prov-orchestrator-deployment-upgrade-on-start`** (default on) is what applies (2). On each
 node (re)start in a rolling restart/upgrade, `UpgradeDatabaseDeploymentOnStart` (prov.go)
 re-renders and pushes the full deployment BEFORE start, so the recreated container comes up on
-the current service config — the plan-driven ceiling, run_args, env; the image the service
-runs is kept, #1861, and is in any case the explicit release pinned by the last provision or
-rolling upgrade, see `doc/implementation/cluster/DATABASE_IMAGE_PINNING.md` — instead of the
+the current service config — the plan-driven ceiling, image, run_args, env — instead of the
 one written at the last provision. OpenSVC v3 → `OpenSVCUpdateDatabaseTemplate` (full re-push);
 K8s → the on-develop image-update path (container resources stay owned by `k8sResizer`).
 Non-fatal in the rolling loop: a push failure leaves the previous cap and never breaks the

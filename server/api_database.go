@@ -2821,7 +2821,6 @@ func (repman *ReplicationManager) handlerMuxServerUpdateOpensvcTemplate(w http.R
 		http.Error(w, "Server Not Found", http.StatusInternalServerError)
 		return
 	}
-	mycluster.ResolveDatabaseImage(false) // the rendered definition carries a release, not a pointer (#1862)
 	if err := mycluster.OpenSVCUpdateDatabaseTemplate(node); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

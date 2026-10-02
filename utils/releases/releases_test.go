@@ -1,9 +1,6 @@
 package releases
 
 import (
-	"context"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,56 +70,5 @@ func TestLoadOverrideWithoutLines(t *testing.T) {
 	}
 	if tb, src, err := Load(dir); err != nil || !strings.Contains(src, "unreadable") || len(tb.Lines["mariadb"]) == 0 {
 		t.Fatalf("a broken override falls back to the built-in table: %v %s", err, src)
-	}
-}
-
-func TestResolveTag(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"token":"t"}`)) })
-	mux.HandleFunc("/v2/library/mariadb/manifests/", func(w http.ResponseWriter, r *http.Request) {
-		switch strings.TrimPrefix(r.URL.Path, "/v2/library/mariadb/manifests/") {
-		case "latest":
-			w.Header().Set("Docker-Content-Digest", "sha256:aaa")
-		case "lts":
-			w.Header().Set("Docker-Content-Digest", "sha256:bbb")
-		case "11.8":
-			w.Header().Set("Docker-Content-Digest", "sha256:ccc")
-		case "orphan":
-			w.Header().Set("Docker-Content-Digest", "sha256:ddd")
-		default:
-			w.WriteHeader(404)
-			return
-		}
-	})
-	mux.HandleFunc("/v2/repositories/library/mariadb/tags", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"next":"","results":[
-		 {"name":"latest","digest":"sha256:aaa"},{"name":"13.0.2-noble","digest":"sha256:aaa"},{"name":"13.0","digest":"sha256:aaa"},{"name":"13.0.2","digest":"sha256:aaa"},
-		 {"name":"lts","digest":"sha256:bbb"},{"name":"12.3.3-noble","digest":"sha256:bbb"},
-		 {"name":"11.8","digest":"sha256:ccc"},{"name":"11.8.9","digest":"sha256:ccc"},
-		 {"name":"orphan","digest":"sha256:ddd"}]}`))
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-	registryAuthBase, registryBase, hubAPIBase = srv.URL, srv.URL, srv.URL
-	defer func() {
-		registryAuthBase, registryBase, hubAPIBase = "https://auth.docker.io", "https://registry-1.docker.io", "https://hub.docker.com"
-	}()
-	cases := map[string]string{"latest": "13.0.2", "lts": "12.3.3-noble", "11.8": "11.8.9", "orphan": "orphan@sha256:ddd", "11.4.5": "11.4.5"}
-	for tag, want := range cases {
-		got, _, checked, err := ResolveTag(context.Background(), "mariadb", tag)
-		if err != nil || !checked || got != want {
-			t.Errorf("%s: got %q checked=%v err=%v, want %q", tag, got, checked, err, want)
-		}
-	}
-	if _, _, _, err := ResolveTag(context.Background(), "mariadb", "nope"); err == nil {
-		t.Error("missing tag must fail")
-	}
-	if _, _, checked, _ := ResolveTag(context.Background(), "registry.example.com/x/mariadb", "latest"); checked {
-		t.Error("another registry is not queried")
-	}
-	for tag, want := range map[string]bool{"11.8.9": true, "8.0.41-debian": true, "11.8": false, "latest": false, "lts": false, "11": false, "latest@sha256:aaa": true} {
-		if IsExplicitTag(tag) != want {
-			t.Errorf("IsExplicitTag(%s) != %v", tag, want)
-		}
 	}
 }
