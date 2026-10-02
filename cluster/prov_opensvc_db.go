@@ -568,7 +568,13 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		} else {
 			svccontainer["run_args"] = server.ClusterGroup.Conf.ProvDBDockerRunArgs
 		}
-		if strings.Contains(strings.ToLower(server.ClusterGroup.Conf.ProvDbImg), "mysql") {
+		if runAsUID, runAsGID, set := server.ClusterGroup.dbRunAs(); set {
+			// An operator --user in prov-db-docker-run-args keeps winning (docker
+			// takes the last --user, so appending ours would silently override it).
+			if !dockerRunArgsHaveUser(svccontainer["run_args"]) {
+				svccontainer["run_args"] += fmt.Sprintf(" --user %d:%d", runAsUID, runAsGID)
+			}
+		} else if strings.Contains(strings.ToLower(server.ClusterGroup.Conf.ProvDbImg), "mysql") {
 			svccontainer["run_args"] = svccontainer["run_args"] + " --user mysql"
 		}
 		if server.ClusterGroup.Conf.ProvDBDockerRunArgsLimit {
@@ -620,6 +626,13 @@ func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string 
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 		svccontainer["run_args"] = server.ClusterGroup.Conf.ProvDBJobsDockerRunArgs
+		if server.ClusterGroup.dbIdentityManaged() {
+			// The jobs container runs as root whatever the image's own USER is
+			// (Percona Server images default to mysql, 1001): it must read and
+			// chown a datadir owned by prov-db-volume-uid (db_owner in dbjobs_new.sh).
+			// First, so a --user in prov-db-jobs-docker-run-args still wins.
+			svccontainer["run_args"] = strings.TrimSpace("--user 0:0 " + svccontainer["run_args"])
+		}
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/jobs:/var/lib/replication-manager-jobs:rw {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw {name}-sec/:/credentials`
 		if server.ClusterGroup.Conf.MonitoringSystemResources {
 			// Bind ONLY this service's pg cgroup slice read-only into the jobs
@@ -737,6 +750,10 @@ func (cluster *Cluster) OpenSVCGetNamespaceContainerSection() map[string]string 
 	return svccontainer
 }
 
+// OpenSVCGetInitContainerSection is shared by database and proxy services. It
+// carries no database identity: the bootstrap then chowns /bootstrap/data to
+// its legacy 999 default, which is what the proxies (ProxySQL, ShardProxy)
+// always had. The database variant is OpenSVCGetDBInitContainerSection.
 func (cluster *Cluster) OpenSVCGetInitContainerSection(port string) map[string]string {
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
@@ -762,6 +779,29 @@ func (cluster *Cluster) OpenSVCGetInitContainerSection(port string) map[string]s
 	//	svccontainer["# interactive"] = "true"
 	//	svccontainer["# tty"] = "true"
 	return svccontainer
+}
+
+// OpenSVCGetDBInitContainerSection is the database service's init container:
+// the shared one plus, when the owner is managed (dbVolumeOwner), the UID/GID the
+// bootstrap applies to the data volume. Otherwise the bootstrap keeps its legacy
+// 999:999.
+func (cluster *Cluster) OpenSVCGetDBInitContainerSection(port string) map[string]string {
+	svccontainer := cluster.OpenSVCGetInitContainerSection(port)
+	if ownerUID, ownerGID, managed := cluster.dbVolumeOwner(); managed {
+		svccontainer["environment"] += fmt.Sprintf(" REPLICATION_MANAGER_DB_VOLUME_UID=%d REPLICATION_MANAGER_DB_VOLUME_GID=%d", ownerUID, ownerGID)
+	}
+	return svccontainer
+}
+
+// dockerRunArgsHaveUser reports whether docker run arguments already set the
+// container user (--user, --user=, -u).
+func dockerRunArgsHaveUser(args string) bool {
+	for _, f := range strings.Fields(args) {
+		if f == "--user" || strings.HasPrefix(f, "--user=") || (strings.HasPrefix(f, "-u") && !strings.HasPrefix(f, "--")) {
+			return true
+		}
+	}
+	return false
 }
 
 func (cluster *Cluster) OpenSVCGetTmpFsSection() map[string]string {
@@ -968,12 +1008,13 @@ func (server *ServerMonitor) OpenSVCGetZFSSnapshotSection() map[string]string {
 
 func (cluster *Cluster) OpenSVCGetVolumeDataSection() map[string]string {
 	svcvol := make(map[string]string)
+	ownerUID, ownerGID, _ := cluster.dbVolumeOwner()
 	svcvol["name"] = "{name}"
 	svcvol["pool"] = cluster.Conf.ProvVolumeData
 	svcvol["size"] = "{env.size}"
 	svcvol["directories"] = "run/mysqld"
-	svcvol["user"] = "999"
-	svcvol["group"] = "999"
+	svcvol["user"] = strconv.Itoa(ownerUID)
+	svcvol["group"] = strconv.Itoa(ownerGID)
 	return svcvol
 }
 
@@ -1102,7 +1143,7 @@ func (server *ServerMonitor) GenerateDBTemplateMap() map[string]map[string]strin
 		//	svcsection["volume#03"] = server.ClusterGroup.OpenSVCGetVolumeTempSection()
 	}
 	svcsection["container#01"] = server.ClusterGroup.OpenSVCGetNamespaceContainerSection()
-	svcsection["container#02"] = server.ClusterGroup.OpenSVCGetInitContainerSection(server.Port)
+	svcsection["container#02"] = server.ClusterGroup.OpenSVCGetDBInitContainerSection(server.Port)
 	svcsection["container#db"] = server.OpenSVCGetDBContainerSection()
 	svcsection["volume#02"] = server.ClusterGroup.OpenSVCGetJobsVolumeSecret()
 	svcsection["container#jobs"] = server.OpenSVCGetJobsContainerSection()

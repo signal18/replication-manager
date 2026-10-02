@@ -1229,3 +1229,91 @@ func (cluster *Cluster) ReloadOpenSVCDaemonNodeStats() error {
 	}
 	return nil
 }
+
+// dbIDMax keeps a UID/GID inside the signed 32-bit range that Docker,
+// Kubernetes (runAsUser) and the configurator input all accept.
+const dbIDMax = 2147483647
+
+// ParseDBIdentity validates prov-db-run-as-uid and prov-db-volume-uid: empty (not set)
+// or a numeric "UID" or "UID:GID", where 0 is root, taken literally and the GID
+// defaults to the UID. Names are refused: they would resolve through the
+// image's passwd, and Kubernetes only takes numbers.
+func ParseDBIdentity(setting, value string) (uid, gid int, set bool, err error) {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return 0, 0, false, nil
+	}
+	parts := strings.Split(v, ":")
+	if len(parts) <= 2 {
+		ids := make([]int, len(parts))
+		valid := true
+		for i, part := range parts {
+			id, convErr := strconv.Atoi(part)
+			if convErr != nil || id < 0 || id > dbIDMax || part != strings.TrimSpace(part) || strings.HasPrefix(part, "+") {
+				valid = false
+				break
+			}
+			ids[i] = id
+		}
+		if valid {
+			if len(ids) == 1 {
+				return ids[0], ids[0], true, nil
+			}
+			return ids[0], ids[1], true, nil
+		}
+	}
+	return 0, 0, false, fmt.Errorf("%s must be empty (legacy behavior), UID or UID:GID with numeric ids from 0 (root) to %d, got %q", setting, dbIDMax, value)
+}
+
+// dbRunAs is the UID/GID the database container process runs as (OpenSVC
+// --user, Kubernetes securityContext), from prov-db-run-as-uid. set is false when
+// it is empty: nothing is rendered and the container runs as it did before the
+// setting existed (`--user mysql` for images named mysql, the image's own user
+// otherwise). An invalid value (the setter refuses one, but a config file may
+// carry it) is logged and handled as empty rather than guessed.
+func (cluster *Cluster) dbRunAs() (uid, gid int, set bool) {
+	uid, gid, set, err := ParseDBIdentity("prov-db-run-as-uid", cluster.Conf.ProvDBRunAsUID)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s; using the legacy behavior", err)
+		return 0, 0, false
+	}
+	return uid, gid, set
+}
+
+// dbVolumeOwner is the UID/GID that owns the database data volume (OpenSVC volume
+// owner and bootstrap chown, Kubernetes init chown), from prov-db-volume-uid. It is
+// independent of the user the process runs as (dbRunAs): an operator can run as
+// one identity and keep, or choose, another owner. managed tells whether
+// replication-manager manages the owner at all:
+//   - prov-db-volume-uid set: that owner, managed ("0" is root).
+//   - empty, Percona Server image (recognized by name): 1001, managed. The image
+//     is built for 1001 and runs as it by default; a volume owned by the legacy
+//     999 cannot be written by it, and under any other UID its entrypoint cannot
+//     start the telemetry agent ("Permission denied").
+//   - empty otherwise: not managed, the legacy owner is kept unchanged (volume
+//     and bootstrap chown 999:999, nothing on Kubernetes).
+//
+// An invalid value is logged and handled as empty.
+func (cluster *Cluster) dbVolumeOwner() (uid, gid int, managed bool) {
+	uid, gid, set, err := ParseDBIdentity("prov-db-volume-uid", cluster.Conf.ProvDBVolumeUID)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s; using the legacy behavior", err)
+	}
+	if err == nil && set {
+		return uid, gid, true
+	}
+	if strings.Contains(strings.ToLower(cluster.Conf.ProvDbImg), "percona") {
+		return 1001, 1001, true
+	}
+	return 999, 999, false
+}
+
+// dbIdentityManaged tells whether replication-manager manages the database
+// identity in any way (a run-as user, an owner, or a Percona Server image). The
+// dbjobs containers then run as root: they must read and chown a datadir that
+// can belong to any UID, and Percona Server images default to a non-root user.
+func (cluster *Cluster) dbIdentityManaged() bool {
+	_, _, runAsSet := cluster.dbRunAs()
+	_, _, chownManaged := cluster.dbVolumeOwner()
+	return runAsSet || chownManaged
+}

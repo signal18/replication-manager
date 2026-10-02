@@ -1977,6 +1977,44 @@ func (cluster *Cluster) SetProvDBImage(value string) error {
 	cluster.SetDBReprovCookie()
 	return nil
 }
+
+// SetProvDBRunAsUID sets the numeric UID[:GID] a provisioned database container
+// runs as (OpenSVC --user, Kubernetes securityContext). Empty restores the
+// legacy behavior; 0 is root, taken literally. It is independent of
+// prov-db-volume-uid. Reprovisioning remains an explicit operator action; the cookie
+// only surfaces that the rendered service is now stale.
+func (cluster *Cluster) SetProvDBRunAsUID(value string) error {
+	return cluster.setProvDBIdentity("prov-db-run-as-uid", &cluster.Conf.ProvDBRunAsUID, value)
+}
+
+// SetProvDBVolumeUID sets the numeric UID[:GID] that owns a provisioned database's
+// data volume (OpenSVC volume owner and bootstrap chown, Kubernetes init
+// chown). See SetProvDBRunAsUID.
+func (cluster *Cluster) SetProvDBVolumeUID(value string) error {
+	return cluster.setProvDBIdentity("prov-db-volume-uid", &cluster.Conf.ProvDBVolumeUID, value)
+}
+
+func (cluster *Cluster) setProvDBIdentity(setting string, field *string, value string) error {
+	// Only the OpenSVC and Kubernetes provisioners create database containers with a
+	// run-as identity or an owned data volume. Elsewhere (local, on-premise, SlapOS)
+	// the value would have no effect and would only raise a reprovision cookie for
+	// nothing.
+	if orchestrator := cluster.GetOrchestrator(); orchestrator != config.ConstOrchestratorOpenSVC && orchestrator != config.ConstOrchestratorKubernetes {
+		return fmt.Errorf("%s is only supported with the %s and %s orchestrators, this cluster uses %q",
+			setting, config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes, orchestrator)
+	}
+	if _, _, _, err := ParseDBIdentity(setting, value); err != nil {
+		return err
+	}
+	value = strings.TrimSpace(value)
+	if *field == value {
+		return nil
+	}
+	*field = value
+	cluster.SetDBReprovCookie()
+	return nil
+}
+
 func (cluster *Cluster) SetProvMaxscaleImage(value string) error {
 	cluster.Conf.ProvProxMaxscaleImg = value
 	cluster.SetProxiesReprovCookie()

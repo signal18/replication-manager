@@ -186,6 +186,18 @@ func k8sDatabaseVolumeName(serverName string) string {
 	return serverName + "-data"
 }
 
+// k8sDatabaseRunVolumeName is the database container's /run/mysqld (PID file,
+// socket). It is an emptyDir, which Kubernetes creates world-writable, so any
+// prov-db-run-as-uid can write there: some images ship that directory as
+// 0775 owned by their own mysql account (Percona Server: 1001), and mysqld
+// then aborts with "can't create PID file" under another UID. OpenSVC gets the
+// same from its {name}/run/mysqld volume mount. Like the image directory it
+// replaces, it lives as long as the Pod. Only mounted when prov-db-run-as-uid is
+// set.
+func k8sDatabaseRunVolumeName(serverName string) string {
+	return serverName + "-run"
+}
+
 // k8sDatabasePVC is a pure builder, directly testable. StorageClassName is
 // a *string specifically to distinguish "cluster default" (nil) from "no
 // StorageClass" (pointer to ""), so prov-kube-storage-class empty must stay
@@ -378,6 +390,38 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 		}
 	}
 
+	dbSecurityContext, runtimeChown, jobsSecurityContext := cluster.k8sDBIdentity()
+
+	dbVolumeMounts := []apiv1.VolumeMount{
+		{
+			Name:      k8sDatabaseVolumeName(s.Name),
+			MountPath: "/var/lib/mysql",
+		},
+		{
+			Name:      k8sDatabaseVolumeName(s.Name),
+			MountPath: "/etc/mysql/conf.d",
+			SubPath:   k8sConfPersistSubPath,
+		},
+	}
+	podVolumes := []apiv1.Volume{
+		{
+			Name: k8sDatabaseVolumeName(s.Name),
+			VolumeSource: apiv1.VolumeSource{
+				PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{
+					ClaimName: k8sDatabasePVCName(cluster.Name, s.Name),
+				},
+			},
+		},
+	}
+	if dbSecurityContext != nil {
+		// Explicit run-as user: see k8sDatabaseRunVolumeName.
+		dbVolumeMounts = append(dbVolumeMounts, apiv1.VolumeMount{Name: k8sDatabaseRunVolumeName(s.Name), MountPath: "/run/mysqld"})
+		podVolumes = append(podVolumes, apiv1.Volume{
+			Name:         k8sDatabaseRunVolumeName(s.Name),
+			VolumeSource: apiv1.VolumeSource{EmptyDir: &apiv1.EmptyDirVolumeSource{}},
+		})
+	}
+
 	// MKDIR_STATUS is the only thing that determines this container's exit
 	// code. Kubernetes init containers have no "optional" resource flag
 	// like OpenSVC's (a nonzero exit always blocks the pod), so everything
@@ -396,6 +440,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 			// otherwise corrupt a previously-good cached binary in place.
 			" ; wget" + noCheckCert + " -T 8 -qO /tmp/replication-manager-cli.new " + scheme + "://" + authority + "/static/configurator/bin/replication-manager-cli 2>/dev/null && cp /tmp/replication-manager-cli.new /docker-entrypoint-initdb.d/replication-manager-cli 2>/dev/null" +
 			" ; chmod +x /docker-entrypoint-initdb.d/replication-manager-cli /docker-entrypoint-initdb.d/dbjobs_new /docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm 2>/dev/null" +
+			runtimeChown +
 			" ; exit \"$MKDIR_STATUS\"",
 	}
 	// Subdomain/role label are gated on prov-net-cni so a cluster that
@@ -467,6 +512,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 							Image:           cluster.Conf.ProvDbImg,
 							ImagePullPolicy: k8sImagePullPolicy(cluster),
 							Resources:       cluster.k8sDatabaseContainerResources(),
+							SecurityContext: dbSecurityContext,
 							Ports: []apiv1.ContainerPort{
 								{
 									Name:          "mysql",
@@ -485,17 +531,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 									},
 								},
 							}, k8sDBAllocatorEnv(cluster)...),
-							VolumeMounts: []apiv1.VolumeMount{
-								{
-									Name:      k8sDatabaseVolumeName(s.Name),
-									MountPath: "/var/lib/mysql",
-								},
-								{
-									Name:      k8sDatabaseVolumeName(s.Name),
-									MountPath: "/etc/mysql/conf.d",
-									SubPath:   k8sConfPersistSubPath,
-								},
-							},
+							VolumeMounts: dbVolumeMounts,
 						},
 						// dbjobs sidecar: runs share/scripts/dbjobs_new.sh (backups,
 						// optimize, config refresh), fetched pre-resolved as part
@@ -508,6 +544,12 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 							Name:      s.Name + "-dbjobs",
 							Image:     cluster.Conf.ProvDbImg,
 							Resources: cluster.k8sDBJobsContainerResources(),
+							// Root whatever the image's own USER is (Percona
+							// Server images default to mysql, 1001): dbjobs must
+							// read and chown a datadir owned by prov-db-volume-uid
+							// (db_owner in dbjobs_new.sh). Only with a managed
+							// identity; otherwise the image's own user, as before.
+							SecurityContext: jobsSecurityContext,
 							// Guarded, not a direct exec: on a server with nothing
 							// ever persisted (a first boot with repman
 							// unreachable), /docker-entrypoint-initdb.d is empty --
@@ -546,21 +588,43 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 							},
 						},
 					},
-					Volumes: []apiv1.Volume{
-						{
-							Name: k8sDatabaseVolumeName(s.Name),
-							VolumeSource: apiv1.VolumeSource{
-								PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{
-									ClaimName: k8sDatabasePVCName(cluster.Name, s.Name),
-								},
-							},
-						},
-					},
+					Volumes: podVolumes,
 				},
 			},
 		},
 	}
 	return dep
+}
+
+// k8sDBIdentity maps the two independent identity settings to the pod: the
+// database container's securityContext (prov-db-run-as-uid, nil when empty), an
+// ownership fix appended to the init container's command (prov-db-volume-uid, or 1001
+// for a Percona Server image; empty when not managed), which runs as root like
+// OpenSVC's bootstrap chown, and the dbjobs sidecar's securityContext (root
+// whenever any of this is managed; it takes file ownership from the datadir:
+// db_owner in dbjobs_new.sh). With nothing managed all three are empty: the pod
+// is what it was before these settings.
+func (cluster *Cluster) k8sDBIdentity() (db *apiv1.SecurityContext, chown string, jobs *apiv1.SecurityContext) {
+	if runAsUID, runAsGID, set := cluster.dbRunAs(); set {
+		runAsUser, runAsGroup := int64(runAsUID), int64(runAsGID)
+		db = &apiv1.SecurityContext{RunAsUser: &runAsUser, RunAsGroup: &runAsGroup}
+	}
+	if uid, gid, managed := cluster.dbVolumeOwner(); managed {
+		u, g := strconv.Itoa(uid), strconv.Itoa(gid)
+		// Only entries that differ are touched, so a restart of a pod whose
+		// volume already matches does not rewrite the whole datadir.
+		// Best effort like the rest of that command (the init container's exit code is
+		// only MKDIR_STATUS, and a volume the process can still use must not block the
+		// pod), but a failure is written to the init container log, where
+		// `kubectl logs -c <name>-init` shows why mysqld then cannot use the datadir.
+		chown = " ; find /var/lib/mysql \\( ! -user " + u + " -o ! -group " + g + " \\) -exec chown -h " + u + ":" + g + " {} +" +
+			" || echo \"WARNING: could not set the owner of /var/lib/mysql to " + u + ":" + g + "\" >&2"
+	}
+	if cluster.dbIdentityManaged() {
+		root := int64(0)
+		jobs = &apiv1.SecurityContext{RunAsUser: &root, RunAsGroup: &root}
+	}
+	return db, chown, jobs
 }
 
 // k8sDBJobsMemoryCapMB is the dbjobs sidecar's own technical minimum (MiB) --
