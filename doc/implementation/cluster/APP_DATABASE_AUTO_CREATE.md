@@ -53,10 +53,12 @@ error channel. Steps, all on the primary:
    ownership mark an existing schema or user refuses the provision**, nothing
    is altered (Stéphane: never override an existing user). With the mark the
    provision is idempotent;
-3. `CreateDatabaseIfNotExists`, `CreateUser` for every host of the monitoring
-   user's host list (`appDbUserHosts`: monitor address, database nodes,
-   proxies, apps; same list as `SetDBCredentials`) that does not have the user
-   yet, `SetUserGrants` `ALL PRIVILEGES ON schema.*` on every host;
+3. `CreateDatabaseIfNotExists` (the schema is marked owned from this point, so
+   a later failure never turns the retry into a foreign-schema refusal),
+   `CreateUser` for `%` (the configurator sets `skip_name_resolve=ON`, so a
+   hostname-bound account can never log in, as the security monitor flags;
+   the database is reachable from the cluster network only), `SetUserGrants`
+   `ALL PRIVILEGES ON schema.*`;
 4. mark `app-db-owned`, clear `App.DbProvisionError`.
 
 A refusal is tracked, not logged only: `App.DbProvisionError` is turned into the

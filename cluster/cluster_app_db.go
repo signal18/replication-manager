@@ -149,36 +149,13 @@ func appDbView(cnf *config.AppConfig) *appDbSubstitutionView {
 	return &appDbSubstitutionView{Schema: cnf.AppDbSchema, User: cnf.AppDbUser, Password: cnf.AppDbPass, AutoCreate: true, Owned: cnf.AppDbOwned}
 }
 
-// appDbUserHosts is the host list the monitoring user is created for
-// (SetDBCredentials): the monitor, every database node, every proxy, every app.
+// appDbUserHosts: the app user is created for "%" only. The configurator sets
+// skip_name_resolve=ON, so an account bound to a DNS hostname can never log in (the
+// security monitor flags every such account), and the app reaches the database through
+// the proxy, whose address inside the namespace is not stable. The database itself is
+// reachable from the cluster network only, which is the real perimeter.
 func (cluster *Cluster) appDbUserHosts() []string {
-	seen := map[string]bool{}
-	hosts := []string{}
-	add := func(h string) {
-		h = strings.TrimSpace(h)
-		if h == "" || seen[h] {
-			return
-		}
-		seen[h] = true
-		hosts = append(hosts, h)
-	}
-	add(cluster.Conf.MonitorAddress)
-	for _, s := range cluster.Servers {
-		if s != nil {
-			add(s.Host)
-		}
-	}
-	for _, p := range cluster.Proxies {
-		if p != nil {
-			add(p.GetHost())
-		}
-	}
-	for _, a := range cluster.Apps {
-		if a != nil {
-			add(a.GetHost())
-		}
-	}
-	return hosts
+	return []string{"%"}
 }
 
 // appDbProvisionDecision is the security rule, kept pure for tests: without the
