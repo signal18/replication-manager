@@ -219,6 +219,27 @@ func (cluster *Cluster) RemoveAppMonitor(host string, port string) error {
 		}
 		cluster.Unlock()
 		cluster.StateMachine.RemoveFailoverState()
+		// What the app left on the gateway and in the DNS goes with it (curepipe
+		// 2026-10-02: a dropped app kept its HAProxy fragment and its CNAME), and so does
+		// its provision cookie, so a new app of the same name starts clean.
+		if cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
+			if err := cluster.withdrawGatewayRoutes(app); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Drop app %s: gateway routes not withdrawn: %s", app.GetName(), err)
+			}
+			if appcnf != nil && appcnf.Deployment != nil {
+				for _, route := range appcnf.Deployment.Routes {
+					if route.CName == "" {
+						continue
+					}
+					if _, managed := cluster.ManagedHostCNAME(route.CName); managed {
+						if err := cluster.BashScriptDeprovDNS(route.CName); err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Drop app %s: CNAME %s not removed: %s", app.GetName(), route.CName, err)
+						}
+					}
+				}
+			}
+		}
+		app.DelProvisionCookie()
 		cluster.RunDropMonitorScript(cluster.monitorHookApp(appcnf, app))
 	} else {
 		return fmt.Errorf("App with address %s:%s not found in cluster", host, port)

@@ -129,11 +129,10 @@ func (s *MCPServer) registerAppTools() {
 				}
 				switch action {
 				case "provision":
-					if a.IsRunning() {
-						return mcp.NewToolResultText(toJSON(map[string]any{"cluster": cl.Name, "app": appView(a), "status": "already running, nothing to provision"})), nil
-					}
-					if a.HasProvisionCookie() {
-						return mcp.NewToolResultText(toJSON(map[string]any{"cluster": cl.Name, "app": appView(a), "status": "already provisioned or provisioning, not started again"})), nil
+					// Provisioned and answering: nothing to do (a double call, a retry by a
+					// client). A fresh app, or one whose service is gone, provisions.
+					if a.HasProvisionCookie() && a.IsRunning() {
+						return mcp.NewToolResultText(toJSON(map[string]any{"cluster": cl.Name, "app": appView(a), "status": "already provisioned and running, nothing to do"})), nil
 					}
 					go func() {
 						if err := cl.InitAppService(a); err != nil {
