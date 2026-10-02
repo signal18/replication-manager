@@ -53,7 +53,10 @@ func (cluster *Cluster) BillingUsage() []UnitUsage {
 	}
 	bk := UnitUsage{Family: BillingFamilyBackup, Unit: "BKU", Priced: true, UnitPrice: c.Cloud18MarketplaceBKUPrice, OverPct: over, UnderPct: under}
 	if b := cluster.BackupUnits; b != nil {
-		bk.Plan, bk.Billable = float64(b.Plan), float64(b.BilledUnits)
+		// The units really consumed, not BilledUnits (floored at the plan): the ledger
+		// derives the over-commit AND the under-commit from plan vs consumed, so the
+		// unused BKU is credited like the other families (Stéphane 2026-10-02).
+		bk.Plan, bk.Billable = float64(b.Plan), float64(b.ConsumedUnits)
 		if b.UnitPrice > 0 {
 			bk.UnitPrice, bk.OverPct, bk.UnderPct = b.UnitPrice, b.OverPricePct, b.UnderPricePct
 		}
