@@ -107,6 +107,7 @@ type appConfigAPIView struct {
 // never has it, rather than adding it and deleting it after marshal.
 type AppAPIView struct {
 	Id                    string               `json:"id"`
+	URL                   string               `json:"url"` // https on the primary route once routed, else the internal http://host:port/
 	Name                  string               `json:"name"`
 	Type                  string               `json:"type"`
 	Host                  string               `json:"host"`
@@ -150,6 +151,7 @@ func (app *App) GetAppAPIView() *AppAPIView {
 	view := &AppAPIView{
 		Id:                    app.Id,
 		Name:                  app.Name,
+		URL:                   app.GetPublicURL(),
 		Type:                  app.Type,
 		Host:                  app.Host,
 		HostIPV6:              app.HostIPV6,

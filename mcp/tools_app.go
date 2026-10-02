@@ -99,7 +99,7 @@ func (s *MCPServer) registerAppTools() {
 			if err := cl.AddSeededApp(name, port, "", template); err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			a := cl.GetAppFromName(name)
+			a := appByNameOrID(cl, name)
 			out := map[string]any{"cluster": cl.Name, "name": name, "template": template, "port": port, "status": "added, call app-provision to run it"}
 			if a != nil {
 				out["app"] = appView(a)
@@ -116,7 +116,7 @@ func (s *MCPServer) registerAppTools() {
 					"unprovision": "Unprovision an application of the cluster: its service is destroyed on the orchestrator, the app stays declared. Asynchronous.",
 				}[action]),
 				mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
-				mcp.WithString("app_name", mcp.Required(), mcp.Description("Name of the app (list-cluster-apps)")),
+				mcp.WithString("app_name", mcp.Required(), mcp.Description("Name or id of the app (list-cluster-apps)")),
 			),
 			func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
@@ -126,7 +126,7 @@ func (s *MCPServer) registerAppTools() {
 				if cl.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
 					return mcp.NewToolResultError("app " + action + " is implemented for the OpenSVC orchestrator only"), nil
 				}
-				a := cl.GetAppFromName(req.GetString("app_name", ""))
+				a := appByNameOrID(cl, req.GetString("app_name", ""))
 				if a == nil {
 					return mcp.NewToolResultError("app not found: " + req.GetString("app_name", "")), nil
 				}
@@ -167,4 +167,15 @@ func resolveAppTemplate(name string, templates []string) string {
 		return candidates[0]
 	}
 	return ""
+}
+
+// appByNameOrID: the REST routes take the app id, people and the tools use its name.
+func appByNameOrID(cl *cluster.Cluster, key string) *cluster.App {
+	key = strings.TrimSpace(key)
+	for _, a := range cl.Apps {
+		if a != nil && (a.Id == key || a.Name == key || a.Host == key) {
+			return a
+		}
+	}
+	return nil
 }
