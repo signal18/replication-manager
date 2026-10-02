@@ -178,6 +178,20 @@ func (cluster *Cluster) PlanRollingUpgrade(target, explicit string) (*RollingUpg
 	default:
 		declaredAfter = repo + ":" + next.String()
 	}
+	if mechanic == "reprov" {
+		// The gate (WARN0222 / WARN0223 / WARN0224): a reseed from a backup newer than
+		// the binary log retention, with the binary logs monitored. Downward the backup
+		// must be logical: a physical backup of the newer major does not restore into
+		// the older one.
+		r := cluster.GetReseedReadiness()
+		issues := append([]string{}, r.Issues...)
+		if next.Major < current.Major && !r.LogicalFresh && len(issues) == 0 {
+			issues = append(issues, "a downgrade across a major needs a logical backup of the primary newer than the binary log retention (a physical backup of "+current.String()+" does not restore into "+next.String()+"), arm autorejoin-logical-backup and take one")
+		}
+		if len(issues) > 0 {
+			return nil, fmt.Errorf("rolling reprov across a major release refused: %s", strings.Join(issues, "; "))
+		}
+	}
 	if next.Major > current.Major && mechanic == "upgrade" {
 		warnings = append(warnings, "major upgrade: the engine runs mariadb-upgrade (MARIADB_AUTO_UPGRADE) on first start, check it in the error log of each node; there is no rolling way back to "+current.String())
 	} else if current.Less(next) && mechanic == "upgrade" {
@@ -283,9 +297,9 @@ func (cluster *Cluster) PrepareRollingUpgrade(target, explicit string) (*Rolling
 // RunRollingUpgrade runs the rolling part the plan announced, after
 // PrepareRollingUpgrade: the rolling reprov or the rolling upgrade. For a move down
 // across lines it pilots switchover-lower-release on for the duration; for a move down
-// across a major it pilots the logical reseed (a direct mysqldump from the master, a
-// physical backup of the newer major cannot restore into the older one). The operator's
-// values are restored afterwards.
+// across a major it pilots the reseed from the logical backup only (a physical backup
+// of the newer major cannot restore into the older one); for any reprov it turns the
+// direct dump off. The operator's values are restored afterwards.
 func (cluster *Cluster) RunRollingUpgrade(plan *RollingUpgradePlan) error {
 	if plan == nil {
 		return cluster.RollingUpgrade()
@@ -298,13 +312,18 @@ func (cluster *Cluster) RunRollingUpgrade(plan *RollingUpgradePlan) error {
 		defer func() { cluster.Conf.SwitchLowerRelease = saved }()
 	}
 	if plan.Mechanic == "reprov" {
+		// The reseed comes from a backup (the gate checked one exists), never from the
+		// direct dump: the primary's own jobs container took the backup with a client of
+		// its release, the repman host's dump client may be older than the primary.
+		// Downward only the logical backup restores into the older major.
+		savedDump, savedPhysical := cluster.Conf.AutorejoinMysqldump, cluster.Conf.AutorejoinPhysicalBackup
+		cluster.Conf.AutorejoinMysqldump = false
 		if next.Major < current.Major {
-			savedDump, savedPhysical, savedLogical := cluster.Conf.AutorejoinMysqldump, cluster.Conf.AutorejoinPhysicalBackup, cluster.Conf.AutorejoinLogicalBackup
-			cluster.Conf.AutorejoinMysqldump, cluster.Conf.AutorejoinPhysicalBackup, cluster.Conf.AutorejoinLogicalBackup = true, false, false
-			defer func() {
-				cluster.Conf.AutorejoinMysqldump, cluster.Conf.AutorejoinPhysicalBackup, cluster.Conf.AutorejoinLogicalBackup = savedDump, savedPhysical, savedLogical
-			}()
+			cluster.Conf.AutorejoinPhysicalBackup = false
 		}
+		defer func() {
+			cluster.Conf.AutorejoinMysqldump, cluster.Conf.AutorejoinPhysicalBackup = savedDump, savedPhysical
+		}()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling upgrade (%s) to %s runs as a rolling reprov", plan.Target, plan.TargetImage)
 		return cluster.RollingReprov()
 	}

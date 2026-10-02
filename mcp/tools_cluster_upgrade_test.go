@@ -25,8 +25,11 @@ func TestRollingUpgradePlanThroughCluster(t *testing.T) {
 	if plan.ImageList != "embedded image list" {
 		t.Fatalf("image list source = %s", plan.ImageList)
 	}
-	if p, err := cl.PlanRollingUpgrade("version", "10.11"); err != nil || !strings.HasPrefix(p.TargetImage, "mariadb:10.11") || p.Mechanic != "reprov" {
-		t.Fatalf("a downgrade across a major is announced as a reprov, not refused: err=%v plan=%+v", err, p)
+	if p, err := cl.PlanRollingUpgrade("version", "11.0"); err != nil || !strings.HasPrefix(p.TargetImage, "mariadb:11.0") || p.Mechanic != "upgrade" {
+		t.Fatalf("a downgrade on the same major is announced, not refused: err=%v plan=%+v", err, p)
+	}
+	if _, err := cl.PlanRollingUpgrade("version", "10.11"); err == nil || !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("a downgrade across a major is a reprov, gated by the reseed readiness: %v", err)
 	}
 	s := toJSON(plan)
 	if !strings.Contains(s, "\"targetImage\"") || !strings.Contains(s, "\"declaredAfter\"") {

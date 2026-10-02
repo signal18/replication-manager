@@ -1292,6 +1292,7 @@ func (cluster *Cluster) tickBody() {
 					goRun(func() { cluster.SendGraphiteMetrics() })
 					goRun(cluster.CheckDisksUsage)
 				}
+				cluster.CheckReseedReadiness() // WARN0222/0223/0224 gate the rolling reprov across a major
 				wg.Wait()
 
 				// PreserveState for non-running ticks (fast, no I/O)

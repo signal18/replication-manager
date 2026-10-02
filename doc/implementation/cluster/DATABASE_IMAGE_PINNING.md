@@ -65,8 +65,20 @@ reseed from the master, node by node; `RollingReprov`) for a move down across a 
 for a move up across a major when `prov-db-upgrade-major-reprov` is on; `upgrade` (restart
 on the new image, `RollingUpgrade`) otherwise. `RunRollingUpgrade(plan)` runs it and pilots
 for the duration `switchover-lower-release` (move down across lines) and the logical reseed
-(`autorejoin-mysqldump`, move down across a major: a physical backup of the newer major
-cannot restore into the older one), restoring the operator's values. It says what
+from a backup only, never the direct dump: the repman host's dump client may be older than
+the primary (dev3 2026-10-02: mariadb-dump 11.4 could not dump a 12.3 primary), the
+primary's jobs container took the backup with a client of its release; move down across a
+major: logical backup only, a physical backup of the newer major cannot restore into the
+older one), restoring the operator's values.
+
+**Gate (`cluster_reseed_readiness.go`).** Three states, checked every tick, open while
+their condition holds: `WARN0224` binary logs not monitored (`log_bin` off on the primary,
+or `backup-binlogs` off), `WARN0223` the reseed method is the direct dump or none
+(`autorejoin-logical-backup` / `autorejoin-physical-backup` both off), `WARN0222` no
+completed backup of the primary newer than its binary log retention
+(`binlog_expire_logs_seconds`, else `expire_logs_days`; any completed backup when the
+primary never purges). `PlanRollingUpgrade` refuses the reprov mechanic while any is open,
+and downward also when the fresh backup is not logical. It says what
 `prov-db-image` declares afterwards: `patch` keeps the declaration, a line move declares the
 new line, a given release is declared as is. `PrepareRollingUpgrade` does the declaration
 (`SetProvDBImage`, refused on an immutable pin), writes the record, pushes the OpenSVC

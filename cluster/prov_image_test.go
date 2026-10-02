@@ -85,22 +85,25 @@ func TestPlanRollingUpgradeFromEmbeddedList(t *testing.T) {
 	if p, err := cl.PlanRollingUpgrade("version", "11.0"); err != nil || p.TargetImage != "mariadb:11.0" || p.Mechanic != "upgrade" || !strings.Contains(strings.Join(p.Warnings, " "), "downgrade") {
 		t.Fatalf("a downgrade on the same major is announced, upgrade mechanic: err=%v plan=%+v", err, p)
 	}
-	if p, err := cl.PlanRollingUpgrade("version", "10.11"); err != nil || p.Mechanic != "reprov" {
-		t.Fatalf("a downgrade across a major reprovisions: err=%v plan=%+v", err, p)
+	// Across a major the reprov mechanic is gated by the reseed readiness (no primary
+	// here, so refused); the mechanic selection itself is covered in
+	// cluster_reseed_readiness_test.go with a primary and a fresh backup.
+	if _, err := cl.PlanRollingUpgrade("version", "10.11"); err == nil || !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("a downgrade across a major is a reprov, refused without a usable backup: %v", err)
 	}
 	if p, _ := cl.PlanRollingUpgrade("next-major", ""); p.Mechanic != "upgrade" {
 		t.Fatalf("major upgrade restarts in place by default: %+v", p)
 	}
 	cl.Conf.ProvDbUpgradeMajorReprov = true
-	if p, _ := cl.PlanRollingUpgrade("next-major", ""); p.Mechanic != "reprov" {
-		t.Fatalf("major upgrade reprovisions with the option: %+v", p)
+	if _, err := cl.PlanRollingUpgrade("next-major", ""); err == nil || !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("major upgrade with the option is a reprov, refused without a usable backup: %v", err)
 	}
 	cl.Conf.ProvDbUpgradeMajorReprov = false
 	cl.Conf.ProvDbImg = "mariadb:12.3"
 	cl.Servers = nil
 	cl.Conf.ProvDbImgResolved = "mariadb:12.3=mariadb:12.3.2"
-	if p, err := cl.PlanRollingUpgrade("version", "11.8"); err != nil || p.Mechanic != "reprov" {
-		t.Fatalf("a downgrade across a major always reprovisions: err=%v plan=%+v", err, p)
+	if _, err := cl.PlanRollingUpgrade("version", "11.8"); err == nil || !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("a downgrade across a major is refused without a usable backup: %v", err)
 	}
 	cl.Conf.ProvDbImgResolved = ""
 	cl.Conf.ProvDbImg = "mariadb:11.4"
