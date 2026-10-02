@@ -5,8 +5,6 @@
 package cluster
 
 import (
-	"context"
-	"fmt"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -19,9 +17,6 @@ import (
 // provision or at the last rolling upgrade, never a pointer. A restart recreates the
 // container from that release, so the release cannot move; only an upgrade resolves the
 // request again, pins the result, pulls it and restarts.
-
-// resolveTag is releases.ResolveTag, a variable for tests.
-var resolveTag = releases.ResolveTag
 
 // resolvedImageFor returns the explicit image recorded for the declared image, "" when
 // the record is missing or belongs to another declaration.
@@ -45,11 +40,11 @@ func (cluster *Cluster) deployImage() string {
 	return declared
 }
 
-// ResolveDatabaseImage records the explicit release prov-db-image points at today.
-// force re-resolves a pointer (the rolling upgrade); without force a valid record is
-// kept (provision, template push). An explicit declaration needs no record. On failure
-// the record is left as is and the error returned: the caller decides (a provision
-// renders the declared name, an upgrade stops).
+// ResolveDatabaseImage records the real release prov-db-image means today, looked up
+// in the image list (never a registry request). force resolves a pointer again (the
+// rolling upgrade); without force a valid record is kept (provision, template push).
+// An explicit declaration needs no record. On failure the record is left as is and
+// the error returned: a provision renders the declared name, an upgrade stops.
 func (cluster *Cluster) ResolveDatabaseImage(force bool) error {
 	if cluster.GetOrchestrator() == config.ConstOrchestratorOnPremise {
 		return nil
@@ -68,22 +63,29 @@ func (cluster *Cluster) ResolveDatabaseImage(force bool) error {
 	if !force && cluster.resolvedImageFor(declared) != "" {
 		return nil
 	}
-	repo, tag := releases.SplitImage(declared)
-	explicit, digest, checked, err := resolveTag(context.Background(), repo, tag)
+	cat, err := cluster.ImageCatalog()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-			"prov-db-image %s not resolved to a release (%s): the service definition keeps the floating name", declared, err)
+			"prov-db-image %s not resolved, image list unavailable (%s): the service definition keeps the floating name", declared, err)
 		return err
 	}
-	if !checked {
+	repo, tag := releases.SplitImage(declared)
+	release := cat.Resolve(repo, releases.FlavorOfImage(declared), tag)
+	if release == tag {
+		// Not in the list: the input comes back unchanged and the service definition
+		// carries the declared name (Stéphane's rule), with no record to clear.
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
-			"prov-db-image %s is on a registry replication-manager cannot query: the service definition keeps the floating name", declared)
-		return fmt.Errorf("image %s: registry not queried", declared)
+			"prov-db-image %s has no release in the %s: the service definition keeps the declared name", declared, cat.Source)
+		if cluster.Conf.ProvDbImgResolved != "" {
+			cluster.Conf.ProvDbImgResolved = ""
+			cluster.Save()
+		}
+		return nil
 	}
-	record := declared + "=" + repo + ":" + explicit
+	record := declared + "=" + repo + ":" + release
 	if record != cluster.Conf.ProvDbImgResolved {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-			"prov-db-image %s resolved to %s:%s (%s), the service definition is pinned on it", declared, repo, explicit, digest)
+			"prov-db-image %s resolved to %s:%s from the %s, the service definition is pinned on it", declared, repo, release, cat.Source)
 		cluster.Conf.ProvDbImgResolved = record
 		cluster.Save()
 	}

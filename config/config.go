@@ -1384,7 +1384,8 @@ type DockerTag struct {
 }
 
 type TagResult struct {
-	Name string `json:"name"`
+	Name   string `json:"name"`
+	Digest string `json:"digest,omitempty"` // present in the back-office delivered list, absent in the embedded one
 }
 
 type DockerRepo struct {

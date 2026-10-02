@@ -7,7 +7,6 @@ package repmanmcp
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -345,10 +344,10 @@ func (s *MCPServer) registerClusterWriteTools() {
 
 	s.addTool(
 		mcp.NewTool("cluster-rolling-upgrade",
-			mcp.WithDescription("Upgrade the database engine of every node one at a time, preserving availability, to a release line chosen by target: patch (same line, latest release, the image is pulled again), next-minor (next published line of the same major, 11.4 to 11.5), next-lts (next long-term line, 11.4 to 11.8), next-major (first line of the next major, 11.x to 12.0), version (the line or tag given in version). Without confirm the tool only answers the plan: current version per node, target line and image, whether the tag exists on the registry, node order, warnings (a major move needs mariadb-upgrade, there is no rolling way back). With confirm=true it chains what takes several API calls: it sets prov-db-image to the target, on OpenSVC it pushes the service definition of every node so the new image is in place (inert until the node restarts), then it starts the rolling upgrade, replicas first, then a switchover and the old master. A pinned image (immutable prov-db-docker-img) is refused. On-premise clusters run the configured upgrade script instead of an image change."),
+			mcp.WithDescription("Upgrade the database engine of every node one at a time, preserving availability, to a target taken from the image list of the configurator (never a registry lookup): patch (newest release of the current line, the default), next-minor (newest release of the next line of the same major, 11.4 to 11.5), next-lts (newest release of the next long-term line, 11.4 to 11.8), next-major (newest release of the first line of the next major, 11.x to 12.0), last-lts (newest release of the highest long-term line), version (the release or line given in version, taken as is when the list does not have it). Without confirm the tool only answers the plan: current version per node, target release, what prov-db-image declares afterwards, node order, steps, warnings (a major move needs mariadb-upgrade, there is no rolling way back, a pinned image is refused). With confirm=true it runs the same steps as the API rolling upgrade with that target: declares the image, pins the service definitions on the target release, on OpenSVC pushes them node by node, then starts the rolling upgrade, replicas first, then a switchover and the old master. On-premise clusters run the configured upgrade script instead of an image change."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
-			mcp.WithString("target", mcp.Description("patch (default), next-minor, next-lts, next-major or version")),
-			mcp.WithString("version", mcp.Description("with target=version: the line or tag to move to, e.g. 11.8 or 11.8.3")),
+			mcp.WithString("target", mcp.Description("patch (default), next-minor, next-lts, next-major, last-lts or version")),
+			mcp.WithString("version", mcp.Description("with target=version: the release or line to move to, e.g. 11.8.9 or 11.8")),
 			mcp.WithBoolean("confirm", mcp.Description("false (default): answer the plan only; true: start the rolling upgrade")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -356,48 +355,25 @@ func (s *MCPServer) registerClusterWriteTools() {
 			if errResult != nil {
 				return errResult, nil
 			}
-			plan, err := s.rollingUpgradePlan(ctx, cl, req.GetString("target", releases.TargetPatch), req.GetString("version", ""))
-			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
+			target, version := req.GetString("target", releases.TargetPatch), req.GetString("version", "")
 			if !req.GetBool("confirm", false) {
-				plan["status"] = "plan only: call again with confirm=true to start"
+				plan, err := cl.PlanRollingUpgrade(target, version)
+				if err != nil {
+					return mcp.NewToolResultError(err.Error()), nil
+				}
+				plan.Status = "plan only: call again with confirm=true to start"
 				return mcp.NewToolResultText(toJSON(plan)), nil
 			}
-			if plan["tagChecked"] == true && plan["tagExists"] == false {
-				plan["status"] = "refused: the target image tag does not exist on the registry"
+			plan, err := cl.PrepareRollingUpgrade(target, version)
+			if err != nil {
+				if plan == nil {
+					return mcp.NewToolResultError(err.Error()), nil
+				}
+				plan.Status = "refused: " + err.Error()
 				return mcp.NewToolResultError(toJSON(plan)), nil
 			}
-			if cl.GetOrchestrator() != config.ConstOrchestratorOnPremise {
-				if img, _ := plan["targetImage"].(string); img != "" && img != cl.Conf.ProvDbImg {
-					if err := cl.SetProvDBImage(img); err != nil {
-						plan["status"] = "refused: " + err.Error()
-						return mcp.NewToolResultError(toJSON(plan)), nil
-					}
-				}
-				// The declared image is resolved to a release and the service definitions are
-				// pinned on it (#1862): on OpenSVC through the same push as the
-				// update-opensvc-template action, node by node, inert until the upgrade
-				// restarts the node; the rolling upgrade re-pulls what the definition carries.
-				if err := cl.ResolveDatabaseImage(true); err != nil {
-					plan["status"] = "refused: " + err.Error()
-					return mcp.NewToolResultError(toJSON(plan)), nil
-				}
-				plan["resolvedImage"] = cl.Conf.ProvDbImgResolved
-				if cl.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
-					for _, srv := range cl.Servers {
-						if srv == nil {
-							continue
-						}
-						if err := cl.OpenSVCUpdateDatabaseTemplate(srv); err != nil {
-							plan["status"] = "refused: service definition push failed on " + srv.URL + ": " + err.Error()
-							return mcp.NewToolResultError(toJSON(plan)), nil
-						}
-					}
-				}
-			}
 			go cl.RollingUpgrade()
-			plan["status"] = "rolling upgrade started"
+			plan.Status = "rolling upgrade started"
 			return mcp.NewToolResultText(toJSON(plan)), nil
 		},
 	)
@@ -742,141 +718,4 @@ func alertsOf(sm *state.StateMachine) map[string]interface{} {
 		return map[string]interface{}{"errors": []state.StateHttp{}, "warnings": []state.StateHttp{}}
 	}
 	return map[string]interface{}{"errors": sm.GetOpenErrors(), "warnings": sm.GetOpenWarnings()}
-}
-
-// rollingUpgradePlan resolves the target line from the shared release table and
-// describes what a rolling upgrade would do, without touching the cluster.
-func (s *MCPServer) rollingUpgradePlan(ctx context.Context, cl *cluster.Cluster, target, explicit string) (map[string]interface{}, error) {
-	return rollingUpgradePlan(ctx, cl, target, explicit)
-}
-
-// tagExists is the registry check, a variable so tests never reach the network.
-var tagExists = releases.TagExists
-
-// resolveTag is releases.ResolveTag, a variable for tests.
-var resolveTag = releases.ResolveTag
-
-func rollingUpgradePlan(ctx context.Context, cl *cluster.Cluster, target, explicit string) (map[string]interface{}, error) {
-	table, source, err := releases.Load(cl.Conf.ShareDir + "/plugins/data")
-	if err != nil {
-		return nil, err
-	}
-	repo, tag := releases.SplitImage(cl.Conf.ProvDbImg)
-	flavor := releases.FlavorOfImage(cl.Conf.ProvDbImg)
-	var current releases.Line
-	nodes := []map[string]interface{}{}
-	currentKnown := false
-	for _, srv := range cl.Servers {
-		if srv == nil {
-			continue
-		}
-		n := map[string]interface{}{"server": srv.URL, "state": srv.State, "version": ""}
-		if v := srv.DBVersion; v != nil {
-			n["version"] = v.ToString()
-			if srv.IsMaster() || !currentKnown {
-				current = releases.Line{Major: v.Major, Minor: v.Minor}
-				currentKnown = true
-				if v.Flavor != "" {
-					flavor = strings.ToLower(v.Flavor)
-				}
-			}
-		}
-		nodes = append(nodes, n)
-	}
-	if !currentKnown {
-		if l, err := releases.ParseLine(tag); err == nil && tag != "" && tag != "latest" && tag != "lts" {
-			current = l
-		} else {
-			return nil, fmt.Errorf("current release line unknown: no node reports a version and prov-db-image %q carries no line", cl.Conf.ProvDbImg)
-		}
-	}
-	next, err := table.Resolve(flavor, current, target, explicit)
-	if err != nil {
-		return nil, err
-	}
-	if next.Less(current) {
-		return nil, fmt.Errorf("downgrade from %s to %s refused: a rolling upgrade only moves forward (a replica older than its master cannot replicate and the data dictionary does not go back); restore a backup taken on %s instead", current, next, next)
-	}
-	targetTag := next.String()
-	if strings.ToLower(strings.TrimSpace(target)) == releases.TargetVersion && strings.Count(strings.TrimSpace(explicit), ".") >= 2 {
-		targetTag = strings.TrimSpace(explicit)
-	}
-	if strings.EqualFold(target, releases.TargetPatch) || target == "" {
-		if tag != "" {
-			targetTag = tag
-		}
-	}
-	targetImage := repo + ":" + targetTag
-	warnings := []string{}
-	if next.Major > current.Major {
-		warnings = append(warnings, "major upgrade: the engine runs mariadb-upgrade (MARIADB_AUTO_UPGRADE) on first start, check it in the error log of each node; there is no rolling way back to "+current.String())
-	} else if current.Less(next) {
-		warnings = append(warnings, "no rolling way back to "+current.String()+" once a replica runs "+next.String()+": replication from a newer master to an older replica is not supported")
-	}
-	if !table.IsLTS(flavor, next) && next != current {
-		warnings = append(warnings, next.String()+" is not a long-term line for "+flavor+" (lts: "+strings.Join(table.LTS[flavor], ", ")+")")
-	}
-	onprem := cl.GetOrchestrator() == config.ConstOrchestratorOnPremise
-	steps := []string{"set prov-db-image to the target image, resolve it to a release and pin the service definitions on it"}
-	switch {
-	case onprem:
-		steps = []string{"run onpremise-ssh-upgrade-db-script on each node"}
-		warnings = append(warnings, "on-premise orchestrator: the image is not changed, the rolling upgrade runs onpremise-ssh-upgrade-db-script on each node")
-	case cl.GetOrchestrator() == config.ConstOrchestratorOpenSVC:
-		steps = append(steps, "push the service definition of every node (update-opensvc-template), inert until the node restarts")
-	}
-	if !onprem {
-		steps = append(steps, "rolling upgrade: pull the image and restart each replica, switchover, pull and restart the old master")
-		if targetImage != cl.Conf.ProvDbImg && cl.IsVariableImmutable("prov-db-docker-img") {
-			warnings = append(warnings, "prov-db-image "+cl.Conf.ProvDbImg+" is pinned in the immutable configuration (cluster.d): confirm is refused until the operator changes the pin")
-		}
-	}
-	exists, checked := false, false
-	targetRelease := ""
-	if !onprem {
-		var cerr error
-		exists, checked, cerr = tagExists(ctx, repo, targetTag)
-		if cerr != nil {
-			checked = false
-			warnings = append(warnings, "registry check failed: "+cerr.Error())
-		}
-		if exists {
-			// The service definition is pinned on the release the tag points at (#1862).
-			if e, _, ok, rerr := resolveTag(ctx, repo, targetTag); rerr != nil {
-				warnings = append(warnings, "target not resolved to a release: "+rerr.Error())
-			} else if ok {
-				targetRelease = repo + ":" + e
-			}
-		}
-	}
-	order := []string{}
-	for _, sl := range cl.GetSlaves() {
-		if sl != nil {
-			order = append(order, sl.URL)
-		}
-	}
-	if m := cl.GetMaster(); m != nil {
-		order = append(order, "switchover", m.URL)
-	}
-	return map[string]interface{}{
-		"cluster":        cl.Name,
-		"orchestrator":   cl.GetOrchestrator(),
-		"flavor":         flavor,
-		"currentImage":   cl.Conf.ProvDbImg,
-		"currentLine":    current.String(),
-		"currentIsLTS":   table.IsLTS(flavor, current),
-		"nodes":          nodes,
-		"target":         target,
-		"targetLine":     next.String(),
-		"targetImage":    targetImage,
-		"targetRelease":  targetRelease,
-		"currentRelease": cl.Conf.ProvDbImgResolved,
-		"targetIsLTS":    table.IsLTS(flavor, next),
-		"tagChecked":     checked,
-		"tagExists":      exists,
-		"order":          order,
-		"steps":          steps,
-		"warnings":       warnings,
-		"releaseTable":   source,
-	}, nil
 }

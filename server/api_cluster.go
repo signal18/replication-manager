@@ -40,6 +40,7 @@ import (
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/releases"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/splitdump"
 )
@@ -577,6 +578,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDrop)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/rolling/upgrade/plan", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRollingUpgradePlan)),
+	)).Methods("GET")
 	router.Handle("/api/clusters/{clusterName}/actions/rolling/{action}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRollingAction)),
@@ -1611,6 +1616,8 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param action path string true "Rolling action" Enums(restart,reprov,upgrade,jobs-upgrade)
+// @Param target query string false "upgrade only: the release to move to, a method of the image list: patch (newest release of the current line, default), next-minor, next-lts, next-major, last-lts, version" Enums(patch,next-minor,next-lts,next-major,last-lts,version)
+// @Param version query string false "upgrade with target=version: the release or line to move to"
 // @Success 200 {string} string "Action triggered successfully"
 // @Success 202 {string} string "Long-running action started in background (reprov, upgrade)"
 // @Failure 400 {string} string "Unknown rolling action"
@@ -1639,15 +1646,68 @@ func (repman *ReplicationManager) handlerMuxRollingAction(w http.ResponseWriter,
 		w.WriteHeader(http.StatusAccepted)
 		w.Write([]byte("Rolling reprov started"))
 	case "upgrade":
+		// The target is a method of the image list (#1862): declare, pin the service
+		// definitions on the release, push them, then the rolling part in background.
+		target := r.URL.Query().Get("target")
+		if target == "" {
+			target = releases.TargetPatch
+		}
+		plan, err := mycluster.PrepareRollingUpgrade(target, r.URL.Query().Get("version"))
+		if err != nil {
+			http.Error(w, "Rolling upgrade refused: "+err.Error(), http.StatusBadRequest)
+			return
+		}
 		go func() { mycluster.RollingUpgrade() }()
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		w.Write([]byte("Rolling upgrade started"))
+		plan.Status = "rolling upgrade started"
+		json.NewEncoder(w).Encode(plan)
 	case "jobs-upgrade":
 		mycluster.SetRollingJobsUpgradeState()
 		w.Write([]byte("Cluster flagged for jobs upgrade"))
 	default:
 		http.Error(w, "Unknown rolling action: "+vars["action"], http.StatusBadRequest)
 	}
+}
+
+// handlerMuxRollingUpgradePlan answers what a rolling upgrade to a target would do,
+// from the image list, without touching the cluster.
+// @Summary Plan a rolling upgrade
+// @Description Resolves the target with the image list of the configurator (patch, next-minor, next-lts, next-major, last-lts, version) from the line the nodes run and describes the steps, the target release, what prov-db-image declares afterwards and the warnings. Nothing is changed.
+// @Tags ClusterMaintenance
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param target query string false "patch (default), next-minor, next-lts, next-major, last-lts, version" Enums(patch,next-minor,next-lts,next-major,last-lts,version)
+// @Param version query string false "with target=version: the release or line to move to"
+// @Success 200 {object} cluster.RollingUpgradePlan
+// @Failure 400 {string} string "Target not resolvable"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/rolling/upgrade/plan [get]
+func (repman *ReplicationManager) handlerMuxRollingUpgradePlan(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	target := r.URL.Query().Get("target")
+	if target == "" {
+		target = releases.TargetPatch
+	}
+	plan, err := mycluster.PlanRollingUpgrade(target, r.URL.Query().Get("version"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(plan)
 }
 
 // handlerMuxStartTraffic handles the start traffic process for a given cluster.

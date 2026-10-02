@@ -2191,6 +2191,81 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/rolling/upgrade/plan": {
+            "get": {
+                "description": "Resolves the target with the image list of the configurator (patch, next-minor, next-lts, next-major, last-lts, version) from the line the nodes run and describes the steps, the target release, what prov-db-image declares afterwards and the warnings. Nothing is changed.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterMaintenance"
+                ],
+                "summary": "Plan a rolling upgrade",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "patch",
+                            "next-minor",
+                            "next-lts",
+                            "next-major",
+                            "last-lts",
+                            "version"
+                        ],
+                        "type": "string",
+                        "description": "patch (default), next-minor, next-lts, next-major, last-lts, version",
+                        "name": "target",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "with target=version: the release or line to move to",
+                        "name": "version",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.RollingUpgradePlan"
+                        }
+                    },
+                    "400": {
+                        "description": "Target not resolvable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/rolling/{action}": {
             "post": {
                 "description": "Triggers one of: restart, reprov, upgrade, jobs-upgrade.\nreprov and upgrade are long-running and return 202 Accepted immediately; the operation runs in the background.",
@@ -2232,6 +2307,26 @@ const docTemplate = `{
                         "name": "action",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "enum": [
+                            "patch",
+                            "next-minor",
+                            "next-lts",
+                            "next-major",
+                            "last-lts",
+                            "version"
+                        ],
+                        "type": "string",
+                        "description": "upgrade only: the release to move to, a method of the image list: patch (newest release of the current line, default), next-minor, next-lts, next-major, last-lts, version",
+                        "name": "target",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "upgrade with target=version: the release or line to move to",
+                        "name": "version",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -23942,7 +24037,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "accrued": {
-                    "description": "Accrued unit-seconds per family, kept on disk so a reload continues the month.",
+                    "description": "Accrued unit-seconds per family, kept on disk so a reload continues the month:\nplan, over, under, rate, planCost, overCost, underCredit.",
                     "type": "object",
                     "additionalProperties": {
                         "type": "array",
@@ -24044,6 +24139,14 @@ const docTemplate = `{
                 "currency": {
                     "type": "string"
                 },
+                "defaultPrices": {
+                    "description": "the instance's price list; each row carries the price its cluster applied",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.BillingPrices"
+                        }
+                    ]
+                },
                 "elapsedPct": {
                     "type": "number"
                 },
@@ -24058,9 +24161,6 @@ const docTemplate = `{
                 },
                 "monthCost": {
                     "type": "number"
-                },
-                "prices": {
-                    "$ref": "#/definitions/cluster.BillingPrices"
                 },
                 "projected": {
                     "type": "number"
@@ -24298,6 +24398,82 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.RollingUpgradePlan": {
+            "type": "object",
+            "properties": {
+                "cluster": {
+                    "type": "string"
+                },
+                "currentImage": {
+                    "description": "prov-db-image as declared",
+                    "type": "string"
+                },
+                "currentIsLTS": {
+                    "type": "boolean"
+                },
+                "currentLine": {
+                    "type": "string"
+                },
+                "currentRelease": {
+                    "description": "the release the service definitions carry (prov-db-docker-img-resolved)",
+                    "type": "string"
+                },
+                "declaredAfter": {
+                    "description": "prov-db-image after the upgrade",
+                    "type": "string"
+                },
+                "flavor": {
+                    "type": "string"
+                },
+                "imageList": {
+                    "type": "string"
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "orchestrator": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "target": {
+                    "type": "string"
+                },
+                "targetImage": {
+                    "description": "the real release, repo:x.y.z",
+                    "type": "string"
+                },
+                "targetIsLTS": {
+                    "type": "boolean"
+                },
+                "targetLine": {
+                    "type": "string"
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "cluster.SnapshotMetadataSummary": {
             "type": "object",
             "properties": {
@@ -24363,15 +24539,25 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "monthCost": {
+                    "description": "= monthPlanCost + monthOverCost − monthUnderCredit",
                     "type": "number"
                 },
                 "monthOverCommit": {
                     "type": "number"
                 },
+                "monthOverCost": {
+                    "type": "number"
+                },
                 "monthPlan": {
                     "type": "number"
                 },
+                "monthPlanCost": {
+                    "type": "number"
+                },
                 "monthUnderCommit": {
+                    "type": "number"
+                },
+                "monthUnderCredit": {
                     "type": "number"
                 },
                 "overCommit": {
@@ -24380,14 +24566,44 @@ const docTemplate = `{
                 "overCommitPct": {
                     "type": "integer"
                 },
+                "overCost": {
+                    "description": "+ over-commit × price × (100+over%)/100",
+                    "type": "number"
+                },
                 "plan": {
+                    "type": "number"
+                },
+                "planCost": {
+                    "description": "plan × price, per month, at the last tick",
                     "type": "number"
                 },
                 "priced": {
                     "type": "boolean"
                 },
+                "projectedCost": {
+                    "type": "number"
+                },
+                "projectedOverCommit": {
+                    "type": "number"
+                },
+                "projectedOverCost": {
+                    "type": "number"
+                },
+                "projectedPlan": {
+                    "description": "Projection to the end of the month: each component as it stands at the last tick\ncarried over the time left (plan count of every tick, over-commit and under-commit\nprojected per unit), then priced: projectedCost = monthCost + rate × time left.",
+                    "type": "number"
+                },
+                "projectedPlanCost": {
+                    "type": "number"
+                },
+                "projectedUnderCommit": {
+                    "type": "number"
+                },
+                "projectedUnderCredit": {
+                    "type": "number"
+                },
                 "rate": {
-                    "description": "EUR per month at the last tick",
+                    "description": "EUR per month at the last tick = planCost + overCost − underCredit",
                     "type": "number"
                 },
                 "underCommit": {
@@ -24395,6 +24611,10 @@ const docTemplate = `{
                 },
                 "underCommitPct": {
                     "type": "integer"
+                },
+                "underCredit": {
+                    "description": "− under-commit × price × under%/100",
+                    "type": "number"
                 },
                 "unit": {
                     "type": "string"
@@ -27054,6 +27274,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provDbDockerImg": {
+                    "type": "string"
+                },
+                "provDbDockerImgResolved": {
                     "type": "string"
                 },
                 "provDbDockerJemallocPreload": {

@@ -265,20 +265,16 @@ Test `TestFilterLogEntries`.
 `cluster-rolling-reprov`, `cluster-rolling-jobs-upgrade` and `cluster-rolling-upgrade` join
 `cluster-rolling-restart` on the `/actions/rolling/{action}` route; all four are asynchronous
 like the API (the restart tool used to block the MCP call for the whole operation).
-`cluster-rolling-upgrade` takes a `target` in release lines: `patch`, `next-minor`, `next-lts`,
-`next-major`, `version` (+ `version`), and `confirm`. Without confirm it answers the plan from
-`rollingUpgradePlan`: current line (master's `DBVersion`, else the image tag), target line from
-`utils/releases` (`Table.Resolve`), target image = same repository + line, registry check
-(`releases.TagExists`, Docker Hub manifest HEAD, "not checked" for another registry), node
-order, warnings (major = mariadb-upgrade, no rolling way back, non-LTS line, on-premise = script
-path) and the `steps` the confirm chains. With confirm it refuses a tag the registry does
-not have, sets `prov-db-image` (`SetProvDBImage`, refused when `prov-db-docker-img` is
-immutable: a pin is changed by the operator, #1862), on OpenSVC pushes the service
-definition of every node (`OpenSVCUpdateDatabaseTemplate`, the `update-opensvc-template`
-action: the rolling upgrade itself only patches `image_pull_policy` in place, 0da40bd3e, so
-the declared image has to be in the service before the node restarts) and starts
-`RollingUpgrade`. That is the point of the tool over the API: one call for the setting, the
-per-node push and the rolling action. A rolling restart never changes the image (#1861). The
+`cluster-rolling-upgrade` takes a `target`, a method of the configurator's image list:
+`patch` (newest release of the current line), `next-minor`, `next-lts`, `next-major`,
+`last-lts`, `version` (+ `version`), and `confirm`. Without confirm it answers
+`Cluster.PlanRollingUpgrade` (the same plan as `GET /actions/rolling/upgrade/plan`): current
+line from the master's running version, target release from the list (never a registry
+lookup, `doc/implementation/cluster/DATABASE_IMAGE_PINNING.md`), what `prov-db-image`
+declares afterwards, node order, warnings (major = mariadb-upgrade, no rolling way back,
+non-LTS line, not in the list, pinned image, on-premise = script path) and the `steps`. With confirm it runs `Cluster.PrepareRollingUpgrade` (declare, pin the definitions on the
+target release, push them node by node on OpenSVC; refused on an immutable pin) and starts
+`RollingUpgrade`, exactly what `POST /actions/rolling/upgrade?target=` does. A rolling restart never changes the image (#1861). The
 declared image is resolved to a release before the push (`ResolveDatabaseImage`, the service
 definition never carries a pointer, `doc/implementation/cluster/DATABASE_IMAGE_PINNING.md`);
 the plan reports `targetRelease` (what the target tag points at today) and `currentRelease`. The release table `utils/releases/lts-versions.json`

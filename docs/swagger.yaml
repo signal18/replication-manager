@@ -739,8 +739,9 @@ definitions:
             format: float64
             type: number
           type: array
-        description: Accrued unit-seconds per family, kept on disk so a reload continues
-          the month.
+        description: |-
+          Accrued unit-seconds per family, kept on disk so a reload continues the month:
+          plan, over, under, rate, planCost, overCost, underCredit.
         type: object
       cluster:
         type: string
@@ -803,6 +804,11 @@ definitions:
         type: object
       currency:
         type: string
+      defaultPrices:
+        allOf:
+        - $ref: '#/definitions/cluster.BillingPrices'
+        description: the instance's price list; each row carries the price its cluster
+          applied
       elapsedPct:
         type: number
       final:
@@ -813,8 +819,6 @@ definitions:
         type: string
       monthCost:
         type: number
-      prices:
-        $ref: '#/definitions/cluster.BillingPrices'
       projected:
         type: number
       rate:
@@ -964,6 +968,58 @@ definitions:
       message:
         type: string
     type: object
+  cluster.RollingUpgradePlan:
+    properties:
+      cluster:
+        type: string
+      currentImage:
+        description: prov-db-image as declared
+        type: string
+      currentIsLTS:
+        type: boolean
+      currentLine:
+        type: string
+      currentRelease:
+        description: the release the service definitions carry (prov-db-docker-img-resolved)
+        type: string
+      declaredAfter:
+        description: prov-db-image after the upgrade
+        type: string
+      flavor:
+        type: string
+      imageList:
+        type: string
+      nodes:
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      orchestrator:
+        type: string
+      order:
+        items:
+          type: string
+        type: array
+      status:
+        type: string
+      steps:
+        items:
+          type: string
+        type: array
+      target:
+        type: string
+      targetImage:
+        description: the real release, repo:x.y.z
+        type: string
+      targetIsLTS:
+        type: boolean
+      targetLine:
+        type: string
+      warnings:
+        items:
+          type: string
+        type: array
+    type: object
   cluster.SnapshotMetadataSummary:
     properties:
       backupLine:
@@ -1007,28 +1063,62 @@ definitions:
       family:
         type: string
       monthCost:
+        description: = monthPlanCost + monthOverCost − monthUnderCredit
         type: number
       monthOverCommit:
         type: number
+      monthOverCost:
+        type: number
       monthPlan:
         type: number
+      monthPlanCost:
+        type: number
       monthUnderCommit:
+        type: number
+      monthUnderCredit:
         type: number
       overCommit:
         type: number
       overCommitPct:
         type: integer
+      overCost:
+        description: + over-commit × price × (100+over%)/100
+        type: number
       plan:
+        type: number
+      planCost:
+        description: plan × price, per month, at the last tick
         type: number
       priced:
         type: boolean
+      projectedCost:
+        type: number
+      projectedOverCommit:
+        type: number
+      projectedOverCost:
+        type: number
+      projectedPlan:
+        description: |-
+          Projection to the end of the month: each component as it stands at the last tick
+          carried over the time left (plan count of every tick, over-commit and under-commit
+          projected per unit), then priced: projectedCost = monthCost + rate × time left.
+        type: number
+      projectedPlanCost:
+        type: number
+      projectedUnderCommit:
+        type: number
+      projectedUnderCredit:
+        type: number
       rate:
-        description: EUR per month at the last tick
+        description: EUR per month at the last tick = planCost + overCost − underCredit
         type: number
       underCommit:
         type: number
       underCommitPct:
         type: integer
+      underCredit:
+        description: − under-commit × price × under%/100
+        type: number
       unit:
         type: string
       unitPrice:
@@ -2824,6 +2914,8 @@ definitions:
       provDbDiskType:
         type: string
       provDbDockerImg:
+        type: string
+      provDbDockerImgResolved:
         type: string
       provDbDockerJemallocPreload:
         type: string
@@ -5622,6 +5714,23 @@ paths:
         name: action
         required: true
         type: string
+      - description: 'upgrade only: the release to move to, a method of the image
+          list: patch (newest release of the current line, default), next-minor, next-lts,
+          next-major, last-lts, version'
+        enum:
+        - patch
+        - next-minor
+        - next-lts
+        - next-major
+        - last-lts
+        - version
+        in: query
+        name: target
+        type: string
+      - description: 'upgrade with target=version: the release or line to move to'
+        in: query
+        name: version
+        type: string
       produces:
       - application/json
       responses:
@@ -5646,6 +5755,62 @@ paths:
           schema:
             type: string
       summary: Trigger a rolling action on a cluster
+      tags:
+      - ClusterMaintenance
+  /api/clusters/{clusterName}/actions/rolling/upgrade/plan:
+    get:
+      description: Resolves the target with the image list of the configurator (patch,
+        next-minor, next-lts, next-major, last-lts, version) from the line the nodes
+        run and describes the steps, the target release, what prov-db-image declares
+        afterwards and the warnings. Nothing is changed.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: patch (default), next-minor, next-lts, next-major, last-lts,
+          version
+        enum:
+        - patch
+        - next-minor
+        - next-lts
+        - next-major
+        - last-lts
+        - version
+        in: query
+        name: target
+        type: string
+      - description: 'with target=version: the release or line to move to'
+        in: query
+        name: version
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cluster.RollingUpgradePlan'
+        "400":
+          description: Target not resolvable
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Plan a rolling upgrade
       tags:
       - ClusterMaintenance
   /api/clusters/{clusterName}/actions/rotate-passwords:

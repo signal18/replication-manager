@@ -32,15 +32,42 @@ Facts established on preprod (om3 rc40) and with a throwaway service on s18-fr-6
   11.8.8; the 2026-10-01 rolling restart recreated them from the node cache's 19-month-old
   11.7.2 (#1861).
 
-## Resolution (`utils/releases/registry.go`)
+## Resolution: the image list, never a registry
 
-`ResolveTag(repo, tag)`: an explicit tag (`x.y.z`, `x.y.z-suffix`, a digest reference)
-resolves to itself without a request. A pointer is resolved on Docker Hub: manifest digest of
-the tag (`HEAD /v2/<repo>/manifests/<tag>`), then the Hub tag listing
-(`/v2/repositories/<repo>/tags?ordering=last_updated`, five pages at most) gives the tags
-sharing that digest; the plain `x.y.z` wins, else the shortest explicit one, else the tag
-pinned by digest (`tag@sha256:…`). Another registry is not queried (`checked=false`): the
-declared name is rendered as is, with a warning.
+Three values. The **configurator value** is the tag list of the image repository
+(`share/repo/repos.json`, loaded into `ServiceRepos`, refreshed when the back office
+delivers `plugins/data/repos.json`; the delivered list keeps the registry's per-tag digest,
+the embedded one has names only). The **cluster value** is `prov-db-image` as declared. The
+**pinned cluster value** is the real release the service definitions carry, computed from
+the list at provision and at every rolling upgrade (`prov-db-docker-img-resolved`).
+
+`utils/releases.Catalog` (list + LTS table) answers everything, offline:
+
+| method | answer |
+|---|---|
+| `Resolve(tag)` | explicit tag: itself. Line `11.8`: `GetLastMinor`. `latest`: the release behind its digest when the list has one, else the newest release of the list. `lts`: `GetLastMajorLTS`. **Not found: the input comes back unchanged** (the definition keeps the declared name). |
+| `GetLastMinor(current)` | newest release of the current line, the `patch` target |
+| `GetNextMinor(current)` | newest release of the next line of the same major |
+| `GetNextMajor(current)` | newest release of the first line of the next major |
+| `GetNextMajorLTS(current)` | newest release of the next LTS line (LTS lines from `lts-versions.json`) |
+| `GetLastMajorLTS()` | newest release of the highest LTS line |
+| `Target(current, target, version)` | `patch`/`last-minor`, `next-minor`, `next-major`, `next-lts`, `last-lts`, `version` (a release is taken as is, in the list or not; a line is `GetLastMinor`, unchanged when absent) |
+
+`Cluster.PlanRollingUpgrade(target, version)` takes the current line from the master's
+running version (else the declared tag, else the record), applies `Target`, refuses a
+downgrade (line, and release when the running one is known; `patch` on a list older than
+the running release answers the running release with a warning), and says what
+`prov-db-image` declares afterwards: `patch` keeps the declaration, a line move declares the
+new line, a given release is declared as is. `PrepareRollingUpgrade` does the declaration
+(`SetProvDBImage`, refused on an immutable pin), writes the record, pushes the OpenSVC
+definitions node by node; the caller starts `RollingUpgrade`.
+
+The rolling upgrade takes the target: API `POST /actions/rolling/upgrade?target=…&version=…`
+(default `patch`, the historical behaviour: same line, newest known release),
+`GET /actions/rolling/upgrade/plan?target=…` for the plan, MCP `cluster-rolling-upgrade`
+with the same parameters. A stale embedded list means "the newest release this instance
+knows"; a fresher meaning comes with the next list the back office delivers, never from a
+live lookup.
 
 ## Where it plugs in
 
@@ -48,8 +75,8 @@ declared name is rendered as is, with a warning.
 |---|---|
 | provision (OpenSVC, Kubernetes) | `ResolveDatabaseImage(false)` before the render; a valid record is kept |
 | `update-opensvc-template` action (API) | `ResolveDatabaseImage(false)` before the render |
-| `RollingUpgrade` | `ResolveDatabaseImage(true)`, abort on failure |
-| MCP `cluster-rolling-upgrade` confirm | `SetProvDBImage` (refused when pinned immutable), `ResolveDatabaseImage(true)`, per-node push, `RollingUpgrade`; the plan reports `targetRelease` and `currentRelease` |
+| `RollingUpgrade` | `ResolveDatabaseImage(true)` (the record for the declared image; the API action and the MCP tool have already pinned the target through `PrepareRollingUpgrade`) |
+| API `/actions/rolling/upgrade?target=`, MCP `cluster-rolling-upgrade` confirm | `PrepareRollingUpgrade` then `RollingUpgrade`; `/actions/rolling/upgrade/plan` and the tool without confirm answer `PlanRollingUpgrade` |
 | every render | `cluster.deployImage()` = the record's explicit release, else the declared name |
 
 Rolling restart: unchanged, it keeps the image the service runs (`DeployImageOverride`).
