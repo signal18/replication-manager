@@ -101,6 +101,7 @@ function BackupSettings({ selectedCluster, user }) {
   const isUsingScript = selectedCluster?.config?.backupSaveScript.length > 0
 
   // Help content
+  const hBackupEncryption = `**Backup Encryption**\n\nEncrypts newly created local backup artifacts (physical, logical, mydumper/dumpling, binlog) with the database root password configured in \`db-servers-credential\`, using the standard OpenSSL AES-256-CBC format.\n\nBackups can be decrypted without replication-manager:\n\n\`openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 -in backup.enc -out backup\`\n\nA backup needs the root password that was valid when it was taken. Existing plaintext backups are unaffected; only backups created after enabling this switch are encrypted. Disabling it restores plaintext behavior.\n\nConfig: \`backup-encryption\``
   const hSaveScript = `**Custom Backup Save Script**\n\nExecutes a custom backup script instead of the built-in logical backup tools. When set, other logical backup options are ignored.\n\nThe script receives these parameters:\n1. DB Server Host\n2. Master Host\n3. DB Server Port\n4. Master Port\n5. DB User\n6. DB Password\n7. Cluster Name\n\nConfig: \`backup-save-script\``
   const hLoadScript = `**Custom Load Script**\n\nExecutes a custom script for loading/restoring backups.\n\nThe script receives these parameters:\n1. DB Server Host\n2. Master Host\n3. DB Server Port\n4. Master Port\n5. DB User\n6. DB Password\n7. Cluster Name\n\nConfig: \`backup-load-script\``
   const hLogicalBackup = `**Logical Backup**\n\nSelects the tool used for logical backups (mysqldump, mydumper, etc.).\nLogical backups produce SQL or structured data files that are portable across versions.\n\nConfig: \`backup-logical-type\``
@@ -143,6 +144,16 @@ function BackupSettings({ selectedCluster, user }) {
   const hEstimatePercentage = `**Backup Estimation Percentage from information_schema**\n\nPercentage of the information_schema size used as the backup size estimate when no previous backup exists.\n\nConfig: \`backup-estimate-size-percentage\``
 
   const dataObject = [
+    {
+      key: 'Backup Encryption',
+      help: h(hBackupEncryption, 'Backup Encryption'),
+      value: (
+        <RMSwitch isChecked={selectedCluster?.config?.backupEncryption}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for backup-encryption? Local backups will be encrypted with the database root password (db-servers-credential); restoring them needs that password.'}
+          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-encryption' }))} />
+      )
+    },
     {
       key: 'Custom Backup Script',
       help: h(hSaveScript, 'Custom Backup Save Script'),

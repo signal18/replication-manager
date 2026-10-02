@@ -842,6 +842,7 @@ type Config struct {
 	BackupEstimateSize                        bool              `mapstructure:"backup-estimate-size" toml:"backup-estimate-size" json:"backupEstimateSize"`
 	BackupEstimateSizePercentage              int               `mapstructure:"backup-estimate-size-percentage" toml:"backup-estimate-size-percentage" json:"backupEstimateSizePercentage"`
 	BackupGrowthPercentage                    int               `mapstructure:"backup-growth-percentage" toml:"backup-growth-percentage" json:"backupGrowthPercentage"`
+	BackupEncryption                          bool              `mapstructure:"backup-encryption" toml:"backup-encryption" json:"backupEncryption"`
 	SchedulerDatabaseLogsTableRotate          bool              `mapstructure:"scheduler-db-servers-logs-table-rotate" toml:"scheduler-db-servers-logs-table-rotate" json:"schedulerDbServersLogsTableRotate"`
 	SchedulerDatabaseLogsTableRotateCron      string            `mapstructure:"scheduler-db-servers-logs-table-rotate-cron" toml:"scheduler-db-servers-logs-table-rotate-cron" json:"schedulerDbServersLogsTableRotateCron"`
 	SchedulerMaintenanceDatabaseLogsTableKeep int               `mapstructure:"scheduler-db-servers-logs-table-keep" toml:"scheduler-db-servers-logs-table-keep" json:"schedulerDatabaseLogsTableKeep"`
@@ -2106,12 +2107,16 @@ func (conf *Config) IsVaultUsed() bool {
 	return true
 }
 
+// IsMonitoringSecretVersioningEnabled reports whether secret_store.json
+// records secret history. Local backup encryption turns it on: encrypted
+// backups use the database root password, and its history is what keeps
+// backups taken before a password change restorable.
 func (conf *Config) IsMonitoringSecretVersioningEnabled() bool {
 	if conf == nil {
 		return false
 	}
 
-	return conf.MonitoringSecretVersioning
+	return conf.MonitoringSecretVersioning || conf.BackupEncryption
 }
 
 func (conf *Config) GenerateKey(Logger *logrus.Logger) error {

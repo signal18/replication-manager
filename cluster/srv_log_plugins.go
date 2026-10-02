@@ -676,10 +676,10 @@ func (cluster *Cluster) checkResourceScaleWorkloadStates() {
 			})
 		}
 		if r := srv.DiskResizeRefused; r != nil {
-			sm.AddState("WARN0220@"+srv.URL, state.State{
+			sm.AddState("WARN0226@"+srv.URL, state.State{
 				ErrType:   "WARNING",
-				ErrKey:    "WARN0220",
-				ErrDesc:   fmt.Sprintf(clusterError["WARN0220"], srv.URL, r.From, r.To, r.Reason),
+				ErrKey:    "WARN0226",
+				ErrDesc:   fmt.Sprintf(clusterError["WARN0226"], srv.URL, r.From, r.To, r.Reason),
 				ErrFrom:   "WORKLOAD",
 				ServerUrl: srv.URL,
 			})

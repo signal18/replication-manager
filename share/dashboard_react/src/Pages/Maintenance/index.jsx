@@ -144,7 +144,7 @@ const bkuHelp = (unitGB) => `**Backup storage plan (BKU)**
 
 1 BKU = ${unitGB} GB of local backup storage: the replication-manager backups kept on the infrastructure and the extra physical disk replicated for failover applications.
 
-Exceeding the plan is monitored as over-commit and raises the alert WARN0219.`
+Exceeding the plan is monitored as over-commit and raises the alert WARN0225.`
 function BKUSlider({ value, isDisabled, onChange, unitGB, bku }) {
   const [draft, setDraft] = useState(null)
   const [showTooltip, setShowTooltip] = useState(false)
@@ -197,7 +197,7 @@ function BKUSlider({ value, isDisabled, onChange, unitGB, bku }) {
             </Text>
             <Text fontSize='sm' fontWeight='semibold' color={bku.overPlanUnits > 0 ? 'red.500' : 'var(--text-color)'}>
               {bku.overPlanUnits > 0
-                ? `${bku.overPlanUnits * unitGB} GB over the plan (${bku.overPlanUnits} BKU), WARN0219 open`
+                ? `${bku.overPlanUnits * unitGB} GB over the plan (${bku.overPlanUnits} BKU), WARN0225 open`
                 : bku.underPlanUnits > 0
                   ? `${bku.underPlanUnits * unitGB} GB left in the plan (${bku.underPlanUnits} BKU)`
                   : 'at the plan'}

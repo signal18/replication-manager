@@ -2921,16 +2921,23 @@ func (repo *ResticManager) AddBackupTask(dirpath string, tags []string, host str
 
 // AddBackupTaskWithCallback adds a backup task and returns a channel to receive the result
 func (repo *ResticManager) AddBackupTaskWithCallback(dirpath string, tags []string, host string) <-chan ResticResult {
+	return repo.AddBackupTaskWithOptions(ResticBackupOption{
+		DirPath: dirpath,
+		Tags:    tags,
+		Host:    strings.TrimSpace(host),
+	})
+}
+
+// AddBackupTaskWithOptions queues a backup task using a full option struct.
+// Callers that encrypt local artifacts may set Exclude to keep plaintext staging
+// paths out of the snapshot. Existing callers retain their previous behavior.
+func (repo *ResticManager) AddBackupTaskWithOptions(opt ResticBackupOption) <-chan ResticResult {
 	resultCh := make(chan ResticResult, 1)
 	repo.appendTask(&ResticTask{
-		ID:   repo.GenerateTaskID(),
-		Type: BackupTask,
-		BackupOpt: &ResticBackupOption{
-			DirPath: dirpath,
-			Tags:    tags,
-			Host:    strings.TrimSpace(host),
-		},
-		resultCh: resultCh,
+		ID:        repo.GenerateTaskID(),
+		Type:      BackupTask,
+		BackupOpt: &opt,
+		resultCh:  resultCh,
 	})
 	return resultCh
 }

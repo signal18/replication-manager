@@ -158,7 +158,7 @@ func computeBKU(plan int, localBytes, unitBytes int64, appDiskBytes int64, appDi
 }
 
 // RefreshBackupUnits measures the cluster's backup storage, local (BKU) and remote archive
-// (BAU), and asserts WARN0219 when the local backup disk is over the BKU plan. Runs every 30
+// (BAU), and asserts WARN0225 when the local backup disk is over the BKU plan. Runs every 30
 // ticks (disk walk); the state is preserved on the intermediate ticks through pstates30. The
 // remote archive has no plan, so no state: it is tracked and priced, never warned about.
 func (cluster *Cluster) RefreshBackupUnits() {
@@ -183,7 +183,7 @@ func (cluster *Cluster) RefreshBackupUnits() {
 	}
 	cluster.BackupArchiveUnits = computeBAU(cluster.remoteBackupBytes(), unit, d.producerBytes, d.producerUnits, cluster.bauUnitPrice(), now)
 	if r.OverCommit > 0 {
-		cluster.SetState("WARN0219", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0219"], cluster.Name, r.BkuLocal, r.Plan, humanBytes(r.LocalBytes)), ErrFrom: "BACKUP"})
+		cluster.SetState("WARN0225", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0225"], cluster.Name, r.BkuLocal, r.Plan, humanBytes(r.LocalBytes)), ErrFrom: "BACKUP"})
 	}
 }
 

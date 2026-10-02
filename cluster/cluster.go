@@ -309,31 +309,32 @@ type Cluster struct {
 	// MaintenanceLogrus is a dedicated logrus.Logger that writes to maintenance.log.
 	// Receives ConstLogModMaintenance events: backup, SST, task execution, purge, etc.
 	// Set by the server on cluster init. Nil when no log-file is configured.
-	MaintenanceLogrus    *log.Logger          `json:"-"`
-	runOnceAfterTopology bool                 `json:"-"`
-	logPtr               *os.File             `json:"-"`
-	termlength           int                  `json:"-"`
-	runUUID              string               `json:"-"`
-	cfgGroupDisplay      string               `json:"-"`
-	RepMgrVersion        string               `json:"-"`
-	RepMgrFullVersion    string               `json:"-"`
-	RepMgrRestartTime    int64                `json:"-"`
-	RepMgrHostname       string               `json:"-"`
-	exitMsg              string               `json:"-"`
-	exit                 atomic.Bool          `json:"-"`
-	stopOnce             sync.Once            `json:"-"`
-	canFlashBack         bool                 `json:"-"`
-	canResticFetchRepo   bool                 `json:"-"`
-	failoverCond         *nbc.NonBlockingChan `json:"-"`
-	switchoverCond       *nbc.NonBlockingChan `json:"-"`
-	rejoinCond           *nbc.NonBlockingChan `json:"-"`
-	bootstrapCond        *nbc.NonBlockingChan `json:"-"`
-	altertableCond       *nbc.NonBlockingChan `json:"-"`
-	addtableCond         *nbc.NonBlockingChan `json:"-"`
-	statecloseChan       chan state.State     `json:"-"`
-	switchoverChan       chan bool            `json:"-"`
-	errorChan            chan error           `json:"-"`
-	resources            *ResourceManager     `json:"-"` // repman-side RESOURCE authority (see resource_manager.go); injected via SetResourceManager; DBU/APU are unit projections over it, survives ServerMonitor recreation
+	MaintenanceLogrus           *log.Logger          `json:"-"`
+	runOnceAfterTopology        bool                 `json:"-"`
+	logPtr                      *os.File             `json:"-"`
+	termlength                  int                  `json:"-"`
+	runUUID                     string               `json:"-"`
+	cfgGroupDisplay             string               `json:"-"`
+	RepMgrVersion               string               `json:"-"`
+	RepMgrFullVersion           string               `json:"-"`
+	RepMgrRestartTime           int64                `json:"-"`
+	RepMgrHostname              string               `json:"-"`
+	exitMsg                     string               `json:"-"`
+	exit                        atomic.Bool          `json:"-"`
+	stopOnce                    sync.Once            `json:"-"`
+	backupEncryptionCleanupOnce sync.Once            `json:"-"`
+	canFlashBack                bool                 `json:"-"`
+	canResticFetchRepo          bool                 `json:"-"`
+	failoverCond                *nbc.NonBlockingChan `json:"-"`
+	switchoverCond              *nbc.NonBlockingChan `json:"-"`
+	rejoinCond                  *nbc.NonBlockingChan `json:"-"`
+	bootstrapCond               *nbc.NonBlockingChan `json:"-"`
+	altertableCond              *nbc.NonBlockingChan `json:"-"`
+	addtableCond                *nbc.NonBlockingChan `json:"-"`
+	statecloseChan              chan state.State     `json:"-"`
+	switchoverChan              chan bool            `json:"-"`
+	errorChan                   chan error           `json:"-"`
+	resources                   *ResourceManager     `json:"-"` // repman-side RESOURCE authority (see resource_manager.go); injected via SetResourceManager; DBU/APU are unit projections over it, survives ServerMonitor recreation
 	// provisioningMutex serialises every provision/unprovision operation that
 	// reports its result through the shared, unbuffered errorChan (the ~10
 	// receivers in prov.go + srv.go Uprovision). Without it, two overlapping
@@ -1029,7 +1030,7 @@ var pstates30 = []string{
 	"WARN0169",             // On-premise SSH key (CheckOnPremiseSSHKey runs %30)
 	"WARN0170",             // Configurator prerequisites (CheckConfiguratorPrerequisites runs %30)
 	"WARN0190", "WARN0191", // Rejoin catalog (HasCatalogBackupForRejoin runs %30)
-	"WARN0219", // Local backup storage over the BKU plan (RefreshBackupUnits runs %30)
+	"WARN0225", // Local backup storage over the BKU plan (RefreshBackupUnits runs %30)
 }
 
 var pstates3600 = []string{
@@ -1175,6 +1176,11 @@ func (cluster *Cluster) tickBody() {
 		cluster.CheckInterventionSchedule()
 
 		if cluster.runOnceAfterTopology {
+			if cluster.Conf.BackupEncryption {
+				// Once per process: removes encryption staging left by a crash
+				// or kill at startup, before any encrypted backup job runs.
+				cluster.trackTickGoroutine(cluster.cleanupStaleEncryptionArtifacts)
+			}
 			if !cluster.IsInFailover() {
 				cluster.initProxies()
 			}
@@ -1241,7 +1247,7 @@ func (cluster *Cluster) tickBody() {
 					goRun(cluster.ResticFetchRepo)
 					goRun(cluster.MonitorVariablesDiff)
 					goRun(cluster.MonitorVariablesChange)
-					goRun(cluster.RefreshBackupUnits) // BKU: local backup disk vs prov-db-bku (WARN0219, preserved via pstates30) + BAU: remote restic archive, no plan
+					goRun(cluster.RefreshBackupUnits) // BKU: local backup disk vs prov-db-bku (WARN0225, preserved via pstates30) + BAU: remote restic archive, no plan
 				}
 				wg.Wait()
 

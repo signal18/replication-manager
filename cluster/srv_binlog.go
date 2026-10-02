@@ -759,6 +759,15 @@ func (server *ServerMonitor) GenerateBinlogFromBackupDir(metamap *map[string]dbh
 
 	for _, file := range files {
 		fname := file.Name()
+		if isBackupIntegritySidecar(fname) {
+			continue
+		}
+		// Skip encrypted binlog artifacts: their bytes are ciphertext,
+		// not a parseable binlog stream, and ReadBinlogBackupDirGoMySQL would
+		// otherwise abort this whole reconstruction on the first one hit.
+		if isEncryptedArtifactSuffix(fname) {
+			continue
+		}
 		if strings.HasPrefix(fname, prefix) {
 			finfo, _ := file.Info()
 			meta := dbhelper.BinaryLogMetadata{

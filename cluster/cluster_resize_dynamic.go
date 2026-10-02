@@ -270,7 +270,7 @@ func (cluster *Cluster) openSVCResizeDisk(server *ServerMonitor, gb int) (bool, 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"OpenSVC volume resize queued on %s: %s/vol/%s -> %s (orchestration %s)", server.URL, ns, svcname, size, id)
 	// The action is a queued orchestration: read its outcome from the instance monitors
-	// so a refusal is tracked (WARN0220), not assumed applied.
+	// so a refusal is tracked (WARN0226), not assumed applied.
 	outcome, err := svc.WaitVolumeResizeV3(ns, svcname, openSVCVolumeResizeTimeout)
 	if err != nil {
 		return false, fmt.Errorf("resize queued (%s) but its outcome could not be read: %w", id, err)
@@ -1479,7 +1479,7 @@ func (cluster *Cluster) followDiskUsage() bool {
 // DiskResizeRefusal is the tracked state of a volume grow the orchestrator refused on one
 // server (no quota on the volume, a target under what the datasets hold, a pool without
 // room, a v2 daemon): set by applyDiskResize, cleared by the next step that goes through
-// on that server, surfaced each tick as WARN0220 (checkResourceScaleWorkloadStates).
+// on that server, surfaced each tick as WARN0226 (checkResourceScaleWorkloadStates).
 type DiskResizeRefusal struct {
 	From   string    `json:"from"`
 	To     string    `json:"to"`

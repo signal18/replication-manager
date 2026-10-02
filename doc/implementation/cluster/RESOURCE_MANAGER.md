@@ -90,7 +90,7 @@ rewritten on the service (what `volume#01.size` declares, so a later provision a
 action on the VOLUME object `<ns>/vol/<svcname>` (rc40 `om vol resize SIZE`: the size lands in the vol config,
 every node converges, the answer is a queued orchestration). Script / restart / Kubernetes resizers schedule a reprovision (PVC expansion is a later
 step). A refusal (no refquota, target under what the datasets hold, v2 daemon, pool full) is a tracked
-per-server state `ServerMonitor.DiskResizeRefused` surfaced each tick as **WARN0220**, cleared by the next
+per-server state `ServerMonitor.DiskResizeRefused` surfaced each tick as **WARN0226**, cleared by the next
 grow that goes through; no retry loop. What the tree really gets: the dbssd template now carries
 `quota = x1` on the parent dataset (the `$(100% * size)` expression form is refused by rc40, "quota:
 invalid size"); rc40's zfs driver moves only the head's refquota on resize, the quota follows in the om3
@@ -194,7 +194,7 @@ archive counts TWICE, it uses the disk twice; never a catalog sum) and **remote*
 repository raw-data size (`restic stats --mode raw-data`, refreshed by `ResticFetchRepo`) ONLY when
 that repository is S3/SFTP (`resticRepositoryIsRemote`; a local restic repository is local disk),
 converts local at the Storage-profile ratio (20 GB/BKU) into `BKUReading` (`backupUnits` in
-the cluster JSON) and asserts **WARN0219** when local BKU is over the plan (over-commit, billed
+the cluster JSON) and asserts **WARN0225** when local BKU is over the plan (over-commit, billed
 never blocked; in `pstates30`), and remote at the same ratio into `BAUReading`
 (`backupArchiveUnits`; no plan, no state). Graphite every tick: `resourcemanager.<CTOKEN>.plan_bku`,
 `bku.<cluster>.{local,local_bytes,billed}`, `bau.<cluster>.{units,bytes,billed}` (raw cluster
@@ -1100,6 +1100,6 @@ scale-up window, never while a memory resize is in flight. Evidence = the per-se
 | cpu | priority 1 when cpu is due: +1 core | overPlanGrowAllowed (envelope, node pool, client hook) else ERR00112 | all servers under cpu: smallest DBU keeping the peak under the mark | UndercommitFloorDBU | SetDBCores → SET GLOBAL re-tune + openSVCResizeCPU (pg_cpu_quota) |
 | mem | when mem or io is due and no plateau: +1 DBU of memory, clamped to GetDBContainerMemoryCapMB | in-flight gate; over plan by ResizeDynamicResources | first in the shrink order | UndercommitFloorDBU | SetDBMemorySize → buffer pool live, pg_mem_limit deferred on shrink, redo follows |
 | io | only after a memory step that bought no QPS (plateau check) or memory at its ceiling: +1000 IOPS | overPlanGrowAllowed | all servers under io: plan or peak+margin on the grid | the plan (cap, not consumption) | SetDBDiskIOPS → innodb_io_capacity/_max, write threads; no cgroup primitive |
-| disk | followDiskUsage: declaration follows the datadir in whole GB, applied first and alone | within plan free, else the envelope | all servers under disk: plan or peak+margin on the grid | the plan | SetDBDiskSize → applyDiskResize → om3 volume resize (grow only on rc40, WARN0220 refusal, WARN0221 quota above) |
+| disk | followDiskUsage: declaration follows the datadir in whole GB, applied first and alone | within plan free, else the envelope | all servers under disk: plan or peak+margin on the grid | the plan | SetDBDiskSize → applyDiskResize → om3 volume resize (grow only on rc40, WARN0226 refusal, WARN0221 quota above) |
 
 Shrink order: mem, cpu, disk, io, one axis per tick, only when nothing is saturated.
