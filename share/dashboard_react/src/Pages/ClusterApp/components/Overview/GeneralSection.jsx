@@ -238,9 +238,9 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
         value: (
           <TextForm
             value={provAppStartTimeout}
-            placeholder='cluster default (prov-app-start-timeout, 30m)'
+            placeholder='cluster default (prov-app-start-timeout, 2m)'
             confirmTitle="Start Timeout Change"
-            confirmBody='Start and image pull timeout of the container in the orchestrator (10m, 1h). Change "prov-app-start-timeout" to: '
+            confirmBody='Start and image pull timeout of the container in the orchestrator (2m, 15m). Change "prov-app-start-timeout" to: '
             onSave={onSaveStartTimeout}
           />
         )

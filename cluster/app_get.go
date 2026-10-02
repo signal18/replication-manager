@@ -855,7 +855,7 @@ func (app *App) GetPublicURL() string {
 }
 
 // GetStartTimeout is the om3 start_timeout / pull_timeout of the app container: the
-// app's own prov-app-start-timeout, else the cluster's, else 30m.
+// app's own prov-app-start-timeout, else the cluster's, else 2m.
 func (app *App) GetStartTimeout() string {
 	if app != nil && app.AppConfig != nil && strings.TrimSpace(app.AppConfig.ProvAppStartTimeout) != "" {
 		return strings.TrimSpace(app.AppConfig.ProvAppStartTimeout)
@@ -863,5 +863,5 @@ func (app *App) GetStartTimeout() string {
 	if app != nil && app.ClusterGroup != nil && strings.TrimSpace(app.ClusterGroup.Conf.ProvAppStartTimeout) != "" {
 		return strings.TrimSpace(app.ClusterGroup.Conf.ProvAppStartTimeout)
 	}
-	return "30m"
+	return "2m"
 }
