@@ -273,6 +273,10 @@ func (cluster *Cluster) ProvisionAppDatabase(app *App) error {
 		if err != nil {
 			return fail(fmt.Errorf("creating schema %q: %w", schema, err))
 		}
+		// Ours from this point: a later failure (user, grant) must not turn the
+		// schema we just created into a "foreign" one that refuses the retry.
+		cnf.AppDbOwned = true
+		cluster.SaveAppConfigs()
 	}
 	hosts := cluster.appDbUserHosts()
 	for _, h := range hosts {
@@ -301,6 +305,7 @@ func (cluster *Cluster) ProvisionAppDatabase(app *App) error {
 		}
 	}
 	cnf.AppDbOwned = true
+	cluster.SaveAppConfigs()
 	app.setDbProvisionError("")
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "App %s: database %s and user %s ready on %s (%d hosts)", app.GetId(), schema, user, master.URL, len(hosts))
 	return nil

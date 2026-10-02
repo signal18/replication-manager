@@ -397,3 +397,12 @@ func TestEscapeSingleQuotes(t *testing.T) {
 		})
 	}
 }
+
+func TestQuoteMySQLString(t *testing.T) {
+	cases := map[string]string{"abc": "'abc'", "it's": "'it''s'", `a\b`: `'a\\b'`, "": "''", "p@ss#w0rd": "'p@ss#w0rd'"}
+	for in, want := range cases {
+		if got := QuoteMySQLString(in); got != want {
+			t.Errorf("QuoteMySQLString(%q)=%s want %s", in, got, want)
+		}
+	}
+}
