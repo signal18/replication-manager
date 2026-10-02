@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -226,5 +227,67 @@ func TestDBRunAsVolumeMismatch(t *testing.T) {
 				t.Fatalf("dbRunAsVolumeMismatch = %q, want a warning: %v", msg, tc.warn)
 			}
 		})
+	}
+}
+
+// An invalid value is reported once, not at every render; the state is bounded to the last invalid
+// value of each setting and forgotten as soon as the setting is valid again.
+func TestInvalidDBIdentityLoggedOnce(t *testing.T) {
+	cluster := newIdentityCluster("percona/percona-server:8.4", "", "x:y")
+	last := func(setting string) (string, bool) {
+		cluster.dbIdentityLog.mu.Lock()
+		defer cluster.dbIdentityLog.mu.Unlock()
+		v, ok := cluster.dbIdentityLog.last[setting]
+		return v, ok
+	}
+	err := errors.New("bad value")
+
+	// first render with an invalid value on Percona: reported, and the fallback is still 1001
+	if uid, gid, managed := cluster.dbVolumeOwner(); uid != 1001 || gid != 1001 || !managed {
+		t.Fatalf("invalid volume owner on Percona = %d:%d managed=%v, want the 1001:1001 fallback", uid, gid, managed)
+	}
+	if v, ok := last("prov-db-volume-uid"); !ok || v != "x:y" {
+		t.Fatalf("the invalid value must have been recorded as reported, got %q %v", v, ok)
+	}
+	// repeated renders with the same value: nothing more to log, nothing more stored
+	for i := 0; i < 3; i++ {
+		cluster.dbVolumeOwner()
+	}
+	if cluster.logInvalidDBIdentityOnce("prov-db-volume-uid", "x:y", err) {
+		t.Error("the same invalid value must not be logged again")
+	}
+	// a second invalid value is logged and replaces the first one
+	if !cluster.logInvalidDBIdentityOnce("prov-db-volume-uid", "z", err) {
+		t.Error("another invalid value must be logged")
+	}
+	if v, _ := last("prov-db-volume-uid"); v != "z" {
+		t.Errorf("recorded value = %q, want the new one (z)", v)
+	}
+	if len(cluster.dbIdentityLog.last) != 1 {
+		t.Errorf("state = %v, want one entry per setting at most", cluster.dbIdentityLog.last)
+	}
+	// once the setting is valid the state is forgotten, so the same bad value is reported again later
+	cluster.Conf.ProvDBVolumeUID = "1234"
+	cluster.dbVolumeOwner()
+	if _, ok := last("prov-db-volume-uid"); ok {
+		t.Error("a valid value must forget the recorded invalid one")
+	}
+	cluster.Conf.ProvDBVolumeUID = "x:y"
+	cluster.dbVolumeOwner()
+	if v, ok := last("prov-db-volume-uid"); !ok || v != "x:y" {
+		t.Errorf("the invalid value must be reported again after a valid one, got %q %v", v, ok)
+	}
+	// run-as is tracked independently and an empty value also forgets it
+	cluster.Conf.ProvDBRunAsUID = "mysql"
+	for i := 0; i < 3; i++ {
+		cluster.dbRunAs()
+	}
+	if v, _ := last("prov-db-run-as-uid"); v != "mysql" || len(cluster.dbIdentityLog.last) != 2 {
+		t.Errorf("state = %v, want exactly the last invalid value of each of the two settings", cluster.dbIdentityLog.last)
+	}
+	cluster.Conf.ProvDBRunAsUID = ""
+	cluster.dbRunAs()
+	if _, ok := last("prov-db-run-as-uid"); ok {
+		t.Error("an empty run-as value must forget the recorded invalid one")
 	}
 }

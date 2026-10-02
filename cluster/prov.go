@@ -1236,8 +1236,11 @@ const dbIDMax = 2147483647
 
 // ParseDBIdentity validates prov-db-run-as-uid and prov-db-volume-uid: empty (not set)
 // or a numeric "UID" or "UID:GID", where 0 is root, taken literally and the GID
-// defaults to the UID. Names are refused: they would resolve through the
-// image's passwd, and Kubernetes only takes numbers.
+// defaults to the UID. "Literally" holds for the process and the volume owner; the
+// dbjobs script db_owner is the one exception (it keeps the legacy owner for the few
+// files it writes when the datadir is owned by root, see
+// doc/implementation/cluster/DATABASE_RUNTIME_UID_GID.md). Names are refused: they
+// would resolve through the image's passwd, and Kubernetes only takes numbers.
 func ParseDBIdentity(setting, value string) (uid, gid int, set bool, err error) {
 	v := strings.TrimSpace(value)
 	if v == "" {
@@ -1274,9 +1277,10 @@ func ParseDBIdentity(setting, value string) (uid, gid int, set bool, err error) 
 func (cluster *Cluster) dbRunAs() (uid, gid int, set bool) {
 	uid, gid, set, err := ParseDBIdentity("prov-db-run-as-uid", cluster.Conf.ProvDBRunAsUID)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s; using the legacy behavior", err)
+		cluster.logInvalidDBIdentityOnce("prov-db-run-as-uid", cluster.Conf.ProvDBRunAsUID, err)
 		return 0, 0, false
 	}
+	cluster.dbIdentityLog.valid("prov-db-run-as-uid")
 	return uid, gid, set
 }
 
@@ -1297,7 +1301,9 @@ func (cluster *Cluster) dbRunAs() (uid, gid int, set bool) {
 func (cluster *Cluster) dbVolumeOwner() (uid, gid int, managed bool) {
 	uid, gid, set, err := ParseDBIdentity("prov-db-volume-uid", cluster.Conf.ProvDBVolumeUID)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s; using the legacy behavior", err)
+		cluster.logInvalidDBIdentityOnce("prov-db-volume-uid", cluster.Conf.ProvDBVolumeUID, err)
+	} else {
+		cluster.dbIdentityLog.valid("prov-db-volume-uid")
 	}
 	if err == nil && set {
 		return uid, gid, true
@@ -1308,12 +1314,55 @@ func (cluster *Cluster) dbVolumeOwner() (uid, gid int, managed bool) {
 	return 999, 999, false
 }
 
+// dbIdentityLogState remembers, per setting, the last invalid identity value already
+// reported, so a bad value in a configuration file is logged once and not at every render
+// of the templates (the settings API refuses invalid values, so this only concerns
+// hand-edited files). At most one value per setting (two in all) is kept per cluster: a
+// new invalid value replaces the previous one, and a valid or empty value forgets it.
+type dbIdentityLogState struct {
+	mu   sync.Mutex
+	last map[string]string
+}
+
+// invalid records an invalid value and reports whether it must be logged: true unless it
+// is the one already reported for that setting.
+func (st *dbIdentityLogState) invalid(setting, value string) bool {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if prev, seen := st.last[setting]; seen && prev == value {
+		return false
+	}
+	if st.last == nil {
+		st.last = make(map[string]string, 2)
+	}
+	st.last[setting] = value
+	return true
+}
+
+// valid forgets the invalid value of a setting that now parses (or is empty).
+func (st *dbIdentityLogState) valid(setting string) {
+	st.mu.Lock()
+	delete(st.last, setting)
+	st.mu.Unlock()
+}
+
+// logInvalidDBIdentityOnce reports whether it logged.
+func (cluster *Cluster) logInvalidDBIdentityOnce(setting, value string, err error) bool {
+	if !cluster.dbIdentityLog.invalid(setting, value) {
+		return false
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s; using the legacy behavior", err)
+	return true
+}
+
 // dbRunAsVolumeMismatch describes, and is empty when there is nothing to say, a
 // configuration where the database runs as a non-root UID (prov-db-run-as-uid)
 // that does not own its data volume (prov-db-volume-uid, or the legacy 999 owner
 // of OpenSVC, or whatever the storage gives on Kubernetes when the owner is not
 // managed): mysqld then cannot write its datadir. The two settings are
-// independent on purpose, so this is only reported, never corrected.
+// independent on purpose, so this is only reported, never corrected. Only the UID is
+// compared: the owner permission bits decide for a process running as the owner, whatever
+// the group of the files is.
 func (cluster *Cluster) dbRunAsVolumeMismatch() string {
 	runUID, _, set := cluster.dbRunAs()
 	if !set || runUID == 0 {

@@ -87,7 +87,9 @@ name-based default.
 consumer uses that result: the container process takes `dbRunAs`; the OpenSVC
 volume owner, the bootstrap chown and the Kubernetes init chown take `dbVolumeOwner`.
 An invalid value (the setters refuse one, but a config file may carry it) is
-logged at error level and handled as empty.
+logged at error level, once and not at every render of the templates, and handled as empty. Only the last
+invalid value of each setting is remembered per cluster (two entries at most; a new invalid value replaces it and a
+valid or empty value forgets it), so the state cannot grow (`TestInvalidDBIdentityLoggedOnce`).
 
 Because they are independent, **the operator owns the match between them**.
 repman does not force the owner to follow the user, nor the other way round:
@@ -101,7 +103,8 @@ repman does not force the owner to follow the user, nor the other way round:
   then reports `Permission denied`; set `prov-db-volume-uid` to the same numbers to avoid it.
   replication-manager logs a warning at provisioning time in that case (a non-root run-as UID that
   differs from the volume owner, or, on Kubernetes, a non-root run-as UID with no managed owner), and does
-  not correct it (`TestDBRunAsVolumeMismatch`).
+  not correct it (`TestDBRunAsVolumeMismatch`). The check compares the UID only: for a process that is the
+  owner of the files, the owner permission bits decide, whatever their group is.
 
 An explicit `--user` (or `--user=`, `-u`) in `prov-db-docker-run-args` on OpenSVC
 wins over `prov-db-run-as-uid` (it is also how an operator gives a user *name*, which

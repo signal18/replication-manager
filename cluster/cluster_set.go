@@ -1980,8 +1980,10 @@ func (cluster *Cluster) SetProvDBImage(value string) error {
 
 // SetProvDBRunAsUID sets the numeric UID[:GID] a provisioned database container
 // runs as (OpenSVC --user, Kubernetes securityContext). Empty restores the
-// legacy behavior; 0 is root, taken literally. It is independent of
-// prov-db-volume-uid. Reprovisioning remains an explicit operator action; the cookie
+// legacy behavior; 0 is root, taken literally (for the process; the dbjobs script
+// db_owner keeps the legacy owner for the few files it writes when the datadir is owned
+// by root, see doc/implementation/cluster/DATABASE_RUNTIME_UID_GID.md). It is
+// independent of prov-db-volume-uid. Reprovisioning remains an explicit operator action; the cookie
 // only surfaces that the rendered service is now stale.
 func (cluster *Cluster) SetProvDBRunAsUID(value string) error {
 	return cluster.setProvDBIdentity("prov-db-run-as-uid", &cluster.Conf.ProvDBRunAsUID, value)
