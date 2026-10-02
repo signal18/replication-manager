@@ -45,13 +45,14 @@ const (
 	BillingFamilyCompute  = "apu"          // applications and proxies, in APU
 	BillingFamilyBackup   = "bku"          // local backups, in BKU
 	BillingFamilyArchive  = "bau"          // archives, in BAU
+	BillingFamilyGateway  = "gwu"          // gateway egress, in GWU, cumulative over the month (#1872)
 )
 
 // BillingPrices are the infrastructure's unit prices (EUR per unit per month) and the
 // over/under-commit percentages, from cloud18-marketplace-*-price and -*-price-pct.
 type BillingPrices struct {
-	DBU, APU, BKU, BAU float64
-	OverPct, UnderPct  int
+	DBU, APU, BKU, BAU, GWU float64
+	OverPct, UnderPct       int
 }
 
 func (p BillingPrices) of(family string) float64 {
@@ -64,6 +65,8 @@ func (p BillingPrices) of(family string) float64 {
 		return p.BKU
 	case BillingFamilyArchive:
 		return p.BAU
+	case BillingFamilyGateway:
+		return p.GWU
 	}
 	return 0
 }
@@ -78,6 +81,9 @@ type UnitUsage struct {
 	Priced   bool
 	// NoPlan: pure usage (archives), billed at the unit price with no over/under-commit.
 	NoPlan bool
+	// Cumulative: Billable is the month-to-date volume (gateway egress), not a rate: the
+	// statement takes it as is instead of integrating it over time (#1872).
+	Cumulative bool
 	// The price the cluster applies (its own configuration, the same the unit readings
 	// use); 0 = the manager's default price list.
 	UnitPrice         float64
@@ -103,6 +109,7 @@ type UnitBillingRow struct {
 	OverCommitPct    int     `json:"overCommitPct"`
 	UnderCommitPct   int     `json:"underCommitPct"`
 	Priced           bool    `json:"priced"`
+	Cumulative       bool    `json:"cumulative"`  // month-to-date volume, not integrated (#1872)
 	Rate             float64 `json:"rate"`        // EUR per month at the last tick = planCost + overCost − underCredit
 	PlanCost         float64 `json:"planCost"`    // plan × price, per month, at the last tick
 	OverCost         float64 `json:"overCost"`    // + over-commit × price × (100+over%)/100
@@ -466,13 +473,21 @@ func (m *ResourceManager) RecordUsage(cluster string, id ClusterIdentity, usage 
 				row.planCostSec, row.overCostSec, row.underCreditSec = old.planCostSec, old.overCostSec, old.underCreditSec
 			}
 		}
-		row.planSec += u.Plan * dt
-		row.overSec += row.OverCommit * dt
-		row.underSec += row.UnderCommit * dt
-		row.rateSec += row.Rate * dt
-		row.planCostSec += row.PlanCost * dt
-		row.overCostSec += row.OverCost * dt
-		row.underCreditSec += row.UnderCredit * dt
+		if u.Cumulative {
+			// A volume: the month so far IS the reading (plan for the month, over and under
+			// against it), stored as whole-month integrals so the same fields serve.
+			row.Cumulative = true
+			row.planSec, row.overSec, row.underSec = u.Plan*monthSeconds, row.OverCommit*monthSeconds, row.UnderCommit*monthSeconds
+			row.rateSec, row.planCostSec, row.overCostSec, row.underCreditSec = row.Rate*monthSeconds, row.PlanCost*monthSeconds, row.OverCost*monthSeconds, row.UnderCredit*monthSeconds
+		} else {
+			row.planSec += u.Plan * dt
+			row.overSec += row.OverCommit * dt
+			row.underSec += row.UnderCommit * dt
+			row.rateSec += row.Rate * dt
+			row.planCostSec += row.PlanCost * dt
+			row.overCostSec += row.OverCost * dt
+			row.underCreditSec += row.UnderCredit * dt
+		}
 		row.MonthPlan = row.planSec / monthSeconds
 		row.MonthOverCommit = row.overSec / monthSeconds
 		row.MonthUnderCommit = row.underSec / monthSeconds
@@ -507,12 +522,29 @@ func (m *ResourceManager) recomputeTotalsLocked(now time.Time) {
 	elapsed := math.Max(0, now.UTC().Sub(start).Seconds())
 	b.stmt.ElapsedPct = math.Round(elapsed/monthSeconds*1000) / 10
 	b.stmt.Prices = b.prices
-	b.stmt.MonthCost, b.stmt.Rate = 0, 0
+	b.stmt.MonthCost, b.stmt.Rate, b.stmt.Projected = 0, 0, 0
 	left := (monthSeconds - elapsed) / monthSeconds
 	for _, cs := range b.stmt.Clusters {
-		cs.MonthCost = 0
+		cs.MonthCost, cs.Projected = 0, 0
 		for i := range cs.Units {
 			r := &cs.Units[i]
+			if r.Cumulative && elapsed > 0 { // a volume: extrapolate the month-to-date linearly (#1872)
+				scale := monthSeconds / elapsed
+				projBillable := r.Billable * scale
+				r.ProjectedPlan = r.Plan
+				r.ProjectedOverCommit = math.Max(0, projBillable-r.Plan)
+				r.ProjectedUnderCommit = math.Max(0, r.Plan-projBillable)
+				r.ProjectedPlanCost = r.PlanCost
+				r.ProjectedOverCost = r.ProjectedOverCommit * r.UnitPrice * float64(100+r.OverCommitPct) / 100
+				r.ProjectedUnderCredit = r.ProjectedUnderCommit * r.UnitPrice * float64(r.UnderCommitPct) / 100
+				if !r.Priced {
+					r.ProjectedPlanCost, r.ProjectedOverCost, r.ProjectedUnderCredit = 0, 0, 0
+				}
+				r.ProjectedCost = r.ProjectedPlanCost + r.ProjectedOverCost - r.ProjectedUnderCredit
+				cs.MonthCost += r.MonthCost
+				cs.Projected += r.ProjectedCost
+				continue
+			}
 			r.ProjectedPlan = r.MonthPlan + r.Plan*left
 			r.ProjectedOverCommit = r.MonthOverCommit + r.OverCommit*left
 			r.ProjectedUnderCommit = r.MonthUnderCommit + r.UnderCommit*left
@@ -521,12 +553,12 @@ func (m *ResourceManager) recomputeTotalsLocked(now time.Time) {
 			r.ProjectedOverCost = r.MonthOverCost + r.OverCost*left
 			r.ProjectedUnderCredit = r.MonthUnderCredit + r.UnderCredit*left
 			cs.MonthCost += r.MonthCost
+			cs.Projected += r.ProjectedCost
 		}
-		cs.Projected = cs.MonthCost + cs.Rate*(monthSeconds-elapsed)/monthSeconds
 		b.stmt.MonthCost += cs.MonthCost
 		b.stmt.Rate += cs.Rate
+		b.stmt.Projected += cs.Projected
 	}
-	b.stmt.Projected = b.stmt.MonthCost + b.stmt.Rate*(monthSeconds-elapsed)/monthSeconds
 	b.stmt.GeneratedAt = now
 }
 

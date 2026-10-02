@@ -117,7 +117,7 @@ func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServ
 		DefaultDBU: repman.Conf.ProvDbDbu, DefaultAPU: repman.Conf.ProvServicePlanApu, DefaultBKU: repman.Conf.ProvServicePlanBku,
 		Pool: repman.infraUnitPool(), PoolOK: true,
 		Domain: repman.Conf.Cloud18Domain, SubDomain: repman.Conf.Cloud18SubDomain, Zone: repman.Conf.Cloud18SubDomainZone,
-		GatewayDomain: repman.Conf.Cloud18GatewayDomainName, AppTemplates: repman.ListAppTemplates(nil),
+		GatewayDomain: repman.Conf.PrimaryGatewayDomain(), AppTemplates: repman.ListAppTemplates(nil),
 	}
 	st.NeededDBU, st.NeededAPU = repman.selfServiceUnitsNeeded()
 	if !st.Pool.Known {

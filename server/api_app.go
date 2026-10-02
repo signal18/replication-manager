@@ -1406,12 +1406,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				gwUnlock := func() {}
 				var externalRoutes [][]config.Route
 				if !strings.HasPrefix(vars["key"], "monitor") {
-					gw := strings.ToLower(strings.TrimSpace(mycluster.Conf.Cloud18GatewayService))
-					if gw != "" {
-						gwMu := repman.getGatewayMutex(gw)
-						gwMu.Lock()
-						gwUnlock = gwMu.Unlock
-					}
+					gwUnlock = repman.lockGateways(mycluster.Conf) // #1873: every gateway of the cluster, fixed order
 					externalRoutes = repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
 				}
 
@@ -1875,6 +1870,28 @@ func routesReferencingSecretVar(routes []config.Route, varName string) []int {
 // it on first use.  Holding this mutex across allExternalGatewayRoutes + node.Lock()
 // prevents two concurrent requests on different clusters from both passing the
 // cross-cluster conflict check and both committing conflicting routes.
+// lockGateways takes the mutex of every gateway of a cluster in a fixed order (no
+// deadlock between two clusters sharing several gateways, #1873) and returns the
+// unlock; a no-op when the cluster has no gateway.
+func (repman *ReplicationManager) lockGateways(conf *config.Config) func() {
+	gws := conf.GatewayServicesLower()
+	if len(gws) == 0 {
+		return func() {}
+	}
+	sort.Strings(gws)
+	locked := make([]*sync.Mutex, 0, len(gws))
+	for _, gw := range gws {
+		mu := repman.getGatewayMutex(gw)
+		mu.Lock()
+		locked = append(locked, mu)
+	}
+	return func() {
+		for i := len(locked) - 1; i >= 0; i-- {
+			locked[i].Unlock()
+		}
+	}
+}
+
 func (repman *ReplicationManager) getGatewayMutex(gw string) *sync.Mutex {
 	actual, _ := repman.gatewayMu.LoadOrStore(gw, new(sync.Mutex))
 	return actual.(*sync.Mutex)
@@ -1893,16 +1910,16 @@ func (repman *ReplicationManager) allExternalGatewayRoutes(excludeClusterName, e
 	}
 	repman.Unlock()
 
-	var thisGateway string
+	var thisConf *config.Config
 	if cl, ok := clusterSnapshot[excludeClusterName]; ok {
-		thisGateway = strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
+		thisConf = cl.Conf
 	}
-	if thisGateway == "" {
+	if thisConf == nil || thisConf.PrimaryGatewayService() == "" {
 		return nil
 	}
 	var others [][]config.Route
 	for _, cl := range clusterSnapshot {
-		if strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService)) != thisGateway {
+		if !cl.Conf.SharesGateway(thisConf) { // #1873: peers share any gateway
 			continue
 		}
 		// GetAppsCopy snapshots cl.Apps under the cluster lock so we don't
@@ -1978,12 +1995,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		// batch.  gwUnlock is called explicitly at every exit so the mutex is released
 		// right after the commit and before post-commit I/O (SaveConfig, etc.).
 		gwUnlock := func() {}
-		gw := strings.ToLower(strings.TrimSpace(mycluster.Conf.Cloud18GatewayService))
-		if gw != "" {
-			gwMu := repman.getGatewayMutex(gw)
-			gwMu.Lock()
-			gwUnlock = gwMu.Unlock
-		}
+		gwUnlock = repman.lockGateways(mycluster.Conf) // #1873: every gateway of the cluster, fixed order
 		others := repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
 
 		for _, row := range body {
@@ -2213,12 +2225,7 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 	switch field {
 	case "routes":
 		gwUnlock := func() {}
-		gw := strings.ToLower(strings.TrimSpace(mycluster.Conf.Cloud18GatewayService))
-		if gw != "" {
-			gwMu := repman.getGatewayMutex(gw)
-			gwMu.Lock()
-			gwUnlock = gwMu.Unlock
-		}
+		gwUnlock = repman.lockGateways(mycluster.Conf) // #1873: every gateway of the cluster, fixed order
 		node.Lock()
 		if index >= len(node.AppConfig.Deployment.Routes) {
 			node.Unlock()

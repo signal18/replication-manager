@@ -934,7 +934,7 @@ func (repman *ReplicationManager) handlerMuxGlobalJobs(w http.ResponseWriter, r 
 // billingPrices is the infrastructure's price list for the ResourceManager.
 func (repman *ReplicationManager) billingPrices() cluster.BillingPrices {
 	c := repman.Conf
-	return cluster.BillingPrices{DBU: c.Cloud18MarketplaceDBUPrice, APU: c.Cloud18MarketplaceAPUPrice, BKU: c.Cloud18MarketplaceBKUPrice, BAU: c.Cloud18MarketplaceBAUPrice,
+	return cluster.BillingPrices{DBU: c.Cloud18MarketplaceDBUPrice, APU: c.Cloud18MarketplaceAPUPrice, BKU: c.Cloud18MarketplaceBKUPrice, BAU: c.Cloud18MarketplaceBAUPrice, GWU: c.Cloud18MarketplaceGWUPrice,
 		OverPct: c.Cloud18MarketplaceOvercommitPricePct, UnderPct: c.Cloud18MarketplaceUndercommitPricePct}
 }
 

@@ -87,6 +87,7 @@ type ReplicationManager struct {
 	CpuProfile                   string                             `json:"cpuprofile"`
 	Clusters                     map[string]*cluster.Cluster        `json:"-"`
 	resourceManager              *cluster.ResourceManager           `json:"-"` // repman-side DBU authority (Epic #1776); created once, injected into every cluster; survives ServerMonitor recreation
+	gatewayTraffic               *gatewayTraffic                    `json:"-"` // GWU collector state (#1872)
 	PeerManager                  *peer.PeerManager                  `json:"-"`
 	Partners                     []config.Partner                   `json:"partners"`
 	Partner                      config.Partner                     `json:"partner"`
@@ -1121,6 +1122,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.ProvServicePlanDbu, "prov-service-plan-dbu", 0, "Per-cluster DBU service plan = the SUM of the deployment plans (Σ prov-db-dbu over the DB nodes). Materialized/recomputed each tick -- the real cluster contract number readers use (GUI/API/GWARN016). The client moves the per-node prov-db-dbu, not this, so it never re-locks in /etc.")
 	flags.IntVar(&conf.ProvDbDbu, "prov-db-dbu", 2, "Per-node DBU reservation (technical resource contract; 1 DBU = 1 core / 4GB / 20GB / 1000 IOPS). All DB nodes are identical, so the cluster DBU contract = prov-db-dbu x number of nodes. Client-controlled (dynamic layer), the DBU configurator moves it. Default 2 (2 cores / 8GB / 80GB / 2000 IOPS per node).")
 	flags.IntVar(&conf.ProvDbBku, "prov-db-bku", 6, "Per-cluster BKU reservation, the backup unit plan (1 BKU = 20 GB of backup disk, nothing else; accounted per cluster, never per node). Backup storage above the plan is over-commit: billed, never blocked. Local BKU = the cluster's local backup (the repman backups directory on the local pool); remote BKU = what is archived on S3/SFTP (restic), billed at its own price.")
+	flags.IntVar(&conf.ProvGatewayUnits, "prov-gateway-units", 10, "Gateway network plan of the cluster in GWU per month (egress through the Cloud18 gateways, cloud18-marketplace-gwu-unit-mb MB each); over and under-commit percentages apply like the compute units")
 	flags.IntVar(&conf.ProvServicePlanApu, "prov-service-plan-apu", 4, "Per-cluster APU service plan = the SUM of the deployment plans (proxies at prov-proxy-apu + apps at their own config). Materialized/recomputed each tick -- the real cluster contract number readers use (GUI/API/GWARN016). The client moves the per-deployment reservations, not this. 1 APU = 1 core / 1GB / 10GB, no IOPS.")
 	flags.IntVar(&conf.ProvServicePlanBpu, "prov-service-plan-bpu", 1, "Service plan in Public-network/Bandwidth Units (BPU reservation contract; public network capacity, maps to cloud18-infra-public-bandwidth). Default 1.")
 	flags.IntVar(&conf.ProvServicePlanBku, "prov-service-plan-bku", 1, "Service plan in Backup Units (BKU reservation contract; storage/backup profile, disk-dominant). Default 1.")
@@ -1242,12 +1244,14 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.Float64Var(&conf.Cloud18MarketplaceBAUPrice, "cloud18-marketplace-bau-price", 0, "Price per BAU and per month in Eur (1 BAU = 20 GB of remote backup archive held by restic on S3/SFTP, no plan, billed on usage); applies to Signal18 or partner storage only; 0 = not priced")
 	flags.IntVar(&conf.Cloud18MarketplaceOvercommitPricePct, "cloud18-marketplace-overcommit-price-pct", 150, "SURCHARGE on a unit consumed ABOVE the plan, in percent of the unit price (150 = the unit costs 2.5 times the price); asymmetric with cloud18-marketplace-undercommit-price-pct; applies to every unit family with a plan (DBU, APU, BKU), never to the BAU (pure usage)")
 	flags.IntVar(&conf.Cloud18MarketplaceUndercommitPricePct, "cloud18-marketplace-undercommit-price-pct", 80, "REDUCTION on a plan unit left UNCONSUMED, in percent of the unit price (80 = the unit costs 0.2 times the price; 0 = the plan is billed in full); the pendant of cloud18-marketplace-overcommit-price-pct")
+	flags.Float64Var(&conf.Cloud18MarketplaceGWUPrice, "cloud18-marketplace-gwu-price", 0, "Price per GWU and per month in Eur (1 GWU = cloud18-marketplace-gwu-unit-mb MB sent out through the Cloud18 gateways by the cluster's apps, read on the gateways' HAProxy stats port). 0 = gateway traffic is not priced")
+	flags.IntVar(&conf.Cloud18MarketplaceGWUUnitMB, "cloud18-marketplace-gwu-unit-mb", 100, "Size of one GWU in MB (million octets) of egress per month")
 	flags.BoolVar(&conf.Cloud18MarketplaceBAUClientStorage, "cloud18-marketplace-bau-client-storage", false, "The cluster's remote backup repository (S3/SFTP) is the client's own storage: its BAU are tracked but never priced")
 	flags.BoolVar(&conf.Cloud18SelfServiceClusters, "cloud18-self-service-clusters", false, "Let registered Cloud18 users reaching this instance through peering create clusters here without subscription acceptance; the partner is only informed (OpenSVC and Kubernetes orchestrators)")
 	flags.IntVar(&conf.Cloud18SelfServiceMaxClustersPerUser, "cloud18-self-service-max-clusters-per-user", 3, "Clusters a Cloud18 user may sponsor on this instance through self-service")
 	flags.StringVar(&conf.Cloud18SelfServiceClustersEnabledScript, "cloud18-self-service-clusters-enabled-script", "", "Script run before a self-service cluster creation (argv: identity, orchestrator; env REPMAN_IDENTITY, REPMAN_SPONSORED_CLUSTERS, REPMAN_NEEDED_DBU/APU, REPMAN_FREE_DBU/APU, REPMAN_BORROW_DBU/APU); a non-zero exit vetoes it, its first output line is the reason")
 	flags.BoolVar(&conf.Cloud18SelfServiceClustersCanBorrow, "cloud18-self-service-clusters-can-borrow", false, "Let a self-service cluster be created on borrowed capacity (the over-commit pot) when the plan pot cannot guarantee its default units")
-	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
+	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 gateway VIP domain(s), comma-separated and aligned with cloud18-gateway-service; the first one is where the app CNAMEs point (the DNS round-robins the VIPs)")
 	flags.StringVar(&conf.Cloud18SubscriptionPlan, "cloud18-subscription-plan", "free", "Cloud18 subscription plan code (validated by CRM)")
 	flags.StringVar(&conf.Cloud18LicenseFile, "cloud18-license-file", "", "Path to a signed offline license (license.json; detached signature license.sig alongside). When set, the instance sources its Cloud18 plan from this file instead of the CRM — for air-gapped/PCI instances. Verified with plugin-signing-public-key. Empty = normal online CRM path")
 	flags.StringVar(&conf.Cloud18CrmApiUrl, "cloud18-crm-api-url", "https://api.crm.ovh-fr-2.signal18.cloud18.io", "Cloud18 CRM API base URL used for cluster registration")
@@ -1266,7 +1270,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	}
 
 	if WithProvisioning == "ON" {
-		flags.StringVar(&conf.Cloud18GatewayService, "cloud18-gateway-service", "", "Cloud18 OpenSVC service of the janitor proxy")
+		flags.StringVar(&conf.Cloud18GatewayService, "cloud18-gateway-service", "", "Cloud18 OpenSVC HAProxy gateway service(s) namespace/svc/name, comma-separated: route fragments are published on every one of them")
 		flags.StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		flags.StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")
 		flags.StringVar(&conf.ProvDiskTempSize, "prov-db-disk-temp-size", "128", "Disk in m for micro service VM")
@@ -2945,14 +2949,20 @@ func (repman *ReplicationManager) Run() error {
 		if !ok {
 			continue
 		}
-		gw := strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
-		if conflicts, _ := cl.DetectCrossClusterGatewayConflicts(priorRoutesByGateway[gw]); len(conflicts) > 0 {
+		gws := cl.Conf.GatewayServicesLower() // #1873: a cluster may sit on several gateways
+		var prior [][]config.Route
+		for _, gw := range gws {
+			prior = append(prior, priorRoutesByGateway[gw]...)
+		}
+		if conflicts, _ := cl.DetectCrossClusterGatewayConflicts(prior); len(conflicts) > 0 {
 			cl.MarkGatewayConflicts(conflicts)
 			cl.WithdrawConflictedGatewayRoutes()
 		}
 		// OwnGatewayRoutes now excludes apps marked conflicted in either 3a or 3b,
 		// so only genuinely publishable routes accumulate in the prior-routes pile.
-		priorRoutesByGateway[gw] = append(priorRoutesByGateway[gw], cl.OwnGatewayRoutes(gw)...)
+		for _, gw := range gws {
+			priorRoutesByGateway[gw] = append(priorRoutesByGateway[gw], cl.OwnGatewayRoutes(gw)...)
+		}
 	}
 
 	// Ensure per-cluster plugin dirs are symlinks to the shared dir so that
@@ -2995,6 +3005,9 @@ func (repman *ReplicationManager) Run() error {
 
 	//this ticker generate a new app access token, using app refresh token
 	//then it generate a new PAT gitlab to preserved a valid PAT in order to clone/push/pull on the distant gitlab
+	// GWU (#1872): poll the gateways' HAProxy stats for the egress of every cluster.
+	go repman.gatewayTrafficLoop()
+
 	ticker_PAT := time.NewTicker(86400 * time.Second)
 	quit_PAT := make(chan struct{})
 	go func() {
@@ -3638,8 +3651,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	// same policy as full startup and ReloadConfig.  Applies to git auto-discovery
 	// and dynamic API adds so that APPERR005 fires, route ownership is accurate,
 	// and previously published fragments for a losing cluster are cleaned up.
-	gw := strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
-	if gw != "" {
+	if cl.Conf.PrimaryGatewayService() != "" {
 		var priorRoutes [][]config.Route
 		for _, name := range clusterOrderCopy {
 			if name == clusterName {
@@ -3649,8 +3661,8 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 			if peer == nil {
 				continue
 			}
-			if strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) == gw {
-				priorRoutes = append(priorRoutes, peer.OwnGatewayRoutes(gw)...)
+			if peer.Conf.SharesGateway(cl.Conf) { // #1873
+				priorRoutes = append(priorRoutes, peer.OwnGatewayRoutesAny()...)
 			}
 		}
 		if conflicts, _ := cl.DetectCrossClusterGatewayConflicts(priorRoutes); len(conflicts) > 0 {
@@ -3713,7 +3725,7 @@ func (repman *ReplicationManager) recomputeConflictsForGateway(gw string) {
 	// OwnGatewayRoutes (which filters the GatewayConflicts map).
 	for _, name := range clusterOrder {
 		peer := clusters[name]
-		if peer == nil || strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) != gw {
+		if peer == nil || !peer.Conf.HasGateway(gw) {
 			continue
 		}
 		peer.RefreshGatewayConflicts()
@@ -3723,7 +3735,7 @@ func (repman *ReplicationManager) recomputeConflictsForGateway(gw string) {
 	var priorRoutes [][]config.Route
 	for _, name := range clusterOrder {
 		peer := clusters[name]
-		if peer == nil || strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) != gw {
+		if peer == nil || !peer.Conf.HasGateway(gw) {
 			continue
 		}
 		if conflicts, _ := peer.DetectCrossClusterGatewayConflicts(priorRoutes); len(conflicts) > 0 {
@@ -3755,21 +3767,23 @@ func (repman *ReplicationManager) RecomputeGatewayConflicts(changedClusterName, 
 		return
 	}
 
-	gw := strings.ToLower(strings.TrimSpace(changed.Conf.Cloud18GatewayService))
-	prev := strings.ToLower(strings.TrimSpace(prevGateway))
-
-	if gw != "" {
-		repman.recomputeConflictsForGateway(gw)
+	gws := changed.Conf.GatewayServicesLower() // #1873: every current gateway
+	if len(gws) > 0 {
+		for _, gw := range gws {
+			repman.recomputeConflictsForGateway(gw)
+		}
 	} else {
 		// No current gateway: local intra-cluster refresh only.
 		changed.RefreshGatewayConflicts()
 		changed.WithdrawConflictedGatewayRoutes()
 	}
 
-	// If the cluster moved to a different gateway (or left entirely), recompute
-	// the old gateway so peers that were blocked by this cluster are unblocked.
-	if prev != "" && prev != gw {
-		repman.recomputeConflictsForGateway(prev)
+	// If the cluster left a gateway (moved, or left entirely), recompute that
+	// gateway so peers that were blocked by this cluster are unblocked.
+	for _, prev := range config.SplitGatewayList(strings.ToLower(prevGateway)) {
+		if !changed.Conf.HasGateway(prev) {
+			repman.recomputeConflictsForGateway(prev)
+		}
 	}
 }
 

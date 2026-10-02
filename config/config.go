@@ -733,6 +733,7 @@ type Config struct {
 	ProvServicePlanRegistry                   string            `scope:"server" mapstructure:"prov-service-plan-registry" toml:"prov-service-plan-registry" json:"provServicePlanRegistry"`
 	ProvServicePlanDbu                        int               `mapstructure:"prov-service-plan-dbu" toml:"prov-service-plan-dbu" json:"provServicePlanDbu"`
 	ProvDbDbu                                 int               `mapstructure:"prov-db-dbu" toml:"prov-db-dbu" json:"provDbDbu"`
+	ProvGatewayUnits                          int               `mapstructure:"prov-gateway-units" toml:"prov-gateway-units" json:"provGatewayUnits"`
 	ProvDbBku                                 int               `mapstructure:"prov-db-bku" toml:"prov-db-bku" json:"provDbBku"`
 	ProvServicePlanApu                        int               `mapstructure:"prov-service-plan-apu" toml:"prov-service-plan-apu" json:"provServicePlanApu"`
 	ProvServicePlanBpu                        int               `mapstructure:"prov-service-plan-bpu" toml:"prov-service-plan-bpu" json:"provServicePlanBpu"`
@@ -1048,6 +1049,9 @@ type Config struct {
 	Cloud18MarketplaceAPUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-apu-price" toml:"cloud18-marketplace-apu-price" json:"cloud18MarketplaceApuPrice"`
 	Cloud18MarketplaceBKUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-bku-price" toml:"cloud18-marketplace-bku-price" json:"cloud18MarketplaceBkuPrice"`
 	Cloud18MarketplaceBAUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-bau-price" toml:"cloud18-marketplace-bau-price" json:"cloud18MarketplaceBauPrice"`
+	// GWU (#1872): the gateway network unit, egress through the Cloud18 gateways.
+	Cloud18MarketplaceGWUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-gwu-price" toml:"cloud18-marketplace-gwu-price" json:"cloud18MarketplaceGwuPrice"`
+	Cloud18MarketplaceGWUUnitMB             int                    `scope:"server" mapstructure:"cloud18-marketplace-gwu-unit-mb" toml:"cloud18-marketplace-gwu-unit-mb" json:"cloud18MarketplaceGwuUnitMb"`
 	Cloud18MarketplaceBAUClientStorage      bool                   `mapstructure:"cloud18-marketplace-bau-client-storage" toml:"cloud18-marketplace-bau-client-storage" json:"cloud18MarketplaceBauClientStorage"`
 	Cloud18MarketplaceOvercommitPricePct    int                    `scope:"server" mapstructure:"cloud18-marketplace-overcommit-price-pct" toml:"cloud18-marketplace-overcommit-price-pct" json:"cloud18MarketplaceOvercommitPricePct"`
 	Cloud18MarketplaceUndercommitPricePct   int                    `scope:"server" mapstructure:"cloud18-marketplace-undercommit-price-pct" toml:"cloud18-marketplace-undercommit-price-pct" json:"cloud18MarketplaceUndercommitPricePct"`

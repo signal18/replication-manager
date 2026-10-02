@@ -70,7 +70,7 @@ func (cluster *Cluster) BillingUsage() []UnitUsage {
 			ar.UnitPrice = b.UnitPrice
 		}
 	}
-	return append(out, st, co, bk, ar)
+	return append(out, st, co, bk, ar, cluster.gatewayUsage(over, under))
 }
 
 // BillingIdentity is who pays whom: the infrastructure's Cloud18 identity and the

@@ -124,6 +124,7 @@ type Cluster struct {
 	ResourceGrowRefused           *GrowRefusal                   `json:"resourceGrowRefused" groups:"web"`   // last dynamic over-plan step refused by the ResourceManager gate (nil = none); tracked state, surfaced as ERR00112 in the workload channel
 	ConfigDbuPerNode              DBUReading                     `json:"configDbuPerNode" groups:"web"`      // prov-db-* projected through the ratios: the TECHNICAL cap per node (paramétré axis), refreshed each tick
 	BackupUnits                   *BKUReading                    `json:"backupUnits" groups:"web"`           // BKU: per-cluster local backup storage vs prov-db-bku (RefreshBackupUnits, every 30 ticks)
+	GatewayUnits                  *GWUReading                    `json:"gatewayUnits" groups:"web"`          // GWU: egress through the gateways, month to date (#1872), set by the manager's collector
 	BackupArchiveUnits            *BAUReading                    `json:"backupArchiveUnits" groups:"web"`    // BAU: per-cluster remote archive on S3/SFTP, no plan (RefreshBackupUnits, every 30 ticks)
 	StatefulUnits                 *StatefulBilling               `json:"statefulUnits" groups:"web"`         // DBU billing of the stateful apps (app-stateful), own line next to computeUnits
 	ComputeUnits                  *APUBilling                    `json:"computeUnits" groups:"web"`          // APU billing: apps + proxies, floor 1 per instance, vs prov-service-plan-apu (RefreshComputeBilling, each tick)
@@ -2481,8 +2482,7 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	// appear before this one in clusterOrder (first-wins priority).
 	// RefreshGatewayConflicts above replaced the map with fresh intra-conflicts;
 	// MarkGatewayConflicts below adds cross-cluster ones without overwriting them.
-	gw := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
-	if gw != "" {
+	if cluster.Conf.PrimaryGatewayService() != "" {
 		var priorRoutes [][]config.Route
 		for _, name := range cluster.clusterOrder {
 			if name == cluster.Name {
@@ -2492,8 +2492,8 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 			if !ok || peer == nil {
 				continue
 			}
-			if strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) == gw {
-				priorRoutes = append(priorRoutes, peer.OwnGatewayRoutes(gw)...)
+			if peer.Conf.SharesGateway(cluster.Conf) { // #1873: peers share any gateway
+				priorRoutes = append(priorRoutes, peer.OwnGatewayRoutesAny()...)
 			}
 		}
 		if conflicts, _ := cluster.DetectCrossClusterGatewayConflicts(priorRoutes); len(conflicts) > 0 {

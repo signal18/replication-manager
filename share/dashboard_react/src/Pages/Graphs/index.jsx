@@ -89,6 +89,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           // is the cluster itself, not a level under it.
           .replaceAll('bku.*', `bku.${selectedCluster?.name}`)
           .replaceAll('bau.*', `bau.${selectedCluster?.name}`)
+          .replaceAll('gwu.*', `gwu.${selectedCluster?.name}`)
       : s
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
 
@@ -396,6 +397,20 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="Backup archive — BAU (remote restic archive on S3/SFTP; no plan, billed on usage)"
+       />
+        <ChartGroupedDBU
+         context={context}
+         axes={[
+           { key: 'egress', label: 'Gateway egress', ratio: (selectedCluster?.gatewayUnits?.unitBytes || 100000000), light: '#d08a3f', dark: '#e6a85a' },
+         ]}
+         unit='GWU'
+         dbuPaths={{ egress: scope('sumSeries(gwu.*.units)') }}
+         servicePaths={{ egress: scope('sumSeries(gwu.*.bytes)') }}
+         pivotPath=''
+         planDbu={selectedCluster?.gatewayUnits?.plan ?? 0}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Gateway network — GWU (octets sent out through the Cloud18 gateways, month to date; plan prov-gateway-units)"
        />
       </GraphSection>
 

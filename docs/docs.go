@@ -24067,6 +24067,10 @@ const docTemplate = `{
                     "type": "number",
                     "format": "float64"
                 },
+                "gwu": {
+                    "type": "number",
+                    "format": "float64"
+                },
                 "overPct": {
                     "type": "integer"
                 },
@@ -24594,6 +24598,10 @@ const docTemplate = `{
             "properties": {
                 "billable": {
                     "type": "number"
+                },
+                "cumulative": {
+                    "description": "month-to-date volume, not integrated (#1872)",
+                    "type": "boolean"
                 },
                 "family": {
                     "type": "string"
@@ -25949,6 +25957,13 @@ const docTemplate = `{
                 },
                 "cloud18MarketplaceDbuPrice": {
                     "type": "number"
+                },
+                "cloud18MarketplaceGwuPrice": {
+                    "description": "GWU (#1872): the gateway network unit, egress through the Cloud18 gateways.",
+                    "type": "number"
+                },
+                "cloud18MarketplaceGwuUnitMb": {
+                    "type": "integer"
                 },
                 "cloud18MarketplaceOvercommitPricePct": {
                     "type": "integer"
@@ -27475,6 +27490,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provEventTimeout": {
+                    "type": "integer"
+                },
+                "provGatewayUnits": {
                     "type": "integer"
                 },
                 "provKubeImageForcePull": {

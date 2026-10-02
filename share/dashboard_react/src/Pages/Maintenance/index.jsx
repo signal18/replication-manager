@@ -21,6 +21,7 @@ import { showWarningToast } from '../../redux/toastSlice'
 import PropTypes from 'prop-types'
 import { changePlanUnits } from '../../redux/settingsSlice'
 import { Text } from '@chakra-ui/react'
+import TextForm from '../../components/TextForm'
 import { getUnitRatios } from '../../utility/unitRatios'
 
 const QueueMoveForm = React.memo(({ list = [], currentId, onChange = (dir, afterId) => { } }) => {
@@ -228,6 +229,12 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
   // so it lives with the backups, not among the configurator's resource gauges. The measured
   // side (backupUnits, every 30 ticks) is shown next to it; over the plan = billed.
   const [bkuConfirm, setBkuConfirm] = useState({ isOpen: false, title: '', delta: 0 })
+  // GWU plan (prov-gateway-units): the per-cluster egress reservation through the Cloud18
+  // gateways (#1872); the reading (gatewayUnits, month to date) is shown next to it.
+  const [gwuConfirm, setGwuConfirm] = useState({ isOpen: false, title: '', delta: 0 })
+  const gwu = selectedCluster?.gatewayUnits
+  const gwuPlan = selectedCluster?.config?.provGatewayUnits ?? 0
+  const gwuMB = Math.round((gwu?.unitBytes || 100000000) / 1000000)
   const clusterData = useSelector((state) => state.cluster?.clusterData)
   const bkuGB = getUnitRatios(clusterData).storage.diskGBPerUnit || 20
   const bku = selectedCluster?.backupUnits
@@ -695,6 +702,23 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
               }}
             />
             <TableType3 dataArray={backupDataStats} className={styles.statsTable} />
+            <Flex gap={3} alignItems='center' wrap='wrap'>
+              <Text fontWeight='bold'>Gateway network plan (GWU, {gwuMB} MB out each)</Text>
+              <TextForm
+                value={String(gwuPlan)}
+                type='number'
+                placeholder='prov-gateway-units'
+                confirmTitle='Confirm the gateway network plan in GWU for the cluster: '
+                onSave={(value) => {
+                  const next = parseInt(value, 10)
+                  if (!Number.isFinite(next) || next < 1) return
+                  const delta = next - gwuPlan
+                  if (delta === 0) return
+                  setGwuConfirm({ isOpen: true, delta, title: `Confirm the gateway network plan at ${next} GWU = ${next * gwuMB} MB sent out per month through the gateways` })
+                }}
+              />
+              <Text>{gwu ? `month to date: ${(gwu.bytes / 1000000).toFixed(1)} MB = ${gwu.units.toFixed(2)} GWU on ${gwu.gateways} gateway(s)` : 'no reading yet'}</Text>
+            </Flex>
             <DataTable key="backups" data={data} columns={columns} className={styles.table} />
           </VStack>
         }
@@ -760,6 +784,9 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       {(!section || section === 'backup') && backupSection}
       {(!section || section === 'jobs') && jobsSection}
       {!section && logsSection}
+      {gwuConfirm.isOpen && <ConfirmModal title={gwuConfirm.title} isOpen={gwuConfirm.isOpen}
+        onConfirmClick={() => { dispatch(changePlanUnits({ clusterName: selectedCluster?.name, unit: 'GWU', delta: gwuConfirm.delta })); setGwuConfirm({ isOpen: false, title: '', delta: 0 }) }}
+        closeModal={() => setGwuConfirm({ isOpen: false, title: '', delta: 0 })} />}
       {bkuConfirm.isOpen && <ConfirmModal title={bkuConfirm.title} isOpen={bkuConfirm.isOpen}
         onConfirmClick={() => { dispatch(changePlanUnits({ clusterName: selectedCluster?.name, unit: 'BKU', delta: bkuConfirm.delta })); setBkuConfirm({ isOpen: false, title: '', delta: 0 }) }}
         closeModal={() => setBkuConfirm({ isOpen: false, title: '', delta: 0 })} />}

@@ -634,6 +634,21 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return fmt.Errorf("cloud18-marketplace-bau-price must be a positive number of Eur per BAU, got %q", value)
 		}
 		repman.Conf.Cloud18MarketplaceBAUPrice = f
+	case "cloud18-marketplace-gwu-price":
+		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || f < 0 {
+			return fmt.Errorf("cloud18-marketplace-gwu-price must be a positive number of Eur per GWU, got %q", value)
+		}
+		repman.Conf.Cloud18MarketplaceGWUPrice = f
+		if repman.resourceManager != nil {
+			repman.resourceManager.SetPrices(repman.billingPrices())
+		}
+	case "cloud18-marketplace-gwu-unit-mb":
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n < 1 {
+			return fmt.Errorf("cloud18-marketplace-gwu-unit-mb must be a whole number of MB per GWU, got %q", value)
+		}
+		repman.Conf.Cloud18MarketplaceGWUUnitMB = n
 	case "cloud18-marketplace-overcommit-price-pct", "cloud18-marketplace-undercommit-price-pct":
 		n, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil || n < 0 {

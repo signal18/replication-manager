@@ -23,7 +23,7 @@ const (
 	PlanUnitDBU PlanUnit = "DBU" // database reservation  -> prov-service-plan-dbu
 	PlanUnitAPU PlanUnit = "APU" // compute reservation   -> prov-service-plan-apu
 	PlanUnitBKU PlanUnit = "BKU" // backup storage reservation, PER CLUSTER -> prov-db-bku
-	// PlanUnitBKU / PlanUnitNEU (backup / network) -- wire when their plan variable lands.
+	PlanUnitGWU PlanUnit = "GWU" // gateway network reservation, PER CLUSTER -> prov-gateway-units (#1872)
 )
 
 // ChangePlanUnits moves this cluster's reservation for ONE unit by a relative delta. The
@@ -209,6 +209,10 @@ func (cluster *Cluster) planUnitSpec(unit PlanUnit) (cur int, floor int, apply f
 		// not of each node). Floor 1 BKU. Default 6 (three times the default 2 DBU/node).
 		return cluster.Conf.ProvDbBku, 1,
 			func(v int) { cluster.Conf.ProvDbBku = v }, nil
+	case PlanUnitGWU:
+		// prov-gateway-units is the PER-CLUSTER egress reservation through the gateways. Floor 1.
+		return cluster.Conf.ProvGatewayUnits, 1,
+			func(v int) { cluster.Conf.ProvGatewayUnits = v }, nil
 	default:
 		return 0, 0, nil, fmt.Errorf("ChangePlanUnits: unit %q not supported yet", unit)
 	}
@@ -221,6 +225,8 @@ func (cluster *Cluster) planFlag(unit PlanUnit) string {
 		return "prov-proxy-apu"
 	case PlanUnitBKU:
 		return "prov-db-bku"
+	case PlanUnitGWU:
+		return "prov-gateway-units"
 	}
 	return "prov-db-dbu"
 }

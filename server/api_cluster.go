@@ -9655,11 +9655,15 @@ func (repman *ReplicationManager) handlerMuxClusterGatewayServiceNodes(w http.Re
 			return
 		}
 		svc := mycluster.OpenSVCConnect()
-		nodes, err := svc.GetServiceNodeFromState(mycluster.Conf.Cloud18GatewayService)
-		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting gateway nodes: ", err)
-			http.Error(w, "Error getting gateway nodes: "+err.Error(), http.StatusInternalServerError)
-			return
+		var nodes []string
+		for _, gwRef := range mycluster.Conf.GatewayServices() { // #1873: every gateway
+			gwNodes, err := svc.GetServiceNodeFromState(gwRef)
+			if err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting gateway nodes: ", err)
+				http.Error(w, "Error getting gateway nodes: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			nodes = append(nodes, gwNodes...)
 		}
 
 		// Marshal provided interface into JSON structure

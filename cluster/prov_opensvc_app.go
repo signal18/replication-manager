@@ -1069,13 +1069,20 @@ func appRouteFragmentPrefix(opensvcDNS string) string {
 // state matches the blocked publication state.  Best-effort: errors are
 // returned but logged by the caller as warnings rather than halting startup.
 func (cluster *Cluster) withdrawGatewayRoutes(app *App) error {
-	cloud18GatewayServiceConfig := strings.Split(cluster.Conf.Cloud18GatewayService, "/")
-	if len(cloud18GatewayServiceConfig) < 3 {
-		return nil
+	var errs []error
+	for _, gwRef := range cluster.Conf.GatewayServices() { // #1873: every gateway
+		gwNamespace, gwService, ok := config.GatewayServiceParts(gwRef)
+		if !ok {
+			continue
+		}
+		if err := cluster.withdrawGatewayRoutesOn(app, gwNamespace, gwService); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	gwNamespace := cloud18GatewayServiceConfig[0]
-	gwService := cloud18GatewayServiceConfig[2]
+	return errors.Join(errs...)
+}
 
+func (cluster *Cluster) withdrawGatewayRoutesOn(app *App, gwNamespace, gwService string) error {
 	svc := cluster.OpenSVCConnect()
 	opensvcDNS := app.Name + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 	ownerPrefix := appRouteFragmentPrefix(opensvcDNS)
@@ -1231,12 +1238,15 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 		numBE = 1
 	}
 
-	cloud18GatewayServiceConfig := strings.Split(cluster.Conf.Cloud18GatewayService, "/")
-	if len(cloud18GatewayServiceConfig) < 3 {
+	gateways := cluster.Conf.GatewayServices() // #1873: fragments go to every gateway
+	if len(gateways) == 0 {
 		return fmt.Errorf("invalid Cloud18GatewayService format: %q", cluster.Conf.Cloud18GatewayService)
 	}
-	gwNamespace := cloud18GatewayServiceConfig[0]
-	gwService := cloud18GatewayServiceConfig[2]
+	for _, gwRef := range gateways {
+		if _, _, ok := config.GatewayServiceParts(gwRef); !ok {
+			return fmt.Errorf("invalid Cloud18GatewayService format: %q", gwRef)
+		}
+	}
 	opensvcDNS := app.Name + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 
 	// Step 1: normalize then validate — fail closed before any OpenSVC write.
@@ -1250,11 +1260,10 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 	// shares the same Cloud18GatewayService, excluding this app.
 	// Cloud18GatewayService (namespace/type/service) uniquely identifies the
 	// shared HAProxy instance regardless of DNS domain aliases.
-	thisGateway := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
-	if thisGateway != "" {
+	if cluster.Conf.PrimaryGatewayService() != "" {
 		var externalRoutes [][]config.Route
 		collectOthers := func(cl *Cluster) {
-			if strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService)) != thisGateway {
+			if !cl.Conf.SharesGateway(cluster.Conf) {
 				return
 			}
 			for _, other := range cl.GetAppsCopy() {
@@ -1390,61 +1399,64 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 	ownerPrefix := appRouteFragmentPrefix(opensvcDNS)
 	staleBranchPrefix := "haproxy.cfg.d/repman_" + cluster.Name + "_" + app.Name + "_"
 
-	existingKeys, listErr := svc.ListConfigKeys(gwNamespace, gwService)
-	if listErr != nil {
-		return fmt.Errorf("cannot list gateway config keys for stale-fragment cleanup (app %s): %w", app.Name, listErr)
-	}
-
-	for _, key := range existingKeys {
-		isOwned := strings.HasPrefix(key, ownerPrefix)
-		isStaleBranch := strings.HasPrefix(key, staleBranchPrefix)
-		if !isOwned && !isStaleBranch {
-			continue
+	for _, gwRef := range gateways { // #1873: publish on every gateway
+		gwNamespace, gwService, _ := config.GatewayServiceParts(gwRef)
+		existingKeys, listErr := svc.ListConfigKeys(gwNamespace, gwService)
+		if listErr != nil {
+			return fmt.Errorf("cannot list gateway config keys for stale-fragment cleanup (app %s): %w", app.Name, listErr)
 		}
-		if isOwned {
-			if _, stillWanted := desired[key]; stillWanted {
+
+		for _, key := range existingKeys {
+			isOwned := strings.HasPrefix(key, ownerPrefix)
+			isStaleBranch := strings.HasPrefix(key, staleBranchPrefix)
+			if !isOwned && !isStaleBranch {
 				continue
 			}
+			if isOwned {
+				if _, stillWanted := desired[key]; stillWanted {
+					continue
+				}
+			}
+			// Branch-specific repman_ keys are always stale once we reconcile with
+			// the restored origin/develop naming scheme.
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Deleting stale route fragment key=%s (app %s)", key, app.Name)
+			if delErr := svc.DeleteConfigKeyValue(gwNamespace, gwService, key); delErr != nil {
+				return fmt.Errorf("failed to delete stale fragment key=%s (app %s): %w", key, app.Name, delErr)
+			}
 		}
-		// Branch-specific repman_ keys are always stale once we reconcile with
-		// the restored origin/develop naming scheme.
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"Deleting stale route fragment key=%s (app %s)", key, app.Name)
-		if delErr := svc.DeleteConfigKeyValue(gwNamespace, gwService, key); delErr != nil {
-			return fmt.Errorf("failed to delete stale fragment key=%s (app %s): %w", key, app.Name, delErr)
+
+		// Step 5: upsert desired fragments.
+		for key, frag := range desired {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Upserting route fragment key=%s (app %s)", key, app.Name)
+			if err := svc.CreateConfigKeyValue(gwNamespace, gwService, key, frag); err != nil {
+				return fmt.Errorf("failed to upsert fragment %s: %w", key, err)
+			}
 		}
-	}
 
-	// Step 5: upsert desired fragments.
-	for key, frag := range desired {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"Upserting route fragment key=%s (app %s)", key, app.Name)
-		if err := svc.CreateConfigKeyValue(gwNamespace, gwService, key, frag); err != nil {
-			return fmt.Errorf("failed to upsert fragment %s: %w", key, err)
-		}
-	}
-
-	// Step 6: run mergecfg on all gateway nodes.
-	nodes, err := svc.GetServiceNodeFromState(cluster.Conf.Cloud18GatewayService)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-			"Cannot find node of gateway service: %s", err)
-		return err
-	}
-
-	var errtask ErrSlice
-	for _, node := range nodes {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"Merging app route fragments for %s on host %s", app.GetId(), node)
-		if err := svc.RunTask(cluster.Name, cluster.Conf.Cloud18GatewayService, node, "task#mergecfg", ""); err != nil {
+		// Step 6: run mergecfg on all gateway nodes.
+		nodes, err := svc.GetServiceNodeFromState(gwRef)
+		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-				"Cannot aggregate gateway fragments: %s", err)
-			errtask = append(errtask, err)
+				"Cannot find node of gateway service: %s", err)
+			return err
 		}
-	}
 
-	if len(errtask) > 0 {
-		return ErrSlice(errtask)
+		var errtask ErrSlice
+		for _, node := range nodes {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Merging app route fragments for %s on host %s", app.GetId(), node)
+			if err := svc.RunTask(cluster.Name, gwRef, node, "task#mergecfg", ""); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+					"Cannot aggregate gateway fragments: %s", err)
+				errtask = append(errtask, err)
+			}
+		}
+
+		if len(errtask) > 0 {
+			return ErrSlice(errtask)
+		}
 	}
 
 	return nil

@@ -152,7 +152,7 @@ type GatewayConflict struct {
 // and returns a combined error, but does NOT mutate cluster.Conf.Apps or the
 // live app list.
 func (cluster *Cluster) DetectIntraClusterGatewayConflicts() ([]GatewayConflict, error) {
-	gateway := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
+	gateway := strings.ToLower(cluster.Conf.PrimaryGatewayService())
 	if gateway == "" {
 		return nil, nil
 	}
@@ -212,7 +212,7 @@ func (cluster *Cluster) DetectIntraClusterGatewayConflicts() ([]GatewayConflict,
 // returns a combined error, but does NOT mutate cluster.Conf.Apps or the live
 // app list.
 func (cluster *Cluster) DetectCrossClusterGatewayConflicts(priorRoutes [][]config.Route) ([]GatewayConflict, error) {
-	gateway := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
+	gateway := strings.ToLower(cluster.Conf.PrimaryGatewayService())
 	if gateway == "" {
 		return nil, nil
 	}
@@ -322,7 +322,7 @@ func (cluster *Cluster) ClearGatewayConflict(host, port string) {
 // caller via MarkGatewayConflicts so that both types are cached, APPERR005
 // fires for all blocked apps, and stale gateway fragments are withdrawn.
 func (cluster *Cluster) RefreshGatewayConflicts() {
-	gateway := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
+	gateway := strings.ToLower(cluster.Conf.PrimaryGatewayService())
 	if gateway == "" {
 		cluster.Lock()
 		cluster.GatewayConflicts = nil
@@ -349,7 +349,16 @@ func (cluster *Cluster) RefreshGatewayConflicts() {
 // cluster is not attached to that gateway.  Used by the startup loop to build
 // the cumulative prior-routes slice in ClusterList order.
 func (cluster *Cluster) OwnGatewayRoutes(gateway string) [][]config.Route {
-	if strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService)) != gateway {
+	if !cluster.Conf.HasGateway(gateway) {
+		return nil
+	}
+	return cluster.allAppRoutes()
+}
+
+// OwnGatewayRoutesAny returns the routes of this cluster's surviving apps when it is
+// attached to at least one gateway (#1873: peers share any gateway).
+func (cluster *Cluster) OwnGatewayRoutesAny() [][]config.Route {
+	if cluster.Conf.PrimaryGatewayService() == "" {
 		return nil
 	}
 	return cluster.allAppRoutes()
@@ -454,7 +463,7 @@ func (cluster *Cluster) GetAppsCopy() []*App {
 // left over from a prior (valid) run are cleaned up without waiting for the
 // next OpenSVCProvisionRoute cycle.  Best-effort: errors are logged as warnings.
 func (cluster *Cluster) WithdrawConflictedGatewayRoutes() {
-	if strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService)) == "" {
+	if cluster.Conf.PrimaryGatewayService() == "" {
 		return
 	}
 	cluster.Lock()
