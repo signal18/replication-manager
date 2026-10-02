@@ -72,7 +72,7 @@ func (s *MCPServer) registerAppTools() {
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("template", mcp.Required(), mcp.Description("Template path (phpmyadmin/phpmyadmin) or short name (phpmyadmin)")),
 			mcp.WithString("name", mcp.Description("Name of the app, default the template's short name followed by 1 (phpmyadmin1)")),
-			mcp.WithString("port", mcp.Description("Port the app listens on, default 80")),
+			mcp.WithString("port", mcp.Description("Port the app listens on, default the template's app-port")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
@@ -92,10 +92,7 @@ func (s *MCPServer) registerAppTools() {
 			if name == "" {
 				name = short + "1"
 			}
-			port := strings.TrimSpace(req.GetString("port", ""))
-			if port == "" {
-				port = "80"
-			}
+			port := strings.TrimSpace(req.GetString("port", "")) // "" = the template's app-port
 			if err := cl.AddSeededApp(name, port, "", template); err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}

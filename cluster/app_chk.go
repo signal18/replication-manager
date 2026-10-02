@@ -120,8 +120,14 @@ func (app *App) GetMonitoringStatus() string {
 	}
 
 	if len(routes) == 0 {
-		errStates[ErrAppConnectFailed] = state.State{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), "no routes defined"), ServerUrl: app.Host}
-		app.ResetAllAppErrConsecutiveCnt()
+		// No route: the app lives on the cluster network only (a database, a cache). It
+		// is up when its port answers, probed over TCP on the app host.
+		probe := config.Route{Name: "app-port", Protocol: "tcp", Port: app.AppConfig.AppPort}
+		if err := app.GetAppLocalTCPStatus(probe); err != nil {
+			debouncedRecordAppErr("app-port", []state.State{{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), app.GetHost()+":"+app.AppConfig.AppPort+": "+err.Error()), ServerUrl: app.Host}}, err)
+		} else {
+			app.ResetAppErrConsecutiveCnt("app-port")
+		}
 		for _, key := range appErrKeys {
 			if st, ok := errStates[key]; ok {
 				app.RecordAppError(key, st)
@@ -130,7 +136,10 @@ func (app *App) GetMonitoringStatus() string {
 			}
 		}
 		app.SetRouteStatuses(nil)
-		return stateFailed
+		if len(errStates) > 0 {
+			return stateFailed
+		}
+		return stateAppRunning
 	}
 
 	// Run each unique local endpoint check exactly once.

@@ -1063,9 +1063,26 @@ func (cluster *Cluster) GetAppAgents(appcnf *config.AppConfig) string {
 	return agents
 }
 
+// normalizeAppMeasure turns a sized value ("4G", "1024M", "4") into the whole number of
+// the base unit the renderers expect ("4" GB for a disk, "1024" MB for memory); an
+// unparsable value is returned as is (a template placeholder left unresolved, say).
+func normalizeAppMeasure(tag, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	if n, err := config.ParseUnitMeasurementToInt(tag, value, false); err == nil {
+		return strconv.Itoa(n)
+	}
+	return value
+}
+
 func (cluster *Cluster) GetAppDisk(appcnf *config.AppConfig) string {
 	if appcnf != nil && appcnf.ProvAppDisk != "" {
-		// If the app config has disk, return it
+		// If the app config has disk, return it, in whole GB whatever unit it was
+		// written with (a template may carry the cluster's "4G": the volume render
+		// appends its own unit and zfs refused "4Gg" as a zero size, curepipe 2026-10-02).
+		appcnf.ProvAppDisk = normalizeAppMeasure("G,bytes", appcnf.ProvAppDisk)
 		return appcnf.ProvAppDisk
 	}
 
@@ -1085,7 +1102,8 @@ func (cluster *Cluster) GetAppDisk(appcnf *config.AppConfig) string {
 
 func (cluster *Cluster) GetAppMemory(appcnf *config.AppConfig) string {
 	if appcnf != nil && appcnf.ProvAppMem != "" {
-		// If the app config has memory, return it
+		// If the app config has memory, return it, in whole MB whatever unit it was written with
+		appcnf.ProvAppMem = normalizeAppMeasure("M,bytes", appcnf.ProvAppMem)
 		return appcnf.ProvAppMem
 	}
 

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -161,8 +162,13 @@ func (c *Cluster) initializeAppForRegistration(app *App) error {
 	app.SetID()
 	app.SetDataDir()
 	app.SetServiceName(c.Name)
-	if err := app.SetDefaultRoute(c.Conf.Cloud18Domain, c.Conf.Cloud18SubDomain, c.Conf.Cloud18SubDomainZone, c.Name); err != nil {
-		return fmt.Errorf("app %s: default route generation failed: %w", app.Name, err)
+	// A template says what is routed: one without routes is an app that stays on the
+	// cluster network (a database, a cache: never on a gateway port, Stéphane
+	// 2026-10-02). The default https route is for an app declared from a docker image.
+	if app.AppConfig == nil || strings.TrimSpace(app.AppConfig.ProvAppTemplate) == "" {
+		if err := app.SetDefaultRoute(c.Conf.Cloud18Domain, c.Conf.Cloud18SubDomain, c.Conf.Cloud18SubDomainZone, c.Name); err != nil {
+			return fmt.Errorf("app %s: default route generation failed: %w", app.Name, err)
+		}
 	}
 	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"New application monitored %s: %s:%s", app.GetType(), app.GetHost(), app.GetPort())
