@@ -280,6 +280,8 @@ type ServerMonitor struct {
 	rejoinInProgress                atomic.Bool                          // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
 	reseedFromRejoin                atomic.Bool                          // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
 	rejoinReseedStart               atomic.Int64                         // unix-nanos when the rejoin armed its reseed; drives the generic "rejoin reseed in progress, started T" state (WARN0189) for methods without byte instrumentation
+	reseedFailedAt                  atomic.Int64                         // unix-nanos of the last reseed job that reported a failure (#1866): a reseed armed before it is reconciled as FAILED whatever the replica looks like
+	reseedLastError                 atomic.Value                         // string: the error of that failure
 	reseedInfo                      atomic.Value                         // *ReseedProgress: the in-flight restore's backup (nil when idle) — for the progress state
 	reseedBytes                     atomic.Int64                         // raw bytes streamed so far (compressed input; no decompression accounting yet)
 	reseedTotal                     atomic.Int64                         // total compressed backup file size (0 = unknown)

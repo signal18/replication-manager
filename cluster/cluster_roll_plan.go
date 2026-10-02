@@ -193,7 +193,7 @@ func (cluster *Cluster) PlanRollingUpgrade(target, explicit string) (*RollingUpg
 		}
 	}
 	if next.Major > current.Major && mechanic == "upgrade" {
-		warnings = append(warnings, "major upgrade: the engine runs mariadb-upgrade (MARIADB_AUTO_UPGRADE) on first start, check it in the error log of each node; there is no rolling way back to "+current.String())
+		warnings = append(warnings, "major upgrade in place: each node restarts on the new release with its data directory and the engine runs mariadb-upgrade on that first start (MARIADB_AUTO_UPGRADE=1 in the container environment, MariaDB images), check it in the error log of each node; there is no rolling way back to "+current.String())
 	} else if current.Less(next) && mechanic == "upgrade" {
 		warnings = append(warnings, "no rolling way back to "+current.String()+" once a replica runs "+next.String()+": replication from a newer master to an older replica is not supported")
 	}

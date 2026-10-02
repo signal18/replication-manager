@@ -526,6 +526,7 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, target.URL, err.Error())
+		target.MarkReseedFailed(err)
 		target.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Reseed logical backup %s from parent cluster failed on %s", backtype, target.URL)
 		return "", err

@@ -1443,6 +1443,7 @@ func (cluster *Cluster) StateProcessing() {
 						servertoreseed.SetInReseedBackup("")
 					}
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing reseed for %s: %s", servertoreseed.URL, err)
+					servertoreseed.MarkReseedFailed(err)
 				}
 				// NOTE: a rejoin-armed reseed is NOT reconciled here — ProcessReseedPhysical
 				// only arms a detached WaitAndSendSST/SSTRunSender goroutine and returns nil,
@@ -1659,6 +1660,7 @@ func (cluster *Cluster) launchLogicalReseed(servertoreseed *ServerMonitor) {
 				srvReseed.SetInReseedBackup("")
 			}
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing logical reseed for %s: %s", srvReseed.URL, err)
+			srvReseed.MarkReseedFailed(err)
 		}
 		// Rejoin-armed reseed outcome is reconciled uniformly at true
 		// completion (IsReseeding clear) by reconcileDeferredRejoinReseeds,

@@ -91,3 +91,13 @@ func (cluster *Cluster) ResolveDatabaseImage(force bool) error {
 	}
 	return nil
 }
+
+// DBImageAutoUpgradeEnv says whether the database container gets MARIADB_AUTO_UPGRADE=1:
+// the official MariaDB image then runs mariadb-upgrade at start when the data directory
+// was written by another release, and does nothing otherwise, so an in-place major
+// upgrade is complete on each node's first start and a restart is unaffected (dev3
+// 2026-10-02: without it the 11.8 -> 12.3 move left mysql.proc at 21 columns and every
+// dump failed on it, #1862). MySQL and Percona upgrade their system tables on their own.
+func (cluster *Cluster) DBImageAutoUpgradeEnv() bool {
+	return strings.Contains(strings.ToLower(cluster.Conf.ProvDbImg), "mariadb")
+}

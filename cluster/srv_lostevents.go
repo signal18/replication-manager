@@ -227,9 +227,14 @@ func (cluster *Cluster) reconcileDeferredRejoinReseeds() {
 			}
 			continue
 		}
-		// Reseed completed (IsReseeding cleared) → record from observed health.
+		// Reseed completed (IsReseeding cleared) → record from observed health, unless
+		// the reseed job itself reported a failure after the rejoin armed it (#1866: an
+		// empty replica configured as a slave of its master looks healthy for a moment).
 		result := RejoinResultFailed
-		if sv.IsSlave && !sv.IsFailed() && cluster.master != nil {
+		if failure := sv.ReseedFailedSince(sv.rejoinReseedStart.Load()); failure != "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+				"Rejoin of %s: the reseed reported a failure, outcome failed: %s", sv.URL, failure)
+		} else if sv.IsSlave && !sv.IsFailed() && cluster.master != nil {
 			if m, _ := cluster.GetMasterFromReplication(sv); m != nil && m.URL == cluster.master.URL {
 				result = RejoinResultSuccess
 			}

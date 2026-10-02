@@ -104,3 +104,28 @@ live lookup.
 Rolling restart: unchanged, it keeps the image the service runs (`DeployImageOverride`).
 
 GUI: Configs > Orchestrator images shows "Service definition image".
+
+## In-place major upgrade: mariadb-upgrade (2026-10-02)
+
+The database container environment carries `MARIADB_AUTO_UPGRADE=1` for MariaDB images
+(`OpenSVCGetDBContainerEnvironment`, `k8sDBAllocatorEnv`, `Cluster.DBImageAutoUpgradeEnv`):
+the official image runs `mariadb-upgrade` at start only when the data directory was written
+by another release. Without it the 11.8.9 -> 12.3.3 move on dev3 left `mysql.proc` at 21
+columns and every dump (mariadb-dump, mydumper) failed on it. The variable lands in the
+service definition at the next push (provision, update-opensvc-template, rolling upgrade);
+a restart is unaffected. MySQL and Percona upgrade their system tables on their own.
+
+## Rolling reprov and the async reseed (#1866)
+
+A reseed job that reports a failure calls `ServerMonitor.MarkReseedFailed`; the rejoin
+reconciliation (`reconcileDeferredRejoinReseeds`) records `failed` for a reseed armed before
+that failure, whatever the replica looks like. `RollingReprov` waits for each node's async
+reseed (`waitRollingReseed`: `reseedFromRejoin` / `IsReseeding` clear, 4 h bound) and stops
+at the first failure instead of moving to the next replica.
+
+## Downgrade across a major: tooling (open)
+
+The reseed of the older replica needs dump and restore tools of its own release: on dev3
+the repman host's myloader 0.17.1 crashed restoring a 12.3 dump into 11.8.9. The restore
+must run with the target node's jobs container (its image is the target release); tracked
+as a separate issue.

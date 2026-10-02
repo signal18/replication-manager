@@ -76,14 +76,18 @@ func k8sImagePullPolicy(cluster *Cluster) apiv1.PullPolicy {
 // k8sDBAllocatorEnv maps the shared allocator tuning (GetDBAllocatorEnv,
 // #1749) onto the DB container env; nil when the feature is disabled.
 func k8sDBAllocatorEnv(cluster *Cluster) []apiv1.EnvVar {
+	var env []apiv1.EnvVar
+	if cluster.DBImageAutoUpgradeEnv() {
+		env = append(env, apiv1.EnvVar{Name: "MARIADB_AUTO_UPGRADE", Value: "1"})
+	}
 	preload, arenaMax := cluster.GetDBAllocatorEnv()
 	if preload == "" {
-		return nil
+		return env
 	}
-	return []apiv1.EnvVar{
-		{Name: "LD_PRELOAD", Value: preload},
-		{Name: "MALLOC_ARENA_MAX", Value: arenaMax},
-	}
+	return append(env,
+		apiv1.EnvVar{Name: "LD_PRELOAD", Value: preload},
+		apiv1.EnvVar{Name: "MALLOC_ARENA_MAX", Value: arenaMax},
+	)
 }
 
 // k8sSecretKeyRootPassword is the key MYSQL_ROOT_PASSWORD is stored under

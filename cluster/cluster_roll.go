@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -71,6 +72,7 @@ func (cluster *Cluster) RollingReprov() error {
 		if slave == nil || slave.IsIgnored() {
 			continue
 		}
+		reprovStart := time.Now().UnixNano()
 
 		if !slave.IsDown() {
 			maintenanceEnabled := !slave.IsMaintenance
@@ -109,6 +111,16 @@ func (cluster *Cluster) RollingReprov() error {
 				}
 				return err
 			}
+			// The rejoin armed an ASYNC reseed: wait for its outcome before the next
+			// node (#1866: the loop used to move on while the reseed job had not even
+			// started, and destroyed the next replica after a failed one).
+			if err = cluster.waitRollingReseed(slave, reprovStart); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov: %s", err)
+				if maintenanceEnabled {
+					slave.SwitchMaintenance()
+				}
+				return err
+			}
 
 			currentMaster := cluster.GetMaster()
 			if currentMaster == nil {
@@ -137,6 +149,7 @@ func (cluster *Cluster) RollingReprov() error {
 		if maintenanceEnabled {
 			master.SwitchMaintenance()
 		}
+		masterReprovStart := time.Now().UnixNano()
 		err := cluster.UnprovisionDatabaseService(master)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov %s", err)
@@ -164,6 +177,13 @@ func (cluster *Cluster) RollingReprov() error {
 		err = cluster.WaitDatabaseStart(master)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov %s", err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
+			return err
+		}
+		if err = cluster.waitRollingReseed(master, masterReprovStart); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov: %s", err)
 			if maintenanceEnabled {
 				master.SwitchMaintenance()
 			}
@@ -831,5 +851,33 @@ func (cluster *Cluster) RollingJobsUpgrade() error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling jobs upgrade completed")
 
+	return nil
+}
+
+// waitRollingReseed waits for the async reseed a rolling reprov armed on a node, and
+// answers its outcome: nil once the reseed completed without a reported failure, an
+// error when the reseed job reported one (#1866) or when nothing completed within
+// rollingReseedWait. A node that armed no reseed returns at once.
+const rollingReseedWait = 4 * time.Hour
+
+func (cluster *Cluster) waitRollingReseed(server *ServerMonitor, since int64) error {
+	deadline := time.Now().Add(rollingReseedWait)
+	logged := false
+	for server.reseedFromRejoin.Load() || server.IsReseeding != "" {
+		if !logged {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling reprov: waiting for the reseed of %s to complete", server.URL)
+			logged = true
+		}
+		if failure := server.ReseedFailedSince(since); failure != "" {
+			return fmt.Errorf("reseed of %s failed: %s", server.URL, failure)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("reseed of %s not completed after %s", server.URL, rollingReseedWait)
+		}
+		time.Sleep(5 * time.Second)
+	}
+	if failure := server.ReseedFailedSince(since); failure != "" {
+		return fmt.Errorf("reseed of %s failed: %s", server.URL, failure)
+	}
 	return nil
 }

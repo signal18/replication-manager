@@ -612,6 +612,9 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 // appending the shared allocator tuning (GetDBAllocatorEnv, #1749).
 func (server *ServerMonitor) OpenSVCGetDBContainerEnvironment() string {
 	env := "MYSQL_INITDB_SKIP_TZINFO=yes"
+	if server.ClusterGroup.DBImageAutoUpgradeEnv() {
+		env += " MARIADB_AUTO_UPGRADE=1"
+	}
 	if preload, arenaMax := server.ClusterGroup.GetDBAllocatorEnv(); preload != "" {
 		env += " LD_PRELOAD=" + preload + " MALLOC_ARENA_MAX=" + arenaMax
 	}
