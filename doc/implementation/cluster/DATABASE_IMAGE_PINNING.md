@@ -57,10 +57,16 @@ the list at provision and at every rolling upgrade (`prov-db-docker-img-resolved
 menu and the API without `target` run) resolves the **declared** `prov-db-image` with
 `Resolve`, so a line moves to its newest release and a declaration raised to a higher line
 moves there on the next default upgrade; the other targets take the current line from the
-master's running version (else the declared tag, else the record) and apply `Target`. It
-refuses a
-downgrade (line, and release when the running one is known; `patch` on a list older than
-the running release answers the running release with a warning), and says what
+master's running version (else the declared tag, else the record) and apply `Target`. A
+downgrade is never refused, it is announced; the one exception is a stale list, declared
+line equal to the running line and nothing newer in the list, where the running release
+stays. The plan picks the **mechanic**: `reprov` (unprovision, provision on the new image,
+reseed from the master, node by node; `RollingReprov`) for a move down across a major, and
+for a move up across a major when `prov-db-upgrade-major-reprov` is on; `upgrade` (restart
+on the new image, `RollingUpgrade`) otherwise. `RunRollingUpgrade(plan)` runs it and pilots
+for the duration `switchover-lower-release` (move down across lines) and the logical reseed
+(`autorejoin-mysqldump`, move down across a major: a physical backup of the newer major
+cannot restore into the older one), restoring the operator's values. It says what
 `prov-db-image` declares afterwards: `patch` keeps the declaration, a line move declares the
 new line, a given release is declared as is. `PrepareRollingUpgrade` does the declaration
 (`SetProvDBImage`, refused on an immutable pin), writes the record, pushes the OpenSVC

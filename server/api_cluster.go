@@ -1657,10 +1657,10 @@ func (repman *ReplicationManager) handlerMuxRollingAction(w http.ResponseWriter,
 			http.Error(w, "Rolling upgrade refused: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		go func() { mycluster.RollingUpgrade() }()
+		go func() { mycluster.RunRollingUpgrade(plan) }()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		plan.Status = "rolling upgrade started"
+		plan.Status = "rolling " + plan.Mechanic + " started"
 		json.NewEncoder(w).Encode(plan)
 	case "jobs-upgrade":
 		mycluster.SetRollingJobsUpgradeState()
@@ -2878,6 +2878,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.ProvDBDockerRunArgsLimit = !mycluster.Conf.ProvDBDockerRunArgsLimit
 	case "prov-orchestrator-deployment-upgrade-on-start":
 		mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart = !mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart
+	case "prov-db-upgrade-major-reprov":
+		mycluster.Conf.ProvDbUpgradeMajorReprov = !mycluster.Conf.ProvDbUpgradeMajorReprov
 	case "prov-docker-daemon-private":
 		mycluster.SwitchProvDockerDaemonPrivate()
 	case "prov-object-allow-overwrite":
@@ -4776,6 +4778,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProvDBApplyDynamicConfig = applyIsActive(mycluster.Conf.ProvDBApplyDynamicConfig, isactive)
 	case "prov-orchestrator-deployment-upgrade-on-start":
 		mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart = applyIsActive(mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart, isactive)
+	case "prov-db-upgrade-major-reprov":
+		mycluster.Conf.ProvDbUpgradeMajorReprov = applyIsActive(mycluster.Conf.ProvDbUpgradeMajorReprov, isactive)
 	case "prov-auto-update-compliance":
 		mycluster.Conf.ProvAutoUpdateCompliance = applyIsActive(mycluster.Conf.ProvAutoUpdateCompliance, isactive)
 	case "prov-docker-daemon-private":

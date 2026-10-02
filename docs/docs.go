@@ -24428,6 +24428,10 @@ const docTemplate = `{
                 "imageList": {
                     "type": "string"
                 },
+                "mechanic": {
+                    "description": "\"upgrade\" (restart on the new image) or \"reprov\" (provision again + reseed)",
+                    "type": "string"
+                },
                 "nodes": {
                     "type": "array",
                     "items": {
@@ -27373,6 +27377,9 @@ const docTemplate = `{
                 "provDbUndercommitPct": {
                     "description": "scale-down floor: auto-shrink never under floor(plan x (1 - pct/100)) DBU/node, min 1 -- the pendant of prov-db-overcommit-pct",
                     "type": "integer"
+                },
+                "provDbUpgradeMajorReprov": {
+                    "type": "boolean"
                 },
                 "provDbVolumeData": {
                     "type": "string"

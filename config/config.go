@@ -604,6 +604,7 @@ type Config struct {
 	ProvOrchestrator                         string                       `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
 	ProvOrchestratorEnable                   string                       `mapstructure:"prov-orchestrator-enable" toml:"prov-orchestrator-enable" json:"provOrchestratorEnable"`
 	ProvOrchestratorCluster                  string                       `mapstructure:"prov-orchestrator-cluster" toml:"prov-orchestrator-cluster" json:"provOrchestratorCluster"`
+	ProvDbUpgradeMajorReprov                 bool                         `mapstructure:"prov-db-upgrade-major-reprov" toml:"prov-db-upgrade-major-reprov" json:"provDbUpgradeMajorReprov"`
 	ProvOrchestratorDeploymentUpgradeOnStart bool                         `mapstructure:"prov-orchestrator-deployment-upgrade-on-start" toml:"prov-orchestrator-deployment-upgrade-on-start" json:"provOrchestratorDeploymentUpgradeOnStart"`
 	ProvDBApplyDynamicConfig                 bool                         `mapstructure:"prov-db-apply-dynamic-config" toml:"prov-db-apply-dynamic-config" json:"provDBApplyDynamicConfig"`
 	ProvDBDynamicResource                    bool                         `mapstructure:"prov-db-dynamic-resource" toml:"prov-db-dynamic-resource" json:"provDbDynamicResource"`

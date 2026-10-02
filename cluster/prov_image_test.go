@@ -82,9 +82,28 @@ func TestPlanRollingUpgradeFromEmbeddedList(t *testing.T) {
 	if err != nil || p.TargetImage != "mariadb:11.8.8" || p.DeclaredAfter != "mariadb:11.8.8" {
 		t.Fatalf("version 11.8.8: err=%v plan=%+v", err, p)
 	}
-	if _, err := cl.PlanRollingUpgrade("version", "10.11"); err == nil {
-		t.Fatal("downgrade must be refused")
+	if p, err := cl.PlanRollingUpgrade("version", "11.0"); err != nil || p.TargetImage != "mariadb:11.0" || p.Mechanic != "upgrade" || !strings.Contains(strings.Join(p.Warnings, " "), "downgrade") {
+		t.Fatalf("a downgrade on the same major is announced, upgrade mechanic: err=%v plan=%+v", err, p)
 	}
+	if p, err := cl.PlanRollingUpgrade("version", "10.11"); err != nil || p.Mechanic != "reprov" {
+		t.Fatalf("a downgrade across a major reprovisions: err=%v plan=%+v", err, p)
+	}
+	if p, _ := cl.PlanRollingUpgrade("next-major", ""); p.Mechanic != "upgrade" {
+		t.Fatalf("major upgrade restarts in place by default: %+v", p)
+	}
+	cl.Conf.ProvDbUpgradeMajorReprov = true
+	if p, _ := cl.PlanRollingUpgrade("next-major", ""); p.Mechanic != "reprov" {
+		t.Fatalf("major upgrade reprovisions with the option: %+v", p)
+	}
+	cl.Conf.ProvDbUpgradeMajorReprov = false
+	cl.Conf.ProvDbImg = "mariadb:12.3"
+	cl.Servers = nil
+	cl.Conf.ProvDbImgResolved = "mariadb:12.3=mariadb:12.3.2"
+	if p, err := cl.PlanRollingUpgrade("version", "11.8"); err != nil || p.Mechanic != "reprov" {
+		t.Fatalf("a downgrade across a major always reprovisions: err=%v plan=%+v", err, p)
+	}
+	cl.Conf.ProvDbImgResolved = ""
+	cl.Conf.ProvDbImg = "mariadb:11.4"
 	p, err = cl.PlanRollingUpgrade("version", "11.8.7")
 	if err != nil || p.TargetImage != "mariadb:11.8.7" || !strings.Contains(strings.Join(p.Warnings, " "), "not in the") {
 		t.Fatalf("a given release absent from the list is taken as is with a warning: err=%v plan=%+v", err, p)

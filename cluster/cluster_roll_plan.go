@@ -58,6 +58,7 @@ type RollingUpgradePlan struct {
 	TargetImage    string                   `json:"targetImage"` // the real release, repo:x.y.z
 	TargetIsLTS    bool                     `json:"targetIsLTS"`
 	DeclaredAfter  string                   `json:"declaredAfter"` // prov-db-image after the upgrade
+	Mechanic       string                   `json:"mechanic"`      // "upgrade" (restart on the new image) or "reprov" (provision again + reseed)
 	Order          []string                 `json:"order"`
 	Steps          []string                 `json:"steps"`
 	Warnings       []string                 `json:"warnings"`
@@ -135,20 +136,30 @@ func (cluster *Cluster) PlanRollingUpgrade(target, explicit string) (*RollingUpg
 		next = current
 	}
 	warnings := []string{}
-	if running != "" && releases.CompareReleases(release, running) < 0 {
-		switch strings.ToLower(strings.TrimSpace(target)) {
-		case releases.TargetPatch, releases.TargetLastMinor:
-			// The list knows nothing newer than what runs: the running release is the
-			// answer, the upgrade re-pulls it.
-			warnings = append(warnings, "the "+cat.Source+" has nothing newer than the running "+running+" on line "+current.String()+": the service definitions are pinned on it")
-			release = running
-			next = current
-		default:
-			return nil, fmt.Errorf("downgrade from %s to %s refused: a rolling upgrade only moves forward", running, release)
-		}
+	// A downgrade is never refused (Stéphane 2026-10-02), it is announced. One case is
+	// not a downgrade but a stale list: the declared line is the running line and the
+	// list knows nothing newer than what runs; the running release is then the answer.
+	if running != "" && releases.CompareReleases(release, running) < 0 && next == current {
+		warnings = append(warnings, "the "+cat.Source+" has nothing newer than the running "+running+" on line "+current.String()+": the service definitions stay on it")
+		release = running
 	}
-	if next.Less(current) {
-		return nil, fmt.Errorf("downgrade from %s to %s refused: a rolling upgrade only moves forward (a replica older than its master cannot replicate and the data dictionary does not go back); restore a backup taken on %s instead", current, release, release)
+	// The mechanic: a data directory rewritten by a newer major cannot start on the
+	// older one, so a move down across a major provisions each node again from scratch
+	// and reseeds it (rolling reprov); a move up across a major does the same when
+	// prov-db-upgrade-major-reprov is on, else the node restarts on the new image and
+	// the engine runs mariadb-upgrade; every other move restarts on the new image.
+	mechanic := "upgrade"
+	switch {
+	case next.Major < current.Major:
+		mechanic = "reprov"
+		warnings = append(warnings, "downgrade across a major, from "+current.String()+" to "+next.String()+": each node is provisioned again from scratch on "+release+" and reseeded from the master with a logical dump; the switchover runs with switchover-lower-release on for the duration")
+	case next.Major > current.Major && cluster.Conf.ProvDbUpgradeMajorReprov:
+		mechanic = "reprov"
+		warnings = append(warnings, "major upgrade with prov-db-upgrade-major-reprov: each node is provisioned again from scratch on "+release+" and reseeded from the master; there is no rolling way back to "+current.String())
+	case next.Less(current):
+		warnings = append(warnings, "downgrade from line "+current.String()+" to "+release+" on the same major: each node restarts on the older image with its data directory; the switchover runs with switchover-lower-release on for the duration")
+	case next == current && running != "" && releases.CompareReleases(release, running) < 0:
+		warnings = append(warnings, "downgrade from "+running+" to "+release+" on the same line: each node restarts on the older image with its data directory")
 	}
 	onprem := cluster.GetOrchestrator() == config.ConstOrchestratorOnPremise
 	targetImage := repo + ":" + release
@@ -167,9 +178,9 @@ func (cluster *Cluster) PlanRollingUpgrade(target, explicit string) (*RollingUpg
 	default:
 		declaredAfter = repo + ":" + next.String()
 	}
-	if next.Major > current.Major {
+	if next.Major > current.Major && mechanic == "upgrade" {
 		warnings = append(warnings, "major upgrade: the engine runs mariadb-upgrade (MARIADB_AUTO_UPGRADE) on first start, check it in the error log of each node; there is no rolling way back to "+current.String())
-	} else if current.Less(next) {
+	} else if current.Less(next) && mechanic == "upgrade" {
 		warnings = append(warnings, "no rolling way back to "+current.String()+" once a replica runs "+next.String()+": replication from a newer master to an older replica is not supported")
 	}
 	if !cat.InList(repo, release) {
@@ -194,7 +205,11 @@ func (cluster *Cluster) PlanRollingUpgrade(target, explicit string) (*RollingUpg
 		if cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 			steps = append(steps, "push the service definition of every node (update-opensvc-template), inert until the node restarts")
 		}
-		steps = append(steps, "rolling upgrade: pull the image and restart each replica, switchover, pull and restart the old master")
+		if mechanic == "reprov" {
+			steps = append(steps, "rolling reprov: unprovision, provision on the new image and reseed each replica from the master, switchover, the same for the old master")
+		} else {
+			steps = append(steps, "rolling upgrade: pull the image and restart each replica, switchover, pull and restart the old master")
+		}
 	}
 	order := []string{}
 	for _, sl := range cluster.GetSlaves() {
@@ -219,6 +234,7 @@ func (cluster *Cluster) PlanRollingUpgrade(target, explicit string) (*RollingUpg
 		TargetImage:    targetImage,
 		TargetIsLTS:    cat.Table.IsLTS(flavor, next),
 		DeclaredAfter:  declaredAfter,
+		Mechanic:       mechanic,
 		Order:          order,
 		Steps:          steps,
 		Warnings:       warnings,
@@ -262,4 +278,35 @@ func (cluster *Cluster) PrepareRollingUpgrade(target, explicit string) (*Rolling
 		}
 	}
 	return plan, nil
+}
+
+// RunRollingUpgrade runs the rolling part the plan announced, after
+// PrepareRollingUpgrade: the rolling reprov or the rolling upgrade. For a move down
+// across lines it pilots switchover-lower-release on for the duration; for a move down
+// across a major it pilots the logical reseed (a direct mysqldump from the master, a
+// physical backup of the newer major cannot restore into the older one). The operator's
+// values are restored afterwards.
+func (cluster *Cluster) RunRollingUpgrade(plan *RollingUpgradePlan) error {
+	if plan == nil {
+		return cluster.RollingUpgrade()
+	}
+	current, _ := releases.ParseLine(plan.CurrentLine)
+	next, _ := releases.ParseLine(plan.TargetLine)
+	if next.Less(current) {
+		saved := cluster.Conf.SwitchLowerRelease
+		cluster.Conf.SwitchLowerRelease = true
+		defer func() { cluster.Conf.SwitchLowerRelease = saved }()
+	}
+	if plan.Mechanic == "reprov" {
+		if next.Major < current.Major {
+			savedDump, savedPhysical, savedLogical := cluster.Conf.AutorejoinMysqldump, cluster.Conf.AutorejoinPhysicalBackup, cluster.Conf.AutorejoinLogicalBackup
+			cluster.Conf.AutorejoinMysqldump, cluster.Conf.AutorejoinPhysicalBackup, cluster.Conf.AutorejoinLogicalBackup = true, false, false
+			defer func() {
+				cluster.Conf.AutorejoinMysqldump, cluster.Conf.AutorejoinPhysicalBackup, cluster.Conf.AutorejoinLogicalBackup = savedDump, savedPhysical, savedLogical
+			}()
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling upgrade (%s) to %s runs as a rolling reprov", plan.Target, plan.TargetImage)
+		return cluster.RollingReprov()
+	}
+	return cluster.RollingUpgrade()
 }
