@@ -7,6 +7,7 @@
 package share
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -191,6 +192,95 @@ func TestOpenSVCHaproxyModulesetStandbyBackendsUseConfiguredNames(t *testing.T) 
 		// total across the whole file is (at least) 4 each.
 		if got := strings.Count(content, placeholder); got < 4 {
 			t.Errorf("moduleset_mariadb.svc.mrm.proxy.json contains %q only %d times, want at least 4 (2 in proxy_cnf_haproxy_runtime_api, 2 in proxy_cnf_haproxy)", placeholder, got)
+		}
+	}
+}
+
+// TestOpenSVCMysqlGtidModulesetIsVersionIndependent guards the generated
+// with_rep_mysqlgtid.cnf (opensvc/moduleset_mariadb.svc.mrm.db.json, var_name
+// "db_cnf_rep_with_mysqlgtid"). mysqld reads the [mysqld-<major.minor>] group of
+// its own version only, so a template made of per-version groups (it had 5.6,
+// 5.7 and 8.0, and no 8.4) leaves any other version with gtid_mode=OFF, and a
+// replica using AUTO_POSITION then cannot attach. The template is one [mysqld]
+// block instead, and every option in it carries the loose- prefix: the variables
+// renamed or removed between 5.7 and 8.4 (master_info_repository,
+// relay_log_info_repository, slave_parallel_workers -> replica_parallel_workers,
+// sync_master_info -> sync_source_info) in their legacy and their modern name, and
+// gtid_mode, enforce_gtid_consistency and relay_log_recovery too. A server applies
+// the options it knows and ignores the others, where a plain unknown name makes it
+// refuse to start ("unknown variable 'relay_log_info_repository=table'" on 8.4, or
+// 'gtid_mode' on a MariaDB server that was given this tag by mistake).
+func TestOpenSVCMysqlGtidModulesetIsVersionIndependent(t *testing.T) {
+	data, err := EmbededDbModuleFS.ReadFile("opensvc/moduleset_mariadb.svc.mrm.db.json")
+	if err != nil {
+		t.Fatalf("could not read embedded moduleset_mariadb.svc.mrm.db.json: %s", err)
+	}
+	var moduleset struct {
+		Rulesets []struct {
+			Variables []struct {
+				Name  string `json:"var_name"`
+				Value string `json:"var_value"`
+			} `json:"variables"`
+		} `json:"rulesets"`
+	}
+	if err := json.Unmarshal(data, &moduleset); err != nil {
+		t.Fatalf("moduleset is not valid JSON: %s", err)
+	}
+	fmts := []string{}
+	for _, rs := range moduleset.Rulesets {
+		for _, v := range rs.Variables {
+			if v.Name != "db_cnf_rep_with_mysqlgtid" {
+				continue
+			}
+			var file struct {
+				Fmt string `json:"fmt"`
+			}
+			if err := json.Unmarshal([]byte(v.Value), &file); err != nil {
+				t.Fatalf("db_cnf_rep_with_mysqlgtid value is not a JSON file description: %s", err)
+			}
+			fmts = append(fmts, file.Fmt)
+		}
+	}
+	if len(fmts) != 1 {
+		t.Fatalf("expected exactly one db_cnf_rep_with_mysqlgtid template, found %d", len(fmts))
+	}
+
+	// option name -> value, "-" and "_" being the same in a mysqld option name
+	options := map[string]string{}
+	groups := []string{}
+	for _, line := range strings.Split(fmts[0], "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case line == "" || strings.HasPrefix(line, "#"):
+		case strings.HasPrefix(line, "["):
+			groups = append(groups, line)
+		default:
+			name, value, _ := strings.Cut(line, "=")
+			options[strings.ReplaceAll(strings.TrimSpace(name), "-", "_")] = strings.TrimSpace(value)
+		}
+	}
+	if len(groups) != 1 || groups[0] != "[mysqld]" {
+		t.Fatalf("template must be a single [mysqld] block (a version group such as [mysqld-8.0] is not read by other versions), got groups %v", groups)
+	}
+
+	for name, want := range map[string]string{
+		"loose_gtid_mode": "ON", "loose_enforce_gtid_consistency": "ON", "loose_relay_log_recovery": "ON",
+	} {
+		if got := options[name]; got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+	for name := range options {
+		if !strings.HasPrefix(name, "loose_") {
+			t.Errorf("%q must carry the loose- prefix: a server that does not know it would refuse to start", name)
+		}
+	}
+	for _, name := range []string{
+		"loose_slave_parallel_workers", "loose_sync_master_info", "loose_master_info_repository", "loose_relay_log_info_repository",
+		"loose_replica_parallel_workers", "loose_sync_source_info",
+	} {
+		if _, ok := options[name]; !ok {
+			t.Errorf("template lost %s (legacy and modern names must both be present)", name)
 		}
 	}
 }
